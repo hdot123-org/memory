@@ -1,0 +1,83 @@
+name: release-and-dispatch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "workspace/**"
+      - "tests/**"
+      - ".github/workflows/**"
+      - "README.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Run tests
+        run: python -m pytest -q tests
+
+      - name: Compute next release tag
+        id: version
+        run: |
+          last=$(git tag --list 'v0.1.*' --sort=-v:refname | head -n 1)
+          if [ -z "$last" ]; then
+            next="v0.1.0"
+          else
+            patch="${last##*.}"
+            next="v0.1.$((patch + 1))"
+          fi
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push release tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "tag already exists: $TAG"
+          else
+            git tag -a "$TAG" -m "Automated release $TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          make_latest: true
+
+      - name: Dispatch workbot auto-upgrade pipeline
+        if: ${{ secrets.WORKBOT_REPO_DISPATCH_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.WORKBOT_REPO_DISPATCH_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          gh api repos/hdot123/workbot/dispatches \
+            --method POST \
+            -f event_type='memory_release_published' \
+            -f client_payload="{\"release_tag\":\"${RELEASE_TAG}\",\"source_sha\":\"${SOURCE_SHA}\"}"
+
+      - name: Warn when cross-repo dispatch token is missing
+        if: ${{ secrets.WORKBOT_REPO_DISPATCH_TOKEN == '' }}
+        run: |
+          echo "::warning::WORKBOT_REPO_DISPATCH_TOKEN is empty, skipped dispatch to hdot123/workbot."
