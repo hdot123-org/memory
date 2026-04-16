@@ -52,20 +52,20 @@ related: [workbot-project-canonical, workbot-truth-model, workbot-hook-contract]
 ## Truth Basis
 
 ### Source Refs
-- `/Users/busiji/workbot/AGENTS.md`
-- `/Users/busiji/workbot/.claude/agents/pm-bot.md`
-- `/Users/busiji/workbot/docs/cmux-subagent-runtime-chain.md`
-- `/Users/busiji/workbot/docs/cmux-subagent-runtime-truth-table.md`
+- `/Users/busiji/memory/AGENTS.md`
+- `/Users/busiji/memory/.claude/agents/pm-bot.md`
+- `/Users/busiji/memory/docs/cmux-subagent-runtime-chain.md`
+- `/Users/busiji/memory/docs/cmux-subagent-runtime-truth-table.md`
 
 ### Authority Refs
-- `/Users/busiji/workbot/workspace/memory/kb/projects/workbot.md`
-- `/Users/busiji/workbot/workspace/memory/kb/global/workbot-truth-model.md`
+- `/Users/busiji/memory/workspace/memory/kb/projects/workbot.md`
+- `/Users/busiji/memory/workspace/memory/kb/global/workbot-truth-model.md`
 
 ### Evidence Refs
-- `/Users/busiji/workbot/docs/cmux-subagent-runtime-chain.md`
-- `/Users/busiji/workbot/docs/cmux-subagent-runtime-truth-table.md`
-- `/Users/busiji/workbot/docs/cmux-subagent-minimal-operating-guideline.md`
-- `/Users/busiji/workbot/workspace/tools/memory_hook_gateway.py`
+- `/Users/busiji/memory/docs/cmux-subagent-runtime-chain.md`
+- `/Users/busiji/memory/docs/cmux-subagent-runtime-truth-table.md`
+- `/Users/busiji/memory/docs/cmux-subagent-minimal-operating-guideline.md`
+- `/Users/busiji/memory/workspace/tools/memory_hook_gateway.py`
 
 ### Conflict Status
 - `resolved`

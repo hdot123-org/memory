@@ -105,21 +105,23 @@ related: [workbot-memory-system, workbot-memory-routing]
 - 同一任务输入下，两边拿到的是同结构上下文包。
 - gateway 失效时，宿主 fail-fast 或明确降级，不允许静默绕过。
 - gateway 只认 `active-legal` 地图条目为合法目录来源，不认“仅登记未吸收”的对象。
+- gateway 只承认 `project-map/` 中被明确标为 `active-legal` 的条目或目录是合法上下文来源。
 - gateway 只允许 truth basis 完整且冲突已裁决的对象进入正式真相上下文。
+- 未完成提交的登记不得生效。
 
 ## 6.1 Truth Basis
 
 ### Source Refs
-- `/Users/busiji/workbot/workspace/INDEX.md`
-- `/Users/busiji/workbot/workspace/memory/docs/INDEX.md`
+- `/Users/busiji/memory/workspace/INDEX.md`
+- `/Users/busiji/memory/workspace/memory/docs/INDEX.md`
 
 ### Authority Refs
-- `/Users/busiji/workbot/workspace/memory/kb/global/workbot-truth-model.md`
-- `/Users/busiji/workbot/workspace/memory/kb/global/workbot-memory-system.md`
+- `/Users/busiji/memory/workspace/memory/kb/global/workbot-truth-model.md`
+- `/Users/busiji/memory/workspace/memory/kb/global/workbot-memory-system.md`
 
 ### Evidence Refs
-- `/Users/busiji/workbot/workspace/tools/memory_hook_gateway.py`
-- `/Users/busiji/workbot/workspace/tools/validate_memory_system.py`
+- `/Users/busiji/memory/workspace/tools/memory_hook_gateway.py`
+- `/Users/busiji/memory/workspace/tools/validate_memory_system.py`
 
 ### Conflict Status
 - `resolved`
@@ -128,7 +130,7 @@ related: [workbot-memory-system, workbot-memory-routing]
 
 截至 2026-04-11：
 
-- `Codex` 正式 hook 入口已切到 `/Users/busiji/workbot/workspace/tools/memory_hook_gateway.py`
-- `Claude` 正式 hook 入口已切到 `/Users/busiji/workbot/workspace/tools/memory_hook_gateway.py`
+- `Codex` 正式 hook 入口已切到 `/Users/busiji/memory/workspace/tools/memory_hook_gateway.py`
+- `Claude` 正式 hook 入口已切到 `/Users/busiji/memory/workspace/tools/memory_hook_gateway.py`
 - gateway 会先产出 context package 与事件证据，再转发到底层 `cmux` hook
-- 验收报告已生成到 `/Users/busiji/workbot/workspace/artifacts/memory-hook/validation/latest.json`
+- 验收报告已生成到 `/Users/busiji/memory/workspace/artifacts/memory-hook/validation/latest.json`

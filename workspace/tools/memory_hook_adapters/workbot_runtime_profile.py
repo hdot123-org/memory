@@ -21,29 +21,14 @@ def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict
     memory_system_path = workspace_root / "memory" / "kb" / "global" / "workbot-memory-system.md"
 
     required_registry_scopes = [
-        "workspace/memory/kb/global/projects/**",
-        "workspace/memory/kb/global/memory-router-design.md",
-        "workspace/memory/kb/global/memory-router-design-v2.1.1.md",
-        "workspace/memory/kb/global/versions/**",
-        "workspace/memory/kb/global/conflicts.md",
-        "workspace/memory/kb/global/llm-tech-baseline.md",
-        "workspace/memory/kb/global/multi-brand-protocol-baseline.md",
-        "workspace/memory/kb/global/pve-docker-template-deployment-guide.md",
-        "workspace/memory/docs/corrections/**",
-        "workspace/memory/docs/research/**",
-        "workspace/memory/docs/references/**",
+        "workspace/project-map/**",
+        "workspace/memory/kb/global/**",
+        "workspace/memory/kb/projects/**",
+        "workspace/memory/docs/**",
         "workspace/memory/log/**",
         "workspace/projects/**",
-        "workspace/artifacts/**",
-        str(repo_root / "docs" / "**"),
-        str(repo_root / "scripts" / "**"),
-        str(repo_root / "tests" / "**"),
-        str(repo_root / "skills" / "**"),
-        str(repo_root / "artifacts" / "**"),
-        str(repo_root / "AEdu" / "**"),
-        str(repo_root / "app" / "**"),
-        str(repo_root / "agents" / "**"),
-        str(repo_root / "gpt-web-to" / "**"),
+        "workspace/tools/**",
+        "tests/**",
     ]
 
     required_canonical = [
@@ -106,9 +91,7 @@ def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict
         workspace_root / "tools",
         workspace_root / "memory" / "log",
         workspace_root / "memory" / "system",
-        repo_root / "app",
-        repo_root / "agents",
-        repo_root / "gpt-web-to",
+        repo_root / "tests",
     ]
 
     default_decision_refs = [
@@ -117,10 +100,7 @@ def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict
 
     project_decision_refs = {
         "workbot": [],
-        "AEdu": [
-            workspace_root / "memory" / "kb" / "decisions" / "2026-04-02-aedu-ce-lifecycle-rule.md",
-            workspace_root / "memory" / "kb" / "decisions" / "2026-04-02-aedu-commander-task-routing.md",
-        ],
+        "AEdu": [],
         "platform-capabilities": [],
     }
 
@@ -199,13 +179,10 @@ def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict
     ]
 
     legal_core_markers = [
-        str(truth_model),
-        str(memory_system_path),
-        str(workspace_root / "memory" / "kb" / "decisions" / "**"),
-        str(workspace_root / "memory" / "kb" / "lessons" / "**"),
-        str(workspace_root / "memory" / "system" / "**"),
-        str(workspace_root / "memory" / "archive" / "**"),
-        str(workspace_root / "memory" / "inbox.md"),
+        "active-legal",
+        "project-map/INDEX.md",
+        "workbot-truth-model.md",
+        "workbot-memory-system.md",
     ]
 
     return {

@@ -19,7 +19,7 @@ related: [workbot-memory-system, workbot-truth-model, workbot-hook-contract]
 ## Global-Bot + Project-Binding Model
 
 - 所有 bot 本体都是全局 bot body，统一定义在 `/Users/busiji/.claude/agents/*.md`。
-- `workbot` 通过 `/Users/busiji/workbot/.claude/agents/*.md` 绑定并启用当前正式 bot 集合。
+- `workbot` 通过 `/Users/busiji/memory/.claude/agents/*.md` 绑定并启用当前正式 bot 集合。
 - 当前 `workbot` 绑定并启用的 bot 是：
   - `pm-bot`
   - `dev-bot`
@@ -69,24 +69,20 @@ related: [workbot-memory-system, workbot-truth-model, workbot-hook-contract]
 ## Truth Basis
 
 ### Source Refs
-- `/Users/busiji/workbot/AGENTS.md`
-- `/Users/busiji/workbot/.claude/agents/pm-bot.md`
-- `/Users/busiji/workbot/docs/cmux-subagent-runtime-chain.md`
-- `/Users/busiji/workbot/docs/cmux-subagent-runtime-truth-table.md`
-- `/Users/busiji/workbot/docs/cmux-subagent-minimal-operating-guideline.md`
-- `/Users/busiji/workbot/workspace/memory/kb/global/workbot-truth-model.md`
-- `/Users/busiji/workbot/workspace/memory/kb/global/workbot-hook-contract.md`
-- `/Users/busiji/workbot/workspace/memory/kb/global/workbot-memory-system.md`
+- `/Users/busiji/memory/workspace/INDEX.md`
+- `/Users/busiji/memory/workspace/memory/docs/INDEX.md`
+- `/Users/busiji/memory/workspace/memory/kb/global/workbot-truth-model.md`
+- `/Users/busiji/memory/workspace/memory/kb/global/workbot-hook-contract.md`
+- `/Users/busiji/memory/workspace/memory/kb/global/workbot-memory-system.md`
 
 ### Authority Refs
-- `/Users/busiji/workbot/workspace/project-map/legal-core-map.md`
-- `/Users/busiji/workbot/workspace/memory/kb/global/workbot-truth-model.md`
+- `/Users/busiji/memory/workspace/project-map/legal-core-map.md`
+- `/Users/busiji/memory/workspace/project-map/INDEX.md`
 
 ### Evidence Refs
-- `/Users/busiji/workbot/docs/cmux-subagent-runtime-chain.md`
-- `/Users/busiji/workbot/docs/cmux-subagent-runtime-truth-table.md`
-- `/Users/busiji/workbot/docs/cmux-subagent-minimal-operating-guideline.md`
-- `/Users/busiji/workbot/workspace/tools/memory_hook_gateway.py`
+- `/Users/busiji/memory/workspace/tools/memory_hook_gateway.py`
+- `/Users/busiji/memory/workspace/tools/memory_hook_core.py`
+- `/Users/busiji/memory/workspace/tools/memory_hook_impls.py`
 
 ### Conflict Status
 - `resolved`

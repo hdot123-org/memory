@@ -16,6 +16,11 @@
 - 定义 docs 层的文档分类
 - 提供文档检索入口
 
+## 1.1 Docs 与 project-map 的关系
+
+- docs 子树默认归入 `incoming-raw`，未被地图明确吸收前不授予合法性。
+- docs 只能作为资料层，不得绕过 `project-map/INDEX.md` 进入 authority。
+
 ---
 
 ## 2. 文档分类

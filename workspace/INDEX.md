@@ -22,6 +22,12 @@
 
 ## 🎯 核心规则
 
+### project-map 合同口径
+- `project-map/INDEX.md` 是唯一合法入口。
+- 只有被地图标为 `active-legal` 的条目或目录，才是合法资料；仅进入登记册不授予合法性。
+- 目录登记和目录状态迁移必须与相关文件同次 `git commit` 才生效。
+- 真相模型 canonical：`workspace/memory/kb/global/workbot-truth-model.md`
+
 ### 绝对禁止
 - ❌ 覆盖任何 `memory/kb/**` 文件
 - ❌ 删除 `memory/kb/**` 旧内容（只能标记 `superseded`）
@@ -103,7 +109,7 @@
 
 ## 🎯 当前工作空间
 
-**根路径**：`/Users/busiji/workbot/workspace`
+**根路径**：`/Users/busiji/memory/workspace`
 
 **说明**：
 - 这是唯一总控工作区

@@ -10,3 +10,9 @@ Status: rule-only, records-cleared
 - `workbot-memory-routing.md`
 - `workbot-cli-tools.md`
 
+## Non-Legal Material
+- 非 canonical 材料必须先进入 `project-map/ingestion-registry-map.md`。
+- 仅完成登记不授予合法性，必须由 `active-legal` 地图显式吸收后才可进入正式上下文。
+
+## Canonical Marker
+- `workbot-truth-model.md`

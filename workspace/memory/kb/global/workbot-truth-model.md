@@ -170,15 +170,15 @@ related: [workbot-memory-system, workbot-memory-routing, workbot-hook-contract, 
 ## 9. Truth Basis
 
 ### Source Refs
-- `/Users/busiji/workbot/workspace/INDEX.md`
-- `/Users/busiji/workbot/workspace/memory/kb/global/workbot-memory-system.md`
+- `/Users/busiji/memory/workspace/INDEX.md`
+- `/Users/busiji/memory/workspace/memory/kb/global/workbot-memory-system.md`
 
 ### Authority Refs
-- `/Users/busiji/workbot/workspace/project-map/legal-core-map.md`
+- `/Users/busiji/memory/workspace/project-map/legal-core-map.md`
 
 ### Evidence Refs
-- `/Users/busiji/workbot/workspace/tools/memory_hook_gateway.py`
-- `/Users/busiji/workbot/workspace/tools/validate_memory_system.py`
+- `/Users/busiji/memory/workspace/tools/memory_hook_gateway.py`
+- `/Users/busiji/memory/workspace/tools/validate_memory_system.py`
 
 ### Conflict Status
 - `resolved`

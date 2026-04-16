@@ -158,18 +158,18 @@ raise ValueError(
 ## 7. Truth Basis
 
 ### Source Refs
-- `/Users/busiji/workbot/workspace/INDEX.md`
-- `/Users/busiji/workbot/workspace/memory/kb/global/workbot-hook-contract.md`
+- `/Users/busiji/memory/workspace/INDEX.md`
+- `/Users/busiji/memory/workspace/memory/kb/global/workbot-hook-contract.md`
 
 ### Authority Refs
-- `/Users/busiji/workbot/workspace/memory/kb/global/workbot-truth-model.md`
-- `/Users/busiji/workbot/workspace/memory/kb/global/workbot-memory-system.md`
+- `/Users/busiji/memory/workspace/memory/kb/global/workbot-truth-model.md`
+- `/Users/busiji/memory/workspace/memory/kb/global/workbot-memory-system.md`
 
 ### Evidence Refs
-- `/Users/busiji/workbot/workspace/tools/memory_hook_interfaces.py`
-- `/Users/busiji/workbot/workspace/tools/memory_hook_impls.py`
-- `/Users/busiji/workbot/workspace/tools/memory_hook_gateway.py`
-- `/Users/busiji/workbot/tests/test_memory_hook_gateway_m3_policy_pack.py`
+- `/Users/busiji/memory/workspace/tools/memory_hook_interfaces.py`
+- `/Users/busiji/memory/workspace/tools/memory_hook_impls.py`
+- `/Users/busiji/memory/workspace/tools/memory_hook_gateway.py`
+- `/Users/busiji/memory/tests/test_memory_hook_gateway_m3_policy_pack.py`
 
 ### Conflict Status
 - `resolved`
