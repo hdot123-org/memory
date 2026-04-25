@@ -38,6 +38,17 @@
 - `MEMORY_HOOK_EXTERNAL_CORE_MODULE`：默认 `memory_hook_core`
 - `MEMORY_HOOK_EXTERNAL_CORE_PATH`：联调时可指定本地路径
 
+## M3 Consumer Truth 清理
+
+M3 将 workbot-only 治理真相和交付链从模块默认层彻底清出：
+
+- 治理文档去默认化：routing、legal-core、ingestion-registry 全部声明 `Scope: adapter`
+- project binding 修正：workbot.md 声明为 consumer adapter 描述符，消除绝对路径
+- 发布链中立化：移除默认 workbot dispatch，改为可配置白名单 `dispatch_targets`
+- M2 遗留测试补齐：delegate gate、state file strictness、compaction policy、adapter hook contract 共 15 条
+
+相关 commit：`234ff7a`
+
 ## M2 Adapter 剥离
 
 M2 将 workbot 运行特化从模块默认层剥离为 adapter 能力：
@@ -88,7 +99,7 @@ python3 workspace/tools/memory_hook_provider_rollback.py
 3. 自动创建 GitHub Release
 4. 按白名单向下游项目发送 `repository_dispatch` 事件
 
-注意：下游 dispatch 当前仍默认包含 `hdot123/workbot`，M3 阶段将改为完全可配置白名单机制。
+下游 dispatch 通过 `dispatch_targets` 输入参数配置，默认为空（不 dispatch 任何项目）。手动触发 workflow 时可指定目标。
 
 ## 当前状态
 
@@ -96,4 +107,4 @@ python3 workspace/tools/memory_hook_provider_rollback.py
 - 模块默认层已不再绑定 workbot consumer 真相
 - 仍保留 `legacy` 回滚能力用于故障处置
 - M2 已完成：adapter 下沉、运行特化从模块默认层剥离、noop_response 接口化、state_file 注入链、compaction 策略框架
-- M3 待执行：交付链中立化、CI/release/dispatch/rollback 改造
+- M3 已完成：consumer truth 清理、治理文档 adapter scope 声明、发布链中立化
