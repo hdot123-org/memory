@@ -16,4 +16,4 @@ Status: active
 
 ## Recovery path
 
-- 正式入口：`/Users/busiji/.agents/skills/cmux/scripts/bootstrap_claude_runtime.py`
+- 正式入口：`<cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
