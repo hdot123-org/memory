@@ -1,20 +1,22 @@
 ---
 type: [KB:GLOBAL]
-title: "Workbot Hook Gateway Contract"
+title: "Workbot Hook Gateway Adapter Contract"
 shortname: WB-HOOK
 status: active
+scope: adapter
 created: 2026-04-11
-updated: 2026-04-11
+updated: 2026-04-26
 source: local-canonical
 confidence: high
-tags: [hook, gateway, codex, claude, memory]
+tags: [hook, gateway, adapter, codex, claude, memory]
 related: [workbot-memory-system, workbot-memory-routing]
 ---
 
-# Workbot Hook Gateway Contract
+# Workbot Hook Gateway Adapter Contract
 
-> 本文件定义 `Codex` 与 `Claude` 进入总记忆系统时必须共享的 hook 合同。
-> 它定义统一入口、统一上下文裁决和统一写入分流。
+> 本文件定义 `Codex` 与 `Claude` 通过 workbot adapter 进入总记忆系统时的 hook 合同。
+> 它是 adapter 级别的合同，不是模块全局默认合同。
+> 其他 adapter 可以定义自己的合同，不受本文件约束。
 > 截至 2026-04-11，两个宿主的正式 hook 入口都已切到仓内 gateway。
 
 ## 1. 目标
