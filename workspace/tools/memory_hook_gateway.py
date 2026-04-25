@@ -76,7 +76,19 @@ except ImportError:
     from memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy  # type: ignore
 
 
-globals().update(build_workbot_runtime_profile(REPO_ROOT, WORKSPACE_ROOT))
+import importlib  # noqa: E402
+_ADAPTER_NAME = os.environ.get("MEMORY_HOOK_ADAPTER", "workbot")
+_ADAPTER_REGISTRY = {
+    "workbot": (".memory_hook_adapters.workbot_runtime_profile", "build_workbot_runtime_profile"),
+}
+_mod_path, _fn_name = _ADAPTER_REGISTRY[_ADAPTER_NAME]
+try:
+    _mod = importlib.import_module(_mod_path, package="workspace.tools")
+except ImportError:
+    from workspace.tools.memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile as _fn  # type: ignore
+else:
+    _fn = getattr(_mod, _fn_name)
+globals().update(_fn(REPO_ROOT, WORKSPACE_ROOT))
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +139,8 @@ def _build_gateway_business_policy() -> GatewayBusinessPolicy:
         scope_match_hints=SCOPE_MATCH_HINTS,
         read_text_if_exists_fn=read_text_if_exists,
     )
-    return WorkbotGatewayBusinessPolicy(config=config)
+    _policy_class = globals().get("GATEWAY_POLICY_CLASS", WorkbotGatewayBusinessPolicy)
+    return _policy_class(config=config)
 
 
 def _get_gateway_business_policy() -> GatewayBusinessPolicy:
@@ -324,7 +337,7 @@ def discover_cwd(payload: dict[str, Any]) -> Path:
 
 
 def should_noop_for_external_context(payload: dict[str, Any]) -> bool:
-    if os.environ.get("WORKBOT_FORCE_HOOK"):
+    if os.environ.get("MEMORY_HOOK_FORCE") or os.environ.get("WORKBOT_FORCE_HOOK"):
         return False
     env_cwd = environment_cwd()
     provided_cwd = payload_cwd(payload)

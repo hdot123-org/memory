@@ -7,6 +7,8 @@ from pathlib import Path
 import os
 from typing import Any
 
+from .workbot_policy import WorkbotGatewayBusinessPolicy
+
 
 def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict[str, Any]:
     project_map_root = workspace_root / "project-map"
@@ -196,6 +198,7 @@ def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict
         "GLOBAL_RULE_PATH": global_rule_path,
         "MEMORY_SYSTEM_PATH": memory_system_path,
         "POLICY_PACK_PATH": policy_pack_path,
+        "GATEWAY_POLICY_CLASS": WorkbotGatewayBusinessPolicy,
         "LEGALITY_SOURCE_POLICY": "active-legal-map-only",
         "REGISTRATION_COMMIT_POLICY": "required-after-absorption-complete",
         "REGISTRATION_COMMIT_PHASE": "declared-not-enforced",
