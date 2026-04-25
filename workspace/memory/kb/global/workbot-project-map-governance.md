@@ -1,6 +1,10 @@
 # Workbot Project-Map Governance
 
 Status: rule-only, records-cleared
+Scope: adapter
+
+> 本文件是 workbot adapter 级别的项目地图治理规则，不是模块默认治理。
+> 其他 adapter 可以定义自己的治理规则，不受本文件约束。
 
 ## Core Governance Rules
 - Rule files can define policy.

@@ -4,7 +4,8 @@ title: "Workbot 真相判定模型"
 shortname: WB-TRUTH
 status: active
 created: 2026-04-11
-updated: 2026-04-11
+updated: 2026-04-26
+scope: adapter
 source: local-canonical
 confidence: high
 tags: [truth, proof, canonical, memory]
@@ -13,6 +14,9 @@ related: [workbot-memory-system, workbot-memory-routing, workbot-hook-contract, 
 
 # Workbot 真相判定模型
 
+> 本文件是 workbot adapter 级别的真相判定模型，不是模块默认真相模型。
+> 其他 adapter 可以定义自己的真相判定规则，不受本文件约束。
+>
 > 本文件定义 `workbot` 中“什么才配叫真相”。
 > 它不替代合法性地图，而是在合法性之上再回答：什么内容可以被正式相信并进入 canonical。
 

@@ -17,5 +17,6 @@
     "kb_write_mode": "prefer-strict",
     "kb_overwrite_allowed": "prefer-strict",
     "default": "preserve-and-escalate"
-  }
+  },
+  "adapter_scope": true
 }

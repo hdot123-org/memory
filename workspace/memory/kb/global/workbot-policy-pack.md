@@ -1,5 +1,8 @@
 # Workbot Policy Pack
 
+> 本文件是 workbot adapter 级别的策略包规范，不是模块默认策略。
+> 其他 adapter 可以定义自己的策略包，不受本文件约束。
+>
 > 本文件定义 `workbot` 记忆钩子系统的策略包（policy-pack）规范。  
 > 版本：M3-policy-pack-v1  
 > 状态：active
