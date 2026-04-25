@@ -94,17 +94,21 @@ python3 workspace/tools/memory_hook_provider_rollback.py
 
 行为：
 
-1. `main` 变更触发测试
-2. 自动计算并创建下一个 `v0.1.x` tag
+1. `main` 分支变更触发全量测试
+2. 测试通过后自动计算并创建下一个 `v0.1.x` tag
 3. 自动创建 GitHub Release
-4. 按白名单向下游项目发送 `repository_dispatch` 事件
+4. 按白名单 `dispatch_targets` 向下游项目发送 `repository_dispatch` 事件
 
-下游 dispatch 通过 `dispatch_targets` 输入参数配置，默认为空（不 dispatch 任何项目）。手动触发 workflow 时可指定目标。
+下游 dispatch 采用白名单式可配置策略：`dispatch_targets` 输入参数默认为空，即不向任何项目发送 dispatch。需触发下游时，通过 workflow dispatch 手动指定目标仓库列表。
 
 ## 当前状态
 
-- M1 已完成：合同收敛、policy 对齐、基线修复
-- 模块默认层已不再绑定 workbot consumer 真相
+- **M1 已完成**：合同收敛、policy 对齐、基线修复、`get_required_gateway_inputs` 默认委托方法
+- **M2 已完成**：adapter 下沉、运行特化从模块默认层剥离、`noop_response()` 接口化、state_file 注入链、compaction 策略框架、hook-contract 降为 adapter 合同
+- **M3 已完成**：consumer truth 清理、治理文档 adapter scope 声明、发布链中立化、绝对路径清除
+- **模块默认层已完全中立化**：不再内建任何单项目默认绑定
+- **所有 workbot 文档已标记 adapter scope**：routing、legal-core、ingestion-registry、workbot.md 均声明 `Scope: adapter`
+- **发布链已中立化**：移除默认 workbot dispatch，改为可配置白名单 `dispatch_targets`
+- **绝对路径已全部清除**：project binding 中不再包含任何宿主绝对路径
+- **77 条测试全量通过**：含 M2 遗留 15 条补齐测试（delegate gate、state file strictness、compaction policy、adapter hook contract）
 - 仍保留 `legacy` 回滚能力用于故障处置
-- M2 已完成：adapter 下沉、运行特化从模块默认层剥离、noop_response 接口化、state_file 注入链、compaction 策略框架
-- M3 已完成：consumer truth 清理、治理文档 adapter scope 声明、发布链中立化
