@@ -42,6 +42,7 @@ related: [workbot-memory-system, workbot-memory-routing]
   - 必要 decision / lesson
   - `workspace/NOW.md` 摘要
   - 必要 source docs 引用
+- policy-pack 解析遵循 adapter 注入 > 环境变量 > 硬编码默认 > 空回退的优先级链
 
 ### 2.3 context-package
 - 将上一步的裁决结果组装成统一结构。

@@ -218,12 +218,16 @@ class PolicyRegistryImpl(PolicyRegistry):
         self,
         policy_pack_path: Path | None = None,
         *,
+        config: GatewayBusinessPolicyConfig | None = None,
         allowed_scopes: set[str] | None = None,
         scope_inherits: dict[str, str] | None = None,
         default_policies: dict[str, str] | None = None,
         conflict_strategies: dict[str, str] | None = None,
     ):
-        if policy_pack_path is not None:
+        # Priority: config.policy_pack_path > direct param > env var > default file > None
+        if config is not None and config.policy_pack_path is not None:
+            resolved_policy_pack_path = config.policy_pack_path
+        elif policy_pack_path is not None:
             resolved_policy_pack_path = policy_pack_path
         else:
             env_path = os.environ.get(self.POLICY_PACK_PATH_ENV)
@@ -458,6 +462,7 @@ class GatewayBusinessPolicyConfig:
     default_project_scope: str
     scope_match_hints: dict[str, list[Path]]
     read_text_if_exists_fn: Callable[[Path], str]
+    policy_pack_path: Path | None = None
 
 
 class GatewayBusinessPolicyImpl(GatewayBusinessPolicy):
