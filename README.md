@@ -14,6 +14,7 @@
 - Gateway 编排与 provider 解析：`workspace/tools/memory_hook_gateway.py`
 - 接口与默认实现：`workspace/tools/memory_hook_interfaces.py`、`workspace/tools/memory_hook_impls.py`
 - 适配层（含 workbot profile 等项目适配器）：`workspace/tools/memory_hook_adapters/`
+  - adapter 运行文档：`workspace/tools/memory_hook_adapters/docs/`
 - 回退演练：`workspace/tools/memory_hook_provider_rollback.py`
 - 测试：`tests/`
 
@@ -36,6 +37,18 @@
 - `MEMORY_HOOK_CORE_PROVIDER`：`external-core`（默认）或 `legacy`
 - `MEMORY_HOOK_EXTERNAL_CORE_MODULE`：默认 `memory_hook_core`
 - `MEMORY_HOOK_EXTERNAL_CORE_PATH`：联调时可指定本地路径
+
+## M2 Adapter 剥离
+
+M2 将 workbot 运行特化从模块默认层剥离为 adapter 能力：
+
+- Codex bypass 下沉到 adapter：`HostDelegate` 新增 `noop_response()`，gateway 不再硬编码宿主输出格式
+- CMUX_HOOK_STATE_FILE 改为 adapter policy：`ClaudeDelegate` 不再直读环境变量，由 runtime profile 注入
+- artifact compaction 策略框架：`ARTIFACT_COMPACTION` 字典控制 context package 裁剪
+- hook-contract 降为 adapter 合同：`scope: adapter`，明确不是模块全局默认
+- cli-tools 归位到 adapter docs 目录
+
+相关 commit：`d9e45d0`
 
 ## M1 合同收敛
 
@@ -82,5 +95,5 @@ python3 workspace/tools/memory_hook_provider_rollback.py
 - M1 已完成：合同收敛、policy 对齐、基线修复
 - 模块默认层已不再绑定 workbot consumer 真相
 - 仍保留 `legacy` 回滚能力用于故障处置
-- M2 待执行：adapter 下沉、运行特化从模块默认层剥离
+- M2 已完成：adapter 下沉、运行特化从模块默认层剥离、noop_response 接口化、state_file 注入链、compaction 策略框架
 - M3 待执行：交付链中立化、CI/release/dispatch/rollback 改造
