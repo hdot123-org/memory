@@ -81,6 +81,10 @@ class CodexDelegate(HostDelegate):
             check=False,
         )
 
+    def noop_response(self) -> subprocess.CompletedProcess[str]:
+        """Codex bypass: return empty JSON when formal cmux is unavailable."""
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="{}\n", stderr="")
+
 
 class ClaudeDelegate(HostDelegate):
     """Delegate for Claude host."""
@@ -99,7 +103,9 @@ class ClaudeDelegate(HostDelegate):
     ):
         self.workspace_id = workspace_id or os.environ.get("CMUX_WORKSPACE_ID")
         self.surface_id = surface_id or os.environ.get("CMUX_SURFACE_ID")
-        self._state_file = state_file or os.environ.get("CMUX_HOOK_STATE_FILE")
+        # M2: state_file must be injected by adapter policy, not read from env directly.
+        # Adapters resolve CMUX_HOOK_STATE_FILE through their own policy layer.
+        self._state_file = state_file
         self._repo_root = repo_root
         self._which = which_cmd or shutil.which
         self._runner = runner or subprocess.run
@@ -169,6 +175,10 @@ class ClaudeDelegate(HostDelegate):
             capture_output=True,
             check=False,
         )
+
+    def noop_response(self) -> subprocess.CompletedProcess[str]:
+        """Claude bypass: return empty response when formal cmux is unavailable."""
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
 
 # ---------------------------------------------------------------------------

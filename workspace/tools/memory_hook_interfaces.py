@@ -42,6 +42,14 @@ class HostDelegate(ABC):
         """
         pass
 
+    @abstractmethod
+    def noop_response(self) -> subprocess.CompletedProcess[str]:
+        """Return a no-op response when formal runtime is unavailable.
+
+        Each host adapter defines its own bypass output format.
+        """
+        pass
+
 
 # ---------------------------------------------------------------------------
 # IF-2: PolicyRegistry

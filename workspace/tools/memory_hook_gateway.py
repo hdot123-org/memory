@@ -210,6 +210,8 @@ def _get_host_delegate(host: str) -> HostDelegate:
             repo_root=REPO_ROOT,
             which_cmd=shutil.which,
             runner=subprocess.run,
+            # M2: state_file resolved by adapter policy, not read from env here
+            state_file=CLAUDE_HOOK_STATE_FILE if CLAUDE_HOOK_STATE_FILE else None,
             state_path_factory=default_hook_state_path,
             canonicalizer=canonicalize_cmux_refs,
             state_recorder=record_hook_event,
@@ -331,10 +333,14 @@ def should_noop_for_external_context(payload: dict[str, Any]) -> bool:
     return not env_in_repo and not payload_in_repo
 
 
-def noop_for_external_host(host: str) -> int:
-    if host == "codex":
-        sys.stdout.write("{}\n")
-    return 0
+def _delegate_noop_response(host: str) -> int:
+    """M2: delegate-owned bypass instead of gateway host-dispatch."""
+    delegate = _get_host_delegate(host)
+    result = delegate.noop_response()
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+    return result.returncode
+
 
 
 def determine_project_scope(cwd: Path) -> str:
@@ -698,6 +704,25 @@ def resolve_route_target(kind: str) -> str:
             raise ValueError(f"unsupported route kind: {kind}") from exc
 
 
+def _apply_artifact_compaction(package: dict[str, Any]) -> None:
+    """M2: strip context package sections according to adapter compaction policy."""
+    policy = globals().get("ARTIFACT_COMPACTION")
+    if not isinstance(policy, dict):
+        return
+    if not policy.get("include_system_context", True):
+        package.pop("system_context", None)
+    if not policy.get("include_project_context", True):
+        package.pop("project_context", None)
+    if not policy.get("include_task_context", True):
+        package.pop("task_context", None)
+    if not policy.get("include_evidence_refs", True):
+        package.pop("evidence_refs", None)
+    if not policy.get("include_allowed_reads", True):
+        package.pop("allowed_reads", None)
+    if not policy.get("include_allowed_writes", True):
+        package.pop("allowed_writes", None)
+
+
 def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dict[str, Any]:
     cwd = discover_cwd(payload)
     project_scope = determine_project_scope(cwd)
@@ -779,7 +804,10 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
             }
         if isinstance(system_context, dict):
             system_context["shadow_run"] = shadow_result
+    # M2: adapter-level artifact compaction policy
+    _apply_artifact_compaction(package)
     return package
+
 
 
 def ensure_artifact_dirs() -> None:
@@ -871,7 +899,7 @@ def main() -> int:
     cwd = discover_cwd(payload)
 
     if should_noop_for_external_context(payload):
-        return noop_for_external_host(args.host)
+        return _delegate_noop_response(args.host)
 
     package = build_context_package(args.host, args.event, payload)
     artifact_paths = write_artifacts(package)
@@ -926,8 +954,11 @@ def main() -> int:
 
     if proc.stdout:
         sys.stdout.write(proc.stdout)
-    elif args.host == "codex":
-        sys.stdout.write("{}\n")
+    else:
+        # M2: delegate owns bypass output format via noop_response()
+        noop = _get_host_delegate(args.host).noop_response()
+        if noop.stdout:
+            sys.stdout.write(noop.stdout)
     if proc.stderr:
         sys.stderr.write(proc.stderr)
     return proc.returncode

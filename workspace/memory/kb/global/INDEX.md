@@ -8,7 +8,7 @@ Status: rule-only, records-cleared
 - `workbot-project-map-governance.md`
 - `workbot-memory-system.md`
 - `workbot-memory-routing.md`
-- `workbot-cli-tools.md`
+
 
 ## Non-Legal Material
 - 非 canonical 材料必须先进入 `project-map/ingestion-registry-map.md`。
@@ -16,3 +16,6 @@ Status: rule-only, records-cleared
 
 ## Canonical Marker
 - `workbot-truth-model.md`
+
+## Relocated to Adapter Assets
+- `workbot-cli-tools.md` -> `workspace/tools/memory_hook_adapters/docs/workbot-cli-tools.md` (M2: runtime tool reference, not global rule)

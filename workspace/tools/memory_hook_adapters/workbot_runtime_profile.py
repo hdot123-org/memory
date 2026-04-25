@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 from typing import Any
 
 
@@ -245,8 +246,19 @@ def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict
             str(hook_contract_path),
         ],
         "POLICY_ALLOWED_SCOPES": {"workbot", "AEdu", "platform-capabilities"},
+        # M2: adapter policy resolves CMUX_HOOK_STATE_FILE for Claude delegate.
+        "CLAUDE_HOOK_STATE_FILE": os.environ.get("CMUX_HOOK_STATE_FILE", ""),
         "POLICY_SCOPE_INHERITS": {
             "AEdu": "workbot",
             "platform-capabilities": "workbot",
+        },
+        # M2: adapter-level artifact compaction policy.
+        "ARTIFACT_COMPACTION": {
+            "include_system_context": True,
+            "include_project_context": True,
+            "include_task_context": True,
+            "include_evidence_refs": True,
+            "include_allowed_reads": True,
+            "include_allowed_writes": True,
         },
     }
