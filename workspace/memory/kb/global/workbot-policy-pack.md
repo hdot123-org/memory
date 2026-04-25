@@ -5,7 +5,7 @@
 >
 > 本文件定义 `workbot` 记忆钩子系统的策略包（policy-pack）规范。  
 版本：M3-policy-pack-v1
-状态：active
+状态：in-progress (M3 wiring in progress)
 Scope: adapter
 
 ---
@@ -130,6 +130,21 @@ package["system_context"]["policy_pack"] = policy_pack
 
 ---
 
+
+### 5.3 Adapter 注入机制（M3 wiring）
+
+`policy_pack_path` 通过 `GatewayBusinessPolicyConfig` 流入 gateway 初始化链路：
+
+```
+GatewayBusinessPolicyConfig.policy_pack_path
+  → memory_hook_gateway.build_context_package()
+    → get_policy_pack_via_registry(project_scope)
+      → adapter.resolve_policy_pack(policy_pack_path)
+```
+
+- adapter 负责注入 consumer-specific 策略值（按项目/租户覆盖默认策略）
+- 当 adapter 不存在或未实现 `resolve_policy_pack` 时，回退到硬编码默认策略
+- 当 adapter 返回空结果时，回退到空策略包（不阻断 gateway 初始化）
 ## 6. 错误处理
 
 ### 6.1 Policy Pack 解析失败
@@ -185,3 +200,4 @@ raise ValueError(
 | 日期 | 版本 | 变更内容 |
 |------|------|----------|
 | 2026-04-15 | M3-policy-pack-v1 | 初始版本：定义 schema、默认策略、冲突策略、注入点 |
+| 2026-04-26 | M3-policy-pack-v1 | 更新状态为 in-progress；新增 5.3 adapter 注入机制说明（policy_pack_path 经 GatewayBusinessPolicyConfig 流入，adapter 注入 consumer-specific 值，adapter 缺失时回退硬编码默认） |
