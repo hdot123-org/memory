@@ -9,6 +9,17 @@ on:
       - ".github/workflows/**"
       - "README.md"
   workflow_dispatch:
+    inputs:
+      dispatch_targets:
+        description: "Comma-separated list of owner/repo to dispatch to (e.g. org/repo1, org/repo2). Leave empty to skip all dispatch."
+        required: false
+        type: string
+        default: ""
+      dispatch_event_type:
+        description: "Event type for repository dispatch"
+        required: false
+        type: string
+        default: "memory_release_published"
 
 permissions:
   contents: write
@@ -65,19 +76,26 @@ jobs:
           generate_release_notes: true
           make_latest: true
 
-      - name: Dispatch workbot auto-upgrade pipeline
-        if: ${{ secrets.WORKBOT_REPO_DISPATCH_TOKEN != '' }}
+      - name: Dispatch downstream repositories
+        if: ${{ inputs.dispatch_targets != '' && secrets.DISPATCH_TOKEN != '' }}
         env:
-          GH_TOKEN: ${{ secrets.WORKBOT_REPO_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
           SOURCE_SHA: ${{ github.sha }}
+          DISPATCH_TARGETS: ${{ inputs.dispatch_targets }}
+          DISPATCH_EVENT_TYPE: ${{ inputs.dispatch_event_type }}
         run: |
-          gh api repos/hdot123/workbot/dispatches \
-            --method POST \
-            -f event_type='memory_release_published' \
-            -f client_payload="{\"release_tag\":\"${RELEASE_TAG}\",\"source_sha\":\"${SOURCE_SHA}\"}"
+          IFS=',' read -ra TARGETS <<< "$DISPATCH_TARGETS"
+          for target in "${TARGETS[@]}"; do
+            target=$(echo "$target" | xargs)
+            [ -z "$target" ] && continue
+            gh api "repos/${target}/dispatches" \
+              --method POST \
+              -f event_type="${DISPATCH_EVENT_TYPE}" \
+              -f client_payload="{\"release_tag\":\"${RELEASE_TAG}\",\"source_sha\":\"${SOURCE_SHA}\"}"
+          done
 
-      - name: Warn when cross-repo dispatch token is missing
-        if: ${{ secrets.WORKBOT_REPO_DISPATCH_TOKEN == '' }}
+      - name: Warn when dispatch targets are configured but token is missing
+        if: ${{ inputs.dispatch_targets != '' && secrets.DISPATCH_TOKEN == '' }}
         run: |
-          echo "::warning::WORKBOT_REPO_DISPATCH_TOKEN is empty, skipped dispatch to hdot123/workbot."
+          echo "::warning::DISPATCH_TOKEN is empty, skipped dispatch to configured targets: ${{ inputs.dispatch_targets }}"

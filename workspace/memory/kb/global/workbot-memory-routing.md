@@ -1,6 +1,10 @@
-# Workbot Memory Routing Rules
+# Workbot Adapter: Memory Routing Rules
 
 Status: rule-only, records-cleared
+Scope: adapter
+
+> 本文件是 workbot adapter 级别的路由规则，不是模块默认路由。
+> 其他 adapter 可以定义自己的路由规则，不受本文件约束。
 
 ## Routing Rules
 - Rule layer is read-first for policy decisions.
