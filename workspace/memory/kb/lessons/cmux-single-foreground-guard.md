@@ -32,12 +32,12 @@ related: [workbot-hook-contract, workbot-truth-model, workbot-memory-routing]
 
 ## Evidence Refs
 
-- `/Users/busiji/.agents/skills/cmux/scripts/bootstrap_claude_runtime.py`
-- `/Users/busiji/.agents/skills/cmux/scripts/watch_cmux_assignments.py`
-- `/Users/busiji/.agents/skills/cmux/references/workbot/cmux-multi-pane-agent-runtime-requirements.md`
+- `<cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
+- `<cmux-skills-dir>/scripts/watch_cmux_assignments.py`
+- `<cmux-skills-dir>/references/workbot/cmux-multi-pane-agent-runtime-requirements.md`
 
 ## Verification Refs
 
-- `python3 -m py_compile /Users/busiji/.agents/skills/cmux/scripts/bootstrap_claude_runtime.py`
-- `python3 -m py_compile /Users/busiji/.agents/skills/cmux/scripts/watch_cmux_assignments.py`
-- `python3 /Users/busiji/.agents/skills/cmux/scripts/watch_cmux_assignments.py --assignment-file workspace/artifacts/cmux-runtime/cmux-assignment.json --hook-state-file workspace/artifacts/cmux-runtime/hook-state.json --once`
+- `python3 -m py_compile <cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
+- `python3 -m py_compile <cmux-skills-dir>/scripts/watch_cmux_assignments.py`
+- `python3 <cmux-skills-dir>/scripts/watch_cmux_assignments.py --assignment-file workspace/artifacts/cmux-runtime/cmux-assignment.json --hook-state-file workspace/artifacts/cmux-runtime/hook-state.json --once`

@@ -8,6 +8,7 @@ Status: rule-only, records-cleared
 - `workbot-project-map-governance.md`
 - `workbot-memory-system.md`
 - `workbot-memory-routing.md`
+- `workbot-policy-pack.md`
 
 
 ## Non-Legal Material

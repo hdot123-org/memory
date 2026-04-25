@@ -28,7 +28,7 @@
 
 | 阶段 | 工作包 | 输出物 | 通过标准 |
 |---|---|---|---|
-| P1 | 文档与路径去耦 | 消除仓内 `workbot` 绝对路径引用 | `rg '/Users/busiji/memory'` 结果为 `0` |
+| P1 | 文档与路径去耦 | 消除仓内 `workbot` 绝对路径引用 | `rg '<repo-root>'` 结果为 `0` |
 | P2 | 治理契约重建 | `project-map` / `INDEX` / `hook-contract` 对齐独立仓语义 | `build_context_package` 关键契约错误清零 |
 | P3 | 运行基线收敛 | 默认运行从 `degraded` 收敛为 `ok` | `build_context_package(...).status == ok` |
 | P4 | 测试门禁增强 | 新增 runtime/path/contract 断言测试 | 测试全绿，覆盖高于当前基线 |

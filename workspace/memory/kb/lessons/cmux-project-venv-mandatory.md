@@ -32,10 +32,10 @@ related: [workbot-hook-contract, workbot-truth-model, workbot-memory-routing]
 
 ## Evidence Refs
 
-- `/Users/busiji/.agents/skills/cmux/scripts/bootstrap_claude_runtime.py`
-- `/Users/busiji/.agents/skills/cmux/references/workbot/cmux-multi-pane-agent-runtime-requirements.md`
+- `<cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
+- `<cmux-skills-dir>/references/workbot/cmux-multi-pane-agent-runtime-requirements.md`
 
 ## Verification Refs
 
-- `python3 -m py_compile /Users/busiji/.agents/skills/cmux/scripts/bootstrap_claude_runtime.py`
-- `python3 /Users/busiji/.agents/skills/cmux/scripts/bootstrap_claude_runtime.py --project-dir /tmp/cmux-no-venv-smoke --bot-name pm-bot` (预期 fail-fast)
+- `python3 -m py_compile <cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
+- `python3 <cmux-skills-dir>/scripts/bootstrap_claude_runtime.py --project-dir /tmp/cmux-no-venv-smoke --bot-name pm-bot` (预期 fail-fast)
