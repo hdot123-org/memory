@@ -11,6 +11,7 @@ if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 from workspace.tools.memory_hook_gateway import build_context_package
+from workspace.tools.memory_hook_impls import PolicyRegistryImpl
 
 
 def _read_text(path: Path) -> str:
@@ -51,3 +52,13 @@ def test_project_map_contract_markers_present() -> None:
     assert "incoming-raw" in ingestion_registry
     assert "`absorbed`" in ingestion_registry and "`retired`" in ingestion_registry
     assert "未经过唯一真相系统清洗" in governance
+
+
+def test_policy_registry_default_layer_is_not_workbot_bound() -> None:
+    registry = PolicyRegistryImpl(policy_pack_path=repo_root / "workspace" / "memory" / "kb" / "global" / "__missing__.json")
+    package = registry.get_policy_pack("generic-scope")
+
+    assert package["scope"] == "generic-scope"
+    assert "inherits" not in package
+    assert package["policies"].get("legality_source") is None
+    assert package["policies"].get("registration_commit") is None

@@ -183,14 +183,10 @@ class PolicyRegistryImpl(PolicyRegistry):
     DEFAULT_POLICY_PACK_PATH = (
         Path(__file__).resolve().parents[1] / "memory" / "kb" / "global" / "memory-hook-policy-pack.json"
     )
-    LEGACY_POLICY_PACK_PATH = (
-        Path(__file__).resolve().parents[1] / "memory" / "kb" / "global" / "workbot-policy-pack.json"
-    )
 
-    # Default policies for workbot
+    # Repository-agnostic fallback policies. Project-specific policy packs
+    # should be injected by the gateway/runtime profile instead.
     DEFAULT_POLICIES: dict[str, str] = {
-        "legality_source": "active-legal-map-only",
-        "registration_commit": "required-after-absorption-complete",
         "registration_phase": "declared-not-enforced",
         "truth_basis_policy": "source-authority-evidence-conflict",
         "kb_write_mode": "read-first-CRUD",
@@ -208,18 +204,14 @@ class PolicyRegistryImpl(PolicyRegistry):
         "default": "preserve-and-escalate",
     }
 
-    LEGACY_DEFAULT_ALLOWED_SCOPES = {"workbot", "AEdu", "platform-capabilities"}
-    LEGACY_DEFAULT_SCOPE_INHERITS = {
-        "AEdu": "workbot",
-        "platform-capabilities": "workbot",
-    }
-
     def __init__(
         self,
         policy_pack_path: Path | None = None,
         *,
         allowed_scopes: set[str] | None = None,
         scope_inherits: dict[str, str] | None = None,
+        default_policies: dict[str, str] | None = None,
+        conflict_strategies: dict[str, str] | None = None,
     ):
         if policy_pack_path is not None:
             resolved_policy_pack_path = policy_pack_path
@@ -230,13 +222,15 @@ class PolicyRegistryImpl(PolicyRegistry):
             elif self.DEFAULT_POLICY_PACK_PATH.exists():
                 resolved_policy_pack_path = self.DEFAULT_POLICY_PACK_PATH
             else:
-                resolved_policy_pack_path = self.LEGACY_POLICY_PACK_PATH
+                resolved_policy_pack_path = None
         self._policy_pack_path = resolved_policy_pack_path
         self._schema_version = self.SCHEMA_VERSION
-        self._policies: dict[str, str] = dict(self.DEFAULT_POLICIES)
-        self._conflict_strategies: dict[str, str] = dict(self.CONFLICT_STRATEGIES)
-        self._allowed_scopes = set(allowed_scopes or self.LEGACY_DEFAULT_ALLOWED_SCOPES)
-        self._scope_inherits = dict(scope_inherits or self.LEGACY_DEFAULT_SCOPE_INHERITS)
+        self._policies: dict[str, str] = dict(self.DEFAULT_POLICIES if default_policies is None else default_policies)
+        self._conflict_strategies: dict[str, str] = dict(
+            self.CONFLICT_STRATEGIES if conflict_strategies is None else conflict_strategies
+        )
+        self._allowed_scopes = set(allowed_scopes or ())
+        self._scope_inherits = dict(scope_inherits or {})
         self._load_dynamic_policy_pack()
 
     def _load_dynamic_policy_pack(self) -> None:
@@ -246,7 +240,7 @@ class PolicyRegistryImpl(PolicyRegistry):
         without changing gateway code.
         """
         path = self._policy_pack_path
-        if not path.exists():
+        if path is None or not path.exists():
             return
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
@@ -277,7 +271,7 @@ class PolicyRegistryImpl(PolicyRegistry):
     def validate(self, context: dict[str, Any]) -> list[str]:
         errors: list[str] = []
         # Basic validation - can be extended
-        if context.get("project_scope") not in self._allowed_scopes:
+        if self._allowed_scopes and context.get("project_scope") not in self._allowed_scopes:
             errors.append(f"invalid project_scope: {context.get('project_scope')}")
         return errors
 
@@ -287,7 +281,7 @@ class PolicyRegistryImpl(PolicyRegistry):
         Returns:
             Dict containing policy pack with schema_version, policies, conflict_strategy
         """
-        if scope not in self._allowed_scopes:
+        if self._allowed_scopes and scope not in self._allowed_scopes:
             raise ValueError(f"unsupported scope: {scope}")
         result: dict[str, Any] = {
             "schema_version": self._schema_version,

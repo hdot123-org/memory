@@ -19,6 +19,7 @@ def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict
     hook_contract_path = workspace_root / "memory" / "kb" / "global" / "workbot-hook-contract.md"
     global_rule_path = workspace_root / "memory" / "kb" / "global" / "workbot-memory-routing.md"
     memory_system_path = workspace_root / "memory" / "kb" / "global" / "workbot-memory-system.md"
+    policy_pack_path = workspace_root / "memory" / "kb" / "global" / "workbot-policy-pack.json"
 
     required_registry_scopes = [
         "workspace/project-map/**",
@@ -193,6 +194,7 @@ def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict
         "HOOK_CONTRACT_PATH": hook_contract_path,
         "GLOBAL_RULE_PATH": global_rule_path,
         "MEMORY_SYSTEM_PATH": memory_system_path,
+        "POLICY_PACK_PATH": policy_pack_path,
         "LEGALITY_SOURCE_POLICY": "active-legal-map-only",
         "REGISTRATION_COMMIT_POLICY": "required-after-absorption-complete",
         "REGISTRATION_COMMIT_PHASE": "declared-not-enforced",

@@ -139,9 +139,17 @@ class GatewayBusinessPolicy(ABC):
         """Return project runtime root mapping."""
         pass
 
+    def get_required_gateway_inputs(self) -> list[Path]:
+        """Return required gateway inputs.
+
+        Default to the legacy required_canonical bridge so older policy
+        implementations remain compatible while gateway internals migrate.
+        """
+        return self.get_required_canonical()
+
     @abstractmethod
     def get_required_canonical(self) -> list[Path]:
-        """Return required canonical files."""
+        """Compatibility bridge for legacy required_canonical callers."""
         pass
 
     @abstractmethod

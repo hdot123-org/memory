@@ -164,6 +164,7 @@ def _get_policy_registry() -> PolicyRegistry:
     global _default_policy_registry
     if _default_policy_registry is None:
         _default_policy_registry = PolicyRegistryImpl(
+            policy_pack_path=POLICY_PACK_PATH,
             allowed_scopes=set(POLICY_ALLOWED_SCOPES),
             scope_inherits=dict(POLICY_SCOPE_INHERITS),
         )
