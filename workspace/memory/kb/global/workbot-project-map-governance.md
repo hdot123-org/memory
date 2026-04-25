@@ -12,14 +12,14 @@ Status: rule-only, records-cleared
 ## Truth Basis
 
 ### Source Refs
-- `/Users/busiji/memory/workspace/INDEX.md`
-- `/Users/busiji/memory/workspace/project-map/INDEX.md`
+- `workspace/INDEX.md`
+- `workspace/project-map/INDEX.md`
 
 ### Authority Refs
-- `/Users/busiji/memory/workspace/project-map/legal-core-map.md`
+- `workspace/project-map/legal-core-map.md`
 
 ### Evidence Refs
-- `/Users/busiji/memory/workspace/tools/memory_hook_gateway.py`
+- `workspace/tools/memory_hook_gateway.py`
 
 ### Conflict Status
 - `resolved`

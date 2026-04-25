@@ -109,7 +109,7 @@
 
 ## 🎯 当前工作空间
 
-**根路径**：`/Users/busiji/memory/workspace`
+**根路径**：`workspace`
 
 **说明**：
 - 这是唯一总控工作区

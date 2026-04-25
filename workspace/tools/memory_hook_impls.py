@@ -642,12 +642,10 @@ class GatewayBusinessPolicyImpl(GatewayBusinessPolicy):
             errors.append(f"conflict status missing: {path}")
         elif conflict != ["resolved"]:
             errors.append(f"conflict status unresolved: {path}")
-        source_paths = [Path(item).expanduser() for item in source_refs]
-        authority_paths = [Path(item).expanduser() for item in authority_refs]
-        evidence_paths = [Path(item).expanduser() for item in evidence_refs]
+        source_paths = [(self._config.repo_root / Path(item).expanduser()).resolve() if not Path(item).expanduser().is_absolute() else Path(item).expanduser() for item in source_refs]
+        authority_paths = [(self._config.repo_root / Path(item).expanduser()).resolve() if not Path(item).expanduser().is_absolute() else Path(item).expanduser() for item in authority_refs]
+        evidence_paths = [(self._config.repo_root / Path(item).expanduser()).resolve() if not Path(item).expanduser().is_absolute() else Path(item).expanduser() for item in evidence_refs]
         for ref_path in [*source_paths, *authority_paths, *evidence_paths]:
-            if not ref_path.is_absolute():
-                errors.append(f"truth ref must be absolute: {ref_path}")
             if not self._path_is_under(ref_path, self._config.repo_root):
                 errors.append(f"truth ref outside repository: {ref_path}")
             if not ref_path.exists():

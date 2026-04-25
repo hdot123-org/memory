@@ -112,16 +112,16 @@ related: [workbot-memory-system, workbot-memory-routing]
 ## 6.1 Truth Basis
 
 ### Source Refs
-- `/Users/busiji/memory/workspace/INDEX.md`
-- `/Users/busiji/memory/workspace/memory/docs/INDEX.md`
+- `workspace/INDEX.md`
+- `workspace/memory/docs/INDEX.md`
 
 ### Authority Refs
-- `/Users/busiji/memory/workspace/memory/kb/global/workbot-truth-model.md`
-- `/Users/busiji/memory/workspace/memory/kb/global/workbot-memory-system.md`
+- `workspace/memory/kb/global/workbot-truth-model.md`
+- `workspace/memory/kb/global/workbot-memory-system.md`
 
 ### Evidence Refs
-- `/Users/busiji/memory/workspace/tools/memory_hook_gateway.py`
-- `/Users/busiji/memory/workspace/tools/validate_memory_system.py`
+- `workspace/tools/memory_hook_gateway.py`
+- `workspace/tools/validate_memory_system.py`
 
 ### Conflict Status
 - `resolved`
@@ -130,7 +130,7 @@ related: [workbot-memory-system, workbot-memory-routing]
 
 截至 2026-04-11：
 
-- `Codex` 正式 hook 入口已切到 `/Users/busiji/memory/workspace/tools/memory_hook_gateway.py`
-- `Claude` 正式 hook 入口已切到 `/Users/busiji/memory/workspace/tools/memory_hook_gateway.py`
+- `Codex` 正式 hook 入口已切到 `workspace/tools/memory_hook_gateway.py`
+- `Claude` 正式 hook 入口已切到 `workspace/tools/memory_hook_gateway.py`
 - gateway 会先产出 context package 与事件证据，再转发到底层 `cmux` hook
-- 验收报告已生成到 `/Users/busiji/memory/workspace/artifacts/memory-hook/validation/latest.json`
+- 验收报告已生成到 `workspace/artifacts/memory-hook/validation/latest.json`
