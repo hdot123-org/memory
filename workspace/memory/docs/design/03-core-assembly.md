@@ -2,7 +2,7 @@
 type: "[DOC:DESIGN]"
 title: "Core Assembly 核心装配"
 shortname: DES-003
-status: 草稿中
+status: 可评审
 scope: default
 created: 2026-04-26
 updated: 2026-04-26
@@ -12,7 +12,7 @@ tags: [core,assembly,context]
 related: [DES-001, DES-004, DES-005]
 ---
 
-> 文档编号：DES-003 | 版本：V1.0 | 日期：2026-04-26 | 维护人：codex
+> 文档编号：DES-003 | 版本：V1.0 | 日期：2026-04-26 | 状态：可评审 | 维护人：codex
 
 # Core Assembly 设计文档
 
@@ -75,7 +75,7 @@ related: [DES-001, DES-004, DES-005]
 
 ## 2. 核心装配逻辑 — 执行顺序
 
-函数体从 line 114 开始，到 line 270 返回。执行顺序如下：
+函数体从 line 114 开始，到 line 271 返回。执行顺序如下：
 
 ### Step 1：基础文件存在性检查（line 114）
 
@@ -89,69 +89,69 @@ related: [DES-001, DES-004, DES-005]
 
 调用 `validate_unique_legal_system_contract_fn()`。
 
-### Step 4：策略校验（lines 118-121）
+### Step 4：策略校验（lines 118-128）
 
 构造 context dict `{host, event, cwd, project_scope}` 传给 `policy_validate_fn`；若抛异常则捕获为单条错误。
 
-### Step 5：治理冻结元组检查（lines 123-125）
+### Step 5：治理冻结元组检查（lines 130-132）
 
 仅当 `project_scope` 在 `governance_blocker_scopes` 集合中时才执行 `governance_frozen_tuple_errors_fn()`。
 
-### Step 6：事件合约阻塞检查（line 126）
+### Step 6：事件合约阻塞检查（line 133）
 
 仅当 `project_scope` 在 `event_contract_blocker_scopes` 集合中时才执行 `event_contract_blocker_errors_fn()`。
 
-### Step 7：Git 注册探测（line 127）
+### Step 7：Git 注册探测（line 134）
 
 调用 `git_registration_probe_fn(event, payload)` 获取 gate 初始状态。
 
-### Step 8：获取策略包（lines 129-133）
+### Step 8：获取策略包（lines 136-140）
 
 调用 `get_policy_pack_fn(project_scope)`；若获取失败，构造 error dict 并追加到 `policy_errors`。
 
-### Step 9：评估注册提交门控（lines 135-140）
+### Step 9：评估注册提交门控（lines 142-147）
 
 调用 `evaluate_registration_commit_gate()`（见第 6.2 节），返回更新后的 gate dict 和错误列表。
 
-### Step 10：项目文件解析（lines 142-147）
+### Step 10：项目文件解析（lines 149-154）
 
 - 若 `project_scope` 不在 `project_canonical` 中 → 追加不支持错误，构造默认 fallback 路径。
 - 若路径存在但文件不存在 → 追加到 `missing_paths`。
 
-### Step 11：引用收集（lines 149-154）
+### Step 11：引用收集（lines 156-161）
 
 依次获取 decisions、lessons、docs_refs、truth_basis 完整信息。
 
-### Step 12：构建 allowed_reads（lines 156-165）
+### Step 12：构建 allowed_reads（lines 163-172）
 
 固定包含 `NOW.md`、项目映射引用、知识库索引、文档索引、truth basis / decisions / lessons / docs 引用。
 
-### Step 13：Truth Basis 交叉验证（lines 166-192）
+### Step 13：Truth Basis 交叉验证（lines 173-182）
 
 - 检查 truth_basis_refs 是否全部在 allowed_reads 中（subset 检查）。
 - 检查 decisions / lessons / docs_refs 是否与 truth_basis_refs 有重叠（不允许交叉）。
 
-### Step 14：汇总 blocker 错误（line 194）
+### Step 14：汇总 blocker 错误（line 184）
 
 合并 governance_tuple_errors + event_contract_errors + registration_gate_errors。
 
-### Step 15：判定 status（lines 195-204）
+### Step 15：判定 status（lines 185-193）
 
 见第 5 节状态机。
 
-### Step 16：判定 project_truth_status（line 205）
+### Step 16：判定 project_truth_status（line 195）
 
 `truth_basis["validation"] == "pass"` 且无 truth_basis_errors → `"truth-ready"`，否则 `"truth-incomplete"`。
 
-### Step 17：计算 runtime_root（line 206）
+### Step 17：计算 runtime_root（line 196）
 
 从 `project_runtime_root` 查找，fallback 到 `workspace_root / "projects" / project_scope`。
 
-### Step 18：构建 evidence_refs（lines 207-212）
+### Step 18：构建 evidence_refs（lines 197-202）
 
 合并 project_map_refs + core_evidence_refs + project_map_governance + event_log。
 
-### Step 19：组装返回值（lines 214-270）
+### Step 19：组装返回值（lines 204-271）
 
 见第 4 节。
 
@@ -165,16 +165,16 @@ related: [DES-001, DES-004, DES-005]
 1. required_canonical 文件存在性检查          (line 114)
 2. validate_project_map_fn()                  (line 115)
 3. validate_unique_legal_system_contract_fn() (line 116)
-4. policy_validate_fn(context_dict)           (lines 118-121)
-5. governance_frozen_tuple_errors_fn()        (line 125, 条件)
-6. event_contract_blocker_errors_fn()         (line 126, 条件)
-7. git_registration_probe_fn(event, payload)  (line 127)
-8. get_policy_pack_fn(project_scope)          (lines 129-133)
-9. evaluate_registration_commit_gate(...)     (lines 135-140)
-10. project_canonical 查找 + fallback         (lines 142-147)
-11. 引用收集 (decisions/lessons/docs/truth)   (lines 149-154)
-12. 构建 allowed_reads                        (lines 156-165)
-13. Truth Basis 交叉验证 (subset + overlap)   (lines 166-192)
+4. policy_validate_fn(context_dict)           (lines 118-128)
+5. governance_frozen_tuple_errors_fn()        (line 132, 条件)
+6. event_contract_blocker_errors_fn()         (line 133, 条件)
+7. git_registration_probe_fn(event, payload)  (line 134)
+8. get_policy_pack_fn(project_scope)          (lines 136-140)
+9. evaluate_registration_commit_gate(...)     (lines 142-147)
+10. project_canonical 查找 + fallback         (lines 149-154)
+11. 引用收集 (decisions/lessons/docs/truth)   (lines 156-161)
+12. 构建 allowed_reads                        (lines 163-172)
+13. Truth Basis 交叉验证 (subset + overlap)   (lines 173-182)
 ```
 
 条件执行说明：
@@ -186,7 +186,7 @@ related: [DES-001, DES-004, DES-005]
 
 ## 4. 返回值结构
 
-返回 dict 包含以下 **顶层 key**（lines 214-270）：
+返回 dict 包含以下 **顶层 key**（lines 204-271）：
 
 | Key | 类型 | 来源 |
 |-----|------|------|
@@ -267,7 +267,7 @@ related: [DES-001, DES-004, DES-005]
 
 ## 5. Status 状态机
 
-判定逻辑在 lines 195-204：
+判定逻辑在 lines 185-193：
 
 ### 5.1 判定条件
 
