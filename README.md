@@ -49,6 +49,17 @@ M3 将 workbot-only 治理真相和交付链从模块默认层彻底清出：
 
 相关 commit：`234ff7a`
 
+
+## M8 API 完成
+
+- CoreConfig dataclass：37 参数结构化配置对象
+- build_context_package_simple(host, event, payload)：3 参数简化入口
+- context-package-v1：新输出格式（扁平化 paths/project/task，诊断分离）
+- PathUtils + PolicyRegistry 扩展：callback 归入接口对象
+- ArtifactWriter + DelegateRouter：gateway 职责分离
+- pip 包入口点：memory-validate, memory-rollback
+- 179+ tests passed
+
 ## M2 Adapter 剥离
 
 M2 将 workbot 运行特化从模块默认层剥离为 adapter 能力：
@@ -103,6 +114,7 @@ python3 workspace/tools/memory_hook_provider_rollback.py
 
 ## 当前状态
 
+- **M8 已完成**：CoreConfig 结构化、简化入口、v1 schema、接口扩展、职责分离、pip 包入口点、179+ tests
 - **M1 已完成**：合同收敛、policy 对齐、基线修复、`get_required_gateway_inputs` 默认委托方法
 - **M2 已完成**：adapter 下沉、运行特化从模块默认层剥离、`noop_response()` 接口化、state_file 注入链、compaction 策略框架、hook-contract 降为 adapter 合同
 - **M3 已完成**：consumer truth 清理、治理文档 adapter scope 声明、发布链中立化、绝对路径清除

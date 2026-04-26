@@ -953,8 +953,9 @@ def main() -> int:
     if should_noop_for_external_context(payload):
         return _delegate_noop_response(args.host)
 
+    writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
     package = build_context_package(args.host, args.event, payload)
-    artifact_paths = write_artifacts(package)
+    artifact_paths = writer.write(args.host, args.event, package)
 
     if package["status"] != "ok":
         append_error_log(
@@ -1000,7 +1001,7 @@ def main() -> int:
                 "returncode": proc.returncode,
                 "stderr": proc.stderr,
                 "stdout": proc.stdout,
-                "artifact_latest": artifact_paths["latest"],
+                "artifact_latest": artifact_paths.get("latest") if artifact_paths else None,
             },
         )
 
