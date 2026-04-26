@@ -1,7 +1,7 @@
-# Workbot Workspace - 总控入口
+# Memory Module Workspace - 总控入口
 
-> 简化版索引 | 整合自 MEMORY.md + ROUTER.md  
-> 更新：2026-03-24 | OPS v3.0-workbot
+> 简化版索引 | 整合自 MEMORY.md + ROUTER.md
+> 更新：2026-04-26 | OPS v3.0
 
 ---
 
@@ -26,7 +26,7 @@
 - `project-map/INDEX.md` 是唯一合法入口。
 - 只有被地图标为 `active-legal` 的条目或目录，才是合法资料；仅进入登记册不授予合法性。
 - 目录登记和目录状态迁移必须与相关文件同次 `git commit` 才生效。
-- 真相模型 canonical：`workspace/memory/kb/global/workbot-truth-model.md`
+- 真相模型 canonical：`workspace/memory/kb/global/workbot-truth-model.md`（当前接入项目的真相模型文件）
 
 ### 绝对禁止
 - ❌ 覆盖任何 `memory/kb/**` 文件
@@ -115,6 +115,7 @@
 - 这是唯一总控工作区
 - 所有核心规则、知识库、项目产物都在此统一管理
 - 历史项目材料已移至 `history-projects/`（不在本 workspace 内）
+- 本 memory module 为通用记忆层，可被任意 consuming project 接入使用
 
 ---
 
@@ -132,4 +133,4 @@
 
 ---
 
-*最后更新：2026-03-24 | 简化版 v1.0*
+*最后更新：2026-04-26 | 简化版 v1.1*

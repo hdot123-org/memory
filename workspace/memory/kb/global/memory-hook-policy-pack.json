@@ -1,6 +1,6 @@
 {
   "schema_version": "m3-policy-pack-v1",
-  "scope": "workbot",
+  "scope": "default",
   "policies": {
     "legality_source": "active-legal-map-only",
     "registration_commit": "required-after-absorption-complete",

@@ -1,7 +1,7 @@
 # M7 独立仓迁出执行计划（POR）
 
 > 文档编号：M7-001  
-> 版本：V1.2  
+> 版本：V1.1  
 > 日期：2026-04-16  
 > 维护人：codex
 
@@ -18,7 +18,7 @@
 
 - 仓库：`https://github.com/hdot123/memory`
 - 迁入提交：`297976e`
-- 测试：`python3 -m pytest -q tests` -> `16 passed`
+- 测试：`python3 -m pytest -q tests` -> `87 passed`
 - 回退演练：`python3 workspace/tools/memory_hook_provider_rollback.py` -> `passed`
 - 运行烟测：`build_context_package(...)` 当前 `status=degraded`（需收口）
 
@@ -71,10 +71,12 @@
 
 | 项 | 状态 |
 |---|---|
-| P1 文档与路径去耦 | ✅ 已完成 |
-| P2 治理契约重建 | 🔄 进行中 |
-| P3 运行基线收敛 | 待开始 |
-| P4 测试门禁增强 | 待开始 |
+| M1 记忆核心迁移 | ✅ 完成 |
+| M2 记忆核心回归 | ✅ 完成 |
+| M3 Policy-Pack 注入 | ✅ 完成 |
+| P1 文档与路径去耦 | ✅ 完成 |
+| P2 治理契约重建 | ✅ 完成 |
+| P3 运行基线收敛 | ✅ 完成 |
+| P4 测试门禁增强 | ✅ 完成 |
 | P5 主仓消费切换 | 待开始 |
 | P6 双审与验收 | 待开始 |
-

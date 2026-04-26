@@ -10,6 +10,12 @@ Status: rule-only, records-cleared
 - `workbot-memory-routing.md`
 - `workbot-policy-pack.md`
 
+## Policy Pack JSON
+- `workbot-policy-pack.json` — canonical workbot adapter policy pack (machine-readable)
+- `memory-hook-policy-pack.json` — legacy fallback; identical content to `workbot-policy-pack.json`
+  > Both files are byte-identical. `workbot-policy-pack.json` is the canonical name.
+  > `memory-hook-policy-pack.json` is retained as a legacy migration artifact.
+  > When referencing policy packs programmatically, prefer `workbot-policy-pack.json`.
 
 ## Non-Legal Material
 - 非 canonical 材料必须先进入 `project-map/ingestion-registry-map.md`。
