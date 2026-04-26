@@ -30,6 +30,7 @@ except ImportError:
 
 try:
     from .memory_hook_core import build_context_package_core
+    from .memory_hook_config import CoreConfig
     from .memory_hook_interfaces import (
         ArtifactSink,
         ErrorSink,
@@ -53,6 +54,7 @@ try:
     from .memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy
 except ImportError:
     from memory_hook_core import build_context_package_core  # type: ignore
+    from memory_hook_config import CoreConfig  # type: ignore
     from memory_hook_interfaces import (  # type: ignore
         ArtifactSink,
         ErrorSink,
@@ -740,7 +742,7 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
     cwd = discover_cwd(payload)
     project_scope = determine_project_scope(cwd)
     business_policy = _get_gateway_business_policy()
-    core_kwargs = dict(
+    config = CoreConfig(
         host=host,
         event=event,
         payload=payload,
@@ -779,6 +781,7 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
         event_contract_blocker_scopes=EVENT_CONTRACT_BLOCKER_SCOPES,
         core_evidence_refs=CORE_EVIDENCE_REFS,
     )
+    core_kwargs = config.to_gateway_kwargs()
     requested_provider = os.environ.get("MEMORY_HOOK_CORE_PROVIDER", "legacy").strip() or "legacy"
     provider_name, provider_builder, provider_errors = _resolve_core_builder(requested_provider, allow_fallback=True)
     package = provider_builder(**core_kwargs)
