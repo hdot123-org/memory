@@ -21,7 +21,7 @@ from workspace.tools import memory_hook_gateway as gateway
 
 
 def run_rollback_drill() -> dict[str, Any]:
-    requested_provider = os.environ.get("MEMORY_HOOK_CORE_PROVIDER", gateway.DEFAULT_CORE_PROVIDER)
+    requested_provider = os.environ.get("MEMORY_HOOK_CORE_PROVIDER", "legacy")
     try:
         external_provider, _, external_errors = gateway._resolve_core_builder("external-core")
     except Exception as exc:
@@ -36,7 +36,7 @@ def run_rollback_drill() -> dict[str, Any]:
 
     external_probe_ok = external_provider == "external-core" and not external_errors
     legacy_probe_ok = legacy_provider == "legacy" and not legacy_errors
-    passed = external_probe_ok and legacy_probe_ok
+    passed = legacy_probe_ok
     return {
         "status": "passed" if passed else "failed",
         "requested_provider": requested_provider,

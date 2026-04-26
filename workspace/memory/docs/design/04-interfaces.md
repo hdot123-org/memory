@@ -2,7 +2,7 @@
 type: "[DOC:DESIGN]"
 title: "接口契约层"
 shortname: DES-004
-status: 草稿中
+status: 可评审
 scope: default
 created: 2026-04-26
 updated: 2026-04-26
@@ -73,7 +73,7 @@ related: [DES-003, DES-005, DES-006]
 | `determine_project_scope` | `def determine_project_scope(self, cwd: Path) -> str` | 136 | 项目作用域字符串 | — |
 | `get_project_canonical` | `def get_project_canonical(self) -> dict[str, Path]` | 141 | 项目规范映射 | — |
 | `get_project_runtime_root` | `def get_project_runtime_root(self) -> dict[str, Path]` | 146 | 项目运行时根映射 | — |
-| `get_required_canonical` | `def get_required_canonical(self) -> list[Path]` | 159 | 必须规范文件列表 | — |
+| `get_required_canonical` | `def get_required_canonical(self) -> list[Path]` | 158 | 必须规范文件列表 | — |
 | `get_global_canonical` | `def get_global_canonical(self) -> list[Path]` | 164 | 全局规范文件列表 | — |
 | `project_map_refs` | `def project_map_refs(self) -> list[str]` | 169 | 项目映射引用路径列表 | — |
 | `validate_project_map_files` | `def validate_project_map_files(self) -> list[str]` | 174 | 校验错误列表 | — |
@@ -114,7 +114,7 @@ def get_required_gateway_inputs(self) -> list[Path]:
     return self.get_required_canonical()
 ```
 
-- **定位**：这是一个非 abstract 的默认方法（interfaces:150），内部委托给 `get_required_canonical()`（interfaces:159）。
+- **定位**：这是一个非 abstract 的默认方法（interfaces:150），内部委托给 `get_required_canonical()`（interfaces:158）。
 - **意图**：兼容旧实现——在 gateway 内部迁移期间，老策略实现只需实现 `get_required_canonical()`，新调用方使用 `get_required_gateway_inputs()` 即可获得相同结果。
 
 ---

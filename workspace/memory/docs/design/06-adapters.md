@@ -2,7 +2,7 @@
 type: "[DOC:DESIGN]"
 title: "Adapter 层"
 shortname: DES-006
-status: 草稿中
+status: 可评审
 scope: default
 created: 2026-04-26
 updated: 2026-04-26
@@ -12,7 +12,7 @@ tags: [adapters,project-binding]
 related: [DES-005, DES-007, DES-009]
 ---
 
-> 文档编号：DES-006 | 版本：V1.0 | 日期：2026-04-26 | 维护人：codex
+> 文档编号：DES-006 | 版本：V1.0 | 日期：2026-04-26 | 状态：可评审 | 维护人：codex
 
 # Adapter 层设计
 
@@ -74,13 +74,13 @@ Gateway (memory_hook_gateway.py)
 | `DEFAULT_DECISION_REFS` | `list[Path]` | 默认决策索引 | L215, L101-103 |
 | `PROJECT_DECISION_REFS` | `dict[str, list[Path]]` | 项目决策索引映射 | L216, L105-109 |
 | `GOVERNANCE_FROZEN_TUPLE_FILES` | `list[Path]` | 治理冻结元组文件（AEdu 相关） | L217, L112-117 |
-| `EVENT_CONTRACT_FILES` | `dict[str, Path]` | 事件契约文件映射 | L218, L118-127 |
+| `EVENT_CONTRACT_FILES` | `dict[str, Path]` | 事件契约文件映射 | L218, L118-124 |
 | `FROZEN_TUPLE_EXPECTED` | `set[str]` | 期望的冻结元组标记 | L219, L129-131 |
 | `FROZEN_TUPLE_LEGACY_MARKERS` | `set[str]` | 遗留冻结元组标记 | L220, L133-136 |
 | `FORMAL_SOURCE_TYPES` | `set[str]` | 正式源类型集合 | L221, L138-141 |
 | `FORMAL_EVENT_TYPES` | `set[str]` | 正式事件类型集合 | L222, L143-146 |
 | `FORMAL_EVENT_STATUSES` | `set[str]` | 正式事件状态集合 | L223, L148-151 |
-| `FORMAL_FIELD_KEYS` | `set[str]` | 正式字段键集合 | L224, L153-158 |
+| `FORMAL_FIELD_KEYS` | `set[str]` | 正式字段键集合 | L224, L155-158 |
 | `LEGACY_FIELD_KEYS` | `set[str]` | 遗留字段键集合 | L225, L159-163 |
 | `DEFAULT_LESSON_REFS` | `list[Path]` | 默认经验教训引用 | L226, L165-167 |
 | `PROJECT_LESSON_REFS` | `dict[str, list[Path]]` | 项目经验教训引用映射 | L227, L169-175 |
@@ -93,7 +93,7 @@ Gateway (memory_hook_gateway.py)
 | `POLICY_ALLOWED_SCOPES` | `set[str]` | 策略允许的作用域集合（`{"workbot", "AEdu", "platform-capabilities"}`） | L251 |
 | `CLAUDE_HOOK_STATE_FILE` | `str` | 从环境变量 `CMUX_HOOK_STATE_FILE` 读取的 hook 状态文件路径 | L253 |
 | `POLICY_SCOPE_INHERITS` | `dict[str, str]` | 策略作用域继承关系（AEdu → workbot, platform-capabilities → workbot） | L254-257 |
-| `ARTIFACT_COMPACTION` | `dict[str, bool]` | 产物压缩策略配置（包含 system/project/task context、evidence refs、allowed reads/writes） | L259-266 |
+| `ARTIFACT_COMPACTION` | `dict[str, bool]` | 产物压缩策略配置（包含 system/project/task context、evidence refs、allowed reads/writes） | L258-266 |
 
 ---
 

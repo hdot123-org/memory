@@ -2,7 +2,7 @@
 type: "[DOC:DESIGN]"
 title: "数据管道与 Sink"
 shortname: DES-008
-status: 草稿中
+status: 可评审
 scope: default
 created: 2026-04-26
 updated: 2026-04-26
@@ -35,7 +35,7 @@ related: [DES-007, DES-009, DES-010]
 
 ### 1.2 `build_context_package()` 构建链
 
-`build_context_package()`（[memory_hook_gateway.py:748](<memory-repo>/workspace/tools/memory_hook_gateway.py:748)）是核心组装函数：
+`build_context_package()`（[memory_hook_gateway.py:739](<memory-repo>/workspace/tools/memory_hook_gateway.py:739)）是核心组装函数：
 
 1. 确定 cwd 和 project_scope（line 749-750）
 2. 获取 business_policy（line 751）
@@ -43,14 +43,14 @@ related: [DES-007, DES-009, DES-010]
 4. 通过 `_resolve_core_builder()` 解析 core provider（legacy 或 external-core），支持 fallback（line 787-788）
 5. 调用 `provider_builder(**core_kwargs)` 即 `build_context_package_core()` 生成原始 package（line 789）
 6. 在 `system_context` 中注入 `core_provider`、`core_provider_requested`、`core_provider_fallback_errors`（line 790-795）
-7. 如果 provider fallback 发生，将错误加入 `validation_errors`，并将 status 改为 "degraded"（line 797-802）
+7. 如果 provider fallback 发生，将错误加入 `validation_errors`，并将 status 改为 "degraded"（line 798-803）
 8. 如果设置了 `MEMORY_HOOK_SHADOW_RUN`，执行 shadow provider 对比（line 804-824）
 9. 调用 `_apply_artifact_compaction()` 根据 adapter 策略裁剪字段（line 826）
 10. 返回 package（line 827）
 
 ### 1.3 `build_context_package_core()` 核心组装
 
-`build_context_package_core()`（[memory_hook_core.py:69](<memory-repo>/workspace/tools/memory_hook_core.py:69)）是纯组装逻辑：
+`build_context_package_core()`（[memory_hook_core.py:69-271](<memory-repo>/workspace/tools/memory_hook_core.py:69)）是纯组装逻辑：
 
 1. 检查 required_canonical 文件是否存在，收集 `missing_paths`（line 114）
 2. 调用 `validate_project_map_fn()` 收集 project_map_errors（line 115）
@@ -71,12 +71,12 @@ related: [DES-007, DES-009, DES-010]
 
 ### 1.4 落盘：`write_artifacts()` → `ArtifactSinkImpl.write()`
 
-`write_artifacts()`（[memory_hook_gateway.py:857](<memory-repo>/workspace/tools/memory_hook_gateway.py:857)）：
+`write_artifacts()`（[memory_hook_gateway.py:845](<memory-repo>/workspace/tools/memory_hook_gateway.py:845)）：
 
 1. 调用 `_get_artifact_sink().write(package)`（line 858）
 2. 如果 sink 抛出 RuntimeError，走 fallback 路径手动写入（line 860-868）
 
-`ArtifactSinkImpl.write()`（[memory_hook_impls.py:1000](<memory-repo>/workspace/tools/memory_hook_impls.py:1000)）：
+`ArtifactSinkImpl.write()`（[memory_hook_impls.py:998-1022](<memory-repo>/workspace/tools/memory_hook_impls.py:998-1022)）：
 
 1. `ensure_dirs()` 创建 context_root 目录（line 1001）
 2. 生成时间戳 `YYYYMMDDTHHMMSSffffff`（line 1002）
@@ -104,18 +104,18 @@ related: [DES-007, DES-009, DES-010]
 
 ### 2.2 文件命名规则
 
-Snapshot 文件（[memory_hook_impls.py:1003-1007](<memory-repo>/workspace/tools/memory_hook_impls.py:1003)）：
+Snapshot 文件（[memory_hook_impls.py:1000-1005](<memory-repo>/workspace/tools/memory_hook_impls.py:1000)）：
 - 格式：`{timestamp}-{host}-{event}.json`
 - 示例：`20260426T143025123456-codex-session-start.json`
 - 冲突处理：追加 `-{suffix:02d}`，如 `20260426T143025123456-01-codex-session-start.json`
 
-Latest 文件（[memory_hook_impls.py:1008](<memory-repo>/workspace/tools/memory_hook_impls.py:1008)）：
+Latest 文件（[memory_hook_impls.py:1009-1010](<memory-repo>/workspace/tools/memory_hook_impls.py:1009-1010)）：
 - 格式：`latest-{host}-{event}.json`
 - 每次写入覆盖，始终指向最近一次该 host+event 组合的 snapshot
 
 ### 2.3 Event Log 格式
 
-Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](<memory-repo>/workspace/tools/memory_hook_impls.py:1019)）：
+Event log 是 JSONL 文件（[memory_hook_impls.py:1020-1021](<memory-repo>/workspace/tools/memory_hook_impls.py:1020)）：
 - 每行一个完整的 context package JSON（compact 模式，无缩进）
 - 追加模式写入
 - 每条记录包含完整的 package 内容，包括注入后的 `artifact_refs` 字段
@@ -130,7 +130,7 @@ Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](<memory-repo>/work
 
 ### 3.2 格式
 
-`ErrorSinkImpl.log()`（[memory_hook_impls.py:1036-1040](<memory-repo>/workspace/tools/memory_hook_impls.py:1036)）：
+`ErrorSinkImpl.log()`（[memory_hook_impls.py:1038-1040](<memory-repo>/workspace/tools/memory_hook_impls.py:1038)）：
 
 ```
 [{iso_timestamp}] [{component}] [error] {message} | context={json_context}
@@ -325,7 +325,7 @@ Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](<memory-repo>/work
 
 ### 8.2 provider fallback 错误
 
-在 [memory_hook_gateway.py:797-802](<memory-repo>/workspace/tools/memory_hook_gateway.py:797) 中：
+在 [memory_hook_gateway.py:798-803](<memory-repo>/workspace/tools/memory_hook_gateway.py:798) 中：
 - provider fallback 产生的错误追加到 `validation_errors`
 - 如果原 status 为 "ok"，则改为 "degraded"
 

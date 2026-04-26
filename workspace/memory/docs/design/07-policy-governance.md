@@ -2,7 +2,7 @@
 type: "[DOC:DESIGN]"
 title: "Policy Pack 与治理"
 shortname: DES-007
-status: 草稿中
+status: 可评审
 scope: default
 created: 2026-04-26
 updated: 2026-04-26
@@ -80,7 +80,7 @@ related: [DES-006, DES-008, DES-010]
 | `preserve-and-escalate` | 保留第一值，标记为升级到人工裁决 |
 | `prefer-strict` | 选择更严格的值（如 `kb_overwrite_allowed` 选 `false`，`registration_phase` 选 `declared-not-enforced`） |
 
-冲突解决逻辑实现在 `PolicyRegistryImpl.resolve_conflict()`（`workspace/tools/memory_hook_impls.py` 约 L320-360）。
+冲突解决逻辑实现在 `PolicyRegistryImpl.resolve_conflict()`（`workspace/tools/memory_hook_impls.py` 约 L325-358）。
 
 ---
 
@@ -95,16 +95,16 @@ related: [DES-006, DES-008, DES-010]
 - schema 版本标记为 `M3-policy-pack-v1`
 - 状态标记为 `in-progress (M3 wiring in progress)`
 
-**注入链路（§5.3）：**
+**注入链路：**
 
 ```
-GatewayBusinessPolicyConfig.policy_pack_path
-  → memory_hook_gateway.build_context_package()
-    → get_policy_pack_via_registry(project_scope)
-      → adapter.resolve_policy_pack(policy_pack_path)
+workbot_runtime_profile.build_workbot_runtime_profile()
+  → globals().update() 注入 POLICY_PACK_PATH 常量
+    → _build_gateway_business_policy() 传入 GatewayBusinessPolicyConfig(policy_pack_path=...)
+      → PolicyRegistryImpl.__init__(config=config) 解析 config.policy_pack_path
 ```
 
-优先级链：adapter 注入 > 环境变量 `MEMORY_HOOK_POLICY_PACK_PATH` > 硬编码默认文件 > 空回退。
+优先级链：config 参数 > 环境变量 `MEMORY_HOOK_POLICY_PACK_PATH` > 默认文件路径 > 空回退。
 
 ---
 
@@ -207,9 +207,9 @@ _default_policy_registry = PolicyRegistryImpl(
 "REGISTRATION_COMMIT_PHASE": "declared-not-enforced",
 ```
 
-**Phase 解析：** `registration_phase_from_policy_pack()`（`memory_hook_core.py` L14-30）从 policy pack 中提取 `registration_phase`，缺失或格式错误时回退到 `declared-not-enforced`。
+**Phase 解析：** `registration_phase_from_policy_pack()`（`memory_hook_core.py` L14-27）从 policy pack 中提取 `registration_phase`，缺失或格式错误时回退到 `declared-not-enforced`。
 
-**Gate 评估：** `evaluate_registration_commit_gate()`（`memory_hook_core.py` L30-55）逻辑：
+**Gate 评估：** `evaluate_registration_commit_gate()`（`memory_hook_core.py` L30-66）逻辑：
 
 - phase 不是 `enforced` → 保持 M3 语义（不硬阻断）
 - phase 是 `enforced` 且事件匹配 gate_event → 要求 `status == committed-coupled`
@@ -256,9 +256,9 @@ frozen_tuple_legacy_markers = {
 }
 ```
 
-**阻塞 scope：** `GOVERNANCE_BLOCKER_SCOPES = {"AEdu"}`（`workbot_runtime_profile.py` L230），仅 AEdu 项目触发 frozen tuple 校验。
+**阻塞 scope：** `GOVERNANCE_BLOCKER_SCOPES = {"AEdu"}`（`workbot_runtime_profile.py` L228），仅 AEdu 项目触发 frozen tuple 校验。
 
-**校验逻辑：** `governance_frozen_tuple_blocker_errors()`（`memory_hook_impls.py` L800-823）执行三步检查：
+**校验逻辑：** `governance_frozen_tuple_blocker_errors()`（`memory_hook_impls.py` L913-936）执行三步检查：
 
 1. **文件存在性** — 所有 `governance_frozen_tuple_files` 必须存在，缺失则返回 `missing governance files: ...`
 2. **期望标记检查** — 所有文件合并文本中必须包含每个 `frozen_tuple_expected` 标记，缺失则返回 `missing expected tuple markers: ...`

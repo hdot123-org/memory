@@ -2,7 +2,7 @@
 type: "[DOC:DESIGN]"
 title: "Memory API 契约（context-package-v1）"
 shortname: DES-011
-status: 草稿中
+status: 可评审
 scope: default
 created: 2026-04-26
 updated: 2026-04-26
@@ -16,7 +16,7 @@ related: [DES-001, DES-002, DES-010]
 
 # Memory API 契约（context-package-v1）
 
-> 创建日期：2026-04-26 | 维护人：A10（最终合成）| 状态：草稿中
+> 创建日期：2026-04-26 | 维护人：A10（最终合成）| 状态：可评审
 
 ---
 
@@ -174,6 +174,6 @@ package = build_context_package("codex", "session-start", {})
 | A5（provider 透明度） | `a5-provider-transparency.md` | 确认 provider/shadow 移入诊断通道 |
 | A6（业界参考） | `a6-industry-reference.md` | 参考 LangChain/Mem0/Zep，确认薄 API 趋势 |
 | A7（交叉验证） | `a7-cross-validation.md` | 调和 A2/A3 矛盾，确认 system_context 移除 |
-| A8（迁移计划） | *未生成* | 迁移路径由 A10 基于 A1-A7 推导 |
-| A9（API 骨架） | *未生成* | 代码骨架由 A10 以伪代码嵌入第 2-3 节 |
+| A8（迁移计划） | 本文档第 5 节 | 三阶段迁移路径（诊断分离 → 出口精简 → 验证稳定），由 A10 基于 A1-A7 推导 |
+| A9（API 骨架） | 本文档第 2-3 节 | 入口函数签名（§2.1）+ 出口结构（§3.1）即为完整 API 骨架 |
 | A10（最终合成） | 本文档 | 综合 A1-A9，产出唯一设计产出物 |

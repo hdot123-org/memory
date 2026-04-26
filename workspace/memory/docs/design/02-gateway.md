@@ -2,7 +2,7 @@
 type: "[DOC:DESIGN]"
 title: "Gateway 门控设计"
 shortname: DES-002
-status: 草稿中
+status: 可评审
 scope: default
 created: 2026-04-26
 updated: 2026-04-26

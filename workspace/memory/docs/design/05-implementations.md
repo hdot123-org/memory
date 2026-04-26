@@ -2,7 +2,7 @@
 type: "[DOC:DESIGN]"
 title: "实现层"
 shortname: DES-005
-status: 草稿中
+status: 可评审
 scope: default
 created: 2026-04-26
 updated: 2026-04-26
@@ -25,14 +25,14 @@ related: [DES-004, DES-006, DES-007]
 
 | # | 实现类 | 接口 | 接口定义行号 | 实现行号 |
 |---|--------|------|-------------|---------|
-| 1 | `CodexDelegate` | `HostDelegate` | interfaces:23-51 | impls:49-87 |
-| 2 | `ClaudeDelegate` | `HostDelegate` | interfaces:23-51 | impls:89-173 |
+| 1 | `CodexDelegate` | `HostDelegate` | interfaces:23-52 | impls:49-87 |
+| 2 | `ClaudeDelegate` | `HostDelegate` | interfaces:23-52 | impls:89-181 |
 | 3 | `PolicyRegistryImpl` | `PolicyRegistry` | interfaces:58-99 | impls:179-342 |
 | 4 | `RouteTargetPolicyImpl` | `RouteTargetPolicy` | interfaces:106-116 | impls:348-382 |
 | 5 | `WriteTargetPolicyImpl` | `WriteTargetPolicy` | interfaces:119-129 | impls:385-414 |
 | 6 | `GatewayBusinessPolicyImpl` | `GatewayBusinessPolicy` | interfaces:132-211 | impls:448-977 |
 | 7 | `ArtifactSinkImpl` | `ArtifactSink` | interfaces:218-233 | impls:984-1022 |
-| 8 | `ErrorSinkImpl` | `ErrorSink` | interfaces:236-241 | impls:1025-1040 |
+| 8 | `ErrorSinkImpl` | `ErrorSink` | interfaces:236-242 | impls:1025-1040 |
 
 辅助数据类：
 
@@ -73,7 +73,7 @@ Claude 多一个 `workspace_id` 必填约束。
 
 ### 2.3 `execute()` 行为差异
 
-| 步骤 | CodexDelegate (L65-82) | ClaudeDelegate (L123-171) |
+| 步骤 | CodexDelegate (L65-82) | ClaudeDelegate (L123-177) |
 |------|------------------------|--------------------------|
 | 前置校验 | 检查 `cmux` 和 `surface_id` | 检查 `cmux`、`workspace_id`、`surface_id` |
 | 状态文件解析 | 无 | 三段式：`_state_file` 注入 → `default_hook_state_path()` 默认 → `state_path_factory` 回调 |
@@ -84,7 +84,7 @@ Claude 多一个 `workspace_id` 必填约束。
 
 ### 2.4 `noop_response()` 差异
 
-| | CodexDelegate (L84-86) | ClaudeDelegate (L169-171) |
+| | CodexDelegate (L84-86) | ClaudeDelegate (L179-181) |
 |---|------------------------|--------------------------|
 | stdout | `"{}\n"` — 返回空 JSON | `""` — 返回空字符串 |
 | stderr | `""` | `""` |
@@ -104,7 +104,7 @@ Claude 多一个 `workspace_id` 必填约束。
 
 ### 3.1 配置载体 `GatewayBusinessPolicyConfig` (L422-446)
 
-`@dataclass(frozen=True)` 不可变配置对象，包含 35 个字段：
+`@dataclass(frozen=True)` 不可变配置对象，包含 36 个字段：
 
 | 字段 | 类型 | 用途 |
 |------|------|------|
