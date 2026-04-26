@@ -1038,3 +1038,98 @@ class ErrorSinkImpl(ErrorSink):
         rendered = json.dumps(context, ensure_ascii=False, sort_keys=True)
         with self._error_log.open("a", encoding="utf-8") as handle:
             handle.write(f"[{self._now_iso()}] [{component}] [error] {message} | context={rendered}\n")
+
+
+# ---------------------------------------------------------------------------
+# IF-5: ArtifactWriter / DelegateRouter Implementations
+# ---------------------------------------------------------------------------
+
+class ArtifactWriter:
+    """Handles writing context packages to artifact files.
+
+    Wraps ``ArtifactSinkImpl`` with filename generation and non-blocking
+    error handling: write failures are logged to ``error_log`` instead of
+    being raised.
+    """
+
+    def __init__(
+        self,
+        context_root: Path,
+        error_log: Path,
+        datetime_module: Any = None,
+    ):
+        self.context_root = context_root
+        self.error_log = error_log
+        self.datetime_module = datetime_module or datetime
+        event_log = context_root.parent / "events.jsonl"
+        self._sink = ArtifactSinkImpl(
+            context_root, event_log, datetime_module=self.datetime_module
+        )
+
+    def write(self, host: str, event: str, package: dict[str, Any]) -> None:
+        """Write a context package to artifact file.
+
+        Non-blocking: errors are logged to ``self.error_log``, not raised.
+        """
+        try:
+            package["host"] = host
+            package["event"] = event
+            self._sink.write(package)
+        except Exception as exc:
+            self._log_error(host, event, exc)
+
+    def _log_error(self, host: str, event: str, exc: Exception) -> None:
+        self.error_log.parent.mkdir(parents=True, exist_ok=True)
+        error_ctx = {
+            "host": host,
+            "event": event,
+            "error": str(exc),
+            "context_root": str(self.context_root),
+        }
+        rendered = json.dumps(error_ctx, ensure_ascii=False, sort_keys=True)
+        timestamp = self.datetime_module.now().strftime("%Y%m%dT%H%M%S")
+        with self.error_log.open("a", encoding="utf-8") as handle:
+            handle.write(
+                f"[{timestamp}] [ArtifactWriter] [error] "
+                f"artifact write failed | context={rendered}\n"
+            )
+
+
+class DelegateRouter:
+    """Routes context packages to the appropriate host delegate.
+
+    Dispatches to ``CodexDelegate`` or ``ClaudeDelegate`` based on the
+    host name, and provides a ``noop`` fallback for each.
+    """
+
+    def __init__(
+        self,
+        codex_delegate: CodexDelegate,
+        claude_delegate: ClaudeDelegate,
+    ):
+        self.codex_delegate = codex_delegate
+        self.claude_delegate = claude_delegate
+
+    def route(
+        self,
+        host: str,
+        event: str,
+        raw_payload: str,
+        payload: dict[str, Any],
+    ) -> subprocess.CompletedProcess[str]:
+        """Route to the correct delegate based on host."""
+        if host == "codex":
+            return self.codex_delegate.execute(event, raw_payload, payload)
+        elif host == "claude":
+            return self.claude_delegate.execute(event, raw_payload, payload)
+        else:
+            raise ValueError(f"unknown host: {host}")
+
+    def noop(self, host: str) -> subprocess.CompletedProcess[str]:
+        """Execute noop response for the given host."""
+        if host == "codex":
+            return self.codex_delegate.noop_response()
+        elif host == "claude":
+            return self.claude_delegate.noop_response()
+        else:
+            raise ValueError(f"unknown host: {host}")

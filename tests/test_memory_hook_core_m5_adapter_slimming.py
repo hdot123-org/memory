@@ -76,27 +76,29 @@ def _base_core_kwargs(tmp_path: Path) -> dict[str, Any]:
 
 class TestM5GatewayAssemblyOnly:
     def test_build_context_package_is_core_assembly_call(self, monkeypatch):
-        captured: dict[str, Any] = {}
+        captured_config: list[Any] = []
         sentinel = {"status": "ok", "schema_version": "wb-hook-v2", "marker": "from-core"}
 
         monkeypatch.setattr(gateway, "discover_cwd", lambda payload: gateway.WORKSPACE_ROOT)
         monkeypatch.setattr(gateway, "determine_project_scope", lambda cwd: "workbot")
 
-        def fake_core(**kwargs):
-            captured.update(kwargs)
+        def fake_from_config(config):
+            captured_config.append(config)
             return sentinel
 
-        monkeypatch.setattr(gateway, "build_context_package_core", fake_core)
+        monkeypatch.setattr(gateway, "build_context_package_from_config", fake_from_config)
 
         result = gateway.build_context_package("codex", "session-start", {"task_ref": "T1"})
 
         assert result is sentinel
-        assert captured["host"] == "codex"
-        assert captured["event"] == "session-start"
-        assert captured["project_scope"] == "workbot"
-        assert captured["validate_project_map_fn"] is gateway.validate_project_map_files
-        assert captured["truth_basis_for_scope_fn"] is gateway.truth_basis_for_scope
-        assert captured["write_targets_fn"] is gateway.write_targets
+        assert len(captured_config) == 1
+        cfg = captured_config[0]
+        assert cfg.host == "codex"
+        assert cfg.event == "session-start"
+        assert cfg.project_scope == "workbot"
+        assert cfg.validate_project_map_fn is gateway.validate_project_map_files
+        assert cfg.truth_basis_for_scope_fn is gateway.truth_basis_for_scope
+        assert cfg.write_targets_fn is gateway.write_targets
 
 
 class TestM5CoreStatusMatrix:

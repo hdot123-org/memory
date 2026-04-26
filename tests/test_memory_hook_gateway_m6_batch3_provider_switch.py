@@ -56,20 +56,15 @@ def test_build_context_package_records_provider_and_shadow_run(monkeypatch):
     monkeypatch.setenv("MEMORY_HOOK_CORE_PROVIDER", "legacy")
     monkeypatch.setenv("MEMORY_HOOK_SHADOW_RUN", "1")
 
-    def legacy_builder(**kwargs):
-        return {"status": "ok", "validation_errors": [], "system_context": {}}
+    call_count = [0]
 
-    def external_builder(**kwargs):
+    def fake_from_config(config):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return {"status": "ok", "validation_errors": [], "system_context": {}}
         return {"status": "degraded", "validation_errors": ["shadow"], "system_context": {}}
 
-    def fake_resolve(provider: str, *, allow_fallback: bool = True):
-        if provider == "legacy":
-            return "legacy", legacy_builder, []
-        if provider == "external-core":
-            return "external-core", external_builder, []
-        return "legacy", legacy_builder, []
-
-    monkeypatch.setattr(gateway, "_resolve_core_builder", fake_resolve)
+    monkeypatch.setattr(gateway, "build_context_package_from_config", fake_from_config)
 
     package = gateway.build_context_package("codex", "session-start", {})
 
