@@ -1,9 +1,9 @@
-# Workbot Adapter: Legal Core Map
+# Adapter: Legal Core Map
 
 Status: active-legal, rule-only
 Scope: adapter
 
-> 本文件是 workbot adapter 级别的合法资料地图，不是模块默认合法性定义。
+> 本文件是 adapter 级别的合法资料地图，不是模块默认合法性定义。
 > 其他 adapter 可以定义自己的合法资料范围，不受本文件约束。
 
 ## Rule

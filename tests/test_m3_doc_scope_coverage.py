@@ -115,9 +115,9 @@ class TestMemoryHookPolicyPackJsonAdapterScope:
         data = json.loads(MEMORY_HOOK_POLICY_PACK_PATH.read_text(encoding="utf-8"))
         assert data.get("adapter_scope") is True
 
-    def test_memory_hook_policy_pack_scope_is_workbot(self):
+    def test_memory_hook_policy_pack_scope_is_default(self):
         data = json.loads(MEMORY_HOOK_POLICY_PACK_PATH.read_text(encoding="utf-8"))
-        assert data.get("scope") == "workbot"
+        assert data.get("scope") == "default"
 
     def test_memory_hook_policy_pack_schema_version(self):
         data = json.loads(MEMORY_HOOK_POLICY_PACK_PATH.read_text(encoding="utf-8"))
