@@ -355,6 +355,44 @@ class PolicyRegistryImpl(PolicyRegistry):
             # Default: return first value
             return values[0]
 
+    # --- Validation and scope lookup stubs (delegate to GatewayBusinessPolicy in production) ---
+
+    def validate_project_map(self) -> list[str]:
+        """Stub: return empty list. Real impl delegates to GatewayBusinessPolicy."""
+        return []
+
+    def validate_unique_legal_system_contract(self) -> list[str]:
+        """Stub: return empty list. Real impl delegates to GatewayBusinessPolicy."""
+        return []
+
+    def governance_frozen_tuple_errors(self) -> list[str]:
+        """Stub: return empty list. Real impl delegates to GatewayBusinessPolicy."""
+        return []
+
+    def event_contract_blocker_errors(self) -> list[str]:
+        """Stub: return empty list. Real impl delegates to GatewayBusinessPolicy."""
+        return []
+
+    def git_registration_probe(self, event: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Stub: return empty dict. Real impl delegates to GatewayBusinessPolicy."""
+        return {}
+
+    def truth_basis_for_scope(self, scope: str) -> dict[str, Any]:
+        """Stub: return empty dict. Real impl delegates to GatewayBusinessPolicy."""
+        return {}
+
+    def decision_refs_for_scope(self, scope: str) -> list[str]:
+        """Stub: return empty list. Real impl delegates to GatewayBusinessPolicy."""
+        return []
+
+    def lesson_refs_for_scope(self, scope: str) -> list[str]:
+        """Stub: return empty list. Real impl delegates to GatewayBusinessPolicy."""
+        return []
+
+    def docs_refs_for_scope(self, scope: str) -> list[str]:
+        """Stub: return empty list. Real impl delegates to GatewayBusinessPolicy."""
+        return []
+
 
 # ---------------------------------------------------------------------------
 # IF-3: RouteTargetPolicy / WriteTargetPolicy Implementations
@@ -1133,3 +1171,63 @@ class DelegateRouter:
             return self.claude_delegate.noop_response()
         else:
             raise ValueError(f"unknown host: {host}")
+
+
+# ---------------------------------------------------------------------------
+# IF-6: PathUtils Implementation
+# ---------------------------------------------------------------------------
+
+try:
+    from .memory_hook_interfaces import PathUtils
+except ImportError:
+    from memory_hook_interfaces import PathUtils  # type: ignore
+
+
+class PathUtilsImpl(PathUtils):
+    """Default path utilities implementation."""
+
+    def __init__(self, workspace_root: Path):
+        self._workspace_root = workspace_root
+
+    def extract_excerpt(self, path: Path, max_lines: int = 12) -> list[str]:
+        """Extract a brief excerpt from a file.
+
+        Mirrors the gateway's extract_excerpt: reads the file, strips each
+        line, skips blank lines, and returns up to max_lines non-empty lines.
+        """
+        if not path.exists():
+            return []
+        lines: list[str] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            lines.append(stripped)
+            if len(lines) >= max_lines:
+                break
+        return lines
+
+    def write_targets(self) -> dict[str, Any]:
+        """Return the current write target map.
+
+        Mirrors the gateway's write_targets fallback dict, which is also
+        identical to WriteTargetPolicyImpl's internal targets structure.
+        """
+        return {
+            "fact": str(self._workspace_root / "memory" / "log" / f"{datetime.now().date().isoformat()}.md"),
+            "global_canonical": str(self._workspace_root / "memory" / "kb" / "global"),
+            "project_canonical": str(self._workspace_root / "memory" / "kb" / "projects"),
+            "decision": str(self._workspace_root / "memory" / "kb" / "decisions"),
+            "lesson": str(self._workspace_root / "memory" / "kb" / "lessons"),
+            "docs": str(self._workspace_root / "memory" / "docs"),
+            "action": str(self._workspace_root / "memory" / "inbox.md"),
+            "project_runtime": str(self._workspace_root / "projects"),
+            "artifacts": str(self._workspace_root / "artifacts"),
+            "system_error": str(self._workspace_root / "memory" / "system" / "errors.log"),
+            "invalid_memory": str(self._workspace_root / "memory" / "archive" / "invalid"),
+            "kb_policy": {
+                "mode": "read-first-CRUD",
+                "overwrite_allowed": False,
+                "conflict_strategy": "preserve-and-escalate",
+            },
+        }
