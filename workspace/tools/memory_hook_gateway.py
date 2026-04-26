@@ -845,7 +845,7 @@ def build_context_package_simple(
     *,
     adapter: str | None = None,
 ) -> dict[str, Any]:
-    """Simplified 3-parameter entry point for memory-hook.
+    """Simplified 3-parameter entry point returning context-package-v1.
 
     Args:
         host: "codex" or "claude"
@@ -854,7 +854,7 @@ def build_context_package_simple(
         adapter: adapter name override (default: from MEMORY_HOOK_ADAPTER env var)
 
     Returns:
-        Context package dict with status="ok" or "degraded"
+        Context package in context-package-v1 format.
     """
     if payload is None:
         payload = {}

@@ -240,14 +240,14 @@ class TestBuildContextPackageSimple:
         from workspace.tools.memory_hook_gateway import build_context_package_simple
 
         result = build_context_package_simple("codex", "session-start", {})
-        assert result.get("schema_version") == "wb-hook-v2"
+        assert result.get("schema_version") == "context-package-v1"
 
-    def test_contains_system_context(self) -> None:
-        """Result contains system_context dict."""
+    def test_contains_paths(self) -> None:
+        """Result contains paths dict (v1 format)."""
         from workspace.tools.memory_hook_gateway import build_context_package_simple
 
         result = build_context_package_simple("codex", "session-start", {})
-        assert isinstance(result.get("system_context"), dict)
+        assert isinstance(result.get("paths"), dict)
 
 
 # ---------------------------------------------------------------------------
@@ -259,33 +259,35 @@ class TestEquivalence:
     """Validate equivalence between different API entry points."""
 
     def test_simple_equals_full_api(self) -> None:
-        """build_context_package_simple(h, e, p) == build_context_package(h, e, p)."""
+        """build_context_package_simple(h, e, p) == convert_to_v1(build_context_package(h, e, p))."""
         from workspace.tools.memory_hook_gateway import (
             build_context_package,
             build_context_package_simple,
         )
+        from workspace.tools.memory_hook_schema import convert_to_v1
 
         payload = {"session_id": "eq-test-1"}
         result_simple = build_context_package_simple("codex", "session-start", payload)
-        result_full = build_context_package("codex", "session-start", payload)
+        result_full_v1 = convert_to_v1(build_context_package("codex", "session-start", payload))
 
         # Exclude generated_at — may differ by microseconds
         result_simple.pop("generated_at", None)
-        result_full.pop("generated_at", None)
+        result_full_v1.pop("generated_at", None)
 
-        assert result_simple == result_full
+        assert result_simple == result_full_v1
 
     def test_simple_equals_full_with_empty_payload(self) -> None:
-        """Equivalence holds with empty payload."""
+        """Equivalence holds with empty payload via convert_to_v1."""
         from workspace.tools.memory_hook_gateway import (
             build_context_package,
             build_context_package_simple,
         )
+        from workspace.tools.memory_hook_schema import convert_to_v1
 
         result_simple = build_context_package_simple("codex", "session-start", None)
-        result_full = build_context_package("codex", "session-start", {})
+        result_full_v1 = convert_to_v1(build_context_package("codex", "session-start", {}))
 
         result_simple.pop("generated_at", None)
-        result_full.pop("generated_at", None)
+        result_full_v1.pop("generated_at", None)
 
-        assert result_simple == result_full
+        assert result_simple == result_full_v1
