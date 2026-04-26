@@ -7,7 +7,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Collection
+from typing import TYPE_CHECKING, Any, Callable, Collection
+
+
+if TYPE_CHECKING:
+    from memory_hook_interfaces import PathUtils, PolicyRegistry
 
 
 @dataclass(kw_only=True)
@@ -69,6 +73,19 @@ class CoreConfig:
     decision_refs_for_scope_fn: Callable[[str], list[str]]
     lesson_refs_for_scope_fn: Callable[[str], list[str]]
     docs_refs_for_scope_fn: Callable[[str], list[str]]
+
+    # ------------------------------------------------------------------
+    # Group 5: Interface objects (optional, can replace Group 4 callbacks)
+    # ------------------------------------------------------------------
+    policy_registry: PolicyRegistry | None = field(default=None)
+    path_utils: PathUtils | None = field(default=None)
+
+    @property
+    def uses_interfaces(self) -> bool:
+        return (
+            self.policy_registry is not None
+            and self.path_utils is not None
+        )
 
     def __post_init__(self) -> None:
         if self.host not in ("codex", "claude"):
@@ -132,6 +149,8 @@ class CoreConfig:
         governance_blocker_scopes: Collection[str] | None = None,
         event_contract_blocker_scopes: Collection[str] | None = None,
         core_evidence_refs: list[str] | None = None,
+        policy_registry: PolicyRegistry | None = None,
+        path_utils: PathUtils | None = None,
     ) -> CoreConfig:
         """Bridge: accept the current 37 kwargs and return a CoreConfig."""
         return cls(
@@ -172,4 +191,6 @@ class CoreConfig:
             governance_blocker_scopes=governance_blocker_scopes,
             event_contract_blocker_scopes=event_contract_blocker_scopes,
             core_evidence_refs=core_evidence_refs,
+            policy_registry=policy_registry,
+            path_utils=path_utils,
         )
