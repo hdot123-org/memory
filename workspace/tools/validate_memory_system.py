@@ -204,9 +204,26 @@ def main() -> int:
 
     check_context_package(result, builder)
 
+    check_core_config_path(result)
+
     print(result.summary())
     return 0 if result.all_passed else 1
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def check_core_config_path(result: ValidateResult) -> bool:
+    """Verify the CoreConfig-native assembly path works."""
+    try:
+        from memory_hook_config import CoreConfig  # type: ignore
+        from memory_hook_core import build_context_package_from_config  # type: ignore
+        if not callable(build_context_package_from_config):
+            result.record("core_config_path", False, "build_context_package_from_config is not callable")
+            return False
+        result.record("core_config_path", True, "build_context_package_from_config available")
+        return True
+    except Exception as exc:
+        result.record("core_config_path", False, str(exc))
+        return False
