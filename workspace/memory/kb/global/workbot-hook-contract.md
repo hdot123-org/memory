@@ -137,3 +137,9 @@ related: [workbot-memory-system, workbot-memory-routing]
 - `Claude` 正式 hook 入口已切到 `workspace/tools/memory_hook_gateway.py`
 - gateway 会先产出 context package 与事件证据，再转发到底层 `cmux` hook
 - 验收报告已生成到 `workspace/artifacts/memory-hook/validation/latest.json`
+
+## 8. Gateway Invariants
+
+- Gateway adapter selection is driven by `MEMORY_HOOK_ADAPTER` env var (default: `workbot`).
+  Policy class is resolved from adapter profile via `GATEWAY_POLICY_CLASS`.
+- Force hook reads `MEMORY_HOOK_FORCE` with `WORKBOT_FORCE_HOOK` as backward-compat fallback.
