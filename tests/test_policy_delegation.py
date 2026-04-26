@@ -37,13 +37,16 @@ _GATEWAY_FUNCS: dict[str, Any] = {
 }
 
 
-@pytest.fixture(autouse=True, scope="session")
-def _inject_mock_gateway() -> None:
+@pytest.fixture(autouse=True, scope="function")
+def _inject_mock_gateway():
     """Inject a stub ``memory_hook_gateway`` module so delegation imports work."""
     mod = ModuleType("memory_hook_gateway")
     for name, func in _GATEWAY_FUNCS.items():
         setattr(mod, name, func)
     sys.modules["memory_hook_gateway"] = mod
+    yield
+    # Cleanup: remove mock to avoid polluting other tests
+    sys.modules.pop("memory_hook_gateway", None)
 
 
 # ------------------------------------------------------------------
