@@ -2,7 +2,7 @@
 type: "[DOC:DESIGN]"
 title: "消费边界与改进建议"
 shortname: DES-010
-status: 草稿中
+status: 可评审
 scope: default
 created: 2026-04-26
 updated: 2026-04-26
@@ -18,7 +18,7 @@ related: [DES-001, DES-007, DES-008]
 
 > 创建日期：2026-04-26
 > 维护人：D10（文档整理员）
-> 状态：草稿
+> 状态：可评审
 > 分析对象：`<memory-repo>`（memory 仓库） vs `<consumer-repo>`（workbot 仓库）
 
 ---

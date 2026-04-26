@@ -2,7 +2,7 @@
 type: "[DOC:DESIGN]"
 title: "Memory 模块总体架构"
 shortname: DES-001
-status: 草稿中
+status: 可评审
 scope: default
 created: 2026-04-26
 updated: 2026-04-26
@@ -18,7 +18,7 @@ related: [DES-002, DES-003, DES-004]
 
 > 创建日期：2026-04-26
 > 维护人：D1（文档整理员）
-> 状态：草稿中
+> 状态：可评审
 
 ---
 
@@ -46,7 +46,7 @@ memory/                          # 仓库根
 ├── .pytest_cache/
 ├── pyproject.toml               # 包定义（memory-core==0.1.0）
 ├── README.md                    # 模块说明 + 迁移记录（M1/M2/M3）
-├── tests/                       # 14 个测试文件
+├── tests/                       # 13 个测试文件
 └── workspace/                   # 唯一总控工作区
     ├── INDEX.md                 # 工作区入口（路由系统 + 写入协议）
     ├── NOW.md                   # 当前状态
@@ -66,7 +66,7 @@ workspace/tools/
 ├── memory_hook_core.py                # 271 行 — 核心组装逻辑
 ├── memory_hook_gateway.py             # 981 行 — 统一入口 / 编排
 ├── cmux_hook_state.py                 # 225 行 — hook 状态管理
-├── memory_hook_provider_rollback.py   # 46 行 — 回滚演练
+├── memory_hook_provider_rollback.py   # 60 行 — 回滚演练
 ├── validate_memory_system.py          # 12 行 — 验证桩
 └── memory_hook_adapters/              # 适配层
     ├── neutral_policy.py              # 22 行 — 宿主中性基类
@@ -116,11 +116,11 @@ workspace/memory/
 
 | 接口编号 | 接口名 | 行数 | 职责 |
 |----------|--------|------|------|
-| IF-1 | `HostDelegate` | L17-L40 | 将 hook 事件委派给宿主运行时（Codex/Claude） |
-| IF-2 | `PolicyRegistry` | L46-L81 | 策略查找、验证、冲突解决 |
-| IF-3 | `RouteTargetPolicy` / `WriteTargetPolicy` | L87-L111 | 路由目标解析 / 写入目标解析 |
-| IF-3.5 | `GatewayBusinessPolicy` | L117-L195 | 宿主/业务策略（项目范围判定、canonical 管理、truth basis 验证） |
-| IF-4 | `ArtifactSink` / `ErrorSink` | L201-L242 | 产物输出 / 错误日志 |
+| IF-1 | `HostDelegate` | L23-L51 | 将 hook 事件委派给宿主运行时（Codex/Claude） |
+| IF-2 | `PolicyRegistry` | L58-L99 | 策略查找、验证、冲突解决 |
+| IF-3 | `RouteTargetPolicy` / `WriteTargetPolicy` | L106-L129 | 路由目标解析 / 写入目标解析 |
+| IF-3.5 | `GatewayBusinessPolicy` | L132-L211 | 宿主/业务策略（项目范围判定、canonical 管理、truth basis 验证） |
+| IF-4 | `ArtifactSink` / `ErrorSink` | L218-L242 | 产物输出 / 错误日志 |
 
 关键方法摘要：
 
@@ -141,17 +141,17 @@ workspace/memory/
 
 | 类名 | 行数范围 | 实现接口 | 职责 |
 |------|----------|----------|------|
-| `CodexDelegate` | L32-L72 | `HostDelegate` | Codex 宿主委派：调用 `cmux codex-hook` |
-| `ClaudeDelegate` | L75-L172 | `HostDelegate` | Claude 宿主委派：调用 `cmux claude-hook`，含 state file 注入和 canonicalization |
-| `PolicyRegistryImpl` | L178-L312 | `PolicyRegistry` | 策略注册表：支持 policy-pack JSON 动态加载、scope 继承、冲突策略 |
-| `RouteTargetPolicyImpl` | L318-L342 | `RouteTargetPolicy` | 路由目标映射（fact/global-rule/source-material/project-runtime 等） |
-| `WriteTargetPolicyImpl` | L345-L377 | `WriteTargetPolicy` | 写入目标映射（kb/global/project/decision/lesson/docs 等） |
-| `GatewayBusinessPolicyConfig` | L383-L420 | 配置 dataclass | 承载所有 gateway 业务策略配置参数 |
-| `GatewayBusinessPolicyImpl` | L423-L960 | `GatewayBusinessPolicy` | 业务策略核心实现：project-map 验证、truth basis 校验、governance frozen tuple 检查、event contract 对齐 |
-| `ArtifactSinkImpl` | L966-L997 | `ArtifactSink` | 产物写入：snapshot + latest + event log |
-| `ErrorSinkImpl` | L1000-L1040 | `ErrorSink` | 错误日志写入 |
+| `CodexDelegate` | L49-L87 | `HostDelegate` | Codex 宿主委派：调用 `cmux codex-hook` |
+| `ClaudeDelegate` | L89-L182 | `HostDelegate` | Claude 宿主委派：调用 `cmux claude-hook`，含 state file 注入和 canonicalization |
+| `PolicyRegistryImpl` | L188-L357 | `PolicyRegistry` | 策略注册表：支持 policy-pack JSON 动态加载、scope 继承、冲突策略 |
+| `RouteTargetPolicyImpl` | L363-L389 | `RouteTargetPolicy` | 路由目标映射（fact/global-rule/source-material/project-runtime 等） |
+| `WriteTargetPolicyImpl` | L392-L417 | `WriteTargetPolicy` | 写入目标映射（kb/global/project/decision/lesson/docs 等） |
+| `GatewayBusinessPolicyConfig` | L425-L467 | 配置 dataclass | 承载所有 gateway 业务策略配置参数 |
+| `GatewayBusinessPolicyImpl` | L468-L977 | `GatewayBusinessPolicy` | 业务策略核心实现：project-map 验证、truth basis 校验、governance frozen tuple 检查、event contract 对齐 |
+| `ArtifactSinkImpl` | L984-L1022 | `ArtifactSink` | 产物写入：snapshot + latest + event log |
+| `ErrorSinkImpl` | L1025-L1040 | `ErrorSink` | 错误日志写入 |
 
-`GatewayBusinessPolicyImpl` 是该文件最大的类（约 540 行），包含：
+`GatewayBusinessPolicyImpl` 是该文件最大的类（约 509 行），包含：
 
 - Truth basis 四要素校验（source/authority/evidence/conflict）
 - Project-map 合法性验证（active-legal-map-only 合同）
@@ -166,9 +166,9 @@ workspace/memory/
 
 | 函数名 | 行数 | 职责 |
 |--------|------|------|
-| `registration_phase_from_policy_pack()` | L13-L23 | 从 policy pack 解析 registration phase |
-| `evaluate_registration_commit_gate()` | L26-L57 | 评估注册提交门禁（enforced/awaiting/passed/failed） |
-| `build_context_package_core()` | L60-L271 | **M5 核心组装**：构建完整的 context package |
+| `registration_phase_from_policy_pack()` | L14-L27 | 从 policy pack 解析 registration phase |
+| `evaluate_registration_commit_gate()` | L30-L66 | 评估注册提交门禁（enforced/awaiting/passed/failed） |
+| `build_context_package_core()` | L69-L271 | **M5 核心组装**：构建完整的 context package |
 
 `build_context_package_core()` 是 context package 的最终组装函数，输出结构：
 
@@ -196,10 +196,10 @@ workspace/memory/
 
 1. **Adapter 加载**（L79-L91）：通过 `MEMORY_HOOK_ADAPTER` 环境变量选择 adapter，动态加载 runtime profile
 2. **Facade 模式**（L96-L270）：IF-5 接口适配，封装所有策略/策略注册表/路由/写入/委托的单例获取
-3. **Provider 解析**（L223-L237）：支持 `external-core`（推荐）和 `legacy`（回滚兼容）两种 core builder
-4. **Context 组装**（L739-L843）：`build_context_package()` — 串联 business policy → core builder → compaction
-5. **Artifact 写入**（L845-L906）：`write_artifacts()` — 通过 sink 写入，含 fallback
-6. **Delegate 执行**（L908-L981）：`main()` — CLI 入口，处理 `--host`、`--event`、`--no-delegate`
+3. **Provider 解析**（L155-L173）：支持 `external-core`（可选）和 `legacy`（默认）两种 core builder
+4. **Context 组装**（L739-L822）：`build_context_package()` — 串联 business policy → core builder → compaction
+5. **Artifact 写入**（L845-L868）：`write_artifacts()` — 通过 sink 写入，含 fallback
+6. **Delegate 执行**（L908-L977）：`main()` — CLI 入口，处理 `--host`、`--event`、`--no-delegate`
 
 关键函数调用链：
 
@@ -245,7 +245,7 @@ main()
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `cmux_hook_state.py` | 225 | Hook 状态文件管理：lock、load、write、record_hook_event |
-| `memory_hook_provider_rollback.py` | 46 | 回滚演练：验证 legacy provider 可用性 |
+| `memory_hook_provider_rollback.py` | 60 | 回滚演练：验证 legacy provider 可用性 |
 | `validate_memory_system.py` | 12 | 验证桩（当前为空操作） |
 
 ---
@@ -368,7 +368,13 @@ main()
   "generated_at": "2026-04-26T...",
   "host": "codex" | "claude",
   "event": "session-start" | "prompt-submit" | "stop" | "notification",
+  "repo_root": "...",
+  "workspace_root": "...",
+  "cwd": "...",
+  "project_scope": "...",
   "status": "ok" | "degraded",
+  "missing_paths": ["..."],
+  "validation_errors": ["..."],
   "system_context": {
     "boot_entry": "workspace/INDEX.md",
     "state_entry": "workspace/NOW.md",
@@ -394,7 +400,8 @@ main()
     "task_ref": "...",
     "session_id": "...",
     "surface_id": "...",
-    "workspace_id": "..."
+    "workspace_id": "...",
+    "payload_keys": ["..."]
   },
   "allowed_reads": ["..."],
   "allowed_writes": { "fact": "...", "decision": "...", ... },
@@ -413,8 +420,8 @@ Gateway 支持两种 core builder provider：
 
 | Provider | 说明 | 触发方式 |
 |----------|------|----------|
-| `external-core` | 推荐 provider，通过环境变量动态加载模块 | `MEMORY_HOOK_CORE_PROVIDER=external-core` |
-| `legacy` | 兼容 provider，直接调用 `memory_hook_core.build_context_package_core` | 默认值 / fallback |
+| `external-core` | 可选 provider，通过环境变量动态加载模块 | `MEMORY_HOOK_CORE_PROVIDER=external-core` |
+| `legacy` | 默认 provider，直接调用 `memory_hook_core.build_context_package_core` | 默认值 / fallback |
 
 Provider 切换逻辑（`_resolve_core_builder`）：
 
@@ -495,8 +502,9 @@ Gateway 通过 `MEMORY_HOOK_ADAPTER` 环境变量选择 adapter（默认 `workbo
 
 ### 7.2 Provider 双轨 + Shadow Run
 
-- 默认使用 `external-core` provider（通过环境变量指定模块路径）
-- 失败时自动 fallback 到 `legacy`（内置 `memory_hook_core.build_context_package_core`）
+- 默认使用 `legacy` provider（内置 `memory_hook_core.build_context_package_core`）
+- 通过 `MEMORY_HOOK_CORE_PROVIDER=external-core` 切换到 external provider
+
 - `MEMORY_HOOK_SHADOW_RUN=1` 时同时运行对端 provider，对比结果用于验证
 
 ### 7.3 Artifact Compaction
@@ -518,7 +526,7 @@ Gateway 在 `build_context_package` 阶段自动校验。
 
 ## 8. 测试覆盖
 
-**目录**：`tests/` — 14 个测试文件
+**目录**：`tests/` — 13 个测试文件
 
 | 测试文件 | 对应阶段 | 覆盖内容 |
 |----------|----------|----------|
