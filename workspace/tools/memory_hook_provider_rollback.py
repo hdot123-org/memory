@@ -21,17 +21,31 @@ from workspace.tools import memory_hook_gateway as gateway
 
 
 def run_rollback_drill() -> dict[str, Any]:
-    requested_provider = os.environ.get("MEMORY_HOOK_CORE_PROVIDER", "legacy")
-    external_provider, _, external_errors = gateway._resolve_core_builder("external-core", allow_fallback=True)
-    legacy_provider, _, legacy_errors = gateway._resolve_core_builder("legacy", allow_fallback=True)
-    passed = legacy_provider == "legacy"
+    requested_provider = os.environ.get("MEMORY_HOOK_CORE_PROVIDER", gateway.DEFAULT_CORE_PROVIDER)
+    try:
+        external_provider, _, external_errors = gateway._resolve_core_builder("external-core")
+    except Exception as exc:
+        external_provider = "external-core"
+        external_errors = [str(exc)]
+
+    try:
+        legacy_provider, _, legacy_errors = gateway._resolve_core_builder("legacy")
+    except Exception as exc:
+        legacy_provider = "legacy"
+        legacy_errors = [str(exc)]
+
+    external_probe_ok = external_provider == "external-core" and not external_errors
+    legacy_probe_ok = legacy_provider == "legacy" and not legacy_errors
+    passed = external_probe_ok and legacy_probe_ok
     return {
         "status": "passed" if passed else "failed",
         "requested_provider": requested_provider,
         "external_probe_provider": external_provider,
         "external_probe_errors": external_errors,
+        "external_probe_ok": external_probe_ok,
         "legacy_probe_provider": legacy_provider,
         "legacy_probe_errors": legacy_errors,
+        "legacy_probe_ok": legacy_probe_ok,
         "rollback_target": "legacy",
     }
 
