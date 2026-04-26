@@ -19,7 +19,7 @@ related: [DES-001, DES-007, DES-008]
 > 创建日期：2026-04-26
 > 维护人：D10（文档整理员）
 > 状态：草稿
-> 分析对象：`/Users/busiji/memory`（memory 仓库） vs `/Users/busiji/workbot`（workbot 仓库）
+> 分析对象：`<memory-repo>`（memory 仓库） vs `<consumer-repo>`（workbot 仓库）
 
 ---
 
@@ -506,13 +506,13 @@ Gateway 返回的 context package 应遵循以下稳定契约（当前 `wb-hook-
 
 | 文件 | Memory 路径 | Workbot 路径 |
 |------|------------|-------------|
-| Gateway | `/Users/busiji/memory/workspace/tools/memory_hook_gateway.py` | `/Users/busiji/workbot/workspace/tools/memory_hook_gateway.py` |
-| Core | `/Users/busiji/memory/workspace/tools/memory_hook_core.py` | `/Users/busiji/workbot/workspace/tools/memory_hook_core.py` |
-| Interfaces | `/Users/busiji/memory/workspace/tools/memory_hook_interfaces.py` | `/Users/busiji/workbot/workspace/tools/memory_hook_interfaces.py` |
-| Impl  s | `/Users/busiji/memory/workspace/tools/memory_hook_impls.py` | `/Users/busiji/workbot/workspace/tools/memory_hook_impls.py` |
-| Runtime Profile | `/Users/busiji/memory/workspace/tools/memory_hook_adapters/workbot_runtime_profile.py` | `/Users/busiji/workbot/workspace/tools/memory_hook_adapters/workbot_runtime_profile.py` |
-| Workbot Policy | `/Users/busiji/memory/workspace/tools/memory_hook_adapters/workbot_policy.py` | `/Users/busiji/workbot/workspace/tools/memory_hook_adapters/workbot_policy.py` |
-| Neutral Policy | `/Users/busiji/memory/workspace/tools/memory_hook_adapters/neutral_policy.py` | `/Users/busiji/workbot/workspace/tools/memory_hook_adapters/neutral_policy.py` |
+| Gateway | `<memory-repo>/workspace/tools/memory_hook_gateway.py` | `<consumer-repo>/workspace/tools/memory_hook_gateway.py` |
+| Core | `<memory-repo>/workspace/tools/memory_hook_core.py` | `<consumer-repo>/workspace/tools/memory_hook_core.py` |
+| Interfaces | `<memory-repo>/workspace/tools/memory_hook_interfaces.py` | `<consumer-repo>/workspace/tools/memory_hook_interfaces.py` |
+| Impl  s | `<memory-repo>/workspace/tools/memory_hook_impls.py` | `<consumer-repo>/workspace/tools/memory_hook_impls.py` |
+| Runtime Profile | `<memory-repo>/workspace/tools/memory_hook_adapters/workbot_runtime_profile.py` | `<consumer-repo>/workspace/tools/memory_hook_adapters/workbot_runtime_profile.py` |
+| Workbot Policy | `<memory-repo>/workspace/tools/memory_hook_adapters/workbot_policy.py` | `<consumer-repo>/workspace/tools/memory_hook_adapters/workbot_policy.py` |
+| Neutral Policy | `<memory-repo>/workspace/tools/memory_hook_adapters/neutral_policy.py` | `<consumer-repo>/workspace/tools/memory_hook_adapters/neutral_policy.py` |
 
 ### 6.2 相关文档
 

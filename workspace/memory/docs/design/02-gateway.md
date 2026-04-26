@@ -449,7 +449,7 @@ subprocess.run(
 |------|-----|--------|
 | `SCRIPT_PATH` | `memory_hook_gateway.py` 的绝对路径 | 16 |
 | `WORKSPACE_ROOT` | `SCRIPT_PATH.parents[1]` -> `workspace/` | 17 |
-| `REPO_ROOT` | `SCRIPT_PATH.parents[2]` -> `/Users/busiji/memory` | 18 |
+| `REPO_ROOT` | `SCRIPT_PATH.parents[2]` -> `<memory-repo>` | 18 |
 | `ARTIFACT_ROOT` | `WORKSPACE_ROOT/artifacts/memory-hook` | 19 |
 | `CONTEXT_ROOT` | `ARTIFACT_ROOT/contexts` | 20 |
 | `EVENT_LOG` | `ARTIFACT_ROOT/events.jsonl` | 21 |

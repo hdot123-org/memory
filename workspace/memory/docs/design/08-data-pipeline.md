@@ -20,7 +20,7 @@ related: [DES-007, DES-009, DES-010]
 
 ### 1.1 入口：`main()` → `build_context_package()`
 
-`main()` 函数（[memory_hook_gateway.py:908](/Users/busiji/memory/workspace/tools/memory_hook_gateway.py:908)）是 CLI 入口。流程如下：
+`main()` 函数（[memory_hook_gateway.py:908](<memory-repo>/workspace/tools/memory_hook_gateway.py:908)）是 CLI 入口。流程如下：
 
 1. 解析 `--host`（codex/claude）、`--event`（session-start/prompt-submit/stop/notification）、`--no-delegate` 参数（line 909-911）
 2. 从 stdin 读取 raw JSON payload，通过 `read_payload()` 解析为 dict（line 910-911）
@@ -35,7 +35,7 @@ related: [DES-007, DES-009, DES-010]
 
 ### 1.2 `build_context_package()` 构建链
 
-`build_context_package()`（[memory_hook_gateway.py:748](/Users/busiji/memory/workspace/tools/memory_hook_gateway.py:748)）是核心组装函数：
+`build_context_package()`（[memory_hook_gateway.py:748](<memory-repo>/workspace/tools/memory_hook_gateway.py:748)）是核心组装函数：
 
 1. 确定 cwd 和 project_scope（line 749-750）
 2. 获取 business_policy（line 751）
@@ -50,7 +50,7 @@ related: [DES-007, DES-009, DES-010]
 
 ### 1.3 `build_context_package_core()` 核心组装
 
-`build_context_package_core()`（[memory_hook_core.py:69](/Users/busiji/memory/workspace/tools/memory_hook_core.py:69)）是纯组装逻辑：
+`build_context_package_core()`（[memory_hook_core.py:69](<memory-repo>/workspace/tools/memory_hook_core.py:69)）是纯组装逻辑：
 
 1. 检查 required_canonical 文件是否存在，收集 `missing_paths`（line 114）
 2. 调用 `validate_project_map_fn()` 收集 project_map_errors（line 115）
@@ -71,12 +71,12 @@ related: [DES-007, DES-009, DES-010]
 
 ### 1.4 落盘：`write_artifacts()` → `ArtifactSinkImpl.write()`
 
-`write_artifacts()`（[memory_hook_gateway.py:857](/Users/busiji/memory/workspace/tools/memory_hook_gateway.py:857)）：
+`write_artifacts()`（[memory_hook_gateway.py:857](<memory-repo>/workspace/tools/memory_hook_gateway.py:857)）：
 
 1. 调用 `_get_artifact_sink().write(package)`（line 858）
 2. 如果 sink 抛出 RuntimeError，走 fallback 路径手动写入（line 860-868）
 
-`ArtifactSinkImpl.write()`（[memory_hook_impls.py:1000](/Users/busiji/memory/workspace/tools/memory_hook_impls.py:1000)）：
+`ArtifactSinkImpl.write()`（[memory_hook_impls.py:1000](<memory-repo>/workspace/tools/memory_hook_impls.py:1000)）：
 
 1. `ensure_dirs()` 创建 context_root 目录（line 1001）
 2. 生成时间戳 `YYYYMMDDTHHMMSSffffff`（line 1002）
@@ -96,26 +96,26 @@ related: [DES-007, DES-009, DES-010]
 
 | 常量 | 路径 | 来源 |
 |------|------|------|
-| `ARTIFACT_ROOT` | `{WORKSPACE_ROOT}/artifacts/memory-hook` | [memory_hook_gateway.py:19](/Users/busiji/memory/workspace/tools/memory_hook_gateway.py:19) |
-| `CONTEXT_ROOT` | `{ARTIFACT_ROOT}/contexts` | [memory_hook_gateway.py:20](/Users/busiji/memory/workspace/tools/memory_hook_gateway.py:20) |
-| `EVENT_LOG` | `{ARTIFACT_ROOT}/events.jsonl` | [memory_hook_gateway.py:21](/Users/busiji/memory/workspace/tools/memory_hook_gateway.py:21) |
+| `ARTIFACT_ROOT` | `{WORKSPACE_ROOT}/artifacts/memory-hook` | [memory_hook_gateway.py:19](<memory-repo>/workspace/tools/memory_hook_gateway.py:19) |
+| `CONTEXT_ROOT` | `{ARTIFACT_ROOT}/contexts` | [memory_hook_gateway.py:20](<memory-repo>/workspace/tools/memory_hook_gateway.py:20) |
+| `EVENT_LOG` | `{ARTIFACT_ROOT}/events.jsonl` | [memory_hook_gateway.py:21](<memory-repo>/workspace/tools/memory_hook_gateway.py:21) |
 
 `WORKSPACE_ROOT` = `SCRIPT_PATH.parents[1]`，即 `workspace/tools/` 的父目录 = `workspace/`（line 17）。
 
 ### 2.2 文件命名规则
 
-Snapshot 文件（[memory_hook_impls.py:1003-1007](/Users/busiji/memory/workspace/tools/memory_hook_impls.py:1003)）：
+Snapshot 文件（[memory_hook_impls.py:1003-1007](<memory-repo>/workspace/tools/memory_hook_impls.py:1003)）：
 - 格式：`{timestamp}-{host}-{event}.json`
 - 示例：`20260426T143025123456-codex-session-start.json`
 - 冲突处理：追加 `-{suffix:02d}`，如 `20260426T143025123456-01-codex-session-start.json`
 
-Latest 文件（[memory_hook_impls.py:1008](/Users/busiji/memory/workspace/tools/memory_hook_impls.py:1008)）：
+Latest 文件（[memory_hook_impls.py:1008](<memory-repo>/workspace/tools/memory_hook_impls.py:1008)）：
 - 格式：`latest-{host}-{event}.json`
 - 每次写入覆盖，始终指向最近一次该 host+event 组合的 snapshot
 
 ### 2.3 Event Log 格式
 
-Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](/Users/busiji/memory/workspace/tools/memory_hook_impls.py:1019)）：
+Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](<memory-repo>/workspace/tools/memory_hook_impls.py:1019)）：
 - 每行一个完整的 context package JSON（compact 模式，无缩进）
 - 追加模式写入
 - 每条记录包含完整的 package 内容，包括注入后的 `artifact_refs` 字段
@@ -126,11 +126,11 @@ Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](/Users/busiji/memo
 
 ### 3.1 错误日志位置
 
-`ERROR_LOG` = `{WORKSPACE_ROOT}/memory/system/errors.log`（[memory_hook_gateway.py:22](/Users/busiji/memory/workspace/tools/memory_hook_gateway.py:22)）
+`ERROR_LOG` = `{WORKSPACE_ROOT}/memory/system/errors.log`（[memory_hook_gateway.py:22](<memory-repo>/workspace/tools/memory_hook_gateway.py:22)）
 
 ### 3.2 格式
 
-`ErrorSinkImpl.log()`（[memory_hook_impls.py:1036-1040](/Users/busiji/memory/workspace/tools/memory_hook_impls.py:1036)）：
+`ErrorSinkImpl.log()`（[memory_hook_impls.py:1036-1040](<memory-repo>/workspace/tools/memory_hook_impls.py:1036)）：
 
 ```
 [{iso_timestamp}] [{component}] [error] {message} | context={json_context}
@@ -143,7 +143,7 @@ Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](/Users/busiji/memo
 
 ### 3.3 触发场景
 
-在 `main()` 中（[memory_hook_gateway.py:920-966](/Users/busiji/memory/workspace/tools/memory_hook_gateway.py:920)）：
+在 `main()` 中（[memory_hook_gateway.py:920-966](<memory-repo>/workspace/tools/memory_hook_gateway.py:920)）：
 
 1. **status != "ok"**：missing canonical paths 或 project-map validation failed（line 920-930）
 2. **delegate preflight 失败**：RuntimeError 捕获（line 945-951）
@@ -153,7 +153,7 @@ Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](/Users/busiji/memo
 
 ## 4 build_context_package 返回值完整结构
 
-`build_context_package_core()` 返回的 dict 包含以下顶层 key（[memory_hook_core.py:204-271](/Users/busiji/memory/workspace/tools/memory_hook_core.py:204)）：
+`build_context_package_core()` 返回的 dict 包含以下顶层 key（[memory_hook_core.py:204-271](<memory-repo>/workspace/tools/memory_hook_core.py:204)）：
 
 | Key | 类型 | 说明 |
 |-----|------|------|
@@ -176,19 +176,19 @@ Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](/Users/busiji/memo
 | `evidence_refs` | `list[str]` | 证据引用路径列表 |
 
 `build_context_package()` 在 core 返回后额外注入：
-- `system_context.core_provider`：实际使用的 provider 名称（[line 791](/Users/busiji/memory/workspace/tools/memory_hook_gateway.py:791)）
+- `system_context.core_provider`：实际使用的 provider 名称（[line 791](<memory-repo>/workspace/tools/memory_hook_gateway.py:791)）
 - `system_context.core_provider_requested`：请求的 provider 名称（line 792）
 - `system_context.core_provider_fallback_errors`：fallback 错误列表（line 793-795）
 - `system_context.shadow_run`：shadow 对比结果（当 `MEMORY_HOOK_SHADOW_RUN` 设置时）（line 820-824）
 
 `write_artifacts()` 通过 `ArtifactSinkImpl.write()` 额外注入：
-- `artifact_refs`：`{"snapshot": str, "latest": str, "event_log": str}`（[memory_hook_impls.py:1010-1014](/Users/busiji/memory/workspace/tools/memory_hook_impls.py:1010)）
+- `artifact_refs`：`{"snapshot": str, "latest": str, "event_log": str}`（[memory_hook_impls.py:1010-1014](<memory-repo>/workspace/tools/memory_hook_impls.py:1010)）
 
 ---
 
 ## 5 system_context 子结构字段
 
-`system_context` 在 [memory_hook_core.py:222-248](/Users/busiji/memory/workspace/tools/memory_hook_core.py:222) 构建：
+`system_context` 在 [memory_hook_core.py:222-248](<memory-repo>/workspace/tools/memory_hook_core.py:222) 构建：
 
 | 字段 | 类型 | 来源 |
 |------|------|------|
@@ -218,7 +218,7 @@ Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](/Users/busiji/memo
 | `hook_contract` | `str` | hook contract 文件路径 |
 | `policy_pack` | `dict` | 策略包内容 |
 
-`build_context_package()` 额外注入（[memory_hook_gateway.py:790-795](/Users/busiji/memory/workspace/tools/memory_hook_gateway.py:790)）：
+`build_context_package()` 额外注入（[memory_hook_gateway.py:790-795](<memory-repo>/workspace/tools/memory_hook_gateway.py:790)）：
 - `core_provider`：实际 provider 名称
 - `core_provider_requested`：请求的 provider 名称
 - `core_provider_fallback_errors`：fallback 错误列表
@@ -228,7 +228,7 @@ Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](/Users/busiji/memo
 
 ## 6 project_context 子结构字段
 
-`project_context` 在 [memory_hook_core.py:249-259](/Users/busiji/memory/workspace/tools/memory_hook_core.py:249) 构建：
+`project_context` 在 [memory_hook_core.py:249-259](<memory-repo>/workspace/tools/memory_hook_core.py:249) 构建：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -248,7 +248,7 @@ Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](/Users/busiji/memo
 
 ### 7.1 allowed_reads
 
-`allowed_reads` 是 `list[str]`（[memory_hook_core.py:154-162](/Users/busiji/memory/workspace/tools/memory_hook_core.py:154)），包含：
+`allowed_reads` 是 `list[str]`（[memory_hook_core.py:154-162](<memory-repo>/workspace/tools/memory_hook_core.py:154)），包含：
 
 1. `{workspace_root}/NOW.md`
 2. 所有 `project_map_refs`
@@ -263,9 +263,9 @@ Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](/Users/busiji/memo
 
 ### 7.2 allowed_writes
 
-`allowed_writes` 是 `dict[str, Any]`，由 `write_targets_fn()` 返回（[memory_hook_core.py:269](/Users/busiji/memory/workspace/tools/memory_hook_core.py:269)）。
+`allowed_writes` 是 `dict[str, Any]`，由 `write_targets_fn()` 返回（[memory_hook_core.py:269](<memory-repo>/workspace/tools/memory_hook_core.py:269)）。
 
-默认实现 `WriteTargetPolicyImpl`（[memory_hook_impls.py:392-417](/Users/busiji/memory/workspace/tools/memory_hook_impls.py:392)）返回：
+默认实现 `WriteTargetPolicyImpl`（[memory_hook_impls.py:392-417](<memory-repo>/workspace/tools/memory_hook_impls.py:392)）返回：
 
 | Key | 值 |
 |-----|-----|
@@ -286,7 +286,7 @@ Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](/Users/busiji/memo
 
 ## 8 validation_errors / warnings 收集链
 
-`validation_errors` 是扁平的 `list[str]`，在 [memory_hook_core.py:215-221](/Users/busiji/memory/workspace/tools/memory_hook_core.py:215) 汇总：
+`validation_errors` 是扁平的 `list[str]`，在 [memory_hook_core.py:215-221](<memory-repo>/workspace/tools/memory_hook_core.py:215) 汇总：
 
 ```python
 "validation_errors": [
@@ -325,7 +325,7 @@ Event log 是 JSONL 文件（[memory_hook_impls.py:1019-1020](/Users/busiji/memo
 
 ### 8.2 provider fallback 错误
 
-在 [memory_hook_gateway.py:797-802](/Users/busiji/memory/workspace/tools/memory_hook_gateway.py:797) 中：
+在 [memory_hook_gateway.py:797-802](<memory-repo>/workspace/tools/memory_hook_gateway.py:797) 中：
 - provider fallback 产生的错误追加到 `validation_errors`
 - 如果原 status 为 "ok"，则改为 "degraded"
 
@@ -340,7 +340,7 @@ status = "ok" if (not missing_paths
                   and not blocker_errors)
          else "degraded"
 ```
-（[memory_hook_core.py:185-194](/Users/busiji/memory/workspace/tools/memory_hook_core.py:185)）
+（[memory_hook_core.py:185-194](<memory-repo>/workspace/tools/memory_hook_core.py:185)）
 
 ---
 
@@ -348,7 +348,7 @@ status = "ok" if (not missing_paths
 
 ### 9.1 状态文件位置
 
-`default_hook_state_path()`（[cmux_hook_state.py:42-43](/Users/busiji/memory/workspace/tools/cmux_hook_state.py:42)）：
+`default_hook_state_path()`（[cmux_hook_state.py:42-43](<memory-repo>/workspace/tools/cmux_hook_state.py:42)）：
 - 优先路径：`{project_dir}/workspace/artifacts/cmux-runtime/hook-state.json`
 - 回退路径：`{project_dir}/.cmux-runtime/hook-state.json`
 
@@ -356,7 +356,7 @@ status = "ok" if (not missing_paths
 
 ### 9.2 状态文件结构
 
-hook-state.json 的顶层结构（[cmux_hook_state.py:74-79](/Users/busiji/memory/workspace/tools/cmux_hook_state.py:74)）：
+hook-state.json 的顶层结构（[cmux_hook_state.py:74-79](<memory-repo>/workspace/tools/cmux_hook_state.py:74)）：
 
 ```json
 {
@@ -370,7 +370,7 @@ hook-state.json 的顶层结构（[cmux_hook_state.py:74-79](/Users/busiji/memor
 
 ### 9.3 surface 状态结构
 
-每个 surface 的状态字段（[cmux_hook_state.py:176-189](/Users/busiji/memory/workspace/tools/cmux_hook_state.py:176)）：
+每个 surface 的状态字段（[cmux_hook_state.py:176-189](<memory-repo>/workspace/tools/cmux_hook_state.py:176)）：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -387,7 +387,7 @@ hook-state.json 的顶层结构（[cmux_hook_state.py:74-79](/Users/busiji/memor
 
 ### 9.4 record_hook_event() 流程
 
-`record_hook_event()`（[cmux_hook_state.py:160-225](/Users/busiji/memory/workspace/tools/cmux_hook_state.py:160)）：
+`record_hook_event()`（[cmux_hook_state.py:160-225](<memory-repo>/workspace/tools/cmux_hook_state.py:160)）：
 
 1. 获取文件级排他锁 `_exclusive_hook_state_lock()`（line 169），使用 `fcntl.flock(LOCK_EX)`（line 27）
 2. 加载现有状态 `load_hook_state()`（line 170），文件不存在或解析失败时返回 base payload
@@ -406,7 +406,7 @@ hook-state.json 的顶层结构（[cmux_hook_state.py:74-79](/Users/busiji/memor
 
 ### 9.5 原子写入机制
 
-`_write_hook_state_unlocked()`（[cmux_hook_state.py:121-140](/Users/busiji/memory/workspace/tools/cmux_hook_state.py:121)）：
+`_write_hook_state_unlocked()`（[cmux_hook_state.py:121-140](<memory-repo>/workspace/tools/cmux_hook_state.py:121)）：
 
 1. 在目标目录创建临时文件 `tempfile.mkstemp()`（line 125-129）
 2. 写入 JSON 内容并 `fsync`（line 131-134）
@@ -424,7 +424,7 @@ hook-state.json 的顶层结构（[cmux_hook_state.py:74-79](/Users/busiji/memor
 
 ### 9.7 在 gateway 中的调用
 
-`ClaudeDelegate` 在 `execute()` 中调用 `record_hook_event()`（[memory_hook_impls.py:149-159](/Users/busiji/memory/workspace/tools/memory_hook_impls.py:149)）：
+`ClaudeDelegate` 在 `execute()` 中调用 `record_hook_event()`（[memory_hook_impls.py:149-159](<memory-repo>/workspace/tools/memory_hook_impls.py:149)）：
 
 1. 通过 `state_path_factory` 确定 state 文件路径（line 150）
 2. 通过 `canonicalizer` 规范化 workspace_ref 和 surface_ref（line 151-154）

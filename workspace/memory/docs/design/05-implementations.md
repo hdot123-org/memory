@@ -16,8 +16,8 @@ related: [DES-004, DES-006, DES-007]
 
 # 实现层设计文档
 
-> 来源：`/Users/busiji/memory/workspace/tools/memory_hook_impls.py`（1040 行）
-> 接口：`/Users/busiji/memory/workspace/tools/memory_hook_interfaces.py`（242 行）
+> 来源：`<memory-repo>/workspace/tools/memory_hook_impls.py`（1040 行）
+> 接口：`<memory-repo>/workspace/tools/memory_hook_interfaces.py`（242 行）
 
 ---
 
