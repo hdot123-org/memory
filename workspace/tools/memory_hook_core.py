@@ -269,3 +269,50 @@ def build_context_package_core(
         "allowed_writes": write_targets_fn(),
         "evidence_refs": evidence_refs,
     }
+
+
+def build_context_package_from_config(config: "CoreConfig") -> dict[str, Any]:
+    """Core assembly using structured CoreConfig.
+
+    Prefer this over build_context_package_core(**kwargs).
+    Behavior is identical — only the parameter interface changes.
+    """
+    return build_context_package_core(
+        host=config.host,
+        event=config.event,
+        payload=config.payload,
+        cwd=config.cwd,
+        project_scope=config.project_scope,
+        workspace_root=config.workspace_root,
+        repo_root=config.repo_root,
+        required_canonical=config.required_canonical,
+        project_canonical=config.project_canonical,
+        project_runtime_root=config.project_runtime_root,
+        global_canonical=config.global_canonical,
+        project_map_governance=config.project_map_governance,
+        event_log=config.event_log,
+        legality_source_policy=config.legality_source_policy,
+        registration_commit_policy=config.registration_commit_policy,
+        registration_commit_phase=config.registration_commit_phase,
+        project_map_refs=config.project_map_refs,
+        extract_excerpt_fn=config.extract_excerpt_fn,
+        now_iso_fn=config.now_iso_fn,
+        write_targets_fn=config.write_targets_fn,
+        validate_project_map_fn=config.validate_project_map_fn,
+        validate_unique_legal_system_contract_fn=config.validate_unique_legal_system_contract_fn,
+        policy_validate_fn=config.policy_validate_fn,
+        get_policy_pack_fn=config.get_policy_pack_fn,
+        governance_frozen_tuple_errors_fn=config.governance_frozen_tuple_errors_fn,
+        event_contract_blocker_errors_fn=config.event_contract_blocker_errors_fn,
+        git_registration_probe_fn=config.git_registration_probe_fn,
+        truth_basis_for_scope_fn=config.truth_basis_for_scope_fn,
+        decision_refs_for_scope_fn=config.decision_refs_for_scope_fn,
+        lesson_refs_for_scope_fn=config.lesson_refs_for_scope_fn,
+        docs_refs_for_scope_fn=config.docs_refs_for_scope_fn,
+        hook_contract_path=config.hook_contract_path,
+        surface_id=config.surface_id,
+        workspace_id=config.workspace_id,
+        governance_blocker_scopes=config.governance_blocker_scopes,
+        event_contract_blocker_scopes=config.event_contract_blocker_scopes,
+        core_evidence_refs=config.core_evidence_refs,
+    )
