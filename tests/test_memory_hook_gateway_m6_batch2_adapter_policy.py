@@ -155,16 +155,18 @@ def test_build_context_package_passes_scope_overrides_to_core(monkeypatch, tmp_p
     monkeypatch.setattr(gateway, "discover_cwd", lambda payload: gateway.WORKSPACE_ROOT)
     monkeypatch.setattr(gateway, "determine_project_scope", lambda cwd: "workbot")
 
-    captured: dict[str, object] = {}
+    captured_config: list[object] = []
 
-    def fake_core(**kwargs):
-        captured.update(kwargs)
+    def fake_from_config(config):
+        captured_config.append(config)
         return {"status": "ok", "schema_version": "wb-hook-v2"}
 
-    monkeypatch.setattr(gateway, "build_context_package_core", fake_core)
+    monkeypatch.setattr(gateway, "build_context_package_from_config", fake_from_config)
 
     package = gateway.build_context_package("codex", "session-start", {})
 
     assert package["status"] == "ok"
-    assert captured["project_canonical"]["workbot"] == canonical_override
-    assert captured["project_runtime_root"]["workbot"] == runtime_override
+    assert len(captured_config) == 1
+    cfg = captured_config[0]
+    assert cfg.project_canonical["workbot"] == canonical_override
+    assert cfg.project_runtime_root["workbot"] == runtime_override

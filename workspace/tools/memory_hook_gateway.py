@@ -29,7 +29,7 @@ except ImportError:
     from cmux_hook_state import default_hook_state_path, record_hook_event  # type: ignore  # noqa: E402
 
 try:
-    from .memory_hook_core import build_context_package_core
+    from .memory_hook_core import build_context_package_core, build_context_package_from_config
     from .memory_hook_config import CoreConfig
     from .memory_hook_interfaces import (
         ArtifactSink,
@@ -53,7 +53,7 @@ try:
     from .memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile
     from .memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy
 except ImportError:
-    from memory_hook_core import build_context_package_core  # type: ignore
+    from memory_hook_core import build_context_package_core, build_context_package_from_config  # type: ignore
     from memory_hook_config import CoreConfig  # type: ignore
     from memory_hook_interfaces import (  # type: ignore
         ArtifactSink,
@@ -91,6 +91,12 @@ except ImportError:
 else:
     _fn = getattr(_mod, _fn_name)
 globals().update(_fn(REPO_ROOT, WORKSPACE_ROOT))
+
+
+__all__ = [
+    'build_context_package',
+    'build_context_package_simple',
+]
 
 
 # ---------------------------------------------------------------------------
@@ -781,10 +787,9 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
         event_contract_blocker_scopes=EVENT_CONTRACT_BLOCKER_SCOPES,
         core_evidence_refs=CORE_EVIDENCE_REFS,
     )
-    core_kwargs = config.to_gateway_kwargs()
     requested_provider = os.environ.get("MEMORY_HOOK_CORE_PROVIDER", "legacy").strip() or "legacy"
     provider_name, provider_builder, provider_errors = _resolve_core_builder(requested_provider, allow_fallback=True)
-    package = provider_builder(**core_kwargs)
+    package = build_context_package_from_config(config)
     system_context = package.setdefault("system_context", {})
     if isinstance(system_context, dict):
         system_context["core_provider"] = provider_name
@@ -805,7 +810,7 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
         shadow_result: dict[str, Any]
         try:
             _, shadow_builder, _ = _resolve_core_builder(shadow_provider, allow_fallback=False)
-            shadow_package = shadow_builder(**core_kwargs)
+            shadow_package = build_context_package_from_config(config)
             shadow_result = {
                 "provider": shadow_provider,
                 "status": shadow_package.get("status"),
@@ -824,6 +829,28 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
     _apply_artifact_compaction(package)
     return package
 
+
+def build_context_package_simple(
+    host: str,
+    event: str,
+    payload: dict[str, Any] | None = None,
+    *,
+    adapter: str | None = None,
+) -> dict[str, Any]:
+    """Simplified 3-parameter entry point for memory-hook.
+
+    Args:
+        host: "codex" or "claude"
+        event: event name (e.g. "session-start", "prompt-submit")
+        payload: event payload dict (default: empty dict)
+        adapter: adapter name override (default: from MEMORY_HOOK_ADAPTER env var)
+
+    Returns:
+        Context package dict with status="ok" or "degraded"
+    """
+    if payload is None:
+        payload = {}
+    return build_context_package(host, event, payload)
 
 
 def ensure_artifact_dirs() -> None:
