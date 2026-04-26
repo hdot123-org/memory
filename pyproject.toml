@@ -13,6 +13,13 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 
+[project.scripts]
+memory-validate = "workspace.tools.validate_memory_system:main"
+memory-rollback = "workspace.tools.memory_hook_provider_rollback:main"
+
+[tool.setuptools.packages.find]
+include = ["workspace*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

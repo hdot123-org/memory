@@ -99,6 +99,54 @@ class PolicyRegistry(ABC):
         pass
 
 
+    # Validation and scope lookup methods
+
+    @abstractmethod
+    def validate_project_map(self) -> list[str]:
+        """Validate project-map contract files."""
+        pass
+
+    @abstractmethod
+    def validate_unique_legal_system_contract(self) -> list[str]:
+        """Validate unique legal system contract."""
+        pass
+
+    @abstractmethod
+    def governance_frozen_tuple_errors(self) -> list[str]:
+        """Return governance frozen tuple blocker errors."""
+        pass
+
+    @abstractmethod
+    def event_contract_blocker_errors(self) -> list[str]:
+        """Return event contract blocker errors."""
+        pass
+
+    @abstractmethod
+    def git_registration_probe(self, event: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Probe git registration for the given event and payload."""
+        pass
+
+    @abstractmethod
+    def truth_basis_for_scope(self, scope: str) -> dict[str, Any]:
+        """Return truth basis package for the given scope."""
+        pass
+
+    @abstractmethod
+    def decision_refs_for_scope(self, scope: str) -> list[str]:
+        """Return decision refs for the given scope."""
+        pass
+
+    @abstractmethod
+    def lesson_refs_for_scope(self, scope: str) -> list[str]:
+        """Return lesson refs for the given scope."""
+        pass
+
+    @abstractmethod
+    def docs_refs_for_scope(self, scope: str) -> list[str]:
+        """Return docs refs for the given scope."""
+        pass
+
+
 # ---------------------------------------------------------------------------
 # IF-3: RouteTargetPolicy / WriteTargetPolicy
 # ---------------------------------------------------------------------------
@@ -239,4 +287,22 @@ class ErrorSink(ABC):
     @abstractmethod
     def log(self, component: str, message: str, context: dict[str, Any]) -> None:
         """Log an error message."""
+        pass
+
+
+# ---------------------------------------------------------------------------
+# IF-6: PathUtils
+# ---------------------------------------------------------------------------
+
+class PathUtils(ABC):
+    """Path-related utility callbacks used by core assembly."""
+
+    @abstractmethod
+    def extract_excerpt(self, path: Path, max_lines: int = 12) -> list[str]:
+        """Extract a brief excerpt from a file."""
+        pass
+
+    @abstractmethod
+    def write_targets(self) -> dict[str, Any]:
+        """Return the current write target map."""
         pass
