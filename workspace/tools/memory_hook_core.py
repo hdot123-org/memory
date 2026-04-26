@@ -11,6 +11,66 @@ from pathlib import Path
 from typing import Any, Callable, Collection
 
 
+def _resolve_callbacks(config: "CoreConfig") -> dict[str, Callable]:
+    """Resolve callbacks from interface objects or individual config fields.
+
+    When config carries composite interface attributes (policy_registry,
+    path_utils), extract the bound methods from them. Otherwise fall back
+    to the flat callback fields that CoreConfig already exposes.
+    """
+    # --- policy_registry ------------------------------------------------
+    pr = getattr(config, "policy_registry", None)
+    if pr is not None:
+        validate_project_map_fn = pr.validate_project_map
+        validate_unique_legal_system_contract_fn = pr.validate_unique_legal_system_contract
+        policy_validate_fn = pr.validate
+        get_policy_pack_fn = pr.get_policy_pack
+        governance_frozen_tuple_errors_fn = pr.governance_frozen_tuple_errors
+        event_contract_blocker_errors_fn = pr.event_contract_blocker_errors
+        git_registration_probe_fn = pr.git_registration_probe
+        truth_basis_for_scope_fn = pr.truth_basis_for_scope
+        decision_refs_for_scope_fn = pr.decision_refs_for_scope
+        lesson_refs_for_scope_fn = pr.lesson_refs_for_scope
+        docs_refs_for_scope_fn = pr.docs_refs_for_scope
+    else:
+        validate_project_map_fn = config.validate_project_map_fn
+        validate_unique_legal_system_contract_fn = config.validate_unique_legal_system_contract_fn
+        policy_validate_fn = config.policy_validate_fn
+        get_policy_pack_fn = config.get_policy_pack_fn
+        governance_frozen_tuple_errors_fn = config.governance_frozen_tuple_errors_fn
+        event_contract_blocker_errors_fn = config.event_contract_blocker_errors_fn
+        git_registration_probe_fn = config.git_registration_probe_fn
+        truth_basis_for_scope_fn = config.truth_basis_for_scope_fn
+        decision_refs_for_scope_fn = config.decision_refs_for_scope_fn
+        lesson_refs_for_scope_fn = config.lesson_refs_for_scope_fn
+        docs_refs_for_scope_fn = config.docs_refs_for_scope_fn
+
+    # --- path_utils -----------------------------------------------------
+    pu = getattr(config, "path_utils", None)
+    if pu is not None:
+        extract_excerpt_fn = pu.extract_excerpt
+        write_targets_fn = pu.write_targets
+    else:
+        extract_excerpt_fn = config.extract_excerpt_fn
+        write_targets_fn = config.write_targets_fn
+
+    return {
+        "validate_project_map_fn": validate_project_map_fn,
+        "validate_unique_legal_system_contract_fn": validate_unique_legal_system_contract_fn,
+        "policy_validate_fn": policy_validate_fn,
+        "get_policy_pack_fn": get_policy_pack_fn,
+        "governance_frozen_tuple_errors_fn": governance_frozen_tuple_errors_fn,
+        "event_contract_blocker_errors_fn": event_contract_blocker_errors_fn,
+        "git_registration_probe_fn": git_registration_probe_fn,
+        "truth_basis_for_scope_fn": truth_basis_for_scope_fn,
+        "decision_refs_for_scope_fn": decision_refs_for_scope_fn,
+        "lesson_refs_for_scope_fn": lesson_refs_for_scope_fn,
+        "docs_refs_for_scope_fn": docs_refs_for_scope_fn,
+        "extract_excerpt_fn": extract_excerpt_fn,
+        "write_targets_fn": write_targets_fn,
+    }
+
+
 def registration_phase_from_policy_pack(
     policy_pack: dict[str, Any],
     default_phase: str = "declared-not-enforced",
@@ -277,6 +337,7 @@ def build_context_package_from_config(config: "CoreConfig") -> dict[str, Any]:
     Prefer this over build_context_package_core(**kwargs).
     Behavior is identical — only the parameter interface changes.
     """
+    cb = _resolve_callbacks(config)
     return build_context_package_core(
         host=config.host,
         event=config.event,
@@ -295,20 +356,20 @@ def build_context_package_from_config(config: "CoreConfig") -> dict[str, Any]:
         registration_commit_policy=config.registration_commit_policy,
         registration_commit_phase=config.registration_commit_phase,
         project_map_refs=config.project_map_refs,
-        extract_excerpt_fn=config.extract_excerpt_fn,
+        extract_excerpt_fn=cb["extract_excerpt_fn"],
         now_iso_fn=config.now_iso_fn,
-        write_targets_fn=config.write_targets_fn,
-        validate_project_map_fn=config.validate_project_map_fn,
-        validate_unique_legal_system_contract_fn=config.validate_unique_legal_system_contract_fn,
-        policy_validate_fn=config.policy_validate_fn,
-        get_policy_pack_fn=config.get_policy_pack_fn,
-        governance_frozen_tuple_errors_fn=config.governance_frozen_tuple_errors_fn,
-        event_contract_blocker_errors_fn=config.event_contract_blocker_errors_fn,
-        git_registration_probe_fn=config.git_registration_probe_fn,
-        truth_basis_for_scope_fn=config.truth_basis_for_scope_fn,
-        decision_refs_for_scope_fn=config.decision_refs_for_scope_fn,
-        lesson_refs_for_scope_fn=config.lesson_refs_for_scope_fn,
-        docs_refs_for_scope_fn=config.docs_refs_for_scope_fn,
+        write_targets_fn=cb["write_targets_fn"],
+        validate_project_map_fn=cb["validate_project_map_fn"],
+        validate_unique_legal_system_contract_fn=cb["validate_unique_legal_system_contract_fn"],
+        policy_validate_fn=cb["policy_validate_fn"],
+        get_policy_pack_fn=cb["get_policy_pack_fn"],
+        governance_frozen_tuple_errors_fn=cb["governance_frozen_tuple_errors_fn"],
+        event_contract_blocker_errors_fn=cb["event_contract_blocker_errors_fn"],
+        git_registration_probe_fn=cb["git_registration_probe_fn"],
+        truth_basis_for_scope_fn=cb["truth_basis_for_scope_fn"],
+        decision_refs_for_scope_fn=cb["decision_refs_for_scope_fn"],
+        lesson_refs_for_scope_fn=cb["lesson_refs_for_scope_fn"],
+        docs_refs_for_scope_fn=cb["docs_refs_for_scope_fn"],
         hook_contract_path=config.hook_contract_path,
         surface_id=config.surface_id,
         workspace_id=config.workspace_id,
