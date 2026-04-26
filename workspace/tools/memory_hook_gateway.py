@@ -49,9 +49,12 @@ try:
         PolicyRegistryImpl,
         RouteTargetPolicyImpl,
         WriteTargetPolicyImpl,
+        ArtifactWriter,
+        DelegateRouter,
     )
     from .memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile
     from .memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy
+    from .memory_hook_schema import convert_to_v1
 except ImportError:
     from memory_hook_core import build_context_package_core, build_context_package_from_config  # type: ignore
     from memory_hook_config import CoreConfig  # type: ignore
@@ -73,9 +76,12 @@ except ImportError:
         PolicyRegistryImpl,
         RouteTargetPolicyImpl,
         WriteTargetPolicyImpl,
+        ArtifactWriter,
+        DelegateRouter,
     )
     from memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile  # type: ignore
     from memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy  # type: ignore
+    from memory_hook_schema import convert_to_v1  # type: ignore
 
 
 import importlib  # noqa: E402
@@ -96,6 +102,8 @@ globals().update(_fn(REPO_ROOT, WORKSPACE_ROOT))
 __all__ = [
     'build_context_package',
     'build_context_package_simple',
+    'ArtifactWriter',
+    'DelegateRouter',
 ]
 
 
@@ -850,7 +858,8 @@ def build_context_package_simple(
     """
     if payload is None:
         payload = {}
-    return build_context_package(host, event, payload)
+    v2_package = build_context_package(host, event, payload)
+    return convert_to_v1(v2_package)
 
 
 def ensure_artifact_dirs() -> None:
