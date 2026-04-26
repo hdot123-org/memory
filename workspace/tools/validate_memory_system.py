@@ -205,6 +205,41 @@ def check_core_config_path(result: ValidateResult) -> bool:
         result.record("core_config_path", False, str(exc))
         return False
 
+
+def check_v1_schema(result: ValidateResult) -> bool:
+    """Verify build_context_package_simple returns context-package-v1."""
+    try:
+        from memory_hook_gateway import build_context_package_simple  # type: ignore
+        from memory_hook_schema import is_v1  # type: ignore
+        package = build_context_package_simple("codex", "test", {})
+        if not is_v1(package):
+            result.record("v1_schema", False, f"expected context-package-v1, got {package.get('schema_version')}")
+            return False
+        # Verify v1 structure
+        assert "paths" in package, "missing 'paths' key"
+        assert "project" in package, "missing 'project' key"
+        assert "task" in package, "missing 'task' key"
+        assert "system_context" not in package, "system_context should be removed in v1"
+        result.record("v1_schema", True, "context-package-v1 structure valid")
+        return True
+    except Exception as exc:
+        result.record("v1_schema", False, str(exc))
+        return False
+
+
+def check_package_imports(result: ValidateResult) -> bool:
+    """Verify workspace.tools public API is importable."""
+    try:
+        import workspace.tools  # type: ignore
+        assert hasattr(workspace.tools, 'build_context_package')
+        assert hasattr(workspace.tools, 'CoreConfig')
+        result.record("package_imports", True, "4 public symbols importable")
+        return True
+    except Exception as exc:
+        result.record("package_imports", False, str(exc))
+        return False
+
+
 def main() -> int:
     result = ValidateResult()
 
@@ -221,6 +256,10 @@ def main() -> int:
     check_context_package(result, builder)
 
     check_core_config_path(result)
+
+    check_v1_schema(result)
+
+    check_package_imports(result)
 
     print(result.summary())
     return 0 if result.all_passed else 1
