@@ -22,6 +22,8 @@ from typing import Any, Callable
 
 try:
     from .memory_hook_interfaces import (
+        RegistrationCommitGate,
+        TruthBasis,
         ArtifactSink,
         ErrorSink,
         GatewayBusinessPolicy,
@@ -32,6 +34,8 @@ try:
     )
 except ImportError:
     from memory_hook_interfaces import (  # type: ignore
+        RegistrationCommitGate,
+        TruthBasis,
         ArtifactSink,
         ErrorSink,
         GatewayBusinessPolicy,
@@ -373,11 +377,11 @@ class PolicyRegistryImpl(PolicyRegistry):
         """Stub: return empty list. Real impl delegates to GatewayBusinessPolicy."""
         return []
 
-    def git_registration_probe(self, event: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def git_registration_probe(self, event: str, payload: dict[str, Any]) -> RegistrationCommitGate:
         """Stub: return empty dict. Real impl delegates to GatewayBusinessPolicy."""
         return {}
 
-    def truth_basis_for_scope(self, scope: str) -> dict[str, Any]:
+    def truth_basis_for_scope(self, scope: str) -> TruthBasis:
         """Stub: return empty dict. Real impl delegates to GatewayBusinessPolicy."""
         return {}
 
@@ -974,7 +978,7 @@ class GatewayBusinessPolicyImpl(GatewayBusinessPolicy):
         refs = self._config.project_doc_refs.get(project_scope, [])
         return self._existing_paths(refs)
 
-    def truth_basis_for_scope(self, project_scope: str) -> dict[str, Any]:
+    def truth_basis_for_scope(self, project_scope: str) -> TruthBasis:
         project_canonical = self.get_project_canonical()
         project_file = project_canonical.get(project_scope)
         if project_file is None:
