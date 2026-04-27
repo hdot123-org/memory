@@ -297,6 +297,7 @@ def execute_delegate_via_facade(
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the gateway."""
     parser = argparse.ArgumentParser(description="Workbot memory hook gateway.")
     parser.add_argument("--host", required=True, choices=("codex", "claude"))
     parser.add_argument("--event", required=True, choices=("session-start", "prompt-submit", "stop", "notification"))
@@ -305,10 +306,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def now_iso() -> str:
+    """Return the current local time as an ISO-8601 string with second precision."""
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def read_payload(raw_payload: str) -> dict[str, Any]:
+    """Parse a raw JSON string into a dict; return empty dict on failure or empty input."""
     if not raw_payload.strip():
         return {}
     try:
@@ -319,6 +322,7 @@ def read_payload(raw_payload: str) -> dict[str, Any]:
 
 
 def payload_cwd(payload: dict[str, Any]) -> Path | None:
+    """Extract the cwd path from a payload dict, if present and non-empty."""
     value = payload.get("cwd")
     if isinstance(value, str) and value:
         return Path(value).expanduser()
@@ -326,11 +330,13 @@ def payload_cwd(payload: dict[str, Any]) -> Path | None:
 
 
 def environment_cwd() -> Path | None:
+    """Return the current working directory from the PWD environment variable."""
     env_pwd = os.environ.get("PWD")
     return Path(env_pwd).expanduser() if env_pwd else None
 
 
 def path_within_repo(path: Path) -> bool:
+    """Check whether a resolved path falls within the repository root."""
     try:
         path.resolve().relative_to(REPO_ROOT.resolve())
         return True
@@ -339,6 +345,7 @@ def path_within_repo(path: Path) -> bool:
 
 
 def discover_cwd(payload: dict[str, Any]) -> Path:
+    """Determine the effective working directory from payload, environment, or repo root."""
     provided_cwd = payload_cwd(payload)
     if provided_cwd and path_within_repo(provided_cwd):
         return provided_cwd
@@ -353,6 +360,7 @@ def discover_cwd(payload: dict[str, Any]) -> Path:
 
 
 def should_noop_for_external_context(payload: dict[str, Any]) -> bool:
+    """Return True if the hook should no-op because cwd is outside the repo and no force flag is set."""
     if os.environ.get("MEMORY_HOOK_FORCE") or os.environ.get("WORKBOT_FORCE_HOOK"):
         return False
     env_cwd = environment_cwd()
@@ -373,10 +381,12 @@ def _delegate_noop_response(host: str) -> int:
 
 
 def determine_project_scope(cwd: Path) -> str:
+    """Determine the project scope for a given working directory via the business policy."""
     return _get_gateway_business_policy().determine_project_scope(cwd)
 
 
 def extract_excerpt(path: Path, max_lines: int = 12) -> list[str]:
+    """Read up to max_lines of non-empty stripped lines from a file for context snippets."""
     if not path.exists():
         return []
     lines = []
@@ -391,6 +401,7 @@ def extract_excerpt(path: Path, max_lines: int = 12) -> list[str]:
 
 
 def section_bullets(text: str, heading: str) -> list[str]:
+    """Extract bullet-point lines under a given markdown heading."""
     lines = text.splitlines()
     bullets: list[str] = []
     in_section = False
@@ -407,6 +418,7 @@ def section_bullets(text: str, heading: str) -> list[str]:
 
 
 def section_body(text: str, heading: str) -> str:
+    """Extract the body text under a given markdown heading until the next heading."""
     lines = text.splitlines()
     start_idx: int | None = None
     for idx, line in enumerate(lines):
@@ -424,27 +436,33 @@ def section_body(text: str, heading: str) -> str:
 
 
 def markdown_code_tokens(text: str) -> set[str]:
+    """Extract all inline code token values from a markdown string."""
     return {match.group(1) for match in re.finditer(r"`([^`]+)`", text)}
 
 
 def json_string_values(text: str, key: str) -> set[str]:
+    """Extract all string values for a given key from a JSON-formatted text."""
     pattern = rf'"{re.escape(key)}"\s*:\s*"([^"]+)"'
     return {match.group(1) for match in re.finditer(pattern, text)}
 
 
 def json_object_keys(text: str) -> set[str]:
+    """Extract all JSON object keys from a text."""
     return {match.group(1) for match in re.finditer(r'"([^"]+)"\s*:', text)}
 
 
 def governance_frozen_tuple_blocker_errors() -> list[str]:
+    """Return governance frozen-tuple validation blocker errors from the business policy."""
     return _get_gateway_business_policy().governance_frozen_tuple_blocker_errors()
 
 
 def event_contract_blocker_errors() -> list[str]:
+    """Return event-contract validation blocker errors from the business policy."""
     return _get_gateway_business_policy().event_contract_blocker_errors()
 
 
 def path_is_under(path: Path, root: Path) -> bool:
+    """Check whether a resolved path is under a given root directory."""
     try:
         path.resolve().relative_to(root.resolve())
         return True
@@ -453,6 +471,7 @@ def path_is_under(path: Path, root: Path) -> bool:
 
 
 def classify_truth_ref(path: Path) -> str:
+    """Classify a path into a truth-reference category (e.g. legal-core, project-canonical, docs)."""
     if path == PROJECT_MAP_ROOT / "legal-core-map.md":
         return "legal-core"
     if path == PROJECT_MAP_ROOT / "INDEX.md":
@@ -489,14 +508,17 @@ def classify_truth_ref(path: Path) -> str:
 
 
 def authority_ref_allowed(path: Path) -> bool:
+    """Check whether a path is an allowed authority reference."""
     return path in AUTHORITY_ALLOWED_PATHS or path in GLOBAL_CANONICAL
 
 
 def lower_evidence_ref(path: Path) -> bool:
+    """Check whether a path falls under any lower-evidence root directory."""
     return any(path_is_under(path, root) for root in LOWER_EVIDENCE_ROOTS)
 
 
 def truth_basis_sections_for(path: Path) -> dict[str, Any]:
+    """Parse a truth canonical file and return its Source/Authority/Evidence/Conflict sections."""
     text = path.read_text(encoding="utf-8")
     return {
         "source_refs": section_bullets(text, "### Source Refs"),
@@ -507,6 +529,7 @@ def truth_basis_sections_for(path: Path) -> dict[str, Any]:
 
 
 def truth_basis_errors_for(path: Path) -> list[str]:
+    """Validate a truth canonical file and return a list of validation errors."""
     errors: list[str] = []
     if not path.exists():
         return [f"missing truth canonical: {path}"]
@@ -553,10 +576,12 @@ def truth_basis_errors_for(path: Path) -> list[str]:
 
 
 def existing_paths(paths: list[Path]) -> list[str]:
+    """Filter a list of paths to only those that exist on disk, returned as strings."""
     return [str(path) for path in paths if path.exists()]
 
 
 def normalize_repo_scope_entry(value: str | Path) -> str | None:
+    """Normalize a path to a repo-relative POSIX path; return None if outside the repo."""
     path = Path(value).expanduser()
     try:
         return path.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
@@ -565,6 +590,7 @@ def normalize_repo_scope_entry(value: str | Path) -> str | None:
 
 
 def registration_payload_paths(payload: dict[str, Any]) -> list[str]:
+    """Extract and normalize registration_paths from a payload dict."""
     raw = payload.get("registration_paths")
     if isinstance(raw, str):
         raw_values = [raw]
@@ -581,6 +607,7 @@ def registration_payload_paths(payload: dict[str, Any]) -> list[str]:
 
 
 def git_name_only(*args: str) -> list[str]:
+    """Run a git command with --name-only and return stripped output lines."""
     proc = subprocess.run(
         ["git", "-C", str(REPO_ROOT), *args],
         text=True,
@@ -593,11 +620,13 @@ def git_name_only(*args: str) -> list[str]:
 
 
 def path_matches_scope(candidate: str, scope_entry: str) -> bool:
+    """Check whether a candidate path matches a scope entry prefix."""
     normalized_scope = scope_entry.rstrip("/")
     return candidate == normalized_scope or candidate.startswith(f"{normalized_scope}/")
 
 
 def git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Probe git status and commit history for project-map registration scope."""
     map_scope = [str(path) for path in REGISTRATION_GIT_SCOPE]
     registration_paths = registration_payload_paths(payload)
     tracked_scope = map_scope + [str(REPO_ROOT / item) for item in registration_paths]
@@ -650,40 +679,49 @@ def git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, Any
 
 
 def project_map_refs() -> list[str]:
+    """Return the project map reference list from the business policy."""
     return _get_gateway_business_policy().project_map_refs()
 
 
 def read_text_if_exists(path: Path) -> str:
+    """Read file text if it exists, otherwise return an empty string."""
     if not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
 
 
 def validate_project_map_files() -> list[str]:
+    """Validate project map files via the business policy."""
     return _get_gateway_business_policy().validate_project_map_files()
 
 
 def validate_unique_legal_system_contract() -> list[str]:
+    """Validate the unique legal-system contract via the business policy."""
     return _get_gateway_business_policy().validate_unique_legal_system_contract()
 
 
 def decision_refs_for_scope(project_scope: str) -> list[str]:
+    """Return decision-log references for a given project scope."""
     return _get_gateway_business_policy().decision_refs_for_scope(project_scope)
 
 
 def lesson_refs_for_scope(project_scope: str) -> list[str]:
+    """Return lesson references for a given project scope."""
     return _get_gateway_business_policy().lesson_refs_for_scope(project_scope)
 
 
 def docs_refs_for_scope(project_scope: str) -> list[str]:
+    """Return documentation references for a given project scope."""
     return _get_gateway_business_policy().docs_refs_for_scope(project_scope)
 
 
 def truth_basis_for_scope(project_scope: str) -> dict[str, Any]:
+    """Return the truth-basis mapping for a given project scope."""
     return _get_gateway_business_policy().truth_basis_for_scope(project_scope)
 
 
 def write_targets() -> dict[str, Any]:
+    """Return write-target paths, falling back to defaults if the policy facade fails."""
     try:
         return write_targets_via_policy()
     except Exception:
@@ -709,6 +747,7 @@ def write_targets() -> dict[str, Any]:
 
 
 def resolve_route_target(kind: str) -> str:
+    """Resolve a route target by kind, falling back to a static map if the policy facade fails."""
     try:
         return resolve_route_target_via_policy(kind)
     except Exception:
@@ -753,6 +792,7 @@ def _apply_artifact_compaction(package: dict[str, Any]) -> None:
 
 
 def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Build a full context package for the given host, event, and payload."""
     cwd = discover_cwd(payload)
     project_scope = determine_project_scope(cwd)
     business_policy = _get_gateway_business_policy()
@@ -863,6 +903,7 @@ def build_context_package_simple(
 
 
 def ensure_artifact_dirs() -> None:
+    """Ensure artifact output directories exist, with fallback if the sink fails."""
     try:
         _get_artifact_sink().ensure_dirs()
     except RuntimeError:
@@ -871,6 +912,7 @@ def ensure_artifact_dirs() -> None:
 
 
 def append_error_log(component: str, message: str, context: dict[str, Any]) -> None:
+    """Append an error entry to the error log, with fallback if the sink fails."""
     try:
         append_error_log_via_sink(component, message, context)
     except RuntimeError:
@@ -882,6 +924,7 @@ def append_error_log(component: str, message: str, context: dict[str, Any]) -> N
 
 
 def write_artifacts(package: dict[str, Any]) -> dict[str, str]:
+    """Write a context package to disk via the sink, with fallback if the sink fails."""
     try:
         return write_artifacts_via_sink(package)
     except RuntimeError:
@@ -908,6 +951,7 @@ def write_artifacts(package: dict[str, Any]) -> dict[str, str]:
 
 
 def require_env(name: str) -> str:
+    """Return a required environment variable value, raising RuntimeError if missing."""
     value = os.environ.get(name, "")
     if not value:
         raise RuntimeError(f"missing required env: {name}")
@@ -915,6 +959,7 @@ def require_env(name: str) -> str:
 
 
 def canonicalize_cmux_refs(workspace_ref: str, surface_ref: str) -> tuple[str, str]:
+    """Canonicalize workspace and surface refs via the cmux CLI, falling back to originals on failure."""
     proc = subprocess.run(
         ["cmux", "identify", "--workspace", workspace_ref, "--surface", surface_ref],
         text=True,
@@ -937,14 +982,17 @@ def canonicalize_cmux_refs(workspace_ref: str, surface_ref: str) -> tuple[str, s
 
 
 def delegate_codex(event: str, raw_payload: str) -> subprocess.CompletedProcess[str]:
+    """Delegate execution to Codex for the given event and raw payload."""
     return execute_delegate_via_facade("codex", event, raw_payload, {})
 
 
 def delegate_claude(event: str, raw_payload: str, payload: dict[str, Any]) -> subprocess.CompletedProcess[str]:
+    """Delegate execution to Claude for the given event, raw payload, and parsed payload."""
     return execute_delegate_via_facade("claude", event, raw_payload, payload)
 
 
 def main() -> int:
+    """Main entry point: parse args, build context package, write artifacts, and delegate to host."""
     args = parse_args()
     raw_payload = sys.stdin.read()
     payload = read_payload(raw_payload)
