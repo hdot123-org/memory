@@ -439,7 +439,7 @@ class WriteTargetPolicyImpl(WriteTargetPolicy):
     def __init__(self, workspace_root: Path):
         self._workspace_root = workspace_root
         self._targets: dict[str, Any] = {
-            "fact": str(workspace_root / "memory" / "log" / f"{datetime.now().date().isoformat()}.md"),
+            "fact": None,  # evaluated lazily in get_targets() to avoid stale date across midnight,
             "global_canonical": str(workspace_root / "memory" / "kb" / "global"),
             "project_canonical": str(workspace_root / "memory" / "kb" / "projects"),
             "decision": str(workspace_root / "memory" / "kb" / "decisions"),
@@ -458,7 +458,10 @@ class WriteTargetPolicyImpl(WriteTargetPolicy):
         }
 
     def get_targets(self) -> dict[str, Any]:
-        return dict(self._targets)
+        result = dict(self._targets)
+        if result.get('fact') is None:
+            result['fact'] = str(self._workspace_root / 'memory' / 'log' / f'{datetime.now().date().isoformat()}.md')
+        return result
 
 
 # ---------------------------------------------------------------------------

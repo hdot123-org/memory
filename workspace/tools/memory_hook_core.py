@@ -171,6 +171,10 @@ def build_context_package_core(
     Gateway should only wire dependencies and environment values.
     """
 
+    def _safe_tb(basis: dict, key: str, default: Any = None) -> Any:
+        """Safely extract a key from a truth_basis dict at runtime."""
+        return basis.get(key, default)
+
     missing_paths = [str(path) for path in required_canonical if not path.exists()]
     project_map_errors = validate_project_map_fn()
     contract_errors = validate_unique_legal_system_contract_fn()
@@ -217,8 +221,8 @@ def build_context_package_core(
     lessons = lesson_refs_for_scope_fn(project_scope)
     docs_refs = docs_refs_for_scope_fn(project_scope)
     truth_basis = truth_basis_for_scope_fn(project_scope)
-    truth_basis_refs = truth_basis["refs"]
-    truth_basis_errors = list(truth_basis["errors"])
+    truth_basis_refs = _safe_tb(truth_basis, "refs", [])
+    truth_basis_errors = list(_safe_tb(truth_basis, "errors", []))
 
     reads = [
         str(workspace_root / "NOW.md"),
@@ -252,7 +256,7 @@ def build_context_package_core(
         and not blocker_errors
         else "degraded"
     )
-    project_truth_status = "truth-ready" if truth_basis["validation"] == "pass" and not truth_basis_errors else "truth-incomplete"
+    project_truth_status = "truth-ready" if _safe_tb(truth_basis, "validation", "unknown") == "pass" and not truth_basis_errors else "truth-incomplete"
     runtime_root = project_runtime_root.get(project_scope, workspace_root / "projects" / project_scope)
     evidence_refs = [
         *project_map_refs,
@@ -292,8 +296,8 @@ def build_context_package_core(
             "registration_commit_enforced": registration_commit_gate.get("enforced", False),
             "registration_commit_enforcement_result": registration_commit_gate.get("enforcement_result", "not-enforced"),
             "global_canonical": [str(path) for path in global_canonical],
-            "truth_basis_policy": truth_basis["policy"],
-            "truth_basis_validation": truth_basis["validation"] if not truth_basis_errors else "fail",
+            "truth_basis_policy": _safe_tb(truth_basis, "policy", "default"),
+            "truth_basis_validation": _safe_tb(truth_basis, "validation", "unknown") if not truth_basis_errors else "fail",
             "truth_basis_refs": truth_basis_refs,
             "truth_basis_errors": truth_basis_errors,
             "governance_frozen_tuple_validation": "pass" if not governance_tuple_errors else "fail",
@@ -309,13 +313,13 @@ def build_context_package_core(
         "project_context": {
             "scope": project_scope,
             "canonical": str(project_file),
-            "truth_basis_canonical": truth_basis["project_ref"],
+            "truth_basis_canonical": _safe_tb(truth_basis, "project_ref", ""),
             "truth_status": project_truth_status,
             "runtime_root": str(runtime_root),
-            "source_refs": truth_basis["source_refs"],
-            "authority_refs": truth_basis["authority_refs"],
-            "evidence_refs": truth_basis["evidence_refs"],
-            "conflict_status": truth_basis["conflict_status"],
+            "source_refs": _safe_tb(truth_basis, "source_refs", []),
+            "authority_refs": _safe_tb(truth_basis, "authority_refs", []),
+            "evidence_refs": _safe_tb(truth_basis, "evidence_refs", []),
+            "conflict_status": _safe_tb(truth_basis, "conflict_status", ["unknown"]),
         },
         "task_context": {
             "event": event,

@@ -955,7 +955,14 @@ def main() -> int:
 
     writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
     package = build_context_package(args.host, args.event, payload)
-    artifact_paths = writer.write(args.host, args.event, package)
+    write_ok = writer.write(args.host, args.event, package)
+    if not write_ok:
+        append_error_log(
+            "memory-hook-gateway",
+            "artifact write failed",
+            {"host": args.host, "event": args.event, "error": writer.last_error},
+        )
+        print(f"[memory-hook-gateway] artifact write failed: {writer.last_error}", file=sys.stderr)
 
     if package["status"] != "ok":
         append_error_log(
@@ -1001,7 +1008,7 @@ def main() -> int:
                 "returncode": proc.returncode,
                 "stderr": proc.stderr,
                 "stdout": proc.stdout,
-                "artifact_latest": artifact_paths.get("latest") if artifact_paths else None,
+                "artifact_latest": None,
             },
         )
 
