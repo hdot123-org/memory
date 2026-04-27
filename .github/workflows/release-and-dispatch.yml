@@ -47,12 +47,14 @@ jobs:
       - name: Compute next release tag
         id: version
         run: |
-          last=$(git tag --list 'v0.1.*' --sort=-v:refname | head -n 1)
+          last=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
           if [ -z "$last" ]; then
-            next="v0.1.0"
+            next="v0.0.0"
           else
-            patch="${last##*.}"
-            next="v0.1.$((patch + 1))"
+            ver="${last#v}"
+            minor="${ver%.*}"
+            patch="${ver##*.}"
+            next="v${minor}.$((patch + 1))"
           fi
           echo "tag=$next" >> "$GITHUB_OUTPUT"
 

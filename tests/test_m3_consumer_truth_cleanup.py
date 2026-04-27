@@ -126,7 +126,7 @@ class TestReleaseWhitelist:
 
     def test_workflow_tag_computation_preserved(self):
         text = WORKFLOW_PATH.read_text(encoding="utf-8")
-        assert "v0.1." in text
+        assert "v*" in text
         assert "sort=-v:refname" in text
 
 
