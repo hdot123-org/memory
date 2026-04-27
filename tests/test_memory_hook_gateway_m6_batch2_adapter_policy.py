@@ -152,7 +152,7 @@ def test_build_context_package_passes_scope_overrides_to_core(monkeypatch, tmp_p
     )
 
     monkeypatch.setenv("MEMORY_HOOK_SCOPE_CONFIG_PATH", str(scope_config_path))
-    monkeypatch.setattr(gateway, "discover_cwd", lambda payload: gateway.WORKSPACE_ROOT)
+    monkeypatch.setattr(gateway, "_discover_cwd", lambda payload: gateway.WORKSPACE_ROOT)
     monkeypatch.setattr(gateway, "determine_project_scope", lambda cwd: "workbot")
 
     captured_config: list[object] = []

@@ -79,7 +79,7 @@ class TestM5GatewayAssemblyOnly:
         captured_config: list[Any] = []
         sentinel = {"status": "ok", "schema_version": "wb-hook-v2", "marker": "from-core"}
 
-        monkeypatch.setattr(gateway, "discover_cwd", lambda payload: gateway.WORKSPACE_ROOT)
+        monkeypatch.setattr(gateway, "_discover_cwd", lambda payload: gateway.WORKSPACE_ROOT)
         monkeypatch.setattr(gateway, "determine_project_scope", lambda cwd: "workbot")
 
         def fake_from_config(config):

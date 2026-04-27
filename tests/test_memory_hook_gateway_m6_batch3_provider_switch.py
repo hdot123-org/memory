@@ -51,7 +51,7 @@ def test_build_context_package_records_provider_and_shadow_run(monkeypatch):
             return []
 
     monkeypatch.setattr(gateway, "_get_gateway_business_policy", lambda: FakeBusinessPolicy())
-    monkeypatch.setattr(gateway, "discover_cwd", lambda payload: gateway.WORKSPACE_ROOT)
+    monkeypatch.setattr(gateway, "_discover_cwd", lambda payload: gateway.WORKSPACE_ROOT)
     monkeypatch.setattr(gateway, "determine_project_scope", lambda cwd: "workbot")
     monkeypatch.setenv("MEMORY_HOOK_CORE_PROVIDER", "legacy")
     monkeypatch.setenv("MEMORY_HOOK_SHADOW_RUN", "1")
