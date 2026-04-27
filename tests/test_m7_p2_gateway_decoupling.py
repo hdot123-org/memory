@@ -144,13 +144,13 @@ class TestForceHookEnvVar:
         """MEMORY_HOOK_FORCE env var is recognized and bypasses noop."""
         gw = _reload_gateway(MEMORY_HOOK_FORCE="1")
         # should_noop_for_external_context should return False when force is set
-        result = gw.should_noop_for_external_context({})
+        result = gw._should_noop_for_external_context({})
         assert result is False
 
     def test_backward_compat_workbot_force_hook(self) -> None:
         """WORKBOT_FORCE_HOOK still works as fallback."""
         gw = _reload_gateway(WORKBOT_FORCE_HOOK="1")
-        result = gw.should_noop_for_external_context({})
+        result = gw._should_noop_for_external_context({})
         assert result is False
 
 

@@ -13,7 +13,34 @@ from __future__ import annotations
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
+
+
+# ---------------------------------------------------------------------------
+# TypedDict for dict key contracts
+# ---------------------------------------------------------------------------
+
+class TruthBasis(TypedDict, total=False):
+    """Typed contract for truth-basis packages returned by truth_basis_for_scope."""
+    refs: list[str]
+    errors: list[str]
+    validation: str
+    policy: str
+    project_ref: str
+    source_refs: list[str]
+    authority_refs: list[str]
+    evidence_refs: list[str]
+    conflict_status: list[str]
+
+
+class RegistrationCommitGate(TypedDict, total=False):
+    """Typed contract for registration commit gate probes."""
+    phase: str
+    enforced: bool
+    gate_event: str
+    triggered_on_current_event: bool
+    enforcement_result: str
+    status: str
 
 
 # ---------------------------------------------------------------------------
@@ -122,12 +149,12 @@ class PolicyRegistry(ABC):
         pass
 
     @abstractmethod
-    def git_registration_probe(self, event: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def git_registration_probe(self, event: str, payload: dict[str, Any]) -> RegistrationCommitGate:
         """Probe git registration for the given event and payload."""
         pass
 
     @abstractmethod
-    def truth_basis_for_scope(self, scope: str) -> dict[str, Any]:
+    def truth_basis_for_scope(self, scope: str) -> TruthBasis:
         """Return truth basis package for the given scope."""
         pass
 
@@ -254,7 +281,7 @@ class GatewayBusinessPolicy(ABC):
         pass
 
     @abstractmethod
-    def truth_basis_for_scope(self, project_scope: str) -> dict[str, Any]:
+    def truth_basis_for_scope(self, project_scope: str) -> TruthBasis:
         """Return truth basis package for project scope."""
         pass
 

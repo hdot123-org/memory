@@ -22,6 +22,8 @@ from typing import Any, Callable
 
 try:
     from .memory_hook_interfaces import (
+        RegistrationCommitGate,
+        TruthBasis,
         ArtifactSink,
         ErrorSink,
         GatewayBusinessPolicy,
@@ -32,6 +34,8 @@ try:
     )
 except ImportError:
     from memory_hook_interfaces import (  # type: ignore
+        RegistrationCommitGate,
+        TruthBasis,
         ArtifactSink,
         ErrorSink,
         GatewayBusinessPolicy,
@@ -373,11 +377,11 @@ class PolicyRegistryImpl(PolicyRegistry):
         """Stub: return empty list. Real impl delegates to GatewayBusinessPolicy."""
         return []
 
-    def git_registration_probe(self, event: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def git_registration_probe(self, event: str, payload: dict[str, Any]) -> RegistrationCommitGate:
         """Stub: return empty dict. Real impl delegates to GatewayBusinessPolicy."""
         return {}
 
-    def truth_basis_for_scope(self, scope: str) -> dict[str, Any]:
+    def truth_basis_for_scope(self, scope: str) -> TruthBasis:
         """Stub: return empty dict. Real impl delegates to GatewayBusinessPolicy."""
         return {}
 
@@ -412,7 +416,7 @@ class RouteTargetPolicyImpl(RouteTargetPolicy):
         self._workspace_root = workspace_root
         self._repo_root = repo_root
         self._routes: dict[str, str] = {
-            "fact": str(workspace_root / "memory" / "log" / f"{datetime.now().date().isoformat()}.md"),
+            "fact": None,  # evaluated lazily in resolve() to avoid stale date across midnight
             "global-rule": str(global_rule_path or (workspace_root / "memory" / "kb" / "global" / "memory-routing.md")),
             "source-material": str(workspace_root / "memory" / "docs" / "references"),
             "project-runtime": str(project_runtime_path or (workspace_root / "projects")),
@@ -421,6 +425,8 @@ class RouteTargetPolicyImpl(RouteTargetPolicy):
         }
 
     def resolve(self, kind: str) -> str:
+        if kind == "fact":
+            return str(self._workspace_root / "memory" / "log" / f"{datetime.now().date().isoformat()}.md")
         try:
             return self._routes[kind]
         except KeyError:
@@ -974,7 +980,7 @@ class GatewayBusinessPolicyImpl(GatewayBusinessPolicy):
         refs = self._config.project_doc_refs.get(project_scope, [])
         return self._existing_paths(refs)
 
-    def truth_basis_for_scope(self, project_scope: str) -> dict[str, Any]:
+    def truth_basis_for_scope(self, project_scope: str) -> TruthBasis:
         project_canonical = self.get_project_canonical()
         project_file = project_canonical.get(project_scope)
         if project_file is None:
@@ -1103,18 +1109,27 @@ class ArtifactWriter:
         self._sink = ArtifactSinkImpl(
             context_root, event_log, datetime_module=self.datetime_module
         )
+        self._last_error: str | None = None
 
-    def write(self, host: str, event: str, package: dict[str, Any]) -> None:
+    def write(self, host: str, event: str, package: dict[str, Any]) -> bool:
         """Write a context package to artifact file.
 
         Non-blocking: errors are logged to ``self.error_log``, not raised.
         """
+        self._last_error = None
         try:
             package["host"] = host
             package["event"] = event
             self._sink.write(package)
+            return True
         except Exception as exc:
+            self._last_error = str(exc)
             self._log_error(host, event, exc)
+            return False
+
+    @property
+    def last_error(self) -> str | None:
+        return self._last_error
 
     def _log_error(self, host: str, event: str, exc: Exception) -> None:
         self.error_log.parent.mkdir(parents=True, exist_ok=True)

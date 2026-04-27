@@ -102,6 +102,37 @@ class CoreConfig:
             raise TypeError(
                 f"repo_root must be a Path, got {type(self.repo_root).__name__}"
             )
+        if not isinstance(self.payload, dict):
+            raise TypeError(
+                f"payload must be a dict, got {type(self.payload).__name__}"
+            )
+        if not isinstance(self.cwd, Path):
+            raise TypeError(
+                f"cwd must be a Path, got {type(self.cwd).__name__}"
+            )
+        if not isinstance(self.project_scope, str) or not self.project_scope:
+            raise ValueError("project_scope must be a non-empty string")
+        if not isinstance(self.required_canonical, list):
+            raise TypeError(
+                f"required_canonical must be a list, got {type(self.required_canonical).__name__}"
+            )
+        if not isinstance(self.project_map_refs, list):
+            raise TypeError(
+                f"project_map_refs must be a list, got {type(self.project_map_refs).__name__}"
+            )
+        for _name in ("now_iso_fn", "write_targets_fn", "extract_excerpt_fn"):
+            if not callable(getattr(self, _name)):
+                raise TypeError(
+                    f"{_name} must be callable, got {type(getattr(self, _name)).__name__}"
+                )
+        if not isinstance(self.surface_id, str):
+            raise TypeError(
+                f"surface_id must be a string, got {type(self.surface_id).__name__}"
+            )
+        if not isinstance(self.workspace_id, str):
+            raise TypeError(
+                f"workspace_id must be a string, got {type(self.workspace_id).__name__}"
+            )
 
     def to_gateway_kwargs(self) -> dict[str, Any]:
         """Return a dict suitable for passing to legacy **kwargs providers."""

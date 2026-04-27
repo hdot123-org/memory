@@ -154,7 +154,7 @@ class TestScopeValidation:
 
         # The gateway wires a PolicyRegistryImpl with allowed_scopes from
         # POLICY_ALLOWED_SCOPES.  'workbot' must be in that set.
-        pack = gw.get_policy_pack_via_registry("workbot")
+        pack = gw._get_policy_pack_via_registry("workbot")
         assert isinstance(pack, dict)
         assert pack["scope"] == "workbot"
         assert "policies" in pack
@@ -188,7 +188,7 @@ class TestEndToEnd:
         workspace_tools = gw.REPO_ROOT / "workspace" / "tools"
         payload = _build_minimal_payload(cwd=str(workspace_tools))
 
-        cwd = gw.discover_cwd(payload)
+        cwd = gw._discover_cwd(payload)
         scope = gw.determine_project_scope(cwd)
 
         # The scope should resolve to 'workbot' when cwd is under REPO_ROOT
@@ -216,10 +216,10 @@ class TestEndToEnd:
             # Reload to pick up the clean env
             _clear_gateway_cache()
             gw_clean = importlib.import_module("workspace.tools.memory_hook_gateway")
-            assert gw_clean.should_noop_for_external_context(payload_outside) is True
+            assert gw_clean._should_noop_for_external_context(payload_outside) is True
 
         # With MEMORY_HOOK_FORCE=1, should_noop must return False regardless
         with patch.dict(os.environ, {**clean_env, "MEMORY_HOOK_FORCE": "1"}, clear=True):
             _clear_gateway_cache()
             gw_force = importlib.import_module("workspace.tools.memory_hook_gateway")
-            assert gw_force.should_noop_for_external_context(payload_outside) is False
+            assert gw_force._should_noop_for_external_context(payload_outside) is False

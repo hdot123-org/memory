@@ -242,7 +242,7 @@ def _get_host_delegate(host: str) -> HostDelegate:
             # M2: state_file resolved by adapter policy, not read from env here
             state_file=CLAUDE_HOOK_STATE_FILE if CLAUDE_HOOK_STATE_FILE else None,
             state_path_factory=default_hook_state_path,
-            canonicalizer=canonicalize_cmux_refs,
+            canonicalizer=_canonicalize_cmux_refs,
             state_recorder=record_hook_event,
         )
     else:
@@ -251,22 +251,22 @@ def _get_host_delegate(host: str) -> HostDelegate:
 
 # IF-5 adapters for existing functions
 
-def resolve_route_target_via_policy(kind: str) -> str:
+def _resolve_route_target_via_policy(kind: str) -> str:
     """IF-5: Resolve route target via Policy facade."""
     return _get_route_policy().resolve(kind)
 
 
-def write_targets_via_policy() -> dict[str, Any]:
+def _write_targets_via_policy() -> dict[str, Any]:
     """IF-5: Get write targets via Policy facade."""
     return _get_write_policy().get_targets()
 
 
-def get_policy_pack_via_registry(scope: str) -> dict[str, Any]:
+def _get_policy_pack_via_registry(scope: str) -> dict[str, Any]:
     """IF-5: Get policy pack via PolicyRegistry facade."""
     return _get_policy_registry().get_policy_pack(scope)
 
 
-def resolve_policy_conflict_via_registry(
+def _resolve_policy_conflict_via_registry(
     policy_key: str,
     values: list[str],
     strategy: str | None = None,
@@ -275,17 +275,17 @@ def resolve_policy_conflict_via_registry(
     return _get_policy_registry().resolve_conflict(policy_key, values, strategy or "default")
 
 
-def write_artifacts_via_sink(package: dict[str, Any]) -> dict[str, str]:
+def _write_artifacts_via_sink(package: dict[str, Any]) -> dict[str, str]:
     """IF-5: Write artifacts via Sink facade."""
     return _get_artifact_sink().write(package)
 
 
-def append_error_log_via_sink(component: str, message: str, context: dict[str, Any]) -> None:
+def _append_error_log_via_sink(component: str, message: str, context: dict[str, Any]) -> None:
     """IF-5: Log error via Sink facade."""
     _get_error_sink().log(component, message, context)
 
 
-def execute_delegate_via_facade(
+def _execute_delegate_via_facade(
     host: str,
     event: str,
     raw_payload: str,
@@ -296,7 +296,7 @@ def execute_delegate_via_facade(
     return delegate.execute(event, raw_payload, payload)
 
 
-def parse_args() -> argparse.Namespace:
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Workbot memory hook gateway.")
     parser.add_argument("--host", required=True, choices=("codex", "claude"))
     parser.add_argument("--event", required=True, choices=("session-start", "prompt-submit", "stop", "notification"))
@@ -308,7 +308,7 @@ def now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-def read_payload(raw_payload: str) -> dict[str, Any]:
+def _read_payload(raw_payload: str) -> dict[str, Any]:
     if not raw_payload.strip():
         return {}
     try:
@@ -318,19 +318,19 @@ def read_payload(raw_payload: str) -> dict[str, Any]:
     return loaded if isinstance(loaded, dict) else {"payload": loaded}
 
 
-def payload_cwd(payload: dict[str, Any]) -> Path | None:
+def _payload_cwd(payload: dict[str, Any]) -> Path | None:
     value = payload.get("cwd")
     if isinstance(value, str) and value:
         return Path(value).expanduser()
     return None
 
 
-def environment_cwd() -> Path | None:
+def _environment_cwd() -> Path | None:
     env_pwd = os.environ.get("PWD")
     return Path(env_pwd).expanduser() if env_pwd else None
 
 
-def path_within_repo(path: Path) -> bool:
+def _path_within_repo(path: Path) -> bool:
     try:
         path.resolve().relative_to(REPO_ROOT.resolve())
         return True
@@ -338,12 +338,12 @@ def path_within_repo(path: Path) -> bool:
         return False
 
 
-def discover_cwd(payload: dict[str, Any]) -> Path:
-    provided_cwd = payload_cwd(payload)
-    if provided_cwd and path_within_repo(provided_cwd):
+def _discover_cwd(payload: dict[str, Any]) -> Path:
+    provided_cwd = _payload_cwd(payload)
+    if provided_cwd and _path_within_repo(provided_cwd):
         return provided_cwd
-    env_cwd = environment_cwd()
-    if env_cwd and path_within_repo(env_cwd):
+    env_cwd = _environment_cwd()
+    if env_cwd and _path_within_repo(env_cwd):
         return env_cwd
     if env_cwd:
         return env_cwd
@@ -352,13 +352,13 @@ def discover_cwd(payload: dict[str, Any]) -> Path:
     return REPO_ROOT
 
 
-def should_noop_for_external_context(payload: dict[str, Any]) -> bool:
+def _should_noop_for_external_context(payload: dict[str, Any]) -> bool:
     if os.environ.get("MEMORY_HOOK_FORCE") or os.environ.get("WORKBOT_FORCE_HOOK"):
         return False
-    env_cwd = environment_cwd()
-    provided_cwd = payload_cwd(payload)
-    env_in_repo = bool(env_cwd and path_within_repo(env_cwd))
-    payload_in_repo = bool(provided_cwd and path_within_repo(provided_cwd))
+    env_cwd = _environment_cwd()
+    provided_cwd = _payload_cwd(payload)
+    env_in_repo = bool(env_cwd and _path_within_repo(env_cwd))
+    payload_in_repo = bool(provided_cwd and _path_within_repo(provided_cwd))
     return not env_in_repo and not payload_in_repo
 
 
@@ -376,7 +376,7 @@ def determine_project_scope(cwd: Path) -> str:
     return _get_gateway_business_policy().determine_project_scope(cwd)
 
 
-def extract_excerpt(path: Path, max_lines: int = 12) -> list[str]:
+def _extract_excerpt(path: Path, max_lines: int = 12) -> list[str]:
     if not path.exists():
         return []
     lines = []
@@ -390,7 +390,7 @@ def extract_excerpt(path: Path, max_lines: int = 12) -> list[str]:
     return lines
 
 
-def section_bullets(text: str, heading: str) -> list[str]:
+def _section_bullets(text: str, heading: str) -> list[str]:
     lines = text.splitlines()
     bullets: list[str] = []
     in_section = False
@@ -406,7 +406,7 @@ def section_bullets(text: str, heading: str) -> list[str]:
     return bullets
 
 
-def section_body(text: str, heading: str) -> str:
+def _section_body(text: str, heading: str) -> str:
     lines = text.splitlines()
     start_idx: int | None = None
     for idx, line in enumerate(lines):
@@ -423,16 +423,16 @@ def section_body(text: str, heading: str) -> str:
     return "\n".join(body)
 
 
-def markdown_code_tokens(text: str) -> set[str]:
+def _markdown_code_tokens(text: str) -> set[str]:
     return {match.group(1) for match in re.finditer(r"`([^`]+)`", text)}
 
 
-def json_string_values(text: str, key: str) -> set[str]:
+def _json_string_values(text: str, key: str) -> set[str]:
     pattern = rf'"{re.escape(key)}"\s*:\s*"([^"]+)"'
     return {match.group(1) for match in re.finditer(pattern, text)}
 
 
-def json_object_keys(text: str) -> set[str]:
+def _json_object_keys(text: str) -> set[str]:
     return {match.group(1) for match in re.finditer(r'"([^"]+)"\s*:', text)}
 
 
@@ -444,7 +444,7 @@ def event_contract_blocker_errors() -> list[str]:
     return _get_gateway_business_policy().event_contract_blocker_errors()
 
 
-def path_is_under(path: Path, root: Path) -> bool:
+def _path_is_under(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root.resolve())
         return True
@@ -452,34 +452,34 @@ def path_is_under(path: Path, root: Path) -> bool:
         return False
 
 
-def classify_truth_ref(path: Path) -> str:
+def _classify_truth_ref(path: Path) -> str:
     if path == PROJECT_MAP_ROOT / "legal-core-map.md":
         return "legal-core"
     if path == PROJECT_MAP_ROOT / "INDEX.md":
         return "project-map-index"
     if path in GLOBAL_CANONICAL:
         return "global-canonical"
-    if path_is_under(path, WORKSPACE_ROOT / "memory" / "kb" / "global" / "projects"):
+    if _path_is_under(path, WORKSPACE_ROOT / "memory" / "kb" / "global" / "projects"):
         return "compatibility-only"
-    if path_is_under(path, WORKSPACE_ROOT / "memory" / "kb" / "projects"):
+    if _path_is_under(path, WORKSPACE_ROOT / "memory" / "kb" / "projects"):
         return "project-canonical"
-    if path_is_under(path, WORKSPACE_ROOT / "memory" / "docs"):
+    if _path_is_under(path, WORKSPACE_ROOT / "memory" / "docs"):
         return "docs"
-    if path_is_under(path, WORKSPACE_ROOT / "projects"):
+    if _path_is_under(path, WORKSPACE_ROOT / "projects"):
         return "project-runtime"
-    if path_is_under(path, WORKSPACE_ROOT / "artifacts"):
+    if _path_is_under(path, WORKSPACE_ROOT / "artifacts"):
         return "artifact"
-    if path_is_under(path, WORKSPACE_ROOT / "tools"):
+    if _path_is_under(path, WORKSPACE_ROOT / "tools"):
         return "tooling"
-    if path_is_under(path, WORKSPACE_ROOT / "memory" / "log"):
+    if _path_is_under(path, WORKSPACE_ROOT / "memory" / "log"):
         return "log"
-    if path_is_under(path, WORKSPACE_ROOT / "memory" / "system"):
+    if _path_is_under(path, WORKSPACE_ROOT / "memory" / "system"):
         return "system"
-    if path_is_under(path, REPO_ROOT / "app"):
+    if _path_is_under(path, REPO_ROOT / "app"):
         return "app"
-    if path_is_under(path, REPO_ROOT / "agents"):
+    if _path_is_under(path, REPO_ROOT / "agents"):
         return "agents"
-    if path_is_under(path, REPO_ROOT / "gpt-web-to"):
+    if _path_is_under(path, REPO_ROOT / "gpt-web-to"):
         return "gpt-web-to"
     if path == REPO_ROOT / "AGENTS.md":
         return "repo-policy"
@@ -488,32 +488,32 @@ def classify_truth_ref(path: Path) -> str:
     return "other"
 
 
-def authority_ref_allowed(path: Path) -> bool:
+def _authority_ref_allowed(path: Path) -> bool:
     return path in AUTHORITY_ALLOWED_PATHS or path in GLOBAL_CANONICAL
 
 
-def lower_evidence_ref(path: Path) -> bool:
-    return any(path_is_under(path, root) for root in LOWER_EVIDENCE_ROOTS)
+def _lower_evidence_ref(path: Path) -> bool:
+    return any(_path_is_under(path, root) for root in LOWER_EVIDENCE_ROOTS)
 
 
-def truth_basis_sections_for(path: Path) -> dict[str, Any]:
+def _truth_basis_sections_for(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     return {
-        "source_refs": section_bullets(text, "### Source Refs"),
-        "authority_refs": section_bullets(text, "### Authority Refs"),
-        "evidence_refs": section_bullets(text, "### Evidence Refs"),
-        "conflict_status": section_bullets(text, "### Conflict Status"),
+        "source_refs": _section_bullets(text, "### Source Refs"),
+        "authority_refs": _section_bullets(text, "### Authority Refs"),
+        "evidence_refs": _section_bullets(text, "### Evidence Refs"),
+        "conflict_status": _section_bullets(text, "### Conflict Status"),
     }
 
 
-def truth_basis_errors_for(path: Path) -> list[str]:
+def _truth_basis_errors_for(path: Path) -> list[str]:
     errors: list[str] = []
     if not path.exists():
         return [f"missing truth canonical: {path}"]
     text = path.read_text(encoding="utf-8")
     if "Truth Basis" not in text:
         return [f"truth basis section missing: {path}"]
-    sections = truth_basis_sections_for(path)
+    sections = _truth_basis_sections_for(path)
     source_refs = sections["source_refs"]
     authority_refs = sections["authority_refs"]
     evidence_refs = sections["evidence_refs"]
@@ -532,7 +532,7 @@ def truth_basis_errors_for(path: Path) -> list[str]:
     authority_paths = [(REPO_ROOT / Path(item).expanduser()).resolve() if not Path(item).expanduser().is_absolute() else Path(item).expanduser() for item in authority_refs]
     evidence_paths = [(REPO_ROOT / Path(item).expanduser()).resolve() if not Path(item).expanduser().is_absolute() else Path(item).expanduser() for item in evidence_refs]
     for ref_path in [*source_paths, *authority_paths, *evidence_paths]:
-        if not path_is_under(ref_path, REPO_ROOT):
+        if not _path_is_under(ref_path, REPO_ROOT):
             errors.append(f"truth ref outside repository: {ref_path}")
         if not ref_path.exists():
             errors.append(f"truth ref missing on disk: {ref_path}")
@@ -543,20 +543,20 @@ def truth_basis_errors_for(path: Path) -> list[str]:
     if set(authority_refs) & set(evidence_refs):
         errors.append(f"authority refs overlap evidence refs: {path}")
     for authority_path in authority_paths:
-        if not authority_ref_allowed(authority_path):
+        if not _authority_ref_allowed(authority_path):
             errors.append(f"authority ref is not formal canonical: {authority_path}")
-    if source_paths and all(classify_truth_ref(source_path) in {"global-canonical", "legal-core", "project-map-index"} for source_path in source_paths):
+    if source_paths and all(_classify_truth_ref(source_path) in {"global-canonical", "legal-core", "project-map-index"} for source_path in source_paths):
         errors.append(f"source refs do not include a non-canonical origin: {path}")
-    if evidence_paths and not any(lower_evidence_ref(evidence_path) for evidence_path in evidence_paths):
+    if evidence_paths and not any(_lower_evidence_ref(evidence_path) for evidence_path in evidence_paths):
         errors.append(f"evidence refs do not include lower-layer support: {path}")
     return errors
 
 
-def existing_paths(paths: list[Path]) -> list[str]:
+def _existing_paths(paths: list[Path]) -> list[str]:
     return [str(path) for path in paths if path.exists()]
 
 
-def normalize_repo_scope_entry(value: str | Path) -> str | None:
+def _normalize_repo_scope_entry(value: str | Path) -> str | None:
     path = Path(value).expanduser()
     try:
         return path.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
@@ -564,7 +564,7 @@ def normalize_repo_scope_entry(value: str | Path) -> str | None:
         return None
 
 
-def registration_payload_paths(payload: dict[str, Any]) -> list[str]:
+def _registration_payload_paths(payload: dict[str, Any]) -> list[str]:
     raw = payload.get("registration_paths")
     if isinstance(raw, str):
         raw_values = [raw]
@@ -574,13 +574,13 @@ def registration_payload_paths(payload: dict[str, Any]) -> list[str]:
         return []
     normalized: list[str] = []
     for item in raw_values:
-        normalized_item = normalize_repo_scope_entry(item)
+        normalized_item = _normalize_repo_scope_entry(item)
         if normalized_item and normalized_item not in normalized:
             normalized.append(normalized_item)
     return normalized
 
 
-def git_name_only(*args: str) -> list[str]:
+def _git_name_only(*args: str) -> list[str]:
     proc = subprocess.run(
         ["git", "-C", str(REPO_ROOT), *args],
         text=True,
@@ -592,14 +592,14 @@ def git_name_only(*args: str) -> list[str]:
     return [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
 
 
-def path_matches_scope(candidate: str, scope_entry: str) -> bool:
+def _path_matches_scope(candidate: str, scope_entry: str) -> bool:
     normalized_scope = scope_entry.rstrip("/")
     return candidate == normalized_scope or candidate.startswith(f"{normalized_scope}/")
 
 
-def git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, Any]:
+def _git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, Any]:
     map_scope = [str(path) for path in REGISTRATION_GIT_SCOPE]
-    registration_paths = registration_payload_paths(payload)
+    registration_paths = _registration_payload_paths(payload)
     tracked_scope = map_scope + [str(REPO_ROOT / item) for item in registration_paths]
     proc = subprocess.run(
         ["git", "-C", str(REPO_ROOT), "status", "--short", "--", *tracked_scope],
@@ -615,12 +615,12 @@ def git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, Any
         check=False,
     )
     latest_commit = (head_commit.stdout or "").strip()
-    commit_scope = [normalize_repo_scope_entry(path) for path in REGISTRATION_GIT_SCOPE]
+    commit_scope = [_normalize_repo_scope_entry(path) for path in REGISTRATION_GIT_SCOPE]
     commit_scope = [path for path in commit_scope if path]
     commit_scope.extend(registration_paths)
-    head_touched = git_name_only("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", "--", *commit_scope)
-    map_touched = any(any(path_matches_scope(item, scope) for scope in commit_scope[: len(REGISTRATION_GIT_SCOPE)]) for item in head_touched)
-    registration_touched = any(any(path_matches_scope(item, scope) for scope in registration_paths) for item in head_touched)
+    head_touched = _git_name_only("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", "--", *commit_scope)
+    map_touched = any(any(_path_matches_scope(item, scope) for scope in commit_scope[: len(REGISTRATION_GIT_SCOPE)]) for item in head_touched)
+    registration_touched = any(any(_path_matches_scope(item, scope) for scope in registration_paths) for item in head_touched)
     if entries:
         status = "pending-commit"
     elif not registration_paths:
@@ -685,7 +685,7 @@ def truth_basis_for_scope(project_scope: str) -> dict[str, Any]:
 
 def write_targets() -> dict[str, Any]:
     try:
-        return write_targets_via_policy()
+        return _write_targets_via_policy()
     except Exception:
         today_log = WORKSPACE_ROOT / "memory" / "log" / f"{datetime.now().date().isoformat()}.md"
         return {
@@ -710,7 +710,7 @@ def write_targets() -> dict[str, Any]:
 
 def resolve_route_target(kind: str) -> str:
     try:
-        return resolve_route_target_via_policy(kind)
+        return _resolve_route_target_via_policy(kind)
     except Exception:
         targets = write_targets()
         project_runtime_root = _get_gateway_business_policy().get_project_runtime_root()
@@ -753,7 +753,7 @@ def _apply_artifact_compaction(package: dict[str, Any]) -> None:
 
 
 def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dict[str, Any]:
-    cwd = discover_cwd(payload)
+    cwd = _discover_cwd(payload)
     project_scope = determine_project_scope(cwd)
     business_policy = _get_gateway_business_policy()
     config = CoreConfig(
@@ -774,16 +774,16 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
         registration_commit_policy=REGISTRATION_COMMIT_POLICY,
         registration_commit_phase=REGISTRATION_COMMIT_PHASE,
         project_map_refs=project_map_refs(),
-        extract_excerpt_fn=extract_excerpt,
+        extract_excerpt_fn=_extract_excerpt,
         now_iso_fn=now_iso,
         write_targets_fn=write_targets,
         validate_project_map_fn=validate_project_map_files,
         validate_unique_legal_system_contract_fn=validate_unique_legal_system_contract,
         policy_validate_fn=lambda context: _get_policy_registry().validate(context),
-        get_policy_pack_fn=get_policy_pack_via_registry,
+        get_policy_pack_fn=_get_policy_pack_via_registry,
         governance_frozen_tuple_errors_fn=governance_frozen_tuple_blocker_errors,
         event_contract_blocker_errors_fn=event_contract_blocker_errors,
-        git_registration_probe_fn=git_registration_probe,
+        git_registration_probe_fn=_git_registration_probe,
         truth_basis_for_scope_fn=truth_basis_for_scope,
         decision_refs_for_scope_fn=decision_refs_for_scope,
         lesson_refs_for_scope_fn=lesson_refs_for_scope,
@@ -862,7 +862,7 @@ def build_context_package_simple(
     return convert_to_v1(v2_package)
 
 
-def ensure_artifact_dirs() -> None:
+def _ensure_artifact_dirs() -> None:
     try:
         _get_artifact_sink().ensure_dirs()
     except RuntimeError:
@@ -872,7 +872,7 @@ def ensure_artifact_dirs() -> None:
 
 def append_error_log(component: str, message: str, context: dict[str, Any]) -> None:
     try:
-        append_error_log_via_sink(component, message, context)
+        _append_error_log_via_sink(component, message, context)
     except RuntimeError:
         # Fallback only for synthetic sink failure (e.g., not implemented)
         ERROR_LOG.parent.mkdir(parents=True, exist_ok=True)
@@ -883,10 +883,10 @@ def append_error_log(component: str, message: str, context: dict[str, Any]) -> N
 
 def write_artifacts(package: dict[str, Any]) -> dict[str, str]:
     try:
-        return write_artifacts_via_sink(package)
+        return _write_artifacts_via_sink(package)
     except RuntimeError:
         # Fallback only for synthetic sink failure (e.g., not implemented)
-        ensure_artifact_dirs()
+        _ensure_artifact_dirs()
         timestamp = datetime.now().strftime("%Y%m%dT%H%M%S%f")
         snapshot_path = CONTEXT_ROOT / f"{timestamp}-{package['host']}-{package['event']}.json"
         suffix = 1
@@ -907,14 +907,14 @@ def write_artifacts(package: dict[str, Any]) -> dict[str, str]:
         return {"snapshot": str(snapshot_path), "latest": str(latest_path)}
 
 
-def require_env(name: str) -> str:
+def _require_env(name: str) -> str:
     value = os.environ.get(name, "")
     if not value:
         raise RuntimeError(f"missing required env: {name}")
     return value
 
 
-def canonicalize_cmux_refs(workspace_ref: str, surface_ref: str) -> tuple[str, str]:
+def _canonicalize_cmux_refs(workspace_ref: str, surface_ref: str) -> tuple[str, str]:
     proc = subprocess.run(
         ["cmux", "identify", "--workspace", workspace_ref, "--surface", surface_ref],
         text=True,
@@ -936,21 +936,21 @@ def canonicalize_cmux_refs(workspace_ref: str, surface_ref: str) -> tuple[str, s
     )
 
 
-def delegate_codex(event: str, raw_payload: str) -> subprocess.CompletedProcess[str]:
-    return execute_delegate_via_facade("codex", event, raw_payload, {})
+def _delegate_codex(event: str, raw_payload: str) -> subprocess.CompletedProcess[str]:
+    return _execute_delegate_via_facade("codex", event, raw_payload, {})
 
 
-def delegate_claude(event: str, raw_payload: str, payload: dict[str, Any]) -> subprocess.CompletedProcess[str]:
-    return execute_delegate_via_facade("claude", event, raw_payload, payload)
+def _delegate_claude(event: str, raw_payload: str, payload: dict[str, Any]) -> subprocess.CompletedProcess[str]:
+    return _execute_delegate_via_facade("claude", event, raw_payload, payload)
 
 
 def main() -> int:
-    args = parse_args()
+    args = _parse_args()
     raw_payload = sys.stdin.read()
-    payload = read_payload(raw_payload)
-    cwd = discover_cwd(payload)
+    payload = _read_payload(raw_payload)
+    cwd = _discover_cwd(payload)
 
-    if should_noop_for_external_context(payload):
+    if _should_noop_for_external_context(payload):
         return _delegate_noop_response(args.host)
 
     writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
@@ -981,7 +981,7 @@ def main() -> int:
         return 0
 
     try:
-        proc = delegate_codex(args.event, raw_payload) if args.host == "codex" else delegate_claude(args.event, raw_payload, payload)
+        proc = _delegate_codex(args.event, raw_payload) if args.host == "codex" else _delegate_claude(args.event, raw_payload, payload)
     except RuntimeError as exc:
         append_error_log(
             "memory-hook-gateway",
