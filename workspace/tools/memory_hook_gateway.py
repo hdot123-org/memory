@@ -96,6 +96,26 @@ except ImportError:
     from workspace.tools.memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile as _fn  # type: ignore
 else:
     _fn = getattr(_mod, _fn_name)
+# Adapter configuration store (replaces globals().update injection).
+_adapter_config: dict[str, Any] = {}
+
+
+def load_adapter_config(profile: dict[str, Any]) -> None:
+    """Load adapter runtime profile into _adapter_config.
+
+    Also writes keys into globals() for backward compatibility with
+    existing code that reads module-level attributes directly.
+    """
+    _adapter_config.clear()
+    _adapter_config.update(profile)
+    # Backward-compat: expose keys as module globals so hasattr() checks
+    # and direct attribute reads from existing callers still work.
+    globals().update(profile)
+
+
+# Load adapter profile once; feed both new config store and legacy globals.
+_adapter_profile = _fn(REPO_ROOT, WORKSPACE_ROOT)
+load_adapter_config(_adapter_profile)
 globals().update(_fn(REPO_ROOT, WORKSPACE_ROOT))
 
 
@@ -155,7 +175,7 @@ def _build_gateway_business_policy() -> GatewayBusinessPolicy:
         scope_match_hints=SCOPE_MATCH_HINTS,
         read_text_if_exists_fn=read_text_if_exists,
     )
-    _policy_class = globals().get("GATEWAY_POLICY_CLASS", WorkbotGatewayBusinessPolicy)
+    _policy_class = globals().get("GATEWAY_POLICY_CLASS") or _adapter_config.get("GATEWAY_POLICY_CLASS", WorkbotGatewayBusinessPolicy)
     return _policy_class(config=config)
 
 
@@ -735,7 +755,7 @@ def resolve_route_target(kind: str) -> str:
 
 def _apply_artifact_compaction(package: dict[str, Any]) -> None:
     """M2: strip context package sections according to adapter compaction policy."""
-    policy = globals().get("ARTIFACT_COMPACTION")
+    policy = globals().get("ARTIFACT_COMPACTION") or _adapter_config.get("ARTIFACT_COMPACTION")
     if not isinstance(policy, dict):
         return
     if not policy.get("include_system_context", True):
