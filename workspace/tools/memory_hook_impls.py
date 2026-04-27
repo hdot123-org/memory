@@ -1107,18 +1107,27 @@ class ArtifactWriter:
         self._sink = ArtifactSinkImpl(
             context_root, event_log, datetime_module=self.datetime_module
         )
+        self._last_error: str | None = None
 
-    def write(self, host: str, event: str, package: dict[str, Any]) -> None:
+    def write(self, host: str, event: str, package: dict[str, Any]) -> bool:
         """Write a context package to artifact file.
 
         Non-blocking: errors are logged to ``self.error_log``, not raised.
         """
+        self._last_error = None
         try:
             package["host"] = host
             package["event"] = event
             self._sink.write(package)
+            return True
         except Exception as exc:
+            self._last_error = str(exc)
             self._log_error(host, event, exc)
+            return False
+
+    @property
+    def last_error(self) -> str | None:
+        return self._last_error
 
     def _log_error(self, host: str, event: str, exc: Exception) -> None:
         self.error_log.parent.mkdir(parents=True, exist_ok=True)
