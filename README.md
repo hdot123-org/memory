@@ -122,5 +122,5 @@ python3 workspace/tools/memory_hook_provider_rollback.py
 - **所有 workbot 文档已标记 adapter scope**：routing、legal-core、ingestion-registry、workbot.md 均声明 `Scope: adapter`
 - **发布链已中立化**：移除默认 workbot dispatch，改为可配置白名单 `dispatch_targets`
 - **绝对路径已全部清除**：project binding 中不再包含任何宿主绝对路径
-- **77 条测试全量通过**：含 M2 遗留 15 条补齐测试（delegate gate、state file strictness、compaction policy、adapter hook contract）
+- **194 条测试全量通过**：含 M2 遗留 15 条补齐测试（delegate gate、state file strictness、compaction policy、adapter hook contract）
 - 仍保留 `legacy` 回滚能力用于故障处置
