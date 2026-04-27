@@ -1,28 +1,14 @@
-# Global Rules Index
+# Global KB
 
-Status: rule-only, records-cleared
+System rules and contracts for the workbot memory adapter.
 
-## Rule Files
-- `workbot-hook-contract.md`
-- `workbot-truth-model.md`
-- `workbot-project-map-governance.md`
-- `workbot-memory-system.md`
-- `workbot-memory-routing.md`
-- `workbot-policy-pack.md`
+## Files
 
-## Policy Pack JSON
-- `workbot-policy-pack.json` — canonical workbot adapter policy pack (machine-readable)
-- `memory-hook-policy-pack.json` — legacy fallback; identical content to `workbot-policy-pack.json`
-  > Both files are byte-identical. `workbot-policy-pack.json` is the canonical name.
-  > `memory-hook-policy-pack.json` is retained as a legacy migration artifact.
-  > When referencing policy packs programmatically, prefer `workbot-policy-pack.json`.
-
-## Non-Legal Material
-- 非 canonical 材料必须先进入 `project-map/ingestion-registry-map.md`。
-- 仅完成登记不授予合法性，必须由 `active-legal` 地图显式吸收后才可进入正式上下文。
-
-## Canonical Marker
-- `workbot-truth-model.md`
-
-## Relocated to Adapter Assets
-- `workbot-cli-tools.md` -> `workspace/tools/memory_hook_adapters/docs/workbot-cli-tools.md` (M2: runtime tool reference, not global rule)
+| File | Summary |
+|------|---------|
+| `workbot-hook-contract.md` | Agent↔Memory handshake protocol |
+| `workbot-memory-routing.md` | Memory routing rules for the workbot adapter |
+| `workbot-memory-system.md` | Memory system rules for the workbot adapter |
+| `workbot-policy-pack.md` | Policy pack for the workbot adapter |
+| `workbot-project-map-governance.md` | Project map governance rules |
+| `workbot-truth-model.md` | Truth model for memory state decisions |

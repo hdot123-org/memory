@@ -1,9 +1,7 @@
 # Memory KB Index
 
-Status: active, records present
-
 ## Active Sections
-- `global/` for system rules
-- `decisions/` for裁决 records
-- `lessons/` for active lessons
-- `projects/` for active project canonicals
+- `global/` — system rules and contracts
+- `decisions/` — decision records
+- `lessons/` — active lessons
+- `projects/` — project canonicals
