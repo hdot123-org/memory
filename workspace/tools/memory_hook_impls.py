@@ -416,7 +416,7 @@ class RouteTargetPolicyImpl(RouteTargetPolicy):
         self._workspace_root = workspace_root
         self._repo_root = repo_root
         self._routes: dict[str, str] = {
-            "fact": str(workspace_root / "memory" / "log" / f"{datetime.now().date().isoformat()}.md"),
+            "fact": None,  # evaluated lazily in resolve() to avoid stale date across midnight
             "global-rule": str(global_rule_path or (workspace_root / "memory" / "kb" / "global" / "memory-routing.md")),
             "source-material": str(workspace_root / "memory" / "docs" / "references"),
             "project-runtime": str(project_runtime_path or (workspace_root / "projects")),
@@ -425,6 +425,8 @@ class RouteTargetPolicyImpl(RouteTargetPolicy):
         }
 
     def resolve(self, kind: str) -> str:
+        if kind == "fact":
+            return str(self._workspace_root / "memory" / "log" / f"{datetime.now().date().isoformat()}.md")
         try:
             return self._routes[kind]
         except KeyError:
