@@ -1,6 +1,9 @@
-# Project Canonicals Index
+# Projects KB
 
-Status: active
+Active project canonicals.
 
-## Active Project Canonicals
-- `workbot.md` - current `workbot` project canonical
+## Files
+
+| File | Summary |
+|------|---------|
+| `workbot.md` | Workbot project canonical — memory system, truth model, and hook contract |

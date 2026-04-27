@@ -58,7 +58,7 @@ M3 将 workbot-only 治理真相和交付链从模块默认层彻底清出：
 - PathUtils + PolicyRegistry 扩展：callback 归入接口对象
 - ArtifactWriter + DelegateRouter：gateway 职责分离
 - pip 包入口点：memory-validate, memory-rollback
-- 194 tests passed
+- 216 tests passed
 
 ## M2 Adapter 剥离
 
@@ -122,5 +122,5 @@ python3 workspace/tools/memory_hook_provider_rollback.py
 - **所有 workbot 文档已标记 adapter scope**：routing、legal-core、ingestion-registry、workbot.md 均声明 `Scope: adapter`
 - **发布链已中立化**：移除默认 workbot dispatch，改为可配置白名单 `dispatch_targets`
 - **绝对路径已全部清除**：project binding 中不再包含任何宿主绝对路径
-- **194 条测试全量通过**：含 M2 遗留 15 条补齐测试（delegate gate、state file strictness、compaction policy、adapter hook contract）
+- **216 条测试全量通过**：含 M2 遗留 15 条补齐测试（delegate gate、state file strictness、compaction policy、adapter hook contract）
 - 仍保留 `legacy` 回滚能力用于故障处置

@@ -1,9 +1,12 @@
-# Lessons Index
+# Lessons KB
 
-Status: active
+Active lessons from project experience.
 
-## Active Lessons
-- `pm-bot-global-binding-and-legacy-fence.md` - active replacement for the old `pm-bot-crawl4ai-runtime-path.md` material
-- `cmux-single-foreground-guard.md` - single-workspace bootstrap lock + watcher foreground/workspace guard hardening
-- `cmux-project-venv-mandatory.md` - cmux project runtime must fail-fast without `<project_dir>/.venv`
-- `tmux-retired-cmux-only.md` - tmux is retired in workbot; only cmux runtime is allowed
+## Files
+
+| File | Summary |
+|------|---------|
+| `cmux-project-venv-mandatory.md` | CMUX project virtualenv is mandatory for all Python runtime |
+| `cmux-single-foreground-guard.md` | CMUX enforces single runtime and foreground guard |
+| `pm-bot-global-binding-and-legacy-fence.md` | PM bot global binding rules and legacy fence |
+| `tmux-retired-cmux-only.md` | tmux retired; only cmux allowed for workbot runtime |
