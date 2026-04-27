@@ -13,7 +13,7 @@ from __future__ import annotations
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, Protocol, TypedDict
 
 
 # ---------------------------------------------------------------------------
@@ -30,6 +30,7 @@ class TruthBasis(TypedDict, total=False):
     source_refs: list[str]
     authority_refs: list[str]
     evidence_refs: list[str]
+    global_refs: list[str]
     conflict_status: list[str]
 
 
@@ -173,6 +174,51 @@ class PolicyRegistry(ABC):
         """Return docs refs for the given scope."""
         pass
 
+
+
+
+# ---------------------------------------------------------------------------
+# Fine-grained Protocols (decomposed from PolicyRegistry)
+# ---------------------------------------------------------------------------
+
+class PolicyQueryProvider(Protocol):
+    """策略查询 — 合法性来源、注册提交阶段等."""
+
+    def legality_source_for_scope(self, scope: str) -> str: ...
+
+    def registration_commit_phase_for_scope(self, scope: str) -> str: ...
+
+    def get_policy(self, key: str) -> str | None: ...
+
+    def get_policy_pack(self, scope: str) -> dict[str, Any]: ...
+
+    def resolve_conflict(self, policy_key: str, values: list[str], strategy: str) -> str: ...
+
+
+class GovernanceChecker(Protocol):
+    """治理校验 — project-map、frozen tuple、event contract."""
+
+    def validate_project_map(self) -> list[str]: ...
+
+    def validate_unique_legal_system_contract(self) -> list[str]: ...
+
+    def governance_frozen_tuple_errors(self) -> list[str]: ...
+
+    def event_contract_blocker_errors(self) -> list[str]: ...
+
+    def git_registration_probe(self, event: str, payload: dict[str, Any]) -> RegistrationCommitGate: ...
+
+
+class TruthBasisProvider(Protocol):
+    """事实基准 — truth-basis 查询、evidence refs."""
+
+    def truth_basis_for_scope(self, scope: str) -> TruthBasis: ...
+
+    def decision_refs_for_scope(self, scope: str) -> list[str]: ...
+
+    def lesson_refs_for_scope(self, scope: str) -> list[str]: ...
+
+    def docs_refs_for_scope(self, scope: str) -> list[str]: ...
 
 # ---------------------------------------------------------------------------
 # IF-3: RouteTargetPolicy / WriteTargetPolicy

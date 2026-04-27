@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import time
+from datetime import datetime, timezone
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -157,6 +158,22 @@ def get_surface_hook_state(path: Path, surface_ref: str) -> dict[str, object]:
     return surface_state
 
 
+def _default_surface_state(workspace_ref: str, surface_ref: str) -> dict[str, object]:
+    """Return a fresh surface-state dict with default counters."""
+    return {
+        "workspace_ref": workspace_ref,
+        "surface_ref": surface_ref,
+        "session_start_count": 0,
+        "prompt_submit_count": 0,
+        "stop_count": 0,
+        "notification_count": 0,
+        "last_event": "",
+        "last_event_at": "",
+        "last_session_id": "",
+        "last_cwd": "",
+    }
+
+
 def record_hook_event(
     path: Path,
     *,
@@ -173,37 +190,12 @@ def record_hook_event(
             surfaces = {}
             state["surfaces"] = surfaces
 
-        surface_state = surfaces.setdefault(
-            surface_ref,
-            {
-                "workspace_ref": workspace_ref,
-                "surface_ref": surface_ref,
-                "session_start_count": 0,
-                "prompt_submit_count": 0,
-                "stop_count": 0,
-                "notification_count": 0,
-                "last_event": "",
-                "last_event_at": "",
-                "last_session_id": "",
-                "last_cwd": "",
-            },
-        )
+        surface_state = surfaces.get(surface_ref)
         if not isinstance(surface_state, dict):
-            surface_state = {
-                "workspace_ref": workspace_ref,
-                "surface_ref": surface_ref,
-                "session_start_count": 0,
-                "prompt_submit_count": 0,
-                "stop_count": 0,
-                "notification_count": 0,
-                "last_event": "",
-                "last_event_at": "",
-                "last_session_id": "",
-                "last_cwd": "",
-            }
+            surface_state = _default_surface_state(workspace_ref, surface_ref)
             surfaces[surface_ref] = surface_state
 
-        now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        now = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
         surface_state["workspace_ref"] = workspace_ref
         surface_state["surface_ref"] = surface_ref
         surface_state["last_event"] = event_name
