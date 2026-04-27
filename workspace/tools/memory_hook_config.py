@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from memory_hook_interfaces import PathUtils, PolicyRegistry
 
 
-@dataclass(kw_only=True)
+@dataclass
 class CoreConfig:
     """Structured configuration for the memory-hook core assembly pipeline.
 
@@ -44,15 +44,12 @@ class CoreConfig:
     hook_contract_path: Path
 
     # ------------------------------------------------------------------
-    # Group 3: Policy config (8 fields)
+    # Group 3: Policy config (6 required + 3 optional fields)
     # ------------------------------------------------------------------
     legality_source_policy: str
     registration_commit_policy: str
     registration_commit_phase: str
     project_map_refs: list[str]
-    governance_blocker_scopes: Collection[str] | None = field(default=None)
-    event_contract_blocker_scopes: Collection[str] | None = field(default=None)
-    core_evidence_refs: list[str] | None = field(default=None)
     surface_id: str
     workspace_id: str
 
@@ -75,10 +72,13 @@ class CoreConfig:
     docs_refs_for_scope_fn: Callable[[str], list[str]]
 
     # ------------------------------------------------------------------
-    # Group 5: Interface objects (optional, can replace Group 4 callbacks)
+    # Group 5: Interface objects & optional policy fields
     # ------------------------------------------------------------------
     policy_registry: PolicyRegistry | None = field(default=None)
     path_utils: PathUtils | None = field(default=None)
+    governance_blocker_scopes: Collection[str] | None = field(default=None)
+    event_contract_blocker_scopes: Collection[str] | None = field(default=None)
+    core_evidence_refs: list[str] | None = field(default=None)
 
     @property
     def uses_interfaces(self) -> bool:
