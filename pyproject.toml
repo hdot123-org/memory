@@ -7,15 +7,16 @@ name = "memory-core"
 version = "0.2.0"
 description = "Independent memory hook core and gateway runtime."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-memory-validate = "workspace.tools.validate_memory_system:main"
-memory-rollback = "workspace.tools.memory_hook_provider_rollback:main"
+memory-init = "workspace.tools.init_project_memory:main"
+memory-migrate = "workspace.tools.migrate_project_memory:main"
+memory-validate = "workspace.tools.validate_project_memory:main"
 
 [tool.setuptools.packages.find]
 include = ["workspace*"]
