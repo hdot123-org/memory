@@ -1,0 +1,17 @@
+# memory.lock — 项目与 memory-core 的版本绑定
+# 复制此文件到项目根目录或 .memory/ 目录下
+# 然后根据实际集成的版本修改各字段
+#
+# 字段说明：
+#   memory_version  — memory-core 的发布版本（SemVer）
+#   schema_version  — hook/schema 版本标识符
+#   adapter_version — adapter 版本（默认 builtin）
+#   locked_at       — 最后锁定/升级时间（UTC ISO-8601）
+#   lock_reason     — 锁定原因：initial / upgrade / downgrade
+
+[memory]
+memory_version = "0.0.0"
+schema_version = ""
+adapter_version = "builtin"
+locked_at = ""
+lock_reason = ""

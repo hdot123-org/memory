@@ -2,3 +2,45 @@ __pycache__/
 .pytest_cache/
 *.pyc
 .DS_Store
+
+# ============================================================
+# 污染路径防护 — 禁止真实业务项目状态文件进入 memory 仓库
+# 详见 docs/BOUNDARY.md 和 docs/FIXTURES_VS_REAL.md
+# ============================================================
+
+# 业务项目执行状态（PLAN / STATE / CANONICAL / NOW.md）
+# 这些文件只能存在于各业务项目自身的 .memory/ 目录下
+workspace/memory/kb/projects/*/PLAN.md
+workspace/memory/kb/projects/*/STATE.md
+workspace/memory/kb/projects/*/CANONICAL.md
+workspace/memory/kb/projects/*/NOW.md
+
+# 兼容路径：历史可能存在的 workspace/projects/ 结构
+workspace/projects/*/PLAN.md
+workspace/projects/*/STATE.md
+workspace/projects/*/CANONICAL.md
+workspace/projects/*/NOW.md
+
+# 根级 NOW.md（业务项目当前状态）
+/NOW.md
+workspace/NOW.md
+
+# 业务项目级别的 memory 目录（整个 .memory/ 属于业务项目）
+# 注意：workspace/memory/ 是 memory 仓库自身的 KB，允许保留
+# 但业务项目仓库中的 .memory/ 不应被追踪
+
+# Python 虚拟环境（避免误提交）
+.venv/
+venv/
+env/
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

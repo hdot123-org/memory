@@ -1,0 +1,7 @@
+# migrations.log — 迁移日志文件
+# 作用：记录 .memory 结构变更、适配器升级、数据迁移的历史
+# 格式：每行一条记录
+# TIMESTAMP | VERSION_FROM | VERSION_TO | DESCRIPTION | STATUS
+
+# 初始化记录（首次创建时写入）
+# 2026-04-29T00:00:00Z | 0 | 1 | Initial structure creation | completed

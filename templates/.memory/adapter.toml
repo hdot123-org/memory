@@ -1,0 +1,25 @@
+# adapter.toml — 适配器配置文件
+# 作用：声明当前业务项目使用的适配器类型、策略、读写边界
+
+[adapter]
+# 适配器类型：workbot | neutral | custom
+type = "workbot"
+
+# 适配器版本
+version = "1.0.0"
+
+[adapter.policy]
+# 读写策略
+read_scope = ["memory/", "workspace/", "src/"]
+write_scope = ["memory/"]
+# 禁止写入的路径
+deny_write = [".git/", ".memory/memory.lock"]
+
+[adapter.hooks]
+# 启用的 hook 列表
+enabled = ["pre-read", "post-write", "validate"]
+
+[adapter.runtime]
+# 运行时配置
+max_context_tokens = 128000
+cache_enabled = true
