@@ -12,4 +12,4 @@ Active project canonicals.
 
 | Directory | Summary |
 |-----------|---------|
-| `axonhub-rebase/` | AxonHub rebase 项目 — PLAN.md + STATE.md |
+| `axonhub-rebase/` | AxonHub rebase 项目 — CANONICAL.md + PLAN.md + STATE.md |
