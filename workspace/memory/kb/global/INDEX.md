@@ -12,6 +12,7 @@ System rules and contracts for the workbot memory adapter.
 | `workbot-policy-pack.md` | Policy pack for the workbot adapter |
 | `workbot-project-map-governance.md` | Project map governance rules |
 | `workbot-truth-model.md` | Truth model for memory state decisions |
+| `projects-spec.md` | GitHub Projects 通用制定规范 — 制定/执行/审核/验收/CE-01 部署 |
 
 ## Non-Legal Material
 

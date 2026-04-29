@@ -12,8 +12,8 @@
 - **216 tests passed**, validate 6/6
 
 ## Next 3 Actions
-1. 发布 v0.2.0 GitHub Release
-2. 收集第一个外部消费者项目接入反馈
+1. 执行 AxonHub Rebase：100 项安全修复合入上游 unstable（`执行 https://github.com/users/hdot123/projects/15`）
+2. 发布 memory-core v0.2.0 GitHub Release
 3. 验证 pip install memory-core 在干净环境下工作
 
 ## Blockers
@@ -24,4 +24,4 @@
 - 独立仓测试全绿，`workbot` 绝对路径引用已清零
 
 ---
-Updated: 2026-04-27 (Asia/Shanghai)
+Updated: 2026-04-29 (Asia/Shanghai)
