@@ -5,6 +5,7 @@ Usage:
     python init_project_memory.py --target /path/to/project
     python init_project_memory.py --target /path/to/project --dry-run
     python init_project_memory.py --target /path/to/project --dry-run --json
+    python init_project_memory.py --target /path/to/project --host claude
 
 This tool creates the minimal .memory/ directory structure required by the
 memory system. It is designed to run against a *business project* repository,
@@ -29,6 +30,17 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 CURRENT_MEMORY_VERSION = "0.1.0"
+
+# Claude hook event mapping: (Claude event name -> gateway event flag)
+CLAUDE_HOOK_EVENTS: list[tuple[str, str]] = [
+    ("SessionStart", "session-start"),
+    ("UserPromptSubmit", "prompt-submit"),
+    ("Notification", "notification"),
+    ("Stop", "stop"),
+]
+
+MEMORY_HOOK_BEGIN_MARKER = "<!-- MEMORY_HOOK_BEGIN -->"
+MEMORY_HOOK_END_MARKER = "<!-- MEMORY_HOOK_END -->"
 
 # Directory structure to create under .memory/
 DIRECTORY_STRUCTURE = [
@@ -271,6 +283,140 @@ def template_keep() -> str:
     return ""
 
 
+
+# ---------------------------------------------------------------------------
+# Hooks / AGENTS.md helpers
+# ---------------------------------------------------------------------------
+
+def template_hooks_json(host: str = "claude") -> dict[str, Any]:
+    """Generate hooks.json content as a dict."""
+    hooks: list[dict[str, Any]] = []
+    for claude_event, gateway_event in CLAUDE_HOOK_EVENTS:
+        hooks.append({
+            "event": claude_event,
+            "command": f"memory-hook-gateway --host {host} --event {gateway_event}",
+            "stdin": True,
+        })
+    return {"hooks": hooks}
+
+
+def generate_hooks_json(
+    target: Path,
+    *,
+    host: str = "claude",
+    result: dict[str, Any] | None = None,
+) -> None:
+    """Create or update .claude/hooks.json in the target project.
+
+    If the file already exists, only append missing memory hook entries
+    (idempotent — does not overwrite existing hooks from other tools).
+    """
+    hooks_dir = target / ".claude"
+    hooks_path = hooks_dir / "hooks.json"
+
+    if result is None:
+        return
+
+    desired = template_hooks_json(host)
+    desired_keys = {(h["event"], h["command"]) for h in desired["hooks"]}
+
+    if hooks_path.exists():
+        try:
+            existing = json.loads(hooks_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            existing = {}
+
+        existing_hooks: list[dict[str, Any]] = existing.get("hooks", [])
+        existing_keys = {(h["event"], h["command"]) for h in existing_hooks}
+        missing_keys = desired_keys - existing_keys
+
+        if not missing_keys:
+            result["skipped"].append("file:.claude/hooks.json (up-to-date)")
+            return
+
+        for hook in desired["hooks"]:
+            if (hook["event"], hook["command"]) in missing_keys:
+                existing_hooks.append(hook)
+        existing["hooks"] = existing_hooks
+        content = json.dumps(existing, indent=2, ensure_ascii=False) + "\n"
+    else:
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        content = json.dumps(desired, indent=2, ensure_ascii=False) + "\n"
+
+    hooks_path.write_text(content, encoding="utf-8")
+    result["created"].append("file:.claude/hooks.json")
+
+
+def template_agents_md_block(host: str = "codex") -> str:
+    """Generate the AGENTS.md memory hook instruction block."""
+    return f"""{MEMORY_HOOK_BEGIN_MARKER}
+## Memory Hook
+
+When starting a session, run the memory hook gateway to load project context:
+
+```bash
+python -m workspace.tools.memory_hook_gateway --host {host} --event session-start
+```
+{MEMORY_HOOK_END_MARKER}
+"""
+
+
+def update_agents_md(
+    target: Path,
+    *,
+    host: str = "codex",
+    result: dict[str, Any] | None = None,
+) -> None:
+    """Insert or update the Memory Hook instruction block in AGENTS.md.
+
+    Idempotent: if the markers already exist, the block content is replaced
+    in-place rather than appended.
+    """
+    if result is None:
+        return
+
+    agents_path = target / "AGENTS.md"
+    new_block = template_agents_md_block(host)
+
+    if agents_path.exists():
+        content = agents_path.read_text(encoding="utf-8")
+        has_begin = MEMORY_HOOK_BEGIN_MARKER in content
+        has_end = MEMORY_HOOK_END_MARKER in content
+
+        if has_begin and has_end:
+            begin_idx = content.index(MEMORY_HOOK_BEGIN_MARKER)
+            end_idx = content.index(MEMORY_HOOK_END_MARKER) + len(MEMORY_HOOK_END_MARKER)
+            before = content[:begin_idx]
+            after = content[end_idx:]
+
+            # Strip trailing newlines from before, prepend a single newline
+            before = before.rstrip("\n")
+            if before:
+                before = before + "\n"
+
+            # Strip leading newlines from after, append a single newline
+            after = after.lstrip("\n")
+            if after:
+                after = "\n" + after
+
+            new_content = before + new_block + after
+
+            if new_content == content:
+                result["skipped"].append("file:AGENTS.md (hook block up-to-date)")
+                return
+
+            agents_path.write_text(new_content, encoding="utf-8")
+            result["created"].append("file:AGENTS.md (hook block updated)")
+            return
+
+        new_content = content.rstrip("\n") + "\n\n" + new_block
+    else:
+        new_content = new_block
+
+    agents_path.write_text(new_content, encoding="utf-8")
+    result["created"].append("file:AGENTS.md")
+
+
 # ---------------------------------------------------------------------------
 # Initialization logic
 # ---------------------------------------------------------------------------
@@ -279,6 +425,7 @@ def init_project_memory(
     target: Path,
     *,
     scope: str | None = None,
+    host: str = "codex",
     dry_run: bool = False,
     json_output: bool = False,
 ) -> dict[str, Any]:
@@ -286,6 +433,8 @@ def init_project_memory(
 
     Args:
         target: Path to the target project root.
+        scope: Explicit project scope name (auto-discovered if omitted).
+        host: Host platform for hook config ("codex" or "claude").
         dry_run: If True, only report what would be created.
         json_output: If True, return structured output dict.
 
@@ -357,6 +506,12 @@ def init_project_memory(
             result["errors"].append(f"failed to create {fname}: {exc}")
 
     result["success"] = len(result["errors"]) == 0
+
+    # Generate hooks.json and AGENTS.md after .memory/ is ready
+    if result["success"]:
+        generate_hooks_json(target, host=host, result=result)
+        update_agents_md(target, host=host, result=result)
+
     return result
 
 
@@ -409,6 +564,13 @@ def main() -> int:
         action="store_true",
         help="Output results as JSON.",
     )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="codex",
+        choices=("codex", "claude"),
+        help="Host platform for hook gateway configuration (default: codex).",
+    )
     args = parser.parse_args()
 
     target = args.target.resolve()
@@ -416,7 +578,13 @@ def main() -> int:
         print(f"Error: target path does not exist or is not a directory: {target}", file=sys.stderr)
         return 2
 
-    result = init_project_memory(target, scope=args.scope, dry_run=args.dry_run, json_output=args.json)
+    result = init_project_memory(
+        target,
+        scope=args.scope,
+        host=args.host,
+        dry_run=args.dry_run,
+        json_output=args.json,
+    )
 
     if args.json or args.dry_run:
         print(json.dumps(result, indent=2, ensure_ascii=False))
