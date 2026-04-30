@@ -7,13 +7,13 @@
 ### 从 GitHub Release 安装
 
 ```bash
-gh release download v0.3.0 --repo hdot123/memory --pattern "*.whl" && pip install memory_core-0.3.0-py3-none-any.whl
+gh release download v0.2.0 --repo hdot123/memory --pattern "*.whl" && pip install memory_core-0.2.0-py3-none-any.whl
 ```
 
 ### 从源码安装
 
 ```bash
-pip install git+https://github.com/hdot123/memory.git@v0.3.0
+pip install git+https://github.com/hdot123/memory.git@v0.2.0
 ```
 
 ### 升级
@@ -21,7 +21,7 @@ pip install git+https://github.com/hdot123/memory.git@v0.3.0
 更换版本号并加 `--upgrade`：
 
 ```bash
-pip install --upgrade git+https://github.com/hdot123/memory.git@v0.3.0
+pip install --upgrade git+https://github.com/hdot123/memory.git@v0.2.0
 ```
 
 ## 快速开始
@@ -281,5 +281,5 @@ python -m pytest tests/
 
 ## 版本
 
-- **当前版本**：v0.3.0
+- **当前版本**：v0.2.0
 - **Python 要求**：>= 3.9

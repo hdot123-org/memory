@@ -20,6 +20,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import re
 import sys
@@ -50,7 +51,7 @@ FRONTMATTER_REQUIREMENTS: dict[str, list[str]] = {
 }
 
 # Current schema version for the memory system
-CURRENT_MEMORY_VERSION = "0.1.0"
+CURRENT_MEMORY_VERSION = "0.2.0"
 
 # Paths that MUST NOT appear inside the memory repo — these belong in the
 # target project's own workspace, not in the memory repository.
@@ -427,6 +428,11 @@ def main() -> int:
         action="store_true",
         help="Only report what would be checked without reading files.",
     )
+    try:
+        _pkg_version = importlib.metadata.version("memory-core")
+    except importlib.metadata.PackageNotFoundError:
+        _pkg_version = "unknown"
+    parser.add_argument("--version", action="version", version=f"%(prog)s {_pkg_version}")
     args = parser.parse_args()
 
     target = args.target.resolve()
