@@ -1,0 +1,4 @@
+[console_scripts]
+memory-init = workspace.tools.init_project_memory:main
+memory-migrate = workspace.tools.migrate_project_memory:main
+memory-validate = workspace.tools.validate_project_memory:main
