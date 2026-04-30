@@ -44,6 +44,9 @@ memory-validate = "workspace.tools.validate_project_memory:main"
 [tool.setuptools.packages.find]
 include = ["workspace*"]
 
+[tool.setuptools.package-data]
+workspace = ["templates/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
