@@ -17,5 +17,5 @@ Scope: adapter
 - `workbot-memory-system.md`
 
 ## Active Legal Scopes
-- `workspace/memory/kb/global/workbot-truth-model.md`
-- `workspace/memory/kb/global/workbot-memory-system.md`
+- `memory_core/memory/kb/global/workbot-truth-model.md`
+- `memory_core/memory/kb/global/workbot-memory-system.md`

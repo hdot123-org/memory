@@ -16,7 +16,7 @@ related: [DES-001, DES-004, DES-005]
 
 # Core Assembly 设计文档
 
-> 来源文件：`workspace/tools/memory_hook_core.py`（271 行）
+> 来源文件：`memory_core/tools/memory_hook_core.py`（271 行）
 > 生成日期：2026-04-26
 
 ---

@@ -72,20 +72,20 @@ related: [workbot-memory-system, workbot-truth-model, workbot-hook-contract]
 ## Truth Basis
 
 ### Source Refs
-- `workspace/INDEX.md`
-- `workspace/memory/docs/INDEX.md`
-- `workspace/memory/kb/global/workbot-truth-model.md`
-- `workspace/memory/kb/global/workbot-hook-contract.md`
-- `workspace/memory/kb/global/workbot-memory-system.md`
+- `memory_core/INDEX.md`
+- `memory_core/memory/docs/INDEX.md`
+- `memory_core/memory/kb/global/workbot-truth-model.md`
+- `memory_core/memory/kb/global/workbot-hook-contract.md`
+- `memory_core/memory/kb/global/workbot-memory-system.md`
 
 ### Authority Refs
-- `workspace/project-map/legal-core-map.md`
-- `workspace/project-map/INDEX.md`
+- `memory_core/project-map/legal-core-map.md`
+- `memory_core/project-map/INDEX.md`
 
 ### Evidence Refs
-- `workspace/tools/memory_hook_gateway.py`
-- `workspace/tools/memory_hook_core.py`
-- `workspace/tools/memory_hook_impls.py`
+- `memory_core/tools/memory_hook_gateway.py`
+- `memory_core/tools/memory_hook_core.py`
+- `memory_core/tools/memory_hook_impls.py`
 
 ### Conflict Status
 - `resolved`

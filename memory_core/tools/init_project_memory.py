@@ -536,8 +536,8 @@ def _find_repo_root(path: Path) -> Path | None:
 def _is_memory_repo(repo_root: Path) -> bool:
     """Heuristic: is this repo the memory repo?"""
     indicators = [
-        repo_root / "workspace" / "tools" / "memory_hook_gateway.py",
-        repo_root / "workspace" / "memory",
+        repo_root / "memory_core" / "tools" / "memory_hook_gateway.py",
+        repo_root / "memory_core" / "memory",
     ]
     return any(p.is_file() or p.is_dir() for p in indicators)
 

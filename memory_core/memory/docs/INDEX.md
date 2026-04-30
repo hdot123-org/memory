@@ -5,7 +5,7 @@
 > 创建日期：2026-04-15
 > 维护人：memory system
 
-This file catalogs every document under `workspace/memory/docs/`.
+This file catalogs every document under `memory_core/memory/docs/`.
 Only files that exist on disk are listed; phantom entries have been removed.
 
 ---

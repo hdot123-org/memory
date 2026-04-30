@@ -47,7 +47,7 @@ memory/                          # 仓库根
 ├── pyproject.toml               # 包定义（memory-core==0.1.0）
 ├── README.md                    # 模块说明 + 迁移记录（M1/M2/M3）
 ├── tests/                       # 13 个测试文件
-└── workspace/                   # 唯一总控工作区
+└── memory_core/                   # 唯一总控工作区
     ├── INDEX.md                 # 工作区入口（路由系统 + 写入协议）
     ├── NOW.md                   # 当前状态
     ├── tools/                   # Python 代码层
@@ -57,10 +57,10 @@ memory/                          # 仓库根
     └── artifacts/               # 运行时产物（gateway 输出）
 ```
 
-### 2.2 `workspace/tools/` — Python 代码层
+### 2.2 `memory_core/tools/` — Python 代码层
 
 ```
-workspace/tools/
+memory_core/tools/
 ├── memory_hook_interfaces.py          # 242 行 — 接口定义（IF-1 ~ IF-4）
 ├── memory_hook_impls.py               # 1040 行 — 默认实现
 ├── memory_hook_core.py                # 271 行 — 核心组装逻辑
@@ -76,10 +76,10 @@ workspace/tools/
         └── workbot-cli-tools.md       # adapter 运行文档
 ```
 
-### 2.3 `workspace/memory/` — 知识库 + 文档
+### 2.3 `memory_core/memory/` — 知识库 + 文档
 
 ```
-workspace/memory/
+memory_core/memory/
 ├── inbox.md                         # 临时任务
 ├── docs/
 │   ├── INDEX.md                     # 文档索引（MEM-DOCS-001）
@@ -110,7 +110,7 @@ workspace/memory/
 
 ### 3.1 接口层（interfaces）
 
-**文件**：`workspace/tools/memory_hook_interfaces.py` — 242 行
+**文件**：`memory_core/tools/memory_hook_interfaces.py` — 242 行
 
 定义 4 个核心接口族 + 1 个业务策略接口：
 
@@ -135,7 +135,7 @@ workspace/memory/
 
 ### 3.2 默认实现层（impls）
 
-**文件**：`workspace/tools/memory_hook_impls.py` — 1040 行
+**文件**：`memory_core/tools/memory_hook_impls.py` — 1040 行
 
 实现 interfaces 中定义的所有接口：
 
@@ -160,7 +160,7 @@ workspace/memory/
 
 ### 3.3 核心组装层（core）
 
-**文件**：`workspace/tools/memory_hook_core.py` — 271 行
+**文件**：`memory_core/tools/memory_hook_core.py` — 271 行
 
 提供两个核心函数：
 
@@ -190,7 +190,7 @@ workspace/memory/
 
 ### 3.4 Gateway 编排层（gateway）
 
-**文件**：`workspace/tools/memory_hook_gateway.py` — 981 行
+**文件**：`memory_core/tools/memory_hook_gateway.py` — 981 行
 
 统一入口，负责：
 
@@ -221,7 +221,7 @@ main()
 
 ### 3.5 适配层（adapters）
 
-**目录**：`workspace/tools/memory_hook_adapters/`
+**目录**：`memory_core/tools/memory_hook_adapters/`
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
@@ -355,9 +355,9 @@ main()
     │
     ▼
 产物输出：
-  - workspace/artifacts/memory-hook/contexts/latest-{host}-{event}.json
-  - workspace/artifacts/memory-hook/events.jsonl
-  - workspace/memory/system/errors.log (错误时)
+  - memory_core/artifacts/memory-hook/contexts/latest-{host}-{event}.json
+  - memory_core/artifacts/memory-hook/events.jsonl
+  - memory_core/memory/system/errors.log (错误时)
 ```
 
 ### 5.2 Context Package 结构
@@ -376,8 +376,8 @@ main()
   "missing_paths": ["..."],
   "validation_errors": ["..."],
   "system_context": {
-    "boot_entry": "workspace/INDEX.md",
-    "state_entry": "workspace/NOW.md",
+    "boot_entry": "memory_core/INDEX.md",
+    "state_entry": "memory_core/NOW.md",
     "state_summary": ["..."],
     "project_map_validation": "pass" | "fail",
     "legality_contract_validation": "pass" | "fail",

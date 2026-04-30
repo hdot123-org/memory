@@ -40,7 +40,7 @@ related: [workbot-memory-system, workbot-memory-routing]
   - 全局规则
   - 当前项目 canonical
   - 必要 decision / lesson
-  - `workspace/NOW.md` 摘要
+  - `memory_core/NOW.md` 摘要
   - 必要 source docs 引用
 - policy-pack 解析遵循 adapter 注入 > 环境变量 > 硬编码默认 > 空回退的优先级链
 
@@ -115,16 +115,16 @@ related: [workbot-memory-system, workbot-memory-routing]
 ## 6.1 Truth Basis
 
 ### Source Refs
-- `workspace/INDEX.md`
-- `workspace/memory/docs/INDEX.md`
+- `memory_core/INDEX.md`
+- `memory_core/memory/docs/INDEX.md`
 
 ### Authority Refs
-- `workspace/memory/kb/global/workbot-truth-model.md`
-- `workspace/memory/kb/global/workbot-memory-system.md`
+- `memory_core/memory/kb/global/workbot-truth-model.md`
+- `memory_core/memory/kb/global/workbot-memory-system.md`
 
 ### Evidence Refs
-- `workspace/tools/memory_hook_gateway.py`
-- `workspace/tools/validate_memory_system.py`
+- `memory_core/tools/memory_hook_gateway.py`
+- `memory_core/tools/validate_memory_system.py`
 
 ### Conflict Status
 - `resolved`
@@ -133,10 +133,10 @@ related: [workbot-memory-system, workbot-memory-routing]
 
 截至 2026-04-11：
 
-- `Codex` 正式 hook 入口已切到 `workspace/tools/memory_hook_gateway.py`
-- `Claude` 正式 hook 入口已切到 `workspace/tools/memory_hook_gateway.py`
+- `Codex` 正式 hook 入口已切到 `memory_core/tools/memory_hook_gateway.py`
+- `Claude` 正式 hook 入口已切到 `memory_core/tools/memory_hook_gateway.py`
 - gateway 会先产出 context package 与事件证据，再转发到底层 `cmux` hook
-- 验收报告已生成到 `workspace/artifacts/memory-hook/validation/latest.json`
+- 验收报告已生成到 `memory_core/artifacts/memory-hook/validation/latest.json`
 
 ## 8. Gateway Invariants
 

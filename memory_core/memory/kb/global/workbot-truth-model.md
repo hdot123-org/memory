@@ -48,7 +48,7 @@ related: [workbot-memory-system, workbot-memory-routing, workbot-hook-contract, 
 - 必须指向更高一层的 canonical、治理规则、路由规则或总系统边界。
 - 项目级结论必须受 global canonical 约束。
 - 运行层、资料层和产物层不能充当 authority。
-- `memory/docs/**`、`workspace/projects/**`、`workspace/artifacts/**` 和根级实现目录不得冒充 authority。
+- `memory/docs/**`、`memory_core/projects/**`、`memory_core/artifacts/**` 和根级实现目录不得冒充 authority。
 
 ### `evidence_refs`
 
@@ -116,7 +116,7 @@ related: [workbot-memory-system, workbot-memory-routing, workbot-hook-contract, 
 
 ### Global Canonical
 
-进入 `workspace/memory/kb/global/` 的内容必须：
+进入 `memory_core/memory/kb/global/` 的内容必须：
 
 - 有来源材料或既有控制面来源
 - 受总系统或更上位治理边界约束
@@ -125,7 +125,7 @@ related: [workbot-memory-system, workbot-memory-routing, workbot-hook-contract, 
 
 ### Project Canonical
 
-进入 `workspace/memory/kb/projects/` 的内容必须：
+进入 `memory_core/memory/kb/projects/` 的内容必须：
 
 - 有项目来源材料
 - 受 global canonical 约束
@@ -174,15 +174,15 @@ related: [workbot-memory-system, workbot-memory-routing, workbot-hook-contract, 
 ## 9. Truth Basis
 
 ### Source Refs
-- `workspace/INDEX.md`
-- `workspace/memory/kb/global/workbot-memory-system.md`
+- `memory_core/INDEX.md`
+- `memory_core/memory/kb/global/workbot-memory-system.md`
 
 ### Authority Refs
-- `workspace/project-map/legal-core-map.md`
+- `memory_core/project-map/legal-core-map.md`
 
 ### Evidence Refs
-- `workspace/tools/memory_hook_gateway.py`
-- `workspace/tools/validate_memory_system.py`
+- `memory_core/tools/memory_hook_gateway.py`
+- `memory_core/tools/validate_memory_system.py`
 
 ### Conflict Status
 - `resolved`

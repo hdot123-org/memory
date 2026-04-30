@@ -177,17 +177,17 @@ raise ValueError(
 ## 7. Truth Basis
 
 ### Source Refs
-- `workspace/INDEX.md`
-- `workspace/memory/kb/global/workbot-hook-contract.md`
+- `memory_core/INDEX.md`
+- `memory_core/memory/kb/global/workbot-hook-contract.md`
 
 ### Authority Refs
-- `workspace/memory/kb/global/workbot-truth-model.md`
-- `workspace/memory/kb/global/workbot-memory-system.md`
+- `memory_core/memory/kb/global/workbot-truth-model.md`
+- `memory_core/memory/kb/global/workbot-memory-system.md`
 
 ### Evidence Refs
-- `workspace/tools/memory_hook_interfaces.py`
-- `workspace/tools/memory_hook_impls.py`
-- `workspace/tools/memory_hook_gateway.py`
+- `memory_core/tools/memory_hook_interfaces.py`
+- `memory_core/tools/memory_hook_impls.py`
+- `memory_core/tools/memory_hook_gateway.py`
 - `tests/test_memory_hook_gateway_m3_policy_pack.py`
 
 ### Conflict Status

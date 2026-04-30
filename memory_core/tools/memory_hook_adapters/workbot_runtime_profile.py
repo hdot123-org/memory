@@ -25,13 +25,13 @@ def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict
     policy_pack_path = workspace_root / "memory" / "kb" / "global" / "workbot-policy-pack.json"
 
     required_registry_scopes = [
-        "workspace/project-map/**",
-        "workspace/memory/kb/global/**",
-        "workspace/memory/kb/projects/**",
-        "workspace/memory/docs/**",
-        "workspace/memory/log/**",
-        "workspace/projects/**",
-        "workspace/tools/**",
+        "memory_core/project-map/**",
+        "memory_core/memory/kb/global/**",
+        "memory_core/memory/kb/projects/**",
+        "memory_core/memory/docs/**",
+        "memory_core/memory/log/**",
+        "memory_core/projects/**",
+        "memory_core/tools/**",
         "tests/**",
     ]
 

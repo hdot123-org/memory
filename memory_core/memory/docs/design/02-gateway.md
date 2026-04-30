@@ -16,14 +16,14 @@ related: [DES-001, DES-003, DES-009]
 
 # Gateway 设计文档
 
-> 源文件: `workspace/tools/memory_hook_gateway.py` (981 行)
+> 源文件: `memory_core/tools/memory_hook_gateway.py` (981 行)
 > 关联文件:
-> - `workspace/tools/memory_hook_interfaces.py` (244 行) — 接口定义
-> - `workspace/tools/memory_hook_impls.py` (1040 行) — 默认实现
-> - `workspace/tools/memory_hook_core.py` (271 行) — 核心组装逻辑
-> - `workspace/tools/memory_hook_adapters/workbot_runtime_profile.py` (267 行) — workbot 适配器
-> - `workspace/tools/memory_hook_adapters/workbot_policy.py` (82 行) — workbot 业务策略
-> - `workspace/tools/memory_hook_adapters/neutral_policy.py` (21 行) — 中性策略基类
+> - `memory_core/tools/memory_hook_interfaces.py` (244 行) — 接口定义
+> - `memory_core/tools/memory_hook_impls.py` (1040 行) — 默认实现
+> - `memory_core/tools/memory_hook_core.py` (271 行) — 核心组装逻辑
+> - `memory_core/tools/memory_hook_adapters/workbot_runtime_profile.py` (267 行) — workbot 适配器
+> - `memory_core/tools/memory_hook_adapters/workbot_policy.py` (82 行) — workbot 业务策略
+> - `memory_core/tools/memory_hook_adapters/neutral_policy.py` (21 行) — 中性策略基类
 
 ---
 
@@ -423,7 +423,7 @@ subprocess.run(
 1. 检查 `cmux` 在 PATH 中
 2. 检查 `CMUX_WORKSPACE_ID` 和 `CMUX_SURFACE_ID` 环境变量
 3. 确保 state file 存在（不存在则创建空 JSON）
-4. 调用 `cmux identify` 规范化 workspace/surface 引用
+4. 调用 `cmux identify` 规范化 memory_core/surface 引用
 5. 记录 hook state（通过 `state_recorder`）
 6. 执行 `["cmux", "claude-hook", event, "--workspace", workspace_id, "--surface", surface_id]`
 
@@ -448,7 +448,7 @@ subprocess.run(
 | 常量 | 值 | 定义行 |
 |------|-----|--------|
 | `SCRIPT_PATH` | `memory_hook_gateway.py` 的绝对路径 | 16 |
-| `WORKSPACE_ROOT` | `SCRIPT_PATH.parents[1]` -> `workspace/` | 17 |
+| `WORKSPACE_ROOT` | `SCRIPT_PATH.parents[1]` -> `memory_core/` | 17 |
 | `REPO_ROOT` | `SCRIPT_PATH.parents[2]` -> `<memory-repo>` | 18 |
 | `ARTIFACT_ROOT` | `WORKSPACE_ROOT/artifacts/memory-hook` | 19 |
 | `CONTEXT_ROOT` | `ARTIFACT_ROOT/contexts` | 20 |

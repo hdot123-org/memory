@@ -17,7 +17,7 @@
 ## 核心目录
 
 ```
-workspace/
+memory_core/
 ├── NOW.md              # 当前状态
 ├── INDEX.md            # 本文件
 ├── memory/
@@ -41,7 +41,7 @@ workspace/
 - `project-map/INDEX.md` 是唯一合法入口。
 - 只有被地图标为 `active-legal` 的条目或目录，才是合法资料；仅进入登记册不授予合法性。
 - 目录登记和目录状态迁移必须与相关文件同次 `git commit` 才生效。
-- 真相模型 canonical：`workspace/memory/kb/global/workbot-truth-model.md`（当前接入项目的真相模型文件）
+- 真相模型 canonical：`memory_core/memory/kb/global/workbot-truth-model.md`（当前接入项目的真相模型文件）
 
 ## 核心规则
 

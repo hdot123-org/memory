@@ -24,7 +24,7 @@ related: [DES-006, DES-008, DES-010]
 
 ## 1. memory-hook-policy-pack.json 完整结构
 
-全局默认策略包位于 `memory-hook-policy-pack.json`（`workspace/memory/kb/global/memory-hook-policy-pack.json`），workbot 专用策略包位于 `workbot-policy-pack.json`（`workspace/memory/kb/global/workbot-policy-pack.json`）。两者结构相同，仅 `scope` 字段不同。
+全局默认策略包位于 `memory-hook-policy-pack.json`（`memory_core/memory/kb/global/memory-hook-policy-pack.json`），workbot 专用策略包位于 `workbot-policy-pack.json`（`memory_core/memory/kb/global/workbot-policy-pack.json`）。两者结构相同，仅 `scope` 字段不同。
 
 ```json
 {
@@ -80,13 +80,13 @@ related: [DES-006, DES-008, DES-010]
 | `preserve-and-escalate` | 保留第一值，标记为升级到人工裁决 |
 | `prefer-strict` | 选择更严格的值（如 `kb_overwrite_allowed` 选 `false`，`registration_phase` 选 `declared-not-enforced`） |
 
-冲突解决逻辑实现在 `PolicyRegistryImpl.resolve_conflict()`（`workspace/tools/memory_hook_impls.py` 约 L325-358）。
+冲突解决逻辑实现在 `PolicyRegistryImpl.resolve_conflict()`（`memory_core/tools/memory_hook_impls.py` 约 L325-358）。
 
 ---
 
 ## 2. workbot-policy-pack.md scope 标记
 
-`workbot-policy-pack.md`（`workspace/memory/kb/global/workbot-policy-pack.md`）是 workbot adapter 级别的策略包规范文档。
+`workbot-policy-pack.md`（`memory_core/memory/kb/global/workbot-policy-pack.md`）是 workbot adapter 级别的策略包规范文档。
 
 **关键 scope 标记：**
 
@@ -110,7 +110,7 @@ workbot_runtime_profile.build_workbot_runtime_profile()
 
 ## 3. workbot-project-map-governance.md 治理规则
 
-`workbot-project-map-governance.md`（`workspace/memory/kb/global/workbot-project-map-governance.md`）定义 workbot adapter 级别的项目地图治理规则。
+`workbot-project-map-governance.md`（`memory_core/memory/kb/global/workbot-project-map-governance.md`）定义 workbot adapter 级别的项目地图治理规则。
 
 **Scope 标记：** `rule-only, records-cleared`，`Scope: adapter`
 
@@ -128,7 +128,7 @@ workbot_runtime_profile.build_workbot_runtime_profile()
 
 ## 4. workbot-hook-contract.md hook 契约
 
-`workbot-hook-contract.md`（`workspace/memory/kb/global/workbot-hook-contract.md`）定义 Codex 与 Claude 通过 workbot adapter 进入总记忆系统时的 hook 合同。
+`workbot-hook-contract.md`（`memory_core/memory/kb/global/workbot-hook-contract.md`）定义 Codex 与 Claude 通过 workbot adapter 进入总记忆系统时的 hook 合同。
 
 **元数据：**
 
@@ -170,7 +170,7 @@ workbot_runtime_profile.build_workbot_runtime_profile()
 
 ## 5. POLICY_ALLOWED_SCOPES、POLICY_SCOPE_INHERITS 代码使用
 
-这两个常量定义在 `workbot_runtime_profile.py`（`workspace/tools/memory_hook_adapters/workbot_runtime_profile.py` L251-260）的 `build_workbot_runtime_profile()` 返回值中：
+这两个常量定义在 `workbot_runtime_profile.py`（`memory_core/tools/memory_hook_adapters/workbot_runtime_profile.py` L251-260）的 `build_workbot_runtime_profile()` 返回值中：
 
 ```python
 "POLICY_ALLOWED_SCOPES": {"workbot", "AEdu", "platform-capabilities"},

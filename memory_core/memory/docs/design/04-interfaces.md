@@ -16,7 +16,7 @@ related: [DES-003, DES-005, DES-006]
 
 # 接口契约层设计文档
 
-> 来源：`workspace/tools/memory_hook_interfaces.py`（242 行）+ `workspace/tools/memory_hook_impls.py`
+> 来源：`memory_core/tools/memory_hook_interfaces.py`（242 行）+ `memory_core/tools/memory_hook_impls.py`
 > 生成日期：2026-04-26
 
 ---

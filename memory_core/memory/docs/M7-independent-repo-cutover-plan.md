@@ -19,7 +19,7 @@
 - 仓库：`https://github.com/hdot123/memory`
 - 迁入提交：`297976e`
 - 测试：`python3 -m pytest -q tests` -> `87 passed`
-- 回退演练：`python3 workspace/tools/memory_hook_provider_rollback.py` -> `passed`
+- 回退演练：`python3 memory_core/tools/memory_hook_provider_rollback.py` -> `passed`
 - 运行烟测：`build_context_package(...)` 当前 `status=degraded`（需收口）
 
 ---

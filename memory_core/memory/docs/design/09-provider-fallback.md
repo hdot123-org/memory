@@ -17,9 +17,9 @@ related: [DES-002, DES-006, DES-008]
 # Provider 与回退机制设计文档
 
 > 来源文件：
-> - `workspace/tools/memory_hook_gateway.py`（981 行）
-> - `workspace/tools/memory_hook_provider_rollback.py`（60 行）
-> - `workspace/tools/memory_hook_core.py`（271 行）
+> - `memory_core/tools/memory_hook_gateway.py`（981 行）
+> - `memory_core/tools/memory_hook_provider_rollback.py`（60 行）
+> - `memory_core/tools/memory_hook_core.py`（271 行）
 > 生成日期：2026-04-26
 
 ---
@@ -145,7 +145,7 @@ if package.get("status") == "ok":
 
 ## 5. memory_hook_provider_rollback.py 完整逻辑
 
-文件位于 `workspace/tools/memory_hook_provider_rollback.py`（60 行），是 **一键回滚演练工具**。
+文件位于 `memory_core/tools/memory_hook_provider_rollback.py`（60 行），是 **一键回滚演练工具**。
 
 ### 5.1 run_rollback_drill() 函数（第 23-36 行）
 
@@ -324,7 +324,7 @@ if os.environ.get("MEMORY_HOOK_SHADOW_RUN"):
 
 ### 8.5 回滚演练
 
-消费者可运行 `python3 workspace/tools/memory_hook_provider_rollback.py` 验证回退能力：
+消费者可运行 `python3 memory_core/tools/memory_hook_provider_rollback.py` 验证回退能力：
 
 - 退出码 0：legacy provider 可用，系统具备回退能力
 - 退出码 1：legacy provider 不可用，存在单点故障风险

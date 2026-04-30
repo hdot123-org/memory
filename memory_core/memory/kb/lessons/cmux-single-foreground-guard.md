@@ -24,7 +24,7 @@ related: [workbot-hook-contract, workbot-truth-model, workbot-memory-routing]
 
 - Added workspace-count hard guard (`>1` fails fast with workspace list).
 - Added bootstrap lock at:
-  - `workspace/artifacts/cmux-runtime/bootstrap.lock`
+  - `memory_core/artifacts/cmux-runtime/bootstrap.lock`
 - Added stale-lock recovery and live-lock refusal.
 - Added watcher guards:
   - workspace mismatch -> `task_blocked`
@@ -40,4 +40,4 @@ related: [workbot-hook-contract, workbot-truth-model, workbot-memory-routing]
 
 - `python3 -m py_compile <cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
 - `python3 -m py_compile <cmux-skills-dir>/scripts/watch_cmux_assignments.py`
-- `python3 <cmux-skills-dir>/scripts/watch_cmux_assignments.py --assignment-file workspace/artifacts/cmux-runtime/cmux-assignment.json --hook-state-file workspace/artifacts/cmux-runtime/hook-state.json --once`
+- `python3 <cmux-skills-dir>/scripts/watch_cmux_assignments.py --assignment-file memory_core/artifacts/cmux-runtime/cmux-assignment.json --hook-state-file memory_core/artifacts/cmux-runtime/hook-state.json --once`

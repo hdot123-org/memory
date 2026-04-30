@@ -19,13 +19,13 @@ Scope: adapter
 ## Truth Basis
 
 ### Source Refs
-- `workspace/INDEX.md`
+- `memory_core/INDEX.md`
 
 ### Authority Refs
-- `workspace/project-map/legal-core-map.md`
+- `memory_core/project-map/legal-core-map.md`
 
 ### Evidence Refs
-- `workspace/tools/memory_hook_gateway.py`
+- `memory_core/tools/memory_hook_gateway.py`
 
 ### Conflict Status
 - `resolved`

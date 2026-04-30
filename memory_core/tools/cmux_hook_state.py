@@ -34,7 +34,7 @@ def _exclusive_hook_state_lock(path: Path):
 
 def runtime_state_dir(project_dir: Path) -> Path:
     project_dir = project_dir.expanduser().resolve()
-    workspace_artifacts = project_dir / "workspace" / "artifacts"
+    workspace_artifacts = project_dir / "memory_core" / "artifacts"
     if workspace_artifacts.is_dir():
         return workspace_artifacts / "cmux-runtime"
     return project_dir / ".cmux-runtime"

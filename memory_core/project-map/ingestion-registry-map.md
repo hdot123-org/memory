@@ -18,11 +18,11 @@ Scope: adapter
 - `retired`
 
 ## Required Registry Scopes
-- `workspace/project-map/**`
-- `workspace/memory/kb/global/**`
-- `workspace/memory/kb/projects/**`
-- `workspace/memory/docs/**`
-- `workspace/memory/log/**`
-- `workspace/projects/**`
-- `workspace/tools/**`
+- `memory_core/project-map/**`
+- `memory_core/memory/kb/global/**`
+- `memory_core/memory/kb/projects/**`
+- `memory_core/memory/docs/**`
+- `memory_core/memory/log/**`
+- `memory_core/projects/**`
+- `memory_core/tools/**`
 - `tests/**`

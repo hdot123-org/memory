@@ -17,13 +17,13 @@ related: [DES-005, DES-007, DES-009]
 # Adapter 层设计
 
 > 生成时间：2026-04-26
-> 源码根：`workspace/tools/memory_hook_adapters/`
+> 源码根：`memory_core/tools/memory_hook_adapters/`
 
 ---
 
 ## 1. Adapter 层定位
 
-Adapter 层是 memory-hook gateway 的**项目级适配层**，位于 `workspace/tools/memory_hook_adapters/` 下，承担两个职责：
+Adapter 层是 memory-hook gateway 的**项目级适配层**，位于 `memory_core/tools/memory_hook_adapters/` 下，承担两个职责：
 
 1. **运行时配置注入**：通过 `build_workbot_runtime_profile()` 生成一个扁平 `dict`，将 workbot 项目的所有路径、策略、约束等配置注入到 gateway 的全局命名空间（`memory_hook_gateway.py` 第 91 行 `globals().update(...)`）。
 2. **业务策略适配**：通过 `WorkbotGatewayBusinessPolicy` 继承 `NeutralGatewayBusinessPolicy`（中性默认策略），覆盖 gateway 的业务决策逻辑，实现 workbot 特定的合法性来源、提交策略、policy-pack 合并等行为。
@@ -121,7 +121,7 @@ ADAPTER_POLICIES: dict[str, str] = {
 
 **policy-pack 解析路径**（L29-52）：
 
-优先级链：构造函数参数 `policy_pack_path` > 环境变量 `MEMORY_HOOK_POLICY_PACK_PATH` > 默认路径 `workspace/memory/kb/global/memory-hook-policy-pack.json` > `None`。
+优先级链：构造函数参数 `policy_pack_path` > 环境变量 `MEMORY_HOOK_POLICY_PACK_PATH` > 默认路径 `memory_core/memory/kb/global/memory-hook-policy-pack.json` > `None`。
 
 **inject_policy_pack_config()**（L54-75）：
 
@@ -199,7 +199,7 @@ globals().update(_fn(REPO_ROOT, WORKSPACE_ROOT))
 
 ### 6.1 创建运行时 Profile
 
-在 `workspace/tools/memory_hook_adapters/` 下新建 `newproject_runtime_profile.py`：
+在 `memory_core/tools/memory_hook_adapters/` 下新建 `newproject_runtime_profile.py`：
 
 ```python
 from pathlib import Path

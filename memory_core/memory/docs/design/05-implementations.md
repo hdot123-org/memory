@@ -16,8 +16,8 @@ related: [DES-004, DES-006, DES-007]
 
 # 实现层设计文档
 
-> 来源：`<memory-repo>/workspace/tools/memory_hook_impls.py`（1040 行）
-> 接口：`<memory-repo>/workspace/tools/memory_hook_interfaces.py`（242 行）
+> 来源：`<memory-repo>/memory_core/tools/memory_hook_impls.py`（1040 行）
+> 接口：`<memory-repo>/memory_core/tools/memory_hook_interfaces.py`（242 行）
 
 ---
 
@@ -77,7 +77,7 @@ Claude 多一个 `workspace_id` 必填约束。
 |------|------------------------|--------------------------|
 | 前置校验 | 检查 `cmux` 和 `surface_id` | 检查 `cmux`、`workspace_id`、`surface_id` |
 | 状态文件解析 | 无 | 三段式：`_state_file` 注入 → `default_hook_state_path()` 默认 → `state_path_factory` 回调 |
-| workspace/surface 规范化 | 无 | 通过 `canonicalizer` 回调或直用原始值 |
+| memory_core/surface 规范化 | 无 | 通过 `canonicalizer` 回调或直用原始值 |
 | 状态记录 | 无 | 调用 `record_hook_event()` 或 `state_recorder` 回调 |
 | 子命令 | `cmux codex-hook <event>` | `cmux claude-hook <event> --workspace <ref> --surface <ref>` |
 | stdin | `raw_payload` | `raw_payload or "{}"` |
@@ -253,7 +253,7 @@ Claude 多一个 `workspace_id` 必填约束。
 config.policy_pack_path > 构造参数 > MEMORY_HOOK_POLICY_PACK_PATH 环境变量 > 默认文件路径 > None
 ```
 
-默认路径 (L183-185)：`workspace/memory/kb/global/memory-hook-policy-pack.json`
+默认路径 (L183-185)：`memory_core/memory/kb/global/memory-hook-policy-pack.json`
 
 ### 4.2 默认策略 (L187-192)
 
