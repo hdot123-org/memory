@@ -10,8 +10,8 @@ def repo_root():
 
 @pytest.fixture
 def workspace_root(repo_root):
-    """workspace 包根目录"""
-    return repo_root / "workspace"
+    """memory_core 包根目录"""
+    return repo_root / "memory_core"
 
 
 @pytest.fixture

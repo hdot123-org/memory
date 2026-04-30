@@ -29,7 +29,7 @@ def _dummy_callable():
 
 def _make_minimal_core_config_kwargs(tmp_path: Path) -> dict[str, Any]:
     """Build a minimal-but-complete kwargs dict for CoreConfig."""
-    base = tmp_path / "workspace"
+    base = tmp_path / "memory_core"
     base.mkdir(parents=True, exist_ok=True)
 
     def _noop(*_a, **_k):
@@ -90,7 +90,7 @@ class TestCoreConfig:
 
     def test_core_config_constructs_with_all_fields(self, tmp_path):
         """CoreConfig can be constructed with all 37 fields."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_core_config_kwargs(tmp_path)
         cfg = CoreConfig(**kwargs)
@@ -100,19 +100,19 @@ class TestCoreConfig:
         assert cfg.host == "codex"
         assert cfg.event == "session-start"
         assert cfg.payload == {"session_id": "abc"}
-        assert cfg.cwd == tmp_path / "workspace"
+        assert cfg.cwd == tmp_path / "memory_core"
         assert cfg.project_scope == "workbot"
-        assert cfg.workspace_root == tmp_path / "workspace"
-        assert cfg.repo_root == tmp_path / "workspace"
+        assert cfg.workspace_root == tmp_path / "memory_core"
+        assert cfg.repo_root == tmp_path / "memory_core"
 
         # Group 2: Paths
         assert cfg.required_canonical == []
         assert cfg.project_canonical == {}
         assert cfg.project_runtime_root == {}
         assert cfg.global_canonical == []
-        assert cfg.project_map_governance == tmp_path / "workspace" / "governance.md"
-        assert cfg.event_log == tmp_path / "workspace" / "events.jsonl"
-        assert cfg.hook_contract_path == tmp_path / "workspace" / "contract.md"
+        assert cfg.project_map_governance == tmp_path / "memory_core" / "governance.md"
+        assert cfg.event_log == tmp_path / "memory_core" / "events.jsonl"
+        assert cfg.hook_contract_path == tmp_path / "memory_core" / "contract.md"
 
         # Group 3: Policy
         assert cfg.legality_source_policy == "map-only"
@@ -129,7 +129,7 @@ class TestCoreConfig:
 
     def test_core_config_rejects_invalid_host(self, tmp_path):
         """CoreConfig raises on invalid host value."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_core_config_kwargs(tmp_path)
         kwargs["host"] = "invalid"
@@ -139,7 +139,7 @@ class TestCoreConfig:
 
     def test_core_config_rejects_empty_event(self, tmp_path):
         """CoreConfig raises on empty event string."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_core_config_kwargs(tmp_path)
         kwargs["event"] = ""
@@ -149,7 +149,7 @@ class TestCoreConfig:
 
     def test_core_config_rejects_non_path_workspace_root(self, tmp_path):
         """CoreConfig raises when workspace_root is not a Path."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_core_config_kwargs(tmp_path)
         kwargs["workspace_root"] = "/not/a/path"  # type: ignore
@@ -159,7 +159,7 @@ class TestCoreConfig:
 
     def test_core_config_rejects_non_path_repo_root(self, tmp_path):
         """CoreConfig raises when repo_root is not a Path."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_core_config_kwargs(tmp_path)
         kwargs["repo_root"] = "/not/a/path"  # type: ignore
@@ -169,7 +169,7 @@ class TestCoreConfig:
 
     def test_core_config_from_gateway_kwargs(self, tmp_path):
         """from_gateway_kwargs() correctly maps all 37 kwargs."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_core_config_kwargs(tmp_path)
         cfg = CoreConfig.from_gateway_kwargs(**kwargs)
@@ -185,7 +185,7 @@ class TestCoreConfig:
 
     def test_core_config_optional_fields_default_to_none(self, tmp_path):
         """governance_blocker_scopes, event_contract_blocker_scopes, core_evidence_refs default to None."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_core_config_kwargs(tmp_path)
         # Omit the three optional fields
@@ -201,7 +201,7 @@ class TestCoreConfig:
 
     def test_core_config_accepts_claude_host(self, tmp_path):
         """CoreConfig accepts 'claude' as a valid host."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_core_config_kwargs(tmp_path)
         kwargs["host"] = "claude"
@@ -219,7 +219,7 @@ class TestArtifactWriter:
 
     def test_artifact_writer_creates_context_file(self, tmp_path):
         """ArtifactWriter writes a JSON file to context_root."""
-        from workspace.tools.memory_hook_impls import ArtifactWriter
+        from memory_core.tools.memory_hook_impls import ArtifactWriter
 
         context_root = tmp_path / "artifacts"
         error_log = tmp_path / "errors.log"
@@ -243,7 +243,7 @@ class TestArtifactWriter:
         """ArtifactWriter logs errors instead of raising."""
         from datetime import datetime as real_datetime
 
-        from workspace.tools.memory_hook_impls import ArtifactWriter
+        from memory_core.tools.memory_hook_impls import ArtifactWriter
 
         context_root = tmp_path / "artifacts"
         error_log = tmp_path / "errors.log"
@@ -280,7 +280,7 @@ class TestArtifactWriter:
 
     def test_artifact_writer_uses_sink_internally(self, tmp_path):
         """ArtifactWriter delegates to ArtifactSinkImpl for actual writing."""
-        from workspace.tools.memory_hook_impls import ArtifactWriter
+        from memory_core.tools.memory_hook_impls import ArtifactWriter
 
         context_root = tmp_path / "artifacts"
         error_log = tmp_path / "errors.log"
@@ -313,7 +313,7 @@ class TestDelegateRouter:
 
     def test_delegate_router_routes_to_codex(self):
         """DelegateRouter calls codex_delegate.execute for host='codex'."""
-        from workspace.tools.memory_hook_impls import DelegateRouter
+        from memory_core.tools.memory_hook_impls import DelegateRouter
 
         codex = self._make_fake_delegate()
         claude = self._make_fake_delegate()
@@ -334,7 +334,7 @@ class TestDelegateRouter:
 
     def test_delegate_router_routes_to_claude(self):
         """DelegateRouter calls claude_delegate.execute for host='claude'."""
-        from workspace.tools.memory_hook_impls import DelegateRouter
+        from memory_core.tools.memory_hook_impls import DelegateRouter
 
         codex = self._make_fake_delegate()
         claude = self._make_fake_delegate()
@@ -353,7 +353,7 @@ class TestDelegateRouter:
 
     def test_delegate_router_rejects_unknown_host(self):
         """DelegateRouter raises ValueError for unknown host."""
-        from workspace.tools.memory_hook_impls import DelegateRouter
+        from memory_core.tools.memory_hook_impls import DelegateRouter
 
         codex = self._make_fake_delegate()
         claude = self._make_fake_delegate()
@@ -364,7 +364,7 @@ class TestDelegateRouter:
 
     def test_delegate_router_noop_codex(self):
         """DelegateRouter calls codex_delegate.noop_response for host='codex'."""
-        from workspace.tools.memory_hook_impls import DelegateRouter
+        from memory_core.tools.memory_hook_impls import DelegateRouter
 
         codex = self._make_fake_delegate()
         claude = self._make_fake_delegate()
@@ -378,7 +378,7 @@ class TestDelegateRouter:
 
     def test_delegate_router_noop_claude(self):
         """DelegateRouter calls claude_delegate.noop_response for host='claude'."""
-        from workspace.tools.memory_hook_impls import DelegateRouter
+        from memory_core.tools.memory_hook_impls import DelegateRouter
 
         codex = self._make_fake_delegate()
         claude = self._make_fake_delegate()
@@ -392,7 +392,7 @@ class TestDelegateRouter:
 
     def test_delegate_router_noop_rejects_unknown_host(self):
         """DelegateRouter raises ValueError for unknown host in noop()."""
-        from workspace.tools.memory_hook_impls import DelegateRouter
+        from memory_core.tools.memory_hook_impls import DelegateRouter
 
         codex = self._make_fake_delegate()
         claude = self._make_fake_delegate()
@@ -403,7 +403,7 @@ class TestDelegateRouter:
 
     def test_delegate_router_stores_delegates(self):
         """DelegateRouter stores references to both delegates."""
-        from workspace.tools.memory_hook_impls import DelegateRouter
+        from memory_core.tools.memory_hook_impls import DelegateRouter
 
         codex = self._make_fake_delegate()
         claude = self._make_fake_delegate()

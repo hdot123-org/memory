@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-GLOBAL_DIR = REPO_ROOT / "workspace" / "memory" / "kb" / "global"
+GLOBAL_DIR = REPO_ROOT / "memory_core" / "memory" / "kb" / "global"
 
 MEMORY_SYSTEM_PATH = GLOBAL_DIR / "workbot-memory-system.md"
 TRUTH_MODEL_PATH = GLOBAL_DIR / "workbot-truth-model.md"

@@ -33,7 +33,7 @@ if str(repo_root) not in sys.path:
 def _clear_gateway_cache() -> None:
     """Remove all memory_hook modules from sys.modules."""
     for name in list(sys.modules.keys()):
-        if name.startswith("workspace.tools.memory_hook"):
+        if name.startswith("memory_core.tools.memory_hook"):
             del sys.modules[name]
 
 
@@ -55,7 +55,7 @@ def _reload_gateway(**env_overrides: str) -> Any:
     _clear_gateway_cache()
 
     with patch.dict(os.environ, clean_env, clear=True):
-        gw = importlib.import_module("workspace.tools.memory_hook_gateway")
+        gw = importlib.import_module("memory_core.tools.memory_hook_gateway")
         return gw
 
 
@@ -90,7 +90,7 @@ class TestAdapterDiscovery:
 
         with patch.dict(os.environ, clean_env, clear=True):
             with pytest.raises(KeyError):
-                importlib.import_module("workspace.tools.memory_hook_gateway")
+                importlib.import_module("memory_core.tools.memory_hook_gateway")
 
     def test_adapter_registry_has_workbot(self) -> None:
         """Verify _ADAPTER_REGISTRY contains 'workbot' entry."""
@@ -117,7 +117,7 @@ class TestPolicyClassResolution:
     def test_policy_class_is_workbot_by_default(self) -> None:
         """Default policy class is WorkbotGatewayBusinessPolicy."""
         gw = _reload_gateway()
-        from workspace.tools.memory_hook_adapters.workbot_policy import (
+        from memory_core.tools.memory_hook_adapters.workbot_policy import (
             WorkbotGatewayBusinessPolicy,
         )
         assert gw.GATEWAY_POLICY_CLASS is WorkbotGatewayBusinessPolicy
@@ -125,7 +125,7 @@ class TestPolicyClassResolution:
     def test_build_policy_uses_adapter_class(self) -> None:
         """_build_gateway_business_policy uses the class from profile."""
         gw = _reload_gateway()
-        from workspace.tools.memory_hook_adapters.workbot_policy import (
+        from memory_core.tools.memory_hook_adapters.workbot_policy import (
             WorkbotGatewayBusinessPolicy,
         )
         policy = gw._build_gateway_business_policy()
@@ -170,7 +170,7 @@ class TestGatewayDecoupling:
         """
         gateway_source = (
             Path(__file__).resolve().parent.parent
-            / "workspace"
+            / "memory_core"
             / "tools"
             / "memory_hook_gateway.py"
         ).read_text(encoding="utf-8")

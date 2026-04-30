@@ -1,4 +1,4 @@
-"""Smoke tests for workspace/tools/validate_memory_system.py.
+"""Smoke tests for memory_core/tools/validate_memory_system.py.
 
 Verifies that the validator returns the correct exit code in both
 healthy and broken scenarios.
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-TOOLS_DIR = Path(__file__).resolve().parents[1] / "workspace" / "tools"
+TOOLS_DIR = Path(__file__).resolve().parents[1] / "memory_core" / "tools"
 sys.path.insert(0, str(TOOLS_DIR))
 
 

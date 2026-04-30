@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 # Ensure workspace/tools is on the path so the module can be imported
-TOOLS_DIR = str(Path(__file__).resolve().parent.parent / "workspace" / "tools")
+TOOLS_DIR = str(Path(__file__).resolve().parent.parent / "memory_core" / "tools")
 if TOOLS_DIR not in sys.path:
     sys.path.insert(0, TOOLS_DIR)
 

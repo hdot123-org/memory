@@ -10,8 +10,8 @@ repo_root = Path(__file__).resolve().parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from workspace.tools.memory_hook_gateway import build_context_package
-from workspace.tools.memory_hook_impls import PolicyRegistryImpl
+from memory_core.tools.memory_hook_gateway import build_context_package
+from memory_core.tools.memory_hook_impls import PolicyRegistryImpl
 
 
 def _read_text(path: Path) -> str:
@@ -30,7 +30,7 @@ def test_runtime_smoke_status_ok() -> None:
 def test_no_legacy_workbot_absolute_paths_in_workspace() -> None:
     legacy_root = "/Users/busiji/workbot"
     offenders: list[str] = []
-    for path in (repo_root / "workspace").rglob("*"):
+    for path in (repo_root / "memory_core").rglob("*"):
         if not path.is_file():
             continue
         text = _read_text(path)
@@ -40,11 +40,11 @@ def test_no_legacy_workbot_absolute_paths_in_workspace() -> None:
 
 
 def test_project_map_contract_markers_present() -> None:
-    project_map_index = _read_text(repo_root / "workspace" / "project-map" / "INDEX.md")
-    legal_core_map = _read_text(repo_root / "workspace" / "project-map" / "legal-core-map.md")
-    ingestion_registry = _read_text(repo_root / "workspace" / "project-map" / "ingestion-registry-map.md")
+    project_map_index = _read_text(repo_root / "memory_core" / "project-map" / "INDEX.md")
+    legal_core_map = _read_text(repo_root / "memory_core" / "project-map" / "legal-core-map.md")
+    ingestion_registry = _read_text(repo_root / "memory_core" / "project-map" / "ingestion-registry-map.md")
     governance = _read_text(
-        repo_root / "workspace" / "memory" / "kb" / "global" / "workbot-project-map-governance.md"
+        repo_root / "memory_core" / "memory" / "kb" / "global" / "workbot-project-map-governance.md"
     )
 
     assert "唯一合法入口" in project_map_index
@@ -55,7 +55,7 @@ def test_project_map_contract_markers_present() -> None:
 
 
 def test_policy_registry_default_layer_is_not_workbot_bound() -> None:
-    registry = PolicyRegistryImpl(policy_pack_path=repo_root / "workspace" / "memory" / "kb" / "global" / "__missing__.json")
+    registry = PolicyRegistryImpl(policy_pack_path=repo_root / "memory_core" / "memory" / "kb" / "global" / "__missing__.json")
     package = registry.get_policy_pack("generic-scope")
 
     assert package["scope"] == "generic-scope"

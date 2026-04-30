@@ -5,7 +5,9 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-from workspace.tools.adapter_toml_schema import (
+import pytest
+
+from memory_core.tools.adapter_toml_schema import (
     AdapterConfig,
     dump_adapter_toml,
     load_adapter_toml,

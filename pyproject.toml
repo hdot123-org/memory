@@ -37,12 +37,12 @@ Repository = "https://github.com/hdot123/memory"
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-memory-init = "workspace.tools.init_project_memory:main"
-memory-migrate = "workspace.tools.migrate_project_memory:main"
-memory-validate = "workspace.tools.validate_project_memory:main"
+memory-init = "memory_core.tools.init_project_memory:main"
+memory-migrate = "memory_core.tools.migrate_project_memory:main"
+memory-validate = "memory_core.tools.validate_project_memory:main"
 
 [tool.setuptools.packages.find]
-include = ["workspace*"]
+include = ["memory_core*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

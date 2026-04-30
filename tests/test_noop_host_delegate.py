@@ -2,7 +2,9 @@
 
 from unittest.mock import patch
 
-from workspace.tools.memory_hook_impls import (
+import pytest
+
+from memory_core.tools.memory_hook_impls import (
     ClaudeDelegate,
     CodexDelegate,
     NoopHostDelegate,

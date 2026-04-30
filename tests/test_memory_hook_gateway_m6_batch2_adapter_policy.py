@@ -11,8 +11,8 @@ repo_root = Path(__file__).resolve().parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from workspace.tools import memory_hook_gateway as gateway
-from workspace.tools.memory_hook_impls import GatewayBusinessPolicyConfig, GatewayBusinessPolicyImpl
+from memory_core.tools import memory_hook_gateway as gateway
+from memory_core.tools.memory_hook_impls import GatewayBusinessPolicyConfig, GatewayBusinessPolicyImpl
 
 
 def _policy_config() -> GatewayBusinessPolicyConfig:

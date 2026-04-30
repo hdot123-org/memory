@@ -16,7 +16,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-TOOLS_DIR = Path(__file__).resolve().parents[1] / "workspace" / "tools"
+import pytest
+
+TOOLS_DIR = Path(__file__).resolve().parents[1] / "memory_core" / "tools"
 INIT_SCRIPT = TOOLS_DIR / "init_project_memory.py"
 VALIDATE_SCRIPT = TOOLS_DIR / "validate_project_memory.py"
 MIGRATE_SCRIPT = TOOLS_DIR / "migrate_project_memory.py"
