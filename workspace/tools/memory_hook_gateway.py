@@ -27,8 +27,6 @@ CLAUDE_HOOK_STATE_DIR = Path.home() / ".agents" / "skills" / "cmux" / "scripts"
 try:
     from .cmux_hook_state import default_hook_state_path, record_hook_event
 except ImportError:
-    if str(CLAUDE_HOOK_STATE_DIR) not in sys.path:
-        sys.path.append(str(CLAUDE_HOOK_STATE_DIR))
     from cmux_hook_state import default_hook_state_path, record_hook_event  # type: ignore  # noqa: E402
 
 try:
@@ -54,6 +52,7 @@ try:
         WriteTargetPolicyImpl,
         ArtifactWriter,
         DelegateRouter,
+        resolve_host_delegate,
     )
     from .memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile
     from .memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy
@@ -81,6 +80,7 @@ except ImportError:
         WriteTargetPolicyImpl,
         ArtifactWriter,
         DelegateRouter,
+        resolve_host_delegate,
     )
     from memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile  # type: ignore
     from memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy  # type: ignore
@@ -250,25 +250,7 @@ def _get_error_sink() -> ErrorSink:
 
 
 def _get_host_delegate(host: str) -> HostDelegate:
-    """Get host delegate by name."""
-    if host == "codex":
-        return CodexDelegate(
-            which_cmd=shutil.which,
-            runner=subprocess.run,
-        )
-    elif host == "claude":
-        return ClaudeDelegate(
-            repo_root=REPO_ROOT,
-            which_cmd=shutil.which,
-            runner=subprocess.run,
-            # M2: state_file resolved by adapter policy, not read from env here
-            state_file=CLAUDE_HOOK_STATE_FILE if CLAUDE_HOOK_STATE_FILE else None,
-            state_path_factory=default_hook_state_path,
-            canonicalizer=_canonicalize_cmux_refs,
-            state_recorder=record_hook_event,
-        )
-    else:
-        raise ValueError(f"unknown host: {host}")
+    return resolve_host_delegate(host, mode="auto")
 
 
 # IF-5 adapters for existing functions
