@@ -240,6 +240,16 @@ class TestMigrationIdempotency:
         proj = _make_temp_project()
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            # Downgrade version to 0.1.0 so we can test the 0.1.0->0.2.0 migration
+            lock_path = proj / ".memory" / "memory.lock"
+            lock_data = json.loads(lock_path.read_text())
+            lock_data["version"] = "0.1.0"
+            lock_path.write_text(json.dumps(lock_data, indent=2), encoding="utf-8")
+            adapter_path = proj / ".memory" / "adapter.toml"
+            adapter_text = adapter_path.read_text(encoding="utf-8")
+            adapter_text = adapter_text.replace('version = "0.2.0"', 'version = "0.1.0"')
+            adapter_path.write_text(adapter_text, encoding="utf-8")
+
             result = _run_script(
                 MIGRATE_SCRIPT,
                 ["--target", str(proj), "--from", "0.1.0", "--to", "0.2.0", "--dry-run", "--json"],
@@ -261,6 +271,16 @@ class TestMigrationIdempotency:
         proj = _make_temp_project()
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            # Downgrade version to 0.1.0 so we can test the 0.1.0->0.2.0 migration
+            lock_path = proj / ".memory" / "memory.lock"
+            lock_data = json.loads(lock_path.read_text())
+            lock_data["version"] = "0.1.0"
+            lock_path.write_text(json.dumps(lock_data, indent=2), encoding="utf-8")
+            adapter_path = proj / ".memory" / "adapter.toml"
+            adapter_text = adapter_path.read_text(encoding="utf-8")
+            adapter_text = adapter_text.replace('version = "0.2.0"', 'version = "0.1.0"')
+            adapter_path.write_text(adapter_text, encoding="utf-8")
+
             result = _run_script(
                 MIGRATE_SCRIPT,
                 ["--target", str(proj), "--from", "0.1.0", "--to", "0.2.0", "--json"],
@@ -346,7 +366,7 @@ class TestVersionCheckFailure:
             # Tamper with adapter version
             adapter = proj / ".memory" / "adapter.toml"
             text = adapter.read_text(encoding="utf-8")
-            text = text.replace('version = "0.1.0"', 'version = "9.9.9"')
+            text = text.replace('version = "0.2.0"', 'version = "9.9.9"')
             adapter.write_text(text, encoding="utf-8")
 
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])

@@ -1,3 +1,12 @@
+Metadata-Version: 2.4
+Name: memory-core
+Version: 0.2.0
+Summary: Independent memory hook core and gateway runtime.
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+
 # memory-core
 
 为任意项目提供标准化的 `.memory/` 目录结构与版本管理能力。memory-core 只提供协议、模板、schema 和工具，不存储任何业务数据。
@@ -7,13 +16,13 @@
 ### 从 GitHub Release 安装
 
 ```bash
-gh release download v0.2.0 --repo hdot123/memory --pattern "*.whl" && pip install memory_core-0.2.0-py3-none-any.whl
+gh release download v0.3.0 --repo hdot123/memory --pattern "*.whl" && pip install memory_core-0.3.0-py3-none-any.whl
 ```
 
 ### 从源码安装
 
 ```bash
-pip install git+https://github.com/hdot123/memory.git@v0.2.0
+pip install git+https://github.com/hdot123/memory.git@v0.3.0
 ```
 
 ### 升级
@@ -21,7 +30,7 @@ pip install git+https://github.com/hdot123/memory.git@v0.2.0
 更换版本号并加 `--upgrade`：
 
 ```bash
-pip install --upgrade git+https://github.com/hdot123/memory.git@v0.2.0
+pip install --upgrade git+https://github.com/hdot123/memory.git@v0.3.0
 ```
 
 ## 快速开始
@@ -281,5 +290,5 @@ python -m pytest tests/
 
 ## 版本
 
-- **当前版本**：v0.2.0
+- **当前版本**：v0.3.0
 - **Python 要求**：>= 3.9
