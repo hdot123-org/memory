@@ -14,11 +14,11 @@ from workspace.tools.adapter_toml_schema import (
 )
 
 
-# ── load_adapter_toml ──────────────────────────────────────────────
+# ── load_adapter_toml (legacy [adapter] section) ──────────────────
 
 
-class TestLoadAdapterToml:
-    """Loading from disk."""
+class TestLoadAdapterTomlLegacy:
+    """Loading from the legacy single [adapter] section."""
 
     def test_missing_file_returns_defaults(self, tmp_path: Path) -> None:
         cfg = load_adapter_toml(tmp_path / "nope.toml")
@@ -75,16 +75,87 @@ class TestLoadAdapterToml:
         assert cfg.host == "codex"
 
 
+# ── load_adapter_toml (canonical [core]/[policy]/[routing]) ────────
+
+
+class TestLoadAdapterTomlCanonical:
+    """Loading from the canonical multi-section layout."""
+
+    def test_loads_canonical_format(self, tmp_path: Path) -> None:
+        toml = textwrap.dedent("""\
+            [core]
+            version = "0.2.0"
+            adapter = "default"
+
+            [policy]
+            legality_source_policy = "map-only"
+            registration_commit_policy = "same-commit"
+            registration_commit_phase = "post"
+
+            [routing]
+            project_name = "my-proj"
+            project_scope = "backend"
+            host = "codex"
+        """)
+        p = tmp_path / "adapter.toml"
+        p.write_text(toml)
+
+        cfg = load_adapter_toml(p)
+        assert cfg.project_name == "my-proj"
+        assert cfg.project_scope == "backend"
+        assert cfg.host == "codex"
+        assert cfg.adapter_version == "0.2.0"
+        assert cfg.legality_source_policy == "map-only"
+        assert cfg.registration_commit_policy == "same-commit"
+        assert cfg.registration_commit_phase == "post"
+
+    def test_canonical_without_project_name_falls_back_to_scope(self, tmp_path: Path) -> None:
+        """When routing.project_name is missing, project_scope is used."""
+        toml = textwrap.dedent("""\
+            [core]
+            version = "0.1.0"
+
+            [routing]
+            project_scope = "fallback-scope"
+            host = "codex"
+        """)
+        p = tmp_path / "adapter.toml"
+        p.write_text(toml)
+
+        cfg = load_adapter_toml(p)
+        assert cfg.project_name == "fallback-scope"
+        assert cfg.project_scope == "fallback-scope"
+
+    def test_canonical_policy_defaults(self, tmp_path: Path) -> None:
+        """Missing [policy] section yields defaults."""
+        toml = textwrap.dedent("""\
+            [core]
+            version = "0.1.0"
+
+            [routing]
+            project_scope = "s"
+        """)
+        p = tmp_path / "adapter.toml"
+        p.write_text(toml)
+
+        cfg = load_adapter_toml(p)
+        assert cfg.legality_source_policy == "map-only"
+        assert cfg.registration_commit_policy == "same-commit"
+        assert cfg.registration_commit_phase == "post"
+
+
 # ── dump_adapter_toml ──────────────────────────────────────────────
 
 
 class TestDumpAdapterToml:
     """Serialisation to TOML string."""
 
-    def test_dump_contains_section(self) -> None:
+    def test_dump_contains_core_section(self) -> None:
         cfg = AdapterConfig(project_name="x", project_scope="y")
         text = dump_adapter_toml(cfg)
-        assert "[adapter]" in text
+        assert "[core]" in text
+        assert "[policy]" in text
+        assert "[routing]" in text
 
     def test_dump_roundtrip(self, tmp_path: Path) -> None:
         original = AdapterConfig(
@@ -130,6 +201,13 @@ class TestDumpAdapterToml:
         assert loaded.project_name == 'say "hello"'
         assert loaded.project_scope == "C:\\Users\\test"
 
+    def test_dump_contains_field_values(self) -> None:
+        """Dumped text includes project routing values."""
+        cfg = AdapterConfig(project_name="alpha", project_scope="beta")
+        text = dump_adapter_toml(cfg)
+        assert 'project_name = "alpha"' in text
+        assert 'project_scope = "beta"' in text
+
 
 # ── AdapterConfig dataclass ────────────────────────────────────────
 
@@ -143,6 +221,12 @@ class TestAdapterConfigDataclass:
         assert cfg.adapter_version == "0.1.0"
         assert cfg.canonical_files == []
         assert cfg.artifact_root is None
+
+    def test_policy_defaults(self) -> None:
+        cfg = AdapterConfig(project_name="n", project_scope="s")
+        assert cfg.legality_source_policy == "map-only"
+        assert cfg.registration_commit_policy == "same-commit"
+        assert cfg.registration_commit_phase == "post"
 
     def test_list_default_is_independent(self) -> None:
         a = AdapterConfig(project_name="a", project_scope="b")
