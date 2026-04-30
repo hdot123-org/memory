@@ -380,3 +380,117 @@ class TestFrontmatterValidation:
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# Scope and project name discovery
+# ---------------------------------------------------------------------------
+
+class TestScopeAndProjectName:
+    """Test --scope parameter and project name discovery logic."""
+
+    def test_scope_explicit(self) -> None:
+        """Explicit --scope should be used as project_scope."""
+        proj = _make_temp_project()
+        try:
+            result = _run_script(
+                INIT_SCRIPT,
+                ["--target", str(proj), "--scope", "my_project", "--json"],
+            )
+            assert result.returncode == 0
+            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            assert 'project_scope = "my_project"' in adapter
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_scope_with_hyphens_is_slugified(self) -> None:
+        """Hyphens in --scope should be converted to underscores."""
+        proj = _make_temp_project()
+        try:
+            result = _run_script(
+                INIT_SCRIPT,
+                ["--target", str(proj), "--scope", "My-Project", "--json"],
+            )
+            assert result.returncode == 0
+            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            assert 'project_scope = "my_project"' in adapter
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_fallback_to_dirname_lowercase(self) -> None:
+        """Without --scope or git remote, should use lowercase directory name."""
+        proj = _make_temp_project()
+        try:
+            result = _run_script(INIT_SCRIPT, ["--target", str(proj), "--json"])
+            assert result.returncode == 0
+            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            # _make_temp_project creates dirs like p4_test_xxx
+            assert 'project_scope = "' in adapter
+            # Should not be the old uppercase format
+            assert 'project_scope = "project"' not in adapter
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_git_remote_origin_discovery(self) -> None:
+        """Project name should be derived from git remote origin URL."""
+        proj = _make_temp_project()
+        try:
+            # Set up a git remote
+            subprocess.run(
+                ["git", "init"], cwd=str(proj), capture_output=True,
+            )
+            subprocess.run(
+                ["git", "remote", "add", "origin", "git@github.com:busiji/my-awesome-project.git"],
+                cwd=str(proj), capture_output=True,
+            )
+            result = _run_script(INIT_SCRIPT, ["--target", str(proj), "--json"])
+            assert result.returncode == 0
+            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            assert 'project_scope = "my_awesome_project"' in adapter
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_git_remote_https_url(self) -> None:
+        """HTTPS remote URLs should also work."""
+        proj = _make_temp_project()
+        try:
+            subprocess.run(
+                ["git", "init"], cwd=str(proj), capture_output=True,
+            )
+            subprocess.run(
+                ["git", "remote", "add", "origin", "https://github.com/org/some-repo.git"],
+                cwd=str(proj), capture_output=True,
+            )
+            result = _run_script(INIT_SCRIPT, ["--target", str(proj), "--json"])
+            assert result.returncode == 0
+            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            assert 'project_scope = "some_repo"' in adapter
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_scope_takes_priority_over_git_remote(self) -> None:
+        """Explicit --scope should override git remote discovery."""
+        proj = _make_temp_project()
+        try:
+            subprocess.run(
+                ["git", "init"], cwd=str(proj), capture_output=True,
+            )
+            subprocess.run(
+                ["git", "remote", "add", "origin", "https://github.com/org/remote-name.git"],
+                cwd=str(proj), capture_output=True,
+            )
+            result = _run_script(
+                INIT_SCRIPT,
+                ["--target", str(proj), "--scope", "explicit_scope", "--json"],
+            )
+            assert result.returncode == 0
+            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            assert 'project_scope = "explicit_scope"' in adapter
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)

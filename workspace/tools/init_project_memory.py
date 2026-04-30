@@ -48,9 +48,43 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
-def _project_name(target: Path) -> str:
-    """Derive a short project name from the target path."""
-    return target.resolve().name.upper().replace("-", "_")
+def _slug(text: str) -> str:
+    """Normalize a string to a safe project slug: lowercase, hyphens to underscores."""
+    return text.lower().replace("-", "_")
+
+
+def _project_name(target: Path, scope: str | None = None) -> str:
+    """Derive a short project name from the target path.
+
+    Priority:
+        1. Explicit --scope parameter
+        2. git remote origin URL (last segment, stripped of .git)
+        3. Target directory name (lowercase)
+    """
+    if scope:
+        return _slug(scope)
+
+    # Try git remote
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["git", "-C", str(target), "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            url = result.stdout.strip().rstrip("/")
+            # Strip .git suffix
+            if url.endswith(".git"):
+                url = url[:-4]
+            # Extract last path segment (after last / or :)
+            segment = url.rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+            if segment:
+                return _slug(segment)
+    except Exception:
+        pass
+
+    # Fallback: directory name, lowercase
+    return _slug(target.resolve().name)
 
 
 def template_memory_lock(project_name: str) -> str:
@@ -88,7 +122,7 @@ registration_commit_policy = "same-commit"
 registration_commit_phase = "post"
 
 [routing]
-project_scope = "project"
+project_scope = "{project_name}"
 host = "codex"
 """
 
@@ -244,6 +278,7 @@ def template_keep() -> str:
 def init_project_memory(
     target: Path,
     *,
+    scope: str | None = None,
     dry_run: bool = False,
     json_output: bool = False,
 ) -> dict[str, Any]:
@@ -267,7 +302,7 @@ def init_project_memory(
     }
 
     memory_root = target / ".memory"
-    project_name = _project_name(target)
+    project_name = _project_name(target, scope)
 
     if dry_run:
         result["success"] = True
@@ -359,6 +394,12 @@ def main() -> int:
         help="Path to the target project root (business project repository).",
     )
     parser.add_argument(
+        "--scope",
+        type=str,
+        default=None,
+        help="Explicit project scope name. If omitted, auto-discovered from git remote or directory name.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Only report what would be created without writing files.",
@@ -375,7 +416,7 @@ def main() -> int:
         print(f"Error: target path does not exist or is not a directory: {target}", file=sys.stderr)
         return 2
 
-    result = init_project_memory(target, dry_run=args.dry_run, json_output=args.json)
+    result = init_project_memory(target, scope=args.scope, dry_run=args.dry_run, json_output=args.json)
 
     if args.json or args.dry_run:
         print(json.dumps(result, indent=2, ensure_ascii=False))
