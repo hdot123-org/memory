@@ -19,6 +19,7 @@ Key guarantees:
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import sys
 from datetime import datetime, timezone
@@ -29,7 +30,7 @@ from typing import Any
 # Constants
 # ---------------------------------------------------------------------------
 
-CURRENT_MEMORY_VERSION = "0.1.0"
+CURRENT_MEMORY_VERSION = "0.2.0"
 
 # Claude hook event mapping: (Claude event name -> gateway event flag)
 CLAUDE_HOOK_EVENTS: list[tuple[str, str]] = [
@@ -578,6 +579,11 @@ def main() -> int:
         choices=("codex", "claude"),
         help="Host platform for hook gateway configuration (default: codex).",
     )
+    try:
+        _pkg_version = importlib.metadata.version("memory-core")
+    except importlib.metadata.PackageNotFoundError:
+        _pkg_version = "unknown"
+    parser.add_argument("--version", action="version", version=f"%(prog)s {_pkg_version}")
     args = parser.parse_args()
 
     target = args.target.resolve()

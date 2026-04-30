@@ -21,6 +21,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import sys
 from datetime import datetime, timezone
@@ -355,6 +356,11 @@ def main() -> int:
         action="store_true",
         help="Output results as JSON.",
     )
+    try:
+        _pkg_version = importlib.metadata.version("memory-core")
+    except importlib.metadata.PackageNotFoundError:
+        _pkg_version = "unknown"
+    parser.add_argument("--version", action="version", version=f"%(prog)s {_pkg_version}")
     args = parser.parse_args()
 
     target = args.target.resolve()
