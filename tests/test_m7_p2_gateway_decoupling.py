@@ -176,7 +176,7 @@ class TestGatewayDecoupling:
         ).read_text(encoding="utf-8")
 
         # Extract the adapter-discovery block (from _ADAPTER_NAME through
-        # the globals().update(...) call).
+        # the load_adapter_config(...) call).
         lines = gateway_source.splitlines()
         start_idx = None
         end_idx = None
@@ -184,12 +184,12 @@ class TestGatewayDecoupling:
             if "_ADAPTER_NAME" in line and "=" in line and not line.strip().startswith("#"):
                 if start_idx is None:
                     start_idx = i
-            if "globals().update(_fn(" in line:
+            if "load_adapter_config(_adapter_profile)" in line:
                 end_idx = i
                 break
 
         assert start_idx is not None, "Could not find _ADAPTER_NAME in gateway source"
-        assert end_idx is not None, "Could not find globals().update in gateway source"
+        assert end_idx is not None, "Could not find load_adapter_config in gateway source"
 
         discovery_block = "\n".join(lines[start_idx : end_idx + 1])
 
