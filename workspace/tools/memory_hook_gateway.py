@@ -56,7 +56,7 @@ try:
     )
     from .memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile
     from .memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy
-    from .memory_hook_schema import convert_to_v1
+    from .memory_hook_schema import convert_to_v1, convert_legacy_to_memory_v1
 except ImportError:
     from memory_hook_core import build_context_package_core, build_context_package_from_config  # type: ignore
     from memory_hook_config import CoreConfig  # type: ignore
@@ -84,7 +84,7 @@ except ImportError:
     )
     from memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile  # type: ignore
     from memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy  # type: ignore
-    from memory_hook_schema import convert_to_v1  # type: ignore
+    from memory_hook_schema import convert_to_v1, convert_legacy_to_memory_v1  # type: ignore
 
 
 import importlib  # noqa: E402
@@ -848,21 +848,26 @@ def build_context_package_simple(
     payload: dict[str, Any] | None = None,
     *,
     adapter: str | None = None,
+    schema: str = "context-package-v1",
 ) -> dict[str, Any]:
-    """Simplified 3-parameter entry point returning context-package-v1.
+    """Simplified 3-parameter entry point returning a schema-converted package.
 
     Args:
         host: "codex" or "claude"
         event: event name (e.g. "session-start", "prompt-submit")
         payload: event payload dict (default: empty dict)
         adapter: adapter name override (default: from MEMORY_HOOK_ADAPTER env var)
+        schema: output schema — "context-package-v1" (default) or "memory-v1"
 
     Returns:
-        Context package in context-package-v1 format.
+        Context package in the requested schema format.
     """
     if payload is None:
         payload = {}
     v2_package = build_context_package(host, event, payload)
+    if schema == "memory-v1":
+        v1_package = convert_to_v1(v2_package)
+        return convert_legacy_to_memory_v1(v1_package)
     return convert_to_v1(v2_package)
 
 
