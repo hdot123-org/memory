@@ -143,9 +143,9 @@ class CodexDelegate(HostDelegate):
         payload: dict[str, Any],
     ) -> subprocess.CompletedProcess[str]:
         if self._which("cmux") is None:
-            raise RuntimeError("cmux not found in PATH")
+            return self.noop_response()
         if not self.surface_id:
-            raise RuntimeError("missing required env: CMUX_SURFACE_ID")
+            return self.noop_response()
 
         return self._runner(
             ["cmux", "codex-hook", event],
@@ -201,11 +201,11 @@ class ClaudeDelegate(HostDelegate):
         payload: dict[str, Any],
     ) -> subprocess.CompletedProcess[str]:
         if self._which("cmux") is None:
-            raise RuntimeError("cmux not found in PATH")
+            return self.noop_response()
         if not self.workspace_id:
-            raise RuntimeError("missing required env: CMUX_WORKSPACE_ID")
+            return self.noop_response()
         if not self.surface_id:
-            raise RuntimeError("missing required env: CMUX_SURFACE_ID")
+            return self.noop_response()
 
         # State file resolution
         if self._state_file:

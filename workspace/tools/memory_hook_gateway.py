@@ -1015,8 +1015,10 @@ def main() -> int:
             "delegate preflight failed",
             {"host": args.host, "event": args.event, "error": str(exc), "cwd": str(cwd)},
         )
-        print(f"[memory-hook-gateway] {exc}", file=sys.stderr)
-        return 1
+        noop = _get_host_delegate(args.host).noop_response()
+        if noop.stdout:
+            sys.stdout.write(noop.stdout)
+        return 0
 
     if proc.returncode != 0:
         append_error_log(

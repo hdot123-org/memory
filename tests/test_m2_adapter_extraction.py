@@ -78,6 +78,47 @@ class TestDelegateGate:
 
 
 # ---------------------------------------------------------------------------
+# 测试组 1b：无 cmux 时 delegate execute() 返回 noop
+# ---------------------------------------------------------------------------
+
+
+class TestDelegateNoopFallback:
+    """验证 cmux 不可用时 execute() 返回 noop 而非抛异常。"""
+
+    def test_codex_execute_no_cmux_returns_noop(self):
+        from workspace.tools.memory_hook_impls import CodexDelegate
+        delegate = CodexDelegate(which_cmd=lambda _: None)
+        result = delegate.execute("session-start", "{}", {})
+        assert result.returncode == 0
+        assert result.stdout == "{}\n"
+
+    def test_codex_execute_no_surface_returns_noop(self):
+        from workspace.tools.memory_hook_impls import CodexDelegate
+        delegate = CodexDelegate(surface_id="", which_cmd=lambda _: "/usr/bin/cmux")
+        result = delegate.execute("session-start", "{}", {})
+        assert result.returncode == 0
+        assert result.stdout == "{}\n"
+
+    def test_claude_execute_no_cmux_returns_noop(self):
+        from workspace.tools.memory_hook_impls import ClaudeDelegate
+        delegate = ClaudeDelegate(which_cmd=lambda _: None)
+        result = delegate.execute("session-start", "{}", {})
+        assert result.returncode == 0
+
+    def test_claude_execute_no_workspace_returns_noop(self):
+        from workspace.tools.memory_hook_impls import ClaudeDelegate
+        delegate = ClaudeDelegate(workspace_id="", surface_id="s1", which_cmd=lambda _: "/usr/bin/cmux")
+        result = delegate.execute("session-start", "{}", {})
+        assert result.returncode == 0
+
+    def test_claude_execute_no_surface_returns_noop(self):
+        from workspace.tools.memory_hook_impls import ClaudeDelegate
+        delegate = ClaudeDelegate(workspace_id="w1", surface_id="", which_cmd=lambda _: "/usr/bin/cmux")
+        result = delegate.execute("session-start", "{}", {})
+        assert result.returncode == 0
+
+
+# ---------------------------------------------------------------------------
 # 测试组 2：CMUX_HOOK_STATE_FILE strictness
 # ---------------------------------------------------------------------------
 
