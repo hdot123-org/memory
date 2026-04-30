@@ -7,13 +7,13 @@
 ### 从 GitHub Release 安装
 
 ```bash
-gh release download v0.2.0 --repo hdot123/memory --pattern "*.whl" && pip install memory_core-0.2.0-py3-none-any.whl
+gh release download v0.3.0 --repo hdot123/memory --pattern "*.whl" && pip install memory_core-0.3.0-py3-none-any.whl
 ```
 
 ### 从源码安装
 
 ```bash
-pip install git+https://github.com/hdot123/memory.git@v0.2.0
+pip install git+https://github.com/hdot123/memory.git@v0.3.0
 ```
 
 ### 升级
@@ -40,11 +40,22 @@ memory-init --target /path/to/project
 
 | 选项 | 说明 |
 |---|---|
+| `--target` | （必填）目标项目根目录路径 |
+| `--scope` | 显式指定项目 scope 名称；若省略则从 git remote 或目录名自动推导 |
+| `--host` | 指定 host 平台（`codex` 或 `claude`，默认 `codex`），影响 `.claude/hooks.json` 和 `AGENTS.md` 中生成的 gateway 命令 |
 | `--dry-run` | 只输出将要执行的操作，不实际写入文件 |
 | `--json` | 以 JSON 格式输出结果，便于脚本集成 |
 
+**使用示例：**
+
 ```bash
-# 预览不执行
+# 最小可运行命令
+memory-init --target /path/to/project
+
+# 显式指定 scope 和 host
+memory-init --target /path/to/project --scope my-project --host claude
+
+# 预览（不写入文件）
 memory-init --target /path/to/project --dry-run
 
 # JSON 输出
@@ -125,11 +136,138 @@ init → validate → migrate
 2. **校验**：用 `memory-validate` 确认当前结构完整
 3. **迁移**：schema 升级时用 `memory-migrate --from <old> --to <new>` 执行迁移，`migrations.log` 会记录每次迁移的详细信息
 
+## Runtime Capabilities
+
+gateway runtime（`memory_hook_gateway.py`、`memory_hook_core.py`）负责以下工作：
+
+- 从 stdin 接收 JSON payload，解析为 `HookEvent`
+- 根据 adapter profile 配置发现项目 scope、canonical 路径、policy
+- 校验 project-map、legal contract、governance frozen tuple、event contract
+- 构建 context package（包含 `system_context`、`project_context`、`task_context`、`allowed_reads`、`allowed_writes`、`evidence_refs`）
+- 写入 artifact（snapshot JSON + latest JSON + event log JSONL）
+- 通过 `HostDelegate` 将事件转发给 host（Codex/Claude）
+
+**Runtime 不负责：**
+
+- 不管理业务数据读写（由 adapter policy 决定）
+- 不直接执行 host 命令（通过 `HostDelegate` 间接调用）
+- 不管理 schema 版本迁移（由 `memory-migrate` 负责）
+
+**Capability 声明方式：**
+
+- 通过 adapter runtime profile（如 `workbot_runtime_profile.py`、`default_runtime_profile.py`）声明
+- Profile 是一个 dict，包含路径、policy 值、scope 配置等
+- Gateway 启动时加载 profile，写入 `_adapter_config` 和 module globals
+
+**与 adapter / host 的关系：**
+
+- Adapter 提供 runtime profile（路径、策略、scope 映射）
+- Host 通过 `HostDelegate` 与 runtime 交互
+- Gateway 是 adapter profile + host delegate 的协调层
+
+## Adapter Protocol
+
+Adapter 通过 `adapter.toml` 声明项目的 identity、host、policy 配置，并通过 runtime profile 函数构建 gateway 所需的全部路径和策略配置。
+
+### `adapter.toml` 结构（canonical layout）
+
+```toml
+[core]
+version = "0.1.0"
+adapter = "default"
+
+[policy]
+legality_source_policy = "map-only"
+registration_commit_policy = "same-commit"
+registration_commit_phase = "post"
+
+[routing]
+project_name = "my-project"
+project_scope = "my-project"
+host = "codex"
+canonical_files = []
+# artifact_root = (optional)
+```
+
+### AdapterConfig
+
+`load_adapter_toml()` 读取 `.memory/adapter.toml`，返回 `AdapterConfig` dataclass：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `project_name` | `str` | 项目名称 |
+| `project_scope` | `str` | 项目 scope 标识 |
+| `host` | `str` | host 平台，默认 `"codex"` |
+| `adapter_version` | `str` | adapter 协议版本 |
+| `canonical_files` | `list[str]` | canonical 文件列表 |
+| `artifact_root` | `str \| None` | artifact 输出根目录（可选） |
+| `legality_source_policy` | `str` | legal source 解析策略 |
+| `registration_commit_policy` | `str` | 注册提交策略 |
+| `registration_commit_phase` | `str` | 注册提交阶段 |
+
+### Runtime Profile
+
+`build_default_runtime_profile(project_root)` 基于 `AdapterConfig` 构建 15 个通用配置 key，供 gateway 使用。
+
+**与 runtime/host 的交互：**
+
+- `load_adapter_toml()` 读取 `.memory/adapter.toml`，返回 `AdapterConfig`
+- `build_default_runtime_profile(project_root)` 基于 `AdapterConfig` 构建 runtime profile dict
+- Gateway 通过 `MEMORY_HOOK_ADAPTER` 环境变量选择 adapter（默认 `"workbot"`）
+
+**最小 adapter 形态：**
+
+- 一个 `build_*_runtime_profile(repo_root, workspace_root) -> dict[str, Any]` 函数
+- 返回包含 `PROJECT_MAP_ROOT`、`TRUTH_MODEL`、`REQUIRED_CANONICAL`、`DEFAULT_PROJECT_SCOPE` 等必要 key 的 dict
+
+## HookEvent & Schema
+
+### HookEvent
+
+`HookEvent` 是统一事件模型，将 Codex 和 Claude 的 hook 输入归一化：
+
+```python
+@dataclass
+class HookEvent:
+    source: str         # "codex" | "claude"
+    event_type: str     # "session-start" | "prompt-submit" | "notification" | "stop"
+    payload: dict[str, Any]
+    cwd: Path
+    timestamp: str      # ISO format
+    project_scope: str  # default ""
+```
+
+**事件类型映射：**
+
+- Codex：通过 `--event` CLI 参数直接传入 canonical name
+- Claude：原生事件名映射 — `SessionStart` → `session-start`，`UserPromptSubmit` → `prompt-submit`，`Notification` → `notification`，`Stop` → `stop`
+
+**解析入口：** `parse_hook_event(host, event, raw_payload) -> HookEvent`
+
+### Schema 转换链
+
+系统内部维护三层 schema 格式：
+
+| Schema | 用途 |
+|---|---|
+| `wb-hook-v2` | 内部 context package 格式（`build_context_package` 的输出） |
+| `context-package-v1` | 公开格式：重命名 `project_context` → `project`、`task_context` → `task`，移除 `system_context` |
+| `memory-v1` | 面向 `.memory/*` canonical 文件的格式，project section 只引用 `.memory/CANONICAL.md` 等 |
+
+**转换函数：**
+
+| 函数 | 说明 |
+|---|---|
+| `convert_to_v1(package)` | `wb-hook-v2` → `context-package-v1` |
+| `convert_to_memory_v1(package)` | `wb-hook-v2` → `memory-v1` |
+| `convert_legacy_to_memory_v1(package)` | 任意版本 → `memory-v1` |
+| `build_context_package_simple(host, event, payload, adapter, schema)` | 简化入口，支持 `schema="context-package-v1"` 或 `schema="memory-v1"` |
+
 ## 设计原则
 
-- **业务项目数据隔离**：所有业务数据只存在于业务项目自己的 `.memory/` 下，memory 仓库不存储任何业务数据
-- **协议层中立**：memory 仓库只提供协议、模板、schema 和工具，不内建任何单项目默认绑定
-- **不污染**：`memory-validate` 内置 pollution guard，防止 memory 仓库被写入业务状态
+- **数据隔离**：所有业务数据只存在于业务项目自己的 `.memory/` 下，memory 仓库不存储任何业务数据。`memory-init` 包含安全守卫，拒绝在 memory 仓库内初始化业务目录。
+- **协议优先**：仓库提供协议定义、schema 和工具；适配器通过 `adapter.toml` 和 runtime profile 按项目配置行为，不内建任何单项目默认绑定。
+- **污染防护**：`memory-validate` 内置 pollution guard，防止 memory 仓库被写入业务状态。
 
 ## 开发与测试
 
@@ -143,5 +281,5 @@ python -m pytest tests/
 
 ## 版本
 
-- **当前版本**：v0.2.0
+- **当前版本**：v0.3.0
 - **Python 要求**：>= 3.9
