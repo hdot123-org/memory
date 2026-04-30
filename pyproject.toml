@@ -9,6 +9,29 @@ description = "Independent memory hook core and gateway runtime."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = []
+license = "MIT"
+authors = [
+    { name = "busiji" },
+]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+]
+
+keywords = ["memory", "hooks", "project-management", "schema"]
+
+[project.urls]
+Homepage = "https://github.com/hdot123/memory"
+Repository = "https://github.com/hdot123/memory"
+"Bug Tracker" = "https://github.com/hdot123/memory/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
