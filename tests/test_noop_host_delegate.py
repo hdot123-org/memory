@@ -2,8 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
-
 from memory_core.tools.memory_hook_impls import (
     ClaudeDelegate,
     CodexDelegate,

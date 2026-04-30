@@ -141,7 +141,6 @@ class TestRollbackCompatibility:
 
     def test_impls_imports_cleanly(self):
         from memory_core.tools.memory_hook_impls import (
-            CodexDelegate,
             ClaudeDelegate,
             CodexDelegate,
             PolicyRegistryImpl,

@@ -15,9 +15,8 @@ from __future__ import annotations
 import json
 import os
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 
@@ -35,7 +34,6 @@ from workspace.tools.business_policy_checks import (
     _path_is_under_lexical,
 )
 from workspace.tools.memory_hook_impls import GatewayBusinessPolicyConfig
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -12,12 +12,10 @@ Covers:
 from __future__ import annotations
 
 import json
-import os
 import sys
 from dataclasses import fields
 from pathlib import Path
-from typing import Any, Callable
-from unittest.mock import MagicMock
+from typing import Any
 
 import pytest
 
@@ -28,47 +26,46 @@ repo_root = Path(__file__).resolve().parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from workspace.tools.memory_hook_impls import GatewayBusinessPolicyConfig
-from workspace.tools.business_policy_checks import (
-    ProjectMapValidator,
-    LegalContractChecker,
-    FrozenTupleChecker,
-    EventContractChecker,
-    TruthBasisResolver,
-    ScopeResolver,
-    _path_is_under,
-    _path_is_under_lexical,
-    _section_bullets,
-    _section_body,
-    _markdown_code_tokens,
-    _json_string_values,
-    _json_object_keys,
-    _existing_paths,
-)
 from workspace.tools._validation_constants import (
-    MKR_UNIQUE_LEGAL_ENTRY,
+    MKR_ABSORBED_STATUS,
     MKR_ACTIVE_LEGAL_MAP_ONLY,
-    MKR_GIT_COMMIT_GATE,
+    MKR_ATOMIC_REGISTRATION_GIT_COMMIT,
+    MKR_COMPATIBILITY_ONLY,
     MKR_CORE_ACTIVE_LEGAL,
     MKR_CORE_MAP_ONLY,
-    MKR_INCOMING_RAW,
-    MKR_COMPATIBILITY_ONLY,
-    MKR_ABSORBED_STATUS,
-    MKR_RETIRED_STATUS,
-    MKR_REGISTRY_GIT_COMMIT_GATE,
-    MKR_UNWASHED_NOT_LEGAL,
-    MKR_GOVERNANCE_MAP_GRANTS_LEGALITY,
-    MKR_ATOMIC_REGISTRATION_GIT_COMMIT,
-    MKR_WORKSPACE_PROJECT_MAP_REF,
-    MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY,
-    MKR_WORKSPACE_GIT_COMMIT_RULE,
     MKR_DOCS_UNABSORBED,
-    MKR_NON_LEGAL_MATERIAL,
-    MKR_INGESTION_REGISTRY_REF,
+    MKR_GIT_COMMIT_GATE,
+    MKR_GOVERNANCE_MAP_GRANTS_LEGALITY,
     MKR_HOOK_MAP_ONLY_CONTEXT,
     MKR_HOOK_REGISTRATION_GATE,
+    MKR_INCOMING_RAW,
+    MKR_INGESTION_REGISTRY_REF,
+    MKR_NON_LEGAL_MATERIAL,
+    MKR_REGISTRY_GIT_COMMIT_GATE,
+    MKR_RETIRED_STATUS,
+    MKR_UNIQUE_LEGAL_ENTRY,
+    MKR_UNWASHED_NOT_LEGAL,
+    MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY,
+    MKR_WORKSPACE_GIT_COMMIT_RULE,
+    MKR_WORKSPACE_PROJECT_MAP_REF,
 )
-
+from workspace.tools.business_policy_checks import (
+    EventContractChecker,
+    FrozenTupleChecker,
+    LegalContractChecker,
+    ProjectMapValidator,
+    ScopeResolver,
+    TruthBasisResolver,
+    _existing_paths,
+    _json_object_keys,
+    _json_string_values,
+    _markdown_code_tokens,
+    _path_is_under,
+    _path_is_under_lexical,
+    _section_body,
+    _section_bullets,
+)
+from workspace.tools.memory_hook_impls import GatewayBusinessPolicyConfig
 
 # ---------------------------------------------------------------------------
 # Fixtures — minimal config builder
@@ -148,7 +145,7 @@ def minimal_config(tmp_path: Path) -> GatewayBusinessPolicyConfig:
 @pytest.fixture
 def valid_config_with_files(tmp_path: Path) -> GatewayBusinessPolicyConfig:
     """Config where all referenced files exist with valid content.
-    
+
     workspace is placed inside repo so truth_model.resolve().relative_to(repo.resolve()) works.
     Uses a real file reader so validators see actual file content.
     """
@@ -966,7 +963,7 @@ class TestScopeResolver:
 
     def test_determine_scope_matches_hints(self, tmp_path):
         """cwd under a hint root should return that scope.
-        
+
         Note: hints paths must be under repo_root for _path_is_under_lexical to match,
         since determine_project_scope first checks cwd is under repo_root.
         """

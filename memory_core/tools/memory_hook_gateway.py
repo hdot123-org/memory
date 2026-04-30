@@ -92,7 +92,9 @@ _mod_path, _fn_name = _ADAPTER_REGISTRY[_ADAPTER_NAME]
 try:
     _mod = importlib.import_module(_mod_path, package="memory_core.tools")
 except ImportError:
-    from memory_core.tools.memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile as _fn  # type: ignore:memory_core/tools/memory_hook_gateway.py
+    from memory_core.tools.memory_hook_adapters.workbot_runtime_profile import (
+        build_workbot_runtime_profile as _fn,  # type: ignore:memory_core/tools/memory_hook_gateway.py
+    )
 else:
     _fn = getattr(_mod, _fn_name)
 # Adapter configuration store (replaces globals().update injection).

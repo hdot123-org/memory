@@ -12,14 +12,11 @@ Covers:
 from __future__ import annotations
 
 import json
-import os
 import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
-
-import pytest
 
 # ---------------------------------------------------------------------------
 # Path setup
@@ -32,37 +29,37 @@ if str(REPO_ROOT) not in sys.path:
 # Validation constants
 # ---------------------------------------------------------------------------
 from workspace.tools._validation_constants import (
-    MKR_UNIQUE_LEGAL_ENTRY,
+    MKR_ABSORBED_STATUS,
     MKR_ACTIVE_LEGAL_MAP_ONLY,
-    MKR_GIT_COMMIT_GATE,
+    MKR_ATOMIC_REGISTRATION_GIT_COMMIT,
+    MKR_COMPATIBILITY_ONLY,
     MKR_CORE_ACTIVE_LEGAL,
     MKR_CORE_MAP_ONLY,
-    MKR_INCOMING_RAW,
-    MKR_COMPATIBILITY_ONLY,
-    MKR_ABSORBED_STATUS,
-    MKR_RETIRED_STATUS,
-    MKR_REGISTRY_GIT_COMMIT_GATE,
-    MKR_UNWASHED_NOT_LEGAL,
-    MKR_GOVERNANCE_MAP_GRANTS_LEGALITY,
-    MKR_ATOMIC_REGISTRATION_GIT_COMMIT,
-    MKR_WORKSPACE_PROJECT_MAP_REF,
-    MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY,
-    MKR_WORKSPACE_GIT_COMMIT_RULE,
     MKR_DOCS_UNABSORBED,
-    MKR_NON_LEGAL_MATERIAL,
-    MKR_INGESTION_REGISTRY_REF,
+    MKR_GIT_COMMIT_GATE,
+    MKR_GOVERNANCE_MAP_GRANTS_LEGALITY,
     MKR_HOOK_MAP_ONLY_CONTEXT,
     MKR_HOOK_REGISTRATION_GATE,
-    SEC_UPSTREAM_STANDARD_SOURCES,
-    SEC_UPSTREAM_STANDARD_EVENTS,
-    SEC_UPSTREAM_STANDARD_STATUSES,
+    MKR_INCOMING_RAW,
+    MKR_INGESTION_REGISTRY_REF,
+    MKR_NON_LEGAL_MATERIAL,
+    MKR_REGISTRY_GIT_COMMIT_GATE,
+    MKR_RETIRED_STATUS,
+    MKR_UNIQUE_LEGAL_ENTRY,
+    MKR_UNWASHED_NOT_LEGAL,
+    MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY,
+    MKR_WORKSPACE_GIT_COMMIT_RULE,
+    MKR_WORKSPACE_PROJECT_MAP_REF,
+    SEC_FORMAL_CONTRACT_EVENTS,
+    SEC_FORMAL_CONTRACT_SOURCES,
+    SEC_FORMAL_CONTRACT_STATUSES,
+    SEC_UPSTREAM_MAPPING_ERRORS,
+    SEC_UPSTREAM_MAPPING_ROUTING,
     SEC_UPSTREAM_MAPPING_SOURCES,
     SEC_UPSTREAM_MAPPING_TABLE,
-    SEC_UPSTREAM_MAPPING_ROUTING,
-    SEC_UPSTREAM_MAPPING_ERRORS,
-    SEC_FORMAL_CONTRACT_SOURCES,
-    SEC_FORMAL_CONTRACT_EVENTS,
-    SEC_FORMAL_CONTRACT_STATUSES,
+    SEC_UPSTREAM_STANDARD_EVENTS,
+    SEC_UPSTREAM_STANDARD_SOURCES,
+    SEC_UPSTREAM_STANDARD_STATUSES,
 )
 
 # ---------------------------------------------------------------------------
@@ -563,8 +560,8 @@ class TestMultiPolicyInteraction:
 
     def test_project_map_and_legal_contract_combined(self, tmp_path: Path) -> None:
         from workspace.tools.business_policy_checks import (
-            ProjectMapValidator,
             LegalContractChecker,
+            ProjectMapValidator,
         )
 
         cfg = _make_config(tmp_path)
@@ -670,9 +667,9 @@ class TestMultiPolicyInteraction:
 
     def test_combined_all_checkers_pass(self, tmp_path: Path) -> None:
         from workspace.tools.business_policy_checks import (
-            ProjectMapValidator,
-            FrozenTupleChecker,
             EventContractChecker,
+            FrozenTupleChecker,
+            ProjectMapValidator,
         )
 
         cfg = _make_config(tmp_path)
