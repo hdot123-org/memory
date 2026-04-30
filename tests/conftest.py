@@ -1,0 +1,22 @@
+import pytest
+from pathlib import Path
+
+
+@pytest.fixture
+def repo_root():
+    """仓库根目录"""
+    return Path(__file__).resolve().parent.parent
+
+
+@pytest.fixture
+def workspace_root(repo_root):
+    """workspace 包根目录"""
+    return repo_root / "workspace"
+
+
+@pytest.fixture
+def tmp_memory_root(tmp_path):
+    """临时 .memory 目录"""
+    root = tmp_path / ".memory"
+    root.mkdir()
+    return root
