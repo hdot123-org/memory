@@ -116,7 +116,6 @@ def load_adapter_config(profile: dict[str, Any]) -> None:
 # Load adapter profile once; feed both new config store and legacy globals.
 _adapter_profile = _fn(REPO_ROOT, WORKSPACE_ROOT)
 load_adapter_config(_adapter_profile)
-globals().update(_fn(REPO_ROOT, WORKSPACE_ROOT))
 
 
 __all__ = [
@@ -175,7 +174,7 @@ def _build_gateway_business_policy() -> GatewayBusinessPolicy:
         scope_match_hints=SCOPE_MATCH_HINTS,
         read_text_if_exists_fn=read_text_if_exists,
     )
-    _policy_class = globals().get("GATEWAY_POLICY_CLASS") or _adapter_config.get("GATEWAY_POLICY_CLASS", WorkbotGatewayBusinessPolicy)
+    _policy_class = _adapter_config.get("GATEWAY_POLICY_CLASS", WorkbotGatewayBusinessPolicy)
     return _policy_class(config=config)
 
 
@@ -755,7 +754,7 @@ def resolve_route_target(kind: str) -> str:
 
 def _apply_artifact_compaction(package: dict[str, Any]) -> None:
     """M2: strip context package sections according to adapter compaction policy."""
-    policy = globals().get("ARTIFACT_COMPACTION") or _adapter_config.get("ARTIFACT_COMPACTION")
+    policy = _adapter_config.get("ARTIFACT_COMPACTION")
     if not isinstance(policy, dict):
         return
     if not policy.get("include_system_context", True):

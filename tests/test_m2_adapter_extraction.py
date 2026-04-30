@@ -187,7 +187,7 @@ class TestArtifactCompaction:
             "include_allowed_writes": True,
         }
         with patch.dict(
-            "workspace.tools.memory_hook_gateway.__dict__",
+            "workspace.tools.memory_hook_gateway._adapter_config",
             {"ARTIFACT_COMPACTION": policy},
         ):
             package = {
@@ -218,7 +218,7 @@ class TestArtifactCompaction:
             "include_allowed_writes": True,
         }
         with patch.dict(
-            "workspace.tools.memory_hook_gateway.__dict__",
+            "workspace.tools.memory_hook_gateway._adapter_config",
             {"ARTIFACT_COMPACTION": policy},
         ):
             package = {
@@ -241,7 +241,7 @@ class TestArtifactCompaction:
             "include_allowed_writes": False,
         }
         with patch.dict(
-            "workspace.tools.memory_hook_gateway.__dict__",
+            "workspace.tools.memory_hook_gateway._adapter_config",
             {"ARTIFACT_COMPACTION": policy},
         ):
             package = {
