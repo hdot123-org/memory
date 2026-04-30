@@ -19,7 +19,6 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-
 # ── 工具函数 ──────────────────────────────────────────────
 
 def count_lines(filepath: Path) -> int:
@@ -63,7 +62,7 @@ def extract_relative_imports(filepath: Path, source_dir: Path) -> list[str]:
     except Exception:
         return []
 
-    rel_path = filepath.relative_to(source_dir)
+    filepath.relative_to(source_dir)
     parent = filepath.parent
     stems = set()
 
@@ -236,13 +235,13 @@ def main():
     graph = build_dependency_graph(files, source_dir, stem_map)
     in_degree = compute_in_degree(graph)
 
-    print(f"\n依赖图（入度排名）\n")
+    print("\n依赖图（入度排名）\n")
     print(f"{'文件':<55} {'入度':>6}")
     print("-" * 63)
     for f, deg in in_degree.items():
         print(f"{f:<55} {deg:>6}")
 
-    print(f"\n依赖详情（出度 > 0 的文件）\n")
+    print("\n依赖详情（出度 > 0 的文件）\n")
     for f, deps in sorted(graph.items()):
         if deps:
             print(f"  {f} → {', '.join(deps)}")
@@ -250,7 +249,7 @@ def main():
     # 3. 分配
     alloc = suggest_allocation(files, in_degree, graph, args.reviewers, args.max_lines)
 
-    print(f"\n接口文件（需多人覆盖）：")
+    print("\n接口文件（需多人覆盖）：")
     for f in alloc["hub_files"]:
         deg = in_degree.get(f, 0)
         print(f"  • {f}  (入度 {deg})")
@@ -286,12 +285,12 @@ def main():
         callers = ", ".join(rel["callers"])
         print(f"  {rid}: {callers} → {rel['hub']}")
 
-    print(f"\n── 模板变量 ──")
+    print("\n── 模板变量 ──")
     print(f"__SOURCE_DIR__    = {source_dir}")
     print(f"__TOTAL_FILES__   = {len(files)}")
     print(f"__TOTAL_LINES__   = {total_lines}")
     print(f"__HUB_FILES__     = {', '.join(alloc['hub_files'])}")
-    print(f"\n完成。将输出填入 templates/code-review-template.md 即可。")
+    print("\n完成。将输出填入 templates/code-review-template.md 即可。")
 
 
 if __name__ == "__main__":

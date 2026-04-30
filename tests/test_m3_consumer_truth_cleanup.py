@@ -12,10 +12,6 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = REPO_ROOT / "workspace"
@@ -145,8 +141,8 @@ class TestRollbackCompatibility:
 
     def test_impls_imports_cleanly(self):
         from workspace.tools.memory_hook_impls import (
-            CodexDelegate,
             ClaudeDelegate,
+            CodexDelegate,
             PolicyRegistryImpl,
         )
 

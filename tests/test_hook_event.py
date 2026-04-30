@@ -11,7 +11,6 @@ Covers:
 import json
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -20,15 +19,14 @@ if TOOLS_DIR not in sys.path:
     sys.path.insert(0, TOOLS_DIR)
 
 from hook_event import (
-    HookEvent,
-    from_codex_payload,
-    from_claude_payload,
-    to_context_package_input,
-    parse_hook_event,
     _CLAUDE_EVENT_MAP,
     _VALID_EVENT_TYPES,
+    HookEvent,
+    from_claude_payload,
+    from_codex_payload,
+    parse_hook_event,
+    to_context_package_input,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

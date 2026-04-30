@@ -1,12 +1,10 @@
 """Tests for schema conversion, PathUtils, extended PolicyRegistry, and package entry."""
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Schema conversion tests

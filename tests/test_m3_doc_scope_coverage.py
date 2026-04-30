@@ -15,8 +15,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GLOBAL_DIR = REPO_ROOT / "workspace" / "memory" / "kb" / "global"
 

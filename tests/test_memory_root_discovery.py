@@ -17,7 +17,6 @@ from workspace.tools.memory_root_discovery import (
     discover_workspace_root,
 )
 
-
 # ---------------------------------------------------------------------------
 # discover_project_root
 # ---------------------------------------------------------------------------

@@ -14,57 +14,57 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .memory_hook_interfaces import TruthBasis
-    from .memory_hook_impls import GatewayBusinessPolicyConfig
     from ._validation_constants import (
-        MKR_UNIQUE_LEGAL_ENTRY,
+        MKR_ABSORBED_STATUS,
         MKR_ACTIVE_LEGAL_MAP_ONLY,
-        MKR_GIT_COMMIT_GATE,
+        MKR_ATOMIC_REGISTRATION_GIT_COMMIT,
+        MKR_COMPATIBILITY_ONLY,
         MKR_CORE_ACTIVE_LEGAL,
         MKR_CORE_MAP_ONLY,
-        MKR_INCOMING_RAW,
-        MKR_COMPATIBILITY_ONLY,
-        MKR_ABSORBED_STATUS,
-        MKR_RETIRED_STATUS,
-        MKR_REGISTRY_GIT_COMMIT_GATE,
-        MKR_UNWASHED_NOT_LEGAL,
-        MKR_GOVERNANCE_MAP_GRANTS_LEGALITY,
-        MKR_ATOMIC_REGISTRATION_GIT_COMMIT,
-        MKR_WORKSPACE_PROJECT_MAP_REF,
-        MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY,
-        MKR_WORKSPACE_GIT_COMMIT_RULE,
         MKR_DOCS_UNABSORBED,
-        MKR_NON_LEGAL_MATERIAL,
-        MKR_INGESTION_REGISTRY_REF,
+        MKR_GIT_COMMIT_GATE,
+        MKR_GOVERNANCE_MAP_GRANTS_LEGALITY,
         MKR_HOOK_MAP_ONLY_CONTEXT,
         MKR_HOOK_REGISTRATION_GATE,
+        MKR_INCOMING_RAW,
+        MKR_INGESTION_REGISTRY_REF,
+        MKR_NON_LEGAL_MATERIAL,
+        MKR_REGISTRY_GIT_COMMIT_GATE,
+        MKR_RETIRED_STATUS,
+        MKR_UNIQUE_LEGAL_ENTRY,
+        MKR_UNWASHED_NOT_LEGAL,
+        MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY,
+        MKR_WORKSPACE_GIT_COMMIT_RULE,
+        MKR_WORKSPACE_PROJECT_MAP_REF,
     )
+    from .memory_hook_impls import GatewayBusinessPolicyConfig
+    from .memory_hook_interfaces import TruthBasis
 except ImportError:
-    from memory_hook_interfaces import TruthBasis  # type: ignore
-    from memory_hook_impls import GatewayBusinessPolicyConfig  # type: ignore
     from _validation_constants import (  # type: ignore
-        MKR_UNIQUE_LEGAL_ENTRY,
+        MKR_ABSORBED_STATUS,
         MKR_ACTIVE_LEGAL_MAP_ONLY,
-        MKR_GIT_COMMIT_GATE,
+        MKR_ATOMIC_REGISTRATION_GIT_COMMIT,
+        MKR_COMPATIBILITY_ONLY,
         MKR_CORE_ACTIVE_LEGAL,
         MKR_CORE_MAP_ONLY,
-        MKR_INCOMING_RAW,
-        MKR_COMPATIBILITY_ONLY,
-        MKR_ABSORBED_STATUS,
-        MKR_RETIRED_STATUS,
-        MKR_REGISTRY_GIT_COMMIT_GATE,
-        MKR_UNWASHED_NOT_LEGAL,
-        MKR_GOVERNANCE_MAP_GRANTS_LEGALITY,
-        MKR_ATOMIC_REGISTRATION_GIT_COMMIT,
-        MKR_WORKSPACE_PROJECT_MAP_REF,
-        MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY,
-        MKR_WORKSPACE_GIT_COMMIT_RULE,
         MKR_DOCS_UNABSORBED,
-        MKR_NON_LEGAL_MATERIAL,
-        MKR_INGESTION_REGISTRY_REF,
+        MKR_GIT_COMMIT_GATE,
+        MKR_GOVERNANCE_MAP_GRANTS_LEGALITY,
         MKR_HOOK_MAP_ONLY_CONTEXT,
         MKR_HOOK_REGISTRATION_GATE,
+        MKR_INCOMING_RAW,
+        MKR_INGESTION_REGISTRY_REF,
+        MKR_NON_LEGAL_MATERIAL,
+        MKR_REGISTRY_GIT_COMMIT_GATE,
+        MKR_RETIRED_STATUS,
+        MKR_UNIQUE_LEGAL_ENTRY,
+        MKR_UNWASHED_NOT_LEGAL,
+        MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY,
+        MKR_WORKSPACE_GIT_COMMIT_RULE,
+        MKR_WORKSPACE_PROJECT_MAP_REF,
     )
+    from memory_hook_impls import GatewayBusinessPolicyConfig  # type: ignore
+    from memory_hook_interfaces import TruthBasis  # type: ignore
 
 
 # ---------------------------------------------------------------------------

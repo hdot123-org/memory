@@ -194,7 +194,6 @@ def check_context_package(result: ValidateResult, builder: Any) -> bool:
 def check_core_config_path(result: ValidateResult) -> bool:
     """Verify the CoreConfig-native assembly path works."""
     try:
-        from memory_hook_config import CoreConfig  # type: ignore
         from memory_hook_core import build_context_package_from_config  # type: ignore
         if not callable(build_context_package_from_config):
             result.record("core_config_path", False, "build_context_package_from_config is not callable")

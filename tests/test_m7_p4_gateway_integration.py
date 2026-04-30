@@ -15,8 +15,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-import pytest
-
 # ---------------------------------------------------------------------------
 # Repo-root setup
 # ---------------------------------------------------------------------------
@@ -198,7 +196,7 @@ class TestEndToEnd:
 
     def test_force_hook_env_overrides_noop(self) -> None:
         """MEMORY_HOOK_FORCE=1 changes should_noop behavior to return False."""
-        gw = _reload_gateway()
+        _reload_gateway()
 
         # Without force: if neither env cwd nor payload cwd is inside the repo,
         # should_noop returns True.

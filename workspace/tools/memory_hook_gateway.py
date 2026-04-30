@@ -5,13 +5,11 @@ import argparse
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
-
 
 SCRIPT_PATH = Path(__file__).resolve()
 try:
@@ -27,11 +25,26 @@ CLAUDE_HOOK_STATE_DIR = Path.home() / ".agents" / "skills" / "cmux" / "scripts"
 try:
     from .cmux_hook_state import default_hook_state_path, record_hook_event
 except ImportError:
-    from cmux_hook_state import default_hook_state_path, record_hook_event  # type: ignore  # noqa: E402
+    pass  # type: ignore  # noqa: E402
 
 try:
-    from .memory_hook_core import build_context_package_core, build_context_package_from_config
+    from .memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy
+    from .memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile
     from .memory_hook_config import CoreConfig
+    from .memory_hook_core import build_context_package_core, build_context_package_from_config
+    from .memory_hook_impls import (
+        ArtifactSinkImpl,
+        ArtifactWriter,
+        ClaudeDelegate,
+        CodexDelegate,
+        DelegateRouter,
+        ErrorSinkImpl,
+        GatewayBusinessPolicyConfig,
+        PolicyRegistryImpl,
+        RouteTargetPolicyImpl,
+        WriteTargetPolicyImpl,
+        resolve_host_delegate,
+    )
     from .memory_hook_interfaces import (
         ArtifactSink,
         ErrorSink,
@@ -41,25 +54,22 @@ try:
         RouteTargetPolicy,
         WriteTargetPolicy,
     )
-    from .memory_hook_impls import (
+    from .memory_hook_schema import convert_legacy_to_memory_v1, convert_to_v1
+except ImportError:
+    from memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy  # type: ignore
+    from memory_hook_config import CoreConfig  # type: ignore
+    from memory_hook_core import build_context_package_core, build_context_package_from_config  # type: ignore
+    from memory_hook_impls import (  # type: ignore
         ArtifactSinkImpl,
-        ClaudeDelegate,
-        CodexDelegate,
+        ArtifactWriter,
+        DelegateRouter,
         ErrorSinkImpl,
         GatewayBusinessPolicyConfig,
         PolicyRegistryImpl,
         RouteTargetPolicyImpl,
         WriteTargetPolicyImpl,
-        ArtifactWriter,
-        DelegateRouter,
         resolve_host_delegate,
     )
-    from .memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile
-    from .memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy
-    from .memory_hook_schema import convert_to_v1, convert_legacy_to_memory_v1
-except ImportError:
-    from memory_hook_core import build_context_package_core, build_context_package_from_config  # type: ignore
-    from memory_hook_config import CoreConfig  # type: ignore
     from memory_hook_interfaces import (  # type: ignore
         ArtifactSink,
         ErrorSink,
@@ -69,25 +79,11 @@ except ImportError:
         RouteTargetPolicy,
         WriteTargetPolicy,
     )
-    from memory_hook_impls import (  # type: ignore
-        ArtifactSinkImpl,
-        ClaudeDelegate,
-        CodexDelegate,
-        ErrorSinkImpl,
-        GatewayBusinessPolicyConfig,
-        PolicyRegistryImpl,
-        RouteTargetPolicyImpl,
-        WriteTargetPolicyImpl,
-        ArtifactWriter,
-        DelegateRouter,
-        resolve_host_delegate,
-    )
-    from memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile  # type: ignore
-    from memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy  # type: ignore
-    from memory_hook_schema import convert_to_v1, convert_legacy_to_memory_v1  # type: ignore
+    from memory_hook_schema import convert_legacy_to_memory_v1, convert_to_v1  # type: ignore
 
 
 import importlib  # noqa: E402
+
 _ADAPTER_NAME = os.environ.get("MEMORY_HOOK_ADAPTER", "workbot")
 _ADAPTER_REGISTRY = {
     "workbot": (".memory_hook_adapters.workbot_runtime_profile", "build_workbot_runtime_profile"),
@@ -96,7 +92,9 @@ _mod_path, _fn_name = _ADAPTER_REGISTRY[_ADAPTER_NAME]
 try:
     _mod = importlib.import_module(_mod_path, package="workspace.tools")
 except ImportError:
-    from workspace.tools.memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile as _fn  # type: ignore
+    from workspace.tools.memory_hook_adapters.workbot_runtime_profile import (
+        build_workbot_runtime_profile as _fn,  # type: ignore
+    )
 else:
     _fn = getattr(_mod, _fn_name)
 # Adapter configuration store (replaces globals().update injection).
