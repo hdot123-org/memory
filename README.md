@@ -283,3 +283,7 @@ python -m pytest tests/
 
 - **当前版本**：v0.2.0
 - **Python 要求**：>= 3.9
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.
