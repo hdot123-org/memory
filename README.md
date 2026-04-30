@@ -287,3 +287,8 @@ python -m pytest tests/
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
+
+## Links
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+- [License](LICENSE)
