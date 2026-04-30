@@ -255,6 +255,50 @@ class ClaudeDelegate(HostDelegate):
         return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
 
+class NoopHostDelegate(HostDelegate):
+    """Noop delegate: always handles, always returns empty JSON."""
+
+    def can_handle(self) -> bool:
+        return True
+
+    def execute(
+        self,
+        event: str,
+        raw_payload: str,
+        payload: dict[str, Any],
+    ) -> subprocess.CompletedProcess[str]:
+        return self.noop_response()
+
+    def noop_response(self) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="{}\n", stderr="")
+
+
+def resolve_host_delegate(host: str, mode: str = "auto") -> HostDelegate:
+    """Resolve a HostDelegate by host name and mode.
+
+    Modes:
+        "auto": try cmux delegate first, fallback to NoopHostDelegate
+        "noop": always return NoopHostDelegate
+        "cmux": always return cmux delegate (may have can_handle=False)
+    """
+    if host == "codex":
+        cmux_delegate: HostDelegate = CodexDelegate()
+    elif host == "claude":
+        cmux_delegate = ClaudeDelegate()
+    else:
+        return NoopHostDelegate()
+
+    if mode == "noop":
+        return NoopHostDelegate()
+    elif mode == "cmux":
+        return cmux_delegate
+    else:
+        # "auto" or unknown mode
+        if cmux_delegate.can_handle():
+            return cmux_delegate
+        return NoopHostDelegate()
+
+
 # ---------------------------------------------------------------------------
 # IF-2: PolicyRegistry Implementation
 # ---------------------------------------------------------------------------
