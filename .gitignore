@@ -23,7 +23,6 @@ workspace/projects/*/NOW.md
 
 # 根级 NOW.md（业务项目当前状态）
 /NOW.md
-workspace/NOW.md
 
 # 业务项目级别的 memory 目录（整个 .memory/ 属于业务项目）
 # 注意：workspace/memory/ 是 memory 仓库自身的 KB，允许保留
