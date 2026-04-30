@@ -1,0 +1,19 @@
+target-version = "py39"
+line-length = 120
+exclude = ["memory_core/workspace", "workspace", "templates"]
+
+[lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501", "E402"]
+
+[lint.per-file-ignores]
+"memory_core/tools/memory_hook_gateway.py" = ["F821", "F401"]
+"memory_core/tools/memory_hook_impls.py" = ["F401"]
+"memory_core/tools/memory_hook_core.py" = ["F821"]
+"memory_core/tools/validate_memory_system.py" = ["F401"]
+"memory_core/tools/init_project_memory.py" = ["F841"]
+"memory_core/tools/validate_project_memory.py" = ["E741"]
+"tests/test_validate_memory_system.py" = ["E741"]
+"tests/test_m7_p4_gateway_integration.py" = ["F841"]
+"tests/test_api_completion.py" = ["F821"]
+"tests/test_business_policy_checks.py" = ["E999"]

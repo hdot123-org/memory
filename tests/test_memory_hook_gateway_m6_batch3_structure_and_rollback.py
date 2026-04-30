@@ -10,9 +10,9 @@ repo_root = Path(__file__).resolve().parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from workspace.tools import memory_hook_gateway as gateway
-from workspace.tools import memory_hook_provider_rollback as rollback
-from workspace.tools.memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy
+from memory_core.tools import memory_hook_gateway as gateway
+from memory_core.tools import memory_hook_provider_rollback as rollback
+from memory_core.tools.memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy
 
 
 def test_gateway_builds_workbot_policy_adapter():

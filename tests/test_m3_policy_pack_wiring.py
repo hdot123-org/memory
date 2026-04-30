@@ -79,7 +79,7 @@ class TestPolicyPackInjection:
     ) -> None:
         """PolicyRegistryImpl should accept policy_pack_path as a
         constructor keyword argument and load policies from that file."""
-        from workspace.tools.memory_hook_impls import PolicyRegistryImpl
+        from memory_core.tools.memory_hook_impls import PolicyRegistryImpl
 
         registry = PolicyRegistryImpl(
             allowed_scopes={"test-scope"},
@@ -97,7 +97,7 @@ class TestPolicyPackInjection:
     ) -> None:
         """When policy_pack_path is explicitly set, it must take priority
         over both the env var and the default path."""
-        from workspace.tools.memory_hook_impls import PolicyRegistryImpl
+        from memory_core.tools.memory_hook_impls import PolicyRegistryImpl
 
         # Point env var at a different file — it should be ignored
         env_pack = temp_json.parent / "env-policy-pack.json"
@@ -124,7 +124,7 @@ class TestPolicyPackInjection:
     ) -> None:
         """When config has no explicit policy_pack_path, the env var
         MEMORY_HOOK_POLICY_PACK_PATH should be used as fallback."""
-        from workspace.tools.memory_hook_impls import PolicyRegistryImpl
+        from memory_core.tools.memory_hook_impls import PolicyRegistryImpl
 
         env_pack = empty_dir / "env-fallback.json"
         env_pack.write_text(
@@ -150,7 +150,7 @@ class TestPolicyPackInjection:
         """When no policy_pack_path is set, no env var exists, and no
         default file is present, the registry should still work with
         DEFAULT_POLICIES only (no crash)."""
-        from workspace.tools.memory_hook_impls import PolicyRegistryImpl
+        from memory_core.tools.memory_hook_impls import PolicyRegistryImpl
 
         # Clear env var
         monkeypatch.delenv("MEMORY_HOOK_POLICY_PACK_PATH", raising=False)
@@ -190,21 +190,21 @@ class TestAdapterPolicyResolution:
     def test_workbot_adapter_has_legality_source(self) -> None:
         """The workbot runtime profile must declare legality_source as
         'active-legal-map-only'."""
-        from workspace.tools.memory_hook_adapters.workbot_runtime_profile import (
+        from memory_core.tools.memory_hook_adapters.workbot_runtime_profile import (
             build_workbot_runtime_profile,
         )
 
-        profile = build_workbot_runtime_profile(REPO_ROOT, REPO_ROOT / "workspace")
+        profile = build_workbot_runtime_profile(REPO_ROOT, REPO_ROOT / "memory_core")
         assert profile["LEGALITY_SOURCE_POLICY"] == self.WORKBOT_LEGALITY_SOURCE
 
     def test_workbot_adapter_has_registration_commit(self) -> None:
         """The workbot runtime profile must declare registration_commit as
         'required-after-absorption-complete'."""
-        from workspace.tools.memory_hook_adapters.workbot_runtime_profile import (
+        from memory_core.tools.memory_hook_adapters.workbot_runtime_profile import (
             build_workbot_runtime_profile,
         )
 
-        profile = build_workbot_runtime_profile(REPO_ROOT, REPO_ROOT / "workspace")
+        profile = build_workbot_runtime_profile(REPO_ROOT, REPO_ROOT / "memory_core")
         assert profile["REGISTRATION_COMMIT_POLICY"] == self.WORKBOT_REGISTRATION_COMMIT
 
     def test_neutral_adapter_has_no_consumer_policies(self) -> None:
@@ -212,7 +212,7 @@ class TestAdapterPolicyResolution:
         consumer-specific policy values. Consumer keys like
         legality_source and registration_commit should only come from
         adapter-specific policy packs, not from the base defaults."""
-        from workspace.tools.memory_hook_impls import PolicyRegistryImpl
+        from memory_core.tools.memory_hook_impls import PolicyRegistryImpl
 
         # DEFAULT_POLICIES should not contain workbot-specific values
         defaults = PolicyRegistryImpl.DEFAULT_POLICIES
@@ -227,7 +227,7 @@ class TestAdapterPolicyResolution:
         """Adapter-specific policies from the JSON pack should merge on top
         of DEFAULT_POLICIES — base keys not overridden by the pack should
         still be present."""
-        from workspace.tools.memory_hook_impls import PolicyRegistryImpl
+        from memory_core.tools.memory_hook_impls import PolicyRegistryImpl
 
         registry = PolicyRegistryImpl(
             allowed_scopes={"test-scope"},
@@ -250,12 +250,12 @@ class TestPolicyPackConsistency:
     """Verify that the JSON policy pack on disk is consistent with the
     workbot adapter's runtime profile values and has the expected schema."""
 
-    POLICY_PACK_FILE = REPO_ROOT / "workspace" / "memory" / "kb" / "global" / "workbot-policy-pack.json"
+    POLICY_PACK_FILE = REPO_ROOT / "memory_core" / "memory" / "kb" / "global" / "workbot-policy-pack.json"
 
     def test_json_policy_pack_matches_adapter_values(self) -> None:
         """The JSON policy pack's policies must match the workbot runtime
         profile's LEGALITY_SOURCE_POLICY and REGISTRATION_COMMIT_POLICY."""
-        from workspace.tools.memory_hook_adapters.workbot_runtime_profile import (
+        from memory_core.tools.memory_hook_adapters.workbot_runtime_profile import (
             build_workbot_runtime_profile,
         )
 
@@ -263,7 +263,7 @@ class TestPolicyPackConsistency:
             pytest.skip("workbot-policy-pack.json not present")
 
         pack = json.loads(self.POLICY_PACK_FILE.read_text(encoding="utf-8"))
-        profile = build_workbot_runtime_profile(REPO_ROOT, REPO_ROOT / "workspace")
+        profile = build_workbot_runtime_profile(REPO_ROOT, REPO_ROOT / "memory_core")
 
         policies = pack.get("policies", {})
         assert policies.get("legality_source") == profile["LEGALITY_SOURCE_POLICY"]
@@ -272,7 +272,7 @@ class TestPolicyPackConsistency:
     def test_schema_version_matches(self) -> None:
         """The schema_version in the JSON policy pack must match the
         PolicyRegistryImpl.SCHEMA_VERSION constant."""
-        from workspace.tools.memory_hook_impls import PolicyRegistryImpl
+        from memory_core.tools.memory_hook_impls import PolicyRegistryImpl
 
         if not self.POLICY_PACK_FILE.exists():
             pytest.skip("workbot-policy-pack.json not present")

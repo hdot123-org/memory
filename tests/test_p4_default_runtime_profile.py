@@ -5,7 +5,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-from workspace.tools.memory_hook_adapters.default_runtime_profile import (
+from memory_core.tools.memory_hook_adapters.default_runtime_profile import (
     build_default_runtime_profile,
 )
 

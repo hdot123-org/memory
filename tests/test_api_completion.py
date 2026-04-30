@@ -17,7 +17,7 @@ class TestSchemaConversion:
 
     def test_convert_v2_to_v1_changes_schema_version(self):
         """wb-hook-v2 -> context-package-v1."""
-        from workspace.tools.memory_hook_schema import convert_to_v1
+        from memory_core.tools.memory_hook_schema import convert_to_v1
 
         v2_pkg = {"schema_version": "wb-hook-v2", "host": "codex", "event": "post-gen"}
         v1 = convert_to_v1(v2_pkg)
@@ -25,7 +25,7 @@ class TestSchemaConversion:
 
     def test_convert_nests_paths(self):
         """repo_root / workspace_root / cwd go into 'paths' dict."""
-        from workspace.tools.memory_hook_schema import convert_to_v1
+        from memory_core.tools.memory_hook_schema import convert_to_v1
 
         v2_pkg = {
             "schema_version": "wb-hook-v2",
@@ -42,7 +42,7 @@ class TestSchemaConversion:
 
     def test_convert_renames_context_sections(self):
         """project_context -> project, task_context -> task."""
-        from workspace.tools.memory_hook_schema import convert_to_v1
+        from memory_core.tools.memory_hook_schema import convert_to_v1
 
         v2_pkg = {
             "schema_version": "wb-hook-v2",
@@ -57,7 +57,7 @@ class TestSchemaConversion:
 
     def test_convert_drops_system_context(self):
         """system_context key is not in v1 output."""
-        from workspace.tools.memory_hook_schema import convert_to_v1
+        from memory_core.tools.memory_hook_schema import convert_to_v1
 
         v2_pkg = {
             "schema_version": "wb-hook-v2",
@@ -68,7 +68,7 @@ class TestSchemaConversion:
 
     def test_convert_drops_missing_paths(self):
         """missing_paths key is not in v1 output."""
-        from workspace.tools.memory_hook_schema import convert_to_v1
+        from memory_core.tools.memory_hook_schema import convert_to_v1
 
         v2_pkg = {
             "schema_version": "wb-hook-v2",
@@ -79,7 +79,7 @@ class TestSchemaConversion:
 
     def test_is_v1_is_v2_helpers(self):
         """Version detection helpers work correctly."""
-        from workspace.tools.memory_hook_schema import is_v1, is_v2
+        from memory_core.tools.memory_hook_schema import is_v1, is_v2
 
         v1_pkg: dict[str, Any] = {"schema_version": "context-package-v1"}
         v2_pkg: dict[str, Any] = {"schema_version": "wb-hook-v2"}
@@ -106,7 +106,7 @@ class TestPathUtils:
 
     def test_extract_excerpt_reads_file(self, tmp_path: Path):
         """Create a temp file, read excerpt returns stripped non-empty lines."""
-        from workspace.tools.memory_hook_impls import PathUtilsImpl
+        from memory_core.tools.memory_hook_impls import PathUtilsImpl
 
         f = tmp_path / "sample.txt"
         f.write_text("line1\n\n  line2  \nline3\nline4\n", encoding="utf-8")
@@ -116,7 +116,7 @@ class TestPathUtils:
 
     def test_extract_excerpt_handles_missing_file(self, tmp_path: Path):
         """Returns [] for non-existent file."""
-        from workspace.tools.memory_hook_impls import PathUtilsImpl
+        from memory_core.tools.memory_hook_impls import PathUtilsImpl
 
         utils = PathUtilsImpl(tmp_path)
         missing = tmp_path / "does_not_exist.txt"
@@ -124,7 +124,7 @@ class TestPathUtils:
 
     def test_write_targets_returns_dict(self):
         """Returns a dict with expected keys."""
-        from workspace.tools.memory_hook_impls import PathUtilsImpl
+        from memory_core.tools.memory_hook_impls import PathUtilsImpl
 
         ws = Path("/tmp/ws_test")
         utils = PathUtilsImpl(ws)
@@ -137,8 +137,8 @@ class TestPathUtils:
 
     def test_interface_matches_abc(self):
         """PathUtilsImpl is instance of PathUtils ABC."""
-        from workspace.tools.memory_hook_impls import PathUtilsImpl
-        from workspace.tools.memory_hook_interfaces import PathUtils
+        from memory_core.tools.memory_hook_impls import PathUtilsImpl
+        from memory_core.tools.memory_hook_interfaces import PathUtils
 
         ws = Path("/tmp/ws_test")
         utils = PathUtilsImpl(ws)
@@ -150,28 +150,28 @@ class TestPathUtils:
 # ---------------------------------------------------------------------------
 
 class TestPackageAPI:
-    """Tests for workspace.tools lazy exports."""
+    """Tests for memory_core.tools lazy exports."""
 
     def test_lazy_import_build_context_package(self):
-        """from workspace.tools import build_context_package works."""
-        from workspace.tools import build_context_package
+        """from memory_core.tools import build_context_package works."""
+        from memory_core.tools import build_context_package
         assert callable(build_context_package)
 
     def test_lazy_import_core_config(self):
-        """from workspace.tools import CoreConfig works."""
-        from workspace.tools import CoreConfig
+        """from memory_core.tools import CoreConfig works."""
+        from memory_core.tools import CoreConfig
         assert isinstance(CoreConfig, type)
 
     def test_lazy_import_build_simple(self):
-        """from workspace.tools import build_context_package_simple works."""
-        from workspace.tools import build_context_package_simple
+        """from memory_core.tools import build_context_package_simple works."""
+        from memory_core.tools import build_context_package_simple
         assert callable(build_context_package_simple)
 
     def test_lazy_import_unknown_raises(self):
-        """from workspace.tools import nonexistent raises AttributeError."""
-        import workspace.tools
+        """from memory_core.tools import nonexistent raises AttributeError."""
+        import memory_core.tools
         with pytest.raises(AttributeError):
-            _ = workspace.tools.nonexistent_symbol_xyz
+            _ = memory_core.tools.nonexistent_symbol_xyz
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +182,7 @@ class TestExtendedPolicyRegistry:
     """Tests for PolicyRegistryImpl extended stub methods."""
 
     def _make_registry(self) -> Any:
-        from workspace.tools.memory_hook_impls import PolicyRegistryImpl
+        from memory_core.tools.memory_hook_impls import PolicyRegistryImpl
         return PolicyRegistryImpl()
 
     def test_validate_project_map_returns_list(self):

@@ -24,7 +24,7 @@ import pytest
 
 def _make_minimal_kwargs(tmp_path: Path) -> dict[str, Any]:
     """Build a minimal but complete kwargs dict for CoreConfig."""
-    base = tmp_path / "workspace"
+    base = tmp_path / "memory_core"
     base.mkdir(parents=True, exist_ok=True)
 
     def _noop(*_a, **_k):
@@ -86,7 +86,7 @@ class TestPathTypeValidation:
 
     def test_hook_contract_path_rejects_string(self, tmp_path):
         """Non-Path value for hook_contract_path raises TypeError."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_kwargs(tmp_path)
         kwargs["hook_contract_path"] = "/not/a/path"
@@ -96,7 +96,7 @@ class TestPathTypeValidation:
 
     def test_hook_contract_path_rejects_none(self, tmp_path):
         """None for hook_contract_path raises TypeError."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_kwargs(tmp_path)
         kwargs["hook_contract_path"] = None
@@ -133,7 +133,7 @@ class TestCallableTypeValidation:
     @pytest.mark.parametrize("field_name", _CALLBACK_FIELD_NAMES)
     def test_callback_field_rejects_string(self, tmp_path, field_name):
         """Non-callable string for a callback field raises TypeError."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_kwargs(tmp_path)
         kwargs[field_name] = "not_a_callable"
@@ -144,7 +144,7 @@ class TestCallableTypeValidation:
     @pytest.mark.parametrize("field_name", _CALLBACK_FIELD_NAMES)
     def test_callback_field_rejects_none(self, tmp_path, field_name):
         """None for a callback field raises TypeError."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_kwargs(tmp_path)
         kwargs[field_name] = None
@@ -155,7 +155,7 @@ class TestCallableTypeValidation:
     @pytest.mark.parametrize("field_name", _CALLBACK_FIELD_NAMES)
     def test_callback_field_rejects_int(self, tmp_path, field_name):
         """Non-callable int for a callback field raises TypeError."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_kwargs(tmp_path)
         kwargs[field_name] = 42
@@ -179,7 +179,7 @@ class TestStringValidation:
     )
     def test_string_field_rejects_empty(self, tmp_path, field_name):
         """Empty string for a required non-empty string field raises ValueError."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_kwargs(tmp_path)
         kwargs[field_name] = ""
@@ -189,7 +189,7 @@ class TestStringValidation:
 
     def test_host_rejects_empty(self, tmp_path):
         """Empty host raises ValueError."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_kwargs(tmp_path)
         kwargs["host"] = ""
@@ -219,7 +219,7 @@ class TestCollectionTypeValidation:
     )
     def test_list_field_rejects_non_list(self, tmp_path, field_name, bad_value):
         """Non-list value for a list field raises TypeError."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_kwargs(tmp_path)
         kwargs[field_name] = bad_value
@@ -238,7 +238,7 @@ class TestCollectionTypeValidation:
     )
     def test_dict_field_rejects_non_dict(self, tmp_path, field_name, bad_value):
         """Non-dict value for a dict field raises TypeError."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_kwargs(tmp_path)
         kwargs[field_name] = bad_value
@@ -257,7 +257,7 @@ class TestValidConstruction:
 
     def test_valid_params_construct(self, tmp_path):
         """CoreConfig constructs without error when all fields are valid."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_kwargs(tmp_path)
         cfg = CoreConfig(**kwargs)
@@ -268,7 +268,7 @@ class TestValidConstruction:
 
     def test_valid_params_with_optional_fields(self, tmp_path):
         """CoreConfig accepts optional fields with valid values."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_kwargs(tmp_path)
         kwargs["governance_blocker_scopes"] = ["scope-1"]

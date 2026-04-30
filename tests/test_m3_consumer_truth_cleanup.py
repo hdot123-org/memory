@@ -18,7 +18,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-WORKSPACE_ROOT = REPO_ROOT / "workspace"
+WORKSPACE_ROOT = REPO_ROOT / "memory_core"
 
 ROUTING_PATH = WORKSPACE_ROOT / "memory" / "kb" / "global" / "workbot-memory-routing.md"
 LEGAL_CORE_PATH = WORKSPACE_ROOT / "project-map" / "legal-core-map.md"
@@ -139,12 +139,12 @@ class TestRollbackCompatibility:
     """验证 neutral core、adapter、legacy fallback 兼容。"""
 
     def test_gateway_imports_cleanly(self):
-        from workspace.tools.memory_hook_gateway import build_context_package
+        from memory_core.tools.memory_hook_gateway import build_context_package
 
         assert callable(build_context_package)
 
     def test_impls_imports_cleanly(self):
-        from workspace.tools.memory_hook_impls import (
+        from memory_core.tools.memory_hook_impls import (
             CodexDelegate,
             ClaudeDelegate,
             PolicyRegistryImpl,
@@ -155,7 +155,7 @@ class TestRollbackCompatibility:
         assert callable(PolicyRegistryImpl)
 
     def test_adapter_profile_imports_cleanly(self):
-        from workspace.tools.memory_hook_adapters.workbot_runtime_profile import (
+        from memory_core.tools.memory_hook_adapters.workbot_runtime_profile import (
             build_workbot_runtime_profile,
         )
 
@@ -164,7 +164,7 @@ class TestRollbackCompatibility:
         assert "ARTIFACT_COMPACTION" in profile
 
     def test_neutral_policy_imports_cleanly(self):
-        from workspace.tools.memory_hook_adapters.neutral_policy import (
+        from memory_core.tools.memory_hook_adapters.neutral_policy import (
             NeutralGatewayBusinessPolicy,
         )
 
@@ -181,7 +181,7 @@ class TestRollbackCompatibility:
         assert result.returncode == 0
 
     def test_core_provider_switch_works(self):
-        from workspace.tools.memory_hook_gateway import _resolve_core_builder
+        from memory_core.tools.memory_hook_gateway import _resolve_core_builder
 
         name, builder, errors = _resolve_core_builder("legacy", allow_fallback=True)
         assert name == "legacy"

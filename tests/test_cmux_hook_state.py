@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "workspace" / "tools"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "memory_core" / "tools"))
 from cmux_hook_state import (
     HookStateError,
     default_hook_state_path,
@@ -57,9 +57,9 @@ def _fake_project_dir(tmp_path: Path) -> Path:
 class TestPathHelpers:
     def test_runtime_state_dir_with_workspace_artifacts(self, tmp_path: Path) -> None:
         project = _fake_project_dir(tmp_path)
-        (project / "workspace" / "artifacts").mkdir(parents=True)
+        (project / "memory_core" / "artifacts").mkdir(parents=True)
         result = runtime_state_dir(project)
-        assert result == project / "workspace" / "artifacts" / "cmux-runtime"
+        assert result == project / "memory_core" / "artifacts" / "cmux-runtime"
 
     def test_runtime_state_dir_fallback(self, tmp_path: Path) -> None:
         project = _fake_project_dir(tmp_path)

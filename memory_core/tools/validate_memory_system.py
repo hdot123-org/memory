@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 # Ensure workspace/tools and the repo root are on sys.path.
-# The gateway module uses both "workspace.tools" dotted imports and
+# The gateway module uses both "memory_core.tools" dotted imports and
 # bare module names depending on the import path taken.
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _SCRIPT_DIR.parents[1]
@@ -228,11 +228,11 @@ def check_v1_schema(result: ValidateResult) -> bool:
 
 
 def check_package_imports(result: ValidateResult) -> bool:
-    """Verify workspace.tools public API is importable."""
+    """Verify memory_core.tools public API is importable."""
     try:
-        import workspace.tools  # type: ignore
-        assert hasattr(workspace.tools, 'build_context_package')
-        assert hasattr(workspace.tools, 'CoreConfig')
+        import memory_core.tools  # type: ignore
+        assert hasattr(memory_core.tools, 'build_context_package')
+        assert hasattr(memory_core.tools, 'CoreConfig')
         result.record("package_imports", True, "4 public symbols importable")
         return True
     except Exception as exc:

@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover - script-mode fallback
     NeutralGatewayBusinessPolicy = None  # type: ignore[assignment,misc]
 
 try:
-    from workspace.tools.adapter_toml_schema import load_adapter_toml
+    from memory_core.tools.adapter_toml_schema import load_adapter_toml
 except ImportError:  # pragma: no cover
     from ..adapter_toml_schema import load_adapter_toml  # type: ignore[no-redef]
 

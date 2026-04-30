@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
-TOOLS_DIR = str(Path(__file__).resolve().parent.parent / "workspace" / "tools")
+TOOLS_DIR = str(Path(__file__).resolve().parent.parent / "memory_core" / "tools")
 if TOOLS_DIR not in sys.path:
     sys.path.insert(0, TOOLS_DIR)
 
@@ -35,20 +35,20 @@ from hook_event import (
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def sample_codex_payload() -> str:
+def sample_codex_payload(repo_root) -> str:
     return json.dumps({
         "session_id": "codex-session-001",
-        "cwd": "/Users/busiji/memory",
+        "cwd": str(repo_root),
         "message": "Hello world",
     })
 
 
 @pytest.fixture
-def sample_claude_session_start() -> str:
+def sample_claude_session_start(repo_root) -> str:
     return json.dumps({
         "event": "SessionStart",
         "session_id": "claude-session-001",
-        "cwd": "/Users/busiji/memory",
+        "cwd": str(repo_root),
         "model": "claude-sonnet-4-20250514",
     })
 
@@ -69,12 +69,12 @@ def sample_claude_prompt_submit() -> str:
 
 class TestFromCodexPayload:
 
-    def test_basic_parse(self, sample_codex_payload):
+    def test_basic_parse(self, sample_codex_payload, repo_root):
         event = from_codex_payload(sample_codex_payload, event="session-start")
         assert event.source == "codex"
         assert event.event_type == "session-start"
         assert event.payload["session_id"] == "codex-session-001"
-        assert event.cwd == Path("/Users/busiji/memory")
+        assert event.cwd == repo_root
 
     def test_default_event_when_not_provided(self, sample_codex_payload):
         event = from_codex_payload(sample_codex_payload)

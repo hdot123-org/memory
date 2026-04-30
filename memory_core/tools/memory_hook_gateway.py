@@ -17,7 +17,7 @@ SCRIPT_PATH = Path(__file__).resolve()
 try:
     from .memory_root_discovery import discover_roots
 except ImportError:
-    from workspace.tools.memory_root_discovery import discover_roots
+    from memory_core.tools.memory_root_discovery import discover_roots
 REPO_ROOT, WORKSPACE_ROOT = discover_roots(Path.cwd())
 ARTIFACT_ROOT = WORKSPACE_ROOT / "artifacts" / "memory-hook"
 CONTEXT_ROOT = ARTIFACT_ROOT / "contexts"
@@ -94,9 +94,9 @@ _ADAPTER_REGISTRY = {
 }
 _mod_path, _fn_name = _ADAPTER_REGISTRY[_ADAPTER_NAME]
 try:
-    _mod = importlib.import_module(_mod_path, package="workspace.tools")
+    _mod = importlib.import_module(_mod_path, package="memory_core.tools")
 except ImportError:
-    from workspace.tools.memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile as _fn  # type: ignore
+    from memory_core.tools.memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile as _fn  # type: ignore
 else:
     _fn = getattr(_mod, _fn_name)
 # Adapter configuration store (replaces globals().update injection).
@@ -191,7 +191,7 @@ CoreBuilder = Callable[..., dict[str, Any]]
 
 
 def _load_external_core_builder() -> CoreBuilder:
-    module_name = os.environ.get("MEMORY_HOOK_EXTERNAL_CORE_MODULE", "workspace.tools.memory_hook_core")
+    module_name = os.environ.get("MEMORY_HOOK_EXTERNAL_CORE_MODULE", "memory_core.tools.memory_hook_core")
     func_name = os.environ.get("MEMORY_HOOK_EXTERNAL_CORE_FUNC", "build_context_package_core")
     module = __import__(module_name, fromlist=[func_name])
     builder = getattr(module, func_name)

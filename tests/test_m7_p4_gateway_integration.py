@@ -33,7 +33,7 @@ if str(repo_root) not in sys.path:
 def _clear_gateway_cache() -> None:
     """Remove all memory_hook modules from sys.modules."""
     for name in list(sys.modules.keys()):
-        if name.startswith("workspace.tools.memory_hook"):
+        if name.startswith("memory_core.tools.memory_hook"):
             del sys.modules[name]
 
 
@@ -54,7 +54,7 @@ def _reload_gateway(**env_overrides: str) -> Any:
     _clear_gateway_cache()
 
     with patch.dict(os.environ, clean_env, clear=True):
-        gw = importlib.import_module("workspace.tools.memory_hook_gateway")
+        gw = importlib.import_module("memory_core.tools.memory_hook_gateway")
         return gw
 
 
@@ -78,7 +78,7 @@ class TestGatewayCoreIntegration:
         gw = _reload_gateway()
 
         # Build a payload pointing inside the repo so discover_cwd finds a valid cwd
-        payload = _build_minimal_payload(cwd=str(gw.REPO_ROOT / "workspace" / "tools"))
+        payload = _build_minimal_payload(cwd=str(gw.REPO_ROOT / "memory_core" / "tools"))
         package = gw.build_context_package("codex", "start", payload)
 
         assert "system_context" in package, "package must contain system_context"
@@ -95,7 +95,7 @@ class TestGatewayCoreIntegration:
 
     def test_registration_phase_from_policy_pack(self) -> None:
         """Verify registration_phase is extracted correctly from the loaded policy pack."""
-        from workspace.tools.memory_hook_core import registration_phase_from_policy_pack
+        from memory_core.tools.memory_hook_core import registration_phase_from_policy_pack
 
         # Normal case: policy_pack contains registration_phase
         pack_with_phase = {
@@ -124,7 +124,7 @@ class TestGatewayCoreIntegration:
         """Verify allowed_reads and allowed_writes are non-empty."""
         gw = _reload_gateway()
 
-        payload = _build_minimal_payload(cwd=str(gw.REPO_ROOT / "workspace" / "tools"))
+        payload = _build_minimal_payload(cwd=str(gw.REPO_ROOT / "memory_core" / "tools"))
         package = gw.build_context_package("codex", "start", payload)
 
         assert "allowed_reads" in package, "package must contain allowed_reads"
@@ -162,7 +162,7 @@ class TestScopeValidation:
 
     def test_empty_allowed_scopes_allows_any(self) -> None:
         """If allowed_scopes is empty set, get_policy_pack should not raise for any scope."""
-        from workspace.tools.memory_hook_impls import PolicyRegistryImpl
+        from memory_core.tools.memory_hook_impls import PolicyRegistryImpl
 
         registry = PolicyRegistryImpl(allowed_scopes=set())
 
@@ -185,7 +185,7 @@ class TestEndToEnd:
         gw = _reload_gateway()
 
         # Payload cwd inside the workbot workspace
-        workspace_tools = gw.REPO_ROOT / "workspace" / "tools"
+        workspace_tools = gw.REPO_ROOT / "memory_core" / "tools"
         payload = _build_minimal_payload(cwd=str(workspace_tools))
 
         cwd = gw._discover_cwd(payload)
@@ -215,11 +215,11 @@ class TestEndToEnd:
         with patch.dict(os.environ, clean_env, clear=True):
             # Reload to pick up the clean env
             _clear_gateway_cache()
-            gw_clean = importlib.import_module("workspace.tools.memory_hook_gateway")
+            gw_clean = importlib.import_module("memory_core.tools.memory_hook_gateway")
             assert gw_clean._should_noop_for_external_context(payload_outside) is True
 
         # With MEMORY_HOOK_FORCE=1, should_noop must return False regardless
         with patch.dict(os.environ, {**clean_env, "MEMORY_HOOK_FORCE": "1"}, clear=True):
             _clear_gateway_cache()
-            gw_force = importlib.import_module("workspace.tools.memory_hook_gateway")
+            gw_force = importlib.import_module("memory_core.tools.memory_hook_gateway")
             assert gw_force._should_noop_for_external_context(payload_outside) is False

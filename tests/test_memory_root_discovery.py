@@ -1,16 +1,16 @@
-"""Tests for workspace.tools.memory_root_discovery.
+"""Tests for memory_core.tools.memory_root_discovery.
 
 Covers:
     - .memory/ marker found at various depths
     - Fallback to SCRIPT_PATH.parents[2] when no marker exists
-    - workspace/ subdirectory detection
+    - memory_core/ subdirectory detection
     - discover_roots convenience wrapper
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from workspace.tools.memory_root_discovery import (
+from memory_core.tools.memory_root_discovery import (
     _FALLBACK_REPO_ROOT,
     discover_project_root,
     discover_roots,
@@ -70,20 +70,20 @@ class TestDiscoverProjectRoot:
 # ---------------------------------------------------------------------------
 
 class TestDiscoverWorkspaceRoot:
-    """discover_workspace_root checks for workspace/ subdir."""
+    """discover_workspace_root checks for memory_core/ subdir."""
 
     def test_workspace_exists(self, tmp_path: Path) -> None:
-        ws = tmp_path / "workspace"
+        ws = tmp_path / "memory_core"
         ws.mkdir()
         assert discover_workspace_root(tmp_path) == ws
 
     def test_workspace_missing(self, tmp_path: Path) -> None:
-        """No workspace/ subdir -> returns project_root itself."""
+        """No memory_core/ subdir -> returns project_root itself."""
         assert discover_workspace_root(tmp_path) == tmp_path
 
     def test_workspace_is_file_not_dir(self, tmp_path: Path) -> None:
-        """A file named workspace is not a directory."""
-        (tmp_path / "workspace").touch()
+        """A file named memory_core is not a directory."""
+        (tmp_path / "memory_core").touch()
         assert discover_workspace_root(tmp_path) == tmp_path
 
 
@@ -96,10 +96,10 @@ class TestDiscoverRoots:
 
     def test_with_memory_and_workspace(self, tmp_path: Path) -> None:
         (tmp_path / ".memory").mkdir()
-        (tmp_path / "workspace").mkdir()
+        (tmp_path / "memory_core").mkdir()
         repo, ws = discover_roots(tmp_path)
         assert repo == tmp_path
-        assert ws == tmp_path / "workspace"
+        assert ws == tmp_path / "memory_core"
 
     def test_with_memory_no_workspace(self, tmp_path: Path) -> None:
         (tmp_path / ".memory").mkdir()

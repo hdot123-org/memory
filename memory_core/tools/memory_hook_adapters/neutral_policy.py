@@ -8,7 +8,7 @@ from pathlib import Path
 try:
     from ..memory_hook_impls import GatewayBusinessPolicyConfig, GatewayBusinessPolicyImpl
 except ImportError:  # pragma: no cover - script-mode fallback
-    from workspace.tools.memory_hook_impls import GatewayBusinessPolicyConfig, GatewayBusinessPolicyImpl  # type: ignore
+    from memory_core.tools.memory_hook_impls import GatewayBusinessPolicyConfig, GatewayBusinessPolicyImpl  # type: ignore
 
 
 class NeutralGatewayBusinessPolicy(GatewayBusinessPolicyImpl):

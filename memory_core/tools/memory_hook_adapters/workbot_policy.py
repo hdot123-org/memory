@@ -12,8 +12,8 @@ try:
     from .neutral_policy import NeutralGatewayBusinessPolicy
     from ..memory_hook_impls import GatewayBusinessPolicyConfig
 except ImportError:  # pragma: no cover - script-mode fallback
-    from workspace.tools.memory_hook_adapters.neutral_policy import NeutralGatewayBusinessPolicy  # type: ignore
-    from workspace.tools.memory_hook_impls import GatewayBusinessPolicyConfig  # type: ignore
+    from memory_core.tools.memory_hook_adapters.neutral_policy import NeutralGatewayBusinessPolicy  # type: ignore
+    from memory_core.tools.memory_hook_impls import GatewayBusinessPolicyConfig  # type: ignore
 
 
 # Workbot-specific policy overrides injected into the gateway strategy chain.
@@ -76,7 +76,7 @@ class WorkbotGatewayBusinessPolicy(NeutralGatewayBusinessPolicy):
 
     def resolve_policies(self) -> dict[str, str]:
         """Merge ADAPTER_POLICIES with base gateway policies from the parent class."""
-        from workspace.tools.memory_hook_impls import PolicyRegistryImpl
+        from memory_core.tools.memory_hook_impls import PolicyRegistryImpl
         base = dict(PolicyRegistryImpl.DEFAULT_POLICIES)
         base.update(ADAPTER_POLICIES)
         return base

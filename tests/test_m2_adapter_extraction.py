@@ -18,7 +18,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-WORKSPACE_ROOT = REPO_ROOT / "workspace"
+WORKSPACE_ROOT = REPO_ROOT / "memory_core"
 HOOK_CONTRACT_PATH = (
     WORKSPACE_ROOT / "memory" / "kb" / "global" / "workbot-hook-contract.md"
 )
@@ -33,7 +33,7 @@ class TestDelegateGate:
     """验证 codex/claude bypass 分流来自 adapter，不是 core 默认。"""
 
     def test_codex_delegate_noop_returns_empty_json(self):
-        from workspace.tools.memory_hook_impls import CodexDelegate
+        from memory_core.tools.memory_hook_impls import CodexDelegate
 
         delegate = CodexDelegate()
         result = delegate.noop_response()
@@ -42,7 +42,7 @@ class TestDelegateGate:
         assert result.stderr == ""
 
     def test_claude_delegate_noop_returns_empty(self):
-        from workspace.tools.memory_hook_impls import ClaudeDelegate
+        from memory_core.tools.memory_hook_impls import ClaudeDelegate
 
         delegate = ClaudeDelegate()
         result = delegate.noop_response()
@@ -51,14 +51,14 @@ class TestDelegateGate:
         assert result.stderr == ""
 
     def test_gateway_noop_calls_delegate_noop_response(self):
-        from workspace.tools.memory_hook_gateway import _delegate_noop_response
+        from memory_core.tools.memory_hook_gateway import _delegate_noop_response
 
         mock_delegate = MagicMock()
         mock_delegate.noop_response.return_value = MagicMock(
             returncode=0, stdout="mocked\n", stderr=""
         )
         with patch(
-            "workspace.tools.memory_hook_gateway._get_host_delegate",
+            "memory_core.tools.memory_hook_gateway._get_host_delegate",
             return_value=mock_delegate,
         ):
             result = _delegate_noop_response("codex")
@@ -68,7 +68,7 @@ class TestDelegateGate:
     def test_main_stdout_fallback_uses_delegate_noop(self):
         import subprocess
 
-        from workspace.tools.memory_hook_impls import CodexDelegate
+        from memory_core.tools.memory_hook_impls import CodexDelegate
 
         delegate = CodexDelegate()
         noop = delegate.noop_response()
@@ -86,33 +86,33 @@ class TestDelegateNoopFallback:
     """验证 cmux 不可用时 execute() 返回 noop 而非抛异常。"""
 
     def test_codex_execute_no_cmux_returns_noop(self):
-        from workspace.tools.memory_hook_impls import CodexDelegate
+        from memory_core.tools.memory_hook_impls import CodexDelegate
         delegate = CodexDelegate(which_cmd=lambda _: None)
         result = delegate.execute("session-start", "{}", {})
         assert result.returncode == 0
         assert result.stdout == "{}\n"
 
     def test_codex_execute_no_surface_returns_noop(self):
-        from workspace.tools.memory_hook_impls import CodexDelegate
+        from memory_core.tools.memory_hook_impls import CodexDelegate
         delegate = CodexDelegate(surface_id="", which_cmd=lambda _: "/usr/bin/cmux")
         result = delegate.execute("session-start", "{}", {})
         assert result.returncode == 0
         assert result.stdout == "{}\n"
 
     def test_claude_execute_no_cmux_returns_noop(self):
-        from workspace.tools.memory_hook_impls import ClaudeDelegate
+        from memory_core.tools.memory_hook_impls import ClaudeDelegate
         delegate = ClaudeDelegate(which_cmd=lambda _: None)
         result = delegate.execute("session-start", "{}", {})
         assert result.returncode == 0
 
     def test_claude_execute_no_workspace_returns_noop(self):
-        from workspace.tools.memory_hook_impls import ClaudeDelegate
+        from memory_core.tools.memory_hook_impls import ClaudeDelegate
         delegate = ClaudeDelegate(workspace_id="", surface_id="s1", which_cmd=lambda _: "/usr/bin/cmux")
         result = delegate.execute("session-start", "{}", {})
         assert result.returncode == 0
 
     def test_claude_execute_no_surface_returns_noop(self):
-        from workspace.tools.memory_hook_impls import ClaudeDelegate
+        from memory_core.tools.memory_hook_impls import ClaudeDelegate
         delegate = ClaudeDelegate(workspace_id="w1", surface_id="", which_cmd=lambda _: "/usr/bin/cmux")
         result = delegate.execute("session-start", "{}", {})
         assert result.returncode == 0
@@ -127,20 +127,20 @@ class TestStateFileStrictness:
     """验证 state_file 严格来自 adapter 注入，不是环境变量直读。"""
 
     def test_claude_delegate_state_file_not_read_from_env(self, monkeypatch):
-        from workspace.tools.memory_hook_impls import ClaudeDelegate
+        from memory_core.tools.memory_hook_impls import ClaudeDelegate
 
         monkeypatch.setenv("CMUX_HOOK_STATE_FILE", "/should/not/be/used")
         delegate = ClaudeDelegate(state_file=None)
         assert delegate._state_file is None
 
     def test_claude_delegate_state_file_injected_by_constructor(self):
-        from workspace.tools.memory_hook_impls import ClaudeDelegate
+        from memory_core.tools.memory_hook_impls import ClaudeDelegate
 
         delegate = ClaudeDelegate(state_file="/injected/path")
         assert delegate._state_file == "/injected/path"
 
     def test_runtime_profile_resolves_state_file_from_env(self):
-        from workspace.tools.memory_hook_adapters.workbot_runtime_profile import (
+        from memory_core.tools.memory_hook_adapters.workbot_runtime_profile import (
             build_workbot_runtime_profile,
         )
 
@@ -158,7 +158,7 @@ class TestArtifactCompaction:
     """验证 compaction 机制存在且可由 adapter 配置。"""
 
     def test_runtime_profile_contains_compaction_policy(self):
-        from workspace.tools.memory_hook_adapters.workbot_runtime_profile import (
+        from memory_core.tools.memory_hook_adapters.workbot_runtime_profile import (
             build_workbot_runtime_profile,
         )
 
@@ -176,7 +176,7 @@ class TestArtifactCompaction:
         assert expected_keys == set(compaction.keys())
 
     def test_compaction_all_true_preserves_all_sections(self):
-        from workspace.tools.memory_hook_gateway import _apply_artifact_compaction
+        from memory_core.tools.memory_hook_gateway import _apply_artifact_compaction
 
         policy = {
             "include_system_context": True,
@@ -187,7 +187,7 @@ class TestArtifactCompaction:
             "include_allowed_writes": True,
         }
         with patch.dict(
-            "workspace.tools.memory_hook_gateway._adapter_config",
+            "memory_core.tools.memory_hook_gateway._adapter_config",
             {"ARTIFACT_COMPACTION": policy},
         ):
             package = {
@@ -207,7 +207,7 @@ class TestArtifactCompaction:
             assert "allowed_writes" in package
 
     def test_compaction_can_remove_system_context(self):
-        from workspace.tools.memory_hook_gateway import _apply_artifact_compaction
+        from memory_core.tools.memory_hook_gateway import _apply_artifact_compaction
 
         policy = {
             "include_system_context": False,
@@ -218,7 +218,7 @@ class TestArtifactCompaction:
             "include_allowed_writes": True,
         }
         with patch.dict(
-            "workspace.tools.memory_hook_gateway._adapter_config",
+            "memory_core.tools.memory_hook_gateway._adapter_config",
             {"ARTIFACT_COMPACTION": policy},
         ):
             package = {
@@ -230,7 +230,7 @@ class TestArtifactCompaction:
             assert "project_context" in package
 
     def test_compaction_can_remove_multiple_sections(self):
-        from workspace.tools.memory_hook_gateway import _apply_artifact_compaction
+        from memory_core.tools.memory_hook_gateway import _apply_artifact_compaction
 
         policy = {
             "include_system_context": False,
@@ -241,7 +241,7 @@ class TestArtifactCompaction:
             "include_allowed_writes": False,
         }
         with patch.dict(
-            "workspace.tools.memory_hook_gateway._adapter_config",
+            "memory_core.tools.memory_hook_gateway._adapter_config",
             {"ARTIFACT_COMPACTION": policy},
         ):
             package = {

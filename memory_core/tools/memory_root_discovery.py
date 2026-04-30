@@ -13,7 +13,7 @@ _SCRIPT_PATH = Path(__file__).resolve()
 _FALLBACK_REPO_ROOT = _SCRIPT_PATH.parents[2]
 
 _MEMORY_DIR = ".memory"
-_WORKSPACE_DIR = "workspace"
+_WORKSPACE_DIR = "memory_core"
 
 
 def discover_project_root(start_path: Path) -> Path:

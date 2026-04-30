@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from workspace.tools.memory_hook_schema import (
+from memory_core.tools.memory_hook_schema import (
     MEMORY_V1_VERSION,
     V1_VERSION,
     V2_VERSION,
@@ -215,7 +215,7 @@ class TestBuildContextPackageSimple:
     @pytest.fixture()
     def _patch_build(self, monkeypatch: pytest.MonkeyPatch):
         """Monkeypatch build_context_package to return a synthetic v2 package."""
-        from workspace.tools import memory_hook_gateway as gw
+        from memory_core.tools import memory_hook_gateway as gw
 
         sample = _sample_v2_package()
         monkeypatch.setattr(gw, "build_context_package", lambda host, event, payload=None: sample)

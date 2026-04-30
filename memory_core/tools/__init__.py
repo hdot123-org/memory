@@ -11,15 +11,15 @@ __all__ = [
 
 def __getattr__(name: str):
     if name == "build_context_package":
-        from workspace.tools.memory_hook_gateway import build_context_package
+        from memory_core.tools.memory_hook_gateway import build_context_package
         return build_context_package
     if name == "build_context_package_simple":
-        from workspace.tools.memory_hook_gateway import build_context_package_simple
+        from memory_core.tools.memory_hook_gateway import build_context_package_simple
         return build_context_package_simple
     if name == "CoreConfig":
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
         return CoreConfig
     if name == "build_context_package_from_config":
-        from workspace.tools.memory_hook_core import build_context_package_from_config
+        from memory_core.tools.memory_hook_core import build_context_package_from_config
         return build_context_package_from_config
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

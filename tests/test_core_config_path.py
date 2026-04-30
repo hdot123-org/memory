@@ -30,7 +30,7 @@ def _noop(*_a: Any, **_k: Any) -> Any:
 
 def _make_minimal_kwargs(tmp_path: Path) -> dict[str, Any]:
     """Build minimal kwargs for build_context_package_core."""
-    base = tmp_path / "workspace"
+    base = tmp_path / "memory_core"
     base.mkdir(parents=True, exist_ok=True)
 
     # Create files that the core builder will try to read
@@ -109,8 +109,8 @@ class TestBuildFromConfig:
 
     def test_produces_same_result_as_kwargs_path(self, tmp_path: Path) -> None:
         """build_context_package_from_config(config) == build_context_package_core(**kwargs)."""
-        from workspace.tools.memory_hook_config import CoreConfig
-        from workspace.tools.memory_hook_core import (
+        from memory_core.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_core import (
             build_context_package_core,
             build_context_package_from_config,
         )
@@ -129,8 +129,8 @@ class TestBuildFromConfig:
 
     def test_status_ok_when_all_paths_valid(self, tmp_path: Path) -> None:
         """Returns status=ok with valid minimal config."""
-        from workspace.tools.memory_hook_config import CoreConfig
-        from workspace.tools.memory_hook_core import build_context_package_from_config
+        from memory_core.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_core import build_context_package_from_config
 
         kwargs = _make_minimal_kwargs(tmp_path)
         # Create the project canonical file so it exists
@@ -146,8 +146,8 @@ class TestBuildFromConfig:
 
     def test_status_degraded_on_missing_canonical(self, tmp_path: Path) -> None:
         """Returns status=degraded when required_canonical paths don't exist."""
-        from workspace.tools.memory_hook_config import CoreConfig
-        from workspace.tools.memory_hook_core import build_context_package_from_config
+        from memory_core.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_core import build_context_package_from_config
 
         kwargs = _make_minimal_kwargs(tmp_path)
         # Add a non-existent required canonical path
@@ -161,7 +161,7 @@ class TestBuildFromConfig:
 
     def test_config_rejects_invalid_host(self, tmp_path: Path) -> None:
         """CoreConfig rejects invalid host in __post_init__."""
-        from workspace.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_kwargs(tmp_path)
         kwargs["host"] = "bad-host"
@@ -171,8 +171,8 @@ class TestBuildFromConfig:
 
     def test_config_via_from_gateway_kwargs(self, tmp_path: Path) -> None:
         """CoreConfig.from_gateway_kwargs produces equivalent config."""
-        from workspace.tools.memory_hook_config import CoreConfig
-        from workspace.tools.memory_hook_core import (
+        from memory_core.tools.memory_hook_config import CoreConfig
+        from memory_core.tools.memory_hook_core import (
             build_context_package_core,
             build_context_package_from_config,
         )
@@ -199,7 +199,7 @@ class TestBuildContextPackageSimple:
 
     def test_returns_dict_with_status(self, tmp_path: Path) -> None:
         """Returns a dict with at least 'status' key."""
-        from workspace.tools.memory_hook_gateway import build_context_package_simple
+        from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
         result = build_context_package_simple("codex", "session-start", {})
 
@@ -209,7 +209,7 @@ class TestBuildContextPackageSimple:
 
     def test_works_with_empty_payload(self, tmp_path: Path) -> None:
         """Works with payload=None (defaults to empty dict)."""
-        from workspace.tools.memory_hook_gateway import build_context_package_simple
+        from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
         result_none = build_context_package_simple("codex", "session-start", None)
         result_empty = build_context_package_simple("codex", "session-start", {})
@@ -222,14 +222,14 @@ class TestBuildContextPackageSimple:
 
     def test_rejects_invalid_host(self) -> None:
         """Raises ValueError for invalid host."""
-        from workspace.tools.memory_hook_gateway import build_context_package_simple
+        from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
         with pytest.raises(ValueError):
             build_context_package_simple("invalid-host", "session-start", {})
 
     def test_accepts_claude_host(self) -> None:
         """Accepts 'claude' as valid host."""
-        from workspace.tools.memory_hook_gateway import build_context_package_simple
+        from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
         result = build_context_package_simple("claude", "session-start", {})
         assert isinstance(result, dict)
@@ -237,14 +237,14 @@ class TestBuildContextPackageSimple:
 
     def test_returns_schema_version(self) -> None:
         """Result includes schema_version field."""
-        from workspace.tools.memory_hook_gateway import build_context_package_simple
+        from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
         result = build_context_package_simple("codex", "session-start", {})
         assert result.get("schema_version") == "context-package-v1"
 
     def test_contains_paths(self) -> None:
         """Result contains paths dict (v1 format)."""
-        from workspace.tools.memory_hook_gateway import build_context_package_simple
+        from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
         result = build_context_package_simple("codex", "session-start", {})
         assert isinstance(result.get("paths"), dict)
@@ -260,11 +260,11 @@ class TestEquivalence:
 
     def test_simple_equals_full_api(self) -> None:
         """build_context_package_simple(h, e, p) == convert_to_v1(build_context_package(h, e, p))."""
-        from workspace.tools.memory_hook_gateway import (
+        from memory_core.tools.memory_hook_gateway import (
             build_context_package,
             build_context_package_simple,
         )
-        from workspace.tools.memory_hook_schema import convert_to_v1
+        from memory_core.tools.memory_hook_schema import convert_to_v1
 
         payload = {"session_id": "eq-test-1"}
         result_simple = build_context_package_simple("codex", "session-start", payload)
@@ -278,11 +278,11 @@ class TestEquivalence:
 
     def test_simple_equals_full_with_empty_payload(self) -> None:
         """Equivalence holds with empty payload via convert_to_v1."""
-        from workspace.tools.memory_hook_gateway import (
+        from memory_core.tools.memory_hook_gateway import (
             build_context_package,
             build_context_package_simple,
         )
-        from workspace.tools.memory_hook_schema import convert_to_v1
+        from memory_core.tools.memory_hook_schema import convert_to_v1
 
         result_simple = build_context_package_simple("codex", "session-start", None)
         result_full_v1 = convert_to_v1(build_context_package("codex", "session-start", {}))

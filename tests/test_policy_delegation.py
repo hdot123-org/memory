@@ -14,9 +14,9 @@ from typing import Any
 
 import pytest
 
-from workspace.tools.memory_hook_config import CoreConfig
-from workspace.tools.memory_hook_impls import PathUtilsImpl, PolicyRegistryImpl
-from workspace.tools.memory_hook_interfaces import PathUtils, PolicyRegistry
+from memory_core.tools.memory_hook_config import CoreConfig
+from memory_core.tools.memory_hook_impls import PathUtilsImpl, PolicyRegistryImpl
+from memory_core.tools.memory_hook_interfaces import PathUtils, PolicyRegistry
 
 
 # ------------------------------------------------------------------
