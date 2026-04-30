@@ -10,110 +10,77 @@ This module provides default implementations for:
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import re
 import shutil
 import subprocess
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
 try:
     from .memory_hook_interfaces import (
-        RegistrationCommitGate,
-        TruthBasis,
         ArtifactSink,
         ErrorSink,
         GatewayBusinessPolicy,
         HostDelegate,
         PolicyRegistry,
+        RegistrationCommitGate,
         RouteTargetPolicy,
+        TruthBasis,
         WriteTargetPolicy,
     )
 except ImportError:
     from memory_hook_interfaces import (  # type: ignore
-        RegistrationCommitGate,
-        TruthBasis,
         ArtifactSink,
         ErrorSink,
         GatewayBusinessPolicy,
         HostDelegate,
         PolicyRegistry,
+        RegistrationCommitGate,
         RouteTargetPolicy,
+        TruthBasis,
         WriteTargetPolicy,
     )
 
 try:
     from ._validation_constants import (
-        MKR_UNIQUE_LEGAL_ENTRY,
+        MKR_ABSORBED_STATUS,
         MKR_ACTIVE_LEGAL_MAP_ONLY,
-        MKR_GIT_COMMIT_GATE,
+        MKR_ATOMIC_REGISTRATION_GIT_COMMIT,
+        MKR_COMPATIBILITY_ONLY,
         MKR_CORE_ACTIVE_LEGAL,
         MKR_CORE_MAP_ONLY,
-        MKR_INCOMING_RAW,
-        MKR_COMPATIBILITY_ONLY,
-        MKR_ABSORBED_STATUS,
-        MKR_RETIRED_STATUS,
-        MKR_REGISTRY_GIT_COMMIT_GATE,
-        MKR_UNWASHED_NOT_LEGAL,
-        MKR_GOVERNANCE_MAP_GRANTS_LEGALITY,
-        MKR_ATOMIC_REGISTRATION_GIT_COMMIT,
-        MKR_WORKSPACE_PROJECT_MAP_REF,
-        MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY,
-        MKR_WORKSPACE_GIT_COMMIT_RULE,
         MKR_DOCS_UNABSORBED,
-        MKR_NON_LEGAL_MATERIAL,
-        MKR_INGESTION_REGISTRY_REF,
+        MKR_GIT_COMMIT_GATE,
+        MKR_GOVERNANCE_MAP_GRANTS_LEGALITY,
         MKR_HOOK_MAP_ONLY_CONTEXT,
         MKR_HOOK_REGISTRATION_GATE,
-        SEC_UPSTREAM_STANDARD_SOURCES,
-        SEC_UPSTREAM_STANDARD_EVENTS,
-        SEC_UPSTREAM_STANDARD_STATUSES,
+        MKR_INCOMING_RAW,
+        MKR_INGESTION_REGISTRY_REF,
+        MKR_NON_LEGAL_MATERIAL,
+        MKR_REGISTRY_GIT_COMMIT_GATE,
+        MKR_RETIRED_STATUS,
+        MKR_UNIQUE_LEGAL_ENTRY,
+        MKR_UNWASHED_NOT_LEGAL,
+        MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY,
+        MKR_WORKSPACE_GIT_COMMIT_RULE,
+        MKR_WORKSPACE_PROJECT_MAP_REF,
+        SEC_FORMAL_CONTRACT_EVENTS,
+        SEC_FORMAL_CONTRACT_SOURCES,
+        SEC_FORMAL_CONTRACT_STATUSES,
+        SEC_UPSTREAM_MAPPING_ERRORS,
+        SEC_UPSTREAM_MAPPING_ROUTING,
         SEC_UPSTREAM_MAPPING_SOURCES,
         SEC_UPSTREAM_MAPPING_TABLE,
-        SEC_UPSTREAM_MAPPING_ROUTING,
-        SEC_UPSTREAM_MAPPING_ERRORS,
-        SEC_FORMAL_CONTRACT_SOURCES,
-        SEC_FORMAL_CONTRACT_EVENTS,
-        SEC_FORMAL_CONTRACT_STATUSES,
+        SEC_UPSTREAM_STANDARD_EVENTS,
+        SEC_UPSTREAM_STANDARD_SOURCES,
+        SEC_UPSTREAM_STANDARD_STATUSES,
     )
 except ImportError:
-    from _validation_constants import (  # type: ignore
-        MKR_UNIQUE_LEGAL_ENTRY,
-        MKR_ACTIVE_LEGAL_MAP_ONLY,
-        MKR_GIT_COMMIT_GATE,
-        MKR_CORE_ACTIVE_LEGAL,
-        MKR_CORE_MAP_ONLY,
-        MKR_INCOMING_RAW,
-        MKR_COMPATIBILITY_ONLY,
-        MKR_ABSORBED_STATUS,
-        MKR_RETIRED_STATUS,
-        MKR_REGISTRY_GIT_COMMIT_GATE,
-        MKR_UNWASHED_NOT_LEGAL,
-        MKR_GOVERNANCE_MAP_GRANTS_LEGALITY,
-        MKR_ATOMIC_REGISTRATION_GIT_COMMIT,
-        MKR_WORKSPACE_PROJECT_MAP_REF,
-        MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY,
-        MKR_WORKSPACE_GIT_COMMIT_RULE,
-        MKR_DOCS_UNABSORBED,
-        MKR_NON_LEGAL_MATERIAL,
-        MKR_INGESTION_REGISTRY_REF,
-        MKR_HOOK_MAP_ONLY_CONTEXT,
-        MKR_HOOK_REGISTRATION_GATE,
-        SEC_UPSTREAM_STANDARD_SOURCES,
-        SEC_UPSTREAM_STANDARD_EVENTS,
-        SEC_UPSTREAM_STANDARD_STATUSES,
-        SEC_UPSTREAM_MAPPING_SOURCES,
-        SEC_UPSTREAM_MAPPING_TABLE,
-        SEC_UPSTREAM_MAPPING_ROUTING,
-        SEC_UPSTREAM_MAPPING_ERRORS,
-        SEC_FORMAL_CONTRACT_SOURCES,
-        SEC_FORMAL_CONTRACT_EVENTS,
-        SEC_FORMAL_CONTRACT_STATUSES,
-    )
+    pass
 
 
 # ---------------------------------------------------------------------------

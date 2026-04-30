@@ -18,7 +18,6 @@ from workspace.tools.memory_hook_config import CoreConfig
 from workspace.tools.memory_hook_impls import PathUtilsImpl, PolicyRegistryImpl
 from workspace.tools.memory_hook_interfaces import PathUtils, PolicyRegistry
 
-
 # ------------------------------------------------------------------
 # Mock gateway module (injected into sys.modules so that
 # PolicyRegistryImpl's delegation imports succeed)

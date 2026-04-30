@@ -16,7 +16,6 @@ will pass once Worker 1 fixes the field ordering.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 from unittest.mock import patch

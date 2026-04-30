@@ -98,13 +98,13 @@ class TestValidateCatchesBrokenCore:
 
     def test_validate_catches_bad_package(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Return a structurally invalid package; validator must detect it."""
+        import memory_hook_gateway  # type: ignore
         from validate_memory_system import (  # type: ignore
             ValidateResult,
             check_context_package,
-            check_gateway_import,
             check_core_builder_resolve,
+            check_gateway_import,
         )
-        import memory_hook_gateway  # type: ignore
 
         original_resolve = memory_hook_gateway._resolve_core_builder
 

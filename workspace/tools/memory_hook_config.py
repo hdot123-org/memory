@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Collection
 
-
 if TYPE_CHECKING:
     from memory_hook_interfaces import PathUtils, PolicyRegistry
 

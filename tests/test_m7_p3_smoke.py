@@ -10,8 +10,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 # ---------------------------------------------------------------------------
 # Import hook – make workspace/tools importable
 # ---------------------------------------------------------------------------

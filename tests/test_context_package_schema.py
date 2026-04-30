@@ -11,12 +11,10 @@ from workspace.tools.memory_hook_schema import (
     V2_VERSION,
     convert_legacy_to_memory_v1,
     convert_to_memory_v1,
-    convert_to_v1,
     is_memory_v1,
     is_v1,
     is_v2,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures: sample packages in each schema format

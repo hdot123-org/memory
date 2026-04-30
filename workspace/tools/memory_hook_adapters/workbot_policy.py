@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .neutral_policy import NeutralGatewayBusinessPolicy
     from ..memory_hook_impls import GatewayBusinessPolicyConfig
+    from .neutral_policy import NeutralGatewayBusinessPolicy
 except ImportError:  # pragma: no cover - script-mode fallback
     from workspace.tools.memory_hook_adapters.neutral_policy import NeutralGatewayBusinessPolicy  # type: ignore
     from workspace.tools.memory_hook_impls import GatewayBusinessPolicyConfig  # type: ignore

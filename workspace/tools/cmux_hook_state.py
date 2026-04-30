@@ -5,9 +5,8 @@ import fcntl
 import json
 import os
 import tempfile
-import time
-from datetime import datetime, timezone
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 
