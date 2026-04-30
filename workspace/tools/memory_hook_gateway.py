@@ -14,8 +14,11 @@ from typing import Any, Callable
 
 
 SCRIPT_PATH = Path(__file__).resolve()
-WORKSPACE_ROOT = SCRIPT_PATH.parents[1]
-REPO_ROOT = SCRIPT_PATH.parents[2]
+try:
+    from .memory_root_discovery import discover_roots
+except ImportError:
+    from workspace.tools.memory_root_discovery import discover_roots
+REPO_ROOT, WORKSPACE_ROOT = discover_roots(Path.cwd())
 ARTIFACT_ROOT = WORKSPACE_ROOT / "artifacts" / "memory-hook"
 CONTEXT_ROOT = ARTIFACT_ROOT / "contexts"
 EVENT_LOG = ARTIFACT_ROOT / "events.jsonl"
