@@ -494,3 +494,179 @@ class TestScopeAndProjectName:
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# Hooks and AGENTS.md generation
+# ---------------------------------------------------------------------------
+
+class TestHooksAndAgentsMdGeneration:
+    """Test .claude/hooks.json and AGENTS.md generation during init."""
+
+    def test_hooks_json_created_with_4_events(self) -> None:
+        """Init should create .claude/hooks.json with 4 hook events."""
+        proj = _make_temp_project()
+        try:
+            result = _run_script(INIT_SCRIPT, ["--target", str(proj), "--json"])
+            assert result.returncode == 0
+            data = json.loads(result.stdout)
+            assert data["success"] is True
+
+            hooks_path = proj / ".claude" / "hooks.json"
+            assert hooks_path.is_file(), "hooks.json not created"
+
+            hooks_data = json.loads(hooks_path.read_text(encoding="utf-8"))
+            assert "hooks" in hooks_data
+            assert len(hooks_data["hooks"]) == 4
+
+            # Verify all expected events are present
+            events = {h["event"] for h in hooks_data["hooks"]}
+            assert events == {"SessionStart", "UserPromptSubmit", "Notification", "Stop"}
+
+            # Verify each hook has command and stdin
+            for hook in hooks_data["hooks"]:
+                assert "command" in hook
+                assert "memory-hook-gateway" in hook["command"]
+                assert hook.get("stdin") is True
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_agents_md_created_with_markers(self) -> None:
+        """Init should create AGENTS.md with MEMORY_HOOK markers."""
+        proj = _make_temp_project()
+        try:
+            result = _run_script(INIT_SCRIPT, ["--target", str(proj), "--json"])
+            assert result.returncode == 0
+
+            agents_path = proj / "AGENTS.md"
+            assert agents_path.is_file(), "AGENTS.md not created"
+
+            content = agents_path.read_text(encoding="utf-8")
+            assert "<!-- MEMORY_HOOK_BEGIN -->" in content
+            assert "<!-- MEMORY_HOOK_END -->" in content
+            assert "memory_hook_gateway" in content
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_agents_md_idempotent_no_duplicate(self) -> None:
+        """Running init twice should not duplicate the hook block."""
+        proj = _make_temp_project()
+        try:
+            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            agents_path = proj / "AGENTS.md"
+            content1 = agents_path.read_text(encoding="utf-8")
+            count1 = content1.count("<!-- MEMORY_HOOK_BEGIN -->")
+
+            # Run again
+            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            content2 = agents_path.read_text(encoding="utf-8")
+            count2 = content2.count("<!-- MEMORY_HOOK_BEGIN -->")
+
+            assert count1 == 1
+            assert count2 == 1
+            # Content should be identical after second run
+            assert content1 == content2
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_hooks_json_idempotent_no_duplicate(self) -> None:
+        """Running init twice should not duplicate hook entries."""
+        proj = _make_temp_project()
+        try:
+            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            hooks_path = proj / ".claude" / "hooks.json"
+            data1 = json.loads(hooks_path.read_text(encoding="utf-8"))
+            count1 = len(data1["hooks"])
+
+            # Run again
+            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            data2 = json.loads(hooks_path.read_text(encoding="utf-8"))
+            count2 = len(data2["hooks"])
+
+            assert count1 == 4
+            assert count2 == 4
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_host_claude_generates_hooks_json(self) -> None:
+        """--host claude should generate hooks.json with claude host in commands."""
+        proj = _make_temp_project()
+        try:
+            _run_script(INIT_SCRIPT, ["--target", str(proj), "--host", "claude", "--json"])
+            hooks_path = proj / ".claude" / "hooks.json"
+            data = json.loads(hooks_path.read_text(encoding="utf-8"))
+
+            for hook in data["hooks"]:
+                assert "--host claude" in hook["command"]
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_host_codex_generates_agents_md(self) -> None:
+        """--host codex should generate AGENTS.md with codex host."""
+        proj = _make_temp_project()
+        try:
+            _run_script(INIT_SCRIPT, ["--target", str(proj), "--host", "codex", "--json"])
+            agents_path = proj / "AGENTS.md"
+            content = agents_path.read_text(encoding="utf-8")
+            assert "--host codex" in content
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_agents_md_preserves_existing_content(self) -> None:
+        """Init should preserve existing AGENTS.md content and append the block."""
+        proj = _make_temp_project()
+        try:
+            agents_path = proj / "AGENTS.md"
+            agents_path.write_text("# My Project\n\nSome existing content.\n", encoding="utf-8")
+
+            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            content = agents_path.read_text(encoding="utf-8")
+            assert "# My Project" in content
+            assert "Some existing content." in content
+            assert "<!-- MEMORY_HOOK_BEGIN -->" in content
+            assert "<!-- MEMORY_HOOK_END -->" in content
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_hooks_json_merges_with_existing_hooks(self) -> None:
+        """Init should append memory hooks to existing hooks.json without removing others."""
+        proj = _make_temp_project()
+        try:
+            hooks_path = proj / ".claude" / "hooks.json"
+            existing = {
+                "hooks": [
+                    {"event": "CustomEvent", "command": "custom-cmd", "stdin": False}
+                ]
+            }
+            hooks_path.parent.mkdir(parents=True, exist_ok=True)
+            hooks_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+
+            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            data = json.loads(hooks_path.read_text(encoding="utf-8"))
+
+            # Should have original + 4 memory hooks
+            assert len(data["hooks"]) == 5
+            custom_hooks = [h for h in data["hooks"] if h["event"] == "CustomEvent"]
+            assert len(custom_hooks) == 1
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_default_host_is_codex(self) -> None:
+        """Default host should be codex."""
+        proj = _make_temp_project()
+        try:
+            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            agents_path = proj / "AGENTS.md"
+            content = agents_path.read_text(encoding="utf-8")
+            assert "--host codex" in content
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
