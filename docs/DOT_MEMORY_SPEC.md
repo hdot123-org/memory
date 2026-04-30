@@ -1,3 +1,14 @@
+---
+type: "[SPEC]"
+title: ".memory 目录规范"
+shortname: SPEC-DOT-MEMORY
+status: implemented
+created: 2026-04-29
+updated: 2026-04-30
+scope: default
+tags: [dot-memory,spec,schema]
+---
+
 # DOT_MEMORY_SPEC — .memory 目录规范
 
 ## 概述
@@ -22,40 +33,76 @@
 
 ### 1. memory.lock
 
-**作用**：锁定 `.memory` 目录结构的版本，防止不兼容变更。
+**作用**：锁定项目与 memory-core 的版本绑定，防止不兼容变更。
+
+文件为 TOML 格式，包含 `[memory]` section：
+
+```toml
+[memory]
+memory_version = "0.1.0"
+schema_version = "wb-hook-v2"
+adapter_version = "builtin"
+locked_at = "2026-04-29T00:00:00Z"
+lock_reason = "initial"
+```
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| schema_version | int | 是 | 元数据 schema 版本号 |
-| structure_version | int | 是 | 目录结构版本号 |
-| locked_at | string | 是 | ISO 8601 时间戳，初始化时写入 |
-
-**验证规则**：
-- 文件必须存在
-- `schema_version` 必须为正整数
-- `structure_version` 必须为正整数
-- `locked_at` 必须符合 ISO 8601 格式（初始化后可为空字符串）
-
-### 2. adapter.toml
-
-**作用**：声明业务项目使用的适配器类型、策略、读写边界。
-
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| adapter.type | string | 是 | 适配器类型：`workbot` | `neutral` | `custom` |
-| adapter.version | string | 是 | 适配器版本号（semver） |
-| adapter.policy.read_scope | array | 是 | 允许读取的路径前缀列表 |
-| adapter.policy.write_scope | array | 是 | 允许写入的路径前缀列表 |
-| adapter.policy.deny_write | array | 否 | 禁止写入的路径列表 |
-| adapter.hooks.enabled | array | 否 | 启用的 hook 列表 |
-| adapter.runtime.max_context_tokens | int | 否 | 最大上下文 token 数 |
-| adapter.runtime.cache_enabled | bool | 否 | 是否启用缓存 |
+| memory_version | SemVer string | 是 | memory-core 的发布版本，如 `0.1.0` |
+| schema_version | string | 是 | hook/schema 版本标识，如 `wb-hook-v2`、`context-package-v1` |
+| adapter_version | string | 否 | adapter 版本，默认 `builtin` |
+| locked_at | ISO-8601 | 否 | 最后锁定/升级时间 |
+| lock_reason | string | 否 | 锁定原因：`initial` / `upgrade` / `downgrade` |
 
 **验证规则**：
 - 文件必须存在且为合法 TOML
-- `adapter.type` 必须为枚举值之一
-- `adapter.version` 必须符合 semver 格式
-- `read_scope` 和 `write_scope` 不能为空
+- 必须包含 `[memory]` section
+- `memory_version` 必须严格遵循 SemVer：MAJOR.MINOR.PATCH
+- `schema_version` 必须是 memory-core 已发布的合法 schema 标识
+- 完整 schema 定义见 [MEMORY_LOCK_SPEC.md](MEMORY_LOCK_SPEC.md)
+
+### 2. adapter.toml
+
+**作用**：声明业务项目使用的适配器版本、策略规则、路由配置。
+
+文件为 TOML 格式，canonical layout 使用 `[core]`、`[policy]`、`[routing]` 三节：
+
+```toml
+[core]
+version = "0.1.0"
+adapter = "default"
+
+[policy]
+legality_source_policy = "map-only"
+registration_commit_policy = "same-commit"
+registration_commit_phase = "post"
+
+[routing]
+project_name = "my-project"
+project_scope = "default"
+host = "codex"
+canonical_files = ["CANONICAL.md", "STATE.md"]
+# artifact_root = "artifacts/"
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| core.version | string | 是 | 适配器版本号（semver） |
+| core.adapter | string | 是 | 适配器名称 |
+| policy.legality_source_policy | string | 否 | 合法性来源策略，默认 `map-only` |
+| policy.registration_commit_policy | string | 否 | 注册提交策略，默认 `same-commit` |
+| policy.registration_commit_phase | string | 否 | 注册提交阶段，默认 `post` |
+| routing.project_name | string | 是 | 项目名称 |
+| routing.project_scope | string | 是 | 项目作用域 |
+| routing.host | string | 否 | 宿主平台，默认 `codex` |
+| routing.canonical_files | array | 否 | 规范文件列表 |
+| routing.artifact_root | string | 否 | 产出物根目录 |
+
+**验证规则**：
+- 文件必须存在且为合法 TOML
+- `core.version` 必须符合 semver 格式
+- `routing.project_name` 不能为空
+- 详细 schema 定义见 `workspace/tools/adapter_toml_schema.py`
 
 ### 3. CANONICAL.md
 

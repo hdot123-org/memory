@@ -2,7 +2,7 @@
 type: "[SPEC]"
 title: "memory.lock 与版本兼容矩阵"
 shortname: SPEC-010
-status: 草稿
+status: implemented
 created: 2026-04-29
 updated: 2026-04-29
 source: Issue-#10
@@ -12,7 +12,7 @@ tags: [lock,version,compatibility]
 
 > 文档编号：SPEC-010 | 版本：V1.0 | 日期：2026-04-29
 > 维护人：P3-版本子代理
-> 状态：草稿
+> 状态：implemented
 
 # memory.lock 与版本兼容矩阵规范
 
