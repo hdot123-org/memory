@@ -5,9 +5,13 @@ on:
     branches: [main]
     paths:
       - 'memory_core/**'
+      - 'tests/**'
+      - '.github/workflows/ci.yml'
   pull_request:
     paths:
       - 'memory_core/**'
+      - 'tests/**'
+      - '.github/workflows/ci.yml'
 
 jobs:
   test:
