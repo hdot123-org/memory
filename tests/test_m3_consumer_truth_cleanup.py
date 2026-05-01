@@ -122,8 +122,10 @@ class TestReleaseWhitelist:
 
     def test_workflow_tag_computation_preserved(self):
         text = WORKFLOW_PATH.read_text(encoding="utf-8")
-        assert "v*" in text
-        assert "sort=-v:refname" in text
+        # New workflow: version is extracted from tag, not auto-computed via sort
+        assert '"v*"' in text
+        assert "Extract version from tag" in text
+        assert "Verify tag matches pyproject.toml version" in text
 
 
 # ---------------------------------------------------------------------------
