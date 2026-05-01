@@ -1,16 +1,13 @@
-name: release-and-dispatch
+name: release
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "memory_core/**"
-      - "pyproject.toml"
-      - "README.md"
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       dispatch_targets:
-        description: "Comma-separated list of owner/repo to dispatch to (e.g. org/repo1, org/repo2). Leave empty to skip all dispatch."
+        description: "Comma-separated list of owner/repo to dispatch to"
         required: false
         type: string
         default: ""
@@ -28,68 +25,61 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      - run: python -m pip install --upgrade pip pytest
+      - run: pip install ruff && ruff check .
+      - run: python -m pytest -q tests
+
   release:
+    needs: test
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install test deps
-        run: python -m pip install --upgrade pip pytest
-
-      - name: Run tests
-        run: python -m pytest -q tests
-
-      - name: Compute next release tag
+      - name: Extract version from tag
         id: version
         run: |
-          last=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
-          if [ -z "$last" ]; then
-            next="v0.0.0"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           else
-            ver="${last#v}"
-            minor="${ver%.*}"
-            patch="${ver##*.}"
-            next="v${minor}.$((patch + 1))"
+            echo "Error: release must be triggered by a version tag" >&2
+            exit 1
           fi
-          echo "tag=$next" >> "$GITHUB_OUTPUT"
 
-      - name: Create and push release tag
-        env:
-          TAG: ${{ steps.version.outputs.tag }}
+      - name: Verify tag matches pyproject.toml version
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "tag already exists: $TAG"
-          else
-            git tag -a "$TAG" -m "Automated release $TAG"
-            git push origin "$TAG"
+          TAG_VER="${{ steps.version.outputs.tag }}"
+          PY_VER="v$(python -c 'import tomllib; print(tomllib.open("pyproject.toml","rb")["project"]["version"])')"
+          if [ "$TAG_VER" != "$PY_VER" ]; then
+            echo "Tag $TAG_VER does not match pyproject.toml version $PY_VER"
+            exit 1
           fi
 
-      - name: Install build tools
-        run: python -m pip install --upgrade build
+      - run: python -m pip install --upgrade build twine
 
-      - name: Build package
-        run: python -m build
+      - run: python -m build
 
-      - name: Upload release assets
+      - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           files: dist/*
-
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
           generate_release_notes: true
           make_latest: true
 
@@ -97,9 +87,7 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          pip install twine
-          twine upload dist/*
+        run: twine upload dist/*
 
       - name: Dispatch downstream repositories
         if: ${{ inputs.dispatch_targets != '' && secrets.DISPATCH_TOKEN != '' }}
