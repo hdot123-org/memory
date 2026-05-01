@@ -127,17 +127,30 @@ def _write_hook_state_unlocked(path: Path, payload: dict[str, object]) -> None:
         suffix=".tmp",
         dir=path.parent,
     )
+    tmp_path = Path(tmp_name)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(rendered)
-            handle.flush()
-            os.fsync(handle.fileno())
-        Path(tmp_name).replace(path)
-    finally:
-        tmp_path = Path(tmp_name)
-        if tmp_path.exists():
-            tmp_path.unlink()
-    load_hook_state_strict(path)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(rendered)
+                handle.flush()
+                os.fsync(handle.fileno())
+            fd = -1  # Ownership transferred to os.fdopen context manager
+            Path(tmp_name).replace(path)
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
+    except OSError as exc:
+        raise HookStateError(
+            f"failed to write hook state to {path}: {exc} "
+            f"(payload keys: {list(payload.keys())})"
+        ) from exc
+    try:
+        load_hook_state_strict(path)
+    except HookStateError as exc:
+        raise HookStateError(
+            f"hook state verification failed after write to {path}: {exc} "
+            f"(payload keys: {list(payload.keys())})"
+        ) from exc
 
 
 def write_hook_state(path: Path, payload: dict[str, object]) -> None:

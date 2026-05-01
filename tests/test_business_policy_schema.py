@@ -608,13 +608,10 @@ class TestEventContractChecker:
     """Tests for EventContractChecker schema validation."""
 
     def test_no_errors_when_no_files(self, minimal_config):
-        """Empty event_contract_files should return no errors because no files are checked."""
+        """Empty event_contract_files should return no errors (defensive check)."""
         checker = EventContractChecker(minimal_config)
-        # When event_contract_files is empty {}, no files are missing and no texts are loaded.
-        # The code will try to access texts["upstream_standard"] and fail.
-        # This is the actual behavior — empty dict leads to KeyError.
-        with pytest.raises(KeyError):
-            checker.event_contract_blocker_errors()
+        errors = checker.event_contract_blocker_errors()
+        assert errors == []
 
     def test_missing_files_return_error(self, tmp_path):
         """Non-existent event contract files should return a missing-files error."""

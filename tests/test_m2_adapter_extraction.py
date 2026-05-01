@@ -142,7 +142,9 @@ class TestStateFileStrictness:
 
         profile = build_workbot_runtime_profile(REPO_ROOT, WORKSPACE_ROOT)
         assert "CLAUDE_HOOK_STATE_FILE" in profile
-        assert isinstance(profile["CLAUDE_HOOK_STATE_FILE"], str)
+        # When env var is unset, value should be None (defensive empty-string prevention)
+        if profile["CLAUDE_HOOK_STATE_FILE"] is not None:
+            assert isinstance(profile["CLAUDE_HOOK_STATE_FILE"], str)
 
 
 # ---------------------------------------------------------------------------

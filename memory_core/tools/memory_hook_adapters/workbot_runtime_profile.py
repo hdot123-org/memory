@@ -250,7 +250,7 @@ def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict
         ],
         "POLICY_ALLOWED_SCOPES": {"workbot", "AEdu", "platform-capabilities"},
         # M2: adapter policy resolves CMUX_HOOK_STATE_FILE for Claude delegate.
-        "CLAUDE_HOOK_STATE_FILE": os.environ.get("CMUX_HOOK_STATE_FILE", ""),
+        "CLAUDE_HOOK_STATE_FILE": os.environ.get("CMUX_HOOK_STATE_FILE") or None,
         "POLICY_SCOPE_INHERITS": {
             "AEdu": "workbot",
             "platform-capabilities": "workbot",

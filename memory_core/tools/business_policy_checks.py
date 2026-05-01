@@ -298,6 +298,8 @@ class EventContractChecker:
 
     def event_contract_blocker_errors(self) -> list[str]:
         cfg = self._config
+        if not cfg.event_contract_files:
+            return []
         texts: dict[str, str] = {}
         missing_files: list[str] = []
         for name, path in cfg.event_contract_files.items():
