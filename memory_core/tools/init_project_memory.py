@@ -363,7 +363,7 @@ def template_agents_md_block(host: str = "codex") -> str:
 When starting a session, run the memory hook gateway to load project context:
 
 ```bash
-python -m memory_core.tools.memory_hook_gateway --host {host} --event session-start
+memory-hook-gateway --host {host} --event session-start
 ```
 {MEMORY_HOOK_END_MARKER}
 """
