@@ -92,7 +92,7 @@ jobs:
         run: twine upload dist/*
 
       - name: Dispatch downstream repositories
-        if: ${{ inputs.dispatch_targets != '' && secrets.DISPATCH_TOKEN != '' }}
+        if: ${{ inputs.dispatch_targets != '' }}
         env:
           GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
@@ -100,6 +100,10 @@ jobs:
           DISPATCH_TARGETS: ${{ inputs.dispatch_targets }}
           DISPATCH_EVENT_TYPE: ${{ inputs.dispatch_event_type }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::DISPATCH_TOKEN is empty, skipped dispatch"
+            exit 0
+          fi
           IFS=',' read -ra TARGETS <<< "$DISPATCH_TARGETS"
           for target in "${TARGETS[@]}"; do
             target=$(echo "$target" | xargs)
@@ -109,8 +113,3 @@ jobs:
               -f event_type="${DISPATCH_EVENT_TYPE}" \
               -f client_payload="{\"release_tag\":\"${RELEASE_TAG}\",\"source_sha\":\"${SOURCE_SHA}\"}"
           done
-
-      - name: Warn when dispatch targets are configured but token is missing
-        if: ${{ inputs.dispatch_targets != '' && secrets.DISPATCH_TOKEN == '' }}
-        run: |
-          echo "::warning::DISPATCH_TOKEN is empty, skipped dispatch to configured targets: ${{ inputs.dispatch_targets }}"
