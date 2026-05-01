@@ -26,7 +26,7 @@ repo_root = Path(__file__).resolve().parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from workspace.tools._validation_constants import (
+from memory_core.tools._validation_constants import (
     MKR_ABSORBED_STATUS,
     MKR_ACTIVE_LEGAL_MAP_ONLY,
     MKR_ATOMIC_REGISTRATION_GIT_COMMIT,
@@ -49,7 +49,7 @@ from workspace.tools._validation_constants import (
     MKR_WORKSPACE_GIT_COMMIT_RULE,
     MKR_WORKSPACE_PROJECT_MAP_REF,
 )
-from workspace.tools.business_policy_checks import (
+from memory_core.tools.business_policy_checks import (
     EventContractChecker,
     FrozenTupleChecker,
     LegalContractChecker,
@@ -65,7 +65,7 @@ from workspace.tools.business_policy_checks import (
     _section_body,
     _section_bullets,
 )
-from workspace.tools.memory_hook_impls import GatewayBusinessPolicyConfig
+from memory_core.tools.memory_hook_impls import GatewayBusinessPolicyConfig
 
 # ---------------------------------------------------------------------------
 # Fixtures — minimal config builder

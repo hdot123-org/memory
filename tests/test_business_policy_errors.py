@@ -24,14 +24,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from workspace.tools.business_policy_checks import (
+from memory_core.tools.business_policy_checks import (
     EventContractChecker,
     FrozenTupleChecker,
     ProjectMapValidator,
     ScopeResolver,
     TruthBasisResolver,
 )
-from workspace.tools.memory_hook_impls import GatewayBusinessPolicyConfig
+from memory_core.tools.memory_hook_impls import GatewayBusinessPolicyConfig
 
 # ---------------------------------------------------------------------------
 # Shared helpers / fixtures

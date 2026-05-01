@@ -28,7 +28,7 @@ if str(REPO_ROOT) not in sys.path:
 # ---------------------------------------------------------------------------
 # Validation constants
 # ---------------------------------------------------------------------------
-from workspace.tools._validation_constants import (
+from memory_core.tools._validation_constants import (
     MKR_ABSORBED_STATUS,
     MKR_ACTIVE_LEGAL_MAP_ONLY,
     MKR_ATOMIC_REGISTRATION_GIT_COMMIT,
@@ -74,7 +74,7 @@ def _default_read_text(path: Path) -> str:
 
 def _make_config(tmp_path: Path, **overrides: Any):
     """Build a GatewayBusinessPolicyConfig with temp paths and optional overrides."""
-    from workspace.tools.memory_hook_impls import GatewayBusinessPolicyConfig
+    from memory_core.tools.memory_hook_impls import GatewayBusinessPolicyConfig
 
     root = tmp_path / "repo"
     root.mkdir(parents=True, exist_ok=True)
@@ -190,7 +190,7 @@ class TestCompleteFlow:
     def test_project_map_validator_returns_empty_errors_for_valid_markers(
         self, tmp_path: Path
     ) -> None:
-        from workspace.tools.business_policy_checks import ProjectMapValidator
+        from memory_core.tools.business_policy_checks import ProjectMapValidator
 
         cfg = _make_config(tmp_path)
         self._write_valid_project_map(cfg)
@@ -202,7 +202,7 @@ class TestCompleteFlow:
     def test_project_map_validator_detects_missing_markers(
         self, tmp_path: Path
     ) -> None:
-        from workspace.tools.business_policy_checks import ProjectMapValidator
+        from memory_core.tools.business_policy_checks import ProjectMapValidator
 
         cfg = _make_config(tmp_path)
         for f in cfg.project_map_files + [cfg.project_map_governance]:
@@ -214,7 +214,7 @@ class TestCompleteFlow:
         assert any("does not declare the unique legal entry" in e for e in errors)
 
     def test_project_map_validator_detects_transition_refs(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ProjectMapValidator
+        from memory_core.tools.business_policy_checks import ProjectMapValidator
 
         cfg = _make_config(tmp_path)
         index_md = cfg.project_map_files[0]
@@ -246,7 +246,7 @@ class TestCompleteFlow:
     def test_truth_basis_resolver_returns_fail_for_unknown_scope(
         self, tmp_path: Path
     ) -> None:
-        from workspace.tools.business_policy_checks import TruthBasisResolver
+        from memory_core.tools.business_policy_checks import TruthBasisResolver
 
         cfg = _make_config(tmp_path)
         resolver = TruthBasisResolver(cfg)
@@ -256,7 +256,7 @@ class TestCompleteFlow:
         assert any("unsupported project scope" in e for e in result["errors"])
 
     def test_scope_resolver_determines_default_scope(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         cfg = _make_config(tmp_path, default_project_scope="global", scope_match_hints={})
         resolver = ScopeResolver(cfg, scope_config_path=None)
@@ -265,7 +265,7 @@ class TestCompleteFlow:
         assert scope == "global"
 
     def test_scope_resolver_matches_hint(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         tools_root = tmp_path / "repo" / "tools"
         cfg = _make_config(tmp_path, default_project_scope="global", scope_match_hints={"tooling": [tools_root]})
@@ -275,7 +275,7 @@ class TestCompleteFlow:
         assert scope == "tooling"
 
     def test_scope_resolver_handles_scope_overrides(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         global_md = tmp_path / "global.md"
         global_md.touch()
@@ -300,7 +300,7 @@ class TestGatewayIntegration:
     """Simulate how memory_hook_gateway invokes business policy checks."""
 
     def test_gateway_style_project_map_check_flow(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ProjectMapValidator
+        from memory_core.tools.business_policy_checks import ProjectMapValidator
 
         cfg = _make_config(tmp_path)
         cfg.project_map_files[0].write_text(
@@ -329,7 +329,7 @@ class TestGatewayIntegration:
         assert len(errors) == 0
 
     def test_gateway_style_truth_basis_flow(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import TruthBasisResolver
+        from memory_core.tools.business_policy_checks import TruthBasisResolver
 
         project_file = tmp_path / "repo" / "projects" / "alpha" / "truth.md"
         project_file.parent.mkdir(parents=True, exist_ok=True)
@@ -350,7 +350,7 @@ class TestGatewayIntegration:
         assert "validation" in result
 
     def test_gateway_style_scope_resolution_flow(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         decision_md = tmp_path / "repo" / "decisions.md"
         decision_md.parent.mkdir(parents=True, exist_ok=True)
@@ -386,7 +386,7 @@ class TestGatewayIntegration:
         }
 
     def test_gateway_style_event_contract_check(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import EventContractChecker
+        from memory_core.tools.business_policy_checks import EventContractChecker
 
         formal_sources = "\n".join([SEC_UPSTREAM_STANDARD_SOURCES, "`lark-im`", "`cmux-event`", "`git-hook`"])
         formal_events = "\n".join([SEC_UPSTREAM_STANDARD_EVENTS, "`message.create`", "`event.dispatch`", "`commit.push`"])
@@ -423,7 +423,7 @@ class TestGatewayIntegration:
         assert errors == []
 
     def test_gateway_style_missing_contract_files(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import EventContractChecker
+        from memory_core.tools.business_policy_checks import EventContractChecker
 
         ec_files = {
             "upstream_standard": tmp_path / "nonexistent.md",
@@ -448,7 +448,7 @@ class TestAdapterConfigIntegration:
     """Different adapter configurations should produce different policy behaviors."""
 
     def test_workbot_adapter_config_triggers_project_map_checks(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ProjectMapValidator
+        from memory_core.tools.business_policy_checks import ProjectMapValidator
 
         cfg = _make_config(tmp_path)
         cfg.project_map_files[0].write_text(
@@ -476,7 +476,7 @@ class TestAdapterConfigIntegration:
         assert errors == []
 
     def test_neutral_adapter_config_minimal_markers(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ProjectMapValidator
+        from memory_core.tools.business_policy_checks import ProjectMapValidator
 
         cfg = _make_config(tmp_path)
         for f in cfg.project_map_files + [cfg.project_map_governance]:
@@ -490,7 +490,7 @@ class TestAdapterConfigIntegration:
         assert len(errors) > 0
 
     def test_adapter_with_custom_scope_match_hints(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         tools_root = tmp_path / "repo" / "tools"
         docs_root = tmp_path / "repo" / "docs"
@@ -507,7 +507,7 @@ class TestAdapterConfigIntegration:
         assert resolver.determine_project_scope(tmp_path / "repo" / "unrelated") == "global"
 
     def test_adapter_scope_override_env_var(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         global_md = tmp_path / "global.md"
         global_md.touch()
@@ -559,7 +559,7 @@ class TestMultiPolicyInteraction:
         )
 
     def test_project_map_and_legal_contract_combined(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import (
+        from memory_core.tools.business_policy_checks import (
             LegalContractChecker,
             ProjectMapValidator,
         )
@@ -596,7 +596,7 @@ class TestMultiPolicyInteraction:
         assert legal_errors == []
 
     def test_frozen_tuple_checker_with_expected_markers(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import FrozenTupleChecker
+        from memory_core.tools.business_policy_checks import FrozenTupleChecker
 
         gov_file = tmp_path / "governance-frozen.md"
         gov_file.write_text(
@@ -615,7 +615,7 @@ class TestMultiPolicyInteraction:
         assert errors == []
 
     def test_frozen_tuple_checker_detects_legacy_markers(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import FrozenTupleChecker
+        from memory_core.tools.business_policy_checks import FrozenTupleChecker
 
         gov_file = tmp_path / "governance-legacy.md"
         gov_file.write_text(
@@ -635,7 +635,7 @@ class TestMultiPolicyInteraction:
         assert any("legacy frozen tuple" in e for e in errors)
 
     def test_event_contract_checker_detects_mismatch(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import EventContractChecker
+        from memory_core.tools.business_policy_checks import EventContractChecker
 
         upstream_standard = f"{SEC_UPSTREAM_STANDARD_SOURCES}\n`lark-im`\n`unknown-type`\n"
         upstream_mapping = f"{SEC_UPSTREAM_MAPPING_SOURCES}\n`lark-im`\n`unknown-type`\n"
@@ -666,7 +666,7 @@ class TestMultiPolicyInteraction:
         assert len(errors) > 0
 
     def test_combined_all_checkers_pass(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import (
+        from memory_core.tools.business_policy_checks import (
             EventContractChecker,
             FrozenTupleChecker,
             ProjectMapValidator,
@@ -762,7 +762,7 @@ class TestRegressionScenarios:
     """Ensure core business flows do not break after changes."""
 
     def test_read_text_if_exists_fn_is_used(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ProjectMapValidator
+        from memory_core.tools.business_policy_checks import ProjectMapValidator
 
         call_log: list[Path] = []
 
@@ -792,7 +792,7 @@ class TestRegressionScenarios:
         assert len(call_log) == 4
 
     def test_truth_basis_ref_classification(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import TruthBasisResolver
+        from memory_core.tools.business_policy_checks import TruthBasisResolver
 
         cfg = _make_config(tmp_path)
         resolver = TruthBasisResolver(cfg)
@@ -803,7 +803,7 @@ class TestRegressionScenarios:
         assert resolver._classify_truth_ref(cfg.workspace_root / "INDEX.md") == "workspace-entry"
 
     def test_scope_resolver_handles_outside_repo(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         cfg = _make_config(tmp_path, default_project_scope="fallback")
         resolver = ScopeResolver(cfg, scope_config_path=None)
@@ -812,7 +812,7 @@ class TestRegressionScenarios:
         assert scope == "fallback"
 
     def test_scope_resolver_loads_invalid_json_gracefully(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         bad_file = tmp_path / "bad-scope.json"
         bad_file.write_text("not json at all {{{", encoding="utf-8")
@@ -823,7 +823,7 @@ class TestRegressionScenarios:
         assert canon == {}
 
     def test_scope_resolver_handles_non_dict_json(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         bad_file = tmp_path / "array-scope.json"
         bad_file.write_text('["not", "a", "dict"]', encoding="utf-8")
@@ -834,7 +834,7 @@ class TestRegressionScenarios:
         assert canon == {}
 
     def test_path_is_under_helper(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import _path_is_under
+        from memory_core.tools.business_policy_checks import _path_is_under
 
         root = tmp_path / "root"
         child = root / "sub" / "file.md"
@@ -849,7 +849,7 @@ class TestRegressionScenarios:
         assert _path_is_under(sibling, root) is False
 
     def test_path_is_under_lexical_helper(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import _path_is_under_lexical
+        from memory_core.tools.business_policy_checks import _path_is_under_lexical
 
         root = tmp_path / "lex-root"
         child = root / "a" / "b"
@@ -859,7 +859,7 @@ class TestRegressionScenarios:
         assert _path_is_under_lexical(outside, root) is False
 
     def test_section_bullets_extracts_list_items(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import _section_bullets
+        from memory_core.tools.business_policy_checks import _section_bullets
 
         text = (
             "## Some Heading\n"
@@ -873,7 +873,7 @@ class TestRegressionScenarios:
         assert bullets == ["item one", "item two", "item three"]
 
     def test_section_body_extracts_text_between_headings(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import _section_body
+        from memory_core.tools.business_policy_checks import _section_body
 
         text = (
             "## Target Heading\n"
@@ -888,14 +888,14 @@ class TestRegressionScenarios:
         assert "should not be included" not in body
 
     def test_markdown_code_tokens_extracts_backtick_values(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import _markdown_code_tokens
+        from memory_core.tools.business_policy_checks import _markdown_code_tokens
 
         text = "Use `lark-im` and `cmux-event` for testing."
         tokens = _markdown_code_tokens(text)
         assert tokens == {"lark-im", "cmux-event"}
 
     def test_json_string_values_extracts_values_by_key(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import _json_string_values
+        from memory_core.tools.business_policy_checks import _json_string_values
 
         text = json.dumps([
             {"source_type": "lark-im", "event_type": "msg"},
@@ -905,7 +905,7 @@ class TestRegressionScenarios:
         assert values == {"lark-im", "git-hook"}
 
     def test_existing_paths_filters_nonexistent(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import _existing_paths
+        from memory_core.tools.business_policy_checks import _existing_paths
 
         existing = tmp_path / "exists.md"
         existing.touch()
@@ -915,7 +915,7 @@ class TestRegressionScenarios:
         assert result == [str(existing)]
 
     def test_truth_basis_for_scope_returns_global_refs(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import TruthBasisResolver
+        from memory_core.tools.business_policy_checks import TruthBasisResolver
 
         extra = tmp_path / "repo" / "extra-global.md"
         extra.parent.mkdir(parents=True, exist_ok=True)
@@ -936,7 +936,7 @@ class TestRegressionScenarios:
         assert len(result["refs"]) >= 2
 
     def test_scope_resolver_project_runtime_root_merge(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         runtime_global = tmp_path / "runtime-global"
         runtime_global.mkdir(parents=True, exist_ok=True)
@@ -953,7 +953,7 @@ class TestRegressionScenarios:
         assert "workbot" in runtime
 
     def test_scope_resolver_get_required_canonical(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         req = [tmp_path / "a.md", tmp_path / "b.md"]
         req[0].touch()
@@ -965,7 +965,7 @@ class TestRegressionScenarios:
         assert result == req
 
     def test_scope_resolver_get_global_canonical(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         cfg = _make_config(tmp_path)
         resolver = ScopeResolver(cfg, scope_config_path=None)
@@ -973,7 +973,7 @@ class TestRegressionScenarios:
         assert len(result) > 0
 
     def test_scope_resolver_project_map_refs(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         cfg = _make_config(tmp_path)
         resolver = ScopeResolver(cfg, scope_config_path=None)
@@ -981,7 +981,7 @@ class TestRegressionScenarios:
         assert len(refs) == 3
 
     def test_scope_resolver_refs_for_scope_combine_defaults_and_project(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         default_ref = tmp_path / "default-ref.md"
         default_ref.touch()
@@ -999,7 +999,7 @@ class TestRegressionScenarios:
         assert str(project_ref) in refs
 
     def test_scope_resolver_lesson_refs_for_scope(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         default_ref = tmp_path / "default-lesson.md"
         default_ref.touch()
@@ -1017,7 +1017,7 @@ class TestRegressionScenarios:
         assert str(project_ref) in refs
 
     def test_scope_resolver_docs_refs_for_scope(self, tmp_path: Path) -> None:
-        from workspace.tools.business_policy_checks import ScopeResolver
+        from memory_core.tools.business_policy_checks import ScopeResolver
 
         doc_ref = tmp_path / "project-doc.md"
         doc_ref.touch()
