@@ -563,7 +563,7 @@ class TestHooksAndAgentsMdGeneration:
             content = agents_path.read_text(encoding="utf-8")
             assert "<!-- MEMORY_HOOK_BEGIN -->" in content
             assert "<!-- MEMORY_HOOK_END -->" in content
-            assert "memory_hook_gateway" in content
+            assert "memory-hook-gateway" in content
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
