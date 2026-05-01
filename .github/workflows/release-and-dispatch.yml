@@ -67,7 +67,7 @@ jobs:
       - name: Verify tag matches pyproject.toml version
         run: |
           TAG_VER="${{ steps.version.outputs.tag }}"
-          PY_VER="v$(python -c 'import tomllib; print(tomllib.open("pyproject.toml","rb")["project"]["version"])')"
+          PY_VER="v$(python -c 'import tomllib; f=open("pyproject.toml","rb"); print(tomllib.load(f)["project"]["version"])')"
           if [ "$TAG_VER" != "$PY_VER" ]; then
             echo "Tag $TAG_VER does not match pyproject.toml version $PY_VER"
             exit 1
