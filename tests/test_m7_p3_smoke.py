@@ -6,7 +6,7 @@ that core workspace INDEX files exist and contain no absolute-path leaks.
 
 from __future__ import annotations
 
-import subprocess
+import re
 import sys
 from pathlib import Path
 
@@ -68,19 +68,26 @@ class TestM7P3Smoke:
 
     def test_no_absolute_paths_in_workspace(self) -> None:
         """Ensure no file under memory_core/ contains a hardcoded /Users/busiji path."""
-        rg = subprocess.run(
-            ["rg", "-c", "/Users/busiji", str(REPO_ROOT / "memory_core")],
-            capture_output=True,
-            text=True,
-        )
-        # rg -c prints "path:count" per file; total matches must be 0
+        search_dir = REPO_ROOT / "memory_core"
+        pattern = "/Users/busiji"
         total = 0
-        for line in rg.stdout.strip().splitlines():
-            if line and line[-1].isdigit():
-                # Format is "path:count" – take the last colon-separated token
-                total += int(line.rsplit(":", 1)[-1])
+        matches = []
+
+        for file_path in search_dir.rglob("*"):
+            if file_path.is_file():
+                try:
+                    content = file_path.read_text(encoding="utf-8")
+                    count = content.count(pattern)
+                    if count > 0:
+                        total += count
+                        matches.append(f"{file_path.relative_to(search_dir)}: {count}")
+                except (UnicodeDecodeError, PermissionError):
+                    # Skip binary files or unreadable files
+                    continue
+
         assert total == 0, (
             f"Found {total} occurrence(s) of '/Users/busiji' under memory_core/"
+            + ("\n" + "\n".join(matches) if matches else "")
         )
 
     # -- context enrichment fields --------------------------------------------
