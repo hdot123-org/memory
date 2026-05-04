@@ -9,6 +9,7 @@ profile for any new memory-enabled project.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -23,21 +24,26 @@ except ImportError:  # pragma: no cover
     from ..adapter_toml_schema import load_adapter_toml  # type: ignore[no-redef]
 
 
-def build_default_runtime_profile(project_root: Path) -> dict[str, Any]:
+def build_default_runtime_profile(
+    repo_root: Path, workspace_root: Path | None = None
+) -> dict[str, Any]:
     """Build a generic runtime profile from ``.memory/adapter.toml``.
 
     Parameters
     ----------
-    project_root:
-        Root directory of the target project (the directory that
-        contains ``.memory/adapter.toml``).
+    repo_root:
+        Root directory of the repository.
+    workspace_root:
+        Root directory of the workspace (for adapter resolution).
 
     Returns
     -------
     dict[str, Any]
-        A mapping with exactly 15 generic keys suitable for driving
+        A mapping with generic keys suitable for driving
         the memory-hook gateway context construction.
     """
+    # Use workspace_root as the project root for config lookup (fallback to repo_root)
+    project_root = workspace_root if workspace_root is not None else repo_root
     memory_root = project_root / ".memory"
     adapter_path = memory_root / "adapter.toml"
     config = load_adapter_toml(adapter_path)
@@ -54,6 +60,14 @@ def build_default_runtime_profile(project_root: Path) -> dict[str, Any]:
     truth_model = global_root / "truth-model.md"
     memory_system_path = global_root / "memory-system.md"
     global_rule_path = global_root / "memory-routing.md"
+    hook_contract_path = global_root / "hook-contract.md"
+    project_map_governance = global_root / "project-map-governance.md"
+    policy_pack_path = global_root / "policy-pack.json"
+
+    # Project map files
+    project_map_files = [
+        project_map_root / "INDEX.md",
+    ]
 
     # Canonical file lists ──────────────────────────────────────────
     required_canonical = [
@@ -73,6 +87,8 @@ def build_default_runtime_profile(project_root: Path) -> dict[str, Any]:
         truth_model,
         memory_system_path,
         global_rule_path,
+        hook_contract_path,
+        project_map_governance,
     ]
 
     # Policy values (from adapter.toml [policy] section) ────────────
@@ -99,20 +115,102 @@ def build_default_runtime_profile(project_root: Path) -> dict[str, Any]:
     governance_blocker_scopes: set[str] = set()
     event_contract_blocker_scopes: set[str] = set()
 
+    # Authority and evidence paths ──────────────────────────────────
+    authority_allowed_paths: set[Path] = set()
+    lower_evidence_roots: list[Path] = [
+        project_root / "artifacts",
+        project_root / "tools",
+    ]
+
+    # Decision and lesson refs ─────────────────────────────────────
+    default_decision_refs: list[Path] = []
+    project_decision_refs: dict[str, list[Path]] = {project_scope: []}
+    default_lesson_refs: list[Path] = []
+    project_lesson_refs: dict[str, list[Path]] = {project_scope: []}
+
+    # Project doc refs ─────────────────────────────────────────────
+    project_doc_refs: dict[str, list[Path]] = {project_scope: []}
+
+    # Project runtime root ─────────────────────────────────────────
+    project_runtime_root: dict[str, Path] = {
+        project_scope: project_root / "projects",
+    }
+
+    # Git registration scope ───────────────────────────────────────
+    registration_git_scope = [
+        project_map_root / "INDEX.md",
+        project_map_governance,
+        hook_contract_path,
+    ]
+
+    # Legal core markers and registry scopes ──────────────────────
+    legal_core_markers: list[str] = []
+    required_registry_scopes: list[str] = []
+
+    # Frozen tuple and event contract config ──────────────────────
+    governance_frozen_tuple_files: list[Path] = []
+    event_contract_files: dict[str, Path] = {}
+    frozen_tuple_expected: set[str] = set()
+    frozen_tuple_legacy_markers: set[str] = set()
+    formal_source_types: set[str] = set()
+    formal_event_types: set[str] = set()
+    formal_event_statuses: set[str] = set()
+    formal_field_keys: set[str] = set()
+    legacy_field_keys: set[str] = set()
+
+    # Route and scope config ──────────────────────────────────────
+    route_project_runtime_scope = project_scope
+    scope_match_hints: dict[str, list[Path]] = {project_scope: []}
+    core_evidence_refs: list[str] = [
+        str(memory_system_path),
+        str(global_rule_path),
+        str(hook_contract_path),
+    ]
+
     return {
         "PROJECT_MAP_ROOT": project_map_root,
         "TRUTH_MODEL": truth_model,
-        "REQUIRED_CANONICAL": required_canonical,
-        "PROJECT_CANONICAL": project_canonical,
-        "GLOBAL_CANONICAL": global_canonical,
+        "PROJECT_MAP_FILES": project_map_files,
+        "PROJECT_MAP_GOVERNANCE": project_map_governance,
+        "HOOK_CONTRACT_PATH": hook_contract_path,
+        "GLOBAL_RULE_PATH": global_rule_path,
+        "MEMORY_SYSTEM_PATH": memory_system_path,
+        "POLICY_PACK_PATH": policy_pack_path,
+        "GATEWAY_POLICY_CLASS": gateway_policy_class,
         "LEGALITY_SOURCE_POLICY": legality_source_policy,
         "REGISTRATION_COMMIT_POLICY": registration_commit_policy,
         "REGISTRATION_COMMIT_PHASE": registration_commit_phase,
-        "GATEWAY_POLICY_CLASS": gateway_policy_class,
-        "ARTIFACT_COMPACTION": artifact_compaction,
-        "DEFAULT_PROJECT_SCOPE": project_scope,
-        "POLICY_ALLOWED_SCOPES": policy_allowed_scopes,
-        "POLICY_SCOPE_INHERITS": policy_scope_inherits,
+        "REGISTRATION_GIT_SCOPE": registration_git_scope,
+        "LEGAL_CORE_MARKERS": legal_core_markers,
+        "REQUIRED_REGISTRY_SCOPES": required_registry_scopes,
+        "REQUIRED_CANONICAL": required_canonical,
+        "PROJECT_CANONICAL": project_canonical,
+        "PROJECT_RUNTIME_ROOT": project_runtime_root,
+        "PROJECT_DOC_REFS": project_doc_refs,
+        "GLOBAL_CANONICAL": global_canonical,
+        "AUTHORITY_ALLOWED_PATHS": authority_allowed_paths,
+        "LOWER_EVIDENCE_ROOTS": lower_evidence_roots,
+        "DEFAULT_DECISION_REFS": default_decision_refs,
+        "PROJECT_DECISION_REFS": project_decision_refs,
+        "GOVERNANCE_FROZEN_TUPLE_FILES": governance_frozen_tuple_files,
+        "EVENT_CONTRACT_FILES": event_contract_files,
+        "FROZEN_TUPLE_EXPECTED": frozen_tuple_expected,
+        "FROZEN_TUPLE_LEGACY_MARKERS": frozen_tuple_legacy_markers,
+        "FORMAL_SOURCE_TYPES": formal_source_types,
+        "FORMAL_EVENT_TYPES": formal_event_types,
+        "FORMAL_EVENT_STATUSES": formal_event_statuses,
+        "FORMAL_FIELD_KEYS": formal_field_keys,
+        "LEGACY_FIELD_KEYS": legacy_field_keys,
+        "DEFAULT_LESSON_REFS": default_lesson_refs,
+        "PROJECT_LESSON_REFS": project_lesson_refs,
         "GOVERNANCE_BLOCKER_SCOPES": governance_blocker_scopes,
         "EVENT_CONTRACT_BLOCKER_SCOPES": event_contract_blocker_scopes,
+        "DEFAULT_PROJECT_SCOPE": project_scope,
+        "ROUTE_PROJECT_RUNTIME_SCOPE": route_project_runtime_scope,
+        "SCOPE_MATCH_HINTS": scope_match_hints,
+        "CORE_EVIDENCE_REFS": core_evidence_refs,
+        "POLICY_ALLOWED_SCOPES": policy_allowed_scopes,
+        "CLAUDE_HOOK_STATE_FILE": os.environ.get("CMUX_HOOK_STATE_FILE") or None,
+        "POLICY_SCOPE_INHERITS": policy_scope_inherits,
+        "ARTIFACT_COMPACTION": artifact_compaction,
     }

@@ -18,19 +18,49 @@ class TestBuildDefaultRuntimeProfile:
     REQUIRED_KEYS = {
         "PROJECT_MAP_ROOT",
         "TRUTH_MODEL",
-        "REQUIRED_CANONICAL",
-        "PROJECT_CANONICAL",
-        "GLOBAL_CANONICAL",
+        "PROJECT_MAP_FILES",
+        "PROJECT_MAP_GOVERNANCE",
+        "HOOK_CONTRACT_PATH",
+        "GLOBAL_RULE_PATH",
+        "MEMORY_SYSTEM_PATH",
+        "POLICY_PACK_PATH",
+        "GATEWAY_POLICY_CLASS",
         "LEGALITY_SOURCE_POLICY",
         "REGISTRATION_COMMIT_POLICY",
         "REGISTRATION_COMMIT_PHASE",
-        "GATEWAY_POLICY_CLASS",
-        "ARTIFACT_COMPACTION",
-        "DEFAULT_PROJECT_SCOPE",
-        "POLICY_ALLOWED_SCOPES",
-        "POLICY_SCOPE_INHERITS",
+        "REGISTRATION_GIT_SCOPE",
+        "LEGAL_CORE_MARKERS",
+        "REQUIRED_REGISTRY_SCOPES",
+        "REQUIRED_CANONICAL",
+        "PROJECT_CANONICAL",
+        "PROJECT_RUNTIME_ROOT",
+        "PROJECT_DOC_REFS",
+        "GLOBAL_CANONICAL",
+        "AUTHORITY_ALLOWED_PATHS",
+        "LOWER_EVIDENCE_ROOTS",
+        "DEFAULT_DECISION_REFS",
+        "PROJECT_DECISION_REFS",
+        "GOVERNANCE_FROZEN_TUPLE_FILES",
+        "EVENT_CONTRACT_FILES",
+        "FROZEN_TUPLE_EXPECTED",
+        "FROZEN_TUPLE_LEGACY_MARKERS",
+        "FORMAL_SOURCE_TYPES",
+        "FORMAL_EVENT_TYPES",
+        "FORMAL_EVENT_STATUSES",
+        "FORMAL_FIELD_KEYS",
+        "LEGACY_FIELD_KEYS",
+        "DEFAULT_LESSON_REFS",
+        "PROJECT_LESSON_REFS",
         "GOVERNANCE_BLOCKER_SCOPES",
         "EVENT_CONTRACT_BLOCKER_SCOPES",
+        "DEFAULT_PROJECT_SCOPE",
+        "ROUTE_PROJECT_RUNTIME_SCOPE",
+        "SCOPE_MATCH_HINTS",
+        "CORE_EVIDENCE_REFS",
+        "POLICY_ALLOWED_SCOPES",
+        "CLAUDE_HOOK_STATE_FILE",
+        "POLICY_SCOPE_INHERITS",
+        "ARTIFACT_COMPACTION",
     }
 
     def _make_adapter_toml(self, project: Path, scope: str = "myproject") -> None:
@@ -54,11 +84,10 @@ class TestBuildDefaultRuntimeProfile:
         """)
         (mem / "adapter.toml").write_text(toml)
 
-    def test_returns_exactly_15_keys(self, tmp_path: Path) -> None:
+    def test_returns_required_keys(self, tmp_path: Path) -> None:
         self._make_adapter_toml(tmp_path)
         profile = build_default_runtime_profile(tmp_path)
         assert set(profile.keys()) == self.REQUIRED_KEYS
-        assert len(profile) == 15
 
     def test_scope_from_adapter_toml(self, tmp_path: Path) -> None:
         self._make_adapter_toml(tmp_path, scope="backend-service")

@@ -29,7 +29,7 @@ def test_resolve_core_builder_fallbacks_to_legacy_when_external_load_fails(monke
 
     provider, builder, errors = gateway._resolve_core_builder("external-core")
     assert provider == "legacy"
-    assert builder is gateway.build_context_package_core
+    assert builder is gateway.build_context_package_from_config
     assert any("fallback to legacy" in err for err in errors)
 
 

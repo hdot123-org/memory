@@ -12,6 +12,9 @@ Checks performed:
     2. Frontmatter / schema validation on Markdown files
     3. Lock/adapter version compatibility
     4. Pollution guard (no business state written into memory repo)
+    5. State enumerations (STATE.md/PLAN.md/CANONICAL.md status field)
+    6. memory.lock memory_version SemVer format
+    7. adapter.toml routing.host enumeration
 
 Exit codes:
     0 — all checks passed
@@ -27,31 +30,32 @@ import sys
 from pathlib import Path
 from typing import Any
 
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-# Required files inside .memory/
-REQUIRED_FILES = [
-    "memory.lock",
-    "adapter.toml",
-    "CANONICAL.md",
-    "PLAN.md",
-    "STATE.md",
-    "TASKS.md",
-    "migrations.log",
-]
+from memory_core.constants import (
+    CURRENT_MEMORY_VERSION,
+    FRONTMATTER_REQUIREMENTS,
+    REQUIRED_MEMORY_DIRS,
+    REQUIRED_MEMORY_FILES,
+    SUPPORTED_HOSTS,
+)
 
-# Expected frontmatter fields per file type
-FRONTMATTER_REQUIREMENTS: dict[str, list[str]] = {
-    "CANONICAL.md": ["type", "title", "shortname", "status", "created", "updated"],
-    "PLAN.md": ["type", "title", "shortname", "status", "created"],
-    "STATE.md": ["type", "title", "shortname", "status", "updated"],
-    "TASKS.md": ["type", "title", "shortname", "status"],
+# Valid status enumerations per file type (from DOT_MEMORY_SPEC.md)
+STATUS_ENUMERATIONS: dict[str, tuple[str, ...]] = {
+    "STATE.md": ("active", "paused", "completed", "archived"),
+    "PLAN.md": ("planning", "in_progress", "review", "completed", "blocked"),
+    "CANONICAL.md": ("active",),  # Only active after initialization
 }
 
-# Current schema version for the memory system
-CURRENT_MEMORY_VERSION = "0.2.0"
+# Valid health values (from DOT_MEMORY_SPEC.md for STATE.md health field)
+VALID_HEALTH_VALUES = ("green", "yellow", "red")
 
 # Paths that MUST NOT appear inside the memory repo — these belong in the
 # target project's own workspace, not in the memory repository.
@@ -63,14 +67,6 @@ POLLUTION_PATTERNS = [
     re.compile(r"\\.gradle", re.IGNORECASE),
     re.compile(r"\.DS_Store", re.IGNORECASE),
     re.compile(r"\\.git/", re.IGNORECASE),
-]
-
-# Sub-paths inside .memory/ that are expected directories
-EXPECTED_DIRS = [
-    "kb/projects",
-    "kb/decisions",
-    "kb/lessons",
-    "kb/global",
 ]
 
 
@@ -105,21 +101,37 @@ def _is_json_like(text: str) -> bool:
     return stripped.startswith("{") or stripped.startswith("[")
 
 
-def _parse_lock_file(path: Path) -> dict[str, str]:
-    """Parse memory.lock as JSON or key=value lines."""
+def _parse_lock_file(path: Path) -> dict[str, Any]:
+    """Parse memory.lock as TOML (canonical) or JSON (legacy)."""
     text = path.read_text(encoding="utf-8")
     if _is_json_like(text):
+        # Legacy JSON format
         data = json.loads(text)
-        return {str(k): str(v) for k, v in data.items()}
-    result: dict[str, str] = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        kv = line.split("=", 1)
-        if len(kv) == 2:
-            result[kv[0].strip()] = kv[1].strip()
-    return result
+        return {
+            "memory": {
+                "memory_version": data.get("version", ""),
+                "schema_version": data.get("schema", ""),
+                "adapter_version": data.get("adapter_version", "builtin"),
+                "locked_at": data.get("updated", data.get("initialized", "")),
+                "lock_reason": data.get("lock_reason", ""),
+            }
+        }
+    # Canonical TOML format
+    try:
+        return tomllib.loads(text)
+    except Exception:
+        # Fallback: key=value lines (very old format)
+        result: dict[str, Any] = {"memory": {}}
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("["):
+                continue
+            kv = line.split("=", 1)
+            if len(kv) == 2:
+                key = kv[0].strip()
+                val = kv[1].strip().strip('"').strip("'")
+                result["memory"][key] = val
+        return result
 
 
 def _parse_adapter_toml(path: Path) -> dict[str, str]:
@@ -221,7 +233,7 @@ class CheckResult:
 def check_required_files(memory_root: Path, result: CheckResult) -> bool:
     """Verify all required files exist inside .memory/."""
     all_ok = True
-    for fname in REQUIRED_FILES:
+    for fname in REQUIRED_MEMORY_FILES:
         fpath = memory_root / fname
         if fpath.is_file():
             result.record(f"file:{fname}", True)
@@ -234,7 +246,7 @@ def check_required_files(memory_root: Path, result: CheckResult) -> bool:
 def check_required_dirs(memory_root: Path, result: CheckResult) -> bool:
     """Verify expected directory structure exists."""
     all_ok = True
-    for dname in EXPECTED_DIRS:
+    for dname in REQUIRED_MEMORY_DIRS:
         dpath = memory_root / dname
         if dpath.is_dir():
             result.record(f"dir:{dname}", True)
@@ -275,9 +287,13 @@ def check_lock_version(memory_root: Path, result: CheckResult) -> bool:
         result.record("lock_version", False, f"parse error: {exc}")
         return False
 
-    version = lock_data.get("version", lock_data.get("schema_version", ""))
+    memory_section = lock_data.get("memory", {})
+    version = memory_section.get("memory_version", "")
     if not version:
-        result.record("lock_version", False, "no version key in memory.lock")
+        # Legacy fallback: try top-level "version" key
+        version = lock_data.get("version", "")
+    if not version:
+        result.record("lock_version", False, "no memory_version key in memory.lock")
         return False
 
     if version == CURRENT_MEMORY_VERSION:
@@ -352,6 +368,101 @@ def check_migrations_log(memory_root: Path, result: CheckResult) -> bool:
         return False
 
 
+def check_state_enumerations(memory_root: Path, result: CheckResult) -> bool:
+    """Verify Markdown files have valid status values in frontmatter.
+
+    Checks:
+    - STATE.md: status must be active|paused|completed|archived
+    - PLAN.md: status must be planning|in_progress|review|completed|blocked
+    - CANONICAL.md: status must be active
+    """
+    all_ok = True
+    for fname, valid_statuses in STATUS_ENUMERATIONS.items():
+        fpath = memory_root / fname
+        if not fpath.is_file():
+            continue
+        text = fpath.read_text(encoding="utf-8")
+        fm = _parse_frontmatter(text)
+        status = fm.get("status", "").strip()
+        if not status:
+            result.record(f"status_enum:{fname}", False, "status field missing or empty")
+            all_ok = False
+        elif status not in valid_statuses:
+            result.record(
+                f"status_enum:{fname}",
+                False,
+                f"invalid status '{status}', must be one of: {', '.join(valid_statuses)}",
+            )
+            all_ok = False
+        else:
+            result.record(f"status_enum:{fname}", True, f"status={status}")
+    return all_ok
+
+
+def check_memory_lock_semver(memory_root: Path, result: CheckResult) -> bool:
+    """Verify memory.lock memory_version follows SemVer (MAJOR.MINOR.PATCH)."""
+    lock_path = memory_root / "memory.lock"
+    if not lock_path.is_file():
+        result.record("memory_lock_semver", False, "memory.lock not found")
+        return False
+    try:
+        lock_data = _parse_lock_file(lock_path)
+    except Exception as exc:
+        result.record("memory_lock_semver", False, f"parse error: {exc}")
+        return False
+
+    memory_section = lock_data.get("memory") or {}
+    version = memory_section.get("memory_version", "")
+    if not version:
+        # Legacy fallback: try top-level "version" key
+        version = lock_data.get("version", "")
+    if not version:
+        result.record("memory_lock_semver", False, "no memory_version key in memory.lock")
+        return False
+
+    # SemVer regex: MAJOR.MINOR.PATCH (simple validation)
+    semver_pattern = r"^\d+\.\d+\.\d+$"
+    if re.match(semver_pattern, version):
+        result.record("memory_lock_semver", True, f"version={version}")
+        return True
+    else:
+        result.record(
+            "memory_lock_semver",
+            False,
+            f"invalid SemVer format: '{version}' (expected MAJOR.MINOR.PATCH)",
+        )
+        return False
+
+
+def check_adapter_host_enum(memory_root: Path, result: CheckResult) -> bool:
+    """Verify adapter.toml routing.host is in SUPPORTED_HOSTS."""
+    adapter_path = memory_root / "adapter.toml"
+    if not adapter_path.is_file():
+        result.record("adapter_host_enum", False, "adapter.toml not found")
+        return False
+    try:
+        adapter_data = _parse_adapter_toml(adapter_path)
+    except Exception as exc:
+        result.record("adapter_host_enum", False, f"parse error: {exc}")
+        return False
+
+    host = adapter_data.get("routing.host", "")
+    if not host:
+        result.record("adapter_host_enum", False, "no routing.host key in adapter.toml")
+        return False
+
+    if host in SUPPORTED_HOSTS:
+        result.record("adapter_host_enum", True, f"host={host}")
+        return True
+    else:
+        result.record(
+            "adapter_host_enum",
+            False,
+            f"invalid host '{host}', must be one of: {', '.join(SUPPORTED_HOSTS)}",
+        )
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Main validation entry point
 # ---------------------------------------------------------------------------
@@ -374,9 +485,9 @@ def validate_project_memory(
 
     if dry_run:
         result.record("dry_run", True, f"would validate .memory/ under {target}")
-        for fname in REQUIRED_FILES:
+        for fname in REQUIRED_MEMORY_FILES:
             result.record(f"dry_run:file:{fname}", True, "would check existence")
-        for dname in EXPECTED_DIRS:
+        for dname in REQUIRED_MEMORY_DIRS:
             result.record(f"dry_run:dir:{dname}", True, "would check directory")
         for fname in FRONTMATTER_REQUIREMENTS:
             result.record(f"dry_run:frontmatter:{fname}", True, "would check frontmatter")
@@ -384,6 +495,9 @@ def validate_project_memory(
         result.record("dry_run:adapter_version", True, "would check adapter version")
         result.record("dry_run:pollution", True, "would check pollution")
         result.record("dry_run:migrations_log", True, "would check migrations.log")
+        result.record("dry_run:status_enum", True, "would check status enumerations")
+        result.record("dry_run:semver", True, "would check memory_version SemVer format")
+        result.record("dry_run:host_enum", True, "would check adapter host enum")
         return result
 
     memory_root = target / ".memory"
@@ -400,6 +514,9 @@ def validate_project_memory(
     check_adapter_version(memory_root, result)
     check_pollution(memory_root, result)
     check_migrations_log(memory_root, result)
+    check_state_enumerations(memory_root, result)
+    check_memory_lock_semver(memory_root, result)
+    check_adapter_host_enum(memory_root, result)
 
     return result
 

@@ -11,6 +11,8 @@ try:
 except ModuleNotFoundError:
     import tomli as tomllib
 
+from memory_core.constants import CURRENT_MEMORY_VERSION, SUPPORTED_HOSTS
+
 
 @dataclass
 class AdapterConfig:
@@ -24,7 +26,7 @@ class AdapterConfig:
     project_name: str
     project_scope: str
     host: str = "codex"
-    adapter_version: str = "0.1.0"
+    adapter_version: str = CURRENT_MEMORY_VERSION
     canonical_files: list[str] = field(default_factory=list)
     artifact_root: str | None = None
     # Extra fields preserved from [policy] section
@@ -67,19 +69,28 @@ def load_adapter_toml(path: Path) -> AdapterConfig:
         data: dict[str, Any] = tomllib.load(fh)
 
     if _has_new_sections(data):
-        return _load_new_format(data)
+        config = _load_new_format(data)
+    else:
+        # Legacy [adapter] fallback
+        section = data.get("adapter") or {}
+        config = AdapterConfig(
+            project_name=section.get("project_name", ""),
+            project_scope=section.get("project_scope", ""),
+            host=section.get("host", "codex"),
+            adapter_version=section.get("adapter_version", CURRENT_MEMORY_VERSION),
+            canonical_files=list(section.get("canonical_files", [])),
+            artifact_root=section.get("artifact_root"),
+        )
 
-    # Legacy [adapter] fallback
-    section = data.get("adapter", {})
-    return AdapterConfig(
-        project_name=section.get("project_name", ""),
-        project_scope=section.get("project_scope", ""),
-        host=section.get("host", "codex"),
-        adapter_version=section.get("adapter_version", "0.1.0"),
-        canonical_files=list(section.get("canonical_files", [])),
-        artifact_root=section.get("artifact_root"),
-    )
+    # Validate host against SUPPORTED_HOSTS
+    if config.host and config.host not in SUPPORTED_HOSTS:
+        import warnings
+        warnings.warn(
+            f"adapter.toml routing.host='{config.host}' is not in SUPPORTED_HOSTS={SUPPORTED_HOSTS}",
+            stacklevel=2,
+        )
 
+    return config
 
 def _load_new_format(data: dict[str, Any]) -> AdapterConfig:
     """Parse the canonical ``[core]`` / ``[policy]`` / ``[routing]`` layout."""
@@ -91,7 +102,7 @@ def _load_new_format(data: dict[str, Any]) -> AdapterConfig:
         project_name=routing.get("project_name", routing.get("project_scope", "")),
         project_scope=routing.get("project_scope", ""),
         host=routing.get("host", "codex"),
-        adapter_version=core.get("version", "0.1.0"),
+        adapter_version=core.get("version", CURRENT_MEMORY_VERSION),
         canonical_files=list(routing.get("canonical_files", [])),
         artifact_root=routing.get("artifact_root"),
         legality_source_policy=policy.get("legality_source_policy", "map-only"),

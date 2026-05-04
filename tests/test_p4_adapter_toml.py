@@ -10,6 +10,7 @@ from memory_core.tools.adapter_toml_schema import (
     dump_adapter_toml,
     load_adapter_toml,
 )
+from memory_core.constants import CURRENT_MEMORY_VERSION
 
 # ── load_adapter_toml (legacy [adapter] section) ──────────────────
 
@@ -22,7 +23,7 @@ class TestLoadAdapterTomlLegacy:
         assert cfg.project_name == ""
         assert cfg.project_scope == ""
         assert cfg.host == "codex"
-        assert cfg.adapter_version == "0.1.0"
+        assert cfg.adapter_version == CURRENT_MEMORY_VERSION
         assert cfg.canonical_files == []
         assert cfg.artifact_root is None
 
@@ -59,7 +60,7 @@ class TestLoadAdapterTomlLegacy:
         cfg = load_adapter_toml(p)
         assert cfg.project_name == "minimal"
         assert cfg.host == "codex"
-        assert cfg.adapter_version == "0.1.0"
+        assert cfg.adapter_version == CURRENT_MEMORY_VERSION
         assert cfg.canonical_files == []
         assert cfg.artifact_root is None
 
@@ -215,7 +216,7 @@ class TestAdapterConfigDataclass:
     def test_defaults(self) -> None:
         cfg = AdapterConfig(project_name="n", project_scope="s")
         assert cfg.host == "codex"
-        assert cfg.adapter_version == "0.1.0"
+        assert cfg.adapter_version == CURRENT_MEMORY_VERSION
         assert cfg.canonical_files == []
         assert cfg.artifact_root is None
 

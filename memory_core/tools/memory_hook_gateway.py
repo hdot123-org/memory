@@ -87,16 +87,32 @@ import importlib  # noqa: E402
 _ADAPTER_NAME = os.environ.get("MEMORY_HOOK_ADAPTER", "workbot")
 _ADAPTER_REGISTRY = {
     "workbot": (".memory_hook_adapters.workbot_runtime_profile", "build_workbot_runtime_profile"),
+    "default": (".memory_hook_adapters.default_runtime_profile", "build_default_runtime_profile"),
 }
-_mod_path, _fn_name = _ADAPTER_REGISTRY[_ADAPTER_NAME]
-try:
-    _mod = importlib.import_module(_mod_path, package="memory_core.tools")
-except ImportError:
-    from memory_core.tools.memory_hook_adapters.workbot_runtime_profile import (
-        build_workbot_runtime_profile as _fn,  # type: ignore:memory_core/tools/memory_hook_gateway.py
-    )
-else:
-    _fn = getattr(_mod, _fn_name)
+
+
+def _load_adapter_profile(adapter_name: str, repo_root: Path, workspace_root: Path):
+    """Load adapter profile with fallback to workbot on import failure.
+
+    Raises:
+        KeyError: If adapter_name is not in _ADAPTER_REGISTRY.
+    """
+    if adapter_name not in _ADAPTER_REGISTRY:
+        raise KeyError(f"unknown adapter: {adapter_name}")
+
+    _mod_path, _fn_name = _ADAPTER_REGISTRY[adapter_name]
+    try:
+        _mod = importlib.import_module(_mod_path, package="memory_core.tools")
+        _fn = getattr(_mod, _fn_name)
+        return _fn(repo_root, workspace_root)
+    except ImportError:
+        # Fallback to workbot adapter
+        from memory_core.tools.memory_hook_adapters.workbot_runtime_profile import (
+            build_workbot_runtime_profile as _fn_fallback,  # type: ignore
+        )
+        return _fn_fallback(repo_root, workspace_root)
+
+
 # Adapter configuration store (replaces globals().update injection).
 _adapter_config: dict[str, Any] = {}
 
@@ -115,7 +131,7 @@ def load_adapter_config(profile: dict[str, Any]) -> None:
 
 
 # Load adapter profile once; feed both new config store and legacy globals.
-_adapter_profile = _fn(REPO_ROOT, WORKSPACE_ROOT)
+_adapter_profile = _load_adapter_profile(_ADAPTER_NAME, REPO_ROOT, WORKSPACE_ROOT)
 load_adapter_config(_adapter_profile)
 
 
@@ -190,7 +206,11 @@ CoreBuilder = Callable[..., dict[str, Any]]
 
 def _load_external_core_builder() -> CoreBuilder:
     module_name = os.environ.get("MEMORY_HOOK_EXTERNAL_CORE_MODULE", "memory_core.tools.memory_hook_core")
-    func_name = os.environ.get("MEMORY_HOOK_EXTERNAL_CORE_FUNC", "build_context_package_core")
+    func_name = os.environ.get("MEMORY_HOOK_EXTERNAL_CORE_FUNC", "build_context_package_from_config")
+    # If using default module/func, return the locally imported function
+    # to ensure monkeypatching works correctly in tests
+    if module_name == "memory_core.tools.memory_hook_core" and func_name == "build_context_package_from_config":
+        return build_context_package_from_config
     module = __import__(module_name, fromlist=[func_name])
     builder = getattr(module, func_name)
     if not callable(builder):
@@ -205,8 +225,8 @@ def _resolve_core_builder(provider: str, *, allow_fallback: bool = True) -> tupl
         except Exception as exc:
             if not allow_fallback:
                 raise
-            return "legacy", build_context_package_core, [f"external-core load failed, fallback to legacy: {exc}"]
-    return "legacy", build_context_package_core, []
+            return "legacy", build_context_package_from_config, [f"external-core load failed, fallback to legacy: {exc}"]
+    return "legacy", build_context_package_from_config, []
 
 
 def _get_policy_registry() -> PolicyRegistry:
@@ -300,7 +320,7 @@ def _execute_delegate_via_facade(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Workbot memory hook gateway.")
-    parser.add_argument("--host", required=True, choices=("codex", "claude"))
+    parser.add_argument("--host", required=True, choices=("codex", "claude", "factory"))
     parser.add_argument("--event", required=True, choices=("session-start", "prompt-submit", "stop", "notification"))
     parser.add_argument("--no-delegate", action="store_true", help="Generate gateway artifacts only.")
     return parser.parse_args()
@@ -799,7 +819,10 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
     )
     requested_provider = os.environ.get("MEMORY_HOOK_CORE_PROVIDER", "legacy").strip() or "legacy"
     provider_name, provider_builder, provider_errors = _resolve_core_builder(requested_provider, allow_fallback=True)
-    package = build_context_package_from_config(config)
+    if provider_builder is not None:
+        package = provider_builder(config)
+    else:
+        package = build_context_package_from_config(config)
     system_context = package.setdefault("system_context", {})
     if isinstance(system_context, dict):
         system_context["core_provider"] = provider_name
@@ -819,8 +842,11 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
         shadow_provider = "external-core" if provider_name == "legacy" else "legacy"
         shadow_result: dict[str, Any]
         try:
-            _, shadow_builder, _ = _resolve_core_builder(shadow_provider, allow_fallback=False)
-            shadow_package = build_context_package_from_config(config)
+            _, shadow_builder, _ = _resolve_core_builder(shadow_provider, allow_fallback=True)
+            if shadow_builder is not None:
+                shadow_package = shadow_builder(config)
+            else:
+                shadow_package = build_context_package_from_config(config)
             shadow_result = {
                 "provider": shadow_provider,
                 "status": shadow_package.get("status"),
@@ -851,7 +877,7 @@ def build_context_package_simple(
     """Simplified 3-parameter entry point returning a schema-converted package.
 
     Args:
-        host: "codex" or "claude"
+        host: "codex", "claude", or "factory"
         event: event name (e.g. "session-start", "prompt-submit")
         payload: event payload dict (default: empty dict)
         adapter: adapter name override (default: from MEMORY_HOOK_ADAPTER env var)
@@ -995,7 +1021,13 @@ def main() -> int:
         return 0
 
     try:
-        proc = _delegate_codex(args.event, raw_payload) if args.host == "codex" else _delegate_claude(args.event, raw_payload, payload)
+        if args.host == "codex":
+            proc = _delegate_codex(args.event, raw_payload)
+        elif args.host == "claude":
+            proc = _delegate_claude(args.event, raw_payload, payload)
+        else:
+            # factory and others: no delegate
+            proc = None
     except RuntimeError as exc:
         append_error_log(
             "memory-hook-gateway",
@@ -1007,30 +1039,37 @@ def main() -> int:
             sys.stdout.write(noop.stdout)
         return 0
 
-    if proc.returncode != 0:
-        append_error_log(
-            "memory-hook-gateway",
-            "delegate command failed",
-            {
-                "host": args.host,
-                "event": args.event,
-                "returncode": proc.returncode,
-                "stderr": proc.stderr,
-                "stdout": proc.stdout,
-                "artifact_latest": None,
-            },
-        )
+    if proc is not None:
+        if proc.returncode != 0:
+            append_error_log(
+                "memory-hook-gateway",
+                "delegate command failed",
+                {
+                    "host": args.host,
+                    "event": args.event,
+                    "returncode": proc.returncode,
+                    "stderr": proc.stderr,
+                    "stdout": proc.stdout,
+                    "artifact_latest": None,
+                },
+            )
 
-    if proc.stdout:
-        sys.stdout.write(proc.stdout)
+        if proc.stdout:
+            sys.stdout.write(proc.stdout)
+        else:
+            # M2: delegate owns bypass output format via noop_response()
+            noop = _get_host_delegate(args.host).noop_response()
+            if noop.stdout:
+                sys.stdout.write(noop.stdout)
+        if proc.stderr:
+            sys.stderr.write(proc.stderr)
+        return proc.returncode
     else:
-        # M2: delegate owns bypass output format via noop_response()
+        # factory and others: skip delegate, return success
         noop = _get_host_delegate(args.host).noop_response()
         if noop.stdout:
             sys.stdout.write(noop.stdout)
-    if proc.stderr:
-        sys.stderr.write(proc.stderr)
-    return proc.returncode
+        return 0
 
 
 if __name__ == "__main__":

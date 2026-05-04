@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any, Callable, Collection
 if TYPE_CHECKING:
     from memory_hook_interfaces import PathUtils, PolicyRegistry
 
+from memory_core.constants import SUPPORTED_HOSTS
+
 
 @dataclass
 class CoreConfig:
@@ -88,9 +90,9 @@ class CoreConfig:
 
     def __post_init__(self) -> None:
         # --- Environment ---
-        if self.host not in ("codex", "claude"):
+        if self.host not in SUPPORTED_HOSTS:
             raise ValueError(
-                f"host must be 'codex' or 'claude', got {self.host!r}"
+                f"host must be one of {SUPPORTED_HOSTS}, got {self.host!r}"
             )
         if not isinstance(self.event, str) or not self.event:
             raise ValueError("event must be a non-empty string")

@@ -43,6 +43,7 @@ memory-init = "memory_core.tools.init_project_memory:main"
 memory-migrate = "memory_core.tools.migrate_project_memory:main"
 memory-validate = "memory_core.tools.validate_project_memory:main"
 memory-hook-gateway = "memory_core.tools.memory_hook_gateway:main"
+memory-consistency-check = "memory_core.tools.consistency_check:main"
 
 [tool.setuptools.packages.find]
 include = ["memory_core*"]

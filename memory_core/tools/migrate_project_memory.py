@@ -28,6 +28,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
+
+from memory_core.constants import CURRENT_MEMORY_VERSION
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -35,6 +42,18 @@ from typing import Any, Callable
 MIGRATIONS_LOG_NAME = "migrations.log"
 MEMORY_LOCK_NAME = "memory.lock"
 ADAPTER_TOML_NAME = "adapter.toml"
+
+
+def _write_toml_memory_lock(data: dict[str, Any], path: Path) -> None:
+    """Write memory section as TOML to path."""
+    memory = data.get("memory") or {}
+    lines = ["# memory.lock -- project binding to memory-core", ""]
+    lines.append("[memory]")
+    for key in ("memory_version", "schema_version", "adapter_version", "locked_at", "lock_reason"):
+        val = memory.get(key, "")
+        lines.append(f'{key} = "{val}"')
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
 
 # ---------------------------------------------------------------------------
 # Migration registry
@@ -45,14 +64,12 @@ ADAPTER_TOML_NAME = "adapter.toml"
 # The registry key is "from_version->to_version".
 
 def migrate_v010_to_v020(memory_root: Path) -> dict[str, Any]:
-    """Sample migration: 0.1.0 -> 0.2.0.
+    """Migration: 0.1.0 -> CURRENT_MEMORY_VERSION.
 
-    Placeholder migration that demonstrates the pattern.
-    In practice, each migration would perform specific file transformations.
+    Handles both legacy JSON and canonical TOML memory.lock formats.
     """
     result: dict[str, Any] = {"success": False, "detail": "", "residue": []}
 
-    # Example: update version in memory.lock
     lock_path = memory_root / MEMORY_LOCK_NAME
     if not lock_path.is_file():
         result["detail"] = f"{MEMORY_LOCK_NAME} not found"
@@ -60,21 +77,35 @@ def migrate_v010_to_v020(memory_root: Path) -> dict[str, Any]:
 
     try:
         text = lock_path.read_text(encoding="utf-8")
-        data = json.loads(text)
-    except (json.JSONDecodeError, Exception) as exc:
+        # Detect format
+        if text.strip().startswith("{"):
+            # Legacy JSON -> convert to TOML
+            data_json = json.loads(text)
+            old_version = data_json.get("version", "unknown")
+            lock_data = {
+                "memory": {
+                    "memory_version": CURRENT_MEMORY_VERSION,
+                    "schema_version": data_json.get("schema", "context-package-v1"),
+                    "adapter_version": "builtin",
+                    "locked_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "lock_reason": "upgrade",
+                }
+            }
+        else:
+            # Canonical TOML
+            lock_data = tomllib.loads(text)
+            memory = lock_data.get("memory") or {}
+            old_version = memory.get("memory_version", "unknown")
+            memory["memory_version"] = CURRENT_MEMORY_VERSION
+            memory["locked_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            memory["lock_reason"] = "upgrade"
+            lock_data["memory"] = memory
+    except Exception as exc:
         result["detail"] = f"Failed to parse {MEMORY_LOCK_NAME}: {exc}"
         return result
 
-    old_version = data.get("version", "unknown")
-    data["version"] = "0.2.0"
-    data["updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    data["migrated_from"] = old_version
-
     try:
-        lock_path.write_text(
-            json.dumps(data, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        _write_toml_memory_lock(lock_data, lock_path)
     except Exception as exc:
         result["detail"] = f"Failed to write {MEMORY_LOCK_NAME}: {exc}"
         return result
@@ -83,20 +114,20 @@ def migrate_v010_to_v020(memory_root: Path) -> dict[str, Any]:
     adapter_path = memory_root / ADAPTER_TOML_NAME
     if adapter_path.is_file():
         try:
-            text = adapter_path.read_text(encoding="utf-8")
-            text = text.replace('version = "0.1.0"', 'version = "0.2.0"')
-            adapter_path.write_text(text, encoding="utf-8")
+            atext = adapter_path.read_text(encoding="utf-8")
+            atext = atext.replace('version = "0.1.0"', f'version = "{CURRENT_MEMORY_VERSION}"')
+            adapter_path.write_text(atext, encoding="utf-8")
         except Exception as exc:
             result["residue"].append(f"adapter.toml update failed: {exc}")
 
     result["success"] = True
-    result["detail"] = f"Migrated from {old_version} to 0.2.0"
+    result["detail"] = f"Migrated from {old_version} to {CURRENT_MEMORY_VERSION}"
     return result
 
 
 # Registry: "from->to" string -> migration function
 MIGRATION_REGISTRY: dict[str, Callable[[Path], dict[str, Any]]] = {
-    "0.1.0->0.2.0": migrate_v010_to_v020,
+    f"0.1.0->{CURRENT_MEMORY_VERSION}": migrate_v010_to_v020,
 }
 
 
@@ -248,8 +279,13 @@ def migrate_project_memory(
     if lock_path.is_file():
         try:
             text = lock_path.read_text(encoding="utf-8")
-            data = json.loads(text)
-            current = data.get("version", "unknown")
+            # Support both TOML and legacy JSON
+            if text.strip().startswith("{"):
+                data = json.loads(text)
+                current = data.get("version", "unknown")
+            else:
+                data = tomllib.loads(text)
+                current = data.get("memory", {}).get("memory_version", "unknown")
             if current != from_version:
                 result["errors"].append(
                     f"Version mismatch: memory.lock says {current!r}, "

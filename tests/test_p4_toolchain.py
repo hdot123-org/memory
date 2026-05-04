@@ -16,6 +16,45 @@ import sys
 import tempfile
 from pathlib import Path
 
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
+
+
+def _read_memory_lock(path: Path) -> dict:
+    """Read memory.lock, supporting both TOML (canonical) and JSON (legacy)."""
+    text = path.read_text(encoding="utf-8")
+    if text.strip().startswith("{"):
+        return json.loads(text)
+    return tomllib.loads(text)
+
+
+def _write_memory_lock(path: Path, data: dict) -> None:
+    """Write memory.lock in TOML format (canonical)."""
+    memory = data.get("memory", {})
+    lines = ["# memory.lock -- project binding to memory-core", "", "[memory]"]
+    for key in ("memory_version", "schema_version", "adapter_version", "locked_at", "lock_reason"):
+        val = memory.get(key, "")
+        lines.append(f'{key} = "{val}"')
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _get_lock_version(lock_data: dict) -> str:
+    """Extract version from lock data (TOML or JSON format)."""
+    if "memory" in lock_data:
+        return lock_data["memory"].get("memory_version", "")
+    return lock_data.get("version", "")
+
+
+def _current_version() -> str:
+    """Get current memory version from constants or fallback."""
+    try:
+        from memory_core.constants import CURRENT_MEMORY_VERSION
+        return CURRENT_MEMORY_VERSION
+    except ImportError:
+        return "0.2.0"
+
 TOOLS_DIR = Path(__file__).resolve().parents[1] / "memory_core" / "tools"
 INIT_SCRIPT = TOOLS_DIR / "init_project_memory.py"
 VALIDATE_SCRIPT = TOOLS_DIR / "validate_project_memory.py"
@@ -27,7 +66,8 @@ def _run_script(
 ) -> subprocess.CompletedProcess[str]:
     """Run a tool script and return the result."""
     env = dict(os.environ)
-    env["PYTHONPATH"] = str(TOOLS_DIR)
+    # Set PYTHONPATH to memory_core/ so imports like 'memory_core.constants' work
+    env["PYTHONPATH"] = str(TOOLS_DIR.parent)
     return subprocess.run(
         [sys.executable, str(script)] + args,
         capture_output=True,
@@ -240,17 +280,20 @@ class TestMigrationIdempotency:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             # Downgrade version to 0.1.0 so we can test the 0.1.0->0.2.0 migration
             lock_path = proj / ".memory" / "memory.lock"
-            lock_data = json.loads(lock_path.read_text())
-            lock_data["version"] = "0.1.0"
-            lock_path.write_text(json.dumps(lock_data, indent=2), encoding="utf-8")
+            lock_data = _read_memory_lock(lock_path)
+            if "memory" in lock_data:
+                lock_data["memory"]["memory_version"] = "0.1.0"
+            else:
+                lock_data["version"] = "0.1.0"
+            _write_memory_lock(lock_path, lock_data)
             adapter_path = proj / ".memory" / "adapter.toml"
             adapter_text = adapter_path.read_text(encoding="utf-8")
-            adapter_text = adapter_text.replace('version = "0.2.0"', 'version = "0.1.0"')
+            adapter_text = adapter_text.replace(f'version = "{_current_version()}"', 'version = "0.1.0"')
             adapter_path.write_text(adapter_text, encoding="utf-8")
 
             result = _run_script(
                 MIGRATE_SCRIPT,
-                ["--target", str(proj), "--from", "0.1.0", "--to", "0.2.0", "--dry-run", "--json"],
+                ["--target", str(proj), "--from", "0.1.0", "--to", _current_version(), "--dry-run", "--json"],
             )
             assert result.returncode == 0
             data = json.loads(result.stdout)
@@ -258,8 +301,8 @@ class TestMigrationIdempotency:
             assert data["dry_run"] is True
 
             # Verify lock file still says 0.1.0
-            lock = json.loads((proj / ".memory" / "memory.lock").read_text())
-            assert lock["version"] == "0.1.0"
+            lock = _read_memory_lock(proj / ".memory" / "memory.lock")
+            assert _get_lock_version(lock) == "0.1.0"
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
@@ -271,30 +314,33 @@ class TestMigrationIdempotency:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             # Downgrade version to 0.1.0 so we can test the 0.1.0->0.2.0 migration
             lock_path = proj / ".memory" / "memory.lock"
-            lock_data = json.loads(lock_path.read_text())
-            lock_data["version"] = "0.1.0"
-            lock_path.write_text(json.dumps(lock_data, indent=2), encoding="utf-8")
+            lock_data = _read_memory_lock(lock_path)
+            if "memory" in lock_data:
+                lock_data["memory"]["memory_version"] = "0.1.0"
+            else:
+                lock_data["version"] = "0.1.0"
+            _write_memory_lock(lock_path, lock_data)
             adapter_path = proj / ".memory" / "adapter.toml"
             adapter_text = adapter_path.read_text(encoding="utf-8")
-            adapter_text = adapter_text.replace('version = "0.2.0"', 'version = "0.1.0"')
+            adapter_text = adapter_text.replace(f'version = "{_current_version()}"', 'version = "0.1.0"')
             adapter_path.write_text(adapter_text, encoding="utf-8")
 
             result = _run_script(
                 MIGRATE_SCRIPT,
-                ["--target", str(proj), "--from", "0.1.0", "--to", "0.2.0", "--json"],
+                ["--target", str(proj), "--from", "0.1.0", "--to", _current_version(), "--json"],
             )
             assert result.returncode == 0
             data = json.loads(result.stdout)
             assert data["success"] is True
 
             # Verify lock file updated
-            lock = json.loads((proj / ".memory" / "memory.lock").read_text())
-            assert lock["version"] == "0.2.0"
+            lock = _read_memory_lock(proj / ".memory" / "memory.lock")
+            assert _get_lock_version(lock) == _current_version()
 
             # Verify migrations.log has entry
             log = (proj / ".memory" / "migrations.log").read_text()
             assert "0.1.0" in log
-            assert "0.2.0" in log
+            assert _current_version() in log
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
@@ -344,9 +390,12 @@ class TestVersionCheckFailure:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             # Tamper with version
             lock = proj / ".memory" / "memory.lock"
-            data = json.loads(lock.read_text())
-            data["version"] = "9.9.9"
-            lock.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            data = _read_memory_lock(lock)
+            if "memory" in data:
+                data["memory"]["memory_version"] = "9.9.9"
+            else:
+                data["version"] = "9.9.9"
+            _write_memory_lock(lock, data)
 
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
             data_out = json.loads(result.stdout)
@@ -364,7 +413,7 @@ class TestVersionCheckFailure:
             # Tamper with adapter version
             adapter = proj / ".memory" / "adapter.toml"
             text = adapter.read_text(encoding="utf-8")
-            text = text.replace('version = "0.2.0"', 'version = "9.9.9"')
+            text = text.replace(f'version = "{_current_version()}"', 'version = "9.9.9"')
             adapter.write_text(text, encoding="utf-8")
 
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
@@ -685,6 +734,113 @@ class TestHooksAndAgentsMdGeneration:
             agents_path = proj / "AGENTS.md"
             content = agents_path.read_text(encoding="utf-8")
             assert "--host codex" in content
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# Factory host support
+# ---------------------------------------------------------------------------
+
+class TestFactoryHost:
+    """Tests for --host factory support."""
+
+    def test_init_factory_adapter_toml_host(self) -> None:
+        """memory-init --host factory should set routing.host to factory in adapter.toml."""
+        proj = _make_temp_project()
+        try:
+            _run_script(INIT_SCRIPT, ["--target", str(proj), "--host", "factory"])
+            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            assert 'host = "factory"' in adapter
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_init_factory_validate_passes(self) -> None:
+        """A factory-initialized project should pass validation."""
+        proj = _make_temp_project()
+        try:
+            _run_script(INIT_SCRIPT, ["--target", str(proj), "--host", "factory"])
+            result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
+            data = json.loads(result.stdout)
+            assert data["all_passed"] is True
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_init_factory_agents_md_command(self) -> None:
+        """AGENTS.md should contain --host factory in the command."""
+        proj = _make_temp_project()
+        try:
+            _run_script(INIT_SCRIPT, ["--target", str(proj), "--host", "factory"])
+            agents = (proj / "AGENTS.md").read_text()
+            assert "--host factory" in agents
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# Validator enhanced checks
+# ---------------------------------------------------------------------------
+
+class TestValidatorEnhancedChecks:
+    """Tests for enhanced validator checks."""
+
+    def test_reject_invalid_host(self) -> None:
+        """adapter.toml with unsupported host should fail validation."""
+        proj = _make_temp_project()
+        try:
+            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            adapter = proj / ".memory" / "adapter.toml"
+            text = adapter.read_text(encoding="utf-8")
+            text = text.replace('host = "codex"', 'host = "neovim"')
+            adapter.write_text(text, encoding="utf-8")
+
+            result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
+            data = json.loads(result.stdout)
+            assert data["all_passed"] is False
+            host_checks = [c for c in data["checks"] if "adapter_host_enum" in c["name"]]
+            assert any(not c["passed"] for c in host_checks)
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_reject_invalid_status_enum(self) -> None:
+        """STATE.md with invalid status should fail validation."""
+        proj = _make_temp_project()
+        try:
+            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            state = proj / ".memory" / "STATE.md"
+            text = state.read_text(encoding="utf-8")
+            text = text.replace("status: active", "status: invalid_status")
+            state.write_text(text, encoding="utf-8")
+
+            result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
+            data = json.loads(result.stdout)
+            assert data["all_passed"] is False
+            enum_checks = [c for c in data["checks"] if "status_enum" in c["name"]]
+            assert any(not c["passed"] for c in enum_checks)
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_reject_invalid_semver(self) -> None:
+        """memory.lock with non-SemVer version should fail validation."""
+        proj = _make_temp_project()
+        try:
+            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            lock = proj / ".memory" / "memory.lock"
+            text = lock.read_text(encoding="utf-8")
+            text = text.replace(f'memory_version = "{_current_version()}"', 'memory_version = "not-a-version"')
+            lock.write_text(text, encoding="utf-8")
+
+            result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
+            data = json.loads(result.stdout)
+            assert data["all_passed"] is False
+            semver_checks = [c for c in data["checks"] if "memory_lock_semver" in c["name"]]
+            assert any(not c["passed"] for c in semver_checks)
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)

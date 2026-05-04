@@ -252,6 +252,8 @@ def resolve_host_delegate(host: str, mode: str = "auto") -> HostDelegate:
         cmux_delegate: HostDelegate = CodexDelegate()
     elif host == "claude":
         cmux_delegate = ClaudeDelegate()
+    elif host == "factory":
+        cmux_delegate = NoopHostDelegate()
     else:
         return NoopHostDelegate()
 
@@ -1246,6 +1248,7 @@ class DelegateRouter:
     ):
         self.codex_delegate = codex_delegate
         self.claude_delegate = claude_delegate
+        self._noop_delegate = NoopHostDelegate()
 
     def route(
         self,
@@ -1259,6 +1262,8 @@ class DelegateRouter:
             return self.codex_delegate.execute(event, raw_payload, payload)
         elif host == "claude":
             return self.claude_delegate.execute(event, raw_payload, payload)
+        elif host == "factory":
+            return self._noop_delegate.noop_response()
         else:
             raise ValueError(f"unknown host: {host}")
 
@@ -1268,6 +1273,8 @@ class DelegateRouter:
             return self.codex_delegate.noop_response()
         elif host == "claude":
             return self.claude_delegate.noop_response()
+        elif host == "factory":
+            return self._noop_delegate.noop_response()
         else:
             raise ValueError(f"unknown host: {host}")
 

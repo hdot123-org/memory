@@ -173,7 +173,7 @@ def parse_hook_event(host: str, event: str, raw_payload: str) -> HookEvent:
     """Parse a raw hook invocation into a HookEvent.
 
     Args:
-        host: "codex" or "claude".
+        host: "codex", "claude", or "factory".
         event: Event type string (used directly for Codex, ignored for Claude
                which reads event type from payload).
         raw_payload: Raw JSON string from stdin.
@@ -188,5 +188,7 @@ def parse_hook_event(host: str, event: str, raw_payload: str) -> HookEvent:
         return from_codex_payload(raw_payload, event=event)
     elif host == "claude":
         return from_claude_payload(raw_payload)
+    elif host == "factory":
+        return from_codex_payload(raw_payload, event=event)
     else:
         raise ValueError(f"unknown host: {host!r}")

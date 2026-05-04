@@ -42,7 +42,7 @@ memory-init --target /path/to/project
 |---|---|
 | `--target` | （必填）目标项目根目录路径 |
 | `--scope` | 显式指定项目 scope 名称；若省略则从 git remote 或目录名自动推导 |
-| `--host` | 指定 host 平台（`codex` 或 `claude`，默认 `codex`），影响 `.claude/hooks.json` 和 `AGENTS.md` 中生成的 gateway 命令 |
+| `--host` | 指定 host 平台（`codex`、`claude` 或 `factory`，默认 `codex`），影响 `.claude/hooks.json` 和 `AGENTS.md` 中生成的 gateway 命令 |
 | `--dry-run` | 只输出将要执行的操作，不实际写入文件 |
 | `--json` | 以 JSON 格式输出结果，便于脚本集成 |
 
@@ -126,6 +126,16 @@ memory-migrate --target /path/to/project --from 0.1.0 --to 0.2.0
 
 `memory.lock` 是项目 `.memory/` 目录的版本锁定文件，记录当前使用的 schema 版本。每次 `memory-init` 会创建它，`memory-validate` 会校验它，`memory-migrate` 会更新它。
 
+TOML 格式示例：
+```toml
+[memory]
+memory_version = "0.2.0"
+schema_version = "context-package-v1"
+adapter_version = "builtin"
+locked_at = "2026-04-29T00:00:00Z"
+lock_reason = "initial"
+```
+
 ### 升级流程
 
 ```
@@ -173,7 +183,7 @@ Adapter 通过 `adapter.toml` 声明项目的 identity、host、policy 配置，
 
 ```toml
 [core]
-version = "0.1.0"
+version = "0.2.0"
 adapter = "default"
 
 [policy]
@@ -197,7 +207,7 @@ canonical_files = []
 |---|---|---|
 | `project_name` | `str` | 项目名称 |
 | `project_scope` | `str` | 项目 scope 标识 |
-| `host` | `str` | host 平台，默认 `"codex"` |
+| `host` | `str` | host 平台（`codex`、`claude` 或 `factory`），默认 `"codex"` |
 | `adapter_version` | `str` | adapter 协议版本 |
 | `canonical_files` | `list[str]` | canonical 文件列表 |
 | `artifact_root` | `str \| None` | artifact 输出根目录（可选） |

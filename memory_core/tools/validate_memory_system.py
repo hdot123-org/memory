@@ -12,9 +12,15 @@ Prints a summary report to stdout and returns 0 on success, 1 on failure.
 
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 from typing import Any
+
+try:
+    from memory_hook_config import CoreConfig  # type: ignore
+except ImportError:
+    CoreConfig = None  # type: ignore
 
 # Ensure workspace/tools and the repo root are on sys.path.
 # The gateway module uses both "memory_core.tools" dotted imports and
@@ -106,6 +112,19 @@ def check_core_builder_resolve(result: ValidateResult) -> tuple[bool, Any]:
         return False, None
 
 
+def _wrap_builder_with_kwargs(builder: Any) -> Any:
+    """Wrap a builder that takes a single config arg to accept kwargs."""
+    sig = inspect.signature(builder)
+    if len(sig.parameters) == 1:
+        # Builder expects a single config argument (new interface)
+        def wrapped(**kwargs):
+            config = CoreConfig(**kwargs)
+            return builder(config)
+        return wrapped
+    # Builder already accepts kwargs (old interface)
+    return builder
+
+
 def check_context_package(result: ValidateResult, builder: Any) -> bool:
     """Verify the core builder produces a well-shaped context package."""
     try:
@@ -150,7 +169,9 @@ def check_context_package(result: ValidateResult, builder: Any) -> bool:
             event_contract_blocker_scopes=[],
             core_evidence_refs=[],
         )
-        package = builder(**kwargs)
+        # Wrap builder to handle both old (kwargs) and new (config) interfaces
+        wrapped_builder = _wrap_builder_with_kwargs(builder)
+        package = wrapped_builder(**kwargs)
     except Exception as exc:
         result.record("context_package", False, f"builder raised: {exc}")
         return False
