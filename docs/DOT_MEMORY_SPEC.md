@@ -26,7 +26,12 @@ tags: [dot-memory,spec,schema]
 ├── PLAN.md            # 执行计划
 ├── STATE.md           # 项目状态
 ├── TASKS.md           # 任务清单
-└── migrations.log     # 迁移日志
+├── migrations.log     # 迁移日志
+└── kb/
+    ├── projects/      # 项目知识
+    ├── decisions/     # 决策记录
+    ├── lessons/       # 经验教训
+    └── global/        # 全局规范
 ```
 
 ## 文件规范
@@ -39,8 +44,8 @@ tags: [dot-memory,spec,schema]
 
 ```toml
 [memory]
-memory_version = "0.1.0"
-schema_version = "wb-hook-v2"
+memory_version = "0.2.0"
+schema_version = "context-package-v1"
 adapter_version = "builtin"
 locked_at = "2026-04-29T00:00:00Z"
 lock_reason = "initial"
@@ -48,8 +53,8 @@ lock_reason = "initial"
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| memory_version | SemVer string | 是 | memory-core 的发布版本，如 `0.1.0` |
-| schema_version | string | 是 | hook/schema 版本标识，如 `wb-hook-v2`、`context-package-v1` |
+| memory_version | SemVer string | 是 | memory-core 的发布版本，如 `0.2.0` |
+| schema_version | string | 是 | hook/schema 版本标识，如 `context-package-v1` |
 | adapter_version | string | 否 | adapter 版本，默认 `builtin` |
 | locked_at | ISO-8601 | 否 | 最后锁定/升级时间 |
 | lock_reason | string | 否 | 锁定原因：`initial` / `upgrade` / `downgrade` |
@@ -69,7 +74,7 @@ lock_reason = "initial"
 
 ```toml
 [core]
-version = "0.1.0"
+version = "0.2.0"
 adapter = "default"
 
 [policy]
@@ -80,6 +85,7 @@ registration_commit_phase = "post"
 [routing]
 project_name = "my-project"
 project_scope = "default"
+# host: codex | claude | factory
 host = "codex"
 canonical_files = ["CANONICAL.md", "STATE.md"]
 # artifact_root = "artifacts/"
@@ -94,7 +100,7 @@ canonical_files = ["CANONICAL.md", "STATE.md"]
 | policy.registration_commit_phase | string | 否 | 注册提交阶段，默认 `post` |
 | routing.project_name | string | 是 | 项目名称 |
 | routing.project_scope | string | 是 | 项目作用域 |
-| routing.host | string | 否 | 宿主平台，默认 `codex` |
+| routing.host | string | 否 | 宿主平台：`codex` \| `claude` \| `factory`，默认 `codex` |
 | routing.canonical_files | array | 否 | 规范文件列表 |
 | routing.artifact_root | string | 否 | 产出物根目录 |
 

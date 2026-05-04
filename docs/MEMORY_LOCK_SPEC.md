@@ -40,11 +40,11 @@ memory.lock 是 TOML 格式文件，包含以下字段：
 
 [memory]
 # memory-core 发布版本号（SemVer），项目当前集成的版本
-memory_version = "0.1.0"
+memory_version = "0.2.0"
 
 # 项目使用的 memory hook schema 版本标识符
 # 与 memory-core 内部 schema 版本号对应
-schema_version = "wb-hook-v2"
+schema_version = "context-package-v1"
 
 # adapter 版本号（如果项目使用自定义 adapter）
 # 不使用自定义 adapter 时可省略或设为 "builtin"

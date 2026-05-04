@@ -1,3 +1,8 @@
+> **⚠️ ARCHIVED**: 此文档描述的是历史版本的结构和流程（如 `workspace/tools/`、`branch-1/branch-2` 工作流）。
+> 当前代码已迁移到 `memory_core/tools/`，默认分支为 `main`。本文档保留作为参考，不代表当前实现。
+
+---
+
 # Fixture 与真实项目状态区分规则
 
 > 版本：v1.0 / 2026-04-29

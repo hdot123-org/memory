@@ -1,3 +1,8 @@
+> **⚠️ ARCHIVED**: 此文档描述的是历史版本的结构和流程（如 `workspace/tools/`、`branch-1/branch-2` 工作流）。
+> 当前代码已迁移到 `memory_core/tools/`，默认分支为 `main`。本文档保留作为参考，不代表当前实现。
+
+---
+
 # 项目状态迁移规则
 
 > 版本：v1.0 | 创建日期：2026-04-29
@@ -41,21 +46,19 @@
 ```
 {业务项目仓库}/
 ├── .memory/                        # 项目记忆层（迁移目标）
+│   ├── memory.lock                 # 版本锁定文件，记录当前 schema 版本
+│   ├── adapter.toml                # 项目适配器配置
+│   ├── CANONICAL.md                # 项目规范
+│   ├── PLAN.md                     # 执行计划
+│   ├── STATE.md                    # 项目状态
+│   ├── TASKS.md                    # 任务清单
+│   ├── migrations.log              # 迁移日志
 │   ├── kb/                         # 知识库（真相层）
-│   │   ├── project/                # 项目真相
-│   │   │   ├── context.md          # 项目上下文
-│   │   │   ├── decisions/          # 决策记录
-│   │   │   └── architecture.md     # 架构说明（如有）
-│   │   ├── global/                 # 跨项目规则（引用或本地副本）
-│   │   └── lessons/                # 经验教训
-│   ├── docs/                       # 文档库（资料层）
-│   │   ├── INDEX.md                # 文档索引
-│   │   └── research/               # 研究资料
-│   ├── log/                        # 日志（append-only）
-│   │   └── YYYY-MM-DD.md           # 每日日志
-│   ├── actions/                    # 临时任务
-│   └── MIGRATION_RECORD.md         # 迁移记录（必填）
-├── .memory-pointer.md              # memory 仓库指针文件（可选，见 2.2）
+│   │   ├── projects/               # 项目真相
+│   │   ├── decisions/              # 决策记录
+│   │   ├── lessons/                # 经验教训
+│   │   └── global/                 # 跨项目规则（引用或本地副本）
+│   └── .memory-pointer.md          # memory 仓库指针文件（可选，见 2.2）
 └── ...                             # 项目原有文件不变
 ```
 
@@ -117,17 +120,15 @@ find workspace/projects/{ProjectName}/ -type f | grep -v '.gitkeep'
 
 **Step 1：在业务项目 branch-2 上创建 .memory/ 骨架**
 ```bash
-mkdir -p .memory/{kb/{project/decisions,global,lessons},docs/research,log,actions}
-touch .memory/docs/INDEX.md
+mkdir -p .memory/kb/{projects,decisions,global,lessons}
 ```
 
 **Step 2：从 memory 仓库复制项目状态文件**
 ```bash
 # 从 memory 仓库 workspace/projects/{ProjectName}/ 复制内容
 # 从 memory 仓库 workspace/memory/kb/projects/{ProjectName}/ 复制（如有）
-# 从 memory 仓库 workspace/memory/docs/ 复制项目相关文档（如有）
 
-cp -r {memory}/workspace/projects/{ProjectName}/* {业务项目}/.memory/kb/project/
+cp -r {memory}/workspace/projects/{ProjectName}/* {业务项目}/.memory/kb/projects/
 ```
 
 **Step 3：生成迁移记录**
@@ -147,11 +148,10 @@ cat > .memory/MIGRATION_RECORD.md << 'EOF'
 
 ## 迁移内容清单
 
-- [ ] kb/project/ 已迁移
+- [ ] kb/projects/ 已迁移
+- [ ] kb/decisions/ 已建立
+- [ ] kb/lessons/ 已建立
 - [ ] kb/global/ 引用已建立
-- [ ] docs/ 已迁移
-- [ ] log/ 已迁移
-- [ ] actions/ 已迁移
 
 ## 验证状态
 
@@ -182,8 +182,8 @@ git commit -m "migrate: replace {ProjectName} with migration pointer"
 # 1. validator 核验（引用 validator 概念）
 # 运行业务项目的 validator 脚本（如有）
 # 验证 .memory/ 结构完整性
-test -f .memory/MIGRATION_RECORD.md && echo "迁移记录存在" || echo "FAIL: 迁移记录缺失"
-test -d .memory/kb/project/ && echo "知识库存在" || echo "FAIL: 知识库缺失"
+test -f .memory/migrations.log && echo "迁移日志存在" || echo "FAIL: 迁移日志缺失"
+test -d .memory/kb/projects/ && echo "知识库存在" || echo "FAIL: 知识库缺失"
 
 # 2. 幂等性测试：再次执行迁移步骤，确认不破坏已有状态
 

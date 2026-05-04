@@ -17,17 +17,17 @@
 
 | 类别 | 路径示例 | 说明 |
 |------|----------|------|
-| 核心代码 | `workspace/tools/` | memory hook 接口、实现、Gateway、Schema、Validator |
+| 核心代码 | `memory_core/tools/` | memory hook 接口、实现、Gateway、Schema、Validator |
 | 测试 | `tests/` | 单元测试、集成测试 |
-| 协议与 Schema | `workspace/tools/memory_hook_schema.py` | 数据结构定义、校验逻辑 |
+| 协议与 Schema | `memory_core/tools/memory_hook_schema.py` | 数据结构定义、校验逻辑 |
 | 模板 | `templates/` | 代码审查模板、分析脚本等通用模板 |
 | 文档 | `docs/` | 仓库级文档（边界、架构、验收报告等） |
 | 审查记录 | `review/`, `reviews/`, `analysis/`, `audit/` | 代码审查与分析产出 |
 | 示例 Fixture | `examples/`（如存在） | demo 级别的示例，不代表真实项目状态 |
 | 项目配置 | `pyproject.toml`, `.gitignore`, `.github/` | 构建、CI、发布配置 |
-| Lessons Learned | `workspace/memory/kb/lessons/` | 通用经验教训，不绑定具体项目 |
-| 决策记录 | `workspace/memory/kb/decisions/` | 架构或设计决策，不绑定具体项目 |
-| 全局规范 | `workspace/memory/kb/global/` | 跨项目通用规范（如 Projects 制定规范框架） |
+| Lessons Learned | `memory_core/kb/lessons/` | 通用经验教训，不绑定具体项目 |
+| 决策记录 | `memory_core/kb/decisions/` | 架构或设计决策，不绑定具体项目 |
+| 全局规范 | `memory_core/kb/global/` | 跨项目通用规范（如 Projects 制定规范框架） |
 
 ---
 
