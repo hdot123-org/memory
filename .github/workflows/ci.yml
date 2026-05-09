@@ -31,5 +31,7 @@ jobs:
         run: |
           pip install ruff
           ruff check .
+      - name: BOUNDARY pollution guard
+        run: python scripts/check_boundary.py
       - name: Run tests
         run: python -m pytest -q tests
