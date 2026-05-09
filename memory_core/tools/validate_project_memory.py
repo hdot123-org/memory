@@ -45,6 +45,8 @@ except ModuleNotFoundError:
 from memory_core.constants import (
     CURRENT_MEMORY_VERSION,
     FRONTMATTER_REQUIREMENTS,
+    MESSAGE_VERSION_MISMATCH_DOWNGRADE_DETECTED,
+    MESSAGE_VERSION_MISMATCH_UPGRADE_NEEDED,
     MIGRATION_LOG_LINE_PATTERN,
     REQUIRED_MEMORY_DIRS,
     REQUIRED_MEMORY_FILES,
@@ -317,15 +319,27 @@ def check_lock_version(memory_root: Path, result: CheckResult) -> bool:
         result.record("lock_version", False, "no memory_version key in memory.lock")
         return False
 
-    if version == CURRENT_MEMORY_VERSION:
+    try:
+        lock_tuple = tuple(map(int, version.split(".")))
+    except ValueError:
+        result.record("lock_version", False, f"invalid version format: '{version}'")
+        return False
+    current_tuple = tuple(map(int, CURRENT_MEMORY_VERSION.split(".")))
+
+    if lock_tuple == current_tuple:
         result.record("lock_version", True, f"version={version}")
         return True
-    else:
-        result.record(
-            "lock_version",
-            False,
-            f"version mismatch: lock={version}, expected={CURRENT_MEMORY_VERSION}",
+    elif lock_tuple < current_tuple:
+        msg = MESSAGE_VERSION_MISMATCH_UPGRADE_NEEDED.format(
+            current=version, target=CURRENT_MEMORY_VERSION,
         )
+        result.record("lock_version", False, msg)
+        return False
+    else:
+        msg = MESSAGE_VERSION_MISMATCH_DOWNGRADE_DETECTED.format(
+            current=version, target=CURRENT_MEMORY_VERSION,
+        )
+        result.record("lock_version", False, msg)
         return False
 
 
@@ -410,6 +424,7 @@ def check_state_enumerations(memory_root: Path, result: CheckResult) -> bool:
     - STATE.md: status must be active|paused|completed|archived
     - PLAN.md: status must be planning|in_progress|review|completed|blocked
     - CANONICAL.md: status must be active
+    - STATE.md: health (if present) must be green|yellow|red
     """
     all_ok = True
     for fname, valid_statuses in STATUS_ENUMERATIONS.items():
@@ -431,6 +446,24 @@ def check_state_enumerations(memory_root: Path, result: CheckResult) -> bool:
             all_ok = False
         else:
             result.record(f"status_enum:{fname}", True, f"status={status}")
+
+    # Additional: validate STATE.md health field if present
+    state_path = memory_root / "STATE.md"
+    if state_path.is_file():
+        text = state_path.read_text(encoding="utf-8")
+        fm = _parse_frontmatter(text)
+        health = fm.get("health", "").strip()
+        if health:
+            if health not in VALID_HEALTH_VALUES:
+                result.record(
+                    "health_enum:STATE.md",
+                    False,
+                    f"invalid health '{health}', must be one of: {', '.join(VALID_HEALTH_VALUES)}",
+                )
+                all_ok = False
+            else:
+                result.record("health_enum:STATE.md", True, f"health={health}")
+
     return all_ok
 
 

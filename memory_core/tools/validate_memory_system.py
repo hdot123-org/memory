@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import inspect
 import sys
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -175,7 +176,11 @@ def check_context_package(result: ValidateResult, builder: Any) -> bool:
         wrapped_builder = _wrap_builder_with_kwargs(builder)
         package = wrapped_builder(**kwargs)
     except Exception as exc:
-        import traceback as _tb; result.record("context_package", False, f"builder raised: {exc}\n{_tb.format_exc()}")
+        result.record(
+            "context_package",
+            False,
+            f"builder raised: {exc}\n{traceback.format_exc()}",
+        )
         return False
 
     if not isinstance(package, dict):

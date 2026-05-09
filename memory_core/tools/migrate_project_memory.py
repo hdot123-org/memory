@@ -8,9 +8,12 @@ Usage:
 
 Features:
     - from/to version parameters
-    - Migration discovery (auto-discovers applicable migration scripts)
-    - migrations.log write rules
-    - Rollback/residue output
+    - Idempotent: already at target → noop
+    - Downgrade explicit reject
+    - Pre-migration backup
+    - migrations.log atomic append (fcntl on POSIX)
+    - Soft rollback (plan + execute)
+    - Auto-rollback on failure
     - Dry-run mode
 
 Exit codes:
@@ -23,6 +26,8 @@ from __future__ import annotations
 import argparse
 import importlib.metadata
 import json
+import os
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,7 +38,10 @@ try:
 except ModuleNotFoundError:
     import tomli as tomllib
 
-from memory_core.constants import CURRENT_MEMORY_VERSION
+from memory_core.constants import (
+    _BACKUP_FAILED,
+    CURRENT_MEMORY_VERSION,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -42,6 +50,17 @@ from memory_core.constants import CURRENT_MEMORY_VERSION
 MIGRATIONS_LOG_NAME = "migrations.log"
 MEMORY_LOCK_NAME = "memory.lock"
 ADAPTER_TOML_NAME = "adapter.toml"
+BACKUPS_DIR_NAME = "backups"
+BACKUP_MANIFEST_NAME = "BACKUP_MANIFEST.json"
+
+# Local downgrade-reject constants (not in constants.py to avoid coupling)
+_DOWNGRADE_NOT_SUPPORTED = "downgrade_not_supported"
+_CURRENT_NEWER_THAN_TARGET = "current_newer_than_target"
+
+
+def _parse_version_tuple(ver: str) -> tuple[int, ...]:
+    """Parse a version string like '0.1.0' into a comparable tuple."""
+    return tuple(map(int, ver.split(".")))
 
 
 def _write_toml_memory_lock(data: dict[str, Any], path: Path) -> None:
@@ -59,10 +78,6 @@ def _write_toml_memory_lock(data: dict[str, Any], path: Path) -> None:
 # Migration registry
 # ---------------------------------------------------------------------------
 
-# Each migration is a function that takes a memory_root Path and returns
-# a dict with 'success', 'detail', and optionally 'residue' keys.
-# The registry key is "from_version->to_version".
-
 def migrate_v010_to_v020(memory_root: Path) -> dict[str, Any]:
     """Migration: 0.1.0 -> CURRENT_MEMORY_VERSION.
 
@@ -77,9 +92,7 @@ def migrate_v010_to_v020(memory_root: Path) -> dict[str, Any]:
 
     try:
         text = lock_path.read_text(encoding="utf-8")
-        # Detect format
         if text.strip().startswith("{"):
-            # Legacy JSON -> convert to TOML
             data_json = json.loads(text)
             old_version = data_json.get("version", "unknown")
             lock_data = {
@@ -92,7 +105,6 @@ def migrate_v010_to_v020(memory_root: Path) -> dict[str, Any]:
                 }
             }
         else:
-            # Canonical TOML
             lock_data = tomllib.loads(text)
             memory = lock_data.get("memory") or {}
             old_version = memory.get("memory_version", "unknown")
@@ -110,7 +122,6 @@ def migrate_v010_to_v020(memory_root: Path) -> dict[str, Any]:
         result["detail"] = f"Failed to write {MEMORY_LOCK_NAME}: {exc}"
         return result
 
-    # Update adapter.toml version
     adapter_path = memory_root / ADAPTER_TOML_NAME
     if adapter_path.is_file():
         try:
@@ -125,7 +136,6 @@ def migrate_v010_to_v020(memory_root: Path) -> dict[str, Any]:
     return result
 
 
-# Registry: "from->to" string -> migration function
 MIGRATION_REGISTRY: dict[str, Callable[[Path], dict[str, Any]]] = {
     f"0.1.0->{CURRENT_MEMORY_VERSION}": migrate_v010_to_v020,
 }
@@ -136,11 +146,7 @@ MIGRATION_REGISTRY: dict[str, Callable[[Path], dict[str, Any]]] = {
 # ---------------------------------------------------------------------------
 
 def discover_migrations(from_version: str, to_version: str) -> list[dict[str, Any]]:
-    """Discover applicable migrations between two versions.
-
-    Returns a list of migration descriptors in execution order.
-    Supports direct and chained migrations.
-    """
+    """Discover applicable migrations between two versions."""
     direct_key = f"{from_version}->{to_version}"
     if direct_key in MIGRATION_REGISTRY:
         return [
@@ -152,10 +158,7 @@ def discover_migrations(from_version: str, to_version: str) -> list[dict[str, An
             }
         ]
 
-    # Try to find a chain: from -> intermediate -> to
-    # For now, only support single-hop migrations
     available = list(MIGRATION_REGISTRY.keys())
-    # Look for a chain through known versions
     for mid_key in available:
         mid_from, mid_to = mid_key.split("->")
         if mid_from == from_version:
@@ -180,7 +183,33 @@ def discover_migrations(from_version: str, to_version: str) -> list[dict[str, An
 
 
 # ---------------------------------------------------------------------------
-# migrations.log writer
+# _append_migrations_log helper — atomic with fcntl on POSIX
+# ---------------------------------------------------------------------------
+
+def _append_migrations_log(log_path: Path, line: str) -> None:
+    """Append a single line to migrations.log with file locking.
+
+    POSIX: uses fcntl.LOCK_EX + fsync.
+    Windows: falls back to plain open("a").
+    """
+    try:
+        import fcntl
+    except ImportError:
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    else:
+        with open(log_path, "a", encoding="utf-8") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                f.write(line + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
+# ---------------------------------------------------------------------------
+# migrations.log public writer
 # ---------------------------------------------------------------------------
 
 def append_migration_log(
@@ -191,10 +220,7 @@ def append_migration_log(
     detail: str,
     dry_run: bool = False,
 ) -> str:
-    """Append a record to migrations.log.
-
-    Returns the log line that was (or would be) written.
-    """
+    """Append a record to migrations.log. Returns the log line."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     dry_tag = " [DRY RUN]" if dry_run else ""
     line = f"{now} | {from_version} | {to_version} | {status} | {detail}{dry_tag}"
@@ -206,31 +232,169 @@ def append_migration_log(
     if not log_path.is_file():
         log_path.write_text(f"# Migrations Log\n{line}\n", encoding="utf-8")
     else:
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
+        _append_migrations_log(log_path, line)
 
     return line
 
 
 # ---------------------------------------------------------------------------
-# Rollback planning
+# Backup helpers
 # ---------------------------------------------------------------------------
 
-def plan_rollback(
-    from_version: str,
-    to_version: str,
-    migrations: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """Plan what would be needed to roll back the migration."""
-    rollback_steps: list[str] = []
-    for m in reversed(migrations):
-        rollback_steps.append(f"Roll back {m['from']} -> {m['to']}")
+def _create_backup(memory_root: Path, from_version: str, to_version: str) -> Path:
+    """Copy .memory/ (excluding backups/) to .memory/backups/<utc_iso8601_compact>/.
+
+    Returns the backup directory path.
+    """
+    backups_dir = memory_root / BACKUPS_DIR_NAME
+    backups_dir.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_dest = backups_dir / ts
+
+    def _ignore_backups(dirpath: str, names: list[str]) -> list[str]:
+        """Exclude the backups/ subdirectory from copy."""
+        if Path(dirpath) == memory_root:
+            return [BACKUPS_DIR_NAME]
+        return []
+
+    shutil.copytree(str(memory_root), str(backup_dest), ignore=_ignore_backups)
+
+    # Count source files (excluding backups/)
+    source_files_count = sum(
+        1 for p in memory_root.rglob("*")
+        if p.is_file() and BACKUPS_DIR_NAME not in p.parts[-2:] and p.parent != backups_dir
+    )
+    # Recount properly: files directly under memory_root but not under backups/
+    source_files_count = 0
+    for p in memory_root.rglob("*"):
+        if p.is_file():
+            rel = p.relative_to(memory_root)
+            if rel.parts[0] != BACKUPS_DIR_NAME:
+                source_files_count += 1
+
+    manifest = {
+        "from_version": from_version,
+        "to_version": to_version,
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "source_files_count": source_files_count,
+    }
+    manifest_path = backup_dest / BACKUP_MANIFEST_NAME
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    return backup_dest
+
+
+# ---------------------------------------------------------------------------
+# Rollback planning — reads backups directory
+# ---------------------------------------------------------------------------
+
+def plan_rollback(memory_root: Path) -> dict[str, Any]:
+    """Check if a rollback is possible by looking at backups/.
+
+    Returns the latest backup metadata or can_rollback=False.
+    """
+    backups_dir = memory_root / BACKUPS_DIR_NAME
+    if not backups_dir.is_dir():
+        return {"can_rollback": False, "reason": "no backup found"}
+
+    # Find backup dirs that have BACKUP_MANIFEST.json
+    backup_dirs = []
+    for d in backups_dir.iterdir():
+        if d.is_dir() and (d / BACKUP_MANIFEST_NAME).is_file():
+            backup_dirs.append(d)
+
+    if not backup_dirs:
+        return {"can_rollback": False, "reason": "no backup found"}
+
+    # Pick the latest by name (timestamp-based)
+    latest = max(backup_dirs, key=lambda d: d.name)
+    manifest = json.loads(
+        (latest / BACKUP_MANIFEST_NAME).read_text(encoding="utf-8")
+    )
 
     return {
-        "can_rollback": False,  # Migrations are not auto-reversible by default
-        "steps": rollback_steps,
-        "warning": "Manual rollback may be required. Review residue before proceeding.",
+        "can_rollback": True,
+        "backup_dir": str(latest),
+        "from_version": manifest["from_version"],
+        "to_version": manifest["to_version"],
+        "ts": manifest["timestamp"],
     }
+
+
+# ---------------------------------------------------------------------------
+# execute_rollback — restore from backup
+# ---------------------------------------------------------------------------
+
+def execute_rollback(memory_root: Path, *, backup_dir: Path | None = None) -> dict[str, Any]:
+    """Restore .memory/ from the latest backup (or specified backup_dir).
+
+    Deletes current .memory/ contents (except backups/), copies backup in.
+    Writes a status=rolled_back entry to migrations.log.
+    """
+    # Resolve backup_dir
+    if backup_dir is not None:
+        bd = Path(backup_dir)
+    else:
+        plan = plan_rollback(memory_root)
+        if not plan["can_rollback"]:
+            return {"success": False, "error": "no backup found"}
+        bd = Path(plan["backup_dir"])
+
+    if not bd.is_dir():
+        return {"success": False, "error": f"backup dir not found: {bd}"}
+
+    # Delete current .memory/ contents except backups/
+    for item in memory_root.iterdir():
+        if item.name == BACKUPS_DIR_NAME:
+            continue
+        if item.is_dir():
+            shutil.rmtree(str(item))
+        else:
+            item.unlink()
+
+    # Copy backup contents back
+    for item in bd.iterdir():
+        if item.name == BACKUP_MANIFEST_NAME:
+            continue
+        dest = memory_root / item.name
+        if item.is_dir():
+            shutil.copytree(str(item), str(dest))
+        else:
+            shutil.copy2(str(item), str(dest))
+
+    # Write rolled_back log entry
+    log_path = memory_root / MIGRATIONS_LOG_NAME
+    if log_path.is_file():
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        line = f"{now} | {bd.name} | rollback | rolled_back | Restored from backup {bd.name}"
+        _append_migrations_log(log_path, line)
+
+    return {"success": True, "restored_from": str(bd)}
+
+
+# ---------------------------------------------------------------------------
+# _read_current_version helper
+# ---------------------------------------------------------------------------
+
+def _read_current_version(memory_root: Path) -> str | None:
+    """Read the memory_version from memory.lock. Returns None on failure."""
+    lock_path = memory_root / MEMORY_LOCK_NAME
+    if not lock_path.is_file():
+        return None
+    try:
+        text = lock_path.read_text(encoding="utf-8")
+        if text.strip().startswith("{"):
+            data = json.loads(text)
+            return data.get("version")
+        else:
+            data = tomllib.loads(text)
+            return data.get("memory", {}).get("memory_version")
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -244,17 +408,7 @@ def migrate_project_memory(
     *,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Execute migration on a project's .memory/ directory.
-
-    Args:
-        target: Path to the target project root.
-        from_version: Current version of the memory schema.
-        to_version: Target version to migrate to.
-        dry_run: If True, only report what would be done.
-
-    Returns:
-        Dict with migration results.
-    """
+    """Execute migration on a project's .memory/ directory."""
     result: dict[str, Any] = {
         "success": False,
         "dry_run": dry_run,
@@ -274,29 +428,51 @@ def migrate_project_memory(
         result["errors"].append(f".memory/ directory not found at {memory_root}")
         return result
 
-    # Verify current version
-    lock_path = memory_root / MEMORY_LOCK_NAME
-    if lock_path.is_file():
-        try:
-            text = lock_path.read_text(encoding="utf-8")
-            # Support both TOML and legacy JSON
-            if text.strip().startswith("{"):
-                data = json.loads(text)
-                current = data.get("version", "unknown")
-            else:
-                data = tomllib.loads(text)
-                current = data.get("memory", {}).get("memory_version", "unknown")
-            if current != from_version:
-                result["errors"].append(
-                    f"Version mismatch: memory.lock says {current!r}, "
-                    f"but --from is {from_version!r}"
-                )
-                return result
-        except Exception as exc:
-            result["errors"].append(f"Failed to read {MEMORY_LOCK_NAME}: {exc}")
-            return result
+    try:
+        to_tuple = _parse_version_tuple(to_version)
+        from_tuple = _parse_version_tuple(from_version)
+    except (ValueError, AttributeError) as exc:
+        result["errors"].append(
+            f"Invalid version format for migration: from={from_version!r} "
+            f"to={to_version!r} ({exc}); expected SemVer-like 'MAJOR.MINOR.PATCH'"
+        )
+        result["error"] = "invalid_version_format"
+        return result
 
-    # Discover migrations
+    current_version = _read_current_version(memory_root)
+    if current_version is not None:
+        try:
+            current_tuple = _parse_version_tuple(current_version)
+        except (ValueError, AttributeError):
+            current_tuple = None
+    else:
+        current_tuple = None
+
+    # ---- A. Idempotency: current == to → noop ----
+    if current_tuple is not None and current_tuple == to_tuple:
+        result["success"] = True
+        result["noop"] = True
+        result["reason"] = "already at target version"
+        return result
+
+    # ---- B. Downgrade explicit reject ----
+    if to_tuple < from_tuple:
+        result["success"] = False
+        result["error"] = _DOWNGRADE_NOT_SUPPORTED
+        result["message"] = f"Downgrade not supported: from={from_version} to={to_version}"
+        result["errors"].append(result["message"])
+        return result
+
+    if current_tuple is not None and current_tuple > to_tuple:
+        result["success"] = False
+        result["error"] = _CURRENT_NEWER_THAN_TARGET
+        result["message"] = (
+            f"Current version ({current_version}) is newer than target ({to_version})"
+        )
+        result["errors"].append(result["message"])
+        return result
+
+    # ---- Discover migrations ----
     migrations = discover_migrations(from_version, to_version)
     if not migrations:
         result["errors"].append(
@@ -305,55 +481,105 @@ def migrate_project_memory(
         )
         return result
 
-    # Execute migrations
-    all_success = True
-    for mig in migrations:
-        mig_desc = f"{mig['from']}->{mig['to']}"
-
-        if dry_run:
-            result["migrations_executed"].append(
-                {"key": mig_desc, "status": "would_execute"}
+    # ---- C. Backup (before writing anything) ----
+    if not dry_run:
+        try:
+            _create_backup(memory_root, from_version, to_version)
+        except Exception as exc:
+            log_path = memory_root / MIGRATIONS_LOG_NAME
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            line = f"{now} | {from_version} | {to_version} | failed_backup_failed | Backup creation failed: memory_root={memory_root} exc={exc}"
+            if log_path.is_file():
+                _append_migrations_log(log_path, line)
+            else:
+                log_path.write_text(f"# Migrations Log\n{line}\n", encoding="utf-8")
+            result["success"] = False
+            result["error"] = _BACKUP_FAILED
+            result["errors"].append(
+                f"Backup creation failed for {memory_root}: {exc}"
             )
+            return result
+
+    # ---- Execute migrations with auto-rollback on failure ----
+    try:
+        all_success = True
+        for mig in migrations:
+            mig_desc = f"{mig['from']}->{mig['to']}"
+
+            if dry_run:
+                result["migrations_executed"].append(
+                    {"key": mig_desc, "status": "would_execute"}
+                )
+                log_entry = append_migration_log(
+                    memory_root, mig["from"], mig["to"], "pending (dry-run)",
+                    f"Would migrate {mig['from']} to {mig['to']}",
+                    dry_run=True,
+                )
+                result["log_entries"].append(log_entry)
+                continue
+
+            mig_result = mig["fn"](memory_root)
+            status = "success" if mig_result["success"] else "failed"
             log_entry = append_migration_log(
-                memory_root, mig["from"], mig["to"], "pending (dry-run)",
-                f"Would migrate {mig['from']} to {mig['to']}",
-                dry_run=True,
+                memory_root, mig["from"], mig["to"], status,
+                mig_result.get("detail", ""),
+                dry_run=False,
             )
             result["log_entries"].append(log_entry)
-            continue
-
-        # Execute
-        mig_result = mig["fn"](memory_root)
-        status = "success" if mig_result["success"] else "failed"
-        log_entry = append_migration_log(
-            memory_root, mig["from"], mig["to"], status,
-            mig_result.get("detail", ""),
-            dry_run=False,
-        )
-        result["log_entries"].append(log_entry)
-        result["migrations_executed"].append(
-            {
-                "key": mig_desc,
-                "status": status,
-                "detail": mig_result.get("detail", ""),
-            }
-        )
-
-        if mig_result.get("residue"):
-            result["residue"].extend(mig_result["residue"])
-
-        if not mig_result["success"]:
-            all_success = False
-            result["errors"].append(
-                f"Migration {mig_desc} failed: {mig_result.get('detail', 'unknown')}"
+            result["migrations_executed"].append(
+                {
+                    "key": mig_desc,
+                    "status": status,
+                    "detail": mig_result.get("detail", ""),
+                }
             )
-            break  # Stop on first failure
 
-    # Rollback plan
-    result["rollback"] = plan_rollback(from_version, to_version, migrations)
+            if mig_result.get("residue"):
+                result["residue"].extend(mig_result["residue"])
 
-    result["success"] = all_success
-    return result
+            if not mig_result["success"]:
+                all_success = False
+                result["errors"].append(
+                    f"Migration {mig_desc} failed: {mig_result.get('detail', 'unknown')}"
+                )
+                break
+
+        # Rollback plan
+        result["rollback"] = plan_rollback(memory_root)
+        result["success"] = all_success
+        return result
+
+    except Exception as exc:
+        # ---- F. Auto-rollback on any exception ----
+        try:
+            rb_result = execute_rollback(memory_root)
+            rb_succeeded = rb_result.get("success", False)
+        except Exception as rb_exc:
+            rb_succeeded = False
+            rb_result = {"success": False, "error": str(rb_exc)}
+
+        log_path = memory_root / MIGRATIONS_LOG_NAME
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        if rb_succeeded:
+            line = f"{now} | {from_version} | {to_version} | failed_rolled_back | {exc}"
+        else:
+            line = f"{now} | {from_version} | {to_version} | failed_rollback_failed | Original migration error: {exc}; Rollback also failed: {rb_result.get('error', 'unknown')}"
+
+        if log_path.is_file():
+            _append_migrations_log(log_path, line)
+
+        result["success"] = False
+        result["rollback_attempted"] = True
+        result["rollback_succeeded"] = rb_succeeded
+
+        if rb_succeeded:
+            result["errors"].append(f"Migration failed and rolled back: {exc}")
+        else:
+            result["errors"].append(
+                f"Migration failed and rollback also failed. Original error: {exc}; Rollback error: {rb_result.get('error', 'unknown')}"
+            )
+        return result
 
 
 # ---------------------------------------------------------------------------

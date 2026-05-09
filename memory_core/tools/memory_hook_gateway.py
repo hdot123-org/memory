@@ -21,7 +21,6 @@ ARTIFACT_ROOT = WORKSPACE_ROOT / "artifacts" / "memory-hook"
 CONTEXT_ROOT = ARTIFACT_ROOT / "contexts"
 EVENT_LOG = ARTIFACT_ROOT / "events.jsonl"
 ERROR_LOG = WORKSPACE_ROOT / "memory" / "system" / "errors.log"
-CLAUDE_HOOK_STATE_DIR = Path.home() / ".agents" / "skills" / "cmux" / "scripts"
 try:
     from .cmux_hook_state import default_hook_state_path, record_hook_event
 except ImportError:
@@ -84,7 +83,11 @@ except ImportError:
 
 import importlib  # noqa: E402
 
-_ADAPTER_NAME = os.environ.get("MEMORY_HOOK_ADAPTER", "workbot")
+# 并发限制：本模块在导入时根据 MEMORY_HOOK_ADAPTER 环境变量初始化全局状态
+# （_ADAPTER_NAME / _adapter_config / module globals）。
+# - 同一进程内切换 adapter：调用 reload_adapter(name)
+# - 多项目并发执行：每项目独立进程；同进程库导入并发不安全
+_ADAPTER_NAME = os.environ.get("MEMORY_HOOK_ADAPTER", "default")
 _ADAPTER_REGISTRY = {
     "workbot": (".memory_hook_adapters.workbot_runtime_profile", "build_workbot_runtime_profile"),
     "default": (".memory_hook_adapters.default_runtime_profile", "build_default_runtime_profile"),
@@ -92,25 +95,22 @@ _ADAPTER_REGISTRY = {
 
 
 def _load_adapter_profile(adapter_name: str, repo_root: Path, workspace_root: Path):
-    """Load adapter profile with fallback to workbot on import failure.
+    """Load adapter profile.
 
     Raises:
         KeyError: If adapter_name is not in _ADAPTER_REGISTRY.
+        ImportError: If the adapter module cannot be imported. The caller
+            sees the real error rather than a silent fallback to workbot,
+            because workbot kb files now live in archive/legacy-workbot/
+            and selecting workbot implicitly would degrade silently.
     """
     if adapter_name not in _ADAPTER_REGISTRY:
         raise KeyError(f"unknown adapter: {adapter_name}")
 
     _mod_path, _fn_name = _ADAPTER_REGISTRY[adapter_name]
-    try:
-        _mod = importlib.import_module(_mod_path, package="memory_core.tools")
-        _fn = getattr(_mod, _fn_name)
-        return _fn(repo_root, workspace_root)
-    except ImportError:
-        # Fallback to workbot adapter
-        from memory_core.tools.memory_hook_adapters.workbot_runtime_profile import (
-            build_workbot_runtime_profile as _fn_fallback,  # type: ignore
-        )
-        return _fn_fallback(repo_root, workspace_root)
+    _mod = importlib.import_module(_mod_path, package="memory_core.tools")
+    _fn = getattr(_mod, _fn_name)
+    return _fn(repo_root, workspace_root)
 
 
 # Adapter configuration store (replaces globals().update injection).
@@ -135,11 +135,45 @@ _adapter_profile = _load_adapter_profile(_ADAPTER_NAME, REPO_ROOT, WORKSPACE_ROO
 load_adapter_config(_adapter_profile)
 
 
+def reload_adapter(adapter_name: str | None = None) -> None:
+    """Reload adapter configuration in the current process.
+
+    Replaces the module-level adapter state (_ADAPTER_NAME / _adapter_config
+    / module globals) with the profile for *adapter_name*.
+
+    Args:
+        adapter_name: Adapter name to load.  If ``None``, reads from
+            ``os.environ["MEMORY_HOOK_ADAPTER"]`` (falls back to ``"default"``).
+
+    Raises:
+        KeyError: If the adapter name is not in ``_ADAPTER_REGISTRY``.
+        ImportError: If the adapter module cannot be imported.
+
+    并发安全：本函数在同一进程内切换 adapter 时可用，但非并发安全。
+    多项目并发执行场景请每项目独立进程。
+    """
+    global _adapter_profile, _adapter_config, _ADAPTER_NAME
+
+    if adapter_name is None:
+        adapter_name = os.environ.get("MEMORY_HOOK_ADAPTER", "default")
+
+    new_profile = _load_adapter_profile(adapter_name, REPO_ROOT, WORKSPACE_ROOT)
+    _adapter_profile = new_profile
+
+    # Reset adapter config and reload with new profile.
+    _adapter_config.clear()
+    _adapter_config.update(new_profile)
+    globals().update(new_profile)
+
+    _ADAPTER_NAME = adapter_name
+
+
 __all__ = [
     'build_context_package',
     'build_context_package_simple',
     'ArtifactWriter',
     'DelegateRouter',
+    'reload_adapter',
 ]
 
 

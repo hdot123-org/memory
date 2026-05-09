@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import sys
+from datetime import datetime, timezone
 from typing import Any
 
 V1_VERSION = "context-package-v1"
@@ -26,6 +29,49 @@ _DROP_KEYS = frozenset({
     "missing_paths",
 })
 
+# project sub-keys that are dropped during v1 → memory-v1 conversion
+_DROP_PROJECT_KEYS = frozenset({
+    "name",
+    "description",
+    "tech_stack",
+})
+
+
+def _audit_enabled() -> bool:
+    """Return True if audit logging is enabled (default: enabled).
+
+    Controlled by env var MEMORY_HOOK_SCHEMA_AUDIT:
+    - "0" → silent (disabled)
+    - anything else (including unset) → enabled
+    """
+    return os.environ.get("MEMORY_HOOK_SCHEMA_AUDIT", "1") != "0"
+
+
+def _emit_drop_audit(
+    schema_from: str,
+    schema_to: str,
+    dropped_keys: list[str],
+    package_id: str = "",
+) -> None:
+    """Write a drop-audit record to stderr.
+
+    Format:
+    [memory_hook_schema][drop_audit] from=<src> to=<dst> dropped=<keys_csv> ts=<iso8601>
+
+    Never raises an exception.
+    """
+    try:
+        keys_csv = ",".join(dropped_keys)
+        ts = datetime.now(timezone.utc).isoformat()
+        msg = (
+            f"[memory_hook_schema][drop_audit] "
+            f"from={schema_from} to={schema_to} "
+            f"dropped={keys_csv} ts={ts}"
+        )
+        print(msg, file=sys.stderr)
+    except Exception:
+        pass  # Never raise
+
 
 def convert_to_v1(package: dict[str, Any]) -> dict[str, Any]:
     """Convert a wb-hook-v2 context package to context-package-v1 format.
@@ -38,6 +84,12 @@ def convert_to_v1(package: dict[str, Any]) -> dict[str, Any]:
     - Remove "system_context" (diagnostic info goes to stderr/logs)
     - Remove "missing_paths" (merged into validation_errors upstream)
     """
+    # Audit: detect dropped keys and emit
+    if _audit_enabled():
+        lossless, dropped = _check_lossless_v2_to_v1(package)
+        if not lossless and dropped:
+            _emit_drop_audit(V2_VERSION, V1_VERSION, dropped)
+
     result: dict[str, Any] = {"schema_version": V1_VERSION}
 
     # Nest path fields
@@ -167,3 +219,63 @@ def _convert_v1_to_memory_v1(package: dict[str, Any]) -> dict[str, Any]:
 def is_memory_v1(package: dict[str, Any]) -> bool:
     """Return True if the package uses the memory-v1 schema."""
     return package.get("schema_version") == MEMORY_V1_VERSION
+
+
+# ---------------------------------------------------------------------------
+# is_lossless public API + internal helpers (must come after MEMORY_V1_VERSION)
+# ---------------------------------------------------------------------------
+
+
+def _check_lossless_v2_to_v1(package: dict[str, Any]) -> tuple[bool, list[str]]:
+    """Internal helper: check if v2→v1 conversion would drop any _DROP_KEYS."""
+    dropped: list[str] = [key for key in _DROP_KEYS if key in package]
+    if dropped:
+        return (False, dropped)
+    return (True, [])
+
+
+def _check_lossless_v1_to_memory_v1(package: dict[str, Any]) -> tuple[bool, list[str]]:
+    """Internal helper: check if v1→memory-v1 would drop project sub-keys."""
+    dropped: list[str] = []
+    if "project" in package:
+        project = package["project"]
+        for sub_key in _DROP_PROJECT_KEYS:
+            if sub_key in project:
+                dropped.append(f"project.{sub_key}")
+    if dropped:
+        return (False, dropped)
+    return (True, [])
+
+
+def _check_lossless_v2_to_memory_v1(package: dict[str, Any]) -> tuple[bool, list[str]]:
+    """Internal helper: check if v2→memory-v1 would drop keys."""
+    dropped: list[str] = [key for key in _DROP_KEYS if key in package]
+    if "project_context" in package:
+        project_ctx = package["project_context"]
+        for sub_key in _DROP_PROJECT_KEYS:
+            if sub_key in project_ctx:
+                dropped.append(f"project.{sub_key}")
+    if dropped:
+        return (False, dropped)
+    return (True, [])
+
+
+def is_lossless(
+    package: dict[str, Any],
+    schema_from: str,
+    schema_to: str,
+) -> tuple[bool, list[str]]:
+    """Return (True, []) if the conversion would be lossless, else (False, dropped_keys).
+
+    Supported conversion paths:
+    - wb-hook-v2 → context-package-v1: checks _DROP_KEYS
+    - context-package-v1 → memory-v1: checks project sub-keys (name, description, tech_stack)
+    - wb-hook-v2 → memory-v1: checks both _DROP_KEYS and project sub-keys
+    """
+    if schema_from == V2_VERSION and schema_to == V1_VERSION:
+        return _check_lossless_v2_to_v1(package)
+    if schema_from == V1_VERSION and schema_to == MEMORY_V1_VERSION:
+        return _check_lossless_v1_to_memory_v1(package)
+    if schema_from == V2_VERSION and schema_to == MEMORY_V1_VERSION:
+        return _check_lossless_v2_to_memory_v1(package)
+    return (True, [])
