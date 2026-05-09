@@ -41,7 +41,7 @@ memory_core/
 - `project-map/INDEX.md` 是唯一合法入口。
 - 只有被地图标为 `active-legal` 的条目或目录，才是合法资料；仅进入登记册不授予合法性。
 - 目录登记和目录状态迁移必须与相关文件同次 `git commit` 才生效。
-- 真相模型 canonical：`memory_core/memory/kb/global/workbot-truth-model.md`（当前接入项目的真相模型文件）
+- 真相模型 canonical：由各业务项目通过 adapter runtime profile 自行声明（参见仓库根 `README.md` 的 "Adapter Protocol" 与 "Runtime Capabilities" 两节）。memory-core 仓库不内建任何业务项目专属的真相模型文件。
 
 ## 核心规则
 
