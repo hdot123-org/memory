@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +13,13 @@ from .workbot_policy import WorkbotGatewayBusinessPolicy
 
 
 def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict[str, Any]:
+    warnings.warn(
+        "workbot adapter is deprecated and its kb files are archived to "
+        "archive/legacy-workbot/kb/. To restore, see archive/legacy-workbot/README.md. "
+        "Migrate to MEMORY_HOOK_ADAPTER=default if you don't need workbot-specific behavior.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     project_map_root = workspace_root / "project-map"
     truth_model = workspace_root / "memory" / "kb" / "global" / "workbot-truth-model.md"
     project_map_files = [
@@ -188,6 +197,23 @@ def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict
         "workbot-truth-model.md",
         "workbot-memory-system.md",
     ]
+
+    # Sentinel: warn if expected KB files were moved to archive
+    _kb_files_to_check = [
+        truth_model,
+        memory_system_path,
+        hook_contract_path,
+        policy_pack_path,
+    ]
+    _missing = [str(p) for p in _kb_files_to_check if not p.exists()]
+    if _missing:
+        logging.getLogger(__name__).warning(
+            "workbot adapter activated but %d kb file(s) missing: %s. "
+            "These were moved to archive/legacy-workbot/kb/ in Phase 1. "
+            "See archive/legacy-workbot/README.md for restoration steps.",
+            len(_missing),
+            _missing,
+        )
 
     return {
         "PROJECT_MAP_ROOT": project_map_root,
