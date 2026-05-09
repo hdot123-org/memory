@@ -3,12 +3,25 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 repo_root = Path(__file__).resolve().parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
+
+# Ensure workbot adapter is loaded for this test file (tests are workbot-scoped).
+os.environ["MEMORY_HOOK_ADAPTER"] = "workbot"
+
+# Force reload if already imported by another test with a different adapter
+for _name in list(sys.modules.keys()):
+    if _name.startswith("memory_hook") or _name.startswith("memory_core.tools.memory_hook"):
+        del sys.modules[_name]
+# Also clear parent package cache so the import triggers a fresh load.
+_parent_pkg = sys.modules.get("memory_core.tools")
+if _parent_pkg is not None:
+    _parent_pkg.__dict__.pop("memory_hook_gateway", None)
 
 from memory_core.tools import memory_hook_gateway as gateway
 from memory_core.tools import memory_hook_provider_rollback as rollback

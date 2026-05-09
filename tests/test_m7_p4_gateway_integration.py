@@ -73,7 +73,7 @@ class TestGatewayCoreIntegration:
 
     def test_full_chain_produces_system_context(self) -> None:
         """build_context_package returns system_context with expected keys."""
-        gw = _reload_gateway()
+        gw = _reload_gateway(MEMORY_HOOK_ADAPTER="workbot")
 
         # Build a payload pointing inside the repo so discover_cwd finds a valid cwd
         payload = _build_minimal_payload(cwd=str(gw.REPO_ROOT / "memory_core" / "tools"))
@@ -120,7 +120,7 @@ class TestGatewayCoreIntegration:
 
     def test_context_package_contains_allowed_paths(self) -> None:
         """Verify allowed_reads and allowed_writes are non-empty."""
-        gw = _reload_gateway()
+        gw = _reload_gateway(MEMORY_HOOK_ADAPTER="workbot")
 
         payload = _build_minimal_payload(cwd=str(gw.REPO_ROOT / "memory_core" / "tools"))
         package = gw.build_context_package("codex", "start", payload)
@@ -148,7 +148,7 @@ class TestScopeValidation:
 
     def test_supported_scope_works(self) -> None:
         """Scope 'workbot' produces a valid policy pack without raising."""
-        gw = _reload_gateway()
+        gw = _reload_gateway(MEMORY_HOOK_ADAPTER="workbot")
 
         # The gateway wires a PolicyRegistryImpl with allowed_scopes from
         # POLICY_ALLOWED_SCOPES.  'workbot' must be in that set.
@@ -180,7 +180,7 @@ class TestEndToEnd:
 
     def test_cwd_resolution_matches_project_scope(self) -> None:
         """Calling with cwd pointing to workspace resolves correct scope."""
-        gw = _reload_gateway()
+        gw = _reload_gateway(MEMORY_HOOK_ADAPTER="workbot")
 
         # Payload cwd inside the workbot workspace
         workspace_tools = gw.REPO_ROOT / "memory_core" / "tools"

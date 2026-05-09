@@ -67,10 +67,10 @@ def _reload_gateway(**env_overrides: str) -> Any:
 class TestAdapterDiscovery:
     """Verify adapter-discovery constants and registry behaviour."""
 
-    def test_default_adapter_is_workbot(self) -> None:
-        """Without MEMORY_HOOK_ADAPTER env var, gateway loads workbot profile."""
+    def test_default_adapter_is_default(self) -> None:
+        """Without MEMORY_HOOK_ADAPTER env var, gateway loads default profile."""
         gw = _reload_gateway()
-        assert gw._ADAPTER_NAME == "workbot"
+        assert gw._ADAPTER_NAME == "default"
 
     def test_env_var_selects_adapter(self) -> None:
         """With MEMORY_HOOK_ADAPTER=workbot, the correct profile loads."""
@@ -114,9 +114,9 @@ class TestPolicyClassResolution:
         gw = _reload_gateway()
         assert hasattr(gw, "GATEWAY_POLICY_CLASS")
 
-    def test_policy_class_is_workbot_by_default(self) -> None:
-        """Default policy class is WorkbotGatewayBusinessPolicy."""
-        gw = _reload_gateway()
+    def test_policy_class_is_workbot_when_adapter_is_workbot(self) -> None:
+        """With MEMORY_HOOK_ADAPTER=workbot, policy class is WorkbotGatewayBusinessPolicy."""
+        gw = _reload_gateway(MEMORY_HOOK_ADAPTER="workbot")
         from memory_core.tools.memory_hook_adapters.workbot_policy import (
             WorkbotGatewayBusinessPolicy,
         )
@@ -124,7 +124,7 @@ class TestPolicyClassResolution:
 
     def test_build_policy_uses_adapter_class(self) -> None:
         """_build_gateway_business_policy uses the class from profile."""
-        gw = _reload_gateway()
+        gw = _reload_gateway(MEMORY_HOOK_ADAPTER="workbot")
         from memory_core.tools.memory_hook_adapters.workbot_policy import (
             WorkbotGatewayBusinessPolicy,
         )
