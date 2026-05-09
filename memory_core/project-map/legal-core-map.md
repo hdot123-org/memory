@@ -1,4 +1,4 @@
-# Adapter: Legal Core Map
+# Legal Core Map
 
 Status: active-legal, rule-only
 Scope: adapter
@@ -13,9 +13,9 @@ Scope: adapter
 ## Legal Core Markers
 - `active-legal`
 - `project-map/INDEX.md`
-- `workbot-truth-model.md`
-- `workbot-memory-system.md`
+- `truth-model.md`
+- `memory-system.md`
 
 ## Active Legal Scopes
-- `memory_core/memory/kb/global/workbot-truth-model.md`
-- `memory_core/memory/kb/global/workbot-memory-system.md`
+- `memory_core/memory/kb/global/truth-model.md`
+- `memory_core/memory/kb/global/memory-system.md`

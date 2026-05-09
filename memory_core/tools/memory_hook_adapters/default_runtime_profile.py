@@ -44,19 +44,20 @@ def build_default_runtime_profile(
     """
     # Use workspace_root as the project root for config lookup (fallback to repo_root)
     project_root = workspace_root if workspace_root is not None else repo_root
-    memory_root = project_root / ".memory"
-    adapter_path = memory_root / "adapter.toml"
+    adapter_path = project_root / ".memory" / "adapter.toml"
     config = load_adapter_toml(adapter_path)
 
     # Resolve the project scope from adapter.toml (routing.project_scope).
     project_scope: str = config.project_scope or "default"
 
-    # Standard .memory/ paths ───────────────────────────────────────
-    kb_root = memory_root / "kb"
+    # Standard memory/ paths (NOT .memory/) ─────────────────────────
+    kb_root = project_root / "memory" / "kb"
     projects_root = kb_root / "projects"
     global_root = kb_root / "global"
 
-    project_map_root = projects_root
+    # Project map lives at project_root / project-map/ (generic)
+    project_map_root = project_root / "project-map"
+
     truth_model = global_root / "truth-model.md"
     memory_system_path = global_root / "memory-system.md"
     global_rule_path = global_root / "memory-routing.md"
@@ -64,16 +65,18 @@ def build_default_runtime_profile(
     project_map_governance = global_root / "project-map-governance.md"
     policy_pack_path = global_root / "policy-pack.json"
 
-    # Project map files
+    # Project map files — must be ≥ 3 (INDEX + legal-core-map + ingestion-registry-map)
     project_map_files = [
         project_map_root / "INDEX.md",
+        project_map_root / "legal-core-map.md",
+        project_map_root / "ingestion-registry-map.md",
     ]
 
     # Canonical file lists ──────────────────────────────────────────
     required_canonical = [
-        memory_root / "CANONICAL.md",
-        memory_root / "PLAN.md",
-        memory_root / "STATE.md",
+        project_root / ".memory" / "CANONICAL.md",
+        project_root / ".memory" / "PLAN.md",
+        project_root / ".memory" / "STATE.md",
         truth_model,
         memory_system_path,
         global_rule_path,
@@ -116,10 +119,18 @@ def build_default_runtime_profile(
     event_contract_blocker_scopes: set[str] = set()
 
     # Authority and evidence paths ──────────────────────────────────
-    authority_allowed_paths: set[Path] = set()
+    authority_allowed_paths: set[Path] = {
+        project_map_root / "INDEX.md",
+        project_map_root / "legal-core-map.md",
+        truth_model,
+        memory_system_path,
+        hook_contract_path,
+        project_map_governance,
+        global_rule_path,
+    }
     lower_evidence_roots: list[Path] = [
-        project_root / "artifacts",
         project_root / "tools",
+        repo_root / "tests",
     ]
 
     # Decision and lesson refs ─────────────────────────────────────
@@ -144,8 +155,22 @@ def build_default_runtime_profile(
     ]
 
     # Legal core markers and registry scopes ──────────────────────
-    legal_core_markers: list[str] = []
-    required_registry_scopes: list[str] = []
+    legal_core_markers: list[str] = [
+        "active-legal",
+        "project-map/INDEX.md",
+        "truth-model.md",
+        "memory-system.md",
+    ]
+    required_registry_scopes: list[str] = [
+        "memory_core/project-map/**",
+        "memory_core/memory/kb/global/**",
+        "memory_core/memory/kb/projects/**",
+        "memory_core/memory/docs/**",
+        "memory_core/memory/log/**",
+        "memory_core/projects/**",
+        "memory_core/tools/**",
+        "tests/**",
+    ]
 
     # Frozen tuple and event contract config ──────────────────────
     governance_frozen_tuple_files: list[Path] = []
