@@ -67,7 +67,7 @@ def _run_script(
     """Run a tool script and return the result."""
     env = dict(os.environ)
     # Set PYTHONPATH to memory_core/ so imports like 'memory_core.constants' work
-    env["PYTHONPATH"] = str(TOOLS_DIR.parent)
+    env["PYTHONPATH"] = str(TOOLS_DIR.parent.parent)
     return subprocess.run(
         [sys.executable, str(script)] + args,
         capture_output=True,

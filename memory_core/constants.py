@@ -1,5 +1,7 @@
 """Single source of truth for memory-core versions, hosts, and schema definitions."""
 
+import re
+
 CURRENT_MEMORY_VERSION = "0.2.0"
 
 SUPPORTED_HOSTS = ("codex", "claude", "factory")
@@ -24,6 +26,12 @@ REQUIRED_MEMORY_DIRS = [
 CANONICAL_MEMORY_LOCK_SCHEMA = "context-package-v1"
 CANONICAL_ADAPTER_VERSION = "builtin"
 
+# Migration log line pattern: "timestamp | from | to | status | detail"
+# Example: "2026-05-09T12:34:56Z | 0.1.0 | 0.2.0 | success | Migrated from ..."
+MIGRATION_LOG_LINE_PATTERN = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s*\|\s*\S+\s*\|\s*\S+\s*\|\s*\S+\s*\|.*$"
+)
+
 # Frontmatter requirements per file type
 FRONTMATTER_REQUIREMENTS = {
     "CANONICAL.md": ["type", "title", "shortname", "status", "created", "updated"],
@@ -31,3 +39,13 @@ FRONTMATTER_REQUIREMENTS = {
     "STATE.md": ["type", "title", "shortname", "status", "updated"],
     "TASKS.md": ["type", "title", "shortname", "status"],
 }
+
+# Valid status enumerations per file type (from DOT_MEMORY_SPEC.md)
+STATUS_ENUMERATIONS: dict[str, tuple[str, ...]] = {
+    "STATE.md": ("active", "paused", "completed", "archived"),
+    "PLAN.md": ("planning", "in_progress", "review", "completed", "blocked"),
+    "CANONICAL.md": ("active",),  # Only active after initialization
+}
+
+# Valid health values (from DOT_MEMORY_SPEC.md for STATE.md health field)
+VALID_HEALTH_VALUES = ("green", "yellow", "red")

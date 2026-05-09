@@ -977,49 +977,17 @@ def _delegate_claude(event: str, raw_payload: str, payload: dict[str, Any]) -> s
     return _execute_delegate_via_facade("claude", event, raw_payload, payload)
 
 
-def main() -> int:
-    args = _parse_args()
-    raw_payload = sys.stdin.read()
-    payload = _read_payload(raw_payload)
-    cwd = _discover_cwd(payload)
+def _execute_delegate(
+    args: argparse.Namespace,
+    raw_payload: str,
+    payload: dict[str, Any],
+    cwd: Path,
+) -> int:
+    """Execute the host-specific delegate and return an exit code.
 
-    if _should_noop_for_external_context(payload):
-        return _delegate_noop_response(args.host)
-
-    writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
-    package = build_context_package(args.host, args.event, payload)
-    write_ok = writer.write(args.host, args.event, package)
-    if not write_ok:
-        append_error_log(
-            "memory-hook-gateway",
-            "artifact write failed",
-            {"host": args.host, "event": args.event, "error": writer.last_error},
-        )
-        print(f"[memory-hook-gateway] artifact write failed: {writer.last_error}", file=sys.stderr)
-
-    if package["status"] != "ok":
-        append_error_log(
-            "memory-hook-gateway",
-            "missing canonical prerequisites or project-map validation failed",
-            {
-                "host": args.host,
-                "event": args.event,
-                "missing_paths": package["missing_paths"],
-                "validation_errors": package.get("validation_errors", []),
-            },
-        )
-        print(
-            "[memory-hook-gateway] degraded: "
-            f"missing canonical paths: {', '.join(package['missing_paths']) or 'none'}; "
-            f"project-map errors: {', '.join(package.get('validation_errors', [])) or 'none'}",
-            file=sys.stderr,
-        )
-        return 1
-
-    if args.no_delegate:
-        sys.stdout.write(json.dumps(package, ensure_ascii=False) + "\n")
-        return 0
-
+    Handles preflight errors, delegate process output forwarding,
+    and noop fallback for all paths.
+    """
     try:
         if args.host == "codex":
             proc = _delegate_codex(args.event, raw_payload)
@@ -1070,6 +1038,53 @@ def main() -> int:
         if noop.stdout:
             sys.stdout.write(noop.stdout)
         return 0
+
+
+def main() -> int:
+    args = _parse_args()
+    raw_payload = sys.stdin.read()
+    payload = _read_payload(raw_payload)
+    cwd = _discover_cwd(payload)
+
+    if _should_noop_for_external_context(payload):
+        return _delegate_noop_response(args.host)
+
+    writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
+    package = build_context_package(args.host, args.event, payload)
+    write_ok = writer.write(args.host, args.event, package)
+    if not write_ok:
+        append_error_log(
+            "memory-hook-gateway",
+            "artifact write failed",
+            {"host": args.host, "event": args.event, "error": writer.last_error},
+        )
+        print(f"[memory-hook-gateway] artifact write failed: {writer.last_error}", file=sys.stderr)
+
+    exit_code = 0
+    if package["status"] != "ok":
+        append_error_log(
+            "memory-hook-gateway",
+            "missing canonical prerequisites or project-map validation failed",
+            {
+                "host": args.host,
+                "event": args.event,
+                "missing_paths": package["missing_paths"],
+                "validation_errors": package.get("validation_errors", []),
+            },
+        )
+        print(
+            "[memory-hook-gateway] degraded: "
+            f"missing canonical paths: {', '.join(package['missing_paths']) or 'none'}; "
+            f"project-map errors: {', '.join(package.get('validation_errors', [])) or 'none'}",
+            file=sys.stderr,
+        )
+        exit_code = 1
+    elif args.no_delegate:
+        sys.stdout.write(json.dumps(package, ensure_ascii=False) + "\n")
+    else:
+        exit_code = _execute_delegate(args, raw_payload, payload, cwd)
+
+    return exit_code
 
 
 if __name__ == "__main__":

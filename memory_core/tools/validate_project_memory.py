@@ -25,10 +25,13 @@ from __future__ import annotations
 import argparse
 import importlib.metadata
 import json
+import logging
 import re
 import sys
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 try:
     import tomllib
@@ -42,20 +45,13 @@ except ModuleNotFoundError:
 from memory_core.constants import (
     CURRENT_MEMORY_VERSION,
     FRONTMATTER_REQUIREMENTS,
+    MIGRATION_LOG_LINE_PATTERN,
     REQUIRED_MEMORY_DIRS,
     REQUIRED_MEMORY_FILES,
+    STATUS_ENUMERATIONS,
     SUPPORTED_HOSTS,
+    VALID_HEALTH_VALUES,
 )
-
-# Valid status enumerations per file type (from DOT_MEMORY_SPEC.md)
-STATUS_ENUMERATIONS: dict[str, tuple[str, ...]] = {
-    "STATE.md": ("active", "paused", "completed", "archived"),
-    "PLAN.md": ("planning", "in_progress", "review", "completed", "blocked"),
-    "CANONICAL.md": ("active",),  # Only active after initialization
-}
-
-# Valid health values (from DOT_MEMORY_SPEC.md for STATE.md health field)
-VALID_HEALTH_VALUES = ("green", "yellow", "red")
 
 # Paths that MUST NOT appear inside the memory repo — these belong in the
 # target project's own workspace, not in the memory repository.
@@ -77,10 +73,15 @@ POLLUTION_PATTERNS = [
 def _parse_frontmatter(text: str) -> dict[str, str]:
     """Extract YAML frontmatter as a flat dict.
 
-    Supports simple key: value pairs. Does not attempt full YAML parsing.
+    Supports simple key: value pairs.  Handles BOM, CRLF line endings,
+    inline list values like ``tags: [tag1, tag2]`` and preserves quoted
+    values with nested quotes.  Does not attempt full YAML parsing.
     """
     result: dict[str, str] = {}
-    m = re.match(r"^---\s*\n(.*?)\n---", text, re.DOTALL)
+    # Strip leading BOM if present so the opening ``---`` is at position 0.
+    stripped = text.lstrip("\ufeff")
+    # Accept both LF and CRLF line endings.
+    m = re.match(r"^---\s*\r?\n(.*?)\r?\n---", stripped, re.DOTALL)
     if not m:
         return result
     for line in m.group(1).splitlines():
@@ -88,10 +89,25 @@ def _parse_frontmatter(text: str) -> dict[str, str]:
         if not line or line.startswith("#"):
             continue
         kv = line.split(":", 1)
-        if len(kv) == 2:
-            key = kv[0].strip()
-            val = kv[1].strip().strip('"').strip("'")
+        if len(kv) != 2:
+            continue
+        key = kv[0].strip()
+        if not key:
+            continue
+        val = kv[1].strip()
+
+        # Inline list values: keep them as-is (e.g. "[tag1, tag2]")
+        if val.startswith("[") and val.endswith("]"):
             result[key] = val
+            continue
+
+        # Strip surrounding matching quotes while preserving nested quotes.
+        # Unquoted values are kept verbatim.
+        if len(val) >= 2:
+            first, last = val[0], val[-1]
+            if (first == '"' and last == '"') or (first == "'" and last == "'"):
+                val = val[1:-1]
+        result[key] = val
     return result
 
 
@@ -102,7 +118,12 @@ def _is_json_like(text: str) -> bool:
 
 
 def _parse_lock_file(path: Path) -> dict[str, Any]:
-    """Parse memory.lock as TOML (canonical) or JSON (legacy)."""
+    """Parse memory.lock as TOML (canonical) or JSON (legacy).
+
+    If TOML parsing fails and the file is not JSON, falls back to a very
+    old key=value format but marks the result with ``_parse_warning`` so
+    callers know the data may be unreliable.
+    """
     text = path.read_text(encoding="utf-8")
     if _is_json_like(text):
         # Legacy JSON format
@@ -119,8 +140,14 @@ def _parse_lock_file(path: Path) -> dict[str, Any]:
     # Canonical TOML format
     try:
         return tomllib.loads(text)
-    except Exception:
+    except Exception as exc:
         # Fallback: key=value lines (very old format)
+        # Log the parse error so it is visible in logs / diagnostics.
+        logger.warning(
+            "TOML parse of %s failed (%s); falling back to legacy key=value parsing",
+            path,
+            exc,
+        )
         result: dict[str, Any] = {"memory": {}}
         for line in text.splitlines():
             line = line.strip()
@@ -131,28 +158,22 @@ def _parse_lock_file(path: Path) -> dict[str, Any]:
                 key = kv[0].strip()
                 val = kv[1].strip().strip('"').strip("'")
                 result["memory"][key] = val
+        # Mark the result so callers know parsing was unreliable.
+        result["_parse_warning"] = "TOML parse failed; data recovered via legacy fallback"
         return result
 
 
 def _parse_adapter_toml(path: Path) -> dict[str, str]:
-    """Parse adapter.toml as simple key=value (no full TOML dependency)."""
-    result: dict[str, str] = {}
+    """Parse adapter.toml using tomllib and flatten to section.key format."""
     text = path.read_text(encoding="utf-8")
-    in_section = ""
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        section_m = re.match(r"^\[(.+)\]$", stripped)
-        if section_m:
-            in_section = section_m.group(1)
-            continue
-        kv = stripped.split("=", 1)
-        if len(kv) == 2:
-            key = kv[0].strip()
-            val = kv[1].strip().strip('"').strip("'")
-            full_key = f"{in_section}.{key}" if in_section else key
-            result[full_key] = val
+    data = tomllib.loads(text)
+    result: dict[str, str] = {}
+    for section, values in data.items():
+        if isinstance(values, dict):
+            for key, val in values.items():
+                result[f"{section}.{key}"] = str(val)
+        else:
+            result[section] = str(values)
     return result
 
 
@@ -349,7 +370,13 @@ def check_pollution(memory_root: Path, result: CheckResult) -> bool:
 
 
 def check_migrations_log(memory_root: Path, result: CheckResult) -> bool:
-    """Verify migrations.log is parseable."""
+    """Verify migrations.log is parseable.
+
+    Checks:
+    - File exists and is non-empty
+    - Each non-comment, non-blank line matches the expected migration log format
+    - Malformed lines generate warnings but do not cause check failure (lenient)
+    """
     log_path = memory_root / "migrations.log"
     if not log_path.is_file():
         result.record("migrations_log", False, "migrations.log not found")
@@ -361,7 +388,15 @@ def check_migrations_log(memory_root: Path, result: CheckResult) -> bool:
             return False
         # Each line should be a migration record
         lines = [l for l in text.splitlines() if l.strip() and not l.strip().startswith("#")]
-        result.record("migrations_log", True, f"{len(lines)} migration records")
+        # Validate line format (lenient: warn but do not fail)
+        malformed: list[str] = []
+        for idx, line in enumerate(lines, 1):
+            if not MIGRATION_LOG_LINE_PATTERN.match(line):
+                malformed.append(f"line {idx}")
+        detail = f"{len(lines)} migration records"
+        if malformed:
+            detail += f"; malformed lines: {', '.join(malformed)}"
+        result.record("migrations_log", True, detail)
         return True
     except Exception as exc:
         result.record("migrations_log", False, f"read error: {exc}")

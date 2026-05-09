@@ -128,8 +128,8 @@ def check_host_enum_coverage() -> tuple[list, list]:
                         if host not in choices:
                             errors.append(f"{py_file}: choices= missing host '{host}'")
                             break
-        except Exception:
-            pass
+        except Exception as exc:
+            warnings.append(f"check_host_enum_coverage: check raised {exc}")
 
     return errors, warnings
 
@@ -172,8 +172,8 @@ def check_no_duplicate_version_definitions() -> tuple[list, list]:
                 # Check if it's in a template function
                 if "def template_" not in content[:content.find(const_version)][:1000] if content.find(const_version) > 0 else True:
                     pass  # This is actually expected in template functions
-        except Exception:
-            pass
+        except Exception as exc:
+            warnings.append(f"check_no_duplicate_version_definitions: check raised {exc}")
 
     return errors, warnings
 
@@ -280,8 +280,8 @@ def check_required_imports_from_constants() -> tuple[list, list]:
 
             if not has_import:
                 errors.append(f"{filename}: does not import from constants")
-        except Exception:
-            pass
+        except Exception as exc:
+            warnings.append(f"check_required_imports_from_constants: check raised {exc}")
 
     return errors, warnings
 
@@ -316,8 +316,8 @@ def check_docstring_host_mentions() -> tuple[list, list]:
 
                 if has_codex and has_claude and not has_factory:
                     warnings.append(f"{py_file}: docstring mentions codex and claude but not factory")
-        except Exception:
-            pass
+        except Exception as exc:
+            warnings.append(f"check_docstring_host_mentions: check raised {exc}")
 
     return errors, warnings
 
@@ -355,8 +355,8 @@ def check_no_handwritten_toml_parser() -> tuple[list, list]:
                         # Check if using manual line parsing (handwritten)
                         if "split(" in func_body[:1500] and "in_section" in func_body[:1500]:
                             errors.append(f"{filename}: _parse_adapter_toml uses handwritten parser (not tomllib)")
-        except Exception:
-            pass
+        except Exception as exc:
+            warnings.append(f"check_no_handwritten_toml_parser: check raised {exc}")
 
     return errors, warnings
 
@@ -773,8 +773,8 @@ def check_test_version_hardcoding() -> tuple[list, list]:
                         f"{py_file.name}: hardcoded version '{current_version}' "
                         f"without importing from constants"
                     )
-        except Exception:
-            pass
+        except Exception as exc:
+            warnings.append(f"check_test_version_hardcoding: check raised {exc}")
 
     return errors, warnings
 
@@ -806,8 +806,8 @@ def check_docs_version_references() -> tuple[list, list]:
                 warnings.append(
                     f"{md_file.name}: contains reference to old schema 'wb-hook-v2'"
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            warnings.append(f"check_docs_version_references: check raised {exc}")
 
     return errors, warnings
 

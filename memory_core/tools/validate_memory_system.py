@@ -17,11 +17,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-try:
-    from memory_hook_config import CoreConfig  # type: ignore
-except ImportError:
-    CoreConfig = None  # type: ignore
-
 # Ensure workspace/tools and the repo root are on sys.path.
 # The gateway module uses both "memory_core.tools" dotted imports and
 # bare module names depending on the import path taken.
@@ -30,6 +25,11 @@ _REPO_ROOT = _SCRIPT_DIR.parents[1]
 for p in (str(_SCRIPT_DIR), str(_REPO_ROOT)):
     if p not in sys.path:
         sys.path.insert(0, p)
+
+try:
+    from memory_hook_config import CoreConfig  # type: ignore
+except ImportError:
+    CoreConfig = None  # type: ignore
 
 REQUIRED_PACKAGE_KEYS = {"status", "host", "event", "schema_version", "system_context", "task_context"}
 REQUIRED_SYSTEM_CONTEXT_KEYS = {"boot_entry", "state_entry"}
@@ -118,6 +118,8 @@ def _wrap_builder_with_kwargs(builder: Any) -> Any:
     if len(sig.parameters) == 1:
         # Builder expects a single config argument (new interface)
         def wrapped(**kwargs):
+            if CoreConfig is None:
+                return builder(**kwargs)
             config = CoreConfig(**kwargs)
             return builder(config)
         return wrapped
@@ -173,7 +175,7 @@ def check_context_package(result: ValidateResult, builder: Any) -> bool:
         wrapped_builder = _wrap_builder_with_kwargs(builder)
         package = wrapped_builder(**kwargs)
     except Exception as exc:
-        result.record("context_package", False, f"builder raised: {exc}")
+        import traceback as _tb; result.record("context_package", False, f"builder raised: {exc}\n{_tb.format_exc()}")
         return False
 
     if not isinstance(package, dict):

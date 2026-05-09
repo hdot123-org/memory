@@ -20,7 +20,7 @@ sys.path.insert(0, str(TOOLS_DIR))
 def _run_validator(env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     """Run the validator as a subprocess and return the result."""
     base_env = dict(os.environ)
-    base_env["PYTHONPATH"] = str(TOOLS_DIR)
+    base_env["PYTHONPATH"] = str(TOOLS_DIR.parent.parent)
     if env:
         base_env.update(env)
     return subprocess.run(
