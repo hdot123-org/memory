@@ -848,6 +848,15 @@ class GatewayBusinessPolicyImpl(GatewayBusinessPolicy):
 
     def validate_project_map_files(self) -> list[str]:
         cfg = self._config
+        n = len(cfg.project_map_files)
+        if n == 0:
+            return ["project_map_files is empty; no project map to validate"]
+        if n < 3:
+            return [
+                f"project_map_files contains only {n} entries; "
+                f"expected 3 (INDEX, legal-core-map, ingestion-registry-map). "
+                f"Check the adapter runtime profile."
+            ]
         errors: list[str] = []
         index_text = self._read_text_if_exists(cfg.project_map_files[0])
         core_text = self._read_text_if_exists(cfg.project_map_files[1])
@@ -891,6 +900,14 @@ class GatewayBusinessPolicyImpl(GatewayBusinessPolicy):
         docs_index = self._read_text_if_exists(cfg.docs_index_path)
         overview_doc = self._read_text_if_exists(cfg.overview_doc_path)
         global_index = self._read_text_if_exists(cfg.global_index_path)
+
+        n = len(cfg.project_map_files)
+        if n < 3:
+            return [
+                f"project_map_files contains only {n} entries; "
+                f"expected 3 (INDEX, legal-core-map, ingestion-registry-map). "
+                f"Cannot validate legal system contract without full project map."
+            ]
         core_text = self._read_text_if_exists(cfg.project_map_files[1])
         registry_text = self._read_text_if_exists(cfg.project_map_files[2])
         hook_contract = self._read_text_if_exists(cfg.hook_contract_path)
