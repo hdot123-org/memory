@@ -125,3 +125,63 @@ class TestValidateCatchesBrokenCore:
 
         pkg_ok = check_context_package(result, builder)
         assert not pkg_ok, "Context package check should fail for invalid package"
+
+
+class TestWrapBuilderWithKwargsFallback:
+    """Verify _wrap_builder_with_kwargs behaviour when CoreConfig is None or present."""
+
+    def test_wrapped_calls_builder_directly_when_coreconfig_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When CoreConfig is None, wrapped must pass kwargs directly to builder."""
+        import validate_memory_system  # type: ignore
+
+        captured = {}
+
+        def single_param_builder(**kwargs):
+            captured["args"] = kwargs
+            return kwargs
+
+        monkeypatch.setattr(validate_memory_system, "CoreConfig", None)
+
+        wrapped = validate_memory_system._wrap_builder_with_kwargs(single_param_builder)
+        wrapped(host="codex", event="test")
+
+        assert captured["args"] == {"host": "codex", "event": "test"}
+
+    def test_wrapped_uses_coreconfig_when_available(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When CoreConfig is available, wrapped must pass a CoreConfig instance."""
+        import validate_memory_system  # type: ignore
+
+        # Minimal mock CoreConfig that accepts host/event as kwargs
+        class MockCoreConfig:
+            def __init__(self, *, host: str = "", event: str = "", **_kw):
+                self.host = host
+                self.event = event
+
+        monkeypatch.setattr(validate_memory_system, "CoreConfig", MockCoreConfig)
+
+        captured = {}
+
+        def single_param_builder(config):
+            captured["config"] = config
+            return config
+
+        wrapped = validate_memory_system._wrap_builder_with_kwargs(single_param_builder)
+        wrapped(host="codex", event="test")
+
+        assert isinstance(captured["config"], MockCoreConfig)
+        assert captured["config"].host == "codex"
+        assert captured["config"].event == "test"
+
+    def test_multi_param_builder_returned_as_is(self) -> None:
+        """Builders with >1 parameter must be returned without wrapping."""
+        import validate_memory_system  # type: ignore
+
+        def multi_param_builder(host: str, event: str):
+            return {"host": host, "event": event}
+
+        result = validate_memory_system._wrap_builder_with_kwargs(multi_param_builder)
+        assert result is multi_param_builder
