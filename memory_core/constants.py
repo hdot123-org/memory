@@ -49,3 +49,9 @@ STATUS_ENUMERATIONS: dict[str, tuple[str, ...]] = {
 
 # Valid health values (from DOT_MEMORY_SPEC.md for STATE.md health field)
 VALID_HEALTH_VALUES = ("green", "yellow", "red")
+
+MESSAGE_VERSION_MISMATCH_UPGRADE_NEEDED = "version_mismatch_upgrade_needed: please run memory-migrate --from {current} --to {target}"
+MESSAGE_VERSION_MISMATCH_DOWNGRADE_DETECTED = "version_mismatch_downgrade_detected: project pinned to {current} > installed {target}; install matching memory-core or open issue"
+
+# Migration error codes
+_BACKUP_FAILED = "backup_failed"

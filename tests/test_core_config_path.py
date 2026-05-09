@@ -9,10 +9,14 @@ Covers:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+# Ensure workbot adapter is loaded for this test file (tests are workbot-scoped).
+os.environ.setdefault("MEMORY_HOOK_ADAPTER", "workbot")
 
 # ---------------------------------------------------------------------------
 # Shared helpers

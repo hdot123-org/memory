@@ -35,7 +35,32 @@ class AdapterConfig:
     registration_commit_phase: str = "post"
 
 
+# ── known-key whitelists ──────────────────────────────────────────
+
+_KNOWN_CORE_KEYS: frozenset[str] = frozenset({"version", "adapter"})
+_KNOWN_POLICY_KEYS: frozenset[str] = frozenset({
+    "legality_source_policy",
+    "registration_commit_policy",
+    "registration_commit_phase",
+})
+_KNOWN_ROUTING_KEYS: frozenset[str] = frozenset({
+    "project_name",
+    "project_scope",
+    "host",
+    "canonical_files",
+    "artifact_root",
+})
+
+
 # ── internal helpers ──────────────────────────────────────────────
+
+
+def _check_unknown_keys(section: str, data: dict[str, Any], known: frozenset[str]) -> None:
+    """Raise ``ValueError`` when *data* contains keys outside *known*."""
+    for key in data:
+        if key not in known:
+            raise ValueError(f"unknown key in [{section}]: {key}")
+
 
 def _toml_str(value: str) -> str:
     """Format a plain string as a TOML basic string."""
@@ -51,7 +76,7 @@ def _has_new_sections(data: dict[str, Any]) -> bool:
 # ── public API ────────────────────────────────────────────────────
 
 
-def load_adapter_toml(path: Path) -> AdapterConfig:
+def load_adapter_toml(path: Path, *, strict: bool = False) -> AdapterConfig:
     """Load an :class:`AdapterConfig` from *path*.
 
     Supports two TOML layouts:
@@ -61,6 +86,11 @@ def load_adapter_toml(path: Path) -> AdapterConfig:
 
     If *path* does not exist, return a default configuration with
     ``project_name`` and ``project_scope`` set to empty strings.
+
+    When *strict* is ``True``, additional validation is performed:
+    - Unknown keys in ``[core]`` / ``[policy]`` / ``[routing]`` raise ``ValueError``.
+    - Empty/whitespace ``project_scope`` / ``project_name`` raise ``ValueError``.
+    - Host values not in ``SUPPORTED_HOSTS`` raise ``ValueError``.
     """
     if not path.is_file():
         return AdapterConfig(project_name="", project_scope="")
@@ -69,7 +99,7 @@ def load_adapter_toml(path: Path) -> AdapterConfig:
         data: dict[str, Any] = tomllib.load(fh)
 
     if _has_new_sections(data):
-        config = _load_new_format(data)
+        config = _load_new_format(data, strict=strict)
     else:
         # Legacy [adapter] fallback
         section = data.get("adapter") or {}
@@ -84,19 +114,33 @@ def load_adapter_toml(path: Path) -> AdapterConfig:
 
     # Validate host against SUPPORTED_HOSTS
     if config.host and config.host not in SUPPORTED_HOSTS:
+        if strict:
+            raise ValueError(f"Unsupported host: {config.host!r}, expected one of {SUPPORTED_HOSTS}")
         import warnings
         warnings.warn(
             f"adapter.toml routing.host='{config.host}' is not in SUPPORTED_HOSTS={SUPPORTED_HOSTS}",
             stacklevel=2,
         )
 
+    # Strict: validate non-empty project_scope and project_name
+    if strict:
+        if not config.project_scope or not config.project_scope.strip():
+            raise ValueError("routing.project_scope must be non-empty")
+        if not config.project_name or not config.project_name.strip():
+            raise ValueError("routing.project_name must be non-empty")
+
     return config
 
-def _load_new_format(data: dict[str, Any]) -> AdapterConfig:
+def _load_new_format(data: dict[str, Any], *, strict: bool = False) -> AdapterConfig:
     """Parse the canonical ``[core]`` / ``[policy]`` / ``[routing]`` layout."""
     core: dict[str, Any] = data.get("core", {})
     policy: dict[str, Any] = data.get("policy", {})
     routing: dict[str, Any] = data.get("routing", {})
+
+    if strict:
+        _check_unknown_keys("core", core, _KNOWN_CORE_KEYS)
+        _check_unknown_keys("policy", policy, _KNOWN_POLICY_KEYS)
+        _check_unknown_keys("routing", routing, _KNOWN_ROUTING_KEYS)
 
     return AdapterConfig(
         project_name=routing.get("project_name", routing.get("project_scope", "")),

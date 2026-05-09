@@ -346,13 +346,18 @@ class TestMigrationIdempotency:
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_migrate_no_path(self) -> None:
-        """Migration with no available path should fail."""
+        """Migrating to a future version with no registered path should fail.
+
+        Note: under idempotent semantics, current==to is treated as noop success
+        regardless of --from. To exercise the real "no path" case we target a
+        version newer than the current installed one.
+        """
         proj = _make_temp_project()
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             result = _run_script(
                 MIGRATE_SCRIPT,
-                ["--target", str(proj), "--from", "9.9.9", "--to", "0.2.0", "--json"],
+                ["--target", str(proj), "--from", _current_version(), "--to", "9.9.9", "--json"],
             )
             data = json.loads(result.stdout)
             assert data["success"] is False
@@ -362,16 +367,21 @@ class TestMigrationIdempotency:
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_migrate_version_mismatch(self) -> None:
-        """Migration with wrong --from version should fail."""
+        """Per Phase 4a idempotency contract: current==to → noop regardless of --from.
+
+        Even if user provides a stale --from, hitting an already-at-target state
+        is treated as success+noop (see test_migrate_already_at_target_is_noop).
+        """
         proj = _make_temp_project()
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             result = _run_script(
                 MIGRATE_SCRIPT,
-                ["--target", str(proj), "--from", "0.0.1", "--to", "0.2.0", "--json"],
+                ["--target", str(proj), "--from", "0.0.1", "--to", _current_version(), "--json"],
             )
             data = json.loads(result.stdout)
-            assert data["success"] is False
+            assert data["success"] is True
+            assert data.get("noop") is True
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
