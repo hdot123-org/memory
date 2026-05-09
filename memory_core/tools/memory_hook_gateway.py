@@ -82,6 +82,9 @@ except ImportError:
 
 
 import importlib  # noqa: E402
+import logging  # noqa: E402
+
+_logger = logging.getLogger(__name__)
 
 # 并发限制：本模块在导入时根据 MEMORY_HOOK_ADAPTER 环境变量初始化全局状态
 # （_ADAPTER_NAME / _adapter_config / module globals）。
@@ -369,7 +372,8 @@ def _read_payload(raw_payload: str) -> dict[str, Any]:
         return {}
     try:
         loaded = json.loads(raw_payload)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        _logger.warning("payload JSON parse failed: %s", exc)
         return {}
     return loaded if isinstance(loaded, dict) else {"payload": loaded}
 
@@ -767,7 +771,8 @@ def write_targets() -> dict[str, Any]:
 def resolve_route_target(kind: str) -> str:
     try:
         return _resolve_route_target_via_policy(kind)
-    except Exception:
+    except (KeyError, AttributeError, TypeError) as exc:
+        _logger.warning("route target fallback triggered: %s", exc)
         targets = write_targets()
         project_runtime_root = _get_gateway_business_policy().get_project_runtime_root()
         route_map = {

@@ -278,4 +278,4 @@ def is_lossless(
         return _check_lossless_v1_to_memory_v1(package)
     if schema_from == V2_VERSION and schema_to == MEMORY_V1_VERSION:
         return _check_lossless_v2_to_memory_v1(package)
-    return (True, [])
+    return (False, [f"unknown_schema_pair: {schema_from}->{schema_to}"])

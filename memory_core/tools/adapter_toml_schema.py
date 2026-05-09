@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings as _warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -142,9 +143,28 @@ def _load_new_format(data: dict[str, Any], *, strict: bool = False) -> AdapterCo
         _check_unknown_keys("policy", policy, _KNOWN_POLICY_KEYS)
         _check_unknown_keys("routing", routing, _KNOWN_ROUTING_KEYS)
 
+    project_scope = routing.get("project_scope", "")
+    # F4: Only fall back to project_scope when project_name key is missing,
+    # not when it's present but empty (empty is validated upstream in strict mode).
+    if "project_name" in routing:
+        project_name = routing["project_name"]
+    else:
+        project_name = project_scope
+        if not strict:
+            if not project_name or not project_name.strip():
+                _warnings.warn(
+                    "routing.project_name missing; falling back to project_scope (or empty)",
+                    stacklevel=2,
+                )
+            else:
+                _warnings.warn(
+                    "routing.project_name missing; falling back to project_scope",
+                    stacklevel=2,
+                )
+
     return AdapterConfig(
-        project_name=routing.get("project_name", routing.get("project_scope", "")),
-        project_scope=routing.get("project_scope", ""),
+        project_name=project_name,
+        project_scope=project_scope,
         host=routing.get("host", "codex"),
         adapter_version=core.get("version", CURRENT_MEMORY_VERSION),
         canonical_files=list(routing.get("canonical_files", [])),
