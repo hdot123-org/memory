@@ -136,3 +136,57 @@
 - 🟡 **需清理**：R-05（混合内容）
 - 🟢 **可保留**：R-07, R-08, R-09（通用模板/索引）
 - 🔵 **需同步**：R-06（索引更新）
+
+---
+
+## 2026-05-09 Phase 1 闭环 — Workbot/AxonHub Residue 迁出
+
+> 触发：`docs/audit/2026-05-09-memory-core-audit.md` A.13/A.14（P0-1/P0-2 业务残留违反 BOUNDARY 4.1）
+> 决策：Phase1=A（真正迁出到 archive/，保留可回滚；详见 `archive/legacy-workbot/README.md`）
+
+### 迁出文件清单（kb，8 个）
+
+| 文件 | 原路径 | 新位置 | 原因 |
+|---|---|---|---|
+| workbot.md | `memory_core/memory/kb/projects/workbot.md` | `archive/legacy-workbot/kb/workbot.md` | workbot 项目真相，违反 BOUNDARY 4.1 |
+| workbot-truth-model.md | `memory_core/memory/kb/global/` | `archive/legacy-workbot/kb/` | 同上 |
+| workbot-memory-system.md | 同 | 同 | 同上 |
+| workbot-hook-contract.md | 同 | 同 | 同上 |
+| workbot-project-map-governance.md | 同 | 同 | 同上 |
+| workbot-policy-pack.md | 同 | 同 | 同上 |
+| workbot-policy-pack.json | 同 | 同 | 同上 |
+| workbot-memory-routing.md | 同 | 同 | 同上 |
+
+### 迁出文件清单（tests-disabled，7 个）
+
+| 文件 | 原路径 | 新位置 | 原因 |
+|---|---|---|---|
+| test_m3_doc_scope_coverage.py | `tests/` | `archive/legacy-workbot/tests-disabled/` | 直接读取 6 个 workbot-* 文件 |
+| test_m3_consumer_truth_cleanup.py | 同 | 同 | 读 workbot-memory-routing.md + workbot.md |
+| test_m3_policy_pack_wiring.py | 同 | 同 | 读 workbot-policy-pack.json |
+| test_m2_adapter_extraction.py | 同 | 同 | 读 workbot-hook-contract.md |
+| test_memory_hook_core_m5_adapter_slimming.py | 同 | 同 | 读 workbot-* kb |
+| test_business_policy_errors.py | 同 | 同 | 读 workbot-* kb |
+| test_m7_independent_repo_baseline.py | 同 | 同 | 读 workbot-project-map-governance.md |
+| test_m7_p3_smoke.py | 同 | 同 | 自标 "workbot-scoped"，强制启用 workbot adapter，需 8 个 kb 文件 |
+
+### 内容剥离
+
+- `memory_core/memory/kb/global/projects-spec.md` 第 11 节"CE-01 自动化部署"（含 SSH 别名 `ce-01`、IP `REDACTED_IP`、Docker 服务名、镜像版本等 AxonHub 专属运维信息）→ 剥离到 `archive/legacy-workbot/projects-spec-axonhub-section.md`
+- 同 spec 第 4 节中的 `AxonHub Rebase`/`AxonHub Audit`/`Youzy Clone` 任务名示例 → 替换为 `<Project>` 通用占位符
+
+### 索引改写
+
+- `memory_core/INDEX.md`：删除"真相模型 canonical：`workbot-truth-model.md`"硬绑定，改为"由各业务项目通过 adapter runtime profile 自行声明，memory-core 仓库不内建任何业务项目专属的真相模型文件"
+
+### Pytest 路径
+
+- `pyproject.toml` 中 `testpaths = ["tests"]` 已确保 `archive/` 不被默认收集，无需额外 norecursedirs 配置
+
+### 已知约束
+
+- `memory_core/tools/memory_hook_adapters/workbot_runtime_profile.py` 仍硬编码引用了部分原路径，**仅在 `MEMORY_HOOK_ADAPTER=workbot` 时生效**。如需启用 workbot adapter，需按 `archive/legacy-workbot/README.md` 中的恢复步骤先恢复文件。
+
+### 恢复方法
+
+见 `archive/legacy-workbot/README.md` "恢复方法" 段。

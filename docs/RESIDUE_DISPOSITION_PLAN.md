@@ -133,3 +133,37 @@ rm -rf workspace/memory/kb/projects/axonhub-rebase/
 2. **启用防护**：`.gitignore` 已更新，未来类似污染文件将被 git 忽略
 3. **定期审计**：每次 task 开始前运行 `git diff --stat origin/branch-1..branch-1` 检查 residue
 4. **业务项目规范**：推动各业务项目建立 `.memory/` 目录结构，确保状态有正确归属
+
+---
+
+## 7. Phase 1 闭环（2026-05-09）
+
+> 触发：v0.2.x 多项目接入试点准入审计（`docs/audit/2026-05-09-memory-core-audit.md`）
+> 选项：Phase1=A — 真正迁出到 archive/legacy-workbot/
+
+### 已迁出（已闭环）
+
+| 项 | 状态 |
+|---|---|
+| 8 个 workbot-* / workbot.md kb 文件 | ✅ 已迁至 `archive/legacy-workbot/kb/` |
+| 7 个业务耦合测试文件 | ✅ 已迁至 `archive/legacy-workbot/tests-disabled/` |
+| `projects-spec.md` 第 11 节 (CE-01/AxonHub) | ✅ 已剥离至 `archive/legacy-workbot/projects-spec-axonhub-section.md` |
+| `projects-spec.md` 第 4 节业务示例 | ✅ 已替换为通用 `<Project>` 占位符 |
+| `memory_core/INDEX.md` 真相模型硬绑定 | ✅ 已改为通用 adapter 声明 |
+| pytest 不收集 archive/ | ✅ `testpaths=["tests"]` 已保证 |
+
+### 历史 R-01 ~ R-09 状态更新
+
+历史 R-01~R-04 (axonhub-rebase 真实业务状态) 在过往 commit 中已从 git track 中移除（当前 git status 无残留）。文档曾记录"必须迁出"，现统一标注为：**已闭环（v0.2.x 之前已清理）**。
+
+R-05（projects-spec.md 混合内容）：**Phase 1 闭环完成** — 业务专属段已剥离到 archive。
+
+### 试点准入门槛
+
+- ✅ 单项目试点准入条件：BOUNDARY 4.1/4.3 合规
+- ✅ memory-core 测试集与具体业务知识完全解耦
+- ⚠️ 多项目并发试点：仍需关注 `memory_hook_gateway.py` 模块级 globals（C 维度审计 P1，CLI 进程模式安全；同进程库导入并发不安全，建议每项目独立进程）
+
+### 反向依赖
+
+- `memory_core/tools/memory_hook_adapters/workbot_runtime_profile.py` 是 workbot adapter 实现，仍硬编码原路径。**仅在 `MEMORY_HOOK_ADAPTER=workbot` 时加载**，对默认 `default` adapter 无影响。如需重启 workbot 适配，参考 `archive/legacy-workbot/README.md` 恢复步骤。
