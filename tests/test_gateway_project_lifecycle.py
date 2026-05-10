@@ -81,3 +81,48 @@ def test_global_state_root_preserves_project_memory_write_targets(monkeypatch, t
     assert targets["hook_lifecycle"] == str(global_state_root / "project-lifecycle")
     assert Path(targets["artifacts"]).is_relative_to(project)
     assert Path(targets["system_error"]).is_relative_to(project_memory)
+
+def test_artifact_and_error_logs_are_date_partitioned(monkeypatch, tmp_path: Path) -> None:
+    import json
+    from datetime import datetime as real_datetime
+
+    from memory_core.tools.memory_hook_impls import ArtifactWriter, ErrorSinkImpl
+
+    class FixedDatetime:
+        @staticmethod
+        def now():
+            return real_datetime(2026, 5, 11, 9, 8, 7, 123456)
+
+    project = tmp_path / "project"
+    context_root = project / "artifacts" / "memory-hook" / "contexts"
+    error_log = project / "memory" / "system" / "errors.log"
+    writer = ArtifactWriter(context_root=context_root, error_log=error_log, datetime_module=FixedDatetime)
+    package = {"schema_version": "wb-hook-v2"}
+
+    assert writer.write("codex", "session-start", package) is True
+
+    snapshot = context_root / "2026-05-11" / "20260511T090807123456-codex-session-start.json"
+    daily_latest = context_root / "2026-05-11" / "latest-codex-session-start.json"
+    latest = context_root / "latest-codex-session-start.json"
+    daily_events = project / "artifacts" / "memory-hook" / "events" / "2026-05-11.jsonl"
+    legacy_events = project / "artifacts" / "memory-hook" / "events.jsonl"
+
+    assert snapshot.is_file()
+    assert daily_latest.is_file()
+    assert latest.is_file()
+    assert daily_events.is_file()
+    assert legacy_events.is_file()
+    refs = json.loads(snapshot.read_text(encoding="utf-8"))["artifact_refs"]
+    assert refs["snapshot"] == str(snapshot)
+    assert refs["daily_latest"] == str(daily_latest)
+    assert refs["event_log"] == str(daily_events)
+    assert refs["legacy_event_log"] == str(legacy_events)
+
+    sink = ErrorSinkImpl(error_log, now_iso_fn=lambda: "2026-05-11T09:08:07+08:00")
+    sink.log("component", "boom", {"x": 1})
+
+    daily_errors = project / "memory" / "system" / "errors" / "2026-05-11.log"
+    assert daily_errors.is_file()
+    assert error_log.is_file()
+    assert "boom" in daily_errors.read_text(encoding="utf-8")
+    assert "boom" in error_log.read_text(encoding="utf-8")

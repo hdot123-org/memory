@@ -1143,30 +1143,44 @@ class ArtifactSinkImpl(ArtifactSink):
 
     def ensure_dirs(self) -> None:
         self._context_root.mkdir(parents=True, exist_ok=True)
+        (self._event_log.parent / "events").mkdir(parents=True, exist_ok=True)
 
     def write(self, package: dict[str, Any]) -> dict[str, str]:
         self.ensure_dirs()
-        timestamp = self._datetime.now().strftime("%Y%m%dT%H%M%S%f")
-        snapshot_path = self._context_root / f"{timestamp}-{package['host']}-{package['event']}.json"
+        now = self._datetime.now()
+        day = now.date().isoformat()
+        timestamp = now.strftime("%Y%m%dT%H%M%S%f")
+        daily_context_root = self._context_root / day
+        daily_context_root.mkdir(parents=True, exist_ok=True)
+        snapshot_path = daily_context_root / f"{timestamp}-{package['host']}-{package['event']}.json"
         suffix = 1
         while snapshot_path.exists():
-            snapshot_path = self._context_root / f"{timestamp}-{suffix:02d}-{package['host']}-{package['event']}.json"
+            snapshot_path = daily_context_root / f"{timestamp}-{suffix:02d}-{package['host']}-{package['event']}.json"
             suffix += 1
         latest_path = self._context_root / f"latest-{package['host']}-{package['event']}.json"
+        daily_latest_path = daily_context_root / f"latest-{package['host']}-{package['event']}.json"
+        daily_event_log = self._event_log.parent / "events" / f"{day}.jsonl"
 
         package["artifact_refs"] = {
             "snapshot": str(snapshot_path),
             "latest": str(latest_path),
-            "event_log": str(self._event_log),
+            "daily_latest": str(daily_latest_path),
+            "event_log": str(daily_event_log),
+            "legacy_event_log": str(self._event_log),
         }
         rendered = json.dumps(package, ensure_ascii=False, indent=2) + "\n"
         snapshot_path.write_text(rendered, encoding="utf-8")
         latest_path.write_text(rendered, encoding="utf-8")
+        daily_latest_path.write_text(rendered, encoding="utf-8")
 
+        event_line = json.dumps(package, ensure_ascii=False) + "\n"
+        daily_event_log.parent.mkdir(parents=True, exist_ok=True)
+        with daily_event_log.open("a", encoding="utf-8") as handle:
+            handle.write(event_line)
         with self._event_log.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(package, ensure_ascii=False) + "\n")
+            handle.write(event_line)
 
-        return {"snapshot": str(snapshot_path), "latest": str(latest_path)}
+        return {"snapshot": str(snapshot_path), "latest": str(latest_path), "event_log": str(daily_event_log)}
 
 
 class ErrorSinkImpl(ErrorSink):
@@ -1182,9 +1196,16 @@ class ErrorSinkImpl(ErrorSink):
 
     def log(self, component: str, message: str, context: dict[str, Any]) -> None:
         self._error_log.parent.mkdir(parents=True, exist_ok=True)
+        timestamp = self._now_iso()
+        day = timestamp[:10]
+        daily_error_log = self._error_log.parent / "errors" / f"{day}.log"
+        daily_error_log.parent.mkdir(parents=True, exist_ok=True)
         rendered = json.dumps(context, ensure_ascii=False, sort_keys=True)
+        line = f"[{timestamp}] [{component}] [error] {message} | context={rendered}\n"
+        with daily_error_log.open("a", encoding="utf-8") as handle:
+            handle.write(line)
         with self._error_log.open("a", encoding="utf-8") as handle:
-            handle.write(f"[{self._now_iso()}] [{component}] [error] {message} | context={rendered}\n")
+            handle.write(line)
 
 
 # ---------------------------------------------------------------------------
@@ -1243,12 +1264,19 @@ class ArtifactWriter:
             "context_root": str(self.context_root),
         }
         rendered = json.dumps(error_ctx, ensure_ascii=False, sort_keys=True)
-        timestamp = self.datetime_module.now().strftime("%Y%m%dT%H%M%S")
+        now = self.datetime_module.now()
+        timestamp = now.strftime("%Y%m%dT%H%M%S")
+        day = now.date().isoformat()
+        line = (
+            f"[{timestamp}] [ArtifactWriter] [error] "
+            f"artifact write failed | context={rendered}\n"
+        )
+        daily_error_log = self.error_log.parent / "errors" / f"{day}.log"
+        daily_error_log.parent.mkdir(parents=True, exist_ok=True)
+        with daily_error_log.open("a", encoding="utf-8") as handle:
+            handle.write(line)
         with self.error_log.open("a", encoding="utf-8") as handle:
-            handle.write(
-                f"[{timestamp}] [ArtifactWriter] [error] "
-                f"artifact write failed | context={rendered}\n"
-            )
+            handle.write(line)
 
 
 class DelegateRouter:

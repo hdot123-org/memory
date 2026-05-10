@@ -79,6 +79,8 @@ memory-codex-hooks install --storage-root ~/.memory-core
 
 `--storage-root` 对应的 `~/.memory-core` 只作为 Codex 全局入口的状态根，用于记录 project lifecycle/path-index、missing path 等宿主级索引；它不能替代项目内 `.memory/`/`memory/`。若曾经添加到 Codex 的项目目录被误删，lifecycle 会通过路径索引复用已记录的项目身份并标记为 `missing`，历史项目记忆不会被迁移或删除。目录恢复或重新 clone 后，后续 hook 会继续在项目目录内读写。
 
+项目内 hook 产物按日期分区写入，便于后续归档、签名和清理：`artifacts/memory-hook/contexts/YYYY-MM-DD/<timestamp>-<host>-<event>.json` 保存快照，`artifacts/memory-hook/events/YYYY-MM-DD.jsonl` 保存当日事件日志，`memory/system/errors/YYYY-MM-DD.log` 保存当日错误日志；同时保留 `latest-<host>-<event>.json`、`events.jsonl` 和 `errors.log` 作为兼容入口。
+
 ### 2. 校验 — `memory-validate`
 
 检查项目 `.memory/` 目录是否完整、schema 是否合规：

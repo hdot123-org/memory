@@ -218,26 +218,44 @@ class TestArtifactWriter:
     """Validate ArtifactWriter JSON writing and error handling."""
 
     def test_artifact_writer_creates_context_file(self, tmp_path):
-        """ArtifactWriter writes a JSON file to context_root."""
+        """ArtifactWriter writes date-partitioned JSON artifacts."""
+        from datetime import datetime as real_datetime
+
         from memory_core.tools.memory_hook_impls import ArtifactWriter
+
+        class FixedDatetime:
+            @staticmethod
+            def now():
+                return real_datetime(2026, 5, 11, 0, 47, 11, 370980)
 
         context_root = tmp_path / "artifacts"
         error_log = tmp_path / "errors.log"
-        writer = ArtifactWriter(context_root=context_root, error_log=error_log)
+        writer = ArtifactWriter(
+            context_root=context_root,
+            error_log=error_log,
+            datetime_module=FixedDatetime,
+        )
 
         package = {"schema_version": "wb-hook-v2", "host": "codex", "event": "test"}
         writer.write(host="codex", event="test", package=package)
 
-        # At least the snapshot and latest files should exist
-        files = list(context_root.glob("*.json"))
-        assert len(files) >= 1
+        snapshot = context_root / "2026-05-11" / "20260511T004711370980-codex-test.json"
+        latest = context_root / "latest-codex-test.json"
+        event_log = context_root.parent / "events" / "2026-05-11.jsonl"
+        legacy_event_log = context_root.parent / "events.jsonl"
 
-        # Verify content is valid JSON
-        snapshot = sorted(context_root.glob("*.json"))[0]
+        assert snapshot.is_file()
+        assert latest.is_file()
+        assert event_log.is_file()
+        assert legacy_event_log.is_file()
+
         content = json.loads(snapshot.read_text(encoding="utf-8"))
         assert content["host"] == "codex"
         assert content["event"] == "test"
-        assert "artifact_refs" in content
+        assert content["artifact_refs"]["snapshot"] == str(snapshot)
+        assert content["artifact_refs"]["latest"] == str(latest)
+        assert content["artifact_refs"]["event_log"] == str(event_log)
+        assert content["artifact_refs"]["legacy_event_log"] == str(legacy_event_log)
 
     def test_artifact_writer_handles_write_error_gracefully(self, tmp_path):
         """ArtifactWriter logs errors instead of raising."""
@@ -272,9 +290,11 @@ class TestArtifactWriter:
         # Should not raise
         writer.write(host="codex", event="test", package=package)
 
-        # Error should be logged
+        # Error should be logged to the dated log and legacy compatibility log.
+        dated_error_log = error_log.parent / "errors" / f"{real_datetime.now().date().isoformat()}.log"
+        assert dated_error_log.exists()
         assert error_log.exists()
-        log_text = error_log.read_text(encoding="utf-8")
+        log_text = dated_error_log.read_text(encoding="utf-8")
         assert "ArtifactWriter" in log_text
         assert "disk full" in log_text
 
