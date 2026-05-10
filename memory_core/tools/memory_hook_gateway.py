@@ -1321,7 +1321,8 @@ def main() -> int:
             file=sys.stderr,
         )
         exit_code = 1
-    elif args.no_delegate:
+    
+    if args.no_delegate:
         sys.stdout.write(json.dumps(package, ensure_ascii=False) + "\n")
     else:
         exit_code = _execute_delegate(args, raw_payload, payload, cwd)
