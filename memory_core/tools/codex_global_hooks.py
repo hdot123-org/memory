@@ -40,7 +40,7 @@ def default_codex_home() -> Path:
 
 def default_storage_root() -> Path:
     """Return the stable memory storage root used by the hook wrapper."""
-    return Path(os.environ.get("MEMORY_HOOK_STORAGE_ROOT", "~/.memory-core")).expanduser()
+    return Path(os.environ.get("MEMORY_HOOK_GLOBAL_STATE_ROOT", "~/.memory-core")).expanduser()
 
 
 def wrapper_path(codex_home: Path) -> Path:
@@ -52,28 +52,33 @@ def _looks_like_path(command: str) -> bool:
     return command.startswith("~") or "/" in command
 
 
-def resolve_gateway_command(gateway_command: str, warnings: list[str]) -> str | None:
-    """Resolve the gateway executable to a stable absolute path.
-
-    Desktop apps often run with a reduced PATH, so the installed wrapper should
-    not depend on shell lookup for the default ``memory-hook-gateway`` command.
-    """
-    if _looks_like_path(gateway_command):
-        candidate = Path(gateway_command).expanduser()
+def _resolve_installed_command(command: str, warnings: list[str], *, label: str) -> str | None:
+    if _looks_like_path(command):
+        candidate = Path(command).expanduser()
         if candidate.is_file():
             return str(candidate.resolve())
-        warnings.append(f"gateway command not found: {gateway_command}")
+        warnings.append(f"{label} command not found: {command}")
         return None
 
-    resolved = shutil.which(gateway_command)
+    resolved = shutil.which(command)
     if resolved:
         return resolved
 
     warnings.append(
-        f"gateway command not found: {gateway_command}; "
-        "install memory-core or pass --gateway-command /absolute/path"
+        f"{label} command not found: {command}; "
+        f"install memory-core or pass --{label.replace('_', '-').replace(' ', '-')}-command /absolute/path"
     )
     return None
+
+
+def resolve_gateway_command(gateway_command: str, warnings: list[str]) -> str | None:
+    """Resolve the gateway executable to a stable absolute path."""
+    return _resolve_installed_command(gateway_command, warnings, label="gateway")
+
+
+def resolve_init_command(init_command: str, warnings: list[str]) -> str | None:
+    """Resolve the project initializer executable to a stable absolute path."""
+    return _resolve_installed_command(init_command, warnings, label="init")
 
 
 def _backup_existing_file(path: Path) -> Path:
@@ -91,26 +96,45 @@ def render_wrapper(
     storage_root: Path,
     *,
     gateway_command: str = "memory-hook-gateway",
+    init_command: str = "memory-init",
 ) -> str:
     """Render the shell wrapper installed into ``~/.codex/bin``.
 
-    The wrapper records the original working directory and calls the installed
+    The wrapper records the original working directory, ensures the current
+    Codex project has project-local memory files, then calls the installed
     gateway command.  It does not point at a source checkout or worktree.
     """
     quoted_storage = shlex.quote(str(storage_root.expanduser()))
     quoted_gateway = shlex.quote(gateway_command)
+    quoted_init = shlex.quote(init_command)
     return f"""#!/bin/sh
 set -eu
 
-MEMORY_HOOK_STORAGE_ROOT={quoted_storage}
+MEMORY_HOOK_GLOBAL_STATE_ROOT={quoted_storage}
 MEMORY_HOOK_GATEWAY=${{MEMORY_HOOK_GATEWAY:-{quoted_gateway}}}
+MEMORY_HOOK_PROJECT_INIT=${{MEMORY_HOOK_PROJECT_INIT:-{quoted_init}}}
 ORIGINAL_CWD=${{PWD:-}}
+PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${{PATH:-}}"
 
+export PATH
 export MEMORY_HOOK_ORIGINAL_CWD="$ORIGINAL_CWD"
-export MEMORY_HOOK_STORAGE_ROOT
+export MEMORY_HOOK_GLOBAL_STATE_ROOT
 export MEMORY_HOOK_FORCE="${{MEMORY_HOOK_FORCE:-1}}"
 export MEMORY_HOOK_PREFER_EXTERNAL_CWD="${{MEMORY_HOOK_PREFER_EXTERNAL_CWD:-1}}"
 export MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE="${{MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE:-1}}"
+
+mkdir -p "$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system" 2>/dev/null || true
+PROJECT_CWD="$ORIGINAL_CWD"
+if [ -n "$ORIGINAL_CWD" ] && [ -d "$ORIGINAL_CWD" ]; then
+    GIT_ROOT=$(git -C "$ORIGINAL_CWD" rev-parse --show-toplevel 2>/dev/null || true)
+    if [ -n "$GIT_ROOT" ]; then
+        PROJECT_CWD="$GIT_ROOT"
+    fi
+fi
+if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ] && [ ! -d "$PROJECT_CWD/.memory" ]; then
+    "$MEMORY_HOOK_PROJECT_INIT" --target "$PROJECT_CWD" --host codex \
+        >/dev/null 2>>"$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system/errors.log" || true
+fi
 
 exec "$MEMORY_HOOK_GATEWAY" "$@"
 """
@@ -213,6 +237,7 @@ def install_codex_hooks(
     codex_home: Path | None = None,
     storage_root: Path | None = None,
     gateway_command: str = "memory-hook-gateway",
+    init_command: str = "memory-init",
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
     dry_run: bool = False,
 ) -> dict[str, Any]:
@@ -223,10 +248,15 @@ def install_codex_hooks(
     hooks_path = resolved_codex_home / "hooks.json"
     warnings: list[str] = []
     resolved_gateway_command = resolve_gateway_command(gateway_command, warnings)
+    resolved_init_command = resolve_init_command(init_command, warnings)
 
     wrapper_content = (
-        render_wrapper(resolved_storage_root, gateway_command=resolved_gateway_command)
-        if resolved_gateway_command
+        render_wrapper(
+            resolved_storage_root,
+            gateway_command=resolved_gateway_command,
+            init_command=resolved_init_command,
+        )
+        if resolved_gateway_command and resolved_init_command
         else ""
     )
     desired = desired_codex_hooks(hook_wrapper, timeout=timeout)
@@ -240,6 +270,7 @@ def install_codex_hooks(
         "codex_home": str(resolved_codex_home),
         "storage_root": str(resolved_storage_root),
         "gateway_command": resolved_gateway_command or gateway_command,
+        "init_command": resolved_init_command or init_command,
         "wrapper": str(hook_wrapper),
         "hooks_json": str(hooks_path),
         "created": [],
@@ -249,7 +280,7 @@ def install_codex_hooks(
         "warnings": warnings,
     }
 
-    if not resolved_gateway_command:
+    if not resolved_gateway_command or not resolved_init_command:
         result["success"] = False
         return result
 
@@ -290,8 +321,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Install Codex App global memory hooks.")
     parser.add_argument("command", choices=("install",), help="Operation to perform.")
     parser.add_argument("--codex-home", type=Path, default=None, help="Codex config directory (default: ~/.codex).")
-    parser.add_argument("--storage-root", type=Path, default=None, help="Stable memory storage root (default: ~/.memory-core).")
+    parser.add_argument("--storage-root", type=Path, default=None, help="Stable global state root for Codex hook indexes (default: ~/.memory-core).")
     parser.add_argument("--gateway-command", default="memory-hook-gateway", help="Installed gateway command used by the hook wrapper.")
+    parser.add_argument("--init-command", default="memory-init", help="Installed project initializer command used by the hook wrapper.")
     parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS, help="Codex hook timeout in seconds.")
     parser.add_argument("--dry-run", action="store_true", help="Report changes without writing files.")
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
@@ -301,6 +333,7 @@ def main(argv: list[str] | None = None) -> int:
         codex_home=args.codex_home,
         storage_root=args.storage_root,
         gateway_command=args.gateway_command,
+        init_command=args.init_command,
         timeout=args.timeout,
         dry_run=args.dry_run,
     )

@@ -25,9 +25,6 @@ def _configured_artifact_root(workspace_root: Path) -> Path:
     artifact_root = os.environ.get("MEMORY_HOOK_ARTIFACT_ROOT")
     if artifact_root:
         return Path(artifact_root).expanduser()
-    storage_root = os.environ.get("MEMORY_HOOK_STORAGE_ROOT")
-    if storage_root:
-        return Path(storage_root).expanduser() / "artifacts" / "memory-hook"
     return workspace_root / "artifacts" / "memory-hook"
 
 
@@ -35,24 +32,25 @@ def _configured_error_log(workspace_root: Path) -> Path:
     error_log = os.environ.get("MEMORY_HOOK_ERROR_LOG")
     if error_log:
         return Path(error_log).expanduser()
-    storage_root = os.environ.get("MEMORY_HOOK_STORAGE_ROOT")
-    if storage_root:
-        return Path(storage_root).expanduser() / "memory" / "system" / "errors.log"
     return workspace_root / "memory" / "system" / "errors.log"
 
 
 def _configured_invalid_memory_root(workspace_root: Path) -> Path:
-    storage_root = os.environ.get("MEMORY_HOOK_STORAGE_ROOT")
-    if storage_root:
-        return Path(storage_root).expanduser() / "memory" / "archive" / "invalid"
     return workspace_root / "memory" / "archive" / "invalid"
+
+
+def _configured_project_lifecycle_root(workspace_root: Path) -> Path:
+    global_state_root = os.environ.get("MEMORY_HOOK_GLOBAL_STATE_ROOT")
+    if global_state_root:
+        return Path(global_state_root).expanduser() / "project-lifecycle"
+    return workspace_root / "artifacts" / "memory-hook" / "project-lifecycle"
 
 
 ARTIFACT_ROOT = _configured_artifact_root(WORKSPACE_ROOT)
 CONTEXT_ROOT = ARTIFACT_ROOT / "contexts"
 EVENT_LOG = ARTIFACT_ROOT / "events.jsonl"
 ERROR_LOG = _configured_error_log(WORKSPACE_ROOT)
-PROJECT_LIFECYCLE_ROOT = ARTIFACT_ROOT / "project-lifecycle"
+PROJECT_LIFECYCLE_ROOT = _configured_project_lifecycle_root(WORKSPACE_ROOT)
 try:
     from .cmux_hook_state import default_hook_state_path, record_hook_event
 except ImportError:
@@ -348,15 +346,11 @@ def _resolve_route_target_via_policy(kind: str) -> str:
 
 
 def _apply_hook_runtime_write_targets(targets: dict[str, Any]) -> dict[str, Any]:
-    """Keep global hook runtime writes out of project-local memory dirs."""
-    if not os.environ.get("MEMORY_HOOK_STORAGE_ROOT"):
-        return targets
+    """Expose global lifecycle state without redirecting project memory writes."""
     updated = dict(targets)
-    updated["artifacts"] = str(ARTIFACT_ROOT)
-    updated["system_error"] = str(ERROR_LOG)
-    updated["invalid_memory"] = str(_configured_invalid_memory_root(WORKSPACE_ROOT))
-    updated["hook_lifecycle"] = str(PROJECT_LIFECYCLE_ROOT)
-    updated["hook_storage_root"] = str(Path(os.environ["MEMORY_HOOK_STORAGE_ROOT"]).expanduser())
+    if os.environ.get("MEMORY_HOOK_GLOBAL_STATE_ROOT"):
+        updated["hook_lifecycle"] = str(PROJECT_LIFECYCLE_ROOT)
+        updated["hook_global_state_root"] = str(Path(os.environ["MEMORY_HOOK_GLOBAL_STATE_ROOT"]).expanduser())
     return updated
 
 
@@ -851,10 +845,6 @@ def write_targets() -> dict[str, Any]:
 
 
 def resolve_route_target(kind: str) -> str:
-    if os.environ.get("MEMORY_HOOK_STORAGE_ROOT") and kind in {"system-error", "invalid-memory"}:
-        storage_targets = write_targets()
-        target_key = "system_error" if kind == "system-error" else "invalid_memory"
-        return str(storage_targets[target_key])
     try:
         return _resolve_route_target_via_policy(kind)
     except (KeyError, AttributeError, TypeError) as exc:

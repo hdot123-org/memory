@@ -49,20 +49,33 @@ def test_merge_replaces_existing_memory_hooks_and_preserves_unrelated(tmp_path: 
     assert merged["hooks"]["OtherEvent"] == existing["hooks"]["OtherEvent"]
 
 
-def _fake_gateway(tmp_path: Path, monkeypatch) -> Path:
-    gateway_dir = tmp_path / "bin"
-    gateway_dir.mkdir()
-    gateway = gateway_dir / "memory-hook-gateway"
+def _fake_memory_commands(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
+    command_dir = tmp_path / "bin"
+    command_dir.mkdir()
+    gateway = command_dir / "memory-hook-gateway"
     gateway.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     gateway.chmod(gateway.stat().st_mode | stat.S_IXUSR)
-    monkeypatch.setenv("PATH", str(gateway_dir))
-    return gateway
+    init = command_dir / "memory-init"
+    init.write_text(
+        "#!/bin/sh\n"
+        "while [ $# -gt 0 ]; do\n"
+        "  case \"$1\" in\n"
+        "    --target) shift; target=\"$1\" ;;\n"
+        "  esac\n"
+        "  shift\n"
+        "done\n"
+        "mkdir -p \"$target/.memory\" \"$target/memory/system\"\n",
+        encoding="utf-8",
+    )
+    init.chmod(init.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setenv("PATH", str(command_dir))
+    return gateway, init
 
 
 def test_install_codex_hooks_writes_wrapper_and_hooks_json(monkeypatch, tmp_path: Path) -> None:
     codex_home = tmp_path / ".codex"
     storage_root = tmp_path / "memory-store"
-    gateway = _fake_gateway(tmp_path, monkeypatch)
+    gateway, init = _fake_memory_commands(tmp_path, monkeypatch)
 
     result = install_codex_hooks(codex_home=codex_home, storage_root=storage_root)
 
@@ -73,14 +86,18 @@ def test_install_codex_hooks_writes_wrapper_and_hooks_json(monkeypatch, tmp_path
     assert hooks_path.is_file()
     assert os.stat(wrapper).st_mode & stat.S_IXUSR
     assert result["gateway_command"] == str(gateway)
+    assert result["init_command"] == str(init)
 
     wrapper_text = wrapper.read_text(encoding="utf-8")
-    assert f"MEMORY_HOOK_STORAGE_ROOT={storage_root}" in wrapper_text
+    assert f"MEMORY_HOOK_GLOBAL_STATE_ROOT={storage_root}" in wrapper_text
     assert "memory_core/tools/memory_hook_gateway.py" not in wrapper_text
     assert str(gateway) in wrapper_text
+    assert str(init) in wrapper_text
     assert "exec \"$MEMORY_HOOK_GATEWAY\" \"$@\"" in wrapper_text
     assert "MEMORY_HOOK_ORIGINAL_CWD" in wrapper_text
     assert "MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE" in wrapper_text
+    assert "MEMORY_HOOK_STORAGE_ROOT" not in wrapper_text
+    assert "memory-init" in wrapper_text or str(init) in wrapper_text
 
     hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
     commands = [
@@ -91,6 +108,52 @@ def test_install_codex_hooks_writes_wrapper_and_hooks_json(monkeypatch, tmp_path
     ]
     assert len(commands) == 3
     assert all(str(wrapper) in command for command in commands)
+
+
+def test_wrapper_initializes_project_memory_before_gateway(monkeypatch, tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    project = tmp_path / "project"
+    project.mkdir()
+    _fake_memory_commands(tmp_path, monkeypatch)
+
+    install_codex_hooks(codex_home=codex_home, storage_root=tmp_path / "global-state")
+    wrapper = codex_home / "bin" / "memory-hook"
+
+    proc = subprocess.run(
+        [str(wrapper), "--host", "codex", "--event", "session-start"],
+        cwd=project,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0
+    assert (project / ".memory").is_dir()
+    assert (project / "memory" / "system").is_dir()
+
+
+def test_wrapper_initializes_git_project_root_from_subdirectory(monkeypatch, tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    project = tmp_path / "project"
+    nested = project / "src" / "feature"
+    nested.mkdir(parents=True)
+    subprocess.run(["git", "init"], cwd=project, check=True, capture_output=True, text=True)
+    _fake_memory_commands(tmp_path, monkeypatch)
+
+    install_codex_hooks(codex_home=codex_home, storage_root=tmp_path / "global-state")
+    wrapper = codex_home / "bin" / "memory-hook"
+
+    proc = subprocess.run(
+        [str(wrapper), "--host", "codex", "--event", "session-start"],
+        cwd=nested,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0
+    assert (project / ".memory").is_dir()
+    assert not (nested / ".memory").exists()
 
 
 def test_install_codex_hooks_fails_without_installed_gateway(monkeypatch, tmp_path: Path) -> None:
@@ -109,7 +172,7 @@ def test_install_codex_hooks_backs_up_existing_hooks_json(monkeypatch, tmp_path:
     hooks_path = codex_home / "hooks.json"
     existing_hooks = '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"keep-me"}]}]}}\n'
     hooks_path.write_text(existing_hooks, encoding="utf-8")
-    _fake_gateway(tmp_path, monkeypatch)
+    _fake_memory_commands(tmp_path, monkeypatch)
 
     result = install_codex_hooks(codex_home=codex_home, storage_root=tmp_path / "store")
 

@@ -49,30 +49,35 @@ def test_build_context_package_includes_lifecycle_when_enabled(monkeypatch, tmp_
     assert Path(lifecycle["record_path"]).is_file()
 
 
-def test_storage_root_controls_artifact_and_error_paths(monkeypatch, tmp_path: Path) -> None:
-    storage_root = tmp_path / "store"
-    workspace_root = tmp_path / "workspace"
+def test_global_state_root_does_not_redirect_project_artifact_or_error_paths(monkeypatch, tmp_path: Path) -> None:
+    global_state_root = tmp_path / "global-state"
+    workspace_root = tmp_path / "project"
 
-    monkeypatch.setenv("MEMORY_HOOK_STORAGE_ROOT", str(storage_root))
+    monkeypatch.setenv("MEMORY_HOOK_GLOBAL_STATE_ROOT", str(global_state_root))
+    monkeypatch.delenv("MEMORY_HOOK_STORAGE_ROOT", raising=False)
 
-    assert gw._configured_artifact_root(workspace_root) == storage_root / "artifacts" / "memory-hook"
-    assert gw._configured_error_log(workspace_root) == storage_root / "memory" / "system" / "errors.log"
+    assert gw._configured_artifact_root(workspace_root) == workspace_root / "artifacts" / "memory-hook"
+    assert gw._configured_error_log(workspace_root) == workspace_root / "memory" / "system" / "errors.log"
+    assert gw._configured_project_lifecycle_root(workspace_root) == global_state_root / "project-lifecycle"
 
-def test_storage_root_keeps_hook_runtime_writes_out_of_project_memory(monkeypatch, tmp_path: Path) -> None:
+
+def test_global_state_root_preserves_project_memory_write_targets(monkeypatch, tmp_path: Path) -> None:
     project = tmp_path / "project"
     project_memory = project / "memory"
     project_memory.mkdir(parents=True)
-    storage_root = tmp_path / "global-memory-store"
+    global_state_root = tmp_path / "global-state"
 
-    monkeypatch.setenv("MEMORY_HOOK_STORAGE_ROOT", str(storage_root))
+    monkeypatch.setenv("MEMORY_HOOK_GLOBAL_STATE_ROOT", str(global_state_root))
     monkeypatch.setattr(gw, "WORKSPACE_ROOT", project)
-    monkeypatch.setattr(gw, "ARTIFACT_ROOT", storage_root / "artifacts" / "memory-hook")
-    monkeypatch.setattr(gw, "ERROR_LOG", storage_root / "memory" / "system" / "errors.log")
+    monkeypatch.setattr(gw, "ARTIFACT_ROOT", project / "artifacts" / "memory-hook")
+    monkeypatch.setattr(gw, "ERROR_LOG", project_memory / "system" / "errors.log")
+    monkeypatch.setattr(gw, "PROJECT_LIFECYCLE_ROOT", global_state_root / "project-lifecycle")
     monkeypatch.setattr(gw, "_default_write_policy", None)
 
     targets = gw.write_targets()
 
-    assert targets["artifacts"] == str(storage_root / "artifacts" / "memory-hook")
-    assert targets["system_error"] == str(storage_root / "memory" / "system" / "errors.log")
-    assert not Path(targets["artifacts"]).is_relative_to(project)
-    assert not Path(targets["system_error"]).is_relative_to(project_memory)
+    assert targets["artifacts"] == str(project / "artifacts")
+    assert targets["system_error"] == str(project_memory / "system" / "errors.log")
+    assert targets["hook_lifecycle"] == str(global_state_root / "project-lifecycle")
+    assert Path(targets["artifacts"]).is_relative_to(project)
+    assert Path(targets["system_error"]).is_relative_to(project_memory)
