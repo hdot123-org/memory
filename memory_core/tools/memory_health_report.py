@@ -6,15 +6,13 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Ensure the memory_core package is importable
 SCRIPT_PATH = Path(__file__).resolve()
 REPO_ROOT = SCRIPT_PATH.parents[2]
 sys.path.insert(0, str(REPO_ROOT))
-
-# Switch to target directory so discover_roots works correctly
-# This is critical because build_context_package relies on cwd
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -39,15 +37,13 @@ def main() -> int:
     payload = {"cwd": str(target)}
     
     try:
-        # Use 'codex' as host since it validates the input
         package = build_context_package("codex", "health-check", payload)
-        
         report = {
             "status": package.get("status"),
             "missing_paths": package.get("missing_paths", []),
             "validation_errors": package.get("validation_errors", []),
             "project_scope": package.get("project_scope"),
-            "generated_at": package.get("generated_at"),
+            "checked_at": datetime.now().isoformat(),
         }
     except Exception as e:
         report = {
@@ -55,6 +51,7 @@ def main() -> int:
             "error": str(e),
             "missing_paths": [],
             "validation_errors": [],
+            "checked_at": datetime.now().isoformat(),
         }
     
     output_path = Path(args.output) if args.output else (target / "memory" / "system" / "health-report.json")

@@ -1251,6 +1251,25 @@ def main() -> int:
     writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
     package = build_context_package(args.host, args.event, payload)
     
+    # Health Alert: Inject previous session's health report if available
+    if args.event == "session-start":
+        prev_health_report = cwd / "memory" / "system" / "health-report.json"
+        if prev_health_report.exists():
+            try:
+                report_data = json.loads(prev_health_report.read_text())
+                if report_data.get("status") == "degraded":
+                    # Inject into system_context so the model can see and report it
+                    package.setdefault("system_context", {})
+                    package["system_context"]["previous_health_alert"] = {
+                        "status": "degraded",
+                        "errors": report_data.get("validation_errors", [])[:5], # Limit to top 5
+                        "note": "Detected from previous session startup health check"
+                    }
+                    # Also log it explicitly
+                    append_error_log("health-check", "Project health degraded (from previous check)", report_data)
+            except Exception as e:
+                _logger.debug("Failed to read previous health report: %s", e)
+    
     # L2: Verify integrity on session-start (after package is built)
     if args.event == "session-start":
         integrity_result = _integrity_verify(cwd)
