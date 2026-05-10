@@ -62,6 +62,21 @@ memory-init --target /path/to/project --dry-run
 memory-init --target /path/to/project --dry-run --json
 ```
 
+### Codex App 全局记忆 Hook
+
+Codex App 的全局 hook 只作为触发器，不承担记忆删除、迁移或项目生命周期管理。推荐安装一套稳定入口，让 Codex 的 `SessionStart`、`UserPromptSubmit`、`Stop` 都转发到 memory gateway：
+
+```bash
+memory-codex-hooks install --memory-repo /Users/busiji/memory
+```
+
+该命令会写入：
+
+- `~/.codex/bin/memory-hook`：稳定 wrapper，记录原始 `cwd` 后切到 memory 仓库运行 gateway。
+- `~/.codex/hooks.json`：Codex App 全局 hook 配置，合并时保留无关 hook，并替换旧的 memory hook 命令。
+
+运行时边界：Codex App 只触发 hook；memory 模块根据原始 `cwd`、git root、git remote 记录项目 lifecycle。若曾经添加到 Codex 的项目目录被误删，lifecycle 会记录为 `missing`，历史记忆和 artifact 不会被删除。目录恢复或重新 clone 后，后续 hook 会重新记录为可用路径。
+
 ### 2. 校验 — `memory-validate`
 
 检查项目 `.memory/` 目录是否完整、schema 是否合规：

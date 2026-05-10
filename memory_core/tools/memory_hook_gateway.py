@@ -14,13 +14,16 @@ from typing import Any, Callable
 SCRIPT_PATH = Path(__file__).resolve()
 try:
     from .memory_root_discovery import discover_roots
+    from .project_lifecycle import record_project_lifecycle
 except ImportError:
     from memory_core.tools.memory_root_discovery import discover_roots
+    from memory_core.tools.project_lifecycle import record_project_lifecycle
 REPO_ROOT, WORKSPACE_ROOT = discover_roots(Path.cwd())
 ARTIFACT_ROOT = WORKSPACE_ROOT / "artifacts" / "memory-hook"
 CONTEXT_ROOT = ARTIFACT_ROOT / "contexts"
 EVENT_LOG = ARTIFACT_ROOT / "events.jsonl"
 ERROR_LOG = WORKSPACE_ROOT / "memory" / "system" / "errors.log"
+PROJECT_LIFECYCLE_ROOT = ARTIFACT_ROOT / "project-lifecycle"
 try:
     from .cmux_hook_state import default_hook_state_path, record_hook_event
 except ImportError:
@@ -390,6 +393,11 @@ def _environment_cwd() -> Path | None:
     return Path(env_pwd).expanduser() if env_pwd else None
 
 
+def _original_cwd() -> Path | None:
+    value = os.environ.get("MEMORY_HOOK_ORIGINAL_CWD")
+    return Path(value).expanduser() if value else None
+
+
 def _path_within_repo(path: Path) -> bool:
     try:
         path.resolve().relative_to(REPO_ROOT.resolve())
@@ -400,6 +408,9 @@ def _path_within_repo(path: Path) -> bool:
 
 def _discover_cwd(payload: dict[str, Any]) -> Path:
     provided_cwd = _payload_cwd(payload)
+    original_cwd = _original_cwd()
+    if os.environ.get("MEMORY_HOOK_PREFER_EXTERNAL_CWD") and original_cwd:
+        return original_cwd
     if provided_cwd and _path_within_repo(provided_cwd):
         return provided_cwd
     env_cwd = _environment_cwd()
@@ -417,9 +428,11 @@ def _should_noop_for_external_context(payload: dict[str, Any]) -> bool:
         return False
     env_cwd = _environment_cwd()
     provided_cwd = _payload_cwd(payload)
+    original_cwd = _original_cwd()
     env_in_repo = bool(env_cwd and _path_within_repo(env_cwd))
     payload_in_repo = bool(provided_cwd and _path_within_repo(provided_cwd))
-    return not env_in_repo and not payload_in_repo
+    original_in_repo = bool(original_cwd and _path_within_repo(original_cwd))
+    return not env_in_repo and not payload_in_repo and not original_in_repo
 
 
 def _delegate_noop_response(host: str) -> int:
@@ -429,6 +442,33 @@ def _delegate_noop_response(host: str) -> int:
     if result.stdout:
         sys.stdout.write(result.stdout)
     return result.returncode
+
+
+def _record_project_lifecycle_event(
+    *,
+    host: str,
+    event: str,
+    payload: dict[str, Any],
+    cwd: Path,
+) -> dict[str, Any] | None:
+    if os.environ.get("MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE") != "1":
+        return None
+    try:
+        return record_project_lifecycle(
+            lifecycle_root=PROJECT_LIFECYCLE_ROOT,
+            cwd=cwd,
+            host=host,
+            event=event,
+            payload=payload,
+            now_iso_fn=now_iso,
+        )
+    except Exception as exc:  # pragma: no cover - lifecycle tracking must not block hooks
+        append_error_log(
+            "memory-hook-gateway",
+            "project lifecycle record failed",
+            {"host": host, "event": event, "cwd": str(cwd), "error": str(exc)},
+        )
+        return None
 
 
 
@@ -815,6 +855,7 @@ def _apply_artifact_compaction(package: dict[str, Any]) -> None:
 
 def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dict[str, Any]:
     cwd = _discover_cwd(payload)
+    lifecycle_record = _record_project_lifecycle_event(host=host, event=event, payload=payload, cwd=cwd)
     project_scope = determine_project_scope(cwd)
     business_policy = _get_gateway_business_policy()
     config = CoreConfig(
@@ -866,6 +907,8 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
     if isinstance(system_context, dict):
         system_context["core_provider"] = provider_name
         system_context["core_provider_requested"] = requested_provider
+        if lifecycle_record:
+            system_context["project_lifecycle"] = lifecycle_record
         if provider_errors:
             system_context["core_provider_fallback_errors"] = provider_errors
 
