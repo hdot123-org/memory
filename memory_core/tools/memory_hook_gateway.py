@@ -1248,7 +1248,10 @@ def main() -> int:
     if args.event == "session-start":
         _launch_async_health_check(cwd)
     
-    # L2: Verify integrity on session-start (non-blocking, fast check)
+    writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
+    package = build_context_package(args.host, args.event, payload)
+    
+    # L2: Verify integrity on session-start (after package is built)
     if args.event == "session-start":
         integrity_result = _integrity_verify(cwd)
         if integrity_result and not integrity_result.get("ok", True):
@@ -1266,9 +1269,7 @@ def main() -> int:
             package.setdefault("validation_errors", [])
             if isinstance(package.get("validation_errors"), list):
                 package["validation_errors"].append("integrity-check-failed")
-
-    writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
-    package = build_context_package(args.host, args.event, payload)
+                
     write_ok = writer.write(args.host, args.event, package)
     if not write_ok:
         append_error_log(
