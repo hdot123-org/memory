@@ -1086,6 +1086,17 @@ def init_project_memory(
         generate_hooks_json(target, host=host, result=result)
         update_agents_md(target, host=host, result=result)
 
+        # L2: Sign initial manifest after .memory/ is scaffolded
+        try:
+            from .memory_hook_integrity_keys import load_or_create_key
+            from .memory_hook_integrity_manifest import sign_project
+            key = load_or_create_key()
+            sign_project(target, key)
+            result["created"].append("file:.memory/manifest.json (signed)")
+        except Exception as exc:
+            # Non-blocking: integrity signing is best-effort
+            result["warnings"].append(f"integrity signing skipped: {exc}")
+
     return result
 
 

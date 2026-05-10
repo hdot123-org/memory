@@ -116,6 +116,32 @@ import logging  # noqa: E402
 
 _logger = logging.getLogger(__name__)
 
+# L2 Integrity — lazy-loaded to avoid circular imports
+def _integrity_sign(project_root: _Path) -> None:
+    """Sign project manifest after artifact write. Non-blocking."""
+    try:
+        from .memory_hook_integrity_keys import load_or_create_key
+        from .memory_hook_integrity_manifest import sign_project
+        key = load_or_create_key()
+        sign_project(project_root, key)
+    except Exception as exc:
+        _logger.debug("integrity sign skipped: %s", exc)
+
+
+def _integrity_verify(project_root: _Path) -> dict | None:
+    """Verify project manifest on session-start. Returns result dict or None."""
+    try:
+        from .memory_hook_integrity_keys import load_key
+        from .memory_hook_integrity_verify import verify_project
+        key = load_key()
+        if key is None:
+            return None
+        result = verify_project(project_root, key)
+        return result.to_dict()
+    except Exception as exc:
+        _logger.debug("integrity verify skipped: %s", exc)
+        return None
+
 # 并发限制：本模块在导入时根据 MEMORY_HOOK_ADAPTER 环境变量初始化全局状态
 # （_ADAPTER_NAME / _adapter_config / module globals）。
 # - 同一进程内切换 adapter：调用 reload_adapter(name)
@@ -1187,6 +1213,25 @@ def main() -> int:
     if _should_noop_for_external_context(payload):
         return _delegate_noop_response(args.host)
 
+    # L2: Verify integrity on session-start (non-blocking)
+    if args.event == "session-start":
+        integrity_result = _integrity_verify(cwd)
+        if integrity_result and not integrity_result.get("ok", True):
+            append_error_log(
+                "memory-hook-integrity",
+                "project integrity check failed",
+                {
+                    "host": args.host,
+                    "event": args.event,
+                    "cwd": str(cwd),
+                    "integrity": integrity_result,
+                },
+            )
+            # Degrade status but don't block
+            package.setdefault("validation_errors", [])
+            if isinstance(package.get("validation_errors"), list):
+                package["validation_errors"].append("integrity-check-failed")
+
     writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
     package = build_context_package(args.host, args.event, payload)
     write_ok = writer.write(args.host, args.event, package)
@@ -1197,6 +1242,10 @@ def main() -> int:
             {"host": args.host, "event": args.event, "error": writer.last_error},
         )
         print(f"[memory-hook-gateway] artifact write failed: {writer.last_error}", file=sys.stderr)
+
+    # L2: Re-sign manifest after successful artifact write
+    if write_ok:
+        _integrity_sign(cwd)
 
     exit_code = 0
     if package["status"] != "ok":
