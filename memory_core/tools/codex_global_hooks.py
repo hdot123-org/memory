@@ -36,9 +36,9 @@ def default_codex_home() -> Path:
     return Path(os.environ.get("CODEX_HOME", "~/.codex")).expanduser()
 
 
-def default_memory_repo() -> Path:
-    """Return the repository root that contains this module."""
-    return Path(__file__).resolve().parents[2]
+def default_storage_root() -> Path:
+    """Return the stable memory storage root used by the hook wrapper."""
+    return Path(os.environ.get("MEMORY_HOOK_STORAGE_ROOT", "~/.memory-core")).expanduser()
 
 
 def wrapper_path(codex_home: Path) -> Path:
@@ -46,29 +46,32 @@ def wrapper_path(codex_home: Path) -> Path:
     return codex_home / "bin" / "memory-hook"
 
 
-def render_wrapper(memory_repo: Path, python_bin: str = "python3") -> str:
+def render_wrapper(
+    storage_root: Path,
+    *,
+    gateway_command: str = "memory-hook-gateway",
+) -> str:
     """Render the shell wrapper installed into ``~/.codex/bin``.
 
-    The wrapper records the original working directory before switching into
-    the stable memory repository.  The gateway then uses that original cwd for
-    project identity while still writing artifacts under the memory repo.
+    The wrapper records the original working directory and calls the installed
+    gateway command.  It does not point at a source checkout or worktree.
     """
-    quoted_repo = shlex.quote(str(memory_repo.expanduser().resolve()))
-    quoted_python = shlex.quote(python_bin)
+    quoted_storage = shlex.quote(str(storage_root.expanduser()))
+    quoted_gateway = shlex.quote(gateway_command)
     return f"""#!/bin/sh
 set -eu
 
-MEMORY_REPO={quoted_repo}
-PYTHON_BIN=${{PYTHON_BIN:-{quoted_python}}}
+MEMORY_HOOK_STORAGE_ROOT={quoted_storage}
+MEMORY_HOOK_GATEWAY=${{MEMORY_HOOK_GATEWAY:-{quoted_gateway}}}
 ORIGINAL_CWD=${{PWD:-}}
 
 export MEMORY_HOOK_ORIGINAL_CWD="$ORIGINAL_CWD"
+export MEMORY_HOOK_STORAGE_ROOT
 export MEMORY_HOOK_FORCE="${{MEMORY_HOOK_FORCE:-1}}"
 export MEMORY_HOOK_PREFER_EXTERNAL_CWD="${{MEMORY_HOOK_PREFER_EXTERNAL_CWD:-1}}"
 export MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE="${{MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE:-1}}"
 
-cd "$MEMORY_REPO"
-exec "$PYTHON_BIN" "$MEMORY_REPO/memory_core/tools/memory_hook_gateway.py" "$@"
+exec "$MEMORY_HOOK_GATEWAY" "$@"
 """
 
 
@@ -167,19 +170,19 @@ def merge_codex_hooks(existing: dict[str, Any], desired: dict[str, Any]) -> dict
 def install_codex_hooks(
     *,
     codex_home: Path | None = None,
-    memory_repo: Path | None = None,
-    python_bin: str = "python3",
+    storage_root: Path | None = None,
+    gateway_command: str = "memory-hook-gateway",
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
     dry_run: bool = False,
 ) -> dict[str, Any]:
     """Install the global Codex memory hook wrapper and hooks.json entries."""
     resolved_codex_home = (codex_home or default_codex_home()).expanduser()
-    resolved_memory_repo = (memory_repo or default_memory_repo()).expanduser()
+    resolved_storage_root = (storage_root or default_storage_root()).expanduser()
     hook_wrapper = wrapper_path(resolved_codex_home)
     hooks_path = resolved_codex_home / "hooks.json"
     warnings: list[str] = []
 
-    wrapper_content = render_wrapper(resolved_memory_repo, python_bin=python_bin)
+    wrapper_content = render_wrapper(resolved_storage_root, gateway_command=gateway_command)
     desired = desired_codex_hooks(hook_wrapper, timeout=timeout)
     existing = _load_hooks_json(hooks_path, warnings)
     merged = merge_codex_hooks(existing, desired)
@@ -189,7 +192,8 @@ def install_codex_hooks(
         "success": True,
         "dry_run": dry_run,
         "codex_home": str(resolved_codex_home),
-        "memory_repo": str(resolved_memory_repo),
+        "storage_root": str(resolved_storage_root),
+        "gateway_command": gateway_command,
         "wrapper": str(hook_wrapper),
         "hooks_json": str(hooks_path),
         "created": [],
@@ -232,8 +236,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Install Codex App global memory hooks.")
     parser.add_argument("command", choices=("install",), help="Operation to perform.")
     parser.add_argument("--codex-home", type=Path, default=None, help="Codex config directory (default: ~/.codex).")
-    parser.add_argument("--memory-repo", type=Path, default=None, help="Stable memory repository path.")
-    parser.add_argument("--python-bin", default="python3", help="Python executable used by the hook wrapper.")
+    parser.add_argument("--storage-root", type=Path, default=None, help="Stable memory storage root (default: ~/.memory-core).")
+    parser.add_argument("--gateway-command", default="memory-hook-gateway", help="Installed gateway command used by the hook wrapper.")
     parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS, help="Codex hook timeout in seconds.")
     parser.add_argument("--dry-run", action="store_true", help="Report changes without writing files.")
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
@@ -241,8 +245,8 @@ def main(argv: list[str] | None = None) -> int:
 
     result = install_codex_hooks(
         codex_home=args.codex_home,
-        memory_repo=args.memory_repo,
-        python_bin=args.python_bin,
+        storage_root=args.storage_root,
+        gateway_command=args.gateway_command,
         timeout=args.timeout,
         dry_run=args.dry_run,
     )

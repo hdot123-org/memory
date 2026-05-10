@@ -47,3 +47,13 @@ def test_build_context_package_includes_lifecycle_when_enabled(monkeypatch, tmp_
     assert lifecycle["status"] == "active"
     assert lifecycle["local_path"] == str(tmp_path)
     assert Path(lifecycle["record_path"]).is_file()
+
+
+def test_storage_root_controls_artifact_and_error_paths(monkeypatch, tmp_path: Path) -> None:
+    storage_root = tmp_path / "store"
+    workspace_root = tmp_path / "workspace"
+
+    monkeypatch.setenv("MEMORY_HOOK_STORAGE_ROOT", str(storage_root))
+
+    assert gw._configured_artifact_root(workspace_root) == storage_root / "artifacts" / "memory-hook"
+    assert gw._configured_error_log(workspace_root) == storage_root / "memory" / "system" / "errors.log"

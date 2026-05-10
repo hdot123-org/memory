@@ -49,10 +49,9 @@ def test_merge_replaces_existing_memory_hooks_and_preserves_unrelated(tmp_path: 
 
 def test_install_codex_hooks_writes_wrapper_and_hooks_json(tmp_path: Path) -> None:
     codex_home = tmp_path / ".codex"
-    memory_repo = tmp_path / "memory"
-    memory_repo.mkdir()
+    storage_root = tmp_path / "memory-store"
 
-    result = install_codex_hooks(codex_home=codex_home, memory_repo=memory_repo)
+    result = install_codex_hooks(codex_home=codex_home, storage_root=storage_root)
 
     wrapper = codex_home / "bin" / "memory-hook"
     hooks_path = codex_home / "hooks.json"
@@ -62,7 +61,9 @@ def test_install_codex_hooks_writes_wrapper_and_hooks_json(tmp_path: Path) -> No
     assert os.stat(wrapper).st_mode & stat.S_IXUSR
 
     wrapper_text = wrapper.read_text(encoding="utf-8")
-    assert f"MEMORY_REPO={memory_repo}" in wrapper_text
+    assert f"MEMORY_HOOK_STORAGE_ROOT={storage_root}" in wrapper_text
+    assert "memory_core/tools/memory_hook_gateway.py" not in wrapper_text
+    assert "exec \"$MEMORY_HOOK_GATEWAY\" \"$@\"" in wrapper_text
     assert "MEMORY_HOOK_ORIGINAL_CWD" in wrapper_text
     assert "MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE" in wrapper_text
 

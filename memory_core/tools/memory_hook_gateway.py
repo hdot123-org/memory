@@ -19,10 +19,32 @@ except ImportError:
     from memory_core.tools.memory_root_discovery import discover_roots
     from memory_core.tools.project_lifecycle import record_project_lifecycle
 REPO_ROOT, WORKSPACE_ROOT = discover_roots(Path.cwd())
-ARTIFACT_ROOT = WORKSPACE_ROOT / "artifacts" / "memory-hook"
+
+
+def _configured_artifact_root(workspace_root: Path) -> Path:
+    artifact_root = os.environ.get("MEMORY_HOOK_ARTIFACT_ROOT")
+    if artifact_root:
+        return Path(artifact_root).expanduser()
+    storage_root = os.environ.get("MEMORY_HOOK_STORAGE_ROOT")
+    if storage_root:
+        return Path(storage_root).expanduser() / "artifacts" / "memory-hook"
+    return workspace_root / "artifacts" / "memory-hook"
+
+
+def _configured_error_log(workspace_root: Path) -> Path:
+    error_log = os.environ.get("MEMORY_HOOK_ERROR_LOG")
+    if error_log:
+        return Path(error_log).expanduser()
+    storage_root = os.environ.get("MEMORY_HOOK_STORAGE_ROOT")
+    if storage_root:
+        return Path(storage_root).expanduser() / "memory" / "system" / "errors.log"
+    return workspace_root / "memory" / "system" / "errors.log"
+
+
+ARTIFACT_ROOT = _configured_artifact_root(WORKSPACE_ROOT)
 CONTEXT_ROOT = ARTIFACT_ROOT / "contexts"
 EVENT_LOG = ARTIFACT_ROOT / "events.jsonl"
-ERROR_LOG = WORKSPACE_ROOT / "memory" / "system" / "errors.log"
+ERROR_LOG = _configured_error_log(WORKSPACE_ROOT)
 PROJECT_LIFECYCLE_ROOT = ARTIFACT_ROOT / "project-lifecycle"
 try:
     from .cmux_hook_state import default_hook_state_path, record_hook_event
