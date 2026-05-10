@@ -63,6 +63,16 @@ DIRECTORY_STRUCTURE = [
     ".memory/kb/decisions",
     ".memory/kb/lessons",
     ".memory/kb/global",
+    "project-map",
+    "memory",
+    "memory/kb",
+    "memory/kb/global",
+    "memory/kb/projects",
+    "memory/kb/decisions",
+    "memory/kb/lessons",
+    "memory/docs",
+    "memory/system",
+    "memory/log",
 ]
 
 # ---------------------------------------------------------------------------
@@ -741,6 +751,83 @@ def template_migrations_log(project_name: str) -> tuple[str, list[str]]:
 # File registry
 # ---------------------------------------------------------------------------
 
+# Minimum viable templates for Knowledge Base and Project Map
+KB_TEMPLATES: dict[str, Any] = {
+    "project-map/INDEX.md": lambda scope: (
+        f"# 合法目录地图索引\n\n"
+        f"- 唯一合法入口\n"
+        f"- 只有出现在合法目录地图中并被标为 `active-legal` 的条目或目录，才是合法资料。\n"
+        f"- 同次 `git commit` 提交后才生效\n"
+        f"- project-map/legal-core-map.md: active-legal\n",
+        []
+    ),
+    "project-map/legal-core-map.md": lambda scope: (
+        f"# 合法核心地图\n\n"
+        f"- active-legal\n"
+        f"- 只有本图列出的 `active-legal` 条目或目录，才是当前合法资料。\n"
+        f"- truth-model.md: active-legal\n"
+        f"- memory-system.md: active-legal\n",
+        []
+    ),
+    "project-map/ingestion-registry-map.md": lambda scope: (
+        f"# 摄入登记地图\n\n"
+        f"- memory_core/project-map/**: incoming-raw\n"
+        f"- memory_core/memory/kb/global/**: active-legal\n"
+        f"- memory_core/memory/kb/projects/**: compatibility-only\n"
+        f"- 状态：`absorbed`，`retired`\n"
+        f"- 同次 `git commit` 提交后才生效\n",
+        []
+    ),
+    "memory/kb/global/truth-model.md": lambda scope: (
+        f"# 唯一真相模型\n\n"
+        f"本项目的事实来源与验证规则。\n",
+        []
+    ),
+    "memory/kb/global/memory-system.md": lambda scope: (
+        f"# 记忆系统规则\n\n"
+        f"active-legal\n",
+        []
+    ),
+    "memory/kb/global/memory-routing.md": lambda scope: (
+        f"# 记忆路由规则\n\n",
+        []
+    ),
+    "memory/kb/global/hook-contract.md": lambda scope: (
+        f"# Hook 契约\n\n"
+        f"- gateway 只承认 `project-map/` 中被明确标为 `active-legal` 的条目或目录是合法上下文来源。\n"
+        f"- 未完成提交的登记不得生效\n",
+        []
+    ),
+    "memory/kb/global/project-map-governance.md": lambda scope: (
+        f"# 项目地图治理\n\n"
+        f"- 未经过唯一真相系统清洗\n"
+        f"- 只有地图中被明确标为 `active-legal` 的条目或目录，才授予合法性。\n"
+        f"- 未完成同次 `git commit` 的目录登记，不得视为生效。\n",
+        []
+    ),
+    "INDEX.md": lambda scope: (
+        f"# 工作区索引\n\n"
+        f"- project-map/INDEX.md\n"
+        f"- 只有被地图标为 `active-legal` 的条目或目录，才是合法资料；仅进入登记册不授予合法性。\n"
+        f"- 目录登记和目录状态迁移必须与相关文件同次 `git commit` 才生效。\n"
+        f"- memory/kb/global/truth-model.md\n",
+        []
+    ),
+    "memory/docs/INDEX.md": lambda scope: (
+        f"# 文档索引\n\n"
+        f"- incoming-raw\n"
+        f"- 未被地图明确吸收\n",
+        []
+    ),
+    "memory/kb/global/INDEX.md": lambda scope: (
+        f"# 全局知识索引\n\n"
+        f"- Non-Legal Material\n"
+        f"- ingestion-registry-map.md\n"
+        f"- truth-model.md\n",
+        []
+    ),
+}
+
 FILE_TEMPLATES: dict[str, Any] = {
     "memory.lock": lambda pn: template_memory_lock(pn),
     "CANONICAL.md": lambda pn: template_canonical_md(pn),
@@ -1022,6 +1109,31 @@ def init_project_memory(
     # Create template files
     any_overwritten = False
     any_skipped = False
+    
+    # 1. Write KB and Project Map templates first
+    for fname, template_fn in KB_TEMPLATES.items():
+        file_path = target / fname
+        if file_path.exists():
+            if force:
+                try:
+                    content, warnings = template_fn(project_name)
+                    file_path.write_text(content, encoding="utf-8")
+                    result["created"].append(f"file:{fname} (overwritten)")
+                    any_overwritten = True
+                except Exception as exc:
+                    result["errors"].append(f"failed to overwrite {fname}: {exc}")
+            else:
+                result["skipped"].append(f"file:{fname} (already exists)")
+                any_skipped = True
+            continue
+        try:
+            content, warnings = template_fn(project_name)
+            file_path.write_text(content, encoding="utf-8")
+            result["created"].append(f"file:{fname}")
+        except Exception as exc:
+            result["errors"].append(f"failed to create {fname}: {exc}")
+
+    # 2. Write legacy .memory/ templates
     for fname, template_fn in FILE_TEMPLATES.items():
         file_path = memory_root / fname
         if file_path.exists():

@@ -1204,6 +1204,37 @@ def _execute_delegate(
         return 0
 
 
+
+def _launch_async_health_check(cwd: Path) -> None:
+    """Launch a background process to perform deep memory health validation.
+
+    This prevents heavy validation (reading many files, git commands,
+    and running the full context package build) from blocking the hook startup.
+    
+    Results are written to: memory/system/health-report.json
+    """
+    try:
+        health_script = str((Path(__file__).parent / "memory_health_report.py").resolve())
+        
+        # Output path for the report
+        report_path = cwd / "memory" / "system" / "health-report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Launch detached subprocess (cwd is critical for discovery)
+        with report_path.open("w") as out_file:
+            subprocess.Popen(
+                [sys.executable, health_script, "--target", str(cwd)],
+                stdout=out_file,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,  # Detach from parent
+                cwd=str(cwd),            # Set working directory
+            )
+            
+        _logger.info("Launched async health check for %s", cwd)
+    except Exception as e:
+        _logger.debug("Failed to launch async health check: %s", e)
+
+
 def main() -> int:
     args = _parse_args()
     raw_payload = sys.stdin.read()
@@ -1213,7 +1244,11 @@ def main() -> int:
     if _should_noop_for_external_context(payload):
         return _delegate_noop_response(args.host)
 
-    # L2: Verify integrity on session-start (non-blocking)
+    # Async: Launch health check in background for session-start
+    if args.event == "session-start":
+        _launch_async_health_check(cwd)
+    
+    # L2: Verify integrity on session-start (non-blocking, fast check)
     if args.event == "session-start":
         integrity_result = _integrity_verify(cwd)
         if integrity_result and not integrity_result.get("ok", True):
