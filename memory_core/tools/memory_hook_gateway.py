@@ -41,6 +41,13 @@ def _configured_error_log(workspace_root: Path) -> Path:
     return workspace_root / "memory" / "system" / "errors.log"
 
 
+def _configured_invalid_memory_root(workspace_root: Path) -> Path:
+    storage_root = os.environ.get("MEMORY_HOOK_STORAGE_ROOT")
+    if storage_root:
+        return Path(storage_root).expanduser() / "memory" / "archive" / "invalid"
+    return workspace_root / "memory" / "archive" / "invalid"
+
+
 ARTIFACT_ROOT = _configured_artifact_root(WORKSPACE_ROOT)
 CONTEXT_ROOT = ARTIFACT_ROOT / "contexts"
 EVENT_LOG = ARTIFACT_ROOT / "events.jsonl"
@@ -340,9 +347,22 @@ def _resolve_route_target_via_policy(kind: str) -> str:
     return _get_route_policy().resolve(kind)
 
 
+def _apply_hook_runtime_write_targets(targets: dict[str, Any]) -> dict[str, Any]:
+    """Keep global hook runtime writes out of project-local memory dirs."""
+    if not os.environ.get("MEMORY_HOOK_STORAGE_ROOT"):
+        return targets
+    updated = dict(targets)
+    updated["artifacts"] = str(ARTIFACT_ROOT)
+    updated["system_error"] = str(ERROR_LOG)
+    updated["invalid_memory"] = str(_configured_invalid_memory_root(WORKSPACE_ROOT))
+    updated["hook_lifecycle"] = str(PROJECT_LIFECYCLE_ROOT)
+    updated["hook_storage_root"] = str(Path(os.environ["MEMORY_HOOK_STORAGE_ROOT"]).expanduser())
+    return updated
+
+
 def _write_targets_via_policy() -> dict[str, Any]:
     """IF-5: Get write targets via Policy facade."""
-    return _get_write_policy().get_targets()
+    return _apply_hook_runtime_write_targets(_get_write_policy().get_targets())
 
 
 def _get_policy_pack_via_registry(scope: str) -> dict[str, Any]:
@@ -810,7 +830,7 @@ def write_targets() -> dict[str, Any]:
         return _write_targets_via_policy()
     except Exception:
         today_log = WORKSPACE_ROOT / "memory" / "log" / f"{datetime.now().date().isoformat()}.md"
-        return {
+        return _apply_hook_runtime_write_targets({
             "fact": str(today_log),
             "global_canonical": str(WORKSPACE_ROOT / "memory" / "kb" / "global"),
             "project_canonical": str(WORKSPACE_ROOT / "memory" / "kb" / "projects"),
@@ -821,16 +841,20 @@ def write_targets() -> dict[str, Any]:
             "project_runtime": str(WORKSPACE_ROOT / "projects"),
             "artifacts": str(WORKSPACE_ROOT / "artifacts"),
             "system_error": str(ERROR_LOG),
-            "invalid_memory": str(WORKSPACE_ROOT / "memory" / "archive" / "invalid"),
+            "invalid_memory": str(_configured_invalid_memory_root(WORKSPACE_ROOT)),
             "kb_policy": {
                 "mode": "read-first-CRUD",
                 "overwrite_allowed": False,
                 "conflict_strategy": "preserve-and-escalate",
             },
-        }
+        })
 
 
 def resolve_route_target(kind: str) -> str:
+    if os.environ.get("MEMORY_HOOK_STORAGE_ROOT") and kind in {"system-error", "invalid-memory"}:
+        storage_targets = write_targets()
+        target_key = "system_error" if kind == "system-error" else "invalid_memory"
+        return str(storage_targets[target_key])
     try:
         return _resolve_route_target_via_policy(kind)
     except (KeyError, AttributeError, TypeError) as exc:

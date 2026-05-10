@@ -8,9 +8,11 @@ stable wrapper, and the memory runtime decides how to handle project identity.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 import os
 import shlex
+import shutil
 import stat
 import sys
 from pathlib import Path
@@ -44,6 +46,45 @@ def default_storage_root() -> Path:
 def wrapper_path(codex_home: Path) -> Path:
     """Return the stable global wrapper path for Codex hooks."""
     return codex_home / "bin" / "memory-hook"
+
+
+def _looks_like_path(command: str) -> bool:
+    return command.startswith("~") or "/" in command
+
+
+def resolve_gateway_command(gateway_command: str, warnings: list[str]) -> str | None:
+    """Resolve the gateway executable to a stable absolute path.
+
+    Desktop apps often run with a reduced PATH, so the installed wrapper should
+    not depend on shell lookup for the default ``memory-hook-gateway`` command.
+    """
+    if _looks_like_path(gateway_command):
+        candidate = Path(gateway_command).expanduser()
+        if candidate.is_file():
+            return str(candidate.resolve())
+        warnings.append(f"gateway command not found: {gateway_command}")
+        return None
+
+    resolved = shutil.which(gateway_command)
+    if resolved:
+        return resolved
+
+    warnings.append(
+        f"gateway command not found: {gateway_command}; "
+        "install memory-core or pass --gateway-command /absolute/path"
+    )
+    return None
+
+
+def _backup_existing_file(path: Path) -> Path:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_path = path.with_name(f"{path.name}.bak.{timestamp}")
+    suffix = 1
+    while backup_path.exists():
+        backup_path = path.with_name(f"{path.name}.bak.{timestamp}.{suffix:02d}")
+        suffix += 1
+    shutil.copy2(path, backup_path)
+    return backup_path
 
 
 def render_wrapper(
@@ -181,8 +222,13 @@ def install_codex_hooks(
     hook_wrapper = wrapper_path(resolved_codex_home)
     hooks_path = resolved_codex_home / "hooks.json"
     warnings: list[str] = []
+    resolved_gateway_command = resolve_gateway_command(gateway_command, warnings)
 
-    wrapper_content = render_wrapper(resolved_storage_root, gateway_command=gateway_command)
+    wrapper_content = (
+        render_wrapper(resolved_storage_root, gateway_command=resolved_gateway_command)
+        if resolved_gateway_command
+        else ""
+    )
     desired = desired_codex_hooks(hook_wrapper, timeout=timeout)
     existing = _load_hooks_json(hooks_path, warnings)
     merged = merge_codex_hooks(existing, desired)
@@ -193,14 +239,19 @@ def install_codex_hooks(
         "dry_run": dry_run,
         "codex_home": str(resolved_codex_home),
         "storage_root": str(resolved_storage_root),
-        "gateway_command": gateway_command,
+        "gateway_command": resolved_gateway_command or gateway_command,
         "wrapper": str(hook_wrapper),
         "hooks_json": str(hooks_path),
         "created": [],
         "updated": [],
         "skipped": [],
+        "backups": [],
         "warnings": warnings,
     }
+
+    if not resolved_gateway_command:
+        result["success"] = False
+        return result
 
     existing_wrapper = hook_wrapper.read_text(encoding="utf-8") if hook_wrapper.exists() else None
     existing_hooks_text = hooks_path.read_text(encoding="utf-8") if hooks_path.exists() else None
@@ -228,6 +279,9 @@ def install_codex_hooks(
     hook_wrapper.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
     hooks_path.parent.mkdir(parents=True, exist_ok=True)
+    if hooks_path.exists() and existing_hooks_text != rendered_hooks:
+        backup_path = _backup_existing_file(hooks_path)
+        result["backups"].append(str(backup_path))
     hooks_path.write_text(rendered_hooks, encoding="utf-8")
     return result
 

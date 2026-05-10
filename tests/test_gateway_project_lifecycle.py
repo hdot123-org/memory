@@ -57,3 +57,22 @@ def test_storage_root_controls_artifact_and_error_paths(monkeypatch, tmp_path: P
 
     assert gw._configured_artifact_root(workspace_root) == storage_root / "artifacts" / "memory-hook"
     assert gw._configured_error_log(workspace_root) == storage_root / "memory" / "system" / "errors.log"
+
+def test_storage_root_keeps_hook_runtime_writes_out_of_project_memory(monkeypatch, tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project_memory = project / "memory"
+    project_memory.mkdir(parents=True)
+    storage_root = tmp_path / "global-memory-store"
+
+    monkeypatch.setenv("MEMORY_HOOK_STORAGE_ROOT", str(storage_root))
+    monkeypatch.setattr(gw, "WORKSPACE_ROOT", project)
+    monkeypatch.setattr(gw, "ARTIFACT_ROOT", storage_root / "artifacts" / "memory-hook")
+    monkeypatch.setattr(gw, "ERROR_LOG", storage_root / "memory" / "system" / "errors.log")
+    monkeypatch.setattr(gw, "_default_write_policy", None)
+
+    targets = gw.write_targets()
+
+    assert targets["artifacts"] == str(storage_root / "artifacts" / "memory-hook")
+    assert targets["system_error"] == str(storage_root / "memory" / "system" / "errors.log")
+    assert not Path(targets["artifacts"]).is_relative_to(project)
+    assert not Path(targets["system_error"]).is_relative_to(project_memory)

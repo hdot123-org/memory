@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import stat
+import subprocess
 from pathlib import Path
 
 from memory_core.tools.codex_global_hooks import install_codex_hooks, merge_codex_hooks
@@ -47,9 +49,20 @@ def test_merge_replaces_existing_memory_hooks_and_preserves_unrelated(tmp_path: 
     assert merged["hooks"]["OtherEvent"] == existing["hooks"]["OtherEvent"]
 
 
-def test_install_codex_hooks_writes_wrapper_and_hooks_json(tmp_path: Path) -> None:
+def _fake_gateway(tmp_path: Path, monkeypatch) -> Path:
+    gateway_dir = tmp_path / "bin"
+    gateway_dir.mkdir()
+    gateway = gateway_dir / "memory-hook-gateway"
+    gateway.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    gateway.chmod(gateway.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setenv("PATH", str(gateway_dir))
+    return gateway
+
+
+def test_install_codex_hooks_writes_wrapper_and_hooks_json(monkeypatch, tmp_path: Path) -> None:
     codex_home = tmp_path / ".codex"
     storage_root = tmp_path / "memory-store"
+    gateway = _fake_gateway(tmp_path, monkeypatch)
 
     result = install_codex_hooks(codex_home=codex_home, storage_root=storage_root)
 
@@ -59,10 +72,12 @@ def test_install_codex_hooks_writes_wrapper_and_hooks_json(tmp_path: Path) -> No
     assert wrapper.is_file()
     assert hooks_path.is_file()
     assert os.stat(wrapper).st_mode & stat.S_IXUSR
+    assert result["gateway_command"] == str(gateway)
 
     wrapper_text = wrapper.read_text(encoding="utf-8")
     assert f"MEMORY_HOOK_STORAGE_ROOT={storage_root}" in wrapper_text
     assert "memory_core/tools/memory_hook_gateway.py" not in wrapper_text
+    assert str(gateway) in wrapper_text
     assert "exec \"$MEMORY_HOOK_GATEWAY\" \"$@\"" in wrapper_text
     assert "MEMORY_HOOK_ORIGINAL_CWD" in wrapper_text
     assert "MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE" in wrapper_text
@@ -76,6 +91,75 @@ def test_install_codex_hooks_writes_wrapper_and_hooks_json(tmp_path: Path) -> No
     ]
     assert len(commands) == 3
     assert all(str(wrapper) in command for command in commands)
+
+
+def test_install_codex_hooks_fails_without_installed_gateway(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
+
+    result = install_codex_hooks(codex_home=tmp_path / ".codex", dry_run=True)
+
+    assert result["success"] is False
+    assert any("gateway command not found" in warning for warning in result["warnings"])
+    assert not (tmp_path / ".codex" / "hooks.json").exists()
+
+
+def test_install_codex_hooks_backs_up_existing_hooks_json(monkeypatch, tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    hooks_path = codex_home / "hooks.json"
+    existing_hooks = '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"keep-me"}]}]}}\n'
+    hooks_path.write_text(existing_hooks, encoding="utf-8")
+    _fake_gateway(tmp_path, monkeypatch)
+
+    result = install_codex_hooks(codex_home=codex_home, storage_root=tmp_path / "store")
+
+    assert result["success"] is True
+    assert len(result["backups"]) == 1
+    backup_path = Path(result["backups"][0])
+    assert backup_path.is_file()
+    assert backup_path.read_text(encoding="utf-8") == existing_hooks
+
+
+def test_project_lifecycle_reuses_git_identity_after_project_path_is_deleted(tmp_path: Path) -> None:
+    lifecycle_root = tmp_path / "lifecycle"
+    project = tmp_path / "project-with-remote"
+    project.mkdir()
+    subprocess.run(["git", "init"], cwd=project, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:example/deleted-project.git"],
+        cwd=project,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    active = record_project_lifecycle(
+        lifecycle_root=lifecycle_root,
+        cwd=project,
+        host="codex",
+        event="session-start",
+        payload={"cwd": str(project)},
+        now_iso_fn=lambda: "2026-05-10T00:00:00+08:00",
+    )
+    active_record_path = Path(active["record_path"])
+    shutil.rmtree(project)
+
+    missing = record_project_lifecycle(
+        lifecycle_root=lifecycle_root,
+        cwd=project,
+        host="codex",
+        event="stop",
+        payload={"cwd": str(project)},
+        now_iso_fn=lambda: "2026-05-10T00:01:00+08:00",
+    )
+
+    saved = json.loads(active_record_path.read_text(encoding="utf-8"))
+    assert missing["project_id"] == active["project_id"]
+    assert Path(missing["record_path"]) == active_record_path
+    assert saved["status"] == "missing"
+    assert saved["git_remote"] == "git@github.com:example/deleted-project.git"
+    assert saved["identity_source"] == "git_remote"
+    assert saved["first_observed_at"] == "2026-05-10T00:00:00+08:00"
 
 
 def test_project_lifecycle_missing_path_preserves_existing_record(tmp_path: Path) -> None:

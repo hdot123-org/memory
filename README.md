@@ -75,7 +75,9 @@ memory-codex-hooks install --storage-root ~/.memory-core
 - `~/.codex/bin/memory-hook`：稳定 wrapper，记录原始 `cwd` 后调用 `memory-hook-gateway` 命令，不指向任何项目源码 checkout。
 - `~/.codex/hooks.json`：Codex App 全局 hook 配置，合并时保留无关 hook，并替换旧的 memory hook 命令。
 
-运行时边界：Codex App 只触发 hook；memory 模块根据原始 `cwd`、git root、git remote 记录项目 lifecycle，并把 hook artifact 写入 `MEMORY_HOOK_STORAGE_ROOT` 下。若曾经添加到 Codex 的项目目录被误删，lifecycle 会记录为 `missing`，历史记忆和 artifact 不会被删除。目录恢复或重新 clone 后，后续 hook 会重新记录为可用路径。
+运行时边界：Codex App 只触发 hook；memory 模块根据原始 `cwd`、git root、git remote 记录项目 lifecycle，并把 hook artifact、event log、error log 和 lifecycle 写入 `MEMORY_HOOK_STORAGE_ROOT` 下。若曾经添加到 Codex 的项目目录被误删，lifecycle 会通过路径索引复用已记录的项目身份并标记为 `missing`，历史记忆和 artifact 不会被删除。目录恢复或重新 clone 后，后续 hook 会重新记录为可用路径。
+
+如果每个业务项目目录内也存在 `memory/` 或 `.memory/`，两者职责不同：项目内 `.memory/`/`memory/` 是该项目自己的配置、canonical 和知识命名空间；Codex 全局 hook 的运行痕迹是宿主级数据，固定写入 `~/.memory-core`（或传入的 `--storage-root`）。因此全局 hook 不会因为当前 `cwd` 在某个项目里，就把 lifecycle、events、errors 或 hook artifacts 写进该项目目录。
 
 ### 2. 校验 — `memory-validate`
 
