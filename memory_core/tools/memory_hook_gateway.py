@@ -1221,14 +1221,14 @@ def _launch_async_health_check(cwd: Path) -> None:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Launch detached subprocess (cwd is critical for discovery)
-        with report_path.open("w") as out_file:
-            subprocess.Popen(
-                [sys.executable, health_script, "--target", str(cwd)],
-                stdout=out_file,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,  # Detach from parent
-                cwd=str(cwd),            # Set working directory
-            )
+        # Child process writes to report_path directly.
+        subprocess.Popen(
+            [sys.executable, health_script, "--target", str(cwd)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,  # Detach from parent
+            cwd=str(cwd),            # Set working directory
+        )
             
         _logger.info("Launched async health check for %s", cwd)
     except Exception as e:
@@ -1254,10 +1254,15 @@ def main() -> int:
     # Health Alert: Inject previous session's health report if available
     if args.event == "session-start":
         prev_health_report = cwd / "memory" / "system" / "health-report.json"
+
         if prev_health_report.exists():
             try:
-                report_data = json.loads(prev_health_report.read_text())
+                report_text = prev_health_report.read_text()
+
+                report_data = json.loads(report_text)
+
                 if report_data.get("status") == "degraded":
+    
                     # Inject into system_context so the model can see and report it
                     package.setdefault("system_context", {})
                     package["system_context"]["previous_health_alert"] = {
