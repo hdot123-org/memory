@@ -42,6 +42,11 @@ from memory_core.constants import (
     _BACKUP_FAILED,
     CURRENT_MEMORY_VERSION,
 )
+from memory_core.tools.adapter_toml_schema import (
+    _apply_migration_transforms,
+    dump_adapter_toml,
+    load_adapter_toml,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -125,9 +130,33 @@ def migrate_v010_to_v020(memory_root: Path) -> dict[str, Any]:
     adapter_path = memory_root / ADAPTER_TOML_NAME
     if adapter_path.is_file():
         try:
-            atext = adapter_path.read_text(encoding="utf-8")
-            atext = atext.replace('version = "0.1.0"', f'version = "{CURRENT_MEMORY_VERSION}"')
-            adapter_path.write_text(atext, encoding="utf-8")
+            # Structured: load -> transform -> dump
+            raw_data: dict[str, Any] = tomllib.loads(
+                adapter_path.read_text(encoding="utf-8")
+            )
+            transformed = _apply_migration_transforms(
+                raw_data, "0.1.0", CURRENT_MEMORY_VERSION,
+            )
+            # Write transformed dict as temp TOML, load as AdapterConfig, dump canonical
+            _tmp_path = adapter_path.parent / ".adapter.toml.migrating"
+            _lines: list[str] = ["# adapter.toml (migrated)", ""]
+            for _section, _sdata in transformed.items():
+                if isinstance(_sdata, dict):
+                    _lines.append(f"[{_section}]")
+                    for _k, _v in _sdata.items():
+                        if isinstance(_v, list):
+                            _vals = ", ".join(f'"{x}"' for x in _v)
+                            _lines.append(f"{_k} = [{_vals}]")
+                        elif isinstance(_v, bool):
+                            _lines.append(f"{_k} = {'true' if _v else 'false'}")
+                        else:
+                            _lines.append(f'{_k} = "{_v}"')
+                    _lines.append("")
+            _tmp_path.write_text("\n".join(_lines), encoding="utf-8")
+            _config = load_adapter_toml(_tmp_path)
+            _config.adapter_version = CURRENT_MEMORY_VERSION
+            adapter_path.write_text(dump_adapter_toml(_config), encoding="utf-8")
+            _tmp_path.unlink(missing_ok=True)
         except Exception as exc:
             result["residue"].append(f"adapter.toml update failed: {exc}")
 
@@ -192,20 +221,24 @@ def _append_migrations_log(log_path: Path, line: str) -> None:
     POSIX: uses fcntl.LOCK_EX + fsync.
     Windows: falls back to plain open("a").
     """
-    try:
-        import fcntl
-    except ImportError:
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
-    else:
-        with open(log_path, "a", encoding="utf-8") as f:
+    with open(log_path, "a", encoding="utf-8") as f:
+        try:
+            import fcntl
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        except (OSError, AttributeError, ModuleNotFoundError):
+            # Windows or non-POSIX: skip locking, just write
+            f.write(line + "\n")
+            return
+        try:
+            f.write(line + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        finally:
             try:
-                f.write(line + "\n")
-                f.flush()
-                os.fsync(f.fileno())
-            finally:
+                import fcntl
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            except (OSError, AttributeError):
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -638,7 +671,12 @@ def main() -> int:
     )
 
     if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        # Ensure JSON output always includes key fields even for noop
+        output = dict(result)
+        for key in ("from_version", "to_version", "target"):
+            if key not in output:
+                output[key] = ""
+        print(json.dumps(output, indent=2, ensure_ascii=False))
     else:
         print("=" * 60)
         print("Project Memory Migration Report")

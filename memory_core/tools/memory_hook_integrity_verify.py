@@ -150,7 +150,6 @@ def verify_project(
             if fpath not in signed_paths:
                 rel = str(fpath.relative_to(resolved_root))
                 result.add_warning(rel, "new_unsigned", "File exists but not in manifest")
-                result.summary["new_unsigned"] += 1
 
     return result
 

@@ -175,8 +175,11 @@ def find_rollout_files(thread_id: str | None = None, target_date: str | None = N
 
     results: list[Path] = []
     for jsonl_file in CODEX_SESSIONS_DIR.rglob("*.jsonl"):
-        if target_date and target_date.replace("-", "") not in str(jsonl_file):
-            continue
+        if target_date:
+            # Match both "YYYYMMDD" and "YYYY/MM/DD" path formats.
+            compact = target_date.replace("-", "")
+            if compact not in str(jsonl_file) and target_date not in str(jsonl_file):
+                continue
         if thread_id and thread_id not in jsonl_file.name:
             continue
         results.append(jsonl_file)

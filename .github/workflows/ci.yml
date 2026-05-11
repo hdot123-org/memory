@@ -35,3 +35,5 @@ jobs:
         run: python scripts/check_boundary.py
       - name: Run tests
         run: python -m pytest -q tests
+      - name: Health check (validate + pollution)
+        run: bash scripts/ci_health_check.sh

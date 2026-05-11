@@ -7,7 +7,7 @@
 
 - **project_scope**: default
 - **state_version**: v1.0
-- **last_updated**: 2026-05-10
+- **last_updated**: 2026-05-11
 
 ## System State
 
@@ -18,3 +18,5 @@
 ## State History
 
 - 2026-05-10: Initial state — default adapter initialized
+- 2026-05-10: Phase P2/P3 审计残留全闭环，808 tests passed
+- 2026-05-11: 多项目并发安全改造 — artifact 隔离 + _config_lock + get_config API

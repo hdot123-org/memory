@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 V1_VERSION = "context-package-v1"
@@ -37,6 +39,103 @@ _DROP_PROJECT_KEYS = frozenset({
 })
 
 
+# ---------------------------------------------------------------------------
+# Generic diff helpers (used by is_lossless)
+# ---------------------------------------------------------------------------
+
+
+def _diff_dicts(
+    input_obj: dict,
+    output_obj: dict,
+    prefix: str,
+    expected_keys: set[str],
+    dropped: list[str],
+) -> None:
+    """Recursively find keys in input_obj missing from output_obj."""
+    for key in input_obj:
+        full_path = f"{prefix}.{key}" if prefix else key
+        if key in expected_keys:
+            continue
+        if key not in output_obj:
+            dropped.append(full_path)
+            continue
+
+        in_val = input_obj[key]
+        out_val = output_obj[key]
+
+        if isinstance(in_val, dict) and isinstance(out_val, dict):
+            _diff_dicts(in_val, out_val, full_path, expected_keys, dropped)
+        elif isinstance(in_val, list) and isinstance(out_val, list):
+            _diff_list(in_val, out_val, full_path, expected_keys, dropped)
+
+
+def _diff_list(
+    input_list: list,
+    output_list: list,
+    prefix: str,
+    expected_keys: set[str],
+    dropped: list[str],
+) -> None:
+    """Compare lists element-by-element for dict items."""
+    min_len = min(len(input_list), len(output_list))
+    for i in range(min_len):
+        in_item = input_list[i]
+        out_item = output_list[i]
+        if isinstance(in_item, dict) and isinstance(out_item, dict):
+            _diff_dicts(in_item, out_item, f"{prefix}[{i}]", expected_keys, dropped)
+    for i in range(min_len, len(input_list)):
+        dropped.append(f"{prefix}[{i}]")
+
+
+# ---------------------------------------------------------------------------
+# Audit logging — file-based (env-overridable) with stderr fallback
+# ---------------------------------------------------------------------------
+
+_DEFAULT_AUDIT_LOG = str(Path(__file__).resolve().parent.parent / ".memory" / "schema-audit.log")
+
+
+def _get_audit_log_path() -> str:
+    return os.environ.get("MEMORY_SCHEMA_AUDIT_LOG", _DEFAULT_AUDIT_LOG)
+
+
+def _write_audit_log(
+    schema_from: str,
+    schema_to: str,
+    dropped_keys: list[str],
+    input_size: int,
+    output_size: int,
+) -> None:
+    """Write a structured audit line when keys are dropped.
+
+    Writes to MEMORY_SCHEMA_AUDIT_LOG (default: memory_core/.memory/schema-audit.log).
+    Also emits to stderr for backward compatibility (existing tests rely on this).
+    Falls back to stderr-only if the path is not writable.
+    """
+    record = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "event": "schema_convert",
+        "drop_audit": True,
+        "from_version": schema_from,
+        "to_version": schema_to,
+        "dropped_keys": dropped_keys,
+        "input_size": input_size,
+        "output_size": output_size,
+    }
+    line = json.dumps(record, ensure_ascii=False)
+
+    log_path = _get_audit_log_path()
+    try:
+        p = Path(log_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass
+
+    # Always emit to stderr for backward compatibility
+    print(line, file=sys.stderr)
+
+
 def _audit_enabled() -> bool:
     """Return True if audit logging is enabled (default: enabled).
 
@@ -53,24 +152,21 @@ def _emit_drop_audit(
     dropped_keys: list[str],
     package_id: str = "",
 ) -> None:
-    """Write a drop-audit record to stderr.
-
-    Format:
-    [memory_hook_schema][drop_audit] from=<src> to=<dst> dropped=<keys_csv> ts=<iso8601>
+    """Write a drop-audit record to file (fallback stderr).
 
     Never raises an exception.
     """
+    if not _audit_enabled():
+        return
     try:
-        keys_csv = ",".join(dropped_keys)
-        ts = datetime.now(timezone.utc).isoformat()
-        msg = (
-            f"[memory_hook_schema][drop_audit] "
-            f"from={schema_from} to={schema_to} "
-            f"dropped={keys_csv} ts={ts}"
-        )
-        print(msg, file=sys.stderr)
+        _write_audit_log(schema_from, schema_to, dropped_keys, 0, 0)
     except Exception:
-        pass  # Never raise
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Schema converters
+# ---------------------------------------------------------------------------
 
 
 def convert_to_v1(package: dict[str, Any]) -> dict[str, Any]:
@@ -84,12 +180,6 @@ def convert_to_v1(package: dict[str, Any]) -> dict[str, Any]:
     - Remove "system_context" (diagnostic info goes to stderr/logs)
     - Remove "missing_paths" (merged into validation_errors upstream)
     """
-    # Audit: detect dropped keys and emit
-    if _audit_enabled():
-        lossless, dropped = _check_lossless_v2_to_v1(package)
-        if not lossless and dropped:
-            _emit_drop_audit(V2_VERSION, V1_VERSION, dropped)
-
     result: dict[str, Any] = {"schema_version": V1_VERSION}
 
     # Nest path fields
@@ -112,6 +202,15 @@ def convert_to_v1(package: dict[str, Any]) -> dict[str, Any]:
     for key in _KEEP_KEYS:
         if key in package:
             result[key] = package[key]
+
+    # Audit: after conversion, check if any keys were dropped
+    if _audit_enabled():
+        _, dropped = _check_lossless_v2_to_v1(package)
+        if dropped:
+            _write_audit_log(
+                V2_VERSION, V1_VERSION, dropped,
+                len(package), len(result),
+            )
 
     return result
 
@@ -175,6 +274,15 @@ def convert_to_memory_v1(package: dict[str, Any]) -> dict[str, Any]:
         if key in package:
             result[key] = package[key]
 
+    # Audit
+    if _audit_enabled():
+        _, dropped = _check_lossless_v2_to_memory_v1(package)
+        if dropped:
+            _write_audit_log(
+                V2_VERSION, MEMORY_V1_VERSION, dropped,
+                len(package), len(result),
+            )
+
     return result
 
 
@@ -212,6 +320,15 @@ def _convert_v1_to_memory_v1(package: dict[str, Any]) -> dict[str, Any]:
     for key in _KEEP_KEYS:
         if key in package:
             result[key] = package[key]
+
+    # Audit
+    if _audit_enabled():
+        _, dropped = _check_lossless_v1_to_memory_v1(package)
+        if dropped:
+            _write_audit_log(
+                V1_VERSION, MEMORY_V1_VERSION, dropped,
+                len(package), len(result),
+            )
 
     return result
 
@@ -261,17 +378,44 @@ def _check_lossless_v2_to_memory_v1(package: dict[str, Any]) -> tuple[bool, list
 
 
 def is_lossless(
+    input_data: dict | str,
+    output_data: dict | None = None,
+    expected_keys: set[str] | None = None,
+) -> tuple[bool, list[str]]:
+    """Return (is_lossless, list_of_dropped_keys).
+
+    Two calling conventions:
+
+    1. Generic dict comparison (primary):
+       is_lossless(input_dict, output_dict, expected_keys=None)
+       is_lossless == True iff every key from input_data exists in output_data
+       (or in expected_keys whitelist).
+
+    2. Schema-aware (backward compat):
+       is_lossless(package, schema_from, schema_to)
+       Supported paths: v2→v1, v1→memory-v1, v2→memory-v1.
+    """
+    # Detect schema-aware calling convention (2nd arg is a version string)
+    if isinstance(input_data, dict) and isinstance(output_data, str):
+        schema_from = output_data
+        schema_to = (expected_keys if isinstance(expected_keys, str) else "")
+        return _is_lossless_schema_aware(input_data, schema_from, schema_to)
+
+    # Generic dict comparison
+    if expected_keys is None:
+        expected_keys = set()
+
+    dropped: list[str] = []
+    _diff_dicts(input_data, output_data or {}, "", expected_keys, dropped)
+    return (len(dropped) == 0, dropped)
+
+
+def _is_lossless_schema_aware(
     package: dict[str, Any],
     schema_from: str,
     schema_to: str,
 ) -> tuple[bool, list[str]]:
-    """Return (True, []) if the conversion would be lossless, else (False, dropped_keys).
-
-    Supported conversion paths:
-    - wb-hook-v2 → context-package-v1: checks _DROP_KEYS
-    - context-package-v1 → memory-v1: checks project sub-keys (name, description, tech_stack)
-    - wb-hook-v2 → memory-v1: checks both _DROP_KEYS and project sub-keys
-    """
+    """Backward-compatible schema-aware lossless check."""
     if schema_from == V2_VERSION and schema_to == V1_VERSION:
         return _check_lossless_v2_to_v1(package)
     if schema_from == V1_VERSION and schema_to == MEMORY_V1_VERSION:
@@ -279,3 +423,7 @@ def is_lossless(
     if schema_from == V2_VERSION and schema_to == MEMORY_V1_VERSION:
         return _check_lossless_v2_to_memory_v1(package)
     return (False, [f"unknown_schema_pair: {schema_from}->{schema_to}"])
+
+
+# Aliases for backward compatibility
+is_lossless_schema = is_lossless

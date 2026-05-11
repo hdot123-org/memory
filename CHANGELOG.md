@@ -1,5 +1,27 @@
 # Changelog
 
+## [Unreleased] — 2026-05-10
+
+### Added
+- Pollution detection whitelist + `--check pollution` CLI（validate_memory_system）
+- Schema conversion `is_lossless()` API + audit log（memory_hook_schema）
+- artifact_root project_scope isolation（memory_hook_gateway）
+- CI health check script + GitHub/GitLab integration（scripts/ci_health_check.sh）
+- 6 new test files (+40 tests, total 808)
+
+### Changed
+- migrations.log writes now use fcntl.flock (POSIX, Windows fail-soft)
+- adapter.toml migration refactored to structured transformer registry
+- workbot DeprecationWarning suppressed during pytest collection (conftest.py)
+
+### Removed
+- `CLAUDE_HOOK_STATE_DIR` dead code
+- `# TODO: remove if unused` annotation on `CoreConfig.from_gateway_kwargs`
+
+### Archived
+- `memory_core/tools/ANALYSIS_GATEWAY_ADAPTER.md` → `archive/legacy-analysis/`
+- `docs/MULTI_PROJECT_SCAN_SPEC.md` marked ARCHIVED (waiting on multi-project concurrency mission)
+
 ## [0.3.0] - Unreleased
 
 ### Added

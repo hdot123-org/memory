@@ -186,7 +186,6 @@ class CoreConfig:
         from dataclasses import asdict
         return asdict(self)
 
-    # TODO: remove if unused
     @classmethod
     def from_gateway_kwargs(
         cls,

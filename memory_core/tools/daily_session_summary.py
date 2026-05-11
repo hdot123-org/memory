@@ -286,8 +286,11 @@ def main(argv: list[str] | None = None) -> int:
 
         events = _load_events(log_path)
         if not events:
-            # Try legacy combined log
-            events = _filter_by_date(events, target_date)
+            # Try legacy combined log (unpartitioned events.jsonl)
+            legacy_log = proj / "artifacts" / "memory-hook" / "events.jsonl"
+            if legacy_log.exists():
+                legacy_events = _load_events(legacy_log)
+                events = _filter_by_date(legacy_events, target_date)
 
         events = _filter_by_project(events, str(proj))
 

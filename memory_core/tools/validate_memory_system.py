@@ -12,6 +12,7 @@ Prints a summary report to stdout and returns 0 on success, 1 on failure.
 
 from __future__ import annotations
 
+import argparse
 import inspect
 import sys
 import traceback
@@ -267,26 +268,283 @@ def check_package_imports(result: ValidateResult) -> bool:
         return False
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Pollution detection (B.Q5-2 + B.Q5-3)
+# ──────────────────────────────────────────────────────────────────────
+
+# Canonical locations that ARE allowed to contain STATE/PLAN/CANONICAL files.
+_WHITELIST_PATH_PREFIXES: tuple[str, ...] = (
+    "memory_core/.memory/",
+    "memory_core/memory/kb/global/",
+    "memory_core/project-map/",
+    "archive/legacy-workbot/",
+    "workspace/templates/.memory/",
+)
+
+# Directories that are always safe (config / docs / CI).
+_WHITELIST_TOPLEVEL_DIRS: tuple[str, ...] = (
+    ".github",
+    "docs",
+    "scripts",
+    "tests",
+    "memory_core",
+    "archive",
+)
+
+# Runtime-state filenames that indicate business pollution when found
+# outside whitelisted paths.
+_FORBIDDEN_STATE_NAMES: tuple[str, ...] = (
+    "STATE.md",
+    "PLAN.md",
+    "CANONICAL.md",
+    "TASKS.md",
+)
+
+# Business-specific strings that should NOT appear in newly created
+# kb / project-map / .memory content.  Allowed only in source code,
+# documentation, or archived legacy content.
+_FORBIDDEN_BUSINESS_STRINGS: tuple[str, ...] = (
+    "axonhub",
+    "workbot",
+)
+
+# File extensions / patterns to check for business string pollution.
+_POLLUTION_CHECK_EXTENSIONS: tuple[str, ...] = (".md",)
+
+
+def _is_whitelisted_path(rel_path: Path) -> bool:
+    """Check if *rel_path* is in an allowed location."""
+    rel_str = rel_path.as_posix()
+    # Top-level whitelisted directories
+    top = rel_str.split("/")[0] if "/" in rel_str else rel_str
+    if top in _WHITELIST_TOPLEVEL_DIRS:
+        return True
+    # Specific prefix whitelist
+    for prefix in _WHITELIST_PATH_PREFIXES:
+        if rel_str.startswith(prefix):
+            return True
+    # Hidden / dotfiles at root (e.g., .gitignore, .gitlab-ci.yml)
+    if top.startswith(".") and rel_path.is_file():
+        return True
+    # Root-level config files (README, LICENSE, CHANGELOG, etc.)
+    if rel_path.parent == rel_path:
+        return True
+    return False
+
+
+def _has_forbidden_state_name(rel_path: Path) -> bool:
+    """Check if the filename itself is a forbidden runtime-state file."""
+    return rel_path.name in _FORBIDDEN_STATE_NAMES
+
+
+def _scan_file_content(filepath: Path, repo_root: Path) -> list[dict]:
+    """Scan a .md file in a runtime location for business-specific strings.
+
+    Only flags files directly under runtime directories like
+    memory_core/.memory/, memory_core/project-map/, or
+    memory_core/memory/kb/global/.  Archived and source-code locations
+    are exempt.
+    """
+    findings: list[dict] = []
+    rel_path = filepath.relative_to(repo_root)
+    rel_str = rel_path.as_posix()
+
+    # Only scan newly created runtime content
+    runtime_prefixes = (
+        "memory_core/.memory/",
+        "memory_core/project-map/",
+        "memory_core/memory/kb/global/",
+    )
+    if not any(rel_str.startswith(p) for p in runtime_prefixes):
+        return findings
+
+    # Exempt spec/governance/index docs — they are reference docs that
+    # naturally mention project names.
+    exempt_names = ("projects-spec.md", "INDEX.md", "governance.md", "legal-core-map.md", "ingestion-registry-map.md")
+    if rel_path.name in exempt_names:
+        return findings
+
+    if filepath.suffix not in _POLLUTION_CHECK_EXTENSIONS:
+        return findings
+
+    try:
+        text = filepath.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, PermissionError, OSError):
+        return findings
+
+    text_lower = text.lower()
+    for keyword in _FORBIDDEN_BUSINESS_STRINGS:
+        if keyword in text_lower:
+            findings.append({
+                "path": str(rel_path),
+                "rule": f"business-string:{keyword}",
+                "severity": "error",
+                "detail": f"Forbidden business keyword '{keyword}' found in runtime content",
+            })
+    return findings
+
+
+def detect_pollution(repo_root: Path) -> list[dict]:
+    """Return list of pollution findings.
+
+    Each dict has:
+        - ``path``: relative path from *repo_root*
+        - ``rule``: which rule was violated
+        - ``severity``: ``"error"`` (blocks CI) or ``"warning"`` (informational)
+
+    Uses an allow-list + deny-list approach:
+    - Allow-list: ``memory_core/.memory/``, ``memory_core/memory/kb/global/``,
+      ``memory_core/project-map/``, ``archive/legacy-workbot/``, standard
+      repo directories (docs/, tests/, scripts/, .github/, config files).
+    - Deny-list: any ``*.STATE.md`` / ``*.PLAN.md`` / ``*.CANONICAL.md``
+      appearing in business runtime locations (repo root,
+      ``workspace/projects/*``, etc.).
+    - Deny-list: business-specific strings (``axonhub``, ``workbot``) in
+      newly created runtime content (kb / project-map / .memory).
+    - Deny-list: ``.memory/`` directories outside ``memory_core/.memory/``
+      or ``archive/``.
+    """
+    findings: list[dict] = []
+
+    if not repo_root.is_dir():
+        findings.append({
+            "path": str(repo_root),
+            "rule": "repo-root-missing",
+            "severity": "error",
+            "detail": "Repository root does not exist",
+        })
+        return findings
+
+    # Walk every file in the working tree.
+    for filepath in sorted(repo_root.rglob("*")):
+        if not filepath.is_file():
+            continue
+
+        # Skip hidden dirs (.git, .pytest_cache, etc.) and build artifacts.
+        # But don't skip .memory at repo root — it must be checked.
+        parts = filepath.relative_to(repo_root).parts
+        if parts and parts[0].startswith(".") and parts[0] not in (".github", ".memory"):
+            continue
+        if parts and parts[0] in ("build", "memory_core.egg-info", "__pycache__", ".ruff_cache"):
+            continue
+
+        rel_path = filepath.relative_to(repo_root)
+
+        # ── Rule 1: Forbidden .memory/ directories outside allowed locations ──
+        if ".memory" in parts:
+            mem_idx = parts.index(".memory")
+            if mem_idx == 0:
+                # .memory/ at repo root — always unexpected
+                findings.append({
+                    "path": str(rel_path),
+                    "rule": "unexpected-memory-dir",
+                    "severity": "error",
+                    "detail": ".memory/ directory found at repository root",
+                })
+            else:
+                # Allowed parents: memory_core/.memory/, archive/legacy-workbot/.memory/, workspace/templates/.memory/
+                allowed_parents = (
+                    ("memory_core",),
+                    ("archive", "legacy-workbot"),
+                    ("workspace", "templates"),
+                )
+                is_allowed = any(
+                    parts[: mem_idx] == allowed[: mem_idx]
+                    for allowed in allowed_parents
+                    if len(allowed) == mem_idx
+                )
+                if not is_allowed:
+                    findings.append({
+                        "path": str(rel_path),
+                        "rule": "unexpected-memory-dir",
+                        "severity": "error",
+                        "detail": ".memory/ directory found outside memory_core/.memory/, archive/, or workspace/templates/",
+                    })
+
+        # ── Rule 2: Forbidden state files in runtime locations ──
+        if _has_forbidden_state_name(rel_path):
+            if not _is_whitelisted_path(rel_path):
+                findings.append({
+                    "path": str(rel_path),
+                    "rule": "forbidden-state-file",
+                    "severity": "error",
+                    "detail": f"Runtime state file {rel_path.name!r} found outside whitelisted paths",
+                })
+
+        # ── Rule 3: Business strings in runtime content ──
+        content_findings = _scan_file_content(filepath, repo_root)
+        findings.extend(content_findings)
+
+    # De-duplicate by (path, rule) to avoid duplicates from Rule 1
+    seen: set[tuple[str, str]] = set()
+    unique_findings: list[dict] = []
+    for f in findings:
+        key = (f["path"], f["rule"])
+        if key not in seen:
+            seen.add(key)
+            unique_findings.append(f)
+
+    return unique_findings
+
+
+def check_pollution(result: ValidateResult, repo_root: Path) -> bool:
+    """Run pollution detection and record results."""
+    try:
+        findings = detect_pollution(repo_root)
+    except Exception as exc:
+        result.record("pollution_check", False, f"detect_pollution raised: {exc}")
+        return False
+
+    if not findings:
+        result.record("pollution_check", True, "0 pollution findings")
+        return True
+
+    errors = [f for f in findings if f.get("severity") == "error"]
+    warnings = [f for f in findings if f.get("severity") == "warning"]
+    detail_parts = []
+    if errors:
+        detail_parts.append(f"{len(errors)} error(s)")
+    if warnings:
+        detail_parts.append(f"{len(warnings)} warning(s)")
+    detail = ", ".join(detail_parts)
+    for f in findings:
+        detail += f"; [{f['severity']}] {f['path']}: {f['rule']}"
+
+    result.record("pollution_check", len(errors) == 0, detail)
+    return len(errors) == 0
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Validate memory system health and pollution")
+    parser.add_argument(
+        "--check",
+        choices=["all", "health", "pollution"],
+        default="all",
+        help="Which checks to run (default: all)",
+    )
+    args = parser.parse_args()
+
+    repo_root = _REPO_ROOT
     result = ValidateResult()
 
-    ok = check_gateway_import(result)
-    if not ok:
-        print(result.summary())
-        return 1
+    if args.check in ("all", "health"):
+        ok = check_gateway_import(result)
+        if not ok:
+            print(result.summary())
+            return 1
 
-    builder_ok, builder = check_core_builder_resolve(result)
-    if not builder_ok or builder is None:
-        print(result.summary())
-        return 1
+        builder_ok, builder = check_core_builder_resolve(result)
+        if not builder_ok or builder is None:
+            print(result.summary())
+            return 1
 
-    check_context_package(result, builder)
+        check_context_package(result, builder)
+        check_core_config_path(result)
+        check_v1_schema(result)
+        check_package_imports(result)
 
-    check_core_config_path(result)
-
-    check_v1_schema(result)
-
-    check_package_imports(result)
+    if args.check in ("all", "pollution"):
+        check_pollution(result, repo_root)
 
     print(result.summary())
     return 0 if result.all_passed else 1

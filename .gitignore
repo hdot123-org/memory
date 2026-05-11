@@ -49,3 +49,10 @@ Thumbs.db
 build/
 dist/
 *.egg-info/
+
+# Runtime artifacts (not tracked)
+memory_core/artifacts/
+memory_core/.memory/schema-audit.log
+
+# Root-level .memory/ (project-local runtime state, not for tracking)
+/.memory/

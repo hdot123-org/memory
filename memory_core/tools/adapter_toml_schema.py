@@ -5,7 +5,7 @@ from __future__ import annotations
 import warnings as _warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 try:
     import tomllib
@@ -13,6 +13,75 @@ except ModuleNotFoundError:
     import tomli as tomllib
 
 from memory_core.constants import CURRENT_MEMORY_VERSION, SUPPORTED_HOSTS
+
+# ── migration transforms ──────────────────────────────────────────
+
+def _noop_transform(data: dict[str, Any]) -> dict[str, Any]:
+    """Identity transform: returns data unchanged."""
+    return data
+
+
+def _migrate_v010_to_v020(data: dict[str, Any]) -> dict[str, Any]:
+    """Transform adapter.toml data from version 0.1.0 to 0.2.0.
+
+    Preserves all existing fields, updates version to CURRENT_MEMORY_VERSION,
+    and ensures canonical [core]/[policy]/[routing] layout.
+    """
+    # If already using canonical layout, just update version
+    if "core" in data or "routing" in data:
+        result = dict(data)
+        if "core" in result:
+            result["core"]["version"] = CURRENT_MEMORY_VERSION
+        return result
+
+    # Legacy [adapter] section → canonical layout
+    adapter = data.get("adapter", {})
+    result: dict[str, Any] = {
+        "core": {
+            "version": CURRENT_MEMORY_VERSION,
+            "adapter": adapter.get("adapter", "default"),
+        },
+        "policy": {},
+        "routing": {},
+    }
+
+    # Preserve known routing fields
+    for key in ("project_name", "project_scope", "host", "canonical_files", "artifact_root"):
+        if key in adapter:
+            result["routing"][key] = adapter[key]
+
+    # Preserve known policy fields
+    for key in ("legality_source_policy", "registration_commit_policy", "registration_commit_phase"):
+        if key in adapter:
+            result["policy"][key] = adapter[key]
+
+    return result
+
+
+_MIGRATION_TRANSFORMS: dict[tuple[str, str], Callable[[dict[str, Any]], dict[str, Any]]] = {
+    ("0.1.0", CURRENT_MEMORY_VERSION): _migrate_v010_to_v020,
+    ("0.2.0", "0.2.0"): _noop_transform,
+}
+
+
+def _apply_migration_transforms(
+    data: dict[str, Any],
+    from_version: str,
+    to_version: str,
+) -> dict[str, Any]:
+    """Apply a registered migration transform to adapter.toml data.
+
+    Raises ``ValueError`` if the version pair is not in the transform registry.
+    """
+    key = (from_version, to_version)
+    transform_fn = _MIGRATION_TRANSFORMS.get(key)
+    if transform_fn is None:
+        raise ValueError(
+            f"No migration transform registered for adapter.toml "
+            f"version pair ({from_version!r} -> {to_version!r}). "
+            f"Available transforms: {list(_MIGRATION_TRANSFORMS.keys())}"
+        )
+    return transform_fn(data)
 
 
 @dataclass

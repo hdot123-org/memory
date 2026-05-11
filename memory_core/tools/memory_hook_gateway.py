@@ -111,6 +111,8 @@ except ImportError:
     from memory_hook_schema import convert_legacy_to_memory_v1, convert_to_v1  # type: ignore
 
 
+import threading
+
 import importlib  # noqa: E402
 import logging  # noqa: E402
 
@@ -174,6 +176,19 @@ def _load_adapter_profile(adapter_name: str, repo_root: Path, workspace_root: Pa
 
 # Adapter configuration store (replaces globals().update injection).
 _adapter_config: dict[str, Any] = {}
+_config_lock = threading.Lock()
+
+
+def get_config(key: str, default: Any = None) -> Any:
+    """Thread-safe read from adapter config."""
+    with _config_lock:
+        return _adapter_config.get(key, default)
+
+
+def get_config_dict() -> dict[str, Any]:
+    """Return a shallow copy of the current adapter config for safe iteration."""
+    with _config_lock:
+        return dict(_adapter_config)
 
 
 def load_adapter_config(profile: dict[str, Any]) -> None:
@@ -182,11 +197,13 @@ def load_adapter_config(profile: dict[str, Any]) -> None:
     Also writes keys into globals() for backward compatibility with
     existing code that reads module-level attributes directly.
     """
-    _adapter_config.clear()
-    _adapter_config.update(profile)
-    # Backward-compat: expose keys as module globals so hasattr() checks
-    # and direct attribute reads from existing callers still work.
-    globals().update(profile)
+    with _config_lock:
+        _adapter_config.clear()
+        _adapter_config.update(profile)
+        # DEPRECATED: globals injection for backward compat.
+        # New code should use get_config(key) or get_config_dict().
+        # Will be removed after all callers migrate to _adapter_config.
+        globals().update(profile)
 
 
 # Load adapter profile once; feed both new config store and legacy globals.
@@ -220,9 +237,13 @@ def reload_adapter(adapter_name: str | None = None) -> None:
     _adapter_profile = new_profile
 
     # Reset adapter config and reload with new profile.
-    _adapter_config.clear()
-    _adapter_config.update(new_profile)
-    globals().update(new_profile)
+    with _config_lock:
+        _adapter_config.clear()
+        _adapter_config.update(new_profile)
+        # DEPRECATED: globals injection for backward compat.
+        # New code should use get_config(key) or get_config_dict().
+        # Will be removed after all callers migrate to _adapter_config.
+        globals().update(new_profile)
 
     _ADAPTER_NAME = adapter_name
 
@@ -1213,7 +1234,8 @@ def main() -> int:
     if _should_noop_for_external_context(payload):
         return _delegate_noop_response(args.host)
 
-    # L2: Verify integrity on session-start (non-blocking)
+    # Collect pre-build integrity warnings (if any) to inject into the package later.
+    _integrity_warnings: list[str] = []
     if args.event == "session-start":
         integrity_result = _integrity_verify(cwd)
         if integrity_result and not integrity_result.get("ok", True):
@@ -1227,13 +1249,16 @@ def main() -> int:
                     "integrity": integrity_result,
                 },
             )
-            # Degrade status but don't block
-            package.setdefault("validation_errors", [])
-            if isinstance(package.get("validation_errors"), list):
-                package["validation_errors"].append("integrity-check-failed")
+            _integrity_warnings.append("integrity-check-failed")
 
     writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
     package = build_context_package(args.host, args.event, payload)
+
+    # Inject pre-build integrity warnings into the package.
+    if _integrity_warnings:
+        package.setdefault("validation_errors", [])
+        if isinstance(package.get("validation_errors"), list):
+            package["validation_errors"].extend(_integrity_warnings)
     write_ok = writer.write(args.host, args.event, package)
     if not write_ok:
         append_error_log(

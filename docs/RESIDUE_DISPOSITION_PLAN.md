@@ -167,3 +167,27 @@ R-05（projects-spec.md 混合内容）：**Phase 1 闭环完成** — 业务专
 ### 反向依赖
 
 - `memory_core/tools/memory_hook_adapters/workbot_runtime_profile.py` 是 workbot adapter 实现，仍硬编码原路径。**仅在 `MEMORY_HOOK_ADAPTER=workbot` 时加载**，对默认 `default` adapter 无影响。如需重启 workbot 适配，参考 `archive/legacy-workbot/README.md` 恢复步骤。
+
+## 8. Phase P2/P3 闭环（2026-05-10）
+
+> 触发：主线程"安排 1-8 个 bailian 完成后续任务"指令
+> 派出：6 个 bailian-worker 并行
+> 处置：见 audit doc §九
+
+### 已闭环
+| 审计编号 | 描述 | 状态 |
+|---|---|---|
+| B.Q3-3 | migrations.log fcntl.flock 原子追加 | ✅ 已闭环 |
+| B.Q3-4 | adapter.toml 迁移结构化转换器表 | ✅ 已闭环 |
+| B.Q5-2/B.Q5-3 | pollution detection 白名单 + CLI `--check pollution` | ✅ 已闭环 |
+| B.Q6-3 | schema 转换 `is_lossless()` + audit log | ✅ 已闭环 |
+| C.7 | artifact_root 项目隔离 + `MEMORY_ARTIFACT_PROJECT_ISOLATION` 逃生口 | ✅ 已闭环 |
+| C.9 | `CLAUDE_HOOK_STATE_DIR` 死代码清理 | ✅ 已闭环 |
+| D.2 | CI health check 脚本 + GitHub/GitLab 集成 | ✅ 已闭环 |
+| A.18 | `MULTI_PROJECT_SCAN_SPEC.md` 加 ARCHIVED 标头 | ✅ 已闭环 |
+
+共 11 项（8 个审计项 + 3 个瑕疵项），详见审计文档 §九。
+
+### 仍待
+- 多项目并发同进程（独立 mission）
+- 8 个归档测试 generic 重构（后续 Phase）

@@ -10,6 +10,10 @@ scope: default
 tags: [scan,registry,readonly,multi-project]
 ---
 
+> [ARCHIVED 2026-05-10] 多项目并发扫描规范当前为草案，等待 gateway 模块级 globals 重构完成后再启用。
+
+> [NOTE 2026-05-11] artifact project_scope 隔离已实现（C.7），gateway 线程安全配置访问已就绪。同进程多项目并发可通过 get_config() 使用。进程级隔离仍为推荐方案。
+
 > **⚠️ ARCHIVED**: 此文档描述的是历史版本的结构和流程（如 `workspace/tools/`、`branch-1/branch-2` 工作流）。
 > 当前代码已迁移到 `memory_core/tools/`，默认分支为 `main`。本文档保留作为参考，不代表当前实现。
 
