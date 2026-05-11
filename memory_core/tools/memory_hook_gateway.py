@@ -111,8 +111,6 @@ except ImportError:
     from memory_hook_schema import convert_legacy_to_memory_v1, convert_to_v1  # type: ignore
 
 
-import threading
-
 import importlib  # noqa: E402
 import logging  # noqa: E402
 
@@ -174,6 +172,8 @@ def _load_adapter_profile(adapter_name: str, repo_root: Path, workspace_root: Pa
     return _fn(repo_root, workspace_root)
 
 
+import threading
+
 # Adapter configuration store (replaces globals().update injection).
 _adapter_config: dict[str, Any] = {}
 _config_lock = threading.Lock()
@@ -200,10 +200,9 @@ def load_adapter_config(profile: dict[str, Any]) -> None:
     with _config_lock:
         _adapter_config.clear()
         _adapter_config.update(profile)
-        # DEPRECATED: globals injection for backward compat.
-        # New code should use get_config(key) or get_config_dict().
-        # Will be removed after all callers migrate to _adapter_config.
-        globals().update(profile)
+    # Backward-compat: expose keys as module globals so hasattr() checks
+    # and direct attribute reads from existing callers still work.
+    globals().update(profile)
 
 
 # Load adapter profile once; feed both new config store and legacy globals.
@@ -240,10 +239,7 @@ def reload_adapter(adapter_name: str | None = None) -> None:
     with _config_lock:
         _adapter_config.clear()
         _adapter_config.update(new_profile)
-        # DEPRECATED: globals injection for backward compat.
-        # New code should use get_config(key) or get_config_dict().
-        # Will be removed after all callers migrate to _adapter_config.
-        globals().update(new_profile)
+    globals().update(new_profile)
 
     _ADAPTER_NAME = adapter_name
 
@@ -1225,6 +1221,37 @@ def _execute_delegate(
         return 0
 
 
+
+def _launch_async_health_check(cwd: Path) -> None:
+    """Launch a background process to perform deep memory health validation.
+
+    This prevents heavy validation (reading many files, git commands,
+    and running the full context package build) from blocking the hook startup.
+    
+    Results are written to: memory/system/health-report.json
+    """
+    try:
+        health_script = str((Path(__file__).parent / "memory_health_report.py").resolve())
+        
+        # Output path for the report
+        report_path = cwd / "memory" / "system" / "health-report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Launch detached subprocess (cwd is critical for discovery)
+        # Child process writes to report_path directly.
+        subprocess.Popen(
+            [sys.executable, health_script, "--target", str(cwd)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,  # Detach from parent
+            cwd=str(cwd),            # Set working directory
+        )
+            
+        _logger.info("Launched async health check for %s", cwd)
+    except Exception as e:
+        _logger.debug("Failed to launch async health check: %s", e)
+
+
 def main() -> int:
     args = _parse_args()
     raw_payload = sys.stdin.read()
@@ -1234,8 +1261,38 @@ def main() -> int:
     if _should_noop_for_external_context(payload):
         return _delegate_noop_response(args.host)
 
-    # Collect pre-build integrity warnings (if any) to inject into the package later.
-    _integrity_warnings: list[str] = []
+    # Async: Launch health check in background for session-start
+    if args.event == "session-start":
+        _launch_async_health_check(cwd)
+    
+    writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
+    package = build_context_package(args.host, args.event, payload)
+    
+    # Health Alert: Inject previous session's health report if available
+    if args.event == "session-start":
+        prev_health_report = cwd / "memory" / "system" / "health-report.json"
+
+        if prev_health_report.exists():
+            try:
+                report_text = prev_health_report.read_text()
+
+                report_data = json.loads(report_text)
+
+                if report_data.get("status") == "degraded":
+    
+                    # Inject into system_context so the model can see and report it
+                    package.setdefault("system_context", {})
+                    package["system_context"]["previous_health_alert"] = {
+                        "status": "degraded",
+                        "errors": report_data.get("validation_errors", [])[:5], # Limit to top 5
+                        "note": "Detected from previous session startup health check"
+                    }
+                    # Also log it explicitly
+                    append_error_log("health-check", "Project health degraded (from previous check)", report_data)
+            except Exception as e:
+                _logger.debug("Failed to read previous health report: %s", e)
+    
+    # L2: Verify integrity on session-start (after package is built)
     if args.event == "session-start":
         integrity_result = _integrity_verify(cwd)
         if integrity_result and not integrity_result.get("ok", True):
@@ -1249,16 +1306,11 @@ def main() -> int:
                     "integrity": integrity_result,
                 },
             )
-            _integrity_warnings.append("integrity-check-failed")
-
-    writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
-    package = build_context_package(args.host, args.event, payload)
-
-    # Inject pre-build integrity warnings into the package.
-    if _integrity_warnings:
-        package.setdefault("validation_errors", [])
-        if isinstance(package.get("validation_errors"), list):
-            package["validation_errors"].extend(_integrity_warnings)
+            # Degrade status but don't block
+            package.setdefault("validation_errors", [])
+            if isinstance(package.get("validation_errors"), list):
+                package["validation_errors"].append("integrity-check-failed")
+                
     write_ok = writer.write(args.host, args.event, package)
     if not write_ok:
         append_error_log(
@@ -1291,7 +1343,8 @@ def main() -> int:
             file=sys.stderr,
         )
         exit_code = 1
-    elif args.no_delegate:
+    
+    if args.no_delegate:
         sys.stdout.write(json.dumps(package, ensure_ascii=False) + "\n")
     else:
         exit_code = _execute_delegate(args, raw_payload, payload, cwd)
