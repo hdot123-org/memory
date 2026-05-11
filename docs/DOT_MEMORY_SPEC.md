@@ -4,7 +4,7 @@ title: ".memory 目录规范"
 shortname: SPEC-DOT-MEMORY
 status: implemented
 created: 2026-04-29
-updated: 2026-04-30
+updated: 2026-05-12
 scope: default
 tags: [dot-memory,spec,schema]
 ---
@@ -26,12 +26,44 @@ tags: [dot-memory,spec,schema]
 ├── PLAN.md            # 执行计划
 ├── STATE.md           # 项目状态
 ├── TASKS.md           # 任务清单
+├── NOW.md             # 当前状态快照
 ├── migrations.log     # 迁移日志
+├── inbox.md           # 临时任务捕获区
+├── manifest.json      # L2 完整性签名清单（自动生成）
 └── kb/
     ├── projects/      # 项目知识
     ├── decisions/     # 决策记录
     ├── lessons/       # 经验教训
     └── global/        # 全局规范
+```
+
+此外，`memory-init` 还会在项目根目录下生成 runtime required 文件：
+
+```
+{project_root}/
+├── memory/
+│   ├── kb/
+│   │   ├── INDEX.md                         # 知识库索引
+│   │   ├── global/
+│   │   │   ├── truth-model.md               # 真相模型
+│   │   │   ├── memory-system.md             # 记忆系统规则
+│   │   │   ├── memory-routing.md            # 记忆路由规则
+│   │   │   ├── hook-contract.md             # Hook 契约
+│   │   │   ├── project-map-governance.md    # 项目地图治理
+│   │   │   ├── INDEX.md                     # 全局知识索引
+│   │   │   └── memory-hook-policy-pack.json # 策略包（默认空策略）
+│   │   └── projects/
+│   │       └── {scope}.md                   # 项目 scope 知识文件
+│   ├── docs/
+│   │   └── INDEX.md                         # 文档索引
+│   └── system/
+│       ├── errors.log                       # 错误日志
+│       └── health-report.json              # 健康检查报告（自动生成）
+├── project-map/
+│   ├── INDEX.md                             # 合法目录地图索引
+│   ├── legal-core-map.md                   # 合法核心地图
+│   └── ingestion-registry-map.md           # 摄入登记地图
+└── INDEX.md                                 # 工作区索引
 ```
 
 ## 文件规范
@@ -196,14 +228,124 @@ canonical_files = ["CANONICAL.md", "STATE.md"]
 - 非注释行必须符合管道符分隔格式
 - 必须有至少一条初始化记录
 
+### 8. NOW.md
+
+**作用**：记录项目当前状态的实时快照，gateway 每次构建 context package 时读取。
+
+Runtime required：被 `memory_hook_core.py` 在构建 context package 时作为 `state_entry` 读取。
+
+| 字段/章节 | 类型 | 必填 | 说明 |
+|-----------|------|------|------|
+| frontmatter.type | string | 是 | 固定为 `KB:STATE` |
+| frontmatter.status | string | 是 | `active` |
+| 当前任务 | section | 是 | 当前正在执行的主要任务 |
+| 下一步行动 | section | 是 | 下一步行动列表 |
+| 阻塞项 | section | 否 | 当前阻塞项 |
+| 上下文摘要 | section | 否 | 当前上下文简要描述 |
+
+**验证规则**：
+- 文件必须存在且为合法 Markdown
+- 必须包含 frontmatter（`type`、`status`）
+
+### 9. inbox.md
+
+**作用**：临时任务捕获区，用于快速记录待处理事项。
+
+Runtime required：被 `memory_hook_impls.py` workbot adapter 在任务操作时引用。
+
+```markdown
+# 收件箱
+
+临时任务捕获区。用于快速记录待处理事项，后续应整理到正式任务管理系统。
+
+## 待处理事项
+
+- [ ] （待填写）
+
+## 已归档
+
+（已处理并归档的项）
+```
+
+**验证规则**：
+- 文件必须存在
+- 必须包含「待处理事项」章节
+
+### 10. manifest.json（L2 自动生成）
+
+**作用**：L2 Integrity Layer 的签名清单，记录项目 canonical 文件的 SHA-256 和 HMAC-SHA256 签名。
+
+此文件由 `memory_hook_integrity_manifest.py` 自动生成和维护，不应手动编辑。
+
+```json
+{
+  "schema_version": "integrity-manifest-v1",
+  "project_root": "/abs/path/to/project",
+  "generated_at": "2026-05-11T12:00:00+08:00",
+  "key_fingerprint": "sha256:<first-8-hex>",
+  "entry_count": 5,
+  "entries": [
+    {
+      "path": "/abs/path/to/project/.memory/CANONICAL.md",
+      "rel_path": ".memory/CANONICAL.md",
+      "sha256": "<hex>",
+      "hmac_sha256": "<hex>",
+      "size_bytes": 1234,
+      "signed_at": "2026-05-11T12:00:00+08:00"
+    }
+  ]
+}
+```
+
+**签名的文件范围**：
+- `.memory/CANONICAL.md`、`.memory/STATE.md`、`.memory/PLAN.md`、`.memory/TASKS.md`、`.memory/adapter.toml`
+- `memory/system/errors.log`
+- `artifacts/memory-hook/contexts/` 和 `artifacts/memory-hook/events/` 下的日期分区文件
+
+**触发时机**：
+- `memory-init` 初始化后自动签名（best-effort）
+- gateway 成功写入 artifact 后自动重新签名
+- `session-start` 时自动验证完整性
+
+**验证规则**：
+- `schema_version` 必须为 `integrity-manifest-v1`
+- `key_fingerprint` 必须与当前密钥匹配
+- 每个条目的 `sha256` 和 `hmac_sha256` 必须与当前文件内容一致
+- 不在 manifest 中的 canonical 文件报告为 `new_unsigned` 警告
+
+### 11. memory-hook-policy-pack.json（runtime required）
+
+**作用**：默认策略包，位于 `memory/kb/global/`。
+
+Runtime required：被 `memory_hook_impls.py` 作为 `DEFAULT_POLICY_PACK_PATH` 加载。
+
+默认内容为空策略：
+
+```json
+{
+  "policies": [],
+  "version": "1.0"
+}
+```
+
+### 12. {scope}.md（项目 scope 知识文件）
+
+**作用**：每个项目 scope 的知识文件，位于 `memory/kb/projects/{scope}.md`。
+
+Runtime required：被 `memory_hook_core.py` 在构建 context package 时作为 project canonical 读取。
+
+包含项目概述、技术栈、关键模块、决策记录和经验教训的引用。
+
 ## 验证器要求
 
 当 `.memory/` 目录下存在任意文件时，验证器必须检查以下完整性：
 
-1. **必备文件检查**：7 个文件全部存在
-2. **格式检查**：各文件格式合法（TOML/Markdown/YAML）
+1. **必备文件检查**：9 个文件全部存在（memory.lock、adapter.toml、CANONICAL.md、PLAN.md、STATE.md、TASKS.md、NOW.md、migrations.log、inbox.md）
+2. **格式检查**：各文件格式合法（TOML/Markdown/JSON）
 3. **必填字段检查**：各文件必填字段不为空
 4. **枚举值检查**：状态、类型等字段为合法枚举值
+5. **Runtime required 文件检查**：`memory/kb/INDEX.md`、`memory/kb/global/memory-hook-policy-pack.json`、`memory/kb/projects/{scope}.md` 存在
+6. **L2 完整性检查**（可选）：`manifest.json` 存在且签名验证通过
 
 缺少任一必备文件时，验证器必须报告失败。
 

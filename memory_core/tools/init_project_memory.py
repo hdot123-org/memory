@@ -718,6 +718,88 @@ status: active
     return content, warnings
 
 
+def template_now_md(project_name: str) -> tuple[str, list[str]]:
+    """Generate NOW.md with frontmatter for current task snapshot.
+
+    Runtime required: referenced by memory_hook_core.py reads list.
+
+    Returns:
+        Tuple of (content, warnings_list)
+    """
+    now = _now_iso()
+    warnings: list[str] = []
+    try:
+        content = f"""\
+---
+type: "KB:STATE"
+title: "{project_name} Current State"
+shortname: "{project_name}"
+status: active
+created: "{now}"
+updated: "{now}"
+---
+
+# {project_name} 当前状态
+
+> 最后更新：{now}
+
+## 当前任务
+
+（待填写：当前正在执行的主要任务）
+
+## 下一步行动
+
+- [ ] （待填写：下一步行动 1）
+- [ ] （待填写：下一步行动 2）
+- [ ] （待填写：下一步行动 3）
+
+## 阻塞项
+
+- （待填写：当前阻塞项）
+
+## 上下文摘要
+
+（待填写：当前上下文简要描述）
+"""
+    except (ValueError, TypeError) as exc:
+        logger.warning(f"Template render error in NOW.md: {{exc}}")
+        warnings.append(f"template_now_md: {{exc}}")
+        content = f"""\
+# RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
+---
+type: "KB:STATE"
+title: "{{project_name}} Current State"
+shortname: "{{project_name}}"
+status: active
+created: "{now}"
+updated: "{now}"
+---
+
+# {{project_name}} 当前状态
+
+> 最后更新：{now}
+
+## 当前任务
+
+（待填写：当前正在执行的主要任务）
+
+## 下一步行动
+
+- [ ] （待填写：下一步行动 1）
+- [ ] （待填写：下一步行动 2）
+- [ ] （待填写：下一步行动 3）
+
+## 阻塞项
+
+- （待填写：当前阻塞项）
+
+## 上下文摘要
+
+（待填写：当前上下文简要描述）
+"""
+    return content, warnings
+
+
 def template_migrations_log(project_name: str) -> tuple[str, list[str]]:
     """Generate initial migrations.log.
 
@@ -743,6 +825,170 @@ def template_migrations_log(project_name: str) -> tuple[str, list[str]]:
 # Format: TIMESTAMP | VERSION_FROM | VERSION_TO | STATUS | NOTES
 
 {now}T00:00:00Z | none | {CURRENT_MEMORY_VERSION} | applied | initial scaffold
+"""
+    return content, warnings
+
+
+def template_inbox_md(project_name: str) -> tuple[str, list[str]]:
+    """Generate inbox.md for temporary task capture.
+
+    Runtime required: referenced by memory_hook_impls.py L531, L1374 (workbot adapter).
+
+    Returns:
+        Tuple of (content, warnings_list)
+    """
+    warnings: list[str] = []
+    try:
+        content = """\
+# 收件箱
+
+临时任务捕获区。用于快速记录待处理事项，后续应整理到正式任务管理系统。
+
+## 待处理事项
+
+- [ ] （待填写）
+
+## 已归档
+
+（已处理并归档的项）
+"""
+    except (ValueError, TypeError) as exc:
+        logger.warning(f"Template render error in inbox.md: {exc}")
+        warnings.append(f"template_inbox_md: {exc}")
+        content = """\
+# RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
+# 收件箱
+
+临时任务捕获区。用于快速记录待处理事项，后续应整理到正式任务管理系统。
+
+## 待处理事项
+
+- [ ] （待填写）
+
+## 已归档
+
+（已处理并归档的项）
+"""
+    return content, warnings
+
+
+def template_policy_pack_json(project_name: str) -> tuple[str, list[str]]:
+    """Generate default memory-hook-policy-pack.json.
+
+    Runtime required: referenced by memory_hook_impls.py L281 DEFAULT_POLICY_PACK_PATH.
+
+    Returns:
+        Tuple of (content, warnings_list)
+    """
+    warnings: list[str] = []
+    try:
+        policy_pack = {
+            "policies": [],
+            "version": "1.0"
+        }
+        content = json.dumps(policy_pack, indent=2, ensure_ascii=False) + "\n"
+    except (ValueError, TypeError) as exc:
+        logger.warning(f"Template render error in memory-hook-policy-pack.json: {exc}")
+        warnings.append(f"template_policy_pack_json: {exc}")
+        content = '{"policies": [], "version": "1.0"}\n'
+    return content, warnings
+
+
+def template_project_scope_md(project_name: str) -> tuple[str, list[str]]:
+    """Generate project scope knowledge file.
+
+    Runtime required: referenced by memory_hook_core.py L207-210.
+    Filename uses scope parameter.
+
+    Returns:
+        Tuple of (content, warnings_list)
+    """
+    now = _now_iso()
+    warnings: list[str] = []
+    try:
+        content = f"""\
+---
+type: "KB:PROJECT"
+title: "{project_name} Project Knowledge"
+shortname: "{project_name}"
+status: active
+created: "{now}"
+updated: "{now}"
+scope: project
+source: local-canonical
+confidence: high
+tags: [project, knowledge]
+---
+
+# {project_name} 项目知识
+
+## 项目概述
+
+（待填写：项目简要描述）
+
+## 技术栈
+
+- 语言：（待填写）
+- 框架：（待填写）
+- 数据库：（待填写）
+
+## 关键模块
+
+| 模块 | 描述 | 状态 |
+|------|------|------|
+| （待填写） | （待填写） | active |
+
+## 决策记录
+
+（链接到 decisions/ 目录下的相关决策）
+
+## 经验教训
+
+（链接到 lessons/ 目录下的相关经验）
+"""
+    except (ValueError, TypeError) as exc:
+        logger.warning(f"Template render error in project scope md: {exc}")
+        warnings.append(f"template_project_scope_md: {exc}")
+        content = f"""\
+# RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
+---
+type: "KB:PROJECT"
+title: "{{project_name}} Project Knowledge"
+shortname: "{{project_name}}"
+status: active
+created: "{now}"
+updated: "{now}"
+scope: project
+source: local-canonical
+confidence: high
+tags: [project, knowledge]
+---
+
+# {{project_name}} 项目知识
+
+## 项目概述
+
+（待填写：项目简要描述）
+
+## 技术栈
+
+- 语言：（待填写）
+- 框架：（待填写）
+- 数据库：（待填写）
+
+## 关键模块
+
+| 模块 | 描述 | 状态 |
+|------|------|------|
+| （待填写） | （待填写） | active |
+
+## 决策记录
+
+（链接到 decisions/ 目录下的相关决策）
+
+## 经验教训
+
+（链接到 lessons/ 目录下的相关经验）
 """
     return content, warnings
 
@@ -805,6 +1051,20 @@ KB_TEMPLATES: dict[str, Any] = {
         f"- 未完成同次 `git commit` 的目录登记，不得视为生效。\n",
         []
     ),
+    # Runtime required: knowledge base root index referenced by memory_hook_core.py L226-236
+    "memory/kb/INDEX.md": lambda scope: (
+        f"# 知识库索引\n\n"
+        f"本索引列出知识库各子目录及其用途。\n\n"
+        f"## 目录结构\n\n"
+        f"- `global/` — 全局知识（truth-model, memory-system, routing, hook-contract 等）\n"
+        f"- `projects/` — 项目专属知识\n"
+        f"- `decisions/` — 决策记录\n"
+        f"- `lessons/` — 经验教训\n\n"
+        f"## 使用说明\n\n"
+        f"- 只有被地图标为 `active-legal` 的条目或目录，才是合法资料\n"
+        f"- 目录登记和状态迁移必须与相关文件同次 `git commit` 才生效\n",
+        []
+    ),
     "INDEX.md": lambda scope: (
         f"# 工作区索引\n\n"
         f"- project-map/INDEX.md\n"
@@ -835,6 +1095,8 @@ FILE_TEMPLATES: dict[str, Any] = {
     "STATE.md": lambda pn: template_state_md(pn),
     "TASKS.md": lambda pn: template_tasks_md(pn),
     "migrations.log": lambda pn: template_migrations_log(pn),
+    # Runtime required: NOW.md referenced by memory_hook_core.py L226-236
+    "NOW.md": lambda pn: template_now_md(pn),
 }
 
 # Essential files that must be checked for --no-clobber
@@ -846,6 +1108,15 @@ ESSENTIAL_FILES = [
     "TASKS.md",
     "migrations.log",
     "adapter.toml",
+    # Runtime required files referenced by memory_hook_core.py and memory_hook_impls.py
+    "NOW.md",  # L226-236 reads list
+    "memory/inbox.md",  # L531, L1374 workbot adapter action target
+]
+
+# Runtime required KB files (under workspace_root, not .memory/)
+RUNTIME_KB_FILES = [
+    "memory/kb/INDEX.md",  # L226-236 reads list
+    "memory/kb/global/memory-hook-policy-pack.json",  # L281 DEFAULT_POLICY_PACK_PATH
 ]
 
 # ---------------------------------------------------------------------------
@@ -1045,6 +1316,15 @@ def init_project_memory(
             file_path = memory_root / fname
             if file_path.exists():
                 existing_essential.append(fname)
+        # Also check runtime KB files
+        for fname in RUNTIME_KB_FILES:
+            file_path = target / fname
+            if file_path.exists():
+                existing_essential.append(fname)
+        # Check project scope file
+        scope_file = f"memory/kb/projects/{project_name}.md"
+        if (target / scope_file).exists():
+            existing_essential.append(scope_file)
         if existing_essential:
             result["errors"].append(
                 f"refused to clobber existing .memory; use --force to overwrite "
@@ -1061,7 +1341,7 @@ def init_project_memory(
             "would_create_files": [],
             "project_name": project_name,
         }
-        # Check which files would be created/overwritten
+        # Check which files would be created/overwritten (under .memory/)
         for fname in ESSENTIAL_FILES:
             file_path = memory_root / fname
             if file_path.exists():
@@ -1071,6 +1351,26 @@ def init_project_memory(
                     dry_run_output["would_create_files"].append(f"{fname} (skip - exists)")
             else:
                 dry_run_output["would_create_files"].append(f"{fname} (create)")
+        # Check runtime KB files (under workspace_root)
+        for fname in RUNTIME_KB_FILES:
+            file_path = target / fname
+            if file_path.exists():
+                if force:
+                    dry_run_output["would_create_files"].append(f"{fname} (overwrite)")
+                else:
+                    dry_run_output["would_create_files"].append(f"{fname} (skip - exists)")
+            else:
+                dry_run_output["would_create_files"].append(f"{fname} (create)")
+        # Check project scope file
+        scope_file = f"memory/kb/projects/{project_name}.md"
+        scope_path = target / scope_file
+        if scope_path.exists():
+            if force:
+                dry_run_output["would_create_files"].append(f"{scope_file} (overwrite)")
+            else:
+                dry_run_output["would_create_files"].append(f"{scope_file} (skip - exists)")
+        else:
+            dry_run_output["would_create_files"].append(f"{scope_file} (create)")
         result["dry_run_output"] = dry_run_output
         result["force_overwrite"] = force
         result["mode"] = "dry-run"
@@ -1181,6 +1481,79 @@ def init_project_memory(
             result["warnings"].extend(warnings)
         except Exception as exc:
             result["errors"].append(f"failed to create adapter.toml: {exc}")
+
+    # Create runtime required files not covered by FILE_TEMPLATES or KB_TEMPLATES
+    # 3. memory/inbox.md - Runtime required by memory_hook_impls.py L531, L1374
+    inbox_path = memory_root / "inbox.md"
+    if inbox_path.exists():
+        if force:
+            try:
+                content, warnings = template_inbox_md(project_name)
+                inbox_path.write_text(content, encoding="utf-8")
+                result["created"].append("file:memory/inbox.md (overwritten)")
+                result["warnings"].extend(warnings)
+                any_overwritten = True
+            except Exception as exc:
+                result["errors"].append(f"failed to overwrite memory/inbox.md: {exc}")
+        else:
+            result["skipped"].append("file:memory/inbox.md (already exists)")
+            any_skipped = True
+    else:
+        try:
+            content, warnings = template_inbox_md(project_name)
+            inbox_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:memory/inbox.md")
+            result["warnings"].extend(warnings)
+        except Exception as exc:
+            result["errors"].append(f"failed to create memory/inbox.md: {exc}")
+
+    # 4. memory/kb/global/memory-hook-policy-pack.json - Runtime required by memory_hook_impls.py L281
+    policy_pack_path = target / "memory" / "kb" / "global" / "memory-hook-policy-pack.json"
+    if policy_pack_path.exists():
+        if force:
+            try:
+                content, warnings = template_policy_pack_json(project_name)
+                policy_pack_path.write_text(content, encoding="utf-8")
+                result["created"].append("file:memory/kb/global/memory-hook-policy-pack.json (overwritten)")
+                result["warnings"].extend(warnings)
+                any_overwritten = True
+            except Exception as exc:
+                result["errors"].append(f"failed to overwrite memory-hook-policy-pack.json: {exc}")
+        else:
+            result["skipped"].append("file:memory/kb/global/memory-hook-policy-pack.json (already exists)")
+            any_skipped = True
+    else:
+        try:
+            content, warnings = template_policy_pack_json(project_name)
+            policy_pack_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:memory/kb/global/memory-hook-policy-pack.json")
+            result["warnings"].extend(warnings)
+        except Exception as exc:
+            result["errors"].append(f"failed to create memory-hook-policy-pack.json: {exc}")
+
+    # 5. memory/kb/projects/{scope}.md - Runtime required by memory_hook_core.py L207-210
+    scope_md_path = target / "memory" / "kb" / "projects" / f"{project_name}.md"
+    if scope_md_path.exists():
+        if force:
+            try:
+                content, warnings = template_project_scope_md(project_name)
+                scope_md_path.write_text(content, encoding="utf-8")
+                result["created"].append(f"file:memory/kb/projects/{project_name}.md (overwritten)")
+                result["warnings"].extend(warnings)
+                any_overwritten = True
+            except Exception as exc:
+                result["errors"].append(f"failed to overwrite memory/kb/projects/{project_name}.md: {exc}")
+        else:
+            result["skipped"].append(f"file:memory/kb/projects/{project_name}.md (already exists)")
+            any_skipped = True
+    else:
+        try:
+            content, warnings = template_project_scope_md(project_name)
+            scope_md_path.write_text(content, encoding="utf-8")
+            result["created"].append(f"file:memory/kb/projects/{project_name}.md")
+            result["warnings"].extend(warnings)
+        except Exception as exc:
+            result["errors"].append(f"failed to create memory/kb/projects/{project_name}.md: {exc}")
 
     result["success"] = len(result["errors"]) == 0
     result["force_overwrite"] = force

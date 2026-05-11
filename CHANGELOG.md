@@ -1,15 +1,26 @@
 # Changelog
 
-## [Unreleased] — 2026-05-10
+## [Unreleased] — 2026-05-12
 
 ### Added
-- Pollution detection whitelist + `--check pollution` CLI（validate_memory_system）
-- Schema conversion `is_lossless()` API + audit log（memory_hook_schema）
-- artifact_root project_scope isolation（memory_hook_gateway）
-- CI health check script + GitHub/GitLab integration（scripts/ci_health_check.sh）
-- 6 new test files (+40 tests, total 808)
+- **L2 Integrity Layer**：SHA-256 + HMAC-SHA256 签名和验证，三个模块（keys/manifest/verify）
+- **Health Report**：异步健康检查，`session-start` 时后台启动，下次注入检查结果作为 alert
+- **Project Lifecycle**：多项目生命周期追踪，project_id 唯一标识，path-index 路径索引，missing 标记
+- **Memory Root Discovery**：从 cwd 向上查找 `.memory/` 定位项目根，支持 monorepo sentinel
+- **Thread-safe Config**：`get_config(key)` + `_config_lock` 线程安全配置访问
+- **Schema `is_lossless()` API**：运行时检测 schema 转换数据丢失，审计日志写入 `schema-audit.log`
+- **Adapter TOML Schema 校验**：`adapter_toml_schema.py` 结构化校验，字段类型/必填/枚举约束
+- **`memory-init` 新增模板**：NOW.md、inbox.md、policy-pack.json、project-scope.md（runtime required）
+- **`memory-init` L2 自动签名**：初始化后自动签名首个 manifest（best-effort）
+- **Artifact 日期分区隔离**：按 project_scope 隔离 artifact 输出
+- **Pollution detection whitelist** + `--check pollution` CLI（validate_memory_system）
+- **CI health check script** + GitHub/GitLab integration（scripts/ci_health_check.sh）
+- **6 new test files**（+40 tests, total 808）
 
 ### Changed
+- **文档更新**：README.md 补充 L2 Integrity、多项目架构、Health Report、Project Lifecycle 章节
+- **文档更新**：DOT_MEMORY_SPEC.md 补充 NOW.md/inbox.md/manifest.json/policy-pack.json 等 5 个新文件规范
+- **文档更新**：MULTI_PROJECT_SCAN_SPEC.md 状态从 ARCHIVED 改为 implemented
 - migrations.log writes now use fcntl.flock (POSIX, Windows fail-soft)
 - adapter.toml migration refactored to structured transformer registry
 - workbot DeprecationWarning suppressed during pytest collection (conftest.py)
@@ -20,7 +31,6 @@
 
 ### Archived
 - `memory_core/tools/ANALYSIS_GATEWAY_ADAPTER.md` → `archive/legacy-analysis/`
-- `docs/MULTI_PROJECT_SCAN_SPEC.md` marked ARCHIVED (waiting on multi-project concurrency mission)
 
 ## [0.3.0] - Unreleased
 

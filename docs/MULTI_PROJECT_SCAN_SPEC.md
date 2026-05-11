@@ -2,24 +2,15 @@
 type: "[SPEC]"
 title: "多项目升级扫描：只读 registry 指针"
 shortname: SPEC-012
-status: 草稿
+status: implemented
 created: 2026-04-29
-updated: 2026-04-29
+updated: 2026-05-12
 source: Issue-#12
 scope: default
 tags: [scan,registry,readonly,multi-project]
 ---
 
-> [ARCHIVED 2026-05-10] 多项目并发扫描规范当前为草案，等待 gateway 模块级 globals 重构完成后再启用。
-
-> [NOTE 2026-05-11] artifact project_scope 隔离已实现（C.7），gateway 线程安全配置访问已就绪。同进程多项目并发可通过 get_config() 使用。进程级隔离仍为推荐方案。
-
-> **⚠️ ARCHIVED**: 此文档描述的是历史版本的结构和流程（如 `workspace/tools/`、`branch-1/branch-2` 工作流）。
-> 当前代码已迁移到 `memory_core/tools/`，默认分支为 `main`。本文档保留作为参考，不代表当前实现。
-
-> 文档编号：SPEC-012 | 版本：V1.0 | 日期：2026-04-29
-> 维护人：P3-版本子代理
-> 状态：草稿
+> [NOTE 2026-05-12] 多项目架构已通过 `default_runtime_profile` 实现。每个业务项目通过 `memory-init` 初始化独立的 `.memory/` 目录，gateway 运行时从目标项目的 `adapter.toml` 动态读取配置。项目发现通过 `memory_root_discovery.py` 向上查找 `.memory/` 实现。项目生命周期通过 `project_lifecycle.py` 追踪。同进程多项目并发可通过 `get_config()` 使用；进程级隔离仍为推荐方案。本文档描述的 registry 扫描流程作为升级管理工具的参考规范。
 
 # 多项目升级扫描：只读 registry 指针规范
 
