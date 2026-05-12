@@ -35,6 +35,7 @@ from memory_core.constants import (
     CURRENT_MEMORY_VERSION,
     SUPPORTED_HOSTS,
 )
+from memory_core.tools.denied_project_roots import is_denied_project_root
 
 # Setup logging for template warnings
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
@@ -1135,13 +1136,31 @@ def template_keep() -> str:
 # Hooks / AGENTS.md helpers
 # ---------------------------------------------------------------------------
 
+# Markers for identifying old bare gateway commands that should be replaced
+def _is_old_bare_gateway_command(command: str) -> bool:
+    """Check if a command is an old bare memory-hook-gateway command (not using wrapper)."""
+    if "memory-hook-gateway" not in command:
+        return False
+    # If it uses the wrapper (memory-hook), it's not a bare gateway command
+    if "memory-hook --host" in command:
+        return False
+    # If it's a bare gateway command (direct python path or bare gateway)
+    if "memory_hook_gateway.py" in command or command.strip().startswith("memory-hook-gateway"):
+        return True
+    return False
+
+
 def template_hooks_json(host: str = "claude") -> dict[str, Any]:
-    """Generate hooks.json content as a dict."""
+    """Generate hooks.json content as a dict using the protected wrapper.
+
+    Uses ~/.claude/bin/memory-hook wrapper instead of bare gateway command
+    to ensure proper project lifecycle management and anti-pollution guards.
+    """
     hooks: list[dict[str, Any]] = []
     for claude_event, gateway_event in CLAUDE_HOOK_EVENTS:
         hooks.append({
             "event": claude_event,
-            "command": f"memory-hook-gateway --host {host} --event {gateway_event}",
+            "command": f"~/.claude/bin/memory-hook --host {host} --event {gateway_event}",
             "stdin": True,
         })
     return {"hooks": hooks}
@@ -1155,8 +1174,8 @@ def generate_hooks_json(
 ) -> None:
     """Create or update .claude/hooks.json in the target project.
 
-    If the file already exists, only append missing memory hook entries
-    (idempotent — does not overwrite existing hooks from other tools).
+    Uses the protected wrapper-based approach. Replaces old bare gateway
+    entries while preserving non-memory hooks.
     """
     hooks_dir = target / ".claude"
     hooks_path = hooks_dir / "hooks.json"
@@ -1178,17 +1197,26 @@ def generate_hooks_json(
         if not isinstance(existing_hooks, list):
             result["warnings"].append("hooks.json corrupt or non-standard, treated as empty")
             existing_hooks = []
-        existing_keys = {(h["event"], h["command"]) for h in existing_hooks}
-        missing_keys = desired_keys - existing_keys
 
-        if not missing_keys:
-            result["skipped"].append("file:.claude/hooks.json (up-to-date)")
-            return
+        # Filter out old bare gateway commands and existing memory hooks
+        filtered_hooks: list[dict[str, Any]] = []
+        for h in existing_hooks:
+            if not isinstance(h, dict):
+                filtered_hooks.append(h)
+                continue
+            cmd = h.get("command", "")
+            # Skip old bare gateway commands and existing wrapper commands
+            if _is_old_bare_gateway_command(cmd) or "--host claude --event" in cmd:
+                continue
+            filtered_hooks.append(h)
 
+        # Add desired wrapper-based hooks
+        existing_keys = {(h["event"], h["command"]) for h in filtered_hooks}
         for hook in desired["hooks"]:
-            if (hook["event"], hook["command"]) in missing_keys:
-                existing_hooks.append(hook)
-        existing["hooks"] = existing_hooks
+            if (hook["event"], hook["command"]) not in existing_keys:
+                filtered_hooks.append(hook)
+
+        existing["hooks"] = filtered_hooks
         content = json.dumps(existing, indent=2, ensure_ascii=False) + "\n"
     else:
         hooks_dir.mkdir(parents=True, exist_ok=True)
@@ -1199,14 +1227,27 @@ def generate_hooks_json(
 
 
 def template_agents_md_block(host: str = "codex") -> str:
-    """Generate the AGENTS.md memory hook instruction block."""
+    """Generate the AGENTS.md memory hook instruction block.
+
+    Recommends using the protected wrapper instead of bare gateway commands
+    to ensure proper project lifecycle management and anti-pollution guards.
+    """
     return f"""{MEMORY_HOOK_BEGIN_MARKER}
 ## Memory Hook
 
-When starting a session, run the memory hook gateway to load project context:
+This project uses the memory-core protected wrapper for {host.title()} hooks.
+The wrapper is installed at `~/.{host}/bin/memory-hook` and handles:
+- Project lifecycle tracking
+- HOME directory anti-pollution guards
+- Source repository detection (skips memory-core itself)
+- Git root normalization
 
+Project-level hooks are configured in `.{host}/hooks.json`.
+Do NOT use bare `memory-hook-gateway` commands directly.
+
+For manual testing:
 ```bash
-memory-hook-gateway --host {host} --event session-start
+~/.{host}/bin/memory-hook --host {host} --event session-start
 ```
 {MEMORY_HOOK_END_MARKER}
 """
@@ -1310,6 +1351,11 @@ def init_project_memory(
 
     memory_root = target / ".memory"
     project_name = _project_name(target, scope)
+
+    if is_denied_project_root(target):
+        result["errors"].append(f"Refusing to initialize memory in denied project root: {target.resolve()}")
+        result["mode"] = "error"
+        return result
 
     # Check for existing essential files for --no-clobber
     if no_clobber:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Install Codex App global hooks for the memory gateway.
+"""Install Claude global hooks for the memory gateway.
 
-Codex stores hook configuration under ``~/.codex/hooks.json``.  This module
+Claude stores hook configuration under ``~/.claude/hooks.json``. This module
 keeps that file host-owned and project-agnostic: the global hook calls one
 stable wrapper, and the memory runtime decides how to handle project identity.
 """
@@ -18,9 +18,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-CODEX_HOOK_EVENTS: tuple[tuple[str, str], ...] = (
+CLAUDE_HOOK_EVENTS: tuple[tuple[str, str], ...] = (
     ("SessionStart", "session-start"),
     ("UserPromptSubmit", "prompt-submit"),
+    ("Notification", "notification"),
     ("Stop", "stop"),
 )
 
@@ -29,13 +30,13 @@ DEFAULT_TIMEOUT_SECONDS = 10
 _MEMORY_COMMAND_MARKERS = (
     "memory_hook_gateway.py",
     "memory-hook-gateway",
-    "memory-hook --host codex",
+    "memory-hook --host claude",
 )
 
 
-def default_codex_home() -> Path:
-    """Return the Codex configuration directory."""
-    return Path(os.environ.get("CODEX_HOME", "~/.codex")).expanduser()
+def default_claude_home() -> Path:
+    """Return the Claude configuration directory."""
+    return Path(os.environ.get("CLAUDE_HOME", "~/.claude")).expanduser()
 
 
 def default_storage_root() -> Path:
@@ -43,9 +44,14 @@ def default_storage_root() -> Path:
     return Path(os.environ.get("MEMORY_HOOK_GLOBAL_STATE_ROOT", "~/.memory-core")).expanduser()
 
 
-def wrapper_path(codex_home: Path) -> Path:
-    """Return the stable global wrapper path for Codex hooks."""
-    return codex_home / "bin" / "memory-hook"
+def wrapper_path(claude_home: Path) -> Path:
+    """Return the stable global wrapper path for Claude hooks."""
+    return claude_home / "bin" / "memory-hook"
+
+
+def hooks_path(claude_home: Path) -> Path:
+    """Return the Claude hooks.json file path."""
+    return claude_home / "hooks.json"
 
 
 def _looks_like_path(command: str) -> bool:
@@ -98,11 +104,11 @@ def render_wrapper(
     gateway_command: str = "memory-hook-gateway",
     init_command: str = "memory-init",
 ) -> str:
-    """Render the shell wrapper installed into ``~/.codex/bin``.
+    """Render the shell wrapper installed into ``~/.claude/bin``.
 
     The wrapper records the original working directory, ensures the current
-    Codex project has project-local memory files, then calls the installed
-    gateway command.  It does not point at a source checkout or worktree.
+    Claude project has project-local memory files, then calls the installed
+    gateway command. It does not point at a source checkout or worktree.
     """
     quoted_storage = shlex.quote(str(storage_root.expanduser()))
     quoted_gateway = shlex.quote(gateway_command)
@@ -142,14 +148,14 @@ fi
 
 # Anti-pollution: Skip memory-core source repo (detected by marker files) regardless of .memory existence
 if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ]; then
-    if [ -f "$PROJECT_CWD/memory_core/tools/memory_hook_gateway.py" ] || [ -f "$PROJECT_CWD/memory_core/tools/factory_global_hooks.py" ] || [ -f "$PROJECT_CWD/memory_core/tools/codex_global_hooks.py" ]; then
+    if [ -f "$PROJECT_CWD/memory_core/tools/memory_hook_gateway.py" ] || [ -f "$PROJECT_CWD/memory_core/tools/factory_global_hooks.py" ] || [ -f "$PROJECT_CWD/memory_core/tools/codex_global_hooks.py" ] || [ -f "$PROJECT_CWD/memory_core/tools/claude_global_hooks.py" ]; then
         printf '{{}}\n'
         exit 0
     fi
 fi
 
 if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ] && [ ! -d "$PROJECT_CWD/.memory" ]; then
-    "$MEMORY_HOOK_PROJECT_INIT" --target "$PROJECT_CWD" --host codex \
+    "$MEMORY_HOOK_PROJECT_INIT" --target "$PROJECT_CWD" --host claude \\
         >/dev/null 2>>"$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system/errors.log" || true
 fi
 
@@ -157,112 +163,99 @@ exec "$MEMORY_HOOK_GATEWAY" "$@"
 """
 
 
-def desired_codex_hooks(command_path: Path, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> dict[str, Any]:
-    """Return the Codex App hooks.json shape for memory hooks."""
-    hooks: dict[str, Any] = {}
-    for codex_event, gateway_event in CODEX_HOOK_EVENTS:
-        hooks[codex_event] = [
-            {
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": f"{command_path} --host codex --event {gateway_event}",
-                        "timeout": timeout,
-                    }
-                ]
-            }
-        ]
+def desired_claude_hooks(command_path: Path, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> dict[str, Any]:
+    """Return the Claude hooks.json shape for memory hooks.
+
+    Claude uses a flat list format: {"hooks": [{"event": "...", "command": "...", "stdin": true}, ...]}
+    """
+    hooks: list[dict[str, Any]] = []
+    for claude_event, gateway_event in CLAUDE_HOOK_EVENTS:
+        hooks.append({
+            "event": claude_event,
+            "command": f"{command_path} --host claude --event {gateway_event}",
+            "stdin": True,
+        })
     return {"hooks": hooks}
 
 
-def _empty_codex_hooks() -> dict[str, Any]:
-    return {"hooks": {}}
+def _empty_claude_hooks() -> dict[str, Any]:
+    return {"hooks": []}
 
 
 def _load_hooks_json(path: Path, warnings: list[str]) -> dict[str, Any]:
     if not path.exists():
-        return _empty_codex_hooks()
+        return _empty_claude_hooks()
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         warnings.append(f"hooks.json corrupt or unreadable, treated as empty: {exc}")
-        return _empty_codex_hooks()
+        return _empty_claude_hooks()
     if not isinstance(loaded, dict):
         warnings.append("hooks.json root is not an object, treated as empty")
-        return _empty_codex_hooks()
-    if not isinstance(loaded.get("hooks"), dict):
+        return _empty_claude_hooks()
+    if not isinstance(loaded.get("hooks"), list):
         warnings.append("hooks.json hooks field is missing or non-standard, treated as empty")
-        loaded["hooks"] = {}
+        loaded["hooks"] = []
     return loaded
 
 
 def _is_memory_hook_command(command: str) -> bool:
-    if "--host codex" not in command or "--event" not in command:
+    if "--host claude" not in command or "--event" not in command:
         return False
     return any(marker in command for marker in _MEMORY_COMMAND_MARKERS)
 
 
-def _filter_memory_hooks(groups: Any) -> list[dict[str, Any]]:
-    if not isinstance(groups, list):
-        return []
-    filtered_groups: list[dict[str, Any]] = []
-    for group in groups:
-        if not isinstance(group, dict):
+def _filter_memory_hooks(hooks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Filter out old memory hook entries from the hooks list."""
+    filtered: list[dict[str, Any]] = []
+    for hook in hooks:
+        if not isinstance(hook, dict):
+            filtered.append(hook)
             continue
-        group_hooks = group.get("hooks")
-        if not isinstance(group_hooks, list):
-            filtered_groups.append(group)
+        command = hook.get("command")
+        if isinstance(command, str) and _is_memory_hook_command(command):
             continue
-        kept_hooks: list[Any] = []
-        for hook in group_hooks:
-            if not isinstance(hook, dict):
-                kept_hooks.append(hook)
-                continue
-            command = hook.get("command")
-            if isinstance(command, str) and _is_memory_hook_command(command):
-                continue
-            kept_hooks.append(hook)
-        if kept_hooks:
-            new_group = dict(group)
-            new_group["hooks"] = kept_hooks
-            filtered_groups.append(new_group)
-    return filtered_groups
+        filtered.append(hook)
+    return filtered
 
 
-def merge_codex_hooks(existing: dict[str, Any], desired: dict[str, Any]) -> dict[str, Any]:
-    """Merge desired memory hooks while preserving unrelated hooks."""
+def merge_claude_hooks(existing: dict[str, Any], desired: dict[str, Any]) -> dict[str, Any]:
+    """Merge desired memory hooks while preserving unrelated hooks.
+
+    Claude uses a flat list format, so we filter existing memory hooks
+    and append the desired ones.
+    """
     merged = dict(existing)
     existing_hooks = merged.get("hooks")
-    if not isinstance(existing_hooks, dict):
-        existing_hooks = {}
-    merged_hooks = dict(existing_hooks)
-    desired_hooks = desired.get("hooks", {})
-    if not isinstance(desired_hooks, dict):
-        desired_hooks = {}
+    if not isinstance(existing_hooks, list):
+        existing_hooks = []
 
-    for codex_event, _gateway_event in CODEX_HOOK_EVENTS:
-        preserved = _filter_memory_hooks(merged_hooks.get(codex_event, []))
-        desired_groups = desired_hooks.get(codex_event, [])
-        if isinstance(desired_groups, list):
-            merged_hooks[codex_event] = preserved + desired_groups
-    merged["hooks"] = merged_hooks
+    # Filter out old memory hooks from existing
+    filtered_hooks = _filter_memory_hooks(existing_hooks)
+
+    # Append desired hooks
+    desired_hooks = desired.get("hooks", [])
+    if isinstance(desired_hooks, list):
+        filtered_hooks.extend(desired_hooks)
+
+    merged["hooks"] = filtered_hooks
     return merged
 
 
-def install_codex_hooks(
+def install_claude_hooks(
     *,
-    codex_home: Path | None = None,
+    claude_home: Path | None = None,
     storage_root: Path | None = None,
     gateway_command: str = "memory-hook-gateway",
     init_command: str = "memory-init",
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Install the global Codex memory hook wrapper and hooks.json entries."""
-    resolved_codex_home = (codex_home or default_codex_home()).expanduser()
+    """Install the global Claude memory hook wrapper and hooks.json entries."""
+    resolved_claude_home = (claude_home or default_claude_home()).expanduser()
     resolved_storage_root = (storage_root or default_storage_root()).expanduser()
-    hook_wrapper = wrapper_path(resolved_codex_home)
-    hooks_path = resolved_codex_home / "hooks.json"
+    hook_wrapper = wrapper_path(resolved_claude_home)
+    hooks_file = hooks_path(resolved_claude_home)
     warnings: list[str] = []
     resolved_gateway_command = resolve_gateway_command(gateway_command, warnings)
     resolved_init_command = resolve_init_command(init_command, warnings)
@@ -276,20 +269,20 @@ def install_codex_hooks(
         if resolved_gateway_command and resolved_init_command
         else ""
     )
-    desired = desired_codex_hooks(hook_wrapper, timeout=timeout)
-    existing = _load_hooks_json(hooks_path, warnings)
-    merged = merge_codex_hooks(existing, desired)
+    desired = desired_claude_hooks(hook_wrapper, timeout=timeout)
+    existing = _load_hooks_json(hooks_file, warnings)
+    merged = merge_claude_hooks(existing, desired)
     rendered_hooks = json.dumps(merged, ensure_ascii=False, indent=2) + "\n"
 
     result: dict[str, Any] = {
         "success": True,
         "dry_run": dry_run,
-        "codex_home": str(resolved_codex_home),
+        "claude_home": str(resolved_claude_home),
         "storage_root": str(resolved_storage_root),
         "gateway_command": resolved_gateway_command or gateway_command,
         "init_command": resolved_init_command or init_command,
         "wrapper": str(hook_wrapper),
-        "hooks_json": str(hooks_path),
+        "hooks_json": str(hooks_file),
         "created": [],
         "updated": [],
         "skipped": [],
@@ -302,7 +295,7 @@ def install_codex_hooks(
         return result
 
     existing_wrapper = hook_wrapper.read_text(encoding="utf-8") if hook_wrapper.exists() else None
-    existing_hooks_text = hooks_path.read_text(encoding="utf-8") if hooks_path.exists() else None
+    existing_hooks_text = hooks_file.read_text(encoding="utf-8") if hooks_file.exists() else None
 
     if existing_wrapper == wrapper_content:
         result["skipped"].append("wrapper up-to-date")
@@ -313,10 +306,10 @@ def install_codex_hooks(
 
     if existing_hooks_text == rendered_hooks:
         result["skipped"].append("hooks.json up-to-date")
-    elif hooks_path.exists():
-        result["updated"].append(str(hooks_path))
+    elif hooks_file.exists():
+        result["updated"].append(str(hooks_file))
     else:
-        result["created"].append(str(hooks_path))
+        result["created"].append(str(hooks_file))
 
     if dry_run:
         return result
@@ -326,28 +319,35 @@ def install_codex_hooks(
     current_mode = hook_wrapper.stat().st_mode
     hook_wrapper.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
-    hooks_path.parent.mkdir(parents=True, exist_ok=True)
-    if hooks_path.exists() and existing_hooks_text != rendered_hooks:
-        backup_path = _backup_existing_file(hooks_path)
+    hooks_file.parent.mkdir(parents=True, exist_ok=True)
+    if hooks_file.exists() and existing_hooks_text != rendered_hooks:
+        backup_path = _backup_existing_file(hooks_file)
         result["backups"].append(str(backup_path))
-    hooks_path.write_text(rendered_hooks, encoding="utf-8")
+    hooks_file.write_text(rendered_hooks, encoding="utf-8")
     return result
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Install Codex App global memory hooks.")
-    parser.add_argument("command", choices=("install",), help="Operation to perform.")
-    parser.add_argument("--codex-home", type=Path, default=None, help="Codex config directory (default: ~/.codex).")
-    parser.add_argument("--storage-root", type=Path, default=None, help="Stable global state root for Codex hook indexes (default: ~/.memory-core).")
-    parser.add_argument("--gateway-command", default="memory-hook-gateway", help="Installed gateway command used by the hook wrapper.")
-    parser.add_argument("--init-command", default="memory-init", help="Installed project initializer command used by the hook wrapper.")
-    parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS, help="Codex hook timeout in seconds.")
-    parser.add_argument("--dry-run", action="store_true", help="Report changes without writing files.")
-    parser.add_argument("--json", action="store_true", help="Print JSON output.")
-    args = parser.parse_args(argv)
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Install Claude global memory hooks")
+    sub = parser.add_subparsers(dest="command", required=True)
+    install = sub.add_parser("install", help="Install/update Claude global memory hooks")
+    install.add_argument("--claude-home", type=Path, default=None, help="Claude config directory (default: ~/.claude)")
+    install.add_argument("--storage-root", type=Path, default=None, help="Global memory state root (default: ~/.memory-core)")
+    install.add_argument("--gateway-command", default="memory-hook-gateway", help="Gateway command or absolute path")
+    install.add_argument("--init-command", default="memory-init", help="Project init command or absolute path")
+    install.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS, help="Hook timeout in seconds")
+    install.add_argument("--dry-run", action="store_true", help="Preview changes without writing files")
+    install.add_argument("--json", action="store_true", help="Print JSON result")
+    return parser.parse_args(argv)
 
-    result = install_codex_hooks(
-        codex_home=args.codex_home,
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    if args.command != "install":
+        raise AssertionError(args.command)
+
+    result = install_claude_hooks(
+        claude_home=args.claude_home,
         storage_root=args.storage_root,
         gateway_command=args.gateway_command,
         init_command=args.init_command,
@@ -355,12 +355,18 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
     )
     if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
-        print(f"Codex hooks installed: {result['hooks_json']}")
-        print(f"Wrapper: {result['wrapper']}")
-    return 0 if result.get("success") else 1
+        if result["success"]:
+            action = "Would install" if result.get("dry_run") else "Installed"
+            print(f"{action} Claude memory hook wrapper: {result['wrapper']}")
+            print(f"{action} Claude hooks: {result['hooks_json']}")
+        else:
+            print("Claude memory hook install failed", file=sys.stderr)
+        for warning in result.get("warnings", []):
+            print(f"warning: {warning}", file=sys.stderr)
+    return 0 if result["success"] else 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    raise SystemExit(main())

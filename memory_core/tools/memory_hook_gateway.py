@@ -13,9 +13,11 @@ from typing import Any, Callable
 
 SCRIPT_PATH = Path(__file__).resolve()
 try:
+    from .denied_project_roots import is_denied_project_root
     from .memory_root_discovery import discover_roots
     from .project_lifecycle import record_project_lifecycle
 except ImportError:
+    from memory_core.tools.denied_project_roots import is_denied_project_root
     from memory_core.tools.memory_root_discovery import discover_roots
     from memory_core.tools.project_lifecycle import record_project_lifecycle
 REPO_ROOT, WORKSPACE_ROOT = discover_roots(Path.cwd())
@@ -1318,6 +1320,10 @@ def main() -> int:
 
     # Anti-pollution: Hard protection - skip entirely if cwd or its git root is memory-core source repo
     if _is_memory_core_source_repo(cwd):
+        sys.stdout.write("{}\n")
+        return 0
+
+    if is_denied_project_root(cwd):
         sys.stdout.write("{}\n")
         return 0
 

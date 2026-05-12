@@ -123,6 +123,43 @@ def test_install_factory_hooks_writes_wrapper_and_settings_json(monkeypatch, tmp
     assert all("--host factory" in command for command in commands)
 
 
+def test_wrapper_skips_exact_home_project_root_but_allows_child(monkeypatch, tmp_path: Path) -> None:
+    factory_home = tmp_path / ".factory"
+    fake_home = tmp_path / "home"
+    child_project = fake_home / "tool"
+    child_project.mkdir(parents=True)
+    _fake_memory_commands(tmp_path, monkeypatch)
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    install_factory_hooks(factory_home=factory_home, storage_root=tmp_path / "global-state")
+    wrapper = factory_home / "bin" / "memory-hook"
+
+    home_proc = subprocess.run(
+        [str(wrapper), "--host", "factory", "--event", "session-start"],
+        cwd=fake_home,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert home_proc.returncode == 0
+    assert home_proc.stdout.strip() == "{}"
+    assert not (fake_home / ".memory").exists()
+    assert not (fake_home / "memory" / "system").exists()
+
+    child_proc = subprocess.run(
+        [str(wrapper), "--host", "factory", "--event", "session-start"],
+        cwd=child_project,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert child_proc.returncode == 0
+    assert (child_project / ".memory").is_dir()
+    assert not (fake_home / ".memory").exists()
+
+
 def test_wrapper_initializes_project_memory_with_factory_host(monkeypatch, tmp_path: Path) -> None:
     factory_home = tmp_path / ".factory"
     project = tmp_path / "project"

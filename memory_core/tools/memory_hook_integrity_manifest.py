@@ -31,6 +31,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from memory_core.tools.denied_project_roots import is_denied_project_root
+
 MANIFEST_FILENAME = "manifest.json"
 SCHEMA_VERSION = "integrity-manifest-v1"
 
@@ -157,6 +159,9 @@ def sign_project(
     """
     # Anti-pollution: Skip if project_root is memory-core source repo
     if _is_memory_core_source_repo(project_root):
+        return None
+
+    if is_denied_project_root(project_root):
         return None
 
     if now_iso is None:

@@ -124,6 +124,7 @@ export MEMORY_HOOK_GLOBAL_STATE_ROOT
 export MEMORY_HOOK_FORCE="${{MEMORY_HOOK_FORCE:-1}}"
 export MEMORY_HOOK_PREFER_EXTERNAL_CWD="${{MEMORY_HOOK_PREFER_EXTERNAL_CWD:-1}}"
 export MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE="${{MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE:-1}}"
+export HOME="${{HOME:-$MEMORY_HOOK_GLOBAL_STATE_ROOT/..}}"
 
 mkdir -p "$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system" 2>/dev/null || true
 PROJECT_CWD="$ORIGINAL_CWD"
@@ -132,6 +133,13 @@ if [ -n "$ORIGINAL_CWD" ] && [ -d "$ORIGINAL_CWD" ]; then
     if [ -n "$GIT_ROOT" ]; then
         PROJECT_CWD="$GIT_ROOT"
     fi
+fi
+
+HOME_ROOT=$(cd "${{HOME:-$MEMORY_HOOK_GLOBAL_STATE_ROOT/..}}" 2>/dev/null && pwd -P || true)
+PROJECT_CWD_RESOLVED=$(cd "$PROJECT_CWD" 2>/dev/null && pwd -P || true)
+if [ -n "$HOME_ROOT" ] && [ -n "$PROJECT_CWD_RESOLVED" ] && [ "$PROJECT_CWD_RESOLVED" = "$HOME_ROOT" ]; then
+    printf '{{}}\n'
+    exit 0
 fi
 
 # Anti-pollution: Skip memory-core source repo (detected by marker files) regardless of .memory existence

@@ -15,6 +15,8 @@ SCRIPT_PATH = Path(__file__).resolve()
 REPO_ROOT = SCRIPT_PATH.parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+from memory_core.tools.denied_project_roots import is_denied_project_root
+
 
 def _is_memory_core_source_repo(path: Path) -> bool:
     """Check if path is the memory-core source repository (anti-pollution)."""
@@ -60,6 +62,9 @@ def main() -> int:
 
     # Anti-pollution: Skip if target is memory-core source repo
     if _is_memory_core_source_repo(target):
+        return 0
+
+    if is_denied_project_root(target):
         return 0
 
     # Change working directory to target

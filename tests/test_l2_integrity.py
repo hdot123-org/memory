@@ -184,6 +184,26 @@ class TestManifest:
             # Second run should include the first manifest
             assert m2["entry_count"] >= m1["entry_count"]
 
+    def test_sign_project_skips_exact_home_root_but_allows_child(self, monkeypatch):
+        with tempfile.TemporaryDirectory() as td:
+            fake_home = Path(td) / "home"
+            child = fake_home / "tool"
+            child_memory = child / ".memory"
+            child_memory.mkdir(parents=True)
+            (child_memory / "CANONICAL.md").write_text("# Canonical\n")
+            fake_home_memory = fake_home / ".memory"
+            fake_home_memory.mkdir(exist_ok=True)
+            (fake_home_memory / "CANONICAL.md").write_text("# Home\n")
+            monkeypatch.setenv("HOME", str(fake_home))
+
+            key = generate_key()
+            assert sign_project(fake_home, key) is None
+            assert not (fake_home_memory / "manifest.json").exists()
+
+            manifest = sign_project(child, key)
+            assert manifest is not None
+            assert (child_memory / "manifest.json").exists()
+
     def test_sign_project_skips_memory_core_source_repo(self):
         """Anti-pollution: sign_project should skip memory-core source repo."""
         with tempfile.TemporaryDirectory() as td:

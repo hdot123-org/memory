@@ -603,7 +603,8 @@ class TestHooksAndAgentsMdGeneration:
             # Verify each hook has command and stdin
             for hook in hooks_data["hooks"]:
                 assert "command" in hook
-                assert "memory-hook-gateway" in hook["command"]
+                # Should use wrapper-based commands, not bare gateway
+                assert "~/.claude/bin/memory-hook" in hook["command"]
                 assert hook.get("stdin") is True
         finally:
             import shutil
@@ -622,7 +623,9 @@ class TestHooksAndAgentsMdGeneration:
             content = agents_path.read_text(encoding="utf-8")
             assert "<!-- MEMORY_HOOK_BEGIN -->" in content
             assert "<!-- MEMORY_HOOK_END -->" in content
-            assert "memory-hook-gateway" in content
+            # AGENTS.md should recommend the wrapper, not bare gateway
+            # Default host is codex, so wrapper is ~/.codex/bin/memory-hook
+            assert "~/.codex/bin/memory-hook" in content
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)

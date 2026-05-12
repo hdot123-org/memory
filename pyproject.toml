@@ -45,6 +45,7 @@ memory-validate = "memory_core.tools.validate_project_memory:main"
 memory-hook-gateway = "memory_core.tools.memory_hook_gateway:main"
 memory-codex-hooks = "memory_core.tools.codex_global_hooks:main"
 memory-factory-hooks = "memory_core.tools.factory_global_hooks:main"
+memory-claude-hooks = "memory_core.tools.claude_global_hooks:main"
 memory-consistency-check = "memory_core.tools.consistency_check:main"
 
 [tool.setuptools.packages.find]

@@ -144,6 +144,31 @@ def test_launch_async_health_check_includes_checked_at_timestamp(
     assert "T" in report["checked_at"]
 
 
+def test_gateway_denies_exact_home_root_without_touching_child(tmp_path: Path, monkeypatch):
+    from memory_core.tools import memory_hook_gateway as gateway_module
+
+    fake_home = tmp_path / "home"
+    child = fake_home / "workbot"
+    child.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    assert gateway_module.is_denied_project_root(fake_home) is True
+    assert gateway_module.is_denied_project_root(child) is False
+
+
+def test_health_report_skips_exact_home_root(tmp_path: Path, monkeypatch):
+    from memory_core.tools import memory_health_report as health_module
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    output = tmp_path / "health-report.json"
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setattr(sys, "argv", ["memory-health-report", "--target", str(fake_home), "--output", str(output)])
+
+    assert health_module.main() == 0
+    assert not output.exists()
+
+
 def test_health_report_skips_memory_core_source_repo(tmp_path: Path, monkeypatch):
     """Anti-pollution: health report should skip if target is memory-core source repo."""
     # Import the health report module

@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from memory_core.tools.denied_project_roots import is_denied_project_root
+
 MANIFEST_FILENAME = "manifest.json"
 
 # Lazy import to avoid circular dependency
@@ -81,6 +83,9 @@ def verify_project(
     """
     result = IntegrityResult()
     resolved_root = project_root.resolve()
+    if is_denied_project_root(resolved_root):
+        return result
+
     manifest_path = resolved_root / ".memory" / MANIFEST_FILENAME
 
     if not manifest_path.exists():
