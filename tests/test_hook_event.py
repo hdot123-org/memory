@@ -299,6 +299,12 @@ class TestParseHookEvent:
         assert event.source == "claude"
         assert event.event_type == "stop"
 
+    def test_factory_dispatch(self):
+        raw = json.dumps({"cwd": "/test", "hook_event_name": "SessionStart"})
+        event = parse_hook_event("factory", "session-start", raw)
+        assert event.source == "factory"
+        assert event.event_type == "session-start"
+
     def test_unknown_host_raises(self):
         with pytest.raises(ValueError, match="unknown host"):
             parse_hook_event("unknown", "session-start", "{}")

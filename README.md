@@ -93,7 +93,8 @@ memory-codex-hooks install --storage-root ~/.memory-core
 | Gateway error/health | `{project_root}/memory/system/errors.log`、`{project_root}/memory/system/errors/YYYY-MM-DD.log`、`{project_root}/memory/system/health-report.json` | 项目内错误日志和异步健康检查结果 |
 | 项目完整性清单 | `{project_root}/.memory/manifest.json` | 每个项目独立维护签名清单 |
 | Codex 全局 hook | `~/.codex/bin/memory-hook`、`~/.codex/hooks.json` | `memory-codex-hooks install` 安装的全局入口；可用 `CODEX_HOME` 改变位置 |
-| 全局 lifecycle/path-index | `~/.memory-core/project-lifecycle/...` | Codex wrapper 默认设置的宿主级项目索引；不存放项目正文记忆 |
+| Factory 全局 hook | `~/.factory/bin/memory-hook`、`~/.factory/settings.json` | `memory-factory-hooks install` 安装的 Factory Droid 用户级入口；可用 `FACTORY_HOME` 改变位置 |
+| 全局 lifecycle/path-index | `~/.memory-core/project-lifecycle/...` | Codex/Factory wrapper 默认设置的宿主级项目索引；不存放项目正文记忆 |
 | 全局 init 错误日志 | `~/.memory-core/memory/system/errors.log` | wrapper 自动初始化项目失败时的兜底日志 |
 | 完整性密钥 | `~/.memory-core/keys/project-integrity.key` | 全局共享 HMAC 密钥；manifest 仍按项目隔离 |
 
@@ -102,11 +103,27 @@ memory-codex-hooks install --storage-root ~/.memory-core
 | 环境变量 | 影响 |
 |---|---|
 | `CODEX_HOME` | 改变 Codex 全局 hook 安装目录，默认 `~/.codex` |
+| `FACTORY_HOME` | 改变 Factory Droid 用户级配置目录，默认 `~/.factory` |
 | `MEMORY_HOOK_GLOBAL_STATE_ROOT` | 改变全局 lifecycle/path-index 与 wrapper 兜底错误日志根目录，默认 `~/.memory-core` |
 | `MEMORY_HOOK_ARTIFACT_ROOT` | 覆盖 gateway artifact/event 根目录，默认 `{project_root}/artifacts/memory-hook` |
 | `MEMORY_HOOK_ERROR_LOG` | 覆盖 gateway 主错误日志路径，默认 `{project_root}/memory/system/errors.log` |
 | `MEMORY_INTEGRITY_KEY_PATH` | 覆盖完整性签名密钥路径，默认 `~/.memory-core/keys/project-integrity.key` |
 | `MEMORY_HOOK_ORIGINAL_CWD` + `MEMORY_HOOK_PREFER_EXTERNAL_CWD` | 影响 gateway 选择当前项目 cwd；Codex wrapper 默认设置，用于保持多项目隔离 |
+
+### Factory Droid 全局记忆 Hook
+
+Factory Droid 的全局 hook 配置位于 `~/.factory/settings.json` 的 `hooks` 字段。可安装一套用户级稳定入口，让 Droid 的 `SessionStart`、`UserPromptSubmit`、`Stop`、`Notification` 都转发到 memory gateway：
+
+```bash
+memory-factory-hooks install --storage-root ~/.memory-core
+```
+
+该命令会写入：
+
+- `~/.factory/bin/memory-hook`：稳定 wrapper，优先使用 Factory 提供的 `FACTORY_PROJECT_DIR` 识别项目根，并调用 `memory-hook-gateway`。
+- `~/.factory/settings.json`：Factory Droid 用户级 hook 配置；合并时保留无关设置和无关 hooks，并替换旧的 memory hook 命令。
+
+运行时边界与 Codex 一致：Factory 全局 hook 只作为触发器；项目记忆仍写入当前项目自己的 `.memory/`、`memory/`、`artifacts/memory-hook/`。当项目尚未初始化时，wrapper 会先执行 `memory-init --target <project> --host factory`。
 
 ### 2. 校验 — `memory-validate`
 

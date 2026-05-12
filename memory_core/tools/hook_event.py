@@ -94,13 +94,14 @@ def _is_valid_event_type(event_type: str) -> bool:
 # Public constructors
 # ---------------------------------------------------------------------------
 
-def from_codex_payload(raw: str, event: str = "", cwd: Path | None = None) -> HookEvent:
-    """Parse a Codex hook invocation into a HookEvent.
+def from_codex_payload(raw: str, event: str = "", cwd: Path | None = None, source: str = "codex") -> HookEvent:
+    """Parse a Codex-like hook invocation into a HookEvent.
 
     Args:
-        raw: Raw stdin JSON payload from Codex.
+        raw: Raw stdin JSON payload from the host.
         event: Event type from --event CLI arg (already canonical).
         cwd: Optional cwd override; falls back to payload cwd or current dir.
+        source: Normalized host label for the resulting HookEvent.
     """
     payload = _parse_json(raw)
     event_type = event or payload.get("event", "prompt-submit")
@@ -110,7 +111,7 @@ def from_codex_payload(raw: str, event: str = "", cwd: Path | None = None) -> Ho
     resolved_cwd = cwd or _extract_cwd(payload) or Path.cwd()
 
     return HookEvent(
-        source="codex",
+        source=source,
         event_type=event_type,
         payload=payload,
         cwd=resolved_cwd,
@@ -189,6 +190,6 @@ def parse_hook_event(host: str, event: str, raw_payload: str) -> HookEvent:
     elif host == "claude":
         return from_claude_payload(raw_payload)
     elif host == "factory":
-        return from_codex_payload(raw_payload, event=event)
+        return from_codex_payload(raw_payload, event=event, source="factory")
     else:
         raise ValueError(f"unknown host: {host!r}")
