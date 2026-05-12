@@ -81,6 +81,33 @@ memory-codex-hooks install --storage-root ~/.memory-core
 
 项目内 hook 产物按日期分区写入，便于后续归档、签名和清理：`artifacts/memory-hook/contexts/YYYY-MM-DD/<timestamp>-<host>-<event>.json` 保存快照，`artifacts/memory-hook/events/YYYY-MM-DD.jsonl` 保存当日事件日志，`memory/system/errors/YYYY-MM-DD.log` 保存当日错误日志；同时保留 `latest-<host>-<event>.json`、`events.jsonl` 和 `errors.log` 作为兼容入口。
 
+#### 生成文件位置规范
+
+默认规则是：项目记忆与运行时产物写入当前项目内；Codex 全局入口、宿主级 lifecycle/path-index 与完整性密钥写入用户级全局目录。`~/.memory-core` 不是项目记忆池，不能替代项目内 `.memory/`/`memory/`。
+
+| 类型 | 默认位置 | 说明 |
+|---|---|---|
+| 项目初始化文件 | `{project_root}/.memory/`、`{project_root}/memory/`、`{project_root}/project-map/`、`{project_root}/INDEX.md` | `memory-init --target <project>` 生成的项目记忆结构与 runtime required 文件 |
+| 项目 host 配置提示 | `{project_root}/.claude/hooks.json`、`{project_root}/AGENTS.md` | 由 `memory-init` 生成/更新，用于项目内 host 集成说明 |
+| Gateway artifact/event | `{project_root}/artifacts/memory-hook/...` | context 快照、latest 快照和 event JSONL，按项目隔离 |
+| Gateway error/health | `{project_root}/memory/system/errors.log`、`{project_root}/memory/system/errors/YYYY-MM-DD.log`、`{project_root}/memory/system/health-report.json` | 项目内错误日志和异步健康检查结果 |
+| 项目完整性清单 | `{project_root}/.memory/manifest.json` | 每个项目独立维护签名清单 |
+| Codex 全局 hook | `~/.codex/bin/memory-hook`、`~/.codex/hooks.json` | `memory-codex-hooks install` 安装的全局入口；可用 `CODEX_HOME` 改变位置 |
+| 全局 lifecycle/path-index | `~/.memory-core/project-lifecycle/...` | Codex wrapper 默认设置的宿主级项目索引；不存放项目正文记忆 |
+| 全局 init 错误日志 | `~/.memory-core/memory/system/errors.log` | wrapper 自动初始化项目失败时的兜底日志 |
+| 完整性密钥 | `~/.memory-core/keys/project-integrity.key` | 全局共享 HMAC 密钥；manifest 仍按项目隔离 |
+
+以下环境变量会改变默认位置，使用时应避免把多个项目的产物误指向同一个共享文件或目录：
+
+| 环境变量 | 影响 |
+|---|---|
+| `CODEX_HOME` | 改变 Codex 全局 hook 安装目录，默认 `~/.codex` |
+| `MEMORY_HOOK_GLOBAL_STATE_ROOT` | 改变全局 lifecycle/path-index 与 wrapper 兜底错误日志根目录，默认 `~/.memory-core` |
+| `MEMORY_HOOK_ARTIFACT_ROOT` | 覆盖 gateway artifact/event 根目录，默认 `{project_root}/artifacts/memory-hook` |
+| `MEMORY_HOOK_ERROR_LOG` | 覆盖 gateway 主错误日志路径，默认 `{project_root}/memory/system/errors.log` |
+| `MEMORY_INTEGRITY_KEY_PATH` | 覆盖完整性签名密钥路径，默认 `~/.memory-core/keys/project-integrity.key` |
+| `MEMORY_HOOK_ORIGINAL_CWD` + `MEMORY_HOOK_PREFER_EXTERNAL_CWD` | 影响 gateway 选择当前项目 cwd；Codex wrapper 默认设置，用于保持多项目隔离 |
+
 ### 2. 校验 — `memory-validate`
 
 检查项目 `.memory/` 目录是否完整、schema 是否合规：
