@@ -90,7 +90,7 @@ def test_install_codex_hooks_writes_wrapper_and_hooks_json(monkeypatch, tmp_path
 
     wrapper_text = wrapper.read_text(encoding="utf-8")
     assert f"MEMORY_HOOK_GLOBAL_STATE_ROOT={storage_root}" in wrapper_text
-    assert "memory_core/tools/memory_hook_gateway.py" not in wrapper_text
+    assert "python3 /Users/busiji/workbot/workspace/tools/memory_hook_gateway.py" not in wrapper_text
     assert str(gateway) in wrapper_text
     assert str(init) in wrapper_text
     assert "exec \"$MEMORY_HOOK_GATEWAY\" \"$@\"" in wrapper_text
@@ -154,6 +154,117 @@ def test_wrapper_initializes_git_project_root_from_subdirectory(monkeypatch, tmp
     assert proc.returncode == 0
     assert (project / ".memory").is_dir()
     assert not (nested / ".memory").exists()
+
+
+def test_wrapper_skips_auto_init_for_memory_core_source_repo(monkeypatch, tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    memory_repo = tmp_path / "memory-core"
+    nested = memory_repo / "memory_core" / "tools"
+    nested.mkdir(parents=True)
+    (nested / "memory_hook_gateway.py").write_text("# marker\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=memory_repo, check=True, capture_output=True, text=True)
+    _fake_memory_commands(tmp_path, monkeypatch)
+
+    install_codex_hooks(codex_home=codex_home, storage_root=tmp_path / "global-state")
+    wrapper = codex_home / "bin" / "memory-hook"
+
+    proc = subprocess.run(
+        [str(wrapper), "--host", "codex", "--event", "session-start"],
+        cwd=memory_repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "{}"
+    assert not (memory_repo / ".memory").exists()
+    assert not (memory_repo / "memory").exists()
+
+
+def test_wrapper_skips_memory_core_source_repo_even_with_dot_memory(monkeypatch, tmp_path: Path) -> None:
+    """Anti-pollution: wrapper should skip memory-core repo even if .memory exists."""
+    codex_home = tmp_path / ".codex"
+    memory_repo = tmp_path / "memory-core"
+    nested = memory_repo / "memory_core" / "tools"
+    nested.mkdir(parents=True)
+    (nested / "memory_hook_gateway.py").write_text("# marker\n", encoding="utf-8")
+    (nested / "codex_global_hooks.py").write_text("# marker\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=memory_repo, check=True, capture_output=True, text=True)
+    # Create .memory directory - should still skip
+    (memory_repo / ".memory").mkdir()
+    _fake_memory_commands(tmp_path, monkeypatch)
+
+    install_codex_hooks(codex_home=codex_home, storage_root=tmp_path / "global-state")
+    wrapper = codex_home / "bin" / "memory-hook"
+
+    proc = subprocess.run(
+        [str(wrapper), "--host", "codex", "--event", "session-start"],
+        cwd=memory_repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "{}"
+    # Should not create memory/ or artifacts/
+    assert not (memory_repo / "memory" / "system").exists()
+    assert not (memory_repo / "artifacts").exists()
+
+
+def test_wrapper_detects_memory_core_by_codex_global_hooks(monkeypatch, tmp_path: Path) -> None:
+    """Anti-pollution: wrapper should detect memory-core by codex_global_hooks.py."""
+    codex_home = tmp_path / ".codex"
+    memory_repo = tmp_path / "memory-core"
+    nested = memory_repo / "memory_core" / "tools"
+    nested.mkdir(parents=True)
+    # Only codex_global_hooks.py marker
+    (nested / "codex_global_hooks.py").write_text("# marker\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=memory_repo, check=True, capture_output=True, text=True)
+    _fake_memory_commands(tmp_path, monkeypatch)
+
+    install_codex_hooks(codex_home=codex_home, storage_root=tmp_path / "global-state")
+    wrapper = codex_home / "bin" / "memory-hook"
+
+    proc = subprocess.run(
+        [str(wrapper), "--host", "codex", "--event", "session-start"],
+        cwd=memory_repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "{}"
+    assert not (memory_repo / ".memory").exists()
+
+
+def test_wrapper_detects_memory_core_by_factory_global_hooks(monkeypatch, tmp_path: Path) -> None:
+    """Anti-pollution: wrapper should detect memory-core by factory_global_hooks.py."""
+    codex_home = tmp_path / ".codex"
+    memory_repo = tmp_path / "memory-core"
+    nested = memory_repo / "memory_core" / "tools"
+    nested.mkdir(parents=True)
+    # Only factory_global_hooks.py marker
+    (nested / "factory_global_hooks.py").write_text("# marker\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=memory_repo, check=True, capture_output=True, text=True)
+    _fake_memory_commands(tmp_path, monkeypatch)
+
+    install_codex_hooks(codex_home=codex_home, storage_root=tmp_path / "global-state")
+    wrapper = codex_home / "bin" / "memory-hook"
+
+    proc = subprocess.run(
+        [str(wrapper), "--host", "codex", "--event", "session-start"],
+        cwd=memory_repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "{}"
+    assert not (memory_repo / ".memory").exists()
 
 
 def test_install_codex_hooks_fails_without_installed_gateway(monkeypatch, tmp_path: Path) -> None:

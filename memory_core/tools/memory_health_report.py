@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,39 @@ from pathlib import Path
 SCRIPT_PATH = Path(__file__).resolve()
 REPO_ROOT = SCRIPT_PATH.parents[2]
 sys.path.insert(0, str(REPO_ROOT))
+
+
+def _is_memory_core_source_repo(path: Path) -> bool:
+    """Check if path is the memory-core source repository (anti-pollution)."""
+    resolved = path.resolve()
+    markers = [
+        resolved / "memory_core" / "tools" / "memory_hook_gateway.py",
+        resolved / "memory_core" / "tools" / "factory_global_hooks.py",
+        resolved / "memory_core" / "tools" / "codex_global_hooks.py",
+    ]
+    if any(marker.exists() for marker in markers):
+        return True
+    # Also check git root
+    try:
+        git_root = subprocess.run(
+            ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if git_root.returncode == 0 and git_root.stdout.strip():
+            git_path = Path(git_root.stdout.strip())
+            git_markers = [
+                git_path / "memory_core" / "tools" / "memory_hook_gateway.py",
+                git_path / "memory_core" / "tools" / "factory_global_hooks.py",
+                git_path / "memory_core" / "tools" / "codex_global_hooks.py",
+            ]
+            if any(marker.exists() for marker in git_markers):
+                return True
+    except Exception:
+        pass
+    return False
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -23,6 +57,10 @@ def main() -> int:
     target = Path(args.target).resolve()
     if not target.exists():
         return 1
+
+    # Anti-pollution: Skip if target is memory-core source repo
+    if _is_memory_core_source_repo(target):
+        return 0
 
     # Change working directory to target
     os.chdir(target)

@@ -106,12 +106,45 @@ def _discover_canonical_files(project_root: Path) -> list[Path]:
     return unique
 
 
+def _is_memory_core_source_repo(path: Path) -> bool:
+    """Check if path is the memory-core source repository (anti-pollution)."""
+    import subprocess  # Local import to avoid dependency issues
+    resolved = path.resolve()
+    markers = [
+        resolved / "memory_core" / "tools" / "memory_hook_gateway.py",
+        resolved / "memory_core" / "tools" / "factory_global_hooks.py",
+        resolved / "memory_core" / "tools" / "codex_global_hooks.py",
+    ]
+    if any(marker.exists() for marker in markers):
+        return True
+    # Also check git root
+    try:
+        git_root = subprocess.run(
+            ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if git_root.returncode == 0 and git_root.stdout.strip():
+            git_path = Path(git_root.stdout.strip())
+            git_markers = [
+                git_path / "memory_core" / "tools" / "memory_hook_gateway.py",
+                git_path / "memory_core" / "tools" / "factory_global_hooks.py",
+                git_path / "memory_core" / "tools" / "codex_global_hooks.py",
+            ]
+            if any(marker.exists() for marker in git_markers):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def sign_project(
     project_root: Path,
     key: bytes,
     *,
     now_iso: Any | None = None,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     """Sign all canonical files in a project and write manifest.json.
 
     Args:
@@ -120,8 +153,12 @@ def sign_project(
         now_iso: Optional callable returning ISO timestamp string
 
     Returns:
-        The manifest dict that was written
+        The manifest dict that was written, or None if skipped (anti-pollution)
     """
+    # Anti-pollution: Skip if project_root is memory-core source repo
+    if _is_memory_core_source_repo(project_root):
+        return None
+
     if now_iso is None:
         def now_iso():
             return datetime.now(timezone.utc).isoformat(timespec="seconds")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac as _hmac
 import json
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -182,6 +183,68 @@ class TestManifest:
 
             # Second run should include the first manifest
             assert m2["entry_count"] >= m1["entry_count"]
+
+    def test_sign_project_skips_memory_core_source_repo(self):
+        """Anti-pollution: sign_project should skip memory-core source repo."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            memory_dir = root / ".memory"
+            memory_dir.mkdir()
+            (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
+
+            # Create memory-core marker files
+            nested = root / "memory_core" / "tools"
+            nested.mkdir(parents=True)
+            (nested / "memory_hook_gateway.py").write_text("# marker\n", encoding="utf-8")
+            (nested / "factory_global_hooks.py").write_text("# marker\n", encoding="utf-8")
+            subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True, text=True)
+
+            key = generate_key()
+            result = sign_project(root, key)
+
+            # Should return None (skipped)
+            assert result is None
+            # Should NOT create manifest.json
+            assert not (memory_dir / "manifest.json").exists()
+
+    def test_is_memory_core_source_repo_detection(self):
+        """Test the internal detection function."""
+        with tempfile.TemporaryDirectory() as td:
+            # Normal project
+            normal = Path(td) / "normal"
+            normal.mkdir()
+            subprocess.run(["git", "init"], cwd=normal, check=True, capture_output=True, text=True)
+            from memory_core.tools.memory_hook_integrity_manifest import _is_memory_core_source_repo
+            assert _is_memory_core_source_repo(normal) is False
+
+            # Memory-core repo with gateway marker
+            memory = Path(td) / "memory"
+            nested = memory / "memory_core" / "tools"
+            nested.mkdir(parents=True)
+            (nested / "memory_hook_gateway.py").write_text("# marker\n", encoding="utf-8")
+            subprocess.run(["git", "init"], cwd=memory, check=True, capture_output=True, text=True)
+            assert _is_memory_core_source_repo(memory) is True
+
+            # Memory-core repo with factory_global_hooks marker
+            memory2 = Path(td) / "memory2"
+            nested2 = memory2 / "memory_core" / "tools"
+            nested2.mkdir(parents=True)
+            (nested2 / "factory_global_hooks.py").write_text("# marker\n", encoding="utf-8")
+            subprocess.run(["git", "init"], cwd=memory2, check=True, capture_output=True, text=True)
+            assert _is_memory_core_source_repo(memory2) is True
+
+            # Memory-core repo with codex_global_hooks marker
+            memory3 = Path(td) / "memory3"
+            nested3 = memory3 / "memory_core" / "tools"
+            nested3.mkdir(parents=True)
+            (nested3 / "codex_global_hooks.py").write_text("# marker\n", encoding="utf-8")
+            subprocess.run(["git", "init"], cwd=memory3, check=True, capture_output=True, text=True)
+            assert _is_memory_core_source_repo(memory3) is True
+
+            # Subdirectory should also be detected
+            subdir = memory / "subdir"
+            subdir.mkdir()
+            assert _is_memory_core_source_repo(subdir) is True
 
 
 # --- Verification Tests ---

@@ -195,6 +195,117 @@ def test_wrapper_initializes_git_project_root_from_subdirectory(monkeypatch, tmp
     assert not (nested / ".memory").exists()
 
 
+def test_wrapper_skips_auto_init_for_memory_core_source_repo(monkeypatch, tmp_path: Path) -> None:
+    factory_home = tmp_path / ".factory"
+    memory_repo = tmp_path / "memory-core"
+    nested = memory_repo / "memory_core" / "tools"
+    nested.mkdir(parents=True)
+    (nested / "memory_hook_gateway.py").write_text("# marker\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=memory_repo, check=True, capture_output=True, text=True)
+    _fake_memory_commands(tmp_path, monkeypatch)
+
+    install_factory_hooks(factory_home=factory_home, storage_root=tmp_path / "global-state")
+    wrapper = factory_home / "bin" / "memory-hook"
+
+    proc = subprocess.run(
+        [str(wrapper), "--host", "factory", "--event", "session-start"],
+        cwd=memory_repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "{}"
+    assert not (memory_repo / ".memory").exists()
+    assert not (memory_repo / "memory").exists()
+
+
+def test_wrapper_skips_memory_core_source_repo_even_with_dot_memory(monkeypatch, tmp_path: Path) -> None:
+    """Anti-pollution: wrapper should skip memory-core repo even if .memory exists."""
+    factory_home = tmp_path / ".factory"
+    memory_repo = tmp_path / "memory-core"
+    nested = memory_repo / "memory_core" / "tools"
+    nested.mkdir(parents=True)
+    (nested / "memory_hook_gateway.py").write_text("# marker\n", encoding="utf-8")
+    (nested / "factory_global_hooks.py").write_text("# marker\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=memory_repo, check=True, capture_output=True, text=True)
+    # Create .memory directory - should still skip
+    (memory_repo / ".memory").mkdir()
+    _fake_memory_commands(tmp_path, monkeypatch)
+
+    install_factory_hooks(factory_home=factory_home, storage_root=tmp_path / "global-state")
+    wrapper = factory_home / "bin" / "memory-hook"
+
+    proc = subprocess.run(
+        [str(wrapper), "--host", "factory", "--event", "session-start"],
+        cwd=memory_repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "{}"
+    # Should not create memory/ or artifacts/
+    assert not (memory_repo / "memory" / "system").exists()
+    assert not (memory_repo / "artifacts").exists()
+
+
+def test_wrapper_detects_memory_core_by_factory_global_hooks(monkeypatch, tmp_path: Path) -> None:
+    """Anti-pollution: wrapper should detect memory-core by factory_global_hooks.py."""
+    factory_home = tmp_path / ".factory"
+    memory_repo = tmp_path / "memory-core"
+    nested = memory_repo / "memory_core" / "tools"
+    nested.mkdir(parents=True)
+    # Only factory_global_hooks.py marker
+    (nested / "factory_global_hooks.py").write_text("# marker\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=memory_repo, check=True, capture_output=True, text=True)
+    _fake_memory_commands(tmp_path, monkeypatch)
+
+    install_factory_hooks(factory_home=factory_home, storage_root=tmp_path / "global-state")
+    wrapper = factory_home / "bin" / "memory-hook"
+
+    proc = subprocess.run(
+        [str(wrapper), "--host", "factory", "--event", "session-start"],
+        cwd=memory_repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "{}"
+    assert not (memory_repo / ".memory").exists()
+
+
+def test_wrapper_detects_memory_core_by_codex_global_hooks(monkeypatch, tmp_path: Path) -> None:
+    """Anti-pollution: wrapper should detect memory-core by codex_global_hooks.py."""
+    factory_home = tmp_path / ".factory"
+    memory_repo = tmp_path / "memory-core"
+    nested = memory_repo / "memory_core" / "tools"
+    nested.mkdir(parents=True)
+    # Only codex_global_hooks.py marker
+    (nested / "codex_global_hooks.py").write_text("# marker\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=memory_repo, check=True, capture_output=True, text=True)
+    _fake_memory_commands(tmp_path, monkeypatch)
+
+    install_factory_hooks(factory_home=factory_home, storage_root=tmp_path / "global-state")
+    wrapper = factory_home / "bin" / "memory-hook"
+
+    proc = subprocess.run(
+        [str(wrapper), "--host", "factory", "--event", "session-start"],
+        cwd=memory_repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == "{}"
+    assert not (memory_repo / ".memory").exists()
+
+
 def test_install_factory_hooks_fails_without_installed_gateway(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
 

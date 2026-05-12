@@ -1278,11 +1278,48 @@ def _launch_async_health_check(cwd: Path) -> None:
             )
 
 
+def _is_memory_core_source_repo(path: Path) -> bool:
+    """Check if path is the memory-core source repository (anti-pollution)."""
+    resolved = path.resolve()
+    markers = [
+        resolved / "memory_core" / "tools" / "memory_hook_gateway.py",
+        resolved / "memory_core" / "tools" / "factory_global_hooks.py",
+        resolved / "memory_core" / "tools" / "codex_global_hooks.py",
+    ]
+    if any(marker.exists() for marker in markers):
+        return True
+    # Also check git root
+    try:
+        git_root = subprocess.run(
+            ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if git_root.returncode == 0 and git_root.stdout.strip():
+            git_path = Path(git_root.stdout.strip())
+            git_markers = [
+                git_path / "memory_core" / "tools" / "memory_hook_gateway.py",
+                git_path / "memory_core" / "tools" / "factory_global_hooks.py",
+                git_path / "memory_core" / "tools" / "codex_global_hooks.py",
+            ]
+            if any(marker.exists() for marker in git_markers):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def main() -> int:
     args = _parse_args()
     raw_payload = sys.stdin.read()
     payload = _read_payload(raw_payload)
     cwd = _discover_cwd(payload)
+
+    # Anti-pollution: Hard protection - skip entirely if cwd or its git root is memory-core source repo
+    if _is_memory_core_source_repo(cwd):
+        sys.stdout.write("{}\n")
+        return 0
 
     if _should_noop_for_external_context(payload):
         return _delegate_noop_response(args.host)
