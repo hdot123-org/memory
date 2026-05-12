@@ -27,7 +27,6 @@ from __future__ import annotations
 import hashlib
 import hmac as _hmac
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -124,7 +123,8 @@ def sign_project(
         The manifest dict that was written
     """
     if now_iso is None:
-        now_iso = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
+        def now_iso():
+            return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     resolved_root = project_root.resolve()
     files = _discover_canonical_files(resolved_root)

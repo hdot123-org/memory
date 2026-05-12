@@ -140,7 +140,7 @@ class SessionAnalyzer:
 
         ts = self.token_summary
         if ts:
-            print(f"Token usage:")
+            print("Token usage:")
             print(f"  Input:  {ts.get('total_input_tokens', 0):,}")
             print(f"  Output: {ts.get('total_output_tokens', 0):,}")
             print(f"  Total:  {ts.get('total_tokens', 0):,}")
@@ -148,7 +148,7 @@ class SessionAnalyzer:
 
         freq = self.tool_call_frequency
         if freq:
-            print(f"Top tools:")
+            print("Top tools:")
             for name, count in freq[:8]:
                 print(f"  {name}: {count}")
             print()

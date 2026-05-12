@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -160,17 +160,17 @@ def _print_report(stats: SessionStats, target_date: str, errors_log: list[str]) 
     print(f"Daily Session Summary — {target_date}")
     print("=" * 60)
 
-    print(f"\n**Session Activity**")
+    print("\n**Session Activity**")
     print(f"  Sessions started:   {len(stats.sessions)}")
     print(f"  Prompts submitted:  {len(stats.prompts)}")
     print(f"  Sessions stopped:   {len(stats.stops)}")
 
-    print(f"\n**Health**")
+    print("\n**Health**")
     print(f"  OK:       {stats.status_ok}")
     print(f"  Degraded: {stats.status_degraded}")
 
     if stats.projects:
-        print(f"\n**Projects (by event count)**")
+        print("\n**Projects (by event count)**")
         for proj, count in sorted(stats.projects.items(), key=lambda x: -x[1]):
             short = proj.split("/")[-1] if proj != "unknown" else "unknown"
             print(f"  {short}: {count}")
@@ -192,7 +192,7 @@ def _print_report(stats: SessionStats, target_date: str, errors_log: list[str]) 
             print(f"  ... and {len(errors_log) - 10} more lines")
 
     if stats.timeline:
-        print(f"\n**Timeline**")
+        print("\n**Timeline**")
         for entry in stats.timeline:
             status_marker = "✓" if entry["status"] == "ok" else "!"
             print(f"  {entry['time']} [{entry['event']}] {status_marker} {entry['project'].split('/')[-1]}")

@@ -762,8 +762,8 @@ updated: "{now}"
 （待填写：当前上下文简要描述）
 """
     except (ValueError, TypeError) as exc:
-        logger.warning(f"Template render error in NOW.md: {{exc}}")
-        warnings.append(f"template_now_md: {{exc}}")
+        logger.warning(f"Template render error in NOW.md: {exc}")
+        warnings.append(f"template_now_md: {exc}")
         content = f"""\
 # RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
 ---
@@ -1000,92 +1000,94 @@ tags: [project, knowledge]
 # Minimum viable templates for Knowledge Base and Project Map
 KB_TEMPLATES: dict[str, Any] = {
     "project-map/INDEX.md": lambda scope: (
-        f"# 合法目录地图索引\n\n"
-        f"- 唯一合法入口\n"
-        f"- 只有出现在合法目录地图中并被标为 `active-legal` 的条目或目录，才是合法资料。\n"
-        f"- 同次 `git commit` 提交后才生效\n"
-        f"- project-map/legal-core-map.md: active-legal\n",
+        "# 合法目录地图索引\n\n"
+        "- 唯一合法入口\n"
+        "- 只有出现在合法目录地图中并被标为 `active-legal` 的条目或目录，才是合法资料。\n"
+        "- 同次 `git commit` 提交后才生效\n"
+        "- project-map/legal-core-map.md: active-legal\n",
         []
     ),
     "project-map/legal-core-map.md": lambda scope: (
-        f"# 合法核心地图\n\n"
-        f"- active-legal\n"
-        f"- 只有本图列出的 `active-legal` 条目或目录，才是当前合法资料。\n"
-        f"- truth-model.md: active-legal\n"
-        f"- memory-system.md: active-legal\n",
+        "# 合法核心地图\n\n"
+        "- active-legal\n"
+        "- 只有本图列出的 `active-legal` 条目或目录，才是当前合法资料。\n"
+        "- truth-model.md: active-legal\n"
+        "- memory-system.md: active-legal\n",
         []
     ),
     "project-map/ingestion-registry-map.md": lambda scope: (
-        f"# 摄入登记地图\n\n"
-        f"- memory_core/project-map/**: incoming-raw\n"
-        f"- memory_core/memory/kb/global/**: active-legal\n"
-        f"- memory_core/memory/kb/projects/**: compatibility-only\n"
-        f"- 状态：`absorbed`，`retired`\n"
-        f"- 同次 `git commit` 提交后才生效\n",
+        "# 摄入登记地图\n\n"
+        "- memory_core/project-map/**: incoming-raw\n"
+        "- memory_core/memory/kb/global/**: active-legal\n"
+        "- memory_core/memory/kb/projects/**: compatibility-only\n"
+        "- 状态：`absorbed`，`retired`\n"
+        "- 同次 `git commit` 提交后才生效\n",
         []
     ),
     "memory/kb/global/truth-model.md": lambda scope: (
-        f"# 唯一真相模型\n\n"
-        f"本项目的事实来源与验证规则。\n",
+        "# 唯一真相模型\n\n"
+        "本项目的事实来源与验证规则。\n",
         []
     ),
     "memory/kb/global/memory-system.md": lambda scope: (
-        f"# 记忆系统规则\n\n"
-        f"active-legal\n",
+        "# 记忆系统规则\n\n"
+        "active-legal\n",
         []
     ),
     "memory/kb/global/memory-routing.md": lambda scope: (
-        f"# 记忆路由规则\n\n",
+        "# 记忆路由规则\n\n",
         []
     ),
     "memory/kb/global/hook-contract.md": lambda scope: (
-        f"# Hook 契约\n\n"
-        f"- gateway 只承认 `project-map/` 中被明确标为 `active-legal` 的条目或目录是合法上下文来源。\n"
-        f"- 未完成提交的登记不得生效\n",
+        "# Hook 契约\n\n"
+        "- gateway 只承认 `project-map/` 中被明确标为 `active-legal` 的条目或目录是合法上下文来源。\n"
+        "- 未完成提交的登记不得生效\n",
         []
     ),
     "memory/kb/global/project-map-governance.md": lambda scope: (
-        f"# 项目地图治理\n\n"
-        f"- 未经过唯一真相系统清洗\n"
-        f"- 只有地图中被明确标为 `active-legal` 的条目或目录，才授予合法性。\n"
-        f"- 未完成同次 `git commit` 的目录登记，不得视为生效。\n",
+        "# 项目地图治理\n\n"
+        "- 未经过唯一真相系统清洗\n"
+        "- 只有地图中被明确标为 `active-legal` 的条目或目录，才授予合法性。\n"
+        "- 未完成同次 `git commit` 的目录登记，不得视为生效。\n",
         []
     ),
     # Runtime required: knowledge base root index referenced by memory_hook_core.py L226-236
     "memory/kb/INDEX.md": lambda scope: (
-        f"# 知识库索引\n\n"
-        f"本索引列出知识库各子目录及其用途。\n\n"
-        f"## 目录结构\n\n"
-        f"- `global/` — 全局知识（truth-model, memory-system, routing, hook-contract 等）\n"
-        f"- `projects/` — 项目专属知识\n"
-        f"- `decisions/` — 决策记录\n"
-        f"- `lessons/` — 经验教训\n\n"
-        f"## 使用说明\n\n"
-        f"- 只有被地图标为 `active-legal` 的条目或目录，才是合法资料\n"
-        f"- 目录登记和状态迁移必须与相关文件同次 `git commit` 才生效\n",
+        "# 知识库索引\n\n"
+        "本索引列出知识库各子目录及其用途。\n\n"
+        "## 目录结构\n\n"
+        "- `global/` — 全局知识（truth-model, memory-system, routing, hook-contract 等）\n"
+        "- `projects/` — 项目专属知识\n"
+        "- `decisions/` — 决策记录\n"
+        "- `lessons/` — 经验教训\n\n"
+        "## 使用说明\n\n"
+        "- 只有被地图标为 `active-legal` 的条目或目录，才是合法资料\n"
+        "- 目录登记和状态迁移必须与相关文件同次 `git commit` 才生效\n",
         []
     ),
     "INDEX.md": lambda scope: (
-        f"# 工作区索引\n\n"
-        f"- project-map/INDEX.md\n"
-        f"- 只有被地图标为 `active-legal` 的条目或目录，才是合法资料；仅进入登记册不授予合法性。\n"
-        f"- 目录登记和目录状态迁移必须与相关文件同次 `git commit` 才生效。\n"
-        f"- memory/kb/global/truth-model.md\n",
+        "# 工作区索引\n\n"
+        "- project-map/INDEX.md\n"
+        "- 只有被地图标为 `active-legal` 的条目或目录，才是合法资料；仅进入登记册不授予合法性。\n"
+        "- 目录登记和目录状态迁移必须与相关文件同次 `git commit` 才生效。\n"
+        "- memory/kb/global/truth-model.md\n",
         []
     ),
     "memory/docs/INDEX.md": lambda scope: (
-        f"# 文档索引\n\n"
-        f"- incoming-raw\n"
-        f"- 未被地图明确吸收\n",
+        "# 文档索引\n\n"
+        "- incoming-raw\n"
+        "- 未被地图明确吸收\n",
         []
     ),
     "memory/kb/global/INDEX.md": lambda scope: (
-        f"# 全局知识索引\n\n"
-        f"- Non-Legal Material\n"
-        f"- ingestion-registry-map.md\n"
-        f"- truth-model.md\n",
+        "# 全局知识索引\n\n"
+        "- Non-Legal Material\n"
+        "- ingestion-registry-map.md\n"
+        "- truth-model.md\n",
         []
     ),
+    # Runtime required: NOW.md referenced by memory_hook_core.py L226-236
+    "NOW.md": lambda scope: template_now_md(scope),
 }
 
 FILE_TEMPLATES: dict[str, Any] = {
@@ -1095,8 +1097,6 @@ FILE_TEMPLATES: dict[str, Any] = {
     "STATE.md": lambda pn: template_state_md(pn),
     "TASKS.md": lambda pn: template_tasks_md(pn),
     "migrations.log": lambda pn: template_migrations_log(pn),
-    # Runtime required: NOW.md referenced by memory_hook_core.py L226-236
-    "NOW.md": lambda pn: template_now_md(pn),
 }
 
 # Essential files that must be checked for --no-clobber
@@ -1108,15 +1108,17 @@ ESSENTIAL_FILES = [
     "TASKS.md",
     "migrations.log",
     "adapter.toml",
-    # Runtime required files referenced by memory_hook_core.py and memory_hook_impls.py
-    "NOW.md",  # L226-236 reads list
-    "memory/inbox.md",  # L531, L1374 workbot adapter action target
 ]
 
 # Runtime required KB files (under workspace_root, not .memory/)
 RUNTIME_KB_FILES = [
     "memory/kb/INDEX.md",  # L226-236 reads list
     "memory/kb/global/memory-hook-policy-pack.json",  # L281 DEFAULT_POLICY_PACK_PATH
+]
+
+# Additional runtime files created outside of KB_TEMPLATES and FILE_TEMPLATES
+RUNTIME_EXTRA_FILES = [
+    "memory/inbox.md",  # L531, L1374 workbot adapter action target
 ]
 
 # ---------------------------------------------------------------------------
@@ -1371,6 +1373,26 @@ def init_project_memory(
                 dry_run_output["would_create_files"].append(f"{scope_file} (skip - exists)")
         else:
             dry_run_output["would_create_files"].append(f"{scope_file} (create)")
+        # Check KB_TEMPLATES files
+        for fname in KB_TEMPLATES:
+            file_path = target / fname
+            if file_path.exists():
+                if force:
+                    dry_run_output["would_create_files"].append(f"{fname} (overwrite)")
+                else:
+                    dry_run_output["would_create_files"].append(f"{fname} (skip - exists)")
+            else:
+                dry_run_output["would_create_files"].append(f"{fname} (create)")
+        # Check extra runtime files
+        for fname in RUNTIME_EXTRA_FILES:
+            file_path = target / fname
+            if file_path.exists():
+                if force:
+                    dry_run_output["would_create_files"].append(f"{fname} (overwrite)")
+                else:
+                    dry_run_output["would_create_files"].append(f"{fname} (skip - exists)")
+            else:
+                dry_run_output["would_create_files"].append(f"{fname} (create)")
         result["dry_run_output"] = dry_run_output
         result["force_overwrite"] = force
         result["mode"] = "dry-run"
@@ -1409,7 +1431,7 @@ def init_project_memory(
     # Create template files
     any_overwritten = False
     any_skipped = False
-    
+
     # 1. Write KB and Project Map templates first
     for fname, template_fn in KB_TEMPLATES.items():
         file_path = target / fname
@@ -1484,7 +1506,7 @@ def init_project_memory(
 
     # Create runtime required files not covered by FILE_TEMPLATES or KB_TEMPLATES
     # 3. memory/inbox.md - Runtime required by memory_hook_impls.py L531, L1374
-    inbox_path = memory_root / "inbox.md"
+    inbox_path = target / "memory" / "inbox.md"
     if inbox_path.exists():
         if force:
             try:

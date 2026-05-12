@@ -5,37 +5,32 @@ from __future__ import annotations
 import hashlib
 import hmac as _hmac
 import json
+import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 
 # Add memory_core to path
-import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from memory_core.tools.memory_hook_integrity_keys import (
-    DEFAULT_KEY_PATH,
     generate_key,
+    key_info,
     load_key,
     load_or_create_key,
-    key_info,
 )
 from memory_core.tools.memory_hook_integrity_manifest import (
-    SCHEMA_VERSION,
     MANIFEST_FILENAME,
-    _sha256_file,
+    SCHEMA_VERSION,
     _hmac_sha256,
     _key_fingerprint,
+    _sha256_file,
     sign_project,
 )
 from memory_core.tools.memory_hook_integrity_verify import (
     IntegrityResult,
-    verify_project,
     quick_check,
+    verify_project,
 )
-
 
 # --- Key Management Tests ---
 

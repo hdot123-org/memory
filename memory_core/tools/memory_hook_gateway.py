@@ -1227,16 +1227,16 @@ def _launch_async_health_check(cwd: Path) -> None:
 
     This prevents heavy validation (reading many files, git commands,
     and running the full context package build) from blocking the hook startup.
-    
+
     Results are written to: memory/system/health-report.json
     """
     try:
         health_script = str((Path(__file__).parent / "memory_health_report.py").resolve())
-        
+
         # Output path for the report
         report_path = cwd / "memory" / "system" / "health-report.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Launch detached subprocess (cwd is critical for discovery)
         # Child process writes to report_path directly.
         subprocess.Popen(
@@ -1246,7 +1246,7 @@ def _launch_async_health_check(cwd: Path) -> None:
             start_new_session=True,  # Detach from parent
             cwd=str(cwd),            # Set working directory
         )
-            
+
         _logger.info("Launched async health check for %s", cwd)
     except Exception as e:
         _logger.debug("Failed to launch async health check: %s", e)
@@ -1264,10 +1264,10 @@ def main() -> int:
     # Async: Launch health check in background for session-start
     if args.event == "session-start":
         _launch_async_health_check(cwd)
-    
+
     writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
     package = build_context_package(args.host, args.event, payload)
-    
+
     # Health Alert: Inject previous session's health report if available
     if args.event == "session-start":
         prev_health_report = cwd / "memory" / "system" / "health-report.json"
@@ -1279,7 +1279,7 @@ def main() -> int:
                 report_data = json.loads(report_text)
 
                 if report_data.get("status") == "degraded":
-    
+
                     # Inject into system_context so the model can see and report it
                     package.setdefault("system_context", {})
                     package["system_context"]["previous_health_alert"] = {
@@ -1291,7 +1291,7 @@ def main() -> int:
                     append_error_log("health-check", "Project health degraded (from previous check)", report_data)
             except Exception as e:
                 _logger.debug("Failed to read previous health report: %s", e)
-    
+
     # L2: Verify integrity on session-start (after package is built)
     if args.event == "session-start":
         integrity_result = _integrity_verify(cwd)
@@ -1310,7 +1310,7 @@ def main() -> int:
             package.setdefault("validation_errors", [])
             if isinstance(package.get("validation_errors"), list):
                 package["validation_errors"].append("integrity-check-failed")
-                
+
     write_ok = writer.write(args.host, args.event, package)
     if not write_ok:
         append_error_log(
@@ -1343,7 +1343,7 @@ def main() -> int:
             file=sys.stderr,
         )
         exit_code = 1
-    
+
     if args.no_delegate:
         sys.stdout.write(json.dumps(package, ensure_ascii=False) + "\n")
     else:

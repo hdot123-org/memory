@@ -19,23 +19,23 @@ def main() -> int:
     parser.add_argument("--target", required=True, help="Project root path")
     parser.add_argument("--output", default=None, help="Output report path")
     args = parser.parse_args()
-    
+
     target = Path(args.target).resolve()
     if not target.exists():
         return 1
-        
+
     # Change working directory to target
     os.chdir(target)
     os.environ["PWD"] = str(target)
-    
+
     try:
         from memory_core.tools.memory_hook_gateway import build_context_package
     except ImportError:
         from memory_hook_gateway import build_context_package
-    
+
     # Fake payload
     payload = {"cwd": str(target)}
-    
+
     try:
         package = build_context_package("codex", "health-check", payload)
         report = {
@@ -53,11 +53,11 @@ def main() -> int:
             "validation_errors": [],
             "checked_at": datetime.now().isoformat(),
         }
-    
+
     output_path = Path(args.output) if args.output else (target / "memory" / "system" / "health-report.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(report, indent=2, ensure_ascii=False))
-    
+
     return 0
 
 if __name__ == "__main__":

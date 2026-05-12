@@ -9,6 +9,7 @@ Goal: Prevent "init generated files missing runtime dependencies" issues.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -16,15 +17,27 @@ from typing import Any
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
+def _repo_root() -> Path:
+    """Return the repository root directory."""
+    return Path(__file__).resolve().parent.parent
+
+
+def _subprocess_env(repo_root: Path) -> dict[str, str]:
+    """Return an environment that can import the local package in subprocesses."""
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = str(repo_root) if not existing else f"{repo_root}{os.pathsep}{existing}"
+    return env
+
+
 @pytest.fixture
 def repo_root() -> Path:
     """Return the repository root directory."""
-    return Path(__file__).resolve().parent.parent
+    return _repo_root()
 
 
 @pytest.fixture
@@ -67,11 +80,14 @@ def run_init_dry_run(
     if scope:
         cmd.extend(["--scope", scope])
 
+    repo_root = _repo_root()
     result = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
         check=True,
+        cwd=repo_root,
+        env=_subprocess_env(repo_root),
     )
     return json.loads(result.stdout)
 
@@ -224,21 +240,6 @@ class TestInitGeneratesRequiredCanonical:
             if " (" in f:
                 f = f.split(" (")[0]
             created_files.add(f)
-
-        # Also check KB_TEMPLATES files
-        kb_files = {
-            "memory/kb/global/truth-model.md",
-            "memory/kb/global/memory-system.md",
-            "memory/kb/global/memory-routing.md",
-            "memory/kb/global/hook-contract.md",
-            "memory/kb/global/project-map-governance.md",
-            "memory/kb/global/INDEX.md",
-            "memory/docs/INDEX.md",
-            "INDEX.md",
-            "project-map/INDEX.md",
-            "project-map/legal-core-map.md",
-            "project-map/ingestion-registry-map.md",
-        }
 
         required_canonical = [
             "CANONICAL.md",  # in .memory/
@@ -444,7 +445,14 @@ class TestInitRuntimeCoverageComprehensive:
             "test-project",
             "--force",
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        repo_root = _repo_root()
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+            env=_subprocess_env(repo_root),
+        )
 
         # Check init succeeded
         assert result.returncode == 0, f"Init failed: {result.stderr}"
