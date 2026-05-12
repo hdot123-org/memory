@@ -1229,12 +1229,15 @@ def _launch_async_health_check(cwd: Path) -> None:
     and running the full context package build) from blocking the hook startup.
 
     Results are written to: memory/system/health-report.json
+
+    On launch failure, writes a structured failure record to health-report.json
+    with launch_status=failed for observability.
     """
+    report_path = cwd / "memory" / "system" / "health-report.json"
     try:
         health_script = str((Path(__file__).parent / "memory_health_report.py").resolve())
 
         # Output path for the report
-        report_path = cwd / "memory" / "system" / "health-report.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Launch detached subprocess (cwd is critical for discovery)
@@ -1250,6 +1253,29 @@ def _launch_async_health_check(cwd: Path) -> None:
         _logger.info("Launched async health check for %s", cwd)
     except Exception as e:
         _logger.debug("Failed to launch async health check: %s", e)
+        # P2 observability: Write structured failure record for async health check launch failure
+        try:
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            failure_report = {
+                "status": "error",
+                "launch_status": "failed",
+                "last_launch_error": str(e),
+                "checked_at": now_iso(),
+                "missing_paths": [],
+                "validation_errors": [],
+            }
+            report_path.write_text(json.dumps(failure_report, indent=2, ensure_ascii=False))
+        except Exception as write_err:
+            # Fallback: use append_error_log if writing health report fails
+            append_error_log(
+                "memory-hook-gateway",
+                "failed to launch async health check and write health report",
+                {
+                    "cwd": str(cwd),
+                    "launch_error": str(e),
+                    "write_error": str(write_err),
+                },
+            )
 
 
 def main() -> int:

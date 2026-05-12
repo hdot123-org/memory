@@ -6,6 +6,10 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
+      release_tag:
+        description: "Release tag (e.g., v1.2.3). Required for manual trigger. Must match pyproject.toml version."
+        required: true
+        type: string
       dispatch_targets:
         description: "Comma-separated list of owner/repo to dispatch to"
         required: false
@@ -57,10 +61,23 @@ jobs:
       - name: Extract version from tag
         id: version
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Manual trigger: use input release_tag
+            INPUT_TAG="${{ inputs.release_tag }}"
+            if [[ -z "$INPUT_TAG" ]]; then
+              echo "Error: release_tag input is required for manual workflow dispatch" >&2
+              exit 1
+            fi
+            if [[ ! "$INPUT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+              echo "Error: release_tag must be a valid semver tag (e.g., v1.2.3), got: $INPUT_TAG" >&2
+              exit 1
+            fi
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            # Tag push trigger: use ref
             echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           else
-            echo "Error: release must be triggered by a version tag" >&2
+            echo "Error: release must be triggered by a version tag or workflow_dispatch with release_tag" >&2
             exit 1
           fi
 
