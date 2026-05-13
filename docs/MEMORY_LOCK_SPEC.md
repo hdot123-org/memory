@@ -19,7 +19,7 @@ tags: [lock,version,compatibility]
 ## 1. 目的
 
 为 memory-core 消费者项目提供统一的版本声明与兼容性判断机制，
-使主线程能够：
+使维护者和自动化工具能够：
 
 1. 快速判断项目是否落后于 memory-core 当前发布版本
 2. 识别升级类型（patch / minor / major）
@@ -40,7 +40,7 @@ memory.lock 是 TOML 格式文件，包含以下字段：
 
 [memory]
 # memory-core 发布版本号（SemVer），项目当前集成的版本
-memory_version = "0.2.0"
+memory_version = "0.3.0"
 
 # 项目使用的 memory hook schema 版本标识符
 # 与 memory-core 内部 schema 版本号对应
@@ -89,7 +89,7 @@ adapter_versions = ["builtin"]
 status = "stable"
 
 [[compat]]
-memory_version = "0.2.0"
+memory_version = "0.3.0"
 schema_versions = ["context-package-v1"]
 adapter_versions = ["builtin", "custom-adapter-v1"]
 status = "stable"

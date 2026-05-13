@@ -61,6 +61,7 @@ def _migrate_v010_to_v020(data: dict[str, Any]) -> dict[str, Any]:
 _MIGRATION_TRANSFORMS: dict[tuple[str, str], Callable[[dict[str, Any]], dict[str, Any]]] = {
     ("0.1.0", CURRENT_MEMORY_VERSION): _migrate_v010_to_v020,
     ("0.2.0", "0.2.0"): _noop_transform,
+    (CURRENT_MEMORY_VERSION, CURRENT_MEMORY_VERSION): _noop_transform,
 }
 
 

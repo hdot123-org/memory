@@ -1258,11 +1258,18 @@ def update_agents_md(
     *,
     host: str = "codex",
     result: dict[str, Any] | None = None,
+    mode: str = "create",
 ) -> None:
     """Insert or update the Memory Hook instruction block in AGENTS.md.
 
     Idempotent: if the markers already exist, the block content is replaced
     in-place rather than appended.
+
+    Mode-aware:
+    - create: Create new AGENTS.md or append block if no markers
+    - adopt: Only add block if markers don't exist, never overwrite; skip files without markers
+    - update: Replace existing marked block only; skip files without markers (safe default)
+    - repair: Same as update (only update markers, don't create new blocks)
     """
     if result is None:
         return
@@ -1297,12 +1304,30 @@ def update_agents_md(
                 result["skipped"].append("file:AGENTS.md (hook block up-to-date)")
                 return
 
+            # Mode check: adopt/update/repair should not modify markers in adopt mode
+            if mode == "adopt":
+                result["skipped"].append("file:AGENTS.md (existing marker preserved in adopt mode)")
+                return
+
             agents_path.write_text(new_content, encoding="utf-8")
             result["created"].append("file:AGENTS.md (hook block updated)")
             return
 
+        # No markers found - mode-aware handling
+        if mode in ("adopt", "update", "repair"):
+            # adopt/update/repair mode: do not append to files without markers (safe default)
+            result["skipped"].append(f"file:AGENTS.md (no marker in {mode} mode, not appending)")
+            return
+
+        # create mode: append to existing content
         new_content = content.rstrip("\n") + "\n\n" + new_block
     else:
+        # File doesn't exist
+        if mode in ("adopt", "update", "repair"):
+            # These modes don't create new AGENTS.md
+            result["skipped"].append(f"file:AGENTS.md (not created in {mode} mode)")
+            return
+
         new_content = new_block
 
     agents_path.write_text(new_content, encoding="utf-8")
@@ -1322,6 +1347,7 @@ def init_project_memory(
     json_output: bool = False,
     force: bool = False,
     no_clobber: bool = False,
+    mode: str = "create",
 ) -> dict[str, Any]:
     """Initialize .memory/ directory skeleton in the target project.
 
@@ -1333,6 +1359,11 @@ def init_project_memory(
         json_output: If True, return structured output dict.
         force: If True, overwrite existing files.
         no_clobber: If True, error if any essential file already exists.
+        mode: One of "create", "adopt", "update", "repair".
+            - create: Standard initialization (default).
+            - adopt: Adopt existing project without overwriting business files.
+            - update: Update existing memory structure, replace marked blocks.
+            - repair: Repair missing required files only.
 
     Returns:
         Dict with 'success', 'created', 'skipped', 'errors', 'mode', 'warnings' keys.
@@ -1344,10 +1375,17 @@ def init_project_memory(
         "created": [],
         "skipped": [],
         "errors": [],
-        "mode": "create",
+        "mode": "dry-run" if dry_run else mode,
+        "requested_mode": mode,
         "warnings": [],
         "force_overwrite": False,
     }
+
+    # Mode-aware handling: adopt/update/repair have different semantics
+    if mode not in ("create", "adopt", "update", "repair"):
+        result["errors"].append(f"Invalid mode: {mode}. Must be one of: create, adopt, update, repair")
+        result["mode"] = "error"
+        return result
 
     memory_root = target / ".memory"
     project_name = _project_name(target, scope)
@@ -1357,8 +1395,9 @@ def init_project_memory(
         result["mode"] = "error"
         return result
 
-    # Check for existing essential files for --no-clobber
-    if no_clobber:
+    # Mode-aware: adopt/update/repair should not fail on existing files
+    # but create mode with --no-clobber should
+    if no_clobber and mode == "create":
         existing_essential = []
         for fname in ESSENTIAL_FILES:
             file_path = memory_root / fname
@@ -1381,7 +1420,20 @@ def init_project_memory(
             result["mode"] = "error"
             return result
 
-    # Check dry-run mode
+    # Mode-aware: check for business files that should not be overwritten in adopt/update/repair
+    index_md_path = target / "INDEX.md"
+    has_business_index = index_md_path.exists() and "project-map" not in index_md_path.read_text(encoding="utf-8", errors="ignore").lower()
+
+    if mode in ("adopt", "update", "repair") and has_business_index:
+        # These modes: never overwrite business INDEX.md
+        result["warnings"].append(f"{mode} mode: skipping business INDEX.md (not a memory file)")
+
+    if mode in ("adopt", "update", "repair"):
+        # These modes should not fail if .memory already exists
+        # They work with existing structures
+        pass
+
+    # Check dry-run mode - NEVER write files in dry-run
     if dry_run:
         result["success"] = True
         dry_run_output: dict[str, Any] = {
@@ -1389,59 +1441,76 @@ def init_project_memory(
             "would_create_files": [],
             "project_name": project_name,
         }
+
+        # Mode-aware dry-run: determine what would happen in this mode
+        def _dry_run_action(file_path: Path, is_business_file: bool = False, is_marker_protected: bool = False) -> str:
+            """Determine action based on mode, file existence, and file type."""
+            exists = file_path.exists()
+
+            if mode == "adopt":
+                # adopt: never overwrite business files or memory files
+                if exists:
+                    return "skip - exists (adopt mode preserves existing)"
+                return "create"
+
+            elif mode == "update":
+                # update: never overwrite business files (INDEX.md, project-map)
+                if is_business_file:
+                    return "skip - business file (update mode preserves)"
+                # update: replace marker-protected files (AGENTS.md handled separately)
+                if exists:
+                    if is_marker_protected:
+                        return "replace marker block"
+                    return "skip - exists (update mode preserves non-marker files)"
+                return "create"
+
+            elif mode == "repair":
+                # repair: only create missing required files
+                if exists:
+                    return "skip - exists (repair mode never overwrites)"
+                return "create"
+
+            else:  # create mode
+                if exists:
+                    if force:
+                        return "overwrite"
+                    return "skip - exists"
+                return "create"
+
         # Check which files would be created/overwritten (under .memory/)
         for fname in ESSENTIAL_FILES:
             file_path = memory_root / fname
-            if file_path.exists():
-                if force:
-                    dry_run_output["would_create_files"].append(f"{fname} (overwrite)")
-                else:
-                    dry_run_output["would_create_files"].append(f"{fname} (skip - exists)")
-            else:
-                dry_run_output["would_create_files"].append(f"{fname} (create)")
+            action = _dry_run_action(file_path, is_business_file=False)
+            dry_run_output["would_create_files"].append(f"{fname} ({action})")
+
         # Check runtime KB files (under workspace_root)
         for fname in RUNTIME_KB_FILES:
             file_path = target / fname
-            if file_path.exists():
-                if force:
-                    dry_run_output["would_create_files"].append(f"{fname} (overwrite)")
-                else:
-                    dry_run_output["would_create_files"].append(f"{fname} (skip - exists)")
-            else:
-                dry_run_output["would_create_files"].append(f"{fname} (create)")
+            action = _dry_run_action(file_path, is_business_file=False)
+            dry_run_output["would_create_files"].append(f"{fname} ({action})")
+
         # Check project scope file
         scope_file = f"memory/kb/projects/{project_name}.md"
         scope_path = target / scope_file
-        if scope_path.exists():
-            if force:
-                dry_run_output["would_create_files"].append(f"{scope_file} (overwrite)")
-            else:
-                dry_run_output["would_create_files"].append(f"{scope_file} (skip - exists)")
-        else:
-            dry_run_output["would_create_files"].append(f"{scope_file} (create)")
-        # Check KB_TEMPLATES files
+        action = _dry_run_action(scope_path, is_business_file=False)
+        dry_run_output["would_create_files"].append(f"{scope_file} ({action})")
+
+        # Check KB_TEMPLATES files - INDEX.md and project-map are business files
         for fname in KB_TEMPLATES:
             file_path = target / fname
-            if file_path.exists():
-                if force:
-                    dry_run_output["would_create_files"].append(f"{fname} (overwrite)")
-                else:
-                    dry_run_output["would_create_files"].append(f"{fname} (skip - exists)")
-            else:
-                dry_run_output["would_create_files"].append(f"{fname} (create)")
+            is_business = fname == "INDEX.md" or fname.startswith("project-map/")
+            action = _dry_run_action(file_path, is_business_file=is_business)
+            dry_run_output["would_create_files"].append(f"{fname} ({action})")
+
         # Check extra runtime files
         for fname in RUNTIME_EXTRA_FILES:
             file_path = target / fname
-            if file_path.exists():
-                if force:
-                    dry_run_output["would_create_files"].append(f"{fname} (overwrite)")
-                else:
-                    dry_run_output["would_create_files"].append(f"{fname} (skip - exists)")
-            else:
-                dry_run_output["would_create_files"].append(f"{fname} (create)")
+            action = _dry_run_action(file_path, is_business_file=False)
+            dry_run_output["would_create_files"].append(f"{fname} ({action})")
+
         result["dry_run_output"] = dry_run_output
         result["force_overwrite"] = force
-        result["mode"] = "dry-run"
+        result["action_taken"] = "dry-run"
         return result
 
     # Safety guard: do NOT initialize inside the memory repo itself
@@ -1474,50 +1543,97 @@ def init_project_memory(
             except Exception as exc:
                 result["errors"].append(f"failed to create {dir_rel}/.keep: {exc}")
 
-    # Create template files
+    # Create template files with mode-aware handling
     any_overwritten = False
     any_skipped = False
+
+    # Helper function to determine if we should skip/overwrite based on mode
+    def _should_skip_file(file_path: Path, fname: str, is_business_file: bool = False) -> tuple[bool, str]:
+        """Determine if file should be skipped based on mode.
+
+        Returns (should_skip, reason)
+        """
+        if not file_path.exists():
+            return False, "create"
+
+        if mode == "adopt":
+            # adopt: never overwrite any existing files
+            return True, f"{mode} mode preserves existing"
+
+        elif mode == "update":
+            # update: never overwrite business files (INDEX.md, project-map)
+            if is_business_file:
+                return True, f"{mode} mode preserves business files"
+            # update: can overwrite memory files with force
+            if force:
+                return False, "overwrite"
+            return True, f"{mode} mode preserves existing (use --force to overwrite)"
+
+        elif mode == "repair":
+            # repair: never overwrite any existing files
+            return True, f"{mode} mode only creates missing files"
+
+        else:  # create mode
+            if force:
+                return False, "overwrite"
+            return True, "already exists"
 
     # 1. Write KB and Project Map templates first
     for fname, template_fn in KB_TEMPLATES.items():
         file_path = target / fname
-        if file_path.exists():
-            if force:
-                try:
-                    content, warnings = template_fn(project_name)
-                    file_path.write_text(content, encoding="utf-8")
-                    result["created"].append(f"file:{fname} (overwritten)")
-                    any_overwritten = True
-                except Exception as exc:
-                    result["errors"].append(f"failed to overwrite {fname}: {exc}")
-            else:
-                result["skipped"].append(f"file:{fname} (already exists)")
-                any_skipped = True
+        is_business = fname == "INDEX.md" or fname.startswith("project-map/")
+
+        should_skip, reason = _should_skip_file(file_path, fname, is_business_file=is_business)
+
+        if file_path.exists() and should_skip:
+            result["skipped"].append(f"file:{fname} ({reason})")
+            any_skipped = True
             continue
+
+        if file_path.exists() and not should_skip:
+            # Overwrite
+            try:
+                content, warnings = template_fn(project_name)
+                file_path.write_text(content, encoding="utf-8")
+                result["created"].append(f"file:{fname} (overwritten)")
+                result["warnings"].extend(warnings)
+                any_overwritten = True
+            except Exception as exc:
+                result["errors"].append(f"failed to overwrite {fname}: {exc}")
+            continue
+
+        # Create new file
         try:
             content, warnings = template_fn(project_name)
             file_path.write_text(content, encoding="utf-8")
             result["created"].append(f"file:{fname}")
+            result["warnings"].extend(warnings)
         except Exception as exc:
             result["errors"].append(f"failed to create {fname}: {exc}")
 
     # 2. Write legacy .memory/ templates
     for fname, template_fn in FILE_TEMPLATES.items():
         file_path = memory_root / fname
-        if file_path.exists():
-            if force:
-                try:
-                    content, warnings = template_fn(project_name)
-                    file_path.write_text(content, encoding="utf-8")
-                    result["created"].append(f"file:{fname} (overwritten)")
-                    result["warnings"].extend(warnings)
-                    any_overwritten = True
-                except Exception as exc:
-                    result["errors"].append(f"failed to overwrite {fname}: {exc}")
-            else:
-                result["skipped"].append(f"file:{fname} (already exists)")
-                any_skipped = True
+        should_skip, reason = _should_skip_file(file_path, fname, is_business_file=False)
+
+        if file_path.exists() and should_skip:
+            result["skipped"].append(f"file:{fname} ({reason})")
+            any_skipped = True
             continue
+
+        if file_path.exists() and not should_skip:
+            # Overwrite
+            try:
+                content, warnings = template_fn(project_name)
+                file_path.write_text(content, encoding="utf-8")
+                result["created"].append(f"file:{fname} (overwritten)")
+                result["warnings"].extend(warnings)
+                any_overwritten = True
+            except Exception as exc:
+                result["errors"].append(f"failed to overwrite {fname}: {exc}")
+            continue
+
+        # Create new file
         try:
             content, warnings = template_fn(project_name)
             file_path.write_text(content, encoding="utf-8")
@@ -1528,20 +1644,23 @@ def init_project_memory(
 
     # Create adapter.toml separately (requires host parameter)
     adapter_path = memory_root / "adapter.toml"
-    if adapter_path.exists():
-        if force:
-            try:
-                content, warnings = template_adapter_toml(project_name, host=host)
-                adapter_path.write_text(content, encoding="utf-8")
-                result["created"].append("file:adapter.toml (overwritten)")
-                result["warnings"].extend(warnings)
-                any_overwritten = True
-            except Exception as exc:
-                result["errors"].append(f"failed to overwrite adapter.toml: {exc}")
-        else:
-            result["skipped"].append("file:adapter.toml (already exists)")
-            any_skipped = True
+    should_skip, reason = _should_skip_file(adapter_path, "adapter.toml", is_business_file=False)
+
+    if adapter_path.exists() and should_skip:
+        result["skipped"].append(f"file:adapter.toml ({reason})")
+        any_skipped = True
+    elif adapter_path.exists() and not should_skip:
+        # Overwrite
+        try:
+            content, warnings = template_adapter_toml(project_name, host=host)
+            adapter_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:adapter.toml (overwritten)")
+            result["warnings"].extend(warnings)
+            any_overwritten = True
+        except Exception as exc:
+            result["errors"].append(f"failed to overwrite adapter.toml: {exc}")
     else:
+        # Create new
         try:
             content, warnings = template_adapter_toml(project_name, host=host)
             adapter_path.write_text(content, encoding="utf-8")
@@ -1553,20 +1672,23 @@ def init_project_memory(
     # Create runtime required files not covered by FILE_TEMPLATES or KB_TEMPLATES
     # 3. memory/inbox.md - Runtime required by memory_hook_impls.py L531, L1374
     inbox_path = target / "memory" / "inbox.md"
-    if inbox_path.exists():
-        if force:
-            try:
-                content, warnings = template_inbox_md(project_name)
-                inbox_path.write_text(content, encoding="utf-8")
-                result["created"].append("file:memory/inbox.md (overwritten)")
-                result["warnings"].extend(warnings)
-                any_overwritten = True
-            except Exception as exc:
-                result["errors"].append(f"failed to overwrite memory/inbox.md: {exc}")
-        else:
-            result["skipped"].append("file:memory/inbox.md (already exists)")
-            any_skipped = True
+    should_skip, reason = _should_skip_file(inbox_path, "memory/inbox.md", is_business_file=False)
+
+    if inbox_path.exists() and should_skip:
+        result["skipped"].append(f"file:memory/inbox.md ({reason})")
+        any_skipped = True
+    elif inbox_path.exists() and not should_skip:
+        # Overwrite
+        try:
+            content, warnings = template_inbox_md(project_name)
+            inbox_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:memory/inbox.md (overwritten)")
+            result["warnings"].extend(warnings)
+            any_overwritten = True
+        except Exception as exc:
+            result["errors"].append(f"failed to overwrite memory/inbox.md: {exc}")
     else:
+        # Create new
         try:
             content, warnings = template_inbox_md(project_name)
             inbox_path.write_text(content, encoding="utf-8")
@@ -1577,20 +1699,23 @@ def init_project_memory(
 
     # 4. memory/kb/global/memory-hook-policy-pack.json - Runtime required by memory_hook_impls.py L281
     policy_pack_path = target / "memory" / "kb" / "global" / "memory-hook-policy-pack.json"
-    if policy_pack_path.exists():
-        if force:
-            try:
-                content, warnings = template_policy_pack_json(project_name)
-                policy_pack_path.write_text(content, encoding="utf-8")
-                result["created"].append("file:memory/kb/global/memory-hook-policy-pack.json (overwritten)")
-                result["warnings"].extend(warnings)
-                any_overwritten = True
-            except Exception as exc:
-                result["errors"].append(f"failed to overwrite memory-hook-policy-pack.json: {exc}")
-        else:
-            result["skipped"].append("file:memory/kb/global/memory-hook-policy-pack.json (already exists)")
-            any_skipped = True
+    should_skip, reason = _should_skip_file(policy_pack_path, "memory/kb/global/memory-hook-policy-pack.json", is_business_file=False)
+
+    if policy_pack_path.exists() and should_skip:
+        result["skipped"].append(f"file:memory/kb/global/memory-hook-policy-pack.json ({reason})")
+        any_skipped = True
+    elif policy_pack_path.exists() and not should_skip:
+        # Overwrite
+        try:
+            content, warnings = template_policy_pack_json(project_name)
+            policy_pack_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:memory/kb/global/memory-hook-policy-pack.json (overwritten)")
+            result["warnings"].extend(warnings)
+            any_overwritten = True
+        except Exception as exc:
+            result["errors"].append(f"failed to overwrite memory-hook-policy-pack.json: {exc}")
     else:
+        # Create new
         try:
             content, warnings = template_policy_pack_json(project_name)
             policy_pack_path.write_text(content, encoding="utf-8")
@@ -1601,20 +1726,23 @@ def init_project_memory(
 
     # 5. memory/kb/projects/{scope}.md - Runtime required by memory_hook_core.py L207-210
     scope_md_path = target / "memory" / "kb" / "projects" / f"{project_name}.md"
-    if scope_md_path.exists():
-        if force:
-            try:
-                content, warnings = template_project_scope_md(project_name)
-                scope_md_path.write_text(content, encoding="utf-8")
-                result["created"].append(f"file:memory/kb/projects/{project_name}.md (overwritten)")
-                result["warnings"].extend(warnings)
-                any_overwritten = True
-            except Exception as exc:
-                result["errors"].append(f"failed to overwrite memory/kb/projects/{project_name}.md: {exc}")
-        else:
-            result["skipped"].append(f"file:memory/kb/projects/{project_name}.md (already exists)")
-            any_skipped = True
+    should_skip, reason = _should_skip_file(scope_md_path, f"memory/kb/projects/{project_name}.md", is_business_file=False)
+
+    if scope_md_path.exists() and should_skip:
+        result["skipped"].append(f"file:memory/kb/projects/{project_name}.md ({reason})")
+        any_skipped = True
+    elif scope_md_path.exists() and not should_skip:
+        # Overwrite
+        try:
+            content, warnings = template_project_scope_md(project_name)
+            scope_md_path.write_text(content, encoding="utf-8")
+            result["created"].append(f"file:memory/kb/projects/{project_name}.md (overwritten)")
+            result["warnings"].extend(warnings)
+            any_overwritten = True
+        except Exception as exc:
+            result["errors"].append(f"failed to overwrite memory/kb/projects/{project_name}.md: {exc}")
     else:
+        # Create new
         try:
             content, warnings = template_project_scope_md(project_name)
             scope_md_path.write_text(content, encoding="utf-8")
@@ -1626,18 +1754,15 @@ def init_project_memory(
     result["success"] = len(result["errors"]) == 0
     result["force_overwrite"] = force
 
-    # Set mode based on what happened
-    if any_overwritten:
-        result["mode"] = "overwrite"
-    elif any_skipped:
-        result["mode"] = "skip"
-    else:
-        result["mode"] = "create"
+    # Preserve legacy mode outcomes for create mode while exposing the requested mode separately.
+    result["action_taken"] = "overwrite" if any_overwritten else ("skip" if any_skipped else "create")
+    if not dry_run:
+        result["mode"] = result["action_taken"] if mode == "create" else mode
 
     # Generate hooks.json and AGENTS.md after .memory/ is ready
     if result["success"]:
         generate_hooks_json(target, host=host, result=result)
-        update_agents_md(target, host=host, result=result)
+        update_agents_md(target, host=host, result=result, mode=mode)
 
         # L2: Sign initial manifest after .memory/ is scaffolded
         try:
@@ -1721,6 +1846,13 @@ def main(argv: list[str] | None = None) -> int:
         default=False,
         help="Error if any essential file already exists (mutually exclusive with --force).",
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="create",
+        choices=["create", "adopt", "update", "repair"],
+        help="Initialization mode: create (default), adopt, update, or repair.",
+    )
     try:
         _pkg_version = importlib.metadata.version("memory-core")
     except importlib.metadata.PackageNotFoundError:
@@ -1750,6 +1882,7 @@ def main(argv: list[str] | None = None) -> int:
         json_output=args.json,
         force=args.force,
         no_clobber=args.no_clobber,
+        mode=args.mode,
     )
 
     if args.json or args.dry_run:
@@ -1776,8 +1909,7 @@ def main(argv: list[str] | None = None) -> int:
         print("-" * 60)
         status = "SUCCESS" if result["success"] else "FAILED"
         print(f"  Status: {status}")
-        if result.get("mode"):
-            print(f"  Mode: {result['mode']}")
+        print(f"  Init Mode: {result.get('mode', 'create')}")
         if result.get("force_overwrite"):
             print("  Force overwrite: True")
         print("=" * 60)

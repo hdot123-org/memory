@@ -21,6 +21,7 @@ except ImportError:
     from memory_core.tools.memory_root_discovery import discover_roots
     from memory_core.tools.project_lifecycle import record_project_lifecycle
 REPO_ROOT, WORKSPACE_ROOT = discover_roots(Path.cwd())
+_FORCE_HOOK = bool(os.environ.get("MEMORY_HOOK_FORCE") or os.environ.get("WORKBOT_FORCE_HOOK"))
 
 
 def _configured_artifact_root(workspace_root: Path) -> Path:
@@ -505,7 +506,7 @@ def _discover_cwd(payload: dict[str, Any]) -> Path:
 
 
 def _should_noop_for_external_context(payload: dict[str, Any]) -> bool:
-    if os.environ.get("MEMORY_HOOK_FORCE") or os.environ.get("WORKBOT_FORCE_HOOK"):
+    if _FORCE_HOOK or os.environ.get("MEMORY_HOOK_FORCE") or os.environ.get("WORKBOT_FORCE_HOOK"):
         return False
     env_cwd = _environment_cwd()
     provided_cwd = _payload_cwd(payload)

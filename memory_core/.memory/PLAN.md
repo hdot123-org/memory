@@ -17,6 +17,11 @@
 - 多项目并发安全：artifact_root project_scope 隔离（C.7）+ 线程安全配置锁 + get_config() API
 - gateway _adapter_config 线程安全改造（_config_lock + load_adapter_config/reload_adapter 加锁）
 
+### 已完成（2026-05-13）
+- 布局治理闭环：`memory-init --mode create|adopt|update|repair`、`memory-audit-layout`、`memory-plan-residue`、`memory-apply-residue-plan`
+- 安全边界：禁止自动覆盖 `AGENTS.md`、`INDEX.md`、`project-map/**`、`CLAUDE.md`；`adopt` 不向未标记 `AGENTS.md` 追加 hook block
+- Health Report 增加 `layout_audit`，布局审计异常或 P0/P1 发现降级为 `degraded`
+
 ### 待启动
 - 8 个归档测试 generic 重构 — 后续 Phase
 - globals().update() backward-compat 层完整移除（等待所有调用方迁移到 get_config）

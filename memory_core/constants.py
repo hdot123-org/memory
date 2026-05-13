@@ -2,7 +2,7 @@
 
 import re
 
-CURRENT_MEMORY_VERSION = "0.2.0"
+CURRENT_MEMORY_VERSION = "0.3.0"
 
 SUPPORTED_HOSTS = ("codex", "claude", "factory")
 

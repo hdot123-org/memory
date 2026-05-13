@@ -66,6 +66,29 @@ tags: [dot-memory,spec,schema]
 └── INDEX.md                                 # 工作区索引
 ```
 
+## 初始化与布局治理
+
+`memory-init` 支持四种模式：
+
+| 模式 | 说明 |
+|------|------|
+| `create` | 新项目初始化默认模式；创建缺失结构，已有文件默认跳过 |
+| `adopt` | 接管已有项目；保留业务入口，不向未标记 `AGENTS.md` 追加 hook block |
+| `update` | 更新已有 memory 结构；只替换已标记 block 或创建缺失文件 |
+| `repair` | 修复模式；只补齐缺失必需文件，不覆盖已有文件 |
+
+布局治理命令：
+
+| 命令 | 说明 |
+|------|------|
+| `memory-audit-layout` | 只读审计 `.memory/`、`memory/`、`project-map/`、workspace legacy 结构和根目录污染 |
+| `memory-plan-residue` | 基于审计结果生成残留处理计划与 rollback/backup 信息 |
+| `memory-apply-residue-plan` | 安全应用低风险计划；默认仅允许根目录污染移动和 runtime artifact 忽略 |
+
+自动流程禁止覆盖以下业务入口路径：`AGENTS.md`、`INDEX.md`、`project-map/**`、`CLAUDE.md`。根目录污染自动移动目的地为 `artifacts/reports/`；需要人工判断的项目会留在计划的 `needs_human_decision` bucket。
+
+健康报告会写入 `layout_audit` 摘要字段（total/P0/P1/P2、root_pollution_count、multi_generation_conflict、recommended_mode）。布局审计异常或严重发现只会把健康状态降级为 `degraded`，不阻断报告生成。
+
 ## 文件规范
 
 ### 1. memory.lock

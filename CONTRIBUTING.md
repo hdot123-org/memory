@@ -1,65 +1,77 @@
 # Contributing to memory-core
 
-## 分支模型
+## Branch model
 
-- `main` — 稳定分支，受 CI 保护
-- `feature/*` — 功能分支，从 main 创建，PR 合并后删除
+- `main` — stable branch protected by CI.
+- `feature/*` — feature branches created from `main` and deleted after merge.
 
-### 工作流程
+## Workflow
 
-1. 从 `main` 创建功能分支 `git checkout -b feature/xxx`
-2. 开发并确保本地测试通过
-3. Push 并创建 PR 到 main
-4. CI 自动运行（ruff lint + pytest 3.9-3.12 矩阵）
-5. CI 通过 + Review 通过后合并
+1. Create a feature branch from `main`: `git checkout -b feature/xxx`.
+2. Make focused changes and keep generated or local-only artifacts out of the PR.
+3. Run local checks before opening a PR.
+4. Push the branch and create a PR against `main`.
+5. Wait for CI and review to pass before merging.
 
 ## CI
 
-| Workflow | 触发条件 | 做什么 |
-|----------|---------|--------|
-| `ci.yml` | push/PR 到 main | ruff lint + pytest (3.9/3.10/3.11/3.12) |
-| `release.yml` | push tag `v*` | 全矩阵测试 → 版本校验 → build → GitHub Release → PyPI |
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yml` | push/PR to `main` | ruff lint + pytest on Python 3.9/3.10/3.11/3.12 |
+| `release.yml` | tag `v*` | full matrix tests, version validation, build, GitHub Release, PyPI publish |
 
-## 发版流程
+## Local development
 
-1. 更新 `pyproject.toml` 中的 `version`
-2. 提交并打 tag：
+```bash
+# Install in editable mode
+pip install -e ".[dev]"
+
+# Tests
+python -m pytest tests/
+
+# Lint
+ruff check .
+
+# Common full local check
+ruff check . && python -m pytest tests/
+```
+
+## Code style
+
+- Use ruff with the repository configuration.
+- Target Python 3.9+.
+- Keep line width within the configured project limit.
+- Use concise commit messages such as `feat: ...`, `fix: ...`, `chore: ...`, or `docs: ...`.
+
+## Documentation hygiene
+
+Public documentation should be safe for open-source readers and reusable across projects. When editing docs:
+
+- Do not include real local absolute paths; use placeholders such as `/path/to/project` or `<project-root>`.
+- Do not add internal session records, agent transcripts, private review notes, or `.factory` session artifacts to public docs.
+- Do not quote unredacted audit, residue, customer, infrastructure, token, credential, or private repository details.
+- Keep `docs/audit/**`, `docs/RESIDUE_*.md`, archive material, and local review indexes out of primary user navigation unless clearly labeled as maintainer/internal records.
+- Prefer small, focused documentation updates that match current CLI behavior.
+
+If a documentation change requires mentioning sensitive or environment-specific information, redact it or replace it with a generic example before opening a PR.
+
+## Versioning
+
+- Maintain the package version only in `pyproject.toml` under `[project].version`.
+- Follow SemVer: MAJOR.MINOR.PATCH.
+- Release tags must use `vX.Y.Z` and match `pyproject.toml`.
+
+## Release process
+
+1. Update `pyproject.toml` version.
+2. Commit and tag:
+
    ```bash
    git add pyproject.toml
    git commit -m "chore: bump version to x.y.z"
    git tag vx.y.z
    git push origin main vx.y.z
    ```
-3. 自动触发 release workflow：
-   - 全矩阵测试 (3.9-3.12)
-   - 校验 tag 版本 == pyproject.toml 版本
-   - build wheel + sdist
-   - 发布到 GitHub Release + PyPI
-4. 验证：`pip install memory-core==x.y.z`
 
-## 本地开发
-
-```bash
-# 安装（开发模式）
-pip install -e ".[dev]"
-
-# 测试
-python -m pytest tests/
-
-# Lint
-ruff check .
-
-# 一条命令跑完
-ruff check . && python -m pytest tests/
-```
-
-## 代码风格
-
-- ruff（E/F/W/I 规则集），target Python 3.9，行宽 120
-- 提交信息格式：`类型: 简短描述`（如 `feat:`, `fix:`, `chore:`, `docs:`）
-
-## 版本管理
-
-- 版本号只在 `pyproject.toml` 的 `[project].version` 中维护
-- 遵循语义版本（SemVer）：MAJOR.MINOR.PATCH
-- tag 格式：`vX.Y.Z`，必须与 pyproject.toml 版本一致
+3. The release workflow runs tests, validates the tag/version match, builds artifacts, and publishes.
+4. Verify the release, for example: `pip install memory-core==x.y.z`.

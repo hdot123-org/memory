@@ -166,7 +166,7 @@ locked_at = ""
   "rollback_id": "RB-002-20260429-001",
   "migration_id": "002",
   "migration_desc": "schema_v1_to_v2",
-  "project_path": "/Users/busiji/tool/workbot",
+  "project_path": "/path/to/project",
   "failed_at": "2026-04-29T10:30:00Z",
   "error": "tomllib.TOMLDecodeError: ...",
   "state_before": {
