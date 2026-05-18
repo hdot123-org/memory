@@ -5,7 +5,7 @@ shortname: DES-002
 status: 可评审
 scope: default
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-14
 source: code-analysis
 confidence: medium
 tags: [gateway,dispatch,routing]
@@ -14,6 +14,8 @@ related: [DES-001, DES-003, DES-009]
 
 > 文档编号：DES-002 | 版本：V1.0 | 日期：2026-04-26 | 维护人：codex
 
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-05-14 (v0.4.0 Beta)。如需精确接口签名，请参考源码和 ShowDoc Python API 文档。
+
 # Gateway 设计文档
 
 > 源文件: `memory_core/tools/memory_hook_gateway.py` (981 行)
@@ -21,8 +23,8 @@ related: [DES-001, DES-003, DES-009]
 > - `memory_core/tools/memory_hook_interfaces.py` (244 行) — 接口定义
 > - `memory_core/tools/memory_hook_impls.py` (1040 行) — 默认实现
 > - `memory_core/tools/memory_hook_core.py` (271 行) — 核心组装逻辑
-> - `memory_core/tools/memory_hook_adapters/workbot_runtime_profile.py` (267 行) — workbot 适配器
-> - `memory_core/tools/memory_hook_adapters/workbot_policy.py` (82 行) — workbot 业务策略
+> - `memory_core/tools/memory_hook_adapters/workbot_runtime_profile.py` (267 行) — workbot 适配器 (已归档)
+> - `memory_core/tools/memory_hook_adapters/workbot_policy.py` (82 行) — workbot 业务策略 (已归档)
 > - `memory_core/tools/memory_hook_adapters/neutral_policy.py` (21 行) — 中性策略基类
 
 ---
@@ -78,8 +80,8 @@ memory_hook_gateway.py
 │   ├── ClaudeDelegate, CodexDelegate — 主机委托实现
 │   ├── GatewayBusinessPolicyConfig — 策略配置 dataclass
 │   ├── PolicyRegistryImpl, RouteTargetPolicyImpl, WriteTargetPolicyImpl — 策略实现
-├── memory_hook_adapters.workbot_runtime_profile: build_workbot_runtime_profile (行 52)
-└── memory_hook_adapters.workbot_policy: WorkbotGatewayBusinessPolicy (行 53)
+├── memory_hook_adapters.workbot_runtime_profile: build_workbot_runtime_profile (行 52) (已归档)
+└── memory_hook_adapters.workbot_policy: WorkbotGatewayBusinessPolicy (行 53) (已归档)
 ```
 
 所有相对导入都有 `except ImportError` 的绝对导入 fallback（行 54-76），支持 standalone 脚本模式。
@@ -166,11 +168,11 @@ Gateway 使用模块级全局变量 + 惰性初始化模式管理核心组件：
 
 ```python
 _ADAPTER_REGISTRY = {
-    "workbot": (".memory_hook_adapters.workbot_runtime_profile", "build_workbot_runtime_profile"),
+    "workbot": (".memory_hook_adapters.workbot_runtime_profile", "build_workbot_runtime_profile"),  # workbot 适配器已归档
 }
 ```
 
-当前注册表仅支持 **一个 adapter**：`workbot`。注册表设计为 `dict[str, tuple[str, str]]`，每个条目映射：
+当前注册表仅支持 **一个 adapter**：`workbot` (已归档)。注册表设计为 `dict[str, tuple[str, str]]`，每个条目映射：
 
 - **key**: adapter 名称（通过 `MEMORY_HOOK_ADAPTER` 环境变量选择，默认 `"workbot"`）
 - **value**: `(模块路径, 函数名)` 元组
@@ -196,7 +198,7 @@ _ADAPTER_REGISTRY = {
 
 ### 4.1 注入源
 
-唯一注入源是 `build_workbot_runtime_profile()` 的返回值（workbot_runtime_profile.py 行 192-267），返回 35 个键值对。
+唯一注入源是 `build_workbot_runtime_profile()` 的返回值（workbot_runtime_profile.py 行 192-267，已归档），返回 35 个键值对。
 
 ### 4.2 注入后的分类使用
 

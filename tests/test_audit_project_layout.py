@@ -19,11 +19,13 @@ class TestAuditFreshProject:
     """Tests for auditing fresh/clean projects."""
 
     def test_fresh_project_no_findings(self, tmp_path: Path) -> None:
-        """Fresh project with no memory structures should have no findings."""
+        """Fresh project with no memory structures should have no findings (except ownership_missing)."""
         result = audit_project_layout(tmp_path)
         assert result.target == str(tmp_path.resolve())
-        assert len(result.findings) == 0
-        assert result.to_dict()["summary"]["total"] == 0
+        # ownership_missing is expected when .memory/ownership.toml doesn't exist
+        non_ownership = [f for f in result.findings if f.kind != "ownership_missing"]
+        assert len(non_ownership) == 0
+        assert result.to_dict()["summary"]["total"] == len(result.findings)
 
     def test_fresh_project_has_scanned_stats(self, tmp_path: Path) -> None:
         """Fresh project should have scanned stats."""
@@ -305,19 +307,22 @@ class TestAuditAllowedRootFiles:
         """README.md should not be flagged as pollution."""
         (tmp_path / "README.md").write_text("# README")
         result = audit_project_layout(tmp_path)
-        assert len(result.findings) == 0
+        non_ownership = [f for f in result.findings if f.kind != "ownership_missing"]
+        assert len(non_ownership) == 0
 
     def test_changelog_not_flagged(self, tmp_path: Path) -> None:
         """CHANGELOG.md should not be flagged as pollution."""
         (tmp_path / "CHANGELOG.md").write_text("# Changelog")
         result = audit_project_layout(tmp_path)
-        assert len(result.findings) == 0
+        non_ownership = [f for f in result.findings if f.kind != "ownership_missing"]
+        assert len(non_ownership) == 0
 
     def test_pyproject_not_flagged(self, tmp_path: Path) -> None:
         """pyproject.toml should not be flagged as pollution."""
         (tmp_path / "pyproject.toml").write_text("[project]")
         result = audit_project_layout(tmp_path)
-        assert len(result.findings) == 0
+        non_ownership = [f for f in result.findings if f.kind != "ownership_missing"]
+        assert len(non_ownership) == 0
 
 
 class TestAuditManifest:
@@ -543,12 +548,17 @@ class TestPlanResidueMigration:
         assert "must_commit_together" in plan_dict
 
     def test_plan_risk_level_low(self, tmp_path: Path) -> None:
-        """Clean project should have low risk level."""
+        """Empty project gets ownership_missing (P1) → risk_level='high' in M2.
+
+        M2 step 2.8: ownership_missing is always reported for projects without
+        .memory/ownership.toml. For an empty project this is the only finding,
+        producing risk_level='high' (P1 count > 0).
+        """
         audit_result = audit_project_layout(tmp_path)
         plan = plan_residue_migration(audit_result, tmp_path)
 
-        assert plan.risk_level == "low"
-        assert plan.requires_human_confirmation is False
+        # ownership_missing (P1) makes risk_level "high"
+        assert plan.risk_level == "high"
 
     def test_plan_risk_level_not_critical_for_current_memory_combinations(self, tmp_path: Path) -> None:
         """.memory + memory should NOT have critical risk level."""

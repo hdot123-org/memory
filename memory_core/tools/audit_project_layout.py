@@ -25,6 +25,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from memory_core.ownership import (
+    Owned,
+    classify_owned_path,
+    load_memory_ownership,
+)
+
 
 @dataclass
 class Finding:
@@ -74,8 +80,16 @@ class AuditResult:
 ROOT_POLLUTION_DEST = "artifacts/reports"
 
 
-# Forbidden file patterns that must never be overwritten by automated migration
-FORBIDDEN_OVERWRITE_PATTERNS = [
+# Step 2.8: FORBIDDEN_OVERWRITE_PATTERNS replaced with classify_owned_path() calls
+# The following patterns are now detected via classify_owned_path():
+# - AGENTS.md (owned resource)
+# - INDEX.md (owned via project_map domain)
+# - project-map/** (owned domain)
+# - CLAUDE.md (owned resource via domain)
+# - .memory/** (owned domain)
+# - memory/** (owned domain)
+# Legacy kept for backward compatibility during transition
+LEGACY_FORBIDDEN_OVERWRITE_PATTERNS = [
     "AGENTS.md",
     "INDEX.md",
     "project-map/**",
@@ -543,6 +557,9 @@ def audit_project_layout(target: Path, severity_filter: str | None = None) -> Au
     _check_agents_md(target, result)
     _check_index_md(target, result)
 
+    # Step 2.8: New ownership-related finding kinds
+    _check_ownership_findings(target, result)
+
     # Apply severity filter if requested
     if severity_filter:
         severity_order = {"P0": 0, "P1": 1, "P2": 2}
@@ -550,6 +567,105 @@ def audit_project_layout(target: Path, severity_filter: str | None = None) -> Au
         result.findings = [f for f in result.findings if severity_order.get(f.severity, 2) <= min_level]
 
     return result
+
+
+def _check_ownership_findings(root: Path, result: AuditResult) -> None:
+    """Step 2.8: Check for ownership-related findings.
+
+    New finding kinds:
+    - ownership_missing: ownership.toml does not exist
+    - domain_missing: Critical domain paths missing
+    - domain_weakened: Protection level weakened
+    - marker_tampered: AGENTS.md markers tampered
+    - index_inconsistent: Index files inconsistent
+    - owned_file_unreadable: Cannot read owned file
+    """
+    # Check ownership.toml exists
+    ownership_path = root / ".memory" / "ownership.toml"
+    if not ownership_path.exists():
+        result.findings.append(
+            Finding(
+                severity="P1",
+                kind="ownership_missing",
+                path=".memory/ownership.toml",
+                message="ownership.toml not found - ownership declaration missing",
+                suggested_bucket="needs_human_decision",
+            )
+        )
+    else:
+        # Try to load and validate ownership
+        try:
+            from memory_core.ownership import validate_ownership_schema
+            ownership = load_memory_ownership(root)
+            schema_errors = validate_ownership_schema(ownership)
+            for error in schema_errors:
+                if "downgraded" in error.lower():
+                    result.findings.append(
+                        Finding(
+                            severity="P0",
+                            kind="domain_weakened",
+                            path=".memory/ownership.toml",
+                            message=f"Ownership protection weakened: {error}",
+                            suggested_bucket="needs_human_decision",
+                        )
+                    )
+                elif "deleted" in error.lower():
+                    result.findings.append(
+                        Finding(
+                            severity="P0",
+                            kind="domain_missing",
+                            path=".memory/ownership.toml",
+                            message=f"Ownership domain/resource deleted: {error}",
+                            suggested_bucket="needs_human_decision",
+                        )
+                    )
+        except OSError as e:
+            result.findings.append(
+                Finding(
+                    severity="P1",
+                    kind="owned_file_unreadable",
+                    path=".memory/ownership.toml",
+                    message=f"Cannot read ownership.toml: {e}",
+                    suggested_bucket="needs_human_decision",
+                )
+            )
+
+    # Check index consistency
+    index_paths = [
+        ("memory/docs/INDEX.md", root / "memory" / "docs" / "INDEX.md"),
+        ("memory/kb/INDEX.md", root / "memory" / "kb" / "INDEX.md"),
+        ("project-map/INDEX.md", root / "project-map" / "INDEX.md"),
+    ]
+    for rel_path, full_path in index_paths:
+        if full_path.exists():
+            try:
+                content = full_path.read_text(encoding="utf-8")
+                # Check for broken internal references
+                import re
+                refs = re.findall(r"\[.*?\]\((.*?)\)", content)
+                for ref in refs:
+                    if not ref.startswith("http") and not ref.startswith("#"):
+                        ref_path = root / ref
+                        if not ref_path.exists():
+                            result.findings.append(
+                                Finding(
+                                    severity="P2",
+                                    kind="index_inconsistent",
+                                    path=rel_path,
+                                    message=f"Broken reference to {ref}",
+                                    suggested_bucket="needs_human_decision",
+                                )
+                            )
+            except OSError as e:
+                result.findings.append(
+                    Finding(
+                        severity="P1",
+                        kind="owned_file_unreadable",
+                        path=rel_path,
+                        message=f"Cannot read index file: {e}",
+                        suggested_bucket="needs_human_decision",
+                    )
+                )
 
 
 @dataclass
@@ -999,6 +1115,24 @@ def plan_residue_migration(
     # Generate must_commit_together groups
     must_commit_together = _generate_must_commit_together(audit_result.findings)
 
+    # Step 2.8: Populate forbidden_overwrites using classify_owned_path
+    forbidden_overwrites: list[str] = []
+    try:
+        ownership = load_memory_ownership(target)
+        # Check all files in the project
+        for item in target.rglob("*"):
+            if item.is_file():
+                try:
+                    rel_path = item.relative_to(target).as_posix()
+                    classification = classify_owned_path(rel_path, ownership=ownership)
+                    if isinstance(classification, Owned):
+                        forbidden_overwrites.append(rel_path)
+                except (ValueError, OSError):
+                    pass
+    except Exception:
+        # Fallback to legacy patterns if ownership loading fails
+        forbidden_overwrites = LEGACY_FORBIDDEN_OVERWRITE_PATTERNS.copy()
+
     total_items = sum(len(v) for v in buckets.values())
 
     return MigrationPlan(
@@ -1009,7 +1143,7 @@ def plan_residue_migration(
         requires_human_confirmation=requires_confirmation,
         backup_plan=backup_plan,
         rollback_plan=rollback_plan,
-        forbidden_overwrites=FORBIDDEN_OVERWRITE_PATTERNS.copy(),
+        forbidden_overwrites=forbidden_overwrites if forbidden_overwrites else LEGACY_FORBIDDEN_OVERWRITE_PATTERNS.copy(),
         must_commit_together=must_commit_together,
         total_items=total_items,
     )

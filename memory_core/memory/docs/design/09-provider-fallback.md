@@ -5,7 +5,7 @@ shortname: DES-009
 status: 可评审
 scope: default
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-14
 source: code-analysis
 confidence: medium
 tags: [provider,fallback,resilience]
@@ -14,12 +14,14 @@ related: [DES-002, DES-006, DES-008]
 
 > 文档编号：DES-009 | 版本：V1.0 | 日期：2026-04-26 | 维护人：codex
 
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-05-14 (v0.4.0 Beta)。如需精确接口签名，请参考源码和 ShowDoc Python API 文档。
+
 # Provider 与回退机制设计文档
 
 > 来源文件：
-> - `memory_core/tools/memory_hook_gateway.py`（981 行）
-> - `memory_core/tools/memory_hook_provider_rollback.py`（60 行）
-> - `memory_core/tools/memory_hook_core.py`（271 行）
+> - `memory_core/tools/memory_hook_gateway.py`
+> - `memory_core/tools/memory_hook_provider_rollback.py`
+> - `memory_core/tools/memory_hook_core.py`
 > 生成日期：2026-04-26
 
 ---

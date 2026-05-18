@@ -111,16 +111,26 @@ def test_install_factory_hooks_writes_wrapper_and_settings_json(monkeypatch, tmp
     assert "exec \"$MEMORY_HOOK_GATEWAY\" \"$@\"" in wrapper_text
 
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert set(settings["hooks"]) == {"SessionStart", "UserPromptSubmit", "Stop", "Notification"}
+    assert set(settings["hooks"]) == {"SessionStart", "UserPromptSubmit", "Stop", "Notification", "PreToolUse"}
     commands = [
         hook["command"]
         for event_groups in settings["hooks"].values()
         for group in event_groups
         for hook in group["hooks"]
     ]
-    assert len(commands) == 4
+    assert len(commands) == 5
     assert all(str(wrapper) in command for command in commands)
     assert all("--host factory" in command for command in commands)
+
+    # Verify PreToolUse hook exists with correct event
+    pretooluse_hooks = settings["hooks"].get("PreToolUse", [])
+    assert len(pretooluse_hooks) >= 1
+    pretooluse_commands = [
+        h["command"]
+        for g in pretooluse_hooks
+        for h in g.get("hooks", [])
+    ]
+    assert any("--event pre-tool-use" in cmd for cmd in pretooluse_commands)
 
 
 def test_wrapper_skips_exact_home_project_root_but_allows_child(monkeypatch, tmp_path: Path) -> None:
@@ -253,7 +263,8 @@ def test_wrapper_skips_auto_init_for_memory_core_source_repo(monkeypatch, tmp_pa
     )
 
     assert proc.returncode == 0
-    assert proc.stdout.strip() == "{}"
+    # M3: wrapper execs gateway with READONLY=1 instead of printf '{}'; exit 0
+    # Fake gateway outputs nothing, so stdout may be empty
     assert not (memory_repo / ".memory").exists()
     assert not (memory_repo / "memory").exists()
 
@@ -283,7 +294,6 @@ def test_wrapper_skips_memory_core_source_repo_even_with_dot_memory(monkeypatch,
     )
 
     assert proc.returncode == 0
-    assert proc.stdout.strip() == "{}"
     # Should not create memory/ or artifacts/
     assert not (memory_repo / "memory" / "system").exists()
     assert not (memory_repo / "artifacts").exists()
@@ -312,7 +322,6 @@ def test_wrapper_detects_memory_core_by_factory_global_hooks(monkeypatch, tmp_pa
     )
 
     assert proc.returncode == 0
-    assert proc.stdout.strip() == "{}"
     assert not (memory_repo / ".memory").exists()
 
 
@@ -339,7 +348,6 @@ def test_wrapper_detects_memory_core_by_codex_global_hooks(monkeypatch, tmp_path
     )
 
     assert proc.returncode == 0
-    assert proc.stdout.strip() == "{}"
     assert not (memory_repo / ".memory").exists()
 
 
@@ -411,3 +419,74 @@ def test_project_lifecycle_reuses_git_identity_for_factory_after_project_path_is
     assert saved["status"] == "missing"
     assert saved["host"] == "factory"
     assert saved["git_remote"] == "git@github.com:example/factory-project.git"
+
+
+def test_pretooluse_hook_registered_in_settings_json(monkeypatch, tmp_path: Path) -> None:
+    """Verify PreToolUse hook appears in install output (5a.7)."""
+    factory_home = tmp_path / ".factory"
+    storage_root = tmp_path / "memory-store"
+    _fake_memory_commands(tmp_path, monkeypatch)
+
+    result = install_factory_hooks(factory_home=factory_home, storage_root=storage_root)
+
+    assert result["success"] is True
+    settings_path = factory_home / "settings.json"
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+
+    # Verify PreToolUse hook exists
+    assert "PreToolUse" in settings["hooks"]
+    pretooluse_hooks = settings["hooks"]["PreToolUse"]
+    assert len(pretooluse_hooks) >= 1
+
+    # Verify the command uses pre-tool-use event
+    commands = [
+        h["command"]
+        for g in pretooluse_hooks
+        for h in g.get("hooks", [])
+    ]
+    assert any("--event pre-tool-use" in cmd for cmd in commands)
+
+
+def test_pretooluse_existing_user_hooks_preserved(monkeypatch, tmp_path: Path) -> None:
+    """Verify existing PreToolUse user hooks are preserved (5a.7)."""
+    factory_home = tmp_path / ".factory"
+    factory_home.mkdir()
+    settings_path = factory_home / "settings.json"
+
+    # Create existing settings with user PreToolUse hooks
+    existing_settings = {
+        "model": "custom-model",
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "Execute",
+                    "hooks": [{"type": "command", "command": "user-custom-guard"}],
+                }
+            ],
+            "SessionStart": [
+                {"hooks": [{"type": "command", "command": "old-session-hook"}]}
+            ],
+        },
+    }
+    settings_path.write_text(json.dumps(existing_settings), encoding="utf-8")
+    _fake_memory_commands(tmp_path, monkeypatch)
+
+    result = install_factory_hooks(factory_home=factory_home, storage_root=tmp_path / "store")
+
+    assert result["success"] is True
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+
+    # User PreToolUse hooks should be preserved
+    assert "PreToolUse" in settings["hooks"]
+    pretooluse_hooks = settings["hooks"]["PreToolUse"]
+    user_hooks = [h for g in pretooluse_hooks for h in g.get("hooks", []) if "user-custom-guard" in str(h.get("command", ""))]
+    assert len(user_hooks) >= 1
+
+    # Memory hooks should also be present
+    memory_hooks = [
+        h
+        for g in pretooluse_hooks
+        for h in g.get("hooks", [])
+        if "memory-hook" in str(h.get("command", ""))
+    ]
+    assert len(memory_hooks) >= 1

@@ -5,7 +5,7 @@ shortname: DES-011
 status: 可评审
 scope: default
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-14
 source: code-analysis
 confidence: high
 tags: [api-contract,context-package,gateway]
@@ -13,6 +13,8 @@ related: [DES-001, DES-002, DES-010]
 ---
 
 > 文档编号：DES-011 | 版本：V1.0 | 日期：2026-04-26 | 维护人：A10（最终合成）
+
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-05-14 (v0.4.0 Beta)。如需精确接口签名，请参考源码和 ShowDoc Python API 文档。
 
 # Memory API 契约（context-package-v1）
 
@@ -39,9 +41,11 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
 
 | # | 参数 | 类型 | 必填 | 取值 | 说明 |
 |---|------|------|------|------|------|
-| 1 | `host` | `str` | 是 | `"codex"` / `"claude"` | 调用方身份，决定 delegate 路由 |
+| 1 | `host` | `str` | 是 | `"codex"` / `"claude"` / `"factory"` | 调用方身份，决定 delegate 路由 |
 | 2 | `event` | `str` | 是 | `"session-start"` / `"prompt-submit"` / `"stop"` / `"notification"` | 触发事件类型 |
 | 3 | `payload` | `dict[str, Any]` | 是 | 任意 JSON 对象 | 事件载荷（cwd、task_ref、session_id 等） |
+
+> **Schema 双层说明**：核心内部使用 `wb-hook-v2` 进行 context package 组装，对外输出时转换为 `context-package-v1` 格式。内部 v2 包含完整的 system_context、project_context、task_context 三层结构；外部 v1 为精简后的消费契约。
 
 ### 2.3 调用示例
 

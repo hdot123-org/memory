@@ -214,7 +214,8 @@ def test_wrapper_skips_auto_init_for_memory_core_source_repo(monkeypatch, tmp_pa
     )
 
     assert proc.returncode == 0
-    assert proc.stdout.strip() == "{}"
+    # M3: wrapper execs gateway with READONLY=1 instead of printf '{}'; exit 0
+    # Fake gateway outputs nothing, so stdout may be empty
     assert not (memory_repo / ".memory").exists()
     assert not (memory_repo / "memory").exists()
 
@@ -244,8 +245,7 @@ def test_wrapper_skips_memory_core_source_repo_even_with_dot_memory(monkeypatch,
     )
 
     assert proc.returncode == 0
-    assert proc.stdout.strip() == "{}"
-    # Should not create memory/ or artifacts/
+    # M3: wrapper execs gateway with READONLY=1
     assert not (memory_repo / "memory" / "system").exists()
     assert not (memory_repo / "artifacts").exists()
 
@@ -273,7 +273,7 @@ def test_wrapper_detects_memory_core_by_claude_global_hooks(monkeypatch, tmp_pat
     )
 
     assert proc.returncode == 0
-    assert proc.stdout.strip() == "{}"
+    # M3: wrapper execs gateway with READONLY=1
     assert not (memory_repo / ".memory").exists()
 
 
@@ -300,7 +300,7 @@ def test_wrapper_detects_memory_core_by_factory_global_hooks(monkeypatch, tmp_pa
     )
 
     assert proc.returncode == 0
-    assert proc.stdout.strip() == "{}"
+    # M3: wrapper execs gateway with READONLY=1
     assert not (memory_repo / ".memory").exists()
 
 
@@ -327,7 +327,7 @@ def test_wrapper_detects_memory_core_by_codex_global_hooks(monkeypatch, tmp_path
     )
 
     assert proc.returncode == 0
-    assert proc.stdout.strip() == "{}"
+    # M3: wrapper execs gateway with READONLY=1
     assert not (memory_repo / ".memory").exists()
 
 

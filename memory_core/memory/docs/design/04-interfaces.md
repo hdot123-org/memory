@@ -5,7 +5,7 @@ shortname: DES-004
 status: 可评审
 scope: default
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-14
 source: code-analysis
 confidence: medium
 tags: [interfaces,contracts,abstractions]
@@ -14,9 +14,11 @@ related: [DES-003, DES-005, DES-006]
 
 > 文档编号：DES-004 | 版本：V1.0 | 日期：2026-04-26 | 维护人：codex
 
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-05-14 (v0.4.0 Beta)。如需精确接口签名，请参考源码和 ShowDoc Python API 文档。
+
 # 接口契约层设计文档
 
-> 来源：`memory_core/tools/memory_hook_interfaces.py`（242 行）+ `memory_core/tools/memory_hook_impls.py`
+> 来源：`memory_core/tools/memory_hook_interfaces.py` + `memory_core/tools/memory_hook_impls.py`
 > 生成日期：2026-04-26
 
 ---
@@ -53,6 +55,15 @@ related: [DES-003, DES-005, DES-006]
 | `validate` | `def validate(self, context: dict[str, Any]) -> list[str]` | 67 | 错误消息列表（空 = 校验通过） | — |
 | `get_policy_pack` | `def get_policy_pack(self, scope: str) -> dict[str, Any]` | 76 | 策略包：含 schema_version, policies, conflict_strategy | — |
 | `resolve_conflict` | `def resolve_conflict(self, policy_key: str, values: list[str], strategy: str) -> str` | 85 | 消解后的策略值 | ValueError（无法消解时） |
+| `validate_project_map` | `def validate_project_map(self) -> list[str]` | - | 验证 project-map 合同文件，返回错误列表 | — |
+| `validate_unique_legal_system_contract` | `def validate_unique_legal_system_contract(self) -> list[str]` | - | 验证唯一合法系统合约，返回错误列表 | — |
+| `governance_frozen_tuple_errors` | `def governance_frozen_tuple_errors(self) -> list[str]` | - | 返回治理冻结元组阻塞错误 | — |
+| `event_contract_blocker_errors` | `def event_contract_blocker_errors(self) -> list[str]` | - | 返回事件合约阻塞错误 | — |
+| `git_registration_probe` | `def git_registration_probe(self, event: str, payload: dict[str, Any]) -> RegistrationCommitGate` | - | 探测 git 注册状态，返回 gate dict | — |
+| `truth_basis_for_scope` | `def truth_basis_for_scope(self, scope: str) -> TruthBasis` | - | 返回指定 scope 的 truth basis 包 | — |
+| `decision_refs_for_scope` | `def decision_refs_for_scope(self, scope: str) -> list[str]` | - | 返回指定 scope 的决策引用列表 | — |
+| `lesson_refs_for_scope` | `def lesson_refs_for_scope(self, scope: str) -> list[str]` | - | 返回指定 scope 的经验教训引用列表 | — |
+| `docs_refs_for_scope` | `def docs_refs_for_scope(self, scope: str) -> list[str]` | - | 返回指定 scope 的文档引用列表 | — |
 
 ### 2.3 RouteTargetPolicy（interfaces:106-116）
 
@@ -100,9 +111,66 @@ related: [DES-003, DES-005, DES-006]
 
 ---
 
-## 3. 非 Abstract 默认方法
+## 3. 细粒度 Protocol（interfaces 新增）
 
-### 3.1 GatewayBusinessPolicy.get_required_gateway_inputs（interfaces:150-156）
+以下 Protocol 从 PolicyRegistry 分解而来，用于更灵活的类型注解和依赖注入：
+
+### 3.1 PolicyQueryProvider（Protocol）
+
+策略查询 — 合法性来源、注册提交阶段等。
+
+```python
+class PolicyQueryProvider(Protocol):
+    def legality_source_for_scope(self, scope: str) -> str: ...
+    def registration_commit_phase_for_scope(self, scope: str) -> str: ...
+    def get_policy(self, key: str) -> str | None: ...
+    def get_policy_pack(self, scope: str) -> dict[str, Any]: ...
+    def resolve_conflict(self, policy_key: str, values: list[str], strategy: str) -> str: ...
+```
+
+### 3.2 GovernanceChecker（Protocol）
+
+治理校验 — project-map、frozen tuple、event contract。
+
+```python
+class GovernanceChecker(Protocol):
+    def validate_project_map(self) -> list[str]: ...
+    def validate_unique_legal_system_contract(self) -> list[str]: ...
+    def governance_frozen_tuple_errors(self) -> list[str]: ...
+    def event_contract_blocker_errors(self) -> list[str]: ...
+    def git_registration_probe(self, event: str, payload: dict[str, Any]) -> RegistrationCommitGate: ...
+```
+
+### 3.3 TruthBasisProvider（Protocol）
+
+事实基准 — truth-basis 查询、evidence refs。
+
+```python
+class TruthBasisProvider(Protocol):
+    def truth_basis_for_scope(self, scope: str) -> TruthBasis: ...
+    def decision_refs_for_scope(self, scope: str) -> list[str]: ...
+    def lesson_refs_for_scope(self, scope: str) -> list[str]: ...
+    def docs_refs_for_scope(self, scope: str) -> list[str]: ...
+```
+
+### 3.4 PathUtils（ABC）
+
+路径相关工具回调，用于 core assembly 中的路径操作。
+
+```python
+class PathUtils(ABC):
+    @abstractmethod
+    def extract_excerpt(self, path: Path, max_lines: int = 12) -> list[str]: ...
+    
+    @abstractmethod
+    def write_targets(self) -> dict[str, Any]: ...
+```
+
+---
+
+## 4. 非 Abstract 默认方法
+
+### 4.1 GatewayBusinessPolicy.get_required_gateway_inputs（interfaces:150-156）
 
 ```python
 def get_required_gateway_inputs(self) -> list[Path]:
@@ -119,7 +187,7 @@ def get_required_gateway_inputs(self) -> list[Path]:
 
 ---
 
-## 4. 接口继承/依赖关系
+## 5. 接口继承/依赖关系
 
 ```
                     ┌────────────────────────┐
@@ -150,7 +218,7 @@ def get_required_gateway_inputs(self) -> list[Path]:
 
 ---
 
-## 5. 数据协议约定
+## 6. 数据协议约定
 
 ### 5.1 CoreBuilder 类型别名
 
@@ -238,7 +306,7 @@ class GatewayBusinessPolicyConfig:
 
 ---
 
-## 6. 实现类映射表
+## 7. 实现类映射表
 
 | 接口 | 实现类 | 文件 | 行号 |
 |------|--------|------|------|

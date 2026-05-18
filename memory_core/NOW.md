@@ -1,17 +1,16 @@
 # NOW.md
 
 ## Mission
-- 将 memory module 发布为独立的 PyPI 包 memory-core v0.2.0
+- memory-core v0.4.0 正式版收尾
 
 ## Today
-- Phase 1 完成: 版本统一、gitignore、LICENSE 元数据
-- 命名空间迁移 workspace → memory_core 完成
-- 761 tests passed
+- Ownership 保护升级 M1-M6 全部实现，1612 测试通过
+- v0.4.0 正式版准备就绪，等待最终验收
 
 ## Next 3 Actions
-1. 合入已验收分支到 branch-1
-2. GitHub Release v0.2.0
-3. 验证 pip install memory-core 在干净环境下工作
+1. 全局验收通过后发布 v0.4.0
+2. 合并到 main 分支
+3. 监控生产环境稳定性
 
 ## Blockers
 - 无

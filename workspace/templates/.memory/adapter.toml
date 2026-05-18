@@ -1,4 +1,4 @@
-# adapter.toml — canonical layout (memory-core v0.2.x)
+# adapter.toml — canonical layout (memory-core v0.4.x)
 # 由 memory-init 在初始化时填充实际值
 
 [core]

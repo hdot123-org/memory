@@ -24,6 +24,7 @@ import argparse
 import importlib.metadata
 import json
 import logging
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +35,11 @@ from memory_core.constants import (
     CANONICAL_MEMORY_LOCK_SCHEMA,
     CURRENT_MEMORY_VERSION,
     SUPPORTED_HOSTS,
+)
+from memory_core.ownership import (
+    Owned,
+    classify_owned_path,
+    load_memory_ownership,
 )
 from memory_core.tools.denied_project_roots import is_denied_project_root
 
@@ -895,6 +901,84 @@ def template_policy_pack_json(project_name: str) -> tuple[str, list[str]]:
     return content, warnings
 
 
+def template_ownership_toml(project_name: str) -> tuple[str, list[str]]:
+    """Generate ownership.toml content for memory-core ownership declaration.
+
+    Uses manual string construction (no tomli_w or tomlkit dependency).
+
+    Returns:
+        Tuple of (content, warnings_list)
+    """
+    warnings: list[str] = []
+    try:
+        lines: list[str] = [
+            "# ownership.toml -- memory-core ownership declaration",
+            "",
+            'schema_version = "memory-ownership-v1"',
+            f'memory_version = "{CURRENT_MEMORY_VERSION}"',
+            "",
+            "# Domains: directories under ownership protection",
+        ]
+
+        # Add default domains
+        from memory_core.ownership import DEFAULT_OWNERSHIP_DOMAINS
+        for domain in DEFAULT_OWNERSHIP_DOMAINS:
+            lines.extend([
+                "",
+                "[[domains]]",
+                f'name = "{domain.name}"',
+                f'path = "{domain.path}"',
+                f'level = "{domain.level.name.lower()}"',
+                f'recursive = {str(domain.recursive).lower()}',
+            ])
+            if domain.description:
+                lines.append(f'description = "{domain.description}"')
+
+        lines.extend([
+            "",
+            "# Resources: specific files under ownership protection",
+        ])
+
+        # Add default resources
+        from memory_core.ownership import DEFAULT_OWNERSHIP_RESOURCES
+        for resource in DEFAULT_OWNERSHIP_RESOURCES:
+            lines.extend([
+                "",
+                "[[resources]]",
+                f'name = "{resource.name}"',
+                f'path = "{resource.path}"',
+                f'level = "{resource.level.name.lower()}"',
+            ])
+            if resource.domain:
+                lines.append(f'domain = "{resource.domain}"')
+            if resource.description:
+                lines.append(f'description = "{resource.description}"')
+
+        lines.extend([
+            "",
+            "# Policy: optional key-value pairs for ownership policy",
+            "[policy]",
+            f'project_name = "{project_name}"',
+            "",
+        ])
+
+        content = "\n".join(lines)
+    except (ValueError, TypeError, ImportError) as exc:
+        logger.warning(f"Template render error in ownership.toml: {exc}")
+        warnings.append(f"template_ownership_toml: {exc}")
+        # Safe fallback
+        content = f'''# ownership.toml -- memory-core ownership declaration
+
+schema_version = "memory-ownership-v1"
+memory_version = "{CURRENT_MEMORY_VERSION}"
+
+# Domains and resources omitted due to render error
+[policy]
+project_name = "{project_name}"
+'''
+    return content, warnings
+
+
 def template_project_scope_md(project_name: str) -> tuple[str, list[str]]:
     """Generate project scope knowledge file.
 
@@ -1547,6 +1631,10 @@ def init_project_memory(
     any_overwritten = False
     any_skipped = False
 
+    # Load ownership configuration for force restriction checks
+    ownership = load_memory_ownership(target)
+    authorized_maintenance = mode == "repair" or os.environ.get("MEMORY_INIT_RUNNING") == "1"
+
     # Helper function to determine if we should skip/overwrite based on mode
     def _should_skip_file(file_path: Path, fname: str, is_business_file: bool = False) -> tuple[bool, str]:
         """Determine if file should be skipped based on mode.
@@ -1575,6 +1663,19 @@ def init_project_memory(
 
         else:  # create mode
             if force:
+                # Step 2.2: Check ownership before allowing force overwrite
+                try:
+                    rel_path = file_path.relative_to(target).as_posix()
+                except ValueError:
+                    rel_path = str(file_path)
+                classification = classify_owned_path(rel_path, ownership=ownership)
+                if isinstance(classification, Owned) and not authorized_maintenance:
+                    # Owned file - reject force overwrite
+                    result["errors"].append(
+                        f"Force overwrite rejected: {rel_path} is owned "
+                        f"({classification.reason})"
+                    )
+                    return True, "force rejected - owned file"
                 return False, "overwrite"
             return True, "already exists"
 
@@ -1774,6 +1875,23 @@ def init_project_memory(
         except Exception as exc:
             # Non-blocking: integrity signing is best-effort
             result["warnings"].append(f"integrity signing skipped: {exc}")
+
+        # Step 2.1: Generate ownership.toml (after integrity signing, only if not dry_run)
+        if not dry_run:
+            try:
+                ownership_path = memory_root / "ownership.toml"
+                # Only write if doesn't exist or force is True (with ownership check already done)
+                should_skip, _ = _should_skip_file(ownership_path, "ownership.toml", is_business_file=False)
+                if not should_skip:
+                    content, warnings = template_ownership_toml(project_name)
+                    ownership_path.write_text(content, encoding="utf-8")
+                    result["created"].append("file:ownership.toml")
+                    result["warnings"].extend(warnings)
+                else:
+                    if ownership_path.exists():
+                        result["skipped"].append("file:ownership.toml (already exists)")
+            except Exception as exc:
+                result["errors"].append(f"failed to create ownership.toml: {exc}")
 
     return result
 

@@ -954,8 +954,8 @@ class TestActionFiltering:
             "target": str(project),
             "actions": [
                 {"action": "move_root_pollution", "path": "test-report.md", "severity": "P1"},
-                {"action": "adopt_existing_memory", "path": ".memory", "severity": "P0"},
-                {"action": "mark_legacy_readonly", "path": "memory", "severity": "P0"},
+                {"action": "adopt_existing_memory", "path": "memory/inbox.md", "severity": "P0"},
+                {"action": "mark_legacy_readonly", "path": "workspace/memory", "severity": "P0"},
             ],
             "risk_level": "high",
             "requires_human_confirmation": False,

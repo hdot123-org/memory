@@ -5,7 +5,7 @@ shortname: DES-006
 status: 可评审
 scope: default
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-14
 source: code-analysis
 confidence: medium
 tags: [adapters,project-binding]
@@ -14,10 +14,14 @@ related: [DES-005, DES-007, DES-009]
 
 > 文档编号：DES-006 | 版本：V1.0 | 日期：2026-04-26 | 状态：可评审 | 维护人：codex
 
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-05-14 (v0.4.0 Beta)。如需精确接口签名，请参考源码和 ShowDoc Python API 文档。
+
 # Adapter 层设计
 
 > 生成时间：2026-04-26
 > 源码根：`memory_core/tools/memory_hook_adapters/`
+
+> **注意**：workbot-* 适配器文件已归档至 `archive/legacy-workbot/`。
 
 ---
 

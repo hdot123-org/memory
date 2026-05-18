@@ -20,6 +20,7 @@ Acceptance criteria:
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -50,9 +51,9 @@ class TestFixtureFreshProject:
         assert "scanned_dirs" in data["summary"]
         assert "scanned_files" in data["summary"]
 
-        # Fresh project should have no findings
-        assert data["summary"]["total"] == 0
-        assert len(data["findings"]) == 0
+        # Fresh project: only ownership_missing expected (M2 step 2.8)
+        non_ownership = [f for f in data["findings"] if f.get("kind") != "ownership_missing"]
+        assert len(non_ownership) == 0
 
     def test_plan_json_schema_parseable(self, tmp_path: Path) -> None:
         """Migration plan must be valid JSON with expected schema."""
@@ -900,19 +901,27 @@ class TestAcceptanceCriteria:
         assert (tmp_path / "project-map" / "architecture.md").exists()
 
     def test_init_force_can_overwrite(self, tmp_path: Path) -> None:
-        """Init with --force should be able to overwrite existing files."""
+        """Init with --force should be able to overwrite existing files (with authorized maintenance)."""
         # Create existing .memory structure
         (tmp_path / ".memory").mkdir()
         (tmp_path / ".memory" / "memory.lock").write_text("old content")
 
-        # Init with force
-        result = init_project_memory(
-            tmp_path,
-            scope="new_project_name",
-            dry_run=False,
-            mode="create",
-            force=True,
-        )
+        # Init with force (use MEMORY_INIT_RUNNING=1 for authorized maintenance)
+        old_env = os.environ.get("MEMORY_INIT_RUNNING")
+        try:
+            os.environ["MEMORY_INIT_RUNNING"] = "1"
+            result = init_project_memory(
+                tmp_path,
+                scope="new_project_name",
+                dry_run=False,
+                mode="create",
+                force=True,
+            )
+        finally:
+            if old_env is not None:
+                os.environ["MEMORY_INIT_RUNNING"] = old_env
+            else:
+                os.environ.pop("MEMORY_INIT_RUNNING", None)
 
         # Content should be updated
         content = (tmp_path / ".memory" / "memory.lock").read_text()
@@ -924,9 +933,10 @@ class TestEdgeCases:
     """Edge cases and boundary conditions."""
 
     def test_empty_project(self, tmp_path: Path) -> None:
-        """Empty project should have no findings."""
+        """Empty project should have no findings except ownership_missing (M2 step 2.8)."""
         result = audit_project_layout(tmp_path)
-        assert len(result.findings) == 0
+        non_ownership = [f for f in result.findings if f.kind != "ownership_missing"]
+        assert len(non_ownership) == 0
 
     def test_nonexistent_target(self, tmp_path: Path) -> None:
         """Audit should handle non-existent target gracefully."""

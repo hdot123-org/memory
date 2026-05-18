@@ -50,6 +50,9 @@ build/
 dist/
 *.egg-info/
 
+# Caches
+.ruff_cache/
+
 # Runtime artifacts (not tracked)
 memory_core/artifacts/
 memory_core/.memory/schema-audit.log

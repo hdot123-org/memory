@@ -54,6 +54,10 @@ from memory_core.constants import (
     SUPPORTED_HOSTS,
     VALID_HEALTH_VALUES,
 )
+from memory_core.ownership import (
+    load_memory_ownership,
+    validate_ownership_schema,
+)
 
 # Paths that MUST NOT appear inside the memory repo — these belong in the
 # target project's own workspace, not in the memory repository.
@@ -531,6 +535,226 @@ def check_adapter_host_enum(memory_root: Path, result: CheckResult) -> bool:
         return False
 
 
+def check_ownership_declaration(memory_root: Path, result: CheckResult) -> bool:
+    """Step 2.3: Verify ownership.toml declaration exists and is valid.
+
+    Checks:
+    - ownership.toml exists in .memory/
+    - Schema version is valid (matches OWNERSHIP_SCHEMA_VERSION)
+    - Default domains not deleted/downgraded via validate_ownership_schema()
+    """
+    all_ok = True
+    ownership_path = memory_root / "ownership.toml"
+
+    if not ownership_path.is_file():
+        result.record("ownership_declaration", False, "ownership.toml not found in .memory/")
+        all_ok = False
+    else:
+        result.record("ownership_declaration", True, "ownership.toml exists")
+
+        # Load and validate ownership
+        try:
+            ownership = load_memory_ownership(memory_root.parent)
+            schema_errors = validate_ownership_schema(ownership)
+            if schema_errors:
+                for error in schema_errors:
+                    result.record("ownership_schema", False, error)
+                    all_ok = False
+            else:
+                result.record("ownership_schema", True, "schema valid, no weakening detected")
+        except Exception as exc:
+            result.record("ownership_schema", False, f"failed to validate ownership: {exc}")
+            all_ok = False
+
+    return all_ok
+
+
+def check_domain_integrity(target: Path, memory_root: Path, result: CheckResult) -> bool:
+    """Step 2.4: Verify critical domain paths exist and are not symlinks.
+
+    Checks:
+    - .memory/memory/ and project-map/ exist and are not symlinks
+    - Paths don't escape project root
+    """
+    all_ok = True
+    critical_paths = [
+        ("memory", memory_root.parent / "memory"),
+        ("project-map", memory_root.parent / "project-map"),
+    ]
+
+    for name, path in critical_paths:
+        if not path.exists():
+            result.record(f"domain_integrity:{name}", False, f"{name} does not exist")
+            all_ok = False
+            continue
+
+        if path.is_symlink():
+            result.record(f"domain_integrity:{name}", False, f"{name} is a symlink (forbidden)")
+            all_ok = False
+            continue
+
+        # Check path doesn't escape project root
+        try:
+            path.relative_to(target.resolve())
+            result.record(f"domain_integrity:{name}", True, f"{name} is valid directory")
+        except ValueError:
+            result.record(f"domain_integrity:{name}", False, f"{name} escapes project root")
+            all_ok = False
+
+    return all_ok
+
+
+def check_document_paths(memory_root: Path, result: CheckResult) -> bool:
+    """Step 2.5: Verify document index consistency.
+
+    Checks:
+    - memory/docs/INDEX.md exists and is consistent
+    - memory/kb/INDEX.md exists and is consistent
+    - project-map/INDEX.md exists and is consistent
+    - Referenced documents exist
+    """
+    all_ok = True
+    index_files = [
+        ("memory/docs/INDEX.md", memory_root.parent / "memory" / "docs" / "INDEX.md"),
+        ("memory/kb/INDEX.md", memory_root.parent / "memory" / "kb" / "INDEX.md"),
+        ("project-map/INDEX.md", memory_root.parent / "project-map" / "INDEX.md"),
+    ]
+
+    for rel_path, full_path in index_files:
+        if not full_path.is_file():
+            result.record(f"document_paths:{rel_path}", False, f"{rel_path} not found")
+            all_ok = False
+            continue
+
+        # Try to read the index
+        try:
+            content = full_path.read_text(encoding="utf-8")
+            # Basic check: non-empty and has some structure
+            if not content.strip():
+                result.record(f"document_paths:{rel_path}", False, f"{rel_path} is empty")
+                all_ok = False
+                continue
+
+            # Check for referenced files (basic pattern matching)
+            # Look for markdown file references like "- path/to/file.md"
+            referenced_files = re.findall(r"[\s\-]*([\w\-/]+\.md)", content)
+            missing_refs = []
+            for ref in referenced_files:
+                ref_path = memory_root.parent / ref
+                if not ref_path.exists() and not ref.startswith("http"):
+                    # Skip if it looks like a pattern, not a literal path
+                    if "*" not in ref and "?" not in ref:
+                        missing_refs.append(ref)
+
+            if missing_refs:
+                result.record(
+                    f"document_paths:{rel_path}",
+                    False,
+                    f"{len(missing_refs)} referenced files missing: {', '.join(missing_refs[:3])}...",
+                )
+                all_ok = False
+            else:
+                result.record(f"document_paths:{rel_path}", True, f"{rel_path} valid, references OK")
+        except Exception as exc:
+            # Step 2.7 fix: record error instead of continue
+            result.record(f"document_paths:{rel_path}", False, f"read error: {exc}")
+            all_ok = False
+
+    return all_ok
+
+
+def check_shared_resources(target: Path, memory_root: Path, result: CheckResult) -> bool:
+    """Step 2.6: Verify shared resource markers.
+
+    Checks:
+    - AGENTS.md markers are paired (MEMORY_HOOK_BEGIN and MEMORY_HOOK_END)
+    - .claude/hooks.json or .codex/hooks.json entries are complete
+    """
+    all_ok = True
+
+    # Check AGENTS.md markers
+    agents_path = target / "AGENTS.md"
+    if agents_path.is_file():
+        try:
+            content = agents_path.read_text(encoding="utf-8")
+            has_begin = "<!-- MEMORY_HOOK_BEGIN -->" in content
+            has_end = "<!-- MEMORY_HOOK_END -->" in content
+
+            if has_begin and has_end:
+                result.record("shared_resources:agents_md", True, "AGENTS.md markers paired")
+            elif has_begin or has_end:
+                missing = "END" if has_begin else "BEGIN"
+                result.record(
+                    "shared_resources:agents_md",
+                    False,
+                    f"AGENTS.md missing {missing} marker",
+                )
+                all_ok = False
+            else:
+                # No markers - might be old style or not initialized
+                result.record(
+                    "shared_resources:agents_md",
+                    True,
+                    "AGENTS.md exists (no markers)",
+                )
+        except Exception as exc:
+            result.record("shared_resources:agents_md", False, f"read error: {exc}")
+            all_ok = False
+    else:
+        result.record("shared_resources:agents_md", False, "AGENTS.md not found")
+        all_ok = False
+
+    # Check hooks.json
+    for host in SUPPORTED_HOSTS:
+        hooks_path = target / f".{host}" / "hooks.json"
+        if hooks_path.is_file():
+            try:
+                data = json.loads(hooks_path.read_text(encoding="utf-8"))
+                hooks = data.get("hooks", [])
+                if isinstance(hooks, list):
+                    # Check each hook has required fields
+                    incomplete = []
+                    for idx, hook in enumerate(hooks):
+                        if not isinstance(hook, dict):
+                            continue
+                        if "memory-hook" in hook.get("command", ""):
+                            if not hook.get("event") or not hook.get("command"):
+                                incomplete.append(str(idx))
+
+                    if incomplete:
+                        result.record(
+                            f"shared_resources:hooks_{host}",
+                            False,
+                            f"{len(incomplete)} incomplete memory hook entries",
+                        )
+                        all_ok = False
+                    else:
+                        result.record(
+                            f"shared_resources:hooks_{host}",
+                            True,
+                            f"{len(hooks)} hooks, all complete",
+                        )
+                else:
+                    result.record(
+                        f"shared_resources:hooks_{host}",
+                        False,
+                        "hooks field is not a list",
+                    )
+                    all_ok = False
+            except json.JSONDecodeError as exc:
+                result.record(
+                    f"shared_resources:hooks_{host}",
+                    False,
+                    f"invalid JSON: {exc}",
+                )
+                all_ok = False
+            except Exception as exc:
+                result.record(f"shared_resources:hooks_{host}", False, f"read error: {exc}")
+                all_ok = False
+
+    return all_ok
+
+
 # ---------------------------------------------------------------------------
 # Main validation entry point
 # ---------------------------------------------------------------------------
@@ -566,6 +790,10 @@ def validate_project_memory(
         result.record("dry_run:status_enum", True, "would check status enumerations")
         result.record("dry_run:semver", True, "would check memory_version SemVer format")
         result.record("dry_run:host_enum", True, "would check adapter host enum")
+        result.record("dry_run:ownership", True, "would check ownership declaration")
+        result.record("dry_run:domain_integrity", True, "would check domain integrity")
+        result.record("dry_run:document_paths", True, "would check document paths")
+        result.record("dry_run:shared_resources", True, "would check shared resources")
         return result
 
     memory_root = target / ".memory"
@@ -585,6 +813,12 @@ def validate_project_memory(
     check_state_enumerations(memory_root, result)
     check_memory_lock_semver(memory_root, result)
     check_adapter_host_enum(memory_root, result)
+
+    # Step 2.3-2.6: Ownership-related checks
+    check_ownership_declaration(memory_root, result)
+    check_domain_integrity(target, memory_root, result)
+    check_document_paths(memory_root, result)
+    check_shared_resources(target, memory_root, result)
 
     return result
 

@@ -223,7 +223,12 @@ class ClaudeDelegate(HostDelegate):
 
 
 class NoopHostDelegate(HostDelegate):
-    """Noop delegate: always handles, always returns empty JSON."""
+    """Noop delegate: always handles, always returns empty JSON.
+
+    5b.6: Returns host_unavailable=True to separate policy_decision
+    from delegate availability. Consumers should check host_unavailable
+    before interpreting the policy_decision.
+    """
 
     def can_handle(self) -> bool:
         return True
@@ -237,7 +242,21 @@ class NoopHostDelegate(HostDelegate):
         return self.noop_response()
 
     def noop_response(self) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args=[], returncode=0, stdout="{}\n", stderr="")
+        """Return response with host_unavailable=True marker.
+
+        The stdout JSON includes:
+        - host_unavailable: True (delegate is a noop, host not present)
+        - policy_decision: "no_host" (separate from delegate availability)
+        """
+        result_json = json.dumps({
+            "host_unavailable": True,
+            "policy_decision": "no_host",
+        }) + "\n"
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=result_json, stderr="")
+
+    @property
+    def host_unavailable(self) -> bool:
+        return True
 
 
 def resolve_host_delegate(host: str, mode: str = "auto") -> HostDelegate:

@@ -7,20 +7,20 @@ memory-core provides a reusable `.memory/` protocol, templates, schemas, and CLI
 Install from a GitHub release wheel:
 
 ```bash
-gh release download v0.3.0 --repo hdot123/memory --pattern "*.whl"
-pip install memory_core-0.3.0-py3-none-any.whl
+gh release download v0.4.0 --repo hdot123/memory --pattern "*.whl"
+pip install memory_core-0.4.0-py3-none-any.whl
 ```
 
 Install from source:
 
 ```bash
-pip install git+https://github.com/hdot123/memory.git@v0.3.0
+pip install git+https://github.com/hdot123/memory.git@v0.4.0
 ```
 
 Upgrade by changing the version and adding `--upgrade`:
 
 ```bash
-pip install --upgrade git+https://github.com/hdot123/memory.git@v0.3.0
+pip install --upgrade git+https://github.com/hdot123/memory.git@v0.4.0
 ```
 
 For local development:
@@ -46,7 +46,7 @@ memory-validate --target /path/to/project
 Migrate between schema versions:
 
 ```bash
-memory-migrate --target /path/to/project --from 0.2.0 --to 0.3.0
+memory-migrate --target /path/to/project --from 0.2.0 --to 0.4.0
 ```
 
 ## Core CLI commands
@@ -56,7 +56,7 @@ memory-migrate --target /path/to/project --from 0.2.0 --to 0.3.0
 Creates or updates the standard project memory structure.
 
 ```bash
-memory-init --target /path/to/project [--scope my-project] [--host codex|factory|claude] [--mode create|adopt|update|repair] [--dry-run] [--json]
+memory-init --target /path/to/project [--scope my-project] [--host codex|factory|claude] [--mode create|adopt|update|repair] [--dry-run] [--force] [--no-clobber] [--json] [--version]
 ```
 
 Modes:
@@ -95,7 +95,7 @@ memory-validate --target /path/to/project [--dry-run] [--json]
 Runs version/schema migrations and records the result in `migrations.log`.
 
 ```bash
-memory-migrate --target /path/to/project --from 0.2.0 --to 0.3.0 [--dry-run] [--json]
+memory-migrate --target /path/to/project --from 0.2.0 --to 0.4.0 [--dry-run] [--json] [--version]
 ```
 
 ## Generated project layout
@@ -110,32 +110,38 @@ A target project initialized by `memory-init` receives a project-local memory la
 ├── PLAN.md
 ├── STATE.md
 ├── TASKS.md
-├── NOW.md
-├── inbox.md
 ├── migrations.log
 ├── manifest.json
 └── kb/
 
 memory/
 ├── kb/
+│   └── INDEX.md
 ├── docs/
 └── system/
 
 project-map/
 artifacts/memory-hook/
 INDEX.md
+NOW.md
 ```
 
 Project memory and runtime artifacts belong to the target project. The memory-core repository contains the reusable protocol, code, templates, schemas, fixtures, and documentation.
 
 ## Global hook setup
 
-memory-core supports Codex App and Factory Droid global hook entry points. Global hooks act as stable wrappers and route each event back to the current project directory.
+memory-core supports Codex App, Claude, and Factory Droid global hook entry points. Global hooks act as stable wrappers and route each event back to the current project directory.
 
 Codex App:
 
 ```bash
 memory-codex-hooks install --storage-root ~/.memory-core
+```
+
+Claude:
+
+```bash
+memory-claude-hooks install --storage-root ~/.memory-core
 ```
 
 Factory Droid:
@@ -165,6 +171,6 @@ python3 scripts/check_boundary.py
 
 ## Version and license
 
-- Current documented release: v0.3.0
+- Current documented release: v0.4.0
 - Python: >= 3.9
 - License: MIT. See [LICENSE](LICENSE).

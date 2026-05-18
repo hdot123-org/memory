@@ -171,8 +171,8 @@ def test_health_report_skips_exact_home_root(tmp_path: Path, monkeypatch):
 
 def test_health_report_skips_memory_core_source_repo(tmp_path: Path, monkeypatch):
     """Anti-pollution: health report should skip if target is memory-core source repo."""
-    # Import the health report module
-    from memory_core.tools import memory_health_report as health_module
+    # Import the shared detection API
+    from memory_core.ownership import is_memory_core_source_repo
 
     # Create a fake memory-core source repo
     memory_repo = tmp_path / "memory-core"
@@ -183,18 +183,18 @@ def test_health_report_skips_memory_core_source_repo(tmp_path: Path, monkeypatch
     subprocess.run(["git", "init"], cwd=memory_repo, check=True, capture_output=True, text=True)
 
     # Check detection
-    assert health_module._is_memory_core_source_repo(memory_repo) is True
+    assert is_memory_core_source_repo(memory_repo) is True
 
     # Also check that normal project is not detected
     normal_project = tmp_path / "normal-project"
     normal_project.mkdir()
     subprocess.run(["git", "init"], cwd=normal_project, check=True, capture_output=True, text=True)
-    assert health_module._is_memory_core_source_repo(normal_project) is False
+    assert is_memory_core_source_repo(normal_project) is False
 
 
 def test_gateway_hard_protection_skips_memory_core_source_repo(tmp_path: Path, monkeypatch):
     """Anti-pollution: gateway main() should skip entirely if cwd is memory-core source repo."""
-    from memory_core.tools import memory_hook_gateway as gateway_module
+    from memory_core.ownership import is_memory_core_source_repo
 
     # Create a fake memory-core source repo
     memory_repo = tmp_path / "memory-core"
@@ -205,15 +205,15 @@ def test_gateway_hard_protection_skips_memory_core_source_repo(tmp_path: Path, m
     subprocess.run(["git", "init"], cwd=memory_repo, check=True, capture_output=True, text=True)
 
     # Test the detection function
-    assert gateway_module._is_memory_core_source_repo(memory_repo) is True
+    assert is_memory_core_source_repo(memory_repo) is True
 
     # Test with subdirectory
     subdir = memory_repo / "subdir"
     subdir.mkdir()
-    assert gateway_module._is_memory_core_source_repo(subdir) is True
+    assert is_memory_core_source_repo(subdir) is True
 
     # Normal project should not be detected
     normal_project = tmp_path / "normal-project"
     normal_project.mkdir()
     subprocess.run(["git", "init"], cwd=normal_project, check=True, capture_output=True, text=True)
-    assert gateway_module._is_memory_core_source_repo(normal_project) is False
+    assert is_memory_core_source_repo(normal_project) is False

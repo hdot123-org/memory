@@ -3,11 +3,15 @@
 
 Reads manifest.json and verifies SHA-256 + HMAC signatures against
 current file contents. Reports tampering, missing files, and new files.
+
+M4: No auto re-sign on failure. Returns (ok=False, errors=[...]) only.
+Source repo: zero file side-effects (returns empty result without reading).
+Supports both v1 and v2 manifest schemas.
 """
 from __future__ import annotations
 
 import hashlib
-import hmac as _hmac
+import hmac as _hmc
 import json
 from pathlib import Path
 from typing import Any
@@ -16,8 +20,18 @@ from memory_core.tools.denied_project_roots import is_denied_project_root
 
 MANIFEST_FILENAME = "manifest.json"
 
+# Supported schema versions (M4: accept both v1 and v2)
+SUPPORTED_SCHEMA_VERSIONS = {"integrity-manifest-v1", "integrity-manifest-v2"}
+
+# M4: Import source repo detection for zero side-effects
+try:
+    from memory_core.ownership import is_memory_core_source_repo
+except ImportError:
+    is_memory_core_source_repo = None  # type: ignore
+
 # Lazy import to avoid circular dependency
 _discover_fn = None
+
 
 def _get_discover_fn():
     global _discover_fn
@@ -74,6 +88,9 @@ def verify_project(
 ) -> IntegrityResult:
     """Verify integrity of a project's canonical files against manifest.
 
+    M4: No auto re-sign on failure. Returns IntegrityResult with ok=False
+    and errors list. Source repo: zero file side-effects.
+
     Args:
         project_root: Absolute path to project root
         key: 32-byte HMAC key
@@ -83,6 +100,11 @@ def verify_project(
     """
     result = IntegrityResult()
     resolved_root = project_root.resolve()
+
+    # M4.5: Source repo readonly — zero file side-effects
+    if is_memory_core_source_repo is not None and is_memory_core_source_repo(resolved_root):
+        return result
+
     if is_denied_project_root(resolved_root):
         return result
 
@@ -98,10 +120,12 @@ def verify_project(
         result.add_error("", "manifest_corrupt", f"Cannot parse manifest: {exc}")
         return result
 
-    if manifest.get("schema_version") != "integrity-manifest-v1":
+    # M4: Accept both v1 and v2 schemas
+    schema_version = manifest.get("schema_version", "")
+    if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
         result.add_error(
             "", "schema_mismatch",
-            f"Expected integrity-manifest-v1, got {manifest.get('schema_version')}"
+            f"Unsupported schema version: {schema_version!r}"
         )
         return result
 
@@ -136,7 +160,7 @@ def verify_project(
             continue
 
         actual_sha = hashlib.sha256(raw).hexdigest()
-        actual_hmac = _hmac.new(key, raw, hashlib.sha256).hexdigest()
+        actual_hmac = _hmc.new(key, raw, hashlib.sha256).hexdigest()
 
         if actual_sha != expected_sha:
             result.add_error(rel, "tampered", f"SHA-256 mismatch: expected {expected_sha[:16]}..., got {actual_sha[:16]}...")
@@ -156,6 +180,8 @@ def verify_project(
                 rel = str(fpath.relative_to(resolved_root))
                 result.add_warning(rel, "new_unsigned", "File exists but not in manifest")
 
+    # M4: On failure, return (ok=False, errors=[...]) only — NO auto re-sign.
+    # Caller must use memory_integrity_resign.py CLI for explicit re-sign.
     return result
 
 

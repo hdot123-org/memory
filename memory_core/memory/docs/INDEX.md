@@ -40,7 +40,7 @@ Docs 子树默认归入 `incoming-raw`，未被地图明确吸收前不授予合
 
 | ID     | Name                         | Path                                                  |
 |--------|------------------------------|-------------------------------------------------------|
-| M3-000 | Memory Policy Pack           | `../kb/global/workbot-policy-pack.md`                  |
+| M3-000 | Memory Policy Pack           | `../kb/global/memory-hook-policy-pack.md`              |
 
 ---
 

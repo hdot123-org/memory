@@ -40,7 +40,7 @@ memory.lock 是 TOML 格式文件，包含以下字段：
 
 [memory]
 # memory-core 发布版本号（SemVer），项目当前集成的版本
-memory_version = "0.3.0"
+memory_version = "0.4.0"
 
 # 项目使用的 memory hook schema 版本标识符
 # 与 memory-core 内部 schema 版本号对应
@@ -77,7 +77,7 @@ lock_reason = "initial"
 
 ### 3.1 矩阵格式
 
-兼容矩阵以 TOML 形式维护，可在 memory 仓库的 docs/COMPATIBILITY_MATRIX.md 中。
+兼容矩阵以 TOML 形式维护（目前内嵌于本文档中；独立文件 docs/COMPATIBILITY_MATRIX.md 暂未创建）。
 
 ```toml
 # 兼容矩阵示例
@@ -89,7 +89,7 @@ adapter_versions = ["builtin"]
 status = "stable"
 
 [[compat]]
-memory_version = "0.3.0"
+memory_version = "0.4.0"
 schema_versions = ["context-package-v1"]
 adapter_versions = ["builtin", "custom-adapter-v1"]
 status = "stable"

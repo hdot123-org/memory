@@ -5,7 +5,7 @@ shortname: DES-005
 status: 可评审
 scope: default
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-14
 source: code-analysis
 confidence: medium
 tags: [implementations,concrete-classes]
@@ -14,10 +14,14 @@ related: [DES-004, DES-006, DES-007]
 
 > 文档编号：DES-005 | 版本：V1.0 | 日期：2026-04-26 | 维护人：codex
 
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-05-14 (v0.4.0 Beta)。如需精确接口签名，请参考源码和 ShowDoc Python API 文档。
+
 # 实现层设计文档
 
-> 来源：`<memory-repo>/memory_core/tools/memory_hook_impls.py`（1040 行）
-> 接口：`<memory-repo>/memory_core/tools/memory_hook_interfaces.py`（242 行）
+> 来源：`<memory-repo>/memory_core/tools/memory_hook_impls.py`
+> 接口：`<memory-repo>/memory_core/tools/memory_hook_interfaces.py`
+
+> **注意**：文中行号标注为参考值，实际代码行号可能因版本迭代而变化。
 
 ---
 

@@ -59,6 +59,12 @@ try:
 except ImportError:
     pass  # type: ignore  # noqa: E402
 
+# M3: Import is_memory_core_source_repo from ownership module
+try:
+    from ..ownership import is_memory_core_source_repo
+except ImportError:
+    from memory_core.ownership import is_memory_core_source_repo  # type: ignore
+
 try:
     from .memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy
     from .memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile
@@ -1161,6 +1167,34 @@ def _delegate_claude(event: str, raw_payload: str, payload: dict[str, Any]) -> s
     return _execute_delegate_via_facade("claude", event, raw_payload, payload)
 
 
+def _build_degraded_package_with_error(
+    host: str,
+    event: str,
+    cwd: Path,
+    error: str,
+    error_type: str = "delegate_preflight_failed",
+) -> dict[str, Any]:
+    """M3: Build a degraded context-package with error info.
+
+    Instead of returning noop success, return a structured degraded package
+    that includes error information for observability.
+    """
+    return {
+        "package_kind": "degraded-context",
+        "mode": "degraded",
+        "status": "degraded",
+        "host": host,
+        "event": event,
+        "project_root": str(cwd),
+        "cwd": str(cwd),
+        "error": {
+            "type": error_type,
+            "message": error,
+        },
+        "validation_errors": [error],
+    }
+
+
 def _execute_delegate(
     args: argparse.Namespace,
     raw_payload: str,
@@ -1170,7 +1204,7 @@ def _execute_delegate(
     """Execute the host-specific delegate and return an exit code.
 
     Handles preflight errors, delegate process output forwarding,
-    and noop fallback for all paths.
+    and degraded fallback for all paths.
     """
     try:
         if args.host == "codex":
@@ -1181,14 +1215,16 @@ def _execute_delegate(
             # factory and others: no delegate
             proc = None
     except RuntimeError as exc:
+        # M3: Return degraded package with error info instead of noop success
         append_error_log(
             "memory-hook-gateway",
             "delegate preflight failed",
             {"host": args.host, "event": args.event, "error": str(exc), "cwd": str(cwd)},
         )
-        noop = _get_host_delegate(args.host).noop_response()
-        if noop.stdout:
-            sys.stdout.write(noop.stdout)
+        degraded_package = _build_degraded_package_with_error(
+            args.host, args.event, cwd, str(exc), error_type="delegate_preflight_failed"
+        )
+        sys.stdout.write(json.dumps(degraded_package, ensure_ascii=False) + "\n")
         return 0
 
     if proc is not None:
@@ -1281,36 +1317,50 @@ def _launch_async_health_check(cwd: Path) -> None:
             )
 
 
-def _is_memory_core_source_repo(path: Path) -> bool:
-    """Check if path is the memory-core source repository (anti-pollution)."""
-    resolved = path.resolve()
-    markers = [
-        resolved / "memory_core" / "tools" / "memory_hook_gateway.py",
-        resolved / "memory_core" / "tools" / "factory_global_hooks.py",
-        resolved / "memory_core" / "tools" / "codex_global_hooks.py",
+def _build_readonly_source_repo_package(cwd: Path, host: str, event: str) -> dict[str, Any]:
+    """M3: Build a readonly context-package for the memory-core source repo.
+
+    Instead of short-circuiting with empty JSON, return a proper context-package
+    that declares the repo is in read-only mode with no allowed writes.
+    """
+    # Get ownership domains/resources for rules
+    from ..ownership import DEFAULT_OWNERSHIP_DOMAINS, DEFAULT_OWNERSHIP_RESOURCES
+
+    ownership_domains = [
+        {
+            "name": d.name,
+            "path": d.path,
+            "level": d.level.name.lower(),
+            "recursive": d.recursive,
+            "description": d.description,
+        }
+        for d in DEFAULT_OWNERSHIP_DOMAINS
     ]
-    if any(marker.exists() for marker in markers):
-        return True
-    # Also check git root
-    try:
-        git_root = subprocess.run(
-            ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if git_root.returncode == 0 and git_root.stdout.strip():
-            git_path = Path(git_root.stdout.strip())
-            git_markers = [
-                git_path / "memory_core" / "tools" / "memory_hook_gateway.py",
-                git_path / "memory_core" / "tools" / "factory_global_hooks.py",
-                git_path / "memory_core" / "tools" / "codex_global_hooks.py",
-            ]
-            if any(marker.exists() for marker in git_markers):
-                return True
-    except Exception:
-        pass
-    return False
+    protected_paths = [
+        "memory/docs/**",
+        "memory/kb/**",
+        "memory/system/**",
+        ".memory/**",
+        "memory/project-map/**",
+        "AGENTS.md",
+    ]
+
+    return {
+        "package_kind": "source-repo-rules",
+        "mode": "read-only",
+        "allowed_writes": {},
+        "rules": {
+            "description": "memory-core source repository - all writes blocked",
+            "ownership_domains": ownership_domains,
+            "protected_paths": protected_paths,
+            "note": "This is the memory-core source repository. Hooks run in readonly mode to prevent self-pollution.",
+        },
+        "project_root": str(cwd),
+        "cwd": str(cwd),
+        "host": host,
+        "event": event,
+        "status": "ok",
+    }
 
 
 def main() -> int:
@@ -1319,9 +1369,10 @@ def main() -> int:
     payload = _read_payload(raw_payload)
     cwd = _discover_cwd(payload)
 
-    # Anti-pollution: Hard protection - skip entirely if cwd or its git root is memory-core source repo
-    if _is_memory_core_source_repo(cwd):
-        sys.stdout.write("{}\n")
+    # M3: Anti-pollution - source repo gets readonly context-package instead of noop
+    if is_memory_core_source_repo(cwd):
+        readonly_package = _build_readonly_source_repo_package(cwd, args.host, args.event)
+        sys.stdout.write(json.dumps(readonly_package, ensure_ascii=False) + "\n")
         return 0
 
     if is_denied_project_root(cwd):
@@ -1376,10 +1427,14 @@ def main() -> int:
                     "integrity": integrity_result,
                 },
             )
-            # Degrade status but don't block
+            # M4: Block on integrity failure (no longer degraded)
+            package["status"] = "blocked"
             package.setdefault("validation_errors", [])
             if isinstance(package.get("validation_errors"), list):
                 package["validation_errors"].append("integrity-check-failed")
+                for err in integrity_result.get("errors", []):
+                    detail = err.get("detail", str(err))
+                    package["validation_errors"].append(f"integrity-error: {detail}")
 
     write_ok = writer.write(args.host, args.event, package)
     if not write_ok:

@@ -18,7 +18,7 @@
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `ci.yml` | push/PR to `main` | ruff lint + pytest on Python 3.9/3.10/3.11/3.12 |
-| `release.yml` | tag `v*` | full matrix tests, version validation, build, GitHub Release, PyPI publish |
+| `release-and-dispatch.yml` | tag `v*` | full matrix tests, version validation, build, GitHub Release, PyPI publish |
 
 ## Local development
 

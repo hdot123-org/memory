@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 import warnings
 from datetime import datetime
@@ -19,6 +18,12 @@ REPO_ROOT = SCRIPT_PATH.parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from memory_core.tools.denied_project_roots import is_denied_project_root
+
+# M3: Import is_memory_core_source_repo from ownership module
+try:
+    from memory_core.ownership import is_memory_core_source_repo
+except ImportError:
+    is_memory_core_source_repo = None  # type: ignore
 
 
 def _run_layout_audit(target: Path) -> dict[str, Any] | None:
@@ -165,36 +170,7 @@ def _determine_recommended_mode(
     return "update" if has_dot_memory else "adopt"
 
 
-def _is_memory_core_source_repo(path: Path) -> bool:
-    """Check if path is the memory-core source repository (anti-pollution)."""
-    resolved = path.resolve()
-    markers = [
-        resolved / "memory_core" / "tools" / "memory_hook_gateway.py",
-        resolved / "memory_core" / "tools" / "factory_global_hooks.py",
-        resolved / "memory_core" / "tools" / "codex_global_hooks.py",
-    ]
-    if any(marker.exists() for marker in markers):
-        return True
-    # Also check git root
-    try:
-        git_root = subprocess.run(
-            ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if git_root.returncode == 0 and git_root.stdout.strip():
-            git_path = Path(git_root.stdout.strip())
-            git_markers = [
-                git_path / "memory_core" / "tools" / "memory_hook_gateway.py",
-                git_path / "memory_core" / "tools" / "factory_global_hooks.py",
-                git_path / "memory_core" / "tools" / "codex_global_hooks.py",
-            ]
-            if any(marker.exists() for marker in git_markers):
-                return True
-    except Exception:
-        pass
-    return False
+# M3: is_memory_core_source_repo now imported from memory_core.ownership
 
 
 def main() -> int:
@@ -207,8 +183,8 @@ def main() -> int:
     if not target.exists():
         return 1
 
-    # Anti-pollution: Skip if target is memory-core source repo
-    if _is_memory_core_source_repo(target):
+    # M3: Anti-pollution: Skip if target is memory-core source repo
+    if is_memory_core_source_repo is not None and is_memory_core_source_repo(target):
         return 0
 
     if is_denied_project_root(target):

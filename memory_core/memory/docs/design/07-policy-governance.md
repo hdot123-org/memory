@@ -5,7 +5,7 @@ shortname: DES-007
 status: 可评审
 scope: default
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-14
 source: code-analysis
 confidence: medium
 tags: [policy,governance,rules]
@@ -14,17 +14,19 @@ related: [DES-006, DES-008, DES-010]
 
 > 文档编号：DES-007 | 版本：V1.0 | 日期：2026-04-26 | 维护人：codex
 
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-05-14 (v0.4.0 Beta)。如需精确接口签名，请参考源码和 ShowDoc Python API 文档。
+
 # 07-policy-governance
 
 > Policy Pack 与治理机制设计文档。
-> 范围：memory 模块 / workbot adapter 级别。
+> 范围：memory 模块 / memory-hook-policy-pack 级别（原 workbot-policy-pack 已更新）。
 > 生成日期：2026-04-26。
 
 ---
 
 ## 1. memory-hook-policy-pack.json 完整结构
 
-全局默认策略包位于 `memory-hook-policy-pack.json`（`memory_core/memory/kb/global/memory-hook-policy-pack.json`），workbot 专用策略包位于 `workbot-policy-pack.json`（`memory_core/memory/kb/global/workbot-policy-pack.json`）。两者结构相同，仅 `scope` 字段不同。
+全局默认策略包位于 `memory-hook-policy-pack.json`（`memory_core/memory/kb/global/memory-hook-policy-pack.json`）。原 workbot 专用策略包已合并至 memory-hook-policy-pack，scope 字段统一为 `default`。
 
 ```json
 {
@@ -80,13 +82,13 @@ related: [DES-006, DES-008, DES-010]
 | `preserve-and-escalate` | 保留第一值，标记为升级到人工裁决 |
 | `prefer-strict` | 选择更严格的值（如 `kb_overwrite_allowed` 选 `false`，`registration_phase` 选 `declared-not-enforced`） |
 
-冲突解决逻辑实现在 `PolicyRegistryImpl.resolve_conflict()`（`memory_core/tools/memory_hook_impls.py` 约 L325-358）。
+冲突解决逻辑实现在 `PolicyRegistryImpl.resolve_conflict()`（`memory_core/tools/memory_hook_impls.py`）。
 
 ---
 
-## 2. workbot-policy-pack.md scope 标记
+## 2. memory-hook-policy-pack.md scope 标记
 
-`workbot-policy-pack.md`（`memory_core/memory/kb/global/workbot-policy-pack.md`）是 workbot adapter 级别的策略包规范文档。
+`memory-hook-policy-pack.md`（`memory_core/memory/kb/global/memory-hook-policy-pack.md`）是 memory 模块级别的策略包规范文档（原 workbot-policy-pack.md 已更新）。
 
 **关键 scope 标记：**
 
@@ -192,7 +194,7 @@ _default_policy_registry = PolicyRegistryImpl(
 )
 ```
 
-**继承语义：** AEdu 和 platform-capabilities 继承 workbot 的所有策略，子 scope 可覆盖特定策略值，但冲突策略定义不隐式继承（`workbot-policy-pack.md` §4）。
+**继承语义：** AEdu 和 platform-capabilities 继承 workbot 的所有策略，子 scope 可覆盖特定策略值，但冲突策略定义不隐式继承（`memory-hook-policy-pack.md` §4）。
 
 ---
 

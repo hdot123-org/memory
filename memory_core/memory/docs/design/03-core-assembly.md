@@ -5,7 +5,7 @@ shortname: DES-003
 status: 可评审
 scope: default
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-14
 source: code-analysis
 confidence: medium
 tags: [core,assembly,context]
@@ -14,10 +14,14 @@ related: [DES-001, DES-004, DES-005]
 
 > 文档编号：DES-003 | 版本：V1.0 | 日期：2026-04-26 | 状态：可评审 | 维护人：codex
 
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-05-14 (v0.4.0 Beta)。如需精确接口签名，请参考源码和 ShowDoc Python API 文档。
+
 # Core Assembly 设计文档
 
-> 来源文件：`memory_core/tools/memory_hook_core.py`（271 行）
+> 来源文件：`memory_core/tools/memory_hook_core.py`
 > 生成日期：2026-04-26
+
+> **Schema 双层说明**：核心内部使用 `wb-hook-v2` 进行 context package 组装，对外输出时转换为 `context-package-v1` 格式。Gateway 层通过 `_apply_artifact_compaction()` 执行 v2→v1 的字段裁剪和格式转换。
 
 ---
 

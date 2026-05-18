@@ -5,7 +5,7 @@ shortname: DES-008
 status: 可评审
 scope: default
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-14
 source: code-analysis
 confidence: medium
 tags: [data-pipeline,sink,write-route]
@@ -14,7 +14,11 @@ related: [DES-007, DES-009, DES-010]
 
 > 文档编号：DES-008 | 版本：V1.0 | 日期：2026-04-26 | 维护人：codex
 
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-05-14 (v0.4.0 Beta)。如需精确接口签名，请参考源码和 ShowDoc Python API 文档。
+
 # 08-data-pipeline.md
+
+> **v2→v1 转换层说明**：核心内部使用 `wb-hook-v2` schema 进行数据组装，包含完整的 system_context、project_context、task_context 三层结构。对外输出时通过 `_apply_artifact_compaction()` 转换为 `context-package-v1` 格式，裁剪内部诊断字段，保留消费者契约字段。
 
 ## 1 Context Package 生命周期
 

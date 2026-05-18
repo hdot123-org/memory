@@ -2,7 +2,7 @@
 
 import re
 
-CURRENT_MEMORY_VERSION = "0.3.0"
+CURRENT_MEMORY_VERSION = "0.4.0"
 
 SUPPORTED_HOSTS = ("codex", "claude", "factory")
 
@@ -25,6 +25,9 @@ REQUIRED_MEMORY_DIRS = [
 
 CANONICAL_MEMORY_LOCK_SCHEMA = "context-package-v1"
 CANONICAL_ADAPTER_VERSION = "builtin"
+
+# Ownership protection schema version
+OWNERSHIP_SCHEMA_VERSION = "memory-ownership-v1"
 
 # Migration log line pattern: "timestamp | from | to | status | detail"
 # Example: "2026-05-09T12:34:56Z | 0.1.0 | 0.2.0 | success | Migrated from ..."

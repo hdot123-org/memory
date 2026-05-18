@@ -4,12 +4,18 @@
 Computes SHA-256 + HMAC-SHA256 signatures for project canonical files
 and writes a manifest.json to each project's .memory/ directory.
 
-manifest.json structure:
+M4: Signing scope is now derived from ownership domains/resources via
+load_memory_ownership(). Manifest entries include ownership metadata
+(ownership_id, protection_level, classification_source). Source repo
+sign/verify have zero file side-effects.
+
+manifest.json structure (v2):
 {
-  "schema_version": "integrity-manifest-v1",
+  "schema_version": "integrity-manifest-v2",
   "project_root": "/abs/path/to/project",
   "generated_at": "2026-05-11T12:00:00+08:00",
   "key_fingerprint": "sha256:<first-8-hex-of-key-hash>",
+  "ownership_digest": "<sha256-of-ownership-config>",
   "entries": [
     {
       "path": ".memory/CANONICAL.md",
@@ -17,7 +23,10 @@ manifest.json structure:
       "sha256": "<hex>",
       "hmac_sha256": "<hex>",
       "size_bytes": 1234,
-      "signed_at": "2026-05-11T12:00:00+08:00"
+      "signed_at": "2026-05-11T12:00:00+08:00",
+      "ownership_id": "<domain-or-resource-name>",
+      "protection_level": "critical|standard|recommended",
+      "classification_source": "domain|resource|none"
     }
   ]
 }
@@ -33,10 +42,32 @@ from typing import Any
 
 from memory_core.tools.denied_project_roots import is_denied_project_root
 
-MANIFEST_FILENAME = "manifest.json"
-SCHEMA_VERSION = "integrity-manifest-v1"
+# M3: Import is_memory_core_source_repo from ownership module
+try:
+    from memory_core.ownership import is_memory_core_source_repo
+except ImportError:
+    is_memory_core_source_repo = None  # type: ignore
 
-# Default canonical file patterns to sign within a project
+# M4: Import ownership APIs for signing scope
+try:
+    from memory_core.ownership import (
+        NotOwned,
+        Owned,
+        classify_owned_path,
+        load_memory_ownership,
+    )
+except ImportError:
+    load_memory_ownership = None  # type: ignore
+    classify_owned_path = None  # type: ignore
+    Owned = None  # type: ignore
+    NotOwned = None  # type: ignore
+
+MANIFEST_FILENAME = "manifest.json"
+SCHEMA_VERSION_V1 = "integrity-manifest-v1"
+SCHEMA_VERSION_V2 = "integrity-manifest-v2"
+SCHEMA_VERSION = SCHEMA_VERSION_V2
+
+# Default canonical file patterns to sign within a project (legacy fallback)
 CANONICAL_PATTERNS = [
     ".memory/CANONICAL.md",
     ".memory/STATE.md",
@@ -44,6 +75,7 @@ CANONICAL_PATTERNS = [
     ".memory/TASKS.md",
     ".memory/adapter.toml",
     "memory/system/errors.log",
+    ".memory/ownership.toml",
 ]
 
 # Date-partitioned artifact paths (sign the daily files too)
@@ -75,6 +107,56 @@ def _key_fingerprint(key: bytes) -> str:
     return "sha256:" + hashlib.sha256(key).hexdigest()[:8]
 
 
+def _compute_ownership_digest(project_root: Path) -> str:
+    """M4: Compute a SHA-256 digest of the ownership configuration.
+
+    If ownership.toml exists, hash its raw bytes. Otherwise hash the
+    default ownership configuration JSON for reproducibility.
+    """
+    ownership_path = project_root / ".memory" / "ownership.toml"
+    if ownership_path.exists():
+        return hashlib.sha256(ownership_path.read_bytes()).hexdigest()
+
+    # No ownership file — hash the default config
+    if load_memory_ownership is not None:
+        ownership = load_memory_ownership(project_root)
+        config_json = json.dumps(ownership.to_dict(), sort_keys=True)
+        return hashlib.sha256(config_json.encode()).hexdigest()
+
+    # Fallback: hash empty string
+    return hashlib.sha256(b"").hexdigest()
+
+
+def _classify_entry(
+    rel_path_str: str,
+    project_root: Path,
+) -> tuple[str, str, str]:
+    """M4: Classify a path for manifest entry metadata.
+
+    Returns:
+        (ownership_id, protection_level, classification_source) tuple.
+    """
+    if classify_owned_path is not None:
+        ownership = load_memory_ownership(project_root) if load_memory_ownership is not None else None
+        result = classify_owned_path(rel_path_str, ownership, project_root)
+
+        if isinstance(result, Owned):
+            if result.resource is not None:
+                return (
+                    result.resource.name,
+                    result.level.name.lower(),
+                    "resource",
+                )
+            if result.domain is not None:
+                return (
+                    result.domain.name,
+                    result.level.name.lower(),
+                    "domain",
+                )
+
+    return ("none", "none", "none")
+
+
 def _discover_canonical_files(project_root: Path) -> list[Path]:
     """Discover all signable files in a project.
 
@@ -95,6 +177,32 @@ def _discover_canonical_files(project_root: Path) -> list[Path]:
                 if sub.is_file() and sub.suffix in (".json", ".jsonl", ".log"):
                     found.append(sub.resolve())
 
+    # M4: Discover owned files from ownership configuration
+    if load_memory_ownership is not None:
+        try:
+            ownership = load_memory_ownership(project_root)
+            for domain in ownership.domains:
+                if not domain.recursive:
+                    # Non-recursive: only the domain directory index itself
+                    domain_path = resolved_root / domain.path
+                    if domain_path.exists() and domain_path.is_dir():
+                        for child in sorted(domain_path.iterdir()):
+                            if child.is_file():
+                                found.append(child.resolve())
+                else:
+                    # Recursive: walk the entire domain tree
+                    domain_path = resolved_root / domain.path
+                    if domain_path.exists() and domain_path.is_dir():
+                        for child in sorted(domain_path.rglob("*")):
+                            if child.is_file():
+                                found.append(child.resolve())
+            for resource in ownership.resources:
+                res_path = resolved_root / resource.path
+                if res_path.exists() and res_path.is_file():
+                    found.append(res_path.resolve())
+        except Exception:
+            pass  # Fall through to canonical patterns only
+
     # Note: do NOT sign the current manifest.json to avoid chicken-egg problem.
     # The manifest is a one-way snapshot; next signing run captures new state.
 
@@ -108,37 +216,7 @@ def _discover_canonical_files(project_root: Path) -> list[Path]:
     return unique
 
 
-def _is_memory_core_source_repo(path: Path) -> bool:
-    """Check if path is the memory-core source repository (anti-pollution)."""
-    import subprocess  # Local import to avoid dependency issues
-    resolved = path.resolve()
-    markers = [
-        resolved / "memory_core" / "tools" / "memory_hook_gateway.py",
-        resolved / "memory_core" / "tools" / "factory_global_hooks.py",
-        resolved / "memory_core" / "tools" / "codex_global_hooks.py",
-    ]
-    if any(marker.exists() for marker in markers):
-        return True
-    # Also check git root
-    try:
-        git_root = subprocess.run(
-            ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if git_root.returncode == 0 and git_root.stdout.strip():
-            git_path = Path(git_root.stdout.strip())
-            git_markers = [
-                git_path / "memory_core" / "tools" / "memory_hook_gateway.py",
-                git_path / "memory_core" / "tools" / "factory_global_hooks.py",
-                git_path / "memory_core" / "tools" / "codex_global_hooks.py",
-            ]
-            if any(marker.exists() for marker in git_markers):
-                return True
-    except Exception:
-        pass
-    return False
+# M3: is_memory_core_source_repo now imported from memory_core.ownership
 
 
 def sign_project(
@@ -149,6 +227,9 @@ def sign_project(
 ) -> dict[str, Any] | None:
     """Sign all canonical files in a project and write manifest.json.
 
+    M4: Signing scope is now derived from ownership domains/resources.
+    Source repo: zero file side-effects (returns None, does not write).
+
     Args:
         project_root: Absolute path to project root (git root)
         key: 32-byte HMAC key
@@ -157,8 +238,9 @@ def sign_project(
     Returns:
         The manifest dict that was written, or None if skipped (anti-pollution)
     """
-    # Anti-pollution: Skip if project_root is memory-core source repo
-    if _is_memory_core_source_repo(project_root):
+    # M3 + M4.5: Anti-pollution: Skip if project_root is memory-core source repo
+    # Source repo readonly: sign must not read or write any files (zero side-effects)
+    if is_memory_core_source_repo is not None and is_memory_core_source_repo(project_root):
         return None
 
     if is_denied_project_root(project_root):
@@ -171,22 +253,37 @@ def sign_project(
     resolved_root = project_root.resolve()
     files = _discover_canonical_files(resolved_root)
     timestamp = now_iso()
+
+    # M4: Compute ownership digest for manifest header
+    ownership_digest = _compute_ownership_digest(resolved_root)
+
     entries: list[dict[str, Any]] = []
 
     for fpath in files:
         if not fpath.exists():
             continue
         rel = fpath.relative_to(resolved_root)
+        rel_str = str(rel).replace("\\", "/")
         raw = fpath.read_bytes()
         sha = hashlib.sha256(raw).hexdigest()
         hm = _hmac.new(key, raw, hashlib.sha256).hexdigest()
+
+        # M4: Classify entry for ownership metadata
+        ownership_id, protection_level, classification_source = _classify_entry(
+            rel_str, resolved_root
+        )
+
         entries.append({
             "path": str(fpath),
-            "rel_path": str(rel),
+            "rel_path": rel_str,
             "sha256": sha,
             "hmac_sha256": hm,
             "size_bytes": fpath.stat().st_size,
             "signed_at": timestamp,
+            # M4: Manifest v2 fields
+            "ownership_id": ownership_id,
+            "protection_level": protection_level,
+            "classification_source": classification_source,
         })
 
     manifest = {
@@ -194,6 +291,7 @@ def sign_project(
         "project_root": str(resolved_root),
         "generated_at": timestamp,
         "key_fingerprint": _key_fingerprint(key),
+        "ownership_digest": ownership_digest,
         "entry_count": len(entries),
         "entries": entries,
     }

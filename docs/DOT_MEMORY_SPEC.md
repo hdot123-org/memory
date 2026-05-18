@@ -26,11 +26,16 @@ tags: [dot-memory,spec,schema]
 ├── PLAN.md            # 执行计划
 ├── STATE.md           # 项目状态
 ├── TASKS.md           # 任务清单
-├── NOW.md             # 当前状态快照
 ├── migrations.log     # 迁移日志
-├── inbox.md           # 临时任务捕获区
 ├── manifest.json      # L2 完整性签名清单（自动生成）
 └── kb/
+    ├── projects/      # 项目知识
+    ├── decisions/     # 决策记录
+    ├── lessons/       # 经验教训
+    └── global/        # 全局规范
+
+> **注意**：NOW.md 是 KB 模板生成的根级文件（由 gateway 生成，不在 `.memory/` 内），
+> inbox.md 位于 `memory/inbox.md`（在 KB 目录中，不在 `.memory/` 内）。
     ├── projects/      # 项目知识
     ├── decisions/     # 决策记录
     ├── lessons/       # 经验教训
@@ -99,7 +104,7 @@ tags: [dot-memory,spec,schema]
 
 ```toml
 [memory]
-memory_version = "0.2.0"
+memory_version = "0.4.0"
 schema_version = "context-package-v1"
 adapter_version = "builtin"
 locked_at = "2026-04-29T00:00:00Z"
@@ -108,7 +113,7 @@ lock_reason = "initial"
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| memory_version | SemVer string | 是 | memory-core 的发布版本，如 `0.2.0` |
+| memory_version | SemVer string | 是 | memory-core 的发布版本，如 `0.4.0` |
 | schema_version | string | 是 | hook/schema 版本标识，如 `context-package-v1` |
 | adapter_version | string | 否 | adapter 版本，默认 `builtin` |
 | locked_at | ISO-8601 | 否 | 最后锁定/升级时间 |
@@ -129,7 +134,7 @@ lock_reason = "initial"
 
 ```toml
 [core]
-version = "0.2.0"
+version = "0.4.0"
 adapter = "default"
 
 [policy]
@@ -163,7 +168,7 @@ canonical_files = ["CANONICAL.md", "STATE.md"]
 - 文件必须存在且为合法 TOML
 - `core.version` 必须符合 semver 格式
 - `routing.project_name` 不能为空
-- 详细 schema 定义见 `workspace/tools/adapter_toml_schema.py`
+- 详细 schema 定义见 `memory_core/tools/adapter_toml_schema.py`
 
 ### 3. CANONICAL.md
 
@@ -363,11 +368,11 @@ Runtime required：被 `memory_hook_core.py` 在构建 context package 时作为
 
 当 `.memory/` 目录下存在任意文件时，验证器必须检查以下完整性：
 
-1. **必备文件检查**：9 个文件全部存在（memory.lock、adapter.toml、CANONICAL.md、PLAN.md、STATE.md、TASKS.md、NOW.md、migrations.log、inbox.md）
+1. **必备文件检查**：7 个文件全部存在（memory.lock、adapter.toml、CANONICAL.md、PLAN.md、STATE.md、TASKS.md、migrations.log）
 2. **格式检查**：各文件格式合法（TOML/Markdown/JSON）
 3. **必填字段检查**：各文件必填字段不为空
 4. **枚举值检查**：状态、类型等字段为合法枚举值
-5. **Runtime required 文件检查**：`memory/kb/INDEX.md`、`memory/kb/global/memory-hook-policy-pack.json`、`memory/kb/projects/{scope}.md` 存在
+5. **Runtime required 文件检查**：`memory/kb/INDEX.md`、`memory/kb/global/memory-hook-policy-pack.json`、`memory/kb/projects/{scope}.md`、`memory/inbox.md` 存在
 6. **L2 完整性检查**（可选）：`manifest.json` 存在且签名验证通过
 
 缺少任一必备文件时，验证器必须报告失败。

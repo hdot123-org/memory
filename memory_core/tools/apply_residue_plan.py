@@ -32,6 +32,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from memory_core.ownership import (
+    Owned,
+    classify_owned_path,
+    load_memory_ownership,
+)
+
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -40,13 +46,18 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-# Forbidden files/patterns that must never be overwritten
-FORBIDDEN_OVERWRITE_PATTERNS = [
+# Step 2.9: FORBIDDEN_OVERWRITE_PATTERNS replaced with classify_owned_path()
+# Legacy patterns kept for reference during transition
+LEGACY_FORBIDDEN_OVERWRITE_PATTERNS = [
     "AGENTS.md",
     "INDEX.md",
     "project-map/**",
     "CLAUDE.md",
 ]
+
+# Forbidden files/patterns that must never be overwritten
+# Now dynamically populated via classify_owned_path()
+FORBIDDEN_OVERWRITE_PATTERNS = []  # type: list[str]
 
 # Allowed low-risk auto actions
 ALLOWED_AUTO_ACTIONS = {
@@ -151,8 +162,26 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _is_forbidden_path(path: str) -> bool:
-    """Check if a path matches forbidden overwrite patterns."""
+def _is_forbidden_path(path: str, target: Path | None = None) -> bool:
+    """Step 2.9: Check if a path is forbidden using classify_owned_path.
+
+    Args:
+        path: Relative path to check
+        target: Project root (optional, for ownership lookup)
+
+    Returns:
+        True if path is owned/protected
+    """
+    # Use classify_owned_path if target is available
+    if target is not None:
+        try:
+            ownership = load_memory_ownership(target)
+            classification = classify_owned_path(path, ownership=ownership)
+            return isinstance(classification, Owned)
+        except Exception:
+            pass  # Fall through to legacy check
+
+    # Legacy fallback
     path_lower = path.lower()
     forbidden = ["agents.md", "index.md", "claude.md"]
     if any(f in path_lower for f in forbidden):
@@ -177,8 +206,12 @@ def _now_iso() -> str:
 # Validation functions
 # ---------------------------------------------------------------------------
 
-def _validate_plan(plan: dict[str, Any]) -> tuple[bool, list[str]]:
+def _validate_plan(plan: dict[str, Any], target: Path | None = None) -> tuple[bool, list[str]]:
     """Validate migration plan structure.
+
+    Args:
+        plan: Plan dictionary to validate
+        target: Project root path (optional, for ownership checks)
 
     Returns (is_valid, error_messages).
     """
@@ -198,6 +231,25 @@ def _validate_plan(plan: dict[str, Any]) -> tuple[bool, list[str]]:
     if plan.get("requires_human_confirmation") is True:
         errors.append("Plan requires human confirmation (requires_human_confirmation=true)")
 
+    # Step 2.9: Initialize forbidden patterns from classify_owned_path if target available
+    forbidden_paths: set[str] = set()
+    if target is not None:
+        try:
+            ownership = load_memory_ownership(target)
+            # Check all files under target
+            if target.exists():
+                for item in target.rglob("*"):
+                    if item.is_file():
+                        try:
+                            rel_path = item.relative_to(target).as_posix()
+                            classification = classify_owned_path(rel_path, ownership=ownership)
+                            if isinstance(classification, Owned):
+                                forbidden_paths.add(rel_path.lower())
+                        except (ValueError, OSError):
+                            pass
+        except Exception:
+            pass  # Fall back to legacy patterns
+
     # Check actions
     actions = plan.get("actions", [])
     if not isinstance(actions, list):
@@ -215,10 +267,15 @@ def _validate_plan(plan: dict[str, Any]) -> tuple[bool, list[str]]:
         if action_type == "manual_decision_required":
             errors.append(f"Action {i} requires manual decision: {action.get('path', 'unknown')}")
 
-        # Check forbidden overwrites
+        # Step 2.9: Check forbidden overwrites using classify_owned_path
         path = action.get("path", "")
-        if _is_forbidden_path(path):
-            errors.append(f"Action {i} targets forbidden path: {path}")
+        if path:
+            # Check against dynamically loaded owned paths
+            if path.lower() in forbidden_paths:
+                errors.append(f"Action {i} targets owned/forbidden path: {path}")
+            # Also use _is_forbidden_path as fallback
+            elif _is_forbidden_path(path, target=target):
+                errors.append(f"Action {i} targets forbidden path: {path}")
 
     return len(errors) == 0, errors
 
@@ -551,8 +608,8 @@ def apply_residue_plan(
         result.errors.append(f"Failed to read plan file: {e}")
         return result
 
-    # Validate plan
-    is_valid, validation_errors = _validate_plan(plan_data)
+    # Validate plan (with target for ownership-aware validation)
+    is_valid, validation_errors = _validate_plan(plan_data, target=target)
     if not is_valid:
         result.errors.extend(validation_errors)
         return result

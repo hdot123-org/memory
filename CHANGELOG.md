@@ -1,5 +1,47 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Ownership 数据模型 + classify API（ownership.py, 641行）
+- Factory PreToolUse P0 写入拦截（pretooluse_guard.py, 620行）
+- Source repo readonly context-package（三模式 Runtime 隔离）
+- Integrity manifest v2 ownership-aware 签名 + 禁止 auto re-sign
+- 子代理 ownership policy 注入
+- ownership CLI（show/validate/plan-update/apply-update）
+- hook 升级工具（inspect/plan-upgrade/apply-upgrade）
+- integrity re-sign CLI（专用重签名 + reason + token）
+- memory-init ownership.toml 生成 + --force 限制
+- validate/audit/apply ownership-aware 检查
+- 242 个新增测试覆盖全部 M1-M6 里程碑
+
+## [0.4.0] - 2026-05-14
+
+### Changed
+- Development Status 从 Alpha (3) 升级为 Production/Stable (5)
+- Lint ignore 条目从 13 条收敛到仅全局 E501/E402
+- 统一 ruff 配置到 ruff.toml，删除 pyproject.toml 重复段
+- CLI API 签名全部冻结（11 个入口点）
+- .gitignore 补全 .ruff_cache/
+
+### Added
+- 7 个新测试文件（246 个测试），覆盖 codex_session_analyzer、daily_session_summary、consistency_check、validate_project_memory、provider_probe、denied_project_roots、neutral_policy
+- Python API 参考文档写入 ShowDoc（9 个页面）
+- Ownership 数据模型 + classify API（ownership.py, 641行）
+- Factory PreToolUse P0 写入拦截（pretooluse_guard.py, 620行）
+- Source repo readonly context-package（三模式 Runtime 隔离）
+- Integrity manifest v2 ownership-aware 签名 + 禁止 auto re-sign
+- 子代理 ownership policy 注入
+- ownership CLI（show/validate/plan-update/apply-update）
+- hook 升级工具（inspect/plan-upgrade/apply-upgrade）
+- integrity re-sign CLI（专用重签名 + reason + token）
+- memory-init ownership.toml 生成 + --force 限制
+- validate/audit/apply ownership-aware 检查
+- 242 个新增测试覆盖全部 M1-M6 里程碑
+
+### Fixed
+- 修复新测试文件中的未使用 import 和未使用变量
+
 ## [0.3.0] - 2026-05-13
 
 ### Added

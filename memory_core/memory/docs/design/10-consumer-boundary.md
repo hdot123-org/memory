@@ -5,7 +5,7 @@ shortname: DES-010
 status: 可评审
 scope: default
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-14
 source: code-analysis
 confidence: medium
 tags: [consumer-boundary,improvements,suggestions]
@@ -14,12 +14,16 @@ related: [DES-001, DES-007, DES-008]
 
 > 文档编号：DES-010 | 版本：V1.0 | 日期：2026-04-26 | 维护人：codex
 
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-05-14 (v0.4.0 Beta)。如需精确接口签名，请参考源码和 ShowDoc Python API 文档。
+
 # 消费边界分析与改进建议
 
 > 创建日期：2026-04-26
 > 维护人：D10（文档整理员）
 > 状态：可评审
-> 分析对象：`<memory-repo>`（memory 仓库） vs `<consumer-repo>`（workbot 仓库）
+> 分析对象：`<memory-repo>`（memory 仓库）
+
+> **消费者契约更新**：本文档中的消费者契约已更新为 `context-package-v1`，内部核心使用 `wb-hook-v2`，通过 Gateway 层的 `_apply_artifact_compaction()` 进行转换。
 
 ---
 

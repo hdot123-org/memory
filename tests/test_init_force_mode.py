@@ -13,6 +13,7 @@ Test cases:
 from __future__ import annotations
 
 import inspect
+import os
 from pathlib import Path
 
 # Import the module under test
@@ -69,8 +70,16 @@ class TestInitForceOverwrites:
         memory_lock = tmp_path / ".memory" / "memory.lock"
         memory_lock.write_text("custom content")
 
-        # Second init with force
-        result2 = init_project_memory(tmp_path, scope="test_project", force=True)
+        # Second init with force (use MEMORY_INIT_RUNNING=1 to allow owned file overwrite)
+        old_env = os.environ.get("MEMORY_INIT_RUNNING")
+        try:
+            os.environ["MEMORY_INIT_RUNNING"] = "1"
+            result2 = init_project_memory(tmp_path, scope="test_project", force=True)
+        finally:
+            if old_env is not None:
+                os.environ["MEMORY_INIT_RUNNING"] = old_env
+            else:
+                os.environ.pop("MEMORY_INIT_RUNNING", None)
         assert result2["success"] is True
         assert result2["mode"] == "overwrite"
         assert result2["force_overwrite"] is True

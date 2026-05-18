@@ -9,6 +9,8 @@ source: local-canonical
 confidence: high
 tags: [lesson, cmux, runtime, python, venv, guard]
 related: [workbot-hook-contract, workbot-truth-model, workbot-memory-routing]
+
+> **注**：workbot-* 文件已归档至 archive/legacy-workbot/。
 ---
 
 # CMUX Project Virtualenv Is Mandatory

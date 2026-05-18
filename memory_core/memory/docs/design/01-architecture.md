@@ -5,7 +5,7 @@ shortname: DES-001
 status: 可评审
 scope: default
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-14
 source: code-analysis
 confidence: medium
 tags: [architecture,overview]
@@ -13,6 +13,8 @@ related: [DES-002, DES-003, DES-004]
 ---
 
 > 文档编号：DES-001 | 版本：V1.0 | 日期：2026-04-26 | 维护人：codex
+
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-05-14 (v0.4.0 Beta)。如需精确接口签名，请参考源码和 ShowDoc Python API 文档。
 
 # Memory 模块架构设计文档
 
@@ -24,7 +26,7 @@ related: [DES-002, DES-003, DES-004]
 
 ## 1. 仓库概览
 
-`memory` 是一个标准记忆模块（`memory-core`），为多个消费者项目提供统一的 memory core 能力。模块通过 `pyproject.toml` 声明为独立 Python 包（`memory-core==0.1.0`），无第三方依赖，仅依赖 Python ≥3.10 标准库。
+`memory` 是一个标准记忆模块（`memory-core`），为多个消费者项目提供统一的 memory core 能力。模块通过 `pyproject.toml` 声明为独立 Python 包（`memory-core==0.4.0`），无第三方依赖，仅依赖 Python ≥3.9 标准库。
 
 核心设计原则：
 
@@ -44,7 +46,7 @@ memory/                          # 仓库根
 ├── .git/
 ├── .github/                     # CI/CD（release-and-dispatch.yml）
 ├── .pytest_cache/
-├── pyproject.toml               # 包定义（memory-core==0.1.0）
+├── pyproject.toml               # 包定义（memory-core==0.4.0）
 ├── README.md                    # 模块说明 + 迁移记录（M1/M2/M3）
 ├── tests/                       # 13 个测试文件
 └── memory_core/                   # 唯一总控工作区
@@ -70,10 +72,10 @@ memory_core/tools/
 ├── validate_memory_system.py          # 12 行 — 验证桩
 └── memory_hook_adapters/              # 适配层
     ├── neutral_policy.py              # 22 行 — 宿主中性基类
-    ├── workbot_policy.py              # 82 行 — workbot 业务策略
-    ├── workbot_runtime_profile.py     # 267 行 — workbot 运行时配置
+    ├── workbot_policy.py              # 82 行 — workbot 业务策略 (已归档至 archive/legacy-workbot/)
+    ├── workbot_runtime_profile.py     # 267 行 — workbot 运行时配置 (已归档至 archive/legacy-workbot/)
     └── docs/
-        └── workbot-cli-tools.md       # adapter 运行文档
+        └── workbot-cli-tools.md       # adapter 运行文档 (已归档)
 ```
 
 ### 2.3 `memory_core/memory/` — 知识库 + 文档
@@ -95,13 +97,13 @@ memory_core/memory/
     └── global/                      # 跨项目规则
         ├── INDEX.md
         ├── memory-hook-policy-pack.json
-        ├── workbot-hook-contract.md
-        ├── workbot-memory-routing.md
-        ├── workbot-memory-system.md
-        ├── workbot-policy-pack.json
-        ├── workbot-policy-pack.md
-        ├── workbot-project-map-governance.md
-        └── workbot-truth-model.md
+        ├── workbot-hook-contract.md (已归档)
+        ├── workbot-memory-routing.md (已归档)
+        ├── workbot-memory-system.md (已归档)
+        ├── workbot-policy-pack.json (已归档)
+        ├── workbot-policy-pack.md (已归档)
+        ├── workbot-project-map-governance.md (已归档)
+        └── workbot-truth-model.md (已归档)
 ```
 
 ---

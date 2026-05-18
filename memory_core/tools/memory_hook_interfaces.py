@@ -77,6 +77,15 @@ class HostDelegate(ABC):
         """
         pass
 
+    @property
+    def host_unavailable(self) -> bool:
+        """Whether the host delegate represents an unavailable host.
+
+        NoopHostDelegate returns True; real delegates return False.
+        Used to separate policy_decision from delegate availability.
+        """
+        return False
+
 
 # ---------------------------------------------------------------------------
 # IF-2: PolicyRegistry

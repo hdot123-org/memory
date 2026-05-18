@@ -140,17 +140,21 @@ if [ -n "$HOME_ROOT" ] && [ -n "$PROJECT_CWD_RESOLVED" ] && [ "$PROJECT_CWD_RESO
     exit 0
 fi
 
-# Anti-pollution: Skip memory-core source repo (detected by marker files) regardless of .memory existence
+# M3: Anti-pollution - source repo gets readonly context-package instead of noop
 if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ]; then
     if [ -f "$PROJECT_CWD/memory_core/tools/memory_hook_gateway.py" ] || [ -f "$PROJECT_CWD/memory_core/tools/factory_global_hooks.py" ] || [ -f "$PROJECT_CWD/memory_core/tools/codex_global_hooks.py" ]; then
-        printf '{{}}\n'
-        exit 0
+        export READONLY=1
+        exec "$MEMORY_HOOK_GATEWAY" "$@"
     fi
 fi
 
+# M3: Remove || true to make init failures visible with structured error output
 if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ] && [ ! -d "$PROJECT_CWD/.memory" ]; then
-    "$MEMORY_HOOK_PROJECT_INIT" --target "$PROJECT_CWD" --host codex \
-        >/dev/null 2>>"$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system/errors.log" || true
+    if ! "$MEMORY_HOOK_PROJECT_INIT" --target "$PROJECT_CWD" --host codex \
+        >/dev/null 2>>"$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system/errors.log"; then
+        echo '{{"error": "project_init_failed", "message": "Failed to initialize project memory"}}' >&2
+        exit 1
+    fi
 fi
 
 exec "$MEMORY_HOOK_GATEWAY" "$@"

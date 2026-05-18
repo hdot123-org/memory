@@ -9,6 +9,8 @@ source: local-canonical
 confidence: high
 tags: [lesson, pm-bot, memory, legacy, binding, cmux]
 related: [workbot-project-canonical, workbot-truth-model, workbot-hook-contract]
+
+> **注**：workbot-* 文件已归档至 archive/legacy-workbot/。
 ---
 
 # PM Bot Global Binding and Legacy Fence
