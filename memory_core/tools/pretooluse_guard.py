@@ -353,6 +353,13 @@ def _get_project_root_for_task(project_root: Path) -> Path:
 
 def _classify_tool_use(payload: dict[str, Any], project_root: Path) -> dict[str, Any]:
     """Classify a tool use and return decision."""
+    # Normalize payload: Factory hooks wrap tool params in tool_input, standalone tests don't
+    if "tool_input" in payload:
+        # Factory hook format: merge tool_input into top-level for convenience
+        tool_input = payload.get("tool_input", {})
+        for k, v in tool_input.items():
+            payload.setdefault(k, v)
+
     tool_name = payload.get("tool_name", "")
     file_path = payload.get("file_path")
 
@@ -589,6 +596,13 @@ def main() -> int:
     except Exception as e:
         print(json.dumps({"decision": "allow", "reason": f"Error reading input: {e}"}))
         return 0
+
+    # Normalize payload: Factory hooks wrap tool params in tool_input
+    # Standalone tests pass fields at top level
+    if "tool_input" in payload:
+        tool_input = payload.get("tool_input", {})
+        for k, v in tool_input.items():
+            payload.setdefault(k, v)
 
     # Get project root
     project_root = _load_project_root()
