@@ -25,6 +25,10 @@ FACTORY_HOOK_EVENTS: tuple[tuple[str, str], ...] = (
     ("Stop", "stop"),
     ("Notification", "notification"),
     ("PreToolUse", "pre-tool-use"),
+    ("PostToolUse", "post-tool-use"),
+    ("SubagentStop", "subagent-stop"),
+    ("PreCompact", "pre-compact"),
+    ("SessionEnd", "session-end"),
 )
 
 DEFAULT_TIMEOUT_SECONDS = 10

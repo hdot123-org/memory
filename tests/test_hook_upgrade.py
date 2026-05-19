@@ -57,6 +57,10 @@ def factory_home_with_settings(factory_home: Path) -> Path:
             "Stop": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event stop"}]}],
             "Notification": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event notification"}]}],
             "PreToolUse": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event pre-tool-use"}]}],
+            "PostToolUse": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event post-tool-use"}]}],
+            "SubagentStop": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event subagent-stop"}]}],
+            "PreCompact": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event pre-compact"}]}],
+            "SessionEnd": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event session-end"}]}],
         }
     }
     sp = factory_home / "settings.json"

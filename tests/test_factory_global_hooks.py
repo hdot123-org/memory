@@ -111,14 +111,14 @@ def test_install_factory_hooks_writes_wrapper_and_settings_json(monkeypatch, tmp
     assert "exec \"$MEMORY_HOOK_GATEWAY\" \"$@\"" in wrapper_text
 
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert set(settings["hooks"]) == {"SessionStart", "UserPromptSubmit", "Stop", "Notification", "PreToolUse"}
+    assert set(settings["hooks"]) == {"SessionStart", "UserPromptSubmit", "Stop", "Notification", "PreToolUse", "PostToolUse", "SubagentStop", "PreCompact", "SessionEnd"}
     commands = [
         hook["command"]
         for event_groups in settings["hooks"].values()
         for group in event_groups
         for hook in group["hooks"]
     ]
-    assert len(commands) == 5
+    assert len(commands) == 9
     assert all(str(wrapper) in command for command in commands)
     assert all("--host factory" in command for command in commands)
 
