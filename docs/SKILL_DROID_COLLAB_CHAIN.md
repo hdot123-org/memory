@@ -217,7 +217,7 @@ Step 1: [主代理] → 检测版本变更
   │
 Step 2: [主代理] → 确定文档变更范围
   │  动作: git diff 扫描自上次发布以来的文档变更
-  │  分类: 按 doc-management 的 C1-C10 类别过滤
+  │  分类: 按 doc-management 的 C1-C9 类别过滤
   │  排除: 无变更的文档
   │  引用: doc-management skill — 文档分类表
   │

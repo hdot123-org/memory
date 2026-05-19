@@ -83,4 +83,31 @@ last_verified: 2026-05-18
 
 #### Blockers: None
 
+### PLAN-0003: 9/9 Factory Hook 全覆盖 (100% 融合)
+
+```yaml
+plan_id: PLAN-0003
+title: "9/9 Factory Hook 全覆盖 (100% 融合)"
+status: completed
+version: v0.5.0
+showdoc:
+  item_id: 664858316
+owner: main-agent
+last_sync: 2026-05-19
+last_verified: 2026-05-19
+```
+
+#### Checklist
+
+| id | item | status | owner | evidence | last_updated |
+|---|---|---|---|---|---|
+| P0003-C001 | Gateway choices 扩展至 9 个事件 | completed | subagent | memory_hook_gateway.py +5行 | 2026-05-19 |
+| P0003-C002 | FACTORY_HOOK_EVENTS 扩展至 9 个事件 | completed | subagent | factory_global_hooks.py +4行 | 2026-05-19 |
+| P0003-C003 | settings.json 安装 9 个事件 | completed | subagent | 9/9 注册成功 | 2026-05-19 |
+| P0003-C004 | 测试更新支持 9 个事件 | completed | subagent | 1612 tests passed | 2026-05-19 |
+| P0003-C005 | pretooluse_guard Factory 格式兼容 | completed | subagent | 3c67ced commit | 2026-05-19 |
+| P0003-C006 | ShowDoc + Feishu 文档同步 | completed | subagent | PLAN-0003 页面创建 | 2026-05-19 |
+
+#### Blockers: None
+
 <!-- PLAN_STATUS_END -->

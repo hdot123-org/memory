@@ -1,12 +1,15 @@
-# ShowDoc↔飞书 主从同步方案
+# ShowDoc↔飞书 同步方案
 
-> 版本: 2.0.0 | 创建: 2026-05-16 | 更新: 2026-05-16 | 状态: draft
+> 版本: 3.0.0 | 创建: 2026-05-16 | 更新: 2026-05-19 | 状态: complete
+> 迁移完成记录: docs/audit/showdoc-migration-complete-2026-05-19.md
 > 权威源: 本文档为设计文档，权威源为 Git
 >
 > **v2.0.0 修订说明**: 基于实测数据（24元素 roundtrip + ShowDoc 渲染验证）全面修订。
 > - 缩小为 19 项实测确认的安全 Markdown 子集
-> - 确认单向同步：ShowDoc → 飞书（飞书为只读镜像）
-> - 不需要反向同步，不需要导出
+> - 确认 100% 双向兼容方案
+> - C1-C8, C10: Git → ShowDoc → 飞书（单向）
+> - C9: 飞书 → ShowDoc（反向同步）
+> - C5: Git ↔ ShowDoc（双向）→ 飞书
 > - 文档从 H2 起头，不使用图片/表格对齐/嵌套引用
 > - 公式保留（写入飞书正确渲染）
 
@@ -29,10 +32,10 @@
 │ 变更方式: MCP API / Web UI                                    │
 ├──────────────────────────────────────────────────────────────┤
 │ Layer 3: 飞书 (Read Mirror)                                  │
-│ 角色: 团队只读镜像（不需要反向同步，不需要导出）                  │
+│ 角色: 团队只读镜像（C9 类别除外：飞书为权威源，反向同步到 ShowDoc）│
 │ 存储: 飞书云文档 (docx/wiki)                                   │
 │ 变更方式: lark-cli docs +create/+update (v2 API)               │
-│ 同步方向: ShowDoc → 飞书（单向）                                │
+│ 同步方向: ShowDoc → 飞书（C1-C8, C10）/ 飞书 → ShowDoc（C9）      │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -42,15 +45,15 @@
 |------|------|------|---------|---------|
 | **L1 Git** | 仓库 | 代码/规范/schema 权威源 | 所有代码驱动的文档 | — |
 | **L2 ShowDoc** | ShowDoc 平台 | API 文档权威源 + 团队展示 | API 文档、计划页、Python API 文档 | 从 Git 同步来的规范 |
-| **L3 飞书** | 飞书云文档 | 只读镜像 | 无 | 从 ShowDoc 同步来的所有内容（不需要反向同步） |
+| **L3 飞书** | 飞书云文档 | 只读镜像（C9可写） | C9 会议纪要 | 从 ShowDoc 同步来的所有内容（C9 除外） |
 
 ### 1.3 核心原则
 
-1. **单向数据流**: Git → ShowDoc → 飞书，不需要逆流
-2. **飞书不是权威源**: 飞书仅为只读展示镜像
+1. **双向数据流**: Git → ShowDoc → 飞书（C1-C8, C10）+ 飞书 → ShowDoc（C9）+ Git ↔ ShowDoc（C5）
+2. **飞书不是权威源**: 除 C9（会议纪要）外，飞书仅为只读展示镜像
 3. **最终一致性**: 三个平台不需要实时一致，但触发同步后必须保证最终一致
-4. **安全 Markdown 子集**: 同步必须使用 showdoc-feishu-markdown-compat v2.0 定义的 19 项安全子集
-5. **不需要导出**: 不从飞书导出 Markdown，不需要反向同步
+4. **安全 Markdown 子集**: 同步必须使用 showdoc-markdown-compat v2.0 定义的 19 项安全子集
+5. **C9 反向同步**: 飞书会议纪要可反向同步摘要到 ShowDoc
 
 ---
 
@@ -137,7 +140,7 @@
 │   ├── 高级功能.md         (mirror of ShowDoc cat 436353054)
 │   ├── 集成与部署.md       (mirror of ShowDoc cat 436353053)
 │   └── 更新日志.md         (mirror of ShowDoc cat 436353052)
-├── 📁 团队协作/             (飞书独有，不同步回 ShowDoc)
+├── 📁 团队协作/             (飞书独有，同步摘要回 ShowDoc)
 │   ├── 会议纪要/
 │   ├── 讨论记录/
 │   └── 反馈收集/
@@ -468,7 +471,7 @@ conflict_detection:
   │
   ├── 判定文档类别 (C1-C10)
   │
-  ├── 类别为 C1-C8 (飞书只读)
+  ├── 类别为 C1-C8, C10 (飞书只读)
   │   ├── 权威源 (Git/ShowDoc) 内容覆盖
   │   ├── 通知飞书编辑者变更被覆盖
   │   └── 记录冲突到审计日志
@@ -785,4 +788,4 @@ conflict_detection:
 | `docs/audit/showdoc-sync-*.md` | 同步审计记录 |
 | `docs/PLAN-STATUS.md` | 计划页本地镜像 |
 | `~/.factory/skills/doc-management/SKILL.md` | 文档管理 skill 定义 |
-| `~/.factory/skills/showdoc-feishu-markdown-compat/SKILL.md` | Markdown 兼容规则 |
+| `~/.factory/skills/showdoc-markdown-compat/SKILL.md` | Markdown 兼容规则 |
