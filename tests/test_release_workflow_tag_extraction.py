@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Test for release workflow tag extraction logic.
 
 This module tests the tag extraction logic for both push tag and workflow_dispatch

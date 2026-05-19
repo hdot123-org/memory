@@ -1349,6 +1349,23 @@ def _build_readonly_source_repo_package(cwd: Path, host: str, event: str) -> dic
         "AGENTS.md",
     ]
 
+    # Source-repo-specific domains (not in DEFAULT_OWNERSHIP_DOMAINS)
+    ownership_domains.extend([
+        {
+            "name": "source_repo_docs",
+            "path": "docs",
+            "level": "critical",
+            "recursive": True,
+            "description": "Source repo documentation domain (source-repo-readonly only)",
+        },
+        {
+            "name": "source_repo_factory",
+            "path": ".factory",
+            "level": "critical",
+            "recursive": True,
+            "description": "Source repo Factory config domain (source-repo-readonly only)",
+        },
+    ])
     return {
         "package_kind": "source-repo-rules",
         "mode": "read-only",

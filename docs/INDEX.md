@@ -38,6 +38,25 @@ Detailed design documents live under [`memory_core/memory/docs/design/`](../memo
 - `10-consumer-boundary.md`
 - `API-CONTRACT.md`
 
+## Plans & milestones
+
+- [PLAN-STATUS](PLAN-STATUS.md) — active plan status mirror (synced from ShowDoc).
+- [PLAN-0003: 9/9 Hook coverage](PLAN-0003-9-9-HOOK-COVERAGE.md) — Factory hook 100% integration plan.
+- [Ownership execution plan](EXECUTION_PLAN_OWNERSHIP_PROTECTION.md) — M1-M6 milestone execution steps.
+- [Ownership upgrade plan](UPGRADE_PLAN_OWNERSHIP_PROTECTION.md) — v3 merged upgrade plan (design reference).
+
+## Specifications (extended)
+
+- [Multi-project scan](MULTI_PROJECT_SCAN_SPEC.md) — multi-project upgrade scan registry pointer spec (SPEC-012).
+
+## Engineering notes
+
+- [Prompt truncation solutions](prompt-truncation-engineering-solutions.md) — systematic solutions for Task prompt truncation.
+
+## Bug reports
+
+- `docs/bug-reports/**` — filed bug reports and crash analyses.
+
 ## Maintainer / internal records
 
 The following records are useful for maintainers but are not required for normal users and should not be treated as primary documentation:
