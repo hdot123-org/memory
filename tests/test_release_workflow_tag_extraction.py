@@ -1,9 +1,10 @@
-from __future__ import annotations
 """Test for release workflow tag extraction logic.
 
 This module tests the tag extraction logic for both push tag and workflow_dispatch
 trigger methods, mirroring the bash logic in .github/workflows/release-and-dispatch.yml
 """
+
+from __future__ import annotations
 
 import re
 from pathlib import Path
