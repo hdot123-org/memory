@@ -1,3 +1,7 @@
+# ⚠️ This repo is a mirror — all development happens on GitLab.
+# ⚠️ Pushes to GitHub are performed by GitLab CI after pipeline passes.
+# ⚠️ Do NOT create PRs or push directly to this repo on GitHub.
+
 name: ci
 
 on:
@@ -11,17 +15,22 @@ on:
       - 'ruff.toml'
       - '.github/workflows/ci.yml'
       - '.github/workflows/release-and-dispatch.yml'
-  pull_request:
-    paths:
-      - 'memory_core/**'
-      - 'tests/**'
-      - 'scripts/**'
-      - 'pyproject.toml'
-      - 'ruff.toml'
-      - '.github/workflows/ci.yml'
-      - '.github/workflows/release-and-dispatch.yml'
+  # pull_request is intentionally disabled — all code review happens on GitLab.
 
 jobs:
+  verify-sync:
+    name: Verify synced mirror
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that .gitlab-ci.yml exists
+        run: |
+          if [ ! -f .gitlab-ci.yml ]; then
+            echo "::error::.gitlab-ci.yml is missing — this repo should mirror GitLab exactly"
+            exit 1
+          fi
+          echo "Mirror OK — .gitlab-ci.yml present"
+
   test:
     runs-on: ubuntu-latest
     strategy:
