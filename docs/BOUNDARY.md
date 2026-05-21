@@ -111,3 +111,40 @@ memory 仓库不得成为任何具体业务项目的状态存储。
 2. 迁移真实业务数据到对应业务项目仓库
 3. 或将内容转为 demo fixture（去除真实业务上下文）
 4. 在 `docs/RESIDUE_DISPOSITION_PLAN.md` 中跟踪处置进度
+
+
+---
+
+## 8. 同步方向约束（铁律）
+
+### 8.1 三端关系
+
+```
+Local (Agent/Developer)
+    |
+    v push branch only
+GitLab (source of truth)
+    |
+    v CI pipeline pass -> merge -> sync-to-github job
+GitHub (read-only mirror)
+```
+
+### 8.2 规则
+
+| 规则 | 说明 |
+|------|------|
+| Local -> GitLab | 通过分支 + MR，CI 门禁通过后合并 |
+| GitLab -> GitHub | 仅 CI sync-to-github job，且必须在 test + health-check 通过后 |
+| 禁止 Local -> GitHub | 任何机器/Agent 不得直接 git push origin |
+
+### 8.3 适用范围
+
+此规则适用于所有 Factory/Droid 接入的项目，不限于 memory-core。
+
+### 8.4 CI 配置要求
+
+每个项目的 .gitlab-ci.yml 必须定义 sync-to-github job，依赖 test + health-check。
+
+### 8.5 违规处置
+
+发现直推 GitHub 时回退违规 commit，重新通过 GitLab MR 流程提交。

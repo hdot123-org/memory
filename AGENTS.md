@@ -20,3 +20,14 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 - 只探索不修改
 - 不要建议改进本项目结构，闭环已经完整
 - 消费项目问题参考 README.md 和 BOUNDARY.md
+
+## 铁律：GitLab → GitHub 单向同步
+
+**所有 Factory/Droid 接入的项目必须遵守：**
+
+1. **代码只推 GitLab** — Agent/人/CI 都只 push 到 GitLab，创建 MR
+2. **CI 门禁** — test + health-check 通过后才可合并到 main
+3. **GitHub 是只读镜像** — 只有 GitLab CI 的 sync-to-github job 可以推 GitHub
+4. **禁止直推 GitHub** — 任何 `git push origin main` 都是违规，会破坏单源真相
+5. **违规恢复** — 如果意外直推 GitHub，回退 GitHub commit，重新走 GitLab 流程
+
