@@ -30,6 +30,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    from .index_schema import build_headers, inject_headers, read_project_version
+except ImportError:
+    from memory_core.tools.index_schema import (  # type: ignore
+        build_headers,
+        inject_headers,
+        read_project_version,
+    )
+
+
+def _is_index_md(fname: str) -> bool:
+    return fname == "INDEX.md" or fname.endswith("/INDEX.md")
+
+
+def _decorate_index_content(fname: str, content: str) -> str:
+    """Inject memory-core + index-schema headers into INDEX.md content."""
+    if not _is_index_md(fname):
+        return content
+    headers = build_headers(read_project_version())
+    return inject_headers(content, headers)
+
 from memory_core.constants import (
     CANONICAL_ADAPTER_VERSION,
     CANONICAL_MEMORY_LOCK_SCHEMA,
@@ -1695,6 +1716,7 @@ def init_project_memory(
             # Overwrite
             try:
                 content, warnings = template_fn(project_name)
+                content = _decorate_index_content(fname, content)
                 file_path.write_text(content, encoding="utf-8")
                 result["created"].append(f"file:{fname} (overwritten)")
                 result["warnings"].extend(warnings)
@@ -1706,6 +1728,7 @@ def init_project_memory(
         # Create new file
         try:
             content, warnings = template_fn(project_name)
+            content = _decorate_index_content(fname, content)
             file_path.write_text(content, encoding="utf-8")
             result["created"].append(f"file:{fname}")
             result["warnings"].extend(warnings)
@@ -2032,7 +2055,36 @@ def main(argv: list[str] | None = None) -> int:
             print("  Force overwrite: True")
         print("=" * 60)
 
+        if result["success"] and not result["dry_run"]:
+            _print_post_init_health_summary(target)
+
     return 0 if result["success"] else 1
+
+
+def _print_post_init_health_summary(target: Path) -> None:
+    """Print a brief post-init consumer self-check summary.
+
+    Best-effort: any failure is swallowed so it never breaks init.
+    """
+    try:
+        try:
+            from .verify_consumer import verify
+        except ImportError:
+            from memory_core.tools.verify_consumer import verify  # type: ignore
+        report = verify(target)
+        passed = sum(1 for c in report.checks if c.passed)
+        total = len(report.checks)
+        marker = "OK" if report.all_passed else "ATTENTION"
+        print()
+        print(f"Post-init consumer self-check: {marker} ({passed}/{total} checks passed)")
+        if not report.all_passed:
+            print("  Failed checks:")
+            for c in report.checks:
+                if not c.passed:
+                    print(f"    - {c.name}: {c.detail}")
+            print(f"  Run 'memory-verify-consumer --path {target}' for full details.")
+    except Exception:  # pragma: no cover - never break init
+        return
 
 
 if __name__ == "__main__":

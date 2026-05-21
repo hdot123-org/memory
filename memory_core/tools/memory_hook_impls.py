@@ -1203,7 +1203,17 @@ class ArtifactSinkImpl(ArtifactSink):
 
 
 class ErrorSinkImpl(ErrorSink):
-    """Default error sink implementation."""
+    """Default error sink implementation.
+
+    Writes two parallel outputs:
+      * structured JSON line (existing behavior) for machine consumption
+      * human-readable line in *-readable.log* for developer triage
+
+    Readable output is opt-out via MEMORY_HOOK_READABLE_ERRORS_DISABLED=1.
+    """
+
+    READABLE_SUFFIX = "-readable.log"
+    READABLE_DISABLE_ENV = "MEMORY_HOOK_READABLE_ERRORS_DISABLED"
 
     def __init__(
         self,
@@ -1212,6 +1222,41 @@ class ErrorSinkImpl(ErrorSink):
     ):
         self._error_log = error_log
         self._now_iso = now_iso_fn or (lambda: datetime.now().astimezone().isoformat(timespec="seconds"))
+
+    @staticmethod
+    def _readable_path(structured_log: Path) -> Path:
+        return structured_log.with_name(structured_log.stem + ErrorSinkImpl.READABLE_SUFFIX)
+
+    @staticmethod
+    def _format_kv(context: dict[str, Any]) -> str:
+        if not isinstance(context, dict) or not context:
+            return ""
+        parts: list[str] = []
+        for key in sorted(context.keys()):
+            value = context[key]
+            if isinstance(value, (dict, list)):
+                rendered = json.dumps(value, ensure_ascii=False, sort_keys=True)
+            else:
+                rendered = str(value)
+            if " " in rendered or "\t" in rendered:
+                rendered = json.dumps(rendered, ensure_ascii=False)
+            parts.append(f"{key}={rendered}")
+        return " ".join(parts)
+
+    @classmethod
+    def _readable_line(
+        cls,
+        timestamp: str,
+        component: str,
+        message: str,
+        context: dict[str, Any],
+    ) -> str:
+        kv = cls._format_kv(context)
+        suffix = f" | {kv}" if kv else ""
+        return f"[{timestamp}] [ERROR] component={component} {message}{suffix}\n"
+
+    def _readable_enabled(self) -> bool:
+        return os.environ.get(self.READABLE_DISABLE_ENV) != "1"
 
     def log(self, component: str, message: str, context: dict[str, Any]) -> None:
         self._error_log.parent.mkdir(parents=True, exist_ok=True)
@@ -1225,6 +1270,19 @@ class ErrorSinkImpl(ErrorSink):
             handle.write(line)
         with self._error_log.open("a", encoding="utf-8") as handle:
             handle.write(line)
+        if not self._readable_enabled():
+            return
+        readable_line = self._readable_line(timestamp, component, message, context)
+        try:
+            readable_daily = daily_error_log.with_name(daily_error_log.stem + self.READABLE_SUFFIX)
+            with readable_daily.open("a", encoding="utf-8") as handle:
+                handle.write(readable_line)
+            readable_primary = self._readable_path(self._error_log)
+            with readable_primary.open("a", encoding="utf-8") as handle:
+                handle.write(readable_line)
+        except OSError:
+            # Readable output is best-effort; never block on it.
+            pass
 
 
 # ---------------------------------------------------------------------------

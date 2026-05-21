@@ -21,12 +21,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from memory_core.constants import CURRENT_MEMORY_VERSION, OWNERSHIP_SCHEMA_VERSION
+from memory_core.constants import CURRENT_MEMORY_VERSION, OWNERSHIP_SCHEMA_VERSION, VALID_SOURCE_REPO_MODES
 from memory_core.ownership import (
     DEFAULT_OWNERSHIP_DOMAINS,
     DEFAULT_OWNERSHIP_RESOURCES,
     MemoryOwnership,
     ProtectionLevel,
+    get_source_repo_mode,
+    is_memory_core_source_repo,
     load_memory_ownership,
     validate_ownership_schema,
 )
@@ -506,6 +508,134 @@ def cmd_apply_update(
 
 
 # ---------------------------------------------------------------------------
+# source-repo-mode subcommand
+# ---------------------------------------------------------------------------
+
+def _write_source_repo_mode(project_root: Path, mode: str) -> int:
+    """Write source_repo mode to ownership.toml.
+
+    Creates .memory/ directory and ownership.toml if needed.
+    Preserves existing domains and resources, updates policy.source_repo section.
+    """
+    memory_dir = project_root / ".memory"
+    memory_dir.mkdir(parents=True, exist_ok=True)
+
+    ownership_file = memory_dir / "ownership.toml"
+    ownership = load_memory_ownership(project_root)
+
+    from datetime import datetime, timezone
+
+    source_repo_section = {
+        "mode": mode,
+        "activated_at": datetime.now(timezone.utc).isoformat(),
+        "activated_by": "cli",
+    }
+
+    # Build TOML manually (no tomli_w available)
+    lines: list[str] = []
+    lines.append(f'schema_version = "{ownership.schema_version}"')
+    lines.append(f'memory_version = "{ownership.memory_version or CURRENT_MEMORY_VERSION}"')
+    lines.append("")
+
+    # Domains — each gets its own [[domains]] header
+    for d in ownership.domains:
+        lines.append("[[domains]]")
+        lines.append(f'name = "{d.name}"')
+        lines.append(f'path = "{d.path}"')
+        lines.append(f'level = "{d.level.name.lower()}"')
+        lines.append(f'recursive = {str(d.recursive).lower()}')
+        lines.append(f'description = "{d.description}"')
+        lines.append("")
+
+    # Resources — each gets its own [[resources]] header
+    for r in ownership.resources:
+        lines.append("[[resources]]")
+        lines.append(f'name = "{r.name}"')
+        lines.append(f'path = "{r.path}"')
+        lines.append(f'level = "{r.level.name.lower()}"')
+        lines.append(f'domain = "{r.domain or ""}"')
+        lines.append(f'description = "{r.description}"')
+        lines.append("")
+
+    # Policy — preserve existing non-source_repo keys
+    lines.append("[policy]")
+    for key, val in ownership.policy.items():
+        if key == "source_repo":
+            continue
+        if isinstance(val, str):
+            lines.append(f'{key} = "{val}"')
+        elif isinstance(val, bool):
+            lines.append(f'{key} = {str(val).lower()}')
+        elif isinstance(val, (int, float)):
+            lines.append(f'{key} = {val}')
+
+    # Source repo policy section
+    lines.append("")
+    lines.append("[policy.source_repo]")
+    lines.append(f'mode = "{source_repo_section["mode"]}"')
+    lines.append(f'activated_at = "{source_repo_section["activated_at"]}"')
+    lines.append(f'activated_by = "{source_repo_section["activated_by"]}"')
+    lines.append("")
+
+    ownership_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return 0
+
+
+def cmd_source_repo_mode(project_root: Path, mode: str | None = None, json_output: bool = False) -> int:
+    """Manage source repo operating mode.
+
+    With no mode argument: display current mode.
+    With mode argument: switch to specified mode.
+    """
+    if not is_memory_core_source_repo(project_root):
+        msg = "Not a memory-core source repository"
+        if json_output:
+            print(json.dumps({"error": msg}))
+        else:
+            print(f"Error: {msg}", file=sys.stderr)
+        return 1
+
+    current_mode = get_source_repo_mode(project_root)
+
+    if mode is None:
+        # Status query
+        if json_output:
+            print(json.dumps({"source_repo_mode": current_mode}))
+        else:
+            print(f"Source repo mode: {current_mode}")
+        return 0
+
+    if mode not in VALID_SOURCE_REPO_MODES:
+        msg = f"Invalid mode '{mode}'. Valid modes: {', '.join(VALID_SOURCE_REPO_MODES)}"
+        if json_output:
+            print(json.dumps({"error": msg}))
+        else:
+            print(f"Error: {msg}", file=sys.stderr)
+        return 1
+
+    if mode == current_mode:
+        if json_output:
+            print(json.dumps({"source_repo_mode": mode, "changed": False}))
+        else:
+            print(f"Already in {mode} mode")
+        return 0
+
+    rc = _write_source_repo_mode(project_root, mode)
+    if rc != 0:
+        return rc
+
+    if json_output:
+        print(json.dumps({"source_repo_mode": mode, "changed": True}))
+    else:
+        print(f"Source repo mode changed: {current_mode} -> {mode}")
+        if mode == "develop":
+            print("  Agent can now modify code files. Critical domains remain protected.")
+        else:
+            print("  Agent can no longer modify any files in this repository.")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
@@ -551,6 +681,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Apply default ownership",
     )
 
+    # source-repo-mode
+    srm_p = sub.add_parser(
+        "source-repo-mode",
+        help="Manage source repo operating mode (readonly/develop)",
+    )
+    srm_p.add_argument("--project-root", type=Path, required=True, help="Path to project root")
+    srm_p.add_argument("mode", nargs="?", choices=list(VALID_SOURCE_REPO_MODES),
+                       help="Mode to switch to (omit to show current mode)")
+    srm_p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # dev — alias for source-repo-mode develop
+    dev_p = sub.add_parser("dev", help="Switch to develop mode (alias)")
+    dev_p.add_argument("--project-root", type=Path, required=True, help="Path to project root")
+
+    # prod — alias for source-repo-mode readonly
+    prod_p = sub.add_parser("prod", help="Switch to readonly mode (alias)")
+    prod_p.add_argument("--project-root", type=Path, required=True, help="Path to project root")
+
     return parser
 
 
@@ -578,6 +726,18 @@ def main(argv: list[str] | None = None) -> int:
             yes=args.yes,
             json_output=args.json,
             use_defaults=args.use_defaults,
+        )
+    elif args.command == "source-repo-mode":
+        return cmd_source_repo_mode(
+            project_root, mode=args.mode, json_output=args.json
+        )
+    elif args.command == "dev":
+        return cmd_source_repo_mode(
+            project_root, mode="develop", json_output=False
+        )
+    elif args.command == "prod":
+        return cmd_source_repo_mode(
+            project_root, mode="readonly", json_output=False
         )
     else:
         parser.print_help()

@@ -59,3 +59,6 @@ memory_core/.memory/schema-audit.log
 
 # Root-level .memory/ (project-local runtime state, not for tracking)
 /.memory/
+
+# External session output (pollution guard)
+output/
