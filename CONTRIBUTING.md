@@ -7,32 +7,72 @@
 
 ## Workflow
 
-1. Create a feature branch from `main`: `git checkout -b feature/xxx`.
-2. Make focused changes and keep generated or local-only artifacts out of the PR.
-3. Run local checks before opening a PR.
-4. Push the branch and create a PR against `main`.
-5. Wait for CI and review to pass before merging.
+**This project follows a GitLab-first development flow. All projects managed via Factory/Droid must comply.**
+
+### Iron Rule: GitLab → GitHub (one-way mirror)
+
+1. **All code changes flow through GitLab first.**
+   - Create feature branch from `main` on GitLab.
+   - Push to GitLab, create Merge Request.
+   - CI pipeline (lint + test + health-check) must pass before merge.
+   - Only merge to `main` after CI green.
+
+2. **GitHub is a read-only mirror.**
+   - Only GitLab CI can push to GitHub (sync-to-github job).
+   - **Never push directly to GitHub from any machine, agent, or CI runner.**
+   - Violating this rule breaks the single-source-of-truth guarantee.
+
+3. **Agents (Factory/Droid) must not bypass this flow.**
+   - Use `git push gitlab <branch>` only.
+   - Create MR via GitLab API or push options.
+   - Wait for CI pipeline to pass.
+   - Merge MR via GitLab API.
+
+### Step-by-step
+
+1. Create a feature branch from `main`: `git checkout -b feature/xxx`
+2. Make focused changes and keep generated or local-only artifacts out.
+3. Run local checks: `ruff check . && python -m pytest tests/`
+4. Push to GitLab: `git push -u gitlab feature/xxx`
+5. Create MR (via push options or GitLab UI/API).
+6. Wait for CI pipeline to pass (test + health-check).
+7. Merge MR. CI will auto-sync to GitHub.
+
+### Violations
+
+If code is accidentally pushed directly to GitHub:
+1. Do NOT attempt to fix by pushing more code.
+2. Revert the GitHub commit.
+3. Re-submit the change through GitLab MR flow.
+4. Verify CI sync restores consistency.
 
 ## CI
 
+### GitLab CI (primary)
+
+| Stage | Job | Trigger | Purpose |
+|-------|-----|---------|---------|
+| test | `test` | push | ruff lint + pytest |
+| health_check | `health-check` | push | boundary + structure validation |
+| sync | `sync-to-github` | merge to main | push to GitHub mirror |
+
+The `sync-to-github` job only runs after test + health-check both pass.
+
+### GitHub Actions (mirror-only)
+
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `ci.yml` | push/PR to `main` | ruff lint + pytest on Python 3.9/3.10/3.11/3.12 |
-| `release-and-dispatch.yml` | tag `v*` | full matrix tests, version validation, build, GitHub Release, PyPI publish |
+| `ci.yml` | push/PR to `main` | ruff lint + pytest (mirror validation) |
+| `release-and-dispatch.yml` | tag `v*` | release pipeline |
+
+GitHub Actions run for validation only; all merges happen on GitLab.
 
 ## Local development
 
 ```bash
-# Install in editable mode
 pip install -e ".[dev]"
-
-# Tests
 python -m pytest tests/
-
-# Lint
 ruff check .
-
-# Common full local check
 ruff check . && python -m pytest tests/
 ```
 
@@ -40,38 +80,31 @@ ruff check . && python -m pytest tests/
 
 - Use ruff with the repository configuration.
 - Target Python 3.9+.
-- Keep line width within the configured project limit.
-- Use concise commit messages such as `feat: ...`, `fix: ...`, `chore: ...`, or `docs: ...`.
+- Use concise commit messages: `feat:`, `fix:`, `chore:`, `docs:`.
 
 ## Documentation hygiene
 
-Public documentation should be safe for open-source readers and reusable across projects. When editing docs:
-
-- Do not include real local absolute paths; use placeholders such as `/path/to/project` or `<project-root>`.
-- Do not add internal session records, agent transcripts, private review notes, or `.factory` session artifacts to public docs.
-- Do not quote unredacted audit, residue, customer, infrastructure, token, credential, or private repository details.
-- Keep `docs/audit/**`, `docs/RESIDUE_*.md`, archive material, and local review indexes out of primary user navigation unless clearly labeled as maintainer/internal records.
-- Prefer small, focused documentation updates that match current CLI behavior.
-
-If a documentation change requires mentioning sensitive or environment-specific information, redact it or replace it with a generic example before opening a PR.
+Public documentation should be safe for open-source readers.
+- Do not include real local absolute paths.
+- Do not add internal session records, agent transcripts, or private review notes.
+- Redact sensitive information before opening a PR.
 
 ## Versioning
 
-- Maintain the package version only in `pyproject.toml` under `[project].version`.
+- Maintain version only in `pyproject.toml` under `[project].version`.
 - Follow SemVer: MAJOR.MINOR.PATCH.
 - Release tags must use `vX.Y.Z` and match `pyproject.toml`.
 
 ## Release process
 
 1. Update `pyproject.toml` version.
-2. Commit and tag:
-
+2. Commit and tag on GitLab:
    ```bash
    git add pyproject.toml
    git commit -m "chore: bump version to x.y.z"
    git tag vx.y.z
-   git push origin main vx.y.z
+   git push gitlab main vx.y.z
    ```
-
-3. The release workflow runs tests, validates the tag/version match, builds artifacts, and publishes.
-4. Verify the release, for example: `pip install memory-core==x.y.z`.
+3. GitLab CI runs tests and syncs to GitHub.
+4. GitHub release workflow publishes artifacts.
+5. Verify: `pip install memory-core==x.y.z`
