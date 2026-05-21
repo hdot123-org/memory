@@ -1470,6 +1470,12 @@ def main() -> int:
     if write_ok:
         _integrity_sign(cwd)
 
+    try:
+        from .memory_hook_metrics import emit_metrics
+        emit_metrics(ARTIFACT_ROOT, args.host, args.event, package)
+    except Exception as exc:
+        _logger.debug("metrics emit skipped: %s", exc)
+
     exit_code = 0
     if package["status"] != "ok":
         append_error_log(
