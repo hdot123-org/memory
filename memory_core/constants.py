@@ -56,5 +56,10 @@ VALID_HEALTH_VALUES = ("green", "yellow", "red")
 MESSAGE_VERSION_MISMATCH_UPGRADE_NEEDED = "version_mismatch_upgrade_needed: please run memory-migrate --from {current} --to {target}"
 MESSAGE_VERSION_MISMATCH_DOWNGRADE_DETECTED = "version_mismatch_downgrade_detected: project pinned to {current} > installed {target}; install matching memory-core or open issue"
 
+# Source repo modes
+SOURCE_REPO_MODE_READONLY = "readonly"
+SOURCE_REPO_MODE_DEVELOP = "develop"
+VALID_SOURCE_REPO_MODES = (SOURCE_REPO_MODE_READONLY, SOURCE_REPO_MODE_DEVELOP)
+
 # Migration error codes
 _BACKUP_FAILED = "backup_failed"

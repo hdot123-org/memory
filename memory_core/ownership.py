@@ -13,7 +13,7 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Any
 
-from memory_core.constants import OWNERSHIP_SCHEMA_VERSION
+from memory_core.constants import OWNERSHIP_SCHEMA_VERSION, SOURCE_REPO_MODE_READONLY, VALID_SOURCE_REPO_MODES
 
 
 class ProtectionLevel(Enum):
@@ -639,3 +639,28 @@ def is_memory_core_source_repo(path: Path) -> bool:
         pass
 
     return False
+
+
+def get_source_repo_mode(project_root: Path) -> str:
+    """Get the source repo operating mode.
+
+    Reads the mode from ownership policy configuration.
+    Returns "readonly" if not explicitly set or if not a source repo.
+
+    Args:
+        project_root: Path to project root
+
+    Returns:
+        "readonly" or "develop"
+    """
+    if not is_memory_core_source_repo(project_root):
+        return SOURCE_REPO_MODE_READONLY
+
+    ownership = load_memory_ownership(project_root)
+    source_repo_policy = ownership.policy.get("source_repo", {})
+    mode = source_repo_policy.get("mode", SOURCE_REPO_MODE_READONLY)
+
+    if mode not in VALID_SOURCE_REPO_MODES:
+        return SOURCE_REPO_MODE_READONLY
+
+    return mode

@@ -61,9 +61,9 @@ except ImportError:
 
 # M3: Import is_memory_core_source_repo from ownership module
 try:
-    from ..ownership import is_memory_core_source_repo
+    from ..ownership import get_source_repo_mode, is_memory_core_source_repo
 except ImportError:
-    from memory_core.ownership import is_memory_core_source_repo  # type: ignore
+    from memory_core.ownership import get_source_repo_mode, is_memory_core_source_repo  # type: ignore
 
 try:
     from .memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy
@@ -1391,10 +1391,14 @@ def main() -> int:
     cwd = _discover_cwd(payload)
 
     # M3: Anti-pollution - source repo gets readonly context-package instead of noop
+    # Source repo develop mode: fall through to normal context-package build
     if is_memory_core_source_repo(cwd):
-        readonly_package = _build_readonly_source_repo_package(cwd, args.host, args.event)
-        sys.stdout.write(json.dumps(readonly_package, ensure_ascii=False) + "\n")
-        return 0
+        mode = get_source_repo_mode(cwd)
+        if mode != "develop":
+            readonly_package = _build_readonly_source_repo_package(cwd, args.host, args.event)
+            sys.stdout.write(json.dumps(readonly_package, ensure_ascii=False) + "\n")
+            return 0
+        # develop mode: fall through to normal build_context_package below
 
     if is_denied_project_root(cwd):
         sys.stdout.write("{}\n")

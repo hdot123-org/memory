@@ -50,6 +50,8 @@ memory-consistency-check = "memory_core.tools.consistency_check:main"
 memory-audit-layout = "memory_core.tools.audit_project_layout:main"
 memory-plan-residue = "memory_core.tools.audit_project_layout:plan_main"
 memory-apply-residue-plan = "memory_core.tools.apply_residue_plan:main"
+memory-ownership = "memory_core.tools.ownership_cli:main"
+memory-verify-consumer = "memory_core.tools.verify_consumer:main"
 
 [tool.setuptools.packages.find]
 include = ["memory_core*"]
