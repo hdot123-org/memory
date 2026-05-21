@@ -1,9 +1,7 @@
 """Tests for sync configuration: SyncConfig, template_sync, init --sync."""
 from __future__ import annotations
 
-import json
 import sys
-from io import StringIO
 from pathlib import Path
 
 import pytest
@@ -23,10 +21,6 @@ from memory_core.tools.template_sync import (
     generate_gitlab_ci_yml,
 )
 
-
-# ---------------------------------------------------------------------------
-# SyncConfig parsing
-# ---------------------------------------------------------------------------
 
 class TestSyncConfigParsing:
     def test_no_sync_section_returns_default(self, tmp_path: Path) -> None:
