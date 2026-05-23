@@ -13,10 +13,12 @@ from typing import Any, Callable
 
 SCRIPT_PATH = Path(__file__).resolve()
 try:
+    from ..constants import SYSTEM_DIR
     from .denied_project_roots import is_denied_project_root
     from .memory_root_discovery import discover_roots
     from .project_lifecycle import record_project_lifecycle
 except ImportError:
+    from memory_core.constants import SYSTEM_DIR
     from memory_core.tools.denied_project_roots import is_denied_project_root
     from memory_core.tools.memory_root_discovery import discover_roots
     from memory_core.tools.project_lifecycle import record_project_lifecycle
@@ -1275,7 +1277,7 @@ def _update_state_dynamic_fields(project_root: Path) -> None:
     Non-blocking: gracefully handles missing git, missing STATE.md, or
     any errors by silently skipping.
     """
-    state_path = project_root / ".memory" / "STATE.md"
+    state_path = project_root / SYSTEM_DIR / "STATE.md"
     if not state_path.exists():
         return
 
@@ -1404,7 +1406,6 @@ def _build_readonly_source_repo_package(cwd: Path, host: str, event: str) -> dic
         "memory/docs/**",
         "memory/kb/**",
         "memory/system/**",
-        ".memory/**",
         "memory/project-map/**",
         "AGENTS.md",
     ]

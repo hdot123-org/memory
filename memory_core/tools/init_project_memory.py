@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Initialize a .memory/ directory skeleton in a target project.
+"""Initialize a memory/system/ directory skeleton in a target project.
 
 Usage:
     python init_project_memory.py --target /path/to/project
@@ -10,7 +10,7 @@ Usage:
     python init_project_memory.py --target /path/to/project --no-clobber
     python init_project_memory.py --target /path/to/project --no-auto-fill
 
-This tool creates the minimal .memory/ directory structure required by the
+This tool creates the minimal memory/system/ directory structure required by the
 memory system. It is designed to run against a *business project* repository,
 NOT against the memory repository itself.
 
@@ -85,23 +85,22 @@ CLAUDE_HOOK_EVENTS: list[tuple[str, str]] = [
 MEMORY_HOOK_BEGIN_MARKER = "<!-- MEMORY_HOOK_BEGIN -->"
 MEMORY_HOOK_END_MARKER = "<!-- MEMORY_HOOK_END -->"
 
-# Directory structure to create under .memory/
+# Directory structure to create under memory/system/
 DIRECTORY_STRUCTURE = [
-    ".memory",
-    ".memory/kb",
-    ".memory/kb/projects",
-    ".memory/kb/decisions",
-    ".memory/kb/lessons",
-    ".memory/kb/global",
-    "project-map",
     "memory",
+    "memory/system",
+    "memory/system/kb",
+    "memory/system/kb/projects",
+    "memory/system/kb/decisions",
+    "memory/system/kb/lessons",
+    "memory/system/kb/global",
+    "project-map",
     "memory/kb",
     "memory/kb/global",
     "memory/kb/projects",
     "memory/kb/decisions",
     "memory/kb/lessons",
     "memory/docs",
-    "memory/system",
     "memory/log",
 ]
 
@@ -196,7 +195,7 @@ lock_reason = "initial"
 def template_adapter_toml(project_name: str, host: str = "codex") -> tuple[str, list[str]]:
     """Generate adapter.toml content conforming to the canonical schema.
 
-    Reads the template from workspace/templates/.memory/adapter.toml and
+    Reads the template from workspace/templates/memory/system/adapter.toml and
     replaces placeholders with actual values.
 
     Returns:
@@ -206,7 +205,7 @@ def template_adapter_toml(project_name: str, host: str = "codex") -> tuple[str, 
     try:
         # Locate the memory-core repo root (parent of memory_core/)
         _repo_root = Path(__file__).resolve().parent.parent.parent
-        _template_path = _repo_root / "workspace" / "templates" / ".memory" / "adapter.toml"
+        _template_path = _repo_root / "workspace" / "templates" / "memory" / "system" / "adapter.toml"
 
         if _template_path.is_file():
             content = _template_path.read_text(encoding="utf-8")
@@ -229,7 +228,6 @@ registration_commit_phase = "post"
 project_name = "{{project_name}}"
 project_scope = "{{project_scope}}"
 host = "{{host}}"
-canonical_files = ["CANONICAL.md", "STATE.md"]
 """
 
         # Replace placeholders
@@ -272,562 +270,58 @@ host = "{host}"
 
 
 def template_canonical_md(project_name: str) -> tuple[str, list[str]]:
-    """Generate CANONICAL.md with frontmatter.
+    """DEPRECATED: CANONICAL.md generation removed in v0.5.0.
 
-    Returns:
-        Tuple of (content, warnings_list)
+    This function is kept as a stub to avoid breaking imports.
+    Returns empty content and a warning.
     """
-    now = _now_iso()
-    warnings: list[str] = []
-    try:
-        content = f"""\
----
-type: "KB:PROJECT"
-title: "{project_name} Project Canonical"
-shortname: "{project_name}"
-status: active
-created: "{now}"
-updated: "{now}"
-scope: project
-source: local-canonical
-confidence: high
-tags: [project, initialized]
----
-
-# {project_name} Project Canonical
-
-## 目标
-
-项目记忆系统已初始化。
-
-## 仓库
-
-| 位置 | 路径 |
-|------|------|
-| 本地仓库 | `{Path.cwd()}` |
-
-## Truth Basis
-
-### Source Refs
-- `workspace/INDEX.md`
-
-### Authority Refs
-- `.memory/CANONICAL.md`
-
-### Conflict Status
-- `active`
-
-## 项目信息
-
-| 字段 | 值 |
-|------|-----|
-| 项目名称 | {project_name} |
-| 项目类型 | （待填写） |
-| 主语言 | （待填写） |
-| 创建日期 | {now} |
-
-## 编码规范
-
-（待填写：项目编码标准描述，如缩进、编码风格等）
-
-## 架构约束
-
-（待填写：架构层面的约束条件，如设计模式、分层要求等）
-
-## 命名约定
-
-（待填写：变量、函数、文件命名规则）
-
-## 工具链
-
-| 工具 | 版本/说明 |
-|------|----------|
-| （待填写） | （待填写） |
-
-## 变更日志
-
-| 日期 | 版本 | 变更内容 |
-|------|------|----------|
-| {now} | 1.0.0 | 初始规范建立 |
-"""
-    except (ValueError, TypeError) as exc:
-        logger.warning(f"Template render error in CANONICAL.md: {exc}")
-        warnings.append(f"template_canonical_md: {exc}")
-        # Safe fallback with placeholders
-        content = f"""\
-# RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
----
-type: "KB:PROJECT"
-title: "{{project_name}} Project Canonical"
-shortname: "{{project_name}}"
-status: active
-created: "{now}"
-updated: "{now}"
-scope: project
-source: local-canonical
-confidence: high
-tags: [project, initialized]
----
-
-# {{project_name}} Project Canonical
-
-## 目标
-
-项目记忆系统已初始化。
-
-## 仓库
-
-| 位置 | 路径 |
-|------|------|
-| 本地仓库 | `{Path.cwd()}` |
-
-## Truth Basis
-
-### Source Refs
-- `workspace/INDEX.md`
-
-### Authority Refs
-- `.memory/CANONICAL.md`
-
-### Conflict Status
-- `active`
-
-## 项目信息
-
-| 字段 | 值 |
-|------|-----|
-| 项目名称 | {{project_name}} |
-| 项目类型 | （待填写） |
-| 主语言 | （待填写） |
-| 创建日期 | {now} |
-
-## 编码规范
-
-（待填写：项目编码标准描述，如缩进、编码风格等）
-
-## 架构约束
-
-（待填写：架构层面的约束条件，如设计模式、分层要求等）
-
-## 命名约定
-
-（待填写：变量、函数、文件命名规则）
-
-## 工具链
-
-| 工具 | 版本/说明 |
-|------|----------|
-| （待填写） | （待填写） |
-
-## 变更日志
-
-| 日期 | 版本 | 变更内容 |
-|------|------|----------|
-| {now} | 1.0.0 | 初始规范建立 |
-"""
-    return content, warnings
+    return "", [
+        "template_canonical_md: CANONICAL.md generation removed in v0.5.0"
+    ]
 
 
 def template_plan_md(project_name: str) -> tuple[str, list[str]]:
-    """Generate PLAN.md with frontmatter.
+    """DEPRECATED: PLAN.md generation removed in v0.5.0.
 
-    Returns:
-        Tuple of (content, warnings_list)
+    This function is kept as a stub to avoid breaking imports.
+    Returns empty content and a warning.
     """
-    now = _now_iso()
-    warnings: list[str] = []
-    try:
-        content = f"""\
----
-type: "KB:PLAN"
-title: "{project_name} Plan"
-shortname: "{project_name}"
-status: planning
-created: "{now}"
----
-
-# {project_name} Plan
-
-## 任务概述
-
-| 字段 | 值 |
-|------|-----|
-| 任务 ID | （待填写） |
-| 任务名称 | （待填写） |
-| 优先级 | （待填写：high / medium / low） |
-| 创建日期 | {now} |
-
-## 目标
-
-（待填写）
-
-## 范围
-
-（待填写）
-
-## 执行计划
-
-| 步骤 | 描述 | 状态 | 完成日期 |
-|------|------|------|----------|
-| 1 | （待填写） | planning | - |
-| 2 | （待填写） | planning | - |
-| 3 | （待填写） | planning | - |
-
-## 验收标准
-
-- [ ] （待填写：验收条件 1）
-- [ ] （待填写：验收条件 2）
-- [ ] （待填写：验收条件 3）
-
-## 风险与依赖
-
-| 类型 | 描述 | 缓解措施 |
-|------|------|----------|
-| 风险 | （待填写） | （待填写） |
-| 依赖 | （待填写） | （待填写） |
-
-## 状态
-
-- **当前状态**: planning
-- **上次更新**: {now}
-- **进度**: 0%
-"""
-    except (ValueError, TypeError) as exc:
-        logger.warning(f"Template render error in PLAN.md: {exc}")
-        warnings.append(f"template_plan_md: {exc}")
-        # Safe fallback with placeholders
-        content = f"""\
-# RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
----
-type: "KB:PLAN"
-title: "{{project_name}} Plan"
-shortname: "{{project_name}}"
-status: planning
-created: "{now}"
----
-
-# {{project_name}} Plan
-
-## 任务概述
-
-| 字段 | 值 |
-|------|-----|
-| 任务 ID | （待填写） |
-| 任务名称 | （待填写） |
-| 优先级 | （待填写：high / medium / low） |
-| 创建日期 | {now} |
-
-## 目标
-
-（待填写）
-
-## 范围
-
-（待填写）
-
-## 执行计划
-
-| 步骤 | 描述 | 状态 | 完成日期 |
-|------|------|------|----------|
-| 1 | （待填写） | planning | - |
-| 2 | （待填写） | planning | - |
-| 3 | （待填写） | planning | - |
-
-## 验收标准
-
-- [ ] （待填写：验收条件 1）
-- [ ] （待填写：验收条件 2）
-- [ ] （待填写：验收条件 3）
-
-## 风险与依赖
-
-| 类型 | 描述 | 缓解措施 |
-|------|------|----------|
-| 风险 | （待填写） | （待填写） |
-| 依赖 | （待填写） | （待填写） |
-
-## 状态
-
-- **当前状态**: planning
-- **上次更新**: {now}
-- **进度**: 0%
-"""
-    return content, warnings
+    return "", [
+        "template_plan_md: PLAN.md generation removed in v0.5.0"
+    ]
 
 
 def template_state_md(project_name: str) -> tuple[str, list[str]]:
-    """Generate STATE.md with frontmatter.
+    """DEPRECATED: STATE.md generation removed in v0.5.0.
 
-    Returns:
-        Tuple of (content, warnings_list)
+    This function is kept as a stub to avoid breaking imports.
+    Returns empty content and a warning.
     """
-    now = _now_iso()
-    warnings: list[str] = []
-    try:
-        content = f"""\
----
-type: "KB:STATE"
-title: "{project_name} State"
-shortname: "{project_name}"
-status: active
-updated: "{now}"
----
-
-# {project_name} State
-
-> 最后更新：{now}
-> 更新者：init_project_memory
-
-## 项目状态
-
-| 字段 | 值 |
-|------|-----|
-| 状态 | active |
-| 最后更新 | {now} |
-| 健康度 | green |
-
-## 上下文摘要
-
-（待填写：项目上下文概要，包括当前阶段、主要目标等）
-
-## 关键决策
-
-| 日期 | 决策 | 状态 | 备注 |
-|------|------|------|------|
-| {now} | 初始化项目记忆系统 | decided | 首次建立 .memory/ 目录 |
-
-## 当前工作区
-
-（待填写：当前工作区描述，如正在进行的任务、分支等）
-
-## 待处理事项
-
-- [ ] （待填写：待处理事项 1）
-- [ ] （待填写：待处理事项 2）
-- [ ] （待填写：待处理事项 3）
-
-## 已完成的里程碑
-
-- [x] {now}：项目记忆系统初始化完成
-"""
-    except (ValueError, TypeError) as exc:
-        logger.warning(f"Template render error in STATE.md: {exc}")
-        warnings.append(f"template_state_md: {exc}")
-        # Safe fallback with placeholders
-        content = f"""\
-# RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
----
-type: "KB:STATE"
-title: "{{project_name}} State"
-shortname: "{{project_name}}"
-status: active
-updated: "{now}"
----
-
-# {{project_name}} State
-
-> 最后更新：{now}
-> 更新者：init_project_memory
-
-## 项目状态
-
-| 字段 | 值 |
-|------|-----|
-| 状态 | active |
-| 最后更新 | {now} |
-| 健康度 | green |
-
-## 上下文摘要
-
-（待填写：项目上下文概要，包括当前阶段、主要目标等）
-
-## 关键决策
-
-| 日期 | 决策 | 状态 | 备注 |
-|------|------|------|------|
-| {now} | 初始化项目记忆系统 | decided | 首次建立 .memory/ 目录 |
-
-## 当前工作区
-
-（待填写：当前工作区描述，如正在进行的任务、分支等）
-
-## 待处理事项
-
-- [ ] （待填写：待处理事项 1）
-- [ ] （待填写：待处理事项 2）
-- [ ] （待填写：待处理事项 3）
-
-## 已完成的里程碑
-
-- [x] {now}：项目记忆系统初始化完成
-"""
-    return content, warnings
+    return "", [
+        "template_state_md: STATE.md generation removed in v0.5.0"
+    ]
 
 
 def template_tasks_md(project_name: str) -> tuple[str, list[str]]:
-    """Generate TASKS.md with frontmatter.
+    """DEPRECATED: TASKS.md generation removed in v0.5.0.
 
-    Returns:
-        Tuple of (content, warnings_list)
+    This function is kept as a stub to avoid breaking imports.
+    Returns empty content and a warning.
     """
-    warnings: list[str] = []
-    try:
-        content = f"""\
----
-type: "KB:TASKS"
-title: "{project_name} Tasks"
-shortname: "{project_name}"
-status: active
----
-
-# {project_name} Tasks
-
-## 活跃任务
-
-| 任务 ID | 任务名称 | 优先级 | 状态 | 截止日期 |
-|---------|----------|--------|------|----------|
-| T-001 | （待填写） | medium | todo | - |
-
-## 已完成任务
-
-| 任务 ID | 任务名称 | 完成日期 | 备注 |
-|---------|----------|----------|------|
-| - | - | - | - |
-
-## 已取消任务
-
-| 任务 ID | 任务名称 | 取消日期 | 原因 |
-|---------|----------|----------|------|
-| - | - | - | - |
-
-## 阻塞项
-
-| 阻塞项 | 描述 | 依赖 | 预计解决 |
-|--------|------|------|----------|
-| （待填写） | （待填写） | （待填写） | （待填写） |
-"""
-    except (ValueError, TypeError) as exc:
-        logger.warning(f"Template render error in TASKS.md: {exc}")
-        warnings.append(f"template_tasks_md: {exc}")
-        # Safe fallback with placeholders
-        content = """\
-# RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
----
-type: "KB:TASKS"
-title: "{{project_name}} Tasks"
-shortname: "{{project_name}}"
-status: active
----
-
-# {{project_name}} Tasks
-
-## 活跃任务
-
-| 任务 ID | 任务名称 | 优先级 | 状态 | 截止日期 |
-|---------|----------|--------|------|----------|
-| T-001 | （待填写） | medium | todo | - |
-
-## 已完成任务
-
-| 任务 ID | 任务名称 | 完成日期 | 备注 |
-|---------|----------|----------|------|
-| - | - | - | - |
-
-## 已取消任务
-
-| 任务 ID | 任务名称 | 取消日期 | 原因 |
-|---------|----------|----------|------|
-| - | - | - | - |
-
-## 阻塞项
-
-| 阻塞项 | 描述 | 依赖 | 预计解决 |
-|--------|------|------|----------|
-| （待填写） | （待填写） | （待填写） | （待填写） |
-"""
-    return content, warnings
+    return "", [
+        "template_tasks_md: TASKS.md generation removed in v0.5.0"
+    ]
 
 
 def template_now_md(project_name: str) -> tuple[str, list[str]]:
-    """Generate NOW.md with frontmatter for current task snapshot.
+    """DEPRECATED: NOW.md generation removed in v0.5.0.
 
-    Runtime required: referenced by memory_hook_core.py reads list.
-
-    Returns:
-        Tuple of (content, warnings_list)
+    This function is kept as a stub to avoid breaking imports.
+    Returns empty content and a warning.
     """
-    now = _now_iso()
-    warnings: list[str] = []
-    try:
-        content = f"""\
----
-type: "KB:STATE"
-title: "{project_name} Current State"
-shortname: "{project_name}"
-status: active
-created: "{now}"
-updated: "{now}"
----
-
-# {project_name} 当前状态
-
-> 最后更新：{now}
-
-## 当前任务
-
-（待填写：当前正在执行的主要任务）
-
-## 下一步行动
-
-- [ ] （待填写：下一步行动 1）
-- [ ] （待填写：下一步行动 2）
-- [ ] （待填写：下一步行动 3）
-
-## 阻塞项
-
-- （待填写：当前阻塞项）
-
-## 上下文摘要
-
-（待填写：当前上下文简要描述）
-"""
-    except (ValueError, TypeError) as exc:
-        logger.warning(f"Template render error in NOW.md: {exc}")
-        warnings.append(f"template_now_md: {exc}")
-        content = f"""\
-# RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
----
-type: "KB:STATE"
-title: "{{project_name}} Current State"
-shortname: "{{project_name}}"
-status: active
-created: "{now}"
-updated: "{now}"
----
-
-# {{project_name}} 当前状态
-
-> 最后更新：{now}
-
-## 当前任务
-
-（待填写：当前正在执行的主要任务）
-
-## 下一步行动
-
-- [ ] （待填写：下一步行动 1）
-- [ ] （待填写：下一步行动 2）
-- [ ] （待填写：下一步行动 3）
-
-## 阻塞项
-
-- （待填写：当前阻塞项）
-
-## 上下文摘要
-
-（待填写：当前上下文简要描述）
-"""
-    return content, warnings
+    return "", [
+        "template_now_md: NOW.md generation removed in v0.5.0"
+    ]
 
 
 def template_migrations_log(project_name: str) -> tuple[str, list[str]]:
@@ -1238,17 +732,7 @@ def _apply_auto_fill(
     if not isinstance(project_info, _ProjectInfo):
         return
 
-    # Fill CANONICAL.md
-    canonical_path = target / ".memory" / "CANONICAL.md"
-    if canonical_path.exists():
-        try:
-            content = canonical_path.read_text(encoding="utf-8")
-            filled = fill_template_fields(content, project_info)
-            if filled != content:
-                canonical_path.write_text(filled, encoding="utf-8")
-                result["created"].append("file:CANONICAL.md (auto-filled)")
-        except Exception as exc:
-            result["warnings"].append(f"CANONICAL.md auto-fill failed: {exc}")
+    # NOTE: CANONICAL.md generation removed in v0.5.0 — no auto-fill needed
 
     # Fill project scope .md
     scope_path = target / "memory" / "kb" / "projects" / f"{project_name}.md"
@@ -1364,31 +848,21 @@ KB_TEMPLATES: dict[str, Any] = {
         "- truth-model.md\n",
         []
     ),
-    # Runtime required: NOW.md referenced by memory_hook_core.py L226-236
-    "NOW.md": lambda scope: template_now_md(scope),
 }
 
 FILE_TEMPLATES: dict[str, Any] = {
     "memory.lock": lambda pn: template_memory_lock(pn),
-    "CANONICAL.md": lambda pn: template_canonical_md(pn),
-    "PLAN.md": lambda pn: template_plan_md(pn),
-    "STATE.md": lambda pn: template_state_md(pn),
-    "TASKS.md": lambda pn: template_tasks_md(pn),
     "migrations.log": lambda pn: template_migrations_log(pn),
 }
 
 # Essential files that must be checked for --no-clobber
 ESSENTIAL_FILES = [
     "memory.lock",
-    "CANONICAL.md",
-    "PLAN.md",
-    "STATE.md",
-    "TASKS.md",
     "migrations.log",
     "adapter.toml",
 ]
 
-# Runtime required KB files (under workspace_root, not .memory/)
+# Runtime required KB files (under workspace_root, not memory/system/)
 RUNTIME_KB_FILES = [
     "memory/kb/INDEX.md",  # L226-236 reads list
     "memory/kb/global/memory-hook-policy-pack.json",  # L281 DEFAULT_POLICY_PACK_PATH
@@ -1634,7 +1108,7 @@ def init_project_memory(
     sync_showdoc_url: str = "",
     auto_fill: bool = True,
 ) -> dict[str, Any]:
-    """Initialize .memory/ directory skeleton in the target project.
+    """Initialize memory/system/ directory skeleton in the target project.
 
     Args:
         target: Path to the target project root.
@@ -1674,7 +1148,7 @@ def init_project_memory(
         result["mode"] = "error"
         return result
 
-    memory_root = target / ".memory"
+    memory_root = target / "memory" / "system"
     project_name = _project_name(target, scope)
 
     if is_denied_project_root(target):
@@ -1701,7 +1175,7 @@ def init_project_memory(
             existing_essential.append(scope_file)
         if existing_essential:
             result["errors"].append(
-                f"refused to clobber existing .memory; use --force to overwrite "
+                f"refused to clobber existing memory/system/; use --force to overwrite "
                 f"or remove existing files first. Existing files: {', '.join(existing_essential)}"
             )
             result["mode"] = "error"
@@ -1716,7 +1190,7 @@ def init_project_memory(
         result["warnings"].append(f"{mode} mode: skipping business INDEX.md (not a memory file)")
 
     if mode in ("adopt", "update", "repair"):
-        # These modes should not fail if .memory already exists
+        # These modes should not fail if memory/system/ already exists
         # They work with existing structures
         pass
 
@@ -1764,7 +1238,7 @@ def init_project_memory(
                     return "skip - exists"
                 return "create"
 
-        # Check which files would be created/overwritten (under .memory/)
+        # Check which files would be created/overwritten (under memory/system/)
         for fname in ESSENTIAL_FILES:
             file_path = memory_root / fname
             action = _dry_run_action(file_path, is_business_file=False)
@@ -1804,7 +1278,7 @@ def init_project_memory(
     repo_root = _find_repo_root(target)
     if repo_root and _is_memory_repo(repo_root):
         result["errors"].append(
-            "Refusing to initialize .memory/ inside the memory repository itself. "
+            "Refusing to initialize memory/system/ inside the memory repository itself. "
             "This tool is for business project repositories only."
         )
         return result
@@ -1820,7 +1294,8 @@ def init_project_memory(
 
     # Create .keep files in empty directories
     for dir_rel in DIRECTORY_STRUCTURE:
-        if dir_rel == ".memory":
+        # Skip the top-level memory directories
+        if dir_rel in ("memory", "memory/system"):
             continue
         keep_path = target / dir_rel / ".keep"
         if not keep_path.exists():
@@ -1917,7 +1392,7 @@ def init_project_memory(
         except Exception as exc:
             result["errors"].append(f"failed to create {fname}: {exc}")
 
-    # 2. Write legacy .memory/ templates
+    # 2. Write memory/system/ templates
     for fname, template_fn in FILE_TEMPLATES.items():
         file_path = memory_root / fname
         should_skip, reason = _should_skip_file(file_path, fname, is_business_file=False)
@@ -2075,21 +1550,21 @@ def init_project_memory(
         except Exception as exc:
             result["warnings"].append(f"auto-fill skipped: {exc}")
 
-    # Generate hooks.json and AGENTS.md after .memory/ is ready
+    # Generate hooks.json and AGENTS.md after memory/system/ is ready
     if result["success"]:
         # Generate memory-init-fill skill YAML (unconditional, no --sync needed)
         try:
             from .template_sync import generate_skill_memory_init_fill_yaml
             _fill_skill_content = generate_skill_memory_init_fill_yaml(project_name)
             if _fill_skill_content:
-                _fill_skills_dir = target / ".memory" / "skills"
+                _fill_skills_dir = target / "memory" / "system" / "skills"
                 _fill_skills_dir.mkdir(parents=True, exist_ok=True)
                 _fill_skill_path = _fill_skills_dir / "memory-init-fill.yaml"
                 if not _fill_skill_path.exists() or force:
                     _fill_skill_path.write_text(_fill_skill_content, encoding="utf-8")
-                    result["created"].append("file:.memory/skills/memory-init-fill.yaml")
+                    result["created"].append("file:memory/system/skills/memory-init-fill.yaml")
                 else:
-                    result["skipped"].append("file:.memory/skills/memory-init-fill.yaml (exists)")
+                    result["skipped"].append("file:memory/system/skills/memory-init-fill.yaml (exists)")
         except Exception as exc:
             result["warnings"].append(f"memory-init-fill skill generation skipped: {exc}")
 
@@ -2111,16 +1586,36 @@ def init_project_memory(
                 showdoc_url=sync_showdoc_url,
             )
 
-        # L2: Sign initial manifest after .memory/ is scaffolded
+        # L2: Sign initial manifest after memory/system/ is scaffolded
         try:
             from .memory_hook_integrity_keys import load_or_create_key
             from .memory_hook_integrity_manifest import sign_project
             key = load_or_create_key()
             sign_project(target, key)
-            result["created"].append("file:.memory/manifest.json (signed)")
+            result["created"].append("file:memory/system/manifest.json (signed)")
         except Exception as exc:
             # Non-blocking: integrity signing is best-effort
             result["warnings"].append(f"integrity signing skipped: {exc}")
+
+        # Create initial integrity-audit.jsonl
+        try:
+            import json as _json
+            _audit_path = memory_root / "integrity-audit.jsonl"
+            if not _audit_path.exists():
+                _audit_entry = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    "action": "init",
+                    "version": CURRENT_MEMORY_VERSION,
+                    "project": project_name,
+                    "reason": "initial scaffold",
+                }
+                _audit_path.write_text(
+                    _json.dumps(_audit_entry, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
+                result["created"].append("file:memory/system/integrity-audit.jsonl")
+        except Exception as exc:
+            result["warnings"].append(f"integrity-audit.jsonl creation skipped: {exc}")
 
         # Step 2.1: Generate ownership.toml (after integrity signing, only if not dry_run)
         if not dry_run:
@@ -2138,6 +1633,20 @@ def init_project_memory(
                         result["skipped"].append("file:ownership.toml (already exists)")
             except Exception as exc:
                 result["errors"].append(f"failed to create ownership.toml: {exc}")
+
+        # Post-write evidence ref check: verify all KB evidence refs exist on disk
+        if not dry_run:
+            try:
+                from memory_core.tools.evidence_ref_validator import validate_evidence_refs_on_disk
+                ref_errors = validate_evidence_refs_on_disk(target)
+                for err in ref_errors:
+                    result["warnings"].append(
+                        f"evidence ref check: {err.kb_file} has {len(err.missing_refs)} missing refs: "
+                        f"{', '.join(err.missing_refs[:3])}"
+                    )
+            except Exception as exc:
+                # Non-blocking: best-effort check
+                result["warnings"].append(f"evidence ref check skipped: {exc}")
 
     return result
 
@@ -2167,7 +1676,7 @@ def _is_memory_repo(repo_root: Path) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Initialize a .memory/ directory skeleton in a target project."
+        description="Initialize a memory/system/ directory skeleton in a target project."
     )
     parser.add_argument(
         "--target",
@@ -2312,7 +1821,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Project Memory Initialization Report")
         print("=" * 60)
         if result["dry_run"]:
-            print(f"  [DRY RUN] Would initialize .memory/ under: {result['target']}")
+            print(f"  [DRY RUN] Would initialize memory/system/ under: {result['target']}")
             do = result.get("dry_run_output", {})
             print(f"  Project name: {do.get('project_name', 'N/A')}")
             print(f"  Would create {len(do.get('would_create_dirs', []))} directories")
@@ -2411,15 +1920,15 @@ def _generate_sync_files(
         result["skipped"].append("file:.gitlab-ci.yml (exists, use --force)")
 
     # 2. Skill workflow template
-    skills_dir = target / ".memory" / "skills"
+    skills_dir = target / "memory" / "system" / "skills"
     skills_dir.mkdir(parents=True, exist_ok=True)
     skill_path = skills_dir / "gitlab_sync_workflow.yaml"
     if not skill_path.exists() or force:
         skill_content = generate_skill_workflow_yaml(sync)
         skill_path.write_text(skill_content, encoding="utf-8")
-        result["created"].append("file:.memory/skills/gitlab_sync_workflow.yaml")
+        result["created"].append("file:memory/system/skills/gitlab_sync_workflow.yaml")
     else:
-        result["skipped"].append("file:.memory/skills/gitlab_sync_workflow.yaml (exists, use --force)")
+        result["skipped"].append("file:memory/system/skills/gitlab_sync_workflow.yaml (exists, use --force)")
 
     # 2b. ShowDoc skill workflow YAML
     if showdoc_enabled:
@@ -2437,12 +1946,12 @@ def _generate_sync_files(
         if not showdoc_skill_path.exists() or force:
             showdoc_skill_content = generate_skill_showdoc_workflow_yaml(showdoc)
             showdoc_skill_path.write_text(showdoc_skill_content, encoding="utf-8")
-            result["created"].append("file:.memory/skills/showdoc_sync_workflow.yaml")
+            result["created"].append("file:memory/system/skills/showdoc_sync_workflow.yaml")
         else:
-            result["skipped"].append("file:.memory/skills/showdoc_sync_workflow.yaml (exists, use --force)")
+            result["skipped"].append("file:memory/system/skills/showdoc_sync_workflow.yaml (exists, use --force)")
 
     # 3. Append [sync] to adapter.toml
-    adapter_path = target / ".memory" / "adapter.toml"
+    adapter_path = target / "memory" / "system" / "adapter.toml"
     if adapter_path.exists():
         existing = adapter_path.read_text(encoding="utf-8")
         toml_additions = ""
@@ -2461,11 +1970,11 @@ def _generate_sync_files(
 
         if toml_additions:
             adapter_path.write_text(existing + toml_additions, encoding="utf-8")
-            result["created"].append("file:.memory/adapter.toml [sync] section")
+            result["created"].append("file:memory/system/adapter.toml [sync] section")
             if showdoc_enabled:
-                result["created"].append("file:.memory/adapter.toml [sync.showdoc] section")
+                result["created"].append("file:memory/system/adapter.toml [sync.showdoc] section")
         else:
-            result["skipped"].append("file:.memory/adapter.toml [sync] (exists)")
+            result["skipped"].append("file:memory/system/adapter.toml [sync] (exists)")
     else:
         result["warnings"].append("adapter.toml not found; [sync] not written")
 

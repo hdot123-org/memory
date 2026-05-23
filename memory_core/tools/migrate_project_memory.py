@@ -71,6 +71,10 @@ ADAPTER_TOML_NAME = "adapter.toml"
 BACKUPS_DIR_NAME = "backups"
 BACKUP_MANIFEST_NAME = "BACKUP_MANIFEST.json"
 
+# 0.4 → 0.5 migration constants
+V05_SYSTEM_DIR = Path("memory") / "system"
+V05_BACKUP_LABEL = "pre-0.5"
+
 # Local downgrade-reject constants (not in constants.py to avoid coupling)
 _DOWNGRADE_NOT_SUPPORTED = "downgrade_not_supported"
 _CURRENT_NEWER_THAN_TARGET = "current_newer_than_target"
@@ -290,8 +294,203 @@ def migrate_v010_to_v020(memory_root: Path) -> dict[str, Any]:
     return result
 
 
+# ---------------------------------------------------------------------------
+# Migrate 0.4.0 → 0.5.0: move .memory/ to memory/system/
+# ---------------------------------------------------------------------------
+
+# Config files to move from .memory/ to memory/system/
+_V05_CONFIG_FILES = [
+    "adapter.toml",
+    "ownership.toml",
+    "memory.lock",
+    "migrations.log",
+    "manifest.json",
+    "integrity-audit.jsonl",
+]
+
+# Template files to delete from .memory/
+_V05_DELETED_FILES = [
+    "CANONICAL.md",
+    "STATE.md",
+    "PLAN.md",
+    "TASKS.md",
+    "NOW.md",
+]
+
+# Directories to delete (or move if non-empty) from .memory/
+_V05_DELETED_DIRS = [
+    "kb",
+    "skills",
+]
+
+
+def _v05_backup(memory_root: Path, target_root: Path) -> Path:
+    """Create backup at memory/system/backups/pre-0.5/ containing all .memory/ contents.
+
+    Returns the backup directory path.
+    """
+    system_dir = target_root / V05_SYSTEM_DIR
+    backup_dir = system_dir / BACKUPS_DIR_NAME / V05_BACKUP_LABEL
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy all contents of .memory/ to backup, excluding any existing backup dirs
+    for item in memory_root.iterdir():
+        if item.name == BACKUPS_DIR_NAME:
+            continue
+        dest = backup_dir / item.name
+        if item.is_dir():
+            shutil.copytree(str(item), str(dest))
+        else:
+            shutil.copy2(str(item), str(dest))
+
+    # Write backup manifest
+    source_files_count = sum(1 for p in memory_root.rglob("*") if p.is_file())
+    manifest = {
+        "from_version": "0.4.0",
+        "to_version": "0.5.0",
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "source_files_count": source_files_count,
+        "source_root": str(memory_root),
+    }
+    manifest_path = backup_dir / BACKUP_MANIFEST_NAME
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    return backup_dir
+
+
+def migrate_v040_to_v050(memory_root: Path) -> dict[str, Any]:
+    """Migration: 0.4.0 → 0.5.0.
+
+    1. Backs up .memory/ to memory/system/backups/pre-0.5/
+    2. Moves config files (adapter.toml, ownership.toml, memory.lock,
+       migrations.log, manifest.json, integrity-audit.jsonl) to memory/system/
+    3. Moves kb/ and skills/ if they exist and are non-empty
+    4. Deletes template files (CANONICAL.md, STATE.md, PLAN.md, TASKS.md, NOW.md)
+    5. Deletes .memory/kb/ and .memory/skills/ (moved if non-empty)
+    6. Removes empty .memory/ directory
+    7. Updates adapter.toml version to 0.5.0
+
+    Idempotent: if .memory/ doesn't exist, returns success with noop.
+    """
+    result: dict[str, Any] = {"success": False, "detail": "", "residue": []}
+
+    target_root = memory_root.parent
+
+    # Idempotency: if .memory/ doesn't exist, assume already migrated
+    if not memory_root.exists():
+        # Check that memory/system/ exists (migration already completed)
+        system_dir = target_root / V05_SYSTEM_DIR
+        if system_dir.exists():
+            result["success"] = True
+            result["detail"] = "already migrated to 0.5.0"
+            return result
+
+    # Ensure target memory/system/ directory exists
+    system_dir = target_root / V05_SYSTEM_DIR
+    system_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Backup before making any changes
+    try:
+        _v05_backup(memory_root, target_root)
+    except Exception as exc:
+        result["detail"] = f"Backup creation failed: {exc}"
+        return result
+
+    # 2. Move config files from .memory/ to memory/system/
+    for filename in _V05_CONFIG_FILES:
+        src = memory_root / filename
+        if src.exists():
+            dest = system_dir / filename
+            shutil.move(str(src), str(dest))
+
+    # 3. Move kb/ and skills/ if non-empty
+    for dirname in _V05_DELETED_DIRS:
+        src_dir = memory_root / dirname
+        if src_dir.exists():
+            if any(src_dir.iterdir()):
+                dest_dir = system_dir / dirname
+                shutil.move(str(src_dir), str(dest_dir))
+            else:
+                # Empty directory, just remove it
+                shutil.rmtree(str(src_dir))
+
+    # 4. Delete template files
+    for filename in _V05_DELETED_FILES:
+        src = memory_root / filename
+        if src.exists():
+            src.unlink()
+
+    # 5. Remove .memory/ directory if empty or has only remaining subdirs
+    # (some subdirs like backups/ may remain, but those are handled)
+    remaining_items = list(memory_root.iterdir())
+    # Only remove backups/ if it's empty (real backups should be under memory/system/backups/)
+    for item in remaining_items:
+        if item.name == BACKUPS_DIR_NAME:
+            if not any(item.iterdir()):
+                shutil.rmtree(str(item))
+
+    # Try to remove the .memory/ directory
+    try:
+        # Remove any remaining empty directories
+        for item in memory_root.iterdir():
+            if item.is_dir():
+                try:
+                    shutil.rmtree(str(item))
+                except OSError:
+                    pass
+            else:
+                item.unlink()
+        memory_root.rmdir()
+    except OSError:
+        # If .memory/ can't be fully removed, leave it (non-critical)
+        result["residue"].append("Warning: .memory/ directory could not be fully removed")
+
+    # 6. Update adapter.toml version to 0.5.0
+    adapter_path = system_dir / ADAPTER_TOML_NAME
+    if adapter_path.exists():
+        try:
+            raw_data: dict[str, Any] = tomllib.loads(
+                adapter_path.read_text(encoding="utf-8")
+            )
+            # Update version in-place regardless of layout
+            if "core" in raw_data:
+                raw_data["core"]["version"] = CURRENT_MEMORY_VERSION
+            elif "adapter" in raw_data:
+                raw_data["adapter"]["adapter_version"] = CURRENT_MEMORY_VERSION
+            # Write canonical format
+            _tmp_path = adapter_path.parent / ".adapter.toml.migrating"
+            _lines: list[str] = ["# adapter.toml (migrated to 0.5.0)", ""]
+            for _section, _sdata in raw_data.items():
+                if isinstance(_sdata, dict):
+                    _lines.append(f"[{_section}]")
+                    for _k, _v in _sdata.items():
+                        if isinstance(_v, list):
+                            _vals = ", ".join(f'"{x}"' for x in _v)
+                            _lines.append(f"{_k} = [{_vals}]")
+                        elif isinstance(_v, bool):
+                            _lines.append(f"{_k} = {'true' if _v else 'false'}")
+                        else:
+                            _lines.append(f'{_k} = "{_v}"')
+                    _lines.append("")
+            _tmp_path.write_text("\n".join(_lines), encoding="utf-8")
+            _config = load_adapter_toml(_tmp_path)
+            _config.adapter_version = CURRENT_MEMORY_VERSION
+            adapter_path.write_text(dump_adapter_toml(_config), encoding="utf-8")
+            _tmp_path.unlink(missing_ok=True)
+        except Exception as exc:
+            result["residue"].append(f"adapter.toml update failed: {exc}")
+
+    result["success"] = True
+    result["detail"] = "Migrated from 0.4.0 to 0.5.0: moved config to memory/system/, removed .memory/"
+    return result
+
+
 MIGRATION_REGISTRY: dict[str, Callable[[Path], dict[str, Any]]] = {
     f"0.1.0->{CURRENT_MEMORY_VERSION}": migrate_v010_to_v020,
+    "0.4.0->0.5.0": migrate_v040_to_v050,
 }
 
 
@@ -450,11 +649,43 @@ def _create_backup(memory_root: Path, from_version: str, to_version: str) -> Pat
 # Rollback planning — reads backups directory
 # ---------------------------------------------------------------------------
 
+def _find_v05_backup(target_root: Path) -> Path | None:
+    """Find a 0.4→0.5 backup at memory/system/backups/pre-0.5/.
+
+    Returns the backup dir path or None.
+    """
+    system_dir = target_root / V05_SYSTEM_DIR
+    backup_dir = system_dir / BACKUPS_DIR_NAME / V05_BACKUP_LABEL
+    if backup_dir.is_dir() and (backup_dir / BACKUP_MANIFEST_NAME).is_file():
+        return backup_dir
+    return None
+
+
 def plan_rollback(memory_root: Path) -> dict[str, Any]:
     """Check if a rollback is possible by looking at backups/.
 
+    Checks both legacy location (.memory/backups/) and new location
+    (memory/system/backups/pre-0.5/).
     Returns the latest backup metadata or can_rollback=False.
     """
+    target_root = memory_root.parent
+
+    # Check new 0.5 location first
+    v05_backup = _find_v05_backup(target_root)
+    if v05_backup is not None:
+        manifest = json.loads(
+            (v05_backup / BACKUP_MANIFEST_NAME).read_text(encoding="utf-8")
+        )
+        return {
+            "can_rollback": True,
+            "backup_dir": str(v05_backup),
+            "from_version": manifest["from_version"],
+            "to_version": manifest["to_version"],
+            "ts": manifest["timestamp"],
+            "is_v05_backup": True,
+        }
+
+    # Fall back to legacy location
     backups_dir = memory_root / BACKUPS_DIR_NAME
     if not backups_dir.is_dir():
         return {"can_rollback": False, "reason": "no backup found"}
@@ -480,6 +711,7 @@ def plan_rollback(memory_root: Path) -> dict[str, Any]:
         "from_version": manifest["from_version"],
         "to_version": manifest["to_version"],
         "ts": manifest["timestamp"],
+        "is_v05_backup": False,
     }
 
 
@@ -490,7 +722,8 @@ def plan_rollback(memory_root: Path) -> dict[str, Any]:
 def execute_rollback(memory_root: Path, *, backup_dir: Path | None = None) -> dict[str, Any]:
     """Restore .memory/ from the latest backup (or specified backup_dir).
 
-    Deletes current .memory/ contents (except backups/), copies backup in.
+    Supports both legacy backups (.memory/backups/<ts>/) and v0.5 backups
+    (memory/system/backups/pre-0.5/).
     Writes a status=rolled_back entry to migrations.log.
     """
     # Resolve backup_dir
@@ -505,14 +738,29 @@ def execute_rollback(memory_root: Path, *, backup_dir: Path | None = None) -> di
     if not bd.is_dir():
         return {"success": False, "error": f"backup dir not found: {bd}"}
 
+    # Determine the plan: check if this is a v0.5 backup by looking for manifest
+    manifest_path = bd / BACKUP_MANIFEST_NAME
+    is_v05_backup = False
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            is_v05_backup = manifest.get("to_version") == "0.5.0"
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # For v0.5 backups, .memory/ may not exist yet — create it
+    if is_v05_backup and not memory_root.exists():
+        memory_root.mkdir(parents=True, exist_ok=True)
+
     # Delete current .memory/ contents except backups/
-    for item in memory_root.iterdir():
-        if item.name == BACKUPS_DIR_NAME:
-            continue
-        if item.is_dir():
-            shutil.rmtree(str(item))
-        else:
-            item.unlink()
+    if memory_root.exists():
+        for item in memory_root.iterdir():
+            if item.name == BACKUPS_DIR_NAME:
+                continue
+            if item.is_dir():
+                shutil.rmtree(str(item))
+            else:
+                item.unlink()
 
     # Copy backup contents back
     for item in bd.iterdir():
@@ -583,6 +831,14 @@ def migrate_project_memory(
 
     memory_root = target / ".memory"
     if not memory_root.is_dir():
+        # For 0.4→0.5: if .memory/ doesn't exist but memory/system/ does,
+        # the migration was already completed — return noop
+        system_dir = target / V05_SYSTEM_DIR
+        if from_version == "0.4.0" and to_version == "0.5.0" and system_dir.is_dir():
+            result["success"] = True
+            result["noop"] = True
+            result["reason"] = "already migrated to 0.5.0"
+            return result
         result["errors"].append(f".memory/ directory not found at {memory_root}")
         return result
 
@@ -640,7 +896,11 @@ def migrate_project_memory(
         return result
 
     # ---- C. Backup (before writing anything) ----
-    if not dry_run:
+    # Skip the legacy backup for 0.4→0.5 migration (it handles its own backup internally)
+    is_v04_to_v05 = any(
+        m["from"] == "0.4.0" and m["to"] == "0.5.0" for m in migrations
+    )
+    if not dry_run and not is_v04_to_v05:
         try:
             _create_backup(memory_root, from_version, to_version)
         except Exception as exc:
@@ -678,8 +938,10 @@ def migrate_project_memory(
 
             mig_result = mig["fn"](memory_root)
             status = "success" if mig_result["success"] else "failed"
+            # For 0.4→0.5 migration, .memory/ is gone; use memory/system/ for logging
+            log_root = target / V05_SYSTEM_DIR if is_v04_to_v05 else memory_root
             log_entry = append_migration_log(
-                memory_root, mig["from"], mig["to"], status,
+                log_root, mig["from"], mig["to"], status,
                 mig_result.get("detail", ""),
                 dry_run=False,
             )
@@ -704,7 +966,12 @@ def migrate_project_memory(
 
         # M6: Generate default ownership.toml for old projects without one
         if all_success and not dry_run:
-            ownership_result = _generate_default_ownership_toml(memory_root)
+            # For 0.4→0.5 migration, .memory/ is gone; use memory/system/ instead
+            effective_root = target / V05_SYSTEM_DIR if is_v04_to_v05 else memory_root
+            if not effective_root.exists():
+                effective_root = memory_root  # fallback
+
+            ownership_result = _generate_default_ownership_toml(effective_root)
             if ownership_result["success"]:
                 result["residue"].append(f"ownership: {ownership_result['detail']}")
             else:
@@ -713,7 +980,7 @@ def migrate_project_memory(
                 )
 
             # M6: Upgrade manifest v1 → v2 if needed
-            manifest_result = _upgrade_manifest_v1_to_v2(memory_root)
+            manifest_result = _upgrade_manifest_v1_to_v2(effective_root)
             if manifest_result["success"]:
                 result["residue"].append(f"manifest: {manifest_result['detail']}")
             else:
@@ -722,20 +989,40 @@ def migrate_project_memory(
                 )
 
         # Rollback plan
-        result["rollback"] = plan_rollback(memory_root)
+        # For 0.4→0.5, .memory/ is gone; plan_rollback handles v05 backups via target
+        rb_memory_root = target / V05_SYSTEM_DIR if (is_v04_to_v05 and not memory_root.exists()) else memory_root
+        result["rollback"] = plan_rollback(rb_memory_root)
+
+        # Post-migration evidence ref check
+        try:
+            from memory_core.tools.evidence_ref_validator import validate_evidence_refs_on_disk
+            ref_errors = validate_evidence_refs_on_disk(target)
+            if ref_errors:
+                result["warnings"] = result.get("warnings", [])
+                for err in ref_errors:
+                    result["warnings"].append(
+                        f"evidence ref check: {err.kb_file} has {len(err.missing_refs)} missing refs"
+                    )
+        except Exception:
+            pass  # Non-blocking: best-effort check
+
         result["success"] = all_success
         return result
 
     except Exception as exc:
         # ---- F. Auto-rollback on any exception ----
+        # For 0.4→0.5 migration, .memory/ is gone; execute_rollback creates it
+        rb_memory_root = target / V05_SYSTEM_DIR if (is_v04_to_v05 and not memory_root.exists()) else memory_root
         try:
-            rb_result = execute_rollback(memory_root)
+            rb_result = execute_rollback(rb_memory_root)
             rb_succeeded = rb_result.get("success", False)
         except Exception as rb_exc:
             rb_succeeded = False
             rb_result = {"success": False, "error": str(rb_exc)}
 
         log_path = memory_root / MIGRATIONS_LOG_NAME
+        if not log_path.is_file():
+            log_path = (target / V05_SYSTEM_DIR) / MIGRATIONS_LOG_NAME
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         if rb_succeeded:
@@ -776,13 +1063,11 @@ def main() -> int:
     parser.add_argument(
         "--from",
         dest="from_version",
-        required=True,
         help="Current version of the memory schema.",
     )
     parser.add_argument(
         "--to",
         dest="to_version",
-        required=True,
         help="Target version to migrate to.",
     )
     parser.add_argument(
@@ -795,6 +1080,11 @@ def main() -> int:
         action="store_true",
         help="Output results as JSON.",
     )
+    parser.add_argument(
+        "--rollback",
+        action="store_true",
+        help="Rollback a previous migration, restoring .memory/ from backup.",
+    )
     try:
         _pkg_version = importlib.metadata.version("memory-core")
     except importlib.metadata.PackageNotFoundError:
@@ -802,10 +1092,45 @@ def main() -> int:
     parser.add_argument("--version", action="version", version=f"%(prog)s {_pkg_version}")
     args = parser.parse_args()
 
+    # Validate required args for non-rollback mode
+    if not args.rollback and (not args.from_version or not args.to_version):
+        print("Error: --from and --to are required unless --rollback is specified.", file=sys.stderr)
+        return 2
+
     target = args.target.resolve()
     if not target.is_dir():
         print(f"Error: target path does not exist: {target}", file=sys.stderr)
         return 2
+
+    # Handle --rollback mode
+    if args.rollback:
+        memory_root = target / ".memory"
+        # For rollback, .memory/ may not exist (after 0.4→0.5 migration)
+        # but we need it for the plan_rollback and execute_rollback functions
+        if not memory_root.exists():
+            # Check for v0.5 backup before failing
+            v05_backup = _find_v05_backup(target)
+            if v05_backup is None:
+                print("Error: no backup found for rollback.", file=sys.stderr)
+                return 2
+            # Create .memory/ temporarily so plan_rollback can find the v0.5 backup
+            memory_root.mkdir(parents=True, exist_ok=True)
+
+        plan = plan_rollback(memory_root)
+        if not plan["can_rollback"]:
+            print(f"Error: {plan.get('reason', 'cannot rollback')}", file=sys.stderr)
+            return 2
+
+        print(f"Rolling back from backup: {plan['backup_dir']}")
+        print(f"  From: {plan['from_version']} -> To: {plan['to_version']}")
+
+        rb_result = execute_rollback(memory_root)
+        if rb_result["success"]:
+            print(f"Rollback succeeded. Restored from: {rb_result['restored_from']}")
+            return 0
+        else:
+            print(f"Rollback failed: {rb_result.get('error', 'unknown')}", file=sys.stderr)
+            return 1
 
     result = migrate_project_memory(
         target,

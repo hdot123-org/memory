@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a project's .memory/ directory structure and integrity.
+"""Validate a project's memory/system/ directory structure and integrity.
 
 Usage:
     python validate_project_memory.py --target /path/to/project
@@ -7,14 +7,11 @@ Usage:
     python validate_project_memory.py --target /path/to/project --dry-run
 
 Checks performed:
-    1. Required files existence (memory.lock, adapter.toml, CANONICAL.md,
-       PLAN.md, STATE.md, TASKS.md, migrations.log)
-    2. Frontmatter / schema validation on Markdown files
-    3. Lock/adapter version compatibility
-    4. Pollution guard (no business state written into memory repo)
-    5. State enumerations (STATE.md/PLAN.md/CANONICAL.md status field)
-    6. memory.lock memory_version SemVer format
-    7. adapter.toml routing.host enumeration
+    1. Required files existence (memory.lock, adapter.toml, migrations.log)
+    2. Lock/adapter version compatibility
+    3. Pollution guard (no business state written into memory repo)
+    4. memory.lock memory_version SemVer format
+    5. adapter.toml routing.host enumeration
 
 Exit codes:
     0 — all checks passed
@@ -255,7 +252,7 @@ class CheckResult:
 # ---------------------------------------------------------------------------
 
 def check_required_files(memory_root: Path, result: CheckResult) -> bool:
-    """Verify all required files exist inside .memory/."""
+    """Verify all required files exist inside memory/system/."""
     all_ok = True
     for fname in REQUIRED_MEMORY_FILES:
         fpath = memory_root / fname
@@ -467,7 +464,7 @@ def check_ownership_declaration(memory_root: Path, result: CheckResult) -> bool:
     """Step 2.3: Verify ownership.toml declaration exists and is valid.
 
     Checks:
-    - ownership.toml exists in .memory/
+    - ownership.toml exists in memory/system/
     - Schema version is valid (matches OWNERSHIP_SCHEMA_VERSION)
     - Default domains not deleted/downgraded via validate_ownership_schema()
     """
@@ -475,7 +472,7 @@ def check_ownership_declaration(memory_root: Path, result: CheckResult) -> bool:
     ownership_path = memory_root / "ownership.toml"
 
     if not ownership_path.is_file():
-        result.record("ownership_declaration", False, "ownership.toml not found in .memory/")
+        result.record("ownership_declaration", False, "ownership.toml not found in memory/system/")
         all_ok = False
     else:
         result.record("ownership_declaration", True, "ownership.toml exists")
@@ -501,13 +498,16 @@ def check_domain_integrity(target: Path, memory_root: Path, result: CheckResult)
     """Step 2.4: Verify critical domain paths exist and are not symlinks.
 
     Checks:
-    - .memory/memory/ and project-map/ exist and are not symlinks
+    - memory/ and project-map/ exist and are not symlinks
     - Paths don't escape project root
     """
     all_ok = True
+    # memory_root is target / "memory" / "system", so:
+    #   memory_root.parent = target / "memory"
+    #   memory_root.parent.parent = target
     critical_paths = [
-        ("memory", memory_root.parent / "memory"),
-        ("project-map", memory_root.parent / "project-map"),
+        ("memory", memory_root.parent),
+        ("project-map", memory_root.parent.parent / "project-map"),
     ]
 
     for name, path in critical_paths:
@@ -542,10 +542,13 @@ def check_document_paths(memory_root: Path, result: CheckResult) -> bool:
     - Referenced documents exist
     """
     all_ok = True
+    # memory_root is target / "memory" / "system", so:
+    #   memory_root.parent.parent = target
+    project_root = memory_root.parent.parent
     index_files = [
-        ("memory/docs/INDEX.md", memory_root.parent / "memory" / "docs" / "INDEX.md"),
-        ("memory/kb/INDEX.md", memory_root.parent / "memory" / "kb" / "INDEX.md"),
-        ("project-map/INDEX.md", memory_root.parent / "project-map" / "INDEX.md"),
+        ("memory/docs/INDEX.md", project_root / "memory" / "docs" / "INDEX.md"),
+        ("memory/kb/INDEX.md", project_root / "memory" / "kb" / "INDEX.md"),
+        ("project-map/INDEX.md", project_root / "project-map" / "INDEX.md"),
     ]
 
     for rel_path, full_path in index_files:
@@ -568,7 +571,7 @@ def check_document_paths(memory_root: Path, result: CheckResult) -> bool:
             referenced_files = re.findall(r"[\s\-]*([\w\-/]+\.md)", content)
             missing_refs = []
             for ref in referenced_files:
-                ref_path = memory_root.parent / ref
+                ref_path = project_root / ref
                 if not ref_path.exists() and not ref.startswith("http"):
                     # Skip if it looks like a pattern, not a literal path
                     if "*" not in ref and "?" not in ref:
@@ -717,10 +720,10 @@ def validate_project_memory(
     *,
     dry_run: bool = False,
 ) -> CheckResult:
-    """Run all validation checks on a project's .memory/ directory.
+    """Run all validation checks on a project's memory/system/ directory.
 
     Args:
-        target: Path to the target project root (must contain .memory/).
+        target: Path to the target project root (must contain memory/system/).
         dry_run: If True, only report what would be checked without reading files.
 
     Returns:
@@ -729,7 +732,7 @@ def validate_project_memory(
     result = CheckResult()
 
     if dry_run:
-        result.record("dry_run", True, f"would validate .memory/ under {target}")
+        result.record("dry_run", True, f"would validate memory/system/ under {target}")
         for fname in REQUIRED_MEMORY_FILES:
             result.record(f"dry_run:file:{fname}", True, "would check existence")
         for dname in REQUIRED_MEMORY_DIRS:
@@ -746,9 +749,9 @@ def validate_project_memory(
         result.record("dry_run:shared_resources", True, "would check shared resources")
         return result
 
-    memory_root = target / ".memory"
+    memory_root = target / "memory" / "system"
     if not memory_root.is_dir():
-        result.record("memory_root", False, f".memory/ directory not found at {memory_root}")
+        result.record("memory_root", False, f"memory/system/ directory not found at {memory_root}")
         return result
 
     result.record("memory_root", True, str(memory_root))
@@ -778,13 +781,13 @@ def validate_project_memory(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Validate a project's .memory/ directory structure and integrity."
+        description="Validate a project's memory/system/ directory structure and integrity."
     )
     parser.add_argument(
         "--target",
         type=Path,
         required=True,
-        help="Path to the target project root (must contain .memory/).",
+        help="Path to the target project root (must contain memory/system/).",
     )
     parser.add_argument(
         "--json",

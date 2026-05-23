@@ -155,7 +155,7 @@ if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ]; then
 fi
 
 # M3: Remove || true to make init failures visible with structured error output
-if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ] && [ ! -d "$PROJECT_CWD/.memory" ]; then
+if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ] && [ ! -d "$PROJECT_CWD/memory/system" ]; then
     if ! "$MEMORY_HOOK_PROJECT_INIT" --target "$PROJECT_CWD" --host claude \\
         >/dev/null 2>>"$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system/errors.log"; then
         echo '{{"error": "project_init_failed", "message": "Failed to initialize project memory"}}' >&2

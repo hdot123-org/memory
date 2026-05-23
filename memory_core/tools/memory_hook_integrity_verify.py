@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from memory_core.constants import SYSTEM_DIR
 from memory_core.tools.denied_project_roots import is_denied_project_root
 
 MANIFEST_FILENAME = "manifest.json"
@@ -108,10 +109,10 @@ def verify_project(
     if is_denied_project_root(resolved_root):
         return result
 
-    manifest_path = resolved_root / ".memory" / MANIFEST_FILENAME
+    manifest_path = resolved_root / SYSTEM_DIR / MANIFEST_FILENAME
 
     if not manifest_path.exists():
-        result.add_error("", "missing_manifest", "No manifest.json found in .memory/")
+        result.add_error("", "missing_manifest", f"No manifest.json found in {SYSTEM_DIR}/")
         return result
 
     try:
@@ -174,7 +175,7 @@ def verify_project(
     if discover_fn is not None:
         current_files = set(discover_fn(resolved_root))
         for fpath in current_files:
-            if fpath.name == MANIFEST_FILENAME and fpath.parent.name == ".memory":
+            if fpath.name == MANIFEST_FILENAME and fpath.parent.name == SYSTEM_DIR.split("/")[-1]:
                 continue  # Skip manifest.json itself
             if fpath not in signed_paths:
                 rel = str(fpath.relative_to(resolved_root))

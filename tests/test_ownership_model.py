@@ -208,7 +208,6 @@ class TestDefaultOwnershipDomains:
             "memory_docs",
             "memory_kb",
             "memory_system",
-            "dot_memory",
             "project_map",
         }
         assert expected.issubset(domain_names)
@@ -233,19 +232,19 @@ class TestDefaultOwnershipResources:
         expected = {
             "agents_md",
             "memory_lock",
-            "canonical_md",
-            "state_md",
-            "plan_md",
-            "tasks_md",
             "adapter_toml",
             "ownership_toml",
+            "migrations_log",
+            "manifest_json",
         }
         assert expected.issubset(resource_names)
 
     def test_default_resources_are_critical(self):
-        """All default resources should be CRITICAL level."""
+        """Critical default resources should have CRITICAL level."""
+        critical_resources = {"agents_md", "memory_lock", "adapter_toml", "ownership_toml", "manifest_json"}
         for resource in DEFAULT_OWNERSHIP_RESOURCES:
-            assert resource.level == ProtectionLevel.CRITICAL
+            if resource.name in critical_resources:
+                assert resource.level == ProtectionLevel.CRITICAL
 
 
 class TestClassifyOwnedPath:

@@ -91,7 +91,7 @@ def _diff_list(
 # Audit logging — file-based (env-overridable) with stderr fallback
 # ---------------------------------------------------------------------------
 
-_DEFAULT_AUDIT_LOG = str(Path(__file__).resolve().parent.parent / ".memory" / "schema-audit.log")
+_DEFAULT_AUDIT_LOG = str(Path(__file__).resolve().parent.parent / "memory" / "system" / "schema-audit.log")
 
 
 def _get_audit_log_path() -> str:
@@ -107,7 +107,7 @@ def _write_audit_log(
 ) -> None:
     """Write a structured audit line when keys are dropped.
 
-    Writes to MEMORY_SCHEMA_AUDIT_LOG (default: memory_core/.memory/schema-audit.log).
+    Writes to MEMORY_SCHEMA_AUDIT_LOG (default: memory_core/memory/system/schema-audit.log).
     Also emits to stderr for backward compatibility (existing tests rely on this).
     Falls back to stderr-only if the path is not writable.
     """
@@ -226,16 +226,16 @@ def is_v2(package: dict[str, Any]) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# memory-v1 schema: project section references .memory/* canonical files
+# memory-v1 schema: project section references memory/system/* canonical files
 # ---------------------------------------------------------------------------
 
 MEMORY_V1_VERSION = "memory-v1"
 
 _MEMORY_CANONICAL_MAP: dict[str, str] = {
-    "canonical": ".memory/CANONICAL.md",
-    "plan": ".memory/PLAN.md",
-    "state": ".memory/STATE.md",
-    "tasks": ".memory/TASKS.md",
+    "canonical": "memory/system/CANONICAL.md",
+    "plan": "memory/system/PLAN.md",
+    "state": "memory/system/STATE.md",
+    "tasks": "memory/system/TASKS.md",
 }
 
 
@@ -244,7 +244,7 @@ def convert_to_memory_v1(package: dict[str, Any]) -> dict[str, Any]:
 
     Structural changes on top of v1 conversion:
     - schema_version: "wb-hook-v2" → "memory-v1"
-    - project section only references .memory/* canonical files
+    - project section only references memory/system/* canonical files
     - Keeps paths, task, and remaining top-level keys identical to v1
     """
     result: dict[str, Any] = {"schema_version": MEMORY_V1_VERSION}
@@ -257,7 +257,7 @@ def convert_to_memory_v1(package: dict[str, Any]) -> dict[str, Any]:
     if paths:
         result["paths"] = paths
 
-    # Build .memory/* canonical project section
+    # Build memory/system/* canonical project section
     if "project_context" in package:
         project_ctx = package["project_context"]
         result["project"] = {

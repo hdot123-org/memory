@@ -2,7 +2,7 @@
 """L2 Integrity Layer — Manifest Generation & Signing.
 
 Computes SHA-256 + HMAC-SHA256 signatures for project canonical files
-and writes a manifest.json to each project's .memory/ directory.
+and writes a manifest.json to each project's memory/system/ directory.
 
 M4: Signing scope is now derived from ownership domains/resources via
 load_memory_ownership(). Manifest entries include ownership metadata
@@ -18,7 +18,7 @@ manifest.json structure (v2):
   "ownership_digest": "<sha256-of-ownership-config>",
   "entries": [
     {
-      "path": ".memory/CANONICAL.md",
+      "path": "memory/system/CANONICAL.md",
       "rel_path": "CANONICAL.md",
       "sha256": "<hex>",
       "hmac_sha256": "<hex>",
@@ -40,6 +40,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from memory_core.constants import SYSTEM_DIR
 from memory_core.tools.denied_project_roots import is_denied_project_root
 
 # M3: Import is_memory_core_source_repo from ownership module
@@ -69,13 +70,12 @@ SCHEMA_VERSION = SCHEMA_VERSION_V2
 
 # Default canonical file patterns to sign within a project (legacy fallback)
 CANONICAL_PATTERNS = [
-    ".memory/CANONICAL.md",
-    ".memory/STATE.md",
-    ".memory/PLAN.md",
-    ".memory/TASKS.md",
-    ".memory/adapter.toml",
-    "memory/system/errors.log",
-    ".memory/ownership.toml",
+    f"{SYSTEM_DIR}/adapter.toml",
+    f"{SYSTEM_DIR}/ownership.toml",
+    f"{SYSTEM_DIR}/memory.lock",
+    f"{SYSTEM_DIR}/migrations.log",
+    f"{SYSTEM_DIR}/manifest.json",
+    f"{SYSTEM_DIR}/integrity-audit.jsonl",
 ]
 
 # Date-partitioned artifact paths (sign the daily files too)
@@ -83,6 +83,32 @@ ARTIFACT_PATTERNS = [
     "artifacts/memory-hook/contexts",
     "artifacts/memory-hook/events",
 ]
+
+# Volatile file patterns that are rewritten on every hook invocation.
+# These must be excluded from integrity signing because they naturally
+# change between signing and verification, causing constant mismatch.
+# Matched against the relative path (forward slashes).
+VOLATILE_PATTERNS = [
+    "memory/system/errors.log",
+    "memory/system/errors-readable.log",
+    "memory/system/health-report.json",
+    "memory/system/errors/",  # date-partitioned error logs
+]
+
+
+def _is_volatile(rel_path: str) -> bool:
+    """Check if a relative path matches a volatile pattern."""
+    # Normalize to forward slashes
+    normalized = rel_path.replace("\\", "/")
+    for pattern in VOLATILE_PATTERNS:
+        if pattern.endswith("/"):
+            # Directory prefix match
+            if normalized.startswith(pattern):
+                return True
+        else:
+            if normalized == pattern:
+                return True
+    return False
 
 
 def _sha256_file(path: Path) -> str:
@@ -113,7 +139,7 @@ def _compute_ownership_digest(project_root: Path) -> str:
     If ownership.toml exists, hash its raw bytes. Otherwise hash the
     default ownership configuration JSON for reproducibility.
     """
-    ownership_path = project_root / ".memory" / "ownership.toml"
+    ownership_path = project_root / SYSTEM_DIR / "ownership.toml"
     if ownership_path.exists():
         return hashlib.sha256(ownership_path.read_bytes()).hexdigest()
 
@@ -206,12 +232,21 @@ def _discover_canonical_files(project_root: Path) -> list[Path]:
     # Note: do NOT sign the current manifest.json to avoid chicken-egg problem.
     # The manifest is a one-way snapshot; next signing run captures new state.
 
-    # Deduplicate and sort
+    # Deduplicate and sort, excluding volatile runtime files and manifest itself
     seen = set()
     unique = []
     for p in sorted(found):
         if p not in seen:
             seen.add(p)
+            try:
+                rel = str(p.relative_to(resolved_root))
+            except ValueError:
+                rel = str(p)
+            # Skip manifest.json itself (chicken-egg problem)
+            if rel == f"{SYSTEM_DIR}/{MANIFEST_FILENAME}":
+                continue
+            if _is_volatile(rel):
+                continue
             unique.append(p)
     return unique
 
@@ -296,8 +331,8 @@ def sign_project(
         "entries": entries,
     }
 
-    # Write manifest to .memory/
-    memory_dir = resolved_root / ".memory"
+    # Write manifest to memory/system/
+    memory_dir = resolved_root / SYSTEM_DIR
     memory_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = memory_dir / MANIFEST_FILENAME
     manifest_path.write_text(
