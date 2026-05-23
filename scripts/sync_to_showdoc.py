@@ -24,9 +24,11 @@ from typing import Any
 
 try:
     import requests
-except ImportError:
-    print("ERROR: 'requests' package is required. Install with: pip install requests", file=sys.stderr)
-    sys.exit(1)
+except ImportError as _exc:
+    raise ImportError(
+        "'requests' package is required for ShowDoc sync. "
+        "Install with: pip install memory-core[dev]"
+    ) from _exc
 
 from memory_core.tools.adapter_toml_schema import load_showdoc_sync_config
 

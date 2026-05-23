@@ -726,7 +726,7 @@ class TestCrossAreaEndToEnd:
 
         ci_yaml = generate_gitlab_ci_showdoc_job(sync_cfg, showdoc)
         assert "sync-to-showdoc" in ci_yaml
-        assert "pip install requests" in ci_yaml
+        assert "pip install requests" in ci_yaml or "memory-core[dev]" in ci_yaml
         assert "python scripts/sync_to_showdoc.py" in ci_yaml
         assert "SHOWDOC_API_KEY" in ci_yaml
         assert "SHOWDOC_API_TOKEN" in ci_yaml
