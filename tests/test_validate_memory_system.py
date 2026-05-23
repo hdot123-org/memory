@@ -24,7 +24,7 @@ def _run_validator(env: dict[str, str] | None = None) -> subprocess.CompletedPro
     if env:
         base_env.update(env)
     return subprocess.run(
-        [sys.executable, str(TOOLS_DIR / "validate_memory_system.py")],
+        [sys.executable, str(TOOLS_DIR / "validate_memory_system.py"), "--check", "health"],
         capture_output=True,
         text=True,
         env=base_env,
@@ -49,6 +49,9 @@ class TestValidateReturnsZeroOnHealthySystem:
 
     def test_validate_reports_all_checks_passed(self) -> None:
         result = _run_validator()
+        assert "Memory System Validation Report" in result.stdout, (
+            f"Expected summary report in stdout.\nGot: {result.stdout}"
+        )
         lines = result.stdout.splitlines()
         passed_line = [l for l in lines if "checks passed" in l]
         assert len(passed_line) == 1, f"Expected exactly one summary line, got: {passed_line}"

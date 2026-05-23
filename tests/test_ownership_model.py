@@ -208,7 +208,6 @@ class TestDefaultOwnershipDomains:
             "memory_docs",
             "memory_kb",
             "memory_system",
-            "dot_memory",
             "project_map",
         }
         assert expected.issubset(domain_names)
@@ -233,19 +232,19 @@ class TestDefaultOwnershipResources:
         expected = {
             "agents_md",
             "memory_lock",
-            "canonical_md",
-            "state_md",
-            "plan_md",
-            "tasks_md",
             "adapter_toml",
             "ownership_toml",
+            "migrations_log",
+            "manifest_json",
         }
         assert expected.issubset(resource_names)
 
     def test_default_resources_are_critical(self):
-        """All default resources should be CRITICAL level."""
+        """Critical default resources should have CRITICAL level."""
+        critical_resources = {"agents_md", "memory_lock", "adapter_toml", "ownership_toml", "manifest_json"}
         for resource in DEFAULT_OWNERSHIP_RESOURCES:
-            assert resource.level == ProtectionLevel.CRITICAL
+            if resource.name in critical_resources:
+                assert resource.level == ProtectionLevel.CRITICAL
 
 
 class TestClassifyOwnedPath:
@@ -275,7 +274,7 @@ class TestClassifyOwnedPath:
 
     def test_dot_memory_domain(self):
         """Should classify .memory paths as owned."""
-        result = classify_owned_path(".memory/CANONICAL.md")
+        result = classify_owned_path("memory/system/CANONICAL.md")
         # This matches both domain and resource
         assert isinstance(result, Owned)
         assert result.level == ProtectionLevel.CRITICAL
@@ -541,8 +540,8 @@ class TestLoadMemoryOwnership:
 
     def test_load_from_json(self, tmp_path):
         """Should load from ownership.json if present."""
-        memory_dir = tmp_path / ".memory"
-        memory_dir.mkdir()
+        memory_dir = tmp_path / "memory" / "system"
+        memory_dir.mkdir(parents=True)
 
         custom_domain = OwnershipDomain(
             name="custom",

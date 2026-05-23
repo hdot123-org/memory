@@ -25,11 +25,11 @@ def _create_minimal_repo(tmp_path: Path) -> Path:
     Includes enough directories to exercise the whitelist rules without
     planting any pollution.
     """
-    (tmp_path / "memory_core" / ".memory").mkdir(parents=True)
+    (tmp_path / "memory_core" / "memory" / "system").mkdir(parents=True)
     (tmp_path / "memory_core" / "memory" / "kb" / "global").mkdir(parents=True)
     (tmp_path / "memory_core" / "project-map").mkdir(parents=True)
     (tmp_path / "archive" / "legacy-workbot" / "kb").mkdir(parents=True)
-    (tmp_path / "workspace" / "templates" / ".memory").mkdir(parents=True)
+    (tmp_path / "workspace" / "templates" / "memory" / "system").mkdir(parents=True)
     (tmp_path / "docs").mkdir()
     (tmp_path / "tests").mkdir()
     (tmp_path / "scripts").mkdir()
@@ -78,16 +78,16 @@ class TestForbiddenStateFiles:
 class TestWhitelistedLocations:
     """Canonical locations may contain state files without flagging."""
 
-    def test_state_in_memory_core_dot_memory(self, tmp_path: Path) -> None:
+    def test_state_in_memory_core_memory_system(self, tmp_path: Path) -> None:
         root = _create_minimal_repo(tmp_path)
-        mem_dir = root / "memory_core" / ".memory"
+        mem_dir = root / "memory_core" / "memory" / "system"
         (mem_dir / "STATE.md").write_text("# State\n")
         (mem_dir / "PLAN.md").write_text("# Plan\n")
         (mem_dir / "CANONICAL.md").write_text("# Canonical\n")
         findings = detect_pollution(tmp_path)
         error_findings = [f for f in findings if f["severity"] == "error"]
         assert not any(
-            ".memory/STATE.md" in f["path"] or ".memory/PLAN.md" in f["path"] or ".memory/CANONICAL.md" in f["path"]
+            "memory/system/STATE.md" in f["path"] or "memory/system/PLAN.md" in f["path"] or "memory/system/CANONICAL.md" in f["path"]
             for f in error_findings
         ), f"Unexpected finding: {error_findings}"
 
@@ -104,16 +104,16 @@ class TestWhitelistedLocations:
             for f in error_findings
         ), f"Unexpected finding: {error_findings}"
 
-    def test_state_in_workspace_templates_dot_memory(self, tmp_path: Path) -> None:
-        """workspace/templates/.memory/ is a canonical template location — OK."""
+    def test_state_in_workspace_templates_memory_system(self, tmp_path: Path) -> None:
+        """workspace/templates/memory/system/ is a canonical template location — OK."""
         root = _create_minimal_repo(tmp_path)
-        tpl_mem = root / "workspace" / "templates" / ".memory"
+        tpl_mem = root / "workspace" / "templates" / "memory" / "system"
         (tpl_mem / "STATE.md").write_text("# Template State\n")
         (tpl_mem / "PLAN.md").write_text("# Template Plan\n")
         findings = detect_pollution(tmp_path)
         error_findings = [f for f in findings if f["severity"] == "error"]
         assert not any(
-            "templates/.memory" in f["path"]
+            "templates/memory/system" in f["path"]
             for f in error_findings
         ), f"Unexpected finding: {error_findings}"
 
@@ -145,7 +145,7 @@ class TestBusinessStringPollution:
 
 
 class TestUnexpectedMemoryDirs:
-    """.memory/ directories outside canonical locations are flagged."""
+    """memory/system/ directories outside canonical locations are flagged."""
 
     def test_memory_dir_in_workspace_projects(self, tmp_path: Path) -> None:
         root = _create_minimal_repo(tmp_path)
@@ -160,11 +160,11 @@ class TestUnexpectedMemoryDirs:
 
     def test_memory_dir_at_repo_root(self, tmp_path: Path) -> None:
         root = _create_minimal_repo(tmp_path)
-        (root / ".memory").mkdir()
-        (root / ".memory" / "STATE.md").write_text("# State\n")
+        (root / "memory" / "system").mkdir(parents=True)
+        (root / "memory" / "system" / "STATE.md").write_text("# State\n")
         findings = detect_pollution(tmp_path)
         error_findings = [f for f in findings if f["severity"] == "error"]
-        # .memory at repo root should be flagged as unexpected
-        assert any(
+        # memory/system at repo root is now the canonical location — should NOT be flagged as unexpected
+        assert not any(
             f["rule"] == "unexpected-memory-dir" for f in error_findings
-        ), f"Expected unexpected-memory-dir for root .memory/, got {error_findings}"
+        ), f"Expected no unexpected-memory-dir for root memory/system/, got {error_findings}"

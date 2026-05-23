@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a project's .memory/ directory structure and integrity.
+"""Validate a project's memory/system/ directory structure and integrity.
 
 Usage:
     python validate_project_memory.py --target /path/to/project
@@ -7,14 +7,11 @@ Usage:
     python validate_project_memory.py --target /path/to/project --dry-run
 
 Checks performed:
-    1. Required files existence (memory.lock, adapter.toml, CANONICAL.md,
-       PLAN.md, STATE.md, TASKS.md, migrations.log)
-    2. Frontmatter / schema validation on Markdown files
-    3. Lock/adapter version compatibility
-    4. Pollution guard (no business state written into memory repo)
-    5. State enumerations (STATE.md/PLAN.md/CANONICAL.md status field)
-    6. memory.lock memory_version SemVer format
-    7. adapter.toml routing.host enumeration
+    1. Required files existence (memory.lock, adapter.toml, migrations.log)
+    2. Lock/adapter version compatibility
+    3. Pollution guard (no business state written into memory repo)
+    4. memory.lock memory_version SemVer format
+    5. adapter.toml routing.host enumeration
 
 Exit codes:
     0 — all checks passed
@@ -44,15 +41,12 @@ except ModuleNotFoundError:
 
 from memory_core.constants import (
     CURRENT_MEMORY_VERSION,
-    FRONTMATTER_REQUIREMENTS,
     MESSAGE_VERSION_MISMATCH_DOWNGRADE_DETECTED,
     MESSAGE_VERSION_MISMATCH_UPGRADE_NEEDED,
     MIGRATION_LOG_LINE_PATTERN,
     REQUIRED_MEMORY_DIRS,
     REQUIRED_MEMORY_FILES,
-    STATUS_ENUMERATIONS,
     SUPPORTED_HOSTS,
-    VALID_HEALTH_VALUES,
 )
 from memory_core.ownership import (
     load_memory_ownership,
@@ -258,7 +252,7 @@ class CheckResult:
 # ---------------------------------------------------------------------------
 
 def check_required_files(memory_root: Path, result: CheckResult) -> bool:
-    """Verify all required files exist inside .memory/."""
+    """Verify all required files exist inside memory/system/."""
     all_ok = True
     for fname in REQUIRED_MEMORY_FILES:
         fpath = memory_root / fname
@@ -280,25 +274,6 @@ def check_required_dirs(memory_root: Path, result: CheckResult) -> bool:
         else:
             result.record(f"dir:{dname}", False, f"missing directory: {dpath}")
             all_ok = False
-    return all_ok
-
-
-def check_frontmatter(memory_root: Path, result: CheckResult) -> bool:
-    """Verify Markdown files have required frontmatter fields."""
-    all_ok = True
-    for fname, required_keys in FRONTMATTER_REQUIREMENTS.items():
-        fpath = memory_root / fname
-        if not fpath.is_file():
-            # Already reported by check_required_files; skip here
-            continue
-        text = fpath.read_text(encoding="utf-8")
-        fm = _parse_frontmatter(text)
-        missing = [k for k in required_keys if k not in fm]
-        if missing:
-            result.record(f"frontmatter:{fname}", False, f"missing keys: {missing}")
-            all_ok = False
-        else:
-            result.record(f"frontmatter:{fname}", True, f"{len(required_keys)} keys present")
     return all_ok
 
 
@@ -421,56 +396,6 @@ def check_migrations_log(memory_root: Path, result: CheckResult) -> bool:
         return False
 
 
-def check_state_enumerations(memory_root: Path, result: CheckResult) -> bool:
-    """Verify Markdown files have valid status values in frontmatter.
-
-    Checks:
-    - STATE.md: status must be active|paused|completed|archived
-    - PLAN.md: status must be planning|in_progress|review|completed|blocked
-    - CANONICAL.md: status must be active
-    - STATE.md: health (if present) must be green|yellow|red
-    """
-    all_ok = True
-    for fname, valid_statuses in STATUS_ENUMERATIONS.items():
-        fpath = memory_root / fname
-        if not fpath.is_file():
-            continue
-        text = fpath.read_text(encoding="utf-8")
-        fm = _parse_frontmatter(text)
-        status = fm.get("status", "").strip()
-        if not status:
-            result.record(f"status_enum:{fname}", False, "status field missing or empty")
-            all_ok = False
-        elif status not in valid_statuses:
-            result.record(
-                f"status_enum:{fname}",
-                False,
-                f"invalid status '{status}', must be one of: {', '.join(valid_statuses)}",
-            )
-            all_ok = False
-        else:
-            result.record(f"status_enum:{fname}", True, f"status={status}")
-
-    # Additional: validate STATE.md health field if present
-    state_path = memory_root / "STATE.md"
-    if state_path.is_file():
-        text = state_path.read_text(encoding="utf-8")
-        fm = _parse_frontmatter(text)
-        health = fm.get("health", "").strip()
-        if health:
-            if health not in VALID_HEALTH_VALUES:
-                result.record(
-                    "health_enum:STATE.md",
-                    False,
-                    f"invalid health '{health}', must be one of: {', '.join(VALID_HEALTH_VALUES)}",
-                )
-                all_ok = False
-            else:
-                result.record("health_enum:STATE.md", True, f"health={health}")
-
-    return all_ok
-
-
 def check_memory_lock_semver(memory_root: Path, result: CheckResult) -> bool:
     """Verify memory.lock memory_version follows SemVer (MAJOR.MINOR.PATCH)."""
     lock_path = memory_root / "memory.lock"
@@ -539,7 +464,7 @@ def check_ownership_declaration(memory_root: Path, result: CheckResult) -> bool:
     """Step 2.3: Verify ownership.toml declaration exists and is valid.
 
     Checks:
-    - ownership.toml exists in .memory/
+    - ownership.toml exists in memory/system/
     - Schema version is valid (matches OWNERSHIP_SCHEMA_VERSION)
     - Default domains not deleted/downgraded via validate_ownership_schema()
     """
@@ -547,7 +472,7 @@ def check_ownership_declaration(memory_root: Path, result: CheckResult) -> bool:
     ownership_path = memory_root / "ownership.toml"
 
     if not ownership_path.is_file():
-        result.record("ownership_declaration", False, "ownership.toml not found in .memory/")
+        result.record("ownership_declaration", False, "ownership.toml not found in memory/system/")
         all_ok = False
     else:
         result.record("ownership_declaration", True, "ownership.toml exists")
@@ -573,13 +498,16 @@ def check_domain_integrity(target: Path, memory_root: Path, result: CheckResult)
     """Step 2.4: Verify critical domain paths exist and are not symlinks.
 
     Checks:
-    - .memory/memory/ and project-map/ exist and are not symlinks
+    - memory/ and project-map/ exist and are not symlinks
     - Paths don't escape project root
     """
     all_ok = True
+    # memory_root is target / "memory" / "system", so:
+    #   memory_root.parent = target / "memory"
+    #   memory_root.parent.parent = target
     critical_paths = [
-        ("memory", memory_root.parent / "memory"),
-        ("project-map", memory_root.parent / "project-map"),
+        ("memory", memory_root.parent),
+        ("project-map", memory_root.parent.parent / "project-map"),
     ]
 
     for name, path in critical_paths:
@@ -614,10 +542,13 @@ def check_document_paths(memory_root: Path, result: CheckResult) -> bool:
     - Referenced documents exist
     """
     all_ok = True
+    # memory_root is target / "memory" / "system", so:
+    #   memory_root.parent.parent = target
+    project_root = memory_root.parent.parent
     index_files = [
-        ("memory/docs/INDEX.md", memory_root.parent / "memory" / "docs" / "INDEX.md"),
-        ("memory/kb/INDEX.md", memory_root.parent / "memory" / "kb" / "INDEX.md"),
-        ("project-map/INDEX.md", memory_root.parent / "project-map" / "INDEX.md"),
+        ("memory/docs/INDEX.md", project_root / "memory" / "docs" / "INDEX.md"),
+        ("memory/kb/INDEX.md", project_root / "memory" / "kb" / "INDEX.md"),
+        ("project-map/INDEX.md", project_root / "project-map" / "INDEX.md"),
     ]
 
     for rel_path, full_path in index_files:
@@ -640,7 +571,7 @@ def check_document_paths(memory_root: Path, result: CheckResult) -> bool:
             referenced_files = re.findall(r"[\s\-]*([\w\-/]+\.md)", content)
             missing_refs = []
             for ref in referenced_files:
-                ref_path = memory_root.parent / ref
+                ref_path = project_root / ref
                 if not ref_path.exists() and not ref.startswith("http"):
                     # Skip if it looks like a pattern, not a literal path
                     if "*" not in ref and "?" not in ref:
@@ -755,6 +686,31 @@ def check_shared_resources(target: Path, memory_root: Path, result: CheckResult)
     return all_ok
 
 
+from memory_core.tools.evidence_ref_validator import validate_evidence_refs_on_disk
+
+
+def check_kb_evidence_refs(target: Path, result: CheckResult) -> bool:
+    """Step 2.7: Verify KB evidence refs point to existing files on disk.
+
+    Uses the shared evidence_ref_validator module so that the same
+    validation logic is available to init_project_memory.py and
+    migrate_project_memory.py.
+    """
+    errors = validate_evidence_refs_on_disk(target)
+    all_ok = True
+    if errors:
+        for err in errors:
+            result.record(
+                f"evidence_refs:{err.kb_file}",
+                False,
+                f"{len(err.missing_refs)} missing evidence refs: {', '.join(err.missing_refs[:3])}",
+            )
+            all_ok = False
+    else:
+        result.record("evidence_refs", True, "all KB evidence refs exist on disk")
+    return all_ok
+
+
 # ---------------------------------------------------------------------------
 # Main validation entry point
 # ---------------------------------------------------------------------------
@@ -764,10 +720,10 @@ def validate_project_memory(
     *,
     dry_run: bool = False,
 ) -> CheckResult:
-    """Run all validation checks on a project's .memory/ directory.
+    """Run all validation checks on a project's memory/system/ directory.
 
     Args:
-        target: Path to the target project root (must contain .memory/).
+        target: Path to the target project root (must contain memory/system/).
         dry_run: If True, only report what would be checked without reading files.
 
     Returns:
@@ -776,18 +732,15 @@ def validate_project_memory(
     result = CheckResult()
 
     if dry_run:
-        result.record("dry_run", True, f"would validate .memory/ under {target}")
+        result.record("dry_run", True, f"would validate memory/system/ under {target}")
         for fname in REQUIRED_MEMORY_FILES:
             result.record(f"dry_run:file:{fname}", True, "would check existence")
         for dname in REQUIRED_MEMORY_DIRS:
             result.record(f"dry_run:dir:{dname}", True, "would check directory")
-        for fname in FRONTMATTER_REQUIREMENTS:
-            result.record(f"dry_run:frontmatter:{fname}", True, "would check frontmatter")
         result.record("dry_run:lock_version", True, "would check lock version")
         result.record("dry_run:adapter_version", True, "would check adapter version")
         result.record("dry_run:pollution", True, "would check pollution")
         result.record("dry_run:migrations_log", True, "would check migrations.log")
-        result.record("dry_run:status_enum", True, "would check status enumerations")
         result.record("dry_run:semver", True, "would check memory_version SemVer format")
         result.record("dry_run:host_enum", True, "would check adapter host enum")
         result.record("dry_run:ownership", True, "would check ownership declaration")
@@ -796,21 +749,19 @@ def validate_project_memory(
         result.record("dry_run:shared_resources", True, "would check shared resources")
         return result
 
-    memory_root = target / ".memory"
+    memory_root = target / "memory" / "system"
     if not memory_root.is_dir():
-        result.record("memory_root", False, f".memory/ directory not found at {memory_root}")
+        result.record("memory_root", False, f"memory/system/ directory not found at {memory_root}")
         return result
 
     result.record("memory_root", True, str(memory_root))
 
     check_required_files(memory_root, result)
     check_required_dirs(memory_root, result)
-    check_frontmatter(memory_root, result)
     check_lock_version(memory_root, result)
     check_adapter_version(memory_root, result)
     check_pollution(memory_root, result)
     check_migrations_log(memory_root, result)
-    check_state_enumerations(memory_root, result)
     check_memory_lock_semver(memory_root, result)
     check_adapter_host_enum(memory_root, result)
 
@@ -819,6 +770,7 @@ def validate_project_memory(
     check_domain_integrity(target, memory_root, result)
     check_document_paths(memory_root, result)
     check_shared_resources(target, memory_root, result)
+    check_kb_evidence_refs(target, result)
 
     return result
 
@@ -829,13 +781,13 @@ def validate_project_memory(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Validate a project's .memory/ directory structure and integrity."
+        description="Validate a project's memory/system/ directory structure and integrity."
     )
     parser.add_argument(
         "--target",
         type=Path,
         required=True,
-        help="Path to the target project root (must contain .memory/).",
+        help="Path to the target project root (must contain memory/system/).",
     )
     parser.add_argument(
         "--json",

@@ -1,6 +1,6 @@
 """Discover memory-system project roots by walking the directory tree.
 
-The canonical project-root marker is a ``.memory/`` directory.  This module
+The canonical project-root marker is a ``memory/system/`` directory.  This module
 provides pure functions that resolve *repo root* and *workspace root* from an
 arbitrary starting path without depending on any gateway globals.
 """
@@ -9,11 +9,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-# Fallback used when no .memory/ ancestor is found.
+# Fallback used when no memory/system/ ancestor is found.
 _SCRIPT_PATH = Path(__file__).resolve()
 _FALLBACK_REPO_ROOT = _SCRIPT_PATH.parents[2]
 
-_MEMORY_DIR = ".memory"
+_MEMORY_DIR = "memory/system"
 _WORKSPACE_DIR = "memory_core"
 _GIT_DIR = ".git"
 
@@ -23,15 +23,15 @@ _logger = logging.getLogger(__name__)
 
 
 def _has_git_not_memory(current: Path) -> bool:
-    """Check if *current* has a .git/ dir but no .memory/ dir (sentinel)."""
+    """Check if *current* has a .git/ dir but no memory/system/ dir (sentinel)."""
     return (current / _GIT_DIR).is_dir() and not (current / _MEMORY_DIR).is_dir()
 
 
 def discover_project_root(start_path: Path) -> Path:
-    """Walk *start_path* and its ancestors looking for a ``.memory/`` directory.
+    """Walk *start_path* and its ancestors looking for a ``memory/system/`` directory.
 
-    Returns the first ancestor (inclusive) that contains ``.memory/``.
-    Stops early if a ``.git/`` directory without ``.memory/`` is encountered
+    Returns the first ancestor (inclusive) that contains ``memory/system/``.
+    Stops early if a ``.git/`` directory without ``memory/system/`` is encountered
     (monorepo sentinel) or if the upward walk exceeds ``_MAX_UPWARD_DEPTH``.
     Falls back to the repository root derived from this module's location
     when nothing is found.

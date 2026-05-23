@@ -29,7 +29,7 @@ tags: [lock,version,compatibility]
 
 ### 2.1 文件位置
 
-每个消费者项目根目录或 .memory/ 下必须存在一个 memory.lock 文件。
+每个消费者项目 `memory/system/` 下必须存在一个 memory.lock 文件。
 
 ### 2.2 字段定义
 
@@ -40,7 +40,7 @@ memory.lock 是 TOML 格式文件，包含以下字段：
 
 [memory]
 # memory-core 发布版本号（SemVer），项目当前集成的版本
-memory_version = "0.4.0"
+memory_version = "0.5.0"
 
 # 项目使用的 memory hook schema 版本标识符
 # 与 memory-core 内部 schema 版本号对应
@@ -89,7 +89,7 @@ adapter_versions = ["builtin"]
 status = "stable"
 
 [[compat]]
-memory_version = "0.4.0"
+memory_version = "0.5.0"
 schema_versions = ["context-package-v1"]
 adapter_versions = ["builtin", "custom-adapter-v1"]
 status = "stable"
@@ -144,7 +144,7 @@ def is_behind(project_lock: dict, latest_release: str) -> bool:
 ### 4.3 不读取项目正文
 
 整个判断过程只读取 memory.lock 文件，
-不读取 PLAN.md、STATE.md、代码文件或任何业务数据。
+不读取任何业务数据文件。
 
 ## 5. 判断升级类型
 
@@ -191,13 +191,13 @@ memory.lock -> 对比最新版本
                   需要运行完整测试
 ```
 
-## 6. templates/.memory/memory.lock 模板
+## 6. templates/memory/system/memory.lock 模板
 
-模板文件位于 templates/.memory/memory.lock，内容如下：
+模板文件位于 `workspace/templates/memory/system/memory.lock`，内容如下：
 
 ```toml
 # memory.lock -- 项目与 memory-core 的版本绑定
-# 复制此文件到项目根目录或 .memory/ 目录下
+# 复制此文件到项目 memory/system/ 目录下
 # 然后根据实际集成的版本修改各字段
 
 [memory]
@@ -215,7 +215,7 @@ lock_reason = ""
 1. 更新兼容矩阵：在矩阵中添加新版本行
 2. 更新模板：如有新字段则更新模板
 3. 生成升级卡片：扫描所有项目 memory.lock，生成升级任务卡
-4. 不读取任何项目的 PLAN.md、STATE.md 或代码
+4. 不读取任何项目的业务数据文件或代码
 
 发布决策完全基于 memory.lock 和兼容矩阵。
 

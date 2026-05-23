@@ -43,7 +43,7 @@ class TestPreToolUseGuard:
     def test_guard_blocks_write_to_owned_path(self, tmp_path: Path) -> None:
         """Test that Write to owned path is blocked."""
         # Create .memory to make it a memory-managed project
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Write",
@@ -59,7 +59,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_edit_to_owned_path(self, tmp_path: Path) -> None:
         """Test that Edit to owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Edit",
@@ -75,7 +75,7 @@ class TestPreToolUseGuard:
 
     def test_guard_allows_write_to_not_owned_path(self, tmp_path: Path) -> None:
         """Test that Write to not-owned path is allowed."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Write",
@@ -90,7 +90,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_execute_mv_to_owned_path(self, tmp_path: Path) -> None:
         """Test that Execute mv targeting owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -104,7 +104,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_execute_git_mv_to_owned_path(self, tmp_path: Path) -> None:
         """Test that Execute git mv targeting owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -118,7 +118,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_execute_rm_on_owned_path(self, tmp_path: Path) -> None:
         """Test that Execute rm on owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -132,7 +132,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_execute_python_open_owned_path(self, tmp_path: Path) -> None:
         """Test that Execute python -c with open() to owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -146,7 +146,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_execute_shell_redirect_to_owned_path(self, tmp_path: Path) -> None:
         """Test that Execute shell redirect to owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -160,7 +160,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_execute_mkdir_on_owned_path(self, tmp_path: Path) -> None:
         """Test that Execute mkdir on owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -174,11 +174,11 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_execute_touch_on_owned_path(self, tmp_path: Path) -> None:
         """Test that Execute touch on owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
-            "command": "touch .memory/memory.lock",
+            "command": "touch memory/system/memory.lock",
         }
 
         exit_code, result = self._run_guard(payload, tmp_path)
@@ -188,7 +188,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_multiedit_with_any_owned_path(self, tmp_path: Path) -> None:
         """Test that MultiEdit blocks if ANY path is owned (per-item classification)."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "MultiEdit",
@@ -215,7 +215,7 @@ class TestPreToolUseGuard:
 
     def test_guard_allows_multiedit_with_no_owned_paths(self, tmp_path: Path) -> None:
         """Test that MultiEdit allows if no paths are owned."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "MultiEdit",
@@ -232,7 +232,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_notebookedit_to_owned_path(self, tmp_path: Path) -> None:
         """Test that NotebookEdit to owned notebook is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "NotebookEdit",
@@ -246,7 +246,7 @@ class TestPreToolUseGuard:
 
     def test_guard_allows_task_without_owned_path_references(self, tmp_path: Path) -> None:
         """Test that Task without owned path references is allowed."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Task",
@@ -260,7 +260,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_task_with_owned_path_references(self, tmp_path: Path) -> None:
         """Test that Task with owned path references is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Task",
@@ -274,7 +274,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_uncertain_path_with_owned_root_string(self, tmp_path: Path) -> None:
         """Test that uncertain path with owned root string is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         # Command contains owned resource string but cannot parse path
         payload = {
@@ -289,7 +289,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_execute_cp_to_owned_destination(self, tmp_path: Path) -> None:
         """Test that Execute cp to owned destination is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -303,7 +303,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_agents_md_block_internal_modify(self, tmp_path: Path) -> None:
         """Test AGENTS.md scenario 1: block internal modification."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         (tmp_path / "AGENTS.md").write_text(
             "<!-- ownership:block:start -->\nProtected content\n<!-- ownership:block:end -->\n"
         )
@@ -323,7 +323,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_agents_md_delete_marker(self, tmp_path: Path) -> None:
         """Test AGENTS.md scenario 2: delete protection marker."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Edit",
@@ -339,7 +339,7 @@ class TestPreToolUseGuard:
 
     def test_guard_allows_agents_md_append_outside_block(self, tmp_path: Path) -> None:
         """Test AGENTS.md scenario 3: append outside block."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Edit",
@@ -355,7 +355,7 @@ class TestPreToolUseGuard:
 
     def test_guard_blocks_agents_md_full_overwrite_uncertain(self, tmp_path: Path) -> None:
         """Test AGENTS.md scenario 4: full overwrite uncertain."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         # Create existing AGENTS.md file
         (tmp_path / "AGENTS.md").write_text("Existing content")
 
@@ -374,7 +374,7 @@ class TestPreToolUseGuard:
     def test_guard_allows_agents_md_memory_init_creation(self, tmp_path: Path) -> None:
         """Test AGENTS.md scenario 5: memory-init creation."""
         # No existing AGENTS.md, creating new
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         # Ensure AGENTS.md does NOT exist
         agents_md = tmp_path / "AGENTS.md"
         if agents_md.exists():
@@ -394,7 +394,7 @@ class TestPreToolUseGuard:
 
     def test_memory_hook_force_does_not_bypass_guard(self, tmp_path: Path, monkeypatch) -> None:
         """Test that MEMORY_HOOK_FORCE does NOT bypass PreToolUse guard."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         monkeypatch.setenv("MEMORY_HOOK_FORCE", "1")
 
         payload = {
@@ -427,7 +427,7 @@ class TestPreToolUseGuard:
 
     def test_guard_allows_unknown_tool(self, tmp_path: Path) -> None:
         """Test that unknown tools are allowed."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "SomeUnknownTool",
@@ -549,7 +549,7 @@ class TestTaskPayloadInjection:
 
     def test_task_injects_ownership_policy_block(self, tmp_path: Path) -> None:
         """Test that Task tool result contains injected_prompt with policy block."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Task",
@@ -570,7 +570,7 @@ class TestTaskPayloadInjection:
 
     def test_task_injects_policy_lists_domains_and_resources(self, tmp_path: Path) -> None:
         """Test that injected policy lists all default domains and resources."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Task",
@@ -584,13 +584,13 @@ class TestTaskPayloadInjection:
         # Check default domains
         assert "memory/docs" in injected
         assert "memory/kb" in injected
-        assert ".memory" in injected
+        assert "memory/system" in injected
         # Check default resources
         assert "AGENTS.md" in injected
 
     def test_task_policy_injection_idempotent(self, tmp_path: Path) -> None:
         """Test that policy injection is idempotent (no double injection)."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Task",
@@ -606,7 +606,7 @@ class TestTaskPayloadInjection:
 
     def test_task_blocks_with_policy_and_owned_reference(self, tmp_path: Path) -> None:
         """Test that Task with owned path reference is blocked, but still has injected_prompt."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Task",
@@ -622,7 +622,7 @@ class TestTaskPayloadInjection:
 
     def test_task_injection_includes_forbidden_instructions(self, tmp_path: Path) -> None:
         """Test that injected policy includes forbidden instructions."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Task",
@@ -666,7 +666,7 @@ class TestCwdFixed:
 
     def test_task_uses_factory_project_dir_not_pwd(self, tmp_path: Path) -> None:
         """Test that Task tool uses FACTORY_PROJECT_DIR, not PWD."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         # Create a subdirectory
         subdir = tmp_path / "subdir"
         subdir.mkdir()
@@ -684,7 +684,7 @@ class TestCwdFixed:
 
     def test_task_project_root_resolved_from_env(self, tmp_path: Path) -> None:
         """Test that project root is resolved from env even when cwd differs."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         env = os.environ.copy()
         env["FACTORY_PROJECT_DIR"] = str(tmp_path)
@@ -743,7 +743,7 @@ class TestExecuteP1:
 
     def test_execute_rsync_to_owned_path_blocked(self, tmp_path: Path) -> None:
         """Test that rsync to owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -757,7 +757,7 @@ class TestExecuteP1:
 
     def test_execute_rsync_to_safe_path_allowed(self, tmp_path: Path) -> None:
         """Test that rsync to safe path is allowed."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -771,7 +771,7 @@ class TestExecuteP1:
 
     def test_execute_node_e_write_owned_path_blocked(self, tmp_path: Path) -> None:
         """Test that node -e with writeFileSync to owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -785,7 +785,7 @@ class TestExecuteP1:
 
     def test_execute_node_e_write_safe_path_allowed(self, tmp_path: Path) -> None:
         """Test that node -e with writeFileSync to safe path is allowed."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -799,7 +799,7 @@ class TestExecuteP1:
 
     def test_execute_shell_glob_owned_path_blocked(self, tmp_path: Path) -> None:
         """Test that shell glob targeting owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -813,11 +813,11 @@ class TestExecuteP1:
 
     def test_execute_relative_path_to_owned_blocked(self, tmp_path: Path) -> None:
         """Test that relative paths to owned resources are blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
-            "command": "cp config.toml .memory/adapter.toml",
+            "command": "cp config.toml memory/system/adapter.toml",
         }
 
         exit_code, result = self._run_guard(payload, tmp_path)
@@ -827,11 +827,11 @@ class TestExecuteP1:
 
     def test_execute_dd_to_owned_path_blocked(self, tmp_path: Path) -> None:
         """Test that dd to owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
-            "command": "dd if=/dev/zero of=.memory/memory.lock bs=1 count=0",
+            "command": "dd if=/dev/zero of=memory/system/memory.lock bs=1 count=0",
         }
 
         exit_code, result = self._run_guard(payload, tmp_path)
@@ -841,7 +841,7 @@ class TestExecuteP1:
 
     def test_execute_ln_to_owned_path_blocked(self, tmp_path: Path) -> None:
         """Test that ln targeting owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -855,7 +855,7 @@ class TestExecuteP1:
 
     def test_execute_install_to_owned_path_blocked(self, tmp_path: Path) -> None:
         """Test that install command targeting owned path is blocked."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Execute",
@@ -869,7 +869,7 @@ class TestExecuteP1:
 
     def test_execute_env_var_expansion(self, tmp_path: Path) -> None:
         """Test that environment variable expansion works for path classification."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         # With $HOME expansion that doesn't target owned paths
         payload = {
@@ -886,7 +886,7 @@ class TestExecuteP1:
 
     def test_execute_quoted_args_parsed_correctly(self, tmp_path: Path) -> None:
         """Test that quoted arguments are parsed correctly."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         # cp with quoted destination targeting owned path
         payload = {
@@ -928,7 +928,7 @@ class TestAgentsMdDiffAware:
 
     def test_edit_uses_old_str_as_content_before(self, tmp_path: Path) -> None:
         """Test that Edit tool uses old_str as content_before fallback."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Edit",
@@ -945,7 +945,7 @@ class TestAgentsMdDiffAware:
 
     def test_multiedit_agents_md_diff_aware_blocks(self, tmp_path: Path) -> None:
         """Test that MultiEdit with AGENTS.md item uses diff-aware classification."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         (tmp_path / "AGENTS.md").write_text(
             "<!-- ownership:block:start -->\nProtected\n<!-- ownership:block:end -->\n"
         )
@@ -973,7 +973,7 @@ class TestAgentsMdDiffAware:
 
     def test_multiedit_agents_md_diff_aware_allows_append(self, tmp_path: Path) -> None:
         """Test that MultiEdit with AGENTS.md append after block is allowed."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "MultiEdit",
@@ -995,7 +995,7 @@ class TestAgentsMdDiffAware:
 
     def test_multiedit_agents_md_no_content_before_blocks(self, tmp_path: Path) -> None:
         """Test MultiEdit on AGENTS.md with no content_before and existing file blocks."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         (tmp_path / "AGENTS.md").write_text("Existing content")
 
         payload = {
@@ -1042,7 +1042,7 @@ class TestMultiEditPerItem:
 
     def test_multiedit_per_item_classification_results(self, tmp_path: Path) -> None:
         """Test that MultiEdit returns per-item classification results."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "MultiEdit",
@@ -1050,7 +1050,7 @@ class TestMultiEditPerItem:
                 {"file_path": "src/main.py", "old_str": "old", "new_str": "new"},
                 {"file_path": "memory/docs/INDEX.md", "old_str": "old", "new_str": "new"},
                 {"file_path": "src/other.py", "old_str": "old", "new_str": "new"},
-                {"file_path": ".memory/STATE.md", "old_str": "old", "new_str": "new"},
+                {"file_path": "memory/system/STATE.md", "old_str": "old", "new_str": "new"},
             ],
         }
 
@@ -1067,10 +1067,10 @@ class TestMultiEditPerItem:
         blocked = [i for i in items if i["decision"] == "block"]
         allowed = [i for i in items if i["decision"] == "allow"]
 
-        # At least memory/docs/INDEX.md and .memory/STATE.md should be blocked
+        # At least memory/docs/INDEX.md and memory/system/STATE.md should be blocked
         blocked_paths = {i["path"] for i in blocked}
         assert "memory/docs/INDEX.md" in blocked_paths
-        assert ".memory/STATE.md" in blocked_paths
+        assert "memory/system/STATE.md" in blocked_paths
 
         # src files should be allowed
         allowed_paths = {i["path"] for i in allowed}
@@ -1079,7 +1079,7 @@ class TestMultiEditPerItem:
 
     def test_multiedit_all_allowed_returns_item_results(self, tmp_path: Path) -> None:
         """Test that MultiEdit with all allowed paths still returns item_results."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "MultiEdit",
@@ -1099,7 +1099,7 @@ class TestMultiEditPerItem:
 
     def test_multiedit_mixed_agents_md_and_regular(self, tmp_path: Path) -> None:
         """Test MultiEdit with mix of AGENTS.md and regular owned paths."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         (tmp_path / "AGENTS.md").write_text(
             "<!-- ownership:block:start -->\nProtected\n<!-- ownership:block:end -->\n"
         )

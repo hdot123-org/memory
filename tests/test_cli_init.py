@@ -35,7 +35,7 @@ def _read_adapter_toml(target: Path) -> dict[str, Any]:
         import tomllib
     except ModuleNotFoundError:
         import tomli as tomllib
-    adapter_path = target / ".memory" / "adapter.toml"
+    adapter_path = target / "memory" / "system" / "adapter.toml"
     with open(adapter_path, "rb") as f:
         return tomllib.load(f)
 
@@ -49,7 +49,7 @@ def test_init_creates_required_files_in_target(tmp_path: Path) -> None:
     exit_code = _call_main(["--target", str(tmp_path)])
     assert exit_code == 0
 
-    memory_root = tmp_path / ".memory"
+    memory_root = tmp_path / "memory" / "system"
     assert memory_root.is_dir()
 
     # 7 required files
@@ -69,7 +69,7 @@ def test_init_dry_run_does_not_write(tmp_path: Path) -> None:
     """--dry-run 后目标目录不应有 .memory/."""
     exit_code = _call_main(["--target", str(tmp_path), "--dry-run"])
     assert exit_code == 0
-    assert not (tmp_path / ".memory").exists(), "dry-run should not create .memory/"
+    assert not (tmp_path / "memory" / "system").exists(), "dry-run should not create .memory/"
 
 
 # ---------------------------------------------------------------------------
@@ -142,19 +142,19 @@ def test_init_idempotent_on_existing_memory(tmp_path: Path) -> None:
     exit1 = _call_main(["--target", str(tmp_path), "--scope", "proj-x"])
     assert exit1 == 0
 
-    memory_root = tmp_path / ".memory"
+    memory_root = tmp_path / "memory" / "system"
     assert memory_root.is_dir()
 
-    # Record canonical content after first init
-    canonical_path = memory_root / "CANONICAL.md"
-    content_first = canonical_path.read_text(encoding="utf-8")
+    # Record adapter.toml content after first init
+    adapter_path = memory_root / "adapter.toml"
+    content_first = adapter_path.read_text(encoding="utf-8")
 
     # Second init — should succeed (skip existing files)
     exit2 = _call_main(["--target", str(tmp_path), "--scope", "proj-x"])
     assert exit2 == 0
 
     # Content should be preserved (files are skipped, not overwritten)
-    content_second = canonical_path.read_text(encoding="utf-8")
+    content_second = adapter_path.read_text(encoding="utf-8")
     assert content_first == content_second
 
     # All required files still exist

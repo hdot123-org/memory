@@ -13,7 +13,12 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Any
 
-from memory_core.constants import OWNERSHIP_SCHEMA_VERSION, SOURCE_REPO_MODE_READONLY, VALID_SOURCE_REPO_MODES
+from memory_core.constants import (
+    OWNERSHIP_SCHEMA_VERSION,
+    SOURCE_REPO_MODE_READONLY,
+    SYSTEM_DIR,
+    VALID_SOURCE_REPO_MODES,
+)
 
 
 class ProtectionLevel(Enum):
@@ -205,17 +210,10 @@ DEFAULT_OWNERSHIP_DOMAINS: list[OwnershipDomain] = [
     ),
     OwnershipDomain(
         name="memory_system",
-        path="memory/system",
+        path=SYSTEM_DIR,
         level=ProtectionLevel.CRITICAL,
         recursive=True,
         description="Protected system state domain",
-    ),
-    OwnershipDomain(
-        name="dot_memory",
-        path=".memory",
-        level=ProtectionLevel.CRITICAL,
-        recursive=True,
-        description="Protected project memory domain",
     ),
     OwnershipDomain(
         name="project_map",
@@ -236,52 +234,38 @@ DEFAULT_OWNERSHIP_RESOURCES: list[OwnershipResource] = [
     ),
     OwnershipResource(
         name="memory_lock",
-        path=".memory/memory.lock",
+        path=f"{SYSTEM_DIR}/memory.lock",
         level=ProtectionLevel.CRITICAL,
-        domain="dot_memory",
+        domain="memory_system",
         description="Memory lock file",
     ),
     OwnershipResource(
-        name="canonical_md",
-        path=".memory/CANONICAL.md",
-        level=ProtectionLevel.CRITICAL,
-        domain="dot_memory",
-        description="Canonical definitions",
-    ),
-    OwnershipResource(
-        name="state_md",
-        path=".memory/STATE.md",
-        level=ProtectionLevel.CRITICAL,
-        domain="dot_memory",
-        description="State documentation",
-    ),
-    OwnershipResource(
-        name="plan_md",
-        path=".memory/PLAN.md",
-        level=ProtectionLevel.CRITICAL,
-        domain="dot_memory",
-        description="Plan documentation",
-    ),
-    OwnershipResource(
-        name="tasks_md",
-        path=".memory/TASKS.md",
-        level=ProtectionLevel.CRITICAL,
-        domain="dot_memory",
-        description="Task documentation",
-    ),
-    OwnershipResource(
         name="adapter_toml",
-        path=".memory/adapter.toml",
+        path=f"{SYSTEM_DIR}/adapter.toml",
         level=ProtectionLevel.CRITICAL,
-        domain="dot_memory",
+        domain="memory_system",
         description="Adapter configuration",
     ),
     OwnershipResource(
         name="ownership_toml",
-        path=".memory/ownership.toml",
+        path=f"{SYSTEM_DIR}/ownership.toml",
         level=ProtectionLevel.CRITICAL,
-        domain="dot_memory",
+        domain="memory_system",
         description="Ownership configuration",
+    ),
+    OwnershipResource(
+        name="migrations_log",
+        path=f"{SYSTEM_DIR}/migrations.log",
+        level=ProtectionLevel.STANDARD,
+        domain="memory_system",
+        description="Migration history log",
+    ),
+    OwnershipResource(
+        name="manifest_json",
+        path=f"{SYSTEM_DIR}/manifest.json",
+        level=ProtectionLevel.CRITICAL,
+        domain="memory_system",
+        description="Integrity manifest",
     ),
 ]
 
@@ -486,7 +470,7 @@ def classify_agents_md_block(
 def load_memory_ownership(project_root: Path) -> MemoryOwnership:
     """Load ownership configuration from project root.
 
-    Looks for .memory/ownership.toml first, then falls back to defaults
+    Looks for memory/system/ownership.toml first, then falls back to defaults
     if not found.
 
     Args:
@@ -495,7 +479,7 @@ def load_memory_ownership(project_root: Path) -> MemoryOwnership:
     Returns:
         MemoryOwnership configuration
     """
-    ownership_file = project_root / ".memory" / "ownership.toml"
+    ownership_file = project_root / SYSTEM_DIR / "ownership.toml"
 
     if ownership_file.exists():
         try:
@@ -518,7 +502,7 @@ def load_memory_ownership(project_root: Path) -> MemoryOwnership:
             pass  # Fall through to defaults
 
     # Try JSON fallback
-    json_file = project_root / ".memory" / "ownership.json"
+    json_file = project_root / SYSTEM_DIR / "ownership.json"
     if json_file.exists():
         try:
             content = json_file.read_text(encoding="utf-8")

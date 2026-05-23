@@ -86,7 +86,7 @@ ROOT_POLLUTION_DEST = "artifacts/reports"
 # - INDEX.md (owned via project_map domain)
 # - project-map/** (owned domain)
 # - CLAUDE.md (owned resource via domain)
-# - .memory/** (owned domain)
+# - memory/system/** (owned domain)
 # - memory/** (owned domain)
 # Legacy kept for backward compatibility during transition
 LEGACY_FORBIDDEN_OVERWRITE_PATTERNS = [
@@ -355,8 +355,8 @@ def _suggest_bucket_for_memory(kind: str) -> str:
 
 
 def _check_manifest(root: Path, result: AuditResult) -> None:
-    """Check .memory/manifest.json for issues."""
-    manifest_path = root / ".memory" / "manifest.json"
+    """Check memory/system/manifest.json for issues."""
+    manifest_path = root / "memory" / "system" / "manifest.json"
     if not manifest_path.exists():
         return
 
@@ -368,7 +368,7 @@ def _check_manifest(root: Path, result: AuditResult) -> None:
             Finding(
                 severity="P1",
                 kind="manifest_invalid",
-                path=".memory/manifest.json",
+                path="memory/system/manifest.json",
                 message=f"Manifest is invalid JSON: {e}",
                 suggested_bucket="needs_human_decision",
             )
@@ -386,7 +386,7 @@ def _check_manifest(root: Path, result: AuditResult) -> None:
                     Finding(
                         severity="P2",
                         kind="manifest_includes_runtime",
-                        path=".memory/manifest.json",
+                        path="memory/system/manifest.json",
                         message=f"Manifest includes runtime/tmp/log path: {path}",
                         suggested_bucket="runtime_ignore",
                     )
@@ -398,13 +398,13 @@ def _check_multi_generation_conflict(root: Path, result: AuditResult) -> None:
     """Check for multi-generation memory conflicts.
 
     Conflict rules:
-    - .memory + memory: NOT a conflict (both are current/valid)
-    - .memory + memory + project-map: NOT a conflict
-    - Current root layout (.memory/memory/project-map) + workspace/memory: CONFLICT
+    - memory/system + memory: NOT a conflict (both are current/valid)
+    - memory/system + memory + project-map: NOT a conflict
+    - Current root layout (memory/system/memory/project-map) + workspace/memory: CONFLICT
     - Current root layout + workspace/project-map: CONFLICT
     - history-projects: Does NOT participate in active conflict
     """
-    has_dot_memory = (root / ".memory").exists()
+    has_system_memory = (root / "memory" / "system").exists()
     has_current_memory = (root / "memory").exists()
     has_project_map = (root / "project-map").exists()
     has_workspace_memory = (root / "workspace" / "memory").exists()
@@ -412,8 +412,8 @@ def _check_multi_generation_conflict(root: Path, result: AuditResult) -> None:
 
     # Build list of active current structures (excluding history-projects)
     current_structures = []
-    if has_dot_memory:
-        current_structures.append(".memory")
+    if has_system_memory:
+        current_structures.append("memory/system")
     if has_current_memory:
         current_structures.append("memory/")
     if has_project_map:
@@ -581,13 +581,13 @@ def _check_ownership_findings(root: Path, result: AuditResult) -> None:
     - owned_file_unreadable: Cannot read owned file
     """
     # Check ownership.toml exists
-    ownership_path = root / ".memory" / "ownership.toml"
+    ownership_path = root / "memory" / "system" / "ownership.toml"
     if not ownership_path.exists():
         result.findings.append(
             Finding(
                 severity="P1",
                 kind="ownership_missing",
-                path=".memory/ownership.toml",
+                path="memory/system/ownership.toml",
                 message="ownership.toml not found - ownership declaration missing",
                 suggested_bucket="needs_human_decision",
             )
@@ -604,7 +604,7 @@ def _check_ownership_findings(root: Path, result: AuditResult) -> None:
                         Finding(
                             severity="P0",
                             kind="domain_weakened",
-                            path=".memory/ownership.toml",
+                            path="memory/system/ownership.toml",
                             message=f"Ownership protection weakened: {error}",
                             suggested_bucket="needs_human_decision",
                         )
@@ -614,7 +614,7 @@ def _check_ownership_findings(root: Path, result: AuditResult) -> None:
                         Finding(
                             severity="P0",
                             kind="domain_missing",
-                            path=".memory/ownership.toml",
+                            path="memory/system/ownership.toml",
                             message=f"Ownership domain/resource deleted: {error}",
                             suggested_bucket="needs_human_decision",
                         )
@@ -624,7 +624,7 @@ def _check_ownership_findings(root: Path, result: AuditResult) -> None:
                 Finding(
                     severity="P1",
                     kind="owned_file_unreadable",
-                    path=".memory/ownership.toml",
+                    path="memory/system/ownership.toml",
                     message=f"Cannot read ownership.toml: {e}",
                     suggested_bucket="needs_human_decision",
                 )
@@ -875,7 +875,7 @@ def _generate_backup_plan(findings: list[Finding], target: Path) -> dict[str, An
             files_to_backup.append(finding.path)
 
     return {
-        "backup_root": str(target / ".memory" / "backups" / "migration"),
+        "backup_root": str(target / "memory" / "system" / "backups" / "migration"),
         "files_to_backup": files_to_backup,
         "backup_strategy": "copy_before_modify",
         "timestamp_format": "iso8601",

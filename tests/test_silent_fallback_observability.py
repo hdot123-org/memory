@@ -266,33 +266,21 @@ class TestF5TemplateRenderingIncompleteComment:
         source = inspect.getsource(template_adapter_toml)
         assert "RENDERING-INCOMPLETE" in source
 
+    @pytest.mark.skip(reason="CANONICAL.md template removed in v0.5.0")
     def test_template_canonical_md_fallback_has_comment(self):
-        import inspect
+        pass
 
-        from memory_core.tools.init_project_memory import template_canonical_md
-        source = inspect.getsource(template_canonical_md)
-        assert "RENDERING-INCOMPLETE" in source
-
+    @pytest.mark.skip(reason="PLAN.md template removed in v0.5.0")
     def test_template_plan_md_fallback_has_comment(self):
-        import inspect
+        pass
 
-        from memory_core.tools.init_project_memory import template_plan_md
-        source = inspect.getsource(template_plan_md)
-        assert "RENDERING-INCOMPLETE" in source
-
+    @pytest.mark.skip(reason="STATE.md template removed in v0.5.0")
     def test_template_state_md_fallback_has_comment(self):
-        import inspect
+        pass
 
-        from memory_core.tools.init_project_memory import template_state_md
-        source = inspect.getsource(template_state_md)
-        assert "RENDERING-INCOMPLETE" in source
-
+    @pytest.mark.skip(reason="TASKS.md template removed in v0.5.0")
     def test_template_tasks_md_fallback_has_comment(self):
-        import inspect
-
-        from memory_core.tools.init_project_memory import template_tasks_md
-        source = inspect.getsource(template_tasks_md)
-        assert "RENDERING-INCOMPLETE" in source
+        pass
 
     def test_template_migrations_log_fallback_has_comment(self):
         import inspect

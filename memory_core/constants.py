@@ -2,17 +2,15 @@
 
 import re
 
-CURRENT_MEMORY_VERSION = "0.4.0"
+CURRENT_MEMORY_VERSION = "0.5.0"
 
 SUPPORTED_HOSTS = ("codex", "claude", "factory")
+
+SYSTEM_DIR = "memory/system"
 
 REQUIRED_MEMORY_FILES = [
     "memory.lock",
     "adapter.toml",
-    "CANONICAL.md",
-    "PLAN.md",
-    "STATE.md",
-    "TASKS.md",
     "migrations.log",
 ]
 
@@ -35,24 +33,6 @@ MIGRATION_LOG_LINE_PATTERN = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s*\|\s*\S+\s*\|\s*\S+\s*\|\s*\S+\s*\|.*$"
 )
 
-# Frontmatter requirements per file type
-FRONTMATTER_REQUIREMENTS = {
-    "CANONICAL.md": ["type", "title", "shortname", "status", "created", "updated"],
-    "PLAN.md": ["type", "title", "shortname", "status", "created"],
-    "STATE.md": ["type", "title", "shortname", "status", "updated"],
-    "TASKS.md": ["type", "title", "shortname", "status"],
-}
-
-# Valid status enumerations per file type (from DOT_MEMORY_SPEC.md)
-STATUS_ENUMERATIONS: dict[str, tuple[str, ...]] = {
-    "STATE.md": ("active", "paused", "completed", "archived"),
-    "PLAN.md": ("planning", "in_progress", "review", "completed", "blocked"),
-    "CANONICAL.md": ("active",),  # Only active after initialization
-}
-
-# Valid health values (from DOT_MEMORY_SPEC.md for STATE.md health field)
-VALID_HEALTH_VALUES = ("green", "yellow", "red")
-
 MESSAGE_VERSION_MISMATCH_UPGRADE_NEEDED = "version_mismatch_upgrade_needed: please run memory-migrate --from {current} --to {target}"
 MESSAGE_VERSION_MISMATCH_DOWNGRADE_DETECTED = "version_mismatch_downgrade_detected: project pinned to {current} > installed {target}; install matching memory-core or open issue"
 
@@ -65,6 +45,11 @@ VALID_SOURCE_REPO_MODES = (SOURCE_REPO_MODE_READONLY, SOURCE_REPO_MODE_DEVELOP)
 SYNC_DEFAULT_SOURCE_REMOTE = "origin"
 SYNC_DEFAULT_CI_RUNNER = "gitlab"
 VALID_SYNC_CI_RUNNERS = ("gitlab",)
+
+# ShowDoc sync configuration (adapter.toml [sync.showdoc] section)
+SYNC_DEFAULT_SHOWDOC_FILES = ["docs/**/*.md", "CHANGELOG.md"]
+SYNC_DEFAULT_SHOWDOC_ITEM_ID = 0
+SYNC_DEFAULT_SHOWDOC_API_URL = ""
 
 # Migration error codes
 _BACKUP_FAILED = "backup_failed"

@@ -38,7 +38,7 @@ def source_repo(tmp_path: Path) -> Path:
 @pytest.fixture()
 def source_repo_with_develop(source_repo: Path) -> Path:
     """Source repo with develop mode configured in ownership.toml."""
-    memory_dir = source_repo / ".memory"
+    memory_dir = source_repo / "memory" / "system"
     memory_dir.mkdir(parents=True, exist_ok=True)
     ownership_content = """\
 schema_version = "memory-ownership-v1"
@@ -66,13 +66,6 @@ recursive = true
 description = "Protected system state domain"
 
 [[domains]]
-name = "dot_memory"
-path = ".memory"
-level = "critical"
-recursive = true
-description = "Protected project memory domain"
-
-[[domains]]
 name = "project_map"
 path = "memory/project-map"
 level = "critical"
@@ -88,23 +81,23 @@ description = "Agent policy file"
 
 [[resources]]
 name = "memory_lock"
-path = ".memory/memory.lock"
+path = "memory/system/memory.lock"
 level = "critical"
-domain = "dot_memory"
+domain = "memory_system"
 description = "Version lock file"
 
 [[resources]]
 name = "adapter_toml"
-path = ".memory/adapter.toml"
+path = "memory/system/adapter.toml"
 level = "critical"
-domain = "dot_memory"
+domain = "memory_system"
 description = "Adapter configuration"
 
 [[resources]]
 name = "ownership_toml"
-path = ".memory/ownership.toml"
+path = "memory/system/ownership.toml"
 level = "critical"
-domain = "dot_memory"
+domain = "memory_system"
 description = "Ownership configuration"
 
 [policy.source_repo]
@@ -136,7 +129,7 @@ class TestGetSourceRepoMode:
 
     def test_invalid_mode_falls_back_to_readonly(self, source_repo: Path) -> None:
         """Invalid mode value falls back to readonly."""
-        memory_dir = source_repo / ".memory"
+        memory_dir = source_repo / "memory" / "system"
         memory_dir.mkdir(parents=True, exist_ok=True)
         ownership_content = """\
 schema_version = "memory-ownership-v1"
@@ -150,7 +143,7 @@ mode = "invalid_mode"
 
     def test_empty_mode_falls_back_to_readonly(self, source_repo: Path) -> None:
         """Empty mode value falls back to readonly."""
-        memory_dir = source_repo / ".memory"
+        memory_dir = source_repo / "memory" / "system"
         memory_dir.mkdir(parents=True, exist_ok=True)
         ownership_content = """\
 schema_version = "memory-ownership-v1"
@@ -208,7 +201,7 @@ class TestOwnershipCliSourceRepoMode:
         assert rc == 0
 
         # Verify the file was created
-        ownership_file = source_repo / ".memory" / "ownership.toml"
+        ownership_file = source_repo / "memory" / "system" / "ownership.toml"
         assert ownership_file.exists()
 
         # Verify mode is persisted
@@ -273,8 +266,8 @@ class TestPretooluseGuardInDevelopMode:
         """memory/kb/ is still protected in develop mode."""
         from memory_core.ownership import classify_owned_path, load_memory_ownership
         ownership = load_memory_ownership(source_repo_with_develop)
-        result = classify_owned_path(".memory/memory.lock", ownership, source_repo_with_develop)
-        assert hasattr(result, "level"), ".memory should be owned/protected"
+        result = classify_owned_path("memory/system/memory.lock", ownership, source_repo_with_develop)
+        assert hasattr(result, "level"), "memory/system/memory.lock should be owned/protected"
 
     def test_allows_code_files(self, source_repo_with_develop: Path) -> None:
         """Code files (memory_core/tools/*.py) are NOT protected."""

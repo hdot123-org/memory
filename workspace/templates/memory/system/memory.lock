@@ -1,5 +1,5 @@
 # memory.lock — 项目与 memory-core 的版本绑定
-# 复制此文件到项目根目录或 .memory/ 目录下
+# 复制此文件到项目根目录或 memory/system/ 目录下
 # 然后根据实际集成的版本修改各字段
 #
 # 字段说明：

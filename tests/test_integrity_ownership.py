@@ -42,8 +42,8 @@ class TestManifestV2Schema:
     def test_sign_produces_v2_manifest(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
             (memory_dir / "STATE.md").write_text("# State\n")
 
@@ -56,8 +56,8 @@ class TestManifestV2Schema:
     def test_manifest_entry_has_ownership_fields(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             key = generate_key()
@@ -72,8 +72,8 @@ class TestManifestV2Schema:
     def test_manifest_has_ownership_digest(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             key = generate_key()
@@ -99,8 +99,8 @@ class TestOwnershipDerivedSigningScope:
             design_dir.mkdir()
             (design_dir / "arch.md").write_text("# Architecture\n")
 
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
 
             key = generate_key()
             manifest = sign_project(root, key)
@@ -114,8 +114,8 @@ class TestOwnershipDerivedSigningScope:
         """Owned resource files should be signed."""
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
             (root / "AGENTS.md").write_text("# Agents\n")
 
@@ -130,8 +130,8 @@ class TestOwnershipDerivedSigningScope:
         """ownership.toml should be included in signing scope."""
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
             (memory_dir / "ownership.toml").write_text('[policy]\nmode = "strict"\n')
 
@@ -140,18 +140,17 @@ class TestOwnershipDerivedSigningScope:
 
             assert manifest is not None
             rel_paths = [e["rel_path"] for e in manifest["entries"]]
-            assert ".memory/ownership.toml" in rel_paths
+            assert "memory/system/ownership.toml" in rel_paths
 
     def test_classify_entry_owned_resource(self):
         """_classify_entry should return resource metadata for owned paths."""
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
-            (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
+            # AGENTS.md is an owned resource
+            (root / "AGENTS.md").write_text("# Agents\n")
 
-            oid, pl, cs = _classify_entry(".memory/CANONICAL.md", root)
-            assert oid == "canonical_md"
+            oid, pl, cs = _classify_entry("AGENTS.md", root)
+            assert oid == "agents_md"
             assert pl == "critical"
             assert cs == "resource"
 
@@ -181,8 +180,8 @@ class TestOwnershipDerivedSigningScope:
         """Ownership digest should change when ownership.toml changes."""
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
 
             digest1 = _compute_ownership_digest(root)
 
@@ -201,8 +200,8 @@ class TestVerifyNoResign:
     def test_verify_fail_returns_errors_no_resign(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             canonical = memory_dir / "CANONICAL.md"
             canonical.write_text("# Original\n")
 
@@ -229,8 +228,8 @@ class TestVerifyNoResign:
     def test_verify_fail_does_not_create_new_files(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             canonical = memory_dir / "CANONICAL.md"
             canonical.write_text("# Original\n")
 
@@ -267,8 +266,8 @@ class TestV1Compatibility:
     def test_v1_manifest_verifies_ok(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             key = generate_key()
@@ -291,7 +290,7 @@ class TestV1Compatibility:
                 "entries": [
                     {
                         "path": str((memory_dir / "CANONICAL.md").resolve()),
-                        "rel_path": ".memory/CANONICAL.md",
+                        "rel_path": "memory/system/CANONICAL.md",
                         "sha256": sha,
                         "hmac_sha256": hm,
                         "size_bytes": len(raw),
@@ -310,8 +309,8 @@ class TestV1Compatibility:
     def test_v1_manifest_tampered_detected(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             canonical = memory_dir / "CANONICAL.md"
             canonical.write_text("# Original\n")
 
@@ -332,7 +331,7 @@ class TestV1Compatibility:
                 "entries": [
                     {
                         "path": str(canonical.resolve()),
-                        "rel_path": ".memory/CANONICAL.md",
+                        "rel_path": "memory/system/CANONICAL.md",
                         "sha256": sha,
                         "hmac_sha256": hm,
                         "size_bytes": len(raw),
@@ -358,8 +357,8 @@ class TestSourceRepoZeroSideEffects:
     def test_sign_returns_none_for_source_repo(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             # Create memory-core marker
@@ -379,8 +378,8 @@ class TestSourceRepoZeroSideEffects:
         """Verify on source repo returns ok=True without reading any files."""
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             # Create memory-core marker

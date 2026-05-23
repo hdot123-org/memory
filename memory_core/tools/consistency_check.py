@@ -203,7 +203,7 @@ def check_init_validate_roundtrip() -> tuple[list, list]:
             return errors, warnings
 
         # Check memory.lock exists and is valid TOML
-        memory_lock = tmp_path / ".memory" / "memory.lock"
+        memory_lock = tmp_path / "memory" / "system" / "memory.lock"
         if not memory_lock.exists():
             errors.append("init: memory.lock not created")
         else:
@@ -216,7 +216,7 @@ def check_init_validate_roundtrip() -> tuple[list, list]:
                 errors.append(f"init: memory.lock is not valid TOML: {exc}")
 
         # Check adapter.toml has canonical sections
-        adapter_toml = tmp_path / ".memory" / "adapter.toml"
+        adapter_toml = tmp_path / "memory" / "system" / "adapter.toml"
         if not adapter_toml.exists():
             errors.append("init: adapter.toml not created")
         else:

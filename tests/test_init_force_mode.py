@@ -41,7 +41,7 @@ class TestInitDefaultSkipExisting:
         assert result1["mode"] == "create"
 
         # Modify one file
-        memory_lock = tmp_path / ".memory" / "memory.lock"
+        memory_lock = tmp_path / "memory" / "system" / "memory.lock"
         memory_lock.write_text("custom content")
 
         # Second init (default)
@@ -67,7 +67,7 @@ class TestInitForceOverwrites:
         assert result1["success"] is True
 
         # Modify one file
-        memory_lock = tmp_path / ".memory" / "memory.lock"
+        memory_lock = tmp_path / "memory" / "system" / "memory.lock"
         memory_lock.write_text("custom content")
 
         # Second init with force (use MEMORY_INIT_RUNNING=1 to allow owned file overwrite)
@@ -128,7 +128,7 @@ class TestInitForceAndDryRunCompatible:
         assert result1["success"] is True
 
         # Modify one file
-        memory_lock = tmp_path / ".memory" / "memory.lock"
+        memory_lock = tmp_path / "memory" / "system" / "memory.lock"
         memory_lock.write_text("custom content")
 
         # Dry run with force
@@ -275,7 +275,7 @@ class TestInitIdempotent:
         assert result1["mode"] == "create"
 
         # Read state after first init
-        memory_lock = tmp_path / ".memory" / "memory.lock"
+        memory_lock = tmp_path / "memory" / "system" / "memory.lock"
         first_content = memory_lock.read_text()
 
         # Second init (no force)

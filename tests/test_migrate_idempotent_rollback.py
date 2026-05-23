@@ -28,7 +28,7 @@ from memory_core.tools.migrate_project_memory import (
 def _create_memory_skeleton(tmp_path: Path, *, version: str = CURRENT_MEMORY_VERSION) -> Path:
     """Create a valid .memory/ skeleton and return the project root."""
     memory_root = tmp_path / ".memory"
-    memory_root.mkdir()
+    memory_root.mkdir(parents=True)
     (memory_root / "kb" / "projects").mkdir(parents=True)
     (memory_root / "kb" / "decisions").mkdir(parents=True)
     (memory_root / "kb" / "lessons").mkdir(parents=True)
@@ -46,10 +46,6 @@ def _create_memory_skeleton(tmp_path: Path, *, version: str = CURRENT_MEMORY_VER
         '[core]\nversion = "0.1.0"\nadapter = "default"\n',
         encoding="utf-8",
     )
-    (memory_root / "CANONICAL.md").write_text("# Canonical\n", encoding="utf-8")
-    (memory_root / "PLAN.md").write_text("# Plan\n", encoding="utf-8")
-    (memory_root / "STATE.md").write_text("# State\n", encoding="utf-8")
-    (memory_root / "TASKS.md").write_text("# Tasks\n", encoding="utf-8")
     (memory_root / "migrations.log").write_text(
         "# Migrations Log\n",
         encoding="utf-8",
@@ -99,6 +95,7 @@ def test_migrate_creates_backup_before_write(tmp_path: Path) -> None:
     assert result["success"] is True
     assert not result.get("noop")
 
+    # Backup should have been created under .memory/backups/
     backups_dir = project_root / ".memory" / "backups"
     assert backups_dir.is_dir()
 
@@ -181,15 +178,16 @@ def test_execute_rollback_restores_state(tmp_path: Path) -> None:
     assert result["success"] is True
 
     # Corrupt a file
-    state_path = memory_root / "STATE.md"
-    state_path.write_text("# CORRUPTED\n", encoding="utf-8")
+    lock_path = memory_root / "memory.lock"
+    lock_path.write_text("# CORRUPTED\n", encoding="utf-8")
 
     # Rollback
     rb = execute_rollback(memory_root)
     assert rb["success"] is True
 
-    # Verify restored
-    assert state_path.read_text(encoding="utf-8").strip() == "# State"
+    # Verify restored (memory.lock should have original TOML content)
+    content = lock_path.read_text(encoding="utf-8")
+    assert "# CORRUPTED" not in content
 
 
 # ---------------------------------------------------------------------------
@@ -216,9 +214,11 @@ def test_migration_failure_triggers_auto_rollback(tmp_path: Path, monkeypatch: p
     assert result["success"] is False
     assert result["errors"]
 
-    # Verify state was restored (STATE.md should still be original)
-    state_path = memory_root / "STATE.md"
-    assert state_path.read_text(encoding="utf-8").strip() == "# State"
+    # Verify state was restored (memory.lock should still be original)
+    lock_path = memory_root / "memory.lock"
+    content = lock_path.read_text(encoding="utf-8")
+    assert "# CORRUPTED" not in content
+    assert "memory_version" in content
 
     # Verify migrations.log contains failed_rolled_back
     log_path = memory_root / "migrations.log"

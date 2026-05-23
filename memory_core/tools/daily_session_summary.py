@@ -253,15 +253,15 @@ def main(argv: list[str] | None = None) -> int:
         if not projects:
             for base in [Path.home()]:
                 for p in base.iterdir():
-                    if p.is_dir() and (p / ".memory").exists():
+                    if p.is_dir() and (p / "memory" / "system").exists():
                         projects.append(p)
     else:
         # Default: use current directory's project root
         cwd = Path.cwd()
-        # Walk up to find .memory or .git
+        # Walk up to find memory/system or .git
         current = cwd.resolve()
         while current != current.parent:
-            if (current / ".memory").exists():
+            if (current / "memory" / "system").exists():
                 projects.append(current)
                 break
             if (current / ".git").is_dir():

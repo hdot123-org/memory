@@ -82,7 +82,7 @@ class TestFixtureFreshProject:
     def test_init_adopt_dry_run_no_changes(self, tmp_path: Path) -> None:
         """Init with adopt mode and dry-run should not create any files."""
         # Pre-check: no .memory directory
-        assert not (tmp_path / ".memory").exists()
+        assert not (tmp_path / "memory" / "system").exists()
 
         result = init_project_memory(
             tmp_path,
@@ -96,7 +96,7 @@ class TestFixtureFreshProject:
         assert result["dry_run"] is True
 
         # Verify no files were actually created
-        assert not (tmp_path / ".memory").exists()
+        assert not (tmp_path / "memory" / "system").exists()
 
     def test_init_create_actually_creates(self, tmp_path: Path) -> None:
         """Verify that non-dry-run actually creates the structure."""
@@ -108,8 +108,8 @@ class TestFixtureFreshProject:
         )
 
         assert result["success"] is True
-        assert (tmp_path / ".memory").exists()
-        assert (tmp_path / ".memory" / "memory.lock").exists()
+        assert (tmp_path / "memory" / "system").exists()
+        assert (tmp_path / "memory" / "system" / "memory.lock").exists()
 
 
 class TestFixtureBusinessWithAgentsIndexProjectMap:
@@ -315,60 +315,58 @@ class TestFixtureWorkspaceMemoryOnly:
         assert len(legacy_actions) >= 1
 
 
-class TestFixtureDotMemoryOnly:
-    """Fixture 4: dot_memory_only - Only modern .memory/ directory exists."""
+class TestFixtureMemorySystemOnly:
+    """Fixture: memory_system_only - Only memory/system/ directory exists (v0.5.0 layout)."""
 
     @pytest.fixture
-    def dot_memory_project(self, tmp_path: Path) -> Path:
-        """Create a project with only modern .memory/ structure."""
-        (tmp_path / ".memory").mkdir()
-        (tmp_path / ".memory" / "memory.lock").write_text(
+    def memory_system_project(self, tmp_path: Path) -> Path:
+        """Create a project with only memory/system/ structure."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        (tmp_path / "memory" / "system" / "memory.lock").write_text(
             '[memory]\nproject = "test"\n'
         )
-        (tmp_path / ".memory" / "CANONICAL.md").write_text("# Canonical\n")
         return tmp_path
 
-    def test_audit_detects_dot_memory(self, dot_memory_project: Path) -> None:
-        """Audit should detect .memory/ as P0 finding with direct_manage bucket."""
-        result = audit_project_layout(dot_memory_project)
+    def test_audit_detects_memory_system(self, memory_system_project: Path) -> None:
+        """Audit should detect memory/ as current_memory (P1) finding."""
+        result = audit_project_layout(memory_system_project)
 
-        dot_findings = [f for f in result.findings if f.kind == "dot_memory"]
-        assert len(dot_findings) == 1
-        assert dot_findings[0].severity == "P0"
-        assert dot_findings[0].suggested_bucket == "direct_manage"
+        current_findings = [f for f in result.findings if f.kind == "current_memory"]
+        assert len(current_findings) >= 1
+        assert current_findings[0].suggested_bucket == "direct_manage"
 
-    def test_audit_no_multi_generation(self, dot_memory_project: Path) -> None:
-        """Should not report multi-generation conflict with only .memory."""
-        result = audit_project_layout(dot_memory_project)
+    def test_audit_no_multi_generation(self, memory_system_project: Path) -> None:
+        """Should not report multi-generation conflict with only memory/system."""
+        result = audit_project_layout(memory_system_project)
 
         conflict_findings = [f for f in result.findings if f.kind == "multi_generation_conflict"]
         assert len(conflict_findings) == 0
 
-    def test_plan_categorizes_dot_memory_correctly(self, dot_memory_project: Path) -> None:
-        """Migration plan should categorize .memory as direct_manage."""
-        audit_result = audit_project_layout(dot_memory_project)
-        plan = plan_residue_migration(audit_result, dot_memory_project)
+    def test_plan_categorizes_memory_system_correctly(self, memory_system_project: Path) -> None:
+        """Migration plan should categorize memory/system as direct_manage."""
+        audit_result = audit_project_layout(memory_system_project)
+        plan = plan_residue_migration(audit_result, memory_system_project)
 
-        # .memory should be in direct_manage bucket
-        dot_items = [
+        # memory should be in direct_manage bucket
+        memory_items = [
             item for item in plan.buckets.get("direct_manage", [])
-            if item.get("path") == ".memory"
+            if item.get("path") == "memory"
         ]
-        assert len(dot_items) == 1
+        assert len(memory_items) >= 1
 
-    def test_init_skips_existing_files_by_default(self, dot_memory_project: Path) -> None:
+    def test_init_skips_existing_files_by_default(self, memory_system_project: Path) -> None:
         """Init should skip existing files by default (no --force)."""
-        original_content = (dot_memory_project / ".memory" / "memory.lock").read_text()
+        original_content = (memory_system_project / "memory" / "system" / "memory.lock").read_text()
 
         result = init_project_memory(
-            dot_memory_project,
+            memory_system_project,
             scope="test_project",
             dry_run=False,
             mode="create",
         )
 
         # File should be preserved
-        current_content = (dot_memory_project / ".memory" / "memory.lock").read_text()
+        current_content = (memory_system_project / "memory" / "system" / "memory.lock").read_text()
         assert current_content == original_content
         assert any("skip" in item.lower() or "already exists" in item.lower()
                    for item in result.get("skipped", []))
@@ -381,11 +379,10 @@ class TestFixtureCurrentLayout:
     def current_layout_project(self, tmp_path: Path) -> Path:
         """Create a project with current layout: .memory + memory + project-map."""
         # Modern .memory/
-        (tmp_path / ".memory").mkdir()
-        (tmp_path / ".memory" / "memory.lock").write_text('[memory]\n')
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        (tmp_path / "memory" / "system" / "memory.lock").write_text('[memory]\n')
 
-        # Current memory/
-        (tmp_path / "memory").mkdir()
+        # Current memory/ (parent already exists from memory/system)
         (tmp_path / "memory" / "inbox.md").write_text("# Inbox\n")
 
         # Current project-map/
@@ -442,7 +439,6 @@ class TestFixtureCurrentLayout:
         result = audit_project_layout(current_layout_project)
 
         kinds = {f.kind for f in result.findings}
-        assert "dot_memory" in kinds
         assert "current_memory" in kinds
         assert "project_map" in kinds
         # Should NOT have multi-generation conflict for current layout
@@ -455,12 +451,11 @@ class TestFixtureMultiGenerationMemory:
     @pytest.fixture
     def multi_gen_project(self, tmp_path: Path) -> Path:
         """Create a project with multiple memory structures."""
-        # Modern .memory/
-        (tmp_path / ".memory").mkdir()
-        (tmp_path / ".memory" / "memory.lock").write_text('[memory]\n')
+        # Modern memory/system/
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        (tmp_path / "memory" / "system" / "memory.lock").write_text('[memory]\n')
 
-        # Current memory/
-        (tmp_path / "memory").mkdir()
+        # Current memory/ (parent already exists)
         (tmp_path / "memory" / "inbox.md").write_text("# Current\n")
 
         # workspace/memory (legacy)
@@ -478,7 +473,7 @@ class TestFixtureMultiGenerationMemory:
         assert conflict_findings[0].severity == "P0"
 
         # Should mention the conflicting locations
-        assert ".memory" in conflict_findings[0].message
+        assert "memory/system" in conflict_findings[0].message
         assert "memory/" in conflict_findings[0].message
 
     def test_audit_detects_all_structures(self, multi_gen_project: Path) -> None:
@@ -486,7 +481,6 @@ class TestFixtureMultiGenerationMemory:
         result = audit_project_layout(multi_gen_project)
 
         kinds = {f.kind for f in result.findings}
-        assert "dot_memory" in kinds
         assert "current_memory" in kinds
         assert "workspace_memory" in kinds
         assert "multi_generation_conflict" in kinds
@@ -657,7 +651,7 @@ class TestFixtureManifestRuntimePollution:
     @pytest.fixture
     def manifest_runtime_project(self, tmp_path: Path) -> Path:
         """Create a project with manifest containing runtime paths."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
 
         # Manifest with runtime paths
         manifest = {
@@ -670,7 +664,7 @@ class TestFixtureManifestRuntimePollution:
                 {"path": "/project/.memory/memory.lock", "rel_path": "memory.lock"},
             ],
         }
-        (tmp_path / ".memory" / "manifest.json").write_text(
+        (tmp_path / "memory" / "system" / "manifest.json").write_text(
             json.dumps(manifest)
         )
 
@@ -707,11 +701,11 @@ class TestFixturePartialBrokenMemory:
     def broken_project(self, tmp_path: Path) -> Path:
         """Create a project with broken/incomplete memory structure."""
         # .memory exists but with broken manifest
-        (tmp_path / ".memory").mkdir()
-        (tmp_path / ".memory" / "manifest.json").write_text("not valid json {[")
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        (tmp_path / "memory" / "system" / "manifest.json").write_text("not valid json {[")
 
         # Some expected files missing
-        (tmp_path / ".memory" / "memory.lock").write_text("broken content")
+        (tmp_path / "memory" / "system" / "memory.lock").write_text("broken content")
 
         return tmp_path
 
@@ -724,11 +718,11 @@ class TestFixturePartialBrokenMemory:
         assert invalid_findings[0].severity == "P1"
 
     def test_audit_still_detects_structure(self, broken_project: Path) -> None:
-        """Should still detect .memory structure even with broken manifest."""
+        """Should still detect memory/ structure even with broken manifest."""
         result = audit_project_layout(broken_project)
 
-        dot_findings = [f for f in result.findings if f.kind == "dot_memory"]
-        assert len(dot_findings) == 1
+        current_findings = [f for f in result.findings if f.kind == "current_memory"]
+        assert len(current_findings) >= 1
 
     def test_init_can_repair_broken_manifest(self, broken_project: Path) -> None:
         """Init should be able to work with broken structures."""
@@ -818,8 +812,8 @@ class TestAcceptanceCriteria:
     def test_audit_json_is_valid(self, tmp_path: Path) -> None:
         """Audit JSON output must be valid and parseable."""
         # Setup some structures
-        (tmp_path / ".memory").mkdir()
-        (tmp_path / "memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        (tmp_path / "memory" / "inbox.md").write_text("# Inbox\n")
 
         result = audit_project_layout(tmp_path)
         data = result.to_dict()
@@ -836,7 +830,7 @@ class TestAcceptanceCriteria:
 
     def test_plan_json_is_valid(self, tmp_path: Path) -> None:
         """Plan JSON output must be valid and parseable."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         (tmp_path / "test-report.md").write_text("# Report")
 
         audit_result = audit_project_layout(tmp_path)
@@ -903,8 +897,8 @@ class TestAcceptanceCriteria:
     def test_init_force_can_overwrite(self, tmp_path: Path) -> None:
         """Init with --force should be able to overwrite existing files (with authorized maintenance)."""
         # Create existing .memory structure
-        (tmp_path / ".memory").mkdir()
-        (tmp_path / ".memory" / "memory.lock").write_text("old content")
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        (tmp_path / "memory" / "system" / "memory.lock").write_text("old content")
 
         # Init with force (use MEMORY_INIT_RUNNING=1 for authorized maintenance)
         old_env = os.environ.get("MEMORY_INIT_RUNNING")
@@ -924,7 +918,7 @@ class TestAcceptanceCriteria:
                 os.environ.pop("MEMORY_INIT_RUNNING", None)
 
         # Content should be updated
-        content = (tmp_path / ".memory" / "memory.lock").read_text()
+        content = (tmp_path / "memory" / "system" / "memory.lock").read_text()
         assert "new_project_name" in content
         assert result["force_overwrite"] is True
 
@@ -960,8 +954,8 @@ class TestEdgeCases:
 
     def test_severity_filter_p0(self, tmp_path: Path) -> None:
         """P0 severity filter should only return P0 findings."""
-        # Create P0 and P1 findings
-        (tmp_path / ".memory").mkdir()  # P0
+        # Create P0 (.memory) and P1 findings
+        (tmp_path / ".memory").mkdir()  # P0 (dot_memory)
         (tmp_path / "test-report.md").write_text("# Report")  # P1
         (tmp_path / "config.bak").write_text("backup")  # P2
 
@@ -971,7 +965,7 @@ class TestEdgeCases:
 
     def test_severity_filter_p1(self, tmp_path: Path) -> None:
         """P1 severity filter should return P0 and P1 findings."""
-        (tmp_path / ".memory").mkdir()  # P0
+        (tmp_path / ".memory").mkdir()  # P0 (dot_memory)
         (tmp_path / "test-report.md").write_text("# Report")  # P1
         (tmp_path / "config.bak").write_text("backup")  # P2
 

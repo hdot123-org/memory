@@ -28,7 +28,7 @@ def test_health_report_includes_layout_audit_for_clean_project(tmp_path: Path):
     """Clean project should have layout_audit with all fields."""
     # Create a clean project with .memory structure
     project = tmp_path / "clean-project"
-    memory_dir = project / ".memory"
+    memory_dir = project / "memory" / "system"
     system_dir = memory_dir / "system"
     system_dir.mkdir(parents=True)
     (memory_dir / "manifest.json").write_text(json.dumps({"version": "1.0"}))
@@ -83,7 +83,7 @@ def test_health_report_detects_root_pollution(tmp_path: Path):
     project.mkdir()
 
     # Create a clean .memory structure
-    memory_dir = project / ".memory"
+    memory_dir = project / "memory" / "system"
     system_dir = memory_dir / "system"
     system_dir.mkdir(parents=True)
     (memory_dir / "manifest.json").write_text(json.dumps({"version": "1.0"}))
@@ -130,7 +130,7 @@ def test_health_report_detects_multi_generation_conflict(tmp_path: Path):
     project = tmp_path / "multi-gen-project"
 
     # Create root .memory
-    dot_memory = project / ".memory"
+    dot_memory = project / "memory" / "system"
     dot_memory.mkdir(parents=True)
     (dot_memory / "manifest.json").write_text(json.dumps({"version": "1.0"}))
 
@@ -173,13 +173,12 @@ def test_health_report_valid_current_layout_not_manual(tmp_path: Path):
     project = tmp_path / "valid-current-layout"
 
     # Create .memory/
-    dot_memory = project / ".memory"
+    dot_memory = project / "memory" / "system"
     dot_memory.mkdir(parents=True)
     (dot_memory / "manifest.json").write_text(json.dumps({"version": "1.0"}))
 
-    # Create memory/
+    # Create memory/ (already exists as parent of dot_memory, so just add file)
     legacy_memory = project / "memory"
-    legacy_memory.mkdir()
     (legacy_memory / "data.json").write_text("{}")
 
     # Create project-map/
@@ -348,14 +347,14 @@ def test_determine_recommended_mode_logic():
     # Test fresh mode
     assert (
         health_module._determine_recommended_mode(
-            total=0, p0=0, p1=0, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_dot_memory=False
+            total=0, p0=0, p1=0, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_system_memory=False
         )
         == "fresh"
     )
 
     assert (
         health_module._determine_recommended_mode(
-            total=0, p0=0, p1=0, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_dot_memory=True
+            total=0, p0=0, p1=0, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_system_memory=True
         )
         == "update"
     )
@@ -363,7 +362,7 @@ def test_determine_recommended_mode_logic():
     # Test manual mode for real workspace conflict
     assert (
         health_module._determine_recommended_mode(
-            total=5, p0=1, p1=2, p2=2, root_pollution_count=1, multi_generation_conflict=True, has_real_workspace_conflict=True, has_dot_memory=True
+            total=5, p0=1, p1=2, p2=2, root_pollution_count=1, multi_generation_conflict=True, has_real_workspace_conflict=True, has_system_memory=True
         )
         == "manual"
     )
@@ -371,7 +370,7 @@ def test_determine_recommended_mode_logic():
     # Test NOT manual for multi_generation_conflict without workspace (compatibility)
     assert (
         health_module._determine_recommended_mode(
-            total=5, p0=1, p1=2, p2=2, root_pollution_count=1, multi_generation_conflict=True, has_real_workspace_conflict=False, has_dot_memory=True
+            total=5, p0=1, p1=2, p2=2, root_pollution_count=1, multi_generation_conflict=True, has_real_workspace_conflict=False, has_system_memory=True
         )
         == "repair"
     )
@@ -379,7 +378,7 @@ def test_determine_recommended_mode_logic():
     # Test adopt mode for legacy without .memory
     assert (
         health_module._determine_recommended_mode(
-            total=1, p0=0, p1=1, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_dot_memory=False
+            total=1, p0=0, p1=1, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_system_memory=False
         )
         == "adopt"
     )
@@ -387,14 +386,14 @@ def test_determine_recommended_mode_logic():
     # Test repair mode for .memory with issues
     assert (
         health_module._determine_recommended_mode(
-            total=2, p0=1, p1=0, p2=1, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_dot_memory=True
+            total=2, p0=1, p1=0, p2=1, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_system_memory=True
         )
         == "repair"
     )
 
     assert (
         health_module._determine_recommended_mode(
-            total=1, p0=0, p1=1, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_dot_memory=True
+            total=1, p0=0, p1=1, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_system_memory=True
         )
         == "repair"
     )
@@ -402,7 +401,7 @@ def test_determine_recommended_mode_logic():
     # Test update mode for clean .memory
     assert (
         health_module._determine_recommended_mode(
-            total=0, p0=0, p1=0, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_dot_memory=True
+            total=0, p0=0, p1=0, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_system_memory=True
         )
         == "update"
     )

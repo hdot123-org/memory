@@ -37,7 +37,7 @@ def _create_memory_skeleton(
 ) -> Path:
     """Create a minimal .memory/ skeleton suitable for migration testing."""
     memory_root = tmp_path / ".memory"
-    memory_root.mkdir()
+    memory_root.mkdir(parents=True)
     (memory_root / "kb" / "projects").mkdir(parents=True)
     (memory_root / "kb" / "decisions").mkdir(parents=True)
     (memory_root / "kb" / "lessons").mkdir(parents=True)
@@ -54,10 +54,6 @@ def _create_memory_skeleton(
         f'[core]\nversion = "{adapter_version}"\nadapter = "default"\n',
         encoding="utf-8",
     )
-    (memory_root / "CANONICAL.md").write_text("# Canonical\n", encoding="utf-8")
-    (memory_root / "PLAN.md").write_text("# Plan\n", encoding="utf-8")
-    (memory_root / "STATE.md").write_text("# State\n", encoding="utf-8")
-    (memory_root / "TASKS.md").write_text("# Tasks\n", encoding="utf-8")
     (memory_root / "migrations.log").write_text("# Migrations Log\n", encoding="utf-8")
     return tmp_path
 

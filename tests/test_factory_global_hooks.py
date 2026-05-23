@@ -77,8 +77,8 @@ def _fake_memory_commands(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
         "  esac\n"
         "  shift\n"
         "done\n"
-        "mkdir -p \"$target/.memory\" \"$target/memory/system\"\n"
-        "echo \"$host\" > \"$target/.memory/init-host\"\n",
+        "mkdir -p \"$target/memory/system\"\n"
+        "echo \"$host\" > \"$target/memory/system/init-host\"\n",
         encoding="utf-8",
     )
     init.chmod(init.stat().st_mode | stat.S_IXUSR)
@@ -154,7 +154,7 @@ def test_wrapper_skips_exact_home_project_root_but_allows_child(monkeypatch, tmp
 
     assert home_proc.returncode == 0
     assert home_proc.stdout.strip() == "{}"
-    assert not (fake_home / ".memory").exists()
+    assert not (fake_home / "memory" / "system").exists()
     assert not (fake_home / "memory" / "system").exists()
 
     child_proc = subprocess.run(
@@ -166,8 +166,8 @@ def test_wrapper_skips_exact_home_project_root_but_allows_child(monkeypatch, tmp
     )
 
     assert child_proc.returncode == 0
-    assert (child_project / ".memory").is_dir()
-    assert not (fake_home / ".memory").exists()
+    assert (child_project / "memory" / "system").is_dir()
+    assert not (fake_home / "memory" / "system").exists()
 
 
 def test_wrapper_initializes_project_memory_with_factory_host(monkeypatch, tmp_path: Path) -> None:
@@ -188,9 +188,9 @@ def test_wrapper_initializes_project_memory_with_factory_host(monkeypatch, tmp_p
     )
 
     assert proc.returncode == 0
-    assert (project / ".memory").is_dir()
     assert (project / "memory" / "system").is_dir()
-    assert (project / ".memory" / "init-host").read_text(encoding="utf-8").strip() == "factory"
+    assert (project / "memory" / "system").is_dir()
+    assert (project / "memory" / "system" / "init-host").read_text(encoding="utf-8").strip() == "factory"
 
 
 def test_wrapper_uses_factory_project_dir(monkeypatch, tmp_path: Path) -> None:
@@ -214,8 +214,8 @@ def test_wrapper_uses_factory_project_dir(monkeypatch, tmp_path: Path) -> None:
     )
 
     assert proc.returncode == 0
-    assert (project / ".memory").is_dir()
-    assert not (unrelated / ".memory").exists()
+    assert (project / "memory" / "system").is_dir()
+    assert not (unrelated / "memory" / "system").exists()
 
 
 def test_wrapper_initializes_git_project_root_from_subdirectory(monkeypatch, tmp_path: Path) -> None:
@@ -238,8 +238,8 @@ def test_wrapper_initializes_git_project_root_from_subdirectory(monkeypatch, tmp
     )
 
     assert proc.returncode == 0
-    assert (project / ".memory").is_dir()
-    assert not (nested / ".memory").exists()
+    assert (project / "memory" / "system").is_dir()
+    assert not (nested / "memory" / "system").exists()
 
 
 def test_wrapper_skips_auto_init_for_memory_core_source_repo(monkeypatch, tmp_path: Path) -> None:
@@ -265,7 +265,7 @@ def test_wrapper_skips_auto_init_for_memory_core_source_repo(monkeypatch, tmp_pa
     assert proc.returncode == 0
     # M3: wrapper execs gateway with READONLY=1 instead of printf '{}'; exit 0
     # Fake gateway outputs nothing, so stdout may be empty
-    assert not (memory_repo / ".memory").exists()
+    assert not (memory_repo / "memory" / "system").exists()
     assert not (memory_repo / "memory").exists()
 
 
@@ -279,7 +279,7 @@ def test_wrapper_skips_memory_core_source_repo_even_with_dot_memory(monkeypatch,
     (nested / "factory_global_hooks.py").write_text("# marker\n", encoding="utf-8")
     subprocess.run(["git", "init"], cwd=memory_repo, check=True, capture_output=True, text=True)
     # Create .memory directory - should still skip
-    (memory_repo / ".memory").mkdir()
+    (memory_repo / "memory" / "system").mkdir(parents=True)
     _fake_memory_commands(tmp_path, monkeypatch)
 
     install_factory_hooks(factory_home=factory_home, storage_root=tmp_path / "global-state")
@@ -294,8 +294,8 @@ def test_wrapper_skips_memory_core_source_repo_even_with_dot_memory(monkeypatch,
     )
 
     assert proc.returncode == 0
-    # Should not create memory/ or artifacts/
-    assert not (memory_repo / "memory" / "system").exists()
+    # Should not create memory/ or artifacts/ - pre-existing memory/system should be preserved
+    assert (memory_repo / "memory" / "system").exists()
     assert not (memory_repo / "artifacts").exists()
 
 
@@ -322,7 +322,7 @@ def test_wrapper_detects_memory_core_by_factory_global_hooks(monkeypatch, tmp_pa
     )
 
     assert proc.returncode == 0
-    assert not (memory_repo / ".memory").exists()
+    assert not (memory_repo / "memory" / "system").exists()
 
 
 def test_wrapper_detects_memory_core_by_codex_global_hooks(monkeypatch, tmp_path: Path) -> None:
@@ -348,7 +348,7 @@ def test_wrapper_detects_memory_core_by_codex_global_hooks(monkeypatch, tmp_path
     )
 
     assert proc.returncode == 0
-    assert not (memory_repo / ".memory").exists()
+    assert not (memory_repo / "memory" / "system").exists()
 
 
 def test_install_factory_hooks_fails_without_installed_gateway(monkeypatch, tmp_path: Path) -> None:

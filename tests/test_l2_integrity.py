@@ -121,8 +121,8 @@ class TestManifest:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             # Create .memory files
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
             (memory_dir / "STATE.md").write_text("# State\n")
 
@@ -143,7 +143,7 @@ class TestManifest:
     def test_sign_project_skips_missing_files(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / ".memory").mkdir()
+            (root / "memory" / "system").mkdir(parents=True)
             # No canonical files created
 
             key = generate_key()
@@ -155,8 +155,8 @@ class TestManifest:
     def test_sign_project_includes_artifacts(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             # Create date-partitioned artifacts
@@ -173,8 +173,8 @@ class TestManifest:
     def test_sign_project_idempotent(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             key = generate_key()
@@ -188,11 +188,11 @@ class TestManifest:
         with tempfile.TemporaryDirectory() as td:
             fake_home = Path(td) / "home"
             child = fake_home / "tool"
-            child_memory = child / ".memory"
+            child_memory = child / "memory" / "system"
             child_memory.mkdir(parents=True)
             (child_memory / "CANONICAL.md").write_text("# Canonical\n")
-            fake_home_memory = fake_home / ".memory"
-            fake_home_memory.mkdir(exist_ok=True)
+            fake_home_memory = fake_home / "memory" / "system"
+            fake_home_memory.mkdir(parents=True, exist_ok=True)
             (fake_home_memory / "CANONICAL.md").write_text("# Home\n")
             monkeypatch.setenv("HOME", str(fake_home))
 
@@ -208,8 +208,8 @@ class TestManifest:
         """Anti-pollution: sign_project should skip memory-core source repo."""
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             # Create memory-core marker files
@@ -274,8 +274,8 @@ class TestVerification:
     def test_verify_fresh_project_is_ok(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
             (memory_dir / "STATE.md").write_text("# State\n")
 
@@ -291,8 +291,8 @@ class TestVerification:
     def test_verify_detects_tampering(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             canonical = memory_dir / "CANONICAL.md"
             canonical.write_text("# Original\n")
 
@@ -310,8 +310,8 @@ class TestVerification:
     def test_verify_detects_missing_file(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             canonical = memory_dir / "CANONICAL.md"
             canonical.write_text("# Canonical\n")
 
@@ -328,7 +328,7 @@ class TestVerification:
     def test_verify_missing_manifest(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / ".memory").mkdir()
+            (root / "memory" / "system").mkdir(parents=True)
 
             key = generate_key()
             result = verify_project(root, key)
@@ -338,8 +338,8 @@ class TestVerification:
     def test_verify_corrupt_manifest(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "manifest.json").write_text("not json{")
 
             key = generate_key()
@@ -350,8 +350,8 @@ class TestVerification:
     def test_verify_wrong_schema(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "manifest.json").write_text(
                 json.dumps({"schema_version": "old-v0"})
             )
@@ -364,8 +364,8 @@ class TestVerification:
     def test_verify_key_fingerprint_mismatch(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             key1 = generate_key()
@@ -382,8 +382,8 @@ class TestVerification:
     def test_quick_check_true_on_fresh(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             key = generate_key()
@@ -394,8 +394,8 @@ class TestVerification:
     def test_quick_check_false_on_tamper(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             canonical = memory_dir / "CANONICAL.md"
             canonical.write_text("# Original\n")
 

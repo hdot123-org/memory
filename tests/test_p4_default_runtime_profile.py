@@ -65,7 +65,7 @@ class TestBuildDefaultRuntimeProfile:
 
     def _make_adapter_toml(self, project: Path, scope: str = "myproject") -> None:
         """Write a minimal canonical adapter.toml."""
-        mem = project / ".memory"
+        mem = project / "memory" / "system"
         mem.mkdir(parents=True, exist_ok=True)
         toml = textwrap.dedent(f"""\
             [core]
@@ -135,7 +135,7 @@ class TestBuildDefaultRuntimeProfile:
 
     def test_missing_adapter_toml_uses_defaults(self, tmp_path: Path) -> None:
         """When adapter.toml is absent, profile still builds with defaults."""
-        (tmp_path / ".memory").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "memory" / "system").mkdir(parents=True, exist_ok=True)
         profile = build_default_runtime_profile(tmp_path)
         assert set(profile.keys()) == self.REQUIRED_KEYS
         assert profile["DEFAULT_PROJECT_SCOPE"] == "default"

@@ -17,7 +17,7 @@ def workspace_root(repo_root):
 
 @pytest.fixture
 def tmp_memory_root(tmp_path):
-    """临时 .memory 目录"""
-    root = tmp_path / ".memory"
-    root.mkdir()
+    """临时 memory/system 目录"""
+    root = tmp_path / "memory" / "system"
+    root.mkdir(parents=True)
     return root

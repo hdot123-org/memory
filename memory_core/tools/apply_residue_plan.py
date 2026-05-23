@@ -569,7 +569,7 @@ def apply_residue_plan(
         target: Path to the target project root.
         plan_path: Path to the plan JSON file (None means check stdin or fail).
         dry_run: If True, only report what would be done.
-        backup_dir: Directory for backups (default: .memory/backups/residue-<timestamp>).
+        backup_dir: Directory for backups (default: memory/system/backups/residue-<timestamp>).
         json_output: If True, output results as JSON.
 
     Returns:
@@ -617,7 +617,7 @@ def apply_residue_plan(
     # Determine backup directory
     if backup_dir is None:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        backup_dir = target / ".memory" / "backups" / f"residue-{timestamp}"
+        backup_dir = target / "memory" / "system" / "backups" / f"residue-{timestamp}"
 
     # Get actions to apply
     actions = plan_data.get("actions", [])
@@ -752,7 +752,7 @@ def main(argv: list[str] | None = None) -> int:
         "--backup-dir",
         type=Path,
         default=None,
-        help="Directory for backups (default: .memory/backups/residue-<timestamp>).",
+        help="Directory for backups (default: memory/system/backups/residue-<timestamp>).",
     )
     parser.add_argument(
         "--rollback",

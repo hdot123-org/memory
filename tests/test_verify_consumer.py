@@ -17,10 +17,8 @@ from memory_core.tools.index_schema import build_headers, inject_headers
 
 def _make_initialized_target(tmp_path: Path) -> Path:
     target = tmp_path / "project"
-    memory = target / ".memory"
+    memory = target / "memory" / "system"
     memory.mkdir(parents=True)
-    for fname in ["CANONICAL.md", "STATE.md", "PLAN.md", "TASKS.md"]:
-        (memory / fname).write_text("# stub\n", encoding="utf-8")
     (memory / "adapter.toml").write_text("schema_version = \"adapter-v1\"\n", encoding="utf-8")
     (memory / "ownership.toml").write_text("schema_version = \"memory-ownership-v1\"\n", encoding="utf-8")
     headers = build_headers("0.4.0")
@@ -42,22 +40,22 @@ def test_verify_passes_for_well_formed_target(tmp_path: Path):
     assert report.all_passed, [c for c in report.checks if not c.passed]
 
 
-def test_verify_fails_when_dot_memory_missing(tmp_path: Path):
+def test_verify_fails_when_memory_system_missing(tmp_path: Path):
     target = tmp_path / "empty"
     target.mkdir()
     report = verify_consumer.verify(target)
     assert not report.all_passed
     failed_names = [c.name for c in report.checks if not c.passed]
-    assert "target.has_dot_memory" in failed_names
+    assert "target.has_memory_system" in failed_names
 
 
 def test_verify_fails_when_required_file_missing(tmp_path: Path):
     target = _make_initialized_target(tmp_path)
-    (target / ".memory" / "STATE.md").unlink()
+    (target / "memory" / "system" / "adapter.toml").unlink()
     report = verify_consumer.verify(target)
     assert not report.all_passed
     failed_names = [c.name for c in report.checks if not c.passed]
-    assert any("STATE.md" in n for n in failed_names)
+    assert any("adapter.toml" in n for n in failed_names)
 
 
 def test_verify_flags_index_without_schema_header(tmp_path: Path):
@@ -87,7 +85,7 @@ def test_main_returns_zero_on_pass(tmp_path: Path, capsys):
 
 def test_main_returns_one_on_failure(tmp_path: Path, capsys):
     target = _make_initialized_target(tmp_path)
-    (target / ".memory" / "STATE.md").unlink()
+    (target / "memory" / "system" / "adapter.toml").unlink()
     rc = verify_consumer.main(["--path", str(target)])
     captured = capsys.readouterr()
     assert rc == 1

@@ -1,10 +1,10 @@
 """Consumer self-check CLI (T2.6).
 
-Verifies that a .memory/ directory under a consuming project satisfies the
+Verifies that a memory/system/ directory under a consuming project satisfies the
 platform-agnostic protocol contract expected by memory-core consumers
 (Factory DCE being the reference implementation).
 
-This is a *read-only* validator. It never writes to .memory/. Intended for
+This is a *read-only* validator. It never writes to memory/system/. Intended for
 non-Factory platforms (Claude Code, Cursor, Cline, custom agents) to
 self-check their lazy-loader implementations against the open contract.
 
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -38,12 +39,8 @@ except ImportError:
     )
 
 REQUIRED_FILES = [
-    ".memory/CANONICAL.md",
-    ".memory/STATE.md",
-    ".memory/PLAN.md",
-    ".memory/TASKS.md",
-    ".memory/adapter.toml",
-    ".memory/ownership.toml",
+    "memory/system/adapter.toml",
+    "memory/system/ownership.toml",
 ]
 
 REQUIRED_INDEXES = [
@@ -51,6 +48,8 @@ REQUIRED_INDEXES = [
     "memory/kb/INDEX.md",
     "memory/docs/INDEX.md",
 ]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -91,12 +90,12 @@ class VerifyReport:
 
 
 def _check_target_initialized(target: Path, report: VerifyReport) -> bool:
-    memory_dir = target / ".memory"
+    memory_dir = target / "memory" / "system"
     exists = memory_dir.is_dir()
     report.add(
-        "target.has_dot_memory",
+        "target.has_memory_system",
         passed=exists,
-        detail=f".memory directory at {memory_dir}" if exists else f"missing: {memory_dir}",
+        detail=f"memory/system directory at {memory_dir}" if exists else f"missing: {memory_dir}",
     )
     return exists
 
@@ -150,7 +149,7 @@ def _check_index_schema(path: Path, report: VerifyReport) -> None:
 
 
 def _check_ownership_mode(target: Path, report: VerifyReport) -> None:
-    ownership = target / ".memory" / "ownership.toml"
+    ownership = target / "memory" / "system" / "ownership.toml"
     if not ownership.is_file():
         return
     try:
@@ -159,6 +158,77 @@ def _check_ownership_mode(target: Path, report: VerifyReport) -> None:
         report.add("ownership.readable", passed=False, detail=str(exc))
         return
     report.add("ownership.readable", passed=True, detail=f"{len(text)} bytes")
+
+
+# Placeholder markers to detect
+_PLACEHOLDERS = [
+    "（待填写）",
+    "待填写",
+]
+
+
+def _detect_actual_language(target: Path) -> str:
+    """Detect the actual primary language from project config files.
+
+    Mirrors a subset of ProjectProbe._detect_language for consistency
+    checking. Returns the detected language string or empty if unknown.
+    """
+    lang_config_map: list[tuple[str, str]] = [
+        ("pyproject.toml", "Python"),
+        ("requirements.txt", "Python"),
+        ("setup.py", "Python"),
+        ("package.json", "JavaScript/TypeScript"),
+        ("go.mod", "Go"),
+        ("Cargo.toml", "Rust"),
+        ("pom.xml", "Java"),
+        ("build.gradle", "Java"),
+        ("Gemfile", "Ruby"),
+        ("composer.json", "PHP"),
+        ("CMakeLists.txt", "C/C++"),
+        ("Makefile", "C/C++"),
+    ]
+
+    for fname, language in lang_config_map:
+        if (target / fname).exists():
+            return language
+
+    # Fallback: count by extension
+    ext_lang_map: dict[str, str] = {
+        ".py": "Python",
+        ".js": "JavaScript",
+        ".ts": "TypeScript",
+        ".go": "Go",
+        ".rs": "Rust",
+        ".java": "Java",
+        ".rb": "Ruby",
+    }
+    ext_counts: dict[str, int] = {}
+    skip_dirs = {
+        ".git", "node_modules", "__pycache__", ".venv", "venv",
+        "dist", "build", ".tox",
+    }
+    for root, dirs, files in __import__("os").walk(target):
+        dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith(".")]
+        for fname in files:
+            ext = Path(fname).suffix.lower()
+            if ext in ext_lang_map:
+                lang = ext_lang_map[ext]
+                ext_counts[lang] = ext_counts.get(lang, 0) + 1
+
+    if ext_counts:
+        return max(ext_counts, key=ext_counts.get)
+
+    return ""
+
+
+def _check_fill_quality(target: Path, report: VerifyReport) -> None:
+    """Check fill quality — warnings, not errors.
+
+    CANONICAL.md was removed in v0.5.0, so this check is now a no-op.
+    Kept for backward compatibility with v0.4.x projects.
+    """
+    # CANONICAL.md removed in v0.5.0 — skip check
+    return
 
 
 def verify(target: Path) -> VerifyReport:
@@ -174,6 +244,7 @@ def verify(target: Path) -> VerifyReport:
     for path in indexes:
         _check_index_schema(path, report)
     _check_ownership_mode(target, report)
+    _check_fill_quality(target, report)
     return report
 
 
@@ -194,7 +265,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="memory-core verify-consumer",
         description=(
-            "Verify that a .memory/ directory satisfies the memory-core "
+            "Verify that a memory/system/ directory satisfies the memory-core "
             "consumer contract. Read-only; safe to run anytime."
         ),
     )
@@ -202,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
         "--path",
         type=Path,
         default=Path.cwd(),
-        help="Project root containing .memory/ (default: cwd)",
+        help="Project root containing memory/system/ (default: cwd)",
     )
     parser.add_argument(
         "--json",
@@ -219,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(json.dumps(report.to_dict(), ensure_ascii=False, indent=2) + "\n")
     else:
         sys.stdout.write(_render_human(report))
-    if not any(c.name == "target.has_dot_memory" and c.passed for c in report.checks):
+    if not any(c.name == "target.has_memory_system" and c.passed for c in report.checks):
         return 2
     return 0 if report.all_passed else 1
 

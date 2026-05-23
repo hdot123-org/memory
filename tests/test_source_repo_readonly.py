@@ -92,7 +92,7 @@ class TestSourceRepoReadonlyContextPackage:
         # Verify key protected paths are listed
         protected = rules["protected_paths"]
         assert any("memory/docs" in p for p in protected)
-        assert any(".memory" in p for p in protected)
+        assert any("memory/system" in p for p in protected)
 
     def test_readonly_package_host_and_event(self, source_repo: Path) -> None:
         """Readonly package includes the correct host and event."""
@@ -110,13 +110,13 @@ class TestSourceRepoReadonlyContextPackage:
             assert "recursive" in domain
 
     def test_no_memory_directory_created(self, source_repo: Path) -> None:
-        """Building readonly package does not create .memory/ or memory/ directories."""
-        assert not (source_repo / ".memory").exists()
+        """Building readonly package does not create memory/system/ directories."""
+        assert not (source_repo / "memory" / "system").exists()
         assert not (source_repo / "memory").exists()
 
         _call_build_readonly_package(source_repo)
 
-        assert not (source_repo / ".memory").exists(), ".memory/ should not be created"
+        assert not (source_repo / "memory" / "system").exists(), "memory/system/ should not be created"
         assert not (source_repo / "memory").exists(), "memory/ should not be created"
 
     def test_no_artifacts_directory_created(self, source_repo: Path) -> None:

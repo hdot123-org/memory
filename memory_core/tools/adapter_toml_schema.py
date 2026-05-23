@@ -1,4 +1,4 @@
-"""Adapter TOML schema and loader for .memory/adapter.toml configuration."""
+"""Adapter TOML schema and loader for memory/system/adapter.toml configuration."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from memory_core.constants import (
     CURRENT_MEMORY_VERSION,
     SUPPORTED_HOSTS,
     SYNC_DEFAULT_CI_RUNNER,
+    SYNC_DEFAULT_SHOWDOC_API_URL,
+    SYNC_DEFAULT_SHOWDOC_ITEM_ID,
     SYNC_DEFAULT_SOURCE_REMOTE,
     VALID_SYNC_CI_RUNNERS,
 )
@@ -93,7 +95,7 @@ def _apply_migration_transforms(
 
 @dataclass
 class AdapterConfig:
-    """Configuration loaded from ``.memory/adapter.toml``.
+    """Configuration loaded from ``memory/system/adapter.toml``.
 
     The canonical TOML layout uses ``[core]``, ``[policy]``, and
     ``[routing]`` sections.  The legacy single-section ``[adapter]``
@@ -113,6 +115,22 @@ class AdapterConfig:
 
 
 @dataclass
+class ShowdocSyncConfig:
+    """Configuration for GitLab CI → ShowDoc sync (adapter.toml [sync.showdoc] section).
+
+    Coexists with :class:`SyncConfig` via [sync.showdoc] sub-section.
+    When absent or ``enabled=False``, no ShowDoc-related files are generated.
+    """
+
+    enabled: bool = False
+    item_id: int = SYNC_DEFAULT_SHOWDOC_ITEM_ID
+    api_url: str = SYNC_DEFAULT_SHOWDOC_API_URL
+    core_files: list[str] = field(default_factory=list)
+    extra_patterns: list[str] = field(default_factory=list)
+    cat_name_mapping: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class SyncConfig:
     """Configuration for source-to-mirror sync (adapter.toml [sync] section).
 
@@ -127,6 +145,7 @@ class SyncConfig:
     mirror_remote: str = ""
     mirror_url: str = ""
     ci_runner: str = SYNC_DEFAULT_CI_RUNNER
+    showdoc: ShowdocSyncConfig = field(default_factory=ShowdocSyncConfig)
 
 
 # ── known-key whitelists ──────────────────────────────────────────
@@ -150,6 +169,15 @@ _KNOWN_SYNC_KEYS: frozenset[str] = frozenset({
     "mirror_remote",
     "mirror_url",
     "ci_runner",
+    "showdoc",
+})
+_KNOWN_SHOWDOC_KEYS: frozenset[str] = frozenset({
+    "enabled",
+    "item_id",
+    "api_url",
+    "core_files",
+    "extra_patterns",
+    "cat_name_mapping",
 })
 
 
@@ -172,6 +200,44 @@ def _toml_str(value: str) -> str:
 def _has_new_sections(data: dict[str, Any]) -> bool:
     """Return True if *data* uses the [core]/[routing] layout."""
     return "core" in data or "routing" in data
+
+
+# ── ShowDoc internal helper ──────────────────────────────────────
+
+
+def _parse_showdoc_section(sync_data: dict[str, Any], *, strict: bool = False) -> ShowdocSyncConfig:
+    """Parse ``showdoc`` sub-dict from [sync] data into a ShowdocSyncConfig."""
+    showdoc = sync_data.get("showdoc")
+    if not showdoc or not isinstance(showdoc, dict):
+        return ShowdocSyncConfig()
+
+    if strict:
+        _check_unknown_keys("sync.showdoc", showdoc, _KNOWN_SHOWDOC_KEYS)
+
+    core_files = showdoc.get("core_files", [])
+    if isinstance(core_files, list):
+        core_files = list(core_files)
+    else:
+        core_files = [core_files]
+
+    extra_patterns = showdoc.get("extra_patterns", [])
+    if isinstance(extra_patterns, list):
+        extra_patterns = list(extra_patterns)
+    else:
+        extra_patterns = [extra_patterns]
+
+    cat_name_mapping = showdoc.get("cat_name_mapping", {})
+    if not isinstance(cat_name_mapping, dict):
+        cat_name_mapping = {}
+
+    return ShowdocSyncConfig(
+        enabled=bool(showdoc.get("enabled", False)),
+        item_id=int(showdoc.get("item_id", SYNC_DEFAULT_SHOWDOC_ITEM_ID)),
+        api_url=str(showdoc.get("api_url", SYNC_DEFAULT_SHOWDOC_API_URL)),
+        core_files=core_files,
+        extra_patterns=extra_patterns,
+        cat_name_mapping=cat_name_mapping,
+    )
 
 
 # ── public API ────────────────────────────────────────────────────
@@ -282,6 +348,7 @@ def load_sync_config(path: Path, *, strict: bool = False) -> SyncConfig:
     """Load :class:`SyncConfig` from the ``[sync]`` section of adapter.toml.
 
     Returns ``SyncConfig(enabled=False)`` when the section is absent.
+    Parses nested ``[sync.showdoc]`` sub-section into ``showdoc`` field.
     """
     if not path.is_file():
         return SyncConfig()
@@ -303,12 +370,16 @@ def load_sync_config(path: Path, *, strict: bool = False) -> SyncConfig:
         _warnings.warn(f"sync.ci_runner={ci_runner!r} not in {VALID_SYNC_CI_RUNNERS}", stacklevel=2)
         ci_runner = SYNC_DEFAULT_CI_RUNNER
 
+    # Parse nested showdoc sub-section
+    showdoc = _parse_showdoc_section(sync, strict=strict)
+
     return SyncConfig(
         enabled=bool(sync.get("enabled", False)),
         source_remote=sync.get("source_remote", SYNC_DEFAULT_SOURCE_REMOTE),
         mirror_remote=sync.get("mirror_remote", ""),
         mirror_url=sync.get("mirror_url", ""),
         ci_runner=ci_runner,
+        showdoc=showdoc,
     )
 
 
@@ -363,3 +434,63 @@ def dump_adapter_toml(config: AdapterConfig) -> str:
         lines.append("# artifact_root is not set")
 
     return "\n".join(lines) + "\n"
+
+
+def load_showdoc_sync_config(path: Path, *, strict: bool = False) -> ShowdocSyncConfig:
+    """Load :class:`ShowdocSyncConfig` from the ``[sync.showdoc]`` section of adapter.toml.
+
+    Parses the nested ``showdoc`` sub-dict within ``[sync]``.
+    Returns ``ShowdocSyncConfig(enabled=False)`` when the section is absent.
+    """
+    if not path.is_file():
+        return ShowdocSyncConfig()
+
+    with open(path, "rb") as fh:
+        data: dict[str, Any] = tomllib.load(fh)
+
+    sync = data.get("sync")
+    if not sync:
+        return ShowdocSyncConfig()
+
+    return _parse_showdoc_section(sync, strict=strict)
+
+
+def dump_showdoc_toml(config: ShowdocSyncConfig) -> str:
+    """Serialize :class:`ShowdocSyncConfig` to a TOML ``[sync.showdoc]`` section string.
+
+    Produces a nested table format: ``[sync.showdoc]`` section with the
+    config fields.
+    """
+    lines = ["", "[sync.showdoc]"]
+    lines.append(f"enabled = {str(config.enabled).lower()}")
+    lines.append(f"item_id = {config.item_id}")
+    lines.append(f"api_url = {_toml_str(config.api_url)}")
+
+    # core_files
+    if config.core_files:
+        lines.append("core_files = [")
+        for f in config.core_files:
+            lines.append(f"  {_toml_str(f)},")
+        lines.append("]")
+    else:
+        lines.append("core_files = []")
+
+    # extra_patterns
+    if config.extra_patterns:
+        lines.append("extra_patterns = [")
+        for p in config.extra_patterns:
+            lines.append(f"  {_toml_str(p)},")
+        lines.append("]")
+    else:
+        lines.append("extra_patterns = []")
+
+    # cat_name_mapping
+    if config.cat_name_mapping:
+        lines.append("[sync.showdoc.cat_name_mapping]")
+        for k, v in config.cat_name_mapping.items():
+            lines.append(f"{_toml_str(k)} = {_toml_str(v)}")
+    else:
+        lines.append("cat_name_mapping = {}")
+
+    return "\n".join(lines) + "\n"
+

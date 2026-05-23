@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from memory_core.constants import CURRENT_MEMORY_VERSION, OWNERSHIP_SCHEMA_VERSION, VALID_SOURCE_REPO_MODES
+from memory_core.constants import CURRENT_MEMORY_VERSION, OWNERSHIP_SCHEMA_VERSION, SYSTEM_DIR, VALID_SOURCE_REPO_MODES
 from memory_core.ownership import (
     DEFAULT_OWNERSHIP_DOMAINS,
     DEFAULT_OWNERSHIP_RESOURCES,
@@ -36,7 +36,7 @@ from memory_core.ownership import (
 
 def _ownership_file_path(project_root: Path) -> Path:
     """Return the expected ownership.toml path."""
-    return project_root / ".memory" / "ownership.toml"
+    return project_root / SYSTEM_DIR / "ownership.toml"
 
 
 def _format_protection_level(level: ProtectionLevel) -> str:
@@ -339,7 +339,7 @@ def cmd_plan_update(
 # ---------------------------------------------------------------------------
 
 def _write_ownership_toml(project_root: Path, ownership: MemoryOwnership) -> Path:
-    """Write ownership configuration as TOML to .memory/ownership.toml."""
+    """Write ownership configuration as TOML to memory/system/ownership.toml."""
     import json as _json
 
     ownership_path = _ownership_file_path(project_root)
@@ -514,10 +514,10 @@ def cmd_apply_update(
 def _write_source_repo_mode(project_root: Path, mode: str) -> int:
     """Write source_repo mode to ownership.toml.
 
-    Creates .memory/ directory and ownership.toml if needed.
+    Creates memory/system/ directory and ownership.toml if needed.
     Preserves existing domains and resources, updates policy.source_repo section.
     """
-    memory_dir = project_root / ".memory"
+    memory_dir = project_root / SYSTEM_DIR
     memory_dir.mkdir(parents=True, exist_ok=True)
 
     ownership_file = memory_dir / "ownership.toml"

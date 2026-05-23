@@ -23,8 +23,8 @@ class TestResignCLI:
     def _make_project(self, td: str) -> Path:
         """Create a minimal project with signed manifest."""
         root = Path(td)
-        memory_dir = root / ".memory"
-        memory_dir.mkdir()
+        memory_dir = root / "memory" / "system"
+        memory_dir.mkdir(parents=True)
         (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
         (memory_dir / "STATE.md").write_text("# State\n")
 
@@ -57,7 +57,7 @@ class TestResignCLI:
             root = self._make_project(td)
 
             # Set up key in env
-            key_path = root / ".memory" / "test.key"
+            key_path = root / "memory" / "system" / "test.key"
             import os
             old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
             os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(key_path)
@@ -70,7 +70,7 @@ class TestResignCLI:
                 assert exit_code == 0
 
                 # Audit trail should exist
-                audit_path = root / ".memory" / "integrity-audit.jsonl"
+                audit_path = root / "memory" / "system" / "integrity-audit.jsonl"
                 assert audit_path.exists()
                 lines = audit_path.read_text().strip().splitlines()
                 assert len(lines) >= 1
@@ -88,7 +88,7 @@ class TestResignCLI:
         with tempfile.TemporaryDirectory() as td:
             root = self._make_project(td)
 
-            key_path = root / ".memory" / "test.key"
+            key_path = root / "memory" / "system" / "test.key"
             import os
             old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
             os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(key_path)
@@ -100,7 +100,7 @@ class TestResignCLI:
                 ])
                 assert exit_code == 0
 
-                audit_path = root / ".memory" / "integrity-audit.jsonl"
+                audit_path = root / "memory" / "system" / "integrity-audit.jsonl"
                 entry = json.loads(audit_path.read_text().strip().splitlines()[-1])
                 assert entry["token_provided"] is True
             finally:
@@ -114,9 +114,9 @@ class TestResignCLI:
             root = self._make_project(td)
 
             # Tamper with a file
-            (root / ".memory" / "CANONICAL.md").write_text("# Tampered!\n")
+            (root / "memory" / "system" / "CANONICAL.md").write_text("# Tampered!\n")
 
-            key_path = root / ".memory" / "test.key"
+            key_path = root / "memory" / "system" / "test.key"
             import os
             old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
             os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(key_path)
@@ -143,7 +143,7 @@ class TestResignCLI:
         with tempfile.TemporaryDirectory() as td:
             root = self._make_project(td)
 
-            key_path = root / ".memory" / "test.key"
+            key_path = root / "memory" / "system" / "test.key"
             import os
             old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
             os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(key_path)
@@ -160,7 +160,7 @@ class TestResignCLI:
                 assert "dry-run" in captured.out
 
                 # No audit trail should be written
-                audit_path = root / ".memory" / "integrity-audit.jsonl"
+                audit_path = root / "memory" / "system" / "integrity-audit.jsonl"
                 assert not audit_path.exists()
             finally:
                 if old_env is not None:
@@ -180,8 +180,8 @@ class TestResignCLI:
         """Source repo should refuse re-sign (zero side-effects)."""
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             # Create memory-core marker
@@ -200,8 +200,8 @@ class TestResignCLI:
     def test_resign_empty_reason_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / ".memory").mkdir()
-            (root / ".memory" / "CANONICAL.md").write_text("# Canonical\n")
+            (root / "memory" / "system").mkdir(parents=True)
+            (root / "memory" / "system" / "CANONICAL.md").write_text("# Canonical\n")
 
             exit_code = resign_main([
                 "--project-root", str(root),
@@ -214,13 +214,13 @@ class TestResignCLI:
         """Re-sign without an existing key should fail."""
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            memory_dir = root / ".memory"
-            memory_dir.mkdir()
+            memory_dir = root / "memory" / "system"
+            memory_dir.mkdir(parents=True)
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             import os
             old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
-            os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(root / ".memory" / "nonexistent.key")
+            os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(root / "memory" / "system" / "nonexistent.key")
             try:
                 exit_code = resign_main([
                     "--project-root", str(root),
@@ -239,7 +239,7 @@ class TestResignCLI:
         with tempfile.TemporaryDirectory() as td:
             root = self._make_project(td)
 
-            key_path = root / ".memory" / "test.key"
+            key_path = root / "memory" / "system" / "test.key"
             import os
             old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
             os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(key_path)
@@ -250,7 +250,7 @@ class TestResignCLI:
                     "--force",
                 ])
 
-                manifest_path = root / ".memory" / MANIFEST_FILENAME
+                manifest_path = root / "memory" / "system" / MANIFEST_FILENAME
                 manifest = json.loads(manifest_path.read_text())
                 assert manifest["schema_version"] == "integrity-manifest-v2"
                 assert "ownership_digest" in manifest

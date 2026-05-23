@@ -1,7 +1,7 @@
 """Generic default runtime profile for memory-hook gateway wiring.
 
 This module builds a host-neutral, project-agnostic runtime profile
-from the ``.memory/adapter.toml`` configuration present in a target
+from the ``memory/system/adapter.toml`` configuration present in a target
 project.  It contains no host-specific or project-specific literal
 bindings and is intended to serve as the default
 profile for any new memory-enabled project.
@@ -27,7 +27,7 @@ except ImportError:  # pragma: no cover
 def build_default_runtime_profile(
     repo_root: Path, workspace_root: Path | None = None
 ) -> dict[str, Any]:
-    """Build a generic runtime profile from ``.memory/adapter.toml``.
+    """Build a generic runtime profile from ``memory/system/adapter.toml``.
 
     Parameters
     ----------
@@ -44,13 +44,13 @@ def build_default_runtime_profile(
     """
     # Use workspace_root as the project root for config lookup (fallback to repo_root)
     project_root = workspace_root if workspace_root is not None else repo_root
-    adapter_path = project_root / ".memory" / "adapter.toml"
+    adapter_path = project_root / "memory" / "system" / "adapter.toml"
     config = load_adapter_toml(adapter_path)
 
     # Resolve the project scope from adapter.toml (routing.project_scope).
     project_scope: str = config.project_scope or "default"
 
-    # Standard memory/ paths (NOT .memory/) ─────────────────────────
+    # Standard memory/ paths ─────────────────────────
     kb_root = project_root / "memory" / "kb"
     projects_root = kb_root / "projects"
     global_root = kb_root / "global"
@@ -74,9 +74,6 @@ def build_default_runtime_profile(
 
     # Canonical file lists ──────────────────────────────────────────
     required_canonical = [
-        project_root / ".memory" / "CANONICAL.md",
-        project_root / ".memory" / "PLAN.md",
-        project_root / ".memory" / "STATE.md",
         truth_model,
         memory_system_path,
         global_rule_path,

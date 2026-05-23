@@ -55,7 +55,7 @@ dist/
 
 # Runtime artifacts (not tracked)
 memory_core/artifacts/
-memory_core/.memory/schema-audit.log
+memory_core/memory/system/schema-audit.log
 
 # Root-level .memory/ (project-local runtime state, not for tracking)
 /.memory/
