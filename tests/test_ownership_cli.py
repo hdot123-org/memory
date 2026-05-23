@@ -28,8 +28,8 @@ from memory_core.tools.ownership_cli import (
 @pytest.fixture
 def project_root(tmp_path: Path) -> Path:
     """Create a temporary project root with .memory/ directory."""
-    mem = tmp_path / ".memory"
-    mem.mkdir()
+    mem = tmp_path / "memory" / "system"
+    mem.mkdir(parents=True)
     return tmp_path
 
 
@@ -48,7 +48,7 @@ def project_with_ownership(project_root: Path) -> Path:
 class TestHelpers:
     def test_ownership_file_path(self, project_root: Path) -> None:
         result = _ownership_file_path(project_root)
-        assert result == project_root / ".memory" / "ownership.toml"
+        assert result == project_root / "memory" / "system" / "ownership.toml"
 
     def test_format_protection_level(self) -> None:
         assert "CRITICAL" in _format_protection_level(ProtectionLevel.CRITICAL)
@@ -189,7 +189,7 @@ class TestCmdApplyUpdate:
         """Applying to a bare project should create ownership.toml."""
         rc = cmd_apply_update(project_root, yes=True, use_defaults=True)
         assert rc == 0
-        ownership_path = project_root / ".memory" / "ownership.toml"
+        ownership_path = project_root / "memory" / "system" / "ownership.toml"
         assert ownership_path.exists()
 
     def test_apply_json(self, project_root: Path, capsys: pytest.CaptureFixture[str]) -> None:

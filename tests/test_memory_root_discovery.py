@@ -26,19 +26,19 @@ class TestDiscoverProjectRoot:
 
     def test_memory_at_start_path(self, tmp_path: Path) -> None:
         """Start path itself contains .memory/ -> returns start_path."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         assert discover_project_root(tmp_path) == tmp_path
 
     def test_memory_one_level_up(self, tmp_path: Path) -> None:
         """Parent directory contains .memory/."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         child = tmp_path / "a" / "b"
         child.mkdir(parents=True)
         assert discover_project_root(child) == tmp_path
 
     def test_memory_several_levels_up(self, tmp_path: Path) -> None:
         """Grandparent directory contains .memory/."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         deep = tmp_path / "x" / "y" / "z"
         deep.mkdir(parents=True)
         assert discover_project_root(deep) == tmp_path
@@ -51,14 +51,15 @@ class TestDiscoverProjectRoot:
 
     def test_nearest_wins(self, tmp_path: Path) -> None:
         """Two nested .memory/ markers -> returns the closest one."""
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         inner = tmp_path / "inner"
-        (inner / ".memory").mkdir(parents=True)
+        (inner / "memory" / "system").mkdir(parents=True)
         assert discover_project_root(inner / "leaf" / "deep") == inner
 
     def test_memory_must_be_directory(self, tmp_path: Path) -> None:
-        """A regular file named .memory is not a marker."""
-        (tmp_path / ".memory").touch()
+        """A regular file named memory/system is not a marker."""
+        (tmp_path / "memory").mkdir()
+        (tmp_path / "memory" / "system").touch()
         child = tmp_path / "sub"
         child.mkdir()
         assert discover_project_root(child) == _FALLBACK_REPO_ROOT
@@ -94,14 +95,14 @@ class TestDiscoverRoots:
     """discover_roots returns (repo_root, workspace_root)."""
 
     def test_with_memory_and_workspace(self, tmp_path: Path) -> None:
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         (tmp_path / "memory_core").mkdir()
         repo, ws = discover_roots(tmp_path)
         assert repo == tmp_path
         assert ws == tmp_path / "memory_core"
 
     def test_with_memory_no_workspace(self, tmp_path: Path) -> None:
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         repo, ws = discover_roots(tmp_path)
         assert repo == tmp_path
         assert ws == tmp_path  # falls back to project_root

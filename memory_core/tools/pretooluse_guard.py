@@ -233,9 +233,8 @@ def _contains_owned_root_string(command: str) -> bool:
     """Check if command contains strings that might target owned paths."""
     owned_indicators = [
         "memory/",
-        ".memory/",
+        "memory/system/",
         "memory\\",
-        ".memory\\",
         "AGENTS.md",
     ]
     cmd_lower = command.lower()
@@ -297,7 +296,6 @@ def _parse_task_paths(payload: dict[str, Any]) -> list[str]:
     # Look for owned path patterns in the prompt
     patterns = [
         r"memory/[\w\-/]+",
-        r"\.memory/[\w\-/]+",
         r"AGENTS\.md",
     ]
     for pattern in patterns:
@@ -610,11 +608,11 @@ def main() -> int:
         print(json.dumps({"decision": "allow", "reason": "Cannot determine project root"}))
         return 0
 
-    # Check if .memory exists (if not, this isn't a memory-managed project)
-    if not (project_root / ".memory").exists():
+    # Check if memory/system exists (if not, this isn't a memory-managed project)
+    if not (project_root / "memory" / "system").exists():
         print(json.dumps({
             "decision": "allow",
-            "reason": "Not a memory-managed project (no .memory directory)"
+            "reason": "Not a memory-managed project (no memory/system directory)"
         }))
         return 0
 

@@ -1265,6 +1265,66 @@ def _execute_delegate(
 
 
 
+def _update_state_dynamic_fields(project_root: Path) -> None:
+    """Update dynamic fields in STATE.md during session-start.
+
+    Updates the '当前工作区' section to reflect the current git branch and
+    latest commit. Only modifies dynamic fields; never overwrites static
+    fields (主语言/工具链/etc.) filled by init.
+
+    Non-blocking: gracefully handles missing git, missing STATE.md, or
+    any errors by silently skipping.
+    """
+    state_path = project_root / ".memory" / "STATE.md"
+    if not state_path.exists():
+        return
+
+    try:
+        # Gather git info — fail gracefully if not a git repo
+        branch_proc = subprocess.run(
+            ["git", "-C", str(project_root), "branch", "--show-current"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        if branch_proc.returncode != 0:
+            return
+        branch = branch_proc.stdout.strip()
+        if not branch:
+            return
+
+        commit_proc = subprocess.run(
+            ["git", "-C", str(project_root), "log", "-1", "--format=%h %s"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        commit_info = commit_proc.stdout.strip() if commit_proc.returncode == 0 else ""
+
+        content = state_path.read_text(encoding="utf-8")
+
+        # Build the replacement text
+        workspace_line = f"当前分支: {branch}"
+        if commit_info:
+            workspace_line += f" | 最近提交: {commit_info}"
+
+        # Pattern 1: placeholder (未填写) — init has not filled yet
+        new_content = re.sub(
+            r'(## 当前工作区\n\n)（待填写[^\n]*）',
+            rf'\g<1>{workspace_line}',
+            content,
+        )
+
+        # Pattern 2: already filled — idempotent refresh
+        # Matches lines after "## 当前工作区\n\n" that start with "当前分支:"
+        new_content = re.sub(
+            r'(## 当前工作区\n\n)当前分支: [^\n]+',
+            rf'\g<1>{workspace_line}',
+            new_content,
+        )
+
+        if new_content != content:
+            state_path.write_text(new_content, encoding="utf-8")
+    except (subprocess.TimeoutExpired, OSError):
+        pass  # Non-blocking
+
+
 def _launch_async_health_check(cwd: Path) -> None:
     """Launch a background process to perform deep memory health validation.
 
@@ -1410,6 +1470,8 @@ def main() -> int:
     # Async: Launch health check in background for session-start
     if args.event == "session-start":
         _launch_async_health_check(cwd)
+        # Runtime layer: update dynamic fields in STATE.md
+        _update_state_dynamic_fields(cwd)
 
     writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
     package = build_context_package(args.host, args.event, payload)

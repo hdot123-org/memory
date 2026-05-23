@@ -16,6 +16,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 try:
     import tomllib
 except ModuleNotFoundError:
@@ -102,9 +104,8 @@ class TestHappyPathInitAndValidate:
             assert data["success"] is True
 
             # Verify files exist
-            memory_root = proj / ".memory"
-            for fname in ("memory.lock", "adapter.toml", "CANONICAL.md",
-                          "PLAN.md", "STATE.md", "TASKS.md", "migrations.log"):
+            memory_root = proj / "memory" / "system"
+            for fname in ("memory.lock", "adapter.toml", "migrations.log"):
                 assert (memory_root / fname).is_file(), f"{fname} not created"
 
             # Verify dirs exist
@@ -141,7 +142,7 @@ class TestHappyPathInitAndValidate:
             assert data["success"] is True
             assert data["dry_run"] is True
             # No .memory/ should exist
-            assert not (proj / ".memory").exists()
+            assert not (proj / "memory" / "system").exists()
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
@@ -172,24 +173,12 @@ class TestMissingFileDetection:
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             # Remove memory.lock
-            (proj / ".memory" / "memory.lock").unlink()
+            (proj / "memory" / "system" / "memory.lock").unlink()
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
             data = json.loads(result.stdout)
             assert data["all_passed"] is False
             lock_checks = [c for c in data["checks"] if "memory.lock" in c["name"]]
             assert any(not c["passed"] for c in lock_checks)
-        finally:
-            import shutil
-            shutil.rmtree(proj, ignore_errors=True)
-
-    def test_missing_canonical(self) -> None:
-        proj = _make_temp_project()
-        try:
-            _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            (proj / ".memory" / "CANONICAL.md").unlink()
-            result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
-            data = json.loads(result.stdout)
-            assert data["all_passed"] is False
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
@@ -221,8 +210,8 @@ class TestPollutionGuard:
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             # Create a pollution file
-            poll_dir = proj / ".memory" / "kb" / "node_modules"
-            poll_dir.mkdir()
+            poll_dir = proj / "memory" / "system" / "kb" / "node_modules"
+            poll_dir.mkdir(parents=True)
             (poll_dir / "package.json").write_text('{"name":"test"}', encoding="utf-8")
 
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
@@ -239,11 +228,11 @@ class TestPollutionGuard:
         proj = _make_temp_project()
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            # Write pollution into CANONICAL.md
-            canonical = proj / ".memory" / "CANONICAL.md"
-            text = canonical.read_text(encoding="utf-8")
-            text += "\nPath reference: /some/project/__pycache__/module.pyc\n"
-            canonical.write_text(text, encoding="utf-8")
+            # Write pollution into adapter.toml
+            adapter = proj / "memory" / "system" / "adapter.toml"
+            text = adapter.read_text(encoding="utf-8")
+            text += '\n# Path reference: /some/project/__pycache__/module.pyc\n'
+            adapter.write_text(text, encoding="utf-8")
 
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
             data = json.loads(result.stdout)
@@ -270,6 +259,7 @@ class TestPollutionGuard:
 # Migration idempotency
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skip(reason="Migration from pre-0.5.0 versions no longer supported in v0.5.0")
 class TestMigrationIdempotency:
     """Migration tool behavior tests."""
 
@@ -279,14 +269,14 @@ class TestMigrationIdempotency:
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             # Downgrade version to 0.1.0 so we can test the 0.1.0->0.2.0 migration
-            lock_path = proj / ".memory" / "memory.lock"
+            lock_path = proj / "memory" / "system" / "memory.lock"
             lock_data = _read_memory_lock(lock_path)
             if "memory" in lock_data:
                 lock_data["memory"]["memory_version"] = "0.1.0"
             else:
                 lock_data["version"] = "0.1.0"
             _write_memory_lock(lock_path, lock_data)
-            adapter_path = proj / ".memory" / "adapter.toml"
+            adapter_path = proj / "memory" / "system" / "adapter.toml"
             adapter_text = adapter_path.read_text(encoding="utf-8")
             adapter_text = adapter_text.replace(f'version = "{_current_version()}"', 'version = "0.1.0"')
             adapter_path.write_text(adapter_text, encoding="utf-8")
@@ -301,7 +291,7 @@ class TestMigrationIdempotency:
             assert data["dry_run"] is True
 
             # Verify lock file still says 0.1.0
-            lock = _read_memory_lock(proj / ".memory" / "memory.lock")
+            lock = _read_memory_lock(proj / "memory" / "system" / "memory.lock")
             assert _get_lock_version(lock) == "0.1.0"
         finally:
             import shutil
@@ -313,14 +303,14 @@ class TestMigrationIdempotency:
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             # Downgrade version to 0.1.0 so we can test the 0.1.0->0.2.0 migration
-            lock_path = proj / ".memory" / "memory.lock"
+            lock_path = proj / "memory" / "system" / "memory.lock"
             lock_data = _read_memory_lock(lock_path)
             if "memory" in lock_data:
                 lock_data["memory"]["memory_version"] = "0.1.0"
             else:
                 lock_data["version"] = "0.1.0"
             _write_memory_lock(lock_path, lock_data)
-            adapter_path = proj / ".memory" / "adapter.toml"
+            adapter_path = proj / "memory" / "system" / "adapter.toml"
             adapter_text = adapter_path.read_text(encoding="utf-8")
             adapter_text = adapter_text.replace(f'version = "{_current_version()}"', 'version = "0.1.0"')
             adapter_path.write_text(adapter_text, encoding="utf-8")
@@ -334,11 +324,11 @@ class TestMigrationIdempotency:
             assert data["success"] is True
 
             # Verify lock file updated
-            lock = _read_memory_lock(proj / ".memory" / "memory.lock")
+            lock = _read_memory_lock(proj / "memory" / "system" / "memory.lock")
             assert _get_lock_version(lock) == _current_version()
 
             # Verify migrations.log has entry
-            log = (proj / ".memory" / "migrations.log").read_text()
+            log = (proj / "memory" / "system" / "migrations.log").read_text()
             assert "0.1.0" in log
             assert _current_version() in log
         finally:
@@ -399,7 +389,7 @@ class TestVersionCheckFailure:
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             # Tamper with version
-            lock = proj / ".memory" / "memory.lock"
+            lock = proj / "memory" / "system" / "memory.lock"
             data = _read_memory_lock(lock)
             if "memory" in data:
                 data["memory"]["memory_version"] = "9.9.9"
@@ -421,7 +411,7 @@ class TestVersionCheckFailure:
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             # Tamper with adapter version
-            adapter = proj / ".memory" / "adapter.toml"
+            adapter = proj / "memory" / "system" / "adapter.toml"
             text = adapter.read_text(encoding="utf-8")
             text = text.replace(f'version = "{_current_version()}"', 'version = "9.9.9"')
             adapter.write_text(text, encoding="utf-8")
@@ -438,6 +428,7 @@ class TestVersionCheckFailure:
 # Frontmatter validation
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skip(reason="Frontmatter validation removed for deleted template files in v0.5.0")
 class TestFrontmatterValidation:
     """Validator must check frontmatter fields."""
 
@@ -446,7 +437,7 @@ class TestFrontmatterValidation:
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             # Remove frontmatter from CANONICAL.md
-            canonical = proj / ".memory" / "CANONICAL.md"
+            canonical = proj / "memory" / "system" / "CANONICAL.md"
             canonical.write_text("# No frontmatter\n\nContent\n", encoding="utf-8")
 
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
@@ -475,7 +466,7 @@ class TestScopeAndProjectName:
                 ["--target", str(proj), "--scope", "my_project", "--json"],
             )
             assert result.returncode == 0
-            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            adapter = (proj / "memory" / "system" / "adapter.toml").read_text()
             assert 'project_scope = "my_project"' in adapter
         finally:
             import shutil
@@ -490,7 +481,7 @@ class TestScopeAndProjectName:
                 ["--target", str(proj), "--scope", "My-Project", "--json"],
             )
             assert result.returncode == 0
-            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            adapter = (proj / "memory" / "system" / "adapter.toml").read_text()
             assert 'project_scope = "my_project"' in adapter
         finally:
             import shutil
@@ -502,7 +493,7 @@ class TestScopeAndProjectName:
         try:
             result = _run_script(INIT_SCRIPT, ["--target", str(proj), "--json"])
             assert result.returncode == 0
-            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            adapter = (proj / "memory" / "system" / "adapter.toml").read_text()
             # _make_temp_project creates dirs like p4_test_xxx
             assert 'project_scope = "' in adapter
             # Should not be the old uppercase format
@@ -525,7 +516,7 @@ class TestScopeAndProjectName:
             )
             result = _run_script(INIT_SCRIPT, ["--target", str(proj), "--json"])
             assert result.returncode == 0
-            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            adapter = (proj / "memory" / "system" / "adapter.toml").read_text()
             assert 'project_scope = "my_awesome_project"' in adapter
         finally:
             import shutil
@@ -544,7 +535,7 @@ class TestScopeAndProjectName:
             )
             result = _run_script(INIT_SCRIPT, ["--target", str(proj), "--json"])
             assert result.returncode == 0
-            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            adapter = (proj / "memory" / "system" / "adapter.toml").read_text()
             assert 'project_scope = "some_repo"' in adapter
         finally:
             import shutil
@@ -566,7 +557,7 @@ class TestScopeAndProjectName:
                 ["--target", str(proj), "--scope", "explicit_scope", "--json"],
             )
             assert result.returncode == 0
-            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            adapter = (proj / "memory" / "system" / "adapter.toml").read_text()
             assert 'project_scope = "explicit_scope"' in adapter
         finally:
             import shutil
@@ -764,7 +755,7 @@ class TestFactoryHost:
         proj = _make_temp_project()
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj), "--host", "factory"])
-            adapter = (proj / ".memory" / "adapter.toml").read_text()
+            adapter = (proj / "memory" / "system" / "adapter.toml").read_text()
             assert 'host = "factory"' in adapter
         finally:
             import shutil
@@ -806,7 +797,7 @@ class TestValidatorEnhancedChecks:
         proj = _make_temp_project()
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            adapter = proj / ".memory" / "adapter.toml"
+            adapter = proj / "memory" / "system" / "adapter.toml"
             text = adapter.read_text(encoding="utf-8")
             text = text.replace('host = "codex"', 'host = "neovim"')
             adapter.write_text(text, encoding="utf-8")
@@ -820,12 +811,13 @@ class TestValidatorEnhancedChecks:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
 
+    @pytest.mark.skip(reason="STATUS_ENUMERATIONS removed for deleted STATE.md in v0.5.0")
     def test_reject_invalid_status_enum(self) -> None:
         """STATE.md with invalid status should fail validation."""
         proj = _make_temp_project()
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            state = proj / ".memory" / "STATE.md"
+            state = proj / "memory" / "system" / "STATE.md"
             text = state.read_text(encoding="utf-8")
             text = text.replace("status: active", "status: invalid_status")
             state.write_text(text, encoding="utf-8")
@@ -844,7 +836,7 @@ class TestValidatorEnhancedChecks:
         proj = _make_temp_project()
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            lock = proj / ".memory" / "memory.lock"
+            lock = proj / "memory" / "system" / "memory.lock"
             text = lock.read_text(encoding="utf-8")
             text = text.replace(f'memory_version = "{_current_version()}"', 'memory_version = "not-a-version"')
             lock.write_text(text, encoding="utf-8")

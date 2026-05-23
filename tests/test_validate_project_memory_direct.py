@@ -8,10 +8,8 @@ import pytest
 
 from memory_core.constants import (
     CURRENT_MEMORY_VERSION,
-    FRONTMATTER_REQUIREMENTS,
     REQUIRED_MEMORY_DIRS,
     REQUIRED_MEMORY_FILES,
-    STATUS_ENUMERATIONS,
     SUPPORTED_HOSTS,
 )
 from memory_core.tools.validate_project_memory import (
@@ -23,14 +21,12 @@ from memory_core.tools.validate_project_memory import (
     _parse_lock_file,
     check_adapter_host_enum,
     check_adapter_version,
-    check_frontmatter,
     check_lock_version,
     check_memory_lock_semver,
     check_migrations_log,
     check_pollution,
     check_required_dirs,
     check_required_files,
-    check_state_enumerations,
     main,
     validate_project_memory,
 )
@@ -248,8 +244,8 @@ class TestCheckPollution:
 
     def test_check_no_pollution(self, tmp_path: Path) -> None:
         """Test checking directory with no pollution."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         (memory_root / "test.md").write_text("Clean content")
 
         result = _check_pollution(memory_root)
@@ -257,8 +253,8 @@ class TestCheckPollution:
 
     def test_check_path_pollution(self, tmp_path: Path) -> None:
         """Test detecting path pollution."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         polluted_dir = memory_root / "node_modules"
         polluted_dir.mkdir()
         (polluted_dir / "file.js").write_text("// content")
@@ -269,8 +265,8 @@ class TestCheckPollution:
 
     def test_check_content_pollution(self, tmp_path: Path) -> None:
         """Test detecting content pollution."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         md_file = memory_root / "test.md"
         md_file.write_text("This references node_modules in content")
 
@@ -279,8 +275,8 @@ class TestCheckPollution:
 
     def test_check_pycache_pollution(self, tmp_path: Path) -> None:
         """Test detecting __pycache__ pollution."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         pycache_dir = memory_root / "__pycache__"
         pycache_dir.mkdir()
         # Create a file inside to trigger rglob
@@ -291,8 +287,8 @@ class TestCheckPollution:
 
     def test_check_venv_pollution(self, tmp_path: Path) -> None:
         """Test detecting .venv pollution."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         venv_dir = memory_root / ".venv"
         venv_dir.mkdir()
         # Create a file inside to trigger rglob
@@ -359,8 +355,8 @@ class TestCheckRequiredFiles:
 
     def test_all_files_exist(self, tmp_path: Path) -> None:
         """Test when all required files exist."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         for fname in REQUIRED_MEMORY_FILES:
             (memory_root / fname).write_text("content")
 
@@ -373,8 +369,8 @@ class TestCheckRequiredFiles:
 
     def test_missing_files(self, tmp_path: Path) -> None:
         """Test when some files are missing."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         # Create only some files
         (memory_root / REQUIRED_MEMORY_FILES[0]).write_text("content")
 
@@ -390,8 +386,8 @@ class TestCheckRequiredDirs:
 
     def test_all_dirs_exist(self, tmp_path: Path) -> None:
         """Test when all required directories exist."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         for dname in REQUIRED_MEMORY_DIRS:
             # Create parent directories if needed (e.g., kb/projects needs kb/ first)
             (memory_root / dname).mkdir(parents=True)
@@ -403,8 +399,8 @@ class TestCheckRequiredDirs:
 
     def test_missing_dirs(self, tmp_path: Path) -> None:
         """Test when some directories are missing."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         # Create only one dir
         if REQUIRED_MEMORY_DIRS:
             (memory_root / REQUIRED_MEMORY_DIRS[0]).mkdir(parents=True)
@@ -416,49 +412,13 @@ class TestCheckRequiredDirs:
         assert isinstance(result.checks, list)
 
 
-class TestCheckFrontmatter:
-    """Tests for check_frontmatter function."""
-
-    def test_valid_frontmatter(self, tmp_path: Path) -> None:
-        """Test checking files with valid frontmatter."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
-
-        for fname, keys in FRONTMATTER_REQUIREMENTS.items():
-            content = "---\n"
-            for key in keys:
-                content += f"{key}: value\n"
-            content += "---\n\n# Content\n"
-            (memory_root / fname).write_text(content)
-
-        result = CheckResult()
-        check_frontmatter(memory_root, result)
-
-        # Should have recorded checks for each file
-        assert len(result.checks) > 0
-
-    def test_missing_frontmatter_keys(self, tmp_path: Path) -> None:
-        """Test checking files with missing frontmatter keys."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
-
-        for fname in FRONTMATTER_REQUIREMENTS:
-            (memory_root / fname).write_text("---\ntitle: Test\n---\n\nContent")
-
-        result = CheckResult()
-        check_frontmatter(memory_root, result)
-
-        # Should have some failures
-        assert any(not c["passed"] for c in result.checks)
-
-
 class TestCheckLockVersion:
     """Tests for check_lock_version function."""
 
     def test_lock_version_match(self, tmp_path: Path) -> None:
         """Test when lock version matches current version."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         lock_file = memory_root / "memory.lock"
         # Use JSON format since TOML starting with [ looks like JSON array
         # and triggers JSON parsing which will fail
@@ -473,8 +433,8 @@ class TestCheckLockVersion:
 
     def test_lock_version_mismatch(self, tmp_path: Path) -> None:
         """Test when lock version doesn't match."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         lock_file = memory_root / "memory.lock"
         # Use JSON format for compatibility
         lock_file.write_text(json.dumps({
@@ -488,8 +448,8 @@ class TestCheckLockVersion:
 
     def test_lock_no_file(self, tmp_path: Path) -> None:
         """Test when lock file doesn't exist."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
 
         result = CheckResult()
         check_lock_version(memory_root, result)
@@ -502,8 +462,8 @@ class TestCheckAdapterVersion:
 
     def test_adapter_version_match(self, tmp_path: Path) -> None:
         """Test when adapter version matches current version."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         adapter_file = memory_root / "adapter.toml"
         adapter_file.write_text(f"""[core]
 version = "{CURRENT_MEMORY_VERSION}"
@@ -516,8 +476,8 @@ version = "{CURRENT_MEMORY_VERSION}"
 
     def test_adapter_version_mismatch(self, tmp_path: Path) -> None:
         """Test when adapter version doesn't match."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         adapter_file = memory_root / "adapter.toml"
         adapter_file.write_text("""[core]
 version = "0.0.1"
@@ -534,9 +494,9 @@ class TestCheckPollutionFunction:
 
     def test_no_pollution(self, tmp_path: Path) -> None:
         """Test when no pollution is detected."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
-        (memory_root / "CANONICAL.md").write_text("Clean content")
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
+        (memory_root / "test.md").write_text("Clean content")
 
         result = CheckResult()
         check_pollution(memory_root, result)
@@ -545,8 +505,8 @@ class TestCheckPollutionFunction:
 
     def test_with_pollution(self, tmp_path: Path) -> None:
         """Test when pollution is detected."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         polluted = memory_root / "node_modules"
         polluted.mkdir()
         # Create a file inside polluted dir to trigger rglob detection
@@ -563,8 +523,8 @@ class TestCheckMigrationsLog:
 
     def test_valid_log(self, tmp_path: Path) -> None:
         """Test checking valid migrations log."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         log_file = memory_root / "migrations.log"
         log_file.write_text("""# Migration log
 2026-01-15T10:00:00Z [upgrade] 0.2.0 -> 0.3.0
@@ -580,8 +540,8 @@ class TestCheckMigrationsLog:
 
     def test_empty_log(self, tmp_path: Path) -> None:
         """Test checking empty migrations log."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         log_file = memory_root / "migrations.log"
         log_file.write_text("")
 
@@ -593,71 +553,12 @@ class TestCheckMigrationsLog:
 
     def test_no_log_file(self, tmp_path: Path) -> None:
         """Test when migrations.log doesn't exist."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
 
         result = CheckResult()
         check_migrations_log(memory_root, result)
 
-        assert any(not c["passed"] for c in result.checks)
-
-
-class TestCheckStateEnumerations:
-    """Tests for check_state_enumerations function."""
-
-    def test_valid_status(self, tmp_path: Path) -> None:
-        """Test checking files with valid status values."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
-
-        for fname, valid_statuses in STATUS_ENUMERATIONS.items():
-            status = valid_statuses[0] if valid_statuses else "active"
-            content = f"""---
-status: {status}
----
-
-# Content
-"""
-            (memory_root / fname).write_text(content)
-
-        result = CheckResult()
-        check_state_enumerations(memory_root, result)
-
-        # Should have passing checks
-        assert len(result.checks) > 0
-
-    def test_invalid_status(self, tmp_path: Path) -> None:
-        """Test checking files with invalid status values."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
-
-        for fname in STATUS_ENUMERATIONS:
-            content = """---
-status: invalid_status
----
-
-# Content
-"""
-            (memory_root / fname).write_text(content)
-
-        result = CheckResult()
-        check_state_enumerations(memory_root, result)
-
-        # Should have failing checks
-        assert any(not c["passed"] for c in result.checks)
-
-    def test_missing_status(self, tmp_path: Path) -> None:
-        """Test checking files without status field."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
-
-        for fname in STATUS_ENUMERATIONS:
-            (memory_root / fname).write_text("---\n---\n\n# Content")
-
-        result = CheckResult()
-        check_state_enumerations(memory_root, result)
-
-        # Should have failing checks
         assert any(not c["passed"] for c in result.checks)
 
 
@@ -666,8 +567,8 @@ class TestCheckMemoryLockSemver:
 
     def test_valid_semver(self, tmp_path: Path) -> None:
         """Test checking lock file with valid semver."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         lock_file = memory_root / "memory.lock"
         # Use JSON format for compatibility
         lock_file.write_text(json.dumps({
@@ -681,8 +582,8 @@ class TestCheckMemoryLockSemver:
 
     def test_invalid_semver(self, tmp_path: Path) -> None:
         """Test checking lock file with invalid semver."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         lock_file = memory_root / "memory.lock"
         # Use JSON format for compatibility
         lock_file.write_text(json.dumps({
@@ -700,8 +601,8 @@ class TestCheckAdapterHostEnum:
 
     def test_valid_host(self, tmp_path: Path) -> None:
         """Test checking adapter with valid host."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         adapter_file = memory_root / "adapter.toml"
         adapter_file.write_text(f"""[routing]
 host = "{SUPPORTED_HOSTS[0]}"
@@ -714,8 +615,8 @@ host = "{SUPPORTED_HOSTS[0]}"
 
     def test_invalid_host(self, tmp_path: Path) -> None:
         """Test checking adapter with invalid host."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         adapter_file = memory_root / "adapter.toml"
         adapter_file.write_text("""[routing]
 host = "invalid_host"
@@ -728,8 +629,8 @@ host = "invalid_host"
 
     def test_missing_host(self, tmp_path: Path) -> None:
         """Test checking adapter without host field."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         adapter_file = memory_root / "adapter.toml"
         adapter_file.write_text("""[core]
 version = "1.0.0"
@@ -746,8 +647,8 @@ class TestValidateProjectMemory:
 
     def test_validate_full_project(self, tmp_path: Path) -> None:
         """Test validating a complete project."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
 
         # Create required files
         for fname in REQUIRED_MEMORY_FILES:
@@ -816,8 +717,8 @@ class TestMain:
 
     def test_main_json_output(self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test main with JSON output."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
 
         # Create minimal required files
         for fname in REQUIRED_MEMORY_FILES:
@@ -877,8 +778,8 @@ Content
 
     def test_lock_version_legacy_key(self, tmp_path: Path) -> None:
         """Test lock version check with legacy 'version' key."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         lock_file = memory_root / "memory.lock"
         # Legacy JSON format with top-level version key
         lock_file.write_text(json.dumps({
@@ -894,8 +795,8 @@ Content
 
     def test_adapter_version_legacy_key(self, tmp_path: Path) -> None:
         """Test adapter version check with legacy 'version' key."""
-        memory_root = tmp_path / ".memory"
-        memory_root.mkdir()
+        memory_root = tmp_path / "memory" / "system"
+        memory_root.mkdir(parents=True)
         adapter_file = memory_root / "adapter.toml"
         # Legacy format with version at top level (not in [core] section)
         adapter_file.write_text(f"version = \"{CURRENT_MEMORY_VERSION}\"")

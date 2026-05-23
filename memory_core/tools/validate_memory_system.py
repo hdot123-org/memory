@@ -274,11 +274,11 @@ def check_package_imports(result: ValidateResult) -> bool:
 
 # Canonical locations that ARE allowed to contain STATE/PLAN/CANONICAL files.
 _WHITELIST_PATH_PREFIXES: tuple[str, ...] = (
-    "memory_core/.memory/",
+    "memory_core/memory/system/",
     "memory_core/memory/kb/global/",
     "memory_core/project-map/",
     "archive/legacy-workbot/",
-    "workspace/templates/.memory/",
+    "workspace/templates/memory/system/",
 )
 
 # Directories that are always safe (config / docs / CI).
@@ -301,7 +301,7 @@ _FORBIDDEN_STATE_NAMES: tuple[str, ...] = (
 )
 
 # Business-specific strings that should NOT appear in newly created
-# kb / project-map / .memory content.  Allowed only in source code,
+# kb / project-map / memory/system content.  Allowed only in source code,
 # documentation, or archived legacy content.
 _FORBIDDEN_BUSINESS_STRINGS: tuple[str, ...] = (
     "axonhub",
@@ -341,7 +341,7 @@ def _scan_file_content(filepath: Path, repo_root: Path) -> list[dict]:
     """Scan a .md file in a runtime location for business-specific strings.
 
     Only flags files directly under runtime directories like
-    memory_core/.memory/, memory_core/project-map/, or
+    memory_core/memory/system/, memory_core/project-map/, or
     memory_core/memory/kb/global/.  Archived and source-code locations
     are exempt.
     """
@@ -351,7 +351,7 @@ def _scan_file_content(filepath: Path, repo_root: Path) -> list[dict]:
 
     # Only scan newly created runtime content
     runtime_prefixes = (
-        "memory_core/.memory/",
+        "memory_core/memory/system/",
         "memory_core/project-map/",
         "memory_core/memory/kb/global/",
     )
@@ -393,15 +393,15 @@ def detect_pollution(repo_root: Path) -> list[dict]:
         - ``severity``: ``"error"`` (blocks CI) or ``"warning"`` (informational)
 
     Uses an allow-list + deny-list approach:
-    - Allow-list: ``memory_core/.memory/``, ``memory_core/memory/kb/global/``,
+    - Allow-list: ``memory_core/memory/system/``, ``memory_core/memory/kb/global/``,
       ``memory_core/project-map/``, ``archive/legacy-workbot/``, standard
       repo directories (docs/, tests/, scripts/, .github/, config files).
     - Deny-list: any ``*.STATE.md`` / ``*.PLAN.md`` / ``*.CANONICAL.md``
       appearing in business runtime locations (repo root,
       ``workspace/projects/*``, etc.).
     - Deny-list: business-specific strings (``axonhub``, ``workbot``) in
-      newly created runtime content (kb / project-map / .memory).
-    - Deny-list: ``.memory/`` directories outside ``memory_core/.memory/``
+      newly created runtime content (kb / project-map / memory/system).
+    - Deny-list: ``.memory/`` directories outside ``memory_core/memory/system/``
       or ``archive/``.
     """
     findings: list[dict] = []
@@ -421,7 +421,6 @@ def detect_pollution(repo_root: Path) -> list[dict]:
             continue
 
         # Skip hidden dirs (.git, .pytest_cache, etc.) and build artifacts.
-        # But don't skip .memory at repo root — it must be checked.
         parts = filepath.relative_to(repo_root).parts
         if parts and parts[0].startswith(".") and parts[0] not in (".github", ".memory"):
             continue
@@ -442,11 +441,11 @@ def detect_pollution(repo_root: Path) -> list[dict]:
                     "detail": ".memory/ directory found at repository root",
                 })
             else:
-                # Allowed parents: memory_core/.memory/, archive/legacy-workbot/.memory/, workspace/templates/.memory/
+                # Allowed parents: memory_core/memory/system/, archive/legacy-workbot/, workspace/templates/memory/system/
                 allowed_parents = (
-                    ("memory_core",),
+                    ("memory_core", "memory", "system"),
                     ("archive", "legacy-workbot"),
-                    ("workspace", "templates"),
+                    ("workspace", "templates", "memory", "system"),
                 )
                 is_allowed = any(
                     parts[: mem_idx] == allowed[: mem_idx]
@@ -458,7 +457,7 @@ def detect_pollution(repo_root: Path) -> list[dict]:
                         "path": str(rel_path),
                         "rule": "unexpected-memory-dir",
                         "severity": "error",
-                        "detail": ".memory/ directory found outside memory_core/.memory/, archive/, or workspace/templates/",
+                        "detail": ".memory/ directory found outside memory_core/memory/system/, archive/, or workspace/templates/",
                     })
 
         # ── Rule 2: Forbidden state files in runtime locations ──

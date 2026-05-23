@@ -12,7 +12,7 @@ Workflow:
     1. Parse args and validate project root
     2. If --strict: verify first, show diff of any errors
     3. Require --reason (mandatory) + --token or --force flag
-    4. Write audit entry to .memory/integrity-audit.jsonl
+    4. Write audit entry to memory/system/integrity-audit.jsonl
     5. Sign v2 manifest
 
 Constraints:
@@ -28,6 +28,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from memory_core.constants import SYSTEM_DIR
 
 
 def _now_iso() -> str:
@@ -85,11 +87,11 @@ def _write_audit(
     verify_result: dict[str, Any] | None,
     manifest_result: dict[str, Any] | None,
 ) -> bool:
-    """Write an audit entry to .memory/integrity-audit.jsonl.
+    """Write an audit entry to memory/system/integrity-audit.jsonl.
 
     Returns True on success.
     """
-    audit_path = project_root / ".memory" / "integrity-audit.jsonl"
+    audit_path = project_root / SYSTEM_DIR / "integrity-audit.jsonl"
     entry = {
         "timestamp": _now_iso(),
         "action": "resign",

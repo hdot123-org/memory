@@ -81,7 +81,7 @@ def _sample_v1_package() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 class TestMemoryV1Structure:
-    """Verify memory-v1 output references .memory/* canonical files."""
+    """Verify memory-v1 output references memory/system/* canonical files."""
 
     def test_schema_version(self) -> None:
         result = convert_to_memory_v1(_sample_v2_package())
@@ -91,10 +91,10 @@ class TestMemoryV1Structure:
         result = convert_to_memory_v1(_sample_v2_package())
         project = result["project"]
         assert project["scope"] == "test-scope"
-        assert project["canonical"] == ".memory/CANONICAL.md"
-        assert project["plan"] == ".memory/PLAN.md"
-        assert project["state"] == ".memory/STATE.md"
-        assert project["tasks"] == ".memory/TASKS.md"
+        assert project["canonical"] == "memory/system/CANONICAL.md"
+        assert project["plan"] == "memory/system/PLAN.md"
+        assert project["state"] == "memory/system/STATE.md"
+        assert project["tasks"] == "memory/system/TASKS.md"
 
     def test_paths_preserved(self) -> None:
         result = convert_to_memory_v1(_sample_v2_package())
@@ -132,7 +132,7 @@ class TestV2ToMemoryV1:
         v2 = _sample_v2_package()
         result = convert_legacy_to_memory_v1(v2)
         assert result["schema_version"] == MEMORY_V1_VERSION
-        assert result["project"]["canonical"] == ".memory/CANONICAL.md"
+        assert result["project"]["canonical"] == "memory/system/CANONICAL.md"
 
     def test_convert_v2_preserves_scope(self) -> None:
         v2 = _sample_v2_package()
@@ -151,7 +151,7 @@ class TestV1ToMemoryV1:
         v1 = _sample_v1_package()
         result = convert_legacy_to_memory_v1(v1)
         assert result["schema_version"] == MEMORY_V1_VERSION
-        assert result["project"]["canonical"] == ".memory/CANONICAL.md"
+        assert result["project"]["canonical"] == "memory/system/CANONICAL.md"
 
     def test_convert_v1_preserves_paths(self) -> None:
         v1 = _sample_v1_package()
@@ -174,7 +174,7 @@ class TestMemoryV1Identity:
     def test_identity_returns_same_object(self) -> None:
         pkg: dict[str, Any] = {
             "schema_version": MEMORY_V1_VERSION,
-            "project": {"scope": "s", "canonical": ".memory/CANONICAL.md"},
+            "project": {"scope": "s", "canonical": "memory/system/CANONICAL.md"},
         }
         result = convert_legacy_to_memory_v1(pkg)
         assert result is pkg
@@ -232,10 +232,10 @@ class TestBuildContextPackageSimple:
         result = gw.build_context_package_simple("codex", "session-start", schema="memory-v1")
         assert result["schema_version"] == MEMORY_V1_VERSION
         project = result["project"]
-        assert project["canonical"] == ".memory/CANONICAL.md"
-        assert project["plan"] == ".memory/PLAN.md"
-        assert project["state"] == ".memory/STATE.md"
-        assert project["tasks"] == ".memory/TASKS.md"
+        assert project["canonical"] == "memory/system/CANONICAL.md"
+        assert project["plan"] == "memory/system/PLAN.md"
+        assert project["state"] == "memory/system/STATE.md"
+        assert project["tasks"] == "memory/system/TASKS.md"
         assert project["scope"] == "test-scope"
 
     def test_explicit_v1_schema(self, _patch_build: Any) -> None:

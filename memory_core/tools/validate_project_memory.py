@@ -44,15 +44,12 @@ except ModuleNotFoundError:
 
 from memory_core.constants import (
     CURRENT_MEMORY_VERSION,
-    FRONTMATTER_REQUIREMENTS,
     MESSAGE_VERSION_MISMATCH_DOWNGRADE_DETECTED,
     MESSAGE_VERSION_MISMATCH_UPGRADE_NEEDED,
     MIGRATION_LOG_LINE_PATTERN,
     REQUIRED_MEMORY_DIRS,
     REQUIRED_MEMORY_FILES,
-    STATUS_ENUMERATIONS,
     SUPPORTED_HOSTS,
-    VALID_HEALTH_VALUES,
 )
 from memory_core.ownership import (
     load_memory_ownership,
@@ -283,25 +280,6 @@ def check_required_dirs(memory_root: Path, result: CheckResult) -> bool:
     return all_ok
 
 
-def check_frontmatter(memory_root: Path, result: CheckResult) -> bool:
-    """Verify Markdown files have required frontmatter fields."""
-    all_ok = True
-    for fname, required_keys in FRONTMATTER_REQUIREMENTS.items():
-        fpath = memory_root / fname
-        if not fpath.is_file():
-            # Already reported by check_required_files; skip here
-            continue
-        text = fpath.read_text(encoding="utf-8")
-        fm = _parse_frontmatter(text)
-        missing = [k for k in required_keys if k not in fm]
-        if missing:
-            result.record(f"frontmatter:{fname}", False, f"missing keys: {missing}")
-            all_ok = False
-        else:
-            result.record(f"frontmatter:{fname}", True, f"{len(required_keys)} keys present")
-    return all_ok
-
-
 def check_lock_version(memory_root: Path, result: CheckResult) -> bool:
     """Verify memory.lock version matches current schema."""
     lock_path = memory_root / "memory.lock"
@@ -419,56 +397,6 @@ def check_migrations_log(memory_root: Path, result: CheckResult) -> bool:
     except Exception as exc:
         result.record("migrations_log", False, f"read error: {exc}")
         return False
-
-
-def check_state_enumerations(memory_root: Path, result: CheckResult) -> bool:
-    """Verify Markdown files have valid status values in frontmatter.
-
-    Checks:
-    - STATE.md: status must be active|paused|completed|archived
-    - PLAN.md: status must be planning|in_progress|review|completed|blocked
-    - CANONICAL.md: status must be active
-    - STATE.md: health (if present) must be green|yellow|red
-    """
-    all_ok = True
-    for fname, valid_statuses in STATUS_ENUMERATIONS.items():
-        fpath = memory_root / fname
-        if not fpath.is_file():
-            continue
-        text = fpath.read_text(encoding="utf-8")
-        fm = _parse_frontmatter(text)
-        status = fm.get("status", "").strip()
-        if not status:
-            result.record(f"status_enum:{fname}", False, "status field missing or empty")
-            all_ok = False
-        elif status not in valid_statuses:
-            result.record(
-                f"status_enum:{fname}",
-                False,
-                f"invalid status '{status}', must be one of: {', '.join(valid_statuses)}",
-            )
-            all_ok = False
-        else:
-            result.record(f"status_enum:{fname}", True, f"status={status}")
-
-    # Additional: validate STATE.md health field if present
-    state_path = memory_root / "STATE.md"
-    if state_path.is_file():
-        text = state_path.read_text(encoding="utf-8")
-        fm = _parse_frontmatter(text)
-        health = fm.get("health", "").strip()
-        if health:
-            if health not in VALID_HEALTH_VALUES:
-                result.record(
-                    "health_enum:STATE.md",
-                    False,
-                    f"invalid health '{health}', must be one of: {', '.join(VALID_HEALTH_VALUES)}",
-                )
-                all_ok = False
-            else:
-                result.record("health_enum:STATE.md", True, f"health={health}")
-
-    return all_ok
 
 
 def check_memory_lock_semver(memory_root: Path, result: CheckResult) -> bool:
@@ -755,6 +683,31 @@ def check_shared_resources(target: Path, memory_root: Path, result: CheckResult)
     return all_ok
 
 
+from memory_core.tools.evidence_ref_validator import validate_evidence_refs_on_disk
+
+
+def check_kb_evidence_refs(target: Path, result: CheckResult) -> bool:
+    """Step 2.7: Verify KB evidence refs point to existing files on disk.
+
+    Uses the shared evidence_ref_validator module so that the same
+    validation logic is available to init_project_memory.py and
+    migrate_project_memory.py.
+    """
+    errors = validate_evidence_refs_on_disk(target)
+    all_ok = True
+    if errors:
+        for err in errors:
+            result.record(
+                f"evidence_refs:{err.kb_file}",
+                False,
+                f"{len(err.missing_refs)} missing evidence refs: {', '.join(err.missing_refs[:3])}",
+            )
+            all_ok = False
+    else:
+        result.record("evidence_refs", True, "all KB evidence refs exist on disk")
+    return all_ok
+
+
 # ---------------------------------------------------------------------------
 # Main validation entry point
 # ---------------------------------------------------------------------------
@@ -781,13 +734,10 @@ def validate_project_memory(
             result.record(f"dry_run:file:{fname}", True, "would check existence")
         for dname in REQUIRED_MEMORY_DIRS:
             result.record(f"dry_run:dir:{dname}", True, "would check directory")
-        for fname in FRONTMATTER_REQUIREMENTS:
-            result.record(f"dry_run:frontmatter:{fname}", True, "would check frontmatter")
         result.record("dry_run:lock_version", True, "would check lock version")
         result.record("dry_run:adapter_version", True, "would check adapter version")
         result.record("dry_run:pollution", True, "would check pollution")
         result.record("dry_run:migrations_log", True, "would check migrations.log")
-        result.record("dry_run:status_enum", True, "would check status enumerations")
         result.record("dry_run:semver", True, "would check memory_version SemVer format")
         result.record("dry_run:host_enum", True, "would check adapter host enum")
         result.record("dry_run:ownership", True, "would check ownership declaration")
@@ -805,12 +755,10 @@ def validate_project_memory(
 
     check_required_files(memory_root, result)
     check_required_dirs(memory_root, result)
-    check_frontmatter(memory_root, result)
     check_lock_version(memory_root, result)
     check_adapter_version(memory_root, result)
     check_pollution(memory_root, result)
     check_migrations_log(memory_root, result)
-    check_state_enumerations(memory_root, result)
     check_memory_lock_semver(memory_root, result)
     check_adapter_host_enum(memory_root, result)
 
@@ -819,6 +767,7 @@ def validate_project_memory(
     check_domain_integrity(target, memory_root, result)
     check_document_paths(memory_root, result)
     check_shared_resources(target, memory_root, result)
+    check_kb_evidence_refs(target, result)
 
     return result
 

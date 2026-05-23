@@ -1,6 +1,6 @@
 """Tests for canonical template schema alignment.
 
-Verifies that workspace/templates/.memory/adapter.toml uses the canonical
+Verifies that workspace/templates/memory/system/adapter.toml uses the canonical
 [core] + [policy] + [routing] layout, and that init_project_memory correctly
 renders placeholders into actual values.
 
@@ -26,7 +26,7 @@ from memory_core.tools.init_project_memory import (
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_TEMPLATE_PATH = _REPO_ROOT / "workspace" / "templates" / ".memory" / "adapter.toml"
+_TEMPLATE_PATH = _REPO_ROOT / "workspace" / "templates" / "memory" / "system" / "adapter.toml"
 
 
 def _read_template_raw() -> str:
@@ -104,7 +104,7 @@ class TestInitWritesAdapterToml:
         result = init_project_memory(tmp_path, scope="version-test")
         assert result["success"] is True
 
-        adapter_path = tmp_path / ".memory" / "adapter.toml"
+        adapter_path = tmp_path / "memory" / "system" / "adapter.toml"
         assert adapter_path.exists()
         content = adapter_path.read_text(encoding="utf-8")
 
@@ -118,7 +118,7 @@ class TestInitWritesAdapterToml:
         result = init_project_memory(tmp_path, scope="my-test-proj")
         assert result["success"] is True
 
-        adapter_path = tmp_path / ".memory" / "adapter.toml"
+        adapter_path = tmp_path / "memory" / "system" / "adapter.toml"
         assert adapter_path.exists()
         content = adapter_path.read_text(encoding="utf-8")
 
@@ -133,7 +133,7 @@ class TestInitWritesAdapterToml:
         result = init_project_memory(tmp_path, scope="host-test", host="claude")
         assert result["success"] is True
 
-        adapter_path = tmp_path / ".memory" / "adapter.toml"
+        adapter_path = tmp_path / "memory" / "system" / "adapter.toml"
         assert adapter_path.exists()
         content = adapter_path.read_text(encoding="utf-8")
 
@@ -146,7 +146,7 @@ class TestInitWritesAdapterToml:
         result = init_project_memory(tmp_path, scope="default-host-test")
         assert result["success"] is True
 
-        adapter_path = tmp_path / ".memory" / "adapter.toml"
+        adapter_path = tmp_path / "memory" / "system" / "adapter.toml"
         assert adapter_path.exists()
         content = adapter_path.read_text(encoding="utf-8")
 

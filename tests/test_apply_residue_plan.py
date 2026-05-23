@@ -250,7 +250,7 @@ class TestDryRun:
         assert not (project / "artifacts" / "reports").exists()
 
         # Verify no backup directory created
-        assert not (project / ".memory" / "backups").exists()
+        assert not (project / "memory" / "system" / "backups").exists()
 
     def test_dry_run_reports_would_move(self, tmp_path: Path) -> None:
         """Dry-run should report what would be moved."""

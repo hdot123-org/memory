@@ -40,7 +40,7 @@ class TestInitOwnershipGeneration:
         assert result["success"] is True
         assert "file:ownership.toml" in result["created"]
 
-        ownership_path = tmp_path / ".memory" / "ownership.toml"
+        ownership_path = tmp_path / "memory" / "system" / "ownership.toml"
         assert ownership_path.exists()
 
         # Verify content
@@ -57,7 +57,7 @@ class TestInitOwnershipGeneration:
         init_project_memory(tmp_path, scope="test_project", mode="create")
 
         # Modify ownership.toml
-        ownership_path = tmp_path / ".memory" / "ownership.toml"
+        ownership_path = tmp_path / "memory" / "system" / "ownership.toml"
         original_content = ownership_path.read_text(encoding="utf-8")
         ownership_path.write_text(original_content + "\n# Modified", encoding="utf-8")
 
@@ -76,7 +76,7 @@ class TestInitOwnershipGeneration:
         init_project_memory(tmp_path, scope="test_project", mode="create")
 
         # Modify ownership.toml
-        ownership_path = tmp_path / ".memory" / "ownership.toml"
+        ownership_path = tmp_path / "memory" / "system" / "ownership.toml"
         original_content = ownership_path.read_text(encoding="utf-8")
         ownership_path.write_text(original_content + "\n# Modified", encoding="utf-8")
 
@@ -92,7 +92,7 @@ class TestInitOwnershipGeneration:
         init_project_memory(tmp_path, scope="test_project", mode="create")
 
         # Modify ownership.toml
-        ownership_path = tmp_path / ".memory" / "ownership.toml"
+        ownership_path = tmp_path / "memory" / "system" / "ownership.toml"
         original_content = ownership_path.read_text(encoding="utf-8")
         ownership_path.write_text(original_content + "\n# Modified", encoding="utf-8")
 
@@ -109,7 +109,7 @@ class TestInitForceRestriction:
     def test_force_rejects_owned_file_overwrite(self, tmp_path):
         """Force should reject overwriting owned files."""
         # Create directories first (simulate existing structure)
-        (tmp_path / ".memory").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "memory" / "system").mkdir(parents=True, exist_ok=True)
         (tmp_path / "memory" / "docs").mkdir(parents=True, exist_ok=True)
 
         # Create an existing owned file (in memory/docs domain)
@@ -117,7 +117,7 @@ class TestInitForceRestriction:
         custom_file.write_text("# Original Custom Content", encoding="utf-8")
 
         # Create minimal memory.lock to satisfy init
-        (tmp_path / ".memory" / "memory.lock").write_text(
+        (tmp_path / "memory" / "system" / "memory.lock").write_text(
             '[memory]\nproject = "test"\nmemory_version = "0.4.0"\n'
             'schema_version = "context-package-v1"\nadapter_version = "builtin"\n'
             'locked_at = "2026-01-01"\nlock_reason = "initial"\n',
@@ -237,7 +237,7 @@ class TestAuditOwnershipFindings:
     def test_audit_ownership_missing_finding(self, tmp_path):
         """Audit should report ownership_missing finding."""
         # Create minimal structure without ownership.toml
-        memory_dir = tmp_path / ".memory"
+        memory_dir = tmp_path / "memory" / "system"
         memory_dir.mkdir(parents=True)
 
         result = audit_project_layout(tmp_path)
@@ -250,7 +250,7 @@ class TestAuditOwnershipFindings:
         init_project_memory(tmp_path, scope="test_project", mode="create")
 
         # Modify ownership to weaken protection
-        ownership_path = tmp_path / ".memory" / "ownership.toml"
+        ownership_path = tmp_path / "memory" / "system" / "ownership.toml"
         content = ownership_path.read_text(encoding="utf-8")
         content = content.replace('level = "critical"', 'level = "standard"', 1)
         ownership_path.write_text(content, encoding="utf-8")

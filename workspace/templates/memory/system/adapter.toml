@@ -1,4 +1,4 @@
-# adapter.toml — canonical layout (memory-core v0.4.x)
+# adapter.toml — canonical layout (memory-core v0.5.0)
 # 由 memory-init 在初始化时填充实际值
 
 [core]
@@ -14,4 +14,3 @@ registration_commit_phase = "post"
 project_name = "{{project_name}}"
 project_scope = "{{project_scope}}"
 host = "{{host}}"
-canonical_files = ["CANONICAL.md", "STATE.md"]

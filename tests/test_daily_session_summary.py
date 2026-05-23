@@ -504,7 +504,7 @@ class TestMain:
     def test_main_with_date_no_project(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         """Test main with date but no matching project."""
         # Create a project with no event log
-        (tmp_path / ".memory").mkdir()
+        (tmp_path / "memory" / "system").mkdir(parents=True)
         (tmp_path / ".git").mkdir()
 
         exit_code = main(["--date", "2026-01-15", "--project", str(tmp_path)])

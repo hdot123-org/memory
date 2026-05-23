@@ -8,6 +8,7 @@ Usage:
     python init_project_memory.py --target /path/to/project --host claude
     python init_project_memory.py --target /path/to/project --force
     python init_project_memory.py --target /path/to/project --no-clobber
+    python init_project_memory.py --target /path/to/project --no-auto-fill
 
 This tool creates the minimal .memory/ directory structure required by the
 memory system. It is designed to run against a *business project* repository,
@@ -25,6 +26,7 @@ import importlib.metadata
 import json
 import logging
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1100,6 +1102,176 @@ tags: [project, knowledge]
 
 
 # ---------------------------------------------------------------------------
+# Auto-fill helpers
+# ---------------------------------------------------------------------------
+
+def fill_template_fields(content: str, project_info: Any) -> str:
+    """Fill detected project information into template content.
+
+    Replaces '（待填写）' placeholders with actual values from ProjectInfo.
+    Only replaces placeholders, never overwrites existing filled values.
+
+    Args:
+        content: The template content to fill.
+        project_info: ProjectInfo instance with detected values.
+
+    Returns:
+        Filled content with placeholders replaced.
+    """
+    if project_info is None:
+        return content
+
+    # Import ProjectInfo for type checking
+    try:
+        from .project_probe import ProjectInfo as _ProjectInfo
+    except ImportError:
+        from memory_core.tools.project_probe import ProjectInfo as _ProjectInfo
+
+    if not isinstance(project_info, _ProjectInfo):
+        return content
+
+    # Fill CANONICAL.md fields
+    # 主语言
+    if project_info.primary_language:
+        content = re.sub(
+            r'(\| 主语言 \| )（待填写）( \|)',
+            rf'\g<1>{project_info.primary_language}\2',
+            content,
+        )
+
+    # 项目类型
+    if project_info.project_type:
+        content = re.sub(
+            r'(\| 项目类型 \| )（待填写）( \|)',
+            rf'\g<1>{project_info.project_type}\2',
+            content,
+        )
+
+    # 工具链 - replace the placeholder row with actual tools
+    if project_info.toolchain:
+        toolchain_rows = []
+        for tool in project_info.toolchain[:6]:  # Limit to 6 tools
+            tool_name = tool.get("name", "")
+            tool_config = tool.get("config", "")
+            if tool_name:
+                toolchain_rows.append(f"| {tool_name} | {tool_config} |")
+
+        if toolchain_rows:
+            tools_content = "\n".join(toolchain_rows)
+            content = re.sub(
+                r'\| （待填写） \| （待填写） \|',
+                tools_content,
+                content,
+                count=1,
+            )
+
+    # 仓库 - add git remote URL
+    if project_info.git_remote_url:
+        # Add a new row for remote URL in the 仓库 section
+        remote_row = f"| 远程仓库 | `{project_info.git_remote_url}` |"
+        # Check if there's already a remote row (already filled)
+        if "远程仓库" not in content:
+            content = re.sub(
+                r'(\| 本地仓库 \| .+? \|)\n',
+                rf'\g<1>\n{remote_row}\n',
+                content,
+                count=1,
+            )
+
+    # Fill project scope .md fields
+    # 语言
+    if project_info.primary_language:
+        content = re.sub(
+            r'(- 语言：)（待填写）',
+            rf'\g<1>{project_info.primary_language}',
+            content,
+        )
+
+    # 框架
+    if project_info.framework:
+        content = re.sub(
+            r'(- 框架：)（待填写）',
+            rf'\g<1>{project_info.framework}',
+            content,
+        )
+
+    # 数据库
+    if project_info.databases:
+        db_str = "、".join(project_info.databases)
+        content = re.sub(
+            r'(- 数据库：)（待填写）',
+            rf'\g<1>{db_str}',
+            content,
+        )
+
+    # 项目概述
+    if project_info.project_overview:
+        content = re.sub(
+            r'（待填写：项目简要描述）',
+            project_info.project_overview,
+            content,
+        )
+
+    return content
+
+
+def _apply_auto_fill(
+    target: Path,
+    project_info: Any,
+    result: dict[str, Any],
+    *,
+    project_name: str,
+) -> None:
+    """Apply auto-fill to generated template files.
+
+    This function reads the just-created files and fills in detected values.
+    """
+    if project_info is None:
+        return
+
+    # Import ProjectInfo for type checking
+    try:
+        from .project_probe import ProjectInfo as _ProjectInfo
+    except ImportError:
+        from memory_core.tools.project_probe import ProjectInfo as _ProjectInfo
+
+    if not isinstance(project_info, _ProjectInfo):
+        return
+
+    # Fill CANONICAL.md
+    canonical_path = target / ".memory" / "CANONICAL.md"
+    if canonical_path.exists():
+        try:
+            content = canonical_path.read_text(encoding="utf-8")
+            filled = fill_template_fields(content, project_info)
+            if filled != content:
+                canonical_path.write_text(filled, encoding="utf-8")
+                result["created"].append("file:CANONICAL.md (auto-filled)")
+        except Exception as exc:
+            result["warnings"].append(f"CANONICAL.md auto-fill failed: {exc}")
+
+    # Fill project scope .md
+    scope_path = target / "memory" / "kb" / "projects" / f"{project_name}.md"
+    if scope_path.exists():
+        try:
+            content = scope_path.read_text(encoding="utf-8")
+            filled = fill_template_fields(content, project_info)
+            if filled != content:
+                scope_path.write_text(filled, encoding="utf-8")
+                result["created"].append(f"file:memory/kb/projects/{project_name}.md (auto-filled)")
+        except Exception as exc:
+            result["warnings"].append(f"project scope .md auto-fill failed: {exc}")
+
+    # Log what was detected
+    if project_info.primary_language:
+        result["created"].append(f"detected:primary_language={project_info.primary_language}")
+    if project_info.framework:
+        result["created"].append(f"detected:framework={project_info.framework}")
+    if project_info.git_remote_url:
+        result["created"].append(f"detected:git_remote_url={project_info.git_remote_url}")
+
+
+# ---------------------------------------------------------------------------
 # File registry
 # ---------------------------------------------------------------------------
 
@@ -1457,6 +1629,10 @@ def init_project_memory(
     sync_source_remote: str = "origin",
     sync_mirror_remote: str = "",
     sync_mirror_url: str = "",
+    sync_showdoc_enabled: bool = False,
+    sync_showdoc_item_id: int = 0,
+    sync_showdoc_url: str = "",
+    auto_fill: bool = True,
 ) -> dict[str, Any]:
     """Initialize .memory/ directory skeleton in the target project.
 
@@ -1473,6 +1649,8 @@ def init_project_memory(
             - adopt: Adopt existing project without overwriting business files.
             - update: Update existing memory structure, replace marked blocks.
             - repair: Repair missing required files only.
+        auto_fill: If True (default), auto-detect project info and fill templates.
+            Set to False to keep all placeholders ("（待填写）").
 
     Returns:
         Dict with 'success', 'created', 'skipped', 'errors', 'mode', 'warnings' keys.
@@ -1887,13 +2065,39 @@ def init_project_memory(
     if not dry_run:
         result["mode"] = result["action_taken"] if mode == "create" else mode
 
+    # Auto-fill: detect project info and fill templates (default: enabled)
+    if result["success"] and auto_fill and not dry_run:
+        try:
+            from .project_probe import ProjectProbe
+            probe = ProjectProbe(target)
+            project_info = probe.probe()
+            _apply_auto_fill(target, project_info, result, project_name=project_name)
+        except Exception as exc:
+            result["warnings"].append(f"auto-fill skipped: {exc}")
+
     # Generate hooks.json and AGENTS.md after .memory/ is ready
     if result["success"]:
+        # Generate memory-init-fill skill YAML (unconditional, no --sync needed)
+        try:
+            from .template_sync import generate_skill_memory_init_fill_yaml
+            _fill_skill_content = generate_skill_memory_init_fill_yaml(project_name)
+            if _fill_skill_content:
+                _fill_skills_dir = target / ".memory" / "skills"
+                _fill_skills_dir.mkdir(parents=True, exist_ok=True)
+                _fill_skill_path = _fill_skills_dir / "memory-init-fill.yaml"
+                if not _fill_skill_path.exists() or force:
+                    _fill_skill_path.write_text(_fill_skill_content, encoding="utf-8")
+                    result["created"].append("file:.memory/skills/memory-init-fill.yaml")
+                else:
+                    result["skipped"].append("file:.memory/skills/memory-init-fill.yaml (exists)")
+        except Exception as exc:
+            result["warnings"].append(f"memory-init-fill skill generation skipped: {exc}")
+
         generate_hooks_json(target, host=host, result=result)
         update_agents_md(target, host=host, result=result, mode=mode)
 
         # Sync configuration: write CI template + docs (protocol layer only)
-        if sync_enabled:
+        if sync_enabled or sync_showdoc_enabled:
             _generate_sync_files(
                 target,
                 project_name=project_name,
@@ -1902,6 +2106,9 @@ def init_project_memory(
                 mirror_url=sync_mirror_url,
                 result=result,
                 force=force,
+                showdoc_enabled=sync_showdoc_enabled,
+                showdoc_item_id=sync_showdoc_item_id,
+                showdoc_url=sync_showdoc_url,
             )
 
         # L2: Sign initial manifest after .memory/ is scaffolded
@@ -2034,6 +2241,30 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="Mirror URL (e.g. github.com/org/repo). Used with --sync.",
     )
+    parser.add_argument(
+        "--sync-showdoc",
+        action="store_true",
+        default=False,
+        help="Enable ShowDoc sync configuration (CI job + skill workflow + docs blocks).",
+    )
+    parser.add_argument(
+        "--sync-showdoc-item-id",
+        type=int,
+        default=0,
+        help="ShowDoc target project item_id. Used with --sync-showdoc.",
+    )
+    parser.add_argument(
+        "--sync-showdoc-url",
+        type=str,
+        default="",
+        help="ShowDoc instance URL. Used with --sync-showdoc.",
+    )
+    parser.add_argument(
+        "--no-auto-fill",
+        action="store_true",
+        default=False,
+        help="Disable automatic project info detection and template filling.",
+    )
     try:
         _pkg_version = importlib.metadata.version("memory-core")
     except importlib.metadata.PackageNotFoundError:
@@ -2068,6 +2299,10 @@ def main(argv: list[str] | None = None) -> int:
         sync_source_remote=args.sync_source_remote,
         sync_mirror_remote=args.sync_mirror_remote,
         sync_mirror_url=args.sync_mirror_url,
+        sync_showdoc_enabled=args.sync_showdoc,
+        sync_showdoc_item_id=args.sync_showdoc_item_id,
+        sync_showdoc_url=args.sync_showdoc_url,
+        auto_fill=not args.no_auto_fill,
     )
 
     if args.json or args.dry_run:
@@ -2114,24 +2349,34 @@ def _generate_sync_files(
     mirror_url: str,
     result: dict[str, Any],
     force: bool = False,
+    showdoc_enabled: bool = False,
+    showdoc_item_id: int = 0,
+    showdoc_url: str = "",
 ) -> None:
     """Write sync-related files: .gitlab-ci.yml, adapter.toml [sync], docs blocks.
 
     Pure text generation -- no remote API calls.
     """
     try:
-        from .adapter_toml_schema import SyncConfig, dump_sync_toml
+        from .adapter_toml_schema import ShowdocSyncConfig, SyncConfig, dump_showdoc_toml, dump_sync_toml
         from .template_sync import (
             generate_agents_md_sync_block,
             generate_contributing_sync_block,
             generate_gitlab_ci_yml,
+            generate_skill_workflow_yaml,
         )
     except ImportError:
-        from memory_core.tools.adapter_toml_schema import SyncConfig, dump_sync_toml  # type: ignore
+        from memory_core.tools.adapter_toml_schema import (  # type: ignore
+            ShowdocSyncConfig,
+            SyncConfig,
+            dump_showdoc_toml,
+            dump_sync_toml,
+        )
         from memory_core.tools.template_sync import (  # type: ignore
             generate_agents_md_sync_block,
             generate_contributing_sync_block,
             generate_gitlab_ci_yml,
+            generate_skill_workflow_yaml,
         )
 
     sync = SyncConfig(
@@ -2145,24 +2390,86 @@ def _generate_sync_files(
     ci_path = target / ".gitlab-ci.yml"
     if not ci_path.exists() or force:
         ci_content = generate_gitlab_ci_yml(sync, project_slug=project_name)
+
+        # Append ShowDoc CI job if enabled
+        if showdoc_enabled:
+            try:
+                from .template_sync import generate_gitlab_ci_showdoc_job
+            except ImportError:
+                from memory_core.tools.template_sync import generate_gitlab_ci_showdoc_job  # type: ignore
+
+            showdoc = ShowdocSyncConfig(
+                enabled=True,
+                item_id=showdoc_item_id,
+                api_url=showdoc_url,
+            )
+            ci_content += generate_gitlab_ci_showdoc_job(sync, showdoc)
+
         ci_path.write_text(ci_content, encoding="utf-8")
         result["created"].append("file:.gitlab-ci.yml (sync)")
     else:
         result["skipped"].append("file:.gitlab-ci.yml (exists, use --force)")
 
-    # 2. Append [sync] to adapter.toml
+    # 2. Skill workflow template
+    skills_dir = target / ".memory" / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    skill_path = skills_dir / "gitlab_sync_workflow.yaml"
+    if not skill_path.exists() or force:
+        skill_content = generate_skill_workflow_yaml(sync)
+        skill_path.write_text(skill_content, encoding="utf-8")
+        result["created"].append("file:.memory/skills/gitlab_sync_workflow.yaml")
+    else:
+        result["skipped"].append("file:.memory/skills/gitlab_sync_workflow.yaml (exists, use --force)")
+
+    # 2b. ShowDoc skill workflow YAML
+    if showdoc_enabled:
+        try:
+            from .template_sync import generate_skill_showdoc_workflow_yaml
+        except ImportError:
+            from memory_core.tools.template_sync import generate_skill_showdoc_workflow_yaml  # type: ignore
+
+        showdoc = ShowdocSyncConfig(
+            enabled=True,
+            item_id=showdoc_item_id,
+            api_url=showdoc_url,
+        )
+        showdoc_skill_path = skills_dir / "showdoc_sync_workflow.yaml"
+        if not showdoc_skill_path.exists() or force:
+            showdoc_skill_content = generate_skill_showdoc_workflow_yaml(showdoc)
+            showdoc_skill_path.write_text(showdoc_skill_content, encoding="utf-8")
+            result["created"].append("file:.memory/skills/showdoc_sync_workflow.yaml")
+        else:
+            result["skipped"].append("file:.memory/skills/showdoc_sync_workflow.yaml (exists, use --force)")
+
+    # 3. Append [sync] to adapter.toml
     adapter_path = target / ".memory" / "adapter.toml"
     if adapter_path.exists():
         existing = adapter_path.read_text(encoding="utf-8")
+        toml_additions = ""
         if "[sync]" not in existing:
-            adapter_path.write_text(existing + dump_sync_toml(sync), encoding="utf-8")
+            toml_additions += dump_sync_toml(sync)
+
+        # Append [sync.showdoc] section if enabled
+        if showdoc_enabled:
+            showdoc = ShowdocSyncConfig(
+                enabled=True,
+                item_id=showdoc_item_id,
+                api_url=showdoc_url,
+            )
+            if "[sync.showdoc]" not in existing:
+                toml_additions += dump_showdoc_toml(showdoc)
+
+        if toml_additions:
+            adapter_path.write_text(existing + toml_additions, encoding="utf-8")
             result["created"].append("file:.memory/adapter.toml [sync] section")
+            if showdoc_enabled:
+                result["created"].append("file:.memory/adapter.toml [sync.showdoc] section")
         else:
             result["skipped"].append("file:.memory/adapter.toml [sync] (exists)")
     else:
         result["warnings"].append("adapter.toml not found; [sync] not written")
 
-    # 3. Append iron rule block to AGENTS.md
+    # 4. Append iron rule block to AGENTS.md
     agents_path = target / "AGENTS.md"
     sync_block = generate_agents_md_sync_block(sync)
     if sync_block and agents_path.exists():
@@ -2173,7 +2480,28 @@ def _generate_sync_files(
         else:
             result["skipped"].append("file:AGENTS.md (sync iron rule exists)")
 
-    # 4. Append contributing section
+    # 4b. Append ShowDoc iron rule block to AGENTS.md
+    if showdoc_enabled:
+        try:
+            from .template_sync import generate_agents_md_showdoc_block
+        except ImportError:
+            from memory_core.tools.template_sync import generate_agents_md_showdoc_block  # type: ignore
+
+        showdoc = ShowdocSyncConfig(
+            enabled=True,
+            item_id=showdoc_item_id,
+            api_url=showdoc_url,
+        )
+        showdoc_block = generate_agents_md_showdoc_block(showdoc)
+        if showdoc_block and agents_path.exists():
+            content = agents_path.read_text(encoding="utf-8")
+            if "SYNC_SHOWDOC_BEGIN" not in content:
+                agents_path.write_text(content.rstrip("\n") + "\n\n" + showdoc_block, encoding="utf-8")
+                result["created"].append("file:AGENTS.md (showdoc sync rule)")
+            else:
+                result["skipped"].append("file:AGENTS.md (showdoc sync rule exists)")
+
+    # 5. Append contributing section
     contrib_path = target / "CONTRIBUTING.md"
     contrib_block = generate_contributing_sync_block(sync)
     if contrib_block and contrib_path.exists():
@@ -2183,6 +2511,27 @@ def _generate_sync_files(
             result["created"].append("file:CONTRIBUTING.md (sync rule)")
         else:
             result["skipped"].append("file:CONTRIBUTING.md (sync rule exists)")
+
+    # 5b. Append ShowDoc contributing section
+    if showdoc_enabled:
+        try:
+            from .template_sync import generate_contributing_showdoc_block
+        except ImportError:
+            from memory_core.tools.template_sync import generate_contributing_showdoc_block  # type: ignore
+
+        showdoc = ShowdocSyncConfig(
+            enabled=True,
+            item_id=showdoc_item_id,
+            api_url=showdoc_url,
+        )
+        showdoc_contrib_block = generate_contributing_showdoc_block(showdoc)
+        if showdoc_contrib_block and contrib_path.exists():
+            content = contrib_path.read_text(encoding="utf-8")
+            if "ShowDoc 文档同步" not in content:
+                contrib_path.write_text(content.rstrip("\n") + "\n\n" + showdoc_contrib_block, encoding="utf-8")
+                result["created"].append("file:CONTRIBUTING.md (showdoc sync section)")
+            else:
+                result["skipped"].append("file:CONTRIBUTING.md (showdoc sync section exists)")
 
 
 def _print_post_init_health_summary(target: Path) -> None:

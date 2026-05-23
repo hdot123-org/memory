@@ -275,7 +275,7 @@ class TestClassifyOwnedPath:
 
     def test_dot_memory_domain(self):
         """Should classify .memory paths as owned."""
-        result = classify_owned_path(".memory/CANONICAL.md")
+        result = classify_owned_path("memory/system/CANONICAL.md")
         # This matches both domain and resource
         assert isinstance(result, Owned)
         assert result.level == ProtectionLevel.CRITICAL
@@ -541,8 +541,8 @@ class TestLoadMemoryOwnership:
 
     def test_load_from_json(self, tmp_path):
         """Should load from ownership.json if present."""
-        memory_dir = tmp_path / ".memory"
-        memory_dir.mkdir()
+        memory_dir = tmp_path / "memory" / "system"
+        memory_dir.mkdir(parents=True)
 
         custom_domain = OwnershipDomain(
             name="custom",

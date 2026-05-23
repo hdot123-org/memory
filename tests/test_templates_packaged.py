@@ -25,13 +25,13 @@ class TestTemplatesPackaged:
         assert "def main" in content or "import" in content
 
     def test_memory_lock_accessible(self):
-        """templates/.memory/memory.lock should be readable."""
-        ref = resources.files("workspace.templates") / ".memory" / "memory.lock"
+        """templates/memory/system/memory.lock should be readable."""
+        ref = resources.files("workspace.templates") / "memory" / "system" / "memory.lock"
         content = ref.read_text(encoding="utf-8")
         assert len(content) >= 0
 
     def test_adapter_toml_accessible(self):
-        """templates/.memory/adapter.toml should be readable."""
-        ref = resources.files("workspace.templates") / ".memory" / "adapter.toml"
+        """templates/memory/system/adapter.toml should be readable."""
+        ref = resources.files("workspace.templates") / "memory" / "system" / "adapter.toml"
         content = ref.read_text(encoding="utf-8")
         assert len(content) >= 0

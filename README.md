@@ -1,26 +1,48 @@
 # memory-core
 
-memory-core provides a reusable `.memory/` protocol, templates, schemas, and CLI tools for project-scoped memory management. It is an open-source library for initializing, validating, migrating, and auditing memory layouts; it does not store business project state in this repository.
+memory-core provides a reusable `memory/` protocol, templates, schemas, and CLI tools for project-scoped memory management. It is an open-source library for initializing, validating, migrating, and auditing memory layouts; it does not store business project state in this repository.
+
+## Architecture (v0.5.0)
+
+memory-core uses a **two-layer architecture**:
+
+```
+~/.memory-core/              ← Layer 1: Global runtime (never modified)
+/Users/project/
+  memory/                    ← Layer 2: Single project entry point
+    system/                  ← Config & state files
+      adapter.toml
+      ownership.toml
+      memory.lock
+      migrations.log
+      manifest.json
+      integrity-audit.jsonl
+    kb/                      ← Knowledge base
+    docs/                    ← Documentation
+    log/                     ← Logs
+```
+
+The project-level configuration lives in `memory/system/` (not `.memory/`). The hidden `.memory/` directory was removed in v0.5.0.
 
 ## Install
 
 Install from a GitHub release wheel:
 
 ```bash
-gh release download v0.4.0 --repo hdot123/memory --pattern "*.whl"
-pip install memory_core-0.4.0-py3-none-any.whl
+gh release download v0.5.0 --repo hdot123/memory --pattern "*.whl"
+pip install memory_core-0.5.0-py3-none-any.whl
 ```
 
 Install from source:
 
 ```bash
-pip install git+https://github.com/hdot123/memory.git@v0.4.0
+pip install git+https://github.com/hdot123/memory.git@v0.5.0
 ```
 
 Upgrade by changing the version and adding `--upgrade`:
 
 ```bash
-pip install --upgrade git+https://github.com/hdot123/memory.git@v0.4.0
+pip install --upgrade git+https://github.com/hdot123/memory.git@v0.5.0
 ```
 
 For local development:
@@ -46,17 +68,17 @@ memory-validate --target /path/to/project
 Migrate between schema versions:
 
 ```bash
-memory-migrate --target /path/to/project --from 0.2.0 --to 0.4.0
+memory-migrate --target /path/to/project --from 0.4.0 --to 0.5.0
 ```
 
 ## Core CLI commands
 
 ### `memory-init`
 
-Creates or updates the standard project memory structure.
+Creates or updates the standard project memory structure under `memory/system/`. Auto-fills detected project metadata (language, framework, toolchain, git remote) into project scope files.
 
 ```bash
-memory-init --target /path/to/project [--scope my-project] [--host codex|factory|claude] [--mode create|adopt|update|repair] [--dry-run] [--force] [--no-clobber] [--json] [--version]
+memory-init --target /path/to/project [--scope my-project] [--host codex|factory|claude] [--mode create|adopt|update|repair] [--dry-run] [--force] [--no-clobber] [--no-auto-fill] [--json] [--version]
 ```
 
 Modes:
@@ -84,7 +106,7 @@ memory-apply-residue-plan --target /path/to/project --plan residue-plan.json --d
 
 ### `memory-validate`
 
-Checks that `.memory/` exists, required files are present, frontmatter and TOML are valid, version fields are compatible, and pollution guards pass.
+Checks that `memory/system/` exists, required files are present, frontmatter and TOML are valid, version fields are compatible, and pollution guards pass.
 
 ```bash
 memory-validate --target /path/to/project [--dry-run] [--json]
@@ -95,7 +117,7 @@ memory-validate --target /path/to/project [--dry-run] [--json]
 Runs version/schema migrations and records the result in `migrations.log`.
 
 ```bash
-memory-migrate --target /path/to/project --from 0.2.0 --to 0.4.0 [--dry-run] [--json] [--version]
+memory-migrate --target /path/to/project --from 0.4.0 --to 0.5.0 [--dry-run] [--json] [--version]
 ```
 
 ## Generated project layout
@@ -103,27 +125,22 @@ memory-migrate --target /path/to/project --from 0.2.0 --to 0.4.0 [--dry-run] [--
 A target project initialized by `memory-init` receives a project-local memory layout:
 
 ```text
-.memory/
-├── memory.lock
-├── adapter.toml
-├── CANONICAL.md
-├── PLAN.md
-├── STATE.md
-├── TASKS.md
-├── migrations.log
-├── manifest.json
-└── kb/
-
 memory/
+├── system/
+│   ├── memory.lock
+│   ├── adapter.toml
+│   ├── migrations.log
+│   ├── manifest.json
+│   ├── integrity-audit.jsonl
+│   └── kb/
 ├── kb/
 │   └── INDEX.md
 ├── docs/
-└── system/
+└── log/
 
 project-map/
 artifacts/memory-hook/
 INDEX.md
-NOW.md
 ```
 
 Project memory and runtime artifacts belong to the target project. The memory-core repository contains the reusable protocol, code, templates, schemas, fixtures, and documentation.
@@ -150,12 +167,12 @@ Factory Droid:
 memory-factory-hooks install --storage-root ~/.memory-core
 ```
 
-Global state under `~/.memory-core` stores host-level lifecycle/path-index data and integrity keys; it is not a project memory pool. Project memory remains under the target project’s `.memory/`, `memory/`, and `artifacts/memory-hook/` paths.
+Global state under `~/.memory-core` stores host-level lifecycle/path-index data and integrity keys; it is not a project memory pool. Project memory lives under the target project’s `memory/system/`, `memory/`, and `artifacts/memory-hook/` paths.
 
 ## Documentation
 
 - [Documentation index](docs/INDEX.md)
-- [`.memory/` specification](docs/DOT_MEMORY_SPEC.md)
+- [`memory/` specification](docs/DOT_MEMORY_SPEC.md)
 - [`memory.lock` specification](docs/MEMORY_LOCK_SPEC.md)
 - [Repository boundary](docs/BOUNDARY.md)
 - [Changelog](CHANGELOG.md)
@@ -171,6 +188,6 @@ python3 scripts/check_boundary.py
 
 ## Version and license
 
-- Current documented release: v0.4.0
+- Current documented release: v0.5.0
 - Python: >= 3.9
 - License: MIT. See [LICENSE](LICENSE).

@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.5.0] - 2026-05-23
+
+### Breaking Changes
+- **Two-layer architecture**: Project-level configuration moved from hidden `.memory/` to `memory/system/`. Global runtime `~/.memory-core/` remains unchanged.
+- **Removed `.memory/` directory**: The hidden project protocol directory is eliminated. All config and state files now live under `memory/system/`.
+- **Deleted 5 AI template files**: `CANONICAL.md`, `STATE.md`, `PLAN.md`, `TASKS.md`, `NOW.md` are no longer created or validated. These were redundant with project README/CLAUDE.md and linear/project tools.
+
+### Added
+- **`SYSTEM_DIR` constant**: New `SYSTEM_DIR = "memory/system"` in `constants.py`
+- **`memory/system/kb/` and `memory/system/skills/`**: Migrated from `.memory/kb/` and `.memory/skills/`
+- **`0.4.0 → 0.5.0` migration step**: `migrate_project_memory.py` supports migrating existing projects, with backup at `memory/system/backups/pre-0.5/` and rollback support
+- **Idempotent migration**: Re-running `memory-migrate --from 0.4.0 --to 0.5.0` on an already-migrated project is a no-op
+- **`INDEX.md` auto-generation**: `memory-init` now auto-generates INDEX.md; context-package dynamically parses, no manual maintenance needed
+
+### Changed
+- `constants.py`: Removed CANONICAL/STATE/PLAN/TASKS/NOW constants, removed FRONTMATTER_REQUIREMENTS, removed STATUS_ENUMERATIONS
+- `init_project_memory.py`: All `target / ".memory"` → `target / "memory" / "system"`, removed 5 template file generators
+- `memory_root_discovery.py`: Hard cutover — marker changed from `.memory` to `memory/system`, no dual detection
+- `validate_project_memory.py`: Path migration, removed validation of deleted template files
+- `ownership.py` + `ownership_cli.py`: Updated path declarations from `.memory/*` to `memory/system/*`
+- `memory_hook_gateway.py` + `memory_hook_impls.py` + `memory_hook_integrity_manifest.py`: Path migration
+- `*_global_hooks.py` × 3 (codex, claude, factory): Path migration
+- 12+ other tool files: Path migration
+- `workspace/templates/.memory/` → `workspace/templates/memory/system/`
+- Version bumped to `0.5.0` in `constants.py` and `pyproject.toml`
+
+### Migration Path
+- New projects: `memory-init` creates `memory/system/` directly
+- Existing v0.4.x projects: `memory-migrate --from 0.4.0 --to 0.5.0` with automatic backup
+- Rollback: `memory-migrate --rollback` restores from backup
+
 ## [0.4.0] - 2026-05-18
 
 ### Added

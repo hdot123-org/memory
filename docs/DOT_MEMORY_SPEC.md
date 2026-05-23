@@ -1,41 +1,33 @@
 ---
 type: "[SPEC]"
-title: ".memory 目录规范"
+title: "Memory 目录规范（v0.5.0 两层架构）"
 shortname: SPEC-DOT-MEMORY
 status: implemented
 created: 2026-04-29
-updated: 2026-05-12
+updated: 2026-05-23
 scope: default
-tags: [dot-memory,spec,schema]
+tags: [memory,system,spec,schema]
 ---
 
-# DOT_MEMORY_SPEC — .memory 目录规范
+# DOT_MEMORY_SPEC — Memory 目录规范（v0.5.0）
 
 ## 概述
 
-`.memory/` 是每个业务项目的标准元数据目录，用于维护项目上下文、状态、任务和配置。
-本规范定义了 `.memory/` 的目录结构、必备文件、字段说明及验证规则。
+自 v0.5.0 起，memory-core 采用两层架构：`~/.memory-core/`（全局运行时）+ `memory/system/`（项目级配置）。
+项目级配置文件从隐藏目录 `.memory/` 迁移到 `memory/system/`，同时删除了 5 个 AI 模板文件
+（CANONICAL.md, STATE.md, PLAN.md, TASKS.md, NOW.md）及其验证逻辑。
+
+本规范定义了 `memory/system/` 的目录结构、必备文件、字段说明及验证规则。
 
 ## 目录结构
 
 ```
-{project_root}/.memory/
+{project_root}/memory/system/
 ├── memory.lock        # 版本锁定
 ├── adapter.toml       # 适配器配置
-├── CANONICAL.md       # 项目规范
-├── PLAN.md            # 执行计划
-├── STATE.md           # 项目状态
-├── TASKS.md           # 任务清单
 ├── migrations.log     # 迁移日志
 ├── manifest.json      # L2 完整性签名清单（自动生成）
 └── kb/
-    ├── projects/      # 项目知识
-    ├── decisions/     # 决策记录
-    ├── lessons/       # 经验教训
-    └── global/        # 全局规范
-
-> **注意**：NOW.md 是 KB 模板生成的根级文件（由 gateway 生成，不在 `.memory/` 内），
-> inbox.md 位于 `memory/inbox.md`（在 KB 目录中，不在 `.memory/` 内）。
     ├── projects/      # 项目知识
     ├── decisions/     # 决策记录
     ├── lessons/       # 经验教训
@@ -71,6 +63,25 @@ tags: [dot-memory,spec,schema]
 └── INDEX.md                                 # 工作区索引
 ```
 
+当使用 `memory-init --sync --sync-showdoc` 时，会额外生成同步相关模板（可选）：
+
+```
+{project_root}/
+├── .gitlab-ci.yml                           # test -> health-check -> sync-to-<mirror> 门禁流水线（含 sync-to-showdoc）
+├── scripts/
+│   └── sync_to_showdoc.py                   # ShowDoc 同步脚本（CI 中执行）
+└── memory/
+    ├── system/
+    │   ├── adapter.toml                     # 含 [sync.showdoc] 配置
+    │   └── skills/
+    │       └── gitlab_sync_workflow.yaml    # submit_gitlab / merge_after_ci / sync_github / sync_showdoc 编排模板
+    └── .showdoc-manifest.json               # SHA256 增量同步 manifest（运行时生成）
+```
+
+`sync-to-<mirror>` job 需要镜像凭证变量 `<MIRROR_REMOTE>_TOKEN`
+（例如 `GITHUB_TOKEN`），并且必须配置为 GitLab CI 受保护变量（masked + protected）。
+ShowDoc 同步需要 `SHOWDOC_API_KEY` 和 `SHOWDOC_API_TOKEN` 变量，同样配置为 CI 受保护变量。
+
 ## 初始化与布局治理
 
 `memory-init` 支持四种模式：
@@ -86,7 +97,7 @@ tags: [dot-memory,spec,schema]
 
 | 命令 | 说明 |
 |------|------|
-| `memory-audit-layout` | 只读审计 `.memory/`、`memory/`、`project-map/`、workspace legacy 结构和根目录污染 |
+| `memory-audit-layout` | 只读审计 `memory/system/`、`memory/`、`project-map/`、workspace legacy 结构和根目录污染 |
 | `memory-plan-residue` | 基于审计结果生成残留处理计划与 rollback/backup 信息 |
 | `memory-apply-residue-plan` | 安全应用低风险计划；默认仅允许根目录污染移动和 runtime artifact 忽略 |
 
@@ -104,7 +115,7 @@ tags: [dot-memory,spec,schema]
 
 ```toml
 [memory]
-memory_version = "0.4.0"
+memory_version = "0.5.0"
 schema_version = "context-package-v1"
 adapter_version = "builtin"
 locked_at = "2026-04-29T00:00:00Z"
@@ -134,7 +145,7 @@ lock_reason = "initial"
 
 ```toml
 [core]
-version = "0.4.0"
+version = "0.5.0"
 adapter = "default"
 
 [policy]
@@ -147,7 +158,6 @@ project_name = "my-project"
 project_scope = "default"
 # host: codex | claude | factory
 host = "codex"
-canonical_files = ["CANONICAL.md", "STATE.md"]
 # artifact_root = "artifacts/"
 ```
 
@@ -161,7 +171,6 @@ canonical_files = ["CANONICAL.md", "STATE.md"]
 | routing.project_name | string | 是 | 项目名称 |
 | routing.project_scope | string | 是 | 项目作用域 |
 | routing.host | string | 否 | 宿主平台：`codex` \| `claude` \| `factory`，默认 `codex` |
-| routing.canonical_files | array | 否 | 规范文件列表 |
 | routing.artifact_root | string | 否 | 产出物根目录 |
 
 **验证规则**：
@@ -170,78 +179,56 @@ canonical_files = ["CANONICAL.md", "STATE.md"]
 - `routing.project_name` 不能为空
 - 详细 schema 定义见 `memory_core/tools/adapter_toml_schema.py`
 
-### 3. CANONICAL.md
+### 2b. adapter.toml `[sync.showdoc]` 子配置
 
-**作用**：定义业务项目的编码规范、架构约束、命名约定。
+**作用**：声明 GitLab CI → ShowDoc 文档同步的配置。
 
-| 字段/章节 | 类型 | 必填 | 说明 |
-|-----------|------|------|------|
-| 项目信息 | section | 是 | 项目名称、类型、主语言、创建日期 |
-| 编码规范 | section | 是 | 项目编码标准描述 |
-| 架构约束 | section | 是 | 架构层面的约束条件 |
-| 命名约定 | section | 是 | 变量、函数、文件命名规则 |
-| 工具链 | section | 否 | 使用的工具和版本 |
-| 变更日志 | section | 是 | 规范变更记录表 |
+当 `[sync]` section 存在且 `showdoc` 子配置启用时，`memory-init` 会生成 ShowDoc 同步所需的脚本和 CI job。
 
-**验证规则**：
-- 文件必须存在且为合法 Markdown
-- 必须包含「项目信息」和「编码规范」章节
+```toml
+[sync]
+enabled = true
+# ... 其他 sync 配置 ...
 
-### 4. PLAN.md
+[sync.showdoc]
+enabled = true
+item_id = 664858316
+api_url = ""
+core_files = ["docs/**/*.md", "CHANGELOG.md"]
+extra_patterns = []
+cat_name_mapping = {}
+```
 
-**作用**：记录当前迭代/任务的执行计划、里程碑、验收标准。
-
-| 字段/章节 | 类型 | 必填 | 说明 |
-|-----------|------|------|------|
-| 任务概述 | section | 是 | 任务 ID、名称、优先级、创建日期 |
-| 目标 | section | 是 | 任务目标描述 |
-| 执行计划 | section | 是 | 步骤表格（步骤、描述、状态、完成日期） |
-| 验收标准 | section | 是 | 验收条件列表 |
-| 风险与依赖 | section | 否 | 风险和外部依赖 |
-| 状态 | section | 是 | 当前状态、上次更新 |
-
-**验证规则**：
-- 文件必须存在且为合法 Markdown
-- 必须包含「任务概述」、「目标」、「执行计划」、「验收标准」章节
-- 状态值必须为：`planning` | `in_progress` | `review` | `completed` | `blocked`
-
-### 5. STATE.md
-
-**作用**：记录业务项目的当前状态、上下文摘要、关键决策。
-
-| 字段/章节 | 类型 | 必填 | 说明 |
-|-----------|------|------|------|
-| 项目状态 | section | 是 | 状态、最后更新、健康度 |
-| 上下文摘要 | section | 是 | 项目上下文概要 |
-| 关键决策 | section | 是 | 决策记录表 |
-| 当前工作区 | section | 否 | 当前工作区描述 |
-| 待处理事项 | section | 是 | 待处理事项列表 |
-| 已完成的里程碑 | section | 否 | 里程碑记录 |
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `enabled` | bool | 是 | `false` | 是否启用 ShowDoc 同步 |
+| `item_id` | int | 是 | `0` | ShowDoc 目标项目 ID |
+| `api_url` | string | 否 | `""` | ShowDoc 实例地址（留空则从 mcp.json 读取） |
+| `core_files` | array[string] | 否 | `["docs/**/*.md", "CHANGELOG.md"]` | 默认同步的 glob patterns |
+| `extra_patterns` | array[string] | 否 | `[]` | 用户自定义扩展 glob patterns |
+| `cat_name_mapping` | object | 否 | `{}` | 文件路径→ShowDoc 目录名映射（如 `"docs/design/" = "设计文档"`） |
 
 **验证规则**：
-- 文件必须存在且为合法 Markdown
-- 状态值必须为：`active` | `paused` | `completed` | `archived`
-- 健康度值必须为：`green` | `yellow` | `red`
+- `enabled = true` 时 `item_id` 必须大于 0
+- `core_files` 和 `extra_patterns` 必须是合法的 glob pattern 列表
+- `cat_name_mapping` 的 key 必须是文件路径前缀，value 为非空字符串
+- 详细 schema 定义见 `memory_core/tools/adapter_toml_schema.py` 中的 `ShowdocSyncConfig`
 
-### 6. TASKS.md
+**同步机制**：
+- CI job 在合并到 main 后执行，与 `sync-to-github` 并行
+- 通过 ShowDoc Open API `updateByApi` 进行 upsert（按 page_title 幂等）
+- 使用 SHA256 manifest（`.showdoc-manifest.json`）实现增量同步
+- 单文件失败不阻断，API 调用自动重试 3 次（指数退避）
+- Markdown 内容需符合 showdoc-markdown-compat 安全子集
 
-**作用**：跟踪当前项目下的所有任务、子任务、状态。
+**CLI 参数**（`memory-init`）：
+- `--sync-showdoc` — 启用 ShowDoc 同步
+- `--sync-showdoc-item-id` — 目标项目 ID
+- `--sync-showdoc-url` — ShowDoc 实例地址（可选）
 
-| 字段/章节 | 类型 | 必填 | 说明 |
-|-----------|------|------|------|
-| 活跃任务 | section | 是 | 活跃任务表格 |
-| 已完成任务 | section | 是 | 已完成任务表格 |
-| 已取消任务 | section | 是 | 已取消任务表格 |
-| 阻塞项 | section | 否 | 当前阻塞项列表 |
+### 3. migrations.log
 
-**验证规则**：
-- 文件必须存在且为合法 Markdown
-- 必须包含三个任务章节（活跃、已完成、已取消）
-- 任务 ID 格式必须为 `T-XXX`
-
-### 7. migrations.log
-
-**作用**：记录 `.memory` 结构变更、适配器升级、数据迁移历史。
+**作用**：记录 `memory/system/` 结构变更、适配器升级、数据迁移历史。
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -256,26 +243,7 @@ canonical_files = ["CANONICAL.md", "STATE.md"]
 - 非注释行必须符合管道符分隔格式
 - 必须有至少一条初始化记录
 
-### 8. NOW.md
-
-**作用**：记录项目当前状态的实时快照，gateway 每次构建 context package 时读取。
-
-Runtime required：被 `memory_hook_core.py` 在构建 context package 时作为 `state_entry` 读取。
-
-| 字段/章节 | 类型 | 必填 | 说明 |
-|-----------|------|------|------|
-| frontmatter.type | string | 是 | 固定为 `KB:STATE` |
-| frontmatter.status | string | 是 | `active` |
-| 当前任务 | section | 是 | 当前正在执行的主要任务 |
-| 下一步行动 | section | 是 | 下一步行动列表 |
-| 阻塞项 | section | 否 | 当前阻塞项 |
-| 上下文摘要 | section | 否 | 当前上下文简要描述 |
-
-**验证规则**：
-- 文件必须存在且为合法 Markdown
-- 必须包含 frontmatter（`type`、`status`）
-
-### 9. inbox.md
+### 4. inbox.md
 
 **作用**：临时任务捕获区，用于快速记录待处理事项。
 
@@ -299,7 +267,7 @@ Runtime required：被 `memory_hook_impls.py` workbot adapter 在任务操作时
 - 文件必须存在
 - 必须包含「待处理事项」章节
 
-### 10. manifest.json（L2 自动生成）
+### 5. manifest.json（L2 自动生成）
 
 **作用**：L2 Integrity Layer 的签名清单，记录项目 canonical 文件的 SHA-256 和 HMAC-SHA256 签名。
 
@@ -314,8 +282,8 @@ Runtime required：被 `memory_hook_impls.py` workbot adapter 在任务操作时
   "entry_count": 5,
   "entries": [
     {
-      "path": "/abs/path/to/project/.memory/CANONICAL.md",
-      "rel_path": ".memory/CANONICAL.md",
+      "path": "/abs/path/to/project/memory/system/adapter.toml",
+      "rel_path": "memory/system/adapter.toml",
       "sha256": "<hex>",
       "hmac_sha256": "<hex>",
       "size_bytes": 1234,
@@ -326,7 +294,7 @@ Runtime required：被 `memory_hook_impls.py` workbot adapter 在任务操作时
 ```
 
 **签名的文件范围**：
-- `.memory/CANONICAL.md`、`.memory/STATE.md`、`.memory/PLAN.md`、`.memory/TASKS.md`、`.memory/adapter.toml`
+- `memory/system/adapter.toml`、`memory/system/ownership.toml`
 - `memory/system/errors.log`
 - `artifacts/memory-hook/contexts/` 和 `artifacts/memory-hook/events/` 下的日期分区文件
 
@@ -341,7 +309,7 @@ Runtime required：被 `memory_hook_impls.py` workbot adapter 在任务操作时
 - 每个条目的 `sha256` 和 `hmac_sha256` 必须与当前文件内容一致
 - 不在 manifest 中的 canonical 文件报告为 `new_unsigned` 警告
 
-### 11. memory-hook-policy-pack.json（runtime required）
+### 6. memory-hook-policy-pack.json（runtime required）
 
 **作用**：默认策略包，位于 `memory/kb/global/`。
 
@@ -356,7 +324,7 @@ Runtime required：被 `memory_hook_impls.py` 作为 `DEFAULT_POLICY_PACK_PATH` 
 }
 ```
 
-### 12. {scope}.md（项目 scope 知识文件）
+### 7. {scope}.md（项目 scope 知识文件）
 
 **作用**：每个项目 scope 的知识文件，位于 `memory/kb/projects/{scope}.md`。
 
@@ -366,10 +334,10 @@ Runtime required：被 `memory_hook_core.py` 在构建 context package 时作为
 
 ## 验证器要求
 
-当 `.memory/` 目录下存在任意文件时，验证器必须检查以下完整性：
+当 `memory/system/` 目录下存在任意文件时，验证器必须检查以下完整性：
 
-1. **必备文件检查**：7 个文件全部存在（memory.lock、adapter.toml、CANONICAL.md、PLAN.md、STATE.md、TASKS.md、migrations.log）
-2. **格式检查**：各文件格式合法（TOML/Markdown/JSON）
+1. **必备文件检查**：4 个文件全部存在（memory.lock、adapter.toml、ownership.toml、migrations.log）
+2. **格式检查**：各文件格式合法（TOML/JSON）
 3. **必填字段检查**：各文件必填字段不为空
 4. **枚举值检查**：状态、类型等字段为合法枚举值
 5. **Runtime required 文件检查**：`memory/kb/INDEX.md`、`memory/kb/global/memory-hook-policy-pack.json`、`memory/kb/projects/{scope}.md`、`memory/inbox.md` 存在

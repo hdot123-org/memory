@@ -1,0 +1,62 @@
+# .memory/skills/memory-init-fill.yaml
+version: 1
+workflow: memory-init-fill
+description: "在消费项目中运行 memory-init 后自动采集项目元信息并填充模板"
+
+skills:
+  - name: probe_project
+    goal: "探测项目元信息（只读操作）"
+    steps:
+      - name: git_info
+        method: "git remote get-url origin, git branch --show-current"
+      - name: primary_language
+        method: "检查 pyproject.toml / package.json / go.mod / Cargo.toml / pom.xml"
+      - name: framework
+        method: "解析依赖文件中的已知框架名"
+      - name: project_type
+        method: "目录模式 + 入口文件推断"
+      - name: database
+        method: "docker-compose.yml / .env 中的数据库关键词"
+      - name: toolchain
+        method: "CI config + linter + formatter 配置文件"
+      - name: readme_summary
+        method: "从 README.md 提取第一段非标题文本"
+
+  - name: fill_templates
+    goal: "将探测结果写入模板文件"
+    rules:
+      - field: "CANONICAL.md 主语言"
+        source: "probe_project.primary_language"
+        confidence: "high"
+        action: "auto_fill"
+      - field: "CANONICAL.md 工具链"
+        source: "probe_project.toolchain"
+        confidence: "high"
+        action: "auto_fill"
+      - field: "CANONICAL.md 仓库"
+        source: "probe_project.git_info"
+        confidence: "high"
+        action: "auto_fill"
+      - field: "STATE.md 当前工作区"
+        source: "probe_project.git_info.branch"
+        confidence: "high"
+        action: "auto_fill"
+      - field: "project scope .md 技术栈"
+        source: "probe_project.primary_language + framework + database"
+        confidence: "high"
+        action: "auto_fill"
+      - field: "CANONICAL.md 编码规范"
+        confidence: "low"
+        action: "keep_placeholder"
+      - field: "CANONICAL.md 架构约束"
+        confidence: "low"
+        action: "keep_placeholder"
+      - field: "CANONICAL.md 命名约定"
+        confidence: "low"
+        action: "keep_placeholder"
+
+  - name: verify
+    goal: "填充后验证文件完整性"
+    steps:
+      - "memory-verify-consumer --path <target>"
+      - "检查幂等性：重复填充不破坏已有内容"
