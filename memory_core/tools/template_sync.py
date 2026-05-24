@@ -92,6 +92,11 @@ health-check:
 sync-to-{mirror_remote}:
   stage: sync
   needs: [test, health-check]
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
   before_script:
