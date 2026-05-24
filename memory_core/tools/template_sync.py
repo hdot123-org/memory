@@ -48,6 +48,10 @@ def generate_gitlab_ci_yml(sync: SyncConfig, *, project_slug: str = "") -> str:
 
     return f"""{header}
 
+include:
+  - project: 'infra/ci-templates'
+    file: 'scope-check.yml'
+
 stages:
   - test
   - health-check
