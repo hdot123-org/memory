@@ -159,6 +159,7 @@ ALLOWED_ROOT_FILES = {
     "CLAUDE",
     "INDEX.md",
     "INDEX",
+    "NOW.md",
     # Config
     ".gitignore",
     ".gitattributes",
