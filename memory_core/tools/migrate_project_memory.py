@@ -308,14 +308,16 @@ _V05_CONFIG_FILES = [
     "integrity-audit.jsonl",
 ]
 
-# Template files to delete from .memory/
-_V05_DELETED_FILES = [
+# Template files to move from .memory/ to memory/kb/projects/{scope}/
+_V05_TEMPLATE_FILES = [
     "CANONICAL.md",
     "STATE.md",
     "PLAN.md",
     "TASKS.md",
-    "NOW.md",
 ]
+
+# NOW.md: move from .memory/ to project root
+_V05_NOW_MD = "NOW.md"
 
 # Directories to delete (or move if non-empty) from .memory/
 _V05_DELETED_DIRS = [
@@ -361,21 +363,56 @@ def _v05_backup(memory_root: Path, target_root: Path) -> Path:
     return backup_dir
 
 
+def _extract_scope_from_adapter(memory_root: Path) -> str:
+    """Read adapter.toml from .memory/ and extract routing.project_scope.
+
+    Returns the project_scope string.
+    Raises ValueError if scope is missing or empty.
+    """
+    adapter_path = memory_root / ADAPTER_TOML_NAME
+    if not adapter_path.exists():
+        raise ValueError(
+            f"Cannot determine project scope: {ADAPTER_TOML_NAME} not found in .memory/. "
+            "Ensure .memory/adapter.toml exists with [routing] section containing project_scope."
+        )
+
+    try:
+        config = load_adapter_toml(adapter_path)
+    except Exception as exc:
+        raise ValueError(
+            f"Failed to read adapter.toml: {exc}. "
+            "Ensure .memory/adapter.toml is valid TOML."
+        ) from exc
+
+    scope = config.project_scope
+    if not scope or not scope.strip():
+        raise ValueError(
+            "Cannot determine project scope: routing.project_scope is empty or missing in .memory/adapter.toml. "
+            "Add project_scope under [routing] section, e.g.:\n"
+            "  [routing]\n"
+            "  project_scope = \"your-project-name\""
+        )
+
+    return scope.strip()
+
+
 def migrate_v040_to_v050(memory_root: Path) -> dict[str, Any]:
     """Migration: 0.4.0 → 0.5.0.
 
-    1. Backs up .memory/ to memory/system/backups/pre-0.5/
-    2. Moves config files (adapter.toml, ownership.toml, memory.lock,
+    1. Reads adapter.toml from .memory/ to extract project_scope
+    2. Backs up .memory/ to memory/system/backups/pre-0.5/
+    3. Moves config files (adapter.toml, ownership.toml, memory.lock,
        migrations.log, manifest.json, integrity-audit.jsonl) to memory/system/
-    3. Moves kb/ and skills/ if they exist and are non-empty
-    4. Deletes template files (CANONICAL.md, STATE.md, PLAN.md, TASKS.md, NOW.md)
-    5. Deletes .memory/kb/ and .memory/skills/ (moved if non-empty)
-    6. Removes empty .memory/ directory
-    7. Updates adapter.toml version to 0.5.0
+    4. Moves kb/ and skills/ if they exist and are non-empty
+    5. Moves template files (CANONICAL.md, STATE.md, PLAN.md, TASKS.md) to
+       memory/kb/projects/{scope}/ (skips if destination already exists)
+    6. Moves NOW.md from .memory/ to project root (if not already there)
+    7. Removes empty .memory/ directory
+    8. Updates adapter.toml version to 0.5.0
 
     Idempotent: if .memory/ doesn't exist, returns success with noop.
     """
-    result: dict[str, Any] = {"success": False, "detail": "", "residue": []}
+    result: dict[str, Any] = {"success": False, "detail": "", "residue": [], "errors": []}
 
     target_root = memory_root.parent
 
@@ -388,9 +425,23 @@ def migrate_v040_to_v050(memory_root: Path) -> dict[str, Any]:
             result["detail"] = "already migrated to 0.5.0"
             return result
 
-    # Ensure target memory/system/ directory exists
+    # Ensure target memory/system/ directory exists (needed for logging even on failure)
     system_dir = target_root / V05_SYSTEM_DIR
     system_dir.mkdir(parents=True, exist_ok=True)
+
+    # Extract project_scope from adapter.toml BEFORE it's moved
+    try:
+        project_scope = _extract_scope_from_adapter(memory_root)
+    except ValueError as exc:
+        result["success"] = False
+        result["error"] = "missing_project_scope"
+        result["detail"] = str(exc)
+        result["errors"].append(str(exc))
+        return result
+
+    # Ensure template destination directory exists
+    template_dest_dir = target_root / "memory" / "kb" / "projects" / project_scope
+    template_dest_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Backup before making any changes
     try:
@@ -417,14 +468,28 @@ def migrate_v040_to_v050(memory_root: Path) -> dict[str, Any]:
                 # Empty directory, just remove it
                 shutil.rmtree(str(src_dir))
 
-    # 4. Delete template files
-    for filename in _V05_DELETED_FILES:
+    # 4. Move template files to memory/kb/projects/{scope}/ (skip if exists)
+    for filename in _V05_TEMPLATE_FILES:
         src = memory_root / filename
         if src.exists():
-            src.unlink()
+            dest = template_dest_dir / filename
+            if dest.exists():
+                result["residue"].append(f"Skipped {filename}: destination already exists")
+            else:
+                shutil.move(str(src), str(dest))
 
-    # 5. Remove .memory/ directory if empty or has only remaining subdirs
-    # (some subdirs like backups/ may remain, but those are handled)
+    # 5. Move NOW.md from .memory/ to project root (if not already there)
+    now_md_src = memory_root / _V05_NOW_MD
+    now_md_dest = target_root / _V05_NOW_MD
+    if now_md_src.exists():
+        if now_md_dest.exists():
+            result["residue"].append(f"Skipped {_V05_NOW_MD}: already exists at project root")
+            # Remove from .memory/ since it's already at root
+            now_md_src.unlink()
+        else:
+            shutil.move(str(now_md_src), str(now_md_dest))
+
+    # 6. Remove .memory/ directory if empty or has only remaining subdirs
     remaining_items = list(memory_root.iterdir())
     # Only remove backups/ if it's empty (real backups should be under memory/system/backups/)
     for item in remaining_items:
@@ -448,7 +513,7 @@ def migrate_v040_to_v050(memory_root: Path) -> dict[str, Any]:
         # If .memory/ can't be fully removed, leave it (non-critical)
         result["residue"].append("Warning: .memory/ directory could not be fully removed")
 
-    # 6. Update adapter.toml version to 0.5.0
+    # 7. Update adapter.toml version to 0.5.0
     adapter_path = system_dir / ADAPTER_TOML_NAME
     if adapter_path.exists():
         try:
@@ -484,7 +549,7 @@ def migrate_v040_to_v050(memory_root: Path) -> dict[str, Any]:
             result["residue"].append(f"adapter.toml update failed: {exc}")
 
     result["success"] = True
-    result["detail"] = "Migrated from 0.4.0 to 0.5.0: moved config to memory/system/, removed .memory/"
+    result["detail"] = f"Migrated from 0.4.0 to 0.5.0: moved config to memory/system/, templates to memory/kb/projects/{project_scope}/, removed .memory/"
     return result
 
 
@@ -962,6 +1027,9 @@ def migrate_project_memory(
                 result["errors"].append(
                     f"Migration {mig_desc} failed: {mig_result.get('detail', 'unknown')}"
                 )
+                # Propagate the error field from the inner function
+                if mig_result.get("error"):
+                    result["error"] = mig_result["error"]
                 break
 
         # M6: Generate default ownership.toml for old projects without one
