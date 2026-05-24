@@ -1,5 +1,6 @@
 # memory-core
 
+<!-- API MR test marker - automated verification -->
 memory-core provides a reusable `memory/` protocol, templates, schemas, and CLI tools for project-scoped memory management. It is an open-source library for initializing, validating, migrating, and auditing memory layouts; it does not store business project state in this repository.
 
 ## Architecture (v0.5.0)
