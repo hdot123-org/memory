@@ -104,6 +104,12 @@ DIRECTORY_STRUCTURE = [
     "memory/log",
 ]
 
+# Per-scope directories created during init (relative to target root)
+# These require the scope name and are created dynamically in init_project_memory().
+PER_SCOPE_DIRECTORIES = [
+    "memory/kb/projects/{scope}",
+]
+
 # ---------------------------------------------------------------------------
 # File templates
 # ---------------------------------------------------------------------------
@@ -1848,6 +1854,79 @@ def init_project_memory(
             result["errors"].append(f"failed to create memory/kb/projects/{project_name}.md: {exc}")
 
     result["success"] = len(result["errors"]) == 0
+
+    # 6. Create per-scope control loop directory: memory/kb/projects/{scope}/
+    #    and generate CANONICAL.md, STATE.md, PLAN.md, TASKS.md
+    scope_dir = target / "memory" / "kb" / "projects" / project_name
+    try:
+        scope_dir.mkdir(parents=True, exist_ok=True)
+        result["created"].append(f"dir:memory/kb/projects/{project_name}/")
+    except Exception as exc:
+        result["errors"].append(f"failed to create per-scope directory: {exc}")
+
+    # Helper to write a per-scope template file with idempotency
+    def _write_per_scope_template(
+        fname: str,
+        template_fn: Any,
+        content_label: str,
+    ) -> None:
+        nonlocal any_overwritten, any_skipped
+        file_path = scope_dir / fname
+        should_skip, reason = _should_skip_file(
+            file_path, f"memory/kb/projects/{project_name}/{fname}", is_business_file=False,
+        )
+        if file_path.exists() and should_skip:
+            result["skipped"].append(f"file:memory/kb/projects/{project_name}/{fname} ({reason})")
+            any_skipped = True
+            return
+        if file_path.exists() and not should_skip:
+            try:
+                content, warnings = template_fn(project_name)
+                file_path.write_text(content, encoding="utf-8")
+                result["created"].append(f"file:memory/kb/projects/{project_name}/{fname} (overwritten)")
+                result["warnings"].extend(warnings)
+                any_overwritten = True
+            except Exception as exc:
+                result["errors"].append(f"failed to overwrite {content_label}: {exc}")
+            return
+        # Create new
+        try:
+            content, warnings = template_fn(project_name)
+            file_path.write_text(content, encoding="utf-8")
+            result["created"].append(f"file:memory/kb/projects/{project_name}/{fname}")
+            result["warnings"].extend(warnings)
+        except Exception as exc:
+            result["errors"].append(f"failed to create {content_label}: {exc}")
+
+    _write_per_scope_template("CANONICAL.md", template_canonical_md, "CANONICAL.md")
+    _write_per_scope_template("STATE.md", template_state_md, "STATE.md")
+    _write_per_scope_template("PLAN.md", template_plan_md, "PLAN.md")
+    _write_per_scope_template("TASKS.md", template_tasks_md, "TASKS.md")
+
+    # 7. NOW.md at project root
+    now_md_path = target / "NOW.md"
+    should_skip, reason = _should_skip_file(now_md_path, "NOW.md", is_business_file=False)
+    if now_md_path.exists() and should_skip:
+        result["skipped"].append(f"file:NOW.md ({reason})")
+        any_skipped = True
+    elif now_md_path.exists() and not should_skip:
+        try:
+            content, warnings = template_now_md(project_name)
+            now_md_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:NOW.md (overwritten)")
+            result["warnings"].extend(warnings)
+            any_overwritten = True
+        except Exception as exc:
+            result["errors"].append(f"failed to overwrite NOW.md: {exc}")
+    else:
+        try:
+            content, warnings = template_now_md(project_name)
+            now_md_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:NOW.md")
+            result["warnings"].extend(warnings)
+        except Exception as exc:
+            result["errors"].append(f"failed to create NOW.md: {exc}")
+
     result["force_overwrite"] = force
 
     # Preserve legacy mode outcomes for create mode while exposing the requested mode separately.
