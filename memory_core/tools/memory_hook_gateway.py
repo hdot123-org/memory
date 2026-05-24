@@ -1267,17 +1267,19 @@ def _execute_delegate(
 
 
 
-def _update_state_dynamic_fields(project_root: Path) -> None:
+def _update_state_dynamic_fields(project_root: Path, scope: str) -> None:
     """Update dynamic fields in STATE.md during session-start.
 
     Updates the '当前工作区' section to reflect the current git branch and
     latest commit. Only modifies dynamic fields; never overwrites static
     fields (主语言/工具链/etc.) filled by init.
 
+    Writes to memory/kb/projects/{scope}/STATE.md.
+
     Non-blocking: gracefully handles missing git, missing STATE.md, or
     any errors by silently skipping.
     """
-    state_path = project_root / SYSTEM_DIR / "STATE.md"
+    state_path = project_root / "memory" / "kb" / "projects" / scope / "STATE.md"
     if not state_path.exists():
         return
 
@@ -1472,7 +1474,8 @@ def main() -> int:
     if args.event == "session-start":
         _launch_async_health_check(cwd)
         # Runtime layer: update dynamic fields in STATE.md
-        _update_state_dynamic_fields(cwd)
+        project_scope = determine_project_scope(cwd)
+        _update_state_dynamic_fields(cwd, project_scope)
 
     writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
     package = build_context_package(args.host, args.event, payload)

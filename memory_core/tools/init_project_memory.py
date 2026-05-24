@@ -104,6 +104,12 @@ DIRECTORY_STRUCTURE = [
     "memory/log",
 ]
 
+# Per-scope directories created during init (relative to target root)
+# These require the scope name and are created dynamically in init_project_memory().
+PER_SCOPE_DIRECTORIES = [
+    "memory/kb/projects/{scope}",
+]
+
 # ---------------------------------------------------------------------------
 # File templates
 # ---------------------------------------------------------------------------
@@ -270,58 +276,373 @@ host = "{host}"
 
 
 def template_canonical_md(project_name: str) -> tuple[str, list[str]]:
-    """DEPRECATED: CANONICAL.md generation removed in v0.5.0.
+    """Generate CANONICAL.md content — project specification file.
 
-    This function is kept as a stub to avoid breaking imports.
-    Returns empty content and a warning.
+    Defines coding standards, architecture constraints, naming conventions.
+
+    Returns:
+        Tuple of (content, warnings_list)
     """
-    return "", [
-        "template_canonical_md: CANONICAL.md generation removed in v0.5.0"
-    ]
+    warnings: list[str] = []
+    now = _now_iso()
+    try:
+        content = f"""\
+# CANONICAL.md — 项目规范文件
+# 作用：定义业务项目的编码规范、架构约束、命名约定
+
+## 项目信息
+
+- **项目名称**：{project_name}
+- **项目类型**：{{PROJECT_TYPE}}
+- **主语言**：{{PRIMARY_LANGUAGE}}
+- **创建日期**：{now}
+
+## 编码规范
+
+{{CODING_STANDARDS}}
+
+## 架构约束
+
+{{ARCHITECTURE_CONSTRAINTS}}
+
+## 命名约定
+
+{{NAMING_CONVENTIONS}}
+
+## 工具链
+
+{{TOOLCHAIN}}
+
+## 变更日志
+
+| 日期 | 变更内容 | 作者 |
+|------|----------|------|
+| {now} | 初始化 | {{AUTHOR}} |
+"""
+    except (ValueError, TypeError) as exc:
+        logger.warning(f"Template render error in CANONICAL.md: {exc}")
+        warnings.append(f"template_canonical_md: {exc}")
+        content = """\
+# RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
+# CANONICAL.md — 项目规范文件
+
+## 项目信息
+
+- **项目名称**：{{PROJECT_NAME}}
+- **项目类型**：{{PROJECT_TYPE}}
+- **主语言**：{{PRIMARY_LANGUAGE}}
+- **创建日期**：{{CREATED_AT}}
+
+## 编码规范
+
+{{CODING_STANDARDS}}
+
+## 架构约束
+
+{{ARCHITECTURE_CONSTRAINTS}}
+
+## 命名约定
+
+{{NAMING_CONVENTIONS}}
+
+## 工具链
+
+{{TOOLCHAIN}}
+
+## 变更日志
+
+| 日期 | 变更内容 | 作者 |
+|------|----------|------|
+| {{DATE}} | 初始化 | {{AUTHOR}} |
+"""
+    return content, warnings
 
 
 def template_plan_md(project_name: str) -> tuple[str, list[str]]:
-    """DEPRECATED: PLAN.md generation removed in v0.5.0.
+    """Generate PLAN.md content — project plan file.
 
-    This function is kept as a stub to avoid breaking imports.
-    Returns empty content and a warning.
+    Records current iteration/task execution plan, milestones, acceptance criteria.
+
+    Returns:
+        Tuple of (content, warnings_list)
     """
-    return "", [
-        "template_plan_md: PLAN.md generation removed in v0.5.0"
-    ]
+    warnings: list[str] = []
+    now = _now_iso()
+    try:
+        content = f"""\
+# PLAN.md — 项目计划文件
+# 作用：记录当前迭代/任务的执行计划、里程碑、验收标准
+
+## 任务概述
+
+- **任务 ID**：{{TASK_ID}}
+- **任务名称**：{{TASK_NAME}}
+- **优先级**：{{PRIORITY}}
+- **创建日期**：{now}
+
+## 目标
+
+{{GOALS}}
+
+## 执行计划
+
+| 步骤 | 描述 | 状态 | 完成日期 |
+|------|------|------|----------|
+| 1    | {{STEP_1}} | pending | - |
+| 2    | {{STEP_2}} | pending | - |
+
+## 验收标准
+
+{{ACCEPTANCE_CRITERIA}}
+
+## 风险与依赖
+
+{{RISK_AND_DEPENDENCIES}}
+
+## 状态
+
+- **当前状态**：planning
+- **上次更新**：{now}
+"""
+    except (ValueError, TypeError) as exc:
+        logger.warning(f"Template render error in PLAN.md: {exc}")
+        warnings.append(f"template_plan_md: {exc}")
+        content = """\
+# RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
+# PLAN.md — 项目计划文件
+
+## 任务概述
+
+- **任务 ID**：{{TASK_ID}}
+- **任务名称**：{{TASK_NAME}}
+- **优先级**：{{PRIORITY}}
+- **创建日期**：{{CREATED_AT}}
+
+## 目标
+
+{{GOALS}}
+
+## 执行计划
+
+| 步骤 | 描述 | 状态 | 完成日期 |
+|------|------|------|----------|
+| 1    | {{STEP_1}} | pending | - |
+| 2    | {{STEP_2}} | pending | - |
+
+## 验收标准
+
+{{ACCEPTANCE_CRITERIA}}
+
+## 风险与依赖
+
+{{RISK_AND_DEPENDENCIES}}
+
+## 状态
+
+- **当前状态**：planning
+- **上次更新**：{{UPDATED_AT}}
+"""
+    return content, warnings
 
 
 def template_state_md(project_name: str) -> tuple[str, list[str]]:
-    """DEPRECATED: STATE.md generation removed in v0.5.0.
+    """Generate STATE.md content — project state file.
 
-    This function is kept as a stub to avoid breaking imports.
-    Returns empty content and a warning.
+    Records current state, context summary, key decisions.
+
+    Returns:
+        Tuple of (content, warnings_list)
     """
-    return "", [
-        "template_state_md: STATE.md generation removed in v0.5.0"
-    ]
+    warnings: list[str] = []
+    now = _now_iso()
+    try:
+        content = f"""\
+# STATE.md — 项目状态文件
+# 作用：记录业务项目的当前状态、上下文摘要、关键决策
+
+## 项目状态
+
+- **状态**：{{STATUS}}
+- **最后更新**：{now}
+- **健康度**：{{HEALTH}}
+
+## 上下文摘要
+
+{{CONTEXT_SUMMARY}}
+
+## 关键决策
+
+| 日期 | 决策 | 理由 |
+|------|------|------|
+| {now} | {{DECISION}} | {{RATIONALE}} |
+
+## 当前工作区
+
+{{CURRENT_WORKSPACE}}
+
+## 待处理事项
+
+{{PENDING_ITEMS}}
+
+## 已完成的里程碑
+
+{{COMPLETED_MILESTONES}}
+"""
+    except (ValueError, TypeError) as exc:
+        logger.warning(f"Template render error in STATE.md: {exc}")
+        warnings.append(f"template_state_md: {exc}")
+        content = """\
+# RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
+# STATE.md — 项目状态文件
+
+## 项目状态
+
+- **状态**：{{STATUS}}
+- **最后更新**：{{LAST_UPDATED}}
+- **健康度**：{{HEALTH}}
+
+## 上下文摘要
+
+{{CONTEXT_SUMMARY}}
+
+## 关键决策
+
+| 日期 | 决策 | 理由 |
+|------|------|------|
+| {{DATE}} | {{DECISION}} | {{RATIONALE}} |
+
+## 当前工作区
+
+{{CURRENT_WORKSPACE}}
+
+## 待处理事项
+
+{{PENDING_ITEMS}}
+
+## 已完成的里程碑
+
+{{COMPLETED_MILESTONES}}
+"""
+    return content, warnings
 
 
 def template_tasks_md(project_name: str) -> tuple[str, list[str]]:
-    """DEPRECATED: TASKS.md generation removed in v0.5.0.
+    """Generate TASKS.md content — task list file.
 
-    This function is kept as a stub to avoid breaking imports.
-    Returns empty content and a warning.
+    Tracks all tasks, subtasks, and statuses for the current project.
+
+    Returns:
+        Tuple of (content, warnings_list)
     """
-    return "", [
-        "template_tasks_md: TASKS.md generation removed in v0.5.0"
-    ]
+    warnings: list[str] = []
+    try:
+        content = """\
+# TASKS.md — 任务清单文件
+# 作用：跟踪当前项目下的所有任务、子任务、状态
+
+## 活跃任务
+
+| ID | 任务 | 优先级 | 状态 | 负责人 | 截止日期 |
+|----|------|--------|------|--------|----------|
+| T-001 | {{TASK_1}} | P2 | pending | {{ASSIGNEE}} | {{DUE}} |
+
+## 已完成任务
+
+| ID | 任务 | 完成日期 | 备注 |
+|----|------|----------|------|
+| - | - | - | - |
+
+## 已取消任务
+
+| ID | 任务 | 取消原因 |
+|----|------|----------|
+| - | - | - |
+
+## 阻塞项
+
+{{BLOCKERS}}
+"""
+    except (ValueError, TypeError) as exc:
+        logger.warning(f"Template render error in TASKS.md: {exc}")
+        warnings.append(f"template_tasks_md: {exc}")
+        content = """\
+# RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
+# TASKS.md — 任务清单文件
+
+## 活跃任务
+
+| ID | 任务 | 优先级 | 状态 | 负责人 | 截止日期 |
+|----|------|--------|------|--------|----------|
+| T-001 | {{TASK_1}} | P2 | pending | {{ASSIGNEE}} | {{DUE}} |
+
+## 已完成任务
+
+| ID | 任务 | 完成日期 | 备注 |
+|----|------|----------|------|
+| - | - | - | - |
+
+## 已取消任务
+
+| ID | 任务 | 取消原因 |
+|----|------|----------|
+| - | - | - |
+
+## 阻塞项
+
+{{BLOCKERS}}
+"""
+    return content, warnings
 
 
 def template_now_md(project_name: str) -> tuple[str, list[str]]:
-    """DEPRECATED: NOW.md generation removed in v0.5.0.
+    """Generate NOW.md content — current workspace status file.
 
-    This function is kept as a stub to avoid breaking imports.
-    Returns empty content and a warning.
+    Provides a snapshot of current mission, today's work, next actions, and blockers.
+
+    Returns:
+        Tuple of (content, warnings_list)
     """
-    return "", [
-        "template_now_md: NOW.md generation removed in v0.5.0"
-    ]
+    warnings: list[str] = []
+    try:
+        content = """\
+# NOW.md
+
+## Mission
+- {{MISSION}}
+
+## Today
+- {{TODAY}}
+
+## Next 3 Actions
+1. {{ACTION_1}}
+2. {{ACTION_2}}
+3. {{ACTION_3}}
+
+## Blockers
+- {{BLOCKERS}}
+"""
+    except (ValueError, TypeError) as exc:
+        logger.warning(f"Template render error in NOW.md: {exc}")
+        warnings.append(f"template_now_md: {exc}")
+        content = """\
+# RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
+# NOW.md
+
+## Mission
+- {{MISSION}}
+
+## Today
+- {{TODAY}}
+
+## Next 3 Actions
+1. {{ACTION_1}}
+2. {{ACTION_2}}
+3. {{ACTION_3}}
+
+## Blockers
+- {{BLOCKERS}}
+"""
+    return content, warnings
 
 
 def template_migrations_log(project_name: str) -> tuple[str, list[str]]:
@@ -1269,6 +1590,19 @@ def init_project_memory(
             action = _dry_run_action(file_path, is_business_file=False)
             dry_run_output["would_create_files"].append(f"{fname} ({action})")
 
+        # Check per-scope control loop files (memory/kb/projects/{scope}/)
+        per_scope_dir = f"memory/kb/projects/{project_name}"
+        dry_run_output["would_create_dirs"].append(f"{per_scope_dir}/")
+        for scope_file in ("CANONICAL.md", "STATE.md", "PLAN.md", "TASKS.md"):
+            scope_path = target / per_scope_dir / scope_file
+            action = _dry_run_action(scope_path, is_business_file=False)
+            dry_run_output["would_create_files"].append(f"{per_scope_dir}/{scope_file} ({action})")
+
+        # NOW.md at project root
+        now_path = target / "NOW.md"
+        now_action = _dry_run_action(now_path, is_business_file=False)
+        dry_run_output["would_create_files"].append(f"NOW.md ({now_action})")
+
         result["dry_run_output"] = dry_run_output
         result["force_overwrite"] = force
         result["action_taken"] = "dry-run"
@@ -1533,6 +1867,79 @@ def init_project_memory(
             result["errors"].append(f"failed to create memory/kb/projects/{project_name}.md: {exc}")
 
     result["success"] = len(result["errors"]) == 0
+
+    # 6. Create per-scope control loop directory: memory/kb/projects/{scope}/
+    #    and generate CANONICAL.md, STATE.md, PLAN.md, TASKS.md
+    scope_dir = target / "memory" / "kb" / "projects" / project_name
+    try:
+        scope_dir.mkdir(parents=True, exist_ok=True)
+        result["created"].append(f"dir:memory/kb/projects/{project_name}/")
+    except Exception as exc:
+        result["errors"].append(f"failed to create per-scope directory: {exc}")
+
+    # Helper to write a per-scope template file with idempotency
+    def _write_per_scope_template(
+        fname: str,
+        template_fn: Any,
+        content_label: str,
+    ) -> None:
+        nonlocal any_overwritten, any_skipped
+        file_path = scope_dir / fname
+        should_skip, reason = _should_skip_file(
+            file_path, f"memory/kb/projects/{project_name}/{fname}", is_business_file=False,
+        )
+        if file_path.exists() and should_skip:
+            result["skipped"].append(f"file:memory/kb/projects/{project_name}/{fname} ({reason})")
+            any_skipped = True
+            return
+        if file_path.exists() and not should_skip:
+            try:
+                content, warnings = template_fn(project_name)
+                file_path.write_text(content, encoding="utf-8")
+                result["created"].append(f"file:memory/kb/projects/{project_name}/{fname} (overwritten)")
+                result["warnings"].extend(warnings)
+                any_overwritten = True
+            except Exception as exc:
+                result["errors"].append(f"failed to overwrite {content_label}: {exc}")
+            return
+        # Create new
+        try:
+            content, warnings = template_fn(project_name)
+            file_path.write_text(content, encoding="utf-8")
+            result["created"].append(f"file:memory/kb/projects/{project_name}/{fname}")
+            result["warnings"].extend(warnings)
+        except Exception as exc:
+            result["errors"].append(f"failed to create {content_label}: {exc}")
+
+    _write_per_scope_template("CANONICAL.md", template_canonical_md, "CANONICAL.md")
+    _write_per_scope_template("STATE.md", template_state_md, "STATE.md")
+    _write_per_scope_template("PLAN.md", template_plan_md, "PLAN.md")
+    _write_per_scope_template("TASKS.md", template_tasks_md, "TASKS.md")
+
+    # 7. NOW.md at project root
+    now_md_path = target / "NOW.md"
+    should_skip, reason = _should_skip_file(now_md_path, "NOW.md", is_business_file=False)
+    if now_md_path.exists() and should_skip:
+        result["skipped"].append(f"file:NOW.md ({reason})")
+        any_skipped = True
+    elif now_md_path.exists() and not should_skip:
+        try:
+            content, warnings = template_now_md(project_name)
+            now_md_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:NOW.md (overwritten)")
+            result["warnings"].extend(warnings)
+            any_overwritten = True
+        except Exception as exc:
+            result["errors"].append(f"failed to overwrite NOW.md: {exc}")
+    else:
+        try:
+            content, warnings = template_now_md(project_name)
+            now_md_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:NOW.md")
+            result["warnings"].extend(warnings)
+        except Exception as exc:
+            result["errors"].append(f"failed to create NOW.md: {exc}")
+
     result["force_overwrite"] = force
 
     # Preserve legacy mode outcomes for create mode while exposing the requested mode separately.

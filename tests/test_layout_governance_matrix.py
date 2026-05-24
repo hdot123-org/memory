@@ -598,7 +598,7 @@ class TestFixtureRootPollution:
         return tmp_path
 
     def test_audit_detects_all_pollution_types(self, polluted_project: Path) -> None:
-        """Audit should detect all types of root pollution."""
+        """Audit should detect all types of root pollution (except NOW.md which is allowed at root)."""
         result = audit_project_layout(polluted_project)
 
         kinds = {f.kind for f in result.findings}
@@ -607,7 +607,9 @@ class TestFixtureRootPollution:
         assert "root_plan" in kinds
         assert "root_backup" in kinds
         assert "root_dump" in kinds
-        assert "root_now" in kinds
+        # NOW.md is no longer flagged as pollution — it is intentionally allowed at root
+        root_now_findings = [f for f in result.findings if f.kind == "root_now"]
+        assert len(root_now_findings) == 0, f"NOW.md should not be flagged: {root_now_findings}"
 
     def test_audit_correct_severity(self, polluted_project: Path) -> None:
         """Pollution findings should have correct severity levels."""
@@ -616,7 +618,7 @@ class TestFixtureRootPollution:
         for finding in result.findings:
             if finding.kind in ("root_report", "root_audit", "root_plan", "root_dump"):
                 assert finding.severity == "P1"
-            elif finding.kind in ("root_backup", "root_now"):
+            elif finding.kind in ("root_backup",):
                 assert finding.severity == "P2"
 
     def test_plan_buckets_root_pollution(self, polluted_project: Path) -> None:

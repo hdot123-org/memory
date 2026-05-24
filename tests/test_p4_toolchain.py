@@ -256,126 +256,8 @@ class TestPollutionGuard:
 
 
 # ---------------------------------------------------------------------------
-# Migration idempotency
+# Migration idempotency (removed: no longer supported in v0.5.0)
 # ---------------------------------------------------------------------------
-
-@pytest.mark.skip(reason="Migration from pre-0.5.0 versions no longer supported in v0.5.0")
-class TestMigrationIdempotency:
-    """Migration tool behavior tests."""
-
-    def test_migrate_dry_run(self) -> None:
-        """Migration dry-run should not modify files."""
-        proj = _make_temp_project()
-        try:
-            _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            # Downgrade version to 0.1.0 so we can test the 0.1.0->0.2.0 migration
-            lock_path = proj / "memory" / "system" / "memory.lock"
-            lock_data = _read_memory_lock(lock_path)
-            if "memory" in lock_data:
-                lock_data["memory"]["memory_version"] = "0.1.0"
-            else:
-                lock_data["version"] = "0.1.0"
-            _write_memory_lock(lock_path, lock_data)
-            adapter_path = proj / "memory" / "system" / "adapter.toml"
-            adapter_text = adapter_path.read_text(encoding="utf-8")
-            adapter_text = adapter_text.replace(f'version = "{_current_version()}"', 'version = "0.1.0"')
-            adapter_path.write_text(adapter_text, encoding="utf-8")
-
-            result = _run_script(
-                MIGRATE_SCRIPT,
-                ["--target", str(proj), "--from", "0.1.0", "--to", _current_version(), "--dry-run", "--json"],
-            )
-            assert result.returncode == 0
-            data = json.loads(result.stdout)
-            assert data["success"] is True
-            assert data["dry_run"] is True
-
-            # Verify lock file still says 0.1.0
-            lock = _read_memory_lock(proj / "memory" / "system" / "memory.lock")
-            assert _get_lock_version(lock) == "0.1.0"
-        finally:
-            import shutil
-            shutil.rmtree(proj, ignore_errors=True)
-
-    def test_migrate_actual(self) -> None:
-        """Actual migration should update version and log it."""
-        proj = _make_temp_project()
-        try:
-            _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            # Downgrade version to 0.1.0 so we can test the 0.1.0->0.2.0 migration
-            lock_path = proj / "memory" / "system" / "memory.lock"
-            lock_data = _read_memory_lock(lock_path)
-            if "memory" in lock_data:
-                lock_data["memory"]["memory_version"] = "0.1.0"
-            else:
-                lock_data["version"] = "0.1.0"
-            _write_memory_lock(lock_path, lock_data)
-            adapter_path = proj / "memory" / "system" / "adapter.toml"
-            adapter_text = adapter_path.read_text(encoding="utf-8")
-            adapter_text = adapter_text.replace(f'version = "{_current_version()}"', 'version = "0.1.0"')
-            adapter_path.write_text(adapter_text, encoding="utf-8")
-
-            result = _run_script(
-                MIGRATE_SCRIPT,
-                ["--target", str(proj), "--from", "0.1.0", "--to", _current_version(), "--json"],
-            )
-            assert result.returncode == 0
-            data = json.loads(result.stdout)
-            assert data["success"] is True
-
-            # Verify lock file updated
-            lock = _read_memory_lock(proj / "memory" / "system" / "memory.lock")
-            assert _get_lock_version(lock) == _current_version()
-
-            # Verify migrations.log has entry
-            log = (proj / "memory" / "system" / "migrations.log").read_text()
-            assert "0.1.0" in log
-            assert _current_version() in log
-        finally:
-            import shutil
-            shutil.rmtree(proj, ignore_errors=True)
-
-    def test_migrate_no_path(self) -> None:
-        """Migrating to a future version with no registered path should fail.
-
-        Note: under idempotent semantics, current==to is treated as noop success
-        regardless of --from. To exercise the real "no path" case we target a
-        version newer than the current installed one.
-        """
-        proj = _make_temp_project()
-        try:
-            _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            result = _run_script(
-                MIGRATE_SCRIPT,
-                ["--target", str(proj), "--from", _current_version(), "--to", "9.9.9", "--json"],
-            )
-            data = json.loads(result.stdout)
-            assert data["success"] is False
-            assert len(data["errors"]) > 0
-        finally:
-            import shutil
-            shutil.rmtree(proj, ignore_errors=True)
-
-    def test_migrate_version_mismatch(self) -> None:
-        """Per Phase 4a idempotency contract: current==to → noop regardless of --from.
-
-        Even if user provides a stale --from, hitting an already-at-target state
-        is treated as success+noop (see test_migrate_already_at_target_is_noop).
-        """
-        proj = _make_temp_project()
-        try:
-            _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            result = _run_script(
-                MIGRATE_SCRIPT,
-                ["--target", str(proj), "--from", "0.0.1", "--to", _current_version(), "--json"],
-            )
-            data = json.loads(result.stdout)
-            assert data["success"] is True
-            assert data.get("noop") is True
-        finally:
-            import shutil
-            shutil.rmtree(proj, ignore_errors=True)
-
 
 # ---------------------------------------------------------------------------
 # Version check failure
@@ -428,16 +310,19 @@ class TestVersionCheckFailure:
 # Frontmatter validation
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="Frontmatter validation removed for deleted template files in v0.5.0")
+# NOTE: _parse_frontmatter exists in validate_project_memory.py but is not
+# wired into any validation check. This test class remains skipped until
+# frontmatter validation checks are implemented.
+@pytest.mark.skip(reason="Frontmatter validation not yet wired into validate_project_memory.py")
 class TestFrontmatterValidation:
     """Validator must check frontmatter fields."""
 
     def test_missing_frontmatter_field(self) -> None:
         proj = _make_temp_project()
         try:
-            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            _run_script(INIT_SCRIPT, ["--target", str(proj), "--scope", "my_project"])
             # Remove frontmatter from CANONICAL.md
-            canonical = proj / "memory" / "system" / "CANONICAL.md"
+            canonical = proj / "memory" / "kb" / "projects" / "my_project" / "CANONICAL.md"
             canonical.write_text("# No frontmatter\n\nContent\n", encoding="utf-8")
 
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
@@ -811,13 +696,14 @@ class TestValidatorEnhancedChecks:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
 
-    @pytest.mark.skip(reason="STATUS_ENUMERATIONS removed for deleted STATE.md in v0.5.0")
+    # NOTE: status_enum validation is not wired into validate_project_memory.py
+    @pytest.mark.skip(reason="STATUS_ENUMERATIONS not wired into validate_project_memory.py")
     def test_reject_invalid_status_enum(self) -> None:
         """STATE.md with invalid status should fail validation."""
         proj = _make_temp_project()
         try:
-            _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            state = proj / "memory" / "system" / "STATE.md"
+            _run_script(INIT_SCRIPT, ["--target", str(proj), "--scope", "my_project"])
+            state = proj / "memory" / "kb" / "projects" / "my_project" / "STATE.md"
             text = state.read_text(encoding="utf-8")
             text = text.replace("status: active", "status: invalid_status")
             state.write_text(text, encoding="utf-8")

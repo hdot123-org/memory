@@ -232,10 +232,10 @@ def is_v2(package: dict[str, Any]) -> bool:
 MEMORY_V1_VERSION = "memory-v1"
 
 _MEMORY_CANONICAL_MAP: dict[str, str] = {
-    "canonical": "memory/system/CANONICAL.md",
-    "plan": "memory/system/PLAN.md",
-    "state": "memory/system/STATE.md",
-    "tasks": "memory/system/TASKS.md",
+    "canonical": "memory/kb/projects/{scope}/CANONICAL.md",
+    "plan": "memory/kb/projects/{scope}/PLAN.md",
+    "state": "memory/kb/projects/{scope}/STATE.md",
+    "tasks": "memory/kb/projects/{scope}/TASKS.md",
 }
 
 

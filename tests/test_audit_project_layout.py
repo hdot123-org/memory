@@ -260,14 +260,13 @@ class TestAuditRootPollution:
         assert len(dump_findings) == 1
         assert dump_findings[0].severity == "P1"
 
-    def test_detects_now_md(self, tmp_path: Path) -> None:
-        """Should detect root-level NOW.md as P2."""
+    def test_now_md_not_flagged_as_pollution(self, tmp_path: Path) -> None:
+        """Root-level NOW.md is allowed — not flagged as pollution."""
         (tmp_path / "NOW.md").write_text("# NOW")
         result = audit_project_layout(tmp_path)
 
         now_findings = [f for f in result.findings if f.kind == "root_now"]
-        assert len(now_findings) == 1
-        assert now_findings[0].severity == "P2"
+        assert len(now_findings) == 0, f"NOW.md should not be flagged: {now_findings}"
 
     def test_detects_root_docs_directory(self, tmp_path: Path) -> None:
         """Root docs/ must be sealed and routed into memory/docs/."""
