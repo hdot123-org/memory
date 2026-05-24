@@ -248,7 +248,6 @@ ROOT_POLLUTION_PATTERNS = [
     ("*.backup.*", "P2", "root_backup", "Root-level backup file"),
     ("*dump*.json", "P1", "root_dump", "Root-level dump file"),
     ("*dump*.md", "P1", "root_dump", "Root-level dump file"),
-    ("NOW.md", "P2", "root_now", "Root-level NOW.md (should be in workspace/)"),
 ]
 
 # Memory structure patterns to detect

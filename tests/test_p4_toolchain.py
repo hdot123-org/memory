@@ -428,16 +428,19 @@ class TestVersionCheckFailure:
 # Frontmatter validation
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="Frontmatter validation removed for deleted template files in v0.5.0")
+# NOTE: _parse_frontmatter exists in validate_project_memory.py but is not
+# wired into any validation check. This test class remains skipped until
+# frontmatter validation checks are implemented.
+@pytest.mark.skip(reason="Frontmatter validation not yet wired into validate_project_memory.py")
 class TestFrontmatterValidation:
     """Validator must check frontmatter fields."""
 
     def test_missing_frontmatter_field(self) -> None:
         proj = _make_temp_project()
         try:
-            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            _run_script(INIT_SCRIPT, ["--target", str(proj), "--scope", "my_project"])
             # Remove frontmatter from CANONICAL.md
-            canonical = proj / "memory" / "system" / "CANONICAL.md"
+            canonical = proj / "memory" / "kb" / "projects" / "my_project" / "CANONICAL.md"
             canonical.write_text("# No frontmatter\n\nContent\n", encoding="utf-8")
 
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
@@ -811,13 +814,14 @@ class TestValidatorEnhancedChecks:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
 
-    @pytest.mark.skip(reason="STATUS_ENUMERATIONS removed for deleted STATE.md in v0.5.0")
+    # NOTE: status_enum validation is not wired into validate_project_memory.py
+    @pytest.mark.skip(reason="STATUS_ENUMERATIONS not wired into validate_project_memory.py")
     def test_reject_invalid_status_enum(self) -> None:
         """STATE.md with invalid status should fail validation."""
         proj = _make_temp_project()
         try:
-            _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            state = proj / "memory" / "system" / "STATE.md"
+            _run_script(INIT_SCRIPT, ["--target", str(proj), "--scope", "my_project"])
+            state = proj / "memory" / "kb" / "projects" / "my_project" / "STATE.md"
             text = state.read_text(encoding="utf-8")
             text = text.replace("status: active", "status: invalid_status")
             state.write_text(text, encoding="utf-8")

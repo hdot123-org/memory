@@ -1590,6 +1590,19 @@ def init_project_memory(
             action = _dry_run_action(file_path, is_business_file=False)
             dry_run_output["would_create_files"].append(f"{fname} ({action})")
 
+        # Check per-scope control loop files (memory/kb/projects/{scope}/)
+        per_scope_dir = f"memory/kb/projects/{project_name}"
+        dry_run_output["would_create_dirs"].append(f"{per_scope_dir}/")
+        for scope_file in ("CANONICAL.md", "STATE.md", "PLAN.md", "TASKS.md"):
+            scope_path = target / per_scope_dir / scope_file
+            action = _dry_run_action(scope_path, is_business_file=False)
+            dry_run_output["would_create_files"].append(f"{per_scope_dir}/{scope_file} ({action})")
+
+        # NOW.md at project root
+        now_path = target / "NOW.md"
+        now_action = _dry_run_action(now_path, is_business_file=False)
+        dry_run_output["would_create_files"].append(f"NOW.md ({now_action})")
+
         result["dry_run_output"] = dry_run_output
         result["force_overwrite"] = force
         result["action_taken"] = "dry-run"

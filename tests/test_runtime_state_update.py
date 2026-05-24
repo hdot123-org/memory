@@ -22,6 +22,8 @@ if TOOLS_DIR not in sys.path:
 
 from memory_hook_gateway import _update_state_dynamic_fields
 
+_SCOPE = "test-project"
+
 
 def _init_git_repo(repo: Path, branch: str = "main") -> None:
     """Create a minimal git repo with one commit."""
@@ -40,7 +42,7 @@ class TestUpdateStateDynamicFields:
         """When STATE.md has placeholder, session-start replaces it."""
         _init_git_repo(tmp_path, "feat/test-branch")
 
-        memory_dir = tmp_path / "memory" / "system"
+        memory_dir = tmp_path / "memory" / "kb" / "projects" / _SCOPE
         memory_dir.mkdir(parents=True)
         state_path = memory_dir / "STATE.md"
         state_path.write_text(dedent("""\
@@ -55,7 +57,7 @@ class TestUpdateStateDynamicFields:
             - [ ] something
         """), encoding="utf-8")
 
-        _update_state_dynamic_fields(tmp_path)
+        _update_state_dynamic_fields(tmp_path, _SCOPE)
 
         content = state_path.read_text(encoding="utf-8")
         assert "当前分支: feat/test-branch" in content
@@ -69,7 +71,7 @@ class TestUpdateStateDynamicFields:
         """When STATE.md already has branch info, it gets refreshed."""
         _init_git_repo(tmp_path, "main")
 
-        memory_dir = tmp_path / "memory" / "system"
+        memory_dir = tmp_path / "memory" / "kb" / "projects" / _SCOPE
         memory_dir.mkdir(parents=True)
         state_path = memory_dir / "STATE.md"
         state_path.write_text(dedent("""\
@@ -86,7 +88,7 @@ class TestUpdateStateDynamicFields:
             | today | something |
         """), encoding="utf-8")
 
-        _update_state_dynamic_fields(tmp_path)
+        _update_state_dynamic_fields(tmp_path, _SCOPE)
 
         content = state_path.read_text(encoding="utf-8")
         assert "当前分支: main" in content
@@ -96,18 +98,18 @@ class TestUpdateStateDynamicFields:
         assert "something" in content
 
     def test_no_state_md_no_error(self, tmp_path: Path) -> None:
-        """When memory/system/STATE.md doesn't exist, function returns silently."""
-        _update_state_dynamic_fields(tmp_path)
+        """When STATE.md doesn't exist, function returns silently."""
+        _update_state_dynamic_fields(tmp_path, _SCOPE)
         # Should not raise
 
     def test_no_git_repo_no_error(self, tmp_path: Path) -> None:
         """When not a git repo, function returns silently without error."""
-        memory_dir = tmp_path / "memory" / "system"
+        memory_dir = tmp_path / "memory" / "kb" / "projects" / _SCOPE
         memory_dir.mkdir(parents=True)
         state_path = memory_dir / "STATE.md"
         state_path.write_text("# Test\n\n## 当前工作区\n\n（待填写）\n", encoding="utf-8")
 
-        _update_state_dynamic_fields(tmp_path)
+        _update_state_dynamic_fields(tmp_path, _SCOPE)
 
         content = state_path.read_text(encoding="utf-8")
         # Still has placeholder — was not updated
@@ -117,7 +119,7 @@ class TestUpdateStateDynamicFields:
         """Dynamic update must NOT touch static fields like 主语言/工具链."""
         _init_git_repo(tmp_path, "develop")
 
-        memory_dir = tmp_path / "memory" / "system"
+        memory_dir = tmp_path / "memory" / "kb" / "projects" / _SCOPE
         memory_dir.mkdir(parents=True)
         state_path = memory_dir / "STATE.md"
         # Simulate a STATE.md that also has static-like fields (unlikely in
@@ -142,7 +144,7 @@ class TestUpdateStateDynamicFields:
 
         before_static_section = state_path.read_text(encoding="utf-8").split("## 当前工作区")[0]
 
-        _update_state_dynamic_fields(tmp_path)
+        _update_state_dynamic_fields(tmp_path, _SCOPE)
 
         content = state_path.read_text(encoding="utf-8")
         after_static_section = content.split("## 当前工作区")[0]
@@ -155,7 +157,7 @@ class TestUpdateStateDynamicFields:
         """The entire STATE.md file structure should be preserved."""
         _init_git_repo(tmp_path, "feature/abc")
 
-        memory_dir = tmp_path / "memory" / "system"
+        memory_dir = tmp_path / "memory" / "kb" / "projects" / _SCOPE
         memory_dir.mkdir(parents=True)
         state_path = memory_dir / "STATE.md"
         original = dedent("""\
@@ -192,7 +194,7 @@ class TestUpdateStateDynamicFields:
         """)
         state_path.write_text(original, encoding="utf-8")
 
-        _update_state_dynamic_fields(tmp_path)
+        _update_state_dynamic_fields(tmp_path, _SCOPE)
 
         content = state_path.read_text(encoding="utf-8")
         # All sections preserved
@@ -211,12 +213,12 @@ class TestUpdateStateDynamicFields:
         """If git branch succeeds but log fails, still update with branch only."""
         _init_git_repo(tmp_path, "main")
 
-        memory_dir = tmp_path / "memory" / "system"
+        memory_dir = tmp_path / "memory" / "kb" / "projects" / _SCOPE
         memory_dir.mkdir(parents=True)
         state_path = memory_dir / "STATE.md"
         state_path.write_text("# Test\n\n## 当前工作区\n\n（待填写）\n", encoding="utf-8")
 
-        _update_state_dynamic_fields(tmp_path)
+        _update_state_dynamic_fields(tmp_path, _SCOPE)
 
         content = state_path.read_text(encoding="utf-8")
         assert "当前分支: main" in content
@@ -225,7 +227,7 @@ class TestUpdateStateDynamicFields:
         """Ensure regex only touches the 当前工作区 section, not other sections."""
         _init_git_repo(tmp_path, "release/v1")
 
-        memory_dir = tmp_path / "memory" / "system"
+        memory_dir = tmp_path / "memory" / "kb" / "projects" / _SCOPE
         memory_dir.mkdir(parents=True)
         state_path = memory_dir / "STATE.md"
         # Put a similar-looking line in another section
@@ -243,7 +245,7 @@ class TestUpdateStateDynamicFields:
             （待填写：当前工作区描述）
         """), encoding="utf-8")
 
-        _update_state_dynamic_fields(tmp_path)
+        _update_state_dynamic_fields(tmp_path, _SCOPE)
 
         content = state_path.read_text(encoding="utf-8")
         # The line in 关键决策 should NOT be modified

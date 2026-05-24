@@ -224,11 +224,48 @@ def _detect_actual_language(target: Path) -> str:
 def _check_fill_quality(target: Path, report: VerifyReport) -> None:
     """Check fill quality — warnings, not errors.
 
-    CANONICAL.md was removed in v0.5.0, so this check is now a no-op.
-    Kept for backward compatibility with v0.4.x projects.
+    Verifies that CANONICAL.md has been filled with actual content
+    (not just the template placeholders).
     """
-    # CANONICAL.md removed in v0.5.0 — skip check
-    return
+    # CANONICAL.md is now at memory/kb/projects/{scope}/CANONICAL.md
+    # Find any scope directories under memory/kb/projects/
+    projects_dir = target / "memory" / "kb" / "projects"
+    if not projects_dir.is_dir():
+        return
+
+    for scope_dir in projects_dir.iterdir():
+        if not scope_dir.is_dir():
+            continue
+        canonical = scope_dir / "CANONICAL.md"
+        if not canonical.is_file():
+            continue
+        try:
+            text = canonical.read_text(encoding="utf-8")
+        except OSError as exc:
+            report.add("fill_quality.canonical_readable", passed=False, detail=str(exc))
+            return
+        # Check for unfilled template placeholders
+        unfilled = text.count("{{")
+        if unfilled > 0:
+            report.add(
+                "fill_quality.canonical_filled",
+                passed=False,
+                detail=f"{unfilled} unfilled placeholders in {scope_dir.name}/CANONICAL.md",
+            )
+        else:
+            report.add(
+                "fill_quality.canonical_filled",
+                passed=True,
+                detail=f"no unfilled placeholders in {scope_dir.name}/CANONICAL.md ({len(text)} bytes)",
+            )
+        return
+
+    # No CANONICAL.md found
+    report.add(
+        "fill_quality.canonical_exists",
+        passed=False,
+        detail="no CANONICAL.md found in any project scope directory",
+    )
 
 
 def verify(target: Path) -> VerifyReport:
