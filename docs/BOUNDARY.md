@@ -153,6 +153,13 @@ GitLab (source of truth)
 当启用 ShowDoc 同步时（adapter.toml `[sync.showdoc]` enabled = true），
 还必须定义 sync-to-showdoc job，与 sync-to-github 并行执行，同样依赖 test + health-check。
 
+每个项目的 health-check stage 必须包含 CI 配置完整性检查：
+- `.gitlab-ci.yml` 非空
+- YAML 语法有效
+- 必要 stage（test、health_check、sync）存在
+
+推荐使用 `infra/ci-templates` 的 `ci-config-check.yml` 共享模板在 `.pre` stage 预检。
+
 使用 memory-core `memory-init --sync --sync-showdoc` 时，项目将生成：
 - `.gitlab-ci.yml` 中包含 `sync-to-github` 和 `sync-to-showdoc` 两个并行 job
 - `memory/system/skills/gitlab_sync_workflow.yaml` 作为 submit_gitlab / merge_after_ci / sync_github / sync_showdoc 的标准编排模板

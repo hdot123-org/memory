@@ -108,6 +108,22 @@ github-release:
 
 ---
 
+## 三.5、CI 配置自检机制
+
+`scripts/ci_health_check.sh` 包含三层自动防护，在 `health-check` stage 中运行：
+
+| 检查项 | 检查方式 | 失败行为 |
+|--------|---------|----------|
+| `.gitlab-ci.yml` 非空 | `[ ! -s .gitlab-ci.yml ]` | exit 1（阻断 pipeline） |
+| YAML 语法有效 | `python3 yaml.safe_load()` | exit 1（阻断 pipeline） |
+| 必要 stage 存在 | 检查 test/health_check/sync | exit 1（阻断 pipeline） |
+
+同时，`infra/ci-templates/ci-config-check.yml` 共享模板在 `.pre` stage 更早拦截。
+
+**防护链**：`.pre`(共享模板自检) → `test`(ruff+boundary+pytest) → `health-check`(内存系统+污染检测+CI配置自检) → `sync`(推送镜像)
+
+---
+
 ## 四、发布流程
 
 ### 标准发布步骤

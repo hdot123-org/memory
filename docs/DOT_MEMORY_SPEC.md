@@ -67,7 +67,7 @@ tags: [memory,system,spec,schema]
 
 ```
 {project_root}/
-├── .gitlab-ci.yml                           # test -> health-check -> sync-to-<mirror> 门禁流水线（含 sync-to-showdoc）
+├── .gitlab-ci.yml                           # .pre(CI自检) -> test -> health-check(含CI配置自检) -> sync-to-<mirror> 门禁流水线
 ├── scripts/
 │   └── sync_to_showdoc.py                   # ShowDoc 同步脚本（CI 中执行）
 └── memory/

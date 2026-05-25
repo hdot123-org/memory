@@ -99,10 +99,15 @@ If code is accidentally pushed directly to GitHub:
 | Stage | Job | Trigger | Purpose |
 |-------|-----|---------|---------|
 | test | `test` | push | ruff lint + pytest |
-| health-check | `health-check` | push | boundary + structure validation |
+| health-check | `health-check` | push | boundary + structure validation, CI config integrity (non-empty, valid YAML, required stages) |
 | sync | `sync-to-github` | merge to main | push to GitHub mirror |
 
 The `sync-to-github` job only runs after test + health-check both pass.
+
+The `health-check` stage runs `scripts/ci_health_check.sh` which validates:
+- Memory system integrity (`validate_memory_system.py`)
+- Pollution detection (`--check pollution`)
+- CI config integrity (`.gitlab-ci.yml` non-empty, valid YAML, required stages: test/health_check/sync)
 
 ### GitHub Actions (mirror-only)
 
