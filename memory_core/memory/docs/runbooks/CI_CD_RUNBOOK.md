@@ -21,7 +21,7 @@
 
 - GitLab 项目：`infra/memory-core`（`node-REDACTED.ts.net`）
 - GitHub 镜像：`hdot123/memory`（`github.com`）
-- Runner：`ce-01-shell-runner-v2`（Shell Runner，非 Docker）
+- Runner：`<shell-runner>`（Shell Runner，非 Docker）
 
 ### Pipeline Stage 流程
 
