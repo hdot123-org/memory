@@ -166,7 +166,7 @@ def update_manifest(files: list[Path], manifest_path: str) -> None:
 def derive_page_title(file_path: str) -> str:
     """Derive page_title from file path (filename without extension).
 
-    e.g., docs/design/01-architecture.md -> "01-architecture"
+    e.g., memory_core/memory/docs/design/01-architecture.md -> "01-architecture"
     """
     return Path(file_path).stem
 

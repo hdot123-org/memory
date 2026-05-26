@@ -188,7 +188,7 @@ class TestGenerateSkillShowdocWorkflowYaml:
         """YAML includes default core_files when showdoc has none configured."""
         showdoc = ShowdocSyncConfig(enabled=True, item_id=123)
         yaml_text = generate_skill_showdoc_workflow_yaml(showdoc)
-        assert "docs/**/*.md" in yaml_text
+        assert "memory_core/memory/docs/system/**/*.md" in yaml_text
         assert "CHANGELOG.md" in yaml_text
 
 

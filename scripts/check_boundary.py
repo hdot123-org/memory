@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """BOUNDARY 污染检查脚本。
 
-按 docs/BOUNDARY.md 4.1（单一归属）/ 4.3（通用 vs 专用）扫描主仓库路径，
+按 memory_core/memory/docs/system/BOUNDARY.md 4.1（单一归属）/ 4.3（通用 vs 专用）扫描主仓库路径，
 拒绝业务专属文件、SSH/IP/DSN 等运维信息回流到 memory-core 通用底座。
 
 用法：
@@ -68,7 +68,7 @@ LEAK_SCAN_ROOTS: tuple[Path, ...] = (
 # 这些路径段出现在文件路径任意位置都豁免内容扫描。
 EXEMPT_PATH_FRAGMENTS: tuple[str, ...] = (
     "archive/",
-    "docs/audit/",
+    "memory_core/memory/docs/system/audit/",
     "RESIDUE_INVENTORY.md",
     "RESIDUE_DISPOSITION_PLAN.md",
     "/__pycache__/",
