@@ -9,10 +9,8 @@ Verifies:
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -20,9 +18,9 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from memory_core.tools.memory_hook_integrity_keys import generate_key, load_key
-from memory_core.tools.memory_hook_integrity_manifest import sign_project
 from memory_core.tools.memory_hook_gateway import _integrity_verify
+from memory_core.tools.memory_hook_integrity_keys import generate_key
+from memory_core.tools.memory_hook_integrity_manifest import sign_project
 
 
 class TestVerifyMissingKey:
@@ -45,7 +43,7 @@ class TestVerifyMissingKey:
                 ):
                     root = Path(td)
                     with caplog.at_level(logging.WARNING):
-                        result = _integrity_verify(root)
+                        _integrity_verify(root)
 
                     # WARNING should have been logged
                     assert any(
