@@ -146,7 +146,8 @@ def _integrity_verify(project_root: _Path) -> dict | None:
         from .memory_hook_integrity_verify import verify_project
         key = load_key()
         if key is None:
-            return None
+            _logger.warning("Integrity key not found — protection disabled")
+            return {"ok": False, "skipped_reason": "key_not_found"}
         result = verify_project(project_root, key)
         return result.to_dict()
     except Exception as exc:
@@ -1508,24 +1509,28 @@ def main() -> int:
     if args.event == "session-start":
         integrity_result = _integrity_verify(cwd)
         if integrity_result and not integrity_result.get("ok", True):
-            append_error_log(
-                "memory-hook-integrity",
-                "project integrity check failed",
-                {
-                    "host": args.host,
-                    "event": args.event,
-                    "cwd": str(cwd),
-                    "integrity": integrity_result,
-                },
-            )
-            # M4: Block on integrity failure (no longer degraded)
-            package["status"] = "blocked"
-            package.setdefault("validation_errors", [])
-            if isinstance(package.get("validation_errors"), list):
-                package["validation_errors"].append("integrity-check-failed")
-                for err in integrity_result.get("errors", []):
-                    detail = err.get("detail", str(err))
-                    package["validation_errors"].append(f"integrity-error: {detail}")
+            # Key-missing is a warning, not a blocking failure
+            if integrity_result.get("skipped_reason") == "key_not_found":
+                _logger.info("Integrity protection skipped: key not found")
+            else:
+                append_error_log(
+                    "memory-hook-integrity",
+                    "project integrity check failed",
+                    {
+                        "host": args.host,
+                        "event": args.event,
+                        "cwd": str(cwd),
+                        "integrity": integrity_result,
+                    },
+                )
+                # M4: Block on integrity failure (no longer degraded)
+                package["status"] = "blocked"
+                package.setdefault("validation_errors", [])
+                if isinstance(package.get("validation_errors"), list):
+                    package["validation_errors"].append("integrity-check-failed")
+                    for err in integrity_result.get("errors", []):
+                        detail = err.get("detail", str(err))
+                        package["validation_errors"].append(f"integrity-error: {detail}")
 
     write_ok = writer.write(args.host, args.event, package)
     if not write_ok:

@@ -40,6 +40,7 @@ class TestClaudeHookStateDirDeadCode:
                 for line in result.stdout.splitlines()
                 if line.strip()
                 and "/archive/" not in line
+                and "/docs/" not in line
             ]
             assert not files, (
                 f"CLAUDE_HOOK_STATE_DIR still found in memory_core source: {files}"

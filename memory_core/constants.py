@@ -47,7 +47,7 @@ SYNC_DEFAULT_CI_RUNNER = "gitlab"
 VALID_SYNC_CI_RUNNERS = ("gitlab",)
 
 # ShowDoc sync configuration (adapter.toml [sync.showdoc] section)
-SYNC_DEFAULT_SHOWDOC_FILES = ["docs/**/*.md", "CHANGELOG.md"]
+SYNC_DEFAULT_SHOWDOC_FILES = ["memory_core/memory/docs/system/**/*.md", "CHANGELOG.md"]
 SYNC_DEFAULT_SHOWDOC_ITEM_ID = 0
 SYNC_DEFAULT_SHOWDOC_API_URL = ""
 

@@ -13,8 +13,8 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 ## 本仓库身份
 - source-repo-readonly，所有写入被 hook 拦截
 - 不需要 AGENTS.md 自动生成、索引自动化、上下文验证等优化
-- 设计文档在 docs/ 和 memory_core/memory/docs/design/
-- 边界定义在 docs/BOUNDARY.md
+- 设计文档在 memory_core/memory/docs/system/ 和 memory_core/memory/docs/design/
+- 边界定义在 memory_core/memory/docs/system/BOUNDARY.md
 
 ## Agent 行为准则
 - 只探索不修改

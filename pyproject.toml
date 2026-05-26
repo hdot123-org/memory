@@ -52,6 +52,7 @@ memory-plan-residue = "memory_core.tools.audit_project_layout:plan_main"
 memory-apply-residue-plan = "memory_core.tools.apply_residue_plan:main"
 memory-ownership = "memory_core.tools.ownership_cli:main"
 memory-verify-consumer = "memory_core.tools.verify_consumer:main"
+memory-integrity-resign = "memory_core.tools.memory_integrity_resign:main"
 
 [tool.setuptools.packages.find]
 include = ["memory_core*"]

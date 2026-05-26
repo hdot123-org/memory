@@ -328,7 +328,7 @@ def generate_skill_showdoc_workflow_yaml(
             core_files_lines.append(f'    - "{f}"')
         core_files_yaml = "\n".join(core_files_lines) + "\n"
     else:
-        core_files_yaml = '    - "docs/**/*.md"\n    - "CHANGELOG.md"\n'
+        core_files_yaml = '    - "memory_core/memory/docs/system/**/*.md"\n    - "CHANGELOG.md"\n'
 
     return f"""# memory/system/skills/showdoc_sync_workflow.yaml
 version: 1
