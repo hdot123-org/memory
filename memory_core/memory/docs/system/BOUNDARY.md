@@ -21,7 +21,7 @@
 | 测试 | `tests/` | 单元测试、集成测试 |
 | 协议与 Schema | `memory_core/tools/memory_hook_schema.py` | 数据结构定义、校验逻辑 |
 | 模板 | `templates/` | 代码审查模板、分析脚本等通用模板 |
-| 文档 | `docs/` | 仓库级文档（边界、架构、验收报告等） |
+| 文档 | `memory_core/memory/docs/system/` | 仓库级文档（边界、架构、验收报告等） |
 | 审查记录 | `review/`, `reviews/`, `analysis/`, `audit/` | 代码审查与分析产出 |
 | 示例 Fixture | `examples/`（如存在） | demo 级别的示例，不代表真实项目状态 |
 | 项目配置 | `pyproject.toml`, `.gitignore`, `.github/` | 构建、CI、发布配置 |
@@ -105,10 +105,10 @@ memory 仓库不得成为任何具体业务项目的状态存储。
 
 发现违反边界的内容时：
 
-1. 记录到 `docs/RESIDUE_INVENTORY.md`
+1. 记录到 `memory_core/memory/docs/system/RESIDUE_INVENTORY.md`
 2. 迁移真实业务数据到对应业务项目仓库
 3. 或将内容转为 demo fixture（去除真实业务上下文）
-4. 在 `docs/RESIDUE_DISPOSITION_PLAN.md` 中跟踪处置进度
+4. 在 `memory_core/memory/docs/system/RESIDUE_DISPOSITION_PLAN.md` 中跟踪处置进度
 
 
 ---
