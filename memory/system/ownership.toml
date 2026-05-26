@@ -1,0 +1,80 @@
+schema_version = "memory-ownership-v1"
+memory_version = "0.5.0"
+
+[[domains]]
+name = "memory_docs"
+path = "memory/docs"
+level = "critical"
+recursive = true
+description = "Protected documentation domain"
+
+[[domains]]
+name = "memory_kb"
+path = "memory/kb"
+level = "critical"
+recursive = true
+description = "Protected knowledge base domain"
+
+[[domains]]
+name = "memory_system"
+path = "memory/system"
+level = "critical"
+recursive = true
+description = "Protected system state domain"
+
+[[domains]]
+name = "project_map"
+path = "memory/project-map"
+level = "critical"
+recursive = true
+description = "Protected project map domain"
+
+[[resources]]
+name = "agents_md"
+path = "AGENTS.md"
+level = "critical"
+domain = ""
+description = "Agent policy file"
+
+[[resources]]
+name = "memory_lock"
+path = "memory/system/memory.lock"
+level = "critical"
+domain = "memory_system"
+description = "Memory lock file"
+
+[[resources]]
+name = "adapter_toml"
+path = "memory/system/adapter.toml"
+level = "critical"
+domain = "memory_system"
+description = "Adapter configuration"
+
+[[resources]]
+name = "ownership_toml"
+path = "memory/system/ownership.toml"
+level = "critical"
+domain = "memory_system"
+description = "Ownership configuration"
+
+[[resources]]
+name = "migrations_log"
+path = "memory/system/migrations.log"
+level = "standard"
+domain = "memory_system"
+description = "Migration history log"
+
+[[resources]]
+name = "manifest_json"
+path = "memory/system/manifest.json"
+level = "critical"
+domain = "memory_system"
+description = "Integrity manifest"
+
+[policy]
+
+[policy.source_repo]
+mode = "develop"
+activated_at = "2026-05-26T08:09:28.312676+00:00"
+activated_by = "cli"
+
