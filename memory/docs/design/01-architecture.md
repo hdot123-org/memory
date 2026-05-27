@@ -49,14 +49,12 @@ memory/                          # 仓库根
 ├── pyproject.toml               # 包定义（memory-core==0.4.0）
 ├── README.md                    # 模块说明 + 迁移记录（M1/M2/M3）
 ├── tests/                       # 13 个测试文件
-└── memory_core/                   # 唯一总控工作区
-    ├── INDEX.md                 # 工作区入口（路由系统 + 写入协议）
-    ├── NOW.md                   # 当前状态
+├── memory/                      # 知识库 + 文档（M7 迁移至 repo root）
+├── project-map/                 # 项目地图（legal-core + ingestion-registry，M7 迁移至 repo root）
+├── artifacts/                   # 运行时产物（gateway 输出，M7 迁移至 repo root）
+└── memory_core/                   # Python 包目录
     ├── tools/                   # Python 代码层
-    ├── memory/                  # 知识库 + 文档
-    ├── project-map/             # 项目地图（legal-core + ingestion-registry）
-    ├── projects/                # 项目产物
-    └── artifacts/               # 运行时产物（gateway 输出）
+    └── projects/                # 项目产物
 ```
 
 ### 2.2 `memory_core/tools/` — Python 代码层
@@ -357,8 +355,8 @@ main()
     │
     ▼
 产物输出：
-  - memory_core/artifacts/memory-hook/contexts/latest-{host}-{event}.json
-  - memory_core/artifacts/memory-hook/events.jsonl
+  - artifacts/memory-hook/contexts/latest-{host}-{event}.json
+  - artifacts/memory-hook/events.jsonl
   - memory/system/errors.log (错误时)
 ```
 
