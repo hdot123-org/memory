@@ -15,8 +15,9 @@ from typing import Any
 
 import pytest
 
-# Ensure workbot adapter is loaded for this test file (tests are workbot-scoped).
-os.environ.setdefault("MEMORY_HOOK_ADAPTER", "workbot")
+# Use default adapter (workbot has been archived).
+import os
+os.environ.setdefault("MEMORY_HOOK_ADAPTER", "default")
 
 # ---------------------------------------------------------------------------
 # Shared helpers
