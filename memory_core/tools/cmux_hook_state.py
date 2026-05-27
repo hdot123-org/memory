@@ -33,7 +33,7 @@ def _exclusive_hook_state_lock(path: Path):
 
 def runtime_state_dir(project_dir: Path) -> Path:
     project_dir = project_dir.expanduser().resolve()
-    return project_dir / "artifacts" / "cmux-runtime"
+    return project_dir / "memory" / "artifacts" / "cmux-runtime"
 
 
 def default_hook_state_path(project_dir: Path) -> Path:
