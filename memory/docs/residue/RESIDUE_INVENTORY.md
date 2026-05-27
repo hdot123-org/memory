@@ -177,7 +177,7 @@
 
 ### 索引改写
 
-- `memory_core/INDEX.md`：删除"真相模型 canonical：`workbot-truth-model.md`"硬绑定，改为"由各业务项目通过 adapter runtime profile 自行声明，memory-core 仓库不内建任何业务项目专属的真相模型文件"
+- `INDEX.md`：删除"真相模型 canonical：`workbot-truth-model.md`"硬绑定，改为"由各业务项目通过 adapter runtime profile 自行声明，memory-core 仓库不内建任何业务项目专属的真相模型文件"
 
 ### Pytest 路径
 

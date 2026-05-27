@@ -376,8 +376,8 @@ main()
   "missing_paths": ["..."],
   "validation_errors": ["..."],
   "system_context": {
-    "boot_entry": "memory_core/INDEX.md",
-    "state_entry": "memory_core/NOW.md",
+    "boot_entry": "INDEX.md",
+    "state_entry": "NOW.md",
     "state_summary": ["..."],
     "project_map_validation": "pass" | "fail",
     "legality_contract_validation": "pass" | "fail",

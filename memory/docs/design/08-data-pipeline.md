@@ -353,10 +353,10 @@ status = "ok" if (not missing_paths
 ### 9.1 状态文件位置
 
 `default_hook_state_path()`（[cmux_hook_state.py:42-43](<memory-repo>/memory_core/tools/cmux_hook_state.py:42)）：
-- 优先路径：`{project_dir}/memory_core/artifacts/cmux-runtime/hook-state.json`
+- 优先路径：`{project_dir}/artifacts/cmux-runtime/hook-state.json`
 - 回退路径：`{project_dir}/.cmux-runtime/hook-state.json`
 
-由 `runtime_state_dir()`（line 34-39）决定：如果 `memory_core/artifacts` 存在则用 `memory_core/artifacts/cmux-runtime`，否则用 `.cmux-runtime`。
+由 `runtime_state_dir()`（line 34-39）决定：如果 `artifacts` 存在则用 `artifacts/cmux-runtime`，否则用 `.cmux-runtime`。
 
 ### 9.2 状态文件结构
 
