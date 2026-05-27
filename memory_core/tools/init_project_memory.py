@@ -201,23 +201,14 @@ lock_reason = "initial"
 def template_adapter_toml(project_name: str, host: str = "codex") -> tuple[str, list[str]]:
     """Generate adapter.toml content conforming to the canonical schema.
 
-    Reads the template from workspace/templates/memory/system/adapter.toml and
-    replaces placeholders with actual values.
+    Uses inline canonical template (no external template file needed).
 
     Returns:
         Tuple of (content, warnings_list)
     """
     warnings: list[str] = []
     try:
-        # Locate the memory-core repo root (parent of memory_core/)
-        _repo_root = Path(__file__).resolve().parent.parent.parent
-        _template_path = _repo_root / "workspace" / "templates" / "memory" / "system" / "adapter.toml"
-
-        if _template_path.is_file():
-            content = _template_path.read_text(encoding="utf-8")
-        else:
-            # Fallback inline canonical template
-            content = """\
+        content = """\
 # adapter.toml — canonical layout (memory-core v0.2.x)
 # 由 memory-init 在初始化时填充实际值
 
@@ -1100,7 +1091,7 @@ KB_TEMPLATES: dict[str, Any] = {
     ),
     "project-map/ingestion-registry-map.md": lambda scope: (
         "# 摄入登记地图\n\n"
-        "- memory_core/project-map/**: incoming-raw\n"
+        "- project-map/**: incoming-raw\n"
         "- memory/kb/global/**: active-legal\n"
         "- memory/kb/projects/**: compatibility-only\n"
         "- 状态：`absorbed`，`retired`\n"
@@ -2072,7 +2063,7 @@ def _is_memory_repo(repo_root: Path) -> bool:
     """Heuristic: is this repo the memory repo?"""
     indicators = [
         repo_root / "memory_core" / "tools" / "memory_hook_gateway.py",
-        repo_root / "memory_core" / "memory",
+        repo_root / "memory",
     ]
     return any(p.is_file() or p.is_dir() for p in indicators)
 

@@ -29,7 +29,6 @@ def _create_minimal_repo(tmp_path: Path) -> Path:
     (tmp_path / "memory" / "kb" / "global").mkdir(parents=True)
     (tmp_path / "project-map").mkdir(parents=True)
     (tmp_path / "archive" / "legacy-workbot" / "kb").mkdir(parents=True)
-    (tmp_path / "workspace" / "templates" / "memory" / "system").mkdir(parents=True)
     (tmp_path / "docs").mkdir()
     (tmp_path / "tests").mkdir()
     (tmp_path / "scripts").mkdir()
@@ -105,17 +104,19 @@ class TestWhitelistedLocations:
         ), f"Unexpected finding: {error_findings}"
 
     def test_state_in_workspace_templates_memory_system(self, tmp_path: Path) -> None:
-        """workspace/templates/memory/system/ is a canonical template location — OK."""
+        """workspace/templates/memory/system/ is NO longer whitelisted — should be flagged."""
         root = _create_minimal_repo(tmp_path)
         tpl_mem = root / "workspace" / "templates" / "memory" / "system"
+        tpl_mem.mkdir(parents=True)
         (tpl_mem / "STATE.md").write_text("# Template State\n")
         (tpl_mem / "PLAN.md").write_text("# Template Plan\n")
         findings = detect_pollution(tmp_path)
         error_findings = [f for f in findings if f["severity"] == "error"]
-        assert not any(
-            "templates/memory/system" in f["path"]
+        # workspace/templates/memory/system/ is no longer whitelisted, so these SHOULD be flagged
+        assert any(
+            "templates/memory/system" in f["path"] and f["rule"] == "forbidden-state-file"
             for f in error_findings
-        ), f"Unexpected finding: {error_findings}"
+        ), f"Expected forbidden-state-file finding for workspace/templates/memory/system/, got {error_findings}"
 
 
 class TestBusinessStringPollution:

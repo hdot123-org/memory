@@ -278,7 +278,6 @@ _WHITELIST_PATH_PREFIXES: tuple[str, ...] = (
     "memory/kb/global/",
     "project-map/",
     "archive/legacy-workbot/",
-    "workspace/templates/memory/system/",
 )
 
 # Directories that are always safe (config / docs / CI).
@@ -341,7 +340,7 @@ def _scan_file_content(filepath: Path, repo_root: Path) -> list[dict]:
     """Scan a .md file in a runtime location for business-specific strings.
 
     Only flags files directly under runtime directories like
-    memory/system/, memory_core/project-map/, or
+    memory/system/, project-map/, or
     memory/kb/global/.  Archived and source-code locations
     are exempt.
     """
@@ -394,7 +393,7 @@ def detect_pollution(repo_root: Path) -> list[dict]:
 
     Uses an allow-list + deny-list approach:
     - Allow-list: ``memory/system/``, ``memory/kb/global/``,
-      ``memory_core/project-map/``, ``archive/legacy-workbot/``, standard
+      ``project-map/``, ``archive/legacy-workbot/``, standard
       repo directories (docs/, tests/, scripts/, .github/, config files).
     - Deny-list: any ``*.STATE.md`` / ``*.PLAN.md`` / ``*.CANONICAL.md``
       appearing in business runtime locations (repo root,
@@ -441,11 +440,10 @@ def detect_pollution(repo_root: Path) -> list[dict]:
                     "detail": ".memory/ directory found at repository root",
                 })
             else:
-                # Allowed parents: memory/system/, archive/legacy-workbot/, workspace/templates/memory/system/
+                # Allowed parents: memory/system/, archive/legacy-workbot/
                 allowed_parents = (
                     ("memory_core", "memory", "system"),
                     ("archive", "legacy-workbot"),
-                    ("workspace", "templates", "memory", "system"),
                 )
                 is_allowed = any(
                     parts[: mem_idx] == allowed[: mem_idx]
@@ -457,7 +455,7 @@ def detect_pollution(repo_root: Path) -> list[dict]:
                         "path": str(rel_path),
                         "rule": "unexpected-memory-dir",
                         "severity": "error",
-                        "detail": ".memory/ directory found outside memory/system/, archive/, or workspace/templates/",
+                        "detail": ".memory/ directory found outside memory/system/ or archive/",
                     })
 
         # ── Rule 2: Forbidden state files in runtime locations ──
