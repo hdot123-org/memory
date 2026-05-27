@@ -1,0 +1,44 @@
+name: Setup Labels
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  create-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = [
+              { name: "P0", color: "b60205", description: "Critical: must fix immediately" },
+              { name: "P1", color: "d93f0b", description: "High: fix before next release" },
+              { name: "P2", color: "fbca04", description: "Medium: fix in current sprint" },
+              { name: "P3", color: "0e8a16", description: "Low: backlog item" },
+              { name: "chore", color: "fef2c0", description: "Maintenance or cleanup" },
+              { name: "security", color: "b60205", description: "Security-related" },
+              { name: "dependencies", color: "0366d6", description: "Dependency updates" },
+              { name: "area/core", color: "c5def5", description: "Core library code" },
+              { name: "area/cli", color: "c5def5", description: "CLI tools" },
+              { name: "area/ci", color: "c5def5", description: "CI/CD configuration" },
+              { name: "area/docs", color: "c5def5", description: "Documentation" },
+            ];
+            for (const label of labels) {
+              try {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ...label
+                });
+                console.log(`Created: ${label.name}`);
+              } catch (e) {
+                if (e.status === 422) {
+                  console.log(`Already exists: ${label.name}`);
+                } else {
+                  throw e;
+                }
+              }
+            }

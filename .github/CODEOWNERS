@@ -1,0 +1,20 @@
+# CODEOWNERS
+# These owners will be automatically requested for review on PRs/MRs
+
+# Core library source code
+/memory_core/       @hdot123
+
+# CLI tools
+/memory_core/tools/ @hdot123
+
+# Tests
+/tests/             @hdot123
+
+# CI/CD configuration
+/.github/           @hdot123
+/.gitlab-ci.yml     @hdot123
+
+# Documentation
+/docs/              @hdot123
+/README.md          @hdot123
+/CONTRIBUTING.md    @hdot123

@@ -21,6 +21,31 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 - 不要建议改进本项目结构，闭环已经完整
 - 消费项目问题参考 README.md 和 BOUNDARY.md
 
+## 路由规则
+
+路由规则仅由以下文件定义，AGENTS.md 只做方向性引用，不嵌入任何路由逻辑。
+
+**读取链**：Agent 启动 → AGENTS.md (行为约束) → 指向性引用 → memory-routing.md (路由规则) → project-map (合法入口) → memory/kb (实际知识)。
+
+| 文件 | 职责 | 路径 |
+|------|------|------|
+| memory-routing.md | 记忆请求路由、作用域解析、降级策略 | `memory_core/memory/kb/global/memory-routing.md` |
+| project-map/INDEX.md | 项目地图唯一合法入口、合法性校验 | `memory_core/project-map/INDEX.md` |
+| BOUNDARY.md | 仓库边界定义、职责范围、不属于本仓库的内容 | `memory_core/memory/docs/system/BOUNDARY.md` |
+
+具体路由规则（如 scope resolution、fallback）请查阅上述文件，不要在此文件中寻找。
+
+## 铁律：GitLab API 推送
+
+**所有代码变更必须通过 `scripts/gitlab_api_push.py` 推送，禁止使用手动 git 命令。**
+
+详细使用方法见 `memory_core/memory/docs/runbooks/GIT_PUSH_SPEC.md`。
+
+核心要点：
+- 禁止 `git add` / `git commit` / `git push`（被 hooks 拦截）
+- Token 优先级：`GITLAB_ADMIN_TOKEN` > `CE_GITLAB_TOKEN` > remote URL 提取
+- 项目路径：`infra/memory-core`（需 admin token）、`aedu/workbot`
+
 ## 铁律：GitLab → GitHub 单向同步
 
 **所有 Factory/Droid 接入的项目必须遵守：**
