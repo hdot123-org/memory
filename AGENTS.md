@@ -45,6 +45,7 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 - 禁止 `git add` / `git commit` / `git push`（被 hooks 拦截）
 - Token 优先级：`GITLAB_ADMIN_TOKEN` > `CE_GITLAB_TOKEN` > remote URL 提取
 - 项目路径：`infra/memory-core`（需 admin token）、`aedu/workbot`
+- **推送注释（commit message）必须使用中文**，禁止使用英文 commit message
 
 ## 铁律：GitLab → GitHub 单向同步
 
