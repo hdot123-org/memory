@@ -54,16 +54,10 @@ def _fake_project_dir(tmp_path: Path) -> Path:
 
 
 class TestPathHelpers:
-    def test_runtime_state_dir_with_workspace_artifacts(self, tmp_path: Path) -> None:
-        project = _fake_project_dir(tmp_path)
-        (project / "memory_core" / "artifacts").mkdir(parents=True)
-        result = runtime_state_dir(project)
-        assert result == project / "memory_core" / "artifacts" / "cmux-runtime"
-
-    def test_runtime_state_dir_fallback(self, tmp_path: Path) -> None:
+    def test_runtime_state_dir_returns_artifacts_cmux_runtime(self, tmp_path: Path) -> None:
         project = _fake_project_dir(tmp_path)
         result = runtime_state_dir(project)
-        assert result == project / ".cmux-runtime"
+        assert result == project / "artifacts" / "cmux-runtime"
 
     def test_default_hook_state_path_returns_path(self, tmp_path: Path) -> None:
         project = _fake_project_dir(tmp_path)
