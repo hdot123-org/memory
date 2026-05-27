@@ -76,7 +76,7 @@ push to main -> test -> health-check -> merge
 2. Scans files matching `core_files` and `extra_patterns` glob patterns
 3. Compares SHA256 hashes against `.showdoc-manifest.json` for incremental sync
 4. Changed files are uploaded via ShowDoc Open API (`updateByApi`, upsert by `page_title`)
-5. `cat_name` is derived from file path (e.g., `memory_core/memory/docs/design/01-arch.md` → "设计文档")
+5. `cat_name` is derived from file path (e.g., `memory/docs/design/01-arch.md` → "设计文档")
 6. Markdown content is validated against showdoc-markdown-compat safe subset
 7. Manifest is updated on successful sync
 

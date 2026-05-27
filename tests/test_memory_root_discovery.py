@@ -57,7 +57,7 @@ class TestDiscoverProjectRoot:
         assert discover_project_root(inner / "leaf" / "deep") == tmp_path
 
     def test_nested_consumer_case(self, tmp_path: Path) -> None:
-        """Actual bug case: cwd in memory_core/memory/system/tools/ with nested markers.
+        """Actual bug case: cwd in memory/system/tools/ with nested markers.
 
         Simulates:
             consumer_project/
@@ -135,7 +135,7 @@ class TestDiscoverRoots:
     def test_discover_roots_nested(self, tmp_path: Path) -> None:
         """Nested memory/system markers with memory_core workspace → correct workspace_root.
 
-        Verifies VAL-ROOT-005: when discover_roots() is called from memory_core/memory/system/tools/
+        Verifies VAL-ROOT-005: when discover_roots() is called from memory/system/tools/
         inside a project with outer memory/system/, workspace_root resolves to the
         outer project root (not the inner memory_core/ directory).
         """

@@ -25,9 +25,9 @@ def _create_minimal_repo(tmp_path: Path) -> Path:
     Includes enough directories to exercise the whitelist rules without
     planting any pollution.
     """
-    (tmp_path / "memory_core" / "memory" / "system").mkdir(parents=True)
-    (tmp_path / "memory_core" / "memory" / "kb" / "global").mkdir(parents=True)
-    (tmp_path / "memory_core" / "project-map").mkdir(parents=True)
+    (tmp_path / "memory" / "system").mkdir(parents=True)
+    (tmp_path / "memory" / "kb" / "global").mkdir(parents=True)
+    (tmp_path / "project-map").mkdir(parents=True)
     (tmp_path / "archive" / "legacy-workbot" / "kb").mkdir(parents=True)
     (tmp_path / "workspace" / "templates" / "memory" / "system").mkdir(parents=True)
     (tmp_path / "docs").mkdir()
@@ -80,7 +80,7 @@ class TestWhitelistedLocations:
 
     def test_state_in_memory_core_memory_system(self, tmp_path: Path) -> None:
         root = _create_minimal_repo(tmp_path)
-        mem_dir = root / "memory_core" / "memory" / "system"
+        mem_dir = root / "memory" / "system"
         (mem_dir / "STATE.md").write_text("# State\n")
         (mem_dir / "PLAN.md").write_text("# Plan\n")
         (mem_dir / "CANONICAL.md").write_text("# Canonical\n")
@@ -123,7 +123,7 @@ class TestBusinessStringPollution:
 
     def test_axonhub_in_project_map(self, tmp_path: Path) -> None:
         root = _create_minimal_repo(tmp_path)
-        pm = root / "memory_core" / "project-map"
+        pm = root / "project-map"
         (pm / "test-map.md").write_text("# Project Map\n\nThis is for axonhub integration.\n")
         findings = detect_pollution(tmp_path)
         error_findings = [f for f in findings if f["severity"] == "error"]
@@ -134,7 +134,7 @@ class TestBusinessStringPollution:
 
     def test_workbot_in_global_kb(self, tmp_path: Path) -> None:
         root = _create_minimal_repo(tmp_path)
-        kb = root / "memory_core" / "memory" / "kb" / "global"
+        kb = root / "memory" / "kb" / "global"
         (kb / "new-guide.md").write_text("# Guide\n\nworkbot-specific instructions here.\n")
         findings = detect_pollution(tmp_path)
         error_findings = [f for f in findings if f["severity"] == "error"]
@@ -159,9 +159,11 @@ class TestUnexpectedMemoryDirs:
         ), f"Expected unexpected-memory-dir finding, got {error_findings}"
 
     def test_memory_dir_at_repo_root(self, tmp_path: Path) -> None:
+        """memory/system/ at repo root is the canonical location — should NOT be flagged."""
         root = _create_minimal_repo(tmp_path)
-        (root / "memory" / "system").mkdir(parents=True)
-        (root / "memory" / "system" / "STATE.md").write_text("# State\n")
+        # memory/system already exists from _create_minimal_repo, add a state file
+        mem_sys = root / "memory" / "system"
+        (mem_sys / "STATE.md").write_text("# State\n")
         findings = detect_pollution(tmp_path)
         error_findings = [f for f in findings if f["severity"] == "error"]
         # memory/system at repo root is now the canonical location — should NOT be flagged as unexpected

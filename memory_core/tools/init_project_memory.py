@@ -1101,8 +1101,8 @@ KB_TEMPLATES: dict[str, Any] = {
     "project-map/ingestion-registry-map.md": lambda scope: (
         "# 摄入登记地图\n\n"
         "- memory_core/project-map/**: incoming-raw\n"
-        "- memory_core/memory/kb/global/**: active-legal\n"
-        "- memory_core/memory/kb/projects/**: compatibility-only\n"
+        "- memory/kb/global/**: active-legal\n"
+        "- memory/kb/projects/**: compatibility-only\n"
         "- 状态：`absorbed`，`retired`\n"
         "- 同次 `git commit` 提交后才生效\n",
         []

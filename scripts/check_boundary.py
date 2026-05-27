@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """BOUNDARY 污染检查脚本。
 
-按 memory_core/memory/docs/system/BOUNDARY.md 4.1（单一归属）/ 4.3（通用 vs 专用）扫描主仓库路径，
+按 memory/docs/system/BOUNDARY.md 4.1（单一归属）/ 4.3（通用 vs 专用）扫描主仓库路径，
 拒绝业务专属文件、SSH/IP/DSN 等运维信息回流到 memory-core 通用底座。
 
 用法：
@@ -27,7 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # 主仓库路径下不应该出现的"业务专属"文件名前缀。
 # 当确实需要接入一个新业务项目时，只允许通过 adapter runtime profile 引用，
-# 不允许把业务专属知识/政策直接放到 memory_core/memory/kb/。
+# 不允许把业务专属知识/政策直接放到 memory/kb/。
 BUSINESS_PREFIX_PATTERNS: tuple[str, ...] = (
     "workbot-",
     "axonhub-",
@@ -35,7 +35,7 @@ BUSINESS_PREFIX_PATTERNS: tuple[str, ...] = (
     "youzy-",
 )
 
-# 这些是历史业务项目的"项目真相"文件名，不允许放在 memory_core/memory/kb/projects/
+# 这些是历史业务项目的"项目真相"文件名，不允许放在 memory/kb/projects/
 BUSINESS_PROJECT_FILES: tuple[str, ...] = (
     "workbot.md",
     "axonhub.md",
@@ -68,7 +68,7 @@ LEAK_SCAN_ROOTS: tuple[Path, ...] = (
 # 这些路径段出现在文件路径任意位置都豁免内容扫描。
 EXEMPT_PATH_FRAGMENTS: tuple[str, ...] = (
     "archive/",
-    "memory_core/memory/docs/system/audit/",
+    "memory/docs/system/audit/",
     "RESIDUE_INVENTORY.md",
     "RESIDUE_DISPOSITION_PLAN.md",
     "/__pycache__/",
@@ -113,7 +113,7 @@ def scan_business_kb_files() -> list[dict[str, str]]:
                     "kind": "business-project-file",
                     "path": str(entry.relative_to(REPO_ROOT)),
                     "matched": entry.name,
-                    "rule": "BOUNDARY 4.1: per-project truth files belong in adapter runtime profile, not memory_core/memory/kb/projects/",
+                    "rule": "BOUNDARY 4.1: per-project truth files belong in adapter runtime profile, not memory/kb/projects/",
                 })
     return findings
 

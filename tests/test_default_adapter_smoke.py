@@ -20,6 +20,7 @@ import pytest
 
 _MODULE_PREFIXES = (
     "memory_core.tools.memory_hook",
+    "memory_core.tools.memory_root_discovery",
 )
 
 

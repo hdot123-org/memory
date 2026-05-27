@@ -13,8 +13,8 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 ## 本仓库身份
 - source-repo-readonly，所有写入被 hook 拦截
 - 不需要 AGENTS.md 自动生成、索引自动化、上下文验证等优化
-- 设计文档在 memory_core/memory/docs/system/ 和 memory_core/memory/docs/design/
-- 边界定义在 memory_core/memory/docs/system/BOUNDARY.md
+- 设计文档在 memory/docs/system/ 和 memory/docs/design/
+- 边界定义在 memory/docs/system/BOUNDARY.md
 
 ## Agent 行为准则
 - 只探索不修改
@@ -29,9 +29,9 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 
 | 文件 | 职责 | 路径 |
 |------|------|------|
-| memory-routing.md | 记忆请求路由、作用域解析、降级策略 | `memory_core/memory/kb/global/memory-routing.md` |
+| memory-routing.md | 记忆请求路由、作用域解析、降级策略 | `memory/kb/global/memory-routing.md` |
 | project-map/INDEX.md | 项目地图唯一合法入口、合法性校验 | `memory_core/project-map/INDEX.md` |
-| BOUNDARY.md | 仓库边界定义、职责范围、不属于本仓库的内容 | `memory_core/memory/docs/system/BOUNDARY.md` |
+| BOUNDARY.md | 仓库边界定义、职责范围、不属于本仓库的内容 | `memory/docs/system/BOUNDARY.md` |
 
 具体路由规则（如 scope resolution、fallback）请查阅上述文件，不要在此文件中寻找。
 
@@ -39,12 +39,13 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 
 **所有代码变更必须通过 `scripts/gitlab_api_push.py` 推送，禁止使用手动 git 命令。**
 
-详细使用方法见 `memory_core/memory/docs/runbooks/GIT_PUSH_SPEC.md`。
+详细使用方法见 `memory/docs/runbooks/GIT_PUSH_SPEC.md`。
 
 核心要点：
 - 禁止 `git add` / `git commit` / `git push`（被 hooks 拦截）
 - Token 优先级：`GITLAB_ADMIN_TOKEN` > `CE_GITLAB_TOKEN` > remote URL 提取
 - 项目路径：`infra/memory-core`（需 admin token）、`aedu/workbot`
+- **所有 commit 消息、MR 标题/描述必须使用中文**（如 `fix: 修复 discover_project_root 根目录解析错误`）
 
 ## 铁律：GitLab → GitHub 单向同步
 
