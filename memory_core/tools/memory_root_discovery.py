@@ -30,28 +30,32 @@ def _has_git_not_memory(current: Path) -> bool:
 def discover_project_root(start_path: Path) -> Path:
     """Walk *start_path* and its ancestors looking for a ``memory/system/`` directory.
 
-    Returns the first ancestor (inclusive) that contains ``memory/system/``.
-    Stops early if a ``.git/`` directory without ``memory/system/`` is encountered
-    (monorepo sentinel) or if the upward walk exceeds ``_MAX_UPWARD_DEPTH``.
+    Returns the **outermost** (highest-level) ancestor that contains
+    ``memory/system/``.  Continues walking after finding the first match
+    until a ``.git/`` directory without ``memory/system/`` is encountered
+    (monorepo sentinel) or the upward walk exceeds ``_MAX_UPWARD_DEPTH``.
     Falls back to the repository root derived from this module's location
     when nothing is found.
     """
     current = start_path.resolve()
     depth = 0
+    outermost: Path | None = None
     while True:
         if (current / _MEMORY_DIR).is_dir():
-            return current
+            outermost = current
         if _has_git_not_memory(current):
             _logger.debug("memory_root_discovery stopped at depth=%d reason=%s", depth, "git_sentinel")
-            return _FALLBACK_REPO_ROOT
+            break
         if depth >= _MAX_UPWARD_DEPTH:
             _logger.debug("memory_root_discovery stopped at depth=%d reason=%s", depth, "max_depth")
-            return _FALLBACK_REPO_ROOT
+            break
         parent = current.parent
         if parent == current:
             break
         current = parent
         depth += 1
+    if outermost is not None:
+        return outermost
     return _FALLBACK_REPO_ROOT
 
 

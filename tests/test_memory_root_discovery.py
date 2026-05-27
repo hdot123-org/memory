@@ -49,12 +49,12 @@ class TestDiscoverProjectRoot:
         island.mkdir(parents=True)
         assert discover_project_root(island) == _FALLBACK_REPO_ROOT
 
-    def test_nearest_wins(self, tmp_path: Path) -> None:
-        """Two nested .memory/ markers -> returns the closest one."""
+    def test_outermost_wins(self, tmp_path: Path) -> None:
+        """Two nested .memory/ markers -> returns the outermost one."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
         inner = tmp_path / "inner"
         (inner / "memory" / "system").mkdir(parents=True)
-        assert discover_project_root(inner / "leaf" / "deep") == inner
+        assert discover_project_root(inner / "leaf" / "deep") == tmp_path
 
     def test_memory_must_be_directory(self, tmp_path: Path) -> None:
         """A regular file named memory/system is not a marker."""
