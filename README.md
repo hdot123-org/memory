@@ -172,10 +172,10 @@ Global state under `~/.memory-core` stores host-level lifecycle/path-index data 
 
 ## Documentation
 
-- [Documentation index](memory_core/memory/docs/system/INDEX.md)
-- [`memory/` specification](memory_core/memory/docs/system/DOT_MEMORY_SPEC.md)
-- [`memory.lock` specification](memory_core/memory/docs/system/MEMORY_LOCK_SPEC.md)
-- [Repository boundary](memory_core/memory/docs/system/BOUNDARY.md)
+- [Documentation index](memory/docs/system/INDEX.md)
+- [`memory/` specification](memory/docs/system/DOT_MEMORY_SPEC.md)
+- [`memory.lock` specification](memory/docs/system/MEMORY_LOCK_SPEC.md)
+- [Repository boundary](memory/docs/system/BOUNDARY.md)
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
 

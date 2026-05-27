@@ -24,11 +24,11 @@ Two-layer architecture:
 - `memory_core/tools/` — CLI tools (memory-init, memory-validate, memory-migrate, etc.)
 - `memory_core/ownership.py` — Ownership data model and classify API
 - `tests/` — 1826+ unit tests
-- `memory_core/memory/docs/` — Design documents, specs, RFCs
+- `memory/docs/` — Design documents, specs, RFCs
 
 ## Development Rules
 - This is a source-repo-readonly repository: only explore, never modify protected paths
 - Follow GitLab-first workflow: push to GitLab, never directly to GitHub
 - Use conventional commits: feat:, fix:, chore:, docs:
 - Target Python 3.9+
-- Boundary defined in `memory_core/memory/docs/system/BOUNDARY.md`
+- Boundary defined in `memory/docs/system/BOUNDARY.md`

@@ -35,10 +35,10 @@ def build_workbot_runtime_profile(repo_root: Path, workspace_root: Path) -> dict
 
     required_registry_scopes = [
         "memory_core/project-map/**",
-        "memory_core/memory/kb/global/**",
-        "memory_core/memory/kb/projects/**",
-        "memory_core/memory/docs/**",
-        "memory_core/memory/log/**",
+        "memory/kb/global/**",
+        "memory/kb/projects/**",
+        "memory/docs/**",
+        "memory/log/**",
         "memory_core/projects/**",
         "memory_core/tools/**",
         "tests/**",

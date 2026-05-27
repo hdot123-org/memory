@@ -1,0 +1,33 @@
+{
+  "version": "1.0.0",
+  "adapter": "default",
+  "description": "Generic policy pack for the default memory-hook adapter",
+  "gateway_policy": "NeutralGatewayBusinessPolicy",
+  "legality_source_policy": "map-only",
+  "registration_commit_policy": "same-commit",
+  "registration_commit_phase": "post",
+  "scope_control": {
+    "allowed_scopes": ["default"],
+    "scope_inherits": {},
+    "governance_blockers": [],
+    "event_contract_blockers": []
+  },
+  "artifact_compaction": {
+    "include_system_context": true,
+    "include_project_context": true,
+    "include_task_context": true,
+    "include_evidence_refs": true,
+    "include_allowed_reads": true,
+    "include_allowed_writes": true
+  },
+  "validation": {
+    "required_project_map_files": 3,
+    "required_canonical_checks": true,
+    "truth_basis_validation": true,
+    "evidence_access_validation": true
+  },
+  "schema": {
+    "default_output": "context-package-v1",
+    "supported_outputs": ["context-package-v1", "memory-v1"]
+  }
+}

@@ -17,5 +17,5 @@ Scope: adapter
 - `memory-system.md`
 
 ## Active Legal Scopes
-- `memory_core/memory/kb/global/truth-model.md`
-- `memory_core/memory/kb/global/memory-system.md`
+- `memory/kb/global/truth-model.md`
+- `memory/kb/global/memory-system.md`

@@ -5,7 +5,7 @@ __pycache__/
 
 # ============================================================
 # 污染路径防护 — 禁止真实业务项目状态文件进入 memory 仓库
-# 详见 memory_core/memory/docs/system/BOUNDARY.md
+# 详见 memory/docs/system/BOUNDARY.md
 # ============================================================
 
 # 业务项目执行状态（PLAN / STATE / CANONICAL / NOW.md）
@@ -55,9 +55,9 @@ dist/
 
 # Runtime artifacts (not tracked)
 memory_core/artifacts/
-memory_core/memory/system/schema-audit.log
-memory_core/memory/system/errors*.log
-memory_core/memory/system/errors/
+memory/system/schema-audit.log
+memory/system/errors*.log
+memory/system/errors/
 
 # Root-level .memory/ (project-local runtime state, not for tracking)
 /.memory/

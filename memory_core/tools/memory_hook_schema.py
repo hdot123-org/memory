@@ -107,7 +107,7 @@ def _write_audit_log(
 ) -> None:
     """Write a structured audit line when keys are dropped.
 
-    Writes to MEMORY_SCHEMA_AUDIT_LOG (default: memory_core/memory/system/schema-audit.log).
+    Writes to MEMORY_SCHEMA_AUDIT_LOG (default: memory/system/schema-audit.log).
     Also emits to stderr for backward compatibility (existing tests rely on this).
     Falls back to stderr-only if the path is not writable.
     """
