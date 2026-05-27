@@ -1312,6 +1312,19 @@ For manual testing:
 ```bash
 ~/.{host}/bin/memory-hook --host {host} --event session-start
 ```
+
+## 路由规则
+
+路由规则仅由以下文件定义，AGENTS.md 只做方向性引用，不嵌入任何路由逻辑。
+
+**读取链**：Agent 启动 → AGENTS.md (行为约束) → 指向性引用 → memory-routing.md (路由规则) → project-map (合法入口) → memory/kb (实际知识)。
+
+| 文件 | 职责 | 路径 |
+|------|------|------|
+| memory-routing.md | 记忆请求路由、作用域解析、降级策略 | `memory/kb/global/memory-routing.md` |
+| project-map/INDEX.md | 项目地图唯一合法入口、合法性校验 | `project-map/INDEX.md` |
+
+具体路由规则（如 scope resolution、fallback）请查阅上述文件，不要在此文件中寻找。
 {MEMORY_HOOK_END_MARKER}
 """
 
@@ -2060,12 +2073,16 @@ def _find_repo_root(path: Path) -> Path | None:
 
 
 def _is_memory_repo(repo_root: Path) -> bool:
-    """Heuristic: is this repo the memory repo?"""
-    indicators = [
-        repo_root / "memory_core" / "tools" / "memory_hook_gateway.py",
-        repo_root / "memory",
-    ]
-    return any(p.is_file() or p.is_dir() for p in indicators)
+    """Heuristic: is this repo the memory repo?
+
+    Requires the memory_hook_gateway.py marker (unique to this repo)
+    AND either the memory/ directory or memory_core/ package.
+    """
+    gateway_marker = repo_root / "memory_core" / "tools" / "memory_hook_gateway.py"
+    if not gateway_marker.is_file():
+        return False
+    # Memory repo has both: gateway + repo-root memory/ directory
+    return (repo_root / "memory").is_dir()
 
 
 # ---------------------------------------------------------------------------
