@@ -441,7 +441,7 @@ class TruthBasisResolver:
             return "docs"
         if self._path_is_under(path, cfg.workspace_root / "projects"):
             return "project-runtime"
-        if self._path_is_under(path, cfg.workspace_root / "artifacts"):
+        if self._path_is_under(path, cfg.workspace_root / "memory" / "artifacts"):
             return "artifact"
         if self._path_is_under(path, cfg.workspace_root / "tools"):
             return "tooling"

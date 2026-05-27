@@ -80,8 +80,8 @@ CANONICAL_PATTERNS = [
 
 # Date-partitioned artifact paths (sign the daily files too)
 ARTIFACT_PATTERNS = [
-    "artifacts/memory-hook/contexts",
-    "artifacts/memory-hook/events",
+    "memory/artifacts/memory-hook/contexts",
+    "memory/artifacts/memory-hook/events",
 ]
 
 # Volatile file patterns that are rewritten on every hook invocation.

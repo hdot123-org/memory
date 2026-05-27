@@ -1,6 +1,6 @@
 """Observability metrics for memory-hook-gateway.
 
-Emits structured JSONL metrics to artifacts/memory-hook/metrics.jsonl after
+Emits structured JSONL metrics to memory/artifacts/memory-hook/metrics.jsonl after
 each gateway invocation. Disabled via MEMORY_HOOK_METRICS_DISABLED=1.
 
 Failure is non-blocking: callers should wrap emit_metrics in try/except.

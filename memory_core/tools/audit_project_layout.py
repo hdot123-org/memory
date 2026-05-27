@@ -77,7 +77,7 @@ class AuditResult:
 
 
 # Root pollution move destination used by memory-apply-residue-plan
-ROOT_POLLUTION_DEST = "artifacts/reports"
+ROOT_POLLUTION_DEST = "memory/artifacts/reports"
 
 
 # Step 2.8: FORBIDDEN_OVERWRITE_PATTERNS replaced with classify_owned_path() calls
@@ -259,7 +259,7 @@ MEMORY_STRUCTURE_PATTERNS = {
     "workspace/memory": ("workspace_memory", "Workspace memory directory"),
     "workspace/project-map": ("workspace_project_map", "Workspace project-map directory"),
     "history-projects": ("history_projects", "History projects directory"),
-    "artifacts/memory-hook": ("artifacts_memory_hook", "Memory hook artifacts"),
+    "memory/artifacts/memory-hook": ("artifacts_memory_hook", "Memory hook artifacts"),
 }
 
 
@@ -376,7 +376,7 @@ def _check_manifest(root: Path, result: AuditResult) -> None:
         return
 
     entries = data.get("entries", [])
-    runtime_paths = {"runtime", "tmp", "log", "system", "artifacts/memory-hook"}
+    runtime_paths = {"runtime", "tmp", "log", "system", "memory/artifacts/memory-hook"}
 
     for entry in entries:
         path = entry.get("path", "")
