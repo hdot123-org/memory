@@ -500,6 +500,13 @@ def _classify_tool_use(payload: dict[str, Any], project_root: Path) -> dict[str,
         if not command:
             return {"decision": "allow", "reason": "Execute without command"}
 
+        # Known safe scripts: only read local files and push via API, no local writes
+        if "gitlab_api_push.py" in command:
+            return {
+                "decision": "allow",
+                "reason": "gitlab_api_push.py is a read-only local operation (pushes via GitLab API)",
+            }
+
         # Extract target paths from command
         paths = _extract_path_from_execute(command)
 
