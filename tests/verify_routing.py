@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """Verification script for routing rule injection feature."""
-import tempfile
 import os
-import subprocess
 import shutil
-from pathlib import Path
+import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 sys.path.insert(0, os.getcwd())
 
 from memory_core.tools.init_project_memory import (
-    init_project_memory, template_agents_md_block,
-    MEMORY_HOOK_BEGIN_MARKER, MEMORY_HOOK_END_MARKER,
+    MEMORY_HOOK_BEGIN_MARKER,
+    MEMORY_HOOK_END_MARKER,
+    init_project_memory,
+    template_agents_md_block,
 )
 
 tmp = Path(tempfile.mkdtemp())
