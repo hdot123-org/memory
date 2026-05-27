@@ -56,6 +56,25 @@ class TestDiscoverProjectRoot:
         (inner / "memory" / "system").mkdir(parents=True)
         assert discover_project_root(inner / "leaf" / "deep") == tmp_path
 
+    def test_nested_consumer_case(self, tmp_path: Path) -> None:
+        """Actual bug case: cwd in memory_core/memory/system/tools/ with nested markers.
+
+        Simulates:
+            consumer_project/
+            ├── memory/system/          ← outer marker (should be selected)
+            └── memory_core/
+                └── memory/system/
+                    └── tools/          ← cwd starts here
+        """
+        outer = tmp_path / "consumer_project"
+        outer.mkdir()
+        (outer / "memory" / "system").mkdir(parents=True)
+        inner_core = outer / "memory_core"
+        (inner_core / "memory" / "system" / "tools").mkdir(parents=True)
+        cwd = inner_core / "memory" / "system" / "tools"
+        result = discover_project_root(cwd)
+        assert result.resolve() == outer.resolve()
+
     def test_memory_must_be_directory(self, tmp_path: Path) -> None:
         """A regular file named memory/system is not a marker."""
         (tmp_path / "memory").mkdir()
@@ -112,3 +131,20 @@ class TestDiscoverRoots:
         island.mkdir()
         repo, ws = discover_roots(island)
         assert repo == _FALLBACK_REPO_ROOT
+
+    def test_discover_roots_nested(self, tmp_path: Path) -> None:
+        """Nested memory/system markers with memory_core workspace → correct workspace_root.
+
+        Verifies VAL-ROOT-005: when discover_roots() is called from memory_core/memory/system/tools/
+        inside a project with outer memory/system/, workspace_root resolves to the
+        outer project root (not the inner memory_core/ directory).
+        """
+        outer = tmp_path / "consumer_project"
+        outer.mkdir()
+        (outer / "memory" / "system").mkdir(parents=True)
+        (outer / "memory_core").mkdir()
+        inner_tools = outer / "memory_core" / "memory" / "system" / "tools"
+        inner_tools.mkdir(parents=True)
+        repo, ws = discover_roots(inner_tools)
+        assert repo.resolve() == outer.resolve()
+        assert ws.resolve() == (outer / "memory_core").resolve()
