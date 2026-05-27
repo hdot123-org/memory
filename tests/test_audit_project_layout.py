@@ -126,8 +126,8 @@ class TestAuditArtifactsMemoryHook:
 
     def test_detects_artifacts_memory_hook(self, tmp_path: Path) -> None:
         """Should detect artifacts/memory-hook/ directory."""
-        (tmp_path / "artifacts").mkdir()
-        (tmp_path / "artifacts" / "memory-hook").mkdir()
+        (tmp_path / "memory" / "artifacts").mkdir(parents=True)
+        (tmp_path / "memory" / "artifacts" / "memory-hook").mkdir()
         result = audit_project_layout(tmp_path)
 
         amh_findings = [f for f in result.findings if f.kind == "artifacts_memory_hook"]
@@ -350,7 +350,7 @@ class TestAuditManifest:
         manifest = {
             "schema_version": "integrity-manifest-v1",
             "entries": [
-                {"path": "/project/artifacts/memory-hook/test.json"},
+                {"path": "/project/memory/artifacts/memory-hook/test.json"},
             ],
         }
         (tmp_path / "memory" / "system" / "manifest.json").write_text(json.dumps(manifest))
@@ -443,8 +443,8 @@ class TestWorkbotLikeFixture:
         (tmp_path / "history-projects").mkdir()
 
         # artifacts/memory-hook
-        (tmp_path / "artifacts").mkdir()
-        (tmp_path / "artifacts" / "memory-hook").mkdir()
+        (tmp_path / "memory" / "artifacts").mkdir(parents=True)
+        (tmp_path / "memory" / "artifacts" / "memory-hook").mkdir()
 
         # Root pollution
         (tmp_path / "test-report.md").write_text("# Report")
@@ -623,8 +623,8 @@ class TestPlanResidueMigration:
         # Create various structures to trigger different actions
         (tmp_path / "memory" / "system").mkdir(parents=True)  # adopt_existing_memory
         (tmp_path / "test-report.md").write_text("# Report")  # move_root_pollution
-        (tmp_path / "artifacts").mkdir()
-        (tmp_path / "artifacts" / "memory-hook").mkdir()  # ignore_runtime_artifact
+        (tmp_path / "memory" / "artifacts").mkdir(parents=True)
+        (tmp_path / "memory" / "artifacts" / "memory-hook").mkdir()  # ignore_runtime_artifact
 
         audit_result = audit_project_layout(tmp_path)
         plan = plan_residue_migration(audit_result, tmp_path)
@@ -740,8 +740,8 @@ class TestPlanResidueMigration:
 
     def test_plan_action_ignore_runtime_artifact(self, tmp_path: Path) -> None:
         """Artifacts/memory-hook should have ignore_runtime_artifact action."""
-        (tmp_path / "artifacts").mkdir()
-        (tmp_path / "artifacts" / "memory-hook").mkdir()
+        (tmp_path / "memory" / "artifacts").mkdir(parents=True)
+        (tmp_path / "memory" / "artifacts" / "memory-hook").mkdir()
 
         audit_result = audit_project_layout(tmp_path)
         plan = plan_residue_migration(audit_result, tmp_path)

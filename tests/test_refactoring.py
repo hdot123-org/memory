@@ -228,7 +228,7 @@ class TestArtifactWriter:
             def now():
                 return real_datetime(2026, 5, 11, 0, 47, 11, 370980)
 
-        context_root = tmp_path / "artifacts"
+        context_root = tmp_path / "memory" / "artifacts"
         error_log = tmp_path / "errors.log"
         writer = ArtifactWriter(
             context_root=context_root,
@@ -263,7 +263,7 @@ class TestArtifactWriter:
 
         from memory_core.tools.memory_hook_impls import ArtifactWriter
 
-        context_root = tmp_path / "artifacts"
+        context_root = tmp_path / "memory" / "artifacts"
         error_log = tmp_path / "errors.log"
 
         # Build a fake datetime that raises only on the first now() call
@@ -302,7 +302,7 @@ class TestArtifactWriter:
         """ArtifactWriter delegates to ArtifactSinkImpl for actual writing."""
         from memory_core.tools.memory_hook_impls import ArtifactWriter
 
-        context_root = tmp_path / "artifacts"
+        context_root = tmp_path / "memory" / "artifacts"
         error_log = tmp_path / "errors.log"
         writer = ArtifactWriter(context_root=context_root, error_log=error_log)
 

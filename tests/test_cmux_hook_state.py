@@ -57,7 +57,7 @@ class TestPathHelpers:
     def test_runtime_state_dir_returns_artifacts_cmux_runtime(self, tmp_path: Path) -> None:
         project = _fake_project_dir(tmp_path)
         result = runtime_state_dir(project)
-        assert result == project / "artifacts" / "cmux-runtime"
+        assert result == project / "memory" / "artifacts" / "cmux-runtime"
 
     def test_default_hook_state_path_returns_path(self, tmp_path: Path) -> None:
         project = _fake_project_dir(tmp_path)

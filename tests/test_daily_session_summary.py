@@ -187,7 +187,7 @@ class TestFindEventLog:
 
     def test_find_partitioned_log(self, tmp_path: Path) -> None:
         """Test finding date-partitioned event log."""
-        events_dir = tmp_path / "artifacts" / "memory-hook" / "events"
+        events_dir = tmp_path / "memory" / "artifacts" / "memory-hook" / "events"
         events_dir.mkdir(parents=True)
         log_file = events_dir / "2026-01-15.jsonl"
         log_file.write_text("{}")
@@ -197,7 +197,7 @@ class TestFindEventLog:
 
     def test_find_legacy_log(self, tmp_path: Path) -> None:
         """Test finding legacy combined event log."""
-        events_dir = tmp_path / "artifacts" / "memory-hook"
+        events_dir = tmp_path / "memory" / "artifacts" / "memory-hook"
         events_dir.mkdir(parents=True)
         log_file = events_dir / "events.jsonl"
         log_file.write_text("{}")
@@ -216,7 +216,7 @@ class TestFindContextSnapshots:
 
     def test_find_snapshots(self, tmp_path: Path) -> None:
         """Test finding context snapshots."""
-        contexts_dir = tmp_path / "artifacts" / "memory-hook" / "contexts" / "2026-01-15"
+        contexts_dir = tmp_path / "memory" / "artifacts" / "memory-hook" / "contexts" / "2026-01-15"
         contexts_dir.mkdir(parents=True)
         (contexts_dir / "snapshot1.json").write_text("{}")
         (contexts_dir / "snapshot2.json").write_text("{}")
@@ -231,7 +231,7 @@ class TestFindContextSnapshots:
 
     def test_find_empty_snapshots_dir(self, tmp_path: Path) -> None:
         """Test when contexts directory exists but is empty."""
-        contexts_dir = tmp_path / "artifacts" / "memory-hook" / "contexts" / "2026-01-15"
+        contexts_dir = tmp_path / "memory" / "artifacts" / "memory-hook" / "contexts" / "2026-01-15"
         contexts_dir.mkdir(parents=True)
 
         result = _find_context_snapshots(tmp_path, "2026-01-15")
@@ -518,7 +518,7 @@ class TestMain:
         today = date.today().isoformat()
 
         # Setup event log for today
-        events_dir = tmp_path / "artifacts" / "memory-hook" / "events"
+        events_dir = tmp_path / "memory" / "artifacts" / "memory-hook" / "events"
         events_dir.mkdir(parents=True)
         log_file = events_dir / f"{today}.jsonl"
         log_file.write_text(json.dumps({
@@ -533,7 +533,7 @@ class TestMain:
 
     def test_main_json_output(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         """Test main with --json flag."""
-        events_dir = tmp_path / "artifacts" / "memory-hook" / "events"
+        events_dir = tmp_path / "memory" / "artifacts" / "memory-hook" / "events"
         events_dir.mkdir(parents=True)
         log_file = events_dir / "2026-01-15.jsonl"
         log_file.write_text(json.dumps({
@@ -552,7 +552,7 @@ class TestMain:
 
     def test_main_with_legacy_events(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
         """Test main with legacy events.jsonl."""
-        events_dir = tmp_path / "artifacts" / "memory-hook"
+        events_dir = tmp_path / "memory" / "artifacts" / "memory-hook"
         events_dir.mkdir(parents=True)
         log_file = events_dir / "events.jsonl"
         log_file.write_text(json.dumps({
