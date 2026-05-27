@@ -292,3 +292,79 @@ curl -s --header "PRIVATE-TOKEN: $TOKEN" "$GITLAB_HOST/api/v4/projects/$PID/vari
 | 4 | Tag 重复 push 到 GitHub 会被 reject | 更新 tag 时先删 GitHub 旧 tag |
 | 5 | Cloudflare 代理对 POST 请求不友好 | 用 git push 替代 API POST |
 | 6 | GitLab 18.x 弃用 release-cli | 用 GitLab Release API + curl |
+
+---
+
+## 八、GitHub 同步故障排查（2026-05-27 更新）
+
+### 常见问题
+
+#### 问题 1：`remote: fatal: did not receive expected object`
+
+**症状：** sync-to-github 失败，日志显示 `remote unpack failed: index-pack failed`
+
+**根因：** GitLab CI 默认 `GIT_DEPTH: 20`（浅克隆），push 时缺少祖先 commit 对象。
+
+**修复：** 在 github-sync.yml 中设置 `GIT_DEPTH: "0"` 禁用浅克隆。
+
+#### 问题 2：`remote: error: GH013: Repository rule violations`
+
+**症状：** sync-to-github 失败，日志显示 `refusing to allow a Personal Access Token to create or update workflow ... without workflow scope`
+
+**根因：** GitHub PAT 缺少 `workflow` scope。当 `.github/workflows/*` 文件是**新建**时，GitHub 要求 token 显式有 workflow 权限。更新已有文件则只需 `repo` scope。
+
+**修复：**
+1. 生成新 PAT：GitHub → Settings → Developer settings → Personal access tokens → 勾选 `repo` + `workflow`
+2. 更新 GitLab CI 变量 `GITHUB_TOKEN`
+
+#### 问题 3：`remote: Repository not found`
+
+**症状：** sync-to-github 失败，URL 显示 `https://github.com//.git/`（空 owner/repo）
+
+**根因：** github-sync.yml v2 使用通用变量 `$GITHUB_REPO_OWNER` 和 `$GITHUB_REPO_NAME`，但项目 CI 变量未配置。
+
+**修复：** 在 GitLab CI/CD Variables 中添加：
+- `GITHUB_REPO_OWNER` = `hdot123`
+- `GITHUB_REPO_NAME` = `memory`
+
+### 完整修复记录
+
+| 日期 | 问题 | 修复措施 |
+|------|------|----------|
+| 2026-05-27 | `did not receive expected object` | github-sync.yml 添加 `GIT_DEPTH: "0"` |
+| 2026-05-27 | `GH013: workflow scope` | 新 PAT 包含 `repo` + `workflow` |
+| 2026-05-27 | `Repository not found` | 添加 `GITHUB_REPO_OWNER` / `GITHUB_REPO_NAME` CI 变量 |
+| 2026-05-27 | 模板 v2 通用化 | github-sync.yml 改为变量化 URL，支持多项目复用 |
+
+### github-sync.yml v2 变量说明
+
+新版模板使用通用变量，所有项目只需 include 即可：
+
+```yaml
+include:
+  - project: 'infra/ci-templates'
+    file: 'github-sync.yml'
+```
+
+**必需 CI 变量：**
+
+| 变量 | 示例值 | 说明 |
+|------|--------|------|
+| `GITHUB_TOKEN` | `ghp_xxxx...` | GitHub PAT（repo + workflow scope） |
+| `GITHUB_REPO_OWNER` | `hdot123` | GitHub 用户名/组织 |
+| `GITHUB_REPO_NAME` | `memory` | GitHub 仓库名 |
+
+**可选 CI 变量：**
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `GITHUB_REPO_BRANCH` | `main` | 同步目标分支 |
+
+### CI 变量清单（更新版）
+
+| 变量名 | 用途 | Protected | Masked | 注意事项 |
+|--------|------|-----------|--------|----------|
+| `GITHUB_TOKEN` | GitHub 推送 | **false** | true | 需 repo + workflow scope |
+| `GITHUB_REPO_OWNER` | GitHub 用户名 | false | false | 如 hdot123 |
+| `GITHUB_REPO_NAME` | GitHub 仓库名 | false | false | 如 memory |
+| `GITHUB_REPO_BRANCH` | 目标分支 | false | false | 默认 main |
