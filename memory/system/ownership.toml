@@ -58,6 +58,34 @@ domain = "memory_system"
 description = "Ownership configuration"
 
 [[resources]]
+name = "memory_lock"
+path = "memory/system/memory.lock"
+level = "critical"
+domain = "memory_system"
+description = "Memory lock file"
+
+[[resources]]
+name = "adapter_toml"
+path = "memory/system/adapter.toml"
+level = "critical"
+domain = "memory_system"
+description = "Adapter configuration"
+
+[[resources]]
+name = "migrations_log"
+path = "memory/system/migrations.log"
+level = "standard"
+domain = "memory_system"
+description = "Migration history log"
+
+[[resources]]
+name = "manifest_json"
+path = "memory/system/manifest.json"
+level = "critical"
+domain = "memory_system"
+description = "Integrity manifest"
+
+[[resources]]
 name = "inbox_md"
 path = "memory/inbox.md"
 level = "standard"
