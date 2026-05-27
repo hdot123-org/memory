@@ -54,7 +54,7 @@ dist/
 .ruff_cache/
 
 # Runtime artifacts (not tracked)
-memory_core/artifacts/
+artifacts/
 memory/system/schema-audit.log
 memory/system/errors*.log
 memory/system/errors/
