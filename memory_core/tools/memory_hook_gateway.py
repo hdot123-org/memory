@@ -68,8 +68,7 @@ except ImportError:
     from memory_core.ownership import get_source_repo_mode, is_memory_core_source_repo  # type: ignore
 
 try:
-    from .memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy
-    from .memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile
+    from .memory_hook_adapters.neutral_policy import NeutralGatewayBusinessPolicy
     from .memory_hook_config import CoreConfig
     from .memory_hook_core import build_context_package_core, build_context_package_from_config
     from .memory_hook_impls import (
@@ -96,7 +95,7 @@ try:
     )
     from .memory_hook_schema import convert_legacy_to_memory_v1, convert_to_v1
 except ImportError:
-    from memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy  # type: ignore
+    from memory_hook_adapters.neutral_policy import NeutralGatewayBusinessPolicy  # type: ignore
     from memory_hook_config import CoreConfig  # type: ignore
     from memory_hook_core import build_context_package_core, build_context_package_from_config  # type: ignore
     from memory_hook_impls import (  # type: ignore
@@ -160,7 +159,6 @@ def _integrity_verify(project_root: _Path) -> dict | None:
 # - 多项目并发执行：每项目独立进程；同进程库导入并发不安全
 _ADAPTER_NAME = os.environ.get("MEMORY_HOOK_ADAPTER", "default")
 _ADAPTER_REGISTRY = {
-    "workbot": (".memory_hook_adapters.workbot_runtime_profile", "build_workbot_runtime_profile"),
     "default": (".memory_hook_adapters.default_runtime_profile", "build_default_runtime_profile"),
 }
 
@@ -313,7 +311,7 @@ def _build_gateway_business_policy() -> GatewayBusinessPolicy:
         scope_match_hints=SCOPE_MATCH_HINTS,
         read_text_if_exists_fn=read_text_if_exists,
     )
-    _policy_class = _adapter_config.get("GATEWAY_POLICY_CLASS", WorkbotGatewayBusinessPolicy)
+    _policy_class = _adapter_config.get("GATEWAY_POLICY_CLASS", NeutralGatewayBusinessPolicy)
     return _policy_class(config=config)
 
 
