@@ -30,7 +30,7 @@ def _configured_artifact_root(workspace_root: Path) -> Path:
     artifact_root = os.environ.get("MEMORY_HOOK_ARTIFACT_ROOT")
     if artifact_root:
         return Path(artifact_root).expanduser()
-    return workspace_root / "artifacts" / "memory-hook"
+    return workspace_root / "memory" / "artifacts" / "memory-hook"
 
 
 def _configured_error_log(workspace_root: Path) -> Path:
@@ -48,7 +48,7 @@ def _configured_project_lifecycle_root(workspace_root: Path) -> Path:
     global_state_root = os.environ.get("MEMORY_HOOK_GLOBAL_STATE_ROOT")
     if global_state_root:
         return Path(global_state_root).expanduser() / "project-lifecycle"
-    return workspace_root / "artifacts" / "memory-hook" / "project-lifecycle"
+    return workspace_root / "memory" / "artifacts" / "memory-hook" / "project-lifecycle"
 
 
 ARTIFACT_ROOT = _configured_artifact_root(WORKSPACE_ROOT)
@@ -660,7 +660,7 @@ def _classify_truth_ref(path: Path) -> str:
         return "docs"
     if _path_is_under(path, WORKSPACE_ROOT / "projects"):
         return "project-runtime"
-    if _path_is_under(path, WORKSPACE_ROOT / "artifacts"):
+    if _path_is_under(path, WORKSPACE_ROOT / "memory" / "artifacts"):
         return "artifact"
     if _path_is_under(path, WORKSPACE_ROOT / "tools"):
         return "tooling"
@@ -890,7 +890,7 @@ def write_targets() -> dict[str, Any]:
             "docs": str(WORKSPACE_ROOT / "memory" / "docs"),
             "action": str(WORKSPACE_ROOT / "memory" / "inbox.md"),
             "project_runtime": str(WORKSPACE_ROOT / "projects"),
-            "artifacts": str(WORKSPACE_ROOT / "artifacts"),
+            "artifacts": str(WORKSPACE_ROOT / "memory" / "artifacts"),
             "system_error": str(ERROR_LOG),
             "invalid_memory": str(_configured_invalid_memory_root(WORKSPACE_ROOT)),
             "kb_policy": {
