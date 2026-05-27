@@ -159,7 +159,7 @@ def build_default_runtime_profile(
         "memory-system.md",
     ]
     required_registry_scopes: list[str] = [
-        "memory_core/project-map/**",
+        "project-map/**",
         "memory/kb/global/**",
         "memory/kb/projects/**",
         "memory/docs/**",

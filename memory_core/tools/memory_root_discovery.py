@@ -60,9 +60,30 @@ def discover_project_root(start_path: Path) -> Path:
 
 
 def discover_workspace_root(project_root: Path) -> Path:
-    """Return *project_root* / ``workspace/`` if it exists, else *project_root*."""
-    ws = project_root / _WORKSPACE_DIR
-    return ws if ws.is_dir() else project_root
+    """Return workspace root for the given project_root.
+    
+    For the memory-core source repo itself (detected by presence of
+    memory_core/tools/memory_hook_gateway.py + memory/system/),
+    workspace = project_root because memory/ is already at repo root
+    (unified structure).
+    
+    For consumer projects, checks for memory_core/ or workspace/ subdir.
+    """
+    # Detect memory-core source repo
+    src_tool = project_root / "memory_core" / "tools" / "memory_hook_gateway.py"
+    src_marker = project_root / "memory" / "system"
+    if src_tool.is_file() and src_marker.is_dir():
+        # memory-core source repo — unified structure, workspace = repo root
+        return project_root
+    
+    # Consumer project: check for workspace/ or memory_core/ subdir
+    ws = project_root / "workspace"
+    if ws.is_dir():
+        return ws
+    ws = project_root / "memory_core"
+    if ws.is_dir():
+        return ws
+    return project_root
 
 
 def discover_roots(start_path: Path) -> tuple[Path, Path]:
