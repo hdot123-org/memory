@@ -16,7 +16,6 @@ from typing import Any
 import pytest
 
 # Use default adapter (workbot has been archived).
-import os
 os.environ.setdefault("MEMORY_HOOK_ADAPTER", "default")
 
 # ---------------------------------------------------------------------------
