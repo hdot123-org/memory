@@ -56,7 +56,7 @@ def test_global_state_root_does_not_redirect_project_artifact_or_error_paths(mon
     monkeypatch.setenv("MEMORY_HOOK_GLOBAL_STATE_ROOT", str(global_state_root))
     monkeypatch.delenv("MEMORY_HOOK_STORAGE_ROOT", raising=False)
 
-    assert gw._configured_artifact_root(workspace_root) == workspace_root / "artifacts" / "memory-hook"
+    assert gw._configured_artifact_root(workspace_root) == workspace_root / "memory" / "artifacts" / "memory-hook"
     assert gw._configured_error_log(workspace_root) == workspace_root / "memory" / "system" / "errors.log"
     assert gw._configured_project_lifecycle_root(workspace_root) == global_state_root / "project-lifecycle"
 
@@ -69,14 +69,14 @@ def test_global_state_root_preserves_project_memory_write_targets(monkeypatch, t
 
     monkeypatch.setenv("MEMORY_HOOK_GLOBAL_STATE_ROOT", str(global_state_root))
     monkeypatch.setattr(gw, "WORKSPACE_ROOT", project)
-    monkeypatch.setattr(gw, "ARTIFACT_ROOT", project / "artifacts" / "memory-hook")
+    monkeypatch.setattr(gw, "ARTIFACT_ROOT", project / "memory" / "artifacts" / "memory-hook")
     monkeypatch.setattr(gw, "ERROR_LOG", project_memory / "system" / "errors.log")
     monkeypatch.setattr(gw, "PROJECT_LIFECYCLE_ROOT", global_state_root / "project-lifecycle")
     monkeypatch.setattr(gw, "_default_write_policy", None)
 
     targets = gw.write_targets()
 
-    assert targets["artifacts"] == str(project / "artifacts")
+    assert targets["artifacts"] == str(project / "memory" / "artifacts")
     assert targets["system_error"] == str(project_memory / "system" / "errors.log")
     assert targets["hook_lifecycle"] == str(global_state_root / "project-lifecycle")
     assert Path(targets["artifacts"]).is_relative_to(project)
@@ -94,7 +94,7 @@ def test_artifact_and_error_logs_are_date_partitioned(monkeypatch, tmp_path: Pat
             return real_datetime(2026, 5, 11, 9, 8, 7, 123456)
 
     project = tmp_path / "project"
-    context_root = project / "artifacts" / "memory-hook" / "contexts"
+    context_root = project / "memory" / "artifacts" / "memory-hook" / "contexts"
     error_log = project / "memory" / "system" / "errors.log"
     writer = ArtifactWriter(context_root=context_root, error_log=error_log, datetime_module=FixedDatetime)
     package = {"schema_version": "wb-hook-v2"}
@@ -104,8 +104,8 @@ def test_artifact_and_error_logs_are_date_partitioned(monkeypatch, tmp_path: Pat
     snapshot = context_root / "2026-05-11" / "20260511T090807123456-codex-session-start.json"
     daily_latest = context_root / "2026-05-11" / "latest-codex-session-start.json"
     latest = context_root / "latest-codex-session-start.json"
-    daily_events = project / "artifacts" / "memory-hook" / "events" / "2026-05-11.jsonl"
-    legacy_events = project / "artifacts" / "memory-hook" / "events.jsonl"
+    daily_events = project / "memory" / "artifacts" / "memory-hook" / "events" / "2026-05-11.jsonl"
+    legacy_events = project / "memory" / "artifacts" / "memory-hook" / "events.jsonl"
 
     assert snapshot.is_file()
     assert daily_latest.is_file()

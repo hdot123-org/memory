@@ -247,7 +247,7 @@ def test_wrapper_skips_memory_core_source_repo_even_with_dot_memory(monkeypatch,
     assert proc.returncode == 0
     # M3: wrapper execs gateway with READONLY=1 - pre-existing memory/system should be preserved
     assert (memory_repo / "memory" / "system").exists()
-    assert not (memory_repo / "artifacts").exists()
+    assert not (memory_repo / "memory" / "artifacts").exists()
 
 
 def test_wrapper_detects_memory_core_by_claude_global_hooks(monkeypatch, tmp_path: Path) -> None:

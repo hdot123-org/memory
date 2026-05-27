@@ -66,7 +66,7 @@ ALLOWED_AUTO_ACTIONS = {
 }
 
 # Default reports destination for move_root_pollution
-DEFAULT_REPORTS_DEST = "artifacts/reports"
+DEFAULT_REPORTS_DEST = "memory/artifacts/reports"
 
 
 # ---------------------------------------------------------------------------

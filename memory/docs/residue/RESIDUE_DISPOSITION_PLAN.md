@@ -149,7 +149,7 @@ rm -rf workspace/memory/kb/projects/axonhub-rebase/
 | 7 个业务耦合测试文件 | ✅ 已迁至 `archive/legacy-workbot/tests-disabled/` |
 | `projects-spec.md` 第 11 节 (CE-01/AxonHub) | ✅ 已剥离至 `archive/legacy-workbot/projects-spec-axonhub-section.md` |
 | `projects-spec.md` 第 4 节业务示例 | ✅ 已替换为通用 `<Project>` 占位符 |
-| `memory_core/INDEX.md` 真相模型硬绑定 | ✅ 已改为通用 adapter 声明 |
+| `INDEX.md` 真相模型硬绑定 | ✅ 已改为通用 adapter 声明 |
 | pytest 不收集 archive/ | ✅ `testpaths=["tests"]` 已保证 |
 
 ### 历史 R-01 ~ R-09 状态更新

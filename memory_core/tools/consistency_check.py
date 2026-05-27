@@ -362,7 +362,7 @@ def check_no_handwritten_toml_parser() -> tuple[list, list]:
 
 
 def check_adapter_registry_complete() -> tuple[list, list]:
-    """Check that _ADAPTER_REGISTRY has workbot and default entries."""
+    """Check that _ADAPTER_REGISTRY has the default entry (workbot has been archived)."""
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -382,11 +382,7 @@ def check_adapter_registry_complete() -> tuple[list, list]:
 
         registry_content = registry_match.group(1)
 
-        # Check for workbot
-        if '"workbot"' not in registry_content and "'workbot'" not in registry_content:
-            errors.append("memory_hook_gateway.py: _ADAPTER_REGISTRY missing 'workbot' entry")
-
-        # Check for default
+        # Check for default (workbot has been archived, no longer required)
         if '"default"' not in registry_content and "'default'" not in registry_content:
             errors.append("memory_hook_gateway.py: _ADAPTER_REGISTRY missing 'default' entry")
 
@@ -643,47 +639,18 @@ def check_lock_parser_strict_toml() -> tuple[list, list]:
 
 
 def check_default_profile_compatibility() -> tuple[list, list]:
-    """Check that default runtime profile is compatible with workbot profile."""
+    """Check that default runtime profile exists (workbot has been archived)."""
     errors: list[str] = []
     warnings: list[str] = []
 
     default_file = TOOLS_DIR / "memory_hook_adapters" / "default_runtime_profile.py"
-    workbot_file = TOOLS_DIR / "memory_hook_adapters" / "workbot_runtime_profile.py"
 
     if not default_file.exists():
         errors.append("default_runtime_profile.py: file not found")
         return errors, warnings
 
-    if not workbot_file.exists():
-        errors.append("workbot_runtime_profile.py: file not found")
-        return errors, warnings
-
-    default_content = default_file.read_text(encoding="utf-8")
-    workbot_content = workbot_file.read_text(encoding="utf-8")
-
-    # Extract keys from return dict in both functions
-    def extract_return_keys(content: str) -> set[str]:
-        keys: set[str] = set()
-        # Find return { ... } block
-        return_match = re.search(r'return\s*\{(.*?)\n\s*\}', content, re.DOTALL)
-        if return_match:
-            dict_content = return_match.group(1)
-            # Extract keys (looking for "KEY": or 'KEY': patterns)
-            for match in re.finditer(r'["\']([A-Z_]+)["\']\s*:', dict_content):
-                keys.add(match.group(1))
-        return keys
-
-    default_keys = extract_return_keys(default_content)
-    workbot_keys = extract_return_keys(workbot_content)
-
-    # Find keys in workbot but not in default
-    workbot_only = workbot_keys - default_keys
-
-    if len(workbot_only) > 5:
-        warnings.append(
-            f"default_runtime_profile.py missing {len(workbot_only)} keys "
-            f"present in workbot: {workbot_only}"
-        )
+    # workbot has been archived to archive/legacy-workbot/, no longer required
+    warnings.append("workbot_runtime_profile.py has been archived (not an error)")
 
     return errors, warnings
 

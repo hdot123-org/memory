@@ -549,7 +549,7 @@ class WriteTargetPolicyImpl(WriteTargetPolicy):
             "docs": str(workspace_root / "memory" / "docs"),
             "action": str(workspace_root / "memory" / "inbox.md"),
             "project_runtime": str(workspace_root / "projects"),
-            "artifacts": str(workspace_root / "artifacts"),
+            "artifacts": str(workspace_root / "memory" / "artifacts"),
             "system_error": str(workspace_root / "memory" / "system" / "errors.log"),
             "invalid_memory": str(workspace_root / "memory" / "archive" / "invalid"),
             "kb_policy": {
@@ -748,7 +748,7 @@ class GatewayBusinessPolicyImpl(GatewayBusinessPolicy):
             return "docs"
         if self._path_is_under(path, cfg.workspace_root / "projects"):
             return "project-runtime"
-        if self._path_is_under(path, cfg.workspace_root / "artifacts"):
+        if self._path_is_under(path, cfg.workspace_root / "memory" / "artifacts"):
             return "artifact"
         if self._path_is_under(path, cfg.workspace_root / "tools"):
             return "tooling"
@@ -1450,7 +1450,7 @@ class PathUtilsImpl(PathUtils):
             "docs": str(self._workspace_root / "memory" / "docs"),
             "action": str(self._workspace_root / "memory" / "inbox.md"),
             "project_runtime": str(self._workspace_root / "projects"),
-            "artifacts": str(self._workspace_root / "artifacts"),
+            "artifacts": str(self._workspace_root / "memory" / "artifacts"),
             "system_error": str(self._workspace_root / "memory" / "system" / "errors.log"),
             "invalid_memory": str(self._workspace_root / "memory" / "archive" / "invalid"),
             "kb_policy": {

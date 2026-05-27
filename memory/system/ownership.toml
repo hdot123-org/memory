@@ -24,10 +24,24 @@ description = "Protected system state domain"
 
 [[domains]]
 name = "project_map"
-path = "memory/project-map"
+path = "project-map"
 level = "critical"
 recursive = true
 description = "Protected project map domain"
+
+[[domains]]
+name = "memory_artifacts"
+path = "memory/artifacts"
+level = "standard"
+recursive = true
+description = "Runtime artifacts domain"
+
+[[domains]]
+name = "memory_log"
+path = "memory/log"
+level = "standard"
+recursive = true
+description = "Runtime logs domain"
 
 [[resources]]
 name = "agents_md"
@@ -35,6 +49,13 @@ path = "AGENTS.md"
 level = "critical"
 domain = ""
 description = "Agent policy file"
+
+[[resources]]
+name = "ownership_toml"
+path = "memory/system/ownership.toml"
+level = "critical"
+domain = "memory_system"
+description = "Ownership configuration"
 
 [[resources]]
 name = "memory_lock"
@@ -51,13 +72,6 @@ domain = "memory_system"
 description = "Adapter configuration"
 
 [[resources]]
-name = "ownership_toml"
-path = "memory/system/ownership.toml"
-level = "critical"
-domain = "memory_system"
-description = "Ownership configuration"
-
-[[resources]]
 name = "migrations_log"
 path = "memory/system/migrations.log"
 level = "standard"
@@ -70,6 +84,20 @@ path = "memory/system/manifest.json"
 level = "critical"
 domain = "memory_system"
 description = "Integrity manifest"
+
+[[resources]]
+name = "inbox_md"
+path = "memory/inbox.md"
+level = "standard"
+domain = ""
+description = "Inbox placeholder file"
+
+[[resources]]
+name = "index_md"
+path = "INDEX.md"
+level = "critical"
+domain = ""
+description = "Workspace root index"
 
 [policy]
 

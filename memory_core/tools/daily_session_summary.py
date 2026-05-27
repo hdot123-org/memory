@@ -23,8 +23,8 @@ from typing import Any
 def _find_event_log(project_root: Path, target_date: str) -> Path | None:
     """Locate the date-partitioned event log."""
     candidates = [
-        project_root / "artifacts" / "memory-hook" / "events" / f"{target_date}.jsonl",
-        project_root / "artifacts" / "memory-hook" / "events.jsonl",
+        project_root / "memory" / "artifacts" / "memory-hook" / "events" / f"{target_date}.jsonl",
+        project_root / "memory" / "artifacts" / "memory-hook" / "events.jsonl",
     ]
     for p in candidates:
         if p.exists():
@@ -34,7 +34,7 @@ def _find_event_log(project_root: Path, target_date: str) -> Path | None:
 
 def _find_context_snapshots(project_root: Path, target_date: str) -> list[Path]:
     """Locate all snapshot files for the target date."""
-    daily_dir = project_root / "artifacts" / "memory-hook" / "contexts" / target_date
+    daily_dir = project_root / "memory" / "artifacts" / "memory-hook" / "contexts" / target_date
     if not daily_dir.exists():
         return []
     return sorted(daily_dir.glob("*.json"))
@@ -287,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
         events = _load_events(log_path)
         if not events:
             # Try legacy combined log (unpartitioned events.jsonl)
-            legacy_log = proj / "artifacts" / "memory-hook" / "events.jsonl"
+            legacy_log = proj / "memory" / "artifacts" / "memory-hook" / "events.jsonl"
             if legacy_log.exists():
                 legacy_events = _load_events(legacy_log)
                 events = _filter_by_date(legacy_events, target_date)

@@ -126,7 +126,7 @@ def test_workbot_runtime_profile_is_exempt(tmp_path, monkeypatch):
 def test_cli_returns_nonzero_on_findings(tmp_path):
     fake_repo = tmp_path / "fake-repo"
     fake_repo.mkdir()
-    fake_global = fake_repo / "memory_core" / "memory" / "kb" / "global"
+    fake_global = fake_repo / "memory" / "kb" / "global"
     fake_global.mkdir(parents=True)
     (fake_global / "workbot-truth-model.md").write_text("dummy", encoding="utf-8")
 

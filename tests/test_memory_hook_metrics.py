@@ -55,7 +55,7 @@ def test_collect_metrics_handles_non_dict_package():
 def test_emit_metrics_writes_jsonl(tmp_path: Path, monkeypatch):
     monkeypatch.delenv(metrics.ENV_DISABLE, raising=False)
     monkeypatch.delenv(metrics.ENV_METRICS_PATH, raising=False)
-    artifact_root = tmp_path / "artifacts"
+    artifact_root = tmp_path / "memory" / "artifacts"
     result = metrics.emit_metrics(artifact_root, "codex", "session-start", _sample_package())
     assert result is not None
     assert result == artifact_root / metrics.METRICS_FILENAME
@@ -70,7 +70,7 @@ def test_emit_metrics_writes_jsonl(tmp_path: Path, monkeypatch):
 def test_emit_metrics_appends_multiple_records(tmp_path: Path, monkeypatch):
     monkeypatch.delenv(metrics.ENV_DISABLE, raising=False)
     monkeypatch.delenv(metrics.ENV_METRICS_PATH, raising=False)
-    artifact_root = tmp_path / "artifacts"
+    artifact_root = tmp_path / "memory" / "artifacts"
     metrics.emit_metrics(artifact_root, "codex", "session-start", _sample_package())
     metrics.emit_metrics(artifact_root, "claude", "prompt-submit", _sample_package("degraded"))
     path = artifact_root / metrics.METRICS_FILENAME
@@ -85,7 +85,7 @@ def test_emit_metrics_appends_multiple_records(tmp_path: Path, monkeypatch):
 
 def test_emit_metrics_disabled_returns_none(tmp_path: Path, monkeypatch):
     monkeypatch.setenv(metrics.ENV_DISABLE, "1")
-    artifact_root = tmp_path / "artifacts"
+    artifact_root = tmp_path / "memory" / "artifacts"
     result = metrics.emit_metrics(artifact_root, "codex", "session-start", _sample_package())
     assert result is None
     assert not (artifact_root / metrics.METRICS_FILENAME).exists()
@@ -95,7 +95,7 @@ def test_emit_metrics_respects_path_override(tmp_path: Path, monkeypatch):
     monkeypatch.delenv(metrics.ENV_DISABLE, raising=False)
     override = tmp_path / "custom" / "metrics-stream.jsonl"
     monkeypatch.setenv(metrics.ENV_METRICS_PATH, str(override))
-    artifact_root = tmp_path / "artifacts"
+    artifact_root = tmp_path / "memory" / "artifacts"
     result = metrics.emit_metrics(artifact_root, "codex", "session-start", _sample_package())
     assert result == override
     assert override.exists()

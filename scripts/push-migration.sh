@@ -4,8 +4,8 @@
 
 cd /Users/busiji/memory
 
-# Get all changed files (excluding old memory_core/memory/ deletions)
-FILES=$(git status --porcelain | sed 's/^...//' | grep -v '^memory_core/memory/' | grep -v '^"')
+# Get all changed files
+FILES=$(git status --porcelain | sed 's/^...//' | grep -v '^"')
 
 # Build --file arguments
 FILE_ARGS=""

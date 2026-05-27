@@ -54,12 +54,12 @@ LEAK_PATTERNS: tuple[tuple[str, str], ...] = (
 )
 
 # 检查这些路径下的文件名前缀。
-KB_GLOBAL_DIR = REPO_ROOT / "memory_core" / "memory" / "kb" / "global"
-KB_PROJECTS_DIR = REPO_ROOT / "memory_core" / "memory" / "kb" / "projects"
+KB_GLOBAL_DIR = REPO_ROOT / "memory" / "kb" / "global"
+KB_PROJECTS_DIR = REPO_ROOT / "memory" / "kb" / "projects"
 
 # 检查这些路径下的文件内容。其余路径（archive、docs/audit、RESIDUE_*）豁免。
 LEAK_SCAN_ROOTS: tuple[Path, ...] = (
-    REPO_ROOT / "memory_core",
+    REPO_ROOT / "memory",
     REPO_ROOT / "workspace",
     REPO_ROOT / "tests",
     REPO_ROOT / "scripts",

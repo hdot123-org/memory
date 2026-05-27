@@ -92,7 +92,7 @@ def config(tmp_path: Path) -> Any:
     for subdir in [
         "memory", "memory/kb", "memory/kb/global",
         "memory/kb/global/projects", "memory/kb/projects",
-        "docs", "projects", "artifacts", "tools",
+        "docs", "projects", "memory/artifacts", "tools",
         "memory/log", "memory/system",
     ]:
         (workspace / subdir).mkdir(exist_ok=True)

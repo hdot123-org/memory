@@ -75,7 +75,7 @@ class TestUtilityFunctions:
         """Other paths should be allowed."""
         assert _is_forbidden_path("README.md") is False
         assert _is_forbidden_path("test-report.md") is False
-        assert _is_forbidden_path("artifacts/reports/file.md") is False
+        assert _is_forbidden_path("memory/artifacts/reports/file.md") is False
 
 
 class TestPlanValidation:
@@ -247,7 +247,7 @@ class TestDryRun:
         assert report_file.exists()
 
         # Verify no artifacts/reports directory created
-        assert not (project / "artifacts" / "reports").exists()
+        assert not (project / "memory" / "artifacts" / "reports").exists()
 
         # Verify no backup directory created
         assert not (project / "memory" / "system" / "backups").exists()
@@ -291,7 +291,7 @@ class TestDryRun:
         plan = {
             "target": str(project),
             "actions": [
-                {"action": "ignore_runtime_artifact", "path": "artifacts/memory-hook/log.json", "severity": "P2"},
+                {"action": "ignore_runtime_artifact", "path": "memory/artifacts/memory-hook/log.json", "severity": "P2"},
             ],
             "risk_level": "low",
             "requires_human_confirmation": False,
@@ -369,7 +369,7 @@ class TestMoveRootPollution:
         assert not report_file.exists()
 
         # File should be in artifacts/reports
-        moved_file = project / "artifacts" / "reports" / "status-report.md"
+        moved_file = project / "memory" / "artifacts" / "reports" / "status-report.md"
         assert moved_file.exists()
         assert moved_file.read_text() == report_content
 
@@ -423,7 +423,7 @@ class TestMoveRootPollution:
         report_file.write_text("# Report")
 
         # Pre-create the destination
-        reports_dir = project / "artifacts" / "reports"
+        reports_dir = project / "memory" / "artifacts" / "reports"
         reports_dir.mkdir(parents=True)
         existing_file = reports_dir / "status-report.md"
         existing_file.write_text("# Existing")
@@ -471,7 +471,7 @@ class TestIgnoreRuntimeArtifact:
         plan = {
             "target": str(project),
             "actions": [
-                {"action": "ignore_runtime_artifact", "path": "artifacts/memory-hook/log.json", "severity": "P2"},
+                {"action": "ignore_runtime_artifact", "path": "memory/artifacts/memory-hook/log.json", "severity": "P2"},
             ],
             "risk_level": "low",
             "requires_human_confirmation": False,
@@ -500,7 +500,7 @@ class TestIgnoreRuntimeArtifact:
         plan = {
             "target": str(project),
             "actions": [
-                {"action": "ignore_runtime_artifact", "path": "artifacts/memory-hook/log.json", "severity": "P2"},
+                {"action": "ignore_runtime_artifact", "path": "memory/artifacts/memory-hook/log.json", "severity": "P2"},
             ],
             "risk_level": "low",
             "requires_human_confirmation": False,
@@ -675,7 +675,7 @@ class TestBackupAndRollback:
         )
 
         # Destination should exist
-        dest_file = project / "artifacts" / "reports" / "status-report.md"
+        dest_file = project / "memory" / "artifacts" / "reports" / "status-report.md"
         assert dest_file.exists()
 
         # Rollback
@@ -873,7 +873,7 @@ class TestCLIMain:
                 {
                     "action": "move_root_pollution",
                     "src": "test-report.md",
-                    "dst": "artifacts/reports/test-report.md",
+                    "dst": "memory/artifacts/reports/test-report.md",
                     "backup_path": "test-report.md.backup",
                     "sha256": "dummy",
                     "timestamp": _now_iso(),

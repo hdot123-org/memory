@@ -30,7 +30,7 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 | 文件 | 职责 | 路径 |
 |------|------|------|
 | memory-routing.md | 记忆请求路由、作用域解析、降级策略 | `memory/kb/global/memory-routing.md` |
-| project-map/INDEX.md | 项目地图唯一合法入口、合法性校验 | `memory_core/project-map/INDEX.md` |
+| project-map/INDEX.md | 项目地图唯一合法入口、合法性校验 | `project-map/INDEX.md` |
 | BOUNDARY.md | 仓库边界定义、职责范围、不属于本仓库的内容 | `memory/docs/system/BOUNDARY.md` |
 
 具体路由规则（如 scope resolution、fallback）请查阅上述文件，不要在此文件中寻找。

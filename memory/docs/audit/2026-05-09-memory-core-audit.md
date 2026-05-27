@@ -67,8 +67,8 @@ memory-core 自我声明的"通用记忆底座"定位在**常量/协议层面基
 | 11 | host 列表一致 | README / DOT_MEMORY_SPEC / `constants.py:7` 三处一致 `(codex,claude,factory)` | — | 否 |
 | 12 | RESIDUE 文档与现实不同步 | RESIDUE_INVENTORY R-01~R-09 标注"必须迁出"，实际 git 中已不存在但文档未更新 | P2 | 否 |
 | **13** | **`memory/kb/` 业务残留违反 BOUNDARY 4.1** | `memory/kb/projects/workbot.md`（workbot 项目专属） + `memory/kb/global/workbot-*` 7 个文件 + `projects-spec.md §11` 含 AxonHub CE-01 SSH/IP/Docker 部署信息 | **P0** | **是** |
-| **14** | **`memory_core/INDEX.md:44` 把 workbot-truth-model.md 当真相模型** | "真相模型 canonical：`memory/kb/global/workbot-truth-model.md`（**当前接入项目的真相模型文件**）" | **P0** | **是** |
-| 15 | `memory_core/NOW.md` 是仓库自身状态，不违反 BOUNDARY | 内容为 memory-core 开发进度，不是业务项目 PLAN/STATE | — | 否 |
+| **14** | **`INDEX.md:44` 把 workbot-truth-model.md 当真相模型** | "真相模型 canonical：`memory/kb/global/workbot-truth-model.md`（**当前接入项目的真相模型文件**）" | **P0** | **是** |
+| 15 | ~~`NOW.md`~~ (已移除) 仓库自身状态 | 内容为 memory-core 开发进度，不是业务项目 PLAN/STATE | — | 否 |
 | **16** | **模板版本漂移** | `workspace/templates/.memory/adapter.toml:6` `version = "1.0.0"` ≠ `CURRENT_MEMORY_VERSION = "0.2.0"`；且仍用旧 `[adapter]` schema 而非 canonical `[core][policy][routing]` | **P1** | **是** |
 | 17 | multi-project scan 规范本身不耦合单项目 | 但 registry.toml 需手动维护，缺少自动发现 | P2 | 否 |
 | 18 | MULTI_PROJECT_SCAN_SPEC.md 标记 ARCHIVED | 规范与实际实现可能脱节 | P2 | 否 |
@@ -181,7 +181,7 @@ Found 4 errors.
 | 1 | ruff check 4 errors 未修复 | exit code 1，CI ruff check 步骤会失败 | **P0** | **CI 红线** |
 | 2 | CI 无 pollution guard 用例 | ci.yml/release/.gitlab-ci 均不调 validate_memory_system | P2 | 否 |
 | 3 | 业务状态模板被 git track | `workspace/templates/.memory/{PLAN,STATE,CANONICAL,TASKS}.md`；.gitignore 不匹配 | P1 | 否（内容是占位符） |
-| 4 | memory_core/NOW.md 存在 | 仓库级 mission 追踪，干净 | P3 | 否 |
+| 4 | ~~NOW.md~~ (已移除) | 仓库级 mission 追踪，已清理 | P3 | 否 |
 | 5 | build/ 残留 .memory 目录 | python -m build 产物未 track | P3 | 否 |
 | 6 | release workflow 可能打包模板 | `package-data` 含 `workspace=["templates/**/*"]` | P2 | 否（内容是占位符） |
 | 7 | GitLab sync 可能推送污染 | `git push github main --force` 同步整分支 | P2 | 否（与 GitHub 端一致） |
@@ -230,7 +230,7 @@ Found 4 errors.
 | 指纹 | 找到位置 | 是否污染 |
 |---|---|---|
 | STATE/PLAN/CANONICAL/TASKS.md | `workspace/templates/.memory/` | 模板占位符 ✅ |
-| NOW.md | `memory_core/NOW.md` | 仓库级，非业务 ✅ |
+| NOW.md | ~~`NOW.md`~~ (已移除) | 仓库级，非业务 ✅ |
 | .memory/ 目录 | `workspace/templates/.memory/`、`build/lib/.../` | 模板/构建残留 ✅ |
 | `workspace/projects/*/` | 不存在 | ✅ |
 | `workspace/memory/kb/projects/*/STATE.md` | 不存在 | ✅ |
@@ -250,7 +250,7 @@ Found 4 errors.
 | # | 来源 | 风险 |
 |---|---|---|
 | P0-1 | A.13 | `memory/kb/` 业务残留违反 BOUNDARY 4.1（8 个 workbot-* + projects-spec.md AxonHub 段） |
-| P0-2 | A.14 | `memory_core/INDEX.md:44` 把 workbot-truth-model.md 当真相模型 |
+| P0-2 | A.14 | `INDEX.md:44` 把 workbot-truth-model.md 当真相模型 |
 | P0-3 | A.16 | `workspace/templates/.memory/adapter.toml` 旧 schema + version 1.0.0 |
 | P0-4 | D.1 | ruff check 4 errors（CI 红线） |
 | P0-5 | B.Q3-1 | migrate 非幂等 |
@@ -328,7 +328,7 @@ Found 4 errors.
 | ID | 描述 | Phase | 状态 | 关键文件 |
 |---|---|---|---|---|
 | P0-1 | workbot 项目真相残留 | Phase 1 | ✅ 已迁出 | `archive/legacy-workbot/kb/*` |
-| P0-2 | INDEX.md 真相模型硬绑定 workbot | Phase 1 | ✅ 通用化 | `memory_core/INDEX.md` |
+| P0-2 | INDEX.md 真相模型硬绑定 workbot | Phase 1 | ✅ 通用化 | `INDEX.md` |
 | P0-3 | 模板 schema 漂移 | Phase 2 | ✅ canonical 对齐 | `workspace/templates/.memory/adapter.toml` |
 | P0-4 | 降级语义缺失 | Phase 4c | ✅ 显式 reject + 错误码 | `migrate_project_memory.py` |
 | P0-5 | lint 红线 | Phase 3 | ✅ ruff 0 errors | `validate_memory_system.py` + others |
@@ -439,5 +439,5 @@ Found 4 errors.
 
 **仍需完成的业务层清理**（Phase 1 + Phase 2）：
 1. memory/kb/ 业务残留 → archive/（已完成软迁移，需用户确认硬删）
-2. memory_core/INDEX.md 移除 workbot 绑定
+2. INDEX.md 移除 workbot 绑定
 3. workspace/templates/.memory/adapter.toml 重写为 canonical layout

@@ -30,7 +30,7 @@ def _configured_artifact_root(workspace_root: Path) -> Path:
     artifact_root = os.environ.get("MEMORY_HOOK_ARTIFACT_ROOT")
     if artifact_root:
         return Path(artifact_root).expanduser()
-    return workspace_root / "artifacts" / "memory-hook"
+    return workspace_root / "memory" / "artifacts" / "memory-hook"
 
 
 def _configured_error_log(workspace_root: Path) -> Path:
@@ -48,7 +48,7 @@ def _configured_project_lifecycle_root(workspace_root: Path) -> Path:
     global_state_root = os.environ.get("MEMORY_HOOK_GLOBAL_STATE_ROOT")
     if global_state_root:
         return Path(global_state_root).expanduser() / "project-lifecycle"
-    return workspace_root / "artifacts" / "memory-hook" / "project-lifecycle"
+    return workspace_root / "memory" / "artifacts" / "memory-hook" / "project-lifecycle"
 
 
 ARTIFACT_ROOT = _configured_artifact_root(WORKSPACE_ROOT)
@@ -68,8 +68,7 @@ except ImportError:
     from memory_core.ownership import get_source_repo_mode, is_memory_core_source_repo  # type: ignore
 
 try:
-    from .memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy
-    from .memory_hook_adapters.workbot_runtime_profile import build_workbot_runtime_profile
+    from .memory_hook_adapters.neutral_policy import NeutralGatewayBusinessPolicy
     from .memory_hook_config import CoreConfig
     from .memory_hook_core import build_context_package_core, build_context_package_from_config
     from .memory_hook_impls import (
@@ -96,7 +95,7 @@ try:
     )
     from .memory_hook_schema import convert_legacy_to_memory_v1, convert_to_v1
 except ImportError:
-    from memory_hook_adapters.workbot_policy import WorkbotGatewayBusinessPolicy  # type: ignore
+    from memory_hook_adapters.neutral_policy import NeutralGatewayBusinessPolicy  # type: ignore
     from memory_hook_config import CoreConfig  # type: ignore
     from memory_hook_core import build_context_package_core, build_context_package_from_config  # type: ignore
     from memory_hook_impls import (  # type: ignore
@@ -160,7 +159,6 @@ def _integrity_verify(project_root: _Path) -> dict | None:
 # - 多项目并发执行：每项目独立进程；同进程库导入并发不安全
 _ADAPTER_NAME = os.environ.get("MEMORY_HOOK_ADAPTER", "default")
 _ADAPTER_REGISTRY = {
-    "workbot": (".memory_hook_adapters.workbot_runtime_profile", "build_workbot_runtime_profile"),
     "default": (".memory_hook_adapters.default_runtime_profile", "build_default_runtime_profile"),
 }
 
@@ -313,7 +311,7 @@ def _build_gateway_business_policy() -> GatewayBusinessPolicy:
         scope_match_hints=SCOPE_MATCH_HINTS,
         read_text_if_exists_fn=read_text_if_exists,
     )
-    _policy_class = _adapter_config.get("GATEWAY_POLICY_CLASS", WorkbotGatewayBusinessPolicy)
+    _policy_class = _adapter_config.get("GATEWAY_POLICY_CLASS", NeutralGatewayBusinessPolicy)
     return _policy_class(config=config)
 
 
@@ -662,7 +660,7 @@ def _classify_truth_ref(path: Path) -> str:
         return "docs"
     if _path_is_under(path, WORKSPACE_ROOT / "projects"):
         return "project-runtime"
-    if _path_is_under(path, WORKSPACE_ROOT / "artifacts"):
+    if _path_is_under(path, WORKSPACE_ROOT / "memory" / "artifacts"):
         return "artifact"
     if _path_is_under(path, WORKSPACE_ROOT / "tools"):
         return "tooling"
@@ -892,7 +890,7 @@ def write_targets() -> dict[str, Any]:
             "docs": str(WORKSPACE_ROOT / "memory" / "docs"),
             "action": str(WORKSPACE_ROOT / "memory" / "inbox.md"),
             "project_runtime": str(WORKSPACE_ROOT / "projects"),
-            "artifacts": str(WORKSPACE_ROOT / "artifacts"),
+            "artifacts": str(WORKSPACE_ROOT / "memory" / "artifacts"),
             "system_error": str(ERROR_LOG),
             "invalid_memory": str(_configured_invalid_memory_root(WORKSPACE_ROOT)),
             "kb_policy": {
