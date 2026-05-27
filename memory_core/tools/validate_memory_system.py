@@ -276,7 +276,7 @@ def check_package_imports(result: ValidateResult) -> bool:
 _WHITELIST_PATH_PREFIXES: tuple[str, ...] = (
     "memory/system/",
     "memory/kb/global/",
-    "memory_core/project-map/",
+    "project-map/",
     "archive/legacy-workbot/",
     "workspace/templates/memory/system/",
 )
@@ -352,7 +352,7 @@ def _scan_file_content(filepath: Path, repo_root: Path) -> list[dict]:
     # Only scan newly created runtime content
     runtime_prefixes = (
         "memory/system/",
-        "memory_core/project-map/",
+        "project-map/",
         "memory/kb/global/",
     )
     if not any(rel_str.startswith(p) for p in runtime_prefixes):
