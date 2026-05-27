@@ -160,7 +160,7 @@ class TestManifest:
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             # Create date-partitioned artifacts
-            art_dir = root / "artifacts" / "memory-hook" / "contexts" / "2026-05-11"
+            art_dir = root / "memory" / "artifacts" / "memory-hook" / "contexts" / "2026-05-11"
             art_dir.mkdir(parents=True)
             (art_dir / "snapshot.json").write_text("{}")
 

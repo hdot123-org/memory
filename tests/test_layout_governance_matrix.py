@@ -662,7 +662,7 @@ class TestFixtureManifestRuntimePollution:
                 {"path": "/tmp/test.json", "rel_path": "tmp/test.json"},
                 {"path": "/project/runtime/state.json", "rel_path": "runtime/state.json"},
                 {"path": "/project/log/app.log", "rel_path": "log/app.log"},
-                {"path": "/project/artifacts/memory-hook/data.json"},
+                {"path": "/project/memory/artifacts/memory-hook/data.json"},
                 {"path": "/project/.memory/memory.lock", "rel_path": "memory.lock"},
             ],
         }

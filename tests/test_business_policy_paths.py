@@ -323,7 +323,7 @@ class TestTruthBasisResolverClassify:
 
     def test_artifact_scope(self, tmp_path: Path) -> None:
         resolver, cfg = self._resolver(tmp_path)
-        p = cfg.workspace_root / "artifacts" / "build.tar"
+        p = cfg.workspace_root / "memory" / "artifacts" / "build.tar"
         p.parent.mkdir(parents=True)
         p.touch()
         assert resolver._classify_truth_ref(p) == "artifact"

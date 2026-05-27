@@ -122,7 +122,7 @@ class TestSourceRepoReadonlyContextPackage:
     def test_no_artifacts_directory_created(self, source_repo: Path) -> None:
         """Building readonly package does not create artifacts/ directory."""
         _call_build_readonly_package(source_repo)
-        assert not (source_repo / "artifacts").exists(), "artifacts/ should not be created"
+        assert not (source_repo / "memory" / "artifacts").exists(), "memory/artifacts/ should not be created"
 
     def test_git_status_unchanged_after_readonly_package_build(self, source_repo: Path) -> None:
         """git status shows no changes after readonly package build."""

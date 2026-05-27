@@ -296,7 +296,7 @@ def test_wrapper_skips_memory_core_source_repo_even_with_dot_memory(monkeypatch,
     assert proc.returncode == 0
     # Should not create memory/ or artifacts/ - pre-existing memory/system should be preserved
     assert (memory_repo / "memory" / "system").exists()
-    assert not (memory_repo / "artifacts").exists()
+    assert not (memory_repo / "memory" / "artifacts").exists()
 
 
 def test_wrapper_detects_memory_core_by_factory_global_hooks(monkeypatch, tmp_path: Path) -> None:
