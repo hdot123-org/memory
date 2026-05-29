@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
+import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 from datetime import datetime
@@ -152,6 +155,50 @@ def _integrity_verify(project_root: _Path) -> dict | None:
     except Exception as exc:
         _logger.debug("integrity verify skipped: %s", exc)
         return None
+
+
+def _collect_changed_paths(
+    project_root: Path,
+    manifest: dict[str, Any],
+) -> set[str]:
+    """F3: Compare manifest SHA-256 entries with on-disk files to find changes.
+
+    Returns a set of relative paths whose content hash differs from the manifest,
+    or that are missing from disk but present in the manifest.
+
+    Args:
+        project_root: Absolute path to project root
+        manifest: Loaded manifest dict with 'entries' list
+
+    Returns:
+        Set of relative paths that have changed
+    """
+    resolved_root = project_root.resolve()
+    changed: set[str] = set()
+
+    for entry in manifest.get("entries", []):
+        rel_path = entry.get("rel_path", "")
+        expected_sha = entry.get("sha256", "")
+        if not rel_path or not expected_sha:
+            continue
+
+        abs_path = resolved_root / rel_path
+        if not abs_path.exists():
+            # File was deleted — report as changed
+            changed.add(rel_path)
+            continue
+
+        # Compute on-disk SHA-256
+        try:
+            raw = abs_path.read_bytes()
+            actual_sha = hashlib.sha256(raw).hexdigest()
+            if actual_sha != expected_sha:
+                changed.add(rel_path)
+        except OSError as exc:
+            _logger.warning("_collect_changed_paths: cannot read %s: %s", rel_path, exc)
+            changed.add(rel_path)
+
+    return changed
 
 # 并发限制：本模块在导入时根据 MEMORY_HOOK_ADAPTER 环境变量初始化全局状态
 # （_ADAPTER_NAME / _adapter_config / module globals）。
@@ -1384,6 +1431,139 @@ def _launch_async_health_check(cwd: Path) -> None:
             )
 
 
+# ---------------------------------------------------------------------------
+# F4: PromptSubmit real-time logging
+# ---------------------------------------------------------------------------
+
+def _read_last_user_message_from_transcript(transcript_path: str | None) -> str | None:
+    """F4: Fallback — read the last user message from the transcript file.
+
+    The transcript is a JSONL file where each line is a JSON object with
+    at least ``role`` and ``content`` keys.  Returns the content of the
+    last line whose role is ``"user"``, or ``None`` if no such line exists.
+    """
+    if not transcript_path:
+        return None
+    path = Path(transcript_path)
+    if not path.exists():
+        return None
+    try:
+        last_user: str | None = None
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("role") == "user":
+                    content = entry.get("content", "")
+                    if isinstance(content, str) and content:
+                        last_user = content
+        return last_user
+    except OSError:
+        return None
+
+
+# Sentinel for timeout handler — not part of public API
+class _TimeoutError(Exception):
+    pass
+
+
+def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
+    """F4: Write a heartbeat entry for a prompt-submit event.
+
+    Writes to ``{project_root}/memory/log/{YYYY-MM-DD}-sessions.md`` with
+    format::
+
+        #### {HH:MM:SS} — {session_id[:8]} [heartbeat]
+        - **用户消息**: {prompt[:100]}
+        - **累计 prompt 数**: {count}
+        ---
+
+    Uses ``fcntl.flock(LOCK_EX)`` for exclusive lock during append.
+    Protected by a 2-second SIGALRM timeout.
+
+    Fallback: if payload lacks ``prompt``, reads ``transcript_path`` last
+    user message.  If still unavailable, writes ``(no prompt captured)``.
+
+    Args:
+        project_root: Absolute path to project root
+        payload: Factory event payload dict
+    """
+    # ── Extract fields ──────────────────────────────────────────────
+    session_id: str = payload.get("session_id", "unknown")
+    transcript_path: str | None = payload.get("transcript_path")
+
+    # Extract prompt with fallback chain
+    prompt: str | None = payload.get("prompt")
+    if not prompt:
+        prompt = _read_last_user_message_from_transcript(transcript_path)
+    if not prompt:
+        prompt = "(no prompt captured)"
+
+    # ── Build heartbeat content ─────────────────────────────────────
+    now = datetime.now().astimezone()
+    date_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%H:%M:%S")
+    session_prefix = session_id[:8]
+
+    # Determine cumulative prompt count for this session
+    log_dir = project_root / "memory" / "log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"{date_str}-sessions.md"
+
+    prompt_count = 1
+    if log_file.exists():
+        try:
+            content = log_file.read_text(encoding="utf-8")
+            # Count heartbeat entries for this session_id
+            pattern = re.compile(rf"#### [^\n]+— {re.escape(session_prefix)} \[?heartbeat")
+            matches = pattern.findall(content)
+            prompt_count = len(matches) + 1
+        except OSError:
+            pass
+
+    preview = prompt[:100]
+
+    heartbeat = (
+        f"#### {time_str} — {session_prefix} [heartbeat]\n"
+        f"- **用户消息**: {preview}\n"
+        f"- **累计 prompt 数**: {prompt_count}\n"
+        "---\n"
+    )
+
+    # ── Write with file lock and timeout ────────────────────────────
+    def _write_handler(signum, frame):  # type: ignore[no-untyped-def]
+        raise _TimeoutError("prompt-submit log write timed out")
+
+    old_handler = None
+    try:
+        old_handler = signal.signal(signal.SIGALRM, _write_handler)
+        signal.alarm(2)  # 2-second timeout
+
+        with log_file.open("a", encoding="utf-8") as fh:
+            fd = fh.fileno()
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                fh.write(heartbeat)
+                fh.flush()
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+    except _TimeoutError:
+        _logger.warning("_log_prompt_submit: write timed out for session %s", session_prefix)
+    finally:
+        signal.alarm(0)
+        if old_handler is not None:
+            signal.signal(signal.SIGALRM, old_handler)
+
+
+# ---------------------------------------------------------------------------
+# M3: Build a readonly context-package for the memory-core source repo.
+# ---------------------------------------------------------------------------
+
 def _build_readonly_source_repo_package(cwd: Path, host: str, event: str) -> dict[str, Any]:
     """M3: Build a readonly context-package for the memory-core source repo.
 
@@ -1469,12 +1649,46 @@ def main() -> int:
     if _should_noop_for_external_context(payload):
         return _delegate_noop_response(args.host)
 
+    # ── PreToolUse guard: intercept write operations ──
+    if args.event == "pre-tool-use":
+        guard_script = Path(__file__).parent / "pretooluse_guard.py"
+        if guard_script.exists():
+            try:
+                guard_env = {**os.environ, "MEMORY_HOOK_ORIGINAL_CWD": str(cwd)}
+                proc = subprocess.run(
+                    [sys.executable, str(guard_script)],
+                    input=raw_payload,
+                    text=True,
+                    capture_output=True,
+                    timeout=5,
+                    env=guard_env,
+                )
+                if proc.stdout:
+                    sys.stdout.write(proc.stdout)
+                if proc.stderr:
+                    sys.stderr.write(proc.stderr)
+                return proc.returncode
+            except subprocess.TimeoutExpired:
+                append_error_log("pretooluse-guard", "guard timed out after 5s", {"cwd": str(cwd)})
+            except Exception as exc:
+                append_error_log("pretooluse-guard", "guard execution failed", {"error": str(exc)})
+        # Fallback: allow if guard unavailable or failed
+        print(json.dumps({"decision": "allow", "reason": "guard unavailable, allowing by default"}))
+        return 0
+
     # Async: Launch health check in background for session-start
     if args.event == "session-start":
         _launch_async_health_check(cwd)
         # Runtime layer: update dynamic fields in STATE.md
         project_scope = determine_project_scope(cwd)
         _update_state_dynamic_fields(cwd, project_scope)
+
+    # F4: PromptSubmit real-time logging
+    if args.event == "prompt-submit":
+        try:
+            _log_prompt_submit(cwd, payload)
+        except Exception as exc:
+            _logger.warning("_log_prompt_submit failed: %s", exc)
 
     writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
     package = build_context_package(args.host, args.event, payload)
