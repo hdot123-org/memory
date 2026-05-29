@@ -33,15 +33,20 @@ manifest.json structure (v2):
 """
 from __future__ import annotations
 
+import fcntl
+import fnmatch
 import hashlib
 import hmac as _hmac
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from memory_core.constants import SYSTEM_DIR
 from memory_core.tools.denied_project_roots import is_denied_project_root
+
+_logger = logging.getLogger(__name__)
 
 # M3: Import is_memory_core_source_repo from ownership module
 try:
@@ -223,9 +228,34 @@ def _discover_canonical_files(project_root: Path) -> list[Path]:
                             if child.is_file():
                                 found.append(child.resolve())
             for resource in ownership.resources:
-                res_path = resolved_root / resource.path
-                if res_path.exists() and res_path.is_file():
-                    found.append(res_path.resolve())
+                # Support glob patterns in resource paths
+                if "*" in resource.path or "?" in resource.path:
+                    # Find the base directory from the glob pattern
+                    parts = resource.path.split("/")
+                    base_parts = []
+                    for part in parts:
+                        if "*" in part or "?" in part:
+                            break
+                        base_parts.append(part)
+                    if base_parts:
+                        base_dir = resolved_root / "/".join(base_parts)
+                        if base_dir.exists() and base_dir.is_dir():
+                            for child in sorted(base_dir.rglob("*")):
+                                if child.is_file():
+                                    rel_child = str(child.relative_to(resolved_root))
+                                    if fnmatch.fnmatch(rel_child, resource.path):
+                                        found.append(child.resolve())
+                    else:
+                        # Glob at root level
+                        for child in sorted(resolved_root.rglob("*")):
+                            if child.is_file():
+                                rel_child = str(child.relative_to(resolved_root))
+                                if fnmatch.fnmatch(rel_child, resource.path):
+                                    found.append(child.resolve())
+                else:
+                    res_path = resolved_root / resource.path
+                    if res_path.exists() and res_path.is_file():
+                        found.append(res_path.resolve())
         except Exception:
             pass  # Fall through to canonical patterns only
 
@@ -338,6 +368,216 @@ def sign_project(
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
+    )
+
+    return manifest
+
+
+AUDIT_LOG_FILENAME = "integrity-audit.jsonl"
+
+
+def _write_audit_log(
+    project_root: Path,
+    action: str,
+    changed_paths: list[str] | None = None,
+    entry_count: int = 0,
+    reason: str | None = None,
+    now_iso: str | None = None,
+) -> None:
+    """Append an audit log entry to integrity-audit.jsonl.
+
+    Each signing operation (full or incremental) records one JSON line
+    with timestamp, action type, changed paths, and metadata.
+
+    Args:
+        project_root: Absolute path to project root
+        action: "full-sign", "incremental-sign", or "resign"
+        changed_paths: List of relative paths that were re-signed
+        entry_count: Number of entries in the resulting manifest
+        reason: Optional reason string (e.g., "memory-init baseline")
+        now_iso: Optional ISO timestamp string
+    """
+    if now_iso is None:
+        now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    audit_entry = {
+        "timestamp": now_iso,
+        "action": action,
+        "project_root": str(project_root.resolve()),
+        "changed_paths": changed_paths or [],
+        "entry_count": entry_count,
+    }
+    if reason is not None:
+        audit_entry["reason"] = reason
+
+    memory_dir = project_root.resolve() / SYSTEM_DIR
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    audit_path = memory_dir / AUDIT_LOG_FILENAME
+
+    line = json.dumps(audit_entry, ensure_ascii=False) + "\n"
+    with audit_path.open("a", encoding="utf-8") as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            f.write(line)
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
+def sign_project_incremental(
+    project_root: Path,
+    key: bytes,
+    changed_paths: list[str],
+    *,
+    now_iso: Any | None = None,
+    reason: str | None = None,
+) -> dict[str, Any] | None:
+    """Sign only the changed files in a project and write updated manifest.json.
+
+    Reads the existing manifest, re-computes SHA-256 + HMAC-SHA256 for files
+    in changed_paths, and preserves unchanged entries verbatim.
+
+    If no manifest exists, falls back to sign_project() full signing.
+
+    F3: Source repo: zero file side-effects (returns None, does not write).
+
+    Args:
+        project_root: Absolute path to project root (git root)
+        key: 32-byte HMAC key
+        changed_paths: List of relative paths to re-sign
+        now_iso: Optional callable returning ISO timestamp string
+        reason: Optional reason for audit log (e.g., "memory-init baseline")
+
+    Returns:
+        The manifest dict that was written, or None if skipped (anti-pollution)
+    """
+    # Anti-pollution: Skip if project_root is memory-core source repo
+    if is_memory_core_source_repo is not None and is_memory_core_source_repo(project_root):
+        return None
+
+    if is_denied_project_root(project_root):
+        return None
+
+    if now_iso is None:
+        def now_iso_fn():
+            return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    elif callable(now_iso):
+        now_iso_fn = now_iso
+    else:
+        def _constant_now_iso():
+            return now_iso
+        now_iso_fn = _constant_now_iso
+
+    resolved_root = project_root.resolve()
+    memory_dir = resolved_root / SYSTEM_DIR
+    manifest_path = memory_dir / MANIFEST_FILENAME
+
+    # Fallback to full sign if manifest doesn't exist
+    if not manifest_path.exists():
+        _logger.info(
+            "sign_project_incremental: manifest not found, falling back to full sign"
+        )
+        result = sign_project(resolved_root, key, now_iso=now_iso_fn)
+        # Write audit log for the fallback full-sign with reason
+        if result is not None:
+            _write_audit_log(
+                resolved_root,
+                action="full-sign",
+                changed_paths=list(changed_paths),
+                entry_count=result.get("entry_count", 0),
+                reason=reason,
+                now_iso=now_iso_fn(),
+            )
+        return result
+
+    # Load existing manifest
+    try:
+        existing_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        _logger.warning("sign_project_incremental: failed to load manifest: %s", exc)
+        return sign_project(resolved_root, key, now_iso=now_iso_fn)
+
+    # Build a lookup of existing entries by rel_path
+    entries_by_rel: dict[str, dict[str, Any]] = {}
+    for entry in existing_manifest.get("entries", []):
+        entries_by_rel[entry["rel_path"]] = entry
+
+    timestamp = now_iso_fn()
+    ownership_digest = _compute_ownership_digest(resolved_root)
+
+    # Re-sign changed files
+    for rel_path_str in changed_paths:
+        abs_path = resolved_root / rel_path_str
+        if not abs_path.exists():
+            # File was deleted — remove from manifest
+            entries_by_rel.pop(rel_path_str, None)
+            continue
+
+        raw = abs_path.read_bytes()
+        sha = hashlib.sha256(raw).hexdigest()
+        hm = _hmac.new(key, raw, hashlib.sha256).hexdigest()
+
+        # M4: Classify entry for ownership metadata
+        ownership_id, protection_level, classification_source = _classify_entry(
+            rel_path_str, resolved_root
+        )
+
+        entries_by_rel[rel_path_str] = {
+            "path": str(abs_path),
+            "rel_path": rel_path_str,
+            "sha256": sha,
+            "hmac_sha256": hm,
+            "size_bytes": abs_path.stat().st_size,
+            "signed_at": timestamp,
+            # M4: Manifest v2 fields
+            "ownership_id": ownership_id,
+            "protection_level": protection_level,
+            "classification_source": classification_source,
+        }
+
+    # Rebuild entries list (preserving original order for unchanged entries)
+    original_order = [e["rel_path"] for e in existing_manifest.get("entries", [])]
+    seen_in_order: set[str] = set()
+    new_entries: list[dict[str, Any]] = []
+
+    # First, walk original order to preserve it for unchanged entries
+    for rp in original_order:
+        if rp in entries_by_rel and rp not in seen_in_order:
+            seen_in_order.add(rp)
+            new_entries.append(entries_by_rel[rp])
+
+    # Then add any new entries that weren't in original order
+    for rp, entry in entries_by_rel.items():
+        if rp not in seen_in_order:
+            new_entries.append(entry)
+
+    manifest = {
+        "schema_version": SCHEMA_VERSION,
+        "project_root": str(resolved_root),
+        "generated_at": timestamp,
+        "key_fingerprint": _key_fingerprint(key),
+        "ownership_digest": ownership_digest,
+        "entry_count": len(new_entries),
+        "entries": new_entries,
+    }
+
+    # Write manifest with fcntl.flock exclusive lock
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    with manifest_path.open("w", encoding="utf-8") as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            json.dump(manifest, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+    # Write audit log
+    _write_audit_log(
+        resolved_root,
+        action="incremental-sign",
+        changed_paths=list(changed_paths),
+        entry_count=len(new_entries),
+        reason=reason,
+        now_iso=timestamp,
     )
 
     return manifest
