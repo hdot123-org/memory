@@ -35,6 +35,26 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 
 具体路由规则（如 scope resolution、fallback）请查阅上述文件，不要在此文件中寻找。
 
+## 文档分类规则
+
+当用户说"文档记录"、"记一下"、"写个文档"时，**必须先查阅 `docs/CLASSIFICATION.md` 分类决策树**。
+
+快速参考：
+
+| 关键词 | 目标路径 |
+|--------|---------|
+| 服务器/IP/端口/部署/Docker | `docs/infrastructure/` |
+| 运维/故障/排查/runbook | `memory/docs/runbooks/` |
+| 设计/架构/API 契约 | `memory/docs/design/` |
+| 决策/选型/为什么/对比 | `memory/kb/decisions/` |
+| 踩坑/教训/经验 | `memory/kb/lessons/` |
+| 计划/里程碑/排期 | `memory/docs/plans/` |
+| Droid/配置/模型/指南 | `docs/guides/` |
+| Bug/崩溃/报错 | `memory/docs/bug-reports/` |
+| 不确定 | `memory/docs/drafts/` |
+
+完整决策树见 `docs/CLASSIFICATION.md`。
+
 ## 铁律：GitLab API 推送
 
 **所有代码变更必须通过 `scripts/gitlab_api_push.py` 推送，禁止使用手动 git 命令。**
@@ -46,6 +66,9 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 - Token 优先级：`GITLAB_ADMIN_TOKEN` > `CE_GITLAB_TOKEN` > remote URL 提取
 - 项目路径：`infra/memory-core`（需 admin token）、`aedu/workbot`
 - **所有 commit 消息、MR 标题/描述必须使用中文**（如 `fix: 修复 discover_project_root 根目录解析错误`）
+- **禁止直接推送 main** — main 分支已设为 "No one can push"，必须走 feature 分支 + MR
+- **MR 是默认流程** — 推送文件后脚本自动创建 MR，合并后自动删除源分支
+- 仅 WIP 场景可使用 `--no-mr` 跳过 MR 创建
 
 ## 铁律：GitLab → GitHub 单向同步
 
@@ -56,4 +79,16 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 3. **GitHub 是只读镜像** — 只有 GitLab CI 的 sync-to-github job 可以推 GitHub
 4. **禁止直推 GitHub** — 任何 `git push origin main` 都是违规，会破坏单源真相
 5. **违规恢复** — 如果意外直推 GitHub，回退 GitHub commit，重新走 GitLab 流程
+
+## Linear Gateway
+
+当 session tag 包含 `linear-gateway` 或用户要求处理 Linear issue 时，使用 `linear-gateway` skill。
+
+**关键约束：**
+- Linear API Key 在 1Password vault `sever` 条目 `REDACTED_VAULT_ID`，或环境变量 `LINEAR_API_KEY`
+- 不要依赖外部传入的 issue 内容，必须自行通过 Linear API 拉完整上下文
+- 仓库与目录路由规则在 `~/.factory/config/repositories.yml`
+- 执行完成后直接调用 Linear API 回写 comment
+- 不直接把 issue 改为 `Done`，状态流转交给 GitLab ↔ Linear 自动化
+- 完整规范见 `memory/docs/design/linear-factory-integration.md`
 
