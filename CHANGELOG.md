@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.6.0] - 2026-06-01
+
+### Added
+- **docs/ 展示层（AutoWiki 可索引）**：新增 `docs/` 目录结构，作为 AutoWiki 扫描入口
+  - `docs/INDEX.md`：全局知识文档索引
+  - `docs/CLASSIFICATION.md`：文档分类决策树
+  - `docs/infrastructure/servers.md`：服务器资产清单
+  - `docs/infrastructure/1password-mcp.md`：1Password Connect MCP 架构
+  - `docs/guides/droid-computers.md`：Droid Computer 管理指南
+  - `docs/guides/byok-models.md`：自定义模型配置指南
+- **AGENTS.md 文档分类规则段**：新增快速分类表，引导 Droid 写入文档时参照 `docs/CLASSIFICATION.md`
+- **.gitlab-ci.yml wiki stage**：新增 `droid-wiki-refresh` job，main 分支 push 后自动触发 AutoWiki 刷新
+- **Error logger 模块**（error_logger.py）：结构化错误日志，集成到 A 层 hook gateway
+- **Session end logger**（session_end_logger.py）：会话结束日志记录
+- **Daily summary generator**（daily_summary_generator.py）：每日摘要生成器
+- **Cross-integrity integration 测试**（test_cross_integrity_integration.py）：完整性集成测试
+- **Ownership 模型增强**（ownership.py）：新增路径分类 API
+- **Hook gateway 增强**（memory_hook_gateway.py）：错误日志集成、增量签名机制
+- **Template sync 增强**（template_sync.py）：模板同步功能增强
+- **Init project memory 增强**（init_project_memory.py）：初始化流程优化
+
+### Changed
+- `memory_core/constants.py`：版本升级到 0.6.0
+- `pyproject.toml`：版本升级到 0.6.0
+
+### Removed
+- `daily_session_summary.py`：功能拆分到 daily_summary_generator.py
+- `sync_to_showdoc.py`：移除 ShowDoc 同步功能
+- `adapter_toml_schema.py`：精简 schema 校验逻辑
+- `CONTRIBUTING.md`：移除过时内容
+- `audit/SUMMARY.md`：移除过时审计摘要
+
 ## [0.5.0] - 2026-05-23
 
 ### Breaking Changes
