@@ -47,43 +47,6 @@ For consumer projects initialized by memory-core, run `memory-init --sync` to ge
 Mirror sync requires CI secret variable `<MIRROR_REMOTE>_TOKEN` (example: `GITHUB_TOKEN`).
 This variable must be stored in GitLab CI/CD Variables as masked + protected.
 
-### ShowDoc sync (optional)
-
-When ShowDoc document sync is needed, initialize with `memory-init --sync --sync-showdoc`:
-
-**What gets generated:**
-- `scripts/sync_to_showdoc.py` — sync script that runs in CI
-- `[sync.showdoc]` section in `.memory/adapter.toml` with `item_id`, `core_files`, etc.
-- `sync-to-showdoc` job in `.gitlab-ci.yml` (runs in parallel with `sync-to-github`)
-
-**CI flow:**
-```
-push to main -> test -> health-check -> merge
-                                      ├── sync-to-github (GitHub mirror)
-                                      └── sync-to-showdoc (ShowDoc pages, upsert by title)
-```
-
-**Required CI variables** (GitLab CI/CD Variables, masked + protected):
-
-| Variable | Description |
-|----------|-------------|
-| `SHOWDOC_API_KEY` | ShowDoc API key for authentication |
-| `SHOWDOC_API_TOKEN` | ShowDoc API token for authentication |
-| `SHOWDOC_URL` | ShowDoc instance URL (e.g., `http://REDACTED_IP`) |
-
-**How it works:**
-1. The sync script reads `[sync.showdoc]` config from `adapter.toml`
-2. Scans files matching `core_files` and `extra_patterns` glob patterns
-3. Compares SHA256 hashes against `.showdoc-manifest.json` for incremental sync
-4. Changed files are uploaded via ShowDoc Open API (`updateByApi`, upsert by `page_title`)
-5. `cat_name` is derived from file path (e.g., `memory/docs/design/01-arch.md` → "设计文档")
-6. Markdown content is validated against showdoc-markdown-compat safe subset
-7. Manifest is updated on successful sync
-
-**Idempotency guarantee:** Multiple runs with the same files produce no duplicate pages (upsert by `page_title`).
-
-**Failure tolerance:** Single file failure does not block other files. API calls retry 3 times with exponential backoff (5s/15s/30s).
-
 ### Violations
 
 If code is accidentally pushed directly to GitHub:
