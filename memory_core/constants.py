@@ -2,7 +2,7 @@
 
 import re
 
-CURRENT_MEMORY_VERSION = "0.5.0"
+CURRENT_MEMORY_VERSION = "0.6.0"
 
 SUPPORTED_HOSTS = ("codex", "claude", "factory")
 
@@ -45,11 +45,6 @@ VALID_SOURCE_REPO_MODES = (SOURCE_REPO_MODE_READONLY, SOURCE_REPO_MODE_DEVELOP)
 SYNC_DEFAULT_SOURCE_REMOTE = "origin"
 SYNC_DEFAULT_CI_RUNNER = "gitlab"
 VALID_SYNC_CI_RUNNERS = ("gitlab",)
-
-# ShowDoc sync configuration (adapter.toml [sync.showdoc] section)
-SYNC_DEFAULT_SHOWDOC_FILES = ["memory/docs/system/**/*.md", "CHANGELOG.md"]
-SYNC_DEFAULT_SHOWDOC_ITEM_ID = 0
-SYNC_DEFAULT_SHOWDOC_API_URL = ""
 
 # Migration error codes
 _BACKUP_FAILED = "backup_failed"
