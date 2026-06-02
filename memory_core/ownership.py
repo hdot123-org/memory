@@ -5,6 +5,7 @@ vs not-owned, with support for domains, resources, and AGENTS.md block classific
 """
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 import subprocess
@@ -222,6 +223,27 @@ DEFAULT_OWNERSHIP_DOMAINS: list[OwnershipDomain] = [
         recursive=True,
         description="Protected project map domain",
     ),
+    OwnershipDomain(
+        name="audit",
+        path="audit",
+        level=ProtectionLevel.CRITICAL,
+        recursive=True,
+        description="Protected audit reports domain",
+    ),
+    OwnershipDomain(
+        name="review",
+        path="review",
+        level=ProtectionLevel.CRITICAL,
+        recursive=True,
+        description="Protected code review records domain",
+    ),
+    OwnershipDomain(
+        name="memory_log",
+        path="memory/log",
+        level=ProtectionLevel.STANDARD,
+        recursive=True,
+        description="Protected log files domain (sessions, errors)",
+    ),
 ]
 
 # Default ownership resources for memory-core projects
@@ -231,6 +253,30 @@ DEFAULT_OWNERSHIP_RESOURCES: list[OwnershipResource] = [
         path="AGENTS.md",
         level=ProtectionLevel.CRITICAL,
         description="Agent policy file",
+    ),
+    OwnershipResource(
+        name="audit_summary",
+        path="audit/SUMMARY.md",
+        level=ProtectionLevel.CRITICAL,
+        description="Audit summary report",
+    ),
+    OwnershipResource(
+        name="readme_md",
+        path="README.md",
+        level=ProtectionLevel.CRITICAL,
+        description="Project README documentation",
+    ),
+    OwnershipResource(
+        name="changelog_md",
+        path="CHANGELOG.md",
+        level=ProtectionLevel.CRITICAL,
+        description="Project changelog",
+    ),
+    OwnershipResource(
+        name="contributing_md",
+        path="CONTRIBUTING.md",
+        level=ProtectionLevel.CRITICAL,
+        description="Contributing guidelines",
     ),
     OwnershipResource(
         name="memory_lock",
@@ -266,6 +312,12 @@ DEFAULT_OWNERSHIP_RESOURCES: list[OwnershipResource] = [
         level=ProtectionLevel.CRITICAL,
         domain="memory_system",
         description="Integrity manifest",
+    ),
+    OwnershipResource(
+        name="error_log",
+        path="memory/log/*-errors.jsonl",
+        level=ProtectionLevel.STANDARD,
+        description="Daily error log files",
     ),
 ]
 
@@ -344,6 +396,14 @@ def classify_owned_path(
                 level=resource.level,
                 reason=f"Exact match to owned resource: {resource.name}",
             )
+        # Support glob patterns in resource paths (e.g., "memory/log/*-errors.jsonl")
+        if "*" in resource.path or "?" in resource.path:
+            if fnmatch.fnmatch(path_str, resource.path):
+                return Owned(
+                    resource=resource,
+                    level=resource.level,
+                    reason=f"Glob match to owned resource: {resource.name}",
+                )
 
     # Check domains
     for domain in ownership.domains:

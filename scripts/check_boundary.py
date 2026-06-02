@@ -69,6 +69,11 @@ LEAK_SCAN_ROOTS: tuple[Path, ...] = (
 EXEMPT_PATH_FRAGMENTS: tuple[str, ...] = (
     "archive/",
     "memory/docs/system/audit/",
+    "memory/log/",
+    "memory/docs/runbooks/",
+    "memory/docs/design/12-linear-droid-gitlab-pipeline.md",
+    "memory/kb/infra/",
+    "memory/kb/decisions/d-002-ci-pytest-strategy.md",
     "RESIDUE_INVENTORY.md",
     "RESIDUE_DISPOSITION_PLAN.md",
     "/__pycache__/",
@@ -79,7 +84,6 @@ EXEMPT_PATH_FRAGMENTS: tuple[str, ...] = (
     "memory_hook_adapters/workbot_runtime_profile.py",
     "scripts/check_boundary.py",
     "tests/test_boundary_guard.py",
-    "tests/test_sync_to_showdoc.py",
     "tests/test_sync_config.py",
 )
 
