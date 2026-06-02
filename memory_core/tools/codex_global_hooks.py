@@ -13,6 +13,7 @@ import os
 import shlex
 import shutil
 import stat
+import string
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -107,22 +108,25 @@ def render_wrapper(
     quoted_storage = shlex.quote(str(storage_root.expanduser()))
     quoted_gateway = shlex.quote(gateway_command)
     quoted_init = shlex.quote(init_command)
-    return f"""#!/bin/sh
+    from memory_core.constants import CURRENT_MEMORY_VERSION as _VER
+
+    # Use string.Template for safer variable substitution
+    template = string.Template("""#!/bin/sh
 set -eu
 
-MEMORY_HOOK_GLOBAL_STATE_ROOT={quoted_storage}
-MEMORY_HOOK_GATEWAY=${{MEMORY_HOOK_GATEWAY:-{quoted_gateway}}}
-MEMORY_HOOK_PROJECT_INIT=${{MEMORY_HOOK_PROJECT_INIT:-{quoted_init}}}
-ORIGINAL_CWD=${{PWD:-}}
-PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${{PATH:-}}"
+MEMORY_HOOK_GLOBAL_STATE_ROOT=$quoted_storage
+MEMORY_HOOK_GATEWAY=${MEMORY_HOOK_GATEWAY:-$quoted_gateway}
+MEMORY_HOOK_PROJECT_INIT=${MEMORY_HOOK_PROJECT_INIT:-$quoted_init}
+ORIGINAL_CWD=${PWD:-}
+PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 
 export PATH
 export MEMORY_HOOK_ORIGINAL_CWD="$ORIGINAL_CWD"
 export MEMORY_HOOK_GLOBAL_STATE_ROOT
-export MEMORY_HOOK_FORCE="${{MEMORY_HOOK_FORCE:-1}}"
-export MEMORY_HOOK_PREFER_EXTERNAL_CWD="${{MEMORY_HOOK_PREFER_EXTERNAL_CWD:-1}}"
-export MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE="${{MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE:-1}}"
-export HOME="${{HOME:-$MEMORY_HOOK_GLOBAL_STATE_ROOT/..}}"
+export MEMORY_HOOK_FORCE="${MEMORY_HOOK_FORCE:-1}"
+export MEMORY_HOOK_PREFER_EXTERNAL_CWD="${MEMORY_HOOK_PREFER_EXTERNAL_CWD:-1}"
+export MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE="${MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE:-1}"
+export HOME="${HOME:-$MEMORY_HOOK_GLOBAL_STATE_ROOT/..}"
 
 mkdir -p "$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system" 2>/dev/null || true
 PROJECT_CWD="$ORIGINAL_CWD"
@@ -133,10 +137,10 @@ if [ -n "$ORIGINAL_CWD" ] && [ -d "$ORIGINAL_CWD" ]; then
     fi
 fi
 
-HOME_ROOT=$(cd "${{HOME:-$MEMORY_HOOK_GLOBAL_STATE_ROOT/..}}" 2>/dev/null && pwd -P || true)
+HOME_ROOT=$(cd "${HOME:-$MEMORY_HOOK_GLOBAL_STATE_ROOT/..}" 2>/dev/null && pwd -P || true)
 PROJECT_CWD_RESOLVED=$(cd "$PROJECT_CWD" 2>/dev/null && pwd -P || true)
 if [ -n "$HOME_ROOT" ] && [ -n "$PROJECT_CWD_RESOLVED" ] && [ "$PROJECT_CWD_RESOLVED" = "$HOME_ROOT" ]; then
-    printf '{{}}\n'
+    printf '{}\\n'
     exit 0
 fi
 
@@ -150,15 +154,30 @@ fi
 
 # M3: Remove || true to make init failures visible with structured error output
 if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ] && [ ! -d "$PROJECT_CWD/memory/system" ]; then
-    if ! "$MEMORY_HOOK_PROJECT_INIT" --target "$PROJECT_CWD" --host codex \
+    if ! "$MEMORY_HOOK_PROJECT_INIT" --target "$PROJECT_CWD" --host codex \\
         >/dev/null 2>>"$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system/errors.log"; then
-        echo '{{"error": "project_init_failed", "message": "Failed to initialize project memory"}}' >&2
+        echo '{"error": "project_init_failed", "message": "Failed to initialize project memory"}' >&2
         exit 1
     fi
 fi
 
+# Version sync: patch ownership.toml if project version is stale
+if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD/memory/system" ] && [ -f "$PROJECT_CWD/memory/system/ownership.toml" ]; then
+    _OWNERSHIP_VER=$(grep -o '^memory_version[[:space:]]*=[[:space:]]*"[^"]*"' "$PROJECT_CWD/memory/system/ownership.toml" 2>/dev/null | grep -o '"[^"]*"$$' | tr -d '"' || true)
+    if [ -n "$_OWNERSHIP_VER" ] && [ "$_OWNERSHIP_VER" != "$memory_version" ]; then
+        sed -i.bak 's/^memory_version[[:space:]]*=.*/memory_version = "$memory_version"/' "$PROJECT_CWD/memory/system/ownership.toml" 2>/dev/null && rm -f "$PROJECT_CWD/memory/system/ownership.toml.bak" 2>/dev/null || true
+    fi
+fi
+
 exec "$MEMORY_HOOK_GATEWAY" "$@"
-"""
+""")
+
+    return template.safe_substitute(
+        quoted_storage=quoted_storage,
+        quoted_gateway=quoted_gateway,
+        quoted_init=quoted_init,
+        memory_version=_VER,
+    )
 
 
 def desired_codex_hooks(command_path: Path, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> dict[str, Any]:

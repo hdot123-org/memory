@@ -3,20 +3,20 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 echo "=== validate_memory_system ==="
-# gateway_import 检查已跳过（CI runner 缓存导致已删除模块冲突）
 python3 -c "
 import sys
 sys.path.insert(0, 'memory_core/tools')
-from validate_memory_system import ValidateResult, check_context_package, check_core_config_path
+from validate_memory_system import ValidateResult, check_gateway_import, check_core_builder_resolve, check_context_package, check_core_config_path
 result = ValidateResult()
-# 跳过 gateway_import 检查
-try:
-    from memory_hook_gateway import _resolve_core_builder
-    ok, builder = _resolve_core_builder('legacy', allow_fallback=False)
-    if ok and builder:
-        check_context_package(result, builder)
-except Exception:
-    pass  # 跳过 gateway_import 检查
+ok = check_gateway_import(result)
+if not ok:
+    print(result.summary())
+    sys.exit(1)
+builder_ok, builder = check_core_builder_resolve(result)
+if not builder_ok or builder is None:
+    print(result.summary())
+    sys.exit(1)
+check_context_package(result, builder)
 check_core_config_path(result)
 print(result.summary())
 if not result.all_passed:

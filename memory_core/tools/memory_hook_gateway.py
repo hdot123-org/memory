@@ -1468,8 +1468,64 @@ def _read_last_user_message_from_transcript(transcript_path: str | None) -> str 
 
 
 # Sentinel for timeout handler — not part of public API
-class _TimeoutError(Exception):
+class HookTimeoutError(Exception):
     pass
+
+
+def _sanitize_for_log(text: str, max_len: int = 2000) -> str:
+    """Strip sensitive patterns from text before writing to log files.
+
+    Replaces API keys, tokens, and secrets with ``[REDACTED]`` while
+    preserving the surrounding context so the log entry remains useful.
+
+    Patterns covered:
+    - OpenAI-style keys (sk-*, *-openai-*)
+    - Anthropic-style keys (sk-ant-*, cla-*)
+    - Linear API tokens (lin_api_*)
+    - AWS keys (AKIA*)
+    - Bearer tokens (Authorization: Bearer <token>)
+    - Generic API key patterns (api_key=<value>, api-key: <value>)
+    - JSON string values for keys containing ``key``, ``secret``, ``token``,
+      ``password``, ``credential``, ``auth``
+    """
+    if not text:
+        return text
+
+    # Limit to avoid processing enormous strings
+    text = text[:max_len]
+
+    # Bearer tokens in headers or env vars
+    text = re.sub(
+        r'(Authorization:\s*Bearer\s+)[^\s"\']+[\s"\']',
+        r'\1[REDACTED]',
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # Common API key patterns
+    text = re.sub(
+        r'((?:api[_-]?key|api[_-]?token|secret[_-]?key|access[_-]?token|auth[_-]?token)\s*[:=]\s*)["\']?([^\s"\',}\]]+)',
+        r'\1[REDACTED]',
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # Known token formats
+    text = re.sub(r'sk-[A-Za-z0-9]{10,}', '[REDACTED]', text)
+    text = re.sub(r'sk-ant-[A-Za-z0-9\-]{10,}', '[REDACTED]', text)
+    text = re.sub(r'lin_api_[A-Za-z0-9]{10,}', '[REDACTED]', text)
+    text = re.sub(r'AKIA[A-Za-z0-9]{12,}', '[REDACTED]', text)
+    text = re.sub(r'ghp_[A-Za-z0-9]{20,}', '[REDACTED]', text)
+    text = re.sub(r'glpat-[A-Za-z0-9\-]{10,}', '[REDACTED]', text)
+
+    # JWT-like tokens (three base64 segments separated by dots)
+    text = re.sub(
+        r'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}',
+        '[REDACTED]',
+        text,
+    )
+
+    return text
 
 
 def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
@@ -1526,7 +1582,8 @@ def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
         except OSError:
             pass
 
-    preview = prompt[:100]
+    # ── Sanitize prompt before logging ──────────────────────────────
+    preview = _sanitize_for_log(prompt)[:100]
 
     heartbeat = (
         f"#### {time_str} — {session_prefix} [heartbeat]\n"
@@ -1537,7 +1594,7 @@ def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
 
     # ── Write with file lock and timeout ────────────────────────────
     def _write_handler(signum, frame):  # type: ignore[no-untyped-def]
-        raise _TimeoutError("prompt-submit log write timed out")
+        raise HookTimeoutError("prompt-submit log write timed out")
 
     old_handler = None
     try:
@@ -1552,7 +1609,7 @@ def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
                 fh.flush()
             finally:
                 fcntl.flock(fd, fcntl.LOCK_UN)
-    except _TimeoutError:
+    except HookTimeoutError:
         _logger.warning("_log_prompt_submit: write timed out for session %s", session_prefix)
     finally:
         signal.alarm(0)
