@@ -213,9 +213,12 @@ class TestDefaultOwnershipDomains:
         assert expected.issubset(domain_names)
 
     def test_default_domains_are_critical(self):
-        """All default domains should be CRITICAL level."""
+        """All default domains should be CRITICAL level, except memory_log which is STANDARD."""
         for domain in DEFAULT_OWNERSHIP_DOMAINS:
-            assert domain.level == ProtectionLevel.CRITICAL
+            if domain.name == "memory_log":
+                assert domain.level == ProtectionLevel.STANDARD
+            else:
+                assert domain.level == ProtectionLevel.CRITICAL
 
     def test_default_domains_are_recursive(self):
         """All default domains should be recursive."""

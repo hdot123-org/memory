@@ -2,10 +2,10 @@
 """Daily session summary tool — reads event logs and generates a report.
 
 Usage:
-    python daily_session_summary.py --date 2026-05-11
-    python daily_session_summary.py --date 2026-05-11 --project /Users/busiji/tool
-    python daily_session_summary.py --date 2026-05-11 --json
-    python daily_session_summary.py --today
+    python hook_event_stats.py --date 2026-05-11
+    python hook_event_stats.py --date 2026-05-11 --project /Users/busiji/tool
+    python hook_event_stats.py --date 2026-05-11 --json
+    python hook_event_stats.py --today
 """
 from __future__ import annotations
 

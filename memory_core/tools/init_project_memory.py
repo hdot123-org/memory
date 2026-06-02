@@ -1428,9 +1428,6 @@ def init_project_memory(
     sync_source_remote: str = "origin",
     sync_mirror_remote: str = "",
     sync_mirror_url: str = "",
-    sync_showdoc_enabled: bool = False,
-    sync_showdoc_item_id: int = 0,
-    sync_showdoc_url: str = "",
     auto_fill: bool = True,
 ) -> dict[str, Any]:
     """Initialize memory/system/ directory skeleton in the target project.
@@ -1983,7 +1980,7 @@ def init_project_memory(
         update_agents_md(target, host=host, result=result, mode=mode)
 
         # Sync configuration: write CI template + docs (protocol layer only)
-        if sync_enabled or sync_showdoc_enabled:
+        if sync_enabled:
             _generate_sync_files(
                 target,
                 project_name=project_name,
@@ -1992,17 +1989,32 @@ def init_project_memory(
                 mirror_url=sync_mirror_url,
                 result=result,
                 force=force,
-                showdoc_enabled=sync_showdoc_enabled,
-                showdoc_item_id=sync_showdoc_item_id,
-                showdoc_url=sync_showdoc_url,
             )
 
         # L2: Sign initial manifest after memory/system/ is scaffolded
+        # F2: Use sign_project_incremental with changed_paths=所有新建文件相对路径
+        # First run: manifest doesn't exist, falls back to full sign automatically
         try:
             from .memory_hook_integrity_keys import load_or_create_key
-            from .memory_hook_integrity_manifest import sign_project
+            from .memory_hook_integrity_manifest import sign_project_incremental
+
             key = load_or_create_key()
-            sign_project(target, key)
+
+            # Collect all newly created file relative paths from result["created"]
+            changed_paths: list[str] = []
+            for entry in result.get("created", []):
+                if entry.startswith("file:"):
+                    # Strip "file:" prefix and any " (detail)" suffix
+                    path_part = entry[len("file:"):]
+                    paren_idx = path_part.find(" (")
+                    if paren_idx >= 0:
+                        path_part = path_part[:paren_idx]
+                    changed_paths.append(path_part)
+
+            sign_project_incremental(
+                target, key, changed_paths=changed_paths,
+                reason="memory-init baseline",
+            )
             result["created"].append("file:memory/system/manifest.json (signed)")
         except Exception as exc:
             # Non-blocking: integrity signing is best-effort
@@ -2032,7 +2044,6 @@ def init_project_memory(
         if not dry_run:
             try:
                 ownership_path = memory_root / "ownership.toml"
-                # Only write if doesn't exist or force is True (with ownership check already done)
                 should_skip, _ = _should_skip_file(ownership_path, "ownership.toml", is_business_file=False)
                 if not should_skip:
                     content, warnings = template_ownership_toml(project_name)
@@ -2041,7 +2052,20 @@ def init_project_memory(
                     result["warnings"].extend(warnings)
                 else:
                     if ownership_path.exists():
-                        result["skipped"].append("file:ownership.toml (already exists)")
+                        # In update mode, patch memory_version instead of full skip
+                        if mode == "update":
+                            try:
+                                from .version_sync import patch_ownership_memory_version
+                            except ImportError:
+                                from memory_core.tools.version_sync import (
+                                    patch_ownership_memory_version,  # type: ignore
+                                )
+                            if patch_ownership_memory_version(ownership_path, CURRENT_MEMORY_VERSION):
+                                result["created"].append(f"file:ownership.toml (memory_version patched to {CURRENT_MEMORY_VERSION})")
+                            else:
+                                result["skipped"].append("file:ownership.toml (already up-to-date)")
+                        else:
+                            result["skipped"].append("file:ownership.toml (already exists)")
             except Exception as exc:
                 result["errors"].append(f"failed to create ownership.toml: {exc}")
 
@@ -2166,24 +2190,6 @@ def main(argv: list[str] | None = None) -> int:
         help="Mirror URL (e.g. github.com/org/repo). Used with --sync.",
     )
     parser.add_argument(
-        "--sync-showdoc",
-        action="store_true",
-        default=False,
-        help="Enable ShowDoc sync configuration (CI job + skill workflow + docs blocks).",
-    )
-    parser.add_argument(
-        "--sync-showdoc-item-id",
-        type=int,
-        default=0,
-        help="ShowDoc target project item_id. Used with --sync-showdoc.",
-    )
-    parser.add_argument(
-        "--sync-showdoc-url",
-        type=str,
-        default="",
-        help="ShowDoc instance URL. Used with --sync-showdoc.",
-    )
-    parser.add_argument(
         "--no-auto-fill",
         action="store_true",
         default=False,
@@ -2223,9 +2229,6 @@ def main(argv: list[str] | None = None) -> int:
         sync_source_remote=args.sync_source_remote,
         sync_mirror_remote=args.sync_mirror_remote,
         sync_mirror_url=args.sync_mirror_url,
-        sync_showdoc_enabled=args.sync_showdoc,
-        sync_showdoc_item_id=args.sync_showdoc_item_id,
-        sync_showdoc_url=args.sync_showdoc_url,
         auto_fill=not args.no_auto_fill,
     )
 
@@ -2273,16 +2276,13 @@ def _generate_sync_files(
     mirror_url: str,
     result: dict[str, Any],
     force: bool = False,
-    showdoc_enabled: bool = False,
-    showdoc_item_id: int = 0,
-    showdoc_url: str = "",
 ) -> None:
     """Write sync-related files: .gitlab-ci.yml, adapter.toml [sync], docs blocks.
 
     Pure text generation -- no remote API calls.
     """
     try:
-        from .adapter_toml_schema import ShowdocSyncConfig, SyncConfig, dump_showdoc_toml, dump_sync_toml
+        from .adapter_toml_schema import SyncConfig, dump_sync_toml
         from .template_sync import (
             generate_agents_md_sync_block,
             generate_contributing_sync_block,
@@ -2291,9 +2291,7 @@ def _generate_sync_files(
         )
     except ImportError:
         from memory_core.tools.adapter_toml_schema import (  # type: ignore
-            ShowdocSyncConfig,
             SyncConfig,
-            dump_showdoc_toml,
             dump_sync_toml,
         )
         from memory_core.tools.template_sync import (  # type: ignore
@@ -2314,21 +2312,6 @@ def _generate_sync_files(
     ci_path = target / ".gitlab-ci.yml"
     if not ci_path.exists() or force:
         ci_content = generate_gitlab_ci_yml(sync, project_slug=project_name)
-
-        # Append ShowDoc CI job if enabled
-        if showdoc_enabled:
-            try:
-                from .template_sync import generate_gitlab_ci_showdoc_job
-            except ImportError:
-                from memory_core.tools.template_sync import generate_gitlab_ci_showdoc_job  # type: ignore
-
-            showdoc = ShowdocSyncConfig(
-                enabled=True,
-                item_id=showdoc_item_id,
-                api_url=showdoc_url,
-            )
-            ci_content += generate_gitlab_ci_showdoc_job(sync, showdoc)
-
         ci_path.write_text(ci_content, encoding="utf-8")
         result["created"].append("file:.gitlab-ci.yml (sync)")
     else:
@@ -2345,26 +2328,6 @@ def _generate_sync_files(
     else:
         result["skipped"].append("file:memory/system/skills/gitlab_sync_workflow.yaml (exists, use --force)")
 
-    # 2b. ShowDoc skill workflow YAML
-    if showdoc_enabled:
-        try:
-            from .template_sync import generate_skill_showdoc_workflow_yaml
-        except ImportError:
-            from memory_core.tools.template_sync import generate_skill_showdoc_workflow_yaml  # type: ignore
-
-        showdoc = ShowdocSyncConfig(
-            enabled=True,
-            item_id=showdoc_item_id,
-            api_url=showdoc_url,
-        )
-        showdoc_skill_path = skills_dir / "showdoc_sync_workflow.yaml"
-        if not showdoc_skill_path.exists() or force:
-            showdoc_skill_content = generate_skill_showdoc_workflow_yaml(showdoc)
-            showdoc_skill_path.write_text(showdoc_skill_content, encoding="utf-8")
-            result["created"].append("file:memory/system/skills/showdoc_sync_workflow.yaml")
-        else:
-            result["skipped"].append("file:memory/system/skills/showdoc_sync_workflow.yaml (exists, use --force)")
-
     # 3. Append [sync] to adapter.toml
     adapter_path = target / "memory" / "system" / "adapter.toml"
     if adapter_path.exists():
@@ -2373,21 +2336,9 @@ def _generate_sync_files(
         if "[sync]" not in existing:
             toml_additions += dump_sync_toml(sync)
 
-        # Append [sync.showdoc] section if enabled
-        if showdoc_enabled:
-            showdoc = ShowdocSyncConfig(
-                enabled=True,
-                item_id=showdoc_item_id,
-                api_url=showdoc_url,
-            )
-            if "[sync.showdoc]" not in existing:
-                toml_additions += dump_showdoc_toml(showdoc)
-
         if toml_additions:
             adapter_path.write_text(existing + toml_additions, encoding="utf-8")
             result["created"].append("file:memory/system/adapter.toml [sync] section")
-            if showdoc_enabled:
-                result["created"].append("file:memory/system/adapter.toml [sync.showdoc] section")
         else:
             result["skipped"].append("file:memory/system/adapter.toml [sync] (exists)")
     else:
@@ -2404,27 +2355,6 @@ def _generate_sync_files(
         else:
             result["skipped"].append("file:AGENTS.md (sync iron rule exists)")
 
-    # 4b. Append ShowDoc iron rule block to AGENTS.md
-    if showdoc_enabled:
-        try:
-            from .template_sync import generate_agents_md_showdoc_block
-        except ImportError:
-            from memory_core.tools.template_sync import generate_agents_md_showdoc_block  # type: ignore
-
-        showdoc = ShowdocSyncConfig(
-            enabled=True,
-            item_id=showdoc_item_id,
-            api_url=showdoc_url,
-        )
-        showdoc_block = generate_agents_md_showdoc_block(showdoc)
-        if showdoc_block and agents_path.exists():
-            content = agents_path.read_text(encoding="utf-8")
-            if "SYNC_SHOWDOC_BEGIN" not in content:
-                agents_path.write_text(content.rstrip("\n") + "\n\n" + showdoc_block, encoding="utf-8")
-                result["created"].append("file:AGENTS.md (showdoc sync rule)")
-            else:
-                result["skipped"].append("file:AGENTS.md (showdoc sync rule exists)")
-
     # 5. Append contributing section
     contrib_path = target / "CONTRIBUTING.md"
     contrib_block = generate_contributing_sync_block(sync)
@@ -2435,27 +2365,6 @@ def _generate_sync_files(
             result["created"].append("file:CONTRIBUTING.md (sync rule)")
         else:
             result["skipped"].append("file:CONTRIBUTING.md (sync rule exists)")
-
-    # 5b. Append ShowDoc contributing section
-    if showdoc_enabled:
-        try:
-            from .template_sync import generate_contributing_showdoc_block
-        except ImportError:
-            from memory_core.tools.template_sync import generate_contributing_showdoc_block  # type: ignore
-
-        showdoc = ShowdocSyncConfig(
-            enabled=True,
-            item_id=showdoc_item_id,
-            api_url=showdoc_url,
-        )
-        showdoc_contrib_block = generate_contributing_showdoc_block(showdoc)
-        if showdoc_contrib_block and contrib_path.exists():
-            content = contrib_path.read_text(encoding="utf-8")
-            if "ShowDoc 文档同步" not in content:
-                contrib_path.write_text(content.rstrip("\n") + "\n\n" + showdoc_contrib_block, encoding="utf-8")
-                result["created"].append("file:CONTRIBUTING.md (showdoc sync section)")
-            else:
-                result["skipped"].append("file:CONTRIBUTING.md (showdoc sync section exists)")
 
 
 def _print_post_init_health_summary(target: Path) -> None:

@@ -222,6 +222,34 @@ class ClaudeDelegate(HostDelegate):
         return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
 
+
+class FactoryDelegate(HostDelegate):
+    """Neutral delegate for Factory host: returns empty JSON for all events.
+
+    Factory hooks don't require cmux integration. This delegate provides
+    a neutral pass-through response that doesn't block session creation.
+    """
+
+    def can_handle(self) -> bool:
+        return True
+
+    def execute(
+        self,
+        event: str,
+        raw_payload: str,
+        payload: dict[str, Any],
+    ) -> subprocess.CompletedProcess[str]:
+        return self.noop_response()
+
+    def noop_response(self) -> subprocess.CompletedProcess[str]:
+        """Return neutral empty JSON response for Factory hooks."""
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="{}\n", stderr="")
+
+    @property
+    def host_unavailable(self) -> bool:
+        return False
+
+
 class NoopHostDelegate(HostDelegate):
     """Noop delegate: always handles, always returns empty JSON.
 
@@ -272,7 +300,7 @@ def resolve_host_delegate(host: str, mode: str = "auto") -> HostDelegate:
     elif host == "claude":
         cmux_delegate = ClaudeDelegate()
     elif host == "factory":
-        cmux_delegate = NoopHostDelegate()
+        cmux_delegate = FactoryDelegate()
     else:
         return NoopHostDelegate()
 
@@ -1359,17 +1387,19 @@ class ArtifactWriter:
 class DelegateRouter:
     """Routes context packages to the appropriate host delegate.
 
-    Dispatches to ``CodexDelegate`` or ``ClaudeDelegate`` based on the
-    host name, and provides a ``noop`` fallback for each.
+    Dispatches to ``CodexDelegate``, ``ClaudeDelegate``, or ``FactoryDelegate``
+    based on the host name, and provides a ``noop`` fallback for each.
     """
 
     def __init__(
         self,
         codex_delegate: CodexDelegate,
         claude_delegate: ClaudeDelegate,
+        factory_delegate: FactoryDelegate | None = None,
     ):
         self.codex_delegate = codex_delegate
         self.claude_delegate = claude_delegate
+        self.factory_delegate = factory_delegate or FactoryDelegate()
         self._noop_delegate = NoopHostDelegate()
 
     def route(
@@ -1385,7 +1415,7 @@ class DelegateRouter:
         elif host == "claude":
             return self.claude_delegate.execute(event, raw_payload, payload)
         elif host == "factory":
-            return self._noop_delegate.noop_response()
+            return self.factory_delegate.execute(event, raw_payload, payload)
         else:
             raise ValueError(f"unknown host: {host}")
 
@@ -1396,7 +1426,7 @@ class DelegateRouter:
         elif host == "claude":
             return self.claude_delegate.noop_response()
         elif host == "factory":
-            return self._noop_delegate.noop_response()
+            return self.factory_delegate.noop_response()
         else:
             raise ValueError(f"unknown host: {host}")
 

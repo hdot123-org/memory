@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from memory_core.tools.daily_session_summary import (
+from memory_core.tools.hook_event_stats import (
     SessionStats,
     _filter_by_date,
     _filter_by_project,
