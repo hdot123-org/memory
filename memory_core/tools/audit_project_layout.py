@@ -387,8 +387,12 @@ def _check_manifest(root: Path, result: AuditResult) -> None:
 
     for entry in entries:
         path = entry.get("path", "")
-        # Normalize path to forward slashes for consistent prefix matching
-        normalized_path = path.replace("\\", "/")
+        # Use rel_path (project-relative) for prefix matching to avoid
+        # false positives when the project lives under /tmp/ or another
+        # path that happens to contain a runtime prefix substring.
+        rel_path = entry.get("rel_path", "")
+        # Normalize to forward slashes for consistent prefix matching
+        normalized_path = rel_path.replace("\\", "/") or path.replace("\\", "/")
         for prefix in runtime_prefixes:
             if normalized_path.startswith(prefix) or f"/{prefix}" in normalized_path:
                 result.findings.append(
