@@ -34,7 +34,7 @@ class TestInitOwnershipGeneration:
         result = init_project_memory(
             tmp_path,
             scope="test_project",
-            host="codex",
+            host="factory",
             mode="create",
         )
         assert result["success"] is True

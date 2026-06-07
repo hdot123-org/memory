@@ -59,7 +59,7 @@ def init_script_path(repo_root: Path) -> Path:
 def run_init_dry_run(
     target: Path,
     scope: str | None = None,
-    host: str = "codex",
+    host: str = "factory",
 ) -> dict[str, Any]:
     """Run init_project_memory with --dry-run --json and return parsed output.
 
@@ -295,16 +295,14 @@ class TestInitGeneratesPolicyPack:
 # ---------------------------------------------------------------------------
 
 class TestInitGeneratesProjectScopeFile:
-    """Test that init generates project scope files for all supported hosts."""
+    """Test that init generates project scope files for the factory host."""
 
-    @pytest.mark.parametrize("host", ["codex", "claude", "factory"])
-    def test_init_generates_project_scope_file(self, tmp_path: Path, host: str) -> None:
+    def test_init_generates_project_scope_file(self, tmp_path: Path) -> None:
         """Test that init with --scope creates the project scope file.
 
-        For each SUPPORTED_HOSTS, when using --scope test-project,
-        init should set up infrastructure that allows
-        memory/kb/projects/{scope}.md to be created.
+        Only factory is supported (INV-6).
         """
+        host = "factory"
         result = run_init_dry_run(tmp_path, scope="test-project", host=host)
         dry_run_output = result.get("dry_run_output", {})
         would_create_dirs = dry_run_output.get("would_create_dirs", [])

@@ -57,7 +57,7 @@ class TestDefaultAdapterNoCrash:
         _reset_to_default_adapter()
         from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
-        pkg = build_context_package_simple("codex", "session-start", {})
+        pkg = build_context_package_simple("factory", "session-start", {})
         assert pkg is not None
         assert "status" in pkg
         # status must be ok (or degraded with graceful missing_paths)
@@ -69,7 +69,7 @@ class TestDefaultAdapterNoCrash:
         _reset_to_default_adapter()
         from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
-        pkg = build_context_package_simple("codex", "session-start", {})
+        pkg = build_context_package_simple("factory", "session-start", {})
         assert pkg is not None
         assert "status" in pkg
         assert pkg["status"] == "ok", (
@@ -78,23 +78,22 @@ class TestDefaultAdapterNoCrash:
             f"validation_errors={pkg.get('validation_errors')}"
         )
 
-    @pytest.mark.parametrize("host", ["claude", "factory"])
-    def test_default_adapter_for_host(self, host: str):
-        """Default adapter must return status='ok' for claude and factory hosts."""
+    def test_default_adapter_for_factory_host(self):
+        """Default adapter must return status='ok' for factory host."""
         _reset_to_default_adapter()
         from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
-        pkg = build_context_package_simple(host, "session-start", {})
+        pkg = build_context_package_simple("factory", "session-start", {})
         assert pkg is not None
         assert "status" in pkg
         if _workspace_is_complete():
             assert pkg["status"] == "ok", (
-                f"host={host} status={pkg['status']} "
+                f"host=factory status={pkg['status']} "
                 f"missing_paths={pkg.get('missing_paths')} "
                 f"validation_errors={pkg.get('validation_errors')}"
             )
         else:
             # CI: workspace incomplete — adapter must degrade gracefully
             assert pkg["status"] in ("ok", "degraded"), (
-                f"host={host} status={pkg['status']} — unexpected failure"
+                f"host=factory status={pkg['status']} — unexpected failure"
             )

@@ -67,12 +67,17 @@ def _verify_project(project_root: Path, key: bytes) -> dict[str, Any] | None:
         return {"ok": False, "errors": [{"kind": "verify_exception", "detail": str(exc)}]}
 
 
-def _sign_project(project_root: Path, key: bytes) -> dict[str, Any] | None:
+def _sign_project(
+    project_root: Path,
+    key: bytes,
+    *,
+    include_runtime: bool = False,
+) -> dict[str, Any] | None:
     """Sign the project and return manifest dict."""
     try:
         from memory_core.tools.memory_hook_integrity_manifest import sign_project
 
-        return sign_project(project_root, key)
+        return sign_project(project_root, key, include_runtime=include_runtime)
     except Exception as exc:
         print(f"[resign] sign failed: {exc}", file=sys.stderr)
         return None
@@ -154,6 +159,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Show what would happen without making changes",
     )
+    parser.add_argument(
+        "--include-runtime",
+        action="store_true",
+        default=False,
+        help="Include runtime artifact paths (memory/artifacts/memory-hook/) in signing",
+    )
     return parser
 
 
@@ -229,7 +240,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     # Sign v2 manifest
-    manifest = _sign_project(project_root, key)
+    manifest = _sign_project(project_root, key, include_runtime=args.include_runtime)
     if manifest is None:
         print("[resign] sign failed", file=sys.stderr)
         return 1

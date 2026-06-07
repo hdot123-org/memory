@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.7.0] - 2026-06-07
+
+### 新增
+- **完整性签名 `include_runtime` 参数**（VAL-P3-001~007）：`sign_project` / `sign_project_incremental` 新增 keyword-only `include_runtime: bool = False` 参数，默认不签名运行时产物（`memory/artifacts/memory-hook/`），保持 manifest 稳定
+- **resign CLI `--include-runtime` 标志**：透传 `include_runtime` 到签名函数
+- **审计前缀精确匹配**（VAL-P3-008~009）：`_check_manifest_includes_runtime` 从子串匹配改为前缀匹配，消除对 `memory/system/adapter.toml`、`memory/kb/global/memory-system.md`、`memory/log/*-sessions.md` 的误报
+- **初始化模板补全**（VAL-P1-001~010）：
+  - `legal-core-map.md` 补齐 4 个 `legal_core_markers`
+  - `ingestion-registry-map.md` 补齐 8 个 `required_registry_scopes`
+  - 新增 `memory/docs/记忆系统全景文档.md` 模板（含 `project-map/INDEX.md` 引用）
+  - 5 个 global-canonical 文件各加 `## Truth Basis` 段（Source/Authority/Evidence/Conflict），通过 `TruthBasisResolver` 校验
+  - 新增 `tests/.memory-anchor.md` 锚点文件
+- **初始化行为修复**（VAL-P2-001~008）：
+  - `update_agents_md` repair 模式：文件不存在时也创建
+  - `_apply_auto_fill` 增强：从 `package.json` / `tsconfig.json` / `pyproject.toml` 抽取技术栈，填充占位符；未知占位符替换为 `（待补充：xxx）`
+  - init 成功后调用 `audit_project_layout` 做只读体检，P1 项作为 `result["warnings"]` 输出
+- **跨 phase 端到端 golden 测试**（VAL-CROSS-001~006）：
+  - init → audit → sign 全链路验证
+  - init update 幂等性
+  - 存量项目迁移路径（旧 codex host 残留 → update → 干净）
+  - audit 不报 init 产物误判
+  - 单一 factory wrapper 验证
+  - version bump 记录
+
+### 变更
+- **收紧 `SUPPORTED_HOSTS` 为 `("factory",)`**（VAL-P0-006）：废弃 codex 和 claude host
+- **`template_adapter_toml` 固定写入 `host = "factory"`**（VAL-P0-003）：不再从 `--host` 参数插值
+- **`template_agents_md_block` 改写为 host 无关 prose**（VAL-P0-002）：不嵌入 `~/.codex/` / `~/.claude/` 路径
+- **`--host` argparse 入口收紧**（VAL-P0-005/007）：init 和 gateway 仅接受 `"factory"`
+- **`CURRENT_MEMORY_VERSION` 升级到 `0.7.0`**
+
+### 删除
+- **`codex_global_hooks.py` / `claude_global_hooks.py`**（VAL-P4-001/002）
+- **`tests/test_codex_global_hooks.py` / `tests/test_claude_global_hooks.py`**（VAL-P4-003）
+- **`pyproject.toml` 中 `memory-codex-hooks` / `memory-claude-hooks` entry points**（VAL-P4-004）
+- **所有 `if host == "codex"` / `elif host == "claude"` 分支**（VAL-P4-005/006）
+- **`ownership.py` 中 `codex_global_hooks.py` source-repo 标记引用**（VAL-P4-007）
+- **`factory_global_hooks.py` 中 codex/claude 存在性检测探针**（VAL-P4-008）
+- **`hook_upgrade.py` 中 codex/claude 导入**（VAL-P4-009）
+
+### 修复
+- **init 不再生成 `hooks.json`**（VAL-P0-001）：移除 `generate_hooks_json` 调用
+- **update 模式自动清理存量项目旧 host 痕迹**（VAL-P4-010/011）：
+  - AGENTS.md 中 `~/.codex/bin/memory-hook` / `~/.claude/bin/memory-hook` 引用被清除
+  - `.codex/hooks.json` / `.claude/hooks.json` 残留文件被删除
+- **README.md / droid-wiki 文档删除 `--host codex|claude` 引用**（VAL-P4-012/013）
+
 ## [0.6.0] - 2026-06-01
 
 ### Added

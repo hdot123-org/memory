@@ -287,37 +287,37 @@ class TestToContextPackageInput:
 
 class TestParseHookEvent:
 
-    def test_codex_dispatch(self):
-        raw = json.dumps({"cwd": "/test"})
-        event = parse_hook_event("codex", "session-start", raw)
-        assert event.source == "codex"
-        assert event.event_type == "session-start"
-
-    def test_claude_dispatch(self):
-        raw = json.dumps({"event": "Stop"})
-        event = parse_hook_event("claude", "ignored", raw)
-        assert event.source == "claude"
-        assert event.event_type == "stop"
-
     def test_factory_dispatch(self):
         raw = json.dumps({"cwd": "/test", "hook_event_name": "SessionStart"})
         event = parse_hook_event("factory", "session-start", raw)
         assert event.source == "factory"
         assert event.event_type == "session-start"
 
+    def test_codex_host_raises(self):
+        """codex is no longer supported (INV-6)."""
+        with pytest.raises(ValueError, match="unknown host"):
+            parse_hook_event("codex", "session-start", "{}")
+
+    def test_claude_host_raises(self):
+        """claude is no longer supported (INV-6)."""
+        with pytest.raises(ValueError, match="unknown host"):
+            parse_hook_event("claude", "session-start", "{}")
+
     def test_unknown_host_raises(self):
         with pytest.raises(ValueError, match="unknown host"):
             parse_hook_event("unknown", "session-start", "{}")
 
-    def test_codex_empty_event_uses_default(self):
-        event = parse_hook_event("codex", "", "{}")
+    def test_factory_empty_event_uses_default(self):
+        """Factory with empty event defaults to prompt-submit."""
+        event = parse_hook_event("factory", "", "{}")
         assert event.event_type == "prompt-submit"
+        assert event.source == "factory"
 
-    def test_claude_event_from_payload(self):
-        raw = json.dumps({"event": "UserPromptSubmit", "cwd": "/x"})
-        event = parse_hook_event("claude", "stop", raw)
-        # Claude ignores the event arg; reads from payload
-        assert event.event_type == "prompt-submit"
+    def test_factory_event_from_arg(self):
+        """Factory uses the event arg directly."""
+        raw = json.dumps({"cwd": "/x"})
+        event = parse_hook_event("factory", "session-start", raw)
+        assert event.event_type == "session-start"
 
 
 # ---------------------------------------------------------------------------
@@ -358,9 +358,6 @@ class TestCrossHostNormalization:
         assert set(claude_input.keys()) == set(codex_input.keys())
         # Same event type
         assert claude_input["event"] == codex_input["event"]
-        # Same host label (source)
-        assert claude_input["host"] == "claude"
-        assert codex_input["host"] == "codex"
         # Payloads are dicts
         assert isinstance(claude_input["payload"], dict)
         assert isinstance(codex_input["payload"], dict)

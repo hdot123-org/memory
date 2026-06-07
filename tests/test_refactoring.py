@@ -37,7 +37,7 @@ def _make_minimal_core_config_kwargs(tmp_path: Path) -> dict[str, Any]:
 
     return {
         # Group 1: Environment (7)
-        "host": "codex",
+        "host": "factory",
         "event": "session-start",
         "payload": {"session_id": "abc"},
         "cwd": base,
@@ -97,7 +97,7 @@ class TestCoreConfig:
 
         # Verify each group
         # Group 1: Environment
-        assert cfg.host == "codex"
+        assert cfg.host == "factory"
         assert cfg.event == "session-start"
         assert cfg.payload == {"session_id": "abc"}
         assert cfg.cwd == tmp_path / "memory_core"
@@ -133,6 +133,26 @@ class TestCoreConfig:
 
         kwargs = _make_minimal_core_config_kwargs(tmp_path)
         kwargs["host"] = "invalid"
+
+        with pytest.raises(ValueError, match="host must be"):
+            CoreConfig(**kwargs)
+
+    def test_core_config_rejects_codex_host(self, tmp_path):
+        """CoreConfig raises on 'codex' host (no longer supported)."""
+        from memory_core.tools.memory_hook_config import CoreConfig
+
+        kwargs = _make_minimal_core_config_kwargs(tmp_path)
+        kwargs["host"] = "codex"
+
+        with pytest.raises(ValueError, match="host must be"):
+            CoreConfig(**kwargs)
+
+    def test_core_config_rejects_claude_host(self, tmp_path):
+        """CoreConfig raises on 'claude' host (no longer supported)."""
+        from memory_core.tools.memory_hook_config import CoreConfig
+
+        kwargs = _make_minimal_core_config_kwargs(tmp_path)
+        kwargs["host"] = "claude"
 
         with pytest.raises(ValueError, match="host must be"):
             CoreConfig(**kwargs)
@@ -174,7 +194,7 @@ class TestCoreConfig:
         kwargs = _make_minimal_core_config_kwargs(tmp_path)
         cfg = CoreConfig.from_gateway_kwargs(**kwargs)
 
-        assert cfg.host == "codex"
+        assert cfg.host == "factory"
         assert cfg.event == "session-start"
         assert cfg.payload == {"session_id": "abc"}
         assert cfg.project_scope == "workbot"
@@ -199,14 +219,14 @@ class TestCoreConfig:
         assert cfg.event_contract_blocker_scopes is None
         assert cfg.core_evidence_refs is None
 
-    def test_core_config_accepts_claude_host(self, tmp_path):
-        """CoreConfig accepts 'claude' as a valid host."""
+    def test_core_config_rejects_claude_host_valueerror(self, tmp_path):
+        """CoreConfig rejects 'claude' as invalid host (only 'factory' is supported)."""
         from memory_core.tools.memory_hook_config import CoreConfig
 
         kwargs = _make_minimal_core_config_kwargs(tmp_path)
         kwargs["host"] = "claude"
-        cfg = CoreConfig(**kwargs)
-        assert cfg.host == "claude"
+        with pytest.raises(ValueError, match="host must be"):
+            CoreConfig(**kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -236,11 +256,11 @@ class TestArtifactWriter:
             datetime_module=FixedDatetime,
         )
 
-        package = {"schema_version": "wb-hook-v2", "host": "codex", "event": "test"}
-        writer.write(host="codex", event="test", package=package)
+        package = {"schema_version": "wb-hook-v2", "host": "factory", "event": "test"}
+        writer.write(host="factory", event="test", package=package)
 
-        snapshot = context_root / "2026-05-11" / "20260511T004711370980-codex-test.json"
-        latest = context_root / "latest-codex-test.json"
+        snapshot = context_root / "2026-05-11" / "20260511T004711370980-factory-test.json"
+        latest = context_root / "latest-factory-test.json"
         event_log = context_root.parent / "events" / "2026-05-11.jsonl"
         legacy_event_log = context_root.parent / "events.jsonl"
 
@@ -250,7 +270,7 @@ class TestArtifactWriter:
         assert legacy_event_log.is_file()
 
         content = json.loads(snapshot.read_text(encoding="utf-8"))
-        assert content["host"] == "codex"
+        assert content["host"] == "factory"
         assert content["event"] == "test"
         assert content["artifact_refs"]["snapshot"] == str(snapshot)
         assert content["artifact_refs"]["latest"] == str(latest)
@@ -288,7 +308,7 @@ class TestArtifactWriter:
 
         package = {"schema_version": "wb-hook-v2"}
         # Should not raise
-        writer.write(host="codex", event="test", package=package)
+        writer.write(host="factory", event="test", package=package)
 
         # Error should be logged to the dated log and legacy compatibility log.
         dated_error_log = error_log.parent / "errors" / f"{real_datetime.now().date().isoformat()}.log"
@@ -331,103 +351,102 @@ class TestDelegateRouter:
         )
         return delegate
 
-    def test_delegate_router_routes_to_codex(self):
-        """DelegateRouter calls codex_delegate.execute for host='codex'."""
+    def test_delegate_router_routes_to_factory(self):
+        """DelegateRouter calls factory_delegate.execute for host='factory'."""
         from memory_core.tools.memory_hook_impls import DelegateRouter
 
-        codex = self._make_fake_delegate()
-        claude = self._make_fake_delegate()
-        router = DelegateRouter(codex_delegate=codex, claude_delegate=claude)
+        factory = self._make_fake_delegate()
+        router = DelegateRouter(factory_delegate=factory)
 
         result = router.route(
-            host="codex",
+            host="factory",
             event="session-start",
             raw_payload='{"key": "val"}',
             payload={"key": "val"},
         )
 
-        codex.execute.assert_called_once_with(
+        factory.execute.assert_called_once_with(
             "session-start", '{"key": "val"}', {"key": "val"}
         )
-        claude.execute.assert_not_called()
         assert result.returncode == 0
 
-    def test_delegate_router_routes_to_claude(self):
-        """DelegateRouter calls claude_delegate.execute for host='claude'."""
+    def test_delegate_router_rejects_codex_host(self):
+        """DelegateRouter raises ValueError for 'codex' host (no longer supported)."""
         from memory_core.tools.memory_hook_impls import DelegateRouter
 
-        codex = self._make_fake_delegate()
-        claude = self._make_fake_delegate()
-        router = DelegateRouter(codex_delegate=codex, claude_delegate=claude)
+        factory = self._make_fake_delegate()
+        router = DelegateRouter(factory_delegate=factory)
 
-        result = router.route(
-            host="claude",
-            event="file-change",
-            raw_payload="{}",
-            payload={},
-        )
+        with pytest.raises(ValueError, match="unknown host"):
+            router.route(host="codex", event="x", raw_payload="", payload={})
 
-        claude.execute.assert_called_once_with("file-change", "{}", {})
-        codex.execute.assert_not_called()
-        assert result.returncode == 0
+    def test_delegate_router_rejects_claude_host(self):
+        """DelegateRouter raises ValueError for 'claude' host (no longer supported)."""
+        from memory_core.tools.memory_hook_impls import DelegateRouter
+
+        factory = self._make_fake_delegate()
+        router = DelegateRouter(factory_delegate=factory)
+
+        with pytest.raises(ValueError, match="unknown host"):
+            router.route(host="claude", event="x", raw_payload="", payload={})
 
     def test_delegate_router_rejects_unknown_host(self):
         """DelegateRouter raises ValueError for unknown host."""
         from memory_core.tools.memory_hook_impls import DelegateRouter
 
-        codex = self._make_fake_delegate()
-        claude = self._make_fake_delegate()
-        router = DelegateRouter(codex_delegate=codex, claude_delegate=claude)
+        factory = self._make_fake_delegate()
+        router = DelegateRouter(factory_delegate=factory)
 
         with pytest.raises(ValueError, match="unknown host"):
             router.route(host="unknown", event="x", raw_payload="", payload={})
 
-    def test_delegate_router_noop_codex(self):
-        """DelegateRouter calls codex_delegate.noop_response for host='codex'."""
+    def test_delegate_router_noop_factory(self):
+        """DelegateRouter calls factory_delegate.noop_response for host='factory'."""
         from memory_core.tools.memory_hook_impls import DelegateRouter
 
-        codex = self._make_fake_delegate()
-        claude = self._make_fake_delegate()
-        router = DelegateRouter(codex_delegate=codex, claude_delegate=claude)
+        factory = self._make_fake_delegate()
+        router = DelegateRouter(factory_delegate=factory)
 
-        result = router.noop(host="codex")
+        result = router.noop(host="factory")
 
-        codex.noop_response.assert_called_once()
-        claude.noop_response.assert_not_called()
+        factory.noop_response.assert_called_once()
         assert result.stdout == "noop\n"
 
-    def test_delegate_router_noop_claude(self):
-        """DelegateRouter calls claude_delegate.noop_response for host='claude'."""
+    def test_delegate_router_noop_rejects_codex_host(self):
+        """DelegateRouter raises ValueError for 'codex' host in noop()."""
         from memory_core.tools.memory_hook_impls import DelegateRouter
 
-        codex = self._make_fake_delegate()
-        claude = self._make_fake_delegate()
-        router = DelegateRouter(codex_delegate=codex, claude_delegate=claude)
+        factory = self._make_fake_delegate()
+        router = DelegateRouter(factory_delegate=factory)
 
-        result = router.noop(host="claude")
+        with pytest.raises(ValueError, match="unknown host"):
+            router.noop(host="codex")
 
-        claude.noop_response.assert_called_once()
-        codex.noop_response.assert_not_called()
-        assert result.stdout == "noop\n"
+    def test_delegate_router_noop_rejects_claude_host(self):
+        """DelegateRouter raises ValueError for 'claude' host in noop()."""
+        from memory_core.tools.memory_hook_impls import DelegateRouter
+
+        factory = self._make_fake_delegate()
+        router = DelegateRouter(factory_delegate=factory)
+
+        with pytest.raises(ValueError, match="unknown host"):
+            router.noop(host="claude")
 
     def test_delegate_router_noop_rejects_unknown_host(self):
         """DelegateRouter raises ValueError for unknown host in noop()."""
         from memory_core.tools.memory_hook_impls import DelegateRouter
 
-        codex = self._make_fake_delegate()
-        claude = self._make_fake_delegate()
-        router = DelegateRouter(codex_delegate=codex, claude_delegate=claude)
+        factory = self._make_fake_delegate()
+        router = DelegateRouter(factory_delegate=factory)
 
         with pytest.raises(ValueError, match="unknown host"):
             router.noop(host="unknown")
 
-    def test_delegate_router_stores_delegates(self):
-        """DelegateRouter stores references to both delegates."""
+    def test_delegate_router_stores_delegate(self):
+        """DelegateRouter stores reference to factory delegate."""
         from memory_core.tools.memory_hook_impls import DelegateRouter
 
-        codex = self._make_fake_delegate()
-        claude = self._make_fake_delegate()
-        router = DelegateRouter(codex_delegate=codex, claude_delegate=claude)
+        factory = self._make_fake_delegate()
+        router = DelegateRouter(factory_delegate=factory)
 
-        assert router.codex_delegate is codex
-        assert router.claude_delegate is claude
+        assert router.factory_delegate is factory

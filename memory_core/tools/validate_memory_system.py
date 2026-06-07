@@ -135,7 +135,7 @@ def check_context_package(result: ValidateResult, builder: Any) -> bool:
         import memory_hook_gateway as gw  # type: ignore
 
         kwargs = dict(
-            host="codex",
+            host="factory",
             event="test",
             payload={},
             cwd=gw.REPO_ROOT,
@@ -239,7 +239,7 @@ def check_v1_schema(result: ValidateResult) -> bool:
     try:
         from memory_hook_gateway import build_context_package_simple  # type: ignore
         from memory_hook_schema import is_v1  # type: ignore
-        package = build_context_package_simple("codex", "test", {})
+        package = build_context_package_simple("factory", "test", {})
         if not is_v1(package):
             result.record("v1_schema", False, f"expected context-package-v1, got {package.get('schema_version')}")
             return False

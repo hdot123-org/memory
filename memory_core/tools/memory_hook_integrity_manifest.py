@@ -188,10 +188,19 @@ def _classify_entry(
     return ("none", "none", "none")
 
 
-def _discover_canonical_files(project_root: Path) -> list[Path]:
+def _discover_canonical_files(
+    project_root: Path,
+    *,
+    include_runtime: bool = False,
+) -> list[Path]:
     """Discover all signable files in a project.
 
     Returns list of absolute paths that exist.
+
+    Args:
+        project_root: Project root path.
+        include_runtime: If True, also traverse ARTIFACT_PATTERNS
+            (memory/artifacts/memory-hook/contexts|events). Default False.
     """
     resolved_root = project_root.resolve()
     found: list[Path] = []
@@ -200,13 +209,14 @@ def _discover_canonical_files(project_root: Path) -> list[Path]:
         if p.exists() and p.is_file():
             found.append(p.resolve())
 
-    # Also sign date-partitioned artifact files
-    for art_pattern in ARTIFACT_PATTERNS:
-        art_root = resolved_root / art_pattern
-        if art_root.exists() and art_root.is_dir():
-            for sub in art_root.rglob("*"):
-                if sub.is_file() and sub.suffix in (".json", ".jsonl", ".log"):
-                    found.append(sub.resolve())
+    # Also sign date-partitioned artifact files (only when include_runtime=True)
+    if include_runtime:
+        for art_pattern in ARTIFACT_PATTERNS:
+            art_root = resolved_root / art_pattern
+            if art_root.exists() and art_root.is_dir():
+                for sub in art_root.rglob("*"):
+                    if sub.is_file() and sub.suffix in (".json", ".jsonl", ".log"):
+                        found.append(sub.resolve())
 
     # M4: Discover owned files from ownership configuration
     if load_memory_ownership is not None:
@@ -289,6 +299,7 @@ def sign_project(
     key: bytes,
     *,
     now_iso: Any | None = None,
+    include_runtime: bool = False,
 ) -> dict[str, Any] | None:
     """Sign all canonical files in a project and write manifest.json.
 
@@ -299,6 +310,8 @@ def sign_project(
         project_root: Absolute path to project root (git root)
         key: 32-byte HMAC key
         now_iso: Optional callable returning ISO timestamp string
+        include_runtime: If True, also sign ARTIFACT_PATTERNS
+            (memory/artifacts/memory-hook/contexts|events). Default False.
 
     Returns:
         The manifest dict that was written, or None if skipped (anti-pollution)
@@ -316,7 +329,7 @@ def sign_project(
             return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     resolved_root = project_root.resolve()
-    files = _discover_canonical_files(resolved_root)
+    files = _discover_canonical_files(resolved_root, include_runtime=include_runtime)
     timestamp = now_iso()
 
     # M4: Compute ownership digest for manifest header
@@ -430,6 +443,7 @@ def sign_project_incremental(
     *,
     now_iso: Any | None = None,
     reason: str | None = None,
+    include_runtime: bool = False,
 ) -> dict[str, Any] | None:
     """Sign only the changed files in a project and write updated manifest.json.
 
@@ -446,6 +460,8 @@ def sign_project_incremental(
         changed_paths: List of relative paths to re-sign
         now_iso: Optional callable returning ISO timestamp string
         reason: Optional reason for audit log (e.g., "memory-init baseline")
+        include_runtime: If True, also sign ARTIFACT_PATTERNS in fallback full sign.
+            Default False.
 
     Returns:
         The manifest dict that was written, or None if skipped (anti-pollution)
@@ -476,7 +492,7 @@ def sign_project_incremental(
         _logger.info(
             "sign_project_incremental: manifest not found, falling back to full sign"
         )
-        result = sign_project(resolved_root, key, now_iso=now_iso_fn)
+        result = sign_project(resolved_root, key, now_iso=now_iso_fn, include_runtime=include_runtime)
         # Write audit log for the fallback full-sign with reason
         if result is not None:
             _write_audit_log(
@@ -494,7 +510,7 @@ def sign_project_incremental(
         existing_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         _logger.warning("sign_project_incremental: failed to load manifest: %s", exc)
-        return sign_project(resolved_root, key, now_iso=now_iso_fn)
+        return sign_project(resolved_root, key, now_iso=now_iso_fn, include_runtime=include_runtime)
 
     # Build a lookup of existing entries by rel_path
     entries_by_rel: dict[str, dict[str, Any]] = {}

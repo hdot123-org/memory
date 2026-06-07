@@ -376,12 +376,25 @@ def _check_manifest(root: Path, result: AuditResult) -> None:
         return
 
     entries = data.get("entries", [])
-    runtime_paths = {"runtime", "tmp", "log", "system", "memory/artifacts/memory-hook"}
+    # Precise prefix matching: only flag true runtime paths.
+    # Normalize to forward slashes before matching.
+    runtime_prefixes = (
+        "memory/artifacts/",
+        "memory/system/cache/",
+        "tmp/",
+        "memory/log/",
+    )
 
     for entry in entries:
         path = entry.get("path", "")
-        for runtime in runtime_paths:
-            if runtime in path.lower():
+        # Use rel_path (project-relative) for prefix matching to avoid
+        # false positives when the project lives under /tmp/ or another
+        # path that happens to contain a runtime prefix substring.
+        rel_path = entry.get("rel_path", "")
+        # Normalize to forward slashes for consistent prefix matching
+        normalized_path = rel_path.replace("\\", "/") or path.replace("\\", "/")
+        for prefix in runtime_prefixes:
+            if normalized_path.startswith(prefix) or f"/{prefix}" in normalized_path:
                 result.findings.append(
                     Finding(
                         severity="P2",
