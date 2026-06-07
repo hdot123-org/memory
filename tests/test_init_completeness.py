@@ -79,7 +79,7 @@ class TestNoHooksJson:
                 # Should not contain an active call to generate_hooks_json
                 # (commented-out reference is OK)
                 lines = func_source.split("\n")
-                active_calls = [l for l in lines if "generate_hooks_json(" in l and not l.strip().startswith("#")]
+                active_calls = [line for line in lines if "generate_hooks_json(" in line and not line.strip().startswith("#")]
                 assert len(active_calls) == 0, f"generate_hooks_json still called in init_project_memory: {active_calls}"
 
 
@@ -139,7 +139,6 @@ class TestHostNeutrality:
         Uses explicit scope='test-project' to ensure identical project names.
         """
         import filecmp
-        import hashlib
 
         from memory_core.tools.init_project_memory import init_project_memory
 
@@ -210,8 +209,9 @@ class TestSupportedHostsFactoryOnly:
 class TestGatewayArgparseFactoryOnly:
     def test_gateway_rejects_codex(self) -> None:
         """VAL-P0-007: gateway --host codex raises SystemExit."""
-        from memory_core.tools.memory_hook_gateway import _parse_args
         import sys
+
+        from memory_core.tools.memory_hook_gateway import _parse_args
         old_argv = sys.argv
         try:
             sys.argv = ["gateway", "--host", "codex", "--event", "session-start"]
@@ -222,8 +222,9 @@ class TestGatewayArgparseFactoryOnly:
 
     def test_gateway_rejects_claude(self) -> None:
         """VAL-P0-007: gateway --host claude raises SystemExit."""
-        from memory_core.tools.memory_hook_gateway import _parse_args
         import sys
+
+        from memory_core.tools.memory_hook_gateway import _parse_args
         old_argv = sys.argv
         try:
             sys.argv = ["gateway", "--host", "claude", "--event", "session-start"]
@@ -234,8 +235,9 @@ class TestGatewayArgparseFactoryOnly:
 
     def test_gateway_accepts_factory(self) -> None:
         """VAL-P0-007: gateway --host factory exits cleanly."""
-        from memory_core.tools.memory_hook_gateway import _parse_args
         import sys
+
+        from memory_core.tools.memory_hook_gateway import _parse_args
         old_argv = sys.argv
         try:
             sys.argv = ["gateway", "--host", "factory", "--event", "session-start"]
@@ -313,8 +315,12 @@ class TestCoreConfigRejectsNonFactory:
     def test_core_config_rejects_codex(self) -> None:
         """VAL-P0-009: CoreConfig(host='codex', ...) raises ValueError."""
         from pathlib import Path
+
         from memory_core.tools.memory_hook_config import CoreConfig
-        noop = lambda *a, **kw: None  # type: ignore
+
+        def noop(*a, **kw):  # type: ignore
+            return None
+
         with pytest.raises(ValueError, match="host must be one of"):
             CoreConfig(
                 host="codex",
@@ -356,8 +362,12 @@ class TestCoreConfigRejectsNonFactory:
     def test_core_config_accepts_factory(self) -> None:
         """VAL-P0-009: CoreConfig(host='factory', ...) succeeds."""
         from pathlib import Path
+
         from memory_core.tools.memory_hook_config import CoreConfig
-        noop = lambda *a, **kw: None  # type: ignore
+
+        def noop(*a, **kw):  # type: ignore
+            return None
+
         config = CoreConfig(
             host="factory",
             event="session-start",
@@ -652,7 +662,7 @@ class TestMemoryAnchorExists:
         init_project_memory(tmp_path, host="factory", mode="create")
 
         anchor_path = tmp_path / "tests" / ".memory-anchor.md"
-        assert anchor_path.exists(), f"tests/.memory-anchor.md does not exist"
+        assert anchor_path.exists(), "tests/.memory-anchor.md does not exist"
 
 
 class TestLegalContractCheckerEndToEnd:
@@ -660,8 +670,8 @@ class TestLegalContractCheckerEndToEnd:
 
     def test_legal_contract_checker_passes(self, tmp_path: Path) -> None:
         """VAL-P1-010: LegalContractChecker.validate_unique_legal_system_contract() returns empty errors."""
-        from memory_core.tools.init_project_memory import init_project_memory
         from memory_core.tools.business_policy_checks import LegalContractChecker
+        from memory_core.tools.init_project_memory import init_project_memory
 
         (tmp_path / ".git").mkdir()
         init_project_memory(tmp_path, host="factory", mode="create")
@@ -906,7 +916,7 @@ class TestCleanProjectNoP1AuditWarnings:
 
 def _make_project_with_artifacts(tmp_path: Path) -> tuple[Path, bytes]:
     """Create a minimal project with runtime artifact files and a key.
-    
+
     Note: Caller must monkeypatch is_memory_core_source_repo separately.
     """
     root = tmp_path / "project"
@@ -1060,6 +1070,7 @@ class TestResignCLIExcludesRuntimeByDefault:
     def test_resign_cli_default_excludes_runtime(self, tmp_path: Path, monkeypatch) -> None:
         """resign CLI without --include-runtime produces manifest with zero artifact entries."""
         import os
+
         from memory_core.tools.memory_integrity_resign import main as resign_main
 
         root, key = _make_project_with_artifacts(tmp_path)
@@ -1098,6 +1109,7 @@ class TestResignCLIIncludeRuntime:
     def test_resign_cli_include_runtime(self, tmp_path: Path, monkeypatch) -> None:
         """resign CLI --include-runtime produces manifest with runtime artifact entries."""
         import os
+
         from memory_core.tools.memory_integrity_resign import main as resign_main
 
         root, key = _make_project_with_artifacts(tmp_path)
@@ -1423,10 +1435,10 @@ class TestCrossFullInitAuditSignChain:
 
     def test_full_init_audit_sign_chain(self, tmp_path: Path, monkeypatch) -> None:
         """VAL-CROSS-001: After init, audit has zero P0/P1 findings and sign produces stable manifest."""
-        from memory_core.tools.init_project_memory import init_project_memory
         from memory_core.tools.audit_project_layout import audit_project_layout
-        from memory_core.tools.memory_hook_integrity_manifest import sign_project
+        from memory_core.tools.init_project_memory import init_project_memory
         from memory_core.tools.memory_hook_integrity_keys import generate_key
+        from memory_core.tools.memory_hook_integrity_manifest import sign_project
 
         (tmp_path / ".git").mkdir()
         result = init_project_memory(tmp_path, host="factory", mode="create")
@@ -1582,10 +1594,10 @@ class TestCrossAuditNoFalsePositivesFreshInit:
         manifest and technically match the runtime prefix. They are not actual
         runtime artifacts, so we filter them out from the assertion.
         """
-        from memory_core.tools.init_project_memory import init_project_memory
         from memory_core.tools.audit_project_layout import audit_project_layout
-        from memory_core.tools.memory_hook_integrity_manifest import sign_project
+        from memory_core.tools.init_project_memory import init_project_memory
         from memory_core.tools.memory_hook_integrity_keys import generate_key
+        from memory_core.tools.memory_hook_integrity_manifest import sign_project
 
         (tmp_path / ".git").mkdir()
         init_project_memory(tmp_path, host="factory", mode="create")
@@ -1614,7 +1626,6 @@ class TestCrossSingleHostWrapperOnly:
         repo_root = Path(__file__).parent.parent
         tools_dir = repo_root / "memory_core" / "tools"
 
-        import glob
         wrapper_files = sorted([
             p.name
             for p in tools_dir.glob("*_global_hooks.py")
@@ -1634,8 +1645,9 @@ class TestCrossVersionBumpRecorded:
 
     def test_version_bump_in_constants(self) -> None:
         """VAL-CROSS-006: CURRENT_MEMORY_VERSION >= 0.6.0."""
-        from memory_core.constants import CURRENT_MEMORY_VERSION
         from packaging.version import Version
+
+        from memory_core.constants import CURRENT_MEMORY_VERSION
         assert Version(CURRENT_MEMORY_VERSION) >= Version("0.6.0")
 
     def test_changelog_has_chinese_entry(self) -> None:

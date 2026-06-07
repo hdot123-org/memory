@@ -325,14 +325,14 @@ def test_wrapper_detects_memory_core_by_factory_global_hooks(monkeypatch, tmp_pa
     assert not (memory_repo / "memory" / "system").exists()
 
 
-def test_wrapper_detects_memory_core_by_codex_global_hooks(monkeypatch, tmp_path: Path) -> None:
-    """Anti-pollution: wrapper should detect memory-core by codex_global_hooks.py."""
+def test_wrapper_detects_memory_core_by_ownership_marker(monkeypatch, tmp_path: Path) -> None:
+    """Anti-pollution: wrapper should detect memory-core by ownership.py."""
     factory_home = tmp_path / ".factory"
     memory_repo = tmp_path / "memory-core"
-    nested = memory_repo / "memory_core" / "tools"
+    nested = memory_repo / "memory_core"
     nested.mkdir(parents=True)
-    # Only codex_global_hooks.py marker
-    (nested / "codex_global_hooks.py").write_text("# marker\n", encoding="utf-8")
+    # Only ownership.py marker
+    (nested / "ownership.py").write_text("# marker\n", encoding="utf-8")
     subprocess.run(["git", "init"], cwd=memory_repo, check=True, capture_output=True, text=True)
     _fake_memory_commands(tmp_path, monkeypatch)
 

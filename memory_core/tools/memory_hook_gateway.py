@@ -496,7 +496,7 @@ def _execute_delegate_via_facade(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Workbot memory hook gateway.")
-    parser.add_argument("--host", required=True, choices=("codex", "claude", "factory"))
+    parser.add_argument("--host", required=True, choices=("factory",))
     parser.add_argument("--event", required=True, choices=(
         "session-start", "prompt-submit", "stop", "notification",
         "pre-tool-use", "post-tool-use", "subagent-stop",

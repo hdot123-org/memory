@@ -290,17 +290,15 @@ class NoopHostDelegate(HostDelegate):
 def resolve_host_delegate(host: str, mode: str = "auto") -> HostDelegate:
     """Resolve a HostDelegate by host name and mode.
 
+    Only factory is supported (INV-6).
+
     Modes:
-        "auto": try cmux delegate first, fallback to NoopHostDelegate
+        "auto": try factory delegate, fallback to NoopHostDelegate
         "noop": always return NoopHostDelegate
-        "cmux": always return cmux delegate (may have can_handle=False)
+        "cmux": always return factory delegate (may have can_handle=False)
     """
-    if host == "codex":
-        cmux_delegate: HostDelegate = CodexDelegate()
-    elif host == "claude":
-        cmux_delegate = ClaudeDelegate()
-    elif host == "factory":
-        cmux_delegate = FactoryDelegate()
+    if host == "factory":
+        cmux_delegate: HostDelegate = FactoryDelegate()
     else:
         return NoopHostDelegate()
 
@@ -1385,20 +1383,15 @@ class ArtifactWriter:
 
 
 class DelegateRouter:
-    """Routes context packages to the appropriate host delegate.
+    """Routes context packages to the factory host delegate.
 
-    Dispatches to ``CodexDelegate``, ``ClaudeDelegate``, or ``FactoryDelegate``
-    based on the host name, and provides a ``noop`` fallback for each.
+    Only factory is supported (INV-6).
     """
 
     def __init__(
         self,
-        codex_delegate: CodexDelegate,
-        claude_delegate: ClaudeDelegate,
         factory_delegate: FactoryDelegate | None = None,
     ):
-        self.codex_delegate = codex_delegate
-        self.claude_delegate = claude_delegate
         self.factory_delegate = factory_delegate or FactoryDelegate()
         self._noop_delegate = NoopHostDelegate()
 
@@ -1409,23 +1402,15 @@ class DelegateRouter:
         raw_payload: str,
         payload: dict[str, Any],
     ) -> subprocess.CompletedProcess[str]:
-        """Route to the correct delegate based on host."""
-        if host == "codex":
-            return self.codex_delegate.execute(event, raw_payload, payload)
-        elif host == "claude":
-            return self.claude_delegate.execute(event, raw_payload, payload)
-        elif host == "factory":
+        """Route to the factory delegate."""
+        if host == "factory":
             return self.factory_delegate.execute(event, raw_payload, payload)
         else:
             raise ValueError(f"unknown host: {host}")
 
     def noop(self, host: str) -> subprocess.CompletedProcess[str]:
-        """Execute noop response for the given host."""
-        if host == "codex":
-            return self.codex_delegate.noop_response()
-        elif host == "claude":
-            return self.claude_delegate.noop_response()
-        elif host == "factory":
+        """Execute noop response for the factory host."""
+        if host == "factory":
             return self.factory_delegate.noop_response()
         else:
             raise ValueError(f"unknown host: {host}")

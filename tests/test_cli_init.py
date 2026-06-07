@@ -110,14 +110,14 @@ def test_init_with_explicit_scope(tmp_path: Path) -> None:
 # 5. test_init_with_host_claude
 # ---------------------------------------------------------------------------
 
-def test_init_with_host_claude(tmp_path: Path) -> None:
-    """--host claude 后 adapter.toml routing.host == "claude"."""
-    exit_code = _call_main(["--target", str(tmp_path), "--host", "claude"])
+def test_init_with_host_factory(tmp_path: Path) -> None:
+    """--host factory 后 adapter.toml routing.host == "factory"."""
+    exit_code = _call_main(["--target", str(tmp_path), "--host", "factory"])
     assert exit_code == 0
 
     adapter = _read_adapter_toml(tmp_path)
     routing = adapter.get("routing", {})
-    assert routing.get("host") == "claude"
+    assert routing.get("host") == "factory"
 
 
 # ---------------------------------------------------------------------------

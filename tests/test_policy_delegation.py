@@ -63,7 +63,7 @@ def registry() -> PolicyRegistryImpl:
 def base_config_kwargs() -> dict:
     """Minimal keyword arguments required to construct a CoreConfig."""
     return {
-        "host": "codex",
+        "host": "factory",
         "event": "hook-test",
         "payload": {},
         "cwd": Path("/tmp"),

@@ -454,37 +454,7 @@ class TestScopeAndProjectName:
 # ---------------------------------------------------------------------------
 
 class TestHooksAndAgentsMdGeneration:
-    """Test .claude/hooks.json and AGENTS.md generation during init."""
-
-    def test_hooks_json_created_with_4_events(self) -> None:
-        """Init should create .claude/hooks.json with 4 hook events."""
-        proj = _make_temp_project()
-        try:
-            result = _run_script(INIT_SCRIPT, ["--target", str(proj), "--json"])
-            assert result.returncode == 0
-            data = json.loads(result.stdout)
-            assert data["success"] is True
-
-            hooks_path = proj / ".claude" / "hooks.json"
-            assert hooks_path.is_file(), "hooks.json not created"
-
-            hooks_data = json.loads(hooks_path.read_text(encoding="utf-8"))
-            assert "hooks" in hooks_data
-            assert len(hooks_data["hooks"]) == 4
-
-            # Verify all expected events are present
-            events = {h["event"] for h in hooks_data["hooks"]}
-            assert events == {"SessionStart", "UserPromptSubmit", "Notification", "Stop"}
-
-            # Verify each hook has command and stdin
-            for hook in hooks_data["hooks"]:
-                assert "command" in hook
-                # Should use wrapper-based commands, not bare gateway
-                assert "~/.claude/bin/memory-hook" in hook["command"]
-                assert hook.get("stdin") is True
-        finally:
-            import shutil
-            shutil.rmtree(proj, ignore_errors=True)
+    """Test AGENTS.md generation during init. Note: hooks.json is no longer created (INV-6)."""
 
     def test_agents_md_created_with_markers(self) -> None:
         """Init should create AGENTS.md with MEMORY_HOOK markers."""
@@ -499,9 +469,24 @@ class TestHooksAndAgentsMdGeneration:
             content = agents_path.read_text(encoding="utf-8")
             assert "<!-- MEMORY_HOOK_BEGIN -->" in content
             assert "<!-- MEMORY_HOOK_END -->" in content
-            # AGENTS.md should recommend the wrapper, not bare gateway
-            # Default host is codex, so wrapper is ~/.codex/bin/memory-hook
-            assert "~/.codex/bin/memory-hook" in content
+            # VAL-P0-002: AGENTS.md should NOT contain deprecated wrapper paths
+            assert "~/.codex/bin/memory-hook" not in content
+            assert "~/.claude/bin/memory-hook" not in content
+            # Should reference factory host
+            assert "factory" in content
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_hooks_json_not_created(self) -> None:
+        """Init should NOT create hooks.json (INV-6: host tightening)."""
+        proj = _make_temp_project()
+        try:
+            result = _run_script(INIT_SCRIPT, ["--target", str(proj), "--json"])
+            assert result.returncode == 0
+
+            hooks_path = proj / ".claude" / "hooks.json"
+            assert not hooks_path.exists(), "hooks.json should not be created"
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
@@ -528,52 +513,6 @@ class TestHooksAndAgentsMdGeneration:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
 
-    def test_hooks_json_idempotent_no_duplicate(self) -> None:
-        """Running init twice should not duplicate hook entries."""
-        proj = _make_temp_project()
-        try:
-            _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            hooks_path = proj / ".claude" / "hooks.json"
-            data1 = json.loads(hooks_path.read_text(encoding="utf-8"))
-            count1 = len(data1["hooks"])
-
-            # Run again
-            _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            data2 = json.loads(hooks_path.read_text(encoding="utf-8"))
-            count2 = len(data2["hooks"])
-
-            assert count1 == 4
-            assert count2 == 4
-        finally:
-            import shutil
-            shutil.rmtree(proj, ignore_errors=True)
-
-    def test_host_claude_generates_hooks_json(self) -> None:
-        """--host claude should generate hooks.json with claude host in commands."""
-        proj = _make_temp_project()
-        try:
-            _run_script(INIT_SCRIPT, ["--target", str(proj), "--host", "claude", "--json"])
-            hooks_path = proj / ".claude" / "hooks.json"
-            data = json.loads(hooks_path.read_text(encoding="utf-8"))
-
-            for hook in data["hooks"]:
-                assert "--host claude" in hook["command"]
-        finally:
-            import shutil
-            shutil.rmtree(proj, ignore_errors=True)
-
-    def test_host_codex_generates_agents_md(self) -> None:
-        """--host codex should generate AGENTS.md with codex host."""
-        proj = _make_temp_project()
-        try:
-            _run_script(INIT_SCRIPT, ["--target", str(proj), "--host", "codex", "--json"])
-            agents_path = proj / "AGENTS.md"
-            content = agents_path.read_text(encoding="utf-8")
-            assert "--host codex" in content
-        finally:
-            import shutil
-            shutil.rmtree(proj, ignore_errors=True)
-
     def test_agents_md_preserves_existing_content(self) -> None:
         """Init should preserve existing AGENTS.md content and append the block."""
         proj = _make_temp_project()
@@ -591,38 +530,14 @@ class TestHooksAndAgentsMdGeneration:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
 
-    def test_hooks_json_merges_with_existing_hooks(self) -> None:
-        """Init should append memory hooks to existing hooks.json without removing others."""
-        proj = _make_temp_project()
-        try:
-            hooks_path = proj / ".claude" / "hooks.json"
-            existing = {
-                "hooks": [
-                    {"event": "CustomEvent", "command": "custom-cmd", "stdin": False}
-                ]
-            }
-            hooks_path.parent.mkdir(parents=True, exist_ok=True)
-            hooks_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-
-            _run_script(INIT_SCRIPT, ["--target", str(proj)])
-            data = json.loads(hooks_path.read_text(encoding="utf-8"))
-
-            # Should have original + 4 memory hooks
-            assert len(data["hooks"]) == 5
-            custom_hooks = [h for h in data["hooks"] if h["event"] == "CustomEvent"]
-            assert len(custom_hooks) == 1
-        finally:
-            import shutil
-            shutil.rmtree(proj, ignore_errors=True)
-
-    def test_default_host_is_codex(self) -> None:
-        """Default host should be codex."""
+    def test_default_host_is_factory(self) -> None:
+        """Default host should be factory."""
         proj = _make_temp_project()
         try:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             agents_path = proj / "AGENTS.md"
             content = agents_path.read_text(encoding="utf-8")
-            assert "--host codex" in content
+            assert "--host factory" in content
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
@@ -684,7 +599,45 @@ class TestValidatorEnhancedChecks:
             _run_script(INIT_SCRIPT, ["--target", str(proj)])
             adapter = proj / "memory" / "system" / "adapter.toml"
             text = adapter.read_text(encoding="utf-8")
-            text = text.replace('host = "codex"', 'host = "neovim"')
+            text = text.replace('host = "factory"', 'host = "neovim"')
+            adapter.write_text(text, encoding="utf-8")
+
+            result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
+            data = json.loads(result.stdout)
+            assert data["all_passed"] is False
+            host_checks = [c for c in data["checks"] if "adapter_host_enum" in c["name"]]
+            assert any(not c["passed"] for c in host_checks)
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_reject_codex_host(self) -> None:
+        """adapter.toml with 'codex' host should fail validation (no longer supported)."""
+        proj = _make_temp_project()
+        try:
+            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            adapter = proj / "memory" / "system" / "adapter.toml"
+            text = adapter.read_text(encoding="utf-8")
+            text = text.replace('host = "factory"', 'host = "codex"')
+            adapter.write_text(text, encoding="utf-8")
+
+            result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
+            data = json.loads(result.stdout)
+            assert data["all_passed"] is False
+            host_checks = [c for c in data["checks"] if "adapter_host_enum" in c["name"]]
+            assert any(not c["passed"] for c in host_checks)
+        finally:
+            import shutil
+            shutil.rmtree(proj, ignore_errors=True)
+
+    def test_reject_claude_host(self) -> None:
+        """adapter.toml with 'claude' host should fail validation (no longer supported)."""
+        proj = _make_temp_project()
+        try:
+            _run_script(INIT_SCRIPT, ["--target", str(proj)])
+            adapter = proj / "memory" / "system" / "adapter.toml"
+            text = adapter.read_text(encoding="utf-8")
+            text = text.replace('host = "factory"', 'host = "claude"')
             adapter.write_text(text, encoding="utf-8")
 
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
