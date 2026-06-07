@@ -148,8 +148,8 @@ class TestInitModeUpdate:
         assert MEMORY_HOOK_BEGIN_MARKER not in content
         assert MEMORY_HOOK_END_MARKER not in content
         assert "No memory markers here." in content
-        # Should be in skipped list
-        assert any("AGENTS.md" in s and "no marker" in s.lower() for s in result.get("skipped", []))
+        # Should be in skipped list (either "no marker" or "no legacy references")
+        assert any("AGENTS.md" in s and ("no marker" in s.lower() or "no legacy" in s.lower()) for s in result.get("skipped", []))
 
     def test_update_preserves_business_index_even_with_force(self, tmp_path: Path) -> None:
         """update mode should not overwrite business INDEX.md even with --force."""
@@ -213,8 +213,8 @@ class TestInitModeRepair:
         content = memory_lock.read_text()
         assert content == custom_content
 
-    def test_repair_does_not_create_agents_md(self, tmp_path: Path) -> None:
-        """repair mode should not create new AGENTS.md."""
+    def test_repair_creates_agents_md_when_absent(self, tmp_path: Path) -> None:
+        """repair mode should create AGENTS.md when it doesn't exist (Phase 2 fix)."""
         # Create initial structure
         init_project_memory(tmp_path, mode="create")
 
@@ -227,8 +227,8 @@ class TestInitModeRepair:
         result = init_project_memory(tmp_path, mode="repair")
         assert result["success"] is True
 
-        # AGENTS.md should NOT be created in repair mode
-        assert not agents_path.exists()
+        # AGENTS.md SHOULD be created in repair mode when absent (Phase 2 change)
+        assert agents_path.exists()
 
     def test_repair_does_not_create_hooks_json(self, tmp_path: Path) -> None:
         """repair mode should not create new hooks.json."""

@@ -22,7 +22,7 @@ class TestLoadAdapterTomlLegacy:
         cfg = load_adapter_toml(tmp_path / "nope.toml")
         assert cfg.project_name == ""
         assert cfg.project_scope == ""
-        assert cfg.host == "codex"
+        assert cfg.host == "factory"
         assert cfg.adapter_version == CURRENT_MEMORY_VERSION
         assert cfg.canonical_files == []
         assert cfg.artifact_root is None
@@ -59,7 +59,7 @@ class TestLoadAdapterTomlLegacy:
 
         cfg = load_adapter_toml(p)
         assert cfg.project_name == "minimal"
-        assert cfg.host == "codex"
+        assert cfg.host == "factory"
         assert cfg.adapter_version == CURRENT_MEMORY_VERSION
         assert cfg.canonical_files == []
         assert cfg.artifact_root is None
@@ -70,7 +70,7 @@ class TestLoadAdapterTomlLegacy:
 
         cfg = load_adapter_toml(p)
         assert cfg.project_name == ""
-        assert cfg.host == "codex"
+        assert cfg.host == "factory"
 
 
 # ── load_adapter_toml (canonical [core]/[policy]/[routing]) ────────
@@ -93,7 +93,7 @@ class TestLoadAdapterTomlCanonical:
             [routing]
             project_name = "my-proj"
             project_scope = "backend"
-            host = "codex"
+            host = "factory"
         """)
         p = tmp_path / "adapter.toml"
         p.write_text(toml)
@@ -101,7 +101,7 @@ class TestLoadAdapterTomlCanonical:
         cfg = load_adapter_toml(p)
         assert cfg.project_name == "my-proj"
         assert cfg.project_scope == "backend"
-        assert cfg.host == "codex"
+        assert cfg.host == "factory"
         assert cfg.adapter_version == "0.2.0"
         assert cfg.legality_source_policy == "map-only"
         assert cfg.registration_commit_policy == "same-commit"
@@ -115,7 +115,7 @@ class TestLoadAdapterTomlCanonical:
 
             [routing]
             project_scope = "fallback-scope"
-            host = "codex"
+            host = "factory"
         """)
         p = tmp_path / "adapter.toml"
         p.write_text(toml)
@@ -215,7 +215,7 @@ class TestAdapterConfigDataclass:
 
     def test_defaults(self) -> None:
         cfg = AdapterConfig(project_name="n", project_scope="s")
-        assert cfg.host == "codex"
+        assert cfg.host == "factory"
         assert cfg.adapter_version == CURRENT_MEMORY_VERSION
         assert cfg.canonical_files == []
         assert cfg.artifact_root is None

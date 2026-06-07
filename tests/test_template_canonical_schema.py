@@ -129,20 +129,20 @@ class TestInitWritesAdapterToml:
     def test_init_writes_user_host_into_adapter_toml(
         self, tmp_path: Path,
     ) -> None:
-        """Init with --host claude should set routing.host = claude."""
-        result = init_project_memory(tmp_path, scope="host-test", host="claude")
+        """Init with --host factory should set routing.host = factory."""
+        result = init_project_memory(tmp_path, scope="host-test", host="factory")
         assert result["success"] is True
 
         adapter_path = tmp_path / "memory" / "system" / "adapter.toml"
         assert adapter_path.exists()
         content = adapter_path.read_text(encoding="utf-8")
 
-        assert 'host = "claude"' in content
+        assert 'host = "factory"' in content
 
-    def test_init_default_host_is_codex_when_unspecified(
+    def test_init_default_host_is_factory_when_unspecified(
         self, tmp_path: Path,
     ) -> None:
-        """When --host is not provided, host should default to codex."""
+        """When --host is not provided, host should default to factory."""
         result = init_project_memory(tmp_path, scope="default-host-test")
         assert result["success"] is True
 
@@ -150,4 +150,4 @@ class TestInitWritesAdapterToml:
         assert adapter_path.exists()
         content = adapter_path.read_text(encoding="utf-8")
 
-        assert 'host = "codex"' in content
+        assert 'host = "factory"' in content

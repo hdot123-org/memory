@@ -165,7 +165,7 @@ class TestManifest:
             (art_dir / "snapshot.json").write_text("{}")
 
             key = generate_key()
-            manifest = sign_project(root, key)
+            manifest = sign_project(root, key, include_runtime=True)
 
             paths = [e["rel_path"] for e in manifest["entries"]]
             assert any("snapshot.json" in p for p in paths)
@@ -254,11 +254,11 @@ class TestManifest:
             subprocess.run(["git", "init"], cwd=memory2, check=True, capture_output=True, text=True)
             assert is_memory_core_source_repo(memory2) is True
 
-            # Memory-core repo with codex_global_hooks marker
+            # Memory-core repo with ownership.py marker
             memory3 = Path(td) / "memory3"
-            nested3 = memory3 / "memory_core" / "tools"
+            nested3 = memory3 / "memory_core"
             nested3.mkdir(parents=True)
-            (nested3 / "codex_global_hooks.py").write_text("# marker\n", encoding="utf-8")
+            (nested3 / "ownership.py").write_text("# marker\n", encoding="utf-8")
             subprocess.run(["git", "init"], cwd=memory3, check=True, capture_output=True, text=True)
             assert is_memory_core_source_repo(memory3) is True
 

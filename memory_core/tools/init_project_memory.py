@@ -198,10 +198,11 @@ lock_reason = "initial"
     return content, warnings
 
 
-def template_adapter_toml(project_name: str, host: str = "codex") -> tuple[str, list[str]]:
+def template_adapter_toml(project_name: str) -> tuple[str, list[str]]:
     """Generate adapter.toml content conforming to the canonical schema.
 
     Uses inline canonical template (no external template file needed).
+    Host is fixed to "factory" (INV-1, INV-6).
 
     Returns:
         Tuple of (content, warnings_list)
@@ -231,7 +232,7 @@ host = "{{host}}"
         content = content.replace("{{memory_version}}", CURRENT_MEMORY_VERSION)
         content = content.replace("{{project_name}}", project_name)
         content = content.replace("{{project_scope}}", project_name)
-        content = content.replace("{{host}}", host)
+        content = content.replace("{{host}}", "factory")  # Fixed to factory (INV-1, INV-6)
 
     except (ValueError, TypeError) as exc:
         logger.warning(f"Template render error in adapter.toml: {exc}")
@@ -260,8 +261,8 @@ registration_commit_phase = "post"
 # Project identity — drives scope resolution and canonical lookup
 project_name = "{project_name}"
 project_scope = "{project_name}"
-# Host platform: codex | claude | factory
-host = "{host}"
+# Host platform (fixed to factory)
+host = "factory"
 """
     return content, warnings
 
@@ -1031,6 +1032,10 @@ def _apply_auto_fill(
     """Apply auto-fill to generated template files.
 
     This function reads the just-created files and fills in detected values.
+    Enhanced (Phase 2): reads package.json / tsconfig.json / pyproject.toml to
+    detect tech stack, fills {{PROJECT_TYPE}}, {{PRIMARY_LANGUAGE}}, etc. in
+    scope sub-directory templates. Unrecognized placeholders are replaced with
+    「（待补充：xxx）」 rather than leaving bare {{PLACEHOLDER}} strings.
     """
     if project_info is None:
         return
@@ -1044,7 +1049,10 @@ def _apply_auto_fill(
     if not isinstance(project_info, _ProjectInfo):
         return
 
-    # NOTE: CANONICAL.md generation removed in v0.5.0 — no auto-fill needed
+    # --- Enhance project_info with tech-stack detection from config files ---
+    _enrich_project_info_from_config(target, project_info)
+
+    # NOTE: CANONICAL.md generation removed in v0.5.0 — no auto-fill needed there
 
     # Fill project scope .md
     scope_path = target / "memory" / "kb" / "projects" / f"{project_name}.md"
@@ -1058,6 +1066,9 @@ def _apply_auto_fill(
         except Exception as exc:
             result["warnings"].append(f"project scope .md auto-fill failed: {exc}")
 
+    # Fill scope sub-directory templates (CANONICAL.md, PLAN.md, STATE.md, TASKS.md)
+    _fill_scope_subdir_templates(target, project_info, result, project_name=project_name)
+
     # Log what was detected
     if project_info.primary_language:
         result["created"].append(f"detected:primary_language={project_info.primary_language}")
@@ -1065,6 +1076,160 @@ def _apply_auto_fill(
         result["created"].append(f"detected:framework={project_info.framework}")
     if project_info.git_remote_url:
         result["created"].append(f"detected:git_remote_url={project_info.git_remote_url}")
+    if project_info.project_type:
+        result["created"].append(f"detected:project_type={project_info.project_type}")
+
+
+def _enrich_project_info_from_config(target: Path, project_info: Any) -> None:
+    """Detect tech stack from package.json / tsconfig.json / pyproject.toml.
+
+    Mutates project_info in-place to fill primary_language, project_type,
+    and toolchain fields when they are currently empty.
+    """
+    try:
+        from .project_probe import ProjectInfo as _ProjectInfo
+    except ImportError:
+        from memory_core.tools.project_probe import ProjectInfo as _ProjectInfo
+
+    if not isinstance(project_info, _ProjectInfo):
+        return
+
+    # --- pyproject.toml detection ---
+    pyproject = target / "pyproject.toml"
+    if pyproject.is_file() and not project_info.primary_language:
+        try:
+            pyproject_text = pyproject.read_text(encoding="utf-8")
+            # Check for common Python build tools
+            python_markers = [
+                "setuptools", "poetry", "hatch", "flit", "pdm", "maturin",
+                "scikit-build", "cython",
+            ]
+            if any(m in pyproject_text for m in python_markers) or "[project]" in pyproject_text:
+                project_info.primary_language = "Python"
+                if not project_info.project_type:
+                    if any(m in pyproject_text for m in ["fastapi", "flask", "django", "starlette"]):
+                        project_info.project_type = "web/api"
+                    elif "pytest" in pyproject_text or "pyproject" in pyproject_text:
+                        project_info.project_type = "library"
+        except Exception:
+            pass
+
+    # --- package.json detection ---
+    package_json = target / "package.json"
+    if package_json.is_file():
+        try:
+            import json as _json
+            pkg_data = _json.loads(package_json.read_text(encoding="utf-8"))
+            if not project_info.primary_language:
+                project_info.primary_language = "JavaScript"
+
+            if not project_info.project_type:
+                deps = {**pkg_data.get("dependencies", {}), **pkg_data.get("devDependencies", {})}
+                dep_keys = list(deps.keys())
+
+                if any(d in dep_keys for d in ["next", "gatsby", "remix"]):
+                    project_info.project_type = "frontend"
+                elif any(d in dep_keys for d in ["react", "vue", "svelte", "angular"]):
+                    project_info.project_type = "frontend"
+                elif any(d in dep_keys for d in ["express", "koa", "fastify", "hapi"]):
+                    project_info.project_type = "web/api"
+                elif pkg_data.get("main") or pkg_data.get("types"):
+                    project_info.project_type = "library"
+                else:
+                    project_info.project_type = "node"
+
+            # Toolchain from npm scripts
+            if not project_info.toolchain:
+                scripts = pkg_data.get("scripts", {})
+                toolchain = []
+                if "build" in scripts:
+                    toolchain.append({"name": "npm", "config": "npm run build"})
+                if "test" in scripts:
+                    toolchain.append({"name": "npm", "config": "npm test"})
+                if any(d in dep_keys for d in ["typescript", "ts-node"]):
+                    project_info.primary_language = "TypeScript"
+                    toolchain.append({"name": "TypeScript", "config": "tsconfig.json"})
+                project_info.toolchain = toolchain
+        except Exception:
+            pass
+
+    # --- tsconfig.json detection ---
+    tsconfig = target / "tsconfig.json"
+    if tsconfig.is_file() and not project_info.primary_language:
+        project_info.primary_language = "TypeScript"
+        if not project_info.toolchain:
+            project_info.toolchain = [{"name": "TypeScript", "config": "tsconfig.json"}]
+
+    # --- .cargo detection (Rust) ---
+    cargo_toml = target / "Cargo.toml"
+    if cargo_toml.is_file() and not project_info.primary_language:
+        project_info.primary_language = "Rust"
+        if not project_info.project_type:
+            project_info.project_type = "library"
+
+
+def _fill_scope_subdir_templates(
+    target: Path,
+    project_info: Any,
+    result: dict[str, Any],
+    *,
+    project_name: str,
+) -> None:
+    """Fill {{PLACEHOLDER}} strings in scope sub-directory templates.
+
+    Reads CANONICAL.md, PLAN.md, STATE.md, TASKS.md under
+    memory/kb/projects/{project_name}/ and replaces known placeholders
+    with detected values. Unknown placeholders become 「（待补充：xxx）」.
+    """
+    scope_dir = target / "memory" / "kb" / "projects" / project_name
+    if not scope_dir.is_dir():
+        return
+
+    # Build a fill map from project_info
+    fill_map: dict[str, str] = {}
+
+    try:
+        from .project_probe import ProjectInfo as _ProjectInfo
+    except ImportError:
+        from memory_core.tools.project_probe import ProjectInfo as _ProjectInfo
+
+    if isinstance(project_info, _ProjectInfo):
+        if project_info.primary_language:
+            fill_map["{{PRIMARY_LANGUAGE}}"] = project_info.primary_language
+        if project_info.project_type:
+            fill_map["{{PROJECT_TYPE}}"] = project_info.project_type
+
+    # Additional runtime fill
+    from datetime import datetime, timezone
+    fill_map["{{CREATED_AT}}"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fill_map["{{UPDATED_AT}}"] = fill_map["{{CREATED_AT}}"]
+
+    # Process each template file in the scope directory
+    for template_file in ["CANONICAL.md", "PLAN.md", "STATE.md", "TASKS.md"]:
+        file_path = scope_dir / template_file
+        if not file_path.is_file():
+            continue
+        try:
+            content = file_path.read_text(encoding="utf-8")
+            original = content
+
+            # 1) Fill known placeholders
+            for placeholder, value in fill_map.items():
+                content = content.replace(placeholder, value)
+
+            # 2) Replace any remaining {{UPPER_SNAKE_CASE}} placeholders
+            #    with 「（待补充：placeholder_name）」
+            import re as _re
+            remaining = _re.findall(r"\{\{([A-Z_]+)\}\}", content)
+            for name in remaining:
+                replacement = f"（待补充：{name.lower()}）"
+                content = content.replace(f"{{{{{name}}}}}", replacement)
+
+            if content != original:
+                file_path.write_text(content, encoding="utf-8")
+                result["created"].append(f"file:memory/kb/projects/{project_name}/{template_file} (placeholders filled)")
+        except Exception as exc:
+            result["warnings"].append(f"scope subdir fill failed for {template_file}: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -1085,6 +1250,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "# 合法核心地图\n\n"
         "- active-legal\n"
         "- 只有本图列出的 `active-legal` 条目或目录，才是当前合法资料。\n"
+        "- project-map/INDEX.md: active-legal\n"
         "- truth-model.md: active-legal\n"
         "- memory-system.md: active-legal\n",
         []
@@ -1094,35 +1260,91 @@ KB_TEMPLATES: dict[str, Any] = {
         "- project-map/**: incoming-raw\n"
         "- memory/kb/global/**: active-legal\n"
         "- memory/kb/projects/**: compatibility-only\n"
+        "- memory/docs/**: incoming-raw\n"
+        "- memory/log/**: compatibility-only\n"
+        "- memory_core/projects/**: compatibility-only\n"
+        "- memory_core/tools/**: compatibility-only\n"
+        "- tests/**: compatibility-only\n"
         "- 状态：`absorbed`，`retired`\n"
         "- 同次 `git commit` 提交后才生效\n",
         []
     ),
     "memory/kb/global/truth-model.md": lambda scope: (
         "# 唯一真相模型\n\n"
-        "本项目的事实来源与验证规则。\n",
+        "本项目的事实来源与验证规则。\n\n"
+        "## Truth Basis\n\n"
+        "### Source Refs\n\n"
+        "- memory/docs/记忆系统全景文档.md\n\n"
+        "### Authority Refs\n\n"
+        "- project-map/INDEX.md\n"
+        "- project-map/legal-core-map.md\n\n"
+        "### Evidence Refs\n\n"
+        "- tests/.memory-anchor.md\n"
+        "- tools/health-check.sh\n\n"
+        "### Conflict Status\n\n"
+        "- resolved\n",
         []
     ),
     "memory/kb/global/memory-system.md": lambda scope: (
         "# 记忆系统规则\n\n"
-        "active-legal\n",
+        "active-legal\n\n"
+        "## Truth Basis\n\n"
+        "### Source Refs\n\n"
+        "- memory/docs/记忆系统全景文档.md\n\n"
+        "### Authority Refs\n\n"
+        "- memory/kb/global/truth-model.md\n"
+        "- memory/kb/global/memory-routing.md\n\n"
+        "### Evidence Refs\n\n"
+        "- tests/.memory-anchor.md\n\n"
+        "### Conflict Status\n\n"
+        "- resolved\n",
         []
     ),
     "memory/kb/global/memory-routing.md": lambda scope: (
-        "# 记忆路由规则\n\n",
+        "# 记忆路由规则\n\n"
+        "## Truth Basis\n\n"
+        "### Source Refs\n\n"
+        "- memory/docs/记忆系统全景文档.md\n\n"
+        "### Authority Refs\n\n"
+        "- project-map/INDEX.md\n"
+        "- memory/kb/global/hook-contract.md\n\n"
+        "### Evidence Refs\n\n"
+        "- tools/health-check.sh\n"
+        "- tests/.memory-anchor.md\n\n"
+        "### Conflict Status\n\n"
+        "- resolved\n",
         []
     ),
     "memory/kb/global/hook-contract.md": lambda scope: (
         "# Hook 契约\n\n"
         "- gateway 只承认 `project-map/` 中被明确标为 `active-legal` 的条目或目录是合法上下文来源。\n"
-        "- 未完成提交的登记不得生效\n",
+        "- 未完成提交的登记不得生效\n\n"
+        "## Truth Basis\n\n"
+        "### Source Refs\n\n"
+        "- memory/docs/记忆系统全景文档.md\n\n"
+        "### Authority Refs\n\n"
+        "- memory/kb/global/project-map-governance.md\n\n"
+        "### Evidence Refs\n\n"
+        "- tests/.memory-anchor.md\n\n"
+        "### Conflict Status\n\n"
+        "- resolved\n",
         []
     ),
     "memory/kb/global/project-map-governance.md": lambda scope: (
         "# 项目地图治理\n\n"
         "- 未经过唯一真相系统清洗\n"
         "- 只有地图中被明确标为 `active-legal` 的条目或目录，才授予合法性。\n"
-        "- 未完成同次 `git commit` 的目录登记，不得视为生效。\n",
+        "- 未完成同次 `git commit` 的目录登记，不得视为生效。\n\n"
+        "## Truth Basis\n\n"
+        "### Source Refs\n\n"
+        "- memory/docs/记忆系统全景文档.md\n\n"
+        "### Authority Refs\n\n"
+        "- project-map/INDEX.md\n"
+        "- memory/kb/global/memory-system.md\n\n"
+        "### Evidence Refs\n\n"
+        "- tests/.memory-anchor.md\n\n"
+        "### Conflict Status\n\n"
+        "- resolved\n",
         []
     ),
     # Runtime required: knowledge base root index referenced by memory_hook_core.py L226-236
@@ -1160,6 +1382,27 @@ KB_TEMPLATES: dict[str, Any] = {
         "- truth-model.md\n",
         []
     ),
+    # I-F: Overview doc referenced by LegalContractChecker.validate_unique_legal_system_contract
+    "memory/docs/记忆系统全景文档.md": lambda scope: (
+        "# 记忆系统全景文档\n\n"
+        "本文档提供记忆系统的全景视图，包括所有合法入口和核心文件。\n\n"
+        "## 合法入口\n\n"
+        "- project-map/INDEX.md: 项目地图唯一合法入口\n"
+        "- project-map/legal-core-map.md: 合法核心地图\n"
+        "- memory/kb/global/truth-model.md: 唯一真相模型\n"
+        "- memory/kb/global/memory-system.md: 记忆系统规则\n"
+        "- memory/kb/global/memory-routing.md: 记忆路由规则\n"
+        "- memory/kb/global/hook-contract.md: Hook 契约\n"
+        "- memory/kb/global/project-map-governance.md: 项目地图治理\n\n"
+        "## 系统结构\n\n"
+        "- memory/kb/ — 知识库\n"
+        "- memory/docs/ — 系统文档\n"
+        "- memory/log/ — 会话日志\n"
+        "- memory/system/ — 系统配置\n"
+        "- project-map/ — 项目地图\n"
+        "- tests/ — 测试锚点\n",
+        []
+    ),
 }
 
 FILE_TEMPLATES: dict[str, Any] = {
@@ -1183,6 +1426,8 @@ RUNTIME_KB_FILES = [
 # Additional runtime files created outside of KB_TEMPLATES and FILE_TEMPLATES
 RUNTIME_EXTRA_FILES = [
     "memory/inbox.md",  # L531, L1374 workbot adapter action target
+    "tests/.memory-anchor.md",  # I-A: Evidence ref for Truth Basis sections
+    "tools/health-check.sh",  # I-A: Evidence ref for Truth Basis (lower-layer tooling support)
 ]
 
 # ---------------------------------------------------------------------------
@@ -1289,28 +1534,28 @@ def generate_hooks_json(
     result["created"].append("file:.claude/hooks.json")
 
 
-def template_agents_md_block(host: str = "codex") -> str:
+def template_agents_md_block() -> str:
     """Generate the AGENTS.md memory hook instruction block.
 
-    Recommends using the protected wrapper instead of bare gateway commands
-    to ensure proper project lifecycle management and anti-pollution guards.
+    Host-neutral: references only the factory wrapper (the sole supported host).
+    No project-level hooks.json references (host hooks are global-only).
     """
     return f"""{MEMORY_HOOK_BEGIN_MARKER}
 ## Memory Hook
 
-This project uses the memory-core protected wrapper for {host.title()} hooks.
-The wrapper is installed at `~/.{host}/bin/memory-hook` and handles:
+This project uses the memory-core protected wrapper for hooks.
+The wrapper is installed at `~/.factory/bin/memory-hook` and handles:
 - Project lifecycle tracking
 - HOME directory anti-pollution guards
 - Source repository detection (skips memory-core itself)
 - Git root normalization
 
-Project-level hooks are configured in `.{host}/hooks.json`.
+Project memory rules are stored under `memory/` and loaded regardless of host.
 Do NOT use bare `memory-hook-gateway` commands directly.
 
 For manual testing:
 ```bash
-~/.{host}/bin/memory-hook --host {host} --event session-start
+~/.factory/bin/memory-hook --host factory --event session-start
 ```
 
 ## 路由规则
@@ -1329,10 +1574,28 @@ For manual testing:
 """
 
 
+def _cleanup_legacy_hooks_json(target: Path, result: dict[str, Any] | None) -> None:
+    """Delete legacy .codex/hooks.json and .claude/hooks.json files (VAL-P4-011).
+
+    This is a no-op in adopt mode (preserves existing files) and runs in
+    create/update/repair modes.
+    """
+    if result is None:
+        return
+    legacy_paths = [target / ".codex" / "hooks.json", target / ".claude" / "hooks.json"]
+    for legacy_path in legacy_paths:
+        if legacy_path.exists():
+            try:
+                legacy_path.unlink()
+                result["created"].append(f"removed legacy file:{legacy_path.relative_to(target)}")
+            except Exception as exc:
+                result["warnings"].append(f"failed to remove legacy hooks.json {legacy_path}: {exc}")
+
+
 def update_agents_md(
     target: Path,
     *,
-    host: str = "codex",
+    host: str = "factory",
     result: dict[str, Any] | None = None,
     mode: str = "create",
 ) -> None:
@@ -1344,14 +1607,38 @@ def update_agents_md(
     Mode-aware:
     - create: Create new AGENTS.md or append block if no markers
     - adopt: Only add block if markers don't exist, never overwrite; skip files without markers
-    - update: Replace existing marked block only; skip files without markers (safe default)
-    - repair: Same as update (only update markers, don't create new blocks)
+    - update: Replace existing marked block only; also creates AGENTS.md when absent
+    - repair: Create AGENTS.md when absent; update existing markers when present (never overwrite entire file)
+
+    Legacy scrubbing (VAL-P4-010): In update mode, removes any references to
+    ~/.codex/bin/memory-hook or ~/.claude/bin/memory-hook from the AGENTS.md
+    content (both inside and outside the hook block).
     """
     if result is None:
         return
 
     agents_path = target / "AGENTS.md"
-    new_block = template_agents_md_block(host)
+    new_block = template_agents_md_block()
+
+    # Legacy host reference patterns to scrub from AGENTS.md (VAL-P4-010)
+    legacy_host_patterns = [
+        "~/.codex/bin/memory-hook",
+        "~/.claude/bin/memory-hook",
+        ".codex/hooks.json",
+        ".claude/hooks.json",
+    ]
+
+    def _scrub_legacy_refs(text: str) -> tuple[str, bool]:
+        """Remove legacy codex/claude hook references from text. Returns (new_text, was_modified)."""
+        modified = False
+        for pattern in legacy_host_patterns:
+            if pattern in text:
+                text = text.replace(pattern, "")
+                modified = True
+        # Clean up any resulting double-blank lines from removals
+        while "\n\n\n" in text:
+            text = text.replace("\n\n\n", "\n\n")
+        return text, modified
 
     if agents_path.exists():
         content = agents_path.read_text(encoding="utf-8")
@@ -1363,6 +1650,10 @@ def update_agents_md(
             end_idx = content.index(MEMORY_HOOK_END_MARKER) + len(MEMORY_HOOK_END_MARKER)
             before = content[:begin_idx]
             after = content[end_idx:]
+
+            # Strip legacy host references from before/after sections
+            before, before_modified = _scrub_legacy_refs(before)
+            after, after_modified = _scrub_legacy_refs(after)
 
             # Strip trailing newlines from before, prepend a single newline
             before = before.rstrip("\n")
@@ -1376,7 +1667,7 @@ def update_agents_md(
 
             new_content = before + new_block + after
 
-            if new_content == content:
+            if new_content == content and not before_modified and not after_modified:
                 result["skipped"].append("file:AGENTS.md (hook block up-to-date)")
                 return
 
@@ -1390,21 +1681,40 @@ def update_agents_md(
             return
 
         # No markers found - mode-aware handling
-        if mode in ("adopt", "update", "repair"):
-            # adopt/update/repair mode: do not append to files without markers (safe default)
+        if mode in ("adopt",):
+            # adopt mode: do not append to files without markers (safe default)
             result["skipped"].append(f"file:AGENTS.md (no marker in {mode} mode, not appending)")
             return
 
-        # create mode: append to existing content
-        new_content = content.rstrip("\n") + "\n\n" + new_block
-    else:
-        # File doesn't exist
-        if mode in ("adopt", "update", "repair"):
-            # These modes don't create new AGENTS.md
-            result["skipped"].append(f"file:AGENTS.md (not created in {mode} mode)")
+        if mode == "update":
+            # update mode: scrub legacy refs even without markers, but don't create full block
+            scrubbed, was_modified = _scrub_legacy_refs(content)
+            if was_modified:
+                agents_path.write_text(scrubbed, encoding="utf-8")
+                result["created"].append("file:AGENTS.md (legacy host references scrubbed)")
+            else:
+                result["skipped"].append("file:AGENTS.md (no legacy references found)")
             return
 
-        new_content = new_block
+        if mode == "create":
+            # create mode: append to existing content
+            new_content = content.rstrip("\n") + "\n\n" + new_block
+            agents_path.write_text(new_content, encoding="utf-8")
+            result["created"].append("file:AGENTS.md (hook block appended)")
+            return
+        else:
+            # repair mode: do not append to files without markers
+            result["skipped"].append(f"file:AGENTS.md (no marker in {mode} mode, not appending)")
+            return
+
+    # File doesn't exist
+    if mode in ("adopt",):
+        # adopt mode: don't create new AGENTS.md
+        result["skipped"].append(f"file:AGENTS.md (not created in {mode} mode)")
+        return
+
+    # create/update/repair mode: create AGENTS.md when absent
+    new_content = new_block
 
     agents_path.write_text(new_content, encoding="utf-8")
     result["created"].append("file:AGENTS.md")
@@ -1768,7 +2078,7 @@ def init_project_memory(
     elif adapter_path.exists() and not should_skip:
         # Overwrite
         try:
-            content, warnings = template_adapter_toml(project_name, host=host)
+            content, warnings = template_adapter_toml(project_name)
             adapter_path.write_text(content, encoding="utf-8")
             result["created"].append("file:adapter.toml (overwritten)")
             result["warnings"].extend(warnings)
@@ -1778,7 +2088,7 @@ def init_project_memory(
     else:
         # Create new
         try:
-            content, warnings = template_adapter_toml(project_name, host=host)
+            content, warnings = template_adapter_toml(project_name)
             adapter_path.write_text(content, encoding="utf-8")
             result["created"].append("file:adapter.toml")
             result["warnings"].extend(warnings)
@@ -1839,6 +2149,59 @@ def init_project_memory(
             result["warnings"].extend(warnings)
         except Exception as exc:
             result["errors"].append(f"failed to create memory-hook-policy-pack.json: {exc}")
+
+    # 4b. tests/.memory-anchor.md - Evidence ref for Truth Basis sections (I-A)
+    anchor_path = target / "tests" / ".memory-anchor.md"
+    anchor_path.parent.mkdir(parents=True, exist_ok=True)
+    should_skip, reason = _should_skip_file(anchor_path, "tests/.memory-anchor.md", is_business_file=False)
+
+    if anchor_path.exists() and should_skip:
+        result["skipped"].append(f"file:tests/.memory-anchor.md ({reason})")
+        any_skipped = True
+    elif anchor_path.exists() and not should_skip:
+        # Overwrite
+        try:
+            content = "# Memory Anchor\n\n# Evidence ref for Truth Basis sections in global-canonical files.\n# Created by init_project_memory.\n"
+            anchor_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:tests/.memory-anchor.md (overwritten)")
+            any_overwritten = True
+        except Exception as exc:
+            result["errors"].append(f"failed to overwrite tests/.memory-anchor.md: {exc}")
+    else:
+        # Create new
+        try:
+            content = "# Memory Anchor\n\n# Evidence ref for Truth Basis sections in global-canonical files.\n# Created by init_project_memory.\n"
+            anchor_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:tests/.memory-anchor.md")
+        except Exception as exc:
+            result["errors"].append(f"failed to create tests/.memory-anchor.md: {exc}")
+
+    # 4c. tools/health-check.sh - Evidence ref for Truth Basis (lower-layer tooling support)
+    tools_dir = target / "tools"
+    tools_dir.mkdir(parents=True, exist_ok=True)
+    health_check_path = tools_dir / "health-check.sh"
+    should_skip, reason = _should_skip_file(health_check_path, "tools/health-check.sh", is_business_file=False)
+
+    if health_check_path.exists() and should_skip:
+        result["skipped"].append(f"file:tools/health-check.sh ({reason})")
+        any_skipped = True
+    elif health_check_path.exists() and not should_skip:
+        # Overwrite
+        try:
+            content = "#!/bin/bash\n# Health check script for memory-core validation.\n# Created by init_project_memory as lower-layer tooling evidence ref.\necho 'healthy'\n"
+            health_check_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:tools/health-check.sh (overwritten)")
+            any_overwritten = True
+        except Exception as exc:
+            result["errors"].append(f"failed to overwrite tools/health-check.sh: {exc}")
+    else:
+        # Create new
+        try:
+            content = "#!/bin/bash\n# Health check script for memory-core validation.\n# Created by init_project_memory as lower-layer tooling evidence ref.\necho 'healthy'\n"
+            health_check_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:tools/health-check.sh")
+        except Exception as exc:
+            result["errors"].append(f"failed to create tools/health-check.sh: {exc}")
 
     # 5. memory/kb/projects/{scope}.md - Runtime required by memory_hook_core.py L207-210
     scope_md_path = target / "memory" / "kb" / "projects" / f"{project_name}.md"
@@ -1976,7 +2339,9 @@ def init_project_memory(
         except Exception as exc:
             result["warnings"].append(f"memory-init-fill skill generation skipped: {exc}")
 
-        generate_hooks_json(target, host=host, result=result)
+        # generate_hooks_json removed — no project-level hooks.json is written (INV-2)
+        # Phase 4: Clean up legacy hooks.json files (VAL-P4-011)
+        _cleanup_legacy_hooks_json(target, result)
         update_agents_md(target, host=host, result=result, mode=mode)
 
         # Sync configuration: write CI template + docs (protocol layer only)
@@ -2083,6 +2448,20 @@ def init_project_memory(
                 # Non-blocking: best-effort check
                 result["warnings"].append(f"evidence ref check skipped: {exc}")
 
+        # Post-init audit: read-only layout health check; P1 findings → warnings.
+        # Wrapped in try/except so audit failures never block init.
+        if not dry_run:
+            try:
+                from .audit_project_layout import audit_project_layout
+                audit_result = audit_project_layout(target)
+                for finding in audit_result.findings:
+                    if finding.severity == "P1":
+                        result["warnings"].append(
+                            f"audit P1 [{finding.kind}] {finding.path}: {finding.message}"
+                        )
+            except Exception as exc:
+                result["warnings"].append(f"post-init audit skipped (error): {exc}")
+
     return result
 
 
@@ -2142,9 +2521,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--host",
         type=str,
-        default="codex",
+        default="factory",
         choices=SUPPORTED_HOSTS,
-        help="Host platform for hook gateway configuration (default: codex).",
+        help="Host platform for hook gateway configuration (default: factory).",
     )
     parser.add_argument(
         "--force",

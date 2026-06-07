@@ -46,7 +46,7 @@ def _make_minimal_kwargs(tmp_path: Path) -> dict[str, Any]:
 
     return {
         # Group 1: Environment
-        "host": "codex",
+        "host": "factory",
         "event": "session-start",
         "payload": {"session_id": "test-123"},
         "cwd": base,
@@ -201,7 +201,7 @@ class TestBuildContextPackageSimple:
         """Returns a dict with at least 'status' key."""
         from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
-        result = build_context_package_simple("codex", "session-start", {})
+        result = build_context_package_simple("factory", "session-start", {})
 
         assert isinstance(result, dict)
         assert "status" in result
@@ -211,8 +211,8 @@ class TestBuildContextPackageSimple:
         """Works with payload=None (defaults to empty dict)."""
         from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
-        result_none = build_context_package_simple("codex", "session-start", None)
-        result_empty = build_context_package_simple("codex", "session-start", {})
+        result_none = build_context_package_simple("factory", "session-start", None)
+        result_empty = build_context_package_simple("factory", "session-start", {})
 
         assert isinstance(result_none, dict)
         assert "status" in result_none
@@ -227,26 +227,25 @@ class TestBuildContextPackageSimple:
         with pytest.raises(ValueError):
             build_context_package_simple("invalid-host", "session-start", {})
 
-    def test_accepts_claude_host(self) -> None:
-        """Accepts 'claude' as valid host."""
+    def test_rejects_claude_host(self) -> None:
+        """Rejects 'claude' as invalid host (only 'factory' is supported)."""
         from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
-        result = build_context_package_simple("claude", "session-start", {})
-        assert isinstance(result, dict)
-        assert result.get("host") == "claude"
+        with pytest.raises(ValueError, match="host must be"):
+            build_context_package_simple("claude", "session-start", {})
 
     def test_returns_schema_version(self) -> None:
         """Result includes schema_version field."""
         from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
-        result = build_context_package_simple("codex", "session-start", {})
+        result = build_context_package_simple("factory", "session-start", {})
         assert result.get("schema_version") == "context-package-v1"
 
     def test_contains_paths(self) -> None:
         """Result contains paths dict (v1 format)."""
         from memory_core.tools.memory_hook_gateway import build_context_package_simple
 
-        result = build_context_package_simple("codex", "session-start", {})
+        result = build_context_package_simple("factory", "session-start", {})
         assert isinstance(result.get("paths"), dict)
 
 
@@ -267,8 +266,8 @@ class TestEquivalence:
         from memory_core.tools.memory_hook_schema import convert_to_v1
 
         payload = {"session_id": "eq-test-1"}
-        result_simple = build_context_package_simple("codex", "session-start", payload)
-        result_full_v1 = convert_to_v1(build_context_package("codex", "session-start", payload))
+        result_simple = build_context_package_simple("factory", "session-start", payload)
+        result_full_v1 = convert_to_v1(build_context_package("factory", "session-start", payload))
 
         # Exclude generated_at — may differ by microseconds
         result_simple.pop("generated_at", None)
@@ -284,8 +283,8 @@ class TestEquivalence:
         )
         from memory_core.tools.memory_hook_schema import convert_to_v1
 
-        result_simple = build_context_package_simple("codex", "session-start", None)
-        result_full_v1 = convert_to_v1(build_context_package("codex", "session-start", {}))
+        result_simple = build_context_package_simple("factory", "session-start", None)
+        result_full_v1 = convert_to_v1(build_context_package("factory", "session-start", {}))
 
         result_simple.pop("generated_at", None)
         result_full_v1.pop("generated_at", None)

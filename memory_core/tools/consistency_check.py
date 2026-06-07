@@ -39,7 +39,9 @@ def _load_constants() -> dict[str, Any]:
     m = re.search(r'SUPPORTED_HOSTS\s*=\s*\(([^)]+)\)', content)
     if m:
         hosts_str = m.group(1)
-        result["SUPPORTED_HOSTS"] = tuple(h.strip().strip('"\'') for h in hosts_str.split(","))
+        result["SUPPORTED_HOSTS"] = tuple(
+            h.strip().strip('"\'') for h in hosts_str.split(",") if h.strip()
+        )
     return result
 
 
@@ -79,7 +81,7 @@ def check_host_enum_coverage() -> tuple[list, list]:
     warnings: list[str] = []
 
     constants = _load_constants()
-    supported_hosts = constants.get("SUPPORTED_HOSTS", ("codex", "claude", "factory"))
+    supported_hosts = constants.get("SUPPORTED_HOSTS", ("factory",))
 
     # Find all Python files in the repo
     py_files = list(REPO_ROOT.rglob("*.py"))
@@ -108,7 +110,7 @@ def check_host_enum_coverage() -> tuple[list, list]:
                     if host not in unique_conditions:
                         # Only report if at least one supported host IS present
                         # This means it's a partial match
-                        if any(h in unique_conditions for h in supported_hosts):
+                        if any(h in supported_hosts for h in unique_conditions):
                             errors.append(f"{py_file}: if/elif chain missing host '{host}'")
                             break
 
@@ -190,7 +192,7 @@ def check_init_validate_roundtrip() -> tuple[list, list]:
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "memory_core.tools.init_project_memory",
-                 "--target", str(tmp_path), "--host", "codex"],
+                 "--target", str(tmp_path), "--host", "factory"],
                 capture_output=True,
                 text=True,
                 cwd=str(REPO_ROOT),

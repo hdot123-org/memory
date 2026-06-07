@@ -655,7 +655,6 @@ def is_memory_core_source_repo(path: Path) -> bool:
     markers = [
         resolved / "memory_core" / "tools" / "memory_hook_gateway.py",
         resolved / "memory_core" / "tools" / "factory_global_hooks.py",
-        resolved / "memory_core" / "tools" / "codex_global_hooks.py",
         resolved / "memory_core" / "ownership.py",  # This file
     ]
     if any(marker.exists() for marker in markers):
@@ -674,7 +673,6 @@ def is_memory_core_source_repo(path: Path) -> bool:
             git_markers = [
                 git_path / "memory_core" / "tools" / "memory_hook_gateway.py",
                 git_path / "memory_core" / "tools" / "factory_global_hooks.py",
-                git_path / "memory_core" / "tools" / "codex_global_hooks.py",
                 git_path / "memory_core" / "ownership.py",
             ]
             if any(marker.exists() for marker in git_markers):

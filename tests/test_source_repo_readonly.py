@@ -220,19 +220,20 @@ class TestSourceRepoIsMemoryCoreDetection:
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
         assert is_memory_core_source_repo(repo) is True
 
-    def test_detects_by_codex_hooks_marker(self, tmp_path: Path) -> None:
-        from memory_core.ownership import is_memory_core_source_repo
-        repo = tmp_path / "repo"
-        nested = repo / "memory_core" / "tools"
-        nested.mkdir(parents=True)
-        (nested / "codex_global_hooks.py").write_text("# marker\n", encoding="utf-8")
-        subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
-        assert is_memory_core_source_repo(repo) is True
-
     def test_detects_by_ownership_module(self, tmp_path: Path) -> None:
         from memory_core.ownership import is_memory_core_source_repo
         repo = tmp_path / "repo"
         nested = repo / "memory_core"
         nested.mkdir(parents=True)
         (nested / "ownership.py").write_text("# marker\n", encoding="utf-8")
+        subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
+        assert is_memory_core_source_repo(repo) is True
+
+    def test_detects_by_gateway_marker(self, tmp_path: Path) -> None:
+        from memory_core.ownership import is_memory_core_source_repo
+        repo = tmp_path / "repo"
+        nested = repo / "memory_core" / "tools"
+        nested.mkdir(parents=True)
+        (nested / "memory_hook_gateway.py").write_text("# marker\n", encoding="utf-8")
+        subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
         assert is_memory_core_source_repo(repo) is True

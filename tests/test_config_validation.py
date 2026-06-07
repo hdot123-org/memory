@@ -31,7 +31,7 @@ def _make_minimal_kwargs(tmp_path: Path) -> dict[str, Any]:
 
     return {
         # Group 1: Environment
-        "host": "codex",
+        "host": "factory",
         "event": "session-start",
         "payload": {"session_id": "abc"},
         "cwd": base,
@@ -261,7 +261,7 @@ class TestValidConstruction:
         kwargs = _make_minimal_kwargs(tmp_path)
         cfg = CoreConfig(**kwargs)
 
-        assert cfg.host == "codex"
+        assert cfg.host == "factory"
         assert cfg.event == "session-start"
         assert isinstance(cfg.cwd, Path)
 
