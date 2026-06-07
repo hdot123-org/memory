@@ -2,9 +2,9 @@
 
 import re
 
-CURRENT_MEMORY_VERSION = "0.6.0"
+CURRENT_MEMORY_VERSION = "0.7.0"
 
-SUPPORTED_HOSTS = ("codex", "claude", "factory")
+SUPPORTED_HOSTS = ("factory",)
 
 SYSTEM_DIR = "memory/system"
 

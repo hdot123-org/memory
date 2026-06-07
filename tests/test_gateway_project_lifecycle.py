@@ -22,7 +22,7 @@ def test_project_lifecycle_disabled_by_default(monkeypatch, tmp_path: Path) -> N
     monkeypatch.setattr(gw, "PROJECT_LIFECYCLE_ROOT", lifecycle_root)
 
     record = gw._record_project_lifecycle_event(
-        host="codex",
+        host="factory",
         event="session-start",
         payload={"cwd": str(tmp_path)},
         cwd=tmp_path,
@@ -40,7 +40,7 @@ def test_build_context_package_includes_lifecycle_when_enabled(monkeypatch, tmp_
     monkeypatch.setenv("MEMORY_HOOK_PREFER_EXTERNAL_CWD", "1")
     monkeypatch.setattr(gw, "PROJECT_LIFECYCLE_ROOT", lifecycle_root)
 
-    package = gw.build_context_package("codex", "session-start", {"cwd": str(tmp_path)})
+    package = gw.build_context_package("factory", "session-start", {"cwd": str(tmp_path)})
 
     lifecycle = package["system_context"].get("project_lifecycle")
     assert lifecycle is not None
@@ -99,11 +99,11 @@ def test_artifact_and_error_logs_are_date_partitioned(monkeypatch, tmp_path: Pat
     writer = ArtifactWriter(context_root=context_root, error_log=error_log, datetime_module=FixedDatetime)
     package = {"schema_version": "wb-hook-v2"}
 
-    assert writer.write("codex", "session-start", package) is True
+    assert writer.write("factory", "session-start", package) is True
 
-    snapshot = context_root / "2026-05-11" / "20260511T090807123456-codex-session-start.json"
-    daily_latest = context_root / "2026-05-11" / "latest-codex-session-start.json"
-    latest = context_root / "latest-codex-session-start.json"
+    snapshot = context_root / "2026-05-11" / "20260511T090807123456-factory-session-start.json"
+    daily_latest = context_root / "2026-05-11" / "latest-factory-session-start.json"
+    latest = context_root / "latest-factory-session-start.json"
     daily_events = project / "memory" / "artifacts" / "memory-hook" / "events" / "2026-05-11.jsonl"
     legacy_events = project / "memory" / "artifacts" / "memory-hook" / "events.jsonl"
 

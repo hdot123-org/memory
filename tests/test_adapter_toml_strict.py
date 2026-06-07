@@ -86,7 +86,7 @@ registration_commit_phase = "post"
 [routing]
 project_name = "my-project"
 project_scope = ""
-host = "codex"
+host = "factory"
 canonical_files = []
 """
     path = _write_toml(tmp_path, toml)
@@ -109,7 +109,7 @@ registration_commit_phase = "post"
 [routing]
 project_name = "my-project"
 project_scope = "   "
-host = "codex"
+host = "factory"
 canonical_files = []
 """
     path = _write_toml(tmp_path, toml)
@@ -135,7 +135,7 @@ registration_commit_phase = "post"
 [routing]
 project_name = ""
 project_scope = "my-scope"
-host = "codex"
+host = "factory"
 canonical_files = []
 """
     path = _write_toml(tmp_path, toml)
@@ -162,7 +162,7 @@ registration_commit_phase = "post"
 [routing]
 project_name = "my-project"
 project_scope = "my-scope"
-host = "codex"
+host = "factory"
 canonical_files = []
 """
     path = _write_toml(tmp_path, toml)
@@ -186,7 +186,7 @@ extra_policy_setting = "value"
 [routing]
 project_name = "my-project"
 project_scope = "my-scope"
-host = "codex"
+host = "factory"
 canonical_files = []
 """
     path = _write_toml(tmp_path, toml)
@@ -209,7 +209,7 @@ registration_commit_phase = "post"
 [routing]
 project_name = "my-project"
 project_scope = "my-scope"
-host = "codex"
+host = "factory"
 canonical_files = []
 mystery_field = "hello"
 """
@@ -236,7 +236,7 @@ registration_commit_phase = "post"
 [routing]
 project_name = "my-project"
 project_scope = "my-scope"
-host = "codex"
+host = "factory"
 canonical_files = ["CANONICAL.md", "PLAN.md"]
 artifact_root = "/tmp/artifacts"
 """
@@ -244,7 +244,7 @@ artifact_root = "/tmp/artifacts"
     config = load_adapter_toml(path, strict=True)
     assert config.project_name == "my-project"
     assert config.project_scope == "my-scope"
-    assert config.host == "codex"
+    assert config.host == "factory"
     assert config.adapter_version == "0.2.0"
     assert config.canonical_files == ["CANONICAL.md", "PLAN.md"]
     assert config.artifact_root == "/tmp/artifacts"
@@ -270,7 +270,7 @@ extra_policy = "ignored"
 [routing]
 project_name = "my-project"
 project_scope = "my-scope"
-host = "codex"
+host = "factory"
 canonical_files = []
 extra_routing = "ignored"
 """
@@ -279,4 +279,4 @@ extra_routing = "ignored"
     config = load_adapter_toml(path)
     assert config.project_name == "my-project"
     assert config.project_scope == "my-scope"
-    assert config.host == "codex"
+    assert config.host == "factory"

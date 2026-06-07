@@ -148,9 +148,9 @@ class TestWrapBuilderWithKwargsFallback:
         monkeypatch.setattr(validate_memory_system, "CoreConfig", None)
 
         wrapped = validate_memory_system._wrap_builder_with_kwargs(single_param_builder)
-        wrapped(host="codex", event="test")
+        wrapped(host="factory", event="test")
 
-        assert captured["args"] == {"host": "codex", "event": "test"}
+        assert captured["args"] == {"host": "factory", "event": "test"}
 
     def test_wrapped_uses_coreconfig_when_available(
         self, monkeypatch: pytest.MonkeyPatch
@@ -173,10 +173,10 @@ class TestWrapBuilderWithKwargsFallback:
             return config
 
         wrapped = validate_memory_system._wrap_builder_with_kwargs(single_param_builder)
-        wrapped(host="codex", event="test")
+        wrapped(host="factory", event="test")
 
         assert isinstance(captured["config"], MockCoreConfig)
-        assert captured["config"].host == "codex"
+        assert captured["config"].host == "factory"
         assert captured["config"].event == "test"
 
     def test_multi_param_builder_returned_as_is(self) -> None:

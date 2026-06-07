@@ -218,7 +218,7 @@ registration_commit_policy = "same-commit"
 registration_commit_phase = "post"
 
 [routing]
-host = "codex"
+host = "factory"
 canonical_files = []
 """
         path = tmp_path / "adapter.toml"

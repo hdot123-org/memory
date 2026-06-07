@@ -177,7 +177,7 @@ class TestInitTemplateRenderWarning:
 
     def test_template_adapter_toml_with_special_chars(self) -> None:
         """Adapter template handles special characters."""
-        content, warnings = template_adapter_toml("test{project}", host="codex")
+        content, warnings = template_adapter_toml("test{project}")
         assert isinstance(content, str)
         assert isinstance(warnings, list)
 

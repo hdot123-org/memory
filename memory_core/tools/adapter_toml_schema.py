@@ -102,7 +102,7 @@ class AdapterConfig:
 
     project_name: str
     project_scope: str
-    host: str = "codex"
+    host: str = "factory"
     adapter_version: str = CURRENT_MEMORY_VERSION
     canonical_files: list[str] = field(default_factory=list)
     artifact_root: str | None = None
@@ -207,7 +207,7 @@ def load_adapter_toml(path: Path, *, strict: bool = False) -> AdapterConfig:
         config = AdapterConfig(
             project_name=section.get("project_name", ""),
             project_scope=section.get("project_scope", ""),
-            host=section.get("host", "codex"),
+            host=section.get("host", "factory"),
             adapter_version=section.get("adapter_version", CURRENT_MEMORY_VERSION),
             canonical_files=list(section.get("canonical_files", [])),
             artifact_root=section.get("artifact_root"),
@@ -268,7 +268,7 @@ def _load_new_format(data: dict[str, Any], *, strict: bool = False) -> AdapterCo
     return AdapterConfig(
         project_name=project_name,
         project_scope=project_scope,
-        host=routing.get("host", "codex"),
+        host=routing.get("host", "factory"),
         adapter_version=core.get("version", CURRENT_MEMORY_VERSION),
         canonical_files=list(routing.get("canonical_files", [])),
         artifact_root=routing.get("artifact_root"),

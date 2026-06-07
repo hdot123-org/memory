@@ -154,7 +154,7 @@ fi
 
 # M3: Anti-pollution - source repo gets readonly context-package instead of noop
 if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ]; then
-    if [ -f "$PROJECT_CWD/memory_core/tools/memory_hook_gateway.py" ] || [ -f "$PROJECT_CWD/memory_core/tools/factory_global_hooks.py" ] || [ -f "$PROJECT_CWD/memory_core/tools/codex_global_hooks.py" ]; then
+    if [ -f "$PROJECT_CWD/memory_core/tools/memory_hook_gateway.py" ] || [ -f "$PROJECT_CWD/memory_core/tools/factory_global_hooks.py" ] || [ -f "$PROJECT_CWD/memory_core/ownership.py" ]; then
         export READONLY=1
         exec "$MEMORY_HOOK_GATEWAY" "$@"
     fi

@@ -79,7 +79,7 @@ memory-migrate --target /path/to/project --from 0.4.0 --to 0.5.0
 Creates or updates the standard project memory structure under `memory/system/`. Auto-fills detected project metadata (language, framework, toolchain, git remote) into project scope files.
 
 ```bash
-memory-init --target /path/to/project [--scope my-project] [--host codex|factory|claude] [--mode create|adopt|update|repair] [--dry-run] [--force] [--no-clobber] [--no-auto-fill] [--json] [--version]
+memory-init --target /path/to/project [--scope my-project] [--host factory] [--mode create|adopt|update|repair] [--dry-run] [--force] [--no-clobber] [--no-auto-fill] [--json] [--version]
 ```
 
 Modes:
@@ -148,19 +148,7 @@ Project memory and runtime artifacts belong to the target project. The memory-co
 
 ## Global hook setup
 
-memory-core supports Codex App, Claude, and Factory Droid global hook entry points. Global hooks act as stable wrappers and route each event back to the current project directory.
-
-Codex App:
-
-```bash
-memory-codex-hooks install --storage-root ~/.memory-core
-```
-
-Claude:
-
-```bash
-memory-claude-hooks install --storage-root ~/.memory-core
-```
+memory-core supports Factory Droid global hook entry points. Global hooks act as stable wrappers and route each event back to the current project directory.
 
 Factory Droid:
 
