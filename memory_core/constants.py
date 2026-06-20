@@ -50,4 +50,4 @@ VALID_SYNC_CI_RUNNERS = ("gitlab",)
 _BACKUP_FAILED = "backup_failed"
 
 
-# v0.8.0 verify sync author name
+# v0.8.0 verified sync author rewrite
