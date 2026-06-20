@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memory-core"
-version = "0.7.0"
+version = "0.8.0"
 description = "Independent memory hook core and gateway runtime."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -39,6 +39,7 @@ Repository = "https://github.com/hdot123/memory"
 dev = ["pytest>=8.0,<9.0", "pytest-cov>=5.0", "mypy>=1.10", "requests>=2.28"]
 
 [project.scripts]
+memory-promote = "memory_core.tools.promote_global_kb:main"
 memory-init = "memory_core.tools.init_project_memory:main"
 memory-migrate = "memory_core.tools.migrate_project_memory:main"
 memory-validate = "memory_core.tools.validate_project_memory:main"

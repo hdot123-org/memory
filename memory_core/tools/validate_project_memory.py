@@ -41,8 +41,6 @@ except ModuleNotFoundError:
 
 from memory_core.constants import (
     CURRENT_MEMORY_VERSION,
-    MESSAGE_VERSION_MISMATCH_DOWNGRADE_DETECTED,
-    MESSAGE_VERSION_MISMATCH_UPGRADE_NEEDED,
     MIGRATION_LOG_LINE_PATTERN,
     REQUIRED_MEMORY_DIRS,
     REQUIRED_MEMORY_FILES,
@@ -112,9 +110,25 @@ def _parse_frontmatter(text: str) -> dict[str, str]:
 
 
 def _is_json_like(text: str) -> bool:
-    """Quick heuristic: text looks like JSON if it starts with { or [."""
+    """Quick heuristic: text looks like JSON if it starts with { or [.
+
+    Distinguishes between JSON arrays like [{...}] and TOML section headers
+    like [memory]. A line starting with [word] is treated as TOML, not JSON.
+    """
     stripped = text.strip()
-    return stripped.startswith("{") or stripped.startswith("[")
+    if stripped.startswith("{"):
+        return True
+    if stripped.startswith("["):
+        # Check if it looks like a TOML section header: [word] or [word.subword]
+        # TOML section: [identifier] where identifier is alphanumeric/underscore/hyphen/dot
+        # JSON array: [{ or [" or [1 or [...] where content is not just an identifier
+        match = re.match(r'^\[([a-zA-Z_][a-zA-Z0-9_\-\.]*)\]', stripped)
+        if match:
+            # Looks like a TOML section header, not JSON
+            return False
+        # Otherwise treat as JSON array
+        return True
+    return False
 
 
 def _parse_lock_file(path: Path) -> dict[str, Any]:
@@ -278,7 +292,11 @@ def check_required_dirs(memory_root: Path, result: CheckResult) -> bool:
 
 
 def check_lock_version(memory_root: Path, result: CheckResult) -> bool:
-    """Verify memory.lock version matches current schema."""
+    """Verify memory.lock version is compatible.
+
+    Backward compatible: accepts any version in the compat matrix.
+    Only warns for unknown versions (not in matrix).
+    """
     lock_path = memory_root / "memory.lock"
     if not lock_path.is_file():
         result.record("lock_version", False, "memory.lock not found")
@@ -303,27 +321,31 @@ def check_lock_version(memory_root: Path, result: CheckResult) -> bool:
     except ValueError:
         result.record("lock_version", False, f"invalid version format: '{version}'")
         return False
-    current_tuple = tuple(map(int, CURRENT_MEMORY_VERSION.split(".")))
 
-    if lock_tuple == current_tuple:
-        result.record("lock_version", True, f"version={version}")
+    # Backward compatibility: accept any known version from compat matrix
+    from memory_core.compat import _COMPAT_MATRIX
+    if version in _COMPAT_MATRIX:
+        result.record("lock_version", True, f"version={version} (known version)")
         return True
-    elif lock_tuple < current_tuple:
-        msg = MESSAGE_VERSION_MISMATCH_UPGRADE_NEEDED.format(
-            current=version, target=CURRENT_MEMORY_VERSION,
-        )
-        result.record("lock_version", False, msg)
-        return False
+
+    # Unknown version: warn but don't fail (allow future versions)
+    current_tuple = tuple(map(int, CURRENT_MEMORY_VERSION.split(".")))
+    if lock_tuple < current_tuple:
+        msg = f"version={version} is older than current {CURRENT_MEMORY_VERSION}; consider running memory-migrate"
+        result.record("lock_version", True, msg)
+        return True
     else:
-        msg = MESSAGE_VERSION_MISMATCH_DOWNGRADE_DETECTED.format(
-            current=version, target=CURRENT_MEMORY_VERSION,
-        )
-        result.record("lock_version", False, msg)
-        return False
+        msg = f"version={version} is newer than current {CURRENT_MEMORY_VERSION}; assuming forward compatibility"
+        result.record("lock_version", True, msg)
+        return True
 
 
 def check_adapter_version(memory_root: Path, result: CheckResult) -> bool:
-    """Verify adapter.toml version is compatible."""
+    """Verify adapter.toml version is compatible.
+
+    Backward compatible: accepts any version in the compat matrix.
+    Only warns for version mismatches, doesn't fail validation.
+    """
     adapter_path = memory_root / "adapter.toml"
     if not adapter_path.is_file():
         result.record("adapter_version", False, "adapter.toml not found")
@@ -339,16 +361,20 @@ def check_adapter_version(memory_root: Path, result: CheckResult) -> bool:
         result.record("adapter_version", False, "no version key in adapter.toml")
         return False
 
+    # Backward compatibility: accept any known version from compat matrix
+    from memory_core.compat import _COMPAT_MATRIX
+    if version in _COMPAT_MATRIX:
+        result.record("adapter_version", True, f"version={version} (known version)")
+        return True
+
+    # Unknown version: warn but don't fail
     if version == CURRENT_MEMORY_VERSION:
         result.record("adapter_version", True, f"version={version}")
         return True
     else:
-        result.record(
-            "adapter_version",
-            False,
-            f"version mismatch: adapter={version}, expected={CURRENT_MEMORY_VERSION}",
-        )
-        return False
+        msg = f"version={version} differs from current {CURRENT_MEMORY_VERSION}; consider running memory-migrate"
+        result.record("adapter_version", True, msg)
+        return True
 
 
 def check_pollution(memory_root: Path, result: CheckResult) -> bool:

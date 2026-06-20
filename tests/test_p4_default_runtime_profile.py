@@ -61,6 +61,8 @@ class TestBuildDefaultRuntimeProfile:
         "CLAUDE_HOOK_STATE_FILE",
         "POLICY_SCOPE_INHERITS",
         "ARTIFACT_COMPACTION",
+        "GLOBAL_KB_ROOT",
+        "GLOBAL_KB_ENABLED",
     }
 
     def _make_adapter_toml(self, project: Path, scope: str = "myproject") -> None:

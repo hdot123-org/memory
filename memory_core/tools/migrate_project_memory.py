@@ -553,9 +553,93 @@ def migrate_v040_to_v050(memory_root: Path) -> dict[str, Any]:
     return result
 
 
+# ---------------------------------------------------------------------------
+# Migrate 0.7.0 → 0.8.0: inject [global_kb] section
+# ---------------------------------------------------------------------------
+
+def migrate_v070_to_v080(memory_root: Path) -> dict[str, Any]:
+    """Migration: 0.7.0 → 0.8.0.
+
+    1. Reads adapter.toml from memory/system/
+    2. If [global_kb] section already exists, skip injection (idempotent)
+    3. Otherwise, inject [global_kb] section with defaults:
+       - enabled = true
+       - root = "~/.memory/global-kb"
+    4. Updates memory.lock version to 0.8.0
+    5. Updates adapter.toml [core].version to 0.8.0
+    6. Preserves all existing [core]/[policy]/[routing]/[sync] sections
+
+    Idempotent: if [global_kb] already exists, returns success without changes.
+    """
+    result: dict[str, Any] = {"success": False, "detail": "", "residue": []}
+
+    adapter_path = memory_root / ADAPTER_TOML_NAME
+    if not adapter_path.is_file():
+        result["detail"] = f"{ADAPTER_TOML_NAME} not found in {memory_root}"
+        return result
+
+    lock_path = memory_root / MEMORY_LOCK_NAME
+    if not lock_path.is_file():
+        result["detail"] = f"{MEMORY_LOCK_NAME} not found in {memory_root}"
+        return result
+
+    try:
+        # Load adapter.toml
+        config = load_adapter_toml(adapter_path)
+
+        # Check if [global_kb] already exists in raw TOML
+        raw_data = tomllib.loads(adapter_path.read_text(encoding="utf-8"))
+        has_global_kb = "global_kb" in raw_data
+
+        if has_global_kb:
+            # Already has [global_kb], just update version if needed
+            result["success"] = True
+            result["detail"] = "already has [global_kb] section, skipped injection"
+            # Still need to update version
+        else:
+            # Inject [global_kb] with defaults
+            # The AdapterConfig already has default values for global_kb_enabled and global_kb_root
+            # We just need to ensure they are set correctly
+            config.global_kb_enabled = True
+            config.global_kb_root = str(Path("~/.memory/global-kb").expanduser())
+
+        # Update version in AdapterConfig
+        config.adapter_version = "0.8.0"
+
+        # Write back adapter.toml
+        adapter_path.write_text(dump_adapter_toml(config), encoding="utf-8")
+
+        # Update memory.lock
+        lock_text = lock_path.read_text(encoding="utf-8")
+        if lock_text.strip().startswith("{"):
+            # JSON format (legacy)
+            lock_data = json.loads(lock_text)
+            lock_data.setdefault("memory", {})["memory_version"] = "0.8.0"
+            lock_data["memory"]["locked_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            lock_data["memory"]["lock_reason"] = "upgrade to 0.8.0"
+            _write_toml_memory_lock(lock_data, lock_path)
+        else:
+            # TOML format
+            lock_data = tomllib.loads(lock_text)
+            lock_data.setdefault("memory", {})["memory_version"] = "0.8.0"
+            lock_data["memory"]["locked_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            lock_data["memory"]["lock_reason"] = "upgrade to 0.8.0"
+            _write_toml_memory_lock(lock_data, lock_path)
+
+        if not result["detail"]:
+            result["detail"] = "Migrated from 0.7.0 to 0.8.0: injected [global_kb] section"
+        result["success"] = True
+        return result
+
+    except Exception as exc:
+        result["detail"] = f"Failed to migrate 0.7.0→0.8.0: {exc}"
+        return result
+
+
 MIGRATION_REGISTRY: dict[str, Callable[[Path], dict[str, Any]]] = {
     f"0.1.0->{CURRENT_MEMORY_VERSION}": migrate_v010_to_v020,
     "0.4.0->0.5.0": migrate_v040_to_v050,
+    "0.7.0->0.8.0": migrate_v070_to_v080,
 }
 
 
@@ -894,18 +978,28 @@ def migrate_project_memory(
         "errors": [],
     }
 
+    # Determine memory root location
+    # For 0.5.0+ projects: memory/system/
+    # For legacy projects: .memory/
     memory_root = target / ".memory"
+    is_v05_plus_layout = False
+
     if not memory_root.is_dir():
-        # For 0.4→0.5: if .memory/ doesn't exist but memory/system/ does,
-        # the migration was already completed — return noop
+        # Check if this is a 0.5.0+ project
         system_dir = target / V05_SYSTEM_DIR
         if from_version == "0.4.0" and to_version == "0.5.0" and system_dir.is_dir():
+            # For 0.4→0.5: if .memory/ doesn't exist but memory/system/ does,
+            # the migration was already completed — return noop
             result["success"] = True
             result["noop"] = True
             result["reason"] = "already migrated to 0.5.0"
             return result
-        result["errors"].append(f".memory/ directory not found at {memory_root}")
-        return result
+        elif system_dir.is_dir():
+            memory_root = system_dir
+            is_v05_plus_layout = True
+        else:
+            result["errors"].append(f".memory/ directory not found at {memory_root}")
+            return result
 
     try:
         to_tuple = _parse_version_tuple(to_version)
@@ -965,9 +1059,41 @@ def migrate_project_memory(
     is_v04_to_v05 = any(
         m["from"] == "0.4.0" and m["to"] == "0.5.0" for m in migrations
     )
+    # For 0.5.0+ layouts, backups go under memory/system/backups/
+    # We'll handle this by creating a v05-style backup if is_v05_plus_layout
     if not dry_run and not is_v04_to_v05:
         try:
-            _create_backup(memory_root, from_version, to_version)
+            if is_v05_plus_layout:
+                # Create timestamped backup under memory/system/backups/
+                backups_dir = memory_root / BACKUPS_DIR_NAME
+                backups_dir.mkdir(parents=True, exist_ok=True)
+                ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                backup_dest = backups_dir / ts
+                # Copy memory_root contents (excluding backups/) to backup_dest
+                source_files_count = 0
+                for p in memory_root.rglob("*"):
+                    if p.is_file():
+                        rel = p.relative_to(memory_root)
+                        if rel.parts[0] != BACKUPS_DIR_NAME:
+                            src_path = p
+                            dst_path = backup_dest / rel
+                            dst_path.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(str(src_path), str(dst_path))
+                            source_files_count += 1
+                manifest = {
+                    "from_version": from_version,
+                    "to_version": to_version,
+                    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "source_files_count": source_files_count,
+                    "layout": "v05+",
+                }
+                manifest_path = backup_dest / BACKUP_MANIFEST_NAME
+                manifest_path.write_text(
+                    json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
+            else:
+                _create_backup(memory_root, from_version, to_version)
         except Exception as exc:
             log_path = memory_root / MIGRATIONS_LOG_NAME
             now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

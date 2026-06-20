@@ -50,6 +50,14 @@ def build_default_runtime_profile(
     # Resolve the project scope from adapter.toml (routing.project_scope).
     project_scope: str = config.project_scope or "default"
 
+    # Global KB configuration (v0.8.0+)
+    global_kb_root: Path | None = None
+    global_kb_enabled: bool = config.global_kb_enabled
+    if global_kb_enabled:
+        # Parse global_kb_root from config (already expanded by adapter_toml_schema)
+        global_kb_root_str = config.global_kb_root
+        global_kb_root = Path(global_kb_root_str)
+
     # Standard memory/ paths ─────────────────────────
     kb_root = project_root / "memory" / "kb"
     projects_root = kb_root / "projects"
@@ -235,4 +243,7 @@ def build_default_runtime_profile(
         "CLAUDE_HOOK_STATE_FILE": os.environ.get("CMUX_HOOK_STATE_FILE") or None,
         "POLICY_SCOPE_INHERITS": policy_scope_inherits,
         "ARTIFACT_COMPACTION": artifact_compaction,
+        # Global KB configuration (v0.8.0+)
+        "GLOBAL_KB_ROOT": global_kb_root,
+        "GLOBAL_KB_ENABLED": global_kb_enabled,
     }

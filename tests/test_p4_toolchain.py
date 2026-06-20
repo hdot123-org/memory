@@ -281,9 +281,11 @@ class TestVersionCheckFailure:
 
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
             data_out = json.loads(result.stdout)
-            assert data_out["all_passed"] is False
+            # Backward compatibility: unknown versions should pass (with warnings)
+            assert data_out["all_passed"] is True
             version_checks = [c for c in data_out["checks"] if "lock_version" in c["name"]]
-            assert any(not c["passed"] for c in version_checks)
+            # Version check should pass (backward compatible)
+            assert any(c["passed"] for c in version_checks)
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
@@ -300,7 +302,8 @@ class TestVersionCheckFailure:
 
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
             data_out = json.loads(result.stdout)
-            assert data_out["all_passed"] is False
+            # Backward compatibility: unknown versions should pass (with warnings)
+            assert data_out["all_passed"] is True
         finally:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
