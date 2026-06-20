@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.0] - 2026-06-20
+
+### Added
+- 全局知识库层 (~/.memory/global-kb/): operations/engineering/collaboration/pending 四域
+- 分层路由 fallback: adapter.toml [global_kb] 段, 项目优先 → 全局 fallback
+- memory-init 自动创建全局 KB 并写入配置
+- memory-migrate 0.7→0.8 迁移支持
+- memory-promote CLI: 从 pending 提升到正式分类
+- session-end 自动捕获候选到 pending/
+
+### Fixed
+- ssh-tailscale-pitfalls.md BOUNDARY IP 泄漏脱敏
+
+# Changelog
+
 ## [0.7.0] - 2026-06-07
 
 ### 新增
