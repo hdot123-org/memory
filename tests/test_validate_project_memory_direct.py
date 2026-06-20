@@ -150,9 +150,9 @@ class TestIsJsonLike:
     def test_is_json_like_toml(self) -> None:
         """Test TOML is not JSON-like."""
         # TOML content starts with '[section]' which looks like JSON array
-        # Actually, [section] looks like JSON array, so this returns True
-        # The function only checks if it STARTS with { or [ (after stripping)
-        assert _is_json_like("[section]\nkey = value") is True  # [section] looks like JSON array
+        # But after our fix, [section] is correctly identified as a TOML section header
+        # and returns False (not JSON-like)
+        assert _is_json_like("[section]\nkey = value") is False  # [section] is TOML section
 
     def test_is_json_like_empty(self) -> None:
         """Test empty string."""
@@ -163,25 +163,19 @@ class TestParseLockFile:
     """Tests for _parse_lock_file function."""
 
     def test_parse_toml_format_raises_error(self, tmp_path: Path) -> None:
-        """Test that TOML format lock file starting with [section] raises JSONDecodeError.
+        """Test that TOML format lock file starting with [section] is correctly parsed.
 
-        Note: This documents current behavior where TOML files starting with [memory]
-        are incorrectly detected as JSON-like (due to starting with [).
-        The _is_json_like heuristic is too simple and doesn't distinguish
-        between TOML sections and JSON arrays.
-
-        In production, memory.lock should use JSON format (legacy) or the file
-        should not start with [section] to avoid this issue.
+        After the fix to _is_json_like, TOML files starting with [memory] are now
+        correctly identified as TOML sections (not JSON arrays) and parsed successfully.
         """
         lock_file = tmp_path / "memory.lock"
         lock_file.write_text("""[memory]
 memory_version = "0.3.0"
 schema_version = "1.0"
 """)
-        # Currently raises JSONDecodeError because [memory] looks like JSON array
-        import json
-        with pytest.raises(json.JSONDecodeError):
-            _parse_lock_file(lock_file)
+        # Now correctly parses as TOML
+        result = _parse_lock_file(lock_file)
+        assert result["memory"]["memory_version"] == "0.3.0"
 
     def test_parse_json_legacy_format(self, tmp_path: Path) -> None:
         """Test parsing JSON legacy format lock file."""
@@ -444,7 +438,8 @@ class TestCheckLockVersion:
         result = CheckResult()
         check_lock_version(memory_root, result)
 
-        assert any(not c["passed"] for c in result.checks)
+        # Backward compatibility: old versions should pass (with warnings)
+        assert any(c["passed"] for c in result.checks)
 
     def test_lock_no_file(self, tmp_path: Path) -> None:
         """Test when lock file doesn't exist."""
@@ -475,7 +470,7 @@ version = "{CURRENT_MEMORY_VERSION}"
         assert any(c["passed"] for c in result.checks)
 
     def test_adapter_version_mismatch(self, tmp_path: Path) -> None:
-        """Test when adapter version doesn't match."""
+        """Test when adapter version doesn't match but is still accepted (backward compatible)."""
         memory_root = tmp_path / "memory" / "system"
         memory_root.mkdir(parents=True)
         adapter_file = memory_root / "adapter.toml"
@@ -486,7 +481,9 @@ version = "0.0.1"
         result = CheckResult()
         check_adapter_version(memory_root, result)
 
-        assert any(not c["passed"] for c in result.checks)
+        # After backward compatibility fix, unknown old versions are still accepted
+        # with a warning, not rejected
+        assert any(c["passed"] for c in result.checks)
 
 
 class TestCheckPollutionFunction:

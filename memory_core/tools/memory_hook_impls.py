@@ -540,9 +540,14 @@ class RouteTargetPolicyImpl(RouteTargetPolicy):
         *,
         global_rule_path: Path | None = None,
         project_runtime_path: Path | None = None,
+        global_kb_root: Path | None = None,
+        global_kb_enabled: bool = True,
     ):
         self._workspace_root = workspace_root
         self._repo_root = repo_root
+        # Global KB 配置 (v0.8.0+)
+        self._global_kb_root = global_kb_root
+        self._global_kb_enabled = global_kb_enabled
         self._routes: dict[str, str] = {
             "fact": None,  # evaluated lazily in resolve() to avoid stale date across midnight
             "global-rule": str(global_rule_path or (workspace_root / "memory" / "kb" / "global" / "memory-routing.md")),
@@ -559,6 +564,35 @@ class RouteTargetPolicyImpl(RouteTargetPolicy):
             return self._routes[kind]
         except KeyError:
             raise ValueError(f"unsupported route kind: {kind}")
+
+    def resolve_kb_file(self, domain: str, filename: str) -> Path | None:
+        """Resolve a knowledge base file with layered fallback.
+
+        读取链: 项目 memory/kb/<domain>/ 优先 → 未命中 fallback 到 global_kb_root/<domain>/。
+        全局源不存在/不可达时优雅降级(只用项目层,不报错,不输出 stderr)。
+        enabled=false 时不 fallback。
+
+        Args:
+            domain: 知识域名称 (operations/engineering/collaboration/lessons/decisions)
+            filename: 文件名
+
+        Returns:
+            文件路径,如果两层都无则返回 None
+        """
+        # 1. 项目层优先
+        project_file = self._workspace_root / "memory" / "kb" / domain / filename
+        if project_file.exists():
+            return project_file
+
+        # 2. Fallback 到全局层 (仅当 enabled 且 global_kb_root 可达时)
+        if self._global_kb_enabled and self._global_kb_root is not None:
+            global_file = self._global_kb_root / domain / filename
+            # 优雅降级: 全局源不存在/不可达时不报错
+            if global_file.exists():
+                return global_file
+
+        # 3. 两层都无,返回 None
+        return None
 
 
 class WriteTargetPolicyImpl(WriteTargetPolicy):
