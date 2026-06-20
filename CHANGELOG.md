@@ -13,6 +13,11 @@
 ### Fixed
 - ssh-tailscale-pitfalls.md BOUNDARY IP 泄漏脱敏
 
+### Docs
+- 新增通用维护手册: VERSION_SYNC_RUNBOOK / MIGRATION_RUNBOOK / CONFIG_MANAGEMENT_RUNBOOK
+- 现有 CI/CD 手册加环境特定声明标注
+- runbooks/INDEX.md 分为通用维护手册 + 环境特定手册两类
+
 # Changelog
 
 ## [0.7.0] - 2026-06-07
