@@ -95,9 +95,9 @@ def _apply_migration_transforms(
 class AdapterConfig:
     """Configuration loaded from ``memory/system/adapter.toml``.
 
-    The canonical TOML layout uses ``[core]``, ``[policy]``, and
-    ``[routing]`` sections.  The legacy single-section ``[adapter]``
-    layout is still accepted for backward compatibility.
+    The canonical TOML layout uses ``[core]``, ``[policy]``, ``[routing]``,
+    and optionally ``[global_kb]`` sections.  The legacy single-section
+    ``[adapter]`` layout is still accepted for backward compatibility.
     """
 
     project_name: str
@@ -110,6 +110,10 @@ class AdapterConfig:
     legality_source_policy: str = "map-only"
     registration_commit_policy: str = "same-commit"
     registration_commit_phase: str = "post"
+    # [global_kb] section (v0.8.0+): global knowledge base configuration
+    # Default: enabled=True, root=~/.memory/global-kb (expanded)
+    global_kb_enabled: bool = True
+    global_kb_root: str = str(Path("~/.memory/global-kb").expanduser())
 
 
 @dataclass
@@ -150,6 +154,10 @@ _KNOWN_SYNC_KEYS: frozenset[str] = frozenset({
     "mirror_remote",
     "mirror_url",
     "ci_runner",
+})
+_KNOWN_GLOBAL_KB_KEYS: frozenset[str] = frozenset({
+    "enabled",
+    "root",
 })
 
 
@@ -233,10 +241,11 @@ def load_adapter_toml(path: Path, *, strict: bool = False) -> AdapterConfig:
     return config
 
 def _load_new_format(data: dict[str, Any], *, strict: bool = False) -> AdapterConfig:
-    """Parse the canonical ``[core]`` / ``[policy]`` / ``[routing]`` layout."""
+    """Parse the canonical ``[core]`` / ``[policy]`` / ``[routing]`` / ``[global_kb]`` layout."""
     core: dict[str, Any] = data.get("core", {})
     policy: dict[str, Any] = data.get("policy", {})
     routing: dict[str, Any] = data.get("routing", {})
+    global_kb: dict[str, Any] = data.get("global_kb", {})
 
     if strict:
         _check_unknown_keys("core", core, _KNOWN_CORE_KEYS)
@@ -245,6 +254,8 @@ def _load_new_format(data: dict[str, Any], *, strict: bool = False) -> AdapterCo
         sync = data.get("sync", {})
         if sync:
             _check_unknown_keys("sync", sync, _KNOWN_SYNC_KEYS)
+        if global_kb:
+            _check_unknown_keys("global_kb", global_kb, _KNOWN_GLOBAL_KB_KEYS)
 
     project_scope = routing.get("project_scope", "")
     # F4: Only fall back to project_scope when project_name key is missing,
@@ -265,6 +276,13 @@ def _load_new_format(data: dict[str, Any], *, strict: bool = False) -> AdapterCo
                     stacklevel=2,
                 )
 
+    # Parse [global_kb] section with defaults
+    global_kb_enabled = global_kb.get("enabled", True)
+    global_kb_root = global_kb.get("root", "~/.memory/global-kb")
+    # Expand ~ to absolute path
+    if isinstance(global_kb_root, str):
+        global_kb_root = str(Path(global_kb_root).expanduser())
+
     return AdapterConfig(
         project_name=project_name,
         project_scope=project_scope,
@@ -275,6 +293,8 @@ def _load_new_format(data: dict[str, Any], *, strict: bool = False) -> AdapterCo
         legality_source_policy=policy.get("legality_source_policy", "map-only"),
         registration_commit_policy=policy.get("registration_commit_policy", "same-commit"),
         registration_commit_phase=policy.get("registration_commit_phase", "post"),
+        global_kb_enabled=global_kb_enabled,
+        global_kb_root=global_kb_root,
     )
 
 
@@ -361,6 +381,12 @@ def dump_adapter_toml(config: AdapterConfig) -> str:
         lines.append(f'artifact_root = {_toml_str(config.artifact_root)}')
     else:
         lines.append("# artifact_root is not set")
+
+    # [global_kb] section (v0.8.0+)
+    lines.append("")
+    lines.append("[global_kb]")
+    lines.append(f"enabled = {str(config.global_kb_enabled).lower()}")
+    lines.append(f"root = {_toml_str(config.global_kb_root)}")
 
     return "\n".join(lines) + "\n"
 

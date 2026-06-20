@@ -65,6 +65,7 @@ from memory_core.ownership import (
     load_memory_ownership,
 )
 from memory_core.tools.denied_project_roots import is_denied_project_root
+from memory_core.tools.global_kb_init import create_global_kb_structure, get_global_kb_root
 
 # Setup logging for template warnings
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
@@ -226,6 +227,10 @@ registration_commit_phase = "post"
 project_name = "{{project_name}}"
 project_scope = "{{project_scope}}"
 host = "{{host}}"
+
+[global_kb]
+enabled = true
+root = "~/.memory/global-kb"
 """
 
         # Replace placeholders
@@ -1927,6 +1932,17 @@ def init_project_memory(
             "This tool is for business project repositories only."
         )
         return result
+
+    # Create global KB structure if it doesn't exist (v0.8.0+)
+    # This ensures ~/.memory/global-kb/ is available for routing fallback
+    global_kb_root = get_global_kb_root()
+    global_kb_result = create_global_kb_structure(global_kb_root)
+    if global_kb_result["success"]:
+        result["created"].extend(global_kb_result["created_paths"])
+        result["skipped"].extend(global_kb_result["skipped_paths"])
+    else:
+        # Non-blocking: global KB creation failure shouldn't block init
+        result["warnings"].extend(global_kb_result["errors"])
 
     # Create directories
     for dir_rel in DIRECTORY_STRUCTURE:
