@@ -48,3 +48,5 @@ VALID_SYNC_CI_RUNNERS = ("gitlab",)
 
 # Migration error codes
 _BACKUP_FAILED = "backup_failed"
+
+# v0.8.0 global-kb layer (trigger sync CI)
