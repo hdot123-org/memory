@@ -165,6 +165,8 @@ def build_context_package_core(
     governance_blocker_scopes: Collection[str] | None = None,
     event_contract_blocker_scopes: Collection[str] | None = None,
     core_evidence_refs: list[str] | None = None,
+    global_kb_root: Path | None = None,
+    global_kb_enabled: bool = True,
 ) -> dict[str, Any]:
     """M5 core assembly for context package.
 
@@ -234,6 +236,13 @@ def build_context_package_core(
         *lessons,
         *docs_refs,
     ]
+
+    # 全局知识库 fallback 读取路径 (v0.8.0+)
+    if global_kb_enabled and global_kb_root is not None:
+        for domain in ("operations", "engineering", "collaboration"):
+            domain_dir = global_kb_root / domain
+            if domain_dir.exists():
+                reads.append(str(domain_dir))
     read_set = set(reads)
     truth_basis_set = set(truth_basis_refs)
     if not truth_basis_set.issubset(read_set):
