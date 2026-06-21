@@ -629,6 +629,33 @@ def migrate_v070_to_v080(memory_root: Path) -> dict[str, Any]:
         if not result["detail"]:
             result["detail"] = "Migrated from 0.7.0 to 0.8.0: injected [global_kb] section"
         result["success"] = True
+
+        # Sync project-map files to current template (fixes stale legal-core-map
+        # and ingestion-registry-map from older init templates).
+        project_root = memory_root.parent.parent  # memory/system → project root
+        project_map_dir = project_root / "project-map"
+        if project_map_dir.is_dir():
+            try:
+                from memory_core.tools.init_project_memory import KB_TEMPLATES
+            except ImportError:
+                KB_TEMPLATES = {}
+
+            synced = []
+            for rel_name in (
+                "project-map/legal-core-map.md",
+                "project-map/ingestion-registry-map.md",
+            ):
+                template_entry = KB_TEMPLATES.get(rel_name)
+                target_path = project_root / rel_name
+                if template_entry is None or not target_path.parent.is_dir():
+                    continue
+                template_text = template_entry("default")[0]  # (content, deps)
+                if not target_path.exists() or target_path.read_text(encoding="utf-8") != template_text:
+                    target_path.write_text(template_text, encoding="utf-8")
+                    synced.append(rel_name)
+            if synced:
+                result["residue"].append(f"synced project-map files: {', '.join(synced)}")
+
         return result
 
     except Exception as exc:
