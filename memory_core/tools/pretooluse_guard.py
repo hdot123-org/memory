@@ -23,6 +23,59 @@ from memory_core.ownership import (
     load_memory_ownership,
 )
 
+# ---------------------------------------------------------------------------
+# 文件类型黑名单常量
+# ---------------------------------------------------------------------------
+
+FORBIDDEN_SUFFIXES: tuple[str, ...] = (
+    ".sql",
+    ".bak",
+    ".sqlite",
+    ".db",
+    ".dump",
+    ".sql.gz",
+)
+
+FORBIDDEN_DIRS: frozenset[str] = frozenset({"backups"})
+
+
+def _check_file_type_block(file_path: str) -> dict[str, str] | None:
+    """检查文件路径是否命中文件类型黑名单。
+
+    返回 block 结果 dict 表示被拦截，返回 None 表示放行。
+    MEMORY_HOOK_FORCE=1 时跳过检查。
+    """
+    if os.environ.get("MEMORY_HOOK_FORCE") == "1":
+        return None
+
+    p = Path(file_path)
+    name = p.name.lower()
+
+    # 检查目录黑名单
+    for part in p.parts:
+        if part.lower() in FORBIDDEN_DIRS:
+            return {
+                "decision": "block",
+                "reason": f"文件类型禁止入库：目录 {part} 被禁止",
+            }
+
+    # 检查后缀黑名单（.sql.gz 需要先匹配复合后缀）
+    if name.endswith(".sql.gz"):
+        return {
+            "decision": "block",
+            "reason": "文件类型禁止入库：.sql.gz",
+        }
+    for suffix in FORBIDDEN_SUFFIXES:
+        if suffix == ".sql.gz":
+            continue  # 已处理
+        if name.endswith(suffix):
+            return {
+                "decision": "block",
+                "reason": f"文件类型禁止入库：{suffix}",
+            }
+
+    return None
+
 
 def _load_project_root() -> Path | None:
     """Determine project root from environment."""
@@ -397,6 +450,11 @@ def _classify_tool_use(payload: dict[str, Any], project_root: Path) -> dict[str,
                 "scenario": agents_result.get("scenario"),
             }
 
+        # 文件类型黑名单检查（优先于路径归属检查）
+        ft_block = _check_file_type_block(file_path)
+        if ft_block is not None:
+            return ft_block
+
         result = classify_owned_path(file_path, ownership, project_root)
         if hasattr(result, "level"):
             return {
@@ -450,6 +508,17 @@ def _classify_tool_use(payload: dict[str, Any], project_root: Path) -> dict[str,
                 })
                 if agents_result["decision"] == "block":
                     has_block = True
+                continue
+
+            # 文件类型黑名单检查（优先于路径归属检查）
+            ft_block = _check_file_type_block(path)
+            if ft_block is not None:
+                item_results.append({
+                    "path": path,
+                    "decision": "block",
+                    "reason": ft_block["reason"],
+                })
+                has_block = True
                 continue
 
             # Normal path classification
@@ -525,6 +594,11 @@ def _classify_tool_use(payload: dict[str, Any], project_root: Path) -> dict[str,
 
                 # Expand environment variables for classification
                 expanded = _expand_env_vars(path)
+
+                # 文件类型黑名单检查（优先于路径归属检查）
+                ft_block = _check_file_type_block(expanded)
+                if ft_block is not None:
+                    return ft_block
 
                 # Handle relative paths: resolve against project root
                 check_path = expanded

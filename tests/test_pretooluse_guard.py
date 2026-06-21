@@ -57,6 +57,227 @@ class TestPreToolUseGuard:
         assert result["decision"] == "block"
         assert "memory/docs" in result["reason"] or "memory_docs" in result["reason"]
 
+    # ========== 文件类型黑名单测试 ==========
+
+    def test_guard_blocks_write_sql_file(self, tmp_path: Path) -> None:
+        """Test that Write to .sql file is blocked."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "Write",
+            "file_path": "test.sql",
+            "content": "CREATE TABLE test;",
+        }
+
+        exit_code, result = self._run_guard(payload, tmp_path)
+
+        assert exit_code == 2
+        assert result["decision"] == "block"
+        assert "文件类型禁止入库：.sql" in result["reason"]
+
+    def test_guard_blocks_write_bak_file(self, tmp_path: Path) -> None:
+        """Test that Write to .bak file is blocked."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "Write",
+            "file_path": "backup.bak",
+            "content": "backup data",
+        }
+
+        exit_code, result = self._run_guard(payload, tmp_path)
+
+        assert exit_code == 2
+        assert result["decision"] == "block"
+        assert "文件类型禁止入库：.bak" in result["reason"]
+
+    def test_guard_blocks_write_sqlite_file(self, tmp_path: Path) -> None:
+        """Test that Write to .sqlite file is blocked."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "Write",
+            "file_path": "database.sqlite",
+            "content": "sqlite data",
+        }
+
+        exit_code, result = self._run_guard(payload, tmp_path)
+
+        assert exit_code == 2
+        assert result["decision"] == "block"
+        assert "文件类型禁止入库：.sqlite" in result["reason"]
+
+    def test_guard_blocks_write_db_file(self, tmp_path: Path) -> None:
+        """Test that Write to .db file is blocked."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "Write",
+            "file_path": "data.db",
+            "content": "database",
+        }
+
+        exit_code, result = self._run_guard(payload, tmp_path)
+
+        assert exit_code == 2
+        assert result["decision"] == "block"
+        assert "文件类型禁止入库：.db" in result["reason"]
+
+    def test_guard_blocks_write_dump_file(self, tmp_path: Path) -> None:
+        """Test that Write to .dump file is blocked."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "Write",
+            "file_path": "data.dump",
+            "content": "dump data",
+        }
+
+        exit_code, result = self._run_guard(payload, tmp_path)
+
+        assert exit_code == 2
+        assert result["decision"] == "block"
+        assert "文件类型禁止入库：.dump" in result["reason"]
+
+    def test_guard_allows_write_py_file(self, tmp_path: Path) -> None:
+        """Test that Write to .py file is allowed."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "Write",
+            "file_path": "test.py",
+            "content": "print('hello')",
+        }
+
+        exit_code, result = self._run_guard(payload, tmp_path)
+
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_guard_allows_write_md_file(self, tmp_path: Path) -> None:
+        """Test that Write to .md file is allowed."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "Write",
+            "file_path": "readme.md",
+            "content": "# README",
+        }
+
+        exit_code, result = self._run_guard(payload, tmp_path)
+
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_guard_allows_write_ts_file(self, tmp_path: Path) -> None:
+        """Test that Write to .ts file is allowed."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "Write",
+            "file_path": "test.ts",
+            "content": "const x: number = 1;",
+        }
+
+        exit_code, result = self._run_guard(payload, tmp_path)
+
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_guard_blocks_edit_sql_file(self, tmp_path: Path) -> None:
+        """Test that Edit to .sql file is blocked."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "Edit",
+            "file_path": "test.sql",
+            "old_str": "SELECT 1",
+            "new_str": "SELECT 2",
+        }
+
+        exit_code, result = self._run_guard(payload, tmp_path)
+
+        assert exit_code == 2
+        assert result["decision"] == "block"
+        assert "文件类型禁止入库：.sql" in result["reason"]
+
+    def test_guard_blocks_multiedit_bak_file(self, tmp_path: Path) -> None:
+        """Test that MultiEdit with .bak file is blocked."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "MultiEdit",
+            "edits": [
+                {"file_path": "src/main.py", "old_str": "old", "new_str": "new"},
+                {"file_path": "backup.bak", "old_str": "old", "new_str": "new"},
+            ],
+        }
+
+        exit_code, result = self._run_guard(payload, tmp_path)
+
+        assert exit_code == 2
+        assert result["decision"] == "block"
+        assert "backup.bak" in result["reason"]
+
+    def test_guard_blocks_execute_cp_bak_file(self, tmp_path: Path) -> None:
+        """Test that Execute cp to .bak file is blocked."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "Execute",
+            "command": "cp test.txt test.bak",
+        }
+
+        exit_code, result = self._run_guard(payload, tmp_path)
+
+        assert exit_code == 2
+        assert result["decision"] == "block"
+        assert "文件类型禁止入库：.bak" in result["reason"]
+
+    def test_guard_allows_write_sql_with_memory_hook_force(self, tmp_path: Path) -> None:
+        """Test that MEMORY_HOOK_FORCE=1 bypasses file type check."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "Write",
+            "file_path": "test.sql",
+            "content": "CREATE TABLE test;",
+        }
+
+        env = os.environ.copy()
+        env["FACTORY_PROJECT_DIR"] = str(tmp_path)
+        env["MEMORY_HOOK_ORIGINAL_CWD"] = str(tmp_path)
+        env["MEMORY_HOOK_FORCE"] = "1"
+
+        result = subprocess.run(
+            [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_path),
+            env=env,
+        )
+
+        output = json.loads(result.stdout)
+        assert result.returncode == 0
+        assert output["decision"] == "allow"
+
+    def test_guard_blocks_write_to_backups_directory(self, tmp_path: Path) -> None:
+        """Test that Write to backups/ directory is blocked."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "Write",
+            "file_path": "backups/dump.txt",
+            "content": "backup data",
+        }
+
+        exit_code, result = self._run_guard(payload, tmp_path)
+
+        assert exit_code == 2
+        assert result["decision"] == "block"
+        assert "目录 backups 被禁止" in result["reason"]
+
     def test_guard_blocks_edit_to_owned_path(self, tmp_path: Path) -> None:
         """Test that Edit to owned path is blocked."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
