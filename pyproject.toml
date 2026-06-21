@@ -53,6 +53,7 @@ memory-ownership = "memory_core.tools.ownership_cli:main"
 memory-verify-consumer = "memory_core.tools.verify_consumer:main"
 memory-integrity-resign = "memory_core.tools.memory_integrity_resign:main"
 memory-sync-versions = "memory_core.tools.version_sync:main"
+memory-audit-daily = "memory_core.tools.daily_kb_audit:main"
 
 [tool.setuptools.packages.find]
 include = ["memory_core*"]
