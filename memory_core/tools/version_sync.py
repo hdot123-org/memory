@@ -15,6 +15,14 @@ from typing import Any
 
 from memory_core.constants import CURRENT_MEMORY_VERSION
 
+# Re-sign modules (ImportError 时静默跳过，不阻塞版本同步)
+try:
+    from memory_core.tools.memory_hook_integrity_keys import load_key
+    from memory_core.tools.memory_hook_integrity_manifest import sign_project_incremental
+except ImportError:
+    sign_project_incremental = None  # type: ignore[misc,assignment]
+    load_key = None  # type: ignore[misc,assignment]
+
 
 def read_ownership_memory_version(ownership_path: Path) -> str | None:
     """Read memory_version from an ownership.toml file.
@@ -130,8 +138,31 @@ def sync_single_project(
     if current_version == target_version:
         return {"patched": False, "reason": "already up-to-date", "version": current_version}
     if patch_ownership_memory_version(ownership_path, target_version):
+        # Re-sign ownership.toml after patch to keep manifest in sync
+        _try_resign_ownership(project_path)
         return {"patched": True, "from": current_version, "to": target_version}
     return {"patched": False, "reason": "patch failed"}
+
+
+def _try_resign_ownership(project_path: Path) -> None:
+    """Re-sign ownership.toml after version patch to keep manifest hash in sync.
+
+    Failure is non-fatal: version sync is the primary goal.
+    """
+    if sign_project_incremental is None or load_key is None:
+        return
+    try:
+        key = load_key()
+        if key is None:
+            return
+        sign_project_incremental(
+            project_path,
+            key,
+            changed_paths=["memory/system/ownership.toml"],
+        )
+    except Exception:
+        # 签名失败静默跳过，不阻塞版本同步主流程
+        pass
 
 
 def main(argv: list[str] | None = None) -> int:
