@@ -39,7 +39,7 @@ except ImportError:
 # 常量 & 配置
 # ---------------------------------------------------------------------------
 
-LLM_ENDPOINT = "https://REDACTED.ts.net/v1/chat/completions"
+LLM_ENDPOINT = os.environ.get("MEMORY_LLM_ENDPOINT", "")
 LLM_MODEL = "glm-5.1"
 LLM_TIMEOUT = 120  # 秒（大 prompt 需要更长超时）
 SESSIONS_HOME = Path.home() / ".factory" / "sessions"
