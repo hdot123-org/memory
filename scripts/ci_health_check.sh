@@ -33,10 +33,10 @@ fi
 echo "=== CI config integrity check ==="
 
 check_ci_config() {
-    local CI_FILE=".gitlab-ci.yml"
+    local CI_FILE=".github/workflows/ci.yml"
     local errors=0
 
-    # 1. Check .gitlab-ci.yml is non-empty
+    # 1. Check ci.yml is non-empty
     if [ ! -s "$CI_FILE" ]; then
         echo "✗ $CI_FILE is empty or missing"
         errors=$((errors + 1))
@@ -59,8 +59,8 @@ with open('$CI_FILE', 'r') as f:
 if data is None:
     print('YAML parsed as empty/null')
     sys.exit(1)
-if 'stages' not in data:
-    print('Missing required top-level key: stages')
+if 'jobs' not in data:
+    print('Missing required top-level key: jobs')
     sys.exit(1)
 " 2>/dev/null; then
             echo "✗ YAML syntax validation failed"
@@ -70,32 +70,32 @@ if 'stages' not in data:
         fi
     fi
 
-    # 3. Verify required stages exist
+    # 3. Verify required jobs exist
     if [ "$errors" -eq 0 ]; then
-        REQUIRED_STAGES=("test" "health_check" "sync")
-        MISSING_STAGES=""
-        for stage in "${REQUIRED_STAGES[@]}"; do
+        REQUIRED_JOBS=("test" "advisory-security")
+        MISSING_JOBS=""
+        for job in "${REQUIRED_JOBS[@]}"; do
             if ! python3 -c "
 import yaml
 with open('$CI_FILE', 'r') as f:
     data = yaml.safe_load(f)
-stages = data.get('stages', [])
+jobs = data.get('jobs', {})
 import sys
-sys.exit(0 if '$stage' in stages else 1)
+sys.exit(0 if '$job' in jobs else 1)
 " 2>/dev/null; then
-                if [ -z "$MISSING_STAGES" ]; then
-                    MISSING_STAGES="$stage"
+                if [ -z "$MISSING_JOBS" ]; then
+                    MISSING_JOBS="$job"
                 else
-                    MISSING_STAGES="$MISSING_STAGES, $stage"
+                    MISSING_JOBS="$MISSING_JOBS, $job"
                 fi
             fi
         done
 
-        if [ -n "$MISSING_STAGES" ]; then
-            echo "✗ Missing required stages: $MISSING_STAGES"
+        if [ -n "$MISSING_JOBS" ]; then
+            echo "✗ Missing required jobs: $MISSING_JOBS"
             errors=$((errors + 1))
         else
-            echo "✓ Required stages (test, health_check, sync) present"
+            echo "✓ Required jobs (test, advisory-security) present"
         fi
     fi
 
