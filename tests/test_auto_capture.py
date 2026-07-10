@@ -41,7 +41,7 @@ def global_kb_root(tmp_path: Path) -> Path:
 
 def test_capture_scans_today_changes(project_root: Path, global_kb_root: Path):
     """VAL-CAPTURE-001: session-end scans today's changes in lessons/decisions."""
-    from memory_core.tools.session_end_logger import capture_candidates
+    from memory_core.tools.auto_capture import capture_candidates
 
     # Create a file modified today in lessons/
     today = datetime.now()
@@ -65,7 +65,7 @@ def test_capture_scans_today_changes(project_root: Path, global_kb_root: Path):
 
 def test_capture_writes_to_pending(project_root: Path, global_kb_root: Path):
     """VAL-CAPTURE-001: Candidates are written to pending/ directory."""
-    from memory_core.tools.session_end_logger import capture_candidates
+    from memory_core.tools.auto_capture import capture_candidates
 
     # Create a file modified today
     lessonfile = project_root / "memory" / "kb" / "lessons" / "captured-lesson.md"
@@ -88,7 +88,7 @@ def test_capture_writes_to_pending(project_root: Path, global_kb_root: Path):
 
 def test_capture_adds_source_metadata(project_root: Path, global_kb_root: Path):
     """VAL-CAPTURE-002: Candidate files have source metadata."""
-    from memory_core.tools.session_end_logger import capture_candidates
+    from memory_core.tools.auto_capture import capture_candidates
 
     # Create a file modified today
     lessonfile = project_root / "memory" / "kb" / "lessons" / "metadata-test.md"
@@ -116,7 +116,7 @@ def test_capture_adds_source_metadata(project_root: Path, global_kb_root: Path):
 
 def test_capture_no_changes_no_candidates(project_root: Path, global_kb_root: Path):
     """VAL-CAPTURE-001: No changes today means no candidates produced."""
-    from memory_core.tools.session_end_logger import capture_candidates
+    from memory_core.tools.auto_capture import capture_candidates
 
     # Create a file but set modification time to yesterday
     yesterday = datetime.now() - timedelta(days=1)
@@ -142,7 +142,7 @@ def test_capture_no_changes_no_candidates(project_root: Path, global_kb_root: Pa
 
 def test_capture_only_writes_pending_not_formal(project_root: Path, global_kb_root: Path):
     """VAL-CAPTURE-003: Auto-capture only writes to pending/, not formal categories."""
-    from memory_core.tools.session_end_logger import capture_candidates
+    from memory_core.tools.auto_capture import capture_candidates
 
     # Create files modified today
     lessonfile = project_root / "memory" / "kb" / "lessons" / "test.md"
@@ -174,7 +174,7 @@ def test_capture_only_writes_pending_not_formal(project_root: Path, global_kb_ro
 
 def test_capture_scans_both_lessons_and_decisions(project_root: Path, global_kb_root: Path):
     """VAL-CAPTURE-001: Scans both lessons/ and decisions/ directories."""
-    from memory_core.tools.session_end_logger import capture_candidates
+    from memory_core.tools.auto_capture import capture_candidates
 
     # Create files in both directories
     today_ts = datetime.now().timestamp()
@@ -202,7 +202,7 @@ def test_capture_scans_both_lessons_and_decisions(project_root: Path, global_kb_
 
 def test_capture_handles_missing_directories(tmp_path: Path, global_kb_root: Path):
     """Auto-capture handles missing lessons/decisions directories gracefully."""
-    from memory_core.tools.session_end_logger import capture_candidates
+    from memory_core.tools.auto_capture import capture_candidates
 
     # Project with no lessons/decisions directories
     project = tmp_path / "empty-project"
@@ -220,7 +220,7 @@ def test_capture_handles_missing_directories(tmp_path: Path, global_kb_root: Pat
 
 def test_capture_preserves_original_content(project_root: Path, global_kb_root: Path):
     """Captured files should preserve original content with added metadata."""
-    from memory_core.tools.session_end_logger import capture_candidates
+    from memory_core.tools.auto_capture import capture_candidates
 
     # Create a file with specific content
     original_content = "# My Lesson\n\nThis is important content.\n\n## Details\nMore details here."
@@ -248,7 +248,7 @@ def test_capture_preserves_original_content(project_root: Path, global_kb_root: 
 
 def test_capture_filename_includes_source_info(project_root: Path, global_kb_root: Path):
     """Pending filenames should include source info to avoid conflicts."""
-    from memory_core.tools.session_end_logger import capture_candidates
+    from memory_core.tools.auto_capture import capture_candidates
 
     # Create a file
     lessonfile = project_root / "memory" / "kb" / "lessons" / "common-name.md"

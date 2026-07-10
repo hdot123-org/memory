@@ -8,6 +8,7 @@ and hook execution in inappropriate locations:
 - $HOME root (exact match)
 - Pattern-based junk directory names (tmp.*, demo-*, test-*, smoke-test-*, restart-*, file-list-*)
 - Non-git directories (without --allow-non-git flag)
+- Explicit denied project roots (from denied_project_roots module)
 
 The denylist is enforced at two points:
 1. init_project_memory.py: During memory initialization
@@ -144,3 +145,37 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
             )
 
     return DenylistResult.denied_ok()
+
+
+def _denied_project_roots() -> list[Path]:
+    """Return exact project roots that memory hooks must never manage."""
+    roots: list[Path] = []
+    try:
+        roots.append(Path.home())
+    except RuntimeError:
+        pass
+
+    configured = os.environ.get("MEMORY_HOOK_DENY_PROJECT_ROOTS", "")
+    for raw in configured.split(os.pathsep):
+        value = raw.strip()
+        if value:
+            roots.append(Path(value).expanduser())
+
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        resolved = root.resolve(strict=False)
+        if resolved not in seen:
+            seen.add(resolved)
+            deduped.append(resolved)
+    return deduped
+
+
+def is_denied_project_root(path: Path) -> bool:
+    """Return True only when path exactly matches a denied project root.
+
+    This function consolidates the denied_project_roots logic into the denylist module
+    for unified path rejection handling.
+    """
+    resolved = path.expanduser().resolve(strict=False)
+    return any(resolved == denied for denied in _denied_project_roots())

@@ -17,7 +17,7 @@ SCRIPT_PATH = Path(__file__).resolve()
 REPO_ROOT = SCRIPT_PATH.parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from memory_core.tools.denied_project_roots import is_denied_project_root
+from memory_core.tools.denylist import is_denied_project_root
 
 # M3: Import is_memory_core_source_repo from ownership module
 try:

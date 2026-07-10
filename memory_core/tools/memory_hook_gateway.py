@@ -16,15 +16,20 @@ from typing import Any, Callable
 
 SCRIPT_PATH = Path(__file__).resolve()
 try:
+    # Consolidated: import from denylist instead of denied_project_roots
+    import memory_core.tools.denylist as _denylist
+
     from ..constants import SYSTEM_DIR
-    from .denied_project_roots import is_denied_project_root
     from .memory_root_discovery import discover_roots
     from .project_lifecycle import record_project_lifecycle
+    is_denied_project_root = _denylist.is_denied_project_root
 except ImportError:
+    # Consolidated: import from denylist instead of denied_project_roots
+    import memory_core.tools.denylist as _denylist
     from memory_core.constants import SYSTEM_DIR
-    from memory_core.tools.denied_project_roots import is_denied_project_root
     from memory_core.tools.memory_root_discovery import discover_roots
     from memory_core.tools.project_lifecycle import record_project_lifecycle
+    is_denied_project_root = _denylist.is_denied_project_root
 REPO_ROOT, WORKSPACE_ROOT = discover_roots(Path.cwd())
 _FORCE_HOOK = bool(os.environ.get("MEMORY_HOOK_FORCE") or os.environ.get("WORKBOT_FORCE_HOOK"))
 

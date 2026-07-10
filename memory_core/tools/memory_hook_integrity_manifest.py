@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import Any
 
 from memory_core.constants import SYSTEM_DIR
-from memory_core.tools.denied_project_roots import is_denied_project_root
+from memory_core.tools.denylist import is_denied_project_root
 
 _logger = logging.getLogger(__name__)
 
