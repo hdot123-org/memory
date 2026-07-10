@@ -7,8 +7,8 @@ Verifies that CLAUDE_HOOK_STATE_DIR does not appear anywhere in memory_core
 
 from __future__ import annotations
 
-import subprocess
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
