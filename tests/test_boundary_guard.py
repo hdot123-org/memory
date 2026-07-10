@@ -78,7 +78,7 @@ def test_detects_runtime_ip_leak(tmp_path, monkeypatch):
     fake_root = fake_repo / "memory_core"
     fake_root.mkdir(parents=True)
     (fake_root / "leak.md").write_text(
-        "Deploy target: REDACTED_IP with axonhub-ci instance",
+        "Deploy target: 192.168.88.99 with axonhub-ci instance",
         encoding="utf-8",
     )
 

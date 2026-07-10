@@ -26,8 +26,8 @@ class TestSanitizingFilter:
 
     def test_redacts_private_ip(self) -> None:
         f = SanitizingFilter()
-        result = f._redact("connecting to REDACTED_IP:5432")
-        assert "REDACTED_IP" not in result
+        result = f._redact("connecting to 192.168.1.100:5432")
+        assert "192.168.1.100" not in result
         assert "***REDACTED_IP***" in result
 
     def test_preserves_normal_text(self) -> None:
