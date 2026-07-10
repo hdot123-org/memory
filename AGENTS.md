@@ -25,15 +25,26 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 
 路由规则仅由以下文件定义，AGENTS.md 只做方向性引用，不嵌入任何路由逻辑。
 
-**读取链**：Agent 启动 → AGENTS.md (行为约束) → 指向性引用 → memory-routing.md (路由规则) → project-map (合法入口) → memory/kb (实际知识)。
+**读取链**：Agent 启动 → AGENTS.md (行为约束) → 三层架构路由 → Layer 3 项目层优先 → Layer 2 全局 fallback
 
-| 文件 | 职责 | 路径 |
-|------|------|------|
-| memory-routing.md | 记忆请求路由、作用域解析、降级策略 | `memory/kb/global/memory-routing.md` |
-| project-map/INDEX.md | 项目地图唯一合法入口、合法性校验 | `project-map/INDEX.md` |
-| BOUNDARY.md | 仓库边界定义、职责范围、不属于本仓库的内容 | `memory/docs/system/BOUNDARY.md` |
+| 层 | 职责 | 路径 |
+|----|------|------|
+| 全局知识库 (Layer 2) | 跨项目通用知识、全局 fallback | `~/.memory/global-kb/` |
+| 项目知识库 (Layer 3) | 项目专属知识 | `<project>/memory/kb/` |
 
-具体路由规则（如 scope resolution、fallback）请查阅上述文件，不要在此文件中寻找。
+具体路由规则（如 scope resolution、fallback）请查阅上述路径下的 INDEX.md。
+
+## 执行前置规则（模板示例）
+
+> 以下规则是消费项目应遵循的执行前置模板。memory-core 本身只读，不适用。
+
+**任何涉及知识库的读取或写入操作前，必须先读取 `~/.factory/AGENTS.md` 确认术语到路径的映射。不可凭记忆或上下文推断路径。**
+
+| 操作场景 | 前置要求 |
+|----------|---------|
+| 写入 `memory/kb/`、`docs/`、`~/.memory/global-kb/` | 先查路由表确认目标层和正确路径 |
+| 读取项目知识库 | 先确认 Layer 3 → Layer 2 fallback 顺序 |
+| 用户说"记下来"/"写文档"/"记录决策" | 先读项目 AGENTS.md 确认分类规则，再执行写入 |
 
 ## 文档分类规则
 
@@ -55,30 +66,24 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 
 完整决策树见 `docs/CLASSIFICATION.md`。
 
-## 铁律：GitLab API 推送
+## 铁律：GitHub 直接推送
 
-**所有代码变更必须通过 `scripts/gitlab_api_push.py` 推送，禁止使用手动 git 命令。**
-
-详细使用方法见 `memory/docs/runbooks/GIT_PUSH_SPEC.md`。
+**所有代码变更直接推送到 GitHub，使用标准 git 命令。**
 
 核心要点：
-- 禁止 `git add` / `git commit` / `git push`（被 hooks 拦截）
-- Token 优先级：`GITLAB_ADMIN_TOKEN` > `CE_GITLAB_TOKEN` > remote URL 提取
-- 项目路径：`infra/memory-core`（需 admin token）、`aedu/workbot`
-- **所有 commit 消息、MR 标题/描述必须使用中文**（如 `fix: 修复 discover_project_root 根目录解析错误`）
-- **禁止直接推送 main** — main 分支已设为 "No one can push"，必须走 feature 分支 + MR
-- **MR 是默认流程** — 推送文件后脚本自动创建 MR，合并后自动删除源分支
-- 仅 WIP 场景可使用 `--no-mr` 跳过 MR 创建
+- 使用 `git add` / `git commit` / `git push origin <branch>`
+- **所有 commit 消息必须使用中文**（如 `fix: 修复 discover_project_root 根目录解析错误`）
+- **禁止直接推送 main** — main 分支受保护，必须走 feature 分支 + PR
+- **PR 是默认流程** — 推送 feature 分支后创建 PR，合并后自动删除源分支
 
-## 铁律：GitLab → GitHub 单向同步
+## 铁律：GitHub 为主仓库
 
-**所有 Factory/Droid 接入的项目必须遵守：**
+**GitHub 已成为主仓库，所有开发流程迁移到 GitHub。**
 
-1. **代码只推 GitLab** — Agent/人/CI 都只 push 到 GitLab，创建 MR
-2. **CI 门禁** — test + health-check 通过后才可合并到 main
-3. **GitHub 是只读镜像** — 只有 GitLab CI 的 sync-to-github job 可以推 GitHub
-4. **禁止直推 GitHub** — 任何 `git push origin main` 都是违规，会破坏单源真相
-5. **违规恢复** — 如果意外直推 GitHub，回退 GitHub commit，重新走 GitLab 流程
+1. **代码推送到 GitHub** — Agent/人/CI 都直接 push 到 GitHub
+2. **CI 门禁** — GitHub Actions 的 test + health-check 通过后才可合并到 main
+3. **PR 流程** — 推送 feature 分支后创建 PR，通过 code review 后合并
+4. **GitLab 保留** — GitLab remote 保留用于历史备份，但不再作为主开发流程
 
 ## Linear Gateway
 

@@ -5,6 +5,9 @@ __pycache__/
 .coverage
 log/
 
+# Schema audit log (runtime-generated, not for tracking)
+**/schema-audit.log
+
 # ============================================================
 # 污染路径防护 — 禁止真实业务项目状态文件进入 memory 仓库
 # 详见 memory/docs/system/BOUNDARY.md
@@ -63,3 +66,9 @@ memory/
 
 # External session output (pollution guard)
 output/
+
+# Environment files (keep .env.example)
+.env
+.env.local
+.env.*.local
+!.env.example

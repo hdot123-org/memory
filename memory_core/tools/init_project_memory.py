@@ -64,7 +64,7 @@ from memory_core.ownership import (
     classify_owned_path,
     load_memory_ownership,
 )
-from memory_core.tools.denied_project_roots import is_denied_project_root
+from memory_core.tools.denylist import check_denylist
 from memory_core.tools.global_kb_init import create_global_kb_structure, get_global_kb_root
 
 # Setup logging for template warnings
@@ -97,7 +97,6 @@ DIRECTORY_STRUCTURE = [
     "memory/system/kb/global",
     "project-map",
     "memory/kb",
-    "memory/kb/global",
     "memory/kb/projects",
     "memory/kb/decisions",
     "memory/kb/lessons",
@@ -1263,7 +1262,7 @@ KB_TEMPLATES: dict[str, Any] = {
     "project-map/ingestion-registry-map.md": lambda scope: (
         "# 摄入登记地图\n\n"
         "- project-map/**: incoming-raw\n"
-        "- memory/kb/global/**: active-legal\n"
+        "- memory/system/kb/global/**: incoming-raw\n"
         "- memory/kb/projects/**: compatibility-only\n"
         "- memory/docs/**: incoming-raw\n"
         "- memory/log/**: compatibility-only\n"
@@ -1274,7 +1273,8 @@ KB_TEMPLATES: dict[str, Any] = {
         "- 同次 `git commit` 提交后才生效\n",
         []
     ),
-    "memory/kb/global/truth-model.md": lambda scope: (
+    # VAL-INIT-001: Governance stubs now at memory/system/kb/global/ (system-level)
+    "memory/system/kb/global/truth-model.md": lambda scope: (
         "# 唯一真相模型\n\n"
         "本项目的事实来源与验证规则。\n\n"
         "## Truth Basis\n\n"
@@ -1290,29 +1290,29 @@ KB_TEMPLATES: dict[str, Any] = {
         "- resolved\n",
         []
     ),
-    "memory/kb/global/memory-system.md": lambda scope: (
+    "memory/system/kb/global/memory-system.md": lambda scope: (
         "# 记忆系统规则\n\n"
         "active-legal\n\n"
         "## Truth Basis\n\n"
         "### Source Refs\n\n"
         "- memory/docs/记忆系统全景文档.md\n\n"
         "### Authority Refs\n\n"
-        "- memory/kb/global/truth-model.md\n"
-        "- memory/kb/global/memory-routing.md\n\n"
+        "- memory/system/kb/global/truth-model.md\n"
+        "- memory/system/kb/global/memory-routing.md\n\n"
         "### Evidence Refs\n\n"
         "- tests/.memory-anchor.md\n\n"
         "### Conflict Status\n\n"
         "- resolved\n",
         []
     ),
-    "memory/kb/global/memory-routing.md": lambda scope: (
+    "memory/system/kb/global/memory-routing.md": lambda scope: (
         "# 记忆路由规则\n\n"
         "## Truth Basis\n\n"
         "### Source Refs\n\n"
         "- memory/docs/记忆系统全景文档.md\n\n"
         "### Authority Refs\n\n"
         "- project-map/INDEX.md\n"
-        "- memory/kb/global/hook-contract.md\n\n"
+        "- memory/system/kb/global/hook-contract.md\n\n"
         "### Evidence Refs\n\n"
         "- tools/health-check.sh\n"
         "- tests/.memory-anchor.md\n\n"
@@ -1320,7 +1320,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "- resolved\n",
         []
     ),
-    "memory/kb/global/hook-contract.md": lambda scope: (
+    "memory/system/kb/global/hook-contract.md": lambda scope: (
         "# Hook 契约\n\n"
         "- gateway 只承认 `project-map/` 中被明确标为 `active-legal` 的条目或目录是合法上下文来源。\n"
         "- 未完成提交的登记不得生效\n\n"
@@ -1328,14 +1328,14 @@ KB_TEMPLATES: dict[str, Any] = {
         "### Source Refs\n\n"
         "- memory/docs/记忆系统全景文档.md\n\n"
         "### Authority Refs\n\n"
-        "- memory/kb/global/project-map-governance.md\n\n"
+        "- memory/system/kb/global/project-map-governance.md\n\n"
         "### Evidence Refs\n\n"
         "- tests/.memory-anchor.md\n\n"
         "### Conflict Status\n\n"
         "- resolved\n",
         []
     ),
-    "memory/kb/global/project-map-governance.md": lambda scope: (
+    "memory/system/kb/global/project-map-governance.md": lambda scope: (
         "# 项目地图治理\n\n"
         "- 未经过唯一真相系统清洗\n"
         "- 只有地图中被明确标为 `active-legal` 的条目或目录，才授予合法性。\n"
@@ -1345,22 +1345,24 @@ KB_TEMPLATES: dict[str, Any] = {
         "- memory/docs/记忆系统全景文档.md\n\n"
         "### Authority Refs\n\n"
         "- project-map/INDEX.md\n"
-        "- memory/kb/global/memory-system.md\n\n"
+        "- memory/system/kb/global/memory-system.md\n\n"
         "### Evidence Refs\n\n"
         "- tests/.memory-anchor.md\n\n"
         "### Conflict Status\n\n"
         "- resolved\n",
         []
     ),
-    # Runtime required: knowledge base root index referenced by memory_hook_core.py L226-236
     "memory/kb/INDEX.md": lambda scope: (
         "# 知识库索引\n\n"
+        "Non-Legal Material\n"
+        "See project-map/ingestion-registry-map.md for registration rules.\n\n"
         "本索引列出知识库各子目录及其用途。\n\n"
         "## 目录结构\n\n"
-        "- `global/` — 全局知识（truth-model, memory-system, routing, hook-contract 等）\n"
         "- `projects/` — 项目专属知识\n"
         "- `decisions/` — 决策记录\n"
         "- `lessons/` — 经验教训\n\n"
+        "## 全局治理文件\n\n"
+        "- `memory/system/kb/global/truth-model.md` — 唯一真相模型\n\n"
         "## 使用说明\n\n"
         "- 只有被地图标为 `active-legal` 的条目或目录，才是合法资料\n"
         "- 目录登记和状态迁移必须与相关文件同次 `git commit` 才生效\n",
@@ -1371,7 +1373,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "- project-map/INDEX.md\n"
         "- 只有被地图标为 `active-legal` 的条目或目录，才是合法资料；仅进入登记册不授予合法性。\n"
         "- 目录登记和目录状态迁移必须与相关文件同次 `git commit` 才生效。\n"
-        "- memory/kb/global/truth-model.md\n",
+        "- memory/system/kb/global/truth-model.md\n",
         []
     ),
     "memory/docs/INDEX.md": lambda scope: (
@@ -1380,25 +1382,13 @@ KB_TEMPLATES: dict[str, Any] = {
         "- 未被地图明确吸收\n",
         []
     ),
-    "memory/kb/global/INDEX.md": lambda scope: (
-        "# 全局知识索引\n\n"
-        "- Non-Legal Material\n"
-        "- ingestion-registry-map.md\n"
-        "- truth-model.md\n",
-        []
-    ),
     # I-F: Overview doc referenced by LegalContractChecker.validate_unique_legal_system_contract
     "memory/docs/记忆系统全景文档.md": lambda scope: (
         "# 记忆系统全景文档\n\n"
         "本文档提供记忆系统的全景视图，包括所有合法入口和核心文件。\n\n"
         "## 合法入口\n\n"
         "- project-map/INDEX.md: 项目地图唯一合法入口\n"
-        "- project-map/legal-core-map.md: 合法核心地图\n"
-        "- memory/kb/global/truth-model.md: 唯一真相模型\n"
-        "- memory/kb/global/memory-system.md: 记忆系统规则\n"
-        "- memory/kb/global/memory-routing.md: 记忆路由规则\n"
-        "- memory/kb/global/hook-contract.md: Hook 契约\n"
-        "- memory/kb/global/project-map-governance.md: 项目地图治理\n\n"
+        "- project-map/legal-core-map.md: 合法核心地图\n\n"
         "## 系统结构\n\n"
         "- memory/kb/ — 知识库\n"
         "- memory/docs/ — 系统文档\n"
@@ -1425,7 +1415,6 @@ ESSENTIAL_FILES = [
 # Runtime required KB files (under workspace_root, not memory/system/)
 RUNTIME_KB_FILES = [
     "memory/kb/INDEX.md",  # L226-236 reads list
-    "memory/kb/global/memory-hook-policy-pack.json",  # L281 DEFAULT_POLICY_PACK_PATH
 ]
 
 # Additional runtime files created outside of KB_TEMPLATES and FILE_TEMPLATES
@@ -1567,14 +1556,24 @@ For manual testing:
 
 路由规则仅由以下文件定义，AGENTS.md 只做方向性引用，不嵌入任何路由逻辑。
 
-**读取链**：Agent 启动 → AGENTS.md (行为约束) → 指向性引用 → memory-routing.md (路由规则) → project-map (合法入口) → memory/kb (实际知识)。
+**读取链**：Agent 启动 → AGENTS.md (行为约束) → 三层架构路由 → Layer 3 项目层优先 → Layer 2 全局 fallback
 
-| 文件 | 职责 | 路径 |
-|------|------|------|
-| memory-routing.md | 记忆请求路由、作用域解析、降级策略 | `memory/kb/global/memory-routing.md` |
-| project-map/INDEX.md | 项目地图唯一合法入口、合法性校验 | `project-map/INDEX.md` |
+| 层 | 职责 | 路径 |
+|----|------|------|
+| 全局知识库 (Layer 2) | 跨项目通用知识、全局 fallback | `~/.memory/global-kb/` |
+| 项目知识库 (Layer 3) | 项目专属知识 | `<project>/memory/kb/` |
 
-具体路由规则（如 scope resolution、fallback）请查阅上述文件，不要在此文件中寻找。
+具体路由规则（如 scope resolution、fallback）请查阅上述路径下的 INDEX.md。
+
+## 执行前置规则
+
+**任何涉及知识库的读取或写入操作前，必须先读取本文件确认术语到路径的映射。不可凭记忆或上下文推断路径。**
+
+| 操作场景 | 前置要求 |
+|----------|---------|
+| 写入 `memory/kb/`、`docs/`、`~/.memory/global-kb/` | 先查路由表确认目标层和正确路径 |
+| 读取项目知识库 | 先确认 Layer 3 → Layer 2 fallback 顺序 |
+| 用户说"记下来"/"写文档"/"记录决策" | 先读项目 AGENTS.md 确认分类规则，再执行写入 |
 {MEMORY_HOOK_END_MARKER}
 """
 
@@ -1744,6 +1743,7 @@ def init_project_memory(
     sync_mirror_remote: str = "",
     sync_mirror_url: str = "",
     auto_fill: bool = True,
+    allow_non_git: bool = False,
 ) -> dict[str, Any]:
     """Initialize memory/system/ directory skeleton in the target project.
 
@@ -1788,8 +1788,10 @@ def init_project_memory(
     memory_root = target / "memory" / "system"
     project_name = _project_name(target, scope)
 
-    if is_denied_project_root(target):
-        result["errors"].append(f"Refusing to initialize memory in denied project root: {target.resolve()}")
+    # Check denylist: reject paths in tmp, ~/.factory, $HOME, junk patterns, non-git
+    deny_result = check_denylist(target, allow_non_git=allow_non_git)
+    if deny_result.denied:
+        result["errors"].append(f"Project denied by denylist rule '{deny_result.rule}': {deny_result.message}")
         result["mode"] = "error"
         return result
 
@@ -2138,33 +2140,6 @@ def init_project_memory(
             result["warnings"].extend(warnings)
         except Exception as exc:
             result["errors"].append(f"failed to create memory/inbox.md: {exc}")
-
-    # 4. memory/kb/global/memory-hook-policy-pack.json - Runtime required by memory_hook_impls.py L281
-    policy_pack_path = target / "memory" / "kb" / "global" / "memory-hook-policy-pack.json"
-    should_skip, reason = _should_skip_file(policy_pack_path, "memory/kb/global/memory-hook-policy-pack.json", is_business_file=False)
-
-    if policy_pack_path.exists() and should_skip:
-        result["skipped"].append(f"file:memory/kb/global/memory-hook-policy-pack.json ({reason})")
-        any_skipped = True
-    elif policy_pack_path.exists() and not should_skip:
-        # Overwrite
-        try:
-            content, warnings = template_policy_pack_json(project_name)
-            policy_pack_path.write_text(content, encoding="utf-8")
-            result["created"].append("file:memory/kb/global/memory-hook-policy-pack.json (overwritten)")
-            result["warnings"].extend(warnings)
-            any_overwritten = True
-        except Exception as exc:
-            result["errors"].append(f"failed to overwrite memory-hook-policy-pack.json: {exc}")
-    else:
-        # Create new
-        try:
-            content, warnings = template_policy_pack_json(project_name)
-            policy_pack_path.write_text(content, encoding="utf-8")
-            result["created"].append("file:memory/kb/global/memory-hook-policy-pack.json")
-            result["warnings"].extend(warnings)
-        except Exception as exc:
-            result["errors"].append(f"failed to create memory-hook-policy-pack.json: {exc}")
 
     # 4b. tests/.memory-anchor.md - Evidence ref for Truth Basis sections (I-A)
     anchor_path = target / "tests" / ".memory-anchor.md"
@@ -2590,6 +2565,12 @@ def main(argv: list[str] | None = None) -> int:
         default=False,
         help="Disable automatic project info detection and template filling.",
     )
+    parser.add_argument(
+        "--allow-non-git",
+        action="store_true",
+        default=False,
+        help="Allow initialization in non-git directories (default: reject non-git).",
+    )
     try:
         _pkg_version = importlib.metadata.version("memory-core")
     except importlib.metadata.PackageNotFoundError:
@@ -2625,6 +2606,7 @@ def main(argv: list[str] | None = None) -> int:
         sync_mirror_remote=args.sync_mirror_remote,
         sync_mirror_url=args.sync_mirror_url,
         auto_fill=not args.no_auto_fill,
+        allow_non_git=args.allow_non_git,
     )
 
     if args.json or args.dry_run:
