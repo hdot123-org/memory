@@ -18,6 +18,12 @@ import unittest.mock
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Mock integrity key for CI environments where ~/.memory-core/keys/ doesn't exist
+# This must be done before importing any modules that use load_key
+import memory_core.tools.memory_hook_integrity_keys as _key_module
+_original_load_key = _key_module.load_key
+_key_module.load_key = lambda path=None: b"test_key_32_bytes_long_padding!" if _original_load_key(path) is None else _original_load_key(path)
+
 # ── 辅助函数 ──────────────────────────────────────────────────────
 
 def _create_minimal_project(tmp_path: Path) -> Path:

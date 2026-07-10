@@ -8,6 +8,7 @@ Verifies that CLAUDE_HOOK_STATE_DIR does not appear anywhere in memory_core
 from __future__ import annotations
 
 import subprocess
+import shutil
 import sys
 from pathlib import Path
 
@@ -27,12 +28,23 @@ class TestClaudeHookStateDirDeadCode:
 
     def test_no_claude_hook_state_dir_in_memory_core(self) -> None:
         """Grep entire memory_core tree; CLAUDE_HOOK_STATE_DIR must not appear."""
-        result = subprocess.run(
-            ["rg", "-l", "CLAUDE_HOOK_STATE_DIR", str(MEMORY_CORE)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        # Try rg first, fall back to grep if rg is not available (e.g., in CI)
+        rg_available = shutil.which("rg") is not None
+        if rg_available:
+            result = subprocess.run(
+                ["rg", "-l", "CLAUDE_HOOK_STATE_DIR", str(MEMORY_CORE)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        else:
+            # Fallback to grep
+            result = subprocess.run(
+                ["grep", "-rl", "CLAUDE_HOOK_STATE_DIR", str(MEMORY_CORE)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
         if result.returncode == 0:
             # Files found — filter out archive/ only (allowed exception)
             files = [
