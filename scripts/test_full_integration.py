@@ -333,8 +333,8 @@ class IntegrationTester:
         """Scan for and discover consumer projects."""
         results: list[CheckResult] = []
 
-        # Scan for consumer projects under /Users/busiji/
-        base_dir = Path("/Users/busiji")
+        # Scan for consumer projects under user's home directory
+        base_dir = Path.home()
         discovered_projects: list[Path] = []
 
         try:
@@ -343,8 +343,8 @@ class IntegrationTester:
                 # Skip the memory-core repo's own memory directory
                 if project_root == REPO_ROOT:
                     continue
-                # Skip /Users/busiji/memory/memory (source repo internal)
-                if str(project_root) == "/Users/busiji/memory/memory":
+                # Skip source repo internal memory directory
+                if project_root == REPO_ROOT / "memory":
                     continue
                 # Skip template directories
                 if "workspace/templates" in str(project_root):
@@ -471,7 +471,7 @@ class IntegrationTester:
         results: list[CheckResult] = []
 
         # Find all consumer projects
-        base_dir = Path("/Users/busiji")
+        base_dir = Path.home()
         projects: list[Path] = []
 
         try:
@@ -479,7 +479,7 @@ class IntegrationTester:
                 project_root = path.parent.parent.parent
                 if project_root == REPO_ROOT:
                     continue
-                if str(project_root) == "/Users/busiji/memory/memory":
+                if project_root == REPO_ROOT / "memory":
                     continue
                 # Skip template directories
                 if "workspace/templates" in str(project_root):

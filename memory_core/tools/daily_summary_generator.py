@@ -2,10 +2,10 @@
 """每日日志总结生成器 — 读取 A 层 session 记录 + B 层 transcript，调 LLM 生成分类总结。
 
 Usage:
-    python daily_summary_generator.py --date 2026-05-28 --project /Users/busiji/workbot
-    python daily_summary_generator.py --today --project /Users/busiji/workbot
+    python daily_summary_generator.py --date 2026-05-28 --project ~/my-project
+    python daily_summary_generator.py --today --project ~/my-project
     python daily_summary_generator.py --today --all-projects
-    python daily_summary_generator.py --today --project /Users/busiji/workbot --dry-run
+    python daily_summary_generator.py --today --project ~/my-project --dry-run
     python daily_summary_generator.py --today --all-projects --fallback-days 7
 """
 from __future__ import annotations

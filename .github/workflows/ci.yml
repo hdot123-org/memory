@@ -64,3 +64,12 @@ jobs:
           python -m pip install pip-audit
       - name: Dependency audit
         run: pip-audit --progress-spinner off
+
+  advisory-telemetry-audit:
+    name: Advisory telemetry coverage audit
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Telemetry coverage audit
+        run: bash scripts/audit_telemetry_coverage.sh

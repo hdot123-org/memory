@@ -3,7 +3,7 @@
 
 Usage:
     python hook_event_stats.py --date 2026-05-11
-    python hook_event_stats.py --date 2026-05-11 --project /Users/busiji/tool
+    python hook_event_stats.py --date 2026-05-11 --project ~/my-project
     python hook_event_stats.py --date 2026-05-11 --json
     python hook_event_stats.py --today
 """

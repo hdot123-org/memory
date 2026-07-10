@@ -109,6 +109,12 @@ def emit_metrics(
         record = collect_metrics(host, event, package)
         path = _resolve_metrics_path(artifact_root)
         if write_metrics(path, record):
+            # Telemetry: forward metrics record to PostHog via telemetry bridge
+            try:
+                from .telemetry_bridge import telemetry
+                telemetry.safe_capture('memory.hook_event', record, cwd=artifact_root)
+            except Exception:
+                pass
             return path
         return None
     except Exception as exc:  # pragma: no cover - defensive

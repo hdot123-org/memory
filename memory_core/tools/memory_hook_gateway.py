@@ -1825,6 +1825,16 @@ def main() -> int:
     except Exception as exc:
         _logger.debug("metrics emit skipped: %s", exc)
 
+    # Telemetry: Replay unsent metrics on session-start
+    if args.event == "session-start":
+        try:
+            from .telemetry_bridge import telemetry
+            metrics_file = ARTIFACT_ROOT / "metrics.jsonl"
+            if metrics_file.exists():
+                telemetry.replay_unsent(metrics_file)
+        except Exception:
+            pass
+
     exit_code = 0
     if package["status"] != "ok":
         append_error_log(
@@ -1851,6 +1861,24 @@ def main() -> int:
         exit_code = _execute_delegate(args, raw_payload, payload, cwd)
 
     return exit_code
+
+
+def _gateway_excepthook(exc_type, exc_value, exc_tb):
+    """Top-level exception hook: capture unexpected gateway crashes to telemetry."""
+    try:
+        from .telemetry_bridge import telemetry
+        telemetry.safe_capture('memory.hook_error', {
+            'error_type': exc_type.__name__,
+            'error_message': str(exc_value)[:500],
+            'hook_version': 'memory-hook-gateway-v1',
+        })
+    except Exception:
+        pass
+    # Call the default handler to preserve standard traceback behavior
+    sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+
+sys.excepthook = _gateway_excepthook
 
 
 if __name__ == "__main__":

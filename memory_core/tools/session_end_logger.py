@@ -5,9 +5,9 @@
 
 Usage:
     python session_end_logger.py \
-        --session-dir /Users/busiji/.factory/sessions/-Users-busiji-workbot \
+        --session-dir ~/.factory/sessions/-Users-busiji-workbot \
         --session-id 491c46e7-7261-4444-a423-bba08ce2e4fb \
-        --project-root /Users/busiji/workbot
+        --project-root ~/workbot
 
 或者从 stdin 读取 gateway payload:
     echo '{"session_id": "...", "session_dir": "...", "project_root": "..."}' | \
@@ -29,6 +29,12 @@ try:
     from memory_core.tools.error_logger import write_error_log
 except ImportError:
     write_error_log = None  # type: ignore[misc,assignment]
+
+# Telemetry import (fail-safe: no-op if unavailable)
+try:
+    from memory_core.tools.telemetry_bridge import telemetry
+except Exception:
+    telemetry = None  # type: ignore[assignment]
 
 # 超时处理：整体超时 2s
 TIMEOUT_SECONDS = 2
@@ -545,6 +551,22 @@ def main(argv: list[str] | None = None) -> int:
 
         # 写入日志
         _write_daily_log(project_root, info)
+
+        # Telemetry: report session ended (fail-safe, must not change control flow)
+        try:
+            if telemetry is not None:
+                telemetry.safe_capture(
+                    "memory.session_ended",
+                    {
+                        "duration_seconds": info.get("duration_seconds", 0),
+                        "input_tokens": info.get("input_tokens", 0),
+                        "output_tokens": info.get("output_tokens", 0),
+                        "total_tool_calls": info.get("total_tool_calls", 0),
+                    },
+                    cwd=str(project_root),
+                )
+        except Exception:
+            pass
 
         return 0
 

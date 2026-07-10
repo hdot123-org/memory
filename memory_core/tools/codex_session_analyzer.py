@@ -3,7 +3,7 @@
 
 Usage:
     # Analyze a specific session
-    python codex_session_analyzer.py --rollout /Users/busiji/.codex/sessions/2026/05/10/rollout-*.jsonl
+    python codex_session_analyzer.py --rollout ~/.codex/sessions/2026/05/10/rollout-*.jsonl
 
     # Analyze today's sessions
     python codex_session_analyzer.py --today

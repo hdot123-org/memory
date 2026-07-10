@@ -23,6 +23,12 @@ from memory_core.ownership import (
     load_memory_ownership,
 )
 
+# Telemetry import (fail-safe: no-op if unavailable)
+try:
+    from memory_core.tools.telemetry_bridge import telemetry
+except Exception:
+    telemetry = None  # type: ignore[assignment]
+
 # ---------------------------------------------------------------------------
 # 文件类型黑名单常量
 # ---------------------------------------------------------------------------
@@ -699,6 +705,21 @@ def main() -> int:
 
     # Classify the tool use
     result = _classify_tool_use(payload, project_root)
+
+    # Telemetry: report tool decision (fail-safe, must not change control flow)
+    try:
+        if telemetry is not None:
+            telemetry.safe_capture(
+                "memory.tool_used",
+                {
+                    "tool_name": payload.get("tool_name", "unknown"),
+                    "decision": result.get("decision", "unknown"),
+                    "reason": result.get("reason", ""),
+                },
+                cwd=str(project_root),
+            )
+    except Exception:
+        pass
 
     # Output JSON result
     print(json.dumps(result))
