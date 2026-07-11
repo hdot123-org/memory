@@ -30,12 +30,6 @@ try:
 except ImportError:
     write_error_log = None  # type: ignore[misc,assignment]
 
-# Telemetry import (fail-safe: no-op if unavailable)
-try:
-    from memory_core.tools.telemetry_bridge import telemetry
-except Exception:
-    telemetry = None  # type: ignore[assignment]
-
 # 超时处理：整体超时 2s
 TIMEOUT_SECONDS = 2
 
@@ -552,21 +546,25 @@ def main(argv: list[str] | None = None) -> int:
         # 写入日志
         _write_daily_log(project_root, info)
 
-        # Telemetry: report session ended (fail-safe, must not change control flow)
+        # Write metrics to local JSONL (replaces PostHog telemetry)
         try:
-            if telemetry is not None:
-                telemetry.safe_capture(
-                    "memory.session_ended",
-                    {
-                        "duration_seconds": info.get("duration_seconds", 0),
-                        "input_tokens": info.get("input_tokens", 0),
-                        "output_tokens": info.get("output_tokens", 0),
-                        "total_tool_calls": info.get("total_tool_calls", 0),
-                    },
-                    cwd=str(project_root),
-                )
+            metrics_dir = project_root / "memory" / "artifacts" / "memory-hook"
+            metrics_dir.mkdir(parents=True, exist_ok=True)
+            metrics_file = metrics_dir / "metrics.jsonl"
+            duration_ms = int(info.get("duration_seconds", 0) * 1000)
+            metrics_record = {
+                "event": "session_ended",
+                "duration_seconds": info.get("duration_seconds", 0),
+                "input_tokens": info.get("input_tokens", 0),
+                "output_tokens": info.get("output_tokens", 0),
+                "total_tool_calls": info.get("total_tool_calls", 0),
+                "duration_ms": duration_ms,
+                "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+            }
+            with metrics_file.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(metrics_record) + "\n")
         except Exception:
-            pass
+            pass  # Metrics write must never break the hook
 
         return 0
 

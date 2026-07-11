@@ -48,6 +48,7 @@ def collect_metrics(
     event: str,
     package: dict[str, Any],
     now_iso: str | None = None,
+    duration_ms: int = 0,
 ) -> dict[str, Any]:
     """Extract observability metrics from a context-package.
 
@@ -73,6 +74,7 @@ def collect_metrics(
         "degraded": status != "ok",
         "core_provider": core_provider,
         "package_kind": str(package.get("package_kind", "")),
+        "duration_ms": duration_ms,
     }
 
 
@@ -101,20 +103,15 @@ def emit_metrics(
     host: str,
     event: str,
     package: dict[str, Any],
+    duration_ms: int = 0,
 ) -> Path | None:
     """Collect + write metrics. Non-blocking; returns None when disabled or on failure."""
     if is_metrics_disabled():
         return None
     try:
-        record = collect_metrics(host, event, package)
+        record = collect_metrics(host, event, package, duration_ms=duration_ms)
         path = _resolve_metrics_path(artifact_root)
         if write_metrics(path, record):
-            # Telemetry: forward metrics record to PostHog via telemetry bridge
-            try:
-                from .telemetry_bridge import telemetry
-                telemetry.safe_capture('memory.hook_event', record, cwd=artifact_root)
-            except Exception:
-                pass
             return path
         return None
     except Exception as exc:  # pragma: no cover - defensive

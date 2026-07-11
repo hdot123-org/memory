@@ -8,11 +8,9 @@ Key design principles:
 - Data sanitization: full paths are replaced with basename to prevent leaks
 - distinct_id uses project_id from project_lifecycle (not hardcoded)
 - Event names are prefixed with 'memory.' for namespace clarity
-- atexit-registered flush ensures pending events are sent on process exit
 """
 from __future__ import annotations
 
-import atexit
 import hashlib
 import json
 import logging
@@ -248,7 +246,7 @@ class TelemetryBridge:
             return 0
 
     def flush(self) -> None:
-        """Flush pending analytics events. Registered with atexit."""
+        """Flush pending analytics events."""
         if self._analytics is None:
             return
         try:
@@ -259,6 +257,3 @@ class TelemetryBridge:
 
 # Module-level singleton
 telemetry = TelemetryBridge()
-
-# Ensure pending events are flushed on process exit
-atexit.register(telemetry.flush)

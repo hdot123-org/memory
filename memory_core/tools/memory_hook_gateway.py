@@ -131,6 +131,8 @@ except ImportError:
 
 import importlib  # noqa: E402
 import logging  # noqa: E402
+import socket  # noqa: E402
+import time  # noqa: E402
 
 _logger = logging.getLogger(__name__)
 
@@ -1688,6 +1690,115 @@ def _build_readonly_source_repo_package(cwd: Path, host: str, event: str) -> dic
     }
 
 
+def _maybe_sync_telemetry(artifact_root: Path) -> None:
+    """Synchronize local telemetry metrics to PostHog during session-start.
+
+    Implements a lightweight sync mechanism:
+    1. Read .last_sync timestamp; skip if < 3600s ago (zero overhead)
+    2. Probe network connectivity to PostHog (socket timeout=2s)
+    3. If probe fails, update .last_sync and exit (avoid high-frequency probing)
+    4. If probe succeeds, read .offset sidecar and incremental records from metrics.jsonl
+    5. Batch send via telemetry_bridge.safe_capture
+    6. On success: update .offset and .last_sync
+       On failure: only update .last_sync (not .offset, retry next time)
+    7. All operations wrapped in try/except (exceptions never propagate)
+
+    Args:
+        artifact_root: Path to the artifacts directory containing metrics.jsonl
+    """
+    try:
+        metrics_file = artifact_root / "metrics.jsonl"
+        last_sync_file = artifact_root / ".last_sync"
+        offset_file = artifact_root / ".offset"
+
+        # Step 1: Check time window
+        now = time.time()
+        last_sync = 0.0
+        if last_sync_file.exists():
+            try:
+                last_sync = float(last_sync_file.read_text(encoding="utf-8").strip())
+            except (OSError, ValueError):
+                last_sync = 0.0
+
+        if (now - last_sync) < 3600:
+            return  # Skip: within 1-hour window
+
+        # Step 2: Probe network connectivity
+        try:
+            sock = socket.create_connection(("us.i.posthog.com", 443), timeout=2)
+            sock.close()
+        except (socket.error, OSError):
+            # Network unreachable: update .last_sync to avoid high-frequency probing
+            try:
+                last_sync_file.write_text(str(now), encoding="utf-8")
+            except OSError:
+                pass
+            return
+
+        # Step 3: Read offset and incremental records
+        if not metrics_file.exists():
+            return
+
+        offset = 0
+        if offset_file.exists():
+            try:
+                offset = int(offset_file.read_text(encoding="utf-8").strip())
+            except (OSError, ValueError):
+                offset = 0
+
+        # Read incremental records
+        records = []
+        current_line = 0
+        with metrics_file.open("r", encoding="utf-8") as f:
+            for line in f:
+                current_line += 1
+                if current_line <= offset:
+                    continue
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                    if isinstance(record, dict) and not record.get("posthog_sent"):
+                        records.append(record)
+                except json.JSONDecodeError:
+                    continue
+
+        if not records:
+            return
+
+        # Step 4: Batch send via telemetry_bridge
+        try:
+            from memory_core.tools.telemetry_bridge import telemetry
+
+            for record in records:
+                event_name = str(record.get("event") or "memory.replayed_event")
+                properties = {
+                    "replayed_from": "metrics.jsonl",
+                    "original_status": record.get("status"),
+                    "original_event": record.get("event"),
+                    "original_host": record.get("host"),
+                    "original_timestamp": record.get("timestamp"),
+                }
+                telemetry.safe_capture(event_name, properties)
+
+            # Step 5: Success - update .offset and .last_sync
+            offset_file.write_text(str(current_line), encoding="utf-8")
+            last_sync_file.write_text(str(now), encoding="utf-8")
+
+        except Exception as exc:
+            # Send failed: only update .last_sync (not .offset, retry next time)
+            _logger.debug("telemetry sync send failed: %s", exc)
+            try:
+                last_sync_file.write_text(str(now), encoding="utf-8")
+            except OSError:
+                pass
+
+    except Exception as exc:
+        # Top-level catch: sync must never break gateway flow
+        _logger.debug("_maybe_sync_telemetry failed: %s", exc)
+
+
 def main() -> int:
     args = _parse_args()
     raw_payload = sys.stdin.read()
@@ -1744,6 +1855,11 @@ def main() -> int:
         # Runtime layer: update dynamic fields in STATE.md
         project_scope = determine_project_scope(cwd)
         _update_state_dynamic_fields(cwd, project_scope)
+        # Telemetry sync: batch send unsent metrics to PostHog
+        try:
+            _maybe_sync_telemetry(ARTIFACT_ROOT)
+        except Exception as exc:
+            _logger.debug("telemetry sync skipped: %s", exc)
 
     # F4: PromptSubmit real-time logging
     if args.event == "prompt-submit":
@@ -1825,16 +1941,6 @@ def main() -> int:
     except Exception as exc:
         _logger.debug("metrics emit skipped: %s", exc)
 
-    # Telemetry: Replay unsent metrics on session-start
-    if args.event == "session-start":
-        try:
-            from .telemetry_bridge import telemetry
-            metrics_file = ARTIFACT_ROOT / "metrics.jsonl"
-            if metrics_file.exists():
-                telemetry.replay_unsent(metrics_file)
-        except Exception:
-            pass
-
     exit_code = 0
     if package["status"] != "ok":
         append_error_log(
@@ -1864,14 +1970,20 @@ def main() -> int:
 
 
 def _gateway_excepthook(exc_type, exc_value, exc_tb):
-    """Top-level exception hook: capture unexpected gateway crashes to telemetry."""
+    """Top-level exception hook: capture unexpected gateway crashes to JSONL."""
     try:
-        from .telemetry_bridge import telemetry
-        telemetry.safe_capture('memory.hook_error', {
-            'error_type': exc_type.__name__,
-            'error_message': str(exc_value)[:500],
-            'hook_version': 'memory-hook-gateway-v1',
-        })
+        metrics_dir = ARTIFACT_ROOT
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+        metrics_file = metrics_dir / "metrics.jsonl"
+        record = {
+            "event": "hook_error",
+            "error_type": exc_type.__name__,
+            "error_message": str(exc_value)[:500],
+            "hook_version": "memory-hook-gateway-v1",
+            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+        }
+        with metrics_file.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
     except Exception:
         pass
     # Call the default handler to preserve standard traceback behavior
