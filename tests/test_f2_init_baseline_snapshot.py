@@ -19,6 +19,7 @@ import pytest
 # (from .memory_hook_integrity_manifest import sign_project_incremental),
 # we must patch at the source module.
 _SIGNER_PATCH = "memory_core.tools.memory_hook_integrity_manifest.sign_project_incremental"
+_KEY_PATCH = "memory_core.tools.memory_hook_integrity_keys.load_or_create_key"
 
 
 def _make_target(tmp_path: Path) -> Path:
@@ -55,7 +56,7 @@ class TestSigningInvocationAtInit:
         _mock_source_repo(monkeypatch)
         target = _make_target(tmp_path)
 
-        with patch(
+        with patch(_KEY_PATCH, return_value=b"test-key"), patch(
             _SIGNER_PATCH,
             return_value={"schema_version": "integrity-manifest-v2", "entries": []},
         ) as mock_sign:
@@ -81,7 +82,7 @@ class TestSigningInvocationAtInit:
             call_order.append("sign")
             return {"schema_version": "integrity-manifest-v2", "entries": []}
 
-        with patch(
+        with patch(_KEY_PATCH, return_value=b"test-key"), patch(
             _SIGNER_PATCH,
             side_effect=track_sign,
         ):
