@@ -40,8 +40,16 @@ jobs:
           ruff check .
       - name: BOUNDARY pollution guard
         run: python scripts/check_boundary.py
-      - name: Run tests
-        run: python -m pytest -q tests
+      - name: Run tests with coverage
+        run: python -m pytest -q tests --cov=memory_core --cov-report=xml
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Health check (validate + pollution)
         run: bash scripts/ci_health_check.sh
 

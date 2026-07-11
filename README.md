@@ -3,7 +3,7 @@
 <!-- API MR test marker - automated verification -->
 memory-core provides a reusable `memory/` protocol, templates, schemas, and CLI tools for project-scoped memory management. It is an open-source library for initializing, validating, migrating, and auditing memory layouts; it does not store business project state in this repository.
 
-## Architecture (v0.8.0)
+## Architecture (v0.8.1)
 
 memory-core uses a **three-layer architecture**:
 
@@ -32,32 +32,58 @@ Routing follows a **project-first, global-fallback** policy: knowledge lookups h
 
 The project-level configuration lives in `memory/system/` (not `.memory/`). The hidden `.memory/` directory was removed in v0.5.0.
 
+## Telemetry Architecture (v0.8.1)
+
+memory-core uses a **local-first telemetry** design to minimize hook overhead while ensuring reliable data delivery:
+
+**Data flow:**
+```
+hook event (PreToolUse / SessionEnd / gateway)
+  │
+  ├─ Write local JSONL (metrics.jsonl) — microseconds, zero network blocking
+  │
+  └─ session-start sync (hourly window):
+       1. Check .last_sync timestamp; skip if < 3600s
+       2. Probe PostHog connectivity (2s timeout)
+       3. Batch send unsent records via .offset sidecar
+       4. Update .offset on success; truncate synced records from JSONL
+```
+
+**Key design principles:**
+- **Hook hot path**: Only local JSONL writes (microseconds), no PostHog SDK imports, zero network blocking
+- **Batch sync on session-start**: Hourly rate limit, 2s connectivity probe, incremental via offset sidecar
+- **Fail-safe**: All telemetry wrapped in try/except; analytics failures never affect hook behavior
+- **Data sanitization**: Full file paths replaced with basenames before sending to PostHog
+- **PostHog**: Public API key built-in from data file (default_posthog_key.txt); set POSTHOG_API_KEY='' to disable
+
 ## Install
 
-Install from a GitHub release wheel:
+Install from PyPI or GitHub (non-editable, production use):
 
 ```bash
-gh release download v0.8.0 --repo hdot123/memory --pattern "*.whl"
-pip install memory_core-0.8.0-py3-none-any.whl
+pip install git+https://github.com/hdot123/memory.git@v0.8.1
 ```
 
-Install from source:
+Upgrade to a new version:
 
 ```bash
-pip install git+https://github.com/hdot123/memory.git@v0.8.0
+pip install --upgrade git+https://github.com/hdot123/memory.git@v0.8.1
 ```
 
-Upgrade by changing the version and adding `--upgrade`:
+Install from release wheel:
 
 ```bash
-pip install --upgrade git+https://github.com/hdot123/memory.git@v0.8.0
+gh release download v0.8.1 --repo hdot123/memory --pattern "*.whl"
+pip install memory_core-0.8.1-py3-none-any.whl
 ```
 
-For local development:
+For local development only:
 
 ```bash
 pip install -e ".[dev]"
 ```
+
+**Note**: Production deployments should use `pip install` (non-editable). Editable installs (`pip install -e`) are for development only.
 
 ## Quickstart
 
@@ -209,6 +235,6 @@ python3 scripts/check_boundary.py
 
 ## Version and license
 
-- Current documented release: v0.8.0
+- Current documented release: v0.8.1
 - Python: >= 3.9
 - License: MIT. See [LICENSE](LICENSE).
