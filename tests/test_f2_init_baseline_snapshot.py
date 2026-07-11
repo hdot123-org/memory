@@ -56,15 +56,19 @@ class TestSigningInvocationAtInit:
         _mock_source_repo(monkeypatch)
         target = _make_target(tmp_path)
 
-        with patch(_KEY_PATCH, return_value=b"test-key"), patch(
-            _SIGNER_PATCH,
-            return_value={"schema_version": "integrity-manifest-v2", "entries": []},
-        ) as mock_sign:
-            from memory_core.tools.init_project_memory import init_project_memory
-            result = init_project_memory(target, host="factory")
+        # Use monkeypatch on the actual module object to avoid pollution from prior tests
+        import memory_core.tools.memory_hook_integrity_manifest as _manifest
+        import memory_core.tools.memory_hook_integrity_keys as _keys
+        from unittest.mock import MagicMock
+        mock_sign = MagicMock(return_value={"schema_version": "integrity-manifest-v2", "entries": []})
+        monkeypatch.setattr(_manifest, "sign_project_incremental", mock_sign)
+        monkeypatch.setattr(_keys, "load_or_create_key", lambda *a, **kw: b"test-key")
+
+        from memory_core.tools.init_project_memory import init_project_memory
+        result = init_project_memory(target, host="factory")
 
         assert result["success"], f"init failed: {result['errors']}"
-        assert mock_sign.call_count == 1
+        assert mock_sign.call_count == 1, f"sign not called. warnings: {result.get('warnings', [])}"
         # Verify it was called with changed_paths argument
         call_kwargs = mock_sign.call_args
         assert "changed_paths" in call_kwargs.kwargs or len(call_kwargs.args) >= 3
