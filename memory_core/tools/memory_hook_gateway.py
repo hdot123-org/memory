@@ -1825,16 +1825,6 @@ def main() -> int:
     except Exception as exc:
         _logger.debug("metrics emit skipped: %s", exc)
 
-    # Telemetry: Replay unsent metrics on session-start
-    if args.event == "session-start":
-        try:
-            from .telemetry_bridge import telemetry
-            metrics_file = ARTIFACT_ROOT / "metrics.jsonl"
-            if metrics_file.exists():
-                telemetry.replay_unsent(metrics_file)
-        except Exception:
-            pass
-
     exit_code = 0
     if package["status"] != "ok":
         append_error_log(
@@ -1864,14 +1854,20 @@ def main() -> int:
 
 
 def _gateway_excepthook(exc_type, exc_value, exc_tb):
-    """Top-level exception hook: capture unexpected gateway crashes to telemetry."""
+    """Top-level exception hook: capture unexpected gateway crashes to JSONL."""
     try:
-        from .telemetry_bridge import telemetry
-        telemetry.safe_capture('memory.hook_error', {
-            'error_type': exc_type.__name__,
-            'error_message': str(exc_value)[:500],
-            'hook_version': 'memory-hook-gateway-v1',
-        })
+        metrics_dir = ARTIFACT_ROOT
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+        metrics_file = metrics_dir / "metrics.jsonl"
+        record = {
+            "event": "hook_error",
+            "error_type": exc_type.__name__,
+            "error_message": str(exc_value)[:500],
+            "hook_version": "memory-hook-gateway-v1",
+            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+        }
+        with metrics_file.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
     except Exception:
         pass
     # Call the default handler to preserve standard traceback behavior

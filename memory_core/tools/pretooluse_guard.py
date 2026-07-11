@@ -14,6 +14,8 @@ import json
 import os
 import re
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -22,12 +24,6 @@ from memory_core.ownership import (
     classify_owned_path,
     load_memory_ownership,
 )
-
-# Telemetry import (fail-safe: no-op if unavailable)
-try:
-    from memory_core.tools.telemetry_bridge import telemetry
-except Exception:
-    telemetry = None  # type: ignore[assignment]
 
 # ---------------------------------------------------------------------------
 # 文件类型黑名单常量
@@ -667,8 +663,27 @@ def _classify_tool_use(payload: dict[str, Any], project_root: Path) -> dict[str,
     return {"decision": "allow", "reason": f"Unknown tool: {tool_name}"}
 
 
+def _now_iso() -> str:
+    """Return current time as ISO 8601 string."""
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _write_metrics_jsonl(project_root: Path, record: dict[str, Any]) -> None:
+    """Write a metrics record to metrics.jsonl in memory/artifacts/memory-hook/."""
+    try:
+        metrics_dir = project_root / "memory" / "artifacts" / "memory-hook"
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+        metrics_file = metrics_dir / "metrics.jsonl"
+        with metrics_file.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception:
+        pass  # Metrics write must never break the guard
+
+
 def main() -> int:
     """Main entry point for PreToolUse guard."""
+    start_time = time.time()
+
     # MEMORY_HOOK_FORCE does NOT bypass PreToolUse guard
     # This is intentional - PreToolUse is a hard guard
 
@@ -706,18 +721,18 @@ def main() -> int:
     # Classify the tool use
     result = _classify_tool_use(payload, project_root)
 
-    # Telemetry: report tool decision (fail-safe, must not change control flow)
+    # Write metrics to local JSONL (replaces PostHog telemetry)
     try:
-        if telemetry is not None:
-            telemetry.safe_capture(
-                "memory.tool_used",
-                {
-                    "tool_name": payload.get("tool_name", "unknown"),
-                    "decision": result.get("decision", "unknown"),
-                    "reason": result.get("reason", ""),
-                },
-                cwd=str(project_root),
-            )
+        duration_ms = int((time.time() - start_time) * 1000)
+        metrics_record = {
+            "event": "tool_used",
+            "tool_name": payload.get("tool_name", "unknown"),
+            "decision": result.get("decision", "unknown"),
+            "reason": result.get("reason", ""),
+            "duration_ms": duration_ms,
+            "timestamp": _now_iso(),
+        }
+        _write_metrics_jsonl(project_root, metrics_record)
     except Exception:
         pass
 
