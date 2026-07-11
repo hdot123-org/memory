@@ -57,9 +57,10 @@ class TestSigningInvocationAtInit:
         target = _make_target(tmp_path)
 
         # Use monkeypatch on the actual module object to avoid pollution from prior tests
-        import memory_core.tools.memory_hook_integrity_manifest as _manifest
-        import memory_core.tools.memory_hook_integrity_keys as _keys
         from unittest.mock import MagicMock
+
+        import memory_core.tools.memory_hook_integrity_keys as _keys
+        import memory_core.tools.memory_hook_integrity_manifest as _manifest
         mock_sign = MagicMock(return_value={"schema_version": "integrity-manifest-v2", "entries": []})
         monkeypatch.setattr(_manifest, "sign_project_incremental", mock_sign)
         monkeypatch.setattr(_keys, "load_or_create_key", lambda *a, **kw: b"test-key")
