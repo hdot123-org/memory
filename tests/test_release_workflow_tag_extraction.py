@@ -209,7 +209,7 @@ class TestPyprojectVersionConsistency:
     def test_current_pyproject_version_matches_expected(self, pyproject_version: str):
         """Verify current pyproject.toml version is as expected."""
         # This test documents the current version
-        assert pyproject_version == "0.8.0"
+        assert pyproject_version == "0.8.1"
 
     def test_tag_matches_pyproject_version(self, pyproject_version: str):
         """Simulate the workflow version verification logic.
@@ -222,7 +222,7 @@ class TestPyprojectVersionConsistency:
             exit 1
         fi
         """
-        tag = "v0.8.0"  # Simulated extracted tag
+        tag = "v0.8.1"  # Simulated extracted tag
         py_ver = f"v{pyproject_version}"
         assert tag == py_ver, f"Tag {tag} does not match pyproject.toml version {py_ver}"
 
