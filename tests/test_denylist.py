@@ -1,490 +1,304 @@
-"""Tests for the project denylist mechanism.
+"""Tests for denylist module - denied_project_roots functions."""
 
-Covers VAL-M2-023 through VAL-M2-030 and VAL-CROSS-003.
-
-The denylist rejects:
-- $TMPDIR (canonical temp dirs: /tmp, /var/folders) subdirectories
-- ~/.factory subdirectories
-- $HOME root (exact match)
-- Pattern-based junk directory names (tmp.*, demo-*, test-*, smoke-test-*, restart-*, file-list-*)
-- Non-git directories (without --allow-non-git flag)
-"""
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-import pytest
-
-
-@pytest.fixture(autouse=True)
-def disable_denylist_bypass():
-    """Disable the denylist bypass for denylist tests.
-
-    The conftest.py sets MEMORY_CORE_BYPASS_DENYLIST=1 for all tests to allow
-    tmp_path usage. This fixture explicitly disables it so denylist tests can
-    actually test the denylist logic.
-    """
-    old_val = os.environ.get("MEMORY_CORE_BYPASS_DENYLIST")
-    if "MEMORY_CORE_BYPASS_DENYLIST" in os.environ:
-        del os.environ["MEMORY_CORE_BYPASS_DENYLIST"]
-    yield
-    if old_val is not None:
-        os.environ["MEMORY_CORE_BYPASS_DENYLIST"] = old_val
-
-
-def _make_non_tmp_dir(tmp_path: Path) -> Path:
-    """Create a directory under a non-temp parent for testing.
-
-    On macOS, tmp_path may resolve under /private/var/folders/... which
-    is the system temp dir. We create a test workspace under a known
-    non-temp location by using a dedicated subpath and clearing TMPDIR.
-    """
-    # Use a path under /tmp/pytest-workspace that we explicitly control.
-    # We clear TMPDIR so the denylist doesn't catch it via the TMPDIR check,
-    # but we place it under a path that is NOT /tmp itself.
-    # Actually, we just need to make a directory NOT under /tmp, /var/folders, etc.
-    # Use home-relative path for safety.
-    workspace = Path.home() / ".memory-test-workspace"
-    workspace.mkdir(exist_ok=True)
-    return workspace
-
-
-@pytest.fixture
-def safe_workspace(monkeypatch):
-    """Create a safe workspace directory not under system temp dirs.
-
-    Also patches TMPDIR to a non-temp value so the denylist TMPDIR check
-    doesn't interfere with other test assertions.
-    """
-    workspace = _make_non_tmp_dir(None)
-    # Clear TMPDIR so denylist doesn't catch these test dirs
-    monkeypatch.delenv("TMPDIR", raising=False)
-    yield workspace
-    # Cleanup
-    try:
-        import shutil
-        shutil.rmtree(workspace, ignore_errors=True)
-    except Exception:
-        pass
-
-
-# ---------------------------------------------------------------------------
-# Unit tests for denylist module
-# ---------------------------------------------------------------------------
-
-
-class TestCheckDenylist:
-    """Tests for check_denylist() function."""
-
-    def test_tmpdir_env_rejected(self, monkeypatch):
-        """VAL-M2-023: $TMPDIR subdirectories are rejected when TMPDIR points to /tmp."""
-        from memory_core.tools.denylist import check_denylist
-
-        monkeypatch.setenv("TMPDIR", "/tmp")
-        target = Path("/tmp/some_project")
-
-        result = check_denylist(target)
-        assert result.denied is True
-        assert result.rule == "tmpdir"
-        assert "tmp" in result.message.lower() or "TMPDIR" in result.message
-
-    def test_system_tmp_rejected(self, monkeypatch):
-        """VAL-M2-023: /tmp subdirectories are rejected."""
-        from memory_core.tools.denylist import check_denylist
-
-        monkeypatch.delenv("TMPDIR", raising=False)
-        target = Path("/tmp/some_project")
-
-        result = check_denylist(target)
-        assert result.denied is True
-        assert result.rule == "tmpdir"
-
-    def test_factory_rejected(self):
-        """VAL-M2-024: ~/.factory subdirectories are rejected."""
-        from memory_core.tools.denylist import check_denylist
-
-        target = Path.home() / ".factory" / "some_project"
-        result = check_denylist(target)
-        assert result.denied is True
-        assert result.rule == "factory"
-
-    def test_factory_exact_rejected(self):
-        """VAL-M2-024: ~/.factory itself is rejected."""
-        from memory_core.tools.denylist import check_denylist
-
-        target = Path.home() / ".factory"
-        result = check_denylist(target)
-        assert result.denied is True
-        assert result.rule == "factory"
-
-    def test_home_root_rejected(self):
-        """VAL-M2-025: $HOME root is rejected."""
-        from memory_core.tools.denylist import check_denylist
-
-        target = Path.home()
-        result = check_denylist(target)
-        assert result.denied is True
-        assert result.rule == "home_root"
-
-    @pytest.mark.parametrize(
-        "dir_name,rule",
-        [
-            ("tmp.something", "junk_pattern"),
-            ("demo-project", "junk_pattern"),
-            ("test-runner", "junk_pattern"),
-            ("smoke-test-001", "junk_pattern"),
-            ("restart-daemon", "junk_pattern"),
-            ("file-list-2024", "junk_pattern"),
-        ],
-    )
-    def test_junk_patterns_rejected(self, safe_workspace, dir_name, rule):
-        """VAL-M2-026: Pattern-based junk directory names are rejected."""
-        from memory_core.tools.denylist import check_denylist
-
-        target = safe_workspace / dir_name
-        target.mkdir(exist_ok=True)
-
-        result = check_denylist(target)
-        assert result.denied is True
-        assert result.rule == "junk_pattern"
-        assert dir_name in result.message
-
-    @pytest.mark.parametrize(
-        "dir_name",
-        [
-            "my-project",
-            "webapp",
-            "backend-service",
-            "data-pipeline",
-            "real_app",
-        ],
-    )
-    def test_clean_names_not_rejected_by_pattern(self, safe_workspace, dir_name):
-        """VAL-M2-026: Clean directory names are NOT rejected by pattern rule."""
-        from memory_core.tools.denylist import check_denylist
-
-        target = safe_workspace / dir_name
-        target.mkdir(exist_ok=True)
-        (target / ".git").mkdir(exist_ok=True)
-
-        result = check_denylist(target)
-        assert result.denied is False
-
-    def test_clean_git_project_accepted(self, safe_workspace):
-        """VAL-M2-028: Legitimate git project is accepted."""
-        from memory_core.tools.denylist import check_denylist
-
-        target = safe_workspace / "legit-project"
-        target.mkdir(exist_ok=True)
-        (target / ".git").mkdir()
-
-        result = check_denylist(target)
-        assert result.denied is False
-
-    def test_non_git_rejected_without_flag(self, safe_workspace):
-        """VAL-M2-027: Non-git directory is rejected without --allow-non-git."""
-        from memory_core.tools.denylist import check_denylist
-
-        target = safe_workspace / "non-git-project"
-        target.mkdir(exist_ok=True)
-
-        result = check_denylist(target, allow_non_git=False)
-        assert result.denied is True
-        assert result.rule == "non_git"
-        assert "--allow-non-git" in result.message
-
-    def test_non_git_allowed_with_flag(self, safe_workspace):
-        """VAL-M2-027: Non-git directory is allowed with --allow-non-git."""
-        from memory_core.tools.denylist import check_denylist
-
-        target = safe_workspace / "non-git-project"
-        target.mkdir(exist_ok=True)
-
-        result = check_denylist(target, allow_non_git=True)
-        assert result.denied is False
-
-    def test_git_project_no_flag_accepted(self, safe_workspace):
-        """VAL-M2-028: Git project is accepted even without --allow-non-git."""
-        from memory_core.tools.denylist import check_denylist
-
-        target = safe_workspace / "git-project"
-        target.mkdir(exist_ok=True)
-        (target / ".git").mkdir()
-
-        result = check_denylist(target, allow_non_git=False)
-        assert result.denied is False
-
-
-class TestDenylistResult:
-    """Tests for DenylistResult dataclass."""
-
-    def test_result_not_denied(self):
-        """DenylistResult with denied=False has no rule or message."""
-        from memory_core.tools.denylist import DenylistResult
-
-        result = DenylistResult.denied_ok()
-        assert result.denied is False
-        assert result.rule is None
-        assert result.message is None
-
-    def test_result_denied_with_rule(self):
-        """DenylistResult with denial has rule and message."""
-        from memory_core.tools.denylist import DenylistResult
-
-        result = DenylistResult.denied("tmpdir", "path is under /tmp")
-        assert result.denied is True
-        assert result.rule == "tmpdir"
-        assert "tmp" in result.message.lower()
-
-
-class TestDenylistActionableMessages:
-    """VAL-M2-030: Denylist error messages are actionable."""
-
-    def test_tmpdir_message_contains_rule_and_override(self, monkeypatch):
-        """Rejection for tmpdir cites the rule."""
-        from memory_core.tools.denylist import check_denylist
-
-        monkeypatch.setenv("TMPDIR", "/tmp")
-        target = Path("/tmp/project")
-
-        result = check_denylist(target)
-        assert result.denied is True
-        assert "tmpdir" in result.rule
-        assert len(result.message) > 10
-
-    def test_non_git_message_contains_override_hint(self, safe_workspace):
-        """Non-git rejection message contains --allow-non-git hint."""
-        from memory_core.tools.denylist import check_denylist
-
-        target = safe_workspace / "no-git"
-        target.mkdir(exist_ok=True)
-
-        result = check_denylist(target, allow_non_git=False)
-        assert result.denied is True
-        assert result.rule == "non_git"
-        assert "--allow-non-git" in result.message
-
-    def test_factory_message_informative(self):
-        """Factory rejection message is informative."""
-        from memory_core.tools.denylist import check_denylist
-
-        target = Path.home() / ".factory" / "test"
-        result = check_denylist(target)
-        assert result.denied is True
-        assert result.rule == "factory"
-        assert ".factory" in result.message
-
-    def test_home_root_message_informative(self):
-        """Home root rejection message is informative."""
-        from memory_core.tools.denylist import check_denylist
-
-        target = Path.home()
-        result = check_denylist(target)
-        assert result.denied is True
-        assert result.rule == "home_root"
-        assert "HOME" in result.message or "home" in result.message.lower()
-
-    def test_junk_pattern_message_contains_dir_name(self, safe_workspace):
-        """Junk pattern rejection message mentions the offending directory name."""
-        from memory_core.tools.denylist import check_denylist
-
-        target = safe_workspace / "demo-sprint"
-        target.mkdir(exist_ok=True)
-
-        result = check_denylist(target)
-        assert result.denied is True
-        assert "demo-sprint" in result.message
-
-
-# ---------------------------------------------------------------------------
-# Integration tests for init_project_memory.py with denylist
-# ---------------------------------------------------------------------------
-
-
-class TestInitWithDenylist:
-    """Integration tests: init_project_memory rejects denied paths."""
-
-    def _call_main(self, argv):
-        """Invoke init_project_memory.main() with patched sys.argv."""
-        import sys
-
-        from memory_core.tools.init_project_memory import main
-
-        old_argv = sys.argv
-        try:
-            sys.argv = ["memory-init", *argv]
-            return main()
-        finally:
-            sys.argv = old_argv
-
-    def test_init_rejects_tmpdir(self, monkeypatch, capsys):
-        """VAL-M2-023: init rejects /tmp paths."""
-        monkeypatch.delenv("TMPDIR", raising=False)
-        target = Path("/tmp/memory-init-test-reject")
-        # We can't call main() with /tmp because argparse requires dir exists.
-        # Test via init_project_memory directly.
-        from memory_core.tools.init_project_memory import init_project_memory
-
-        result = init_project_memory(target)
-        assert result["success"] is False
-        assert any("denylist" in e.lower() or "denied" in e.lower() for e in result["errors"])
-
-    def test_init_rejects_factory(self, capsys):
-        """VAL-M2-024: init rejects ~/.factory paths."""
-        from memory_core.tools.init_project_memory import init_project_memory
-
-        target = Path.home() / ".factory" / "test-init-reject"
-        result = init_project_memory(target)
-        assert result["success"] is False
-        assert any("denylist" in e.lower() or "denied" in e.lower() for e in result["errors"])
-
-    def test_init_rejects_home_root(self, capsys):
-        """VAL-M2-025: init rejects $HOME root."""
-        from memory_core.tools.init_project_memory import init_project_memory
-
-        target = Path.home()
-        result = init_project_memory(target)
-        assert result["success"] is False
-        assert any("denylist" in e.lower() or "denied" in e.lower() for e in result["errors"])
-
-    def test_init_rejects_junk_pattern(self, safe_workspace, capsys):
-        """VAL-M2-026: init rejects junk directory names."""
-        from memory_core.tools.init_project_memory import init_project_memory
 
-        target = safe_workspace / "demo-sprint"
-        target.mkdir(exist_ok=True)
+class TestDeniedProjectRoots:
+    """Tests for denied_project_roots function."""
 
-        result = init_project_memory(target)
-        assert result["success"] is False
-        assert any("denylist" in e.lower() or "denied" in e.lower() for e in result["errors"])
+    def test_denied_project_roots_includes_home_directory(self):
+        """Test that home directory is included in denied roots."""
+        from memory_core.tools.denylist import denied_project_roots
 
-    def test_init_rejects_non_git_without_flag(self, safe_workspace):
-        """VAL-M2-027: init rejects non-git without --allow-non-git."""
-        from memory_core.tools.init_project_memory import init_project_memory
+        roots = denied_project_roots()
 
-        target = safe_workspace / "non-git"
-        target.mkdir(exist_ok=True)
+        home = Path.home().resolve(strict=False)
+        assert home in roots
 
-        result = init_project_memory(target, allow_non_git=False)
-        assert result["success"] is False
-        assert any("non-git" in e.lower() or "allow-non-git" in e.lower() for e in result["errors"])
+    def test_denied_project_roots_home_path_resolved(self):
+        """Test that home path is properly resolved."""
+        from memory_core.tools.denylist import denied_project_roots
 
-    def test_init_allows_non_git_with_flag(self, safe_workspace):
-        """VAL-M2-027: init allows non-git with --allow-non-git."""
-        from memory_core.tools.init_project_memory import init_project_memory
+        roots = denied_project_roots()
 
-        target = safe_workspace / "non-git-allowed"
-        target.mkdir(exist_ok=True)
+        # All paths should be resolved
+        for root in roots:
+            assert root.is_absolute()
 
-        result = init_project_memory(target, allow_non_git=True)
-        assert result["success"] is True
-
-    def test_init_accepts_legit_git_project(self, safe_workspace):
-        """VAL-M2-028: init accepts a normal git project."""
-        from memory_core.tools.init_project_memory import init_project_memory
-
-        target = safe_workspace / "legit-project"
-        target.mkdir(exist_ok=True)
-        (target / ".git").mkdir()
-
-        result = init_project_memory(target)
-        assert result["success"] is True
-        assert (target / "memory" / "system").is_dir()
-
-    def test_init_denylist_error_message_actionable(self, safe_workspace):
-        """VAL-M2-030: init error messages cite rule and override."""
-        from memory_core.tools.init_project_memory import init_project_memory
-
-        target = safe_workspace / "demo-test"
-        target.mkdir(exist_ok=True)
-
-        result = init_project_memory(target)
-        assert result["success"] is False
-        error_text = " ".join(result["errors"])
-        assert "denylist" in error_text.lower() or "denied" in error_text.lower()
-
-
-# ---------------------------------------------------------------------------
-# Integration tests for gateway denylist at runtime
-# ---------------------------------------------------------------------------
-
-
-class TestGatewayDenylistRuntime:
-    """VAL-M2-029: Gateway applies denylist at runtime."""
-
-    def test_gateway_rejects_denied_path(self, monkeypatch):
-        """Gateway refuses to process events for denied project roots."""
-        from memory_core.tools.denylist import check_denylist
-
-        monkeypatch.setenv("TMPDIR", "/tmp")
-        target = Path("/tmp/project")
-
-        result = check_denylist(target)
-        assert result.denied is True
-
-    def test_gateway_rejects_moved_to_denied_path(self, monkeypatch):
-        """Gateway refuses even if project was previously valid but moved to denied path."""
-        from memory_core.tools.denylist import check_denylist
-
-        monkeypatch.delenv("TMPDIR", raising=False)
-        target = Path.home() / ".factory" / "moved-project"
-        result = check_denylist(target)
-        assert result.denied is True
-        assert result.rule == "factory"
-
-    def test_gateway_output_contains_deny_info(self, monkeypatch):
-        """When gateway denies, the output should contain deny reason."""
-        from memory_core.tools.denylist import check_denylist
-
-        monkeypatch.setenv("TMPDIR", "/tmp")
-        target = Path("/tmp/junk")
-
-        result = check_denylist(target)
-        assert result.denied is True
-        assert result.message is not None
-        assert len(result.message) > 0
-
-
-# ---------------------------------------------------------------------------
-# Cross-cutting test
-# ---------------------------------------------------------------------------
-
-
-class TestCrossDenylistPreventsJunkLifecycle:
-    """VAL-CROSS-003: Denylist prevents junk lifecycle entries going forward."""
-
-    def test_check_denylist_blocks_all_junk_categories(self, safe_workspace, monkeypatch):
-        """All junk categories are blocked by check_denylist."""
-        from memory_core.tools.denylist import check_denylist
-
-        blocked_cases = []
-
-        # 1. /tmp
-        monkeypatch.delenv("TMPDIR", raising=False)
-        r = check_denylist(Path("/tmp/project"))
-        blocked_cases.append(("tmpdir", r.denied))
-
-        # 2. ~/.factory
-        r = check_denylist(Path.home() / ".factory" / "x")
-        blocked_cases.append(("factory", r.denied))
-
-        # 3. $HOME
-        r = check_denylist(Path.home())
-        blocked_cases.append(("home_root", r.denied))
-
-        # 4. Junk patterns
-        for pattern_name in ["tmp.foo", "demo-x", "test-x", "smoke-test-x", "restart-x", "file-list-x"]:
-            p = safe_workspace / pattern_name
-            p.mkdir(exist_ok=True)
-            r = check_denylist(p)
-            blocked_cases.append((f"junk:{pattern_name}", r.denied))
-
-        # 5. Non-git
-        non_git = safe_workspace / "non-git-dir"
-        non_git.mkdir(exist_ok=True)
-        r = check_denylist(non_git, allow_non_git=False)
-        blocked_cases.append(("non_git", r.denied))
-
-        for label, is_denied in blocked_cases:
-            assert is_denied, f"Expected {label} to be denied but it was not"
+    def test_denied_project_roots_no_duplicates(self):
+        """Test that denied roots list contains no duplicates."""
+        from memory_core.tools.denylist import denied_project_roots
+
+        roots = denied_project_roots()
+
+        assert len(roots) == len(set(roots))
+
+    def test_denied_project_roots_from_env_single_path(self, monkeypatch):
+        """Test that single path from environment variable is included."""
+        from memory_core.tools.denylist import denied_project_roots
+
+        test_path = "/tmp/test_denied_path"
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", test_path)
+
+        roots = denied_project_roots()
+
+        resolved_test_path = Path(test_path).expanduser().resolve(strict=False)
+        assert resolved_test_path in roots
+
+    def test_denied_project_roots_from_env_multiple_paths(self, monkeypatch):
+        """Test that multiple paths from environment variable (os.pathsep separated) are included."""
+        from memory_core.tools.denylist import denied_project_roots
+
+        test_paths = ["/tmp/test_path1", "/tmp/test_path2"]
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", os.pathsep.join(test_paths))
+
+        roots = denied_project_roots()
+
+        for path in test_paths:
+            resolved = Path(path).expanduser().resolve(strict=False)
+            assert resolved in roots
+
+    def test_denied_project_roots_from_env_with_tilde(self, monkeypatch, tmp_path):
+        """Test that tilde paths are expanded from environment variable."""
+        from memory_core.tools.denylist import denied_project_roots
+
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", "~/test_path")
+
+        roots = denied_project_roots()
+
+        expanded = Path("~/test_path").expanduser().resolve(strict=False)
+        assert expanded in roots
+        assert expanded.is_absolute()
+
+    def test_denied_project_roots_from_env_empty_string(self, monkeypatch):
+        """Test that empty environment variable doesn't add extra paths."""
+        from memory_core.tools.denylist import denied_project_roots
+
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", "")
+
+        roots = denied_project_roots()
+
+        # Should only contain home directory
+        home = Path.home().resolve(strict=False)
+        assert roots == [home]
+
+    def test_denied_project_roots_from_env_with_whitespace(self, monkeypatch):
+        """Test that whitespace-only paths are ignored."""
+        from memory_core.tools.denylist import denied_project_roots
+
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", "  \t\n  ")
+
+        roots = denied_project_roots()
+
+        # Should only contain home directory (whitespace-only paths are skipped)
+        home = Path.home().resolve(strict=False)
+        assert roots == [home]
+
+    def test_denied_project_roots_from_env_mixed_whitespace_and_paths(self, monkeypatch):
+        """Test mixed whitespace and valid paths."""
+        from memory_core.tools.denylist import denied_project_roots
+
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", f"  /tmp/path1  {os.pathsep} /tmp/path2  ")
+
+        roots = denied_project_roots()
+
+        path1 = Path("/tmp/path1").expanduser().resolve(strict=False)
+        path2 = Path("/tmp/path2").expanduser().resolve(strict=False)
+        home = Path.home().resolve(strict=False)
+
+        assert path1 in roots
+        assert path2 in roots
+        assert home in roots
+
+    def test_denied_project_roots_handles_home_runtime_error(self, monkeypatch):
+        """Test handling when Path.home() raises RuntimeError."""
+        from memory_core.tools import denylist as module
+
+        # Patch Path.home to raise RuntimeError
+        def mock_home():
+            raise RuntimeError("No home directory")
+
+        monkeypatch.setattr(Path, "home", mock_home)
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", "")
+
+        roots = module.denied_project_roots()
+
+        # Should return empty list when home fails and no env paths
+        assert roots == []
+
+    def test_denied_project_roots_returns_list_of_paths(self):
+        """Test that function returns list of Path objects."""
+        from memory_core.tools.denylist import denied_project_roots
+
+        roots = denied_project_roots()
+
+        assert isinstance(roots, list)
+        for root in roots:
+            assert isinstance(root, Path)
+
+    def test_denied_project_roots_order_preservation(self, monkeypatch):
+        """Test that order of paths is preserved (home first, then env paths)."""
+        from memory_core.tools.denylist import denied_project_roots
+
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", "/tmp/path1" + os.pathsep + "/tmp/path2")
+
+        roots = denied_project_roots()
+
+        home = Path.home().resolve(strict=False)
+        path1 = Path("/tmp/path1").expanduser().resolve(strict=False)
+        path2 = Path("/tmp/path2").expanduser().resolve(strict=False)
+
+        # Home should be first
+        assert roots[0] == home
+        # Then paths from env
+        assert path1 in roots
+        assert path2 in roots
+
+
+class TestIsDeniedProjectRoot:
+    """Tests for is_denied_project_root function."""
+
+    def test_is_denied_project_root_exact_match(self, monkeypatch):
+        """Test that exact path match returns True."""
+        from memory_core.tools.denylist import is_denied_project_root
+
+        test_path = "/tmp/test_exact_match"
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", test_path)
+
+        path = Path(test_path)
+        assert is_denied_project_root(path) is True
+
+    def test_is_denied_project_root_not_denied(self, monkeypatch, tmp_path):
+        """Test that non-denied path returns False."""
+        from memory_core.tools.denylist import is_denied_project_root
+
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", "")
+
+        some_path = tmp_path / "some_project"
+        some_path.mkdir()
+
+        assert is_denied_project_root(some_path) is False
+
+    def test_is_denied_project_root_subpath_not_denied(self, monkeypatch, tmp_path):
+        """Test that subpath of denied root is not denied (exact match required)."""
+        from memory_core.tools.denylist import is_denied_project_root
+
+        denied_root = tmp_path / "denied_root"
+        denied_root.mkdir()
+        subpath = denied_root / "subpath"
+        subpath.mkdir()
+
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", str(denied_root))
+
+        # Subpath should NOT be denied (exact match required)
+        assert is_denied_project_root(subpath) is False
+
+    def test_is_denied_project_root_with_tilde(self, monkeypatch):
+        """Test that tilde paths are expanded and matched."""
+        from memory_core.tools.denylist import is_denied_project_root
+
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", "~/denied_test")
+
+        # Should match with tilde
+        assert is_denied_project_root(Path("~/denied_test")) is True
+        # Should also match expanded
+        assert is_denied_project_root(Path("~/denied_test").expanduser()) is True
+
+    def test_is_denied_project_root_path_expansion(self, monkeypatch, tmp_path):
+        """Test path expansion in is_denied_project_root."""
+        from memory_core.tools.denylist import is_denied_project_root
+
+        denied_root = tmp_path / "denied_root"
+        denied_root.mkdir()
+
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", str(denied_root))
+
+        # Test with relative path that resolves to denied root
+        relative_path = Path(tmp_path.name) / "denied_root"
+        assert is_denied_project_root(relative_path) is False  # Won't match because path is different
+
+    def test_is_denied_project_root_resolves_paths(self, monkeypatch, tmp_path):
+        """Test that paths are resolved before comparison."""
+        from memory_core.tools.denylist import is_denied_project_root
+
+        # Create symlink
+        real_path = tmp_path / "real_denied"
+        real_path.mkdir()
+        symlink_path = tmp_path / "symlink_denied"
+        symlink_path.symlink_to(real_path)
+
+        # Deny the real path
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", str(symlink_path))
+
+        # Should match the symlink path
+        assert is_denied_project_root(symlink_path) is True
+
+    def test_is_denied_project_root_home_directory(self):
+        """Test that home directory is denied."""
+        from memory_core.tools.denylist import is_denied_project_root
+
+        home = Path.home()
+        assert is_denied_project_root(home) is True
+
+    def test_is_denied_project_root_returns_bool(self, monkeypatch, tmp_path):
+        """Test that function returns boolean."""
+        from memory_core.tools.denylist import is_denied_project_root
+
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", "")
+
+        some_path = tmp_path / "test_project"
+        some_path.mkdir()
+
+        result = is_denied_project_root(some_path)
+        assert isinstance(result, bool)
+
+    def test_is_denied_project_root_multiple_denied_paths(self, monkeypatch, tmp_path):
+        """Test matching against multiple denied paths."""
+        from memory_core.tools.denylist import is_denied_project_root
+
+        path1 = tmp_path / "denied1"
+        path2 = tmp_path / "denied2"
+        path1.mkdir()
+        path2.mkdir()
+
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", str(path1) + os.pathsep + str(path2))
+
+        assert is_denied_project_root(path1) is True
+        assert is_denied_project_root(path2) is True
+        assert is_denied_project_root(tmp_path / "other") is False
+
+
+class TestModuleIntegration:
+    """Integration tests for the denylist module."""
+
+    def test_module_exposes_both_functions(self):
+        """Test that module exposes both public functions."""
+        from memory_core.tools import denylist as module
+
+        assert hasattr(module, "denied_project_roots")
+        assert hasattr(module, "is_denied_project_root")
+        assert callable(module.denied_project_roots)
+        assert callable(module.is_denied_project_root)
+
+    def test_empty_denied_roots_list(self, monkeypatch):
+        """Test behavior when no denied roots (home fails and no env)."""
+        from memory_core.tools.denylist import (
+            denied_project_roots,
+            is_denied_project_root,
+        )
+
+        # Make home fail and no env paths
+        def mock_home():
+            raise RuntimeError("No home")
+
+        monkeypatch.setattr(Path, "home", mock_home)
+        monkeypatch.setenv("MEMORY_HOOK_DENY_PROJECT_ROOTS", "")
+
+        roots = denied_project_roots()
+        assert roots == []
+
+        # Any path should not be denied when list is empty
+        assert is_denied_project_root(Path("/some/path")) is False

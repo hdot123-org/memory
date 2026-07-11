@@ -24,12 +24,13 @@ from pathlib import Path
 from typing import Any
 
 # F5: 签名模块导入（ImportError 时静默跳过）
+# 使用模块级导入避免 stale binding 问题（monkeypatch 能正确看到 patched 版本）
 try:
-    from memory_core.tools.memory_hook_integrity_keys import load_key
-    from memory_core.tools.memory_hook_integrity_manifest import sign_project_incremental
+    from memory_core.tools import memory_hook_integrity_keys as _integrity_keys
+    from memory_core.tools import memory_hook_integrity_manifest as _integrity
 except ImportError:
-    sign_project_incremental = None  # type: ignore[misc,assignment]
-    load_key = None  # type: ignore[misc,assignment]
+    _integrity = None  # type: ignore[misc,assignment]
+    _integrity_keys = None  # type: ignore[misc,assignment]
 
 # 错误消息最大长度
 MAX_MSG_LENGTH = 500
@@ -94,13 +95,13 @@ def _redact_context(ctx: dict[str, Any]) -> dict[str, Any]:
 
 def _try_sign_file(project_root: Path, rel_path: str) -> None:
     """F5: 尝试对指定文件进行增量签名，失败不阻塞主流程。"""
-    if sign_project_incremental is None or load_key is None:
+    if _integrity is None or _integrity_keys is None:
         return
     try:
-        key = load_key()
+        key = _integrity_keys.load_key()
         if key is None:
             return
-        sign_project_incremental(project_root, key, changed_paths=[rel_path])
+        _integrity.sign_project_incremental(project_root, key, changed_paths=[rel_path])
     except Exception:
         # 签名失败静默跳过，不阻塞主流程
         pass

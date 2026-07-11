@@ -147,7 +147,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
     return DenylistResult.denied_ok()
 
 
-def _denied_project_roots() -> list[Path]:
+def denied_project_roots() -> list[Path]:
     """Return exact project roots that memory hooks must never manage."""
     roots: list[Path] = []
     try:
@@ -178,4 +178,4 @@ def is_denied_project_root(path: Path) -> bool:
     for unified path rejection handling.
     """
     resolved = path.expanduser().resolve(strict=False)
-    return any(resolved == denied for denied in _denied_project_roots())
+    return any(resolved == denied for denied in denied_project_roots())
