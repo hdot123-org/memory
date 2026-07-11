@@ -87,14 +87,39 @@ def _resolve_metrics_path(artifact_root: Path) -> Path:
 
 def write_metrics(metrics_path: Path, record: dict[str, Any]) -> bool:
     """Append a metrics record as one JSONL line. Returns True on success."""
+    return append_metrics_record(metrics_path, record)
+
+
+def append_metrics_record(path: Path, record: dict[str, Any]) -> bool:
+    """Append a metrics record to a JSONL file with file locking.
+
+    Uses fcntl.flock(LOCK_EX) for exclusive access, followed by flush and fsync
+    to ensure data durability. Returns True on success, False on failure.
+
+    Args:
+        path: Absolute path to the JSONL file
+        record: Dict to serialize as one JSON line
+
+    Returns:
+        True if write succeeded, False otherwise
+    """
+    import fcntl
+
     try:
-        metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
-        with metrics_path.open("a", encoding="utf-8") as handle:
-            handle.write(line)
+        with path.open("a", encoding="utf-8") as handle:
+            fd = handle.fileno()
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                handle.write(line)
+                handle.flush()
+                os.fsync(fd)
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
         return True
     except OSError as exc:
-        _logger.debug("metrics write failed: %s", exc)
+        _logger.debug("append_metrics_record failed: %s", exc)
         return False
 
 
@@ -111,7 +136,7 @@ def emit_metrics(
     try:
         record = collect_metrics(host, event, package, duration_ms=duration_ms)
         path = _resolve_metrics_path(artifact_root)
-        if write_metrics(path, record):
+        if append_metrics_record(path, record):
             return path
         return None
     except Exception as exc:  # pragma: no cover - defensive

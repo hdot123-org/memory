@@ -182,68 +182,89 @@ class TelemetryBridge:
             # Analytics must never break the host application flow
             logger.debug("telemetry_bridge.safe_capture failed for '%s': %s", event_name, exc)
 
-    def replay_unsent(self, metrics_path: Path | str) -> int:
-        """Replay unsent metrics records from a JSONL file using a sidecar offset.
+    def batch_capture(
+        self,
+        events: list[dict[str, Any]],
+        cwd: Path | str | None = None,
+    ) -> bool:
+        """Batch send multiple events to PostHog in a single HTTP request.
 
-        The sidecar offset file is ``<metrics_path>.offset`` and stores the number
-        of lines already processed. Records must contain a JSON-serializable
-        payload; each record is forwarded to ``safe_capture`` as
-        ``memory.replayed_event``.
+        This method builds a batch payload and sends it directly to PostHog's
+        batch API endpoint, avoiding per-event SDK overhead.
 
-        Returns the number of records successfully replayed. Always fail-safe.
+        Args:
+            events: List of event dicts with keys: event_name, properties
+            cwd: Optional working directory for project_id resolution
+
+        Returns:
+            True if batch send succeeded, False otherwise (HTTP error, exception, or client=None)
         """
+        # Check client and enabled state first
+        client = self._analytics._client if self._analytics else None
+        if client is None or not self._is_enabled() or not events:
+            return False
+
         try:
-            path = Path(metrics_path).expanduser()
-            if not path.exists():
-                return 0
+            # Build batch payload
+            distinct_id = self.get_project_id(cwd)
+            batch_items = []
 
-            offset_path = path.with_suffix(path.suffix + ".offset")
-            last_offset = 0
-            if offset_path.exists():
-                try:
-                    last_offset = int(offset_path.read_text(encoding="utf-8").strip())
-                except (OSError, ValueError):
-                    last_offset = 0
+            for event_data in events:
+                if not isinstance(event_data, dict):
+                    continue
 
-            replayed = 0
-            current_line = 0
-            with path.open("r", encoding="utf-8") as handle:
-                for line in handle:
-                    current_line += 1
-                    if current_line <= last_offset:
-                        continue
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        record = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if not isinstance(record, dict):
-                        continue
-                    if record.get("posthog_sent") is True:
-                        continue
+                event_name = str(event_data.get("event_name") or "memory.batched_event")
+                if not event_name.startswith("memory."):
+                    event_name = f"memory.{event_name}"
 
-                    event_name = str(record.get("event") or "replayed_event")
-                    props = {
-                        "replayed_from": path.name,
-                        "original_status": record.get("status"),
-                        "original_event": record.get("event"),
-                        "original_host": record.get("host"),
-                        "original_timestamp": record.get("timestamp"),
-                    }
-                    self.safe_capture(event_name, props)
-                    replayed += 1
+                properties = event_data.get("properties") or {}
+                sanitized = _sanitize_properties(properties)
 
-            try:
-                offset_path.write_text(str(current_line), encoding="utf-8")
-            except OSError as exc:
-                logger.debug("telemetry_bridge: offset write failed: %s", exc)
+                enriched: dict[str, Any] = {
+                    "memory_core_version": CURRENT_MEMORY_VERSION,
+                    "host": _resolve_host(),
+                    "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+                    **sanitized,
+                }
 
-            return replayed
+                batch_items.append({
+                    "event": event_name,
+                    "properties": enriched,
+                    "distinct_id": distinct_id,
+                })
+
+            if not batch_items:
+                return False
+
+            # Direct HTTP POST to PostHog batch API using stdlib
+            import urllib.error
+            import urllib.request
+
+            host = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip()
+            api_key = client.api_key
+
+            batch_url = f"{host}/batch/"
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = json.dumps({"batch": batch_items}).encode("utf-8")
+
+            req = urllib.request.Request(batch_url, data=payload, headers=headers, method="POST")
+
+            # 5s timeout for batch operation (network probe already done before calling this)
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status >= 400:
+                    logger.debug("telemetry_bridge.batch_capture: HTTP %d", response.status)
+                    return False
+
+            logger.debug("telemetry_bridge.batch_capture: sent %d events", len(batch_items))
+            return True
+
         except Exception as exc:
-            logger.debug("telemetry_bridge.replay_unsent failed: %s", exc)
-            return 0
+            # Analytics must never break the host application flow
+            logger.debug("telemetry_bridge.batch_capture failed: %s", exc)
+            return False
 
     def flush(self) -> None:
         """Flush pending analytics events."""

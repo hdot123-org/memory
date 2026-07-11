@@ -30,6 +30,9 @@ try:
 except ImportError:
     write_error_log = None  # type: ignore[misc,assignment]
 
+# Metrics writing with file locking
+from memory_core.tools.memory_hook_metrics import _resolve_metrics_path, append_metrics_record
+
 # 超时处理：整体超时 2s
 TIMEOUT_SECONDS = 2
 
@@ -548,9 +551,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # Write metrics to local JSONL (replaces PostHog telemetry)
         try:
-            metrics_dir = project_root / "memory" / "artifacts" / "memory-hook"
-            metrics_dir.mkdir(parents=True, exist_ok=True)
-            metrics_file = metrics_dir / "metrics.jsonl"
+            metrics_path = _resolve_metrics_path(project_root / "memory" / "artifacts" / "memory-hook")
             duration_ms = int(info.get("duration_seconds", 0) * 1000)
             metrics_record = {
                 "event": "session_ended",
@@ -561,8 +562,7 @@ def main(argv: list[str] | None = None) -> int:
                 "duration_ms": duration_ms,
                 "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
             }
-            with metrics_file.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(metrics_record) + "\n")
+            append_metrics_record(metrics_path, metrics_record)
         except Exception:
             pass  # Metrics write must never break the hook
 

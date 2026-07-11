@@ -24,6 +24,7 @@ from memory_core.ownership import (
     classify_owned_path,
     load_memory_ownership,
 )
+from memory_core.tools.memory_hook_metrics import _resolve_metrics_path, append_metrics_record
 
 # ---------------------------------------------------------------------------
 # 文件类型黑名单常量
@@ -669,15 +670,13 @@ def _now_iso() -> str:
 
 
 def _write_metrics_jsonl(project_root: Path, record: dict[str, Any]) -> None:
-    """Write a metrics record to metrics.jsonl in memory/artifacts/memory-hook/."""
+    """Write a metrics record to metrics.jsonl using append_metrics_record."""
     try:
-        metrics_dir = project_root / "memory" / "artifacts" / "memory-hook"
-        metrics_dir.mkdir(parents=True, exist_ok=True)
-        metrics_file = metrics_dir / "metrics.jsonl"
-        with metrics_file.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
-    except Exception:
-        pass  # Metrics write must never break the guard
+        metrics_path = _resolve_metrics_path(project_root / "memory" / "artifacts" / "memory-hook")
+        append_metrics_record(metrics_path, record)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("metrics write failed: %s", exc)
 
 
 def main() -> int:
@@ -733,8 +732,9 @@ def main() -> int:
             "timestamp": _now_iso(),
         }
         _write_metrics_jsonl(project_root, metrics_record)
-    except Exception:
-        pass
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("metrics write failed in main: %s", exc)
 
     # Output JSON result
     print(json.dumps(result))

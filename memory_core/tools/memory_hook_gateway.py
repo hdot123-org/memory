@@ -1693,49 +1693,72 @@ def _build_readonly_source_repo_package(cwd: Path, host: str, event: str) -> dic
 def _maybe_sync_telemetry(artifact_root: Path) -> None:
     """Synchronize local telemetry metrics to PostHog during session-start.
 
-    Implements a lightweight sync mechanism:
-    1. Read .last_sync timestamp; skip if < 3600s ago (zero overhead)
-    2. Probe network connectivity to PostHog (socket timeout=2s)
-    3. If probe fails, update .last_sync and exit (avoid high-frequency probing)
-    4. If probe succeeds, read .offset sidecar and incremental records from metrics.jsonl
-    5. Batch send via telemetry_bridge.safe_capture
-    6. On success: update .offset and .last_sync
-       On failure: only update .last_sync (not .offset, retry next time)
-    7. All operations wrapped in try/except (exceptions never propagate)
+    Implements a lightweight sync mechanism with separate backoff for failures:
+    1. Check .last_sync_success; skip if < 3600s ago (hourly sync window)
+    2. Check .last_sync_attempt; skip if < 300s ago (short backoff after failure)
+    3. Probe network connectivity to PostHog host (socket timeout=2s)
+    4. If probe fails, update .last_sync_attempt and exit
+    5. If probe succeeds, read .offset sidecar and incremental records from metrics.jsonl
+    6. Batch send via telemetry_bridge.batch_capture (passes all record fields)
+    7. On success: update .offset and .last_sync_success, compact metrics.jsonl
+       On failure: update .last_sync_attempt (not .offset, retry next time)
+    8. Write .sync_status.json with lifecycle tracking fields
+    9. All operations wrapped in try/except (exceptions never propagate)
 
     Args:
         artifact_root: Path to the artifacts directory containing metrics.jsonl
     """
     try:
         metrics_file = artifact_root / "metrics.jsonl"
-        last_sync_file = artifact_root / ".last_sync"
+        last_sync_success_file = artifact_root / ".last_sync_success"
+        last_sync_attempt_file = artifact_root / ".last_sync_attempt"
         offset_file = artifact_root / ".offset"
 
-        # Step 1: Check time window
+        # Step 1: Check success window (3600s = 1 hour)
         now = time.time()
-        last_sync = 0.0
-        if last_sync_file.exists():
+        last_sync_success = 0.0
+        if last_sync_success_file.exists():
             try:
-                last_sync = float(last_sync_file.read_text(encoding="utf-8").strip())
+                last_sync_success = float(last_sync_success_file.read_text(encoding="utf-8").strip())
             except (OSError, ValueError):
-                last_sync = 0.0
+                last_sync_success = 0.0
 
-        if (now - last_sync) < 3600:
-            return  # Skip: within 1-hour window
+        if (now - last_sync_success) < 3600:
+            return  # Skip: within 1-hour success window
 
-        # Step 2: Probe network connectivity
+        # Step 2: Check attempt backoff (300s = 5 minutes)
+        last_sync_attempt = 0.0
+        if last_sync_attempt_file.exists():
+            try:
+                last_sync_attempt = float(last_sync_attempt_file.read_text(encoding="utf-8").strip())
+            except (OSError, ValueError):
+                last_sync_attempt = 0.0
+
+        if (now - last_sync_attempt) < 300:
+            return  # Skip: within 5-minute backoff after recent attempt
+
+        # Step 3: Probe network connectivity
+        posthog_host = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip()
+        # Extract hostname from URL (e.g., "https://us.posthog.com" -> "us.posthog.com")
+        if "://" in posthog_host:
+            posthog_hostname = posthog_host.split("://", 1)[1].rstrip("/")
+        else:
+            posthog_hostname = posthog_host.rstrip("/")
+
         try:
-            sock = socket.create_connection(("us.i.posthog.com", 443), timeout=2)
+            sock = socket.create_connection((posthog_hostname, 443), timeout=2)
             sock.close()
         except (socket.error, OSError):
-            # Network unreachable: update .last_sync to avoid high-frequency probing
+            # Network unreachable: update .last_sync_attempt to avoid high-frequency probing
             try:
-                last_sync_file.write_text(str(now), encoding="utf-8")
+                last_sync_attempt_file.write_text(str(now), encoding="utf-8")
             except OSError:
                 pass
+            # Update sync_status.json with failure
+            _write_sync_status(artifact_root, False, 0)
             return
 
-        # Step 3: Read offset and incremental records
+        # Step 4: Read offset and incremental records
         if not metrics_file.exists():
             return
 
@@ -1759,7 +1782,7 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
                     continue
                 try:
                     record = json.loads(line)
-                    if isinstance(record, dict) and not record.get("posthog_sent"):
+                    if isinstance(record, dict):
                         records.append(record)
                 except json.JSONDecodeError:
                     continue
@@ -1767,36 +1790,111 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
         if not records:
             return
 
-        # Step 4: Batch send via telemetry_bridge
+        pending_count = len(records)
+
+        # Step 5: Batch send via telemetry_bridge.batch_capture
         try:
             from memory_core.tools.telemetry_bridge import telemetry
 
+            # Build events list - pass ALL record fields (not just selected ones)
+            events = []
             for record in records:
                 event_name = str(record.get("event") or "memory.replayed_event")
-                properties = {
-                    "replayed_from": "metrics.jsonl",
-                    "original_status": record.get("status"),
-                    "original_event": record.get("event"),
-                    "original_host": record.get("host"),
-                    "original_timestamp": record.get("timestamp"),
-                }
-                telemetry.safe_capture(event_name, properties)
+                # Pass all fields from the original record using **record expansion
+                events.append({"event_name": event_name, "properties": {**record}})
 
-            # Step 5: Success - update .offset and .last_sync
-            offset_file.write_text(str(current_line), encoding="utf-8")
-            last_sync_file.write_text(str(now), encoding="utf-8")
+            # Single batch HTTP call - returns True on success, False on failure
+            success = telemetry.batch_capture(events)
+
+            if success:
+                # Step 6: Success - update .offset and .last_sync_success
+                offset_file.write_text(str(current_line), encoding="utf-8")
+                last_sync_success_file.write_text(str(now), encoding="utf-8")
+
+                # Step 7: Compact metrics.jsonl after successful sync
+                # Read remaining lines after offset, rewrite file with lock, reset offset to 0
+                try:
+                    remaining_lines = []
+                    with metrics_file.open("r", encoding="utf-8") as f:
+                        line_num = 0
+                        for line in f:
+                            line_num += 1
+                            if line_num > current_line:
+                                remaining_lines.append(line)
+
+                    # Rewrite file with exclusive lock
+                    with metrics_file.open("w", encoding="utf-8") as f:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                        try:
+                            f.writelines(remaining_lines)
+                            f.flush()
+                            os.fsync(f.fileno())
+                        finally:
+                            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+                    # Reset offset to 0 after compaction
+                    offset_file.write_text("0", encoding="utf-8")
+                except OSError as exc:
+                    _logger.debug("metrics.jsonl compaction failed: %s", exc)
+
+                # Update sync_status.json with success
+                _write_sync_status(artifact_root, True, 0)
+            else:
+                # Step 8: Send failed - update .last_sync_attempt (not .offset, retry next time)
+                try:
+                    last_sync_attempt_file.write_text(str(now), encoding="utf-8")
+                except OSError:
+                    pass
+                # Update sync_status.json with failure
+                _write_sync_status(artifact_root, False, pending_count)
 
         except Exception as exc:
-            # Send failed: only update .last_sync (not .offset, retry next time)
+            # Send failed: update .last_sync_attempt (not .offset, retry next time)
             _logger.debug("telemetry sync send failed: %s", exc)
             try:
-                last_sync_file.write_text(str(now), encoding="utf-8")
+                last_sync_attempt_file.write_text(str(now), encoding="utf-8")
             except OSError:
                 pass
+            # Update sync_status.json with failure
+            _write_sync_status(artifact_root, False, pending_count)
 
     except Exception as exc:
         # Top-level catch: sync must never break gateway flow
         _logger.debug("_maybe_sync_telemetry failed: %s", exc)
+
+
+def _write_sync_status(artifact_root: Path, success: bool, pending_count: int) -> None:
+    """Write .sync_status.json with lifecycle tracking fields.
+
+    Args:
+        artifact_root: Path to the artifacts directory
+        success: Whether the sync succeeded
+        pending_count: Number of records waiting to be synced
+    """
+    status_file = artifact_root / ".sync_status.json"
+    now_iso = datetime.now().astimezone().isoformat(timespec="seconds")
+
+    # Read existing status
+    status: dict[str, Any] = {}
+    if status_file.exists():
+        try:
+            status = json.loads(status_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            status = {}
+
+    if success:
+        status["last_success_ts"] = now_iso
+        status["failure_count"] = 0
+    else:
+        status["last_failure_ts"] = now_iso
+        status["failure_count"] = int(status.get("failure_count", 0)) + 1
+
+    status["pending_count"] = pending_count
+
+    try:
+        status_file.write_text(json.dumps(status, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def main() -> int:

@@ -12,7 +12,6 @@ Tests cover:
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -280,103 +279,6 @@ class TestTelemetryBridge:
         bridge.flush()
 
         bridge._analytics = original_analytics
-
-
-class TestReplayUnsent:
-    """Test replay_unsent functionality."""
-
-    def test_replay_unsent_returns_zero_for_nonexistent_file(self):
-        """replay_unsent should return 0 when file doesn't exist."""
-        bridge = TelemetryBridge()
-        result = bridge.replay_unsent("/tmp/nonexistent_file.jsonl")
-        assert result == 0
-
-    def test_replay_unsent_skips_already_sent_records(self, tmp_path):
-        """replay_unsent should skip records with posthog_sent=True."""
-        metrics_file = tmp_path / "metrics.jsonl"
-        metrics_file.write_text(
-            json.dumps({"event": "test1", "posthog_sent": True}) + "\n"
-            + json.dumps({"event": "test2", "posthog_sent": False}) + "\n"
-            + json.dumps({"event": "test3", "posthog_sent": True}) + "\n",
-            encoding="utf-8",
-        )
-
-        bridge = TelemetryBridge()
-        bridge._analytics = MagicMock()
-        bridge._is_enabled = MagicMock(return_value=True)
-        bridge.get_project_id = MagicMock(return_value="test-project")
-
-        result = bridge.replay_unsent(metrics_file)
-
-        # Only 1 record should be replayed (the one with posthog_sent=False)
-        assert result == 1
-        assert bridge._analytics.capture.call_count == 1
-
-    def test_replay_unsent_uses_offset_file(self, tmp_path):
-        """replay_unsent should read and write offset file."""
-        metrics_file = tmp_path / "metrics.jsonl"
-        offset_file = tmp_path / "metrics.jsonl.offset"
-
-        # Write 3 records
-        metrics_file.write_text(
-            json.dumps({"event": "test1", "posthog_sent": False}) + "\n"
-            + json.dumps({"event": "test2", "posthog_sent": False}) + "\n"
-            + json.dumps({"event": "test3", "posthog_sent": False}) + "\n",
-            encoding="utf-8",
-        )
-
-        # Set offset to 2 (skip first 2 lines)
-        offset_file.write_text("2", encoding="utf-8")
-
-        bridge = TelemetryBridge()
-        bridge._analytics = MagicMock()
-        bridge._is_enabled = MagicMock(return_value=True)
-        bridge.get_project_id = MagicMock(return_value="test-project")
-
-        result = bridge.replay_unsent(metrics_file)
-
-        # Only 1 record should be replayed (the 3rd one)
-        assert result == 1
-        # Offset should be updated to 3
-        assert offset_file.read_text(encoding="utf-8").strip() == "3"
-
-    def test_replay_unsent_fail_safe(self, tmp_path):
-        """replay_unsent should not raise exceptions."""
-        metrics_file = tmp_path / "metrics.jsonl"
-        metrics_file.write_text(
-            json.dumps({"event": "test1", "posthog_sent": False}) + "\n",
-            encoding="utf-8",
-        )
-
-        bridge = TelemetryBridge()
-        bridge._analytics = MagicMock()
-        bridge._analytics.capture.side_effect = Exception("Test error")
-        bridge._is_enabled = MagicMock(return_value=True)
-        bridge.get_project_id = MagicMock(return_value="test-project")
-
-        # Should not raise
-        result = bridge.replay_unsent(metrics_file)
-        assert result == 1
-
-    def test_replay_unsent_handles_invalid_json(self, tmp_path):
-        """replay_unsent should skip invalid JSON lines."""
-        metrics_file = tmp_path / "metrics.jsonl"
-        metrics_file.write_text(
-            json.dumps({"event": "test1", "posthog_sent": False}) + "\n"
-            + "invalid json line\n"
-            + json.dumps({"event": "test2", "posthog_sent": False}) + "\n",
-            encoding="utf-8",
-        )
-
-        bridge = TelemetryBridge()
-        bridge._analytics = MagicMock()
-        bridge._is_enabled = MagicMock(return_value=True)
-        bridge.get_project_id = MagicMock(return_value="test-project")
-
-        result = bridge.replay_unsent(metrics_file)
-
-        # Should replay 2 valid records
-        assert result == 2
 
 
 class TestModuleLevelSetup:
