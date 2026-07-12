@@ -47,13 +47,16 @@ def _run_gateway_main(gw, tmp_path, emit_fn, build_fn=None):
                      "_should_noop_for_external_context", "build_context_package", "write_artifacts",
                      "_integrity_verify", "_integrity_sign", "_execute_delegate",
                      "_launch_async_health_check", "_update_state_dynamic_fields",
-                     "_maybe_sync_telemetry", "_log_prompt_submit"]:
+                     "_maybe_sync_telemetry", "_log_prompt_submit", "_discover_cwd",
+                     "determine_project_scope"]:
             orig_attrs[attr] = getattr(gw, attr)
 
         gw.is_memory_core_source_repo = lambda cwd: True
         gw.get_source_repo_mode = lambda cwd: "develop"
         gw.is_denied_project_root = lambda cwd: False
         gw._should_noop_for_external_context = lambda payload: False
+        gw._discover_cwd = lambda payload: tmp_path
+        gw.determine_project_scope = lambda cwd: "default"
         gw.build_context_package = build_fn
         gw.write_artifacts = lambda package: {"snapshot": "x"}
         gw._integrity_verify = lambda cwd: None

@@ -553,6 +553,11 @@ class TestMainExecutionChain:
             "validation_errors": ["missing-canonical"],
         }
 
+        monkeypatch.setattr(gw, "_discover_cwd", lambda payload: tmp_path)
+        monkeypatch.setattr(gw, "is_memory_core_source_repo", lambda cwd: False)
+        monkeypatch.setattr(gw, "is_denied_project_root", lambda cwd: False)
+        monkeypatch.setattr(gw, "_should_noop_for_external_context", lambda payload: False)
+        monkeypatch.setattr(gw, "determine_project_scope", lambda cwd: "default")
         monkeypatch.setattr(gw, "build_context_package", lambda *args, **kwargs: pkg)
         monkeypatch.setattr(gw, "ArtifactWriter", lambda *args, **kwargs: MagicMock(write=lambda *a: True))
         monkeypatch.setattr(gw, "_integrity_sign", lambda *args: None)
@@ -1869,6 +1874,11 @@ class TestMainExtended:
             "validation_errors": [],
         }
 
+        monkeypatch.setattr(gw, "_discover_cwd", lambda payload: tmp_path)
+        monkeypatch.setattr(gw, "is_memory_core_source_repo", lambda cwd: False)
+        monkeypatch.setattr(gw, "is_denied_project_root", lambda cwd: False)
+        monkeypatch.setattr(gw, "_should_noop_for_external_context", lambda payload: False)
+        monkeypatch.setattr(gw, "determine_project_scope", lambda cwd: "default")
         monkeypatch.setattr(gw, "build_context_package", lambda *args, **kwargs: pkg)
 
         mock_writer = MagicMock()

@@ -25,7 +25,10 @@ Covers:
 from __future__ import annotations
 
 import json
+import pathlib
 from unittest.mock import MagicMock
+
+import pytest
 
 from memory_core.tools.daily_kb_audit import (
     _append_infra_summary,
@@ -267,6 +270,7 @@ class TestCheckVersionConsistencyEdgeCases:
 
 class TestLoadInfraInventoryEdgeCases:
     def test_yaml_parse_error(self, tmp_path, monkeypatch):
+        pytest.importorskip("yaml")
         """When YAML file is malformed, returns None."""
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit._HAS_YAML", True
@@ -281,6 +285,7 @@ class TestLoadInfraInventoryEdgeCases:
 
     def test_not_mapping(self, tmp_path, monkeypatch):
         """When YAML top-level is not a dict, returns None."""
+        pytest.importorskip("yaml")
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit._HAS_YAML", True
         )
@@ -2069,8 +2074,12 @@ class TestCheckLargeOrDbFilesBranches:
         sql_file = tmp_path / "test.sql"
         sql_file.write_bytes(b"\x00" * 100)
 
-        def mock_stat(*args, **kwargs):
-            raise OSError("Permission denied")
+        original_stat = pathlib.Path.stat
+
+        def mock_stat(self, *args, **kwargs):
+            if str(self).endswith(".sql"):
+                raise OSError("Permission denied")
+            return original_stat(self, *args, **kwargs)
 
         monkeypatch.setattr("pathlib.Path.stat", mock_stat)
 
@@ -2120,6 +2129,7 @@ class TestLoadInfraInventoryYamlErrors:
     """Test _load_infra_inventory YAML errors (lines 553-557)."""
 
     def test_yaml_os_error(self, tmp_path, monkeypatch):
+        pytest.importorskip("yaml")
         """OS error reading YAML returns None."""
         from memory_core.tools.daily_kb_audit import _load_infra_inventory
 
@@ -2140,6 +2150,7 @@ class TestLoadInfraInventoryYamlErrors:
 
     def test_yaml_parse_error(self, tmp_path, monkeypatch):
         """YAML parse error returns None."""
+        pytest.importorskip("yaml")
         from memory_core.tools.daily_kb_audit import _load_infra_inventory
 
         monkeypatch.setattr("memory_core.tools.daily_kb_audit._HAS_YAML", True)
