@@ -48,7 +48,7 @@ def _run_gateway_main(gw, tmp_path, emit_fn, build_fn=None):
                      "_integrity_verify", "_integrity_sign", "_execute_delegate",
                      "_launch_async_health_check", "_update_state_dynamic_fields",
                      "_maybe_sync_telemetry", "_log_prompt_submit", "_discover_cwd",
-                     "determine_project_scope"]:
+                     "determine_project_scope", "ArtifactWriter"]:
             orig_attrs[attr] = getattr(gw, attr)
 
         gw.is_memory_core_source_repo = lambda cwd: True
@@ -58,6 +58,9 @@ def _run_gateway_main(gw, tmp_path, emit_fn, build_fn=None):
         gw._discover_cwd = lambda payload: tmp_path
         gw.determine_project_scope = lambda cwd: "default"
         gw.build_context_package = build_fn
+        mock_writer = MagicMock()
+        mock_writer.write.return_value = True
+        gw.ArtifactWriter = lambda *a, **kw: mock_writer
         gw.write_artifacts = lambda package: {"snapshot": "x"}
         gw._integrity_verify = lambda cwd: None
         gw._integrity_sign = lambda cwd: None
