@@ -10,15 +10,15 @@ import json
 import sys
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 repo_root = Path(__file__).resolve().parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 
-def _run_gateway_main(gw, tmp_path, emit_fn, build_fn=None):
-    """Run gateway main() with all necessary mocks, calling emit_fn for emit_metrics."""
+def _setup_gateway_mocks(gw, monkeypatch, tmp_path, emit_fn, build_fn=None):
+    """Set up all mocks needed for main() to reach emit_metrics. Uses monkeypatch for cleanup."""
     pkg = {
         "status": "ok",
         "missing_paths": [],
@@ -30,58 +30,36 @@ def _run_gateway_main(gw, tmp_path, emit_fn, build_fn=None):
     if build_fn is None:
         build_fn = lambda *a, **kw: pkg  # noqa: E731
 
-    original_stdin = sys.stdin
-    original_argv = sys.argv
-    original_stdout = sys.stdout
-    # Save original gateway functions
-    orig_attrs = {}
-    try:
-        sys.stdin = MagicMock()
-        sys.stdin.read.return_value = "{}"
-        sys.argv = ["gw", "--host", "factory", "--event", "session-start", "--no-delegate"]
-        sys.stdout = MagicMock()
+    # Mock stdin/argv/stdout
+    mock_stdin = MagicMock()
+    mock_stdin.read.return_value = "{}"
+    monkeypatch.setattr(sys, "stdin", mock_stdin)
+    monkeypatch.setattr(sys, "argv", ["gw", "--host", "factory", "--event", "session-start", "--no-delegate"])
+    monkeypatch.setattr(sys, "stdout", MagicMock())
 
-        gw.ARTIFACT_ROOT = tmp_path
-        # Save and monkeypatch gateway functions
-        for attr in ["is_memory_core_source_repo", "get_source_repo_mode", "is_denied_project_root",
-                     "_should_noop_for_external_context", "build_context_package", "write_artifacts",
-                     "_integrity_verify", "_integrity_sign", "_execute_delegate",
-                     "_launch_async_health_check", "_update_state_dynamic_fields",
-                     "_maybe_sync_telemetry", "_log_prompt_submit", "_discover_cwd",
-                     "determine_project_scope", "ArtifactWriter"]:
-            orig_attrs[attr] = getattr(gw, attr)
+    # Mock gateway module attributes
+    monkeypatch.setattr(gw, "ARTIFACT_ROOT", tmp_path)
+    monkeypatch.setattr(gw, "is_memory_core_source_repo", lambda cwd: True)
+    monkeypatch.setattr(gw, "get_source_repo_mode", lambda cwd: "develop")
+    monkeypatch.setattr(gw, "is_denied_project_root", lambda cwd: False)
+    monkeypatch.setattr(gw, "_should_noop_for_external_context", lambda payload: False)
+    monkeypatch.setattr(gw, "_discover_cwd", lambda payload: tmp_path)
+    monkeypatch.setattr(gw, "determine_project_scope", lambda cwd: "default")
+    monkeypatch.setattr(gw, "build_context_package", build_fn)
+    mock_writer = MagicMock()
+    mock_writer.write.return_value = True
+    monkeypatch.setattr(gw, "ArtifactWriter", lambda *a, **kw: mock_writer)
+    monkeypatch.setattr(gw, "_integrity_verify", lambda cwd: None)
+    monkeypatch.setattr(gw, "_integrity_sign", lambda cwd: None)
+    monkeypatch.setattr(gw, "_execute_delegate", lambda *a, **kw: 0)
+    monkeypatch.setattr(gw, "_launch_async_health_check", lambda cwd: None)
+    monkeypatch.setattr(gw, "_update_state_dynamic_fields", lambda *a, **kw: None)
+    monkeypatch.setattr(gw, "_maybe_sync_telemetry", lambda *a, **kw: None)
+    monkeypatch.setattr(gw, "_log_prompt_submit", lambda *a, **kw: None)
 
-        gw.is_memory_core_source_repo = lambda cwd: True
-        gw.get_source_repo_mode = lambda cwd: "develop"
-        gw.is_denied_project_root = lambda cwd: False
-        gw._should_noop_for_external_context = lambda payload: False
-        gw._discover_cwd = lambda payload: tmp_path
-        gw.determine_project_scope = lambda cwd: "default"
-        gw.build_context_package = build_fn
-        mock_writer = MagicMock()
-        mock_writer.write.return_value = True
-        gw.ArtifactWriter = lambda *a, **kw: mock_writer
-        gw.write_artifacts = lambda package: {"snapshot": "x"}
-        gw._integrity_verify = lambda cwd: None
-        gw._integrity_sign = lambda cwd: None
-        gw._execute_delegate = lambda *a, **kw: 0
-        gw._launch_async_health_check = lambda cwd: None
-        gw._update_state_dynamic_fields = lambda *a, **kw: None
-        gw._maybe_sync_telemetry = lambda *a, **kw: None
-        gw._log_prompt_submit = lambda *a, **kw: None
-
-        # Patch emit_metrics in the memory_hook_metrics module so the
-        # `from .memory_hook_metrics import emit_metrics` inside main() gets our fake.
-        from memory_core.tools import memory_hook_metrics
-        with patch.object(memory_hook_metrics, 'emit_metrics', emit_fn):
-            return gw.main()
-    finally:
-        sys.stdin = original_stdin
-        sys.argv = original_argv
-        sys.stdout = original_stdout
-        # Restore original gateway functions
-        for attr, val in orig_attrs.items():
-            setattr(gw, attr, val)
+    # Patch emit_metrics using monkeypatch for reliable cleanup
+    from memory_core.tools import memory_hook_metrics
+    monkeypatch.setattr(memory_hook_metrics, "emit_metrics", emit_fn)
 
 
 def test_gateway_main_records_nonzero_duration_ms(tmp_path, monkeypatch):
@@ -94,7 +72,8 @@ def test_gateway_main_records_nonzero_duration_ms(tmp_path, monkeypatch):
         captured_records.append({"duration_ms": duration_ms, "host": host, "event": event})
         return None
 
-    _run_gateway_main(gw, tmp_path, fake_emit)
+    _setup_gateway_mocks(gw, monkeypatch, tmp_path, fake_emit)
+    gw.main()
 
     # VAL-TEL-004: duration_ms should be > 0
     assert len(captured_records) == 1, f"Expected 1 emit call, got {len(captured_records)}"
@@ -120,7 +99,8 @@ def test_gateway_duration_ms_reflects_actual_time(tmp_path, monkeypatch):
             "status": "ok", "missing_paths": [], "validation_errors": [],
             "host": "factory", "event": "session-start", "package_kind": "context-package-v1",
         }
-    _run_gateway_main(gw, tmp_path, fake_emit, build_fn=fast_build)
+    _setup_gateway_mocks(gw, monkeypatch, tmp_path, fake_emit, build_fn=fast_build)
+    gw.main()
     fast_duration = captured_records[0]["duration_ms"]
 
     # Run 2: slow (add sleep inside build_context_package)
@@ -133,7 +113,8 @@ def test_gateway_duration_ms_reflects_actual_time(tmp_path, monkeypatch):
             "host": "factory", "event": "session-start", "package_kind": "context-package-v1",
         }
 
-    _run_gateway_main(gw, tmp_path, fake_emit, build_fn=slow_build)
+    _setup_gateway_mocks(gw, monkeypatch, tmp_path, fake_emit, build_fn=slow_build)
+    gw.main()
     slow_duration = captured_records[0]["duration_ms"]
 
     # VAL-TEL-005: slow run should have larger duration_ms than fast run
@@ -159,8 +140,7 @@ def test_gateway_excepthook_includes_duration_ms_and_status(tmp_path, monkeypatc
         raise ValueError("test error for excepthook")
     except ValueError:
         exc_type, exc_value, exc_tb = sys.exc_info()
-        with patch.object(sys, "__excepthook__"):  # Don't actually print traceback
-            gw._gateway_excepthook(exc_type, exc_value, exc_tb)
+        gw._gateway_excepthook(exc_type, exc_value, exc_tb)
 
     assert metrics_file.exists(), "metrics.jsonl should be written by excepthook"
     line = metrics_file.read_text().strip()
