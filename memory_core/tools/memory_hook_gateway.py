@@ -1898,6 +1898,7 @@ def _write_sync_status(artifact_root: Path, success: bool, pending_count: int) -
 
 
 def main() -> int:
+    start_time = time.time()
     args = _parse_args()
     raw_payload = sys.stdin.read()
     payload = _read_payload(raw_payload)
@@ -2035,7 +2036,8 @@ def main() -> int:
 
     try:
         from .memory_hook_metrics import emit_metrics
-        emit_metrics(ARTIFACT_ROOT, args.host, args.event, package)
+        duration_ms = int((time.time() - start_time) * 1000)
+        emit_metrics(ARTIFACT_ROOT, args.host, args.event, package, duration_ms=duration_ms)
     except Exception as exc:
         _logger.debug("metrics emit skipped: %s", exc)
 
@@ -2073,12 +2075,19 @@ def _gateway_excepthook(exc_type, exc_value, exc_tb):
         metrics_dir = ARTIFACT_ROOT
         metrics_dir.mkdir(parents=True, exist_ok=True)
         metrics_file = metrics_dir / "metrics.jsonl"
+        # Calculate duration_ms if we have a start_time (from main())
+        # Otherwise use 0 for unexpected crashes before main() starts
+        duration_ms = 0
+        if hasattr(sys, '_gateway_start_time'):
+            duration_ms = int((time.time() - sys._gateway_start_time) * 1000)
         record = {
             "event": "hook_error",
             "error_type": exc_type.__name__,
             "error_message": str(exc_value)[:500],
             "hook_version": "memory-hook-gateway-v1",
             "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "duration_ms": duration_ms,
+            "status": "error",
         }
         with metrics_file.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")

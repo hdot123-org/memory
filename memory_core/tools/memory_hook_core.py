@@ -177,7 +177,19 @@ def build_context_package_core(
         """Safely extract a key from a truth_basis dict at runtime."""
         return basis.get(key, default)
 
-    missing_paths = [str(path) for path in required_canonical if not path.exists()]
+    # Canonical files that are expected to be missing in most consumer projects
+    # These are warnings, not errors, and don't trigger degraded status
+    canonical_filenames = {"truth-model.md", "memory-system.md", "memory-routing.md"}
+
+    missing_paths = []
+    missing_canonical_files = []
+    for path in required_canonical:
+        if not path.exists():
+            path_str = str(path)
+            if path.name in canonical_filenames:
+                missing_canonical_files.append(path_str)
+            else:
+                missing_paths.append(path_str)
     project_map_errors = validate_project_map_fn()
     contract_errors = validate_unique_legal_system_contract_fn()
 
@@ -285,6 +297,7 @@ def build_context_package_core(
         "project_scope": project_scope,
         "status": status,
         "missing_paths": missing_paths,
+        "warnings": missing_canonical_files,
         "validation_errors": [
             *project_map_errors,
             *contract_errors,
