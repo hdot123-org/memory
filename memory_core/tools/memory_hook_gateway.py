@@ -2036,7 +2036,7 @@ def main() -> int:
 
     try:
         from .memory_hook_metrics import emit_metrics
-        duration_ms = int((time.time() - start_time) * 1000)
+        duration_ms = max(1, int((time.time() - start_time) * 1000))
         emit_metrics(ARTIFACT_ROOT, args.host, args.event, package, duration_ms=duration_ms)
     except Exception as exc:
         _logger.debug("metrics emit skipped: %s", exc)

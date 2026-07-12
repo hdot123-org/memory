@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sys
 import unittest.mock
 from datetime import datetime, timezone
 from pathlib import Path
@@ -139,10 +138,8 @@ class TestBLayerSigning:
             lambda p: False,
         )
 
-        for mod in list(sys.modules.keys()):
-            if "daily_summary_generator" in mod:
-                del sys.modules[mod]
-
+        # No sys.modules deletion needed: _integrity.sign_project_incremental
+        # resolves at call time, so monkeypatch on the manifest module is sufficient.
         from memory_core.tools.daily_summary_generator import _write_daily_log
 
         _write_daily_log(project, today, [
@@ -218,10 +215,8 @@ class TestCLayerSigning:
             lambda p: False,
         )
 
-        for mod in list(sys.modules.keys()):
-            if "error_logger" in mod:
-                del sys.modules[mod]
-
+        # No sys.modules deletion needed: _integrity.sign_project_incremental
+        # resolves at call time, so monkeypatch on the manifest module is sufficient.
         from memory_core.tools.error_logger import write_error_log
 
         result = write_error_log(
@@ -250,10 +245,8 @@ class TestCLayerSigning:
             lambda p: False,
         )
 
-        for mod in list(sys.modules.keys()):
-            if "error_logger" in mod:
-                del sys.modules[mod]
-
+        # No sys.modules deletion needed: _integrity_keys.load_key
+        # resolves at call time, so monkeypatch is sufficient.
         from memory_core.tools.error_logger import write_error_log
 
         result = write_error_log(

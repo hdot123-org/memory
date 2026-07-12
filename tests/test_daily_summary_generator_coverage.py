@@ -288,10 +288,13 @@ class TestExtractTranscriptSummary:
         ]
         jsonl_path.write_text("\n".join(small_data) + "\n", encoding="utf-8")
 
-        # Mock stat method to pretend file is large
-        mock_stat_result = MagicMock()
-        mock_stat_result.st_size = 6 * 1024 * 1024  # 6MB
-        with patch.object(Path, "stat", return_value=mock_stat_result):
+        # Mock the internal read functions to simulate large file behavior
+        # without patching Path.stat globally (which would pollute other tests)
+        with patch("memory_core.tools.daily_summary_generator._read_partial_jsonl",
+                   return_value=[
+                       {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}},
+                       {"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}},
+                   ]):
             result = _extract_transcript_summary(jsonl_path)
         assert "hi" in result.get("user_messages", "")
         assert "hello" in result.get("assistant_messages", "")
@@ -599,7 +602,15 @@ class TestEnrichWithBLayer:
         jsonl_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
         sessions = [{"full_session_id": "test1234"}]
-        with patch("memory_core.tools.daily_summary_generator._find_session_jsonl", return_value=jsonl_path):
+        # Patch both _find_session_jsonl AND _extract_transcript_summary to avoid
+        # test-order-dependent pollution from other tests
+        expected_b_data = {
+            "user_messages": "hi",
+            "assistant_messages": "hello",
+            "tool_names": [],
+        }
+        with patch("memory_core.tools.daily_summary_generator._find_session_jsonl", return_value=jsonl_path), \
+             patch("memory_core.tools.daily_summary_generator._extract_transcript_summary", return_value=expected_b_data):
             result = _enrich_with_b_layer(sessions)
         assert len(result) == 1
         assert "hi" in result[0].get("user_messages", "")

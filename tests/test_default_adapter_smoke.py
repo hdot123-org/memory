@@ -30,6 +30,8 @@ def _reset_to_default_adapter() -> None:
     os.environ["MEMORY_HOOK_ADAPTER"] = "default"
     for name in list(sys.modules.keys()):
         if any(name.startswith(prefix) for prefix in _MODULE_PREFIXES):
+            if "integrity" in name:
+                continue  # Preserve integrity modules to avoid stale refs
             del sys.modules[name]
 
 

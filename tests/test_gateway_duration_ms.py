@@ -67,12 +67,8 @@ def _run_gateway_main(gw, tmp_path, emit_fn, build_fn=None):
         # Patch emit_metrics in the memory_hook_metrics module so the
         # `from .memory_hook_metrics import emit_metrics` inside main() gets our fake.
         from memory_core.tools import memory_hook_metrics
-        original_emit = memory_hook_metrics.emit_metrics
-        memory_hook_metrics.emit_metrics = emit_fn
-        try:
+        with patch.object(memory_hook_metrics, 'emit_metrics', emit_fn):
             return gw.main()
-        finally:
-            memory_hook_metrics.emit_metrics = original_emit
     finally:
         sys.stdin = original_stdin
         sys.argv = original_argv

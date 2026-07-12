@@ -27,6 +27,8 @@ if str(repo_root) not in sys.path:
 def _clear_gateway_modules() -> None:
     for name in list(sys.modules.keys()):
         if name.startswith("memory_core.tools.memory_hook"):
+            if "integrity" in name:
+                continue  # Preserve integrity modules to avoid stale refs
             del sys.modules[name]
 
 
