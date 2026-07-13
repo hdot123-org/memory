@@ -39,3 +39,4 @@ jobs:
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           droid_args: "--model grok-4.5"
+          review_model: "grok-4.5"
