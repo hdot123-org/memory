@@ -139,6 +139,24 @@ ci-ok:
 
 **为什么 CI 不用 GLM-5.2**：GLM-5.2 是 BYOM（自建模型节点），GitHub Actions runner 在公网无法访问私有节点，会超时。Factory 内置模型（grok-4.5）是云端托管，GitHub 服务器可直接调用。
 
+### droid-action 模型设置陷阱（重要）
+
+droid-action 的 `action.yml` **没有 `model` 输入参数**。写 `model: "grok-4.5"` 会被忽略，exec 回退默认 gpt-5.2 被 org policy 封锁。
+
+droid-action 内部有**两个 pass**，各自独立读取模型配置：
+
+| Pass | 用途 | 控制参数 |
+|------|------|---------|
+| exec pass | 执行 @droid 指令 | `droid_args: "--model grok-4.5"` |
+| validator/review pass | PR 审查验证 | `review_model: "grok-4.5"` |
+
+droid.yml 必须同时设置两路（只设一路会导致另一路回退 gpt-5.2 被封）：
+```yaml
+with:
+  droid_args: "--model grok-4.5"   # exec pass
+  review_model: "grok-4.5"          # validator pass
+```
+
 ## 六、@droid 按需协作
 
 在以下任意位置输入 `@droid <指令>` 即可触发 AI 协作：
