@@ -30,16 +30,15 @@ git commit -m "<type>: 简要描述"
 git push -u origin <branch>
 gh pr create --base main --title "<type>: 简要描述" --body "改动说明"
 
-# 5. 等待双门禁通过（人/Agent 均可轮询）
-gh pr checks <PR编号> --watch
+# 5. 设置自动合并（双门禁通过后自动 squash 合并 + 删分支）
+gh pr merge <PR编号> --squash --delete-branch --auto
 
-# 6. 合并（squash，自动删除分支，不加 --admin）
-gh pr merge <PR编号> --squash --delete-branch
-
-# 7. 同步本地 main
+# 6. 同步本地 main（自动合并完成后）
 git checkout main
 git pull origin main
 ```
+
+> `--auto` 模式：门禁（ci-ok + droid-review）一通过就自动合并。设好后本地可关机，合并由 GitHub 云端完成。
 
 ### 分支命名规范
 
