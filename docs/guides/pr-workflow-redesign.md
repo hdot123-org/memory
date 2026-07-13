@@ -1,150 +1,249 @@
-# PR 流程改造方案
+# GitHub PR 流程标准规范
 
-## 一、问题诊断
+> 本文件是本仓库所有 PR 与 CI 操作的权威规范。人（human）和 Agent 都必须遵守。
 
-改造前 3 个问题形成恶性循环：
+## 一、核心原则
 
-| 问题 | 现状 | 后果 |
+1. **GitHub 为主仓库**：所有开发、审查、CI 在 GitHub 上完成
+2. **双门禁**：每个 PR 必须通过 `ci-ok`（功能正确性）+ `droid-review`（AI 安全审查）才能合并
+3. **禁止 `--admin`**：不允许用管理员权限绕过门禁强制合并
+4. **本地与云端分离**：CI 在 GitHub 云服务器执行，不依赖本地电脑在线
+
+## 二、完整 PR 生命周期
+
+### 标准操作流程（SOP）
+
+```bash
+# 1. 从最新 main 创建 feature 分支
+git checkout main
+git pull origin main
+git checkout -b <type>/<short-description>
+
+# 2. 修改代码 → 暂存 → 审查 diff（检查无密钥）
+git add <files>
+git diff --cached
+
+# 3. 提交（commit 消息必须用中文）
+git commit -m "<type>: 简要描述"
+
+# 4. 推送并创建 PR
+git push -u origin <branch>
+gh pr create --base main --title "<type>: 简要描述" --body "改动说明"
+
+# 5. 等待双门禁通过（人/Agent 均可轮询）
+gh pr checks <PR编号> --watch
+
+# 6. 合并（squash，自动删除分支，不加 --admin）
+gh pr merge <PR编号> --squash --delete-branch
+
+# 7. 同步本地 main
+git checkout main
+git pull origin main
+```
+
+### 分支命名规范
+
+```
+<type>/<short-description>
+```
+
+| type | 含义 | 示例 |
 |------|------|------|
-| CI 不在 PR 上跑 | `ci.yml` 只在 `push: main` 触发 | PR 合并前无测试验证 |
-| auto-review.yml 不提交 approval | 只发评论，不做正式 review 门禁 | review 检查形同虚设 |
-| Agent 用 `--admin` 强制合并 | 绕过所有 branch protection 规则 | 代码未经审查直接进 main |
+| `feat` | 新功能 | `feat/add-export` |
+| `fix` | 修复 bug | `fix/null-pointer` |
+| `ci` | CI/工作流变更 | `ci/grok-model` |
+| `docs` | 文档变更 | `docs/update-guide` |
+| `refactor` | 重构 | `refactor/extract-module` |
+| `test` | 测试补充 | `test/cover-boundary` |
 
-## 二、改造结果（PR #75 已合并）
+### Commit 消息规范
 
-### 门禁设计：ci-ok 做唯一 required check
+- **必须用中文**
+- 格式：`<type>: 中文描述`
+- 示例：`fix: 修复 discover_project_root 根目录解析错误`
 
-放弃 "Droid approval 做门禁" 的方案（见下方踩坑），改用 `ci-ok` 聚合门禁做唯一的 required status check。
+## 三、CI 架构
 
-`ci-ok` 是一个聚合 job（`if: always()`），只有当所有 test job 成功时才通过，否则失败。这样只需在 branch protection 里配一个 check，不用逐个配 4 个 test job。
+### 执行环境
+
+```
+本地电脑                      GitHub 云端
+┌──────────────┐             ┌──────────────────────────┐
+│ 写代码        │  git push   │  GitHub Actions Runner    │
+│ commit       │ ──────────► │  （GitHub 服务器）         │
+│ push         │             │                          │
+│              │             │  • test 矩阵 (Py 3.9-3.12)│
+│              │ ◄────────── │  • ci-ok 聚合门禁         │
+│              │  合并结果    │  • droid-review AI 审查   │
+│              │             │    （调 grok-4.5 云端）    │
+└──────────────┘             └──────────────────────────┘
+```
+
+- **push 后本地电脑可关机**，CI 在 GitHub 服务器上独立运行
+- CI 调用的 AI 模型（grok-4.5）是 Factory 托管的**云端模型**，GitHub 服务器可直接访问
+- 之前 GLM-5.2 不可用就是因为它是本地私有节点上的模型，GitHub 服务器访问不到
 
 ### 工作流文件清单
 
-| 文件 | 职责 |
-|------|------|
-| `ci.yml` | test 矩阵（Py 3.9-3.12）+ `ci-ok` 聚合门禁 |
-| `droid-review.yml` | PR 自动 AI 审查 + 安全审查（非门禁，仅反馈） |
-| `droid.yml` | `@droid` 标签触发的按需 AI 协作 |
+| 文件 | 触发方式 | 职责 | 是否门禁 |
+|------|---------|------|---------|
+| `ci.yml` | push:main + 所有 PR | test 矩阵 + ci-ok 聚合 | **ci-ok 是门禁** |
+| `droid-review.yml` | PR 创建/更新 | AI 代码审查 + 安全审查 | **是门禁** |
+| `droid.yml` | 手动写 `@droid` | 按需 AI 协作（改代码、查问题） | 否 |
 
-> `auto-review.yml` 已删除（旧 lint/size/secret 检查，职责被 droid-review 覆盖）。
-
-### ci.yml 关键改动
+### ci.yml 设计要点
 
 ```yaml
 on:
   push:
     branches: [main]
-    paths: [...]        # push 保留 paths 过滤
-  pull_request:         # ← 新增：PR 触发，不加 paths 过滤
-    branches: [main]    #   确保 ci-ok 在每个 PR 上都报告
-
-jobs:
-  test:
-    ...
-  ci-ok:                # ← 新增：聚合门禁
-    needs: [test]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            exit 1
-          fi
+    paths: [...]        # push 保留 paths 过滤（非匹配不触发回归）
+  pull_request:
+    branches: [main]    # ← PR 不加 paths 过滤！
 ```
 
-**为什么 pull_request 不加 paths 过滤**：branch protection 的 required check 必须在每个 PR 上都报告。如果加了 paths 过滤，不匹配的 PR 不会有 ci-ok 报告，会被 branch protection 卡住（等待永不出现的 check）。
+**关键规则**：`pull_request` **不做 paths 过滤**。因为 branch protection 的 required check 必须在每个 PR 上都报告。如果加了 paths 过滤，纯文档 PR 等不匹配的 PR 不会有 ci-ok 报告，会被 branch protection 永久卡住（等待永不出现的 check）。
 
-### droid-review.yml 配置
-
-- `automatic_review: true` + `automatic_security_review: true`
-- `review_model: claude-opus-4-8`（见模型踩坑）
-- `review_depth: deep`
-- 第三方 action SHA-pinned: `Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3`
-- `author_association` 检查：只响应 OWNER/MEMBER/COLLABORATOR（防 fork-PR secret 泄露）
-
-### Branch Protection 配置
-
-| 规则 | 值 |
-|------|-----|
-| Required status checks | `ci-ok`（唯一） |
-| Require PR reviews | `required_approving_review_count: 0`（已移除） |
-| Require branches up to date | true（strict） |
-| Enforce for admins | false |
-
-## 三、改造后的完整流程
-
-```
-Agent/人 代码变更
-      │
-      ├── git checkout -b <branch>
-      ├── git add + commit + push
-      ├── gh pr create
-      │
-      ▼
-  PR 创建
-      │
-      ┌─────────────┬──────────────────┐
-      ▼             ▼                  ▼
-   ci.yml      droid-review.yml    (并行运行)
-   test ×4     AI 审查（非门禁）
-   ci-ok ←──── 门禁
-      │             │
-      └──────┬──────┘
-             ▼
-   ci-ok 通过（droid-review 仅参考）
-             │
-             ▼
-   gh pr merge --squash --delete-branch
-   （不用 --admin）
+```yaml
+ci-ok:
+  needs: [test]
+  if: always()
+  steps:
+    - run: |
+        if [ "${{ needs.test.result }}" != "success" ]; then exit 1; fi
 ```
 
-## 四、踩坑记录
+`ci-ok` 是**聚合门禁**：branch protection 只需 required 这一个 check（而非 4 个 test job）。改动 test 矩阵时无需同步调整 protection 配置。
 
-### 踩坑 1：FACTORY_API_KEY 通过管道设置会损坏
+## 四、Branch Protection 规则（main）
 
-`gh secret set FACTORY_API_KEY --body -`（从管道读取）会静默失败，secret 变成长度 1 的 `*`。
+| 规则 | 值 | 说明 |
+|------|-----|------|
+| Required status checks | `ci-ok` + `droid-review` | 双门禁 |
+| Require branches up to date | true（strict） | 合并前必须基于最新 main |
+| Require PR reviews | 0（已移除） | 不依赖人工 approve |
+| Enforce for admins | false | 保留 `--admin` 作紧急通道（**正常流程禁止使用**） |
 
-**正确做法**：`gh secret set FACTORY_API_KEY --body 'fk-...'`（直接传值）。
+> **不要把 `droid` 或 `test` 等加为 required check**：`droid` 只在 `@droid` 触发时跑（普通 PR 显示 skipping），设为 required 会导致永久阻塞。`test` 由 `ci-ok` 聚合，无需单独 required。
 
-### 踩坑 2：模型可用性
+## 五、AI 模型配置
 
-droid-action 默认硬编码 `--model "gpt-5.2"`，被 org policy 封锁。可用模型排查：
+| 场景 | 模型 | 位置 |
+|------|------|------|
+| droid-review（CI 门禁） | grok-4.5 | Factory 云端（GitHub 可达） |
+| @droid（CI 按需协作） | grok-4.5 | Factory 云端 |
+| 本地 Droid CLI | GLM-5.2（BYOM） | 本地私有节点（仅本地可达） |
+
+**为什么 CI 不用 GLM-5.2**：GLM-5.2 是 BYOM（自建模型节点），GitHub Actions runner 在公网无法访问私有节点，会超时。Factory 内置模型（grok-4.5）是云端托管，GitHub 服务器可直接调用。
+
+## 六、@droid 按需协作
+
+在以下任意位置输入 `@droid <指令>` 即可触发 AI 协作：
+
+| 在哪写 | 场景 |
+|--------|------|
+| PR 评论 | `@droid 给这个函数加测试` |
+| PR 代码行 review 评论 | `@droid 这里改成异步` |
+| PR 标题/正文 | 创建时触发 |
+| Issue 评论 | `@droid 复现这个 bug` |
+| 新建 Issue（标题/正文含 @droid） | 开新任务 |
+
+**安全限制**：只有 OWNER / MEMBER / COLLABORATOR 能触发（陌生人或 fork PR 写 `@droid` 无效）。
+
+## 七、操作纪律
+
+### PR 合并后三件事
+
+1. **删除 feature 分支** — squash merge 的 `--delete-branch` 自动完成
+2. **检查 CI 状态** — `gh run list --branch main --limit 1`，确认 main 的 CI 通过
+3. **同步本地** — `git checkout main && git pull origin main`
+
+### 禁止事项
+
+| 禁止 | 原因 |
+|------|------|
+| `gh pr merge --admin` | 绕过双门禁，代码未经审查进 main |
+| 直接 push main | main 受保护，必须走 feature 分支 + PR |
+| `--force` push 到 main | 破坏历史 |
+| 提交 API key/token/密码 | 公开仓库，立即泄露 |
+
+### Commit 前安全检查
+
+```bash
+git diff --cached | grep -iE '(password|secret|api_key|token|fk-).*=' 
+# 有匹配则停止提交，移除敏感信息
+```
+
+### CI 失败处理
+
+- CI 失败不得继续，必须修复后才能合并
+- 禁止 force push 绕过 CI
+- 持续失败时回滚或修复，不绕过
+
+## 八、droid-review 失败/卡住怎么办
+
+droid-review 作为门禁，若因模型超时或临时故障失败：
+
+```bash
+# 重跑该 workflow
+gh run rerun <run-id> --repo hdot123/memory --failed
+
+# 或在 PR 页面点 "Re-run failed jobs"
+```
+
+`enforce_admins: false` 保留了 `--admin` 作**仅限紧急情况**的通道，正常流程禁止使用。
+
+## 九、踩坑记录（操作参考）
+
+### 踩坑 1：FACTORY_API_KEY 管道设置会损坏
+
+`gh secret set FACTORY_API_KEY --body -`（管道读取）会静默失败，secret 变成长度 1 的 `*`，导致 CI 报 "Authentication failed"。
+
+**正确**：`gh secret set FACTORY_API_KEY --body 'fk-...'`（直接传值）。
+
+### 踩坑 2：模型 org policy 封锁
+
+droid-action 默认硬编码 `--model "gpt-5.2"`，被 org policy 封锁，CI 报错。需显式指定可用模型。
 
 | 模型 | 本地 | CI | 原因 |
 |------|------|----|------|
 | gpt-5.2 | ✓ | ✗ | org policy 封锁 |
-| GLM-5.2（BYOM） | ✓ | ✗ | BYOM node 从 GitHub Actions runner 不可达，超时 |
-| claude-opus-4-8 | ✓ | ✓ | 最终选用 |
+| GLM-5.2（BYOM） | ✓ | ✗ | GitHub runner 不可达私有节点 |
+| claude-opus-4-8 | ✓ | ✓ | 可用 |
+| grok-4.5 | ✓ | ✓ | **当前选用** |
 
-**结论**：CI 里用 `claude-opus-4-8`。
+### 踩坑 3：GitHub Actions contains() 参数顺序
 
-### 踩坑 3：Droid approval 无法提交（action bug）
-
-droid exec 正确判定 `status: "approved"`（0 issues），但 action 后处理日志显示 `IS_PR: false`，导致 APPROVED review 没有提交到 GitHub（只提交了 COMMENTED）。
-
-**务实方案**：不依赖 review approval 做门禁，用 `ci-ok` 做唯一 required check。droid-review 照常运行提供 AI 审查反馈，但不阻塞合并。
-
-### 踩坑 4：GitHub Actions contains() 参数顺序
-
-`contains(github.event.pull_request.author_association, 'OWNER')` 是错的。正确语法是 `contains(haystack, needle)`，字符串在前、子串在后。实际应写：
+`contains(github.event.pull_request.author_association, 'OWNER')` 是错的。正确语法 `contains(haystack, needle)`：
 
 ```yaml
 if: contains('OWNER,MEMBER,COLLABORATOR', github.event.pull_request.author_association)
 ```
 
-## 五、铁律
+### 踩坑 4：stale required check 导致永久 BLOCKED
 
-- **禁止 `--admin` 合并**：所有 PR 必须通过 `ci-ok` + `droid-review` 双门禁
-- **commit 消息用中文**
-- **合并后删除 feature 分支**
-- **合并后检查 main 的 CI 状态**（`gh run list --branch main --limit 1`）
+删除 `auto-review.yml` 后，branch protection 里残留的 `review` check 永远不会报告，导致所有 PR 永久 BLOCKED。**删除 workflow 前必须先从 branch protection 移除对应 required check**。
 
-## 六、验证状态
+可用 GraphQL 更新（REST `/branches/main/protection` 可能被 hook 拦截）：
 
-| 验证项 | 结果 |
-|--------|------|
-| ci.yml 在 PR 上全量跑 | ✓（PR #75 #76） |
-| ci-ok 聚合门禁 | ✓ |
-| droid-review 安全审查 | ✓（claude-opus-4-8，~15min） |
-| branch protection 双门禁 | ✓（ci-ok + droid-review） |
-| 无 --admin 合并 | ✓（PR #75 #76 均 squash 合并） |
+```bash
+gh api graphql -f query='mutation {
+  updateBranchProtectionRule(input: {
+    branchProtectionRuleId: "<RULE_ID>"
+    requiresStatusChecks: true
+    requiresStrictStatusChecks: true
+    requiredStatusCheckContexts: ["ci-ok", "droid-review"]
+  }) { branchProtectionRule { requiredStatusCheckContexts } }
+}'
+```
+
+## 十、验证状态
+
+| 验证项 | 结果 | PR |
+|--------|------|----|
+| ci.yml 在 PR 上全量跑 | ✓ | #75 |
+| ci-ok 聚合门禁 | ✓ | #75 #76 #77 |
+| droid-review 安全审查 | ✓ | #75（首次） |
+| branch protection 双门禁（ci-ok + droid-review） | ✓ | #76 起生效 |
+| grok-4.5 CI 可用 | ✓ | #78 |
+| 无 --admin 合并 | ✓ | #75 #76 #77 #78 |
