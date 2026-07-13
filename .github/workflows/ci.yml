@@ -52,6 +52,12 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Health check (validate + pollution)
         run: bash scripts/ci_health_check.sh
+      - name: Full integration test
+        # exit 0 = all pass, 2 = warnings/skips only (expected on CI runner
+        # which has no local consumer projects), 1 = actual failure
+        run: |
+          python scripts/test_full_integration.py || code=$?
+          if [ "${code:-0}" = "1" ]; then exit 1; fi
 
   advisory-security:
     name: Advisory dependency security scan

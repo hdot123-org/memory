@@ -70,9 +70,9 @@ if 'jobs' not in data:
         fi
     fi
 
-    # 3. Verify required jobs exist
+    # 3. Verify core required jobs exist (ci-ok is the aggregate gate)
     if [ "$errors" -eq 0 ]; then
-        REQUIRED_JOBS=("test" "advisory-security")
+        REQUIRED_JOBS=("test" "ci-ok")
         MISSING_JOBS=""
         for job in "${REQUIRED_JOBS[@]}"; do
             if ! python3 -c "
@@ -95,7 +95,7 @@ sys.exit(0 if '$job' in jobs else 1)
             echo "✗ Missing required jobs: $MISSING_JOBS"
             errors=$((errors + 1))
         else
-            echo "✓ Required jobs (test, advisory-security) present"
+            echo "✓ Required jobs (test, ci-ok) present"
         fi
     fi
 
