@@ -361,7 +361,7 @@ tests/ (32 个文件) ────────────▶ 覆盖上述所有
 | `pyproject.toml` | 构建配置: setuptools, 项目元数据, entry points (memory-init/migrate/validate), pytest/ruff 配置 |
 | `ruff.toml` | Ruff linter 配置: py39, 120 行限制, E/F/W/I 规则 |
 | `.gitignore` | Git 忽略规则 |
-| `.gitlab-ci.yml` | GitLab CI 配置 |
+| `.github/workflows/ci.yml` | GitHub Actions CI 配置 |
 | `MANIFEST.in` | 打包清单 |
 | `.github/` | GitHub 配置目录 |
 

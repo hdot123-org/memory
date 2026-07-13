@@ -7,79 +7,53 @@
 
 ## Workflow
 
-**This project follows a GitLab-first development flow. All projects managed via Factory/Droid must comply.**
+**This project follows a GitHub PR workflow with dual-gate approval.**
 
-### Iron Rule: GitLab → GitHub (one-way mirror)
+### Dual-Gate Approval Process
 
-1. **All code changes flow through GitLab first.**
-   - Create feature branch from `main` on GitLab.
-   - Push to GitLab, create Merge Request.
-   - CI pipeline (lint + test + health-check) must pass before merge.
-   - Only merge to `main` after CI green.
+1. **All code changes flow through feature branches and pull requests.**
+   - Create feature branch from `main` on GitHub.
+   - Push to GitHub, create Pull Request.
+   - CI pipeline (ruff + pytest) must pass (ci-ok gate).
+   - Code review by droid must pass (droid-review gate).
+   - Squash merge to `main` after both gates green.
 
-2. **GitHub is a read-only mirror.**
-   - Only GitLab CI can push to GitHub (sync-to-github job).
-   - **Never push directly to GitHub from any machine, agent, or CI runner.**
-   - Violating this rule breaks the single-source-of-truth guarantee.
+2. **No direct pushes to `main`.**
+   - All changes require PR approval.
+   - Violating this rule bypasses the dual-gate protection.
 
-3. **Agents (Factory/Droid) must not bypass this flow.**
-   - Use `git push gitlab <branch>` only.
-   - Create MR via GitLab API or push options.
-   - Wait for CI pipeline to pass.
-   - Merge MR via GitLab API.
+3. **Agents (Factory/Droid) must follow this flow.**
+   - Use `git push origin <branch>` to push feature branches.
+   - Create PR via GitHub UI or `gh pr create`.
+   - Wait for both ci-ok and droid-review gates to pass.
+   - Squash merge PR via GitHub.
 
 ### Step-by-step
 
 1. Create a feature branch from `main`: `git checkout -b feature/xxx`
 2. Make focused changes and keep generated or local-only artifacts out.
 3. Run local checks: `ruff check . && python -m pytest tests/`
-4. Push to GitLab: `git push -u gitlab feature/xxx`
-5. Create MR (via push options or GitLab UI/API).
-6. Wait for CI pipeline to pass (test + health-check).
-7. Merge MR. CI will auto-sync to GitHub.
-
-### memory-init sync bootstrap
-
-For consumer projects initialized by memory-core, run `memory-init --sync` to generate:
-- `.gitlab-ci.yml` with `test` -> `health-check` -> `sync-to-<mirror>` hard gate flow.
-- `.memory/skills/gitlab_sync_workflow.yaml` with `submit_gitlab`, `merge_after_ci`, `sync_github` skill workflow.
-
-Mirror sync requires CI secret variable `<MIRROR_REMOTE>_TOKEN` (example: `GITHUB_TOKEN`).
-This variable must be stored in GitLab CI/CD Variables as masked + protected.
-
-### Violations
-
-If code is accidentally pushed directly to GitHub:
-1. Do NOT attempt to fix by pushing more code.
-2. Revert the GitHub commit.
-3. Re-submit the change through GitLab MR flow.
-4. Verify CI sync restores consistency.
+4. Push to GitHub: `git push -u origin feature/xxx`
+5. Create PR: `gh pr create --title "..." --body "..."`
+6. Wait for dual-gate approval (ci-ok + droid-review).
+7. Squash merge PR after both gates green.
 
 ## CI
 
-### GitLab CI (primary)
-
-| Stage | Job | Trigger | Purpose |
-|-------|-----|---------|---------|
-| test | `test` | push | ruff lint + pytest |
-| health-check | `health-check` | push | boundary + structure validation, CI config integrity (non-empty, valid YAML, required stages) |
-| sync | `sync-to-github` | merge to main | push to GitHub mirror |
-
-The `sync-to-github` job only runs after test + health-check both pass.
-
-The `health-check` stage runs `scripts/ci_health_check.sh` which validates:
-- Memory system integrity (`validate_memory_system.py`)
-- Pollution detection (`--check pollution`)
-- CI config integrity (`.gitlab-ci.yml` non-empty, valid YAML, required stages: test/health_check/sync)
-
-### GitHub Actions (mirror-only)
+### GitHub Actions (primary)
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `ci.yml` | push/PR to `main` | ruff lint + pytest (mirror validation) |
-| `release-and-dispatch.yml` | tag `v*` | release pipeline |
+| `ci.yml` | push/PR to `main` | ruff lint + pytest (ci-ok gate) |
+| `release.yml` | tag `v*` | release pipeline |
 
-GitHub Actions run for validation only; all merges happen on GitLab.
+The `ci.yml` workflow validates:
+- Ruff lint passes
+- pytest suite passes
+- Memory system integrity
+- Boundary guard checks
+
+**Dual-gate approval:** PRs require both ci-ok (CI passes) and droid-review (code review passes) before squash merge.
 
 ## Local development
 

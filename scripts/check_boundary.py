@@ -69,9 +69,9 @@ LEAK_SCAN_ROOTS: tuple[Path, ...] = (
 EXEMPT_PATH_FRAGMENTS: tuple[str, ...] = (
     "archive/",
     "memory/docs/system/audit/",
+    "memory/docs/design/",  # local-only gitignored design docs
     "memory/log/",
     "memory/docs/runbooks/",
-    "memory/docs/design/12-linear-droid-gitlab-pipeline.md",
     "memory/kb/infra/",
     "memory/kb/decisions/d-002-ci-pytest-strategy.md",
     "RESIDUE_INVENTORY.md",

@@ -28,7 +28,7 @@ Two-layer architecture:
 
 ## Development Rules
 - This is a source-repo-readonly repository: only explore, never modify protected paths
-- Follow GitLab-first workflow: push to GitLab, never directly to GitHub
+- Follow GitHub PR workflow: push to feature branch, open PR, pass dual-gate (ci-ok + droid-review), squash merge
 - Use conventional commits: feat:, fix:, chore:, docs:
 - Target Python 3.9+
 - Boundary defined in `memory/docs/system/BOUNDARY.md`

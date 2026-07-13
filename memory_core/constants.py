@@ -41,11 +41,6 @@ SOURCE_REPO_MODE_READONLY = "readonly"
 SOURCE_REPO_MODE_DEVELOP = "develop"
 VALID_SOURCE_REPO_MODES = (SOURCE_REPO_MODE_READONLY, SOURCE_REPO_MODE_DEVELOP)
 
-# Sync configuration (adapter.toml [sync] section)
-SYNC_DEFAULT_SOURCE_REMOTE = "origin"
-SYNC_DEFAULT_CI_RUNNER = "gitlab"
-VALID_SYNC_CI_RUNNERS = ("gitlab",)
-
 # Migration error codes
 _BACKUP_FAILED = "backup_failed"
 

@@ -1754,10 +1754,6 @@ def init_project_memory(
     force: bool = False,
     no_clobber: bool = False,
     mode: str = "create",
-    sync_enabled: bool = False,
-    sync_source_remote: str = "origin",
-    sync_mirror_remote: str = "",
-    sync_mirror_url: str = "",
     auto_fill: bool = True,
     allow_non_git: bool = False,
 ) -> dict[str, Any]:
@@ -2351,17 +2347,6 @@ def init_project_memory(
         _cleanup_legacy_hooks_json(target, result)
         update_agents_md(target, host=host, result=result, mode=mode)
 
-        # Sync configuration: write CI template + docs (protocol layer only)
-        if sync_enabled:
-            _generate_sync_files(
-                target,
-                project_name=project_name,
-                source_remote=sync_source_remote,
-                mirror_remote=sync_mirror_remote,
-                mirror_url=sync_mirror_url,
-                result=result,
-                force=force,
-            )
 
         # L2: Sign initial manifest after memory/system/ is scaffolded
         # F2: Use sign_project_incremental with changed_paths=所有新建文件相对路径
@@ -2552,30 +2537,6 @@ def main(argv: list[str] | None = None) -> int:
         help="Initialization mode: create (default), adopt, update, or repair.",
     )
     parser.add_argument(
-        "--sync",
-        action="store_true",
-        default=False,
-        help="Enable sync configuration (source-to-mirror CI pipeline + iron rule docs).",
-    )
-    parser.add_argument(
-        "--sync-source-remote",
-        type=str,
-        default="origin",
-        help="Source remote name (default: origin). Used with --sync.",
-    )
-    parser.add_argument(
-        "--sync-mirror-remote",
-        type=str,
-        default="",
-        help="Mirror remote name (e.g. github). Used with --sync.",
-    )
-    parser.add_argument(
-        "--sync-mirror-url",
-        type=str,
-        default="",
-        help="Mirror URL (e.g. github.com/org/repo). Used with --sync.",
-    )
-    parser.add_argument(
         "--no-auto-fill",
         action="store_true",
         default=False,
@@ -2617,10 +2578,6 @@ def main(argv: list[str] | None = None) -> int:
         force=args.force,
         no_clobber=args.no_clobber,
         mode=args.mode,
-        sync_enabled=args.sync,
-        sync_source_remote=args.sync_source_remote,
-        sync_mirror_remote=args.sync_mirror_remote,
-        sync_mirror_url=args.sync_mirror_url,
         auto_fill=not args.no_auto_fill,
         allow_non_git=args.allow_non_git,
     )
@@ -2658,106 +2615,6 @@ def main(argv: list[str] | None = None) -> int:
             _print_post_init_health_summary(target)
 
     return 0 if result["success"] else 1
-
-
-def _generate_sync_files(
-    target: Path,
-    *,
-    project_name: str,
-    source_remote: str,
-    mirror_remote: str,
-    mirror_url: str,
-    result: dict[str, Any],
-    force: bool = False,
-) -> None:
-    """Write sync-related files: .gitlab-ci.yml, adapter.toml [sync], docs blocks.
-
-    Pure text generation -- no remote API calls.
-    """
-    try:
-        from .adapter_toml_schema import SyncConfig, dump_sync_toml
-        from .template_sync import (
-            generate_agents_md_sync_block,
-            generate_contributing_sync_block,
-            generate_gitlab_ci_yml,
-            generate_skill_workflow_yaml,
-        )
-    except ImportError:
-        from memory_core.tools.adapter_toml_schema import (  # type: ignore
-            SyncConfig,
-            dump_sync_toml,
-        )
-        from memory_core.tools.template_sync import (  # type: ignore
-            generate_agents_md_sync_block,
-            generate_contributing_sync_block,
-            generate_gitlab_ci_yml,
-            generate_skill_workflow_yaml,
-        )
-
-    sync = SyncConfig(
-        enabled=True,
-        source_remote=source_remote,
-        mirror_remote=mirror_remote,
-        mirror_url=mirror_url,
-    )
-
-    # 1. .gitlab-ci.yml
-    ci_path = target / ".gitlab-ci.yml"
-    if not ci_path.exists() or force:
-        ci_content = generate_gitlab_ci_yml(sync, project_slug=project_name)
-        ci_path.write_text(ci_content, encoding="utf-8")
-        result["created"].append("file:.gitlab-ci.yml (sync)")
-    else:
-        result["skipped"].append("file:.gitlab-ci.yml (exists, use --force)")
-
-    # 2. Skill workflow template
-    skills_dir = target / "memory" / "system" / "skills"
-    skills_dir.mkdir(parents=True, exist_ok=True)
-    skill_path = skills_dir / "gitlab_sync_workflow.yaml"
-    if not skill_path.exists() or force:
-        skill_content = generate_skill_workflow_yaml(sync)
-        skill_path.write_text(skill_content, encoding="utf-8")
-        result["created"].append("file:memory/system/skills/gitlab_sync_workflow.yaml")
-    else:
-        result["skipped"].append("file:memory/system/skills/gitlab_sync_workflow.yaml (exists, use --force)")
-
-    # 3. Append [sync] to adapter.toml
-    adapter_path = target / "memory" / "system" / "adapter.toml"
-    if adapter_path.exists():
-        existing = adapter_path.read_text(encoding="utf-8")
-        toml_additions = ""
-        if "[sync]" not in existing:
-            toml_additions += dump_sync_toml(sync)
-
-        if toml_additions:
-            adapter_path.write_text(existing + toml_additions, encoding="utf-8")
-            result["created"].append("file:memory/system/adapter.toml [sync] section")
-        else:
-            result["skipped"].append("file:memory/system/adapter.toml [sync] (exists)")
-    else:
-        result["warnings"].append("adapter.toml not found; [sync] not written")
-
-    # 4. Append iron rule block to AGENTS.md
-    agents_path = target / "AGENTS.md"
-    sync_block = generate_agents_md_sync_block(sync)
-    if sync_block and agents_path.exists():
-        content = agents_path.read_text(encoding="utf-8")
-        if "SYNC_IRON_RULE_BEGIN" not in content:
-            agents_path.write_text(content.rstrip("\n") + "\n\n" + sync_block, encoding="utf-8")
-            result["created"].append("file:AGENTS.md (sync iron rule)")
-        else:
-            result["skipped"].append("file:AGENTS.md (sync iron rule exists)")
-
-    # 5. Append contributing section
-    contrib_path = target / "CONTRIBUTING.md"
-    contrib_block = generate_contributing_sync_block(sync)
-    if contrib_block and contrib_path.exists():
-        content = contrib_path.read_text(encoding="utf-8")
-        if "Sync Rule" not in content:
-            contrib_path.write_text(content.rstrip("\n") + "\n\n" + contrib_block, encoding="utf-8")
-            result["created"].append("file:CONTRIBUTING.md (sync rule)")
-        else:
-            result["skipped"].append("file:CONTRIBUTING.md (sync rule exists)")
 
 
 def _print_post_init_health_summary(target: Path) -> None:
