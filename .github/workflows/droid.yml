@@ -38,4 +38,4 @@ jobs:
         uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-          model: "claude-opus-4-8"
+          model: "grok-4.5"
