@@ -1,7 +1,3 @@
-# GitHub is the primary repository for this project.
-# All development, code review (PRs), and CI happen on GitHub.
-# GitLab remote is retained for historical backup only.
-
 name: ci
 
 on:
@@ -60,7 +56,6 @@ jobs:
   advisory-security:
     name: Advisory dependency security scan
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
       contents: read
     steps:
@@ -80,7 +75,6 @@ jobs:
   advisory-telemetry-audit:
     name: Advisory telemetry coverage audit
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Telemetry coverage audit
@@ -91,13 +85,21 @@ jobs:
   ci-ok:
     name: ci-ok
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [test, advisory-security, advisory-telemetry-audit]
     if: always()
     steps:
-      - name: Verify test job succeeded
+      - name: Verify all required jobs succeeded
         run: |
+          echo "test: ${{ needs.test.result }}"
+          echo "advisory-security: ${{ needs.advisory-security.result }}"
+          echo "advisory-telemetry-audit: ${{ needs.advisory-telemetry-audit.result }}"
           if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "test job result: ${{ needs.test.result }}"
-            exit 1
+            echo "FAIL: test did not succeed"; exit 1
           fi
-          echo "All matrix test jobs succeeded."
+          if [ "${{ needs.advisory-security.result }}" != "success" ]; then
+            echo "FAIL: dependency security scan did not succeed"; exit 1
+          fi
+          if [ "${{ needs.advisory-telemetry-audit.result }}" != "success" ]; then
+            echo "FAIL: telemetry coverage audit did not succeed"; exit 1
+          fi
+          echo "All required jobs succeeded."

@@ -1,6 +1,6 @@
 ## Description
 
-<!-- What does this MR/PR do? -->
+<!-- What does this PR do? -->
 
 ## Type of Change
 
@@ -23,4 +23,4 @@
 - [ ] Version in `pyproject.toml` is updated (if releasing)
 - [ ] CHANGELOG.md is updated
 - [ ] No real local paths or sensitive data in the diff
-- [ ] Changes follow the GitLab-first flow (pushed to GitLab, not directly to GitHub)
+- [ ] Changes follow the GitHub PR flow (feature branch + PR, not direct push to main)

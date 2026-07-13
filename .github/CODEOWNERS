@@ -12,7 +12,6 @@
 
 # CI/CD configuration
 /.github/           @hdot123
-/.gitlab-ci.yml     @hdot123
 
 # Documentation
 /docs/              @hdot123
