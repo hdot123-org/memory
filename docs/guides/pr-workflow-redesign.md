@@ -134,7 +134,17 @@ if: contains('OWNER,MEMBER,COLLABORATOR', github.event.pull_request.author_assoc
 
 ## 五、铁律
 
-- **禁止 `--admin` 合并**：所有 PR 必须通过 `ci-ok` 门禁
+- **禁止 `--admin` 合并**：所有 PR 必须通过 `ci-ok` + `droid-review` 双门禁
 - **commit 消息用中文**
 - **合并后删除 feature 分支**
 - **合并后检查 main 的 CI 状态**（`gh run list --branch main --limit 1`）
+
+## 六、验证状态
+
+| 验证项 | 结果 |
+|--------|------|
+| ci.yml 在 PR 上全量跑 | ✓（PR #75 #76） |
+| ci-ok 聚合门禁 | ✓ |
+| droid-review 安全审查 | ✓（claude-opus-4-8，~15min） |
+| branch protection 双门禁 | ✓（ci-ok + droid-review） |
+| 无 --admin 合并 | ✓（PR #75 #76 均 squash 合并） |
