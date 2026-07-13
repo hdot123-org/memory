@@ -15,7 +15,10 @@ on:
       - 'ruff.toml'
       - '.github/workflows/ci.yml'
       - '.github/workflows/release-and-dispatch.yml'
-  # pull_request is intentionally disabled — all code review happens on GitHub.
+  # pull_request 不做 paths 过滤：required check 必须在所有 PR 上报告，
+  # 否则未触碰 paths 的 PR（如纯文档变更）会因等不到 check 而永久无法合并
+  pull_request:
+    branches: [main]
 
 jobs:
   test:
@@ -82,3 +85,19 @@ jobs:
       - uses: actions/checkout@v4
       - name: Telemetry coverage audit
         run: bash scripts/audit_telemetry_coverage.sh
+
+  # 聚合门禁：branch protection 只需 required 这一个 check，
+  # 改动 test 的 Python 矩阵时无需同步调整 protection 配置
+  ci-ok:
+    name: ci-ok
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: always()
+    steps:
+      - name: Verify test job succeeded
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "test job result: ${{ needs.test.result }}"
+            exit 1
+          fi
+          echo "All matrix test jobs succeeded."
