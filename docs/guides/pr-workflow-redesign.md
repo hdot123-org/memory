@@ -87,7 +87,7 @@ git pull origin main
 
 | 文件 | 触发方式 | 职责 | 是否门禁 |
 |------|---------|------|---------|
-| `ci.yml` | push:main + 所有 PR | test 矩阵 + ci-ok 聚合 | **ci-ok 是门禁** |
+| `ci.yml` | push:main + 所有 PR | test 矩阵 + 依赖安全扫描 + ci-ok 聚合 | **ci-ok 是门禁** |
 | `droid-review.yml` | PR 创建/更新 | AI 代码审查 + 安全审查 | **是门禁** |
 | `droid.yml` | 手动写 `@droid` | 按需 AI 协作（改代码、查问题） | 否 |
 
@@ -106,14 +106,18 @@ on:
 
 ```yaml
 ci-ok:
-  needs: [test]
+  needs: [test, advisory-security, advisory-telemetry-audit]
   if: always()
   steps:
     - run: |
         if [ "${{ needs.test.result }}" != "success" ]; then exit 1; fi
+        if [ "${{ needs.advisory-security.result }}" != "success" ]; then exit 1; fi
+        if [ "${{ needs.advisory-telemetry-audit.result }}" != "success" ]; then exit 1; fi
 ```
 
-`ci-ok` 是**聚合门禁**：branch protection 只需 required 这一个 check（而非 4 个 test job）。改动 test 矩阵时无需同步调整 protection 配置。
+`ci-ok` 是**聚合门禁**：聚合 test 矩阵 + 依赖安全扫描 + 遥测审计。改动 job 列表时无需同步调整 protection 配置。
+
+> **advisory 安全扫描必须真正生效**：不要给被 ci-ok 聚合的 job 加 `continue-on-error: true`，否则它失败也不报红，门禁无法感知。
 
 ## 四、Branch Protection 规则（main）
 
