@@ -86,13 +86,16 @@ Public documentation should be safe for open-source readers.
 ## Release process
 
 1. Update `pyproject.toml` version.
-2. Commit and tag on GitLab:
+2. Commit and push to GitHub:
    ```bash
    git add pyproject.toml
    git commit -m "chore: bump version to x.y.z"
-   git tag vx.y.z
-   git push gitlab main vx.y.z
+   git push origin main
    ```
-3. GitLab CI runs tests and syncs to GitHub.
-4. GitHub release workflow publishes artifacts.
+3. Create and push tag:
+   ```bash
+   git tag vx.y.z
+   git push origin vx.y.z
+   ```
+4. GitHub Actions CI runs tests and release workflow publishes artifacts.
 5. Verify: `pip install memory-core==x.y.z`
