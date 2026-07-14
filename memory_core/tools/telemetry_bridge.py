@@ -269,11 +269,8 @@ class TelemetryBridge:
             api_key = client.api_key
 
             batch_url = f"{host}/batch/"
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            }
-            payload = json.dumps({"batch": batch_items}).encode("utf-8")
+            headers = {"Content-Type": "application/json"}
+            payload = json.dumps({"api_key": api_key, "batch": batch_items}).encode("utf-8")
 
             req = urllib.request.Request(batch_url, data=payload, headers=headers, method="POST")
 
