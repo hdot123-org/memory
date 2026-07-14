@@ -62,7 +62,7 @@ class TestMemoryInitCLI:
             capture_output=True, text=True, cwd=REPO_ROOT,
         )
         assert result.returncode == 0
-        assert "0.8.1" in result.stdout
+        assert "0.9.0" in result.stdout
 
 
 class TestMemoryValidateCLI:
