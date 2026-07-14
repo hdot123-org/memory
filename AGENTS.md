@@ -85,6 +85,20 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 3. **PR 流程** — 推送 feature 分支后创建 PR，通过 code review 后合并
 4. **GitLab 保留** — GitLab remote 保留用于历史备份，但不再作为主开发流程
 
+## 铁律：合并纪律（droid-review 门禁）
+
+**`gh pr merge --admin` 必须先检查 droid-review 失败原因，不可盲目跳过。**
+
+决策流程：
+1. 运行 `gh pr checks <PR#>` 查看所有 check 状态
+2. 如果 droid-review 失败，分析失败原因：
+   - **模型/API 故障**（如 "model unavailable"、"API timeout"、"rate limit"）→ 可接受，使用 `--admin` 合并
+   - **代码审查发现**（P1/P2 bug、security issue、correctness problem）→ **禁止跳过**，必须修复后重新提交
+   - **P3 发现**（typo、style、minor improvement）→ 如果快速修复则修复，否则作为 follow-up 跟踪
+3. 记录 `--admin` 合并的原因到 PR comment，便于后续审计
+
+**ci-ok 门禁已包含 droid-review**：ci.yml 的 ci-ok job 会查询 droid-review check 状态。当 droid-review 失败时，ci-ok 也会失败，阻止标准合并。
+
 ## Linear Gateway
 
 当 session tag 包含 `linear-gateway` 或用户要求处理 Linear issue 时，使用 `linear-gateway` skill。

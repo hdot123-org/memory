@@ -159,3 +159,16 @@ jobs:
             echo "FAIL: telemetry coverage audit did not succeed"; exit 1
           fi
           echo "All required jobs succeeded."
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check droid-review status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash scripts/check_droid_review.sh \
+            "${{ github.event_name }}" \
+            "${{ github.repository }}" \
+            "${{ github.event.pull_request.head.sha }}" \
+            "$GH_TOKEN"
