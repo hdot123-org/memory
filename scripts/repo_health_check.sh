@@ -182,18 +182,25 @@ check_gitlab_residue() {
 
 # ── CHECK 4 (FULL only): Tags/releases alignment ─────────────────────────────
 check_tags_releases() {
+  # Use gh release list to find the latest published release (not git describe,
+  # which only finds ancestor tags and misses releases merged via squash/PR)
   local latest_tag
-  latest_tag="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
-  
+  latest_tag="$(gh release list --limit 50 2>/dev/null | grep -v 'Draft' | grep -v 'Pre-release' | head -1 | awk '{print $1}' || echo "")"
+
+  # Fallback: also try including pre-releases but excluding drafts
   if [[ -z "$latest_tag" ]]; then
-    record "FULL" "tags-releases-align" "FAIL" "no tags found"
+    latest_tag="$(gh release list --limit 50 2>/dev/null | grep -v 'Draft' | head -1 | awk '{print $1}' || echo "")"
+  fi
+
+  if [[ -z "$latest_tag" ]]; then
+    record "FULL" "tags-releases-align" "FAIL" "no published releases found"
     return
   fi
 
-  # Check if latest tag has a published release
+  # Check if latest tag has a published release (not draft)
   local release_info
   release_info="$(gh release view "$latest_tag" --json isDraft,isPrerelease,publishedAt 2>/dev/null || echo "")"
-  
+
   if [[ -z "$release_info" ]]; then
     record "FULL" "tags-releases-align" "FAIL" "${latest_tag} has no release"
     return
@@ -201,7 +208,7 @@ check_tags_releases() {
 
   local is_draft
   is_draft="$(echo "$release_info" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('isDraft', False))")"
-  
+
   if [[ "$is_draft" == "True" ]]; then
     record "FULL" "tags-releases-align" "FAIL" "${latest_tag} is draft"
     return
@@ -210,7 +217,7 @@ check_tags_releases() {
   # Check for orphan drafts (drafts without matching tags)
   local draft_count
   draft_count="$(gh release list --limit 50 2>/dev/null | grep -c 'Draft' || true)"
-  
+
   if [[ "$draft_count" -gt 0 ]]; then
     record "FULL" "tags-releases-align" "FAIL" "${draft_count} orphan draft(s)"
     return
@@ -221,37 +228,49 @@ check_tags_releases() {
 
 # ── CHECK 5 (FULL only): Release workflow health ──────────────────────────────
 check_release_workflow() {
+  # Use gh release list to find the latest published release (not git describe)
   local latest_tag
-  latest_tag="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
-  
+  latest_tag="$(gh release list --limit 50 2>/dev/null | grep -v 'Draft' | grep -v 'Pre-release' | head -1 | awk '{print $1}' || echo "")"
+
+  # Fallback: also try including pre-releases but excluding drafts
   if [[ -z "$latest_tag" ]]; then
-    record "FULL" "release-workflow-health" "FAIL" "no tags"
+    latest_tag="$(gh release list --limit 50 2>/dev/null | grep -v 'Draft' | head -1 | awk '{print $1}' || echo "")"
+  fi
+
+  if [[ -z "$latest_tag" ]]; then
+    record "FULL" "release-workflow-health" "FAIL" "no published releases"
     return
   fi
 
   local run_info
   run_info="$(gh run list --workflow=release-and-dispatch.yml --limit 5 --json status,conclusion,headBranch 2>/dev/null || echo "")"
-  
+
   if [[ -z "$run_info" || "$run_info" == "[]" ]]; then
     record "FULL" "release-workflow-health" "FAIL" "no runs found"
     return
   fi
 
-  # Check if latest run for the tag is success
+  # Check if latest run is success
+  # Priority: main branch (workflow_dispatch re-runs) > tag branch (tag push triggers)
   local latest_conclusion
   latest_conclusion="$(echo "$run_info" | python3 -c "
 import sys, json
 runs = json.load(sys.stdin)
+# First check main branch runs (workflow_dispatch re-triggers)
+main_runs = [r for r in runs if r.get('headBranch','') == 'main']
+if main_runs:
+    print(main_runs[0].get('conclusion','unknown'))
+    sys.exit(0)
+# Then check tag-specific runs
 for r in runs:
-    if r.get('headBranch','') == '${latest_tag}' or r.get('headBranch','').startswith('${latest_tag}'):
+    if r.get('headBranch','') == '${latest_tag}':
         print(r.get('conclusion','unknown'))
-        break
+        sys.exit(0)
+# Fallback to most recent run
+if runs:
+    print(runs[0].get('conclusion','unknown'))
 else:
-    # If no exact match, check the most recent run
-    if runs:
-        print(runs[0].get('conclusion','unknown'))
-    else:
-        print('none')
+    print('none')
 ")"
 
   if [[ "$latest_conclusion" == "success" ]]; then
