@@ -507,10 +507,19 @@ class IntegrationTester:
 
     def _check_single_project_integrity(self, project: Path) -> list[CheckResult]:
         """Check integrity of a single consumer project."""
-        results: list[CheckResult] = []
         project_name = project.name
+        results: list[CheckResult] = []
+        results.extend(self._check_required_files(project, project_name))
+        results.extend(self._check_adapter_toml(project, project_name))
+        results.extend(self._check_ownership_toml(project, project_name))
+        results.extend(self._check_required_dirs(project, project_name))
+        results.extend(self._check_required_indexes(project, project_name))
+        results.extend(self._check_verify_consumer(project, project_name))
+        return results
 
-        # 1. Required files
+    def _check_required_files(self, project: Path, project_name: str) -> list[CheckResult]:
+        """Check that required files exist."""
+        results: list[CheckResult] = []
         required_files = [
             "memory/system/adapter.toml",
             "memory/system/ownership.toml",
@@ -529,23 +538,22 @@ class IntegrationTester:
                     "FAIL",
                     f"{rel_path} missing",
                 ))
+        return results
 
-        # 2. adapter.toml validity
+    def _check_adapter_toml(self, project: Path, project_name: str) -> list[CheckResult]:
+        """Validate adapter.toml."""
+        results: list[CheckResult] = []
         adapter_path = project / "memory/system/adapter.toml"
         if adapter_path.exists() and tomllib:
             try:
                 content = adapter_path.read_text(encoding="utf-8")
                 parsed = tomllib.loads(content)
-
-                # Check required fields
                 core = parsed.get("core", {})
                 routing = parsed.get("routing", {})
-
                 required_adapter_fields = {
                     "host": routing.get("host"),
                     "version": core.get("version"),
                 }
-
                 missing = [k for k, v in required_adapter_fields.items() if not v]
                 if missing:
                     results.append(CheckResult(
@@ -572,15 +580,16 @@ class IntegrationTester:
                 "SKIP",
                 "tomllib not available (Python < 3.11, tomli not installed)",
             ))
+        return results
 
-        # 3. ownership.toml validity
+    def _check_ownership_toml(self, project: Path, project_name: str) -> list[CheckResult]:
+        """Validate ownership.toml."""
+        results: list[CheckResult] = []
         ownership_path = project / "memory/system/ownership.toml"
         if ownership_path.exists() and tomllib:
             try:
                 content = ownership_path.read_text(encoding="utf-8")
                 parsed = tomllib.loads(content)
-
-                # Check for schema_version and memory_version
                 schema_version = parsed.get("schema_version")
                 memory_version = parsed.get("memory_version")
 
@@ -628,8 +637,11 @@ class IntegrationTester:
                 "SKIP",
                 "tomllib not available (Python < 3.11, tomli not installed)",
             ))
+        return results
 
-        # 4. Required directories
+    def _check_required_dirs(self, project: Path, project_name: str) -> list[CheckResult]:
+        """Check that required directories exist."""
+        results: list[CheckResult] = []
         required_dirs = [
             "memory/kb",
             "memory/docs",
@@ -649,8 +661,11 @@ class IntegrationTester:
                     "FAIL",
                     f"{rel_path}/ missing",
                 ))
+        return results
 
-        # 5. Required indexes
+    def _check_required_indexeses(self, project: Path, project_name: str) -> list[CheckResult]:
+        """Check that required INDEX files exist."""
+        results: list[CheckResult] = []
         required_indexes = [
             "INDEX.md",
             "memory/kb/INDEX.md",
@@ -669,8 +684,11 @@ class IntegrationTester:
                     "FAIL",
                     f"{rel_path} missing",
                 ))
+        return results
 
-        # 7. Run verify_consumer
+    def _check_verify_consumer(self, project: Path, project_name: str) -> list[CheckResult]:
+        """Run verify_consumer and report results."""
+        results: list[CheckResult] = []
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "memory_core.tools.verify_consumer", "--path", str(project), "--json"],
@@ -686,7 +704,6 @@ class IntegrationTester:
                     "verify_consumer passed",
                 ))
             else:
-                # Try to parse JSON output for details
                 try:
                     report = json.loads(result.stdout)
                     failed = report.get("failed_count", 0)
@@ -707,7 +724,6 @@ class IntegrationTester:
                 "WARN",
                 f"Failed to run verify_consumer: {exc}",
             ))
-
         return results
 
     # -------------------------------------------------------------------------

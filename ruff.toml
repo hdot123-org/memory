@@ -3,16 +3,25 @@ line-length = 120
 exclude = ["memory_core/workspace", "workspace", "templates"]
 
 [lint]
-select = ["E", "F", "W", "I"]
+select = ["E", "F", "W", "I", "C901"]
 ignore = ["E501", "E402"]
 
+[lint.mccabe]
+max-complexity = 20
+
 [lint.per-file-ignores]
-"memory_core/tools/memory_hook_gateway.py" = ["F821", "F401"]
+"memory_core/tools/memory_hook_gateway.py" = ["F821", "F401", "C901"]
 "memory_core/tools/memory_hook_impls.py" = ["F401"]
 "memory_core/tools/memory_hook_core.py" = ["F821"]
 "memory_core/tools/validate_memory_system.py" = ["F401"]
-"memory_core/tools/init_project_memory.py" = ["F841"]
+"memory_core/tools/init_project_memory.py" = ["F841", "C901"]
 "memory_core/tools/validate_project_memory.py" = ["E741"]
 "tests/test_validate_memory_system.py" = ["E741"]
 "tests/test_m7_p4_gateway_integration.py" = ["F841"]
 "tests/test_api_completion.py" = ["F821"]
+# C901 suppressions for functions with complexity > 20 that require extensive refactoring
+"memory_core/tools/pretooluse_guard.py" = ["C901"]
+"memory_core/tools/memory_hook_integrity_manifest.py" = ["C901"]
+"memory_core/tools/migrate_project_memory.py" = ["C901"]
+"memory_core/tools/session_end_logger.py" = ["C901"]
+"memory_core/tools/daily_kb_audit.py" = ["C901"]

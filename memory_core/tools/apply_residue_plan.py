@@ -552,142 +552,50 @@ def _rollback_from_manifest(
     return result
 
 
-# ---------------------------------------------------------------------------
-# Main apply logic
-# ---------------------------------------------------------------------------
+def _report_dry_run(target: Path, allowed_actions: list, result: "ApplyResult") -> None:
+    """Report what would happen in dry-run mode."""
+    for action in allowed_actions:
+        action_type = action.get("action", "")
+        path = action.get("path", "")
 
-def apply_residue_plan(
-    target: Path,
-    plan_path: Path | None,
-    dry_run: bool,
-    backup_dir: Path | None,
-    json_output: bool,
-) -> ApplyResult:
-    """Apply a residue migration plan to a target project.
-
-    Args:
-        target: Path to the target project root.
-        plan_path: Path to the plan JSON file (None means check stdin or fail).
-        dry_run: If True, only report what would be done.
-        backup_dir: Directory for backups (default: memory/system/backups/residue-<timestamp>).
-        json_output: If True, output results as JSON.
-
-    Returns:
-        ApplyResult with success status and details.
-    """
-    result = ApplyResult(
-        success=False,
-        target=str(target.resolve()),
-        dry_run=dry_run,
-    )
-
-    # Validate target
-    if not target.exists():
-        result.errors.append(f"Target path does not exist: {target}")
-        return result
-
-    if not target.is_dir():
-        result.errors.append(f"Target path is not a directory: {target}")
-        return result
-
-    # Load plan
-    if plan_path is None:
-        result.errors.append("No plan provided. Use --plan <plan.json> or --rollback <manifest.json>")
-        return result
-
-    if not plan_path.exists():
-        result.errors.append(f"Plan file does not exist: {plan_path}")
-        return result
-
-    try:
-        plan_data = json.loads(plan_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        result.errors.append(f"Invalid JSON in plan file: {e}")
-        return result
-    except Exception as e:
-        result.errors.append(f"Failed to read plan file: {e}")
-        return result
-
-    # Validate plan (with target for ownership-aware validation)
-    is_valid, validation_errors = _validate_plan(plan_data, target=target)
-    if not is_valid:
-        result.errors.extend(validation_errors)
-        return result
-
-    # Determine backup directory
-    if backup_dir is None:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        backup_dir = target / "memory" / "system" / "backups" / f"residue-{timestamp}"
-
-    # Get actions to apply
-    actions = plan_data.get("actions", [])
-
-    # Filter to only allowed actions
-    allowed_actions = [a for a in actions if a.get("action", "") in ALLOWED_AUTO_ACTIONS]
-    rejected_actions = [a for a in actions if a.get("action", "") not in ALLOWED_AUTO_ACTIONS]
-
-    for action in rejected_actions:
-        result.actions_skipped.append({
-            "action": action.get("action"),
-            "path": action.get("path"),
-            "reason": "action type not in allowed list",
-        })
-
-    if dry_run:
-        # In dry-run, just report what would happen
-        for action in allowed_actions:
-            action_type = action.get("action", "")
-            path = action.get("path", "")
-
-            if action_type == "move_root_pollution":
-                src_path = target / path
-                if src_path.exists():
-                    dst_rel = f"{DEFAULT_REPORTS_DEST}/{src_path.name}"
-                    result.actions_applied.append({
-                        "action": action_type,
-                        "src": path,
-                        "dst": dst_rel,
-                        "status": "dry-run",
-                    })
-                else:
-                    result.actions_skipped.append({
-                        "action": action_type,
-                        "path": path,
-                        "reason": "source file does not exist",
-                    })
-            elif action_type == "ignore_runtime_artifact":
+        if action_type == "move_root_pollution":
+            src_path = target / path
+            if src_path.exists():
+                dst_rel = f"{DEFAULT_REPORTS_DEST}/{src_path.name}"
                 result.actions_applied.append({
                     "action": action_type,
-                    "path": path,
+                    "src": path,
+                    "dst": dst_rel,
                     "status": "dry-run",
                 })
+            else:
+                result.actions_skipped.append({
+                    "action": action_type,
+                    "path": path,
+                    "reason": "source file does not exist",
+                })
+        elif action_type == "ignore_runtime_artifact":
+            result.actions_applied.append({
+                "action": action_type,
+                "path": path,
+                "status": "dry-run",
+            })
 
-        result.success = True
-        result.warnings.append("Dry-run mode: no changes made")
-        return result
-
-    # Non-dry-run: create backup first
-    if not allowed_actions:
-        result.warnings.append("No applicable actions to apply")
-        result.success = True
-        return result
-
-    # Create backup directory
-    try:
-        backup_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        result.errors.append(f"Failed to create backup directory: {e}")
-        return result
-
+def _apply_plan_actions(
+    target: Path,
+    plan_path: Path,
+    allowed_actions: list,
+    backup_dir: Path,
+    result: "ApplyResult",
+) -> None:
+    """Apply actions from the plan and collect results."""
     # Create backup
     manifest = _create_backup(target, plan_path, allowed_actions, backup_dir)
 
     # Apply actions
     reports_dir = target / DEFAULT_REPORTS_DEST
-
     for action in allowed_actions:
-        success, message, applied_dict = _apply_action(target, action, dry_run, reports_dir)
-
+        success, message, applied_dict = _apply_action(target, action, False, reports_dir)
         if applied_dict:
             if success:
                 result.actions_applied.append(applied_dict)
@@ -715,11 +623,92 @@ def apply_residue_plan(
     except Exception as e:
         result.errors.append(f"Failed to write backup manifest: {e}")
         result.success = False
+
+# ---------------------------------------------------------------------------
+# Main apply logic
+# ---------------------------------------------------------------------------
+
+def apply_residue_plan(
+    target: Path,
+    plan_path: Path | None,
+    dry_run: bool,
+    backup_dir: Path | None,
+    json_output: bool,
+) -> ApplyResult:
+    """Apply a residue migration plan to a target project."""
+    result = ApplyResult(
+        success=False,
+        target=str(target.resolve()),
+        dry_run=dry_run,
+    )
+
+    # Validate target
+    if not target.exists():
+        result.errors.append(f"Target path does not exist: {target}")
         return result
+    if not target.is_dir():
+        result.errors.append(f"Target path is not a directory: {target}")
+        return result
+
+    # Load and validate plan
+    if plan_path is None:
+        result.errors.append("No plan provided. Use --plan <plan.json> or --rollback <manifest.json>")
+        return result
+    if not plan_path.exists():
+        result.errors.append(f"Plan file does not exist: {plan_path}")
+        return result
+
+    try:
+        plan_data = json.loads(plan_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, Exception) as e:
+        result.errors.append(f"Failed to read plan file: {e}")
+        return result
+
+    is_valid, validation_errors = _validate_plan(plan_data, target=target)
+    if not is_valid:
+        result.errors.extend(validation_errors)
+        return result
+
+    # Determine backup directory
+    if backup_dir is None:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        backup_dir = target / "memory" / "system" / "backups" / f"residue-{timestamp}"
+
+    # Filter actions
+    actions = plan_data.get("actions", [])
+    allowed_actions = [a for a in actions if a.get("action", "") in ALLOWED_AUTO_ACTIONS]
+    rejected_actions = [a for a in actions if a.get("action", "") not in ALLOWED_AUTO_ACTIONS]
+
+    for action in rejected_actions:
+        result.actions_skipped.append({
+            "action": action.get("action"),
+            "path": action.get("path"),
+            "reason": "action type not in allowed list",
+        })
+
+    if dry_run:
+        _report_dry_run(target, allowed_actions, result)
+        result.success = True
+        result.warnings.append("Dry-run mode: no changes made")
+        return result
+
+    if not allowed_actions:
+        result.warnings.append("No applicable actions to apply")
+        result.success = True
+        return result
+
+    # Create backup directory
+    try:
+        backup_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        result.errors.append(f"Failed to create backup directory: {e}")
+        return result
+
+    # Apply actions
+    _apply_plan_actions(target, plan_path, allowed_actions, backup_dir, result)
 
     # Success if no failures
     result.success = len(result.actions_failed) == 0 and len(result.errors) == 0
-
     return result
 
 

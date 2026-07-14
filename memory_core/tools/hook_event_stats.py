@@ -219,6 +219,74 @@ def _json_report(stats: SessionStats, target_date: str, errors_log: list[str]) -
 # Main
 # ---------------------------------------------------------------------------
 
+def _resolve_target_date(args: argparse.Namespace) -> str | None:
+    """Resolve the target date from parsed arguments."""
+    if args.today:
+        return date.today().isoformat()
+    if args.date:
+        return args.date
+    print("Error: specify --date YYYY-MM-DD or --today", file=sys.stderr)
+    return None
+
+
+def _resolve_projects(args: argparse.Namespace) -> list[Path]:
+    """Determine which projects to scan based on CLI arguments."""
+    if args.project:
+        return [Path(args.project).expanduser().resolve()]
+    if args.all_projects:
+        return _resolve_all_projects()
+    return _resolve_default_project()
+
+
+def _resolve_all_projects() -> list[Path]:
+    """Scan known project lifecycle index or fallback to home scan."""
+    lifecycle_index = Path.home() / ".memory-core" / "project-lifecycle" / "path-index.json"
+    projects: list[Path] = []
+    if lifecycle_index.exists():
+        try:
+            idx = json.loads(lifecycle_index.read_text())
+            projects = [Path(p).resolve() for p in idx.get("paths", [])]
+        except (json.JSONDecodeError, OSError):
+            pass
+    if not projects:
+        for p in Path.home().iterdir():
+            if p.is_dir() and (p / "memory" / "system").exists():
+                projects.append(p)
+    return projects
+
+
+def _resolve_default_project() -> list[Path]:
+    """Find project root by walking up from cwd."""
+    cwd = Path.cwd()
+    current = cwd.resolve()
+    while current != current.parent:
+        if (current / "memory" / "system").exists():
+            return [current]
+        if (current / ".git").is_dir():
+            return [current]
+        current = current.parent
+    return [cwd]
+
+
+def _collect_events_for_project(proj: Path, target_date: str) -> tuple[SessionStats, list[str]]:
+    """Load and filter events for a single project, return stats and errors."""
+    stats = SessionStats()
+    errors: list[str] = []
+    log_path = _find_event_log(proj, target_date)
+    if log_path is None:
+        return stats, errors
+    events = _load_events(log_path)
+    if not events:
+        legacy_log = proj / "memory" / "artifacts" / "memory-hook" / "events.jsonl"
+        if legacy_log.exists():
+            events = _filter_by_date(_load_events(legacy_log), target_date)
+    events = _filter_by_project(events, str(proj))
+    for evt in events:
+        stats.add_event(evt)
+    errors.extend(_load_errors(proj, target_date))
+    return stats, errors
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Daily session summary from memory event logs.")
     parser.add_argument("--date", type=str, help="Target date (YYYY-MM-DD)")
@@ -228,49 +296,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     args = parser.parse_args(argv)
 
-    if args.today:
-        target_date = date.today().isoformat()
-    elif args.date:
-        target_date = args.date
-    else:
-        print("Error: specify --date YYYY-MM-DD or --today", file=sys.stderr)
+    target_date = _resolve_target_date(args)
+    if target_date is None:
         return 1
 
-    # Determine projects to scan
-    projects: list[Path] = []
-    if args.project:
-        projects.append(Path(args.project).expanduser().resolve())
-    elif args.all_projects:
-        # Scan known project lifecycle index
-        lifecycle_index = Path.home() / ".memory-core" / "project-lifecycle" / "path-index.json"
-        if lifecycle_index.exists():
-            try:
-                idx = json.loads(lifecycle_index.read_text())
-                projects = [Path(p).resolve() for p in idx.get("paths", [])]
-            except (json.JSONDecodeError, OSError):
-                pass
-        # Fallback: scan common project roots
-        if not projects:
-            for base in [Path.home()]:
-                for p in base.iterdir():
-                    if p.is_dir() and (p / "memory" / "system").exists():
-                        projects.append(p)
-    else:
-        # Default: use current directory's project root
-        cwd = Path.cwd()
-        # Walk up to find memory/system or .git
-        current = cwd.resolve()
-        while current != current.parent:
-            if (current / "memory" / "system").exists():
-                projects.append(current)
-                break
-            if (current / ".git").is_dir():
-                projects.append(current)
-                break
-            current = current.parent
-        if not projects:
-            projects.append(cwd)
-
+    projects = _resolve_projects(args)
     if not projects:
         print("No projects found to scan.", file=sys.stderr)
         return 1
@@ -279,26 +309,17 @@ def main(argv: list[str] | None = None) -> int:
     all_errors: list[str] = []
 
     for proj in projects:
-        # Read event log
-        log_path = _find_event_log(proj, target_date)
-        if log_path is None:
-            continue
-
-        events = _load_events(log_path)
-        if not events:
-            # Try legacy combined log (unpartitioned events.jsonl)
-            legacy_log = proj / "memory" / "artifacts" / "memory-hook" / "events.jsonl"
-            if legacy_log.exists():
-                legacy_events = _load_events(legacy_log)
-                events = _filter_by_date(legacy_events, target_date)
-
-        events = _filter_by_project(events, str(proj))
-
-        for evt in events:
-            all_stats.add_event(evt)
-
-        # Load error log
-        all_errors.extend(_load_errors(proj, target_date))
+        proj_stats, proj_errors = _collect_events_for_project(proj, target_date)
+        all_stats.sessions.extend(proj_stats.sessions)
+        all_stats.prompts.extend(proj_stats.prompts)
+        all_stats.stops.extend(proj_stats.stops)
+        for p, c in proj_stats.projects.items():
+            all_stats.projects[p] = all_stats.projects.get(p, 0) + c
+        all_stats.status_ok += proj_stats.status_ok
+        all_stats.status_degraded += proj_stats.status_degraded
+        all_stats.errors.extend(proj_stats.errors)
+        all_stats.timeline.extend(proj_stats.timeline)
+        all_errors.extend(proj_errors)
 
     if args.json:
         report = _json_report(all_stats, target_date, all_errors)
