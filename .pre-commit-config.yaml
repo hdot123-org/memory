@@ -40,4 +40,4 @@ repos:
     rev: v2.16
     hooks:
       - id: vulture
-        args: [--min-confidence, "80"]
+        args: [--min-confidence, "80", memory_core/]
