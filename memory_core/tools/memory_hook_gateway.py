@@ -1790,37 +1790,43 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
 
         pending_count = len(records)
 
-        # Step 5: Batch send via telemetry_bridge.batch_capture
+        # Step 5: Batch send via telemetry_bridge.batch_capture (chunked)
         try:
             from memory_core.tools.telemetry_bridge import telemetry
 
-            # Build events list - pass ALL record fields (not just selected ones)
-            events = []
-            for record in records:
-                event_name = str(record.get("event") or "memory.replayed_event")
-                # Pass all fields from the original record using **record expansion
-                events.append({"event_name": event_name, "properties": {**record}})
+            BATCH_SIZE = 500
+            synced_lines = offset  # tracks how many lines from file start are synced
 
-            # Single batch HTTP call - returns True on success, False on failure
-            success = telemetry.batch_capture(events)
+            for chunk_start in range(0, len(records), BATCH_SIZE):
+                chunk = records[chunk_start:chunk_start + BATCH_SIZE]
+                events = []
+                for record in chunk:
+                    event_name = str(record.get("event") or "memory.replayed_event")
+                    events.append({"event_name": event_name, "properties": {**record}})
 
-            if success:
-                # Step 6: Success - update .offset and .last_sync_success
-                offset_file.write_text(str(current_line), encoding="utf-8")
+                chunk_success = telemetry.batch_capture(events)
+                if not chunk_success:
+                    break  # stop on first failure, retry next session
+
+                synced_lines += len(chunk)
+                offset_file.write_text(str(synced_lines), encoding="utf-8")
+
+            all_synced = synced_lines >= offset + len(records)
+
+            if all_synced:
+                # Step 6: Success - update .last_sync_success
                 last_sync_success_file.write_text(str(now), encoding="utf-8")
 
                 # Step 7: Compact metrics.jsonl after successful sync
-                # Read remaining lines after offset, rewrite file with lock, reset offset to 0
                 try:
                     remaining_lines = []
                     with metrics_file.open("r", encoding="utf-8") as f:
                         line_num = 0
                         for line in f:
                             line_num += 1
-                            if line_num > current_line:
+                            if line_num > synced_lines:
                                 remaining_lines.append(line)
 
-                    # Rewrite file with exclusive lock
                     with metrics_file.open("w", encoding="utf-8") as f:
                         fcntl.flock(f.fileno(), fcntl.LOCK_EX)
                         try:
@@ -1830,21 +1836,16 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
                         finally:
                             fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
-                    # Reset offset to 0 after compaction
                     offset_file.write_text("0", encoding="utf-8")
                 except OSError as exc:
                     _logger.debug("metrics.jsonl compaction failed: %s", exc)
 
-                # Update sync_status.json with success
                 _write_sync_status(artifact_root, True, 0)
             else:
-                # Step 8: Send failed - update .last_sync_attempt (not .offset, retry next time)
-                try:
-                    last_sync_attempt_file.write_text(str(now), encoding="utf-8")
-                except OSError:
-                    pass
-                # Update sync_status.json with failure
-                _write_sync_status(artifact_root, False, pending_count)
+                # Partial success: offset already updated to last synced chunk
+                remaining = offset + len(records) - synced_lines
+                last_sync_attempt_file.write_text(str(now), encoding="utf-8")
+                _write_sync_status(artifact_root, False, remaining)
 
         except Exception as exc:
             # Send failed: update .last_sync_attempt (not .offset, retry next time)
