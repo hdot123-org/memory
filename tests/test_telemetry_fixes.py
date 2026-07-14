@@ -251,3 +251,201 @@ class TestPreToolUseEmitMetrics:
         assert record["host"] == "factory"
         assert "status" in record  # status field exists
         assert "duration_ms" in record  # duration_ms field exists
+
+
+class TestSourceRepoDegradedStatus:
+    """VAL-DEGRADED-001, VAL-DEGRADED-002: Source-repo gets status='ok' with 0 validation errors.
+
+    Bug 3: When source-repo runs in develop mode, it falls through to build_context_package()
+    which runs full consumer validation. Source-repo doesn't have consumer-project structure,
+    causing ~35 false validation errors → status='degraded'.
+
+    Fix: build_context_package() must detect source-repo early and skip consumer validation,
+    returning status='ok' with validation_error_count=0.
+    """
+
+    def test_source_repo_develop_mode_gets_status_ok(self):
+        """Verify source-repo in develop mode gets status='ok', not 'degraded'.
+
+        When is_memory_core_source_repo(cwd) returns True, build_context_package()
+        should skip consumer-project validation layers (project_map, truth_basis,
+        contract checks) that produce false errors. Should return status='ok'
+        with validation_error_count=0.
+        """
+        from memory_core.tools import memory_hook_gateway
+
+        # Mock cwd to be the source-repo
+        mock_cwd = Path("/Users/busiji/memory")
+
+        # Mock all dependencies to simulate source-repo scenario
+        with patch.object(
+            memory_hook_gateway,
+            "is_memory_core_source_repo",
+            return_value=True,
+        ), patch.object(
+            memory_hook_gateway,
+            "_discover_cwd",
+            return_value=mock_cwd,
+        ), patch.object(
+            memory_hook_gateway,
+            "determine_project_scope",
+            return_value="source-repo",
+        ), patch.object(
+            memory_hook_gateway,
+            "_record_project_lifecycle_event",
+            return_value=None,
+        ), patch.object(
+            memory_hook_gateway,
+            "_get_gateway_business_policy",
+        ), patch.object(
+            memory_hook_gateway,
+            "CoreConfig",
+        ), patch.object(
+            memory_hook_gateway,
+            "_resolve_core_builder",
+        ) as mock_resolve_core_builder:
+            # Mock business policy to return empty/default values
+            mock_policy_instance = MagicMock()
+            mock_policy_instance.get_required_canonical.return_value = []
+            mock_policy_instance.get_project_canonical.return_value = {}
+            mock_policy_instance.get_project_runtime_root.return_value = {}
+            mock_policy_instance.get_global_canonical.return_value = []
+
+            # Mock the core builder to simulate validation errors
+            # (this is what currently happens - it runs full validation)
+            def mock_builder_with_errors(config):
+                return {
+                    "status": "degraded",
+                    "validation_errors": [f"error-{i}" for i in range(35)],
+                    "missing_paths": ["memory/kb/global/", "memory/project-map/"],
+                    "host": config.host,
+                    "event": config.event,
+                    "system_context": {},
+                }
+
+            mock_resolve_core_builder.return_value = ("legacy", mock_builder_with_errors, [])
+
+            # Call build_context_package - this should detect source-repo
+            # and skip validation, returning status='ok'
+            result = memory_hook_gateway.build_context_package(
+                "factory", "session-start", {}
+            )
+
+        # VAL-DEGRADED-001: status must be 'ok', not 'degraded'
+        assert result.get("status") == "ok", (
+            f"Source-repo should get status='ok', got '{result.get('status')}'"
+        )
+
+        # VAL-DEGRADED-002: validation_error_count must be 0 or near-zero (≤2)
+        validation_errors = result.get("validation_errors", [])
+        error_count = len(validation_errors) if isinstance(validation_errors, list) else 0
+        assert error_count <= 2, (
+            f"Source-repo should have ≤2 validation errors, got {error_count}: {validation_errors}"
+        )
+
+    def test_source_repo_readonly_mode_gets_status_ok(self):
+        """Verify source-repo in readonly mode gets status='ok'.
+
+        When mode is 'readonly', main() should use _build_readonly_source_repo_package
+        which already returns status='ok'. This test verifies that path works.
+        """
+        from memory_core.tools import memory_hook_gateway
+
+        mock_cwd = Path("/Users/busiji/memory")
+
+        with patch.object(
+            memory_hook_gateway,
+            "is_memory_core_source_repo",
+            return_value=True,
+        ), patch.object(
+            memory_hook_gateway,
+            "get_source_repo_mode",
+            return_value="readonly",
+        ), patch.object(
+            memory_hook_gateway,
+            "_discover_cwd",
+            return_value=mock_cwd,
+        ), patch.object(
+            memory_hook_gateway,
+            "_build_readonly_source_repo_package",
+        ) as mock_readonly_builder, patch.object(
+            memory_hook_gateway,
+            "_parse_args",
+            return_value=MagicMock(host="factory", event="session-start"),
+        ), patch("sys.stdin", io.StringIO("{}")):
+            # Mock the readonly package builder
+            mock_readonly_builder.return_value = {
+                "status": "ok",
+                "package_kind": "source-repo-rules",
+                "mode": "read-only",
+                "validation_errors": [],
+            }
+
+            result_code = memory_hook_gateway.main()
+
+        # Should return 0 (success)
+        assert result_code == 0, f"Expected return code 0, got {result_code}"
+
+        # Verify _build_readonly_source_repo_package was called
+        mock_readonly_builder.assert_called_once()
+
+    def test_non_source_repo_still_gets_full_validation(self):
+        """Verify non-source-repo projects still get full validation (no regression).
+
+        When is_memory_core_source_repo returns False, the gateway should run
+        full consumer-project validation as normal.
+        """
+        from memory_core.tools import memory_hook_gateway
+
+        mock_cwd = Path("/tmp/test-consumer-project")
+
+        # Mock the core builder to return a normal package
+        def mock_normal_package(config):
+            return {
+                "status": "ok",
+                "validation_errors": [],
+                "missing_paths": [],
+                "host": "factory",
+                "event": "session-start",
+                "system_context": {},
+            }
+
+        # Capture the package returned
+        with patch.object(
+            memory_hook_gateway,
+            "is_memory_core_source_repo",
+            return_value=False,  # NOT source-repo
+        ), patch.object(
+            memory_hook_gateway,
+            "_discover_cwd",
+            return_value=mock_cwd,
+        ), patch.object(
+            memory_hook_gateway,
+            "determine_project_scope",
+            return_value="consumer-project",
+        ), patch.object(
+            memory_hook_gateway,
+            "_record_project_lifecycle_event",
+            return_value=None,
+        ), patch.object(
+            memory_hook_gateway,
+            "CoreConfig",
+        ), patch.object(
+            memory_hook_gateway,
+            "_resolve_core_builder",
+            return_value=("legacy", mock_normal_package, []),
+        ):
+            result = memory_hook_gateway.build_context_package(
+                "factory", "session-start", {}
+            )
+
+        # Non-source-repo should still get normal validation flow
+        # (in this test, the mock returns 'ok' with no errors, which is fine)
+        assert "status" in result
+        assert "validation_errors" in result
+
+        # Verify source_repo_skip_validation is NOT set (no regression)
+        system_context = result.get("system_context", {})
+        assert not system_context.get("source_repo_skip_validation"), (
+            "Non-source-repo should not have source_repo_skip_validation flag"
+        )

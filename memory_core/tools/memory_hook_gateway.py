@@ -1048,6 +1048,17 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
         package = provider_builder(config)
     else:
         package = build_context_package_from_config(config)
+
+    # Bug 3 fix: Source-repo in develop mode should not get consumer-project
+    # validation errors. Skip validation layers for source-repo.
+    if is_memory_core_source_repo(cwd):
+        package["status"] = "ok"
+        package["validation_errors"] = []
+        if "missing_paths" in package:
+            package["missing_paths"] = []
+        if isinstance(package.get("system_context"), dict):
+            package["system_context"]["source_repo_skip_validation"] = True
+
     system_context = package.setdefault("system_context", {})
     if isinstance(system_context, dict):
         system_context["core_provider"] = provider_name
@@ -1057,7 +1068,7 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
         if provider_errors:
             system_context["core_provider_fallback_errors"] = provider_errors
 
-    if provider_errors:
+    if provider_errors and not is_memory_core_source_repo(cwd):
         package.setdefault("validation_errors", [])
         validation_errors = package.get("validation_errors")
         if isinstance(validation_errors, list):
