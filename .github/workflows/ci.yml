@@ -58,6 +58,8 @@ jobs:
         run: |
           python scripts/test_full_integration.py || code=$?
           if [ "${code:-0}" = "1" ]; then exit 1; fi
+      - name: Repo delivery consistency check
+        run: bash scripts/repo_health_check.sh --ci
 
   advisory-security:
     name: Advisory dependency security scan
