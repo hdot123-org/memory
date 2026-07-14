@@ -146,6 +146,29 @@ class TelemetryBridge:
             logger.debug("telemetry_bridge: project_lifecycle failed, using fallback: %s", exc)
         return _fallback_project_id(Path(cwd) if cwd else None)
 
+    def _capture_error(self, exc: Exception, failed_event: str, method: str) -> None:
+        """Emit a memory.error event to PostHog without risking recursion.
+
+        Calls _analytics.capture() directly (NOT safe_capture) to avoid
+        infinite recursion when the original failure is persistent.
+        Wrapped in its own try/except for double-fail-safe semantics.
+        """
+        try:
+            if self._analytics is None or not self._is_enabled():
+                return
+            self._analytics.capture(
+                event_name="memory.error",
+                properties={
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc)[:500],
+                    "failed_event": failed_event,
+                    "method": method,
+                },
+                distinct_id=self.get_project_id(None),
+            )
+        except Exception:
+            logger.debug("telemetry_bridge._capture_error: failed to emit error event")
+
     def safe_capture(
         self,
         event_name: str,
@@ -182,6 +205,7 @@ class TelemetryBridge:
         except Exception as exc:
             # Analytics must never break the host application flow
             logger.debug("telemetry_bridge.safe_capture failed for '%s': %s", event_name, exc)
+            self._capture_error(exc, event_name, "safe_capture")
 
     def batch_capture(
         self,
@@ -265,6 +289,7 @@ class TelemetryBridge:
         except Exception as exc:
             # Analytics must never break the host application flow
             logger.debug("telemetry_bridge.batch_capture failed: %s", exc)
+            self._capture_error(exc, "batch", "batch_capture")
             return False
 
     def flush(self) -> None:
@@ -275,6 +300,7 @@ class TelemetryBridge:
             self._analytics.shutdown()
         except Exception as exc:
             logger.debug("telemetry_bridge.flush failed: %s", exc)
+            self._capture_error(exc, "flush", "flush")
 
 
 # Module-level singleton

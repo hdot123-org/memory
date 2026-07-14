@@ -199,6 +199,7 @@ DEP002 = [
     "pip-tools",
     "deptry",
     "vulture",
+    "pdoc",
 ]
 DEP003 = ["yaml"]
 
