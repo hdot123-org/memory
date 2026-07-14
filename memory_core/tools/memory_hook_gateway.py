@@ -1938,6 +1938,14 @@ def main() -> int:
                     sys.stdout.write(proc.stdout)
                 if proc.stderr:
                     sys.stderr.write(proc.stderr)
+                # Emit metrics before returning from pre-tool-use branch
+                try:
+                    from .memory_hook_metrics import emit_metrics
+                    duration_ms = max(1, int((time.time() - start_time) * 1000))
+                    minimal_package = {"status": "ok" if proc.returncode == 0 else "error"}
+                    emit_metrics(ARTIFACT_ROOT, args.host, args.event, minimal_package, duration_ms=duration_ms)
+                except Exception as exc:
+                    _logger.debug("pre-tool-use metrics emit skipped: %s", exc)
                 return proc.returncode
             except subprocess.TimeoutExpired:
                 append_error_log("pretooluse-guard", "guard timed out after 5s", {"cwd": str(cwd)})
@@ -1945,6 +1953,14 @@ def main() -> int:
                 append_error_log("pretooluse-guard", "guard execution failed", {"error": str(exc)})
         # Fallback: allow if guard unavailable or failed
         print(json.dumps({"decision": "allow", "reason": "guard unavailable, allowing by default"}))
+        # Emit metrics before returning from pre-tool-use branch
+        try:
+            from .memory_hook_metrics import emit_metrics
+            duration_ms = max(1, int((time.time() - start_time) * 1000))
+            minimal_package = {"status": "ok"}
+            emit_metrics(ARTIFACT_ROOT, args.host, args.event, minimal_package, duration_ms=duration_ms)
+        except Exception as exc:
+            _logger.debug("pre-tool-use fallback metrics emit skipped: %s", exc)
         return 0
 
     # Async: Launch health check in background for session-start

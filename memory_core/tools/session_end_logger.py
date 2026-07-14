@@ -556,7 +556,7 @@ def main(argv: list[str] | None = None) -> int:
             metrics_path = _resolve_metrics_path(project_root / "memory" / "artifacts" / "memory-hook")
             duration_ms = int(info.get("duration_seconds", 0) * 1000)
             metrics_record = {
-                "event": "session_ended",
+                "event": "session-end",
                 "duration_seconds": info.get("duration_seconds", 0),
                 "input_tokens": info.get("input_tokens", 0),
                 "output_tokens": info.get("output_tokens", 0),
