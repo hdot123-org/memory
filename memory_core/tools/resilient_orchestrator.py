@@ -58,7 +58,7 @@ class ResilientOrchestrator:
 
         return result
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         self.dispatcher.cleanup()
 
     def summary(self) -> str:

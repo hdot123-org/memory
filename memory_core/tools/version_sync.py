@@ -20,8 +20,8 @@ try:
     from memory_core.tools.memory_hook_integrity_keys import load_key
     from memory_core.tools.memory_hook_integrity_manifest import sign_project_incremental
 except ImportError:
-    sign_project_incremental = None  # type: ignore[misc,assignment]
-    load_key = None  # type: ignore[misc,assignment]
+    sign_project_incremental = None  # type: ignore[assignment]
+    load_key = None  # type: ignore[assignment]
 
 
 def read_ownership_memory_version(ownership_path: Path) -> str | None:

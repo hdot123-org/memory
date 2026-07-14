@@ -31,7 +31,7 @@ try:
         parse_headers,
     )
 except ImportError:
-    from memory_core.tools.index_schema import (  # type: ignore
+    from memory_core.tools.index_schema import (
         INDEX_SCHEMA_VERSION,
         get_schema_version,
         is_schema_compatible,
@@ -216,7 +216,8 @@ def _detect_actual_language(target: Path) -> str:
                 ext_counts[lang] = ext_counts.get(lang, 0) + 1
 
     if ext_counts:
-        return max(ext_counts, key=ext_counts.get)
+        best = max(ext_counts, key=lambda k: ext_counts[k])
+        return best
 
     return ""
 

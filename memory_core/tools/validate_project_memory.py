@@ -153,7 +153,7 @@ def _parse_lock_file(path: Path) -> dict[str, Any]:
         }
     # Canonical TOML format
     try:
-        return tomllib.loads(text)
+        return tomllib.loads(text)  # type: ignore[no-any-return]
     except Exception as exc:
         # Fallback: key=value lines (very old format)
         # Log the parse error so it is visible in logs / diagnostics.

@@ -97,6 +97,7 @@ class TelemetryBridge:
     """
 
     _instance: TelemetryBridge | None = None
+    _initialized: bool = False
 
     def __new__(cls) -> TelemetryBridge:
         if cls._instance is None:

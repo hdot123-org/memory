@@ -84,6 +84,78 @@ warn_unused_configs = true
 ignore_missing_imports = true
 exclude = ["workspace", "templates", "memory_core/workspace"]
 
+[[tool.mypy.overrides]]
+module = "memory_core.tools.auto_capture"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.memory_hook_adapters.neutral_policy"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.error_logger"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.version_sync"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.adapter_toml_schema"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.task_dispatcher"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.resilient_orchestrator"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.memory_hook_integrity_verify"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.telemetry_bridge"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.verify_consumer"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.session_end_logger"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.hook_event_stats"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.memory_hook_adapters.default_runtime_profile"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.business_policy_checks"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.apply_residue_plan"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.memory_health_report"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.global_kb_init"
+strict = true
+
 [tool.deptry]
 ignore = [
     "tomllib",  # stdlib in Python 3.11+, conditional import with tomli fallback

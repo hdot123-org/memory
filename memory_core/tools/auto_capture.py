@@ -14,7 +14,7 @@ from typing import Any
 try:
     from memory_core.tools.error_logger import write_error_log
 except ImportError:
-    write_error_log = None  # type: ignore[misc,assignment]
+    write_error_log = None  # type: ignore[assignment]
 
 
 def capture_candidates(

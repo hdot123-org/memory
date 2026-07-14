@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 # Domain definitions with descriptions
-DOMAIN_DEFINITIONS = {
+DOMAIN_DEFINITIONS: dict[str, dict[str, Any]] = {
     "operations": {
         "title": "Operations Knowledge",
         "description": "运维域知识:服务器配置、部署流程、SSH/Tailscale、网络配置、数据库运维、Docker/K8s、监控告警等",

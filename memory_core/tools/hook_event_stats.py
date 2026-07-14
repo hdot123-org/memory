@@ -222,9 +222,9 @@ def _json_report(stats: SessionStats, target_date: str, errors_log: list[str]) -
 def _resolve_target_date(args: argparse.Namespace) -> str | None:
     """Resolve the target date from parsed arguments."""
     if args.today:
-        return date.today().isoformat()
+        return str(date.today().isoformat())
     if args.date:
-        return args.date
+        return str(args.date)
     print("Error: specify --date YYYY-MM-DD or --today", file=sys.stderr)
     return None
 

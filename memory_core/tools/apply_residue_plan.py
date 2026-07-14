@@ -552,7 +552,7 @@ def _rollback_from_manifest(
     return result
 
 
-def _report_dry_run(target: Path, allowed_actions: list, result: "ApplyResult") -> None:
+def _report_dry_run(target: Path, allowed_actions: list[Any], result: "ApplyResult") -> None:
     """Report what would happen in dry-run mode."""
     for action in allowed_actions:
         action_type = action.get("action", "")
@@ -584,7 +584,7 @@ def _report_dry_run(target: Path, allowed_actions: list, result: "ApplyResult") 
 def _apply_plan_actions(
     target: Path,
     plan_path: Path,
-    allowed_actions: list,
+    allowed_actions: list[Any],
     backup_dir: Path,
     result: "ApplyResult",
 ) -> None:

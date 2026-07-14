@@ -84,7 +84,7 @@ def _run_layout_audit(target: Path) -> dict[str, Any] | None:
         }
 
 
-def _has_workspace_memory_conflict(target: Path, findings: list) -> bool:
+def _has_workspace_memory_conflict(target: Path, findings: list[Any]) -> bool:
     """Check if there's a real workspace conflict that requires manual mode.
 
     Real conflict = root memory structures (memory/system/, memory/, project-map/)
@@ -197,7 +197,7 @@ def main() -> int:
     try:
         from memory_core.tools.memory_hook_gateway import build_context_package
     except ImportError:
-        from memory_hook_gateway import build_context_package
+        from memory_hook_gateway import build_context_package  # type: ignore[no-redef]
 
     # Fake payload
     payload = {"cwd": str(target)}

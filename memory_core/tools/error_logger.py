@@ -29,8 +29,8 @@ try:
     from memory_core.tools import memory_hook_integrity_keys as _integrity_keys
     from memory_core.tools import memory_hook_integrity_manifest as _integrity
 except ImportError:
-    _integrity = None  # type: ignore[misc,assignment]
-    _integrity_keys = None  # type: ignore[misc,assignment]
+    _integrity = None  # type: ignore[assignment]
+    _integrity_keys = None  # type: ignore[assignment]
 
 # 错误消息最大长度
 MAX_MSG_LENGTH = 500

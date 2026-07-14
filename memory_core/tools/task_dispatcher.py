@@ -131,7 +131,7 @@ class TaskDispatcher:
         # In Factory: tool("Task", prompt=prompt)
         raise NotImplementedError("Subclass and implement _call_task_tool")
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Remove all temporary files."""
         if os.path.exists(self.workspace):
             shutil.rmtree(self.workspace, ignore_errors=True)

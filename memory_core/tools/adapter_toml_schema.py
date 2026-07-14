@@ -39,7 +39,7 @@ def _migrate_v010_to_v020(data: dict[str, Any]) -> dict[str, Any]:
 
     # Legacy [adapter] section → canonical layout
     adapter = data.get("adapter", {})
-    result: dict[str, Any] = {
+    result = {
         "core": {
             "version": CURRENT_MEMORY_VERSION,
             "adapter": adapter.get("adapter", "default"),

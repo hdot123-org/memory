@@ -28,7 +28,7 @@ from typing import Any
 try:
     from memory_core.tools.error_logger import write_error_log
 except ImportError:
-    write_error_log = None  # type: ignore[misc,assignment]
+    write_error_log = None  # type: ignore[assignment]
 
 # Metrics writing with file locking
 from memory_core.tools.memory_hook_metrics import _resolve_metrics_path, append_metrics_record
@@ -62,7 +62,8 @@ def _read_stdin_payload() -> dict[str, Any]:
         if not sys.stdin.isatty():
             data = sys.stdin.read().strip()
             if data:
-                return json.loads(data)
+                result: dict[str, Any] = json.loads(data)
+                return result
     except (json.JSONDecodeError, OSError):
         pass
     return {}
@@ -125,7 +126,8 @@ def _read_settings(settings_path: Path) -> dict[str, Any]:
         return {}
     try:
         with settings_path.open("r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            return dict(data)
     except (json.JSONDecodeError, OSError):
         return {}
 

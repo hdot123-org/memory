@@ -16,12 +16,12 @@ from typing import Any
 try:
     from .neutral_policy import NeutralGatewayBusinessPolicy
 except ImportError:  # pragma: no cover - script-mode fallback
-    NeutralGatewayBusinessPolicy = None  # type: ignore[assignment,misc]
+    NeutralGatewayBusinessPolicy = None  # type: ignore[misc,assignment]
 
 try:
     from memory_core.tools.adapter_toml_schema import load_adapter_toml
 except ImportError:  # pragma: no cover
-    from ..adapter_toml_schema import load_adapter_toml  # type: ignore[no-redef]
+    from ..adapter_toml_schema import load_adapter_toml
 
 
 def build_default_runtime_profile(

@@ -34,7 +34,7 @@ except ImportError:
 _discover_fn = None
 
 
-def _get_discover_fn():
+def _get_discover_fn() -> Any:
     global _discover_fn
     if _discover_fn is None:
         try:

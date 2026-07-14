@@ -600,7 +600,7 @@ class ScopeResolver:
             self._scope_config_path = scope_config_path
         else:
             env_path = os.environ.get(self.SCOPE_CONFIG_PATH_ENV)
-            self._scope_config_path = Path(env_path).expanduser() if env_path else None
+            self._scope_config_path = Path(env_path).expanduser() if env_path else None  # type: ignore[assignment]
         self._scope_overrides: dict[str, dict[str, str]] = self._load_scope_overrides()
 
     def _load_scope_overrides(self) -> dict[str, dict[str, str]]:

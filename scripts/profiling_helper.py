@@ -22,7 +22,6 @@ from __future__ import annotations
 import argparse
 import cProfile
 import io
-import os
 import pstats
 import sys
 from contextlib import contextmanager

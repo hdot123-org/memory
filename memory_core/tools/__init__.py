@@ -1,6 +1,8 @@
 """memory-core public API."""
 from __future__ import annotations
 
+from typing import Any
+
 # Lazy imports to avoid heavy module loading
 __all__ = [
     "build_context_package",
@@ -9,7 +11,7 @@ __all__ = [
     "build_context_package_from_config",
 ]
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     if name == "build_context_package":
         from memory_core.tools.memory_hook_gateway import build_context_package
         return build_context_package
