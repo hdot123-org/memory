@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.9.0] - 2026-07-14
+
+### Added
+- **仓库交付一致性健康检查脚本** (`scripts/repo_health_check.sh`): 检查仓库交付质量，纳入 CI 门禁
+- **集成测试纳入 CI**: 全量集成测试作为 CI 步骤运行
+- **双门禁验证**: ci-ok + droid-review 双门禁流程完善
+- **单元测试补充**: daily_summary_generator 覆盖率 20%→89%, daily_kb_audit 覆盖率 18%→75%
+- **truth-basis 验证逻辑测试**: 完整性验证覆盖
+- **advisory 纳入 ci-ok 门禁**: dependency security scan + telemetry coverage audit 作为非阻塞 advisory job
+
+### Changed
+- **health check --full 模式修复 tag 发现逻辑**: 修复版本 tag 发现问题
+- **遥测准确性修复**: degraded 状态 + duration_ms + observability 桥接
+- **duration_ms 测试重构**: 使用 monkeypatch 替代 patch.object，增加 fallback 验证
+- **CI 测试隔离修复**: ArtifactWriter mock + stat 错误路径重构 + yaml mock 修复
+
+### Removed
+- **移除 GitLab 同步功能**: 对齐文档至 GitHub PR 流程
+- **移除 PyPI 发布步骤**: release workflow 简化
+- **移除 pretooluse_guard 中 gitlab_api_push.py 死代码**: 脚本已删除
+- **移除 CONTRIBUTING.md Release 段 GitLab 残留**: 文档对齐 GitHub 流程
+
+### Fixed
+- **release workflow 添加 pytest-cov 安装**: 修复 --cov 参数缺失致 release 失败
+- **@droid 两路 model 修复**: droid_args + review_model 覆盖 exec pass + validator pass
+- **@droid 交互式 exec 模型传参**: 改用 droid_args 传模型，修复 gpt-5.2 回退被封问题
+
+### Docs
+- **更新 README 版本号到 v0.9.0**: 移除 PyPI 和 GitLab MR 残留
+- **SOP 改用 --auto 自动合并**: 合并方式仅 squash
+- **同步 advisory 纳入门禁到流程规范**
+- **重写为 GitHub PR 流程标准规范**: 完整 SOP + 架构 + 配置 + 纪律
+- **云端模型锁定为 grok-4.5**: droid + droid-review
+- **PR 流程改造**: CI 全量跑 + ci-ok 门禁 + droid 自动审查
+
 ## [0.8.0] - 2026-06-20
 
 ### Added

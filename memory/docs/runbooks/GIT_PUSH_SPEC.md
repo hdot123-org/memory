@@ -1,19 +1,17 @@
 # Git Push 规范
 
-> **环境声明：本规范基于特定部署环境（GitLab 为 source of truth + GitHub 只读镜像），不适用于所有 memory-core 消费者。** 你的项目可以使用任何 Git 托管平台。以下流程仅描述本环境的 GitLab → GitHub 单向同步模型。
+> **环境声明：本规范基于 GitHub 为主仓库的开发环境。** 你的项目可以使用任何 Git 托管平台。
 
-## 铁律：GitLab → GitHub 单向同步
+## 铁律：GitHub 直接推送
 
 ### 基本原则
 
-1. **代码只推 GitLab** — Agent/人/CI 都只 push 到 GitLab，创建 MR
-1a. **禁止直接推送到 main** — main 分支已设为 "No one can push"（GitLab 平台级保护），任何人都必须走 feature 分支 + MR 流程
-1b. **所有推送必须创建 MR** — 脚本默认自动创建 MR，合并后自动删除源分支。仅 WIP 场景可用 `--no-mr` 跳过
-2. **必须使用 API 推送** — 所有推送必须通过 `scripts/gitlab_api_push.py`，**禁止手动 git add/commit/push**
+1. **代码直推 GitHub** — Agent/人/CI 都直接 push 到 GitHub，创建 PR
+1a. **禁止直接推送到 main** — main 分支受保护，所有人都必须走 feature 分支 + PR 流程
+1b. **所有推送必须创建 PR** — 合并后自动删除源分支
+2. **必须使用标准 git 命令** — 使用 `git add` / `git commit` / `git push origin <branch>`
 3. **CI 门禁** — test + health-check 通过后才可合并到 main
-4. **GitHub 是只读镜像** — 只有 GitLab CI 的 sync-to-github job 可以推 GitHub
-5. **禁止直推 GitHub** — 任何 `git push origin main` 都是违规，会破坏单源真相
-6. **违规恢复** — 如果意外直推 GitHub，回退 GitHub commit，重新走 GitLab 流程
+4. **违规恢复** — 如果意外直推 main，回退 commit，重新走 PR 流程
 
 ### 推送工具
 

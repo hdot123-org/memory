@@ -70,6 +70,23 @@ ruff check . && python -m pytest tests/
 - Target Python 3.9+.
 - Use concise commit messages: `feat:`, `fix:`, `chore:`, `docs:`.
 
+## Test naming convention
+
+All test files must follow the `test_*.py` naming pattern so pytest auto-discovers them. Test functions must use the `test_*` prefix and descriptive names that indicate what behavior is verified.
+
+**File naming:**
+- Test files: `test_<module_name>.py` (e.g. `test_feature_flags.py` for `feature_flags.py`)
+- Place tests under `tests/` mirroring the source tree structure
+
+**Function naming:**
+- Test functions: `test_<what_is_being_tested>` (e.g. `test_is_enabled_returns_true_for_1`)
+- Use descriptive names that explain the expected behavior
+- Avoid generic names like `test_basic` or `test_it_works`
+
+**Class naming:**
+- Test classes: `Test<ClassUnderTest>` (e.g. `TestPostHogAnalytics`)
+- Group related tests in classes when they share setup/teardown
+
 ## Documentation hygiene
 
 Public documentation should be safe for open-source readers.
