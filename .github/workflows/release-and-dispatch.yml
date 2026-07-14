@@ -41,7 +41,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
-      - run: python -m pip install --upgrade pip pytest pytest-cov
+      - name: Install package and test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest pytest-cov
       - run: pip install ruff && ruff check .
       - run: python -m pytest -q tests
 
