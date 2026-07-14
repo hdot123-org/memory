@@ -46,6 +46,7 @@ dev = [
     "pip-tools>=7.0",
     "deptry>=0.15",
     "vulture>=2.10",
+    "pdoc>=14.0",
 ]
 
 [project.scripts]

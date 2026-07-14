@@ -79,6 +79,11 @@ jobs:
         run: |
           pip install deptry
           deptry .
+      - name: Generate API documentation with pdoc
+        run: |
+          pip install pdoc
+          pdoc -o docs/api memory_core
+          test -n "$(find docs/api -type f \( -name '*.html' -o -name '*.md' \) -print -quit)" && echo "PDOC_OUTPUT_OK" || echo "FAIL"
 
   advisory-security:
     name: Advisory dependency security scan
