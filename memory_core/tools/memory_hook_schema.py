@@ -150,7 +150,6 @@ def _emit_drop_audit(
     schema_from: str,
     schema_to: str,
     dropped_keys: list[str],
-    package_id: str = "",
 ) -> None:
     """Write a drop-audit record to file (fallback stderr).
 

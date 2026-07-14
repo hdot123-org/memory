@@ -39,7 +39,7 @@ TIMEOUT_SECONDS = 2
 
 def _set_timeout(seconds: int) -> None:
     """设置整体超时，超时后静默退出。"""
-    def _handler(signum: int, frame: Any) -> None:
+    def _handler(_signum: int, _frame: Any) -> None:
         # 超时静默退出，不阻塞 hook 链
         sys.exit(0)
 

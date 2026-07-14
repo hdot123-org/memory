@@ -82,8 +82,6 @@ try:
     from .memory_hook_impls import (
         ArtifactSinkImpl,
         ArtifactWriter,
-        ClaudeDelegate,
-        CodexDelegate,
         DelegateRouter,
         ErrorSinkImpl,
         GatewayBusinessPolicyConfig,
@@ -1600,7 +1598,7 @@ def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
     )
 
     # ── Write with file lock and timeout ────────────────────────────
-    def _write_handler(signum, frame):  # type: ignore[no-untyped-def]
+    def _write_handler(_signum, _frame):  # type: ignore[no-untyped-def]
         raise HookTimeoutError("prompt-submit log write timed out")
 
     old_handler = None
