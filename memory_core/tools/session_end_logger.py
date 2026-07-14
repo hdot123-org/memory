@@ -485,7 +485,7 @@ def _write_daily_log(project_root: Path, info: dict[str, Any]) -> bool:
         return False
 
 
-def _write_session_metrics(project_root: Path, info: dict) -> None:
+def _write_session_metrics(project_root: Path, info: dict[str, Any]) -> None:
     """Write session metrics to local JSONL file.
 
     Extracted from main() for testability. Writes metrics record with event='session-end'.
