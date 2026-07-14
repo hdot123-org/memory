@@ -1864,7 +1864,10 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
             else:
                 # Partial success: calculate remaining using record count (not line numbers)
                 remaining = len(records_with_lines) - synced_records
-                last_sync_attempt_file.write_text(str(now), encoding="utf-8")
+                try:
+                    last_sync_attempt_file.write_text(str(now), encoding="utf-8")
+                except OSError:
+                    pass
                 _write_sync_status(artifact_root, False, remaining)
 
         except Exception as exc:
