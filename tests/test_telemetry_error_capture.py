@@ -132,3 +132,48 @@ class TestEventNaming:
         # No double prefix
         assert error_calls[0].kwargs["event_name"] == "memory.error"
         assert "memory.memory" not in error_calls[0].kwargs["event_name"]
+
+
+class TestErrorCaptureSanitization:
+    """VAL-PRIV-001: _capture_error must sanitize absolute paths."""
+
+    def test_capture_error_sanitizes_absolute_path_in_exception_message(self, bridge_with_mock):
+        """Exception messages containing absolute paths must be reduced to basename."""
+        bridge, mock = bridge_with_mock
+
+        # Create exception with absolute path in message
+        exc = ValueError("Failed to read /Users/testuser/project/data/file.txt")
+        bridge._capture_error(exc, "test_event", "safe_capture")
+
+        # Verify capture was called
+        mock.capture.assert_called_once()
+        call_kwargs = mock.capture.call_args.kwargs
+        properties = call_kwargs["properties"]
+
+        # The error_message should NOT contain the absolute path
+        assert "error_message" in properties
+        assert "/Users/testuser/project/data/" not in properties["error_message"]
+
+        # The error_message should contain only the basename
+        assert "file.txt" in properties["error_message"]
+
+    def test_capture_error_applies_sanitize_properties_to_all_fields(self, bridge_with_mock):
+        """All error properties must be sanitized before sending to PostHog."""
+        bridge, mock = bridge_with_mock
+
+        # Exception with absolute path
+        exc = RuntimeError("Cannot access /home/user/secret/credentials.json")
+        bridge._capture_error(exc, "another_event", "batch_capture")
+
+        mock.capture.assert_called_once()
+        call_kwargs = mock.capture.call_args.kwargs
+        properties = call_kwargs["properties"]
+
+        # Verify all path-like values are sanitized
+        assert "/home/user/secret/" not in properties["error_message"]
+        assert "credentials.json" in properties["error_message"]
+
+        # Other fields should not be affected
+        assert properties["error_type"] == "RuntimeError"
+        assert properties["failed_event"] == "another_event"
+        assert properties["method"] == "batch_capture"

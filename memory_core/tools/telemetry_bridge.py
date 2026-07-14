@@ -156,14 +156,16 @@ class TelemetryBridge:
         try:
             if self._analytics is None or not self._is_enabled():
                 return
+            properties = {
+                "error_type": type(exc).__name__,
+                "error_message": _sanitize_value(str(exc)[:500]),
+                "failed_event": failed_event,
+                "method": method,
+            }
+            sanitized_properties = _sanitize_properties(properties)
             self._analytics.capture(
                 event_name="memory.error",
-                properties={
-                    "error_type": type(exc).__name__,
-                    "error_message": str(exc)[:500],
-                    "failed_event": failed_event,
-                    "method": method,
-                },
+                properties=sanitized_properties,
                 distinct_id=self.get_project_id(None),
             )
         except Exception:
