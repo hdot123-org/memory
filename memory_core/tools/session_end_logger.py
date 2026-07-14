@@ -485,6 +485,33 @@ def _write_daily_log(project_root: Path, info: dict[str, Any]) -> bool:
         return False
 
 
+def _write_session_metrics(project_root: Path, info: dict) -> None:
+    """Write session metrics to local JSONL file.
+
+    Extracted from main() for testability. Writes metrics record with event='session-end'.
+    Never raises exceptions (metrics write must never break the hook).
+
+    Args:
+        project_root: Project root directory
+        info: Session info dict with duration_seconds, input_tokens, output_tokens, total_tool_calls
+    """
+    try:
+        metrics_path = _resolve_metrics_path(project_root / "memory" / "artifacts" / "memory-hook")
+        duration_ms = int(info.get("duration_seconds", 0) * 1000)
+        metrics_record = {
+            "event": "session-end",
+            "duration_seconds": info.get("duration_seconds", 0),
+            "input_tokens": info.get("input_tokens", 0),
+            "output_tokens": info.get("output_tokens", 0),
+            "total_tool_calls": info.get("total_tool_calls", 0),
+            "duration_ms": duration_ms,
+            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+        }
+        append_metrics_record(metrics_path, metrics_record)
+    except Exception:
+        pass  # Metrics write must never break the hook
+
+
 def main(argv: list[str] | None = None) -> int:
     """主入口。"""
     # 设置超时
@@ -552,21 +579,7 @@ def main(argv: list[str] | None = None) -> int:
         _write_daily_log(project_root, info)
 
         # Write metrics to local JSONL (replaces PostHog telemetry)
-        try:
-            metrics_path = _resolve_metrics_path(project_root / "memory" / "artifacts" / "memory-hook")
-            duration_ms = int(info.get("duration_seconds", 0) * 1000)
-            metrics_record = {
-                "event": "session-end",
-                "duration_seconds": info.get("duration_seconds", 0),
-                "input_tokens": info.get("input_tokens", 0),
-                "output_tokens": info.get("output_tokens", 0),
-                "total_tool_calls": info.get("total_tool_calls", 0),
-                "duration_ms": duration_ms,
-                "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
-            }
-            append_metrics_record(metrics_path, metrics_record)
-        except Exception:
-            pass  # Metrics write must never break the hook
+        _write_session_metrics(project_root, info)
 
         return 0
 

@@ -22,25 +22,51 @@ if str(repo_root) not in sys.path:
 class TestSessionEndEventNaming:
     """VAL-EVENT-001: Session-end event uses kebab-case."""
 
-    def test_session_end_event_uses_kebab_case(self):
-        """Verify session_end_logger writes 'session-end' not 'session_ended'.
+    def test_session_end_event_uses_kebab_case(self, tmp_path):
+        """Verify session_end_logger writes 'session-end' not 'session_ended' at runtime.
 
-        Reads the source file directly to confirm the event name literal,
-        avoiding fragile mocking of main()'s complex control flow.
+        This is a behavioral test that calls _write_session_metrics() directly
+        and verifies the actual metrics record produced has event='session-end'.
         """
-        from pathlib import Path
-
         from memory_core.tools import session_end_logger
 
-        source_file = Path(session_end_logger.__file__)
-        source_text = source_file.read_text(encoding="utf-8")
+        # Capture the metrics record passed to append_metrics_record
+        captured_records = []
 
-        assert '"event": "session-end"' in source_text, (
-            "session_end_logger should use 'session-end' (kebab-case)"
+        def capture_append_metrics(path, record):
+            captured_records.append(record)
+            return True
+
+        # Mock info dict that _extract_session_info_streaming would return
+        mock_info = {
+            "duration_seconds": 1,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_tool_calls": 3,
+        }
+
+        # Call _write_session_metrics() directly with the extracted function
+        with patch.object(session_end_logger, "_resolve_metrics_path", return_value=tmp_path / "metrics.jsonl"), \
+             patch.object(session_end_logger, "append_metrics_record", side_effect=capture_append_metrics):
+
+            session_end_logger._write_session_metrics(tmp_path, mock_info)
+
+        # Verify append_metrics_record was called
+        assert len(captured_records) > 0, "append_metrics_record should have been called"
+
+        # VAL-TEST-001: Verify the event field is 'session-end' (kebab-case)
+        record = captured_records[0]
+        assert record["event"] == "session-end", (
+            f"Event field should be 'session-end' (kebab-case), got '{record['event']}'"
         )
-        assert '"event": "session_ended"' not in source_text, (
-            "session_end_logger should NOT use 'session_ended' (snake_case)"
-        )
+
+        # Verify other expected fields are present
+        assert "duration_seconds" in record
+        assert "input_tokens" in record
+        assert "output_tokens" in record
+        assert "total_tool_calls" in record
+        assert "duration_ms" in record
+        assert "timestamp" in record
 
 
 class TestNoSnakeCaseEventNames:
