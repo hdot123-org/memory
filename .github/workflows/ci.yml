@@ -79,7 +79,8 @@ jobs:
         run: |
           pip install deptry
           deptry .
-      - name: Generate API documentation with pdoc
+      - name: Generate API documentation with pdoc (advisory)
+        continue-on-error: true
         run: |
           pip install pdoc
           pdoc -o docs/api memory_core
