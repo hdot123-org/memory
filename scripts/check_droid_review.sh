@@ -22,6 +22,11 @@ if [ "$EVENT_NAME" != "pull_request" ]; then
   exit 0
 fi
 
+# Dependabot PRs cannot access FACTORY_API_KEY (GitHub secret restriction),
+# so droid-review always fails for them. Skip gracefully.
+# check_droid_review.sh doesn't have actor info, but droid-review workflow
+# will post a "skipped" conclusion which we handle below.
+
 # Poll for droid-review completion
 for attempt in $(seq 1 $MAX_ATTEMPTS); do
   echo "Attempt $attempt/$MAX_ATTEMPTS: Querying check runs for commit $COMMIT_SHA in $REPOSITORY..."
@@ -40,7 +45,19 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
   if [ "$STATUS" = "success" ]; then
     echo "✓ droid-review passed"
     exit 0
+  elif [ "$STATUS" = "neutral" ] || [ "$STATUS" = "skipped" ]; then
+    echo "○ droid-review skipped (likely Dependabot PR without FACTORY_API_KEY access)"
+    exit 0
   elif [ "$STATUS" = "failure" ]; then
+    # Check if this is a Dependabot PR that failed due to missing FACTORY_API_KEY
+    PR_INFO=$(curl -s -H "Authorization: token $GH_TOKEN" \
+      -H "Accept: application/vnd.github+json" \
+      "https://api.github.com/repos/${REPOSITORY}/commits/${COMMIT_SHA}/pulls")
+    PR_AUTHOR=$(echo "$PR_INFO" | jq -r '.[0].user.login // ""')
+    if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
+      echo "○ droid-review failed but PR is from Dependabot (FACTORY_API_KEY not accessible), skipping"
+      exit 0
+    fi
     echo "✗ FAIL: droid-review failed"
     exit 1
   elif [ "$STATUS" = "pending" ] || [ "$STATUS" = "null" ] || [ -z "$STATUS" ]; then
