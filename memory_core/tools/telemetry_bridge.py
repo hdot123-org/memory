@@ -17,7 +17,7 @@ import logging
 import os
 import socket
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -268,17 +268,26 @@ class TelemetryBridge:
                 properties = event_data.get("properties") or {}
                 sanitized = _sanitize_properties(properties)
 
+                # Mirror PostHog SDK _enqueue: add $geoip_disable and $is_server
+                # to match the wire format the server expects. Without these,
+                # some PostHog API versions reject the batch with HTTP 400.
                 enriched: dict[str, Any] = {
                     "memory_core_version": CURRENT_MEMORY_VERSION,
                     "host": _resolve_host(),
-                    "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+                    "$geoip_disable": True,
+                    "$is_server": True,
                     **sanitized,
                 }
+
+                # Top-level timestamp is required by the PostHog batch API.
+                # The SDK's _enqueue always adds it; omitting it can trigger 400.
+                item_timestamp = datetime.now(timezone.utc).isoformat()
 
                 batch_items.append({
                     "event": event_name,
                     "properties": enriched,
                     "distinct_id": distinct_id,
+                    "timestamp": item_timestamp,
                     "uuid": str(__import__("uuid").uuid4()),
                 })
 

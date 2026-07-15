@@ -400,6 +400,97 @@ class TestBatchCapturePayloadEnhancements:
         assert payload["batch"][0]["uuid"]  # non-empty
 
 
+class TestBatchCaptureSDKCompliance:
+    """VAL-PH-012: batch items match PostHog SDK wire format to prevent HTTP 400.
+
+    The PostHog batch API rejects payloads missing required fields that the
+    Python SDK's _enqueue always adds. This test class verifies our manual
+    batch_capture includes those same fields.
+    """
+
+    @pytest.fixture
+    def bridge_with_client(self):
+        bridge = TelemetryBridge()
+        mock_analytics = MagicMock()
+        mock_analytics._enabled = True
+        mock_client = MagicMock()
+        mock_client.api_key = "phc_test_key"
+        mock_analytics._client = mock_client
+        bridge._analytics = mock_analytics
+        return bridge, mock_analytics
+
+    def test_batch_item_has_top_level_timestamp(self, bridge_with_client):
+        """Each batch item must include a top-level ISO timestamp (SDK requirement)."""
+        bridge, mock = bridge_with_client
+
+        import json as json_module
+        captured_payloads = []
+        mock_response = MagicMock()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_response.status = 200
+
+        def side_effect(req, **kwargs):
+            body = json_module.loads(req.data.decode("utf-8"))
+            captured_payloads.append(body)
+            return mock_response
+
+        with patch("urllib.request.urlopen", side_effect=side_effect):
+            bridge.batch_capture([{"event_name": "test_event", "properties": {}}])
+
+        item = captured_payloads[0]["batch"][0]
+        assert "timestamp" in item, "Batch item must have top-level timestamp field"
+        # Should be a valid ISO 8601 string
+        assert "T" in item["timestamp"]
+
+    def test_batch_item_has_geoip_disable(self, bridge_with_client):
+        """Each batch item properties must include $geoip_disable=True (SDK parity)."""
+        bridge, mock = bridge_with_client
+
+        import json as json_module
+        captured_payloads = []
+        mock_response = MagicMock()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_response.status = 200
+
+        def side_effect(req, **kwargs):
+            body = json_module.loads(req.data.decode("utf-8"))
+            captured_payloads.append(body)
+            return mock_response
+
+        with patch("urllib.request.urlopen", side_effect=side_effect):
+            bridge.batch_capture([{"event_name": "test_event", "properties": {}}])
+
+        item = captured_payloads[0]["batch"][0]
+        assert item["properties"]["$geoip_disable"] is True
+
+    def test_batch_item_has_is_server(self, bridge_with_client):
+        """Each batch item properties must include $is_server=True (SDK parity)."""
+        bridge, mock = bridge_with_client
+
+        import json as json_module
+        captured_payloads = []
+        mock_response = MagicMock()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_response.status = 200
+
+        def side_effect(req, **kwargs):
+            body = json_module.loads(req.data.decode("utf-8"))
+            captured_payloads.append(body)
+            return mock_response
+
+        with patch("urllib.request.urlopen", side_effect=side_effect):
+            bridge.batch_capture([{"event_name": "test_event", "properties": {}}])
+
+        item = captured_payloads[0]["batch"][0]
+        assert item["properties"]["$is_server"] is True
+
+
 class TestResolveIngestionHost:
     """VAL-PH-011: _resolve_ingestion_host remaps app domains to ingestion domains."""
 
