@@ -52,7 +52,7 @@ jobs:
           echo "Tests completed at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
       - name: Upload coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage.xml
           flags: unittests
