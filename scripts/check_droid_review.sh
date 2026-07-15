@@ -28,7 +28,7 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
   # Query check runs for this commit
   CHECKS=$(curl -s -H "Authorization: token $GH_TOKEN" \
     -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/${REPOSITORY}/commits/${COMMIT_SHA}/check-runs?check_name=Droid+Auto+Review")
+    "https://api.github.com/repos/${REPOSITORY}/commits/${COMMIT_SHA}/check-runs?check_name=droid-review")
   
   # Extract the conclusion of the first matching check
   STATUS=$(echo "$CHECKS" | jq -r '.check_runs[0].conclusion // "pending"')

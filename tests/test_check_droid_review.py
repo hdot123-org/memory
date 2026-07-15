@@ -95,7 +95,7 @@ def test_github_api_call_present():
     assert 'curl -s' in content
     assert 'Authorization: token' in content
     assert 'check-runs' in content
-    assert 'Droid+Auto+Review' in content
+    assert 'check_name=droid-review' in content
 
 
 def test_jq_extracts_conclusion():
