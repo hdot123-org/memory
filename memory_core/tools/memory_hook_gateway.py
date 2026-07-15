@@ -1750,8 +1750,14 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
             return  # Skip: within 5-minute backoff after recent attempt
 
         # Step 3: Probe network connectivity
+        # Use ingestion host (mirrors posthog SDK's determine_server_host)
         posthog_host = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip()
-        # Extract hostname from URL (e.g., "https://us.posthog.com" -> "us.posthog.com")
+        _trimmed = posthog_host.rstrip("/")
+        if _trimmed in ("https://app.posthog.com", "https://us.posthog.com"):
+            posthog_host = "https://us.i.posthog.com"
+        elif _trimmed == "https://eu.posthog.com":
+            posthog_host = "https://eu.i.posthog.com"
+        # Extract hostname from URL (e.g., "https://us.i.posthog.com" -> "us.i.posthog.com")
         if "://" in posthog_host:
             posthog_hostname = posthog_host.split("://", 1)[1].rstrip("/")
         else:

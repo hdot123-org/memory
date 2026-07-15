@@ -373,7 +373,11 @@ class TestPosthogHostnameExtraction:
         assert call_args[0][0] == ("custom.posthog.example.com", 443)
 
     def test_hostname_with_https_protocol(self, gw, monkeypatch, tmp_path):
-        """POSTHOG_HOST with https:// protocol extracts hostname correctly."""
+        """POSTHOG_HOST with https:// protocol extracts hostname correctly.
+
+        Note: us.posthog.com/eu.posthog.com are remapped to i.posthog.com
+        ingestion subdomains (mirrors posthog SDK's determine_server_host).
+        """
         artifact_root = _setup_sync_env(
             tmp_path,
             metrics_lines=[json.dumps({"event": "test"}) + "\n"],
@@ -397,7 +401,8 @@ class TestPosthogHostnameExtraction:
             gw._maybe_sync_telemetry(artifact_root)
 
         call_args = mock_socket.create_connection.call_args
-        assert call_args[0][0] == ("eu.posthog.com", 443)
+        # eu.posthog.com is remapped to eu.i.posthog.com for ingestion
+        assert call_args[0][0] == ("eu.i.posthog.com", 443)
 
 
 # ===========================================================================

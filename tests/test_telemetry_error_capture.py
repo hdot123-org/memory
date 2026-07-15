@@ -177,3 +177,250 @@ class TestErrorCaptureSanitization:
         assert properties["error_type"] == "RuntimeError"
         assert properties["failed_event"] == "another_event"
         assert properties["method"] == "batch_capture"
+
+
+class TestBatchCaptureRetryLogic:
+    """VAL-PH-008: batch_capture retries transient failures (429, 5xx, URLError)."""
+
+    @pytest.fixture
+    def bridge_with_client(self):
+        """Return a TelemetryBridge with mock analytics + client for batch_capture."""
+        bridge = TelemetryBridge()
+        mock_analytics = MagicMock()
+        mock_analytics._enabled = True
+        mock_client = MagicMock()
+        mock_client.api_key = "phc_test_key"
+        mock_analytics._client = mock_client
+        bridge._analytics = mock_analytics
+        return bridge, mock_analytics
+
+    def test_http_400_not_retried(self, bridge_with_client):
+        """HTTP 400 is non-retryable - should fail immediately without retry."""
+        bridge, mock = bridge_with_client
+        import urllib.error
+
+        http_err = urllib.error.HTTPError(
+            url="https://test/batch/",
+            code=400,
+            msg="Bad Request",
+            hdrs=None,
+            fp=__import__("io").BytesIO(b'{"detail": "invalid payload"}'),
+        )
+
+        call_count = [0]
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            raise http_err
+
+        with patch("urllib.request.urlopen", side_effect=side_effect), \
+             patch("time.sleep"):
+            result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
+
+        assert result is False
+        assert call_count[0] == 1  # No retries
+
+    def test_http_429_retried_then_succeeds(self, bridge_with_client):
+        """HTTP 429 (rate limit) should be retried and can succeed on retry."""
+        bridge, mock = bridge_with_client
+
+        mock_response = MagicMock()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_response.status = 200
+
+        import urllib.error
+        http_429 = urllib.error.HTTPError(
+            url="https://test/batch/",
+            code=429,
+            msg="Too Many Requests",
+            hdrs=None,
+            fp=__import__("io").BytesIO(b'{"detail": "rate limited"}'),
+        )
+
+        call_count = [0]
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise http_429
+            return mock_response
+
+        with patch("urllib.request.urlopen", side_effect=side_effect), \
+             patch("time.sleep"):
+            result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
+
+        assert result is True
+        assert call_count[0] == 2  # 1 initial + 1 retry
+
+    def test_http_500_retried_exhausted(self, bridge_with_client):
+        """HTTP 500 should be retried up to max_retries, then fail."""
+        bridge, mock = bridge_with_client
+        import urllib.error
+
+        http_500 = urllib.error.HTTPError(
+            url="https://test/batch/",
+            code=500,
+            msg="Internal Server Error",
+            hdrs=None,
+            fp=__import__("io").BytesIO(b'{"detail": "server error"}'),
+        )
+
+        call_count = [0]
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            raise http_500
+
+        with patch("urllib.request.urlopen", side_effect=side_effect), \
+             patch("time.sleep"):
+            result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
+
+        assert result is False
+        assert call_count[0] == 3  # 1 initial + 2 retries
+
+    def test_urlerror_retried_then_succeeds(self, bridge_with_client):
+        """URLError (timeout/network) should be retried and can succeed."""
+        bridge, mock = bridge_with_client
+
+        mock_response = MagicMock()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_response.status = 200
+
+        import urllib.error
+        url_err = urllib.error.URLError("handshake timed out")
+
+        call_count = [0]
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise url_err
+            return mock_response
+
+        with patch("urllib.request.urlopen", side_effect=side_effect), \
+             patch("time.sleep"):
+            result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
+
+        assert result is True
+        assert call_count[0] == 2  # 1 initial + 1 retry
+
+
+class TestBatchCaptureHTTPErrorBodyCapture:
+    """VAL-PH-009: HTTPError response body is captured in error event."""
+
+    @pytest.fixture
+    def bridge_with_client(self):
+        bridge = TelemetryBridge()
+        mock_analytics = MagicMock()
+        mock_analytics._enabled = True
+        mock_client = MagicMock()
+        mock_client.api_key = "phc_test_key"
+        mock_analytics._client = mock_client
+        bridge._analytics = mock_analytics
+        return bridge, mock_analytics
+
+    def test_http_error_body_included_in_error_message(self, bridge_with_client):
+        """When HTTP 400 occurs, the response body should be captured for diagnostics."""
+        bridge, mock = bridge_with_client
+        import urllib.error
+
+        http_err = urllib.error.HTTPError(
+            url="https://test/batch/",
+            code=400,
+            msg="Bad Request",
+            hdrs=None,
+            fp=__import__("io").BytesIO(b"event submitted without a distinct_id"),
+        )
+
+        with patch("urllib.request.urlopen", side_effect=http_err), \
+             patch("time.sleep"):
+            result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
+
+        assert result is False
+
+        # Check the error event
+        error_calls = [
+            c for c in mock.capture.call_args_list
+            if c.kwargs.get("event_name") == "memory.error"
+        ]
+        assert len(error_calls) == 1
+        error_msg = error_calls[0].kwargs["properties"]["error_message"]
+        assert "400" in error_msg
+        assert "Bad Request" in error_msg
+        assert "distinct_id" in error_msg  # Response body was captured
+
+
+class TestBatchCapturePayloadEnhancements:
+    """VAL-PH-010: batch payload includes uuid and sentAt (matches SDK behavior)."""
+
+    @pytest.fixture
+    def bridge_with_client(self):
+        bridge = TelemetryBridge()
+        mock_analytics = MagicMock()
+        mock_analytics._enabled = True
+        mock_client = MagicMock()
+        mock_client.api_key = "phc_test_key"
+        mock_analytics._client = mock_client
+        bridge._analytics = mock_analytics
+        return bridge, mock_analytics
+
+    def test_payload_includes_uuid_and_sentat(self, bridge_with_client):
+        """Batch payload should include uuid per event and sentAt timestamp."""
+        bridge, mock = bridge_with_client
+
+        import json as json_module
+
+        captured_payloads = []
+        mock_response = MagicMock()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_response.read.return_value = b'{"status": "ok"}'
+        mock_response.status = 200
+
+        def side_effect(req, **kwargs):
+            body = json_module.loads(req.data.decode("utf-8"))
+            captured_payloads.append(body)
+            return mock_response
+
+        with patch("urllib.request.urlopen", side_effect=side_effect):
+            result = bridge.batch_capture([
+                {"event_name": "test_event", "properties": {"key": "value"}}
+            ])
+
+        assert result is True
+        assert len(captured_payloads) == 1
+        payload = captured_payloads[0]
+
+        # sentAt should be present at top level
+        assert "sentAt" in payload
+
+        # Each batch item should have a uuid
+        assert len(payload["batch"]) == 1
+        assert "uuid" in payload["batch"][0]
+        assert payload["batch"][0]["uuid"]  # non-empty
+
+
+class TestResolveIngestionHost:
+    """VAL-PH-011: _resolve_ingestion_host remaps app domains to ingestion domains."""
+
+    def test_remaps_us_posthog(self):
+        from memory_core.tools.telemetry_bridge import _resolve_ingestion_host
+        assert _resolve_ingestion_host("https://us.posthog.com") == "https://us.i.posthog.com"
+
+    def test_remaps_app_posthog(self):
+        from memory_core.tools.telemetry_bridge import _resolve_ingestion_host
+        assert _resolve_ingestion_host("https://app.posthog.com") == "https://us.i.posthog.com"
+
+    def test_remaps_eu_posthog(self):
+        from memory_core.tools.telemetry_bridge import _resolve_ingestion_host
+        assert _resolve_ingestion_host("https://eu.posthog.com") == "https://eu.i.posthog.com"
+
+    def test_passthrough_custom_host(self):
+        from memory_core.tools.telemetry_bridge import _resolve_ingestion_host
+        custom = "https://custom.posthog.example.com"
+        assert _resolve_ingestion_host(custom) == custom
+
+    def test_handles_trailing_slash(self):
+        from memory_core.tools.telemetry_bridge import _resolve_ingestion_host
+        assert _resolve_ingestion_host("https://us.posthog.com/") == "https://us.i.posthog.com"
+

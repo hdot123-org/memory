@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import socket
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,14 @@ from typing import Any
 from memory_core.constants import CURRENT_MEMORY_VERSION, SUPPORTED_HOSTS
 
 logger = logging.getLogger(__name__)
+
+# PostHog ingestion host remapping (mirrors posthog SDK's determine_server_host).
+# PostHog migrated batch ingestion to dedicated i.posthog.com subdomains.
+_INGESTION_HOST_MAP = {
+    "https://app.posthog.com": "https://us.i.posthog.com",
+    "https://us.posthog.com": "https://us.i.posthog.com",
+    "https://eu.posthog.com": "https://eu.i.posthog.com",
+}
 
 # Keys that likely contain file system paths and should be sanitized
 _PATH_KEY_FRAGMENTS = ("path", "file", "cwd", "dir", "root")
@@ -74,6 +83,18 @@ def _resolve_host() -> str:
     if env_host and env_host in SUPPORTED_HOSTS:
         return env_host
     return socket.gethostname() or "unknown"
+
+
+def _resolve_ingestion_host(host: str) -> str:
+    """Resolve the PostHog ingestion host, mirroring the SDK's determine_server_host.
+
+    PostHog migrated batch ingestion to dedicated i.posthog.com subdomains.
+    Sending to the app/dashboard domain (us.posthog.com) can intermittently
+    return HTTP 400 Bad Request for batch API calls.
+
+    See: posthog.request.determine_server_host in the posthog SDK.
+    """
+    return _INGESTION_HOST_MAP.get(host.rstrip("/"), host)
 
 
 def _fallback_project_id(cwd: Path | None) -> str:
@@ -258,6 +279,7 @@ class TelemetryBridge:
                     "event": event_name,
                     "properties": enriched,
                     "distinct_id": distinct_id,
+                    "uuid": str(__import__("uuid").uuid4()),
                 })
 
             if not batch_items:
@@ -267,23 +289,79 @@ class TelemetryBridge:
             import urllib.error
             import urllib.request
 
-            host = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip()
+            # Resolve ingestion host (mirrors SDK's determine_server_host)
+            raw_host = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip()
+            host = _resolve_ingestion_host(raw_host)
             api_key = client.api_key
 
             batch_url = f"{host}/batch/"
             headers = {"Content-Type": "application/json"}
-            payload = json.dumps({"api_key": api_key, "batch": batch_items}).encode("utf-8")
+            payload = json.dumps({
+                "api_key": api_key,
+                "batch": batch_items,
+                "sentAt": datetime.now().astimezone().isoformat(),
+            }).encode("utf-8")
 
-            req = urllib.request.Request(batch_url, data=payload, headers=headers, method="POST")
+            # Send with retry for transient failures (timeouts, 5xx, 429).
+            # Matches SDK defaults: 15s timeout, up to 2 retries with exponential backoff.
+            max_retries = 2
+            for attempt in range(max_retries + 1):
+                req = urllib.request.Request(
+                    batch_url, data=payload, headers=headers, method="POST"
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=15) as response:
+                        response.read()  # Consume full response
+                    logger.debug(
+                        "telemetry_bridge.batch_capture: sent %d events", len(batch_items)
+                    )
+                    return True
 
-            # 5s timeout for batch operation (network probe already done before calling this)
-            with urllib.request.urlopen(req, timeout=5) as response:
-                if response.status >= 400:
-                    logger.debug("telemetry_bridge.batch_capture: HTTP %d", response.status)
+                except urllib.error.HTTPError as http_exc:
+                    # Read response body for diagnostics (str(HTTPError) omits it)
+                    body_text = ""
+                    try:
+                        body_text = http_exc.read().decode(
+                            "utf-8", errors="replace"
+                        )[:300]
+                    except Exception:
+                        pass
+
+                    # Retry on 429 (rate limit) and 5xx (server errors)
+                    should_retry = http_exc.code == 429 or http_exc.code >= 500
+                    if should_retry and attempt < max_retries:
+                        logger.debug(
+                            "telemetry_bridge.batch_capture: HTTP %d, retrying %d/%d",
+                            http_exc.code, attempt + 1, max_retries,
+                        )
+                        time.sleep(2 ** attempt)
+                        continue
+
+                    # Non-retryable or exhausted retries: enrich message with body
+                    if body_text:
+                        http_exc.msg = f"{http_exc.msg} [body: {body_text}]"
+                    logger.debug(
+                        "telemetry_bridge.batch_capture: HTTP error: %s", http_exc
+                    )
+                    self._capture_error(http_exc, "batch", "batch_capture")
                     return False
 
-            logger.debug("telemetry_bridge.batch_capture: sent %d events", len(batch_items))
-            return True
+                except urllib.error.URLError as url_exc:
+                    # Network-level error (timeout, DNS, connection refused)
+                    if attempt < max_retries:
+                        logger.debug(
+                            "telemetry_bridge.batch_capture: URLError, retrying %d/%d: %s",
+                            attempt + 1, max_retries, url_exc,
+                        )
+                        time.sleep(2 ** attempt)
+                        continue
+                    logger.debug(
+                        "telemetry_bridge.batch_capture: exhausted retries: %s", url_exc
+                    )
+                    self._capture_error(url_exc, "batch", "batch_capture")
+                    return False
+
+            return False  # Should not reach here, but safety net
 
         except Exception as exc:
             # Analytics must never break the host application flow
