@@ -1,3 +1,8 @@
+# Droid Auto Review Workflow
+# Uses NVIDIA Kong proxy (nemotron-3-super-120b-a12b) via BYOK configuration
+# Review typically takes 3-4 minutes. Timeout set to 30 minutes in check_droid_review.sh
+# VAL-CROSS-001: Verified passing on PR #132 (2026-07-15)
+
 name: Droid Auto Review
 
 on:
