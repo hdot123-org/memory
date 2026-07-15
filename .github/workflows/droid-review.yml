@@ -56,3 +56,4 @@ jobs:
           automatic_review: true
           automatic_security_review: true
           review_model: "nvidia/nemotron-3-super-120b-a12b"
+          allowed_bots: "dependabot[bot]"
