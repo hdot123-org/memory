@@ -1,7 +1,7 @@
 # Droid Auto Review Workflow
-# Uses NVIDIA Kong proxy (nemotron-3-super-120b-a12b) via BYOK configuration
-# Review typically takes 3-4 minutes. Timeout set to 30 minutes in check_droid_review.sh
-# VAL-CROSS-001: Verified passing on PR #132 (2026-07-15)
+# Uses Bailian (Qwen 3.7 Plus) via Kong Proxy BYOK configuration
+# Kong Proxy at ai.exa.edu.kg routes qwen3.7-plus to node1 via Tailscale
+# BYOK passed via droid-action `settings` input (official method)
 
 name: Droid Auto Review
 
@@ -28,32 +28,34 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
-      - name: Configure BYOK for NVIDIA Kong Proxy
+      - name: Write BYOK settings file
         env:
           NVIDIA_KONG_PROXY_KEY: ${{ secrets.NVIDIA_KONG_PROXY_KEY }}
         run: |
-          mkdir -p ~/.factory
-          cat > ~/.factory/settings.json << SETTINGS_EOF
-          {
-            "customModels": [
-              {
-                "model": "nvidia/nemotron-3-super-120b-a12b",
-                "displayName": "NVIDIA Kong Nemotron",
-                "baseUrl": "https://ai.exa.edu.kg/v1",
-                "apiKey": "${NVIDIA_KONG_PROXY_KEY}",
-                "provider": "generic-chat-completion-api",
-                "maxOutputTokens": 16384,
-                "noImageSupport": true
-              }
-            ]
+          python3 -c "
+          import json, os
+          settings = {
+              'customModels': [{
+                  'model': 'qwen3.7-plus',
+                  'displayName': 'Bailian Qwen 3.7 Plus',
+                  'baseUrl': 'https://ai.exa.edu.kg/v1',
+                  'apiKey': os.environ['NVIDIA_KONG_PROXY_KEY'],
+                  'provider': 'generic-chat-completion-api',
+                  'maxOutputTokens': 65536,
+                  'noImageSupport': True
+              }]
           }
-          SETTINGS_EOF
-          echo "BYOK settings.json written successfully"
+          os.makedirs(os.path.expanduser('~/.factory'), exist_ok=True)
+          path = os.path.expanduser('~/.factory/settings.json')
+          with open(path, 'w') as f:
+              json.dump(settings, f)
+          print('Valid JSON written to', path)
+          "
       - name: Run Droid Auto Review
         uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
-          review_model: "nvidia/nemotron-3-super-120b-a12b"
+          review_model: "qwen3.7-plus"
           allowed_bots: "dependabot[bot]"
