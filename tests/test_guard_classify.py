@@ -15,9 +15,21 @@ from memory_core.tools._guard_classify import (
     _split_shell_args,
     classify_tool_use,
 )
-from memory_core.tools._guard_classify import (
-    classify_tool_use as _classify_tool_use,
-)
+from memory_core.tools._rule_types import RuleResult
+
+
+def _result_to_dict(result):
+    """Helper to convert RuleResult to dict for test assertions."""
+    if isinstance(result, RuleResult):
+        return result.detail
+    return result
+
+
+def _result_to_dict(result):
+    """Helper to convert RuleResult to dict for test assertions."""
+    if isinstance(result, RuleResult):
+        return result.detail
+    return result
 
 
 class TestCheckFileTypeBlock:
@@ -368,71 +380,80 @@ class TestClassifyToolUse:
         (tmp_path / "memory" / "system").mkdir(parents=True)
         payload = {"tool_name": "UnknownTool"}
         result = classify_tool_use(payload, tmp_path)
-        assert result["decision"] == "allow"
-        assert "Unknown tool" in result["reason"]
+        assert isinstance(result, RuleResult)
+        assert result.detail["decision"] == "allow"
+        assert "Unknown tool" in result.message
 
     def test_allows_when_no_tool_name(self, tmp_path: Path):
         """classify_tool_use allows when no tool_name."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
         payload = {}
         result = classify_tool_use(payload, tmp_path)
-        assert result["decision"] == "allow"
-        assert "No tool_name" in result["reason"]
+        assert isinstance(result, RuleResult)
+        assert result.detail["decision"] == "allow"
+        assert "No tool_name" in result.message
 
     def test_allows_write_without_file_path(self, tmp_path: Path):
         """classify_tool_use allows Write without file_path."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
         payload = {"tool_name": "Write"}
         result = classify_tool_use(payload, tmp_path)
-        assert result["decision"] == "allow"
-        assert "without file_path" in result["reason"]
+        assert isinstance(result, RuleResult)
+        assert result.detail["decision"] == "allow"
+        assert "without file_path" in result.message
 
     def test_blocks_write_sql_file(self, tmp_path: Path):
         """classify_tool_use blocks Write to .sql file."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
         payload = {"tool_name": "Write", "file_path": "test.sql", "content": "SELECT"}
         result = classify_tool_use(payload, tmp_path)
-        assert result["decision"] == "block"
-        assert ".sql" in result["reason"]
+        assert isinstance(result, RuleResult)
+        assert result.matched is True
+        assert result.severity == "error"
+        assert result.detail["decision"] == "block"
+        assert ".sql" in result.message
 
     def test_blocks_write_bak_file(self, tmp_path: Path):
         """classify_tool_use blocks Write to .bak file."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
         payload = {"tool_name": "Write", "file_path": "backup.bak", "content": "backup"}
         result = classify_tool_use(payload, tmp_path)
-        assert result["decision"] == "block"
-        assert ".bak" in result["reason"]
+        assert isinstance(result, RuleResult)
+        assert result.detail["decision"] == "block"
+        assert ".bak" in result.message
 
     def test_blocks_write_to_backups_dir(self, tmp_path: Path):
         """classify_tool_use blocks Write to backups directory."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
         payload = {"tool_name": "Write", "file_path": "backups/test.txt", "content": "test"}
         result = classify_tool_use(payload, tmp_path)
-        assert result["decision"] == "block"
-        assert "backups" in result["reason"]
+        assert isinstance(result, RuleResult)
+        assert result.detail["decision"] == "block"
+        assert "backups" in result.message
 
-    def test_matches_original_behavior_for_write(self, tmp_path: Path):
-        """classify_tool_use matches _classify_tool_use for Write tool."""
+    def test_returns_rule_result_for_write(self, tmp_path: Path):
+        """classify_tool_use returns RuleResult for Write tool."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
         payload = {"tool_name": "Write", "file_path": "test.py", "content": "print('test')"}
 
-        result_new = classify_tool_use(payload.copy(), tmp_path)
-        result_old = _classify_tool_use(payload.copy(), tmp_path)
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is False
+        assert result.severity == "info"
+        assert result.detail["decision"] == "allow"
 
-        assert result_new == result_old
-
-    def test_matches_original_behavior_for_execute(self, tmp_path: Path):
-        """classify_tool_use matches _classify_tool_use for Execute tool."""
+    def test_returns_rule_result_for_execute(self, tmp_path: Path):
+        """classify_tool_use returns RuleResult for Execute tool."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
         payload = {"tool_name": "Execute", "command": "ls -la"}
 
-        result_new = classify_tool_use(payload.copy(), tmp_path)
-        result_old = _classify_tool_use(payload.copy(), tmp_path)
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is False
+        assert result.detail["decision"] == "allow"
 
-        assert result_new == result_old
-
-    def test_matches_original_behavior_for_multiedit(self, tmp_path: Path):
-        """classify_tool_use matches _classify_tool_use for MultiEdit tool."""
+    def test_returns_rule_result_for_multiedit(self, tmp_path: Path):
+        """classify_tool_use returns RuleResult for MultiEdit tool."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
         payload = {
             "tool_name": "MultiEdit",
@@ -441,10 +462,11 @@ class TestClassifyToolUse:
             ]
         }
 
-        result_new = classify_tool_use(payload.copy(), tmp_path)
-        result_old = _classify_tool_use(payload.copy(), tmp_path)
-
-        assert result_new == result_old
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is False
+        assert result.detail["decision"] == "allow"
+        assert "item_results" in result.detail
 
     def test_handles_tool_input_wrapper(self, tmp_path: Path):
         """classify_tool_use handles tool_input wrapper format."""
@@ -457,5 +479,129 @@ class TestClassifyToolUse:
             }
         }
         result = classify_tool_use(payload, tmp_path)
-        assert result["decision"] == "block"
-        assert ".sql" in result["reason"]
+        assert isinstance(result, RuleResult)
+        assert result.detail["decision"] == "block"
+        assert ".sql" in result.message
+
+    def test_has_rule_name_property(self):
+        """classify_tool_use has rule_name property for Protocol compliance."""
+        assert hasattr(classify_tool_use, "rule_name")
+        assert classify_tool_use.rule_name == "classify_tool_use"
+
+
+class TestRuleEvaluatorProtocolCompliance:
+    """Tests for RuleEvaluator Protocol compliance across all 5 executors."""
+
+    def test_classify_tool_use_has_rule_name(self):
+        """classify_tool_use has rule_name property."""
+        assert hasattr(classify_tool_use, "rule_name")
+        assert classify_tool_use.rule_name == "classify_tool_use"
+
+    def test_classify_tool_use_returns_rule_result(self):
+        """classify_tool_use returns RuleResult."""
+        # classify_tool_use is a function, not a class with evaluate method
+        # but it has rule_name property for Protocol compliance
+        payload = {"tool_name": "Execute", "command": "echo test"}
+        result = classify_tool_use(payload, Path("/tmp"))
+        assert isinstance(result, RuleResult)
+
+    def test_project_map_validator_has_rule_name(self, tmp_path: Path):
+        """ProjectMapValidator has rule_name property."""
+        from unittest.mock import MagicMock
+
+        from memory_core.tools.business_policy_checks import ProjectMapValidator
+        config = MagicMock()
+        validator = ProjectMapValidator(config)
+        assert hasattr(validator, "rule_name")
+        assert validator.rule_name == "project_map_validation"
+
+    def test_project_map_validator_has_evaluate(self, tmp_path: Path):
+        """ProjectMapValidator has evaluate method returning RuleResult."""
+        from unittest.mock import MagicMock
+
+        from memory_core.tools._rule_types import RuleContext
+        from memory_core.tools.business_policy_checks import ProjectMapValidator
+        config = MagicMock()
+        config.read_text_if_exists_fn = MagicMock(return_value="")
+        config.project_map_files = [tmp_path / "index.md", tmp_path / "core.md", tmp_path / "registry.md"]
+        config.project_map_governance = tmp_path / "governance.md"
+        validator = ProjectMapValidator(config)
+        assert hasattr(validator, "evaluate")
+        ctx = RuleContext()
+        result = validator.evaluate(ctx)
+        assert isinstance(result, RuleResult)
+
+    def test_frozen_tuple_checker_has_rule_name(self):
+        """FrozenTupleChecker has rule_name property."""
+        from unittest.mock import MagicMock
+
+        from memory_core.tools.business_policy_checks import FrozenTupleChecker
+        config = MagicMock()
+        checker = FrozenTupleChecker(config)
+        assert hasattr(checker, "rule_name")
+        assert checker.rule_name == "frozen_tuple_check"
+
+    def test_frozen_tuple_checker_has_evaluate(self, tmp_path: Path):
+        """FrozenTupleChecker has evaluate method returning RuleResult."""
+        from unittest.mock import MagicMock
+
+        from memory_core.tools._rule_types import RuleContext
+        from memory_core.tools.business_policy_checks import FrozenTupleChecker
+        config = MagicMock()
+        config.governance_frozen_tuple_files = []
+        config.frozen_tuple_expected = []
+        config.frozen_tuple_legacy_markers = []
+        checker = FrozenTupleChecker(config)
+        assert hasattr(checker, "evaluate")
+        ctx = RuleContext()
+        result = checker.evaluate(ctx)
+        assert isinstance(result, RuleResult)
+
+    def test_event_contract_checker_has_rule_name(self):
+        """EventContractChecker has rule_name property."""
+        from unittest.mock import MagicMock
+
+        from memory_core.tools.business_policy_checks import EventContractChecker
+        config = MagicMock()
+        checker = EventContractChecker(config)
+        assert hasattr(checker, "rule_name")
+        assert checker.rule_name == "event_contract_check"
+
+    def test_event_contract_checker_has_evaluate(self):
+        """EventContractChecker has evaluate method returning RuleResult."""
+        from unittest.mock import MagicMock
+
+        from memory_core.tools._rule_types import RuleContext
+        from memory_core.tools.business_policy_checks import EventContractChecker
+        config = MagicMock()
+        config.event_contract_files = {}
+        checker = EventContractChecker(config)
+        assert hasattr(checker, "evaluate")
+        ctx = RuleContext()
+        result = checker.evaluate(ctx)
+        assert isinstance(result, RuleResult)
+
+    def test_truth_basis_resolver_has_rule_name(self):
+        """TruthBasisResolver has rule_name property."""
+        from unittest.mock import MagicMock
+
+        from memory_core.tools.business_policy_checks import TruthBasisResolver
+        config = MagicMock()
+        resolver = TruthBasisResolver(config)
+        assert hasattr(resolver, "rule_name")
+        assert resolver.rule_name == "truth_basis_resolution"
+
+    def test_truth_basis_resolver_has_evaluate(self):
+        """TruthBasisResolver has evaluate method returning RuleResult."""
+        from unittest.mock import MagicMock
+
+        from memory_core.tools._rule_types import RuleContext
+        from memory_core.tools.business_policy_checks import TruthBasisResolver
+        config = MagicMock()
+        config.global_canonical = []
+        config.project_canonical = {}
+        resolver = TruthBasisResolver(config)
+        assert hasattr(resolver, "evaluate")
+        ctx = RuleContext(extra={"project_scope": "test"})
+        result = resolver.evaluate(ctx)
+        assert isinstance(result, RuleResult)

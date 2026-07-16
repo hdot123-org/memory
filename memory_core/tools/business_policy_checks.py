@@ -23,6 +23,7 @@ try:
         _section_body,
         _section_bullets,
     )
+    from ._rule_types import RuleContext, RuleResult
     from ._validation_constants import (
         MKR_ABSORBED_STATUS,
         MKR_ACTIVE_LEGAL_MAP_ONLY,
@@ -59,6 +60,7 @@ except ImportError:
         _section_body,
         _section_bullets,
     )
+    from _rule_types import RuleContext, RuleResult  # type: ignore
     from _validation_constants import (  # type: ignore
         MKR_ABSORBED_STATUS,
         MKR_ACTIVE_LEGAL_MAP_ONLY,
@@ -98,8 +100,27 @@ except ImportError:
 class ProjectMapValidator:
     """Validates project-map contract files and related legal-system contracts."""
 
+    rule_name = "project_map_validation"
+
     def __init__(self, config: GatewayBusinessPolicyConfig):
         self._config = config
+
+    def evaluate(self, ctx: RuleContext) -> RuleResult:
+        """Evaluate project-map validation rule.
+
+        Returns RuleResult with:
+        - matched: True if validation errors found
+        - severity: 'error' if errors, 'info' if pass
+        - message: summary of validation
+        - detail: {'errors': list[str]}
+        """
+        errors = self.validate_project_map_files()
+        return RuleResult(
+            matched=len(errors) > 0,
+            severity="error" if errors else "info",
+            message=f"Found {len(errors)} validation errors" if errors else "Validation passed",
+            detail={"errors": errors}
+        )
 
     def _read_text_if_exists(self, path: Path) -> str:
         return self._config.read_text_if_exists_fn(path)
@@ -209,8 +230,27 @@ class LegalContractChecker:
 class FrozenTupleChecker:
     """Checks governance frozen tuple markers."""
 
+    rule_name = "frozen_tuple_check"
+
     def __init__(self, config: GatewayBusinessPolicyConfig):
         self._config = config
+
+    def evaluate(self, ctx: RuleContext) -> RuleResult:
+        """Evaluate frozen tuple validation rule.
+
+        Returns RuleResult with:
+        - matched: True if validation errors found
+        - severity: 'error' if errors, 'info' if pass
+        - message: summary of validation
+        - detail: {'errors': list[str]}
+        """
+        errors = self.governance_frozen_tuple_blocker_errors()
+        return RuleResult(
+            matched=len(errors) > 0,
+            severity="error" if errors else "info",
+            message=f"Found {len(errors)} frozen tuple errors" if errors else "Frozen tuple check passed",
+            detail={"errors": errors}
+        )
 
     def governance_frozen_tuple_blocker_errors(self) -> list[str]:
         cfg = self._config
@@ -246,8 +286,27 @@ class FrozenTupleChecker:
 class EventContractChecker:
     """Checks event contract files for formal/informal consistency."""
 
+    rule_name = "event_contract_check"
+
     def __init__(self, config: GatewayBusinessPolicyConfig):
         self._config = config
+
+    def evaluate(self, ctx: RuleContext) -> RuleResult:
+        """Evaluate event contract validation rule.
+
+        Returns RuleResult with:
+        - matched: True if validation errors found
+        - severity: 'error' if errors, 'info' if pass
+        - message: summary of validation
+        - detail: {'errors': list[str]}
+        """
+        errors = self.event_contract_blocker_errors()
+        return RuleResult(
+            matched=len(errors) > 0,
+            severity="error" if errors else "info",
+            message=f"Found {len(errors)} event contract errors" if errors else "Event contract check passed",
+            detail={"errors": errors}
+        )
 
     def event_contract_blocker_errors(self) -> list[str]:
         cfg = self._config
@@ -360,8 +419,38 @@ class EventContractChecker:
 class TruthBasisResolver:
     """Resolves and validates truth-basis for a given project scope."""
 
+    rule_name = "truth_basis_resolution"
+
     def __init__(self, config: GatewayBusinessPolicyConfig):
         self._config = config
+
+    def evaluate(self, ctx: RuleContext) -> RuleResult:
+        """Evaluate truth basis resolution rule.
+
+        Returns RuleResult with:
+        - matched: True if validation errors found
+        - severity: 'error' if errors, 'info' if pass
+        - message: summary of validation
+        - detail: {'truth_basis': TruthBasis dict}
+        """
+        # Extract project_scope from context extra dict
+        project_scope = ctx.extra.get("project_scope", "")
+        if not project_scope:
+            return RuleResult(
+                matched=False,
+                severity="info",
+                message="No project_scope provided",
+                detail={"truth_basis": None}
+            )
+
+        truth_basis = self.truth_basis_for_scope(project_scope)
+        errors = truth_basis.get("errors", [])
+        return RuleResult(
+            matched=len(errors) > 0,
+            severity="error" if errors else "info",
+            message=f"Truth basis validation {'failed' if errors else 'passed'}",
+            detail={"truth_basis": truth_basis}
+        )
 
     def _read_text_if_exists(self, path: Path) -> str:
         """Read file content via injected callback (I/O separated from rule logic)."""

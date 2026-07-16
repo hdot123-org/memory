@@ -42,6 +42,7 @@ from ._guard_patterns import (
     RE_TOUCH,
     UNCERTAIN_PATH_PATTERNS,
 )
+from ._rule_types import RuleResult
 
 
 def _check_file_type_block(file_path: str) -> dict[str, str] | None:
@@ -332,11 +333,17 @@ def _get_project_root_for_task(project_root: Path) -> Path:
     return project_root.resolve()
 
 
-def classify_tool_use(payload: dict[str, Any], project_root: Path) -> dict[str, Any]:  # noqa: C901
-    """Classify a tool use and return decision.
+def classify_tool_use(payload: dict[str, Any], project_root: Path) -> RuleResult:  # noqa: C901
+    """Classify a tool use and return RuleResult.
 
     This is the extracted 6-tool if-elif chain from pretooluse_guard.py.
     Handles Write, Edit, MultiEdit, NotebookEdit, Execute, Task tools.
+
+    Returns RuleResult with:
+    - matched: True if decision is 'block', False if 'allow'
+    - severity: 'error' if block, 'info' if allow
+    - message: human-readable reason
+    - detail: dict with decision, scenario, item_results, injected_prompt
     """
     # Normalize payload: Factory hooks wrap tool params in tool_input, standalone tests don't
     if "tool_input" in payload:
@@ -348,14 +355,24 @@ def classify_tool_use(payload: dict[str, Any], project_root: Path) -> dict[str, 
     file_path = payload.get("file_path")
 
     if not tool_name:
-        return {"decision": "allow", "reason": "No tool_name specified"}
+        return RuleResult(
+            matched=False,
+            severity="info",
+            message="No tool_name specified",
+            detail={"decision": "allow"}
+        )
 
     ownership = load_memory_ownership(project_root)
 
     # Handle different tool types
     if tool_name in ("Write", "Edit"):
         if not file_path:
-            return {"decision": "allow", "reason": f"{tool_name} without file_path"}
+            return RuleResult(
+                matched=False,
+                severity="info",
+                message=f"{tool_name} without file_path",
+                detail={"decision": "allow"}
+            )
 
         # Special handling for AGENTS.md (5b.4: diff-aware)
         if Path(file_path).name == "AGENTS.md":
@@ -366,36 +383,63 @@ def classify_tool_use(payload: dict[str, Any], project_root: Path) -> dict[str, 
             file_exists = full_path.exists()
 
             if file_exists and content_before is None:
-                return {
-                    "decision": "block",
-                    "reason": "Cannot determine modification scope - full overwrite uncertain (AGENTS.md exists)",
-                    "scenario": 4,
-                }
+                return RuleResult(
+                    matched=True,
+                    severity="error",
+                    message="Cannot determine modification scope - full overwrite uncertain (AGENTS.md exists)",
+                    detail={
+                        "decision": "block",
+                        "scenario": 4,
+                    }
+                )
 
             agents_result = classify_agents_md_block(file_path, content_before, content_after)
-            return {
-                "decision": agents_result["decision"],
-                "reason": agents_result["reason"],
-                "scenario": agents_result.get("scenario"),
-            }
+            decision = agents_result["decision"]
+            return RuleResult(
+                matched=(decision == "block"),
+                severity="error" if decision == "block" else "info",
+                message=agents_result["reason"],
+                detail={
+                    "decision": decision,
+                    "scenario": agents_result.get("scenario"),
+                }
+            )
 
         # 文件类型黑名单检查
         ft_block = _check_file_type_block(file_path)
         if ft_block is not None:
-            return ft_block
+            decision = ft_block["decision"]
+            return RuleResult(
+                matched=(decision == "block"),
+                severity="error" if decision == "block" else "info",
+                message=ft_block["reason"],
+                detail={"decision": decision}
+            )
 
         result = classify_owned_path(file_path, ownership, project_root)
         if hasattr(result, "level"):
-            return {
-                "decision": "block",
-                "reason": f"Protected {result.level.name} path: {result.reason}",
-            }
-        return {"decision": "allow", "reason": result.reason}
+            return RuleResult(
+                matched=True,
+                severity="error",
+                message=f"Protected {result.level.name} path: {result.reason}",
+                detail={"decision": "block"}
+            )
+        return RuleResult(
+            matched=False,
+            severity="info",
+            message=result.reason,
+            detail={"decision": "allow"}
+        )
 
     elif tool_name == "MultiEdit":
         paths = _parse_multiedit_paths(payload)
         if not paths:
-            return {"decision": "allow", "reason": "MultiEdit with no file paths"}
+            return RuleResult(
+                matched=False,
+                severity="info",
+                message="MultiEdit with no file paths",
+                detail={"decision": "allow"}
+            )
 
         item_results: list[dict[str, Any]] = []
         has_block = False
@@ -467,34 +511,59 @@ def classify_tool_use(payload: dict[str, Any], project_root: Path) -> dict[str, 
         if has_block:
             blocked = [r for r in item_results if r["decision"] == "block"]
             blocked_paths = [r["path"] for r in blocked]
-            return {
-                "decision": "block",
-                "reason": f"MultiEdit blocked items: {', '.join(blocked_paths)}",
+            return RuleResult(
+                matched=True,
+                severity="error",
+                message=f"MultiEdit blocked items: {', '.join(blocked_paths)}",
+                detail={
+                    "decision": "block",
+                    "item_results": item_results,
+                }
+            )
+        return RuleResult(
+            matched=False,
+            severity="info",
+            message="No owned paths in MultiEdit",
+            detail={
+                "decision": "allow",
                 "item_results": item_results,
             }
-        return {
-            "decision": "allow",
-            "reason": "No owned paths in MultiEdit",
-            "item_results": item_results,
-        }
+        )
 
     elif tool_name == "NotebookEdit":
         notebook_path = payload.get("notebook_path")
         if not notebook_path:
-            return {"decision": "allow", "reason": "NotebookEdit without notebook_path"}
+            return RuleResult(
+                matched=False,
+                severity="info",
+                message="NotebookEdit without notebook_path",
+                detail={"decision": "allow"}
+            )
 
         result = classify_owned_path(notebook_path, ownership, project_root)
         if hasattr(result, "level"):
-            return {
-                "decision": "block",
-                "reason": f"Protected notebook: {result.reason}",
-            }
-        return {"decision": "allow", "reason": result.reason}
+            return RuleResult(
+                matched=True,
+                severity="error",
+                message=f"Protected notebook: {result.reason}",
+                detail={"decision": "block"}
+            )
+        return RuleResult(
+            matched=False,
+            severity="info",
+            message=result.reason,
+            detail={"decision": "allow"}
+        )
 
     elif tool_name == "Execute":
         command = payload.get("command", "")
         if not command:
-            return {"decision": "allow", "reason": "Execute without command"}
+            return RuleResult(
+                matched=False,
+                severity="info",
+                message="Execute without command",
+                detail={"decision": "allow"}
+            )
 
         paths = _extract_path_from_execute(command)
 
@@ -502,17 +571,25 @@ def classify_tool_use(payload: dict[str, Any], project_root: Path) -> dict[str, 
             for path in paths:
                 if _is_uncertain_path(path):
                     if _contains_owned_root_string(command):
-                        return {
-                            "decision": "block",
-                            "reason": f"Uncertain path '{path}' targeting owned resources",
-                        }
+                        return RuleResult(
+                            matched=True,
+                            severity="error",
+                            message=f"Uncertain path '{path}' targeting owned resources",
+                            detail={"decision": "block"}
+                        )
                     continue
 
                 expanded = _expand_env_vars(path)
 
                 ft_block = _check_file_type_block(expanded)
                 if ft_block is not None:
-                    return ft_block
+                    decision = ft_block["decision"]
+                    return RuleResult(
+                        matched=(decision == "block"),
+                        severity="error" if decision == "block" else "info",
+                        message=ft_block["reason"],
+                        detail={"decision": decision}
+                    )
 
                 check_path = expanded
                 if not Path(expanded).is_absolute():
@@ -520,18 +597,32 @@ def classify_tool_use(payload: dict[str, Any], project_root: Path) -> dict[str, 
 
                 result = classify_owned_path(check_path, ownership, project_root)
                 if hasattr(result, "level"):
-                    return {
-                        "decision": "block",
-                        "reason": f"Execute targets protected path '{path}': {result.reason}",
-                    }
-            return {"decision": "allow", "reason": "No owned paths in Execute targets"}
+                    return RuleResult(
+                        matched=True,
+                        severity="error",
+                        message=f"Execute targets protected path '{path}': {result.reason}",
+                        detail={"decision": "block"}
+                    )
+            return RuleResult(
+                matched=False,
+                severity="info",
+                message="No owned paths in Execute targets",
+                detail={"decision": "allow"}
+            )
         else:
             if _contains_owned_root_string(command):
-                return {
-                    "decision": "block",
-                    "reason": "Cannot parse Execute command but contains owned resource references",
-                }
-            return {"decision": "allow", "reason": "No owned paths detected in Execute"}
+                return RuleResult(
+                    matched=True,
+                    severity="error",
+                    message="Cannot parse Execute command but contains owned resource references",
+                    detail={"decision": "block"}
+                )
+            return RuleResult(
+                matched=False,
+                severity="info",
+                message="No owned paths detected in Execute",
+                detail={"decision": "allow"}
+            )
 
     elif tool_name == "Task":
         fixed_root = _get_project_root_for_task(project_root)
@@ -549,21 +640,42 @@ def classify_tool_use(payload: dict[str, Any], project_root: Path) -> dict[str, 
             for path in paths:
                 result = classify_owned_path(path, load_memory_ownership(fixed_root), fixed_root)
                 if hasattr(result, "level"):
-                    return {
-                        "decision": "block",
-                        "reason": f"Task references protected path '{path}': {result.reason}",
-                        "injected_prompt": injected_prompt,
-                    }
-            return {
+                    return RuleResult(
+                        matched=True,
+                        severity="error",
+                        message=f"Task references protected path '{path}': {result.reason}",
+                        detail={
+                            "decision": "block",
+                            "injected_prompt": injected_prompt,
+                        }
+                    )
+            return RuleResult(
+                matched=False,
+                severity="info",
+                message="No owned paths in Task prompt",
+                detail={
+                    "decision": "allow",
+                    "injected_prompt": injected_prompt,
+                }
+            )
+        return RuleResult(
+            matched=False,
+            severity="info",
+            message="Task without owned path references",
+            detail={
                 "decision": "allow",
-                "reason": "No owned paths in Task prompt",
                 "injected_prompt": injected_prompt,
             }
-        return {
-            "decision": "allow",
-            "reason": "Task without owned path references",
-            "injected_prompt": injected_prompt,
-        }
+        )
 
     # Unknown tool - allow
-    return {"decision": "allow", "reason": f"Unknown tool: {tool_name}"}
+    return RuleResult(
+        matched=False,
+        severity="info",
+        message=f"Unknown tool: {tool_name}",
+        detail={"decision": "allow"}
+    )
+
+
+# Add rule_name property to the function (REF-001 RuleEvaluator Protocol integration)
+classify_tool_use.rule_name = "classify_tool_use"  # type: ignore[attr-defined]

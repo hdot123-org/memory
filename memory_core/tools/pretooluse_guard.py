@@ -60,6 +60,37 @@ def _write_metrics_jsonl(project_root: Path, record: dict[str, Any]) -> None:
         logging.getLogger(__name__).warning("metrics write failed: %s", exc)
 
 
+def _rule_result_to_hook_json(rule_result) -> dict[str, Any]:
+    """Convert RuleResult to hook JSON dict format (backward compatibility).
+
+    The hook system expects a specific JSON format with 'decision', 'reason', 'scenario', etc.
+    This function converts the internal RuleResult back to that format.
+
+    Args:
+        rule_result: RuleResult from classify_tool_use
+
+    Returns:
+        Dict in hook JSON format: {decision, reason, scenario?, item_results?, injected_prompt?}
+    """
+    from memory_core.tools._rule_types import RuleResult
+
+    if not isinstance(rule_result, RuleResult):
+        # Shouldn't happen, but handle gracefully
+        return {"decision": "allow", "reason": "Invalid result type"}
+
+    # Start with the detail dict which contains decision, scenario, item_results, injected_prompt
+    result_dict = dict(rule_result.detail)
+
+    # Ensure decision is present (should be in detail)
+    if "decision" not in result_dict:
+        result_dict["decision"] = "block" if rule_result.matched else "allow"
+
+    # Add reason from message
+    result_dict["reason"] = rule_result.message
+
+    return result_dict
+
+
 def main() -> int:
     """Main entry point for PreToolUse guard."""
     start_time = time.time()
@@ -99,7 +130,8 @@ def main() -> int:
         return 0
 
     # Classify the tool use
-    result = classify_tool_use(payload, project_root)
+    rule_result = classify_tool_use(payload, project_root)
+    result = _rule_result_to_hook_json(rule_result)
 
     # Write metrics to local JSONL (replaces PostHog telemetry)
     try:
