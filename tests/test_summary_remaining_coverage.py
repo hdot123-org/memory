@@ -4,11 +4,8 @@ Covers:
 - _parse_args: all argument combinations
 - _read_a_layer: parsing session data from markdown
 - _extract_text_blocks: extracting text from message content
-- _build_llm_prompt: building LLM prompt from session data
-- _get_factory_api_key: reading API key from settings.json
-- _call_llm: LLM call with various error paths
-- _generate_fallback_report: generating fallback report
-- _write_daily_log: writing daily log with/without LLM summary
+- _generate_data_report: generating data report with A+B layer data
+- _write_daily_log: writing daily log with data report
 - _try_sign_file: signing file with integrity keys
 - _enrich_with_b_layer: enriching A layer with B layer data
 - _resolve_projects: resolving project paths
@@ -24,15 +21,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from memory_core.tools.daily_summary_generator import (
-    _build_llm_prompt,
-    _call_llm,
     _enrich_with_b_layer,
     _extract_text_blocks,
     _extract_transcript_summary,
     _fallback_check,
     _find_session_jsonl,
-    _generate_fallback_report,
-    _get_factory_api_key,
+    _generate_data_report,
     _parse_args,
     _read_a_layer,
     _read_full_jsonl,
@@ -184,13 +178,13 @@ class TestExtractTextBlocks:
 
 
 # ---------------------------------------------------------------------------
-# _build_llm_prompt: building LLM prompt
+# _generate_data_report: data report generation
 # ---------------------------------------------------------------------------
 
 
-class TestBuildLlmPrompt:
+class TestGenerateDataReport:
     def test_single_session(self):
-        """Build prompt for a single session."""
+        """Generate data report for single session."""
         sessions = [
             {
                 "full_session_id": "abcd1234",
@@ -202,133 +196,7 @@ class TestBuildLlmPrompt:
                 "user_prompt_preview": "Fix bug",
             }
         ]
-        prompt = _build_llm_prompt(sessions)
-        assert "abcd1234" in prompt
-        assert "Test" in prompt
-        assert "Fix bug" in prompt
-
-    def test_multiple_sessions(self):
-        """Build prompt for multiple sessions."""
-        sessions = [
-            {"full_session_id": "abcd1234", "title": "Session 1"},
-            {"full_session_id": "efgh5678", "title": "Session 2"},
-        ]
-        prompt = _build_llm_prompt(sessions)
-        assert "Session 1" in prompt
-        assert "Session 2" in prompt
-        assert "Session 1:" in prompt
-        assert "Session 2:" in prompt
-
-
-# ---------------------------------------------------------------------------
-# _get_factory_api_key: reading API key
-# ---------------------------------------------------------------------------
-
-
-class TestGetFactoryApiKey:
-    def test_settings_not_exists(self, monkeypatch):
-        """When settings.json doesn't exist, returns empty string."""
-        monkeypatch.setattr(
-            "pathlib.Path.home", lambda: Path("/nonexistent")
-        )
-        result = _get_factory_api_key()
-        assert result == ""
-
-    def test_extract_api_key(self, tmp_path, monkeypatch):
-        """Extract API key from settings.json."""
-        settings = {
-            "customModels": [
-                {"id": "glm-5.1", "apiKey": "test-key-123"}
-            ]
-        }
-        settings_file = tmp_path / ".factory" / "settings.json"
-        settings_file.parent.mkdir(parents=True)
-        settings_file.write_text(json.dumps(settings), encoding="utf-8")
-        monkeypatch.setattr(
-            "pathlib.Path.home", lambda: tmp_path
-        )
-        result = _get_factory_api_key()
-        assert result == "test-key-123"
-
-
-# ---------------------------------------------------------------------------
-# _call_llm: LLM call with error paths
-# ---------------------------------------------------------------------------
-
-
-class TestCallLlm:
-    def test_no_api_key(self, monkeypatch):
-        """When no API key available, returns None."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._get_factory_api_key",
-            lambda project_root="": "",
-        )
-        monkeypatch.delenv("GLM_API_KEY", raising=False)
-        result = _call_llm("test prompt")
-        assert result is None
-
-    def test_curl_nonzero_returncode(self, monkeypatch):
-        """When curl returns non-zero, returns None."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._get_factory_api_key",
-            lambda project_root="": "test-key",
-        )
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stderr = "Connection failed"
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: mock_result)
-        result = _call_llm("test prompt")
-        assert result is None
-
-    def test_api_error_response(self, monkeypatch):
-        """When API returns error, returns None."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._get_factory_api_key",
-            lambda project_root="": "test-key",
-        )
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"error": {"message": "Invalid key"}})
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: mock_result)
-        result = _call_llm("test prompt")
-        assert result is None
-
-    def test_successful_call(self, monkeypatch):
-        """Successful LLM call returns generated text."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._get_factory_api_key",
-            lambda project_root="": "test-key",
-        )
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps(
-            {"choices": [{"message": {"content": "Generated summary"}}]}
-        )
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: mock_result)
-        result = _call_llm("test prompt")
-        assert result == "Generated summary"
-
-
-# ---------------------------------------------------------------------------
-# _generate_fallback_report: fallback report generation
-# ---------------------------------------------------------------------------
-
-
-class TestGenerateFallbackReport:
-    def test_single_session(self):
-        """Generate fallback report for single session."""
-        sessions = [
-            {
-                "full_session_id": "abcd1234",
-                "title": "Test",
-                "model": "GLM-5.1",
-                "duration": "1m",
-                "input_tokens": 100,
-                "output_tokens": 200,
-                "user_prompt_preview": "Fix bug",
-            }
-        ]
-        report = _generate_fallback_report(sessions, "2026-07-12")
+        report = _generate_data_report(sessions, "2026-07-12")
         assert "2026-07-12" in report
         assert "abcd1234" in report
         assert "Test" in report
@@ -337,61 +205,45 @@ class TestGenerateFallbackReport:
         assert "out=200" in report
 
     def test_multiple_sessions(self):
-        """Generate fallback report for multiple sessions."""
+        """Generate data report for multiple sessions."""
         sessions = [
             {"full_session_id": "abcd1234", "input_tokens": 100, "output_tokens": 200},
             {"full_session_id": "efgh5678", "input_tokens": 300, "output_tokens": 400},
         ]
-        report = _generate_fallback_report(sessions, "2026-07-12")
+        report = _generate_data_report(sessions, "2026-07-12")
         assert "Sessions: 2" in report
         assert "in=400" in report
         assert "out=600" in report
 
-
-# ---------------------------------------------------------------------------
-# _write_daily_log: writing daily log
-# ---------------------------------------------------------------------------
-
-
-class TestWriteDailyLog:
-    def test_write_with_llm_summary(self, tmp_path):
-        """Write daily log with LLM summary."""
-        sessions = [{"input_tokens": 100, "output_tokens": 200}]
-        output = _write_daily_log(
-            tmp_path, "2026-07-12", sessions, "LLM summary", dry_run=False
-        )
-        assert output.exists()
-        content = output.read_text(encoding="utf-8")
-        assert "LLM summary" in content
-        assert "2026-07-12" in content
-
-    def test_write_with_fallback(self, tmp_path):
-        """Write daily log with fallback report (no LLM summary)."""
+    def test_includes_b_layer_data(self):
+        """Data report includes B-layer user messages, assistant messages, and tool names."""
         sessions = [
             {
                 "full_session_id": "abcd1234",
+                "title": "Test",
                 "input_tokens": 100,
                 "output_tokens": 200,
+                "user_messages": "User B layer content",
+                "assistant_messages": "Assistant B layer content",
+                "tool_names": ["Read", "Edit", "Grep"],
             }
         ]
-        output = _write_daily_log(
-            tmp_path, "2026-07-12", sessions, None, dry_run=False
-        )
-        assert output.exists()
-        content = output.read_text(encoding="utf-8")
-        assert "LLM 总结未生成" in content
-        assert "abcd1234" in content
+        report = _generate_data_report(sessions, "2026-07-12")
+        assert "B层用户消息" in report
+        assert "User B layer content" in report
+        assert "B层助手消息" in report
+        assert "Assistant B layer content" in report
+        assert "B层工具列表" in report
+        assert "Read" in report
+        assert "Edit" in report
+        assert "Grep" in report
 
-    def test_dry_run(self, tmp_path, capsys):
-        """Dry run prints but doesn't write."""
-        sessions = [{"input_tokens": 100, "output_tokens": 200}]
-        output = _write_daily_log(
-            tmp_path, "2026-07-12", sessions, "Summary", dry_run=True
-        )
-        captured = capsys.readouterr()
-        assert "[DRY RUN]" in captured.out
-        # File should not exist
-        assert not output.exists()
+    def test_no_llm_fallback_note(self):
+        """Data report does not contain LLM fallback note."""
+        sessions = [{"full_session_id": "abcd1234", "input_tokens": 100, "output_tokens": 200}]
+        report = _generate_data_report(sessions, "2026-07-12")
+        assert "LLM 总结未生成" not in report
+        assert "API key" not in report
 
 
 # ---------------------------------------------------------------------------
@@ -485,11 +337,6 @@ class TestProcessProject:
 """,
             encoding="utf-8",
         )
-        # Mock LLM call to avoid actual API call
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._call_llm",
-            lambda *a, **kw: None,
-        )
         result = process_project(tmp_path, "2026-07-12", dry_run=True, fallback_days=0)
         assert result is True
 
@@ -533,10 +380,6 @@ class TestMain:
         monkeypatch.setattr(
             "memory_core.tools.daily_summary_generator._resolve_projects",
             lambda args: [tmp_path],
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._call_llm",
-            lambda *a, **kw: None,
         )
         result = main(["--date", "2026-07-12", "--dry-run", "--fallback-days", "0"])
         assert result == 0
@@ -705,12 +548,6 @@ class TestFallbackCheck:
         a_layer_file.write_text(
             "### abc12345\n- 标题: Test\n- 模型: Test\n- 输入: 0\n- 输出: 0\n",
             encoding="utf-8"
-        )
-
-        # Mock LLM call
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._call_llm",
-            lambda *args, **kwargs: "Fallback summary"
         )
 
         result = _fallback_check(tmp_path, fallback_days=3)
@@ -949,69 +786,6 @@ class TestReadFullJsonl:
 
 
 # ---------------------------------------------------------------------------
-# _call_llm: timeout and exception paths (lines 334-343)
-# ---------------------------------------------------------------------------
-
-
-class TestCallLlmTimeout:
-    def test_timeout_expired(self, monkeypatch):
-        """When LLM call times out, returns None."""
-        import subprocess
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._get_factory_api_key",
-            lambda project_root="": "test-key",
-        )
-
-        def mock_run(*args, **kwargs):
-            raise subprocess.TimeoutExpired(cmd="curl", timeout=120)
-
-        monkeypatch.setattr("subprocess.run", mock_run)
-        result = _call_llm("test prompt")
-        assert result is None
-
-    def test_json_decode_error(self, monkeypatch):
-        """When response is not valid JSON, returns None."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._get_factory_api_key",
-            lambda project_root="": "test-key",
-        )
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "not json"
-        monkeypatch.setattr("subprocess.run", lambda *a, **kw: mock_result)
-        result = _call_llm("test prompt")
-        assert result is None
-
-    def test_os_error(self, monkeypatch):
-        """When OSError occurs, returns None."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._get_factory_api_key",
-            lambda project_root="": "test-key",
-        )
-
-        def mock_run(*args, **kwargs):
-            raise OSError("Network error")
-
-        monkeypatch.setattr("subprocess.run", mock_run)
-        result = _call_llm("test prompt")
-        assert result is None
-
-    def test_generic_exception(self, monkeypatch):
-        """When generic exception occurs, returns None."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._get_factory_api_key",
-            lambda project_root="": "test-key",
-        )
-
-        def mock_run(*args, **kwargs):
-            raise RuntimeError("Unexpected error")
-
-        monkeypatch.setattr("subprocess.run", mock_run)
-        result = _call_llm("test prompt")
-        assert result is None
-
-
-# ---------------------------------------------------------------------------
 # _try_sign_file: success and error paths (line 392)
 # ---------------------------------------------------------------------------
 
@@ -1090,7 +864,7 @@ class TestWriteDailyLogError:
         monkeypatch.setattr("pathlib.Path.write_text", mock_write_text)
 
         with pytest.raises(OSError):
-            _write_daily_log(tmp_path, "2026-07-12", sessions, "Summary", dry_run=False)
+            _write_daily_log(tmp_path, "2026-07-12", sessions, dry_run=False)
 
 
 # ---------------------------------------------------------------------------
@@ -1115,11 +889,6 @@ class TestFallbackCheckMissing:
         log_dir.mkdir(parents=True)
         a_layer = log_dir / f"{yesterday}-sessions.md"
         a_layer.write_text("### abc12345\n- **标题**: Test\n", encoding="utf-8")
-
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._call_llm",
-            lambda *a, **kw: "Test summary"
-        )
 
         result = _fallback_check(tmp_path, fallback_days=3, dry_run=True)
         # Should generate but not write
@@ -1218,10 +987,6 @@ class TestProcessProjectWithBLayer:
             "memory_core.tools.daily_summary_generator.SESSIONS_HOME",
             tmp_path / "sessions"
         )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._call_llm",
-            lambda *a, **kw: None
-        )
 
         result = process_project(tmp_path, "2026-07-12", dry_run=True, fallback_days=0)
         assert result is True
@@ -1247,10 +1012,6 @@ class TestMainAllProjects:
         monkeypatch.setattr(
             "memory_core.tools.daily_summary_generator._resolve_projects",
             lambda args: [proj1, proj2]
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._call_llm",
-            lambda *a, **kw: None
         )
 
         result = main(["--date", "2026-07-12", "--dry-run", "--fallback-days", "0"])
@@ -1278,10 +1039,6 @@ class TestMainFallbackCheck:
         monkeypatch.setattr(
             "memory_core.tools.daily_summary_generator._resolve_projects",
             lambda args: [tmp_path]
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._call_llm",
-            lambda *a, **kw: None
         )
 
         result = main(["--date", "2026-07-12", "--dry-run", "--fallback-days", "3"])
@@ -1339,130 +1096,6 @@ class TestFindSessionJsonlNoSessionsHome:
 
 
 # ---------------------------------------------------------------------------
-# Lines 334-343: _get_factory_api_key exception handling
-# ---------------------------------------------------------------------------
-
-class TestGetFactoryApiKeyException:
-    def test_settings_json_malformed(self, monkeypatch, tmp_path):
-        """_get_factory_api_key handles malformed JSON gracefully."""
-        from memory_core.tools import daily_summary_generator
-
-        # Create settings.json with invalid JSON
-        factory_dir = tmp_path / ".factory"
-        factory_dir.mkdir()
-        settings_path = factory_dir / "settings.json"
-        settings_path.write_text("{invalid json", encoding="utf-8")
-
-        # Patch Path.home to return tmp_path so it finds our settings.json
-        monkeypatch.setattr(daily_summary_generator.Path, "home", lambda: tmp_path)
-
-        result = daily_summary_generator._get_factory_api_key()
-        assert result == ""
-
-    def test_settings_read_error(self, monkeypatch, tmp_path):
-        """_get_factory_api_key handles OSError when reading settings."""
-        from memory_core.tools import daily_summary_generator
-
-        # Create settings.json
-        factory_dir = tmp_path / ".factory"
-        factory_dir.mkdir()
-        settings_path = factory_dir / "settings.json"
-        settings_path.write_text('{"test": "data"}', encoding="utf-8")
-
-        # Mock Path.home to return tmp_path
-        monkeypatch.setattr(daily_summary_generator.Path, "home", lambda: tmp_path)
-
-        # Mock read_text to raise OSError only for our specific path
-        original_read_text = Path.read_text
-        def mock_read_text(self, *args, **kwargs):
-            if str(self) == str(settings_path):
-                raise OSError("Permission denied")
-            return original_read_text(self, *args, **kwargs)
-
-        monkeypatch.setattr(daily_summary_generator.Path, "read_text", mock_read_text)
-
-        result = daily_summary_generator._get_factory_api_key()
-        assert result == ""
-
-
-# ---------------------------------------------------------------------------
-# Lines 375, 392, 402, 412: _call_llm error handling paths
-# ---------------------------------------------------------------------------
-
-class TestCallLlmErrorPaths:
-    def test_curl_nonzero_returncode(self, monkeypatch):
-        """_call_llm handles curl returning non-zero exit code."""
-
-        from memory_core.tools import daily_summary_generator
-
-        monkeypatch.setenv("GLM_API_KEY", "test_key")
-        monkeypatch.setenv("MEMORY_LLM_ENDPOINT", "http://test.com")
-
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stderr = "Connection failed"
-
-        def mock_run(*args, **kwargs):
-            return mock_result
-
-        monkeypatch.setattr(daily_summary_generator.subprocess, "run", mock_run)
-
-        result = daily_summary_generator._call_llm("test prompt")
-        assert result is None
-
-    def test_curl_timeout(self, monkeypatch):
-        """_call_llm handles subprocess.TimeoutExpired."""
-        import subprocess
-
-        from memory_core.tools import daily_summary_generator
-
-        monkeypatch.setenv("GLM_API_KEY", "test_key")
-        monkeypatch.setenv("MEMORY_LLM_ENDPOINT", "http://test.com")
-
-        def mock_run(*args, **kwargs):
-            raise subprocess.TimeoutExpired(cmd="curl", timeout=30)
-
-        monkeypatch.setattr(daily_summary_generator.subprocess, "run", mock_run)
-
-        result = daily_summary_generator._call_llm("test prompt")
-        assert result is None
-
-    def test_curl_json_decode_error(self, monkeypatch):
-        """_call_llm handles invalid JSON response."""
-        from memory_core.tools import daily_summary_generator
-
-        monkeypatch.setenv("GLM_API_KEY", "test_key")
-        monkeypatch.setenv("MEMORY_LLM_ENDPOINT", "http://test.com")
-
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "not valid json {"
-
-        def mock_run(*args, **kwargs):
-            return mock_result
-
-        monkeypatch.setattr(daily_summary_generator.subprocess, "run", mock_run)
-
-        result = daily_summary_generator._call_llm("test prompt")
-        assert result is None
-
-    def test_curl_oserror(self, monkeypatch):
-        """_call_llm handles OSError."""
-        from memory_core.tools import daily_summary_generator
-
-        monkeypatch.setenv("GLM_API_KEY", "test_key")
-        monkeypatch.setenv("MEMORY_LLM_ENDPOINT", "http://test.com")
-
-        def mock_run(*args, **kwargs):
-            raise OSError("Network error")
-
-        monkeypatch.setattr(daily_summary_generator.subprocess, "run", mock_run)
-
-        result = daily_summary_generator._call_llm("test prompt")
-        assert result is None
-
-
-# ---------------------------------------------------------------------------
 # Lines 443-444: _try_sign_file exception handling
 # ---------------------------------------------------------------------------
 
@@ -1515,44 +1148,12 @@ class TestFallbackCheckDailyExists:
 
         monkeypatch.setattr(daily_summary_generator, "_read_a_layer", lambda p, d: [{"session_id": "abc123"}])
         monkeypatch.setattr(daily_summary_generator, "_enrich_with_b_layer", lambda s: s)
-        monkeypatch.setattr(daily_summary_generator, "_call_llm", lambda p, pr="": "Summary")
         monkeypatch.setattr(daily_summary_generator, "_write_daily_log", lambda *a: None)
 
         # Correct signature: _fallback_check(project_root, fallback_days, dry_run=False)
         result = daily_summary_generator._fallback_check(tmp_path, 3, False)
         # Should not generate since daily_path already exists
         assert target_date not in result
-
-
-# ---------------------------------------------------------------------------
-# Lines 648-651, 653: process_project when llm_summary is None
-# ---------------------------------------------------------------------------
-
-class TestProcessProjectLlmNone:
-    def test_llm_returns_none(self, monkeypatch, tmp_path, capsys):
-        """process_project handles when LLM returns None."""
-        from memory_core.tools import daily_summary_generator
-
-        log_dir = tmp_path / "memory" / "log"
-        log_dir.mkdir(parents=True)
-
-        target_date = "2024-01-15"
-        a_layer_path = log_dir / f"{target_date}-sessions.md"
-        a_layer_path.write_text("### abc123\n- Test session")
-
-        monkeypatch.setattr(daily_summary_generator, "_read_a_layer", lambda p, d: [{"session_id": "abc123", "title": "Test"}])
-        monkeypatch.setattr(daily_summary_generator, "_enrich_with_b_layer", lambda s: s)
-        monkeypatch.setattr(daily_summary_generator, "_call_llm", lambda p, pr="": None)
-        monkeypatch.setattr(daily_summary_generator, "_write_daily_log", lambda *a: None)
-        monkeypatch.setattr(daily_summary_generator, "_try_sign_file", lambda *a: None)
-        monkeypatch.setattr(daily_summary_generator, "_fallback_check", lambda *a: [])
-
-        result = daily_summary_generator.process_project(tmp_path, target_date, False, 0)
-
-        captured = capsys.readouterr()
-        # The actual print message for LLM=None is "LLM: 降级为纯统计报告"
-        assert "降级" in captured.out or "LLM" in captured.out
-        assert result is True
 
 
 # ---------------------------------------------------------------------------
@@ -1611,127 +1212,32 @@ class TestMainExceptionHandling:
 class TestWriteErrorLogCalls:
     """Test that write_error_log is called when available and errors occur."""
 
-    def test_get_factory_api_key_calls_error_log(self, monkeypatch, tmp_path):
-        """_get_factory_api_key calls write_error_log on JSON error."""
+    def test_write_error_log_on_failure(self, monkeypatch, tmp_path):
+        """write_error_log is called when file write fails."""
         from unittest.mock import Mock
 
         from memory_core.tools import daily_summary_generator
-
-        # Create settings.json with invalid JSON
-        factory_dir = tmp_path / ".factory"
-        factory_dir.mkdir()
-        settings_path = factory_dir / "settings.json"
-        settings_path.write_text("{invalid json", encoding="utf-8")
 
         # Mock write_error_log
         mock_error_log = Mock()
         monkeypatch.setattr(daily_summary_generator, "write_error_log", mock_error_log)
 
-        # Patch Path.home to return tmp_path
-        monkeypatch.setattr(daily_summary_generator.Path, "home", lambda: tmp_path)
+        # Mock Path.write_text to raise OSError
+        original_write_text = Path.write_text
+        def mock_write_text(self, *args, **kwargs):
+            if str(self).endswith("2026-07-12.md"):
+                raise OSError("Permission denied")
+            return original_write_text(self, *args, **kwargs)
 
-        # Pass project_root to trigger the error logging path
-        result = daily_summary_generator._get_factory_api_key(str(tmp_path))
-        assert result == ""
-        assert mock_error_log.called
+        monkeypatch.setattr(Path, "write_text", mock_write_text)
 
-    def test_call_llm_curl_error_calls_error_log(self, monkeypatch, tmp_path):
-        """_call_llm calls write_error_log on curl error."""
-        from unittest.mock import Mock
+        log_dir = tmp_path / "memory" / "log"
+        log_dir.mkdir(parents=True)
 
-        from memory_core.tools import daily_summary_generator
+        sessions = [{"input_tokens": 100, "output_tokens": 200}]
 
-        monkeypatch.setenv("GLM_API_KEY", "test_key")
-        monkeypatch.setenv("MEMORY_LLM_ENDPOINT", "http://test.com")
+        with pytest.raises(OSError):
+            daily_summary_generator._write_daily_log(tmp_path, "2026-07-12", sessions, dry_run=False)
 
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stderr = "Connection failed"
-
-        def mock_run(*args, **kwargs):
-            return mock_result
-
-        monkeypatch.setattr(daily_summary_generator.subprocess, "run", mock_run)
-
-        # Mock write_error_log
-        mock_error_log = Mock()
-        monkeypatch.setattr(daily_summary_generator, "write_error_log", mock_error_log)
-
-        result = daily_summary_generator._call_llm("test prompt", str(tmp_path))
-        assert result is None
-        assert mock_error_log.called
-
-    def test_call_llm_api_error_calls_error_log(self, monkeypatch, tmp_path):
-        """_call_llm calls write_error_log on API error response."""
-        from unittest.mock import Mock
-
-        from memory_core.tools import daily_summary_generator
-
-        monkeypatch.setenv("GLM_API_KEY", "test_key")
-        monkeypatch.setenv("MEMORY_LLM_ENDPOINT", "http://test.com")
-
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({"error": {"message": "Rate limit exceeded"}})
-
-        def mock_run(*args, **kwargs):
-            return mock_result
-
-        monkeypatch.setattr(daily_summary_generator.subprocess, "run", mock_run)
-
-        # Mock write_error_log
-        mock_error_log = Mock()
-        monkeypatch.setattr(daily_summary_generator, "write_error_log", mock_error_log)
-
-        result = daily_summary_generator._call_llm("test prompt", str(tmp_path))
-        assert result is None
-        assert mock_error_log.called
-
-    def test_call_llm_timeout_calls_error_log(self, monkeypatch, tmp_path):
-        """_call_llm calls write_error_log on timeout."""
-        import subprocess
-        from unittest.mock import Mock
-
-        from memory_core.tools import daily_summary_generator
-
-        monkeypatch.setenv("GLM_API_KEY", "test_key")
-        monkeypatch.setenv("MEMORY_LLM_ENDPOINT", "http://test.com")
-
-        def mock_run(*args, **kwargs):
-            raise subprocess.TimeoutExpired(cmd="curl", timeout=30)
-
-        monkeypatch.setattr(daily_summary_generator.subprocess, "run", mock_run)
-
-        # Mock write_error_log
-        mock_error_log = Mock()
-        monkeypatch.setattr(daily_summary_generator, "write_error_log", mock_error_log)
-
-        result = daily_summary_generator._call_llm("test prompt", str(tmp_path))
-        assert result is None
-        assert mock_error_log.called
-
-    def test_call_llm_json_error_calls_error_log(self, monkeypatch, tmp_path):
-        """_call_llm calls write_error_log on JSON decode error."""
-        from unittest.mock import Mock
-
-        from memory_core.tools import daily_summary_generator
-
-        monkeypatch.setenv("GLM_API_KEY", "test_key")
-        monkeypatch.setenv("MEMORY_LLM_ENDPOINT", "http://test.com")
-
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "not valid json"
-
-        def mock_run(*args, **kwargs):
-            return mock_result
-
-        monkeypatch.setattr(daily_summary_generator.subprocess, "run", mock_run)
-
-        # Mock write_error_log
-        mock_error_log = Mock()
-        monkeypatch.setattr(daily_summary_generator, "write_error_log", mock_error_log)
-
-        result = daily_summary_generator._call_llm("test prompt", str(tmp_path))
-        assert result is None
+        # write_error_log should have been called
         assert mock_error_log.called

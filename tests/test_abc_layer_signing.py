@@ -99,7 +99,7 @@ class TestBLayerSigning:
             {"full_session_id": "abc123de", "title": "Test", "model": "GLM-5.1",
              "duration": "2m30s", "input_tokens": 100, "output_tokens": 200,
              "tool_calls_raw": "Read=1", "user_prompt_preview": "test"}
-        ], llm_summary=None, dry_run=False)
+        ], dry_run=False)
 
         # 验证文件被写入
         output_path = project / "memory" / "log" / f"{today}.md"
@@ -146,7 +146,7 @@ class TestBLayerSigning:
             {"full_session_id": "abc123de", "title": "Test", "model": "GLM-5.1",
              "duration": "1m", "input_tokens": 10, "output_tokens": 20,
              "tool_calls_raw": "", "user_prompt_preview": "test"}
-        ], llm_summary=None, dry_run=False)
+        ], dry_run=False)
 
         output_path = project / "memory" / "log" / f"{today}.md"
         assert output_path.exists(), "Output file should exist even if signing fails"

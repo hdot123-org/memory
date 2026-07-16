@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""每日日志总结生成器 — 读取 A 层 session 记录 + B 层 transcript，调 LLM 生成分类总结。
+"""每日日志数据报告生成器 — 读取 A 层 session 记录 + B 层 transcript，生成结构化数据报告。
 
 Usage:
     python daily_summary_generator.py --date 2026-05-28 --project ~/my-project
@@ -12,10 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import subprocess
 import sys
-import textwrap
 import traceback
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -40,9 +37,6 @@ except ImportError:
 # 常量 & 配置
 # ---------------------------------------------------------------------------
 
-LLM_ENDPOINT = os.environ.get("MEMORY_LLM_ENDPOINT", "")
-LLM_MODEL = "glm-5.1"
-LLM_TIMEOUT = 120  # 秒（大 prompt 需要更长超时）
 SESSIONS_HOME = Path.home() / ".factory" / "sessions"
 LIFECYCLE_INDEX = Path.home() / ".memory-core" / "project-lifecycle" / "path-index.json"
 
@@ -269,156 +263,7 @@ def _extract_text_blocks(content: Any) -> list[str]:
     return texts
 
 
-# ---------------------------------------------------------------------------
-# Step 3: 调用 BYOK LLM
-# ---------------------------------------------------------------------------
 
-def _build_llm_prompt(session_data_list: list[dict[str, Any]]) -> str:
-    """构建 LLM prompt，拼装所有 session 的 A+B 层数据。"""
-    parts: list[str] = []
-    for i, sd in enumerate(session_data_list, 1):
-        sid = sd.get("full_session_id", "")[:8]
-        title = sd.get("title", "(无标题)")
-        model = sd.get("model", "")
-        duration = sd.get("duration", "")
-        input_tok = sd.get("input_tokens", 0)
-        output_tok = sd.get("output_tokens", 0)
-        tool_calls = sd.get("tool_calls_raw", "")
-        user_preview = sd.get("user_prompt_preview", "")
-        assistant_preview = sd.get("assistant_summary_preview", "")
-        b_user = sd.get("b_user_messages", "")
-        b_assistant = sd.get("b_assistant_messages", "")
-        b_tools = ", ".join(sd.get("b_tool_names", []))
-
-        entry = textwrap.dedent(f"""\
-        ### Session {i}: {sid}
-        - 标题: {title}
-        - 模型: {model} | 时长: {duration}
-        - Token: input={input_tok} output={output_tok}
-        - 工具调用: {tool_calls or "无"}
-        - B层用户输入(前800字符): {b_user[:200] if b_user else "(无)"}
-        - B层助手输出(前800字符): {b_assistant[:200] if b_assistant else "(无)"}
-        - B层工具列表: {b_tools or "无"}
-        - A层用户意图: {user_preview or "(无)"}
-        - A层助手摘要: {assistant_preview or "(无)"}
-        """)
-        parts.append(entry)
-
-    all_sessions = "\n".join(parts)
-
-    prompt = textwrap.dedent(f"""\
-    你是每日工作日志分类器。根据以下 session 数据，按工作主题灵活归类，生成每日总结。
-
-    要求：
-    1. 自动识别主题（如"文档审查"、"代码重构"、"Bug修复"、"架构设计"、"测试"、"CI/CD"等），不要用固定分类
-    2. 每个主题下列出具体条目，每个条目包含：session ID（前8位）、做了什么、用了什么工具、关键结果
-    3. 最后附一个"今日经验教训"段落，从所有 session 中提取通用经验
-    4. 用中文输出
-
-    ## Session 数据
-    {all_sessions}
-    """)
-    return prompt
-
-
-def _get_factory_api_key(project_root: str = "") -> str:
-    """从 Factory settings.json 提取 GLM 模型的 apiKey。"""
-    settings_path = Path.home() / ".factory" / "settings.json"
-    if not settings_path.exists():
-        return ""
-    try:
-        s = json.loads(settings_path.read_text(encoding="utf-8"))
-        for m in s.get("customModels", []):
-            if "glm" in m.get("id", "").lower() and "5.1" in m.get("id", ""):
-                return m.get("apiKey", "")
-    except Exception as e:
-        if write_error_log is not None and project_root:
-            write_error_log(
-                project_root,
-                "settings_read_failed",
-                {"settings_path": str(settings_path), "error": str(e)},
-                f"failed to read Factory settings: {e}",
-            )
-        pass
-    return ""
-
-
-def _call_llm(prompt: str, project_root: str = "") -> str | None:
-    """调用 BYOK LLM，返回生成的总结文本。失败时返回 None。"""
-    # 优先从 Factory settings.json 提取 apiKey，回退到 GLM_API_KEY 环境变量
-    api_key = _get_factory_api_key(project_root) or os.environ.get("GLM_API_KEY")
-    if not api_key:
-        print("  [warn] GLM_API_KEY 未设置，降级为纯统计报告", file=sys.stderr)
-        return None
-
-    payload = json.dumps({
-        "model": LLM_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.3,
-        "max_tokens": 4096,
-    })
-
-    try:
-        result = subprocess.run(
-            [
-                "curl", "-sk", "--max-time", str(LLM_TIMEOUT),
-                "-X", "POST", LLM_ENDPOINT,
-                "-H", "Content-Type: application/json",
-                "-H", f"Authorization: Bearer {api_key}",
-                "-d", payload,
-            ],
-            capture_output=True, text=True, timeout=LLM_TIMEOUT + 5,
-        )
-        if result.returncode != 0:
-            print(f"  [warn] curl 返回非零 ({result.returncode}): {result.stderr[:200]}", file=sys.stderr)
-            if write_error_log is not None and project_root:
-                write_error_log(
-                    project_root,
-                    "llm_api_error",
-                    {"http_status": result.returncode, "stderr": result.stderr[:200]},
-                    f"LLM API curl error: {result.stderr[:200]}",
-                )
-            return None
-        resp = json.loads(result.stdout)
-        choices = resp.get("choices", [])
-        if choices:
-            return choices[0].get("message", {}).get("content", "")
-        # 检查 API error
-        err = resp.get("error", {})
-        if err:
-            err_msg = err.get("message", "")[:200]
-            print(f"  [warn] LLM API 错误: {err_msg}", file=sys.stderr)
-            if write_error_log is not None and project_root:
-                write_error_log(
-                    project_root,
-                    "llm_api_error",
-                    {"http_status": resp.get("status", 0), "error": err_msg},
-                    f"LLM API returned error: {err_msg}",
-                )
-        return None
-    except subprocess.TimeoutExpired as e:
-        print(f"  [warn] LLM 调用超时: {e}，降级为纯统计报告", file=sys.stderr)
-        if write_error_log is not None and project_root:
-            write_error_log(
-                project_root,
-                "llm_timeout",
-                {"timeout_seconds": LLM_TIMEOUT},
-                f"LLM call timed out after {LLM_TIMEOUT}s",
-            )
-        return None
-    except (json.JSONDecodeError, OSError) as e:
-        print(f"  [warn] LLM 调用失败: {e}，降级为纯统计报告", file=sys.stderr)
-        if write_error_log is not None and project_root:
-            write_error_log(
-                project_root,
-                "llm_api_error",
-                {"error_class": type(e).__name__, "error": str(e)},
-                f"LLM call failed: {e}",
-            )
-        return None
-    except Exception:
-        print("  [warn] LLM 调用异常，降级为纯统计报告", file=sys.stderr)
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -443,42 +288,64 @@ def _try_sign_file(project_root: Path, rel_path: str) -> None:
         except Exception:
             pass
 
-def _generate_fallback_report(a_sessions: list[dict[str, Any]], target_date: str) -> str:
-    """降级报告：纯 A 层统计，不含 LLM 分类总结。"""
-    total_in = sum(s.get("input_tokens", 0) for s in a_sessions)
-    total_out = sum(s.get("output_tokens", 0) for s in a_sessions)
-    count = len(a_sessions)
-    ok_count = count  # 没有健康状态数据，默认 OK
-    degraded_count = 0
+def _generate_data_report(session_data_list: list[dict[str, Any]], target_date: str) -> str:
+    """生成结构化数据报告，包含 A+B 层完整数据。
+
+    A 层数据：session 标题、模型、时长、token、用户意图、助手摘要
+    B 层数据：用户消息摘录、助手消息摘录、工具列表
+    """
+    total_in = sum(s.get("input_tokens", 0) for s in session_data_list)
+    total_out = sum(s.get("output_tokens", 0) for s in session_data_list)
+    count = len(session_data_list)
 
     lines = [
-        f"# {target_date} Daily Facts",
+        f"# {target_date} Daily Report",
         "",
         "## 统计概览",
         f"- Sessions: {count}",
         f"- 总 Token: in={total_in} out={total_out}",
-        f"- 健康状态: OK={ok_count} Degraded={degraded_count}",
         "",
-        "> **注意**: LLM 总结未生成（API key 缺失或请求失败）",
-        "> 以下为原始 session 列表",
+        "## Session 详情",
         "",
     ]
 
-    for s in a_sessions:
+    for i, s in enumerate(session_data_list, 1):
         sid = s.get("full_session_id", "")[:8]
         title = s.get("title", "(无标题)")
         model = s.get("model", "")
         duration = s.get("duration", "")
         in_tok = s.get("input_tokens", 0)
         out_tok = s.get("output_tokens", 0)
-        user_preview = s.get("user_prompt_preview", "")[:100]
+        tool_calls = s.get("tool_calls_raw", "")
+        user_preview = s.get("user_prompt_preview", "")
+        assistant_preview = s.get("assistant_summary_preview", "")
 
-        lines.append(f"- **{sid}** {title}")
+        # B 层数据
+        b_user = s.get("user_messages", "")
+        b_assistant = s.get("assistant_messages", "")
+        b_tools = s.get("tool_names", [])
+        b_tools_str = ", ".join(b_tools) if b_tools else ""
+
+        lines.append(f"### Session {i}: {sid}")
+        lines.append(f"- **标题**: {title}")
         if model:
-            lines.append(f"  - 模型: {model} | 时长: {duration}")
-        lines.append(f"  - Token: in={in_tok} out={out_tok}")
+            lines.append(f"- **模型**: {model} | 时长: {duration}")
+        lines.append(f"- **Token**: in={in_tok} out={out_tok}")
+        if tool_calls:
+            lines.append(f"- **工具调用**: {tool_calls}")
         if user_preview:
-            lines.append(f"  - 用户意图: {user_preview}")
+            lines.append(f"- **用户意图**: {user_preview}")
+        if assistant_preview:
+            lines.append(f"- **助手摘要**: {assistant_preview}")
+
+        # B 层数据
+        if b_user:
+            lines.append(f"- **B层用户消息**: {b_user[:200]}")
+        if b_assistant:
+            lines.append(f"- **B层助手消息**: {b_assistant[:200]}")
+        if b_tools_str:
+            lines.append(f"- **B层工具列表**: {b_tools_str}")
+
         lines.append("")
 
     return "\n".join(lines)
@@ -487,8 +354,7 @@ def _generate_fallback_report(a_sessions: list[dict[str, Any]], target_date: str
 def _write_daily_log(
     project_root: Path,
     target_date: str,
-    a_sessions: list[dict[str, Any]],
-    llm_summary: str | None,
+    session_data: list[dict[str, Any]],
     dry_run: bool = False,
 ) -> Path:
     """生成并写入 {project}/memory/log/{date}.md。"""
@@ -498,32 +364,9 @@ def _write_daily_log(
     output_path = log_dir / f"{target_date}.md"
     rel_path = f"memory/log/{target_date}.md"
 
-    if llm_summary:
-        # 有 LLM 总结
-        total_in = sum(s.get("input_tokens", 0) for s in a_sessions)
-        total_out = sum(s.get("output_tokens", 0) for s in a_sessions)
-        count = len(a_sessions)
-        ok_count = count
-        degraded_count = 0
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        content = textwrap.dedent(f"""\
-        # {target_date} Daily Facts
-
-        ## 统计概览
-        - Sessions: {count}
-        - 总 Token: in={total_in} out={total_out}
-        - 健康状态: OK={ok_count} Degraded={degraded_count}
-
-        {llm_summary}
-
-        ---
-        *由 daily_summary_generator.py 自动生成于 {timestamp}*
-        """)
-    else:
-        content = _generate_fallback_report(a_sessions, target_date)
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        content += f"\n---\n*由 daily_summary_generator.py 自动生成于 {timestamp}*\n"
+    content = _generate_data_report(session_data, target_date)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    content += f"\n---\n*由 daily_summary_generator.py 自动生成于 {timestamp}*\n"
 
     if dry_run:
         print(f"\n{'='*60}")
@@ -577,10 +420,9 @@ def _fallback_check(
             if a_sessions is None:
                 continue
 
-            # 尝试读取 B 层
+            # 尝试读取 B 层，生成数据报告
             session_data = _enrich_with_b_layer(a_sessions)
-            llm_summary = _call_llm(_build_llm_prompt(session_data), str(project_root))
-            _write_daily_log(project_root, check_date, a_sessions, llm_summary, dry_run)
+            _write_daily_log(project_root, check_date, session_data, dry_run)
             generated.append(check_date)
 
     return generated
@@ -684,16 +526,12 @@ def process_project(
     b_count = sum(1 for s in enriched if s.get("user_messages") or s.get("assistant_messages"))
     print(f"  B 层: {b_count}/{len(enriched)} 个 session 有 transcript 数据")
 
-    # Step 3: 调用 LLM
-    llm_prompt = _build_llm_prompt(enriched)
-    llm_summary = _call_llm(llm_prompt, str(project_root))
-    if llm_summary:
-        print(f"  LLM: 总结生成成功 ({len(llm_summary)} 字符)")
-    else:
-        print("  LLM: 降级为纯统计报告")
+    # Step 3: 生成数据报告
+    report = _generate_data_report(enriched, target_date)
+    print(f"  数据报告: 生成成功 ({len(report)} 字符)")
 
     # Step 4: 写入最终日志
-    _write_daily_log(project_root, target_date, a_sessions, llm_summary, dry_run)
+    _write_daily_log(project_root, target_date, enriched, dry_run=dry_run)
 
     # Step 5: 兜底检查
     if fallback_days > 0:

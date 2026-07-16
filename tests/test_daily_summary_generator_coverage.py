@@ -1,7 +1,7 @@
 """Comprehensive unit tests for daily_summary_generator.py coverage improvement.
 
 Target: raise coverage from 20.14% to >=50%.
-Covers: helper functions, A/B layer reading, prompt building, fallback report,
+Covers: helper functions, A/B layer reading, data report generation,
 write_daily_log, fallback_check, enrich_with_b_layer, resolve_projects,
 process_project, main(), and CLI parsing.
 """
@@ -11,18 +11,14 @@ import argparse
 import json
 import textwrap
 from datetime import date, timedelta
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from memory_core.tools.daily_summary_generator import (
-    _build_llm_prompt,
-    _call_llm,
     _enrich_with_b_layer,
     _extract_text_blocks,
     _extract_transcript_summary,
     _fallback_check,
-    _generate_fallback_report,
-    _get_factory_api_key,
+    _generate_data_report,
     _parse_args,
     _read_a_layer,
     _read_full_jsonl,
@@ -301,168 +297,14 @@ class TestExtractTranscriptSummary:
 
 
 # ---------------------------------------------------------------------------
-# _build_llm_prompt tests
+# _generate_data_report tests
 # ---------------------------------------------------------------------------
 
-class TestBuildLlmPrompt:
-    def test_single_session(self):
-        data = [{
-            "full_session_id": "abcd1234-0000-0000-0000-000000000000",
-            "title": "Test Session",
-            "model": "GLM-5.1",
-            "duration": "5m",
-            "input_tokens": 100,
-            "output_tokens": 200,
-            "tool_calls_raw": "Read, Edit",
-            "user_prompt_preview": "fix bug",
-            "assistant_summary_preview": "fixed",
-        }]
-        prompt = _build_llm_prompt(data)
-        assert "Session 1" in prompt
-        assert "abcd1234" in prompt
-        assert "Test Session" in prompt
-        assert "GLM-5.1" in prompt
-        assert "input=100" in prompt
-        assert "output=200" in prompt
-        assert "每日工作日志分类器" in prompt
-
-    def test_empty_session_data(self):
-        prompt = _build_llm_prompt([])
-        assert "每日工作日志分类器" in prompt
-
-    def test_multiple_sessions(self):
-        data = [
-            {"full_session_id": "aaaa1111", "title": "A"},
-            {"full_session_id": "bbbb2222", "title": "B"},
-        ]
-        prompt = _build_llm_prompt(data)
-        assert "Session 1" in prompt
-        assert "Session 2" in prompt
-
-
-# ---------------------------------------------------------------------------
-# _get_factory_api_key tests
-# ---------------------------------------------------------------------------
-
-class TestGetFactoryApiKey:
-    def test_missing_settings_returns_empty(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        result = _get_factory_api_key()
-        assert result == ""
-
-    def test_no_custom_models(self, tmp_path, monkeypatch):
-        settings_dir = tmp_path / ".factory"
-        settings_dir.mkdir()
-        (settings_dir / "settings.json").write_text("{}", encoding="utf-8")
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        result = _get_factory_api_key()
-        assert result == ""
-
-    def test_matching_glm_model(self, tmp_path, monkeypatch):
-        settings_dir = tmp_path / ".factory"
-        settings_dir.mkdir()
-        settings = {
-            "customModels": [
-                {"id": "glm-5.1", "apiKey": "test-key-123"},
-            ]
-        }
-        (settings_dir / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        result = _get_factory_api_key()
-        assert result == "test-key-123"
-
-    def test_no_matching_model(self, tmp_path, monkeypatch):
-        settings_dir = tmp_path / ".factory"
-        settings_dir.mkdir()
-        settings = {
-            "customModels": [
-                {"id": "gpt-4", "apiKey": "other-key"},
-            ]
-        }
-        (settings_dir / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        result = _get_factory_api_key()
-        assert result == ""
-
-    def test_invalid_json_returns_empty(self, tmp_path, monkeypatch):
-        settings_dir = tmp_path / ".factory"
-        settings_dir.mkdir()
-        (settings_dir / "settings.json").write_text("not json", encoding="utf-8")
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        result = _get_factory_api_key()
-        assert result == ""
-
-
-# ---------------------------------------------------------------------------
-# _call_llm tests
-# ---------------------------------------------------------------------------
-
-class TestCallLlm:
-    def test_no_api_key_returns_none(self, monkeypatch):
-        monkeypatch.delenv("GLM_API_KEY", raising=False)
-        with patch("memory_core.tools.daily_summary_generator._get_factory_api_key", return_value=""):
-            result = _call_llm("test prompt")
-        assert result is None
-
-    def test_successful_call(self, monkeypatch):
-        monkeypatch.setenv("GLM_API_KEY", "test-key")
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({
-            "choices": [{"message": {"content": "LLM summary text"}}]
-        })
-        with patch("subprocess.run", return_value=mock_result):
-            result = _call_llm("test prompt")
-        assert result == "LLM summary text"
-
-    def test_curl_nonzero_returns_none(self, monkeypatch):
-        monkeypatch.setenv("GLM_API_KEY", "test-key")
-        mock_result = MagicMock()
-        mock_result.returncode = 1
-        mock_result.stderr = "curl error"
-        with patch("subprocess.run", return_value=mock_result):
-            result = _call_llm("test prompt")
-        assert result is None
-
-    def test_api_error_returns_none(self, monkeypatch):
-        monkeypatch.setenv("GLM_API_KEY", "test-key")
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = json.dumps({
-            "choices": [],
-            "error": {"message": "rate limit exceeded"},
-        })
-        with patch("subprocess.run", return_value=mock_result):
-            result = _call_llm("test prompt")
-        assert result is None
-
-    def test_timeout_returns_none(self, monkeypatch):
-        import subprocess as sp
-        monkeypatch.setenv("GLM_API_KEY", "test-key")
-        with patch("subprocess.run", side_effect=sp.TimeoutExpired("curl", 120)):
-            result = _call_llm("test prompt")
-        assert result is None
-
-    def test_json_error_returns_none(self, monkeypatch):
-        monkeypatch.setenv("GLM_API_KEY", "test-key")
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "not json"
-        with patch("subprocess.run", return_value=mock_result):
-            result = _call_llm("test prompt")
-        assert result is None
-
-
-# ---------------------------------------------------------------------------
-# _generate_fallback_report tests
-# ---------------------------------------------------------------------------
-
-class TestGenerateFallbackReport:
+class TestGenerateDataReport:
     def test_empty_sessions(self):
-        result = _generate_fallback_report([], "2026-05-28")
+        result = _generate_data_report([], "2026-05-28")
         assert "2026-05-28" in result
         assert "Sessions: 0" in result
-        assert "LLM 总结未生成" in result
 
     def test_with_sessions(self):
         sessions = [
@@ -474,22 +316,48 @@ class TestGenerateFallbackReport:
                 "input_tokens": 500,
                 "output_tokens": 300,
                 "user_prompt_preview": "fix something",
+                "assistant_summary_preview": "fixed it",
+                "tool_calls_raw": "Read, Edit",
             },
         ]
-        result = _generate_fallback_report(sessions, "2026-05-28")
+        result = _generate_data_report(sessions, "2026-05-28")
         assert "Sessions: 1" in result
         assert "in=500" in result
         assert "out=300" in result
         assert "abcd1234" in result
         assert "Test Session" in result
         assert "fix something" in result
+        assert "fixed it" in result
+        assert "Read, Edit" in result
+
+    def test_with_b_layer_data(self):
+        """_generate_data_report includes B-layer data when present."""
+        sessions = [
+            {
+                "full_session_id": "abcd1234",
+                "title": "Test Session",
+                "input_tokens": 100,
+                "output_tokens": 200,
+                "user_messages": "Please fix this bug",
+                "assistant_messages": "I have fixed the bug",
+                "tool_names": ["Read", "Edit"],
+            },
+        ]
+        result = _generate_data_report(sessions, "2026-05-28")
+        assert "B层用户消息" in result
+        assert "Please fix this bug" in result
+        assert "B层助手消息" in result
+        assert "I have fixed the bug" in result
+        assert "B层工具列表" in result
+        assert "Read" in result
+        assert "Edit" in result
 
     def test_multiple_sessions_stats(self):
         sessions = [
             {"full_session_id": "aaaa", "input_tokens": 100, "output_tokens": 200},
             {"full_session_id": "bbbb", "input_tokens": 300, "output_tokens": 400},
         ]
-        result = _generate_fallback_report(sessions, "2026-05-28")
+        result = _generate_data_report(sessions, "2026-05-28")
         assert "Sessions: 2" in result
         assert "in=400" in result
         assert "out=600" in result
@@ -500,38 +368,28 @@ class TestGenerateFallbackReport:
 # ---------------------------------------------------------------------------
 
 class TestWriteDailyLog:
-    def test_write_with_llm_summary(self, tmp_path):
+    def test_write_data_report(self, tmp_path):
         sessions = [
-            {"input_tokens": 100, "output_tokens": 200},
+            {"full_session_id": "abcd1234", "input_tokens": 100, "output_tokens": 200,
+             "title": "Test", "model": "GLM", "duration": "1m"},
         ]
-        result = _write_daily_log(tmp_path, "2026-05-28", sessions, "LLM generated summary")
+        result = _write_daily_log(tmp_path, "2026-05-28", sessions)
         assert result.exists()
         content = result.read_text(encoding="utf-8")
         assert "2026-05-28" in content
-        assert "LLM generated summary" in content
-        assert "统计概览" in content
+        assert "Daily Report" in content
         assert "Sessions: 1" in content
-
-    def test_write_without_llm_summary_fallback(self, tmp_path):
-        sessions = [
-            {"full_session_id": "abcd1234", "title": "Test", "model": "GLM", "duration": "1m",
-             "input_tokens": 50, "output_tokens": 75, "user_prompt_preview": "preview"},
-        ]
-        result = _write_daily_log(tmp_path, "2026-05-28", sessions, None)
-        assert result.exists()
-        content = result.read_text(encoding="utf-8")
-        assert "Daily Facts" in content
-        assert "LLM 总结未生成" in content
+        assert "abcd1234" in content
 
     def test_dry_run_no_file_written(self, tmp_path):
         sessions = [{"input_tokens": 10, "output_tokens": 20}]
-        _write_daily_log(tmp_path, "2026-05-28", sessions, "summary", dry_run=True)
+        _write_daily_log(tmp_path, "2026-05-28", sessions, dry_run=True)
         # dry_run doesn't write the file
         assert not (tmp_path / "memory" / "log" / "2026-05-28.md").exists()
 
     def test_creates_log_dir(self, tmp_path):
         """Log directory should be created if it doesn't exist."""
-        _write_daily_log(tmp_path, "2026-06-01", [], "test")
+        _write_daily_log(tmp_path, "2026-06-01", [])
         assert (tmp_path / "memory" / "log").is_dir()
 
 
@@ -561,8 +419,7 @@ class TestFallbackCheck:
         content = "### abcd1234\n- **标题**: Test\n"
         (log_dir / f"{yesterday}-sessions.md").write_text(content, encoding="utf-8")
 
-        with patch("memory_core.tools.daily_summary_generator._call_llm", return_value=None):
-            result = _fallback_check(tmp_path, 3)
+        result = _fallback_check(tmp_path, 3)
         assert yesterday in result
         # Daily log should now exist
         assert (log_dir / f"{yesterday}.md").exists()
@@ -694,8 +551,7 @@ class TestProcessProject:
         content = "### abcd1234\n- **标题**: Test\n- **模型**: GLM | 时长: 1m\n- **Token**: input=10 output=20\n"
         (log_dir / "2026-05-28-sessions.md").write_text(content, encoding="utf-8")
 
-        with patch("memory_core.tools.daily_summary_generator._call_llm", return_value=None), \
-             patch("memory_core.tools.daily_summary_generator._enrich_with_b_layer", side_effect=lambda s: s), \
+        with patch("memory_core.tools.daily_summary_generator._enrich_with_b_layer", side_effect=lambda s: s), \
              patch("memory_core.tools.daily_summary_generator._fallback_check", return_value=[]):
             result = process_project(tmp_path, "2026-05-28", fallback_days=0)
         assert result is True
@@ -766,8 +622,7 @@ class TestIntegration:
         """)
         (log_dir / "2026-06-01-sessions.md").write_text(content, encoding="utf-8")
 
-        with patch("memory_core.tools.daily_summary_generator._call_llm", return_value=None), \
-             patch("memory_core.tools.daily_summary_generator._enrich_with_b_layer", side_effect=lambda s: s), \
+        with patch("memory_core.tools.daily_summary_generator._enrich_with_b_layer", side_effect=lambda s: s), \
              patch("memory_core.tools.daily_summary_generator._fallback_check", return_value=[]):
             result = process_project(tmp_path, "2026-06-01", fallback_days=0)
 
@@ -780,22 +635,3 @@ class TestIntegration:
         assert "in=5000" in text
         assert "out=3000" in text
 
-    def test_full_pipeline_with_llm(self, tmp_path):
-        """End-to-end with mocked LLM response."""
-        log_dir = tmp_path / "memory" / "log"
-        log_dir.mkdir(parents=True)
-        content = "### aabbccdd\n- **标题**: 测试\n- **模型**: GLM | 时长: 1m\n- **Token**: input=10 output=20\n"
-        (log_dir / "2026-06-02-sessions.md").write_text(content, encoding="utf-8")
-
-        llm_output = "## 今日总结\n完成了代码重构和测试。"
-
-        with patch("memory_core.tools.daily_summary_generator._call_llm", return_value=llm_output), \
-             patch("memory_core.tools.daily_summary_generator._enrich_with_b_layer", side_effect=lambda s: s), \
-             patch("memory_core.tools.daily_summary_generator._fallback_check", return_value=[]):
-            result = process_project(tmp_path, "2026-06-02", fallback_days=0)
-
-        assert result is True
-        daily_log = log_dir / "2026-06-02.md"
-        text = daily_log.read_text(encoding="utf-8")
-        assert "今日总结" in text
-        assert "代码重构" in text
