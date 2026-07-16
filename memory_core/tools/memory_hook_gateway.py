@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import hashlib
 import json
 import os
@@ -13,6 +12,38 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
+
+# Import file utilities (REF-001 §4.8)
+try:
+    from ._file_utils import exclusive_lock, now_iso
+except ImportError:
+    from _file_utils import exclusive_lock, now_iso  # type: ignore
+
+# Import shared rule helpers (consolidation REF-001 §4.3)
+try:
+    from ._rule_helpers import (
+        _existing_paths,
+        _get_write_targets_dict,
+        _json_object_keys,
+        _json_string_values,
+        _markdown_code_tokens,
+        _path_is_under,
+        _path_is_under_lexical,
+        _section_body,
+        _section_bullets,
+    )
+except ImportError:
+    from _rule_helpers import (  # type: ignore
+        _existing_paths,
+        _get_write_targets_dict,
+        _json_object_keys,
+        _json_string_values,
+        _markdown_code_tokens,
+        _path_is_under,
+        _path_is_under_lexical,
+        _section_body,
+        _section_bullets,
+    )
 
 SCRIPT_PATH = Path(__file__).resolve()
 try:
@@ -514,10 +545,6 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def now_iso() -> str:
-    return datetime.now().astimezone().isoformat(timespec="seconds")
-
-
 def _read_payload(raw_payload: str) -> dict[str, Any]:
     if not raw_payload.strip():
         return {}
@@ -638,66 +665,12 @@ def _extract_excerpt(path: Path, max_lines: int = 12) -> list[str]:
     return lines
 
 
-def _section_bullets(text: str, heading: str) -> list[str]:
-    lines = text.splitlines()
-    bullets: list[str] = []
-    in_section = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped == heading or stripped.endswith(heading.replace("## ", "").replace("### ", "")):
-            in_section = True
-            continue
-        if in_section and stripped.startswith("#"):
-            break
-        if in_section and line.strip().startswith("- "):
-            bullets.append(line.strip()[2:].strip().strip("`"))
-    return bullets
-
-
-def _section_body(text: str, heading: str) -> str:
-    lines = text.splitlines()
-    start_idx: int | None = None
-    for idx, line in enumerate(lines):
-        if line.strip() == heading:
-            start_idx = idx + 1
-            break
-    if start_idx is None:
-        return ""
-    body: list[str] = []
-    for line in lines[start_idx:]:
-        if line.strip().startswith("## "):
-            break
-        body.append(line)
-    return "\n".join(body)
-
-
-def _markdown_code_tokens(text: str) -> set[str]:
-    return {match.group(1) for match in re.finditer(r"`([^`]+)`", text)}
-
-
-def _json_string_values(text: str, key: str) -> set[str]:
-    pattern = rf'"{re.escape(key)}"\s*:\s*"([^"]+)"'
-    return {match.group(1) for match in re.finditer(pattern, text)}
-
-
-def _json_object_keys(text: str) -> set[str]:
-    return {match.group(1) for match in re.finditer(r'"([^"]+)"\s*:', text)}
-
-
 def governance_frozen_tuple_blocker_errors() -> list[str]:
     return _get_gateway_business_policy().governance_frozen_tuple_blocker_errors()
 
 
 def event_contract_blocker_errors() -> list[str]:
     return _get_gateway_business_policy().event_contract_blocker_errors()
-
-
-def _path_is_under(path: Path, root: Path) -> bool:
-    try:
-        path.resolve().relative_to(root.resolve())
-        return True
-    except ValueError:
-        return False
 
 
 def _classify_truth_ref(path: Path) -> str:
@@ -744,24 +717,22 @@ def _lower_evidence_ref(path: Path) -> bool:
     return any(_path_is_under(path, root) for root in LOWER_EVIDENCE_ROOTS)
 
 
-def _truth_basis_sections_for(path: Path) -> dict[str, Any]:
-    text = path.read_text(encoding="utf-8")
+def _truth_basis_sections_for(path: Path, content: str) -> dict[str, Any]:
     return {
-        "source_refs": _section_bullets(text, "### Source Refs"),
-        "authority_refs": _section_bullets(text, "### Authority Refs"),
-        "evidence_refs": _section_bullets(text, "### Evidence Refs"),
-        "conflict_status": _section_bullets(text, "### Conflict Status"),
+        "source_refs": _section_bullets(content, "### Source Refs"),
+        "authority_refs": _section_bullets(content, "### Authority Refs"),
+        "evidence_refs": _section_bullets(content, "### Evidence Refs"),
+        "conflict_status": _section_bullets(content, "### Conflict Status"),
     }
 
 
-def _truth_basis_errors_for(path: Path) -> list[str]:
+def _truth_basis_errors_for(path: Path, content: str) -> list[str]:
     errors: list[str] = []
-    if not path.exists():
+    if content is None:
         return [f"missing truth canonical: {path}"]
-    text = path.read_text(encoding="utf-8")
-    if "Truth Basis" not in text:
+    if "Truth Basis" not in content:
         return [f"truth basis section missing: {path}"]
-    sections = _truth_basis_sections_for(path)
+    sections = _truth_basis_sections_for(path, content)
     source_refs = sections["source_refs"]
     authority_refs = sections["authority_refs"]
     evidence_refs = sections["evidence_refs"]
@@ -798,10 +769,6 @@ def _truth_basis_errors_for(path: Path) -> list[str]:
     if evidence_paths and not any(_lower_evidence_ref(evidence_path) for evidence_path in evidence_paths):
         errors.append(f"evidence refs do not include lower-layer support: {path}")
     return errors
-
-
-def _existing_paths(paths: list[Path]) -> list[str]:
-    return [str(path) for path in paths if path.exists()]
 
 
 def _normalize_repo_scope_entry(value: str | Path) -> str | None:
@@ -935,25 +902,7 @@ def write_targets() -> dict[str, Any]:
     try:
         return _write_targets_via_policy()
     except Exception:
-        today_log = WORKSPACE_ROOT / "memory" / "log" / f"{datetime.now().date().isoformat()}.md"
-        return _apply_hook_runtime_write_targets({
-            "fact": str(today_log),
-            "global_canonical": str(WORKSPACE_ROOT / "memory" / "kb" / "global"),
-            "project_canonical": str(WORKSPACE_ROOT / "memory" / "kb" / "projects"),
-            "decision": str(WORKSPACE_ROOT / "memory" / "kb" / "decisions"),
-            "lesson": str(WORKSPACE_ROOT / "memory" / "kb" / "lessons"),
-            "docs": str(WORKSPACE_ROOT / "memory" / "docs"),
-            "action": str(WORKSPACE_ROOT / "memory" / "inbox.md"),
-            "project_runtime": str(WORKSPACE_ROOT / "projects"),
-            "artifacts": str(WORKSPACE_ROOT / "memory" / "artifacts"),
-            "system_error": str(ERROR_LOG),
-            "invalid_memory": str(_configured_invalid_memory_root(WORKSPACE_ROOT)),
-            "kb_policy": {
-                "mode": "read-first-CRUD",
-                "overwrite_allowed": False,
-                "conflict_strategy": "preserve-and-escalate",
-            },
-        })
+        return _apply_hook_runtime_write_targets(_get_write_targets_dict(WORKSPACE_ROOT))
 
 
 def resolve_route_target(kind: str) -> str:
@@ -1558,7 +1507,7 @@ def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
         - **累计 prompt 数**: {count}
         ---
 
-    Uses ``fcntl.flock(LOCK_EX)`` for exclusive lock during append.
+    Uses ``exclusive_lock`` for exclusive lock during append.
     Protected by a 2-second SIGALRM timeout.
 
     Fallback: if payload lacks ``prompt``, reads ``transcript_path`` last
@@ -1580,7 +1529,7 @@ def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
         prompt = "(no prompt captured)"
 
     # ── Build heartbeat content ─────────────────────────────────────
-    now = datetime.now().astimezone()
+    now = datetime.now()
     date_str = now.strftime("%Y-%m-%d")
     time_str = now.strftime("%H:%M:%S")
     session_prefix = session_id[:8]
@@ -1621,13 +1570,9 @@ def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
         signal.alarm(2)  # 2-second timeout
 
         with log_file.open("a", encoding="utf-8") as fh:
-            fd = fh.fileno()
-            fcntl.flock(fd, fcntl.LOCK_EX)
-            try:
+            with exclusive_lock(fh):
                 fh.write(heartbeat)
                 fh.flush()
-            finally:
-                fcntl.flock(fd, fcntl.LOCK_UN)
     except HookTimeoutError:
         _logger.warning("_log_prompt_submit: write timed out for session %s", session_prefix)
     finally:
@@ -1854,13 +1799,10 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
                                 remaining_lines.append(line)
 
                     with metrics_file.open("w", encoding="utf-8") as f:
-                        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                        try:
+                        with exclusive_lock(f):
                             f.writelines(remaining_lines)
                             f.flush()
                             os.fsync(f.fileno())
-                        finally:
-                            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
                     offset_file.write_text("0", encoding="utf-8")
                 except OSError as exc:
@@ -1900,7 +1842,7 @@ def _write_sync_status(artifact_root: Path, success: bool, pending_count: int) -
         pending_count: Number of records waiting to be synced
     """
     status_file = artifact_root / ".sync_status.json"
-    now_iso = datetime.now().astimezone().isoformat(timespec="seconds")
+    now_iso_val = now_iso()
 
     # Read existing status
     status: dict[str, Any] = {}
@@ -1911,10 +1853,10 @@ def _write_sync_status(artifact_root: Path, success: bool, pending_count: int) -
             status = {}
 
     if success:
-        status["last_success_ts"] = now_iso
+        status["last_success_ts"] = now_iso_val
         status["failure_count"] = 0
     else:
-        status["last_failure_ts"] = now_iso
+        status["last_failure_ts"] = now_iso_val
         status["failure_count"] = int(status.get("failure_count", 0)) + 1
 
     status["pending_count"] = pending_count
@@ -2129,7 +2071,7 @@ def _gateway_excepthook(exc_type, exc_value, exc_tb):
             "error_type": exc_type.__name__,
             "error_message": str(exc_value)[:500],
             "hook_version": "memory-hook-gateway-v1",
-            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "timestamp": now_iso(),
             "duration_ms": duration_ms,
             "status": "error",
         }

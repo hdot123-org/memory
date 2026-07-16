@@ -17,6 +17,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# Domain exceptions
+from memory_core.tools._rule_errors import UnknownHostError
+
 # ---------------------------------------------------------------------------
 # Shared test fixtures
 # ---------------------------------------------------------------------------
@@ -377,7 +380,7 @@ class TestDelegateRouter:
         factory = self._make_fake_delegate()
         router = DelegateRouter(factory_delegate=factory)
 
-        with pytest.raises(ValueError, match="unknown host"):
+        with pytest.raises(UnknownHostError, match="unknown host"):
             router.route(host="codex", event="x", raw_payload="", payload={})
 
     def test_delegate_router_rejects_claude_host(self):
@@ -387,7 +390,7 @@ class TestDelegateRouter:
         factory = self._make_fake_delegate()
         router = DelegateRouter(factory_delegate=factory)
 
-        with pytest.raises(ValueError, match="unknown host"):
+        with pytest.raises(UnknownHostError, match="unknown host"):
             router.route(host="claude", event="x", raw_payload="", payload={})
 
     def test_delegate_router_rejects_unknown_host(self):
@@ -397,7 +400,7 @@ class TestDelegateRouter:
         factory = self._make_fake_delegate()
         router = DelegateRouter(factory_delegate=factory)
 
-        with pytest.raises(ValueError, match="unknown host"):
+        with pytest.raises(UnknownHostError, match="unknown host"):
             router.route(host="unknown", event="x", raw_payload="", payload={})
 
     def test_delegate_router_noop_factory(self):
@@ -419,7 +422,7 @@ class TestDelegateRouter:
         factory = self._make_fake_delegate()
         router = DelegateRouter(factory_delegate=factory)
 
-        with pytest.raises(ValueError, match="unknown host"):
+        with pytest.raises(UnknownHostError, match="unknown host"):
             router.noop(host="codex")
 
     def test_delegate_router_noop_rejects_claude_host(self):
@@ -429,7 +432,7 @@ class TestDelegateRouter:
         factory = self._make_fake_delegate()
         router = DelegateRouter(factory_delegate=factory)
 
-        with pytest.raises(ValueError, match="unknown host"):
+        with pytest.raises(UnknownHostError, match="unknown host"):
             router.noop(host="claude")
 
     def test_delegate_router_noop_rejects_unknown_host(self):
@@ -439,7 +442,7 @@ class TestDelegateRouter:
         factory = self._make_fake_delegate()
         router = DelegateRouter(factory_delegate=factory)
 
-        with pytest.raises(ValueError, match="unknown host"):
+        with pytest.raises(UnknownHostError, match="unknown host"):
             router.noop(host="unknown")
 
     def test_delegate_router_stores_delegate(self):

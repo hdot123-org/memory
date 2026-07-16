@@ -4,8 +4,7 @@
 Covers:
 - _path_is_under (symlink-resolving containment)
 - _path_is_under_lexical (lexical containment without symlink resolution)
-- TruthBasisResolver._path_is_under, _classify_truth_ref,
-  _authority_ref_allowed, _lower_evidence_ref
+- TruthBasisResolver._classify_truth_ref, _authority_ref_allowed, _lower_evidence_ref
 - ScopeResolver.determine_project_scope
 - Boundary / edge cases: empty, None-equivalent, Unicode,超长路径,
   symlinks, exact-boundary paths
@@ -227,41 +226,6 @@ class TestPathIsUnderLexical:
         rel = Path("subdir")
         rel.mkdir()
         assert _path_is_under_lexical(rel, root) is True
-
-
-# ---------------------------------------------------------------------------
-# 3. TruthBasisResolver._path_is_under (static method)
-# ---------------------------------------------------------------------------
-
-class TestTruthBasisResolverPathIsUnder:
-    """Tests for TruthBasisResolver._path_is_under (static)."""
-
-    def test_path_under_root(self, tmp_path: Path) -> None:
-        root = tmp_path / "root"
-        root.mkdir()
-        child = root / "sub" / "file.txt"
-        child.parent.mkdir()
-        child.touch()
-        assert TruthBasisResolver._path_is_under(child, root) is True
-
-    def test_path_outside_root(self, tmp_path: Path) -> None:
-        root = tmp_path / "root"
-        root.mkdir()
-        outside = tmp_path / "other" / "file.txt"
-        outside.parent.mkdir()
-        outside.touch()
-        assert TruthBasisResolver._path_is_under(outside, root) is False
-
-    def test_matches_module_level(self, tmp_path: Path) -> None:
-        """Static method must agree with module-level _path_is_under."""
-        root = tmp_path / "root"
-        root.mkdir()
-        child = root / "a.txt"
-        child.touch()
-        outside = tmp_path / "other.txt"
-        outside.touch()
-        assert TruthBasisResolver._path_is_under(child, root) == _path_is_under(child, root)
-        assert TruthBasisResolver._path_is_under(outside, root) == _path_is_under(outside, root)
 
 
 # ---------------------------------------------------------------------------

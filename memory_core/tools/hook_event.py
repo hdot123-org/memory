@@ -20,9 +20,20 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+# Import domain exceptions (REF-001 §4.8)
+try:
+    from memory_core.tools._rule_errors import UnknownHostError
+except ImportError:
+    from ._rule_errors import UnknownHostError  # type: ignore
+
+# Import now_iso utility (REF-001 §4.8)
+try:
+    from memory_core.tools._file_utils import now_iso
+except ImportError:
+    from ._file_utils import now_iso  # type: ignore
 
 # ---------------------------------------------------------------------------
 # Claude event name mapping
@@ -58,8 +69,7 @@ class HookEvent:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _now_iso() -> str:
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+_now_iso = now_iso
 
 
 def _parse_json(raw: str) -> dict[str, Any]:
@@ -184,9 +194,9 @@ def parse_hook_event(host: str, event: str, raw_payload: str) -> HookEvent:
         A normalized HookEvent.
 
     Raises:
-        ValueError: If host is not "factory".
+        UnknownHostError: If host is not "factory".
     """
     if host == "factory":
         return from_codex_payload(raw_payload, event=event, source="factory")
     else:
-        raise ValueError(f"unknown host: {host!r}")
+        raise UnknownHostError(f"unknown host: {host!r}")

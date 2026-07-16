@@ -1218,27 +1218,29 @@ class TestApplyHookRuntimeWriteTargets:
 class TestTruthBasisErrorsFor:
     def test_missing_file_returns_error(self, gateway_module, tmp_path):
         missing_file = tmp_path / "nonexistent.md"
-        errors = gateway_module._truth_basis_errors_for(missing_file)
+        errors = gateway_module._truth_basis_errors_for(missing_file, None)
         assert len(errors) == 1
         assert "missing truth canonical" in errors[0]
 
     def test_missing_truth_basis_section(self, gateway_module, tmp_path):
         test_file = tmp_path / "test.md"
-        test_file.write_text("# Some Other Section\n\nContent here.\n")
-        errors = gateway_module._truth_basis_errors_for(test_file)
+        content = "# Some Other Section\n\nContent here.\n"
+        test_file.write_text(content)
+        errors = gateway_module._truth_basis_errors_for(test_file, content)
         # When Truth Basis section is missing, returns early with specific error
         assert len(errors) == 1
         assert "truth basis section missing" in errors[0]
 
     def test_empty_sections_return_errors(self, gateway_module, tmp_path):
         test_file = tmp_path / "test.md"
-        test_file.write_text("""# Document
+        content = """# Document
 
 ### Truth Basis
 
 Some content without the required subsections.
-""")
-        errors = gateway_module._truth_basis_errors_for(test_file)
+"""
+        test_file.write_text(content)
+        errors = gateway_module._truth_basis_errors_for(test_file, content)
         assert len(errors) >= 4  # source_refs, authority_refs, evidence_refs, conflict_status all missing
 
 
@@ -1735,7 +1737,7 @@ class TestGitRegistrationProbe:
 class TestTruthBasisSectionsFor:
     def test_extracts_sections(self, gateway_module, tmp_path):
         test_file = tmp_path / "test.md"
-        test_file.write_text("""# Document
+        content = """# Document
 
 ### Source Refs
 - ref1.md
@@ -1749,8 +1751,9 @@ class TestTruthBasisSectionsFor:
 
 ### Conflict Status
 - resolved
-""")
-        result = gateway_module._truth_basis_sections_for(test_file)
+"""
+        test_file.write_text(content)
+        result = gateway_module._truth_basis_sections_for(test_file, content)
         assert "source_refs" in result
         assert "authority_refs" in result
         assert "evidence_refs" in result

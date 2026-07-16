@@ -24,6 +24,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+# Import now_iso utility (REF-001 §4.8)
+try:
+    from ._file_utils import now_iso
+except ImportError:
+    from _file_utils import now_iso  # type: ignore
+
 # C 层错误日志导入
 try:
     from memory_core.tools.error_logger import write_error_log
@@ -505,7 +511,7 @@ def _write_session_metrics(project_root: Path, info: dict[str, Any]) -> None:
             "output_tokens": info.get("output_tokens", 0),
             "total_tool_calls": info.get("total_tool_calls", 0),
             "duration_ms": duration_ms,
-            "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "timestamp": now_iso(),
         }
         append_metrics_record(metrics_path, metrics_record)
     except Exception:

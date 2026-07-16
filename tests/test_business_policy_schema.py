@@ -858,7 +858,7 @@ class TestTruthBasisResolver:
     def test_truth_basis_sections_parsed(self, tmp_path):
         """Truth-basis sections should be correctly parsed from markdown."""
         f = tmp_path / "doc.md"
-        f.write_text(
+        content = (
             "### Truth Basis\n"
             "### Source Refs\n- path/a.md\n- path/b.md\n"
             "### Authority Refs\n- path/c.md\n"
@@ -866,9 +866,10 @@ class TestTruthBasisResolver:
             "### Conflict Status\n- resolved\n"
             "### Other Section\n- ignored\n"
         )
+        f.write_text(content)
         cfg = make_minimal_config(tmp_path)
         resolver = TruthBasisResolver(cfg)
-        sections = resolver._truth_basis_sections_for(f)
+        sections = resolver._truth_basis_sections_for(f, content)
         assert sections["source_refs"] == ["path/a.md", "path/b.md"]
         assert sections["authority_refs"] == ["path/c.md"]
         assert sections["evidence_refs"] == ["path/d.md"]
@@ -877,71 +878,76 @@ class TestTruthBasisResolver:
     def test_truth_basis_errors_missing_sections(self, tmp_path):
         """File without truth basis sections should report errors."""
         f = tmp_path / "empty.md"
-        f.write_text("# Just a heading\nno truth basis here\n")
+        content = "# Just a heading\nno truth basis here\n"
+        f.write_text(content)
         cfg = make_minimal_config(tmp_path)
         resolver = TruthBasisResolver(cfg)
-        errors = resolver._truth_basis_errors_for(f)
+        errors = resolver._truth_basis_errors_for(f, content)
         assert len(errors) >= 1
         assert "truth basis section missing" in errors[0]
 
     def test_truth_basis_errors_unresolved_conflict(self, tmp_path):
         """Unresolved conflict status should be flagged."""
         f = tmp_path / "doc.md"
-        f.write_text(
+        content = (
             "### Truth Basis\n"
             "### Source Refs\n- a.md\n"
             "### Authority Refs\n- b.md\n"
             "### Evidence Refs\n- c.md\n"
             "### Conflict Status\n- pending\n"
         )
+        f.write_text(content)
         cfg = make_minimal_config(tmp_path)
         resolver = TruthBasisResolver(cfg)
-        errors = resolver._truth_basis_errors_for(f)
+        errors = resolver._truth_basis_errors_for(f, content)
         assert any("unresolved" in e for e in errors)
 
     def test_truth_basis_errors_source_evidence_overlap(self, tmp_path):
         """Identical source and evidence refs should be flagged."""
         f = tmp_path / "doc.md"
-        f.write_text(
+        content = (
             "### Truth Basis\n"
             "### Source Refs\n- same.md\n"
             "### Authority Refs\n- other.md\n"
             "### Evidence Refs\n- same.md\n"
             "### Conflict Status\n- resolved\n"
         )
+        f.write_text(content)
         cfg = make_minimal_config(tmp_path)
         resolver = TruthBasisResolver(cfg)
-        errors = resolver._truth_basis_errors_for(f)
+        errors = resolver._truth_basis_errors_for(f, content)
         assert any("must not be identical" in e for e in errors)
 
     def test_truth_basis_errors_source_authority_overlap(self, tmp_path):
         """Source refs overlapping authority refs should be flagged."""
         f = tmp_path / "doc.md"
-        f.write_text(
+        content = (
             "### Truth Basis\n"
             "### Source Refs\n- shared.md\n"
             "### Authority Refs\n- shared.md\n"
             "### Evidence Refs\n- diff.md\n"
             "### Conflict Status\n- resolved\n"
         )
+        f.write_text(content)
         cfg = make_minimal_config(tmp_path)
         resolver = TruthBasisResolver(cfg)
-        errors = resolver._truth_basis_errors_for(f)
+        errors = resolver._truth_basis_errors_for(f, content)
         assert any("overlap authority" in e for e in errors)
 
     def test_truth_basis_errors_authority_evidence_overlap(self, tmp_path):
         """Authority refs overlapping evidence refs should be flagged."""
         f = tmp_path / "doc.md"
-        f.write_text(
+        content = (
             "### Truth Basis\n"
             "### Source Refs\n- a.md\n"
             "### Authority Refs\n- shared.md\n"
             "### Evidence Refs\n- shared.md\n"
             "### Conflict Status\n- resolved\n"
         )
+        f.write_text(content)
         cfg = make_minimal_config(tmp_path)
         resolver = TruthBasisResolver(cfg)
-        errors = resolver._truth_basis_errors_for(f)
+        errors = resolver._truth_basis_errors_for(f, content)
         assert any("authority refs overlap evidence" in e for e in errors)
 
 

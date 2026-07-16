@@ -19,7 +19,6 @@ from __future__ import annotations
 import inspect
 import json
 import re
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +30,12 @@ try:
 except ImportError:
     _integrity = None  # type: ignore[assignment]
     _integrity_keys = None  # type: ignore[assignment]
+
+# Import now_iso from _file_utils for consistent timestamp generation
+try:
+    from memory_core.tools._file_utils import now_iso
+except ImportError:
+    from _file_utils import now_iso  # type: ignore
 
 # 错误消息最大长度
 MAX_MSG_LENGTH = 500
@@ -133,7 +138,8 @@ def write_error_log(
         root = Path(project_root).expanduser().resolve()
 
         # 构建输出路径
-        today = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d")
+        # Extract date part (YYYY-MM-DD) from ISO timestamp
+        today = now_iso()[:10]
         log_dir = root / "memory" / "log"
         log_path = log_dir / f"{today}-errors.jsonl"
 
@@ -155,7 +161,7 @@ def write_error_log(
 
         # 构建日志条目
         entry = {
-            "ts": datetime.now(timezone.utc).astimezone().isoformat(),
+            "ts": now_iso(),
             "type": error_type,
             "script": calling_script,
             "project": str(root),

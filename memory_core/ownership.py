@@ -12,7 +12,7 @@ import subprocess
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from memory_core.constants import (
     OWNERSHIP_SCHEMA_VERSION,
@@ -637,7 +637,7 @@ def validate_ownership_schema(ownership: MemoryOwnership) -> list[str]:
     return errors
 
 
-def is_memory_core_source_repo(path: Path) -> bool:
+def is_memory_core_source_repo(path: Path, git_detector: Callable[[Path], Path | None] | None = None) -> bool:
     """Check if path is the memory-core source repository (anti-pollution).
 
     This is a shared API extracted from multiple locations to provide
@@ -645,6 +645,9 @@ def is_memory_core_source_repo(path: Path) -> bool:
 
     Args:
         path: Path to check (typically project root or cwd)
+        git_detector: Optional callable for git root detection. If provided,
+            will be called with the path and should return the git root path
+            or None. If None, uses subprocess to call git.
 
     Returns:
         True if path is within the memory-core source repository
@@ -662,14 +665,22 @@ def is_memory_core_source_repo(path: Path) -> bool:
 
     # Also check git root
     try:
-        git_root_result = subprocess.run(
-            ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if git_root_result.returncode == 0 and git_root_result.stdout.strip():
-            git_path = Path(git_root_result.stdout.strip())
+        git_path = None
+        if git_detector is not None:
+            # Use injected git_detector for testing
+            git_path = git_detector(resolved)
+        else:
+            # Use subprocess to detect git root
+            git_root_result = subprocess.run(
+                ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if git_root_result.returncode == 0 and git_root_result.stdout.strip():
+                git_path = Path(git_root_result.stdout.strip())
+
+        if git_path is not None:
             git_markers = [
                 git_path / "memory_core" / "tools" / "memory_hook_gateway.py",
                 git_path / "memory_core" / "tools" / "factory_global_hooks.py",

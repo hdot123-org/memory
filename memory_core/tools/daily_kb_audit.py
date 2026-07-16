@@ -35,7 +35,6 @@ import re
 import socket
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -52,6 +51,12 @@ try:
 except ImportError:  # pragma: no cover - 缺 PyYAML 时跳过基础设施检查
     yaml = None  # type: ignore[assignment]
     _HAS_YAML = False
+
+# Import file utilities (REF-001 §4.8)
+try:
+    from ._file_utils import now_iso
+except ImportError:
+    from _file_utils import now_iso  # type: ignore
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +107,7 @@ HTTP_TIMEOUT = 5          # curl --max-time
 #  check_ports 内部传入 3 以贴合规格。)
 
 # 时区（本机 +08:00）
-_LOCAL_TZ_OFFSET = datetime.now().astimezone().utcoffset()
+# _LOCAL_TZ_OFFSET removed - dead code, never used
 
 
 # ---------------------------------------------------------------------------
@@ -111,8 +116,7 @@ _LOCAL_TZ_OFFSET = datetime.now().astimezone().utcoffset()
 
 def _now_iso_local() -> str:
     """当前本地时间 ISO8601 字符串（带时区）。"""
-    now = datetime.now().astimezone()
-    return now.isoformat(timespec="seconds")
+    return now_iso()
 
 
 def _sha256_file(path: Path) -> str | None:
@@ -1370,7 +1374,7 @@ def build_report(
         projects_results: 项目检查结果。
         infrastructure: 基础设施检查结果（可为 None 表示本次未执行）。
     """
-    today = datetime.now().astimezone().date().isoformat()
+    today = now_iso()[:10]  # Extract YYYY-MM-DD from full ISO timestamp
     project_violations = sum(
         len(r.get("violations", []))
         for r in projects_results.values()

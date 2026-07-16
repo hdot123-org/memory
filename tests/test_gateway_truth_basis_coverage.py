@@ -210,28 +210,29 @@ class TestTruthBasisErrorsFor:
     def test_missing_file(self, gw, tmp_path):
         gw_mod, _repo, _ws, _pm = gw
         path = tmp_path / "nonexistent.md"
-        errors = gw_mod._truth_basis_errors_for(path)
+        errors = gw_mod._truth_basis_errors_for(path, None)
         assert any("missing truth canonical" in e for e in errors)
 
     def test_missing_truth_basis_section(self, gw, tmp_path):
         gw_mod, _repo, _ws, _pm = gw
         path = tmp_path / "no-section.md"
-        path.write_text("# Some doc\nNo truth basis here.\n", encoding="utf-8")
-        errors = gw_mod._truth_basis_errors_for(path)
+        content = "# Some doc\nNo truth basis here.\n"
+        path.write_text(content, encoding="utf-8")
+        errors = gw_mod._truth_basis_errors_for(path, content)
         assert any("truth basis section missing" in e for e in errors)
 
     def test_all_refs_missing(self, gw, tmp_path):
         gw_mod, _repo, _ws, _pm = gw
         path = tmp_path / "empty-truth.md"
-        path.write_text(
+        content = (
             "### Truth Basis\n\n"
             "### Source Refs\n\n"
             "### Authority Refs\n\n"
             "### Evidence Refs\n\n"
-            "### Conflict Status\n\n",
-            encoding="utf-8",
+            "### Conflict Status\n\n"
         )
-        errors = gw_mod._truth_basis_errors_for(path)
+        path.write_text(content, encoding="utf-8")
+        errors = gw_mod._truth_basis_errors_for(path, content)
         assert any("source refs missing" in e for e in errors)
         assert any("authority refs missing" in e for e in errors)
         assert any("evidence refs missing" in e for e in errors)
@@ -248,7 +249,7 @@ class TestTruthBasisErrorsFor:
         evidence_file = ws / "memory" / "kb" / "lessons" / "evidence.md"
         evidence_file.parent.mkdir(parents=True, exist_ok=True)
         evidence_file.write_text("# evidence\n", encoding="utf-8")
-        path.write_text(
+        content = (
             "### Truth Basis\n\n"
             "### Source Refs\n"
             "- memory/docs/design/source.md\n\n"
@@ -257,43 +258,43 @@ class TestTruthBasisErrorsFor:
             "### Evidence Refs\n"
             "- memory/kb/lessons/evidence.md\n\n"
             "### Conflict Status\n"
-            "- pending\n",
-            encoding="utf-8",
+            "- pending\n"
         )
-        errors = gw_mod._truth_basis_errors_for(path)
+        path.write_text(content, encoding="utf-8")
+        errors = gw_mod._truth_basis_errors_for(path, content)
         assert any("conflict status unresolved" in e for e in errors)
 
     def test_truth_ref_outside_repository(self, gw, tmp_path):
         gw_mod, _repo, _ws, _pm = gw
         path = tmp_path / "outside-repo.md"
-        path.write_text(
+        content = (
             "### Truth Basis\n\n"
             "### Source Refs\n"
             "- /external/path/outside.md\n\n"
             "### Authority Refs\n\n"
             "### Evidence Refs\n\n"
             "### Conflict Status\n"
-            "- resolved\n",
-            encoding="utf-8",
+            "- resolved\n"
         )
-        errors = gw_mod._truth_basis_errors_for(path)
+        path.write_text(content, encoding="utf-8")
+        errors = gw_mod._truth_basis_errors_for(path, content)
         assert any("truth ref outside repository" in e for e in errors)
 
     def test_truth_ref_missing_on_disk(self, gw, tmp_path, monkeypatch):
         gw_mod, repo, _ws, _pm = gw
         path = tmp_path / "missing-disk.md"
         # Reference a path inside repo that doesn't exist on disk
-        path.write_text(
+        content = (
             "### Truth Basis\n\n"
             "### Source Refs\n"
             "- memory/docs/nonexistent.md\n\n"
             "### Authority Refs\n\n"
             "### Evidence Refs\n\n"
             "### Conflict Status\n"
-            "- resolved\n",
-            encoding="utf-8",
+            "- resolved\n"
         )
-        errors = gw_mod._truth_basis_errors_for(path)
+        path.write_text(content, encoding="utf-8")
+        errors = gw_mod._truth_basis_errors_for(path, content)
         assert any("truth ref missing on disk" in e for e in errors)
 
     def test_source_and_evidence_identical(self, gw, tmp_path):
@@ -302,7 +303,7 @@ class TestTruthBasisErrorsFor:
         source_file = repo / "memory" / "docs" / "design" / "same.md"
         source_file.parent.mkdir(parents=True, exist_ok=True)
         source_file.write_text("# same\n", encoding="utf-8")
-        path.write_text(
+        content = (
             "### Truth Basis\n\n"
             "### Source Refs\n"
             "- memory/docs/design/same.md\n\n"
@@ -310,10 +311,10 @@ class TestTruthBasisErrorsFor:
             "### Evidence Refs\n"
             "- memory/docs/design/same.md\n\n"
             "### Conflict Status\n"
-            "- resolved\n",
-            encoding="utf-8",
+            "- resolved\n"
         )
-        errors = gw_mod._truth_basis_errors_for(path)
+        path.write_text(content, encoding="utf-8")
+        errors = gw_mod._truth_basis_errors_for(path, content)
         assert any("source refs and evidence refs must not be identical" in e for e in errors)
 
     def test_source_overlap_authority(self, gw, tmp_path):
@@ -322,7 +323,7 @@ class TestTruthBasisErrorsFor:
         source_file = repo / "memory" / "docs" / "design" / "overlap.md"
         source_file.parent.mkdir(parents=True, exist_ok=True)
         source_file.write_text("# overlap\n", encoding="utf-8")
-        path.write_text(
+        content = (
             "### Truth Basis\n\n"
             "### Source Refs\n"
             "- memory/docs/design/overlap.md\n\n"
@@ -330,10 +331,10 @@ class TestTruthBasisErrorsFor:
             "- memory/docs/design/overlap.md\n\n"
             "### Evidence Refs\n\n"
             "### Conflict Status\n"
-            "- resolved\n",
-            encoding="utf-8",
+            "- resolved\n"
         )
-        errors = gw_mod._truth_basis_errors_for(path)
+        path.write_text(content, encoding="utf-8")
+        errors = gw_mod._truth_basis_errors_for(path, content)
         assert any("source refs overlap authority refs" in e for e in errors)
 
     def test_authority_overlap_evidence(self, gw, tmp_path):
@@ -342,7 +343,7 @@ class TestTruthBasisErrorsFor:
         auth_file = ws / "memory" / "kb" / "lessons" / "shared.md"
         auth_file.parent.mkdir(parents=True, exist_ok=True)
         auth_file.write_text("# shared\n", encoding="utf-8")
-        path.write_text(
+        content = (
             "### Truth Basis\n\n"
             "### Source Refs\n"
             "- memory/docs/design/source.md\n\n"
@@ -351,10 +352,10 @@ class TestTruthBasisErrorsFor:
             "### Evidence Refs\n"
             "- memory/kb/lessons/shared.md\n\n"
             "### Conflict Status\n"
-            "- resolved\n",
-            encoding="utf-8",
+            "- resolved\n"
         )
-        errors = gw_mod._truth_basis_errors_for(path)
+        path.write_text(content, encoding="utf-8")
+        errors = gw_mod._truth_basis_errors_for(path, content)
         assert any("authority refs overlap evidence refs" in e for e in errors)
 
     def test_authority_not_formal_canonical(self, gw, tmp_path):
@@ -371,7 +372,7 @@ class TestTruthBasisErrorsFor:
         evidence_file = ws / "memory" / "kb" / "lessons" / "valid-evidence.md"
         evidence_file.parent.mkdir(parents=True, exist_ok=True)
         evidence_file.write_text("# evidence\n", encoding="utf-8")
-        path.write_text(
+        content = (
             "### Truth Basis\n\n"
             "### Source Refs\n"
             "- memory/docs/design/valid-source.md\n\n"
@@ -380,10 +381,10 @@ class TestTruthBasisErrorsFor:
             "### Evidence Refs\n"
             "- memory/kb/lessons/valid-evidence.md\n\n"
             "### Conflict Status\n"
-            "- resolved\n",
-            encoding="utf-8",
+            "- resolved\n"
         )
-        errors = gw_mod._truth_basis_errors_for(path)
+        path.write_text(content, encoding="utf-8")
+        errors = gw_mod._truth_basis_errors_for(path, content)
         assert any("authority ref is not formal canonical" in e for e in errors)
 
     def test_source_refs_do_not_include_noncanonical(self, gw, tmp_path):
@@ -402,7 +403,7 @@ class TestTruthBasisErrorsFor:
         evidence_file = repo / "memory" / "kb" / "lessons" / "evidence.md"
         evidence_file.parent.mkdir(parents=True, exist_ok=True)
         evidence_file.write_text("# evidence\n", encoding="utf-8")
-        path.write_text(
+        content = (
             "### Truth Basis\n\n"
             "### Source Refs\n"
             "- memory/global-canonical.md\n\n"
@@ -411,10 +412,10 @@ class TestTruthBasisErrorsFor:
             "### Evidence Refs\n"
             "- memory/kb/lessons/evidence.md\n\n"
             "### Conflict Status\n"
-            "- resolved\n",
-            encoding="utf-8",
+            "- resolved\n"
         )
-        errors = gw_mod._truth_basis_errors_for(path)
+        path.write_text(content, encoding="utf-8")
+        errors = gw_mod._truth_basis_errors_for(path, content)
         assert any("source refs do not include a non-canonical origin" in e for e in errors)
 
     def test_evidence_no_lower_layer(self, gw, tmp_path):
@@ -427,7 +428,7 @@ class TestTruthBasisErrorsFor:
         # Evidence ref: NOT under LOWER_EVIDENCE_ROOTS (not lessons/log)
         evidence_file = repo / "memory" / "docs" / "design" / "evidence-not-lower.md"
         evidence_file.write_text("# evidence\n", encoding="utf-8")
-        path.write_text(
+        content = (
             "### Truth Basis\n\n"
             "### Source Refs\n"
             "- memory/docs/design/origin.md\n\n"
@@ -436,10 +437,10 @@ class TestTruthBasisErrorsFor:
             "### Evidence Refs\n"
             "- memory/docs/design/evidence-not-lower.md\n\n"
             "### Conflict Status\n"
-            "- resolved\n",
-            encoding="utf-8",
+            "- resolved\n"
         )
-        errors = gw_mod._truth_basis_errors_for(path)
+        path.write_text(content, encoding="utf-8")
+        errors = gw_mod._truth_basis_errors_for(path, content)
         assert any("evidence refs do not include lower-layer support" in e for e in errors)
 
     def test_conflict_resolved_no_errors(self, gw, tmp_path):
@@ -458,7 +459,7 @@ class TestTruthBasisErrorsFor:
         evidence_file = repo / "memory" / "kb" / "lessons" / "evidence.md"
         evidence_file.parent.mkdir(parents=True, exist_ok=True)
         evidence_file.write_text("# evidence\n", encoding="utf-8")
-        path.write_text(
+        content = (
             "### Truth Basis\n\n"
             "### Source Refs\n"
             "- memory/docs/design/origin.md\n\n"
@@ -467,8 +468,8 @@ class TestTruthBasisErrorsFor:
             "### Evidence Refs\n"
             "- memory/kb/lessons/evidence.md\n\n"
             "### Conflict Status\n"
-            "- resolved\n",
-            encoding="utf-8",
+            "- resolved\n"
         )
-        errors = gw_mod._truth_basis_errors_for(path)
+        path.write_text(content, encoding="utf-8")
+        errors = gw_mod._truth_basis_errors_for(path, content)
         assert errors == []

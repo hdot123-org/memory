@@ -17,6 +17,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# Domain exceptions
+from memory_core.tools._rule_errors import UnknownRouteKindError
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -864,8 +867,8 @@ class TestResolveRouteTarget:
         assert isinstance(result, str)
 
     def test_resolve_route_target_invalid_kind(self, gw):
-        """resolve_route_target raises ValueError for invalid kind."""
-        with pytest.raises(ValueError, match="unsupported route kind"):
+        """resolve_route_target raises UnknownRouteKindError for invalid kind."""
+        with pytest.raises(UnknownRouteKindError, match="unsupported route kind"):
             gw.resolve_route_target("invalid_kind")
 
 
@@ -1340,7 +1343,8 @@ class TestTruthBasisSectionsFor:
 ### Conflict Status
 - resolved
 """)
-        result = gw._truth_basis_sections_for(test_file)
+        content = test_file.read_text()
+        result = gw._truth_basis_sections_for(test_file, content)
         assert isinstance(result, dict)
         assert "source_refs" in result
         assert "authority_refs" in result
@@ -1354,7 +1358,7 @@ class TestTruthBasisErrorsFor:
     def test_truth_basis_errors_for_missing_file(self, gw, tmp_path):
         """_truth_basis_errors_for returns errors for missing file."""
         test_file = tmp_path / "nonexistent.md"
-        result = gw._truth_basis_errors_for(test_file)
+        result = gw._truth_basis_errors_for(test_file, None)
         assert len(result) > 0
         assert "missing" in result[0].lower()
 
@@ -1374,7 +1378,8 @@ class TestTruthBasisErrorsFor:
 ### Conflict Status
 - resolved
 """)
-        result = gw._truth_basis_errors_for(test_file)
+        content = test_file.read_text()
+        result = gw._truth_basis_errors_for(test_file, content)
         assert isinstance(result, list)
 
 

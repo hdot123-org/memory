@@ -14,6 +14,9 @@ from pathlib import Path
 
 import pytest
 
+# Domain exceptions
+from memory_core.tools._rule_errors import UnknownHostError
+
 TOOLS_DIR = str(Path(__file__).resolve().parent.parent / "memory_core" / "tools")
 if TOOLS_DIR not in sys.path:
     sys.path.insert(0, TOOLS_DIR)
@@ -295,16 +298,16 @@ class TestParseHookEvent:
 
     def test_codex_host_raises(self):
         """codex is no longer supported (INV-6)."""
-        with pytest.raises(ValueError, match="unknown host"):
+        with pytest.raises(UnknownHostError, match="unknown host"):
             parse_hook_event("codex", "session-start", "{}")
 
     def test_claude_host_raises(self):
         """claude is no longer supported (INV-6)."""
-        with pytest.raises(ValueError, match="unknown host"):
+        with pytest.raises(UnknownHostError, match="unknown host"):
             parse_hook_event("claude", "session-start", "{}")
 
     def test_unknown_host_raises(self):
-        with pytest.raises(ValueError, match="unknown host"):
+        with pytest.raises(UnknownHostError, match="unknown host"):
             parse_hook_event("unknown", "session-start", "{}")
 
     def test_factory_empty_event_uses_default(self):

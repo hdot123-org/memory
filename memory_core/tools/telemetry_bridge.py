@@ -23,6 +23,12 @@ from typing import Any
 
 from memory_core.constants import CURRENT_MEMORY_VERSION, SUPPORTED_HOSTS
 
+# Import now_iso utility (REF-001 §4.8)
+try:
+    from ._file_utils import now_iso
+except ImportError:
+    from _file_utils import now_iso  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 # PostHog ingestion host remapping (mirrors posthog SDK's determine_server_host).
@@ -158,7 +164,7 @@ class TelemetryBridge:
                 host=_resolve_host(),
                 event="telemetry_resolve_id",
                 payload={"cwd": str(path)},
-                now_iso_fn=lambda: datetime.now().astimezone().isoformat(timespec="seconds"),
+                now_iso_fn=now_iso,
             )
             project_id = record.get("project_id")
             if isinstance(project_id, str) and project_id:
@@ -216,7 +222,7 @@ class TelemetryBridge:
             enriched: dict[str, Any] = {
                 "memory_core_version": CURRENT_MEMORY_VERSION,
                 "host": _resolve_host(),
-                "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "timestamp": now_iso(),
                 **sanitized,
             }
 
@@ -308,7 +314,7 @@ class TelemetryBridge:
             payload = json.dumps({
                 "api_key": api_key,
                 "batch": batch_items,
-                "sentAt": datetime.now().astimezone().isoformat(),
+                "sentAt": now_iso(),
             }).encode("utf-8")
 
             # Send with retry for transient failures (timeouts, 5xx, 429).

@@ -214,23 +214,22 @@ class TestCumulativePromptCount:
 # ---------------------------------------------------------------------------
 
 class TestFileLock:
-    """Test that fcntl.flock is used for exclusive locking."""
+    """Test that exclusive_lock is used for exclusive locking."""
 
-    def test_source_uses_lock_ex(self):
-        """Source code must show LOCK_EX before write."""
+    def test_source_uses_exclusive_lock(self):
+        """Source code must use exclusive_lock for file locking."""
         import inspect
         log_fn = _import_log_prompt_submit()
         source = inspect.getsource(log_fn)
-        assert "LOCK_EX" in source
-        assert "fcntl.flock" in source
+        assert "exclusive_lock" in source
 
-    def test_source_unlocks_in_finally(self):
-        """LOCK_UN should appear in a finally block."""
+    def test_source_uses_with_statement(self):
+        """exclusive_lock should be used in a with statement."""
         import inspect
         log_fn = _import_log_prompt_submit()
         source = inspect.getsource(log_fn)
-        assert "LOCK_UN" in source
-        assert "finally" in source
+        assert "with" in source
+        assert "exclusive_lock" in source
 
 
 # ---------------------------------------------------------------------------

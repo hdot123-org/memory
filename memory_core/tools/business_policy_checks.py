@@ -9,11 +9,20 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 from typing import Any
 
 try:
+    from ._rule_helpers import (
+        _existing_paths,
+        _json_object_keys,
+        _json_string_values,
+        _markdown_code_tokens,
+        _path_is_under,
+        _path_is_under_lexical,
+        _section_body,
+        _section_bullets,
+    )
     from ._validation_constants import (
         MKR_ABSORBED_STATUS,
         MKR_ACTIVE_LEGAL_MAP_ONLY,
@@ -40,6 +49,16 @@ try:
     from .memory_hook_impls import GatewayBusinessPolicyConfig
     from .memory_hook_interfaces import TruthBasis
 except ImportError:
+    from _rule_helpers import (  # type: ignore
+        _existing_paths,
+        _json_object_keys,
+        _json_string_values,
+        _markdown_code_tokens,
+        _path_is_under,
+        _path_is_under_lexical,
+        _section_body,
+        _section_bullets,
+    )
     from _validation_constants import (  # type: ignore
         MKR_ABSORBED_STATUS,
         MKR_ACTIVE_LEGAL_MAP_ONLY,
@@ -68,74 +87,8 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
-# Shared helpers (used by multiple checkers)
+# Shared helpers — imported from _rule_helpers.py (consolidation REF-001 §4.3)
 # ---------------------------------------------------------------------------
-
-def _path_is_under(path: Path, root: Path) -> bool:
-    try:
-        path.resolve().relative_to(root.resolve())
-        return True
-    except ValueError:
-        return False
-
-
-def _path_is_under_lexical(path: Path, root: Path) -> bool:
-    """Check lexical containment without following symlinks."""
-    try:
-        path.expanduser().absolute().relative_to(root.expanduser().absolute())
-        return True
-    except ValueError:
-        return False
-
-
-def _section_bullets(text: str, heading: str) -> list[str]:
-    lines = text.splitlines()
-    bullets: list[str] = []
-    in_section = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped == heading or stripped.endswith(heading.replace("## ", "").replace("### ", "")):
-            in_section = True
-            continue
-        if in_section and stripped.startswith("#"):
-            break
-        if in_section and line.strip().startswith("- "):
-            bullets.append(line.strip()[2:].strip().strip("`"))
-    return bullets
-
-
-def _section_body(text: str, heading: str) -> str:
-    lines = text.splitlines()
-    start_idx: int | None = None
-    for idx, line in enumerate(lines):
-        if line.strip() == heading:
-            start_idx = idx + 1
-            break
-    if start_idx is None:
-        return ""
-    body: list[str] = []
-    for line in lines[start_idx:]:
-        if line.strip().startswith("## "):
-            break
-        body.append(line)
-    return "\n".join(body)
-
-
-def _markdown_code_tokens(text: str) -> set[str]:
-    return {match.group(1) for match in re.finditer(r"`([^`]+)`", text)}
-
-
-def _json_string_values(text: str, key: str) -> set[str]:
-    pattern = rf'"{re.escape(key)}"\s*:\s*"([^"]+)"'
-    return {match.group(1) for match in re.finditer(pattern, text)}
-
-
-def _json_object_keys(text: str) -> set[str]:
-    return {match.group(1) for match in re.finditer(r'"([^"]+)"\s*:', text)}
-
-
-def _existing_paths(paths: list[Path]) -> list[str]:
-    return [str(p) for p in paths if p.exists()]
 
 
 # ---------------------------------------------------------------------------
@@ -410,20 +363,16 @@ class TruthBasisResolver:
     def __init__(self, config: GatewayBusinessPolicyConfig):
         self._config = config
 
+    def _read_text_if_exists(self, path: Path) -> str:
+        """Read file content via injected callback (I/O separated from rule logic)."""
+        return self._config.read_text_if_exists_fn(path)
+
     # -- scope helpers --
 
     def get_project_canonical(self) -> dict[str, Path]:
         return dict(self._config.project_canonical)
 
     # -- truth-basis helpers --
-
-    @staticmethod
-    def _path_is_under(path: Path, root: Path) -> bool:
-        try:
-            path.resolve().relative_to(root.resolve())
-            return True
-        except ValueError:
-            return False
 
     def _classify_truth_ref(self, path: Path) -> str:
         cfg = self._config
@@ -433,27 +382,27 @@ class TruthBasisResolver:
             return "project-map-index"
         if path in cfg.global_canonical:
             return "global-canonical"
-        if self._path_is_under(path, cfg.workspace_root / "memory" / "kb" / "global" / "projects"):
+        if _path_is_under(path, cfg.workspace_root / "memory" / "kb" / "global" / "projects"):
             return "compatibility-only"
-        if self._path_is_under(path, cfg.workspace_root / "memory" / "kb" / "projects"):
+        if _path_is_under(path, cfg.workspace_root / "memory" / "kb" / "projects"):
             return "project-canonical"
-        if self._path_is_under(path, cfg.workspace_root / "memory" / "docs"):
+        if _path_is_under(path, cfg.workspace_root / "memory" / "docs"):
             return "docs"
-        if self._path_is_under(path, cfg.workspace_root / "projects"):
+        if _path_is_under(path, cfg.workspace_root / "projects"):
             return "project-runtime"
-        if self._path_is_under(path, cfg.workspace_root / "memory" / "artifacts"):
+        if _path_is_under(path, cfg.workspace_root / "memory" / "artifacts"):
             return "artifact"
-        if self._path_is_under(path, cfg.workspace_root / "tools"):
+        if _path_is_under(path, cfg.workspace_root / "tools"):
             return "tooling"
-        if self._path_is_under(path, cfg.workspace_root / "memory" / "log"):
+        if _path_is_under(path, cfg.workspace_root / "memory" / "log"):
             return "log"
-        if self._path_is_under(path, cfg.workspace_root / "memory" / "system"):
+        if _path_is_under(path, cfg.workspace_root / "memory" / "system"):
             return "system"
-        if self._path_is_under(path, cfg.repo_root / "app"):
+        if _path_is_under(path, cfg.repo_root / "app"):
             return "app"
-        if self._path_is_under(path, cfg.repo_root / "agents"):
+        if _path_is_under(path, cfg.repo_root / "agents"):
             return "agents"
-        if self._path_is_under(path, cfg.repo_root / "gpt-web-to"):
+        if _path_is_under(path, cfg.repo_root / "gpt-web-to"):
             return "gpt-web-to"
         if path == cfg.repo_root / "AGENTS.md":
             return "repo-policy"
@@ -466,25 +415,23 @@ class TruthBasisResolver:
         return path in cfg.authority_allowed_paths or path in cfg.global_canonical
 
     def _lower_evidence_ref(self, path: Path) -> bool:
-        return any(self._path_is_under(path, root) for root in self._config.lower_evidence_roots)
+        return any(_path_is_under(path, root) for root in self._config.lower_evidence_roots)
 
-    def _truth_basis_sections_for(self, path: Path) -> dict[str, Any]:
-        text = path.read_text(encoding="utf-8")
+    def _truth_basis_sections_for(self, path: Path, content: str) -> dict[str, Any]:
         return {
-            "source_refs": _section_bullets(text, "### Source Refs"),
-            "authority_refs": _section_bullets(text, "### Authority Refs"),
-            "evidence_refs": _section_bullets(text, "### Evidence Refs"),
-            "conflict_status": _section_bullets(text, "### Conflict Status"),
+            "source_refs": _section_bullets(content, "### Source Refs"),
+            "authority_refs": _section_bullets(content, "### Authority Refs"),
+            "evidence_refs": _section_bullets(content, "### Evidence Refs"),
+            "conflict_status": _section_bullets(content, "### Conflict Status"),
         }
 
-    def _truth_basis_errors_for(self, path: Path) -> list[str]:
+    def _truth_basis_errors_for(self, path: Path, content: str | None) -> list[str]:
         errors: list[str] = []
-        if not path.exists():
+        if content is None:
             return [f"missing truth canonical: {path}"]
-        text = path.read_text(encoding="utf-8")
-        if "Truth Basis" not in text:
+        if "Truth Basis" not in content:
             return [f"truth basis section missing: {path}"]
-        sections = self._truth_basis_sections_for(path)
+        sections = self._truth_basis_sections_for(path, content)
         source_refs = sections["source_refs"]
         authority_refs = sections["authority_refs"]
         evidence_refs = sections["evidence_refs"]
@@ -518,7 +465,7 @@ class TruthBasisResolver:
             for item in evidence_refs
         ]
         for ref_path in [*source_paths, *authority_paths, *evidence_paths]:
-            if not self._path_is_under(ref_path, self._config.repo_root):
+            if not _path_is_under(ref_path, self._config.repo_root):
                 errors.append(f"truth ref outside repository: {ref_path}")
             if not ref_path.exists():
                 errors.append(f"truth ref missing on disk: {ref_path}")
@@ -559,14 +506,23 @@ class TruthBasisResolver:
         truth_basis_refs = [str(path) for path in self._config.global_canonical] + [str(project_file)]
         errors: list[str] = []
         for path in self._config.global_canonical:
-            errors.extend(self._truth_basis_errors_for(path))
-        project_sections = self._truth_basis_sections_for(project_file) if project_file.exists() else {
-            "source_refs": [],
-            "authority_refs": [],
-            "evidence_refs": [],
-            "conflict_status": [],
-        }
-        errors.extend(self._truth_basis_errors_for(project_file))
+            content = self._read_text_if_exists(path)
+            if not content:
+                errors.append(f"missing truth canonical: {path}")
+                continue
+            errors.extend(self._truth_basis_errors_for(path, content))
+        project_content = self._read_text_if_exists(project_file)
+        if project_content:
+            project_sections = self._truth_basis_sections_for(project_file, project_content)
+            errors.extend(self._truth_basis_errors_for(project_file, project_content))
+        else:
+            project_sections = {
+                "source_refs": [],
+                "authority_refs": [],
+                "evidence_refs": [],
+                "conflict_status": [],
+            }
+            errors.append(f"missing truth canonical: {project_file}")
         return {
             "policy": "source-authority-evidence-conflict",
             "refs": truth_basis_refs,

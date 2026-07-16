@@ -197,9 +197,11 @@ def _matches_pattern(path: str, pattern: str) -> bool:
     return fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(path.lower(), pattern.lower())
 
 
-def _now_iso() -> str:
-    """Current ISO timestamp."""
-    return datetime.now(timezone.utc).isoformat()
+# Import now_iso utility (REF-001 §4.8)
+try:
+    from ._file_utils import now_iso as _now_iso
+except ImportError:
+    from _file_utils import now_iso as _now_iso  # type: ignore
 
 
 # ---------------------------------------------------------------------------

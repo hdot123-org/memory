@@ -15,9 +15,14 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+# Import now_iso utility (REF-001 §4.8)
+try:
+    from ._file_utils import now_iso
+except ImportError:
+    from _file_utils import now_iso  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +58,7 @@ def _emit_to_jsonl(record: dict[str, Any], artifact_root: Path | None = None) ->
         logger.debug("observability JSONL emit skipped: %s", exc)
 
 
-def _now_iso() -> str:
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+_now_iso = now_iso
 
 
 @dataclass

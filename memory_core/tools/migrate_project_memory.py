@@ -33,6 +33,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from ._file_utils import exclusive_lock
+
 try:
     import tomllib
 except ModuleNotFoundError:
@@ -718,27 +720,13 @@ def discover_migrations(from_version: str, to_version: str) -> list[dict[str, An
 def _append_migrations_log(log_path: Path, line: str) -> None:
     """Append a single line to migrations.log with file locking.
 
-    POSIX: uses fcntl.LOCK_EX + fsync.
-    Windows: falls back to plain open("a").
+    Uses exclusive_lock for cross-platform file locking.
     """
     with open(log_path, "a", encoding="utf-8") as f:
-        try:
-            import fcntl
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-        except (OSError, AttributeError, ModuleNotFoundError):
-            # Windows or non-POSIX: skip locking, just write
-            f.write(line + "\n")
-            return
-        try:
+        with exclusive_lock(f):
             f.write(line + "\n")
             f.flush()
             os.fsync(f.fileno())
-        finally:
-            try:
-                import fcntl
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-            except (OSError, AttributeError):
-                pass
 
 
 # ---------------------------------------------------------------------------

@@ -10,9 +10,16 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from ._file_utils import exclusive_lock
+
+# Import now_iso utility (REF-001 §4.8)
+try:
+    from ._file_utils import now_iso
+except ImportError:
+    from _file_utils import now_iso  # type: ignore
 
 _logger = logging.getLogger(__name__)
 
@@ -25,8 +32,7 @@ def is_metrics_disabled() -> bool:
     return os.environ.get(ENV_DISABLE) == "1"
 
 
-def _now_iso() -> str:
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+_now_iso = now_iso
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -93,7 +99,7 @@ def write_metrics(metrics_path: Path, record: dict[str, Any]) -> bool:
 def append_metrics_record(path: Path, record: dict[str, Any]) -> bool:
     """Append a metrics record to a JSONL file with file locking.
 
-    Uses fcntl.flock(LOCK_EX) for exclusive access, followed by flush and fsync
+    Uses exclusive_lock for exclusive access, followed by flush and fsync
     to ensure data durability. Returns True on success, False on failure.
 
     Args:
@@ -103,20 +109,14 @@ def append_metrics_record(path: Path, record: dict[str, Any]) -> bool:
     Returns:
         True if write succeeded, False otherwise
     """
-    import fcntl
-
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
         with path.open("a", encoding="utf-8") as handle:
-            fd = handle.fileno()
-            fcntl.flock(fd, fcntl.LOCK_EX)
-            try:
+            with exclusive_lock(handle):
                 handle.write(line)
                 handle.flush()
-                os.fsync(fd)
-            finally:
-                fcntl.flock(fd, fcntl.LOCK_UN)
+                os.fsync(handle.fileno())
         return True
     except OSError as exc:
         _logger.debug("append_metrics_record failed: %s", exc)

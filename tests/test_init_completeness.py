@@ -575,7 +575,8 @@ class TestTruthBasisTruthModel:
         from memory_core.tools.business_policy_checks import TruthBasisResolver
         resolver = TruthBasisResolver(config)
         file_path = config.repo_root / "memory" / "kb" / "global" / "truth-model.md"
-        errors = resolver._truth_basis_errors_for(file_path)
+        content = file_path.read_text(encoding="utf-8")
+        errors = resolver._truth_basis_errors_for(file_path, content)
         assert errors == [], f"Truth Basis errors in truth-model.md: {errors}"
 
 
@@ -593,7 +594,8 @@ class TestTruthBasisMemorySystem:
         from memory_core.tools.business_policy_checks import TruthBasisResolver
         resolver = TruthBasisResolver(config)
         file_path = config.repo_root / "memory" / "kb" / "global" / "memory-system.md"
-        errors = resolver._truth_basis_errors_for(file_path)
+        content = file_path.read_text(encoding="utf-8")
+        errors = resolver._truth_basis_errors_for(file_path, content)
         assert errors == [], f"Truth Basis errors in memory-system.md: {errors}"
 
 
@@ -611,7 +613,8 @@ class TestTruthBasisMemoryRouting:
         from memory_core.tools.business_policy_checks import TruthBasisResolver
         resolver = TruthBasisResolver(config)
         file_path = config.repo_root / "memory" / "kb" / "global" / "memory-routing.md"
-        errors = resolver._truth_basis_errors_for(file_path)
+        content = file_path.read_text(encoding="utf-8")
+        errors = resolver._truth_basis_errors_for(file_path, content)
         assert errors == [], f"Truth Basis errors in memory-routing.md: {errors}"
 
 
@@ -629,7 +632,8 @@ class TestTruthBasisHookContract:
         from memory_core.tools.business_policy_checks import TruthBasisResolver
         resolver = TruthBasisResolver(config)
         file_path = config.repo_root / "memory" / "kb" / "global" / "hook-contract.md"
-        errors = resolver._truth_basis_errors_for(file_path)
+        content = file_path.read_text(encoding="utf-8")
+        errors = resolver._truth_basis_errors_for(file_path, content)
         assert errors == [], f"Truth Basis errors in hook-contract.md: {errors}"
 
 
@@ -647,7 +651,8 @@ class TestTruthBasisProjectMapGovernance:
         from memory_core.tools.business_policy_checks import TruthBasisResolver
         resolver = TruthBasisResolver(config)
         file_path = config.repo_root / "memory" / "kb" / "global" / "project-map-governance.md"
-        errors = resolver._truth_basis_errors_for(file_path)
+        content = file_path.read_text(encoding="utf-8")
+        errors = resolver._truth_basis_errors_for(file_path, content)
         assert errors == [], f"Truth Basis errors in project-map-governance.md: {errors}"
 
 

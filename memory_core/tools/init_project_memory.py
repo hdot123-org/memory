@@ -116,6 +116,7 @@ PER_SCOPE_DIRECTORIES = [
 # ---------------------------------------------------------------------------
 
 def _now_iso() -> str:
+    """Return current date in ISO format (YYYY-MM-DD)."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 

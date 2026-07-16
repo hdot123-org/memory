@@ -25,15 +25,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from memory_core.constants import SYSTEM_DIR
 
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+# Import now_iso utility (REF-001 §4.8)
+try:
+    from ._file_utils import now_iso as _now_iso
+except ImportError:
+    from _file_utils import now_iso as _now_iso  # type: ignore
 
 
 def _is_source_repo(project_root: Path) -> bool:

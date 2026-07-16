@@ -33,7 +33,6 @@ manifest.json structure (v2):
 """
 from __future__ import annotations
 
-import fcntl
 import fnmatch
 import hashlib
 import hmac as _hmac
@@ -44,6 +43,12 @@ from pathlib import Path
 from typing import Any
 
 from memory_core.constants import SYSTEM_DIR
+
+try:
+    from ._file_utils import exclusive_lock
+except ImportError:
+    from _file_utils import exclusive_lock  # type: ignore
+
 from memory_core.tools.denylist import is_denied_project_root
 
 _logger = logging.getLogger(__name__)
@@ -429,11 +434,8 @@ def _write_audit_log(
 
     line = json.dumps(audit_entry, ensure_ascii=False) + "\n"
     with audit_path.open("a", encoding="utf-8") as f:
-        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-        try:
+        with exclusive_lock(f):
             f.write(line)
-        finally:
-            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 
 def sign_project_incremental(
@@ -579,12 +581,9 @@ def sign_project_incremental(
     # Write manifest with fcntl.flock exclusive lock
     memory_dir.mkdir(parents=True, exist_ok=True)
     with manifest_path.open("w", encoding="utf-8") as f:
-        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-        try:
+        with exclusive_lock(f):
             json.dump(manifest, f, ensure_ascii=False, indent=2)
             f.write("\n")
-        finally:
-            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
     # Write audit log
     _write_audit_log(
