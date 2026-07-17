@@ -47,6 +47,7 @@ Droid 使用、模型配置、Droid Computer 管理等指南。
 |------|------|
 | [droid-computers.md](guides/droid-computers.md) | Droid Computer 管理指南 |
 | [byok-models.md](guides/byok-models.md) | 自定义模型配置指南 |
+| [observability-and-error-tracking.md](guides/observability-and-error-tracking.md) | 可观测性和错误追踪概述 |
 
 ### CLASSIFICATION.md — 文档分类决策树
 写入文档时的分类指引，Droid 每次"文档记录"时参照此文件。

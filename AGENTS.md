@@ -99,6 +99,12 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 
 **ci-ok 门禁已包含 droid-review**：ci.yml 的 ci-ok job 会查询 droid-review check 状态。当 droid-review 失败时，ci-ok 也会失败，阻止标准合并。
 
+## 铁律：CI 完成后 Webhook 路由
+
+**创建 PR 后必须调用 `scripts/write-pending-ci.sh <PR_NUMBER>`，确保 CI 完成后 webhook 能路由回当前 session。**
+
+流程：创建 PR → 执行 `scripts/write-pending-ci.sh <PR_NUMBER>` → CI 完成后 n8n webhook 触发 trigger-ci-droid.sh → 读取 pending-ci.json → 注入当前 session。
+
 ## Linear Gateway
 
 当 session tag 包含 `linear-gateway` 或用户要求处理 Linear issue 时，使用 `linear-gateway` skill。
