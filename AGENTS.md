@@ -13,8 +13,8 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 ## 本仓库身份
 - source-repo-readonly，所有写入被 hook 拦截
 - 不需要 AGENTS.md 自动生成、索引自动化、上下文验证等优化
-- 设计文档在 memory/docs/system/ 和 memory/docs/design/
-- 边界定义在 memory/docs/system/BOUNDARY.md
+- 设计文档在 docs/specs/ 和 docs/architecture/
+- 边界定义在 docs/specs/BOUNDARY.md
 
 ## Agent 行为准则
 - 只探索不修改
@@ -56,7 +56,7 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 |--------|---------|
 | 服务器/IP/端口/部署/Docker | `docs/infrastructure/` |
 | 运维/故障/排查/runbook | `memory/docs/runbooks/` |
-| 设计/架构/API 契约 | `memory/docs/design/` |
+| 设计/架构/API 契约 | `docs/architecture/` 或 `docs/specs/` |
 | 决策/选型/为什么/对比 | `memory/kb/decisions/` |
 | 踩坑/教训/经验 | `memory/kb/lessons/` |
 | 计划/里程碑/排期 | `memory/docs/plans/` |
@@ -109,5 +109,5 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 - 仓库与目录路由规则在 `~/.factory/config/repositories.yml`
 - 执行完成后直接调用 Linear API 回写 comment
 - 不直接把 issue 改为 `Done`，状态流转交给 GitLab ↔ Linear 自动化
-- 完整规范见 `memory/docs/design/linear-factory-integration.md`
+- 完整规范见 `docs/architecture/API-CONTRACT.md`
 

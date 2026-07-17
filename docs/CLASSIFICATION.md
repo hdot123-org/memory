@@ -22,7 +22,10 @@
   │       └─ 也同步摘要到 docs/infrastructure/（如果涉及服务器操作）
   │
   ├─ 架构设计/模块设计/API 契约？
-  │   └─ → memory/docs/design/
+  │   └─ → docs/architecture/
+  │
+  ├─ 协议规格/系统规格/协议文档？
+  │   └─ → docs/specs/
   │
   ├─ 决策记录（为什么选 X 而不是 Y）？
   │   └─ → memory/kb/decisions/
@@ -55,7 +58,8 @@
 |--------|---------|------|
 | 服务器、IP、端口、部署、Docker | `docs/infrastructure/` | 基础设施资产 |
 | 运维、手册、故障、排查、runbook | `memory/docs/runbooks/` | 运维手册 |
-| 设计、架构、模块、API 契约 | `memory/docs/design/` | 架构设计 |
+| 设计、架构、模块、API 契约 | `docs/architecture/` | 架构设计（tracked） |
+| 协议、规格、系统规格 | `docs/specs/` | 协议规格（tracked） |
 | 决策、选型、为什么、对比 | `memory/kb/decisions/` | 决策记录 |
 | 踩坑、教训、经验、注意 | `memory/kb/lessons/` | 经验教训 |
 | 计划、里程碑、排期、TODO | `memory/docs/plans/` | 执行计划 |
@@ -75,6 +79,12 @@
   → 摘要 → docs/infrastructure/（引用 runbook 路径）
 ```
 
+## 路径分类原则
+
+- **Tracked docs/** (架构、规格、指南) — 公开的项目文档，git tracked
+- **memory/docs/** (runbooks、audit、plans、bug-reports) — 实例特定文档，gitignored，运维数据
+
 ## 版本
 
+- v1.1 — 2026-07-17 更新架构设计和协议规格路由到 tracked docs/
 - v1.0 — 2026-06-01 初始版本

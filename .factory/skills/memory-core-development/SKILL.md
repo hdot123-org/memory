@@ -24,11 +24,12 @@ Two-layer architecture:
 - `memory_core/tools/` — CLI tools (memory-init, memory-validate, memory-migrate, etc.)
 - `memory_core/ownership.py` — Ownership data model and classify API
 - `tests/` — 1826+ unit tests
-- `memory/docs/` — Design documents, specs, RFCs
+- `docs/architecture/` — Architecture design documents
+- `docs/specs/` — Protocol specifications and boundary definitions
 
 ## Development Rules
 - This is a source-repo-readonly repository: only explore, never modify protected paths
 - Follow GitHub PR workflow: push to feature branch, open PR, pass dual-gate (ci-ok + droid-review), squash merge
 - Use conventional commits: feat:, fix:, chore:, docs:
 - Target Python 3.9+
-- Boundary defined in `memory/docs/system/BOUNDARY.md`
+- Boundary defined in `docs/specs/BOUNDARY.md`
