@@ -1,2 +1,0 @@
-{"duration_ms": 0, "duration_seconds": 0, "event": "session_ended", "input_tokens": 33581, "output_tokens": 1504, "timestamp": "2026-07-12T02:01:55+08:00", "total_tool_calls": 7}
-{"duration_ms": 0, "duration_seconds": 0, "event": "session_ended", "input_tokens": 38584, "output_tokens": 4721, "timestamp": "2026-07-13T02:04:49+08:00", "total_tool_calls": 9}

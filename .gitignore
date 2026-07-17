@@ -64,6 +64,11 @@ memory/
 # Root-level .memory/ (project-local runtime state, not for tracking)
 /.memory/
 
+# Runtime artifacts and Factory generated files (not for tracking)
+artifacts/
+.factory/review-index.md
+droid-wiki/
+
 # External session output (pollution guard)
 output/
 

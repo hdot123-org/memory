@@ -144,4 +144,3 @@ Then point `OTEL_EXPORTER_OTLP_ENDPOINT` at `http://localhost:4318`.
 - PostHog observability: `docs/guides/posthog-event-taxonomy.md`,
   `docs/guides/posthog-privacy.md`.
 - Code quality metrics: `docs/code-quality-metrics.md`.
-- Issue triage SOP: `docs/issue-triage-sop.md`.

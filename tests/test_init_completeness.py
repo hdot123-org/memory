@@ -1412,22 +1412,7 @@ class TestReadmeNoCodexClaudeHostRefs:
         assert "--host claude" not in content
 
 
-class TestDroidWikiNoCodexClaudeRefs:
-    """VAL-P4-013: droid-wiki docs no claude/codex hook file references."""
 
-    def test_hook_gateway_md_no_legacy_refs(self) -> None:
-        """VAL-P4-013: droid-wiki/systems/hook-gateway.md has no legacy file references."""
-        repo_root = Path(__file__).parent.parent
-        content = (repo_root / "droid-wiki" / "systems" / "hook-gateway.md").read_text(encoding="utf-8")
-        assert "claude_global_hooks.py" not in content
-        assert "codex_global_hooks.py" not in content
-
-    def test_memory_core_md_no_legacy_refs(self) -> None:
-        """VAL-P4-013: droid-wiki/packages/memory-core.md has no legacy file references."""
-        repo_root = Path(__file__).parent.parent
-        content = (repo_root / "droid-wiki" / "packages" / "memory-core.md").read_text(encoding="utf-8")
-        assert "claude_global_hooks.py" not in content
-        assert "codex_global_hooks.py" not in content
 
 
 # ---------------------------------------------------------------------------
