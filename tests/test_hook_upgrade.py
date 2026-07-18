@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -256,6 +257,194 @@ class TestCmdApplyUpgrade:
             # Fallback: try entire output as json
             data = json.loads(output)
         assert "dry_run" in data
+
+    def test_backup_failure_recordsError_andReturns(
+        self, factory_home: Path
+    ) -> None:
+        """_backup_existing_file 抛异常时, errors 填充且不进 install。"""
+        # 创建一个真实存在的文件, 让备份循环能进入
+        fake_file = factory_home / "fake_file.txt"
+        fake_file.write_text("test content", encoding="utf-8")
+        # Mock cmd_plan_upgrade 返回含 files_to_backup 的 plan
+        mock_plan = {
+            "factory_home": str(factory_home),
+            "actions": [{"action": "regenerate_wrapper", "path": "/fake", "reason": "test"}],
+            "files_to_backup": [str(fake_file)],
+            "files_to_modify": [],
+        }
+        with patch(
+            "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
+            return_value=mock_plan,
+        ), patch(
+            "memory_core.tools.hook_upgrade._backup_existing_file",
+            side_effect=RuntimeError("Permission denied"),
+        ) as mock_backup, patch(
+            "memory_core.tools.factory_global_hooks.install_factory_hooks",
+        ) as mock_install:
+            result = cmd_apply_upgrade(
+                factory_home=factory_home,
+                yes=True,
+            )
+            # 验证进到了备份循环
+            mock_backup.assert_called_once()
+            # 验证 errors 填充
+            assert len(result["errors"]) > 0
+            assert "Backup failed" in result["errors"][0]
+            # 验证没进 install
+            mock_install.assert_not_called()
+
+    def test_install_failure_recordsError(
+        self, factory_home: Path
+    ) -> None:
+        """install_factory_hooks 返回 success=False 时, errors 含 'Install failed'。"""
+        mock_plan = {
+            "factory_home": str(factory_home),
+            "actions": [{"action": "regenerate_wrapper", "path": "/fake", "reason": "test"}],
+            "files_to_backup": [],
+            "files_to_modify": [],
+        }
+        mock_install_result = {
+            "success": False,
+            "warnings": ["disk full", "config error"],
+        }
+        with patch(
+            "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
+            return_value=mock_plan,
+        ), patch(
+            "memory_core.tools.factory_global_hooks.install_factory_hooks",
+            return_value=mock_install_result,
+        ) as mock_install:
+            result = cmd_apply_upgrade(
+                factory_home=factory_home,
+                yes=True,
+            )
+            # 验证 install 被调用
+            mock_install.assert_called_once()
+            # 验证 errors 含 Install failed
+            assert len(result["errors"]) > 0
+            assert any("Install failed" in err for err in result["errors"])
+            assert result["message"] == "Upgrade failed"
+
+    def test_install_success_appliesActions(
+        self, factory_home: Path
+    ) -> None:
+        """install 返回 success=True 时, actions_applied + backups 填充。"""
+        mock_plan = {
+            "factory_home": str(factory_home),
+            "actions": [
+                {"action": "regenerate_wrapper", "path": "/fake/wrapper", "reason": "test"},
+                {"action": "update_settings", "path": "/fake/settings", "reason": "test"},
+            ],
+            "files_to_backup": [],
+            "files_to_modify": [],
+        }
+        mock_install_result = {
+            "success": True,
+            "backups": ["/backup/wrapper.bak", "/backup/settings.bak"],
+        }
+        with patch(
+            "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
+            return_value=mock_plan,
+        ), patch(
+            "memory_core.tools.factory_global_hooks.install_factory_hooks",
+            return_value=mock_install_result,
+        ) as mock_install:
+            result = cmd_apply_upgrade(
+                factory_home=factory_home,
+                yes=True,
+            )
+            # 验证 install 被调用
+            mock_install.assert_called_once()
+            # 验证 actions_applied 填充
+            assert len(result["actions_applied"]) == 2
+            assert result["actions_applied"] == mock_plan["actions"]
+            # 验证 backups 填充
+            assert len(result["backups"]) == 2
+            assert result["message"] == "Upgrade applied successfully"
+
+    def test_interactive_yes_proceeds(
+        self, factory_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """input='y' 时进入备份循环 (不早退)。"""
+        mock_plan = {
+            "factory_home": str(factory_home),
+            "actions": [{"action": "regenerate_wrapper", "path": "/fake", "reason": "test"}],
+            "files_to_backup": [],
+            "files_to_modify": [],
+        }
+        mock_install_result = {"success": True, "backups": []}
+        monkeypatch.setattr("builtins.input", lambda _: "y")
+        with patch(
+            "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
+            return_value=mock_plan,
+        ), patch(
+            "memory_core.tools.factory_global_hooks.install_factory_hooks",
+            return_value=mock_install_result,
+        ) as mock_install:
+            result = cmd_apply_upgrade(
+                factory_home=factory_home,
+                yes=False,
+                dry_run=False,
+            )
+            # 验证进入了 install (没早退)
+            mock_install.assert_called_once()
+            assert result["message"] == "Upgrade applied successfully"
+
+    def test_interactive_no_aborts(
+        self, factory_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """input='N' 时 'Aborted by user' 且不进备份。"""
+        mock_plan = {
+            "factory_home": str(factory_home),
+            "actions": [{"action": "regenerate_wrapper", "path": "/fake", "reason": "test"}],
+            "files_to_backup": [],
+            "files_to_modify": [],
+        }
+        monkeypatch.setattr("builtins.input", lambda _: "N")
+        with patch(
+            "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
+            return_value=mock_plan,
+        ), patch(
+            "memory_core.tools.factory_global_hooks.install_factory_hooks",
+        ) as mock_install:
+            result = cmd_apply_upgrade(
+                factory_home=factory_home,
+                yes=False,
+                dry_run=False,
+            )
+            # 验证没进 install
+            mock_install.assert_not_called()
+            assert result["message"] == "Aborted by user"
+
+    def test_interactive_eof_aborts(
+        self, factory_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """input 抛 EOFError 时 'Aborted by user'。"""
+        mock_plan = {
+            "factory_home": str(factory_home),
+            "actions": [{"action": "regenerate_wrapper", "path": "/fake", "reason": "test"}],
+            "files_to_backup": [],
+            "files_to_modify": [],
+        }
+
+        def raise_eof(_prompt):
+            raise EOFError
+
+        monkeypatch.setattr("builtins.input", raise_eof)
+        with patch(
+            "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
+            return_value=mock_plan,
+        ), patch(
+            "memory_core.tools.factory_global_hooks.install_factory_hooks",
+        ) as mock_install:
+            result = cmd_apply_upgrade(
+                factory_home=factory_home,
+                yes=False,
+                dry_run=False,
+            )
+            # 验证没进 install
+            mock_install.assert_not_called()
+            assert result["message"] == "Aborted by user"
 
 
 # ---------------------------------------------------------------------------
