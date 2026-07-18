@@ -19,7 +19,7 @@ from typing import IO
 
 @contextmanager
 def exclusive_lock(file_obj: IO, *, label: str = ""):
-    """POSIX exclusive file lock context manager.
+    """POSIX exclusive file lock context manager (blocking).
 
     Usage:
         with open(path, "a") as f:
@@ -35,6 +35,38 @@ def exclusive_lock(file_obj: IO, *, label: str = ""):
     fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX)
     try:
         yield
+    finally:
+        fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def try_exclusive_lock(file_obj: IO, *, label: str = ""):
+    """Non-blocking POSIX exclusive file lock.
+
+    Yields True if the lock was acquired, False if contended (another process
+    holds it). Callers should check the yielded value and skip work on False.
+    Designed for lossy-tolerant writers (e.g. telemetry/metrics) where blocking
+    under contention is worse than dropping one record.
+
+    Usage:
+        with open(path, "a") as f:
+            with try_exclusive_lock(f) as acquired:
+                if not acquired:
+                    return  # contended, drop this record
+                f.write(data)
+
+    Args:
+        file_obj: File object to lock
+        label: Optional label for debugging/logging
+    """
+    try:
+        fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        # Lock contended (EWOULDBLOCK) — caller should skip
+        yield False
+        return
+    try:
+        yield True
     finally:
         fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
 

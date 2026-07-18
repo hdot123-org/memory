@@ -119,3 +119,54 @@ def test_is_metrics_disabled_only_for_exact_one(monkeypatch):
     assert metrics.is_metrics_disabled() is False
     monkeypatch.setenv(metrics.ENV_DISABLE, "1")
     assert metrics.is_metrics_disabled() is True
+
+
+def _hold_lock_child(path_str: str, ready_event, release_event) -> None:
+    """Child process helper: acquire exclusive lock, signal ready, wait for release."""
+    import fcntl
+
+    with open(path_str, "a") as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        ready_event.set()
+        release_event.wait(timeout=10)
+        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
+def test_append_metrics_drops_on_contention(tmp_path: Path, monkeypatch):
+    """Under lock contention, append_metrics_record DROPS the record (returns False)
+    instead of blocking. This is the root-cause fix for hook process storms: a shared
+    metrics file serialized ~1000+ tool-use events/day via a blocking flock, and under
+    concurrent subagent execution the queue exceeded the 10s hook timeout."""
+    import multiprocessing as mp
+
+    monkeypatch.delenv(metrics.ENV_DISABLE, raising=False)
+    metrics_path = tmp_path / "contended.jsonl"
+    metrics_path.touch()
+
+    ready = mp.Event()
+    release = mp.Event()
+    child = mp.Process(target=_hold_lock_child, args=(str(metrics_path), ready, release))
+    child.start()
+    try:
+        assert ready.wait(timeout=10), "child process failed to acquire the lock"
+        # File is now exclusively locked by the child process.
+        # append_metrics_record must NOT block — it should drop and return False.
+        result = metrics.append_metrics_record(metrics_path, {"event": "post-tool-use"})
+        assert result is False, "should drop the record under contention, not block"
+        assert metrics_path.read_text() == "", "nothing should have been written while contended"
+    finally:
+        release.set()
+        child.join(timeout=10)
+        if child.is_alive():
+            child.terminate()
+            child.join(timeout=5)
+
+
+def test_append_metrics_writes_when_uncontended(tmp_path: Path, monkeypatch):
+    """Sanity: without contention, append_metrics_record writes normally."""
+    monkeypatch.delenv(metrics.ENV_DISABLE, raising=False)
+    metrics_path = tmp_path / "free.jsonl"
+    result = metrics.append_metrics_record(metrics_path, {"event": "session-start", "host": "codex"})
+    assert result is True
+    rec = json.loads(metrics_path.read_text().strip())
+    assert rec["event"] == "session-start"

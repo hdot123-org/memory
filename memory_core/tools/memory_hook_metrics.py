@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ._file_utils import exclusive_lock
+from ._file_utils import try_exclusive_lock
 
 # Import now_iso utility (REF-001 §4.8)
 try:
@@ -97,10 +97,15 @@ def write_metrics(metrics_path: Path, record: dict[str, Any]) -> bool:
 
 
 def append_metrics_record(path: Path, record: dict[str, Any]) -> bool:
-    """Append a metrics record to a JSONL file with file locking.
+    """Append a metrics record to a JSONL file with non-blocking file locking.
 
-    Uses exclusive_lock for exclusive access, followed by flush and fsync
-    to ensure data durability. Returns True on success, False on failure.
+    Uses ``try_exclusive_lock`` (LOCK_EX | LOCK_NB): if the file is already
+    locked by another process, the record is DROPPED rather than blocking.
+    Metrics are telemetry and are explicitly lossy-tolerant; blocking under
+    contention was the root cause of hook process storms during high event
+    volume (e.g. 1000+ tool-use events/day serializing on one shared file).
+
+    Returns True if written, False if dropped (contended) or on failure.
 
     Args:
         path: Absolute path to the JSONL file
@@ -113,7 +118,10 @@ def append_metrics_record(path: Path, record: dict[str, Any]) -> bool:
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
         with path.open("a", encoding="utf-8") as handle:
-            with exclusive_lock(handle):
+            with try_exclusive_lock(handle) as acquired:
+                if not acquired:
+                    # Contended — drop this record to avoid blocking the hook.
+                    return False
                 handle.write(line)
                 handle.flush()
                 os.fsync(handle.fileno())
