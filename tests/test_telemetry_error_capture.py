@@ -219,8 +219,10 @@ class TestBatchCaptureRetryLogic:
         assert result is False
         assert call_count[0] == 1  # No retries
 
-    def test_http_429_retried_then_succeeds(self, bridge_with_client):
-        """HTTP 429 (rate limit) should be retried and can succeed on retry."""
+    def test_http_429_not_retried(self, bridge_with_client):
+        """HTTP 429 (rate limit) is NOT retried. Telemetry is lossy-tolerant and
+        the hook budget is ~10s, so batch_capture does not retry (max_retries=0).
+        The event is dropped and retried on the next session instead."""
         bridge, mock = bridge_with_client
 
         mock_response = MagicMock()
@@ -249,11 +251,13 @@ class TestBatchCaptureRetryLogic:
              patch("time.sleep"):
             result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
 
-        assert result is True
-        assert call_count[0] == 2  # 1 initial + 1 retry
+        # No retry: the 429 fails the batch, dropped this session (retry next session)
+        assert result is False
+        assert call_count[0] == 1  # No retries (max_retries=0)
 
-    def test_http_500_retried_exhausted(self, bridge_with_client):
-        """HTTP 500 should be retried up to max_retries, then fail."""
+    def test_http_500_not_retried(self, bridge_with_client):
+        """HTTP 500 is NOT retried. Telemetry is lossy-tolerant; the hook budget
+        (~10s) cannot afford retries, so the batch fails immediately (max_retries=0)."""
         bridge, mock = bridge_with_client
         import urllib.error
 
@@ -275,10 +279,11 @@ class TestBatchCaptureRetryLogic:
             result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
 
         assert result is False
-        assert call_count[0] == 3  # 1 initial + 2 retries
+        assert call_count[0] == 1  # No retries (max_retries=0)
 
-    def test_urlerror_retried_then_succeeds(self, bridge_with_client):
-        """URLError (timeout/network) should be retried and can succeed."""
+    def test_urlerror_not_retried(self, bridge_with_client):
+        """URLError (timeout/network) is NOT retried. Telemetry is lossy-tolerant;
+        the hook budget (~10s) cannot afford retries, so it fails immediately."""
         bridge, mock = bridge_with_client
 
         mock_response = MagicMock()
@@ -301,8 +306,9 @@ class TestBatchCaptureRetryLogic:
              patch("time.sleep"):
             result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
 
-        assert result is True
-        assert call_count[0] == 2  # 1 initial + 1 retry
+        # No retry: the URLError fails the batch, dropped this session (retry next session)
+        assert result is False
+        assert call_count[0] == 1  # No retries (max_retries=0)
 
 
 class TestBatchCaptureHTTPErrorBodyCapture:

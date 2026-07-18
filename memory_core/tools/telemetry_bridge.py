@@ -317,15 +317,18 @@ class TelemetryBridge:
                 "sentAt": now_iso(),
             }).encode("utf-8")
 
-            # Send with retry for transient failures (timeouts, 5xx, 429).
-            # Matches SDK defaults: 15s timeout, up to 2 retries with exponential backoff.
-            max_retries = 2
+            # Send without retry and a short timeout. Telemetry is lossy-tolerant
+            # (the caller swallows failures and retries on the next session), so it
+            # must NEVER block past the Factory hook budget (~10s). The previous
+            # 15s timeout × up to 2 retries (up to 45s) was the root cause of
+            # SessionEnd/Start hook timeouts when the PostHog endpoint was slow.
+            max_retries = 0
             for attempt in range(max_retries + 1):
                 req = urllib.request.Request(
                     batch_url, data=payload, headers=headers, method="POST"
                 )
                 try:
-                    with urllib.request.urlopen(req, timeout=15) as response:
+                    with urllib.request.urlopen(req, timeout=3) as response:
                         response.read()  # Consume full response
                     logger.debug(
                         "telemetry_bridge.batch_capture: sent %d events", len(batch_items)

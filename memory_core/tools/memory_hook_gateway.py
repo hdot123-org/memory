@@ -816,20 +816,30 @@ def _git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, An
     map_scope = [str(path) for path in REGISTRATION_GIT_SCOPE]
     registration_paths = _registration_payload_paths(payload)
     tracked_scope = map_scope + [str(REPO_ROOT / item) for item in registration_paths]
-    proc = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "status", "--short", "--", *tracked_scope],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    entries = [line for line in (proc.stdout or "").splitlines() if line.strip()]
-    head_commit = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    latest_commit = (head_commit.stdout or "").strip()
+    # git calls are bounded by timeout=5 to guard the ~10s hook budget; on
+    # timeout they degrade to empty results rather than blocking or crashing.
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "status", "--short", "--", *tracked_scope],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+        entries = [line for line in (proc.stdout or "").splitlines() if line.strip()]
+    except subprocess.TimeoutExpired:
+        entries = []
+    try:
+        head_commit = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+        latest_commit = (head_commit.stdout or "").strip()
+    except subprocess.TimeoutExpired:
+        latest_commit = ""
     commit_scope = [_normalize_repo_scope_entry(path) for path in REGISTRATION_GIT_SCOPE]
     commit_scope = [path for path in commit_scope if path]
     commit_scope.extend(registration_paths)
