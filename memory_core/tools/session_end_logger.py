@@ -94,8 +94,7 @@ def _extract_session_info_streaming(
 ) -> dict[str, Any] | None:
     """从 JSONL 文件单遍流式提取 session 摘要信息。
 
-    与 _read_jsonl_lines + _extract_session_info 两步流程等价，
-    但不构建 lines 列表，内存占用恒定为 O(1)。
+    不构建 lines 列表，内存占用恒定为 O(1)。
 
     - last_assistant_message: collections.deque(maxlen=1)
     - tool_calls: Counter 累加

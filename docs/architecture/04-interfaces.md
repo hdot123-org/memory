@@ -111,49 +111,9 @@ related: [DES-003, DES-005, DES-006]
 
 ---
 
-## 3. 细粒度 Protocol（interfaces 新增）
+## 3. 细粒度接口（interfaces 新增）
 
-以下 Protocol 从 PolicyRegistry 分解而来，用于更灵活的类型注解和依赖注入：
-
-### 3.1 PolicyQueryProvider（Protocol）
-
-策略查询 — 合法性来源、注册提交阶段等。
-
-```python
-class PolicyQueryProvider(Protocol):
-    def legality_source_for_scope(self, scope: str) -> str: ...
-    def registration_commit_phase_for_scope(self, scope: str) -> str: ...
-    def get_policy(self, key: str) -> str | None: ...
-    def get_policy_pack(self, scope: str) -> dict[str, Any]: ...
-    def resolve_conflict(self, policy_key: str, values: list[str], strategy: str) -> str: ...
-```
-
-### 3.2 GovernanceChecker（Protocol）
-
-治理校验 — project-map、frozen tuple、event contract。
-
-```python
-class GovernanceChecker(Protocol):
-    def validate_project_map(self) -> list[str]: ...
-    def validate_unique_legal_system_contract(self) -> list[str]: ...
-    def governance_frozen_tuple_errors(self) -> list[str]: ...
-    def event_contract_blocker_errors(self) -> list[str]: ...
-    def git_registration_probe(self, event: str, payload: dict[str, Any]) -> RegistrationCommitGate: ...
-```
-
-### 3.3 TruthBasisProvider（Protocol）
-
-事实基准 — truth-basis 查询、evidence refs。
-
-```python
-class TruthBasisProvider(Protocol):
-    def truth_basis_for_scope(self, scope: str) -> TruthBasis: ...
-    def decision_refs_for_scope(self, scope: str) -> list[str]: ...
-    def lesson_refs_for_scope(self, scope: str) -> list[str]: ...
-    def docs_refs_for_scope(self, scope: str) -> list[str]: ...
-```
-
-### 3.4 PathUtils（ABC）
+### 3.1 PathUtils（ABC）
 
 路径相关工具回调，用于 core assembly 中的路径操作。
 
@@ -168,24 +128,7 @@ class PathUtils(ABC):
 
 ---
 
-## 4. 非 Abstract 默认方法
 
-### 4.1 GatewayBusinessPolicy.get_required_gateway_inputs（interfaces:150-156）
-
-```python
-def get_required_gateway_inputs(self) -> list[Path]:
-    """Return required gateway inputs.
-
-    Default to the legacy required_canonical bridge so older policy
-    implementations remain compatible while gateway internals migrate.
-    """
-    return self.get_required_canonical()
-```
-
-- **定位**：这是一个非 abstract 的默认方法（interfaces:150），内部委托给 `get_required_canonical()`（interfaces:158）。
-- **意图**：兼容旧实现——在 gateway 内部迁移期间，老策略实现只需实现 `get_required_canonical()`，新调用方使用 `get_required_gateway_inputs()` 即可获得相同结果。
-
----
 
 ## 5. 接口继承/依赖关系
 
@@ -212,7 +155,6 @@ def get_required_gateway_inputs(self) -> list[Path]:
 - 所有 7 个接口均直接继承自 `ABC`（interfaces:14 `from abc import ABC, abstractmethod`），彼此之间**没有**继承关系。
 - 接口之间通过**参数/返回值类型**形成依赖：
   - `PolicyRegistry.validate(context: dict[str, Any])` 的 context 参数由调用方构造（impls:285 中检查 `project_scope` key）。
-  - `GatewayBusinessPolicy.get_required_gateway_inputs()` 默认实现调用同接口的 `get_required_canonical()`，属于接口内部的方法委托。
   - `ArtifactSink.write(package: dict[str, Any])` 期望 package 包含 `host`、`event` key（impls:1003）。
   - `ErrorSink.log(component, message, context)` 的 context 以 JSON 序列化写入日志（impls:1038）。
 

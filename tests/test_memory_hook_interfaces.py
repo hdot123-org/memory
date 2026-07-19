@@ -162,7 +162,6 @@ class TestAbstractMethods:
         assert WriteTargetPolicy.__abstractmethods__ == frozenset({"get_targets"})
 
     def test_gateway_business_policy_abstract_methods(self):
-        # get_required_gateway_inputs has a default impl, so it is NOT abstract
         assert GatewayBusinessPolicy.__abstractmethods__ == frozenset({
             "determine_project_scope", "get_project_canonical",
             "get_project_runtime_root", "get_required_canonical",

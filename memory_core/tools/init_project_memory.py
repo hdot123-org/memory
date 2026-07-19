@@ -1477,7 +1477,6 @@ def generate_hooks_json(
         return
 
     desired = template_hooks_json(host)
-    _ = {(h["event"], h["command"]) for h in desired["hooks"]}
 
     if hooks_path.exists():
         try:
