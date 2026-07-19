@@ -322,15 +322,6 @@ DEFAULT_OWNERSHIP_RESOURCES: list[OwnershipResource] = [
 ]
 
 
-def _is_path_under(path: Path, root: Path) -> bool:
-    """Check if path is under root (handles path traversal)."""
-    try:
-        path.resolve().relative_to(root.resolve())
-        return True
-    except (ValueError, RuntimeError):
-        return False
-
-
 def _normalize_rel_path(rel_path: str | Path) -> str:
     """Normalize a relative path string."""
     path_str = str(rel_path).replace("\\", "/")

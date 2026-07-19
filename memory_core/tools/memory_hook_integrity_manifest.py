@@ -74,7 +74,6 @@ except ImportError:
     NotOwned = None  # type: ignore
 
 MANIFEST_FILENAME = "manifest.json"
-SCHEMA_VERSION_V1 = "integrity-manifest-v1"
 SCHEMA_VERSION_V2 = "integrity-manifest-v2"
 SCHEMA_VERSION = SCHEMA_VERSION_V2
 

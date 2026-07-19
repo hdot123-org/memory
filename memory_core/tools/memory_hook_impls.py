@@ -1076,7 +1076,6 @@ class DelegateRouter:
         factory_delegate: FactoryDelegate | None = None,
     ):
         self.factory_delegate = factory_delegate or FactoryDelegate()
-        self._noop_delegate = NoopHostDelegate()
 
     def route(
         self,

@@ -8,7 +8,6 @@ from typing import Optional
 
 # Configuration — adjust based on actual Factory limits
 MAX_PROMPT_CHARS = 50_000
-MAX_PROMPT_TOKENS = 12_000  # approximate: ~4 chars per token
 WARNING_THRESHOLD_CHARS = 40_000
 
 

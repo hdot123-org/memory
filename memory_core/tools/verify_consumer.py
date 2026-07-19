@@ -167,59 +167,6 @@ _PLACEHOLDERS = [
 ]
 
 
-def _detect_actual_language(target: Path) -> str:
-    """Detect the actual primary language from project config files.
-
-    Mirrors a subset of ProjectProbe._detect_language for consistency
-    checking. Returns the detected language string or empty if unknown.
-    """
-    lang_config_map: list[tuple[str, str]] = [
-        ("pyproject.toml", "Python"),
-        ("requirements.txt", "Python"),
-        ("setup.py", "Python"),
-        ("package.json", "JavaScript/TypeScript"),
-        ("go.mod", "Go"),
-        ("Cargo.toml", "Rust"),
-        ("pom.xml", "Java"),
-        ("build.gradle", "Java"),
-        ("Gemfile", "Ruby"),
-        ("composer.json", "PHP"),
-        ("CMakeLists.txt", "C/C++"),
-        ("Makefile", "C/C++"),
-    ]
-
-    for fname, language in lang_config_map:
-        if (target / fname).exists():
-            return language
-
-    # Fallback: count by extension
-    ext_lang_map: dict[str, str] = {
-        ".py": "Python",
-        ".js": "JavaScript",
-        ".ts": "TypeScript",
-        ".go": "Go",
-        ".rs": "Rust",
-        ".java": "Java",
-        ".rb": "Ruby",
-    }
-    ext_counts: dict[str, int] = {}
-    skip_dirs = {
-        ".git", "node_modules", "__pycache__", ".venv", "venv",
-        "dist", "build", ".tox",
-    }
-    for root, dirs, files in __import__("os").walk(target):
-        dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith(".")]
-        for fname in files:
-            ext = Path(fname).suffix.lower()
-            if ext in ext_lang_map:
-                lang = ext_lang_map[ext]
-                ext_counts[lang] = ext_counts.get(lang, 0) + 1
-
-    if ext_counts:
-        best = max(ext_counts, key=lambda k: ext_counts[k])
-        return best
-
-    return ""
 
 
 def _check_fill_quality(target: Path, report: VerifyReport) -> None:

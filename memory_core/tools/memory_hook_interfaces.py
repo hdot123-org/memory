@@ -13,7 +13,7 @@ from __future__ import annotations
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Protocol, TypedDict
+from typing import Any, TypedDict
 
 # ---------------------------------------------------------------------------
 # TypedDict for dict key contracts
@@ -185,48 +185,7 @@ class PolicyRegistry(ABC):
 
 
 
-# ---------------------------------------------------------------------------
-# Fine-grained Protocols (decomposed from PolicyRegistry)
-# ---------------------------------------------------------------------------
 
-class PolicyQueryProvider(Protocol):
-    """策略查询 — 合法性来源、注册提交阶段等."""
-
-    def legality_source_for_scope(self, scope: str) -> str: ...
-
-    def registration_commit_phase_for_scope(self, scope: str) -> str: ...
-
-    def get_policy(self, key: str) -> str | None: ...
-
-    def get_policy_pack(self, scope: str) -> dict[str, Any]: ...
-
-    def resolve_conflict(self, policy_key: str, values: list[str], strategy: str) -> str: ...
-
-
-class GovernanceChecker(Protocol):
-    """治理校验 — project-map、frozen tuple、event contract."""
-
-    def validate_project_map(self) -> list[str]: ...
-
-    def validate_unique_legal_system_contract(self) -> list[str]: ...
-
-    def governance_frozen_tuple_errors(self) -> list[str]: ...
-
-    def event_contract_blocker_errors(self) -> list[str]: ...
-
-    def git_registration_probe(self, event: str, payload: dict[str, Any]) -> RegistrationCommitGate: ...
-
-
-class TruthBasisProvider(Protocol):
-    """事实基准 — truth-basis 查询、evidence refs."""
-
-    def truth_basis_for_scope(self, scope: str) -> TruthBasis: ...
-
-    def decision_refs_for_scope(self, scope: str) -> list[str]: ...
-
-    def lesson_refs_for_scope(self, scope: str) -> list[str]: ...
-
-    def docs_refs_for_scope(self, scope: str) -> list[str]: ...
 
 # ---------------------------------------------------------------------------
 # IF-3: RouteTargetPolicy / WriteTargetPolicy
@@ -276,13 +235,7 @@ class GatewayBusinessPolicy(ABC):
         """Return project runtime root mapping."""
         pass
 
-    def get_required_gateway_inputs(self) -> list[Path]:
-        """Return required gateway inputs.
 
-        Default to the legacy required_canonical bridge so older policy
-        implementations remain compatible while gateway internals migrate.
-        """
-        return self.get_required_canonical()
 
     @abstractmethod
     def get_required_canonical(self) -> list[Path]:

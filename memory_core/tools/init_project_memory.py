@@ -107,9 +107,6 @@ DIRECTORY_STRUCTURE = [
 
 # Per-scope directories created during init (relative to target root)
 # These require the scope name and are created dynamically in init_project_memory().
-PER_SCOPE_DIRECTORIES = [
-    "memory/kb/projects/{scope}",
-]
 
 # ---------------------------------------------------------------------------
 # File templates
@@ -715,26 +712,6 @@ def template_inbox_md(project_name: str) -> tuple[str, list[str]]:
     return content, warnings
 
 
-def template_policy_pack_json(project_name: str) -> tuple[str, list[str]]:
-    """Generate default memory-hook-policy-pack.json.
-
-    Runtime required: referenced by memory_hook_impls.py L281 DEFAULT_POLICY_PACK_PATH.
-
-    Returns:
-        Tuple of (content, warnings_list)
-    """
-    warnings: list[str] = []
-    try:
-        policy_pack = {
-            "policies": [],
-            "version": "1.0"
-        }
-        content = json.dumps(policy_pack, indent=2, ensure_ascii=False) + "\n"
-    except (ValueError, TypeError) as exc:
-        logger.warning(f"Template render error in memory-hook-policy-pack.json: {exc}")
-        warnings.append(f"template_policy_pack_json: {exc}")
-        content = '{"policies": [], "version": "1.0"}\n'
-    return content, warnings
 
 
 def template_ownership_toml(project_name: str) -> tuple[str, list[str]]:
@@ -1445,9 +1422,6 @@ RUNTIME_EXTRA_FILES = [
 # Keep files
 # ---------------------------------------------------------------------------
 
-def template_keep() -> str:
-    """Generate a .keep file content."""
-    return ""
 
 
 
@@ -1503,7 +1477,7 @@ def generate_hooks_json(
         return
 
     desired = template_hooks_json(host)
-    desired_keys = {(h["event"], h["command"]) for h in desired["hooks"]}
+    _ = {(h["event"], h["command"]) for h in desired["hooks"]}
 
     if hooks_path.exists():
         try:

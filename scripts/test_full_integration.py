@@ -663,28 +663,6 @@ class IntegrationTester:
                 ))
         return results
 
-    def _check_required_indexeses(self, project: Path, project_name: str) -> list[CheckResult]:
-        """Check that required INDEX files exist."""
-        results: list[CheckResult] = []
-        required_indexes = [
-            "INDEX.md",
-            "memory/kb/INDEX.md",
-        ]
-        for rel_path in required_indexes:
-            full_path = project / rel_path
-            if full_path.exists():
-                results.append(CheckResult(
-                    f"{project_name}:index_{rel_path.replace('/', '_')}",
-                    "PASS",
-                    f"{rel_path} exists",
-                ))
-            else:
-                results.append(CheckResult(
-                    f"{project_name}:index_{rel_path.replace('/', '_')}",
-                    "FAIL",
-                    f"{rel_path} missing",
-                ))
-        return results
 
     def _check_verify_consumer(self, project: Path, project_name: str) -> list[CheckResult]:
         """Run verify_consumer and report results."""

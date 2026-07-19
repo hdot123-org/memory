@@ -82,40 +82,6 @@ def profile(
 Profile = profile
 
 
-# Expose as a class-style ``Profile`` context manager as well for callers
-# that prefer ``with Profile(...) as p:`` capitalization.
-class _ProfileClass:
-    """Class-based ``Profile`` context manager (thin wrapper)."""
-
-    def __init__(
-        self,
-        section: str,
-        *,
-        output: str | None = None,
-        sort_by: str = "cumulative",
-        top_n: int = 20,
-    ) -> None:
-        self._section = section
-        self._output = output
-        self._sort_by = sort_by
-        self._top_n = top_n
-        self._cm = profile(
-            section, output=output, sort_by=sort_by, top_n=top_n
-        )
-        self.profiler: cProfile.Profile | None = None
-
-    def __enter__(self) -> cProfile.Profile:
-        self.profiler = self._cm.__enter__()
-        return self.profiler
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:  # type: ignore[no-untyped-def]
-        return self._cm.__exit__(exc_type, exc_val, exc_tb)
-
-
-def _sample() -> None:
-    with profile("sample") as p:
-        total = sum(range(100_000))
-    print(f"[profiling_helper] sample total = {total}, profiler = {p!r}")
 
 
 def main(argv: list[str] | None = None) -> int:

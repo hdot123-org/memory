@@ -146,23 +146,6 @@ def _audit_enabled() -> bool:
     return os.environ.get("MEMORY_HOOK_SCHEMA_AUDIT", "1") != "0"
 
 
-def _emit_drop_audit(
-    schema_from: str,
-    schema_to: str,
-    dropped_keys: list[str],
-) -> None:
-    """Write a drop-audit record to file (fallback stderr).
-
-    Never raises an exception.
-    """
-    if not _audit_enabled():
-        return
-    try:
-        _write_audit_log(schema_from, schema_to, dropped_keys, 0, 0)
-    except Exception:
-        pass
-
-
 # ---------------------------------------------------------------------------
 # Schema converters
 # ---------------------------------------------------------------------------
@@ -424,5 +407,3 @@ def _is_lossless_schema_aware(
     return (False, [f"unknown_schema_pair: {schema_from}->{schema_to}"])
 
 
-# Aliases for backward compatibility
-is_lossless_schema = is_lossless

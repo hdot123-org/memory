@@ -98,7 +98,6 @@ LEGACY_FORBIDDEN_OVERWRITE_PATTERNS = [
 
 # Action types for migration plan
 ACTION_ADOPT_EXISTING_MEMORY = "adopt_existing_memory"
-ACTION_CREATE_MISSING_MEMORY = "create_missing_memory"
 ACTION_MOVE_ROOT_POLLUTION = "move_root_pollution"
 ACTION_IGNORE_RUNTIME_ARTIFACT = "ignore_runtime_artifact"
 ACTION_MARK_LEGACY_READONLY = "mark_legacy_readonly"

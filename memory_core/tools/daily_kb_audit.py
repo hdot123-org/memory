@@ -85,7 +85,6 @@ RESIDUE_COMPARE_CHARS = 200
 # 数据库/大文件违规规则（参考 no-database-files-in-repo.md）
 LARGE_SQL_THRESHOLD = 1024 * 1024  # 1MB
 DATABASE_FILE_SUFFIXES = (".sql.gz", ".dump", ".bak", ".sqlite", ".db")
-DATABASE_DIR_NAMES = {"backups"}
 
 # 飞书通知
 LARK_NOTIFY_ENV = "LARK_AUDIT_CHAT_ID"

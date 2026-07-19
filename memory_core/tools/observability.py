@@ -284,6 +284,3 @@ class ErrorTracker:
         return self._errors[-limit:]
 
 
-# Global instances
-metrics = MetricsRegistry()
-error_tracker = ErrorTracker()

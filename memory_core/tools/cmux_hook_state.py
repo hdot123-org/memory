@@ -40,34 +40,6 @@ def default_hook_state_path(project_dir: Path) -> Path:
     return runtime_state_dir(project_dir) / "hook-state.json"
 
 
-def default_assignment_file_path(project_dir: Path) -> Path:
-    return runtime_state_dir(project_dir) / "cmux-assignment.json"
-
-
-def default_pm_bot_watch_assignment_file_path(project_dir: Path) -> Path:
-    return runtime_state_dir(project_dir) / "pm-bot-watch.json"
-
-
-def default_codex_main_task_path(project_dir: Path) -> Path:
-    return runtime_state_dir(project_dir) / "codex-main-task.json"
-
-
-def default_project_overview_json_path(project_dir: Path) -> Path:
-    return runtime_state_dir(project_dir) / "project-task-overview.json"
-
-
-def default_project_overview_text_path(project_dir: Path) -> Path:
-    return runtime_state_dir(project_dir) / "project-task-overview.txt"
-
-
-def default_assignment_watcher_pid_path(project_dir: Path) -> Path:
-    return runtime_state_dir(project_dir) / "watch_cmux_assignments.pid"
-
-
-def default_assignment_watcher_log_path(project_dir: Path) -> Path:
-    return runtime_state_dir(project_dir) / "watch_cmux_assignments.log"
-
-
 def _base_payload() -> dict[str, object]:
     return {
         "runtime": "cmux",
@@ -154,17 +126,6 @@ def write_hook_state(path: Path, payload: dict[str, object]) -> None:
     path = path.expanduser().resolve()
     with _exclusive_hook_state_lock(path):
         _write_hook_state_unlocked(path, payload)
-
-
-def get_surface_hook_state(path: Path, surface_ref: str) -> dict[str, object]:
-    payload = load_hook_state(path)
-    surfaces = payload.get("surfaces")
-    if not isinstance(surfaces, dict):
-        return {}
-    surface_state = surfaces.get(surface_ref)
-    if not isinstance(surface_state, dict):
-        return {}
-    return surface_state
 
 
 def _default_surface_state(workspace_ref: str, surface_ref: str) -> dict[str, object]:

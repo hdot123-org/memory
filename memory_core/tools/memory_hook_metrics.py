@@ -35,13 +35,6 @@ def is_metrics_disabled() -> bool:
 _now_iso = now_iso
 
 
-def _safe_int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
 def _package_size_bytes(package: dict[str, Any]) -> int:
     try:
         return len(json.dumps(package, ensure_ascii=False).encode("utf-8"))
@@ -89,11 +82,6 @@ def _resolve_metrics_path(artifact_root: Path) -> Path:
     if override:
         return Path(override).expanduser()
     return Path(artifact_root) / METRICS_FILENAME
-
-
-def write_metrics(metrics_path: Path, record: dict[str, Any]) -> bool:
-    """Append a metrics record as one JSONL line. Returns True on success."""
-    return append_metrics_record(metrics_path, record)
 
 
 def append_metrics_record(path: Path, record: dict[str, Any]) -> bool:
