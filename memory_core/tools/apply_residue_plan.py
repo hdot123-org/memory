@@ -22,7 +22,6 @@ Safety guarantees:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import logging
 import shutil
@@ -140,13 +139,11 @@ class BackupManifest:
 # Utility functions
 # ---------------------------------------------------------------------------
 
-def _sha256_file(path: Path) -> str:
-    """Calculate SHA256 hash of a file."""
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()
+# Import shared sha256_file utility (Cluster F: deduplicated to _utils.py)
+from ._utils import sha256_file
+
+# Backward-compatible alias
+_sha256_file = sha256_file
 
 
 def _is_forbidden_path(path: str, target: Path | None = None) -> bool:

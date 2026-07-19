@@ -7,8 +7,6 @@ compatible with the original GatewayBusinessPolicyImpl interface.
 
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -19,11 +17,12 @@ try:
         _json_string_values,
         _markdown_code_tokens,
         _path_is_under,
-        _path_is_under_lexical,
+        _path_is_under_lexical,  # noqa: F401  re-exported for tests
         _section_body,
         _section_bullets,
     )
     from ._rule_types import RuleContext, RuleResult
+    from ._scope_resolver_base import ScopeResolverBase
     from ._validation_constants import (
         MKR_ABSORBED_STATUS,
         MKR_ACTIVE_LEGAL_MAP_ONLY,
@@ -56,11 +55,12 @@ except ImportError:
         _json_string_values,
         _markdown_code_tokens,
         _path_is_under,
-        _path_is_under_lexical,
+        _path_is_under_lexical,  # noqa: F401  re-exported for tests
         _section_body,
         _section_bullets,
     )
     from _rule_types import RuleContext, RuleResult  # type: ignore
+    from _scope_resolver_base import ScopeResolverBase  # type: ignore
     from _validation_constants import (  # type: ignore
         MKR_ABSORBED_STATUS,
         MKR_ACTIVE_LEGAL_MAP_ONLY,
@@ -94,19 +94,27 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
-# 1. ProjectMapValidator — project-map 校验相关方法
+# 0. PolicyValidatorBase — 共享 evaluate() 模板
 # ---------------------------------------------------------------------------
 
-class ProjectMapValidator:
-    """Validates project-map contract files and related legal-system contracts."""
+class PolicyValidatorBase:
+    """Base class for policy validators with shared evaluate() template.
 
-    rule_name = "project_map_validation"
+    Subclasses implement _get_errors() to return validation errors.
+    The evaluate() method builds a RuleResult from those errors.
+    """
+
+    _error_type: str = "validation"
+    _pass_label: str = "Validation passed"
 
     def __init__(self, config: GatewayBusinessPolicyConfig):
         self._config = config
 
+    def _get_errors(self) -> list[str]:
+        raise NotImplementedError
+
     def evaluate(self, ctx: RuleContext) -> RuleResult:
-        """Evaluate project-map validation rule.
+        """Evaluate rule by collecting errors and building RuleResult.
 
         Returns RuleResult with:
         - matched: True if validation errors found
@@ -114,13 +122,28 @@ class ProjectMapValidator:
         - message: summary of validation
         - detail: {'errors': list[str]}
         """
-        errors = self.validate_project_map_files()
+        errors = self._get_errors()
         return RuleResult(
             matched=len(errors) > 0,
             severity="error" if errors else "info",
-            message=f"Found {len(errors)} validation errors" if errors else "Validation passed",
+            message=f"Found {len(errors)} {self._error_type} errors" if errors else self._pass_label,
             detail={"errors": errors}
         )
+
+
+# ---------------------------------------------------------------------------
+# 1. ProjectMapValidator — project-map 校验相关方法
+# ---------------------------------------------------------------------------
+
+class ProjectMapValidator(PolicyValidatorBase):
+    """Validates project-map contract files and related legal-system contracts."""
+
+    rule_name = "project_map_validation"
+    _error_type = "validation"
+    _pass_label = "Validation passed"
+
+    def _get_errors(self) -> list[str]:
+        return self.validate_project_map_files()
 
     def _read_text_if_exists(self, path: Path) -> str:
         return self._config.read_text_if_exists_fn(path)
@@ -227,30 +250,15 @@ class LegalContractChecker:
 # 3. FrozenTupleChecker — frozen tuple 校验
 # ---------------------------------------------------------------------------
 
-class FrozenTupleChecker:
+class FrozenTupleChecker(PolicyValidatorBase):
     """Checks governance frozen tuple markers."""
 
     rule_name = "frozen_tuple_check"
+    _error_type = "frozen tuple"
+    _pass_label = "Frozen tuple check passed"
 
-    def __init__(self, config: GatewayBusinessPolicyConfig):
-        self._config = config
-
-    def evaluate(self, ctx: RuleContext) -> RuleResult:
-        """Evaluate frozen tuple validation rule.
-
-        Returns RuleResult with:
-        - matched: True if validation errors found
-        - severity: 'error' if errors, 'info' if pass
-        - message: summary of validation
-        - detail: {'errors': list[str]}
-        """
-        errors = self.governance_frozen_tuple_blocker_errors()
-        return RuleResult(
-            matched=len(errors) > 0,
-            severity="error" if errors else "info",
-            message=f"Found {len(errors)} frozen tuple errors" if errors else "Frozen tuple check passed",
-            detail={"errors": errors}
-        )
+    def _get_errors(self) -> list[str]:
+        return self.governance_frozen_tuple_blocker_errors()
 
     def governance_frozen_tuple_blocker_errors(self) -> list[str]:
         cfg = self._config
@@ -283,30 +291,15 @@ class FrozenTupleChecker:
 # 4. EventContractChecker — event contract blocker 校验
 # ---------------------------------------------------------------------------
 
-class EventContractChecker:
+class EventContractChecker(PolicyValidatorBase):
     """Checks event contract files for formal/informal consistency."""
 
     rule_name = "event_contract_check"
+    _error_type = "event contract"
+    _pass_label = "Event contract check passed"
 
-    def __init__(self, config: GatewayBusinessPolicyConfig):
-        self._config = config
-
-    def evaluate(self, ctx: RuleContext) -> RuleResult:
-        """Evaluate event contract validation rule.
-
-        Returns RuleResult with:
-        - matched: True if validation errors found
-        - severity: 'error' if errors, 'info' if pass
-        - message: summary of validation
-        - detail: {'errors': list[str]}
-        """
-        errors = self.event_contract_blocker_errors()
-        return RuleResult(
-            matched=len(errors) > 0,
-            severity="error" if errors else "info",
-            message=f"Found {len(errors)} event contract errors" if errors else "Event contract check passed",
-            detail={"errors": errors}
-        )
+    def _get_errors(self) -> list[str]:
+        return self.event_contract_blocker_errors()
 
     def event_contract_blocker_errors(self) -> list[str]:
         cfg = self._config
@@ -630,86 +623,8 @@ class TruthBasisResolver:
 # 6. ScopeResolver — scope 解析
 # ---------------------------------------------------------------------------
 
-class ScopeResolver:
+class ScopeResolver(ScopeResolverBase):
     """Resolves project scope from cwd and manages scope overrides."""
-
-    SCOPE_CONFIG_PATH_ENV = "MEMORY_HOOK_SCOPE_CONFIG_PATH"
-
-    def __init__(
-        self,
-        config: GatewayBusinessPolicyConfig,
-        scope_config_path: Path | None = None,
-    ):
-        self._config = config
-        if scope_config_path is not None:
-            self._scope_config_path = scope_config_path
-        else:
-            env_path = os.environ.get(self.SCOPE_CONFIG_PATH_ENV)
-            self._scope_config_path = Path(env_path).expanduser() if env_path else None  # type: ignore[assignment]
-        self._scope_overrides: dict[str, dict[str, str]] = self._load_scope_overrides()
-
-    def _load_scope_overrides(self) -> dict[str, dict[str, str]]:
-        path = self._scope_config_path
-        if path is None or not path.exists():
-            return {}
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {}
-        if not isinstance(payload, dict):
-            return {}
-
-        result: dict[str, dict[str, str]] = {}
-        for key in ("project_canonical", "project_runtime_root"):
-            raw = payload.get(key)
-            if not isinstance(raw, dict):
-                continue
-            scoped: dict[str, str] = {}
-            for scope, value in raw.items():
-                if isinstance(scope, str) and isinstance(value, str):
-                    scoped[scope] = value
-            if scoped:
-                result[key] = scoped
-        return result
-
-    def _resolve_override_path(self, raw: str) -> Path:
-        path = Path(raw).expanduser()
-        if path.is_absolute():
-            return path
-        return (self._config.repo_root / path).resolve()
-
-    def determine_project_scope(self, cwd: Path) -> str:
-        cfg = self._config
-        if not _path_is_under_lexical(cwd, cfg.repo_root):
-            return cfg.default_project_scope
-        for scope, roots in cfg.scope_match_hints.items():
-            for root in roots:
-                if _path_is_under_lexical(cwd, root):
-                    return scope
-        return cfg.default_project_scope
-
-    def get_project_canonical(self) -> dict[str, Path]:
-        merged = dict(self._config.project_canonical)
-        overrides = self._scope_overrides.get("project_canonical", {})
-        for scope, raw in overrides.items():
-            merged[scope] = self._resolve_override_path(raw)
-        return merged
-
-    def get_project_runtime_root(self) -> dict[str, Path]:
-        merged = dict(self._config.project_runtime_root)
-        overrides = self._scope_overrides.get("project_runtime_root", {})
-        for scope, raw in overrides.items():
-            merged[scope] = self._resolve_override_path(raw)
-        return merged
-
-    def get_required_canonical(self) -> list[Path]:
-        return list(self._config.required_canonical)
-
-    def get_global_canonical(self) -> list[Path]:
-        return list(self._config.global_canonical)
-
-    def project_map_refs(self) -> list[str]:
-        return [str(path) for path in self._config.project_map_files]
 
     def decision_refs_for_scope(self, project_scope: str) -> list[str]:
         refs = self._config.default_decision_refs + self._config.project_decision_refs.get(project_scope, [])

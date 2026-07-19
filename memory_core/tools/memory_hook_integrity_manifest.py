@@ -120,16 +120,11 @@ def _is_volatile(rel_path: str) -> bool:
     return False
 
 
-def _sha256_file(path: Path) -> str:
-    """Compute SHA-256 hex digest of a file."""
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        while True:
-            chunk = f.read(8192)
-            if not chunk:
-                break
-            h.update(chunk)
-    return h.hexdigest()
+# Import shared sha256_file utility (Cluster F: deduplicated to _utils.py)
+from ._utils import sha256_file
+
+# Backward-compatible alias
+_sha256_file = sha256_file
 
 
 def _hmac_sha256(data: bytes, key: bytes) -> str:

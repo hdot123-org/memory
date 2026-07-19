@@ -1306,64 +1306,40 @@ class TestPathIsUnder:
         assert result is False
 
 
-class TestAuthorityRefAllowed:
-    """Test _authority_ref_allowed function."""
-
-    def test_authority_ref_allowed(self, gw):
-        """_authority_ref_allowed checks if ref is allowed."""
-        result = gw._authority_ref_allowed(Path("/test/path"))
-        assert isinstance(result, bool)
-
-
-class TestLowerEvidenceRef:
-    """Test _lower_evidence_ref function."""
-
-    def test_lower_evidence_ref(self, gw):
-        """_lower_evidence_ref checks if ref is lower evidence."""
-        result = gw._lower_evidence_ref(Path("/test/path"))
-        assert isinstance(result, bool)
-
-
-class TestTruthBasisSectionsFor:
-    """Test _truth_basis_sections_for function."""
-
-    def test_truth_basis_sections_for(self, gw, tmp_path):
-        """_truth_basis_sections_for extracts sections."""
-        test_file = tmp_path / "test.md"
-        test_file.write_text("""
-### Source Refs
-- ref1
-
-### Authority Refs
-- ref2
-
-### Evidence Refs
-- ref3
-
-### Conflict Status
-- resolved
-""")
-        content = test_file.read_text()
-        result = gw._truth_basis_sections_for(test_file, content)
-        assert isinstance(result, dict)
-        assert "source_refs" in result
-        assert "authority_refs" in result
-        assert "evidence_refs" in result
-        assert "conflict_status" in result
-
-
 class TestTruthBasisErrorsFor:
-    """Test _truth_basis_errors_for function."""
+    """Test TruthBasisResolver._truth_basis_errors_for method.
+
+    Note: Module-level _truth_basis_errors_for was deleted from gateway.py
+    in Cluster B refactoring. Tests now use the instance method from TruthBasisResolver.
+    """
 
     def test_truth_basis_errors_for_missing_file(self, gw, tmp_path):
-        """_truth_basis_errors_for returns errors for missing file."""
+        """TruthBasisResolver._truth_basis_errors_for returns errors for missing file."""
+        from memory_core.tools.business_policy_checks import TruthBasisResolver
+
+        # Create a minimal mock config
+        mock_config = MagicMock()
+        mock_config.read_text_if_exists_fn = lambda p: ""
+        resolver = TruthBasisResolver(mock_config)
+
         test_file = tmp_path / "nonexistent.md"
-        result = gw._truth_basis_errors_for(test_file, None)
+        result = resolver._truth_basis_errors_for(test_file, None)
         assert len(result) > 0
         assert "missing" in result[0].lower()
 
     def test_truth_basis_errors_for_valid_file(self, gw, tmp_path):
-        """_truth_basis_errors_for returns empty list for valid file."""
+        """TruthBasisResolver._truth_basis_errors_for returns empty list for valid file."""
+        from memory_core.tools.business_policy_checks import TruthBasisResolver
+
+        # Create a minimal mock config
+        mock_config = MagicMock()
+        mock_config.read_text_if_exists_fn = lambda p: ""
+        mock_config.repo_root = tmp_path
+        mock_config.authority_allowed_paths = set()
+        mock_config.global_canonical = []
+        mock_config.lower_evidence_roots = []
+        resolver = TruthBasisResolver(mock_config)
+
         test_file = tmp_path / "valid.md"
         test_file.write_text("""
 ### Source Refs
@@ -1379,7 +1355,7 @@ class TestTruthBasisErrorsFor:
 - resolved
 """)
         content = test_file.read_text()
-        result = gw._truth_basis_errors_for(test_file, content)
+        result = resolver._truth_basis_errors_for(test_file, content)
         assert isinstance(result, list)
 
 
@@ -1605,26 +1581,6 @@ Content line 2
         result = gw._existing_paths([existing, missing])
         assert str(existing) in result
         assert str(missing) not in result
-
-    def test_classify_truth_ref_legal_core(self, gw):
-        """_classify_truth_ref identifies legal-core maps."""
-        result = gw._classify_truth_ref(gw.PROJECT_MAP_ROOT / "legal-core-map.md")
-        assert result == "legal-core"
-
-    def test_classify_truth_ref_project_map_index(self, gw):
-        """_classify_truth_ref identifies project-map INDEX."""
-        result = gw._classify_truth_ref(gw.PROJECT_MAP_ROOT / "INDEX.md")
-        assert result == "project-map-index"
-
-    def test_classify_truth_ref_workspace_entry(self, gw):
-        """_classify_truth_ref identifies workspace INDEX."""
-        result = gw._classify_truth_ref(gw.WORKSPACE_ROOT / "INDEX.md")
-        assert result == "workspace-entry"
-
-    def test_classify_truth_ref_other(self, gw):
-        """_classify_truth_ref returns 'other' for unknown paths."""
-        result = gw._classify_truth_ref(Path("/random/path"))
-        assert result == "other"
 
 
 # ===========================================================================

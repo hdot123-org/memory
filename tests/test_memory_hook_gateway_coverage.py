@@ -9,10 +9,10 @@ _section_bullets, _section_body, _collect_changed_paths,
 _build_readonly_source_repo_package, _update_state_dynamic_fields,
 _launch_async_health_check, _log_prompt_submit, _markdown_code_tokens,
 _json_string_values, _json_object_keys, _discover_cwd, _should_noop_for_external_context,
-_classify_truth_ref, _path_is_under, _normalize_repo_scope_entry,
+_path_is_under, _normalize_repo_scope_entry,
 _registration_payload_paths, _build_degraded_package_with_error,
 now_iso, _payload_cwd, _environment_cwd, _original_cwd, _path_within_repo,
-_truth_basis_errors_for, _truth_basis_sections_for, validate_project_map_files,
+validate_project_map_files,
 validate_unique_legal_system_contract, governance_frozen_tuple_blocker_errors,
 event_contract_blocker_errors, decision_refs_for_scope, lesson_refs_for_scope,
 docs_refs_for_scope, truth_basis_for_scope, write_targets, resolve_route_target,
@@ -661,28 +661,6 @@ class TestBuildDegradedPackage:
 
 
 # ---------------------------------------------------------------------------
-# _classify_truth_ref
-# ---------------------------------------------------------------------------
-
-class TestClassifyTruthRef:
-    def test_repo_policy(self, gateway_module):
-        result = gateway_module._classify_truth_ref(gateway_module.REPO_ROOT / "AGENTS.md")
-        assert result == "repo-policy"
-
-    def test_workspace_entry(self, gateway_module):
-        result = gateway_module._classify_truth_ref(gateway_module.WORKSPACE_ROOT / "INDEX.md")
-        assert result == "workspace-entry"
-
-    def test_docs_path(self, gateway_module):
-        result = gateway_module._classify_truth_ref(gateway_module.WORKSPACE_ROOT / "memory" / "docs" / "test.md")
-        assert result == "docs"
-
-    def test_other_path(self, gateway_module):
-        result = gateway_module._classify_truth_ref(Path("/random/path/file.md"))
-        assert result == "other"
-
-
-# ---------------------------------------------------------------------------
 # _path_is_under
 # ---------------------------------------------------------------------------
 
@@ -1212,39 +1190,6 @@ class TestApplyHookRuntimeWriteTargets:
 
 
 # ---------------------------------------------------------------------------
-# _truth_basis_errors_for
-# ---------------------------------------------------------------------------
-
-class TestTruthBasisErrorsFor:
-    def test_missing_file_returns_error(self, gateway_module, tmp_path):
-        missing_file = tmp_path / "nonexistent.md"
-        errors = gateway_module._truth_basis_errors_for(missing_file, None)
-        assert len(errors) == 1
-        assert "missing truth canonical" in errors[0]
-
-    def test_missing_truth_basis_section(self, gateway_module, tmp_path):
-        test_file = tmp_path / "test.md"
-        content = "# Some Other Section\n\nContent here.\n"
-        test_file.write_text(content)
-        errors = gateway_module._truth_basis_errors_for(test_file, content)
-        # When Truth Basis section is missing, returns early with specific error
-        assert len(errors) == 1
-        assert "truth basis section missing" in errors[0]
-
-    def test_empty_sections_return_errors(self, gateway_module, tmp_path):
-        test_file = tmp_path / "test.md"
-        content = """# Document
-
-### Truth Basis
-
-Some content without the required subsections.
-"""
-        test_file.write_text(content)
-        errors = gateway_module._truth_basis_errors_for(test_file, content)
-        assert len(errors) >= 4  # source_refs, authority_refs, evidence_refs, conflict_status all missing
-
-
-# ---------------------------------------------------------------------------
 # validate_project_map_files / validate_unique_legal_system_contract / etc
 # ---------------------------------------------------------------------------
 
@@ -1642,30 +1587,6 @@ class TestPathWithinRepoEdgeCases:
 
 
 # ---------------------------------------------------------------------------
-# _classify_truth_ref (additional paths)
-# ---------------------------------------------------------------------------
-
-class TestClassifyTruthRefAdditional:
-    def test_project_canonical(self, gateway_module):
-        result = gateway_module._classify_truth_ref(
-            gateway_module.WORKSPACE_ROOT / "memory" / "kb" / "projects" / "test.md"
-        )
-        assert result == "project-canonical"
-
-    def test_artifact_path(self, gateway_module):
-        result = gateway_module._classify_truth_ref(
-            gateway_module.WORKSPACE_ROOT / "memory" / "artifacts" / "test.json"
-        )
-        assert result == "artifact"
-
-    def test_log_path(self, gateway_module):
-        result = gateway_module._classify_truth_ref(
-            gateway_module.WORKSPACE_ROOT / "memory" / "log" / "test.log"
-        )
-        assert result == "log"
-
-
-# ---------------------------------------------------------------------------
 # Integration test: main() with minimal mocking
 # ---------------------------------------------------------------------------
 
@@ -1728,38 +1649,6 @@ class TestGitRegistrationProbe:
         assert "status" in result
         assert "phase" in result
         assert "probe_ok" in result
-
-
-# ---------------------------------------------------------------------------
-# _truth_basis_sections_for
-# ---------------------------------------------------------------------------
-
-class TestTruthBasisSectionsFor:
-    def test_extracts_sections(self, gateway_module, tmp_path):
-        test_file = tmp_path / "test.md"
-        content = """# Document
-
-### Source Refs
-- ref1.md
-- ref2.md
-
-### Authority Refs
-- auth1.md
-
-### Evidence Refs
-- evidence1.md
-
-### Conflict Status
-- resolved
-"""
-        test_file.write_text(content)
-        result = gateway_module._truth_basis_sections_for(test_file, content)
-        assert "source_refs" in result
-        assert "authority_refs" in result
-        assert "evidence_refs" in result
-        assert "conflict_status" in result
-        assert result["source_refs"] == ["ref1.md", "ref2.md"]
-        assert result["conflict_status"] == ["resolved"]
 
 
 # ---------------------------------------------------------------------------

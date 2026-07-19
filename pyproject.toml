@@ -193,6 +193,8 @@ DEP001 = [
     "_rule_types",
     "_guard_classify",
     "_guard_patterns",
+    "_scope_resolver_base",
+    "_utils",
     "business_policy_checks",
     "error_logger",
     "yaml",

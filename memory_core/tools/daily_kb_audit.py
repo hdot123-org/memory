@@ -28,7 +28,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -118,16 +117,11 @@ def _now_iso_local() -> str:
     return now_iso()
 
 
-def _sha256_file(path: Path) -> str | None:
-    """计算文件 SHA-256；读失败返回 None。"""
-    h = hashlib.sha256()
-    try:
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                h.update(chunk)
-    except OSError:
-        return None
-    return h.hexdigest()
+# Import shared sha256_file utility (Cluster F: deduplicated to _utils.py)
+from ._utils import sha256_file
+
+# Backward-compatible alias
+_sha256_file = sha256_file
 
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n.*?\n---\s*\n", re.DOTALL)
