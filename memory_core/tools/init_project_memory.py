@@ -1719,6 +1719,694 @@ def update_agents_md(
 # Initialization logic
 # ---------------------------------------------------------------------------
 
+def _validate_init_args(
+    target: Path,
+    mode: str,
+    no_clobber: bool,
+    allow_non_git: bool,
+    memory_root: Path,
+    project_name: str,
+) -> tuple[bool, str]:
+    """Validate initialization arguments and check denylist/no-clobber.
+
+    Returns:
+        Tuple of (is_valid, error_message). If is_valid is False, error_message explains why.
+    """
+    # Mode validation
+    if mode not in ("create", "adopt", "update", "repair"):
+        return False, f"Invalid mode: {mode}. Must be one of: create, adopt, update, repair"
+
+    # Denylist check
+    deny_result = check_denylist(target, allow_non_git=allow_non_git)
+    if deny_result.denied:
+        return False, f"Project denied by denylist rule '{deny_result.rule}': {deny_result.message}"
+
+    # No-clobber check (only for create mode)
+    if no_clobber and mode == "create":
+        existing_essential = []
+        for fname in ESSENTIAL_FILES:
+            if (memory_root / fname).exists():
+                existing_essential.append(fname)
+        for fname in RUNTIME_KB_FILES:
+            if (target / fname).exists():
+                existing_essential.append(fname)
+        scope_file = f"memory/kb/projects/{project_name}.md"
+        if (target / scope_file).exists():
+            existing_essential.append(scope_file)
+        if existing_essential:
+            return False, (
+                f"refused to clobber existing memory/system/; use --force to overwrite "
+                f"or remove existing files first. Existing files: {', '.join(existing_essential)}"
+            )
+
+    return True, ""
+
+
+def _dry_run_action(
+    file_path: Path,
+    mode: str,
+    force: bool,
+    is_business_file: bool = False,
+    is_marker_protected: bool = False,
+) -> str:
+    """Determine action for dry-run based on mode, file existence, and file type."""
+    exists = file_path.exists()
+
+    if mode == "adopt":
+        return "skip - exists (adopt mode preserves existing)" if exists else "create"
+
+    if mode == "update":
+        if is_business_file:
+            return "skip - business file (update mode preserves)"
+        if exists:
+            return "replace marker block" if is_marker_protected else "skip - exists (update mode preserves non-marker files)"
+        return "create"
+
+    if mode == "repair":
+        return "skip - exists (repair mode never overwrites)" if exists else "create"
+
+    # create mode
+    if exists:
+        return "overwrite" if force else "skip - exists"
+    return "create"
+
+
+def _build_dry_run_result(
+    target: Path,
+    mode: str,
+    force: bool,
+    project_name: str,
+    memory_root: Path,
+) -> dict[str, Any]:
+    """Build dry-run output showing what would be created."""
+    dry_run_output: dict[str, Any] = {
+        "would_create_dirs": list(DIRECTORY_STRUCTURE),
+        "would_create_files": [],
+        "project_name": project_name,
+    }
+
+    # Check all file categories
+    for fname in ESSENTIAL_FILES:
+        action = _dry_run_action(memory_root / fname, mode, force)
+        dry_run_output["would_create_files"].append(f"{fname} ({action})")
+
+    for fname in RUNTIME_KB_FILES:
+        action = _dry_run_action(target / fname, mode, force)
+        dry_run_output["would_create_files"].append(f"{fname} ({action})")
+
+    scope_file = f"memory/kb/projects/{project_name}.md"
+    action = _dry_run_action(target / scope_file, mode, force)
+    dry_run_output["would_create_files"].append(f"{scope_file} ({action})")
+
+    for fname in KB_TEMPLATES:
+        is_business = fname == "INDEX.md" or fname.startswith("project-map/")
+        action = _dry_run_action(target / fname, mode, force, is_business_file=is_business)
+        dry_run_output["would_create_files"].append(f"{fname} ({action})")
+
+    for fname in RUNTIME_EXTRA_FILES:
+        action = _dry_run_action(target / fname, mode, force)
+        dry_run_output["would_create_files"].append(f"{fname} ({action})")
+
+    per_scope_dir = f"memory/kb/projects/{project_name}"
+    dry_run_output["would_create_dirs"].append(f"{per_scope_dir}/")
+    for scope_file in ("CANONICAL.md", "STATE.md", "PLAN.md", "TASKS.md"):
+        action = _dry_run_action(target / per_scope_dir / scope_file, mode, force)
+        dry_run_output["would_create_files"].append(f"{per_scope_dir}/{scope_file} ({action})")
+
+    action = _dry_run_action(target / "NOW.md", mode, force)
+    dry_run_output["would_create_files"].append(f"NOW.md ({action})")
+
+    return dry_run_output
+
+
+def _should_skip_file(
+    file_path: Path,
+    mode: str,
+    force: bool,
+    ownership: Any,
+    authorized_maintenance: bool,
+    target: Path,
+    result: dict[str, Any],
+    is_business_file: bool = False,
+) -> tuple[bool, str]:
+    """Determine if file should be skipped based on mode.
+
+    Returns (should_skip, reason)
+    """
+    if not file_path.exists():
+        return False, "create"
+
+    if mode == "adopt":
+        return True, f"{mode} mode preserves existing"
+
+    if mode == "update":
+        if is_business_file:
+            return True, f"{mode} mode preserves business files"
+        if force:
+            return False, "overwrite"
+        return True, f"{mode} mode preserves existing (use --force to overwrite)"
+
+    if mode == "repair":
+        return True, f"{mode} mode only creates missing files"
+
+    # create mode with force
+    if force:
+        try:
+            rel_path = file_path.relative_to(target).as_posix()
+        except ValueError:
+            rel_path = str(file_path)
+        classification = classify_owned_path(rel_path, ownership=ownership)
+        if isinstance(classification, Owned) and not authorized_maintenance:
+            result["errors"].append(f"Force overwrite rejected: {rel_path} is owned ({classification.reason})")
+            return True, "force rejected - owned file"
+        return False, "overwrite"
+
+    return True, "already exists"
+
+
+def _write_template_file(
+    file_path: Path,
+    fname: str,
+    template_fn: Any,
+    project_name: str,
+    mode: str,
+    force: bool,
+    ownership: Any,
+    authorized_maintenance: bool,
+    target: Path,
+    result: dict[str, Any],
+    is_business_file: bool = False,
+    decorate_fn: Any = None,
+) -> tuple[bool, bool]:
+    """Write a single template file with mode-aware handling.
+
+    Returns (was_overwritten, was_skipped)
+    """
+    was_overwritten = False
+    was_skipped = False
+
+    file_exists_before = file_path.exists()
+
+    should_skip, reason = _should_skip_file(
+        file_path, mode, force, ownership, authorized_maintenance, target, result, is_business_file
+    )
+
+    if file_exists_before and should_skip:
+        result["skipped"].append(f"file:{fname} ({reason})")
+        return False, True
+
+    try:
+        content, warnings = template_fn(project_name)
+        if decorate_fn:
+            content = decorate_fn(fname, content)
+
+        if file_exists_before:
+            result["created"].append(f"file:{fname} (overwritten)")
+            was_overwritten = True
+        else:
+            result["created"].append(f"file:{fname}")
+
+        file_path.write_text(content, encoding="utf-8")
+        result["warnings"].extend(warnings)
+    except Exception as exc:
+        action = "overwrite" if file_exists_before else "create"
+        result["errors"].append(f"failed to {action} {fname}: {exc}")
+
+    return was_overwritten, was_skipped
+
+
+def _create_directories(target: Path, result: dict[str, Any]) -> None:
+    """Create directory structure and .keep files."""
+    for dir_rel in DIRECTORY_STRUCTURE:
+        dir_path = target / dir_rel
+        try:
+            dir_path.mkdir(parents=True, exist_ok=True)
+            result["created"].append(f"dir:{dir_rel}")
+        except Exception as exc:
+            result["errors"].append(f"failed to create {dir_rel}: {exc}")
+
+    for dir_rel in DIRECTORY_STRUCTURE:
+        if dir_rel in ("memory", "memory/system"):
+            continue
+        keep_path = target / dir_rel / ".keep"
+        if not keep_path.exists():
+            try:
+                keep_path.write_text("", encoding="utf-8")
+                result["created"].append(f"file:{dir_rel}/.keep")
+            except Exception as exc:
+                result["errors"].append(f"failed to create {dir_rel}/.keep: {exc}")
+
+
+def _render_standard_templates(
+    target: Path,
+    memory_root: Path,
+    project_name: str,
+    mode: str,
+    force: bool,
+    ownership: Any,
+    authorized_maintenance: bool,
+    result: dict[str, Any],
+) -> tuple[bool, bool]:
+    """Render KB_TEMPLATES and FILE_TEMPLATES.
+
+    Returns (any_overwritten, any_skipped)
+    """
+    any_overwritten = False
+    any_skipped = False
+
+    for fname, template_fn in KB_TEMPLATES.items():
+        is_business = fname == "INDEX.md" or fname.startswith("project-map/")
+        overwritten, skipped = _write_template_file(
+            target / fname, fname, template_fn, project_name, mode, force,
+            ownership, authorized_maintenance, target, result, is_business, _decorate_index_content
+        )
+        any_overwritten = any_overwritten or overwritten
+        any_skipped = any_skipped or skipped
+
+    for fname, template_fn in FILE_TEMPLATES.items():
+        overwritten, skipped = _write_template_file(
+            memory_root / fname, fname, template_fn, project_name, mode, force,
+            ownership, authorized_maintenance, target, result
+        )
+        any_overwritten = any_overwritten or overwritten
+        any_skipped = any_skipped or skipped
+
+    return any_overwritten, any_skipped
+
+
+def _render_evidence_ref_files(
+    target: Path,
+    mode: str,
+    force: bool,
+    ownership: Any,
+    authorized_maintenance: bool,
+    result: dict[str, Any],
+) -> tuple[bool, bool]:
+    """Render evidence reference files (tests/.memory-anchor.md, tools/health-check.sh).
+
+    Returns (any_overwritten, any_skipped)
+    """
+    any_overwritten = False
+    any_skipped = False
+
+    # tests/.memory-anchor.md
+    anchor_path = target / "tests" / ".memory-anchor.md"
+    anchor_path.parent.mkdir(parents=True, exist_ok=True)
+    anchor_content = "# Memory Anchor\n\n# Evidence ref for Truth Basis sections in global-canonical files.\n# Created by init_project_memory.\n"
+    anchor_existed = anchor_path.exists()
+    should_skip, reason = _should_skip_file(
+        anchor_path, mode, force, ownership, authorized_maintenance, target, result
+    )
+    if anchor_existed and should_skip:
+        result["skipped"].append(f"file:tests/.memory-anchor.md ({reason})")
+        any_skipped = True
+    else:
+        try:
+            anchor_path.write_text(anchor_content, encoding="utf-8")
+            result["created"].append(
+                f"file:tests/.memory-anchor.md{' (overwritten)' if anchor_existed else ''}"
+            )
+            if anchor_existed:
+                any_overwritten = True
+        except Exception as exc:
+            action = "overwrite" if anchor_existed else "create"
+            result["errors"].append(f"failed to {action} tests/.memory-anchor.md: {exc}")
+
+    # tools/health-check.sh
+    tools_dir = target / "tools"
+    tools_dir.mkdir(parents=True, exist_ok=True)
+    health_check_path = tools_dir / "health-check.sh"
+    health_check_content = "#!/bin/bash\n# Health check script for memory-core validation.\n# Created by init_project_memory as lower-layer tooling evidence ref.\necho 'healthy'\n"
+    health_check_existed = health_check_path.exists()
+    should_skip, reason = _should_skip_file(
+        health_check_path, mode, force, ownership, authorized_maintenance, target, result
+    )
+    if health_check_existed and should_skip:
+        result["skipped"].append(f"file:tools/health-check.sh ({reason})")
+        any_skipped = True
+    else:
+        try:
+            health_check_path.write_text(health_check_content, encoding="utf-8")
+            result["created"].append(
+                f"file:tools/health-check.sh{' (overwritten)' if health_check_existed else ''}"
+            )
+            if health_check_existed:
+                any_overwritten = True
+        except Exception as exc:
+            action = "overwrite" if health_check_existed else "create"
+            result["errors"].append(f"failed to {action} tools/health-check.sh: {exc}")
+
+    return any_overwritten, any_skipped
+
+
+def _render_special_files(
+    target: Path,
+    memory_root: Path,
+    project_name: str,
+    mode: str,
+    force: bool,
+    ownership: Any,
+    authorized_maintenance: bool,
+    result: dict[str, Any],
+) -> tuple[bool, bool]:
+    """Render special files (adapter.toml, inbox.md, anchor, health-check, scope.md).
+
+    Returns (any_overwritten, any_skipped)
+    """
+    any_overwritten = False
+    any_skipped = False
+
+    # adapter.toml
+    overwritten, skipped = _write_template_file(
+        memory_root / "adapter.toml", "adapter.toml", template_adapter_toml,
+        project_name, mode, force, ownership, authorized_maintenance, target, result
+    )
+    any_overwritten = any_overwritten or overwritten
+    any_skipped = any_skipped or skipped
+
+    # memory/inbox.md
+    overwritten, skipped = _write_template_file(
+        target / "memory" / "inbox.md", "memory/inbox.md", template_inbox_md,
+        project_name, mode, force, ownership, authorized_maintenance, target, result
+    )
+    any_overwritten = any_overwritten or overwritten
+    any_skipped = any_skipped or skipped
+
+    # Evidence ref files
+    overwritten, skipped = _render_evidence_ref_files(
+        target, mode, force, ownership, authorized_maintenance, result
+    )
+    any_overwritten = any_overwritten or overwritten
+    any_skipped = any_skipped or skipped
+
+    # memory/kb/projects/{scope}.md
+    scope_md_path = target / "memory" / "kb" / "projects" / f"{project_name}.md"
+    overwritten, skipped = _write_template_file(
+        scope_md_path, f"memory/kb/projects/{project_name}.md", template_project_scope_md,
+        project_name, mode, force, ownership, authorized_maintenance, target, result
+    )
+    any_overwritten = any_overwritten or overwritten
+    any_skipped = any_skipped or skipped
+
+    return any_overwritten, any_skipped
+
+
+def _render_per_scope_files(
+    target: Path,
+    project_name: str,
+    mode: str,
+    force: bool,
+    ownership: Any,
+    authorized_maintenance: bool,
+    result: dict[str, Any],
+) -> tuple[bool, bool]:
+    """Render per-scope control loop files (CANONICAL.md, STATE.md, PLAN.md, TASKS.md, NOW.md).
+
+    Returns (any_overwritten, any_skipped)
+    """
+    any_overwritten = False
+    any_skipped = False
+
+    scope_dir = target / "memory" / "kb" / "projects" / project_name
+    try:
+        scope_dir.mkdir(parents=True, exist_ok=True)
+        result["created"].append(f"dir:memory/kb/projects/{project_name}/")
+    except Exception as exc:
+        result["errors"].append(f"failed to create per-scope directory: {exc}")
+
+    for fname, template_fn in [
+        ("CANONICAL.md", template_canonical_md),
+        ("STATE.md", template_state_md),
+        ("PLAN.md", template_plan_md),
+        ("TASKS.md", template_tasks_md),
+    ]:
+        file_path = scope_dir / fname
+        overwritten, skipped = _write_template_file(
+            file_path, f"memory/kb/projects/{project_name}/{fname}", template_fn,
+            project_name, mode, force, ownership, authorized_maintenance, target, result
+        )
+        any_overwritten = any_overwritten or overwritten
+        any_skipped = any_skipped or skipped
+
+    # NOW.md
+    overwritten, skipped = _write_template_file(
+        target / "NOW.md", "NOW.md", template_now_md, project_name, mode, force,
+        ownership, authorized_maintenance, target, result
+    )
+    any_overwritten = any_overwritten or overwritten
+    any_skipped = any_skipped or skipped
+
+    return any_overwritten, any_skipped
+
+
+def _render_all_templates(
+    target: Path,
+    memory_root: Path,
+    project_name: str,
+    mode: str,
+    force: bool,
+    result: dict[str, Any],
+) -> tuple[bool, bool]:
+    """Render all template files with mode-aware handling.
+
+    Returns (any_overwritten, any_skipped)
+    """
+    ownership = load_memory_ownership(target)
+    authorized_maintenance = mode == "repair" or os.environ.get("MEMORY_INIT_RUNNING") == "1"
+
+    any_overwritten = False
+    any_skipped = False
+
+    overwritten, skipped = _render_standard_templates(
+        target, memory_root, project_name, mode, force, ownership, authorized_maintenance, result
+    )
+    any_overwritten = any_overwritten or overwritten
+    any_skipped = any_skipped or skipped
+
+    overwritten, skipped = _render_special_files(
+        target, memory_root, project_name, mode, force, ownership, authorized_maintenance, result
+    )
+    any_overwritten = any_overwritten or overwritten
+    any_skipped = any_skipped or skipped
+
+    overwritten, skipped = _render_per_scope_files(
+        target, project_name, mode, force, ownership, authorized_maintenance, result
+    )
+    any_overwritten = any_overwritten or overwritten
+    any_skipped = any_skipped or skipped
+
+    return any_overwritten, any_skipped
+
+
+def _finalize_auto_fill(
+    target: Path,
+    project_name: str,
+    auto_fill: bool,
+    result: dict[str, Any],
+) -> None:
+    """Handle auto-fill phase if enabled."""
+    if not auto_fill:
+        return
+    try:
+        from .project_probe import ProjectProbe
+        probe = ProjectProbe(target)
+        project_info = probe.probe()
+        _apply_auto_fill(target, project_info, result, project_name=project_name)
+    except Exception as exc:
+        result["warnings"].append(f"auto-fill skipped: {exc}")
+
+
+def _finalize_skill_yaml(
+    target: Path,
+    project_name: str,
+    force: bool,
+    result: dict[str, Any],
+) -> None:
+    """Generate and write memory-init-fill skill YAML."""
+    try:
+        from .template_sync import generate_skill_memory_init_fill_yaml
+        fill_skill_content = generate_skill_memory_init_fill_yaml(project_name)
+        if fill_skill_content:
+            fill_skills_dir = target / "memory" / "system" / "skills"
+            fill_skills_dir.mkdir(parents=True, exist_ok=True)
+            fill_skill_path = fill_skills_dir / "memory-init-fill.yaml"
+            if not fill_skill_path.exists() or force:
+                fill_skill_path.write_text(fill_skill_content, encoding="utf-8")
+                result["created"].append("file:memory/system/skills/memory-init-fill.yaml")
+            else:
+                result["skipped"].append("file:memory/system/skills/memory-init-fill.yaml (exists)")
+    except Exception as exc:
+        result["warnings"].append(f"memory-init-fill skill generation skipped: {exc}")
+
+
+def _finalize_hooks_and_agents(
+    target: Path,
+    host: str,
+    mode: str,
+    result: dict[str, Any],
+) -> None:
+    """Clean up legacy hooks and update AGENTS.md."""
+    _cleanup_legacy_hooks_json(target, result)
+    update_agents_md(target, host=host, result=result, mode=mode)
+
+
+def _finalize_integrity_signing(
+    target: Path,
+    result: dict[str, Any],
+) -> None:
+    """Sign the integrity manifest after scaffolding."""
+    try:
+        from .memory_hook_integrity_keys import load_or_create_key
+        from .memory_hook_integrity_manifest import sign_project_incremental
+
+        key = load_or_create_key()
+        changed_paths = []
+        for entry in result.get("created", []):
+            if entry.startswith("file:"):
+                path_part = entry[len("file:"):]
+                paren_idx = path_part.find(" (")
+                if paren_idx >= 0:
+                    path_part = path_part[:paren_idx]
+                changed_paths.append(path_part)
+
+        sign_project_incremental(target, key, changed_paths=changed_paths, reason="memory-init baseline")
+        result["created"].append("file:memory/system/manifest.json (signed)")
+    except Exception as exc:
+        result["warnings"].append(f"integrity signing skipped: {exc}")
+
+
+def _finalize_integrity_audit(
+    memory_root: Path,
+    project_name: str,
+    result: dict[str, Any],
+) -> None:
+    """Create initial integrity-audit.jsonl."""
+    try:
+        import json as _json
+        audit_path = memory_root / "integrity-audit.jsonl"
+        if not audit_path.exists():
+            audit_entry = {
+                "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "action": "init",
+                "version": CURRENT_MEMORY_VERSION,
+                "project": project_name,
+                "reason": "initial scaffold",
+            }
+            audit_path.write_text(_json.dumps(audit_entry, ensure_ascii=False) + "\n", encoding="utf-8")
+            result["created"].append("file:memory/system/integrity-audit.jsonl")
+    except Exception as exc:
+        result["warnings"].append(f"integrity-audit.jsonl creation skipped: {exc}")
+
+
+def _finalize_ownership_toml(
+    target: Path,
+    memory_root: Path,
+    project_name: str,
+    mode: str,
+    force: bool,
+    result: dict[str, Any],
+) -> None:
+    """Write ownership.toml with mode-aware handling."""
+    try:
+        ownership_path = memory_root / "ownership.toml"
+        ownership = load_memory_ownership(target)
+        authorized_maintenance = mode == "repair" or os.environ.get("MEMORY_INIT_RUNNING") == "1"
+        should_skip, _ = _should_skip_file(
+            ownership_path, mode, force, ownership, authorized_maintenance, target, result
+        )
+        if not should_skip:
+            content, warnings = template_ownership_toml(project_name)
+            ownership_path.write_text(content, encoding="utf-8")
+            result["created"].append("file:ownership.toml")
+            result["warnings"].extend(warnings)
+        elif ownership_path.exists():
+            if mode == "update":
+                try:
+                    from .version_sync import patch_ownership_memory_version
+                except ImportError:
+                    from memory_core.tools.version_sync import patch_ownership_memory_version  # type: ignore
+                if patch_ownership_memory_version(ownership_path, CURRENT_MEMORY_VERSION):
+                    result["created"].append(f"file:ownership.toml (memory_version patched to {CURRENT_MEMORY_VERSION})")
+                else:
+                    result["skipped"].append("file:ownership.toml (already up-to-date)")
+            else:
+                result["skipped"].append("file:ownership.toml (already exists)")
+    except Exception as exc:
+        result["errors"].append(f"failed to create ownership.toml: {exc}")
+
+
+def _finalize_evidence_refs(
+    target: Path,
+    result: dict[str, Any],
+) -> None:
+    """Validate evidence references on disk."""
+    try:
+        from memory_core.tools.evidence_ref_validator import validate_evidence_refs_on_disk
+        ref_errors = validate_evidence_refs_on_disk(target)
+        for err in ref_errors:
+            result["warnings"].append(
+                f"evidence ref check: {err.kb_file} has {len(err.missing_refs)} missing refs: "
+                f"{', '.join(err.missing_refs[:3])}"
+            )
+    except Exception as exc:
+        result["warnings"].append(f"evidence ref check skipped: {exc}")
+
+
+def _finalize_post_audit(
+    target: Path,
+    result: dict[str, Any],
+) -> None:
+    """Run post-initialization audit and collect P1 findings."""
+    try:
+        from .audit_project_layout import audit_project_layout
+        audit_result = audit_project_layout(target)
+        for finding in audit_result.findings:
+            if finding.severity == "P1":
+                result["warnings"].append(f"audit P1 [{finding.kind}] {finding.path}: {finding.message}")
+    except Exception as exc:
+        result["warnings"].append(f"post-init audit skipped (error): {exc}")
+
+
+def _finalize_init(
+    target: Path,
+    memory_root: Path,
+    project_name: str,
+    host: str,
+    mode: str,
+    force: bool,
+    auto_fill: bool,
+    result: dict[str, Any],
+) -> None:
+    """Finalize initialization: auto-fill, hooks, integrity, ownership, audit."""
+    # Auto-fill
+    if result["success"] and auto_fill:
+        _finalize_auto_fill(target, project_name, auto_fill, result)
+
+    if not result["success"]:
+        return
+
+    # Generate skill YAML
+    _finalize_skill_yaml(target, project_name, force, result)
+
+    # Hooks and AGENTS.md
+    _finalize_hooks_and_agents(target, host, mode, result)
+
+    # Integrity signing
+    _finalize_integrity_signing(target, result)
+
+    # Integrity audit
+    _finalize_integrity_audit(memory_root, project_name, result)
+
+    # Ownership.toml
+    _finalize_ownership_toml(target, memory_root, project_name, mode, force, result)
+
+    # Evidence refs
+    _finalize_evidence_refs(target, result)
+
+    # Post-init audit
+    _finalize_post_audit(target, result)
+
+
 def init_project_memory(
     target: Path,
     *,
@@ -1766,149 +2454,26 @@ def init_project_memory(
         "force_overwrite": False,
     }
 
-    # Mode-aware handling: adopt/update/repair have different semantics
-    if mode not in ("create", "adopt", "update", "repair"):
-        result["errors"].append(f"Invalid mode: {mode}. Must be one of: create, adopt, update, repair")
-        result["mode"] = "error"
-        return result
-
     memory_root = target / "memory" / "system"
     project_name = _project_name(target, scope)
 
-    # Check denylist: reject paths in tmp, ~/.factory, $HOME, junk patterns, non-git
-    deny_result = check_denylist(target, allow_non_git=allow_non_git)
-    if deny_result.denied:
-        result["errors"].append(f"Project denied by denylist rule '{deny_result.rule}': {deny_result.message}")
+    # Validate arguments
+    is_valid, error_msg = _validate_init_args(target, mode, no_clobber, allow_non_git, memory_root, project_name)
+    if not is_valid:
+        result["errors"].append(error_msg)
         result["mode"] = "error"
         return result
 
-    # Mode-aware: adopt/update/repair should not fail on existing files
-    # but create mode with --no-clobber should
-    if no_clobber and mode == "create":
-        existing_essential = []
-        for fname in ESSENTIAL_FILES:
-            file_path = memory_root / fname
-            if file_path.exists():
-                existing_essential.append(fname)
-        # Also check runtime KB files
-        for fname in RUNTIME_KB_FILES:
-            file_path = target / fname
-            if file_path.exists():
-                existing_essential.append(fname)
-        # Check project scope file
-        scope_file = f"memory/kb/projects/{project_name}.md"
-        if (target / scope_file).exists():
-            existing_essential.append(scope_file)
-        if existing_essential:
-            result["errors"].append(
-                f"refused to clobber existing memory/system/; use --force to overwrite "
-                f"or remove existing files first. Existing files: {', '.join(existing_essential)}"
-            )
-            result["mode"] = "error"
-            return result
-
-    # Mode-aware: check for business files that should not be overwritten in adopt/update/repair
+    # Mode-aware business file check
     index_md_path = target / "INDEX.md"
     has_business_index = index_md_path.exists() and "project-map" not in index_md_path.read_text(encoding="utf-8", errors="ignore").lower()
-
     if mode in ("adopt", "update", "repair") and has_business_index:
-        # These modes: never overwrite business INDEX.md
         result["warnings"].append(f"{mode} mode: skipping business INDEX.md (not a memory file)")
 
-    if mode in ("adopt", "update", "repair"):
-        # These modes should not fail if memory/system/ already exists
-        # They work with existing structures
-        pass
-
-    # Check dry-run mode - NEVER write files in dry-run
+    # Dry-run mode
     if dry_run:
         result["success"] = True
-        dry_run_output: dict[str, Any] = {
-            "would_create_dirs": list(DIRECTORY_STRUCTURE),
-            "would_create_files": [],
-            "project_name": project_name,
-        }
-
-        # Mode-aware dry-run: determine what would happen in this mode
-        def _dry_run_action(file_path: Path, is_business_file: bool = False, is_marker_protected: bool = False) -> str:
-            """Determine action based on mode, file existence, and file type."""
-            exists = file_path.exists()
-
-            if mode == "adopt":
-                # adopt: never overwrite business files or memory files
-                if exists:
-                    return "skip - exists (adopt mode preserves existing)"
-                return "create"
-
-            elif mode == "update":
-                # update: never overwrite business files (INDEX.md, project-map)
-                if is_business_file:
-                    return "skip - business file (update mode preserves)"
-                # update: replace marker-protected files (AGENTS.md handled separately)
-                if exists:
-                    if is_marker_protected:
-                        return "replace marker block"
-                    return "skip - exists (update mode preserves non-marker files)"
-                return "create"
-
-            elif mode == "repair":
-                # repair: only create missing required files
-                if exists:
-                    return "skip - exists (repair mode never overwrites)"
-                return "create"
-
-            else:  # create mode
-                if exists:
-                    if force:
-                        return "overwrite"
-                    return "skip - exists"
-                return "create"
-
-        # Check which files would be created/overwritten (under memory/system/)
-        for fname in ESSENTIAL_FILES:
-            file_path = memory_root / fname
-            action = _dry_run_action(file_path, is_business_file=False)
-            dry_run_output["would_create_files"].append(f"{fname} ({action})")
-
-        # Check runtime KB files (under workspace_root)
-        for fname in RUNTIME_KB_FILES:
-            file_path = target / fname
-            action = _dry_run_action(file_path, is_business_file=False)
-            dry_run_output["would_create_files"].append(f"{fname} ({action})")
-
-        # Check project scope file
-        scope_file = f"memory/kb/projects/{project_name}.md"
-        scope_path = target / scope_file
-        action = _dry_run_action(scope_path, is_business_file=False)
-        dry_run_output["would_create_files"].append(f"{scope_file} ({action})")
-
-        # Check KB_TEMPLATES files - INDEX.md and project-map are business files
-        for fname in KB_TEMPLATES:
-            file_path = target / fname
-            is_business = fname == "INDEX.md" or fname.startswith("project-map/")
-            action = _dry_run_action(file_path, is_business_file=is_business)
-            dry_run_output["would_create_files"].append(f"{fname} ({action})")
-
-        # Check extra runtime files
-        for fname in RUNTIME_EXTRA_FILES:
-            file_path = target / fname
-            action = _dry_run_action(file_path, is_business_file=False)
-            dry_run_output["would_create_files"].append(f"{fname} ({action})")
-
-        # Check per-scope control loop files (memory/kb/projects/{scope}/)
-        per_scope_dir = f"memory/kb/projects/{project_name}"
-        dry_run_output["would_create_dirs"].append(f"{per_scope_dir}/")
-        for scope_file in ("CANONICAL.md", "STATE.md", "PLAN.md", "TASKS.md"):
-            scope_path = target / per_scope_dir / scope_file
-            action = _dry_run_action(scope_path, is_business_file=False)
-            dry_run_output["would_create_files"].append(f"{per_scope_dir}/{scope_file} ({action})")
-
-        # NOW.md at project root
-        now_path = target / "NOW.md"
-        now_action = _dry_run_action(now_path, is_business_file=False)
-        dry_run_output["would_create_files"].append(f"NOW.md ({now_action})")
-
-        result["dry_run_output"] = dry_run_output
+        result["dry_run_output"] = _build_dry_run_result(target, mode, force, project_name, memory_root)
         result["force_overwrite"] = force
         result["action_taken"] = "dry-run"
         return result
@@ -1922,512 +2487,28 @@ def init_project_memory(
         )
         return result
 
-    # Create global KB structure if it doesn't exist (v0.8.0+)
-    # This ensures ~/.memory/global-kb/ is available for routing fallback
+    # Create global KB structure
     global_kb_root = get_global_kb_root()
     global_kb_result = create_global_kb_structure(global_kb_root)
     if global_kb_result["success"]:
         result["created"].extend(global_kb_result["created_paths"])
         result["skipped"].extend(global_kb_result["skipped_paths"])
     else:
-        # Non-blocking: global KB creation failure shouldn't block init
         result["warnings"].extend(global_kb_result["errors"])
 
     # Create directories
-    for dir_rel in DIRECTORY_STRUCTURE:
-        dir_path = target / dir_rel
-        try:
-            dir_path.mkdir(parents=True, exist_ok=True)
-            result["created"].append(f"dir:{dir_rel}")
-        except Exception as exc:
-            result["errors"].append(f"failed to create {dir_rel}: {exc}")
+    _create_directories(target, result)
 
-    # Create .keep files in empty directories
-    for dir_rel in DIRECTORY_STRUCTURE:
-        # Skip the top-level memory directories
-        if dir_rel in ("memory", "memory/system"):
-            continue
-        keep_path = target / dir_rel / ".keep"
-        if not keep_path.exists():
-            try:
-                keep_path.write_text("", encoding="utf-8")
-                result["created"].append(f"file:{dir_rel}/.keep")
-            except Exception as exc:
-                result["errors"].append(f"failed to create {dir_rel}/.keep: {exc}")
-
-    # Create template files with mode-aware handling
-    any_overwritten = False
-    any_skipped = False
-
-    # Load ownership configuration for force restriction checks
-    ownership = load_memory_ownership(target)
-    authorized_maintenance = mode == "repair" or os.environ.get("MEMORY_INIT_RUNNING") == "1"
-
-    # Helper function to determine if we should skip/overwrite based on mode
-    def _should_skip_file(file_path: Path, fname: str, is_business_file: bool = False) -> tuple[bool, str]:
-        """Determine if file should be skipped based on mode.
-
-        Returns (should_skip, reason)
-        """
-        if not file_path.exists():
-            return False, "create"
-
-        if mode == "adopt":
-            # adopt: never overwrite any existing files
-            return True, f"{mode} mode preserves existing"
-
-        elif mode == "update":
-            # update: never overwrite business files (INDEX.md, project-map)
-            if is_business_file:
-                return True, f"{mode} mode preserves business files"
-            # update: can overwrite memory files with force
-            if force:
-                return False, "overwrite"
-            return True, f"{mode} mode preserves existing (use --force to overwrite)"
-
-        elif mode == "repair":
-            # repair: never overwrite any existing files
-            return True, f"{mode} mode only creates missing files"
-
-        else:  # create mode
-            if force:
-                # Step 2.2: Check ownership before allowing force overwrite
-                try:
-                    rel_path = file_path.relative_to(target).as_posix()
-                except ValueError:
-                    rel_path = str(file_path)
-                classification = classify_owned_path(rel_path, ownership=ownership)
-                if isinstance(classification, Owned) and not authorized_maintenance:
-                    # Owned file - reject force overwrite
-                    result["errors"].append(
-                        f"Force overwrite rejected: {rel_path} is owned "
-                        f"({classification.reason})"
-                    )
-                    return True, "force rejected - owned file"
-                return False, "overwrite"
-            return True, "already exists"
-
-    # 1. Write KB and Project Map templates first
-    for fname, template_fn in KB_TEMPLATES.items():
-        file_path = target / fname
-        is_business = fname == "INDEX.md" or fname.startswith("project-map/")
-
-        should_skip, reason = _should_skip_file(file_path, fname, is_business_file=is_business)
-
-        if file_path.exists() and should_skip:
-            result["skipped"].append(f"file:{fname} ({reason})")
-            any_skipped = True
-            continue
-
-        if file_path.exists() and not should_skip:
-            # Overwrite
-            try:
-                content, warnings = template_fn(project_name)
-                content = _decorate_index_content(fname, content)
-                file_path.write_text(content, encoding="utf-8")
-                result["created"].append(f"file:{fname} (overwritten)")
-                result["warnings"].extend(warnings)
-                any_overwritten = True
-            except Exception as exc:
-                result["errors"].append(f"failed to overwrite {fname}: {exc}")
-            continue
-
-        # Create new file
-        try:
-            content, warnings = template_fn(project_name)
-            content = _decorate_index_content(fname, content)
-            file_path.write_text(content, encoding="utf-8")
-            result["created"].append(f"file:{fname}")
-            result["warnings"].extend(warnings)
-        except Exception as exc:
-            result["errors"].append(f"failed to create {fname}: {exc}")
-
-    # 2. Write memory/system/ templates
-    for fname, template_fn in FILE_TEMPLATES.items():
-        file_path = memory_root / fname
-        should_skip, reason = _should_skip_file(file_path, fname, is_business_file=False)
-
-        if file_path.exists() and should_skip:
-            result["skipped"].append(f"file:{fname} ({reason})")
-            any_skipped = True
-            continue
-
-        if file_path.exists() and not should_skip:
-            # Overwrite
-            try:
-                content, warnings = template_fn(project_name)
-                file_path.write_text(content, encoding="utf-8")
-                result["created"].append(f"file:{fname} (overwritten)")
-                result["warnings"].extend(warnings)
-                any_overwritten = True
-            except Exception as exc:
-                result["errors"].append(f"failed to overwrite {fname}: {exc}")
-            continue
-
-        # Create new file
-        try:
-            content, warnings = template_fn(project_name)
-            file_path.write_text(content, encoding="utf-8")
-            result["created"].append(f"file:{fname}")
-            result["warnings"].extend(warnings)
-        except Exception as exc:
-            result["errors"].append(f"failed to create {fname}: {exc}")
-
-    # Create adapter.toml separately (requires host parameter)
-    adapter_path = memory_root / "adapter.toml"
-    should_skip, reason = _should_skip_file(adapter_path, "adapter.toml", is_business_file=False)
-
-    if adapter_path.exists() and should_skip:
-        result["skipped"].append(f"file:adapter.toml ({reason})")
-        any_skipped = True
-    elif adapter_path.exists() and not should_skip:
-        # Overwrite
-        try:
-            content, warnings = template_adapter_toml(project_name)
-            adapter_path.write_text(content, encoding="utf-8")
-            result["created"].append("file:adapter.toml (overwritten)")
-            result["warnings"].extend(warnings)
-            any_overwritten = True
-        except Exception as exc:
-            result["errors"].append(f"failed to overwrite adapter.toml: {exc}")
-    else:
-        # Create new
-        try:
-            content, warnings = template_adapter_toml(project_name)
-            adapter_path.write_text(content, encoding="utf-8")
-            result["created"].append("file:adapter.toml")
-            result["warnings"].extend(warnings)
-        except Exception as exc:
-            result["errors"].append(f"failed to create adapter.toml: {exc}")
-
-    # Create runtime required files not covered by FILE_TEMPLATES or KB_TEMPLATES
-    # 3. memory/inbox.md - Runtime required by memory_hook_impls.py L531, L1374
-    inbox_path = target / "memory" / "inbox.md"
-    should_skip, reason = _should_skip_file(inbox_path, "memory/inbox.md", is_business_file=False)
-
-    if inbox_path.exists() and should_skip:
-        result["skipped"].append(f"file:memory/inbox.md ({reason})")
-        any_skipped = True
-    elif inbox_path.exists() and not should_skip:
-        # Overwrite
-        try:
-            content, warnings = template_inbox_md(project_name)
-            inbox_path.write_text(content, encoding="utf-8")
-            result["created"].append("file:memory/inbox.md (overwritten)")
-            result["warnings"].extend(warnings)
-            any_overwritten = True
-        except Exception as exc:
-            result["errors"].append(f"failed to overwrite memory/inbox.md: {exc}")
-    else:
-        # Create new
-        try:
-            content, warnings = template_inbox_md(project_name)
-            inbox_path.write_text(content, encoding="utf-8")
-            result["created"].append("file:memory/inbox.md")
-            result["warnings"].extend(warnings)
-        except Exception as exc:
-            result["errors"].append(f"failed to create memory/inbox.md: {exc}")
-
-    # 4b. tests/.memory-anchor.md - Evidence ref for Truth Basis sections (I-A)
-    anchor_path = target / "tests" / ".memory-anchor.md"
-    anchor_path.parent.mkdir(parents=True, exist_ok=True)
-    should_skip, reason = _should_skip_file(anchor_path, "tests/.memory-anchor.md", is_business_file=False)
-
-    if anchor_path.exists() and should_skip:
-        result["skipped"].append(f"file:tests/.memory-anchor.md ({reason})")
-        any_skipped = True
-    elif anchor_path.exists() and not should_skip:
-        # Overwrite
-        try:
-            content = "# Memory Anchor\n\n# Evidence ref for Truth Basis sections in global-canonical files.\n# Created by init_project_memory.\n"
-            anchor_path.write_text(content, encoding="utf-8")
-            result["created"].append("file:tests/.memory-anchor.md (overwritten)")
-            any_overwritten = True
-        except Exception as exc:
-            result["errors"].append(f"failed to overwrite tests/.memory-anchor.md: {exc}")
-    else:
-        # Create new
-        try:
-            content = "# Memory Anchor\n\n# Evidence ref for Truth Basis sections in global-canonical files.\n# Created by init_project_memory.\n"
-            anchor_path.write_text(content, encoding="utf-8")
-            result["created"].append("file:tests/.memory-anchor.md")
-        except Exception as exc:
-            result["errors"].append(f"failed to create tests/.memory-anchor.md: {exc}")
-
-    # 4c. tools/health-check.sh - Evidence ref for Truth Basis (lower-layer tooling support)
-    tools_dir = target / "tools"
-    tools_dir.mkdir(parents=True, exist_ok=True)
-    health_check_path = tools_dir / "health-check.sh"
-    should_skip, reason = _should_skip_file(health_check_path, "tools/health-check.sh", is_business_file=False)
-
-    if health_check_path.exists() and should_skip:
-        result["skipped"].append(f"file:tools/health-check.sh ({reason})")
-        any_skipped = True
-    elif health_check_path.exists() and not should_skip:
-        # Overwrite
-        try:
-            content = "#!/bin/bash\n# Health check script for memory-core validation.\n# Created by init_project_memory as lower-layer tooling evidence ref.\necho 'healthy'\n"
-            health_check_path.write_text(content, encoding="utf-8")
-            result["created"].append("file:tools/health-check.sh (overwritten)")
-            any_overwritten = True
-        except Exception as exc:
-            result["errors"].append(f"failed to overwrite tools/health-check.sh: {exc}")
-    else:
-        # Create new
-        try:
-            content = "#!/bin/bash\n# Health check script for memory-core validation.\n# Created by init_project_memory as lower-layer tooling evidence ref.\necho 'healthy'\n"
-            health_check_path.write_text(content, encoding="utf-8")
-            result["created"].append("file:tools/health-check.sh")
-        except Exception as exc:
-            result["errors"].append(f"failed to create tools/health-check.sh: {exc}")
-
-    # 5. memory/kb/projects/{scope}.md - Runtime required by memory_hook_core.py L207-210
-    scope_md_path = target / "memory" / "kb" / "projects" / f"{project_name}.md"
-    should_skip, reason = _should_skip_file(scope_md_path, f"memory/kb/projects/{project_name}.md", is_business_file=False)
-
-    if scope_md_path.exists() and should_skip:
-        result["skipped"].append(f"file:memory/kb/projects/{project_name}.md ({reason})")
-        any_skipped = True
-    elif scope_md_path.exists() and not should_skip:
-        # Overwrite
-        try:
-            content, warnings = template_project_scope_md(project_name)
-            scope_md_path.write_text(content, encoding="utf-8")
-            result["created"].append(f"file:memory/kb/projects/{project_name}.md (overwritten)")
-            result["warnings"].extend(warnings)
-            any_overwritten = True
-        except Exception as exc:
-            result["errors"].append(f"failed to overwrite memory/kb/projects/{project_name}.md: {exc}")
-    else:
-        # Create new
-        try:
-            content, warnings = template_project_scope_md(project_name)
-            scope_md_path.write_text(content, encoding="utf-8")
-            result["created"].append(f"file:memory/kb/projects/{project_name}.md")
-            result["warnings"].extend(warnings)
-        except Exception as exc:
-            result["errors"].append(f"failed to create memory/kb/projects/{project_name}.md: {exc}")
+    # Render all templates
+    any_overwritten, any_skipped = _render_all_templates(target, memory_root, project_name, mode, force, result)
 
     result["success"] = len(result["errors"]) == 0
-
-    # 6. Create per-scope control loop directory: memory/kb/projects/{scope}/
-    #    and generate CANONICAL.md, STATE.md, PLAN.md, TASKS.md
-    scope_dir = target / "memory" / "kb" / "projects" / project_name
-    try:
-        scope_dir.mkdir(parents=True, exist_ok=True)
-        result["created"].append(f"dir:memory/kb/projects/{project_name}/")
-    except Exception as exc:
-        result["errors"].append(f"failed to create per-scope directory: {exc}")
-
-    # Helper to write a per-scope template file with idempotency
-    def _write_per_scope_template(
-        fname: str,
-        template_fn: Any,
-        content_label: str,
-    ) -> None:
-        nonlocal any_overwritten, any_skipped
-        file_path = scope_dir / fname
-        should_skip, reason = _should_skip_file(
-            file_path, f"memory/kb/projects/{project_name}/{fname}", is_business_file=False,
-        )
-        if file_path.exists() and should_skip:
-            result["skipped"].append(f"file:memory/kb/projects/{project_name}/{fname} ({reason})")
-            any_skipped = True
-            return
-        if file_path.exists() and not should_skip:
-            try:
-                content, warnings = template_fn(project_name)
-                file_path.write_text(content, encoding="utf-8")
-                result["created"].append(f"file:memory/kb/projects/{project_name}/{fname} (overwritten)")
-                result["warnings"].extend(warnings)
-                any_overwritten = True
-            except Exception as exc:
-                result["errors"].append(f"failed to overwrite {content_label}: {exc}")
-            return
-        # Create new
-        try:
-            content, warnings = template_fn(project_name)
-            file_path.write_text(content, encoding="utf-8")
-            result["created"].append(f"file:memory/kb/projects/{project_name}/{fname}")
-            result["warnings"].extend(warnings)
-        except Exception as exc:
-            result["errors"].append(f"failed to create {content_label}: {exc}")
-
-    _write_per_scope_template("CANONICAL.md", template_canonical_md, "CANONICAL.md")
-    _write_per_scope_template("STATE.md", template_state_md, "STATE.md")
-    _write_per_scope_template("PLAN.md", template_plan_md, "PLAN.md")
-    _write_per_scope_template("TASKS.md", template_tasks_md, "TASKS.md")
-
-    # 7. NOW.md at project root
-    now_md_path = target / "NOW.md"
-    should_skip, reason = _should_skip_file(now_md_path, "NOW.md", is_business_file=False)
-    if now_md_path.exists() and should_skip:
-        result["skipped"].append(f"file:NOW.md ({reason})")
-        any_skipped = True
-    elif now_md_path.exists() and not should_skip:
-        try:
-            content, warnings = template_now_md(project_name)
-            now_md_path.write_text(content, encoding="utf-8")
-            result["created"].append("file:NOW.md (overwritten)")
-            result["warnings"].extend(warnings)
-            any_overwritten = True
-        except Exception as exc:
-            result["errors"].append(f"failed to overwrite NOW.md: {exc}")
-    else:
-        try:
-            content, warnings = template_now_md(project_name)
-            now_md_path.write_text(content, encoding="utf-8")
-            result["created"].append("file:NOW.md")
-            result["warnings"].extend(warnings)
-        except Exception as exc:
-            result["errors"].append(f"failed to create NOW.md: {exc}")
-
     result["force_overwrite"] = force
-
-    # Preserve legacy mode outcomes for create mode while exposing the requested mode separately.
     result["action_taken"] = "overwrite" if any_overwritten else ("skip" if any_skipped else "create")
-    if not dry_run:
-        result["mode"] = result["action_taken"] if mode == "create" else mode
+    result["mode"] = result["action_taken"] if mode == "create" else mode
 
-    # Auto-fill: detect project info and fill templates (default: enabled)
-    if result["success"] and auto_fill and not dry_run:
-        try:
-            from .project_probe import ProjectProbe
-            probe = ProjectProbe(target)
-            project_info = probe.probe()
-            _apply_auto_fill(target, project_info, result, project_name=project_name)
-        except Exception as exc:
-            result["warnings"].append(f"auto-fill skipped: {exc}")
-
-    # Generate hooks.json and AGENTS.md after memory/system/ is ready
-    if result["success"]:
-        # Generate memory-init-fill skill YAML (unconditional, no --sync needed)
-        try:
-            from .template_sync import generate_skill_memory_init_fill_yaml
-            _fill_skill_content = generate_skill_memory_init_fill_yaml(project_name)
-            if _fill_skill_content:
-                _fill_skills_dir = target / "memory" / "system" / "skills"
-                _fill_skills_dir.mkdir(parents=True, exist_ok=True)
-                _fill_skill_path = _fill_skills_dir / "memory-init-fill.yaml"
-                if not _fill_skill_path.exists() or force:
-                    _fill_skill_path.write_text(_fill_skill_content, encoding="utf-8")
-                    result["created"].append("file:memory/system/skills/memory-init-fill.yaml")
-                else:
-                    result["skipped"].append("file:memory/system/skills/memory-init-fill.yaml (exists)")
-        except Exception as exc:
-            result["warnings"].append(f"memory-init-fill skill generation skipped: {exc}")
-
-        # generate_hooks_json removed — no project-level hooks.json is written (INV-2)
-        # Phase 4: Clean up legacy hooks.json files (VAL-P4-011)
-        _cleanup_legacy_hooks_json(target, result)
-        update_agents_md(target, host=host, result=result, mode=mode)
-
-
-        # L2: Sign initial manifest after memory/system/ is scaffolded
-        # F2: Use sign_project_incremental with changed_paths=所有新建文件相对路径
-        # First run: manifest doesn't exist, falls back to full sign automatically
-        try:
-            from .memory_hook_integrity_keys import load_or_create_key
-            from .memory_hook_integrity_manifest import sign_project_incremental
-
-            key = load_or_create_key()
-
-            # Collect all newly created file relative paths from result["created"]
-            changed_paths: list[str] = []
-            for entry in result.get("created", []):
-                if entry.startswith("file:"):
-                    # Strip "file:" prefix and any " (detail)" suffix
-                    path_part = entry[len("file:"):]
-                    paren_idx = path_part.find(" (")
-                    if paren_idx >= 0:
-                        path_part = path_part[:paren_idx]
-                    changed_paths.append(path_part)
-
-            sign_project_incremental(
-                target, key, changed_paths=changed_paths,
-                reason="memory-init baseline",
-            )
-            result["created"].append("file:memory/system/manifest.json (signed)")
-        except Exception as exc:
-            # Non-blocking: integrity signing is best-effort
-            result["warnings"].append(f"integrity signing skipped: {exc}")
-
-        # Create initial integrity-audit.jsonl
-        try:
-            import json as _json
-            _audit_path = memory_root / "integrity-audit.jsonl"
-            if not _audit_path.exists():
-                _audit_entry = {
-                    "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                    "action": "init",
-                    "version": CURRENT_MEMORY_VERSION,
-                    "project": project_name,
-                    "reason": "initial scaffold",
-                }
-                _audit_path.write_text(
-                    _json.dumps(_audit_entry, ensure_ascii=False) + "\n",
-                    encoding="utf-8",
-                )
-                result["created"].append("file:memory/system/integrity-audit.jsonl")
-        except Exception as exc:
-            result["warnings"].append(f"integrity-audit.jsonl creation skipped: {exc}")
-
-        # Step 2.1: Generate ownership.toml (after integrity signing, only if not dry_run)
-        if not dry_run:
-            try:
-                ownership_path = memory_root / "ownership.toml"
-                should_skip, _ = _should_skip_file(ownership_path, "ownership.toml", is_business_file=False)
-                if not should_skip:
-                    content, warnings = template_ownership_toml(project_name)
-                    ownership_path.write_text(content, encoding="utf-8")
-                    result["created"].append("file:ownership.toml")
-                    result["warnings"].extend(warnings)
-                else:
-                    if ownership_path.exists():
-                        # In update mode, patch memory_version instead of full skip
-                        if mode == "update":
-                            try:
-                                from .version_sync import patch_ownership_memory_version
-                            except ImportError:
-                                from memory_core.tools.version_sync import (
-                                    patch_ownership_memory_version,  # type: ignore
-                                )
-                            if patch_ownership_memory_version(ownership_path, CURRENT_MEMORY_VERSION):
-                                result["created"].append(f"file:ownership.toml (memory_version patched to {CURRENT_MEMORY_VERSION})")
-                            else:
-                                result["skipped"].append("file:ownership.toml (already up-to-date)")
-                        else:
-                            result["skipped"].append("file:ownership.toml (already exists)")
-            except Exception as exc:
-                result["errors"].append(f"failed to create ownership.toml: {exc}")
-
-        # Post-write evidence ref check: verify all KB evidence refs exist on disk
-        if not dry_run:
-            try:
-                from memory_core.tools.evidence_ref_validator import validate_evidence_refs_on_disk
-                ref_errors = validate_evidence_refs_on_disk(target)
-                for err in ref_errors:
-                    result["warnings"].append(
-                        f"evidence ref check: {err.kb_file} has {len(err.missing_refs)} missing refs: "
-                        f"{', '.join(err.missing_refs[:3])}"
-                    )
-            except Exception as exc:
-                # Non-blocking: best-effort check
-                result["warnings"].append(f"evidence ref check skipped: {exc}")
-
-        # Post-init audit: read-only layout health check; P1 findings → warnings.
-        # Wrapped in try/except so audit failures never block init.
-        if not dry_run:
-            try:
-                from .audit_project_layout import audit_project_layout
-                audit_result = audit_project_layout(target)
-                for finding in audit_result.findings:
-                    if finding.severity == "P1":
-                        result["warnings"].append(
-                            f"audit P1 [{finding.kind}] {finding.path}: {finding.message}"
-                        )
-            except Exception as exc:
-                result["warnings"].append(f"post-init audit skipped (error): {exc}")
+    # Finalize
+    _finalize_init(target, memory_root, project_name, host, mode, force, auto_fill, result)
 
     return result
 
