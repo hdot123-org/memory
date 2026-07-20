@@ -1063,6 +1063,93 @@ def _apply_auto_fill(
         result["created"].append(f"detected:project_type={project_info.project_type}")
 
 
+def _detect_from_pyproject(target: Path, project_info: Any) -> None:
+    """Detect Python language and project type from pyproject.toml."""
+    pyproject = target / "pyproject.toml"
+    if not pyproject.is_file() or project_info.primary_language:
+        return
+    try:
+        pyproject_text = pyproject.read_text(encoding="utf-8")
+        python_markers = [
+            "setuptools", "poetry", "hatch", "flit", "pdm", "maturin",
+            "scikit-build", "cython",
+        ]
+        if any(m in pyproject_text for m in python_markers) or "[project]" in pyproject_text:
+            project_info.primary_language = "Python"
+            if not project_info.project_type:
+                if any(m in pyproject_text for m in ["fastapi", "flask", "django", "starlette"]):
+                    project_info.project_type = "web/api"
+                elif "pytest" in pyproject_text or "pyproject" in pyproject_text:
+                    project_info.project_type = "library"
+    except Exception:
+        pass
+
+
+def _detect_from_package_json(target: Path, project_info: Any) -> None:
+    """Detect JavaScript/TypeScript language, project type, and toolchain from package.json."""
+    package_json = target / "package.json"
+    if not package_json.is_file():
+        return
+    try:
+        import json as _json
+        pkg_data = _json.loads(package_json.read_text(encoding="utf-8"))
+        if not project_info.primary_language:
+            project_info.primary_language = "JavaScript"
+
+        if not project_info.project_type:
+            deps = {**pkg_data.get("dependencies", {}), **pkg_data.get("devDependencies", {})}
+            dep_keys = list(deps.keys())
+
+            if any(d in dep_keys for d in ["next", "gatsby", "remix"]):
+                project_info.project_type = "frontend"
+            elif any(d in dep_keys for d in ["react", "vue", "svelte", "angular"]):
+                project_info.project_type = "frontend"
+            elif any(d in dep_keys for d in ["express", "koa", "fastify", "hapi"]):
+                project_info.project_type = "web/api"
+            elif pkg_data.get("main") or pkg_data.get("types"):
+                project_info.project_type = "library"
+            else:
+                project_info.project_type = "node"
+
+        # Toolchain from npm scripts
+        if not project_info.toolchain:
+            scripts = pkg_data.get("scripts", {})
+            toolchain = []
+            if "build" in scripts:
+                toolchain.append({"name": "npm", "config": "npm run build"})
+            if "test" in scripts:
+                toolchain.append({"name": "npm", "config": "npm test"})
+            # Check if TypeScript is present (need to re-check dep_keys)
+            deps = {**pkg_data.get("dependencies", {}), **pkg_data.get("devDependencies", {})}
+            dep_keys = list(deps.keys())
+            if any(d in dep_keys for d in ["typescript", "ts-node"]):
+                project_info.primary_language = "TypeScript"
+                toolchain.append({"name": "TypeScript", "config": "tsconfig.json"})
+            project_info.toolchain = toolchain
+    except Exception:
+        pass
+
+
+def _detect_from_tsconfig(target: Path, project_info: Any) -> None:
+    """Detect TypeScript from tsconfig.json."""
+    tsconfig = target / "tsconfig.json"
+    if not tsconfig.is_file() or project_info.primary_language:
+        return
+    project_info.primary_language = "TypeScript"
+    if not project_info.toolchain:
+        project_info.toolchain = [{"name": "TypeScript", "config": "tsconfig.json"}]
+
+
+def _detect_from_cargo(target: Path, project_info: Any) -> None:
+    """Detect Rust from Cargo.toml."""
+    cargo_toml = target / "Cargo.toml"
+    if not cargo_toml.is_file() or project_info.primary_language:
+        return
+    project_info.primary_language = "Rust"
+    if not project_info.project_type:
+        project_info.project_type = "library"
+
+
 def _enrich_project_info_from_config(target: Path, project_info: Any) -> None:
     """Detect tech stack from package.json / tsconfig.json / pyproject.toml.
 
@@ -1077,78 +1164,10 @@ def _enrich_project_info_from_config(target: Path, project_info: Any) -> None:
     if not isinstance(project_info, _ProjectInfo):
         return
 
-    # --- pyproject.toml detection ---
-    pyproject = target / "pyproject.toml"
-    if pyproject.is_file() and not project_info.primary_language:
-        try:
-            pyproject_text = pyproject.read_text(encoding="utf-8")
-            # Check for common Python build tools
-            python_markers = [
-                "setuptools", "poetry", "hatch", "flit", "pdm", "maturin",
-                "scikit-build", "cython",
-            ]
-            if any(m in pyproject_text for m in python_markers) or "[project]" in pyproject_text:
-                project_info.primary_language = "Python"
-                if not project_info.project_type:
-                    if any(m in pyproject_text for m in ["fastapi", "flask", "django", "starlette"]):
-                        project_info.project_type = "web/api"
-                    elif "pytest" in pyproject_text or "pyproject" in pyproject_text:
-                        project_info.project_type = "library"
-        except Exception:
-            pass
-
-    # --- package.json detection ---
-    package_json = target / "package.json"
-    if package_json.is_file():
-        try:
-            import json as _json
-            pkg_data = _json.loads(package_json.read_text(encoding="utf-8"))
-            if not project_info.primary_language:
-                project_info.primary_language = "JavaScript"
-
-            if not project_info.project_type:
-                deps = {**pkg_data.get("dependencies", {}), **pkg_data.get("devDependencies", {})}
-                dep_keys = list(deps.keys())
-
-                if any(d in dep_keys for d in ["next", "gatsby", "remix"]):
-                    project_info.project_type = "frontend"
-                elif any(d in dep_keys for d in ["react", "vue", "svelte", "angular"]):
-                    project_info.project_type = "frontend"
-                elif any(d in dep_keys for d in ["express", "koa", "fastify", "hapi"]):
-                    project_info.project_type = "web/api"
-                elif pkg_data.get("main") or pkg_data.get("types"):
-                    project_info.project_type = "library"
-                else:
-                    project_info.project_type = "node"
-
-            # Toolchain from npm scripts
-            if not project_info.toolchain:
-                scripts = pkg_data.get("scripts", {})
-                toolchain = []
-                if "build" in scripts:
-                    toolchain.append({"name": "npm", "config": "npm run build"})
-                if "test" in scripts:
-                    toolchain.append({"name": "npm", "config": "npm test"})
-                if any(d in dep_keys for d in ["typescript", "ts-node"]):
-                    project_info.primary_language = "TypeScript"
-                    toolchain.append({"name": "TypeScript", "config": "tsconfig.json"})
-                project_info.toolchain = toolchain
-        except Exception:
-            pass
-
-    # --- tsconfig.json detection ---
-    tsconfig = target / "tsconfig.json"
-    if tsconfig.is_file() and not project_info.primary_language:
-        project_info.primary_language = "TypeScript"
-        if not project_info.toolchain:
-            project_info.toolchain = [{"name": "TypeScript", "config": "tsconfig.json"}]
-
-    # --- .cargo detection (Rust) ---
-    cargo_toml = target / "Cargo.toml"
-    if cargo_toml.is_file() and not project_info.primary_language:
-        project_info.primary_language = "Rust"
-        if not project_info.project_type:
-            project_info.project_type = "library"
+    _detect_from_pyproject(target, project_info)
+    _detect_from_package_json(target, project_info)
+    _detect_from_tsconfig(target, project_info)
+    _detect_from_cargo(target, project_info)
 
 
 def _fill_scope_subdir_templates(

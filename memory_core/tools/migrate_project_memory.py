@@ -398,6 +398,134 @@ def _extract_scope_from_adapter(memory_root: Path) -> str:
     return scope.strip()
 
 
+def _v05_check_already_migrated(memory_root: Path, result: dict[str, Any]) -> bool:
+    """Check if migration already completed (idempotency)."""
+    if not memory_root.exists():
+        system_dir = memory_root.parent / V05_SYSTEM_DIR
+        if system_dir.exists():
+            result["success"] = True
+            result["detail"] = "already migrated to 0.5.0"
+            return True
+    return False
+
+
+def _v05_move_config(memory_root: Path, system_dir: Path) -> None:
+    """Move config files from .memory/ to memory/system/."""
+    for filename in _V05_CONFIG_FILES:
+        src = memory_root / filename
+        if src.exists():
+            dest = system_dir / filename
+            shutil.move(str(src), str(dest))
+
+
+def _v05_move_kb(memory_root: Path, system_dir: Path) -> None:
+    """Move kb/ and skills/ if non-empty, otherwise remove."""
+    for dirname in _V05_DELETED_DIRS:
+        src_dir = memory_root / dirname
+        if src_dir.exists():
+            if any(src_dir.iterdir()):
+                dest_dir = system_dir / dirname
+                shutil.move(str(src_dir), str(dest_dir))
+            else:
+                shutil.rmtree(str(src_dir))
+
+
+def _v05_move_templates(
+    memory_root: Path,
+    template_dest_dir: Path,
+    result: dict[str, Any],
+) -> None:
+    """Move template files to memory/kb/projects/{scope}/."""
+    for filename in _V05_TEMPLATE_FILES:
+        src = memory_root / filename
+        if src.exists():
+            dest = template_dest_dir / filename
+            if dest.exists():
+                result["residue"].append(f"Skipped {filename}: destination already exists")
+            else:
+                shutil.move(str(src), str(dest))
+
+
+def _v05_move_now_md(memory_root: Path, result: dict[str, Any]) -> None:
+    """Move NOW.md from .memory/ to project root."""
+    target_root = memory_root.parent
+    now_md_src = memory_root / _V05_NOW_MD
+    now_md_dest = target_root / _V05_NOW_MD
+    if now_md_src.exists():
+        if now_md_dest.exists():
+            result["residue"].append(f"Skipped {_V05_NOW_MD}: already exists at project root")
+            now_md_src.unlink()
+        else:
+            shutil.move(str(now_md_src), str(now_md_dest))
+
+
+def _v05_cleanup(memory_root: Path, result: dict[str, Any]) -> None:
+    """Remove .memory/ directory if empty or has only remaining subdirs."""
+    remaining_items = list(memory_root.iterdir())
+    for item in remaining_items:
+        if item.name == BACKUPS_DIR_NAME:
+            if not any(item.iterdir()):
+                shutil.rmtree(str(item))
+
+    try:
+        for item in memory_root.iterdir():
+            if item.is_dir():
+                try:
+                    shutil.rmtree(str(item))
+                except OSError:
+                    pass
+            else:
+                item.unlink()
+        memory_root.rmdir()
+    except OSError:
+        result["residue"].append("Warning: .memory/ directory could not be fully removed")
+
+
+def _v05_serialize_adapter_toml(raw_data: dict[str, Any]) -> list[str]:
+    """Serialize adapter.toml data to TOML format lines."""
+    lines: list[str] = ["# adapter.toml (migrated to 0.5.0)", ""]
+    for section, sdata in raw_data.items():
+        if isinstance(sdata, dict):
+            lines.append(f"[{section}]")
+            for k, v in sdata.items():
+                if isinstance(v, list):
+                    vals = ", ".join(f'"{x}"' for x in v)
+                    lines.append(f"{k} = [{vals}]")
+                elif isinstance(v, bool):
+                    lines.append(f"{k} = {'true' if v else 'false'}")
+                else:
+                    lines.append(f'{k} = "{v}"')
+            lines.append("")
+    return lines
+
+
+def _v05_rewrite_adapter_toml(
+    adapter_path: Path,
+    result: dict[str, Any],
+) -> None:
+    """Update adapter.toml version to 0.5.0."""
+    if not adapter_path.exists():
+        return
+    try:
+        raw_data: dict[str, Any] = tomllib.loads(
+            adapter_path.read_text(encoding="utf-8")
+        )
+        if "core" in raw_data:
+            raw_data["core"]["version"] = CURRENT_MEMORY_VERSION
+        elif "adapter" in raw_data:
+            raw_data["adapter"]["adapter_version"] = CURRENT_MEMORY_VERSION
+
+        lines = _v05_serialize_adapter_toml(raw_data)
+        tmp_path = adapter_path.parent / ".adapter.toml.migrating"
+        tmp_path.write_text("\n".join(lines), encoding="utf-8")
+        config = load_adapter_toml(tmp_path)
+        config.adapter_version = CURRENT_MEMORY_VERSION
+        adapter_path.write_text(dump_adapter_toml(config), encoding="utf-8")
+        tmp_path.unlink(missing_ok=True)
+    except Exception as exc:
+        result["residue"].append(f"adapter.toml update failed: {exc}")
+
+
 def migrate_v040_to_v050(memory_root: Path) -> dict[str, Any]:
     """Migration: 0.4.0 → 0.5.0.
 
@@ -416,22 +544,13 @@ def migrate_v040_to_v050(memory_root: Path) -> dict[str, Any]:
     """
     result: dict[str, Any] = {"success": False, "detail": "", "residue": [], "errors": []}
 
+    if _v05_check_already_migrated(memory_root, result):
+        return result
+
     target_root = memory_root.parent
-
-    # Idempotency: if .memory/ doesn't exist, assume already migrated
-    if not memory_root.exists():
-        # Check that memory/system/ exists (migration already completed)
-        system_dir = target_root / V05_SYSTEM_DIR
-        if system_dir.exists():
-            result["success"] = True
-            result["detail"] = "already migrated to 0.5.0"
-            return result
-
-    # Ensure target memory/system/ directory exists (needed for logging even on failure)
     system_dir = target_root / V05_SYSTEM_DIR
     system_dir.mkdir(parents=True, exist_ok=True)
 
-    # Extract project_scope from adapter.toml BEFORE it's moved
     try:
         project_scope = _extract_scope_from_adapter(memory_root)
     except ValueError as exc:
@@ -441,114 +560,23 @@ def migrate_v040_to_v050(memory_root: Path) -> dict[str, Any]:
         result["errors"].append(str(exc))
         return result
 
-    # Ensure template destination directory exists
     template_dest_dir = target_root / "memory" / "kb" / "projects" / project_scope
     template_dest_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Backup before making any changes
     try:
         _v05_backup(memory_root, target_root)
     except Exception as exc:
         result["detail"] = f"Backup creation failed: {exc}"
         return result
 
-    # 2. Move config files from .memory/ to memory/system/
-    for filename in _V05_CONFIG_FILES:
-        src = memory_root / filename
-        if src.exists():
-            dest = system_dir / filename
-            shutil.move(str(src), str(dest))
+    _v05_move_config(memory_root, system_dir)
+    _v05_move_kb(memory_root, system_dir)
+    _v05_move_templates(memory_root, template_dest_dir, result)
+    _v05_move_now_md(memory_root, result)
+    _v05_cleanup(memory_root, result)
 
-    # 3. Move kb/ and skills/ if non-empty
-    for dirname in _V05_DELETED_DIRS:
-        src_dir = memory_root / dirname
-        if src_dir.exists():
-            if any(src_dir.iterdir()):
-                dest_dir = system_dir / dirname
-                shutil.move(str(src_dir), str(dest_dir))
-            else:
-                # Empty directory, just remove it
-                shutil.rmtree(str(src_dir))
-
-    # 4. Move template files to memory/kb/projects/{scope}/ (skip if exists)
-    for filename in _V05_TEMPLATE_FILES:
-        src = memory_root / filename
-        if src.exists():
-            dest = template_dest_dir / filename
-            if dest.exists():
-                result["residue"].append(f"Skipped {filename}: destination already exists")
-            else:
-                shutil.move(str(src), str(dest))
-
-    # 5. Move NOW.md from .memory/ to project root (if not already there)
-    now_md_src = memory_root / _V05_NOW_MD
-    now_md_dest = target_root / _V05_NOW_MD
-    if now_md_src.exists():
-        if now_md_dest.exists():
-            result["residue"].append(f"Skipped {_V05_NOW_MD}: already exists at project root")
-            # Remove from .memory/ since it's already at root
-            now_md_src.unlink()
-        else:
-            shutil.move(str(now_md_src), str(now_md_dest))
-
-    # 6. Remove .memory/ directory if empty or has only remaining subdirs
-    remaining_items = list(memory_root.iterdir())
-    # Only remove backups/ if it's empty (real backups should be under memory/system/backups/)
-    for item in remaining_items:
-        if item.name == BACKUPS_DIR_NAME:
-            if not any(item.iterdir()):
-                shutil.rmtree(str(item))
-
-    # Try to remove the .memory/ directory
-    try:
-        # Remove any remaining empty directories
-        for item in memory_root.iterdir():
-            if item.is_dir():
-                try:
-                    shutil.rmtree(str(item))
-                except OSError:
-                    pass
-            else:
-                item.unlink()
-        memory_root.rmdir()
-    except OSError:
-        # If .memory/ can't be fully removed, leave it (non-critical)
-        result["residue"].append("Warning: .memory/ directory could not be fully removed")
-
-    # 7. Update adapter.toml version to 0.5.0
     adapter_path = system_dir / ADAPTER_TOML_NAME
-    if adapter_path.exists():
-        try:
-            raw_data: dict[str, Any] = tomllib.loads(
-                adapter_path.read_text(encoding="utf-8")
-            )
-            # Update version in-place regardless of layout
-            if "core" in raw_data:
-                raw_data["core"]["version"] = CURRENT_MEMORY_VERSION
-            elif "adapter" in raw_data:
-                raw_data["adapter"]["adapter_version"] = CURRENT_MEMORY_VERSION
-            # Write canonical format
-            _tmp_path = adapter_path.parent / ".adapter.toml.migrating"
-            _lines: list[str] = ["# adapter.toml (migrated to 0.5.0)", ""]
-            for _section, _sdata in raw_data.items():
-                if isinstance(_sdata, dict):
-                    _lines.append(f"[{_section}]")
-                    for _k, _v in _sdata.items():
-                        if isinstance(_v, list):
-                            _vals = ", ".join(f'"{x}"' for x in _v)
-                            _lines.append(f"{_k} = [{_vals}]")
-                        elif isinstance(_v, bool):
-                            _lines.append(f"{_k} = {'true' if _v else 'false'}")
-                        else:
-                            _lines.append(f'{_k} = "{_v}"')
-                    _lines.append("")
-            _tmp_path.write_text("\n".join(_lines), encoding="utf-8")
-            _config = load_adapter_toml(_tmp_path)
-            _config.adapter_version = CURRENT_MEMORY_VERSION
-            adapter_path.write_text(dump_adapter_toml(_config), encoding="utf-8")
-            _tmp_path.unlink(missing_ok=True)
-        except Exception as exc:
-            result["residue"].append(f"adapter.toml update failed: {exc}")
+    _v05_rewrite_adapter_toml(adapter_path, result)
 
     result["success"] = True
     result["detail"] = f"Migrated from 0.4.0 to 0.5.0: moved config to memory/system/, templates to memory/kb/projects/{project_scope}/, removed .memory/"
