@@ -971,6 +971,334 @@ def _read_current_version(memory_root: Path) -> str | None:
 # Main migration logic
 # ---------------------------------------------------------------------------
 
+def _resolve_memory_root(
+    target: Path, from_version: str, to_version: str, result: dict[str, Any],
+) -> tuple[Path, bool] | None:
+    """Phase 1: Resolve memory root location.
+
+    Returns (memory_root, is_v05_plus_layout) on success, or None if an
+    early-return result was written into *result* (caller should return result).
+    """
+    memory_root = target / ".memory"
+    is_v05_plus_layout = False
+
+    if not memory_root.is_dir():
+        system_dir = target / V05_SYSTEM_DIR
+        if from_version == "0.4.0" and to_version == "0.5.0" and system_dir.is_dir():
+            result["success"] = True
+            result["noop"] = True
+            result["reason"] = "already migrated to 0.5.0"
+            return None
+        elif system_dir.is_dir():
+            memory_root = system_dir
+            is_v05_plus_layout = True
+        else:
+            result["errors"].append(f".memory/ directory not found at {memory_root}")
+            return None
+
+    return memory_root, is_v05_plus_layout
+
+
+def _validate_versions(
+    from_version: str, to_version: str, memory_root: Path, result: dict[str, Any],
+) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...] | None] | None:
+    """Phase 2: Parse version tuples and read current version.
+
+    Returns (from_tuple, to_tuple, current_tuple) on success, or None on error
+    (error details written into *result*).
+    """
+    try:
+        to_tuple = _parse_version_tuple(to_version)
+        from_tuple = _parse_version_tuple(from_version)
+    except (ValueError, AttributeError) as exc:
+        result["errors"].append(
+            f"Invalid version format for migration: from={from_version!r} "
+            f"to={to_version!r} ({exc}); expected SemVer-like 'MAJOR.MINOR.PATCH'"
+        )
+        result["error"] = "invalid_version_format"
+        return None
+
+    current_version = _read_current_version(memory_root)
+    current_tuple: tuple[int, ...] | None = None
+    if current_version is not None:
+        try:
+            current_tuple = _parse_version_tuple(current_version)
+        except (ValueError, AttributeError):
+            current_tuple = None
+
+    return from_tuple, to_tuple, current_tuple
+
+
+def _check_idempotency_and_downgrade(
+    from_tuple: tuple[int, ...],
+    to_tuple: tuple[int, ...],
+    current_tuple: tuple[int, ...] | None,
+    from_version: str,
+    to_version: str,
+    result: dict[str, Any],
+) -> bool:
+    """Phase 3: Check idempotency and downgrade rejection.
+
+    Returns True if the caller should return *result* immediately (early exit),
+    or False to continue with the migration.
+    """
+    if current_tuple is not None and current_tuple == to_tuple:
+        result["success"] = True
+        result["noop"] = True
+        result["reason"] = "already at target version"
+        return True
+
+    if to_tuple < from_tuple:
+        result["success"] = False
+        result["error"] = _DOWNGRADE_NOT_SUPPORTED
+        result["message"] = f"Downgrade not supported: from={from_version} to={to_version}"
+        result["errors"].append(result["message"])
+        return True
+
+    if current_tuple is not None and current_tuple > to_tuple:
+        current_version = ".".join(str(x) for x in current_tuple)
+        result["success"] = False
+        result["error"] = _CURRENT_NEWER_THAN_TARGET
+        result["message"] = (
+            f"Current version ({current_version}) is newer than target ({to_version})"
+        )
+        result["errors"].append(result["message"])
+        return True
+
+    return False
+
+
+def _perform_backup(
+    memory_root: Path,
+    from_version: str,
+    to_version: str,
+    is_v05_plus_layout: bool,
+    is_v04_to_v05: bool,
+    dry_run: bool,
+    result: dict[str, Any],
+) -> bool:
+    """Phase 4: Create pre-migration backup.
+
+    Returns True if the caller should return *result* immediately (backup failed),
+    or False to continue.
+    """
+    if dry_run or is_v04_to_v05:
+        return False
+
+    try:
+        if is_v05_plus_layout:
+            backups_dir = memory_root / BACKUPS_DIR_NAME
+            backups_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            backup_dest = backups_dir / ts
+            source_files_count = 0
+            for p in memory_root.rglob("*"):
+                if p.is_file():
+                    rel = p.relative_to(memory_root)
+                    if rel.parts[0] != BACKUPS_DIR_NAME:
+                        dst_path = backup_dest / rel
+                        dst_path.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(str(p), str(dst_path))
+                        source_files_count += 1
+            manifest = {
+                "from_version": from_version,
+                "to_version": to_version,
+                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "source_files_count": source_files_count,
+                "layout": "v05+",
+            }
+            manifest_path = backup_dest / BACKUP_MANIFEST_NAME
+            manifest_path.write_text(
+                json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+        else:
+            _create_backup(memory_root, from_version, to_version)
+    except Exception as exc:
+        log_path = memory_root / MIGRATIONS_LOG_NAME
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        line = (
+            f"{now} | {from_version} | {to_version} | failed_backup_failed"
+            f" | Backup creation failed: memory_root={memory_root} exc={exc}"
+        )
+        if log_path.is_file():
+            _append_migrations_log(log_path, line)
+        else:
+            log_path.write_text(f"# Migrations Log\n{line}\n", encoding="utf-8")
+        result["success"] = False
+        result["error"] = _BACKUP_FAILED
+        result["errors"].append(f"Backup creation failed for {memory_root}: {exc}")
+        return True
+
+    return False
+
+
+def _execute_migrations(
+    migrations: list[dict[str, Any]],
+    memory_root: Path,
+    target: Path,
+    is_v04_to_v05: bool,
+    dry_run: bool,
+    result: dict[str, Any],
+) -> bool:
+    """Phase 5: Execute discovered migrations sequentially.
+
+    Returns True if all migrations succeeded, False otherwise.
+    """
+    all_success = True
+    for mig in migrations:
+        mig_desc = f"{mig['from']}->{mig['to']}"
+
+        if dry_run:
+            result["migrations_executed"].append(
+                {"key": mig_desc, "status": "would_execute"}
+            )
+            log_entry = append_migration_log(
+                memory_root, mig["from"], mig["to"], "pending (dry-run)",
+                f"Would migrate {mig['from']} to {mig['to']}",
+                dry_run=True,
+            )
+            result["log_entries"].append(log_entry)
+            continue
+
+        mig_result = mig["fn"](memory_root)
+        status = "success" if mig_result["success"] else "failed"
+        log_root = target / V05_SYSTEM_DIR if is_v04_to_v05 else memory_root
+        log_entry = append_migration_log(
+            log_root, mig["from"], mig["to"], status,
+            mig_result.get("detail", ""),
+            dry_run=False,
+        )
+        result["log_entries"].append(log_entry)
+        result["migrations_executed"].append(
+            {
+                "key": mig_desc,
+                "status": status,
+                "detail": mig_result.get("detail", ""),
+            }
+        )
+
+        if mig_result.get("residue"):
+            result["residue"].extend(mig_result["residue"])
+
+        if not mig_result["success"]:
+            all_success = False
+            result["errors"].append(
+                f"Migration {mig_desc} failed: {mig_result.get('detail', 'unknown')}"
+            )
+            if mig_result.get("error"):
+                result["error"] = mig_result["error"]
+            break
+
+    return all_success
+
+
+def _run_post_migration_hooks(
+    memory_root: Path,
+    target: Path,
+    is_v04_to_v05: bool,
+    result: dict[str, Any],
+) -> None:
+    """Phase 6: Run post-migration hooks (ownership, manifest upgrade, rollback plan)."""
+    effective_root = target / V05_SYSTEM_DIR if is_v04_to_v05 else memory_root
+    if not effective_root.exists():
+        effective_root = memory_root
+
+    ownership_result = _generate_default_ownership_toml(effective_root)
+    if ownership_result["success"]:
+        result["residue"].append(f"ownership: {ownership_result['detail']}")
+    else:
+        result["residue"].append(
+            f"ownership generation failed: {ownership_result['detail']}"
+        )
+
+    manifest_result = _upgrade_manifest_v1_to_v2(effective_root)
+    if manifest_result["success"]:
+        result["residue"].append(f"manifest: {manifest_result['detail']}")
+    else:
+        result["residue"].append(
+            f"manifest upgrade failed: {manifest_result['detail']}"
+        )
+
+    rb_memory_root = (
+        target / V05_SYSTEM_DIR
+        if (is_v04_to_v05 and not memory_root.exists())
+        else memory_root
+    )
+    result["rollback"] = plan_rollback(rb_memory_root)
+
+
+def _check_evidence_refs(
+    target: Path, result: dict[str, Any],
+) -> None:
+    """Phase 7: Best-effort post-migration evidence ref validation."""
+    try:
+        from memory_core.tools.evidence_ref_validator import validate_evidence_refs_on_disk
+        ref_errors = validate_evidence_refs_on_disk(target)
+        if ref_errors:
+            result["warnings"] = result.get("warnings", [])
+            for err in ref_errors:
+                result["warnings"].append(
+                    f"evidence ref check: {err.kb_file} has {len(err.missing_refs)} missing refs"
+                )
+    except Exception:
+        pass
+
+
+def _handle_migration_exception(
+    exc: Exception,
+    memory_root: Path,
+    target: Path,
+    is_v04_to_v05: bool,
+    from_version: str,
+    to_version: str,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Phase 8: Auto-rollback on migration exception and log the outcome."""
+    rb_memory_root = (
+        target / V05_SYSTEM_DIR
+        if (is_v04_to_v05 and not memory_root.exists())
+        else memory_root
+    )
+    try:
+        rb_result = execute_rollback(rb_memory_root)
+        rb_succeeded = rb_result.get("success", False)
+    except Exception as rb_exc:
+        rb_succeeded = False
+        rb_result = {"success": False, "error": str(rb_exc)}
+
+    log_path = memory_root / MIGRATIONS_LOG_NAME
+    if not log_path.is_file():
+        log_path = (target / V05_SYSTEM_DIR) / MIGRATIONS_LOG_NAME
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    if rb_succeeded:
+        line = f"{now} | {from_version} | {to_version} | failed_rolled_back | {exc}"
+    else:
+        line = (
+            f"{now} | {from_version} | {to_version} | failed_rollback_failed"
+            f" | Original migration error: {exc};"
+            f" Rollback also failed: {rb_result.get('error', 'unknown')}"
+        )
+
+    if log_path.is_file():
+        _append_migrations_log(log_path, line)
+
+    result["success"] = False
+    result["rollback_attempted"] = True
+    result["rollback_succeeded"] = rb_succeeded
+
+    if rb_succeeded:
+        result["errors"].append(f"Migration failed and rolled back: {exc}")
+    else:
+        result["errors"].append(
+            f"Migration failed and rollback also failed."
+            f" Original error: {exc};"
+            f" Rollback error: {rb_result.get('error', 'unknown')}"
+        )
+    return result
+
+
 def migrate_project_memory(
     target: Path,
     from_version: str,
@@ -993,74 +1321,25 @@ def migrate_project_memory(
         "errors": [],
     }
 
-    # Determine memory root location
-    # For 0.5.0+ projects: memory/system/
-    # For legacy projects: .memory/
-    memory_root = target / ".memory"
-    is_v05_plus_layout = False
+    # Phase 1: Resolve memory root
+    resolved = _resolve_memory_root(target, from_version, to_version, result)
+    if resolved is None:
+        return result
+    memory_root, is_v05_plus_layout = resolved
 
-    if not memory_root.is_dir():
-        # Check if this is a 0.5.0+ project
-        system_dir = target / V05_SYSTEM_DIR
-        if from_version == "0.4.0" and to_version == "0.5.0" and system_dir.is_dir():
-            # For 0.4→0.5: if .memory/ doesn't exist but memory/system/ does,
-            # the migration was already completed — return noop
-            result["success"] = True
-            result["noop"] = True
-            result["reason"] = "already migrated to 0.5.0"
-            return result
-        elif system_dir.is_dir():
-            memory_root = system_dir
-            is_v05_plus_layout = True
-        else:
-            result["errors"].append(f".memory/ directory not found at {memory_root}")
-            return result
+    # Phase 2: Validate versions
+    version_data = _validate_versions(from_version, to_version, memory_root, result)
+    if version_data is None:
+        return result
+    from_tuple, to_tuple, current_tuple = version_data
 
-    try:
-        to_tuple = _parse_version_tuple(to_version)
-        from_tuple = _parse_version_tuple(from_version)
-    except (ValueError, AttributeError) as exc:
-        result["errors"].append(
-            f"Invalid version format for migration: from={from_version!r} "
-            f"to={to_version!r} ({exc}); expected SemVer-like 'MAJOR.MINOR.PATCH'"
-        )
-        result["error"] = "invalid_version_format"
+    # Phase 3: Idempotency and downgrade check
+    if _check_idempotency_and_downgrade(
+        from_tuple, to_tuple, current_tuple, from_version, to_version, result,
+    ):
         return result
 
-    current_version = _read_current_version(memory_root)
-    if current_version is not None:
-        try:
-            current_tuple = _parse_version_tuple(current_version)
-        except (ValueError, AttributeError):
-            current_tuple = None
-    else:
-        current_tuple = None
-
-    # ---- A. Idempotency: current == to → noop ----
-    if current_tuple is not None and current_tuple == to_tuple:
-        result["success"] = True
-        result["noop"] = True
-        result["reason"] = "already at target version"
-        return result
-
-    # ---- B. Downgrade explicit reject ----
-    if to_tuple < from_tuple:
-        result["success"] = False
-        result["error"] = _DOWNGRADE_NOT_SUPPORTED
-        result["message"] = f"Downgrade not supported: from={from_version} to={to_version}"
-        result["errors"].append(result["message"])
-        return result
-
-    if current_tuple is not None and current_tuple > to_tuple:
-        result["success"] = False
-        result["error"] = _CURRENT_NEWER_THAN_TARGET
-        result["message"] = (
-            f"Current version ({current_version}) is newer than target ({to_version})"
-        )
-        result["errors"].append(result["message"])
-        return result
-
-    # ---- Discover migrations ----
+    # Discover migrations
     migrations = discover_migrations(from_version, to_version)
     if not migrations:
         result["errors"].append(
@@ -1069,190 +1348,36 @@ def migrate_project_memory(
         )
         return result
 
-    # ---- C. Backup (before writing anything) ----
-    # Skip the legacy backup for 0.4→0.5 migration (it handles its own backup internally)
     is_v04_to_v05 = any(
         m["from"] == "0.4.0" and m["to"] == "0.5.0" for m in migrations
     )
-    # For 0.5.0+ layouts, backups go under memory/system/backups/
-    # We'll handle this by creating a v05-style backup if is_v05_plus_layout
-    if not dry_run and not is_v04_to_v05:
-        try:
-            if is_v05_plus_layout:
-                # Create timestamped backup under memory/system/backups/
-                backups_dir = memory_root / BACKUPS_DIR_NAME
-                backups_dir.mkdir(parents=True, exist_ok=True)
-                ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-                backup_dest = backups_dir / ts
-                # Copy memory_root contents (excluding backups/) to backup_dest
-                source_files_count = 0
-                for p in memory_root.rglob("*"):
-                    if p.is_file():
-                        rel = p.relative_to(memory_root)
-                        if rel.parts[0] != BACKUPS_DIR_NAME:
-                            src_path = p
-                            dst_path = backup_dest / rel
-                            dst_path.parent.mkdir(parents=True, exist_ok=True)
-                            shutil.copy2(str(src_path), str(dst_path))
-                            source_files_count += 1
-                manifest = {
-                    "from_version": from_version,
-                    "to_version": to_version,
-                    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    "source_files_count": source_files_count,
-                    "layout": "v05+",
-                }
-                manifest_path = backup_dest / BACKUP_MANIFEST_NAME
-                manifest_path.write_text(
-                    json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
-                    encoding="utf-8",
-                )
-            else:
-                _create_backup(memory_root, from_version, to_version)
-        except Exception as exc:
-            log_path = memory_root / MIGRATIONS_LOG_NAME
-            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            line = f"{now} | {from_version} | {to_version} | failed_backup_failed | Backup creation failed: memory_root={memory_root} exc={exc}"
-            if log_path.is_file():
-                _append_migrations_log(log_path, line)
-            else:
-                log_path.write_text(f"# Migrations Log\n{line}\n", encoding="utf-8")
-            result["success"] = False
-            result["error"] = _BACKUP_FAILED
-            result["errors"].append(
-                f"Backup creation failed for {memory_root}: {exc}"
-            )
-            return result
 
-    # ---- Execute migrations with auto-rollback on failure ----
+    # Phase 4: Backup
+    if _perform_backup(
+        memory_root, from_version, to_version,
+        is_v05_plus_layout, is_v04_to_v05, dry_run, result,
+    ):
+        return result
+
+    # Phase 5-8: Execute migrations with auto-rollback on failure
     try:
-        all_success = True
-        for mig in migrations:
-            mig_desc = f"{mig['from']}->{mig['to']}"
+        all_success = _execute_migrations(
+            migrations, memory_root, target, is_v04_to_v05, dry_run, result,
+        )
 
-            if dry_run:
-                result["migrations_executed"].append(
-                    {"key": mig_desc, "status": "would_execute"}
-                )
-                log_entry = append_migration_log(
-                    memory_root, mig["from"], mig["to"], "pending (dry-run)",
-                    f"Would migrate {mig['from']} to {mig['to']}",
-                    dry_run=True,
-                )
-                result["log_entries"].append(log_entry)
-                continue
-
-            mig_result = mig["fn"](memory_root)
-            status = "success" if mig_result["success"] else "failed"
-            # For 0.4→0.5 migration, .memory/ is gone; use memory/system/ for logging
-            log_root = target / V05_SYSTEM_DIR if is_v04_to_v05 else memory_root
-            log_entry = append_migration_log(
-                log_root, mig["from"], mig["to"], status,
-                mig_result.get("detail", ""),
-                dry_run=False,
-            )
-            result["log_entries"].append(log_entry)
-            result["migrations_executed"].append(
-                {
-                    "key": mig_desc,
-                    "status": status,
-                    "detail": mig_result.get("detail", ""),
-                }
-            )
-
-            if mig_result.get("residue"):
-                result["residue"].extend(mig_result["residue"])
-
-            if not mig_result["success"]:
-                all_success = False
-                result["errors"].append(
-                    f"Migration {mig_desc} failed: {mig_result.get('detail', 'unknown')}"
-                )
-                # Propagate the error field from the inner function
-                if mig_result.get("error"):
-                    result["error"] = mig_result["error"]
-                break
-
-        # M6: Generate default ownership.toml for old projects without one
         if all_success and not dry_run:
-            # For 0.4→0.5 migration, .memory/ is gone; use memory/system/ instead
-            effective_root = target / V05_SYSTEM_DIR if is_v04_to_v05 else memory_root
-            if not effective_root.exists():
-                effective_root = memory_root  # fallback
+            _run_post_migration_hooks(memory_root, target, is_v04_to_v05, result)
 
-            ownership_result = _generate_default_ownership_toml(effective_root)
-            if ownership_result["success"]:
-                result["residue"].append(f"ownership: {ownership_result['detail']}")
-            else:
-                result["residue"].append(
-                    f"ownership generation failed: {ownership_result['detail']}"
-                )
-
-            # M6: Upgrade manifest v1 → v2 if needed
-            manifest_result = _upgrade_manifest_v1_to_v2(effective_root)
-            if manifest_result["success"]:
-                result["residue"].append(f"manifest: {manifest_result['detail']}")
-            else:
-                result["residue"].append(
-                    f"manifest upgrade failed: {manifest_result['detail']}"
-                )
-
-        # Rollback plan
-        # For 0.4→0.5, .memory/ is gone; plan_rollback handles v05 backups via target
-        rb_memory_root = target / V05_SYSTEM_DIR if (is_v04_to_v05 and not memory_root.exists()) else memory_root
-        result["rollback"] = plan_rollback(rb_memory_root)
-
-        # Post-migration evidence ref check
-        try:
-            from memory_core.tools.evidence_ref_validator import validate_evidence_refs_on_disk
-            ref_errors = validate_evidence_refs_on_disk(target)
-            if ref_errors:
-                result["warnings"] = result.get("warnings", [])
-                for err in ref_errors:
-                    result["warnings"].append(
-                        f"evidence ref check: {err.kb_file} has {len(err.missing_refs)} missing refs"
-                    )
-        except Exception:
-            pass  # Non-blocking: best-effort check
+        _check_evidence_refs(target, result)
 
         result["success"] = all_success
         return result
 
     except Exception as exc:
-        # ---- F. Auto-rollback on any exception ----
-        # For 0.4→0.5 migration, .memory/ is gone; execute_rollback creates it
-        rb_memory_root = target / V05_SYSTEM_DIR if (is_v04_to_v05 and not memory_root.exists()) else memory_root
-        try:
-            rb_result = execute_rollback(rb_memory_root)
-            rb_succeeded = rb_result.get("success", False)
-        except Exception as rb_exc:
-            rb_succeeded = False
-            rb_result = {"success": False, "error": str(rb_exc)}
-
-        log_path = memory_root / MIGRATIONS_LOG_NAME
-        if not log_path.is_file():
-            log_path = (target / V05_SYSTEM_DIR) / MIGRATIONS_LOG_NAME
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-        if rb_succeeded:
-            line = f"{now} | {from_version} | {to_version} | failed_rolled_back | {exc}"
-        else:
-            line = f"{now} | {from_version} | {to_version} | failed_rollback_failed | Original migration error: {exc}; Rollback also failed: {rb_result.get('error', 'unknown')}"
-
-        if log_path.is_file():
-            _append_migrations_log(log_path, line)
-
-        result["success"] = False
-        result["rollback_attempted"] = True
-        result["rollback_succeeded"] = rb_succeeded
-
-        if rb_succeeded:
-            result["errors"].append(f"Migration failed and rolled back: {exc}")
-        else:
-            result["errors"].append(
-                f"Migration failed and rollback also failed. Original error: {exc}; Rollback error: {rb_result.get('error', 'unknown')}"
-            )
-        return result
+        return _handle_migration_exception(
+            exc, memory_root, target, is_v04_to_v05,
+            from_version, to_version, result,
+        )
 
 
 # ---------------------------------------------------------------------------

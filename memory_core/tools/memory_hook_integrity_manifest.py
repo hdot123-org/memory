@@ -187,6 +187,143 @@ def _classify_entry(
     return ("none", "none", "none")
 
 
+def _scan_canonical_patterns(resolved_root: Path) -> list[Path]:
+    """Phase 1: Scan CANONICAL_PATTERNS for existing files.
+
+    Args:
+        resolved_root: Resolved project root path.
+
+    Returns:
+        List of resolved paths for existing canonical files.
+    """
+    found: list[Path] = []
+    for pattern in CANONICAL_PATTERNS:
+        p = resolved_root / pattern
+        if p.exists() and p.is_file():
+            found.append(p.resolve())
+    return found
+
+
+def _scan_artifact_runtime(resolved_root: Path) -> list[Path]:
+    """Phase 2: Scan ARTIFACT_PATTERNS for runtime files (.json/.jsonl/.log).
+
+    Args:
+        resolved_root: Resolved project root path.
+
+    Returns:
+        List of resolved paths for runtime artifact files.
+    """
+    found: list[Path] = []
+    for art_pattern in ARTIFACT_PATTERNS:
+        art_root = resolved_root / art_pattern
+        if art_root.exists() and art_root.is_dir():
+            for sub in art_root.rglob("*"):
+                if sub.is_file() and sub.suffix in (".json", ".jsonl", ".log"):
+                    found.append(sub.resolve())
+    return found
+
+
+def _walk_ownership_domains(resolved_root: Path, ownership: Any) -> list[Path]:
+    """Phase 3: Walk ownership domains (recursive or flat).
+
+    Args:
+        resolved_root: Resolved project root path.
+        ownership: MemoryOwnership object with domains list.
+
+    Returns:
+        List of resolved paths for domain files.
+    """
+    found: list[Path] = []
+    for domain in ownership.domains:
+        domain_path = resolved_root / domain.path
+        if not (domain_path.exists() and domain_path.is_dir()):
+            continue
+        if not domain.recursive:
+            # Non-recursive: only direct children
+            for child in sorted(domain_path.iterdir()):
+                if child.is_file():
+                    found.append(child.resolve())
+        else:
+            # Recursive: walk entire tree
+            for child in sorted(domain_path.rglob("*")):
+                if child.is_file():
+                    found.append(child.resolve())
+    return found
+
+
+def _walk_ownership_resources(resolved_root: Path, ownership: Any) -> list[Path]:
+    """Phase 4: Walk ownership resources (glob or plain path).
+
+    Args:
+        resolved_root: Resolved project root path.
+        ownership: MemoryOwnership object with resources list.
+
+    Returns:
+        List of resolved paths for resource files.
+    """
+    found: list[Path] = []
+    for resource in ownership.resources:
+        # Support glob patterns in resource paths
+        if "*" in resource.path or "?" in resource.path:
+            # Find the base directory from the glob pattern
+            parts = resource.path.split("/")
+            base_parts = []
+            for part in parts:
+                if "*" in part or "?" in part:
+                    break
+                base_parts.append(part)
+            if base_parts:
+                base_dir = resolved_root / "/".join(base_parts)
+                if base_dir.exists() and base_dir.is_dir():
+                    for child in sorted(base_dir.rglob("*")):
+                        if child.is_file():
+                            rel_child = str(child.relative_to(resolved_root))
+                            if fnmatch.fnmatch(rel_child, resource.path):
+                                found.append(child.resolve())
+            else:
+                # Glob at root level
+                for child in sorted(resolved_root.rglob("*")):
+                    if child.is_file():
+                        rel_child = str(child.relative_to(resolved_root))
+                        if fnmatch.fnmatch(rel_child, resource.path):
+                            found.append(child.resolve())
+        else:
+            res_path = resolved_root / resource.path
+            if res_path.exists() and res_path.is_file():
+                found.append(res_path.resolve())
+    return found
+
+
+def _dedup_and_filter(found: list[Path], resolved_root: Path) -> list[Path]:
+    """Phase 5: Deduplicate and filter volatile/manifest files.
+
+    Args:
+        found: List of discovered paths.
+        resolved_root: Resolved project root path.
+
+    Returns:
+        Deduplicated, sorted list excluding volatile files and manifest.json.
+    """
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    manifest_rel = f"{SYSTEM_DIR}/{MANIFEST_FILENAME}"
+    for p in sorted(found):
+        if p in seen:
+            continue
+        seen.add(p)
+        try:
+            rel = str(p.relative_to(resolved_root))
+        except ValueError:
+            rel = str(p)
+        # Skip manifest.json itself (chicken-egg problem)
+        if rel == manifest_rel:
+            continue
+        if _is_volatile(rel):
+            continue
+        unique.append(p)
+    return unique
+
+
 def _discover_canonical_files(
     project_root: Path,
     *,
@@ -202,92 +339,25 @@ def _discover_canonical_files(
             (memory/artifacts/memory-hook/contexts|events). Default False.
     """
     resolved_root = project_root.resolve()
-    found: list[Path] = []
-    for pattern in CANONICAL_PATTERNS:
-        p = resolved_root / pattern
-        if p.exists() and p.is_file():
-            found.append(p.resolve())
 
-    # Also sign date-partitioned artifact files (only when include_runtime=True)
+    # Phase 1: Canonical patterns
+    found = _scan_canonical_patterns(resolved_root)
+
+    # Phase 2: Runtime artifacts (optional)
     if include_runtime:
-        for art_pattern in ARTIFACT_PATTERNS:
-            art_root = resolved_root / art_pattern
-            if art_root.exists() and art_root.is_dir():
-                for sub in art_root.rglob("*"):
-                    if sub.is_file() and sub.suffix in (".json", ".jsonl", ".log"):
-                        found.append(sub.resolve())
+        found.extend(_scan_artifact_runtime(resolved_root))
 
-    # M4: Discover owned files from ownership configuration
+    # Phase 3 + 4: Ownership domains and resources
     if load_memory_ownership is not None:
         try:
             ownership = load_memory_ownership(project_root)
-            for domain in ownership.domains:
-                if not domain.recursive:
-                    # Non-recursive: only the domain directory index itself
-                    domain_path = resolved_root / domain.path
-                    if domain_path.exists() and domain_path.is_dir():
-                        for child in sorted(domain_path.iterdir()):
-                            if child.is_file():
-                                found.append(child.resolve())
-                else:
-                    # Recursive: walk the entire domain tree
-                    domain_path = resolved_root / domain.path
-                    if domain_path.exists() and domain_path.is_dir():
-                        for child in sorted(domain_path.rglob("*")):
-                            if child.is_file():
-                                found.append(child.resolve())
-            for resource in ownership.resources:
-                # Support glob patterns in resource paths
-                if "*" in resource.path or "?" in resource.path:
-                    # Find the base directory from the glob pattern
-                    parts = resource.path.split("/")
-                    base_parts = []
-                    for part in parts:
-                        if "*" in part or "?" in part:
-                            break
-                        base_parts.append(part)
-                    if base_parts:
-                        base_dir = resolved_root / "/".join(base_parts)
-                        if base_dir.exists() and base_dir.is_dir():
-                            for child in sorted(base_dir.rglob("*")):
-                                if child.is_file():
-                                    rel_child = str(child.relative_to(resolved_root))
-                                    if fnmatch.fnmatch(rel_child, resource.path):
-                                        found.append(child.resolve())
-                    else:
-                        # Glob at root level
-                        for child in sorted(resolved_root.rglob("*")):
-                            if child.is_file():
-                                rel_child = str(child.relative_to(resolved_root))
-                                if fnmatch.fnmatch(rel_child, resource.path):
-                                    found.append(child.resolve())
-                else:
-                    res_path = resolved_root / resource.path
-                    if res_path.exists() and res_path.is_file():
-                        found.append(res_path.resolve())
+            found.extend(_walk_ownership_domains(resolved_root, ownership))
+            found.extend(_walk_ownership_resources(resolved_root, ownership))
         except Exception:
             pass  # Fall through to canonical patterns only
 
-    # Note: do NOT sign the current manifest.json to avoid chicken-egg problem.
-    # The manifest is a one-way snapshot; next signing run captures new state.
-
-    # Deduplicate and sort, excluding volatile runtime files and manifest itself
-    seen = set()
-    unique = []
-    for p in sorted(found):
-        if p not in seen:
-            seen.add(p)
-            try:
-                rel = str(p.relative_to(resolved_root))
-            except ValueError:
-                rel = str(p)
-            # Skip manifest.json itself (chicken-egg problem)
-            if rel == f"{SYSTEM_DIR}/{MANIFEST_FILENAME}":
-                continue
-            if _is_volatile(rel):
-                continue
-            unique.append(p)
-    return unique
+    # Phase 5: Deduplicate and filter
+    return _dedup_and_filter(found, resolved_root)
 
 
 # M3: is_memory_core_source_repo now imported from memory_core.ownership

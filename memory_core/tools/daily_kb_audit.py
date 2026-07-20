@@ -948,38 +948,28 @@ def _shell_quote(s: str) -> str:
     return "'" + s.replace("'", "'\"'\"'") + "'"
 
 
-def check_server(
-    server: dict[str, Any],
+def _append_violation(
+    record: dict[str, Any],
     global_violations: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """对单台服务器跑 SSH / Docker / 端口 / HTTP 检查。
+    violation: dict[str, Any],
+) -> None:
+    """DRY helper: append violation to both record and global list."""
+    record["violations"].append(violation)
+    global_violations.append(violation)
 
-    Args:
-        server: inventory 里的一条 server 记录。
-        global_violations: 累积违规列表（就地追加，便于汇总 total）。
 
-    Returns:
-        该服务器的检查结果子树（host / ssh_ok / containers / ports /
-        http_endpoints / violations）。
-    """
+def _check_server_ssh(
+    server: dict[str, Any],
+    record: dict[str, Any],
+    global_violations: list[dict[str, Any]],
+) -> bool | None:
+    """Check SSH connectivity for server. Returns ssh_ok status."""
     name = str(server.get("name", "unknown"))
-    host = str(server.get("host", ""))
+    host = str(record["host"])
     checks = server.get("checks") or {}
-
-    record: dict[str, Any] = {
-        "host": host,
-        "ssh_ok": None,
-        "containers": {},
-        "ports": {},
-        "http_endpoints": {},
-        "disk_space": {},
-        "violations": [],
-    }
-
     ssh_alias = server.get("ssh_alias")
     want_ssh = bool(checks.get("ssh")) and bool(ssh_alias)
 
-    # 6a. SSH 连通性
     ssh_ok: bool | None = None
     if want_ssh:
         ssh_ok = check_ssh_reachable(str(ssh_alias))
@@ -991,8 +981,7 @@ def check_server(
                 f"{host} ({ssh_alias})",
                 f"SSH 不可达：{ssh_alias}",
             )
-            record["violations"].append(v)
-            global_violations.append(v)
+            _append_violation(record, global_violations, v)
     elif ssh_alias is None and bool(checks.get("ssh")):
         # 声明了 ssh=true 但缺 ssh_alias
         v = _make_violation(
@@ -1001,91 +990,83 @@ def check_server(
             name,
             "checks.ssh=true 但缺少 ssh_alias 字段",
         )
-        record["violations"].append(v)
-        global_violations.append(v)
+        _append_violation(record, global_violations, v)
 
-    # 6b. Docker 容器（依赖 SSH 可达）
+    return ssh_ok
+
+
+def _check_server_docker(
+    server: dict[str, Any],
+    record: dict[str, Any],
+    global_violations: list[dict[str, Any]],
+    ssh_ok: bool | None,
+) -> None:
+    """Check Docker container status (depends on SSH)."""
+    name = str(server.get("name", "unknown"))
+    ssh_alias = server.get("ssh_alias")
+    checks = server.get("checks") or {}
     expected_containers = checks.get("docker_containers") or []
-    if expected_containers:
-        if ssh_ok:
-            # 注意：_run_ssh 将 remote_cmd 用空格拼接发给远端 shell，
-            # format 串含空格必须用单引号包裹，否则 shell 会拆成两个参数。
-            rc, out, _err = _run_ssh(
-                str(ssh_alias),
-                ["docker", "ps", "--format", "'{{.Names}}: {{.Status}}'"],
+
+    if expected_containers and ssh_ok:
+        # 注意：_run_ssh 将 remote_cmd 用空格拼接发给远端 shell，
+        # format 串含空格必须用单引号包裹，否则 shell 会拆成两个参数。
+        rc, out, _err = _run_ssh(
+            str(ssh_alias),
+            ["docker", "ps", "--format", "'{{.Names}}: {{.Status}}'"],
+        )
+        running: dict[str, str] = {}
+        if rc == 0:
+            for line in out.splitlines():
+                line = line.strip()
+                if not line or ":" not in line:
+                    continue
+                cname, _, cstatus = line.partition(":")
+                running[cname.strip()] = cstatus.strip()
+        else:
+            v = _make_violation(
+                "container_down",
+                "warning",
+                f"{name} ({ssh_alias})",
+                f"docker ps 执行失败 (rc={rc})，无法核对容器状态",
             )
-            running: dict[str, str] = {}
-            if rc == 0:
-                for line in out.splitlines():
-                    line = line.strip()
-                    if not line or ":" not in line:
-                        continue
-                    cname, _, cstatus = line.partition(":")
-                    running[cname.strip()] = cstatus.strip()
-            else:
+            _append_violation(record, global_violations, v)
+
+        # 对照期望列表
+        for expected in expected_containers:
+            expected = str(expected)
+            status = running.get(expected)
+            if status is None:
+                record["containers"][expected] = "DOWN"
                 v = _make_violation(
                     "container_down",
-                    "warning",
-                    f"{name} ({ssh_alias})",
-                    f"docker ps 执行失败 (rc={rc})，无法核对容器状态",
+                    "critical",
+                    f"{name}/{expected}",
+                    f"期望容器未运行：{expected}",
                 )
-                record["violations"].append(v)
-                global_violations.append(v)
-
-            # 对照期望列表
-            for expected in expected_containers:
-                expected = str(expected)
-                status = running.get(expected)
-                if status is None:
-                    record["containers"][expected] = "DOWN"
+                _append_violation(record, global_violations, v)
+            else:
+                record["containers"][expected] = status
+                low = status.lower()
+                if "restarting" in low or "unhealthy" in low:
                     v = _make_violation(
                         "container_down",
-                        "critical",
+                        "warning",
                         f"{name}/{expected}",
-                        f"期望容器未运行：{expected}",
+                        f"容器状态异常：{expected} -> {status}",
                     )
-                    record["violations"].append(v)
-                    global_violations.append(v)
-                else:
-                    record["containers"][expected] = status
-                    low = status.lower()
-                    if "restarting" in low or "unhealthy" in low:
-                        v = _make_violation(
-                            "container_down",
-                            "warning",
-                            f"{name}/{expected}",
-                            f"容器状态异常：{expected} -> {status}",
-                        )
-                        record["violations"].append(v)
-                        global_violations.append(v)
-        # else: SSH 已失败，在 6a 已标记，此处不再重复报错
+                    _append_violation(record, global_violations, v)
+    # else: SSH 已失败或未配置 docker_containers，跳过
 
-    # 6b2. systemd 服务状态（依赖 SSH 可达）
-    expected_systemd = checks.get("systemd_services") or []
-    if expected_systemd:
-        if ssh_ok:
-            record["systemd_services"] = _check_systemd_services(
-                ssh_alias=str(ssh_alias),
-                server_name=name,
-                services=[str(s) for s in expected_systemd],
-                global_violations=global_violations,
-                record_violations=record["violations"],
-            )
-        # else: SSH 已失败，在 6a 已标记，此处不再重复报错
 
-    # 6b3. 磁盘空间检查（依赖 SSH 可达，防止磁盘满导致 MySQL/Docker 故障）
-    disk_checks = checks.get("disk_space") or []
-    if disk_checks and ssh_ok:
-        record["disk_space"] = check_disk_space(
-            ssh_alias=str(ssh_alias),
-            server_name=name,
-            disk_checks=[str(d) if not isinstance(d, dict) else d for d in disk_checks],
-            global_violations=global_violations,
-            record_violations=record["violations"],
-        )
-    # else: SSH 已失败或未配置 disk_space，跳过
+def _check_server_ports(
+    server: dict[str, Any],
+    record: dict[str, Any],
+    global_violations: list[dict[str, Any]],
+) -> None:
+    """Check TCP port connectivity."""
+    host = str(record["host"])
+    checks = server.get("checks") or {}
 
-    # 6c. 端口连通性（Python socket，超时 3s 贴合规格）
     for port in checks.get("ports") or []:
         port = int(port)
         ok = _tcp_connect_ok(host, port, timeout=3)
@@ -1097,10 +1078,17 @@ def check_server(
                 f"{host}:{port}",
                 f"端口 {port} 不可达（TCP connect 失败）",
             )
-            record["violations"].append(v)
-            global_violations.append(v)
+            _append_violation(record, global_violations, v)
 
-    # 6d. HTTP 端点健康检查（curl）
+
+def _check_server_http_endpoints(
+    server: dict[str, Any],
+    record: dict[str, Any],
+    global_violations: list[dict[str, Any]],
+) -> None:
+    """Check HTTP endpoint health via curl."""
+    checks = server.get("checks") or {}
+
     for ep in checks.get("http_endpoints") or []:
         if not isinstance(ep, dict):
             continue
@@ -1146,8 +1134,7 @@ def check_server(
                 url,
                 f"HTTP 端点超时（>{HTTP_TIMEOUT}s）：{ep_name}",
             )
-            record["violations"].append(v)
-            global_violations.append(v)
+            _append_violation(record, global_violations, v)
         elif status_code in (-1, 0):
             v = _make_violation(
                 "http_error",
@@ -1155,8 +1142,7 @@ def check_server(
                 url,
                 f"HTTP 端点连接失败：{ep_name}",
             )
-            record["violations"].append(v)
-            global_violations.append(v)
+            _append_violation(record, global_violations, v)
         elif status_code != expected_status:
             v = _make_violation(
                 "http_error",
@@ -1164,8 +1150,75 @@ def check_server(
                 url,
                 f"HTTP 状态码 {status_code} != 期望 {expected_status}：{ep_name}",
             )
-            record["violations"].append(v)
-            global_violations.append(v)
+            _append_violation(record, global_violations, v)
+
+
+def check_server(
+    server: dict[str, Any],
+    global_violations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """对单台服务器跑 SSH / Docker / 端口 / HTTP 检查。
+
+    Args:
+        server: inventory 里的一条 server 记录。
+        global_violations: 累积违规列表（就地追加，便于汇总 total）。
+
+    Returns:
+        该服务器的检查结果子树（host / ssh_ok / containers / ports /
+        http_endpoints / violations）。
+    """
+    host = str(server.get("host", ""))
+    checks = server.get("checks") or {}
+
+    record: dict[str, Any] = {
+        "host": host,
+        "ssh_ok": None,
+        "containers": {},
+        "ports": {},
+        "http_endpoints": {},
+        "disk_space": {},
+        "violations": [],
+    }
+
+    ssh_alias = server.get("ssh_alias")
+
+    # 6a. SSH 连通性
+    ssh_ok = _check_server_ssh(server, record, global_violations)
+
+    # 6b. Docker 容器（依赖 SSH 可达）
+    _check_server_docker(server, record, global_violations, ssh_ok)
+
+    # 6b2. systemd 服务状态（依赖 SSH 可达）
+    expected_systemd = checks.get("systemd_services") or []
+    if expected_systemd and ssh_ok:
+        name = str(server.get("name", "unknown"))
+        record["systemd_services"] = _check_systemd_services(
+            ssh_alias=str(ssh_alias),
+            server_name=name,
+            services=[str(s) for s in expected_systemd],
+            global_violations=global_violations,
+            record_violations=record["violations"],
+        )
+    # else: SSH 已失败或未配置 systemd_services，跳过
+
+    # 6b3. 磁盘空间检查（依赖 SSH 可达，防止磁盘满导致 MySQL/Docker 故障）
+    disk_checks = checks.get("disk_space") or []
+    if disk_checks and ssh_ok:
+        name = str(server.get("name", "unknown"))
+        record["disk_space"] = check_disk_space(
+            ssh_alias=str(ssh_alias),
+            server_name=name,
+            disk_checks=[str(d) if not isinstance(d, dict) else d for d in disk_checks],
+            global_violations=global_violations,
+            record_violations=record["violations"],
+        )
+    # else: SSH 已失败或未配置 disk_space，跳过
+
+    # 6c. 端口连通性（Python socket，超时 3s 贴合规格）
+    _check_server_ports(server, record, global_violations)
+
+    # 6d. HTTP 端点健康检查（curl）
+    _check_server_http_endpoints(server, record, global_violations)
 
     return record
 
