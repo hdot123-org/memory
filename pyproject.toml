@@ -176,6 +176,10 @@ exclude = [
     "workspace",
 ]
 
+[tool.vulture]
+exclude = ["*_validation_constants*", "vulture_whitelist.py"]
+min_confidence = 60
+
 [tool.deptry.per_rule_ignores]
 DEP001 = [
     "memory_hook_adapters",

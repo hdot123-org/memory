@@ -262,3 +262,23 @@ class TestPromoteInteractiveMode:
         assert result.returncode == 0
         # Output mentions the pending file
         assert sample_pending_file.name in result.stdout
+
+
+class TestUpdateIndexEdgeCase:
+    """Edge case: _update_index when domain_marker not found."""
+
+    def test_update_index_no_domain_marker(self, global_kb):
+        """When INDEX.md doesn't contain the domain marker, _update_index should not add anything."""
+        index_path = global_kb / "INDEX.md"
+        # Overwrite INDEX.md with content that doesn't have the operations marker
+        index_path.write_text("# Global KB\n\nSome other content\n", encoding="utf-8")
+
+        from memory_core.tools.promote_global_kb import _update_index
+
+        # Call _update_index for operations domain
+        _update_index(global_kb, "operations", "test.md")
+
+        # Verify the file was not modified (no domain_marker found)
+        updated_content = index_path.read_text(encoding="utf-8")
+        assert "test.md" not in updated_content
+        assert "# Global KB" in updated_content

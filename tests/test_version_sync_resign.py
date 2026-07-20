@@ -177,3 +177,32 @@ class TestResignManifestIntegrity:
                 ownership_path.read_bytes()
             ).hexdigest()
             assert ownership_entry["sha256"] == actual_sha
+
+
+# ---------------------------------------------------------------------------
+# Edge case tests: regex no match + file not found
+# ---------------------------------------------------------------------------
+
+class TestVersionSyncEdgeCases:
+    """Edge cases for version_sync.py: regex no match + file not found."""
+
+    def test_read_ownership_memory_version_regex_no_match(self, tmp_path: Path) -> None:
+        """regex 无匹配: ownership.toml 存在但不含 memory_version 字段，返回 None"""
+        sys_dir = tmp_path / "memory" / "system"
+        sys_dir.mkdir(parents=True)
+        ownership = sys_dir / "ownership.toml"
+        # Write a file that exists but has no memory_version field (regex won't match)
+        ownership.write_text(
+            '[project]\nname = "test"\n# no memory_version here\n',
+            encoding="utf-8",
+        )
+        from memory_core.tools.version_sync import read_ownership_memory_version
+        result = read_ownership_memory_version(ownership)
+        assert result is None
+
+    def test_read_ownership_memory_version_file_not_found(self, tmp_path: Path) -> None:
+        """文件不存在路径: 指向一个不存在的路径，返回 None"""
+        nonexistent = tmp_path / "does_not_exist" / "ownership.toml"
+        from memory_core.tools.version_sync import read_ownership_memory_version
+        result = read_ownership_memory_version(nonexistent)
+        assert result is None

@@ -1,6 +1,6 @@
 target-version = "py39"
 line-length = 120
-exclude = ["memory_core/workspace", "workspace", "templates"]
+exclude = ["memory_core/workspace", "workspace", "templates", "vulture_whitelist.py"]
 
 [lint]
 select = ["E", "F", "W", "I", "C901"]
