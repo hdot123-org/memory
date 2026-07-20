@@ -295,6 +295,7 @@ class TestInitModeDryRun:
         assert not (tmp_path / "memory" / "system").exists()
         assert not (tmp_path / "AGENTS.md").exists()
 
+    @pytest.mark.flaky(reruns=2)
     def test_dry_run_reflects_mode(self, tmp_path: Path) -> None:
         """dry-run should reflect mode in output."""
         result = init_project_memory(tmp_path, mode="adopt", dry_run=True)

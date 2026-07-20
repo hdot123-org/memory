@@ -75,7 +75,7 @@ workspace = ["templates/**/*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "--cov=memory_core --cov-report=term-missing --cov-fail-under=15 --durations=10 --reruns 2"
+addopts = "--cov=memory_core --cov-report=term-missing --cov-fail-under=15 --durations=10"
 
 [tool.mypy]
 python_version = "3.9"

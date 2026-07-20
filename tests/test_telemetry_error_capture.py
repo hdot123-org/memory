@@ -13,6 +13,15 @@ import pytest
 from memory_core.tools.telemetry_bridge import TelemetryBridge
 
 
+@pytest.fixture(autouse=True)
+def _restore_telemetry_singleton():
+    """Restore TelemetryBridge singleton state after each test."""
+    from memory_core.tools.telemetry_bridge import telemetry
+    original = telemetry._analytics
+    yield
+    telemetry._analytics = original
+
+
 @pytest.fixture
 def bridge_with_mock():
     """Return a TelemetryBridge with a mock analytics client that is enabled."""

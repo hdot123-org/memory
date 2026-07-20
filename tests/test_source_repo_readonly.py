@@ -157,6 +157,7 @@ class TestSourceRepoReadonlyContextPackage:
         )
         assert after.stdout.strip() == "", "git status should show no changes after readonly package build"
 
+    @pytest.mark.flaky(reruns=2)
     def test_mtime_unchanged_after_readonly_package_build(self, source_repo: Path) -> None:
         """File mtime unchanged after readonly package build."""
         marker = source_repo / "memory_core" / "tools" / "test_marker.txt"

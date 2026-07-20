@@ -15,6 +15,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from memory_core.tools.telemetry_bridge import (
     TelemetryBridge,
     _fallback_project_id,
@@ -23,6 +25,15 @@ from memory_core.tools.telemetry_bridge import (
     _sanitize_value,
     telemetry,
 )
+
+
+@pytest.fixture(autouse=True)
+def _restore_telemetry_singleton():
+    """Restore TelemetryBridge singleton state after each test."""
+    from memory_core.tools.telemetry_bridge import telemetry
+    original = telemetry._analytics
+    yield
+    telemetry._analytics = original
 
 
 class TestTelemetryBridgeHelpers:

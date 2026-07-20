@@ -13,6 +13,8 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
+import pytest
+
 from memory_core.ownership import (
     MemoryOwnership,
     Owned,
@@ -214,6 +216,7 @@ class TestValidateOwnershipChecks:
         check_names = [c["name"] for c in result.to_dict()["checks"]]
         assert "shared_resources:agents_md" in check_names
 
+    @pytest.mark.flaky(reruns=2)
     def test_owned_file_read_error_handling(self, tmp_path):
         """Step 2.7: Owned file read failure should record error."""
         # Create structure

@@ -60,9 +60,9 @@ else
     exit 1
 fi
 
-# VAL-CI-007: pytest-rerunfailures in dev deps and --reruns 2 configured
-echo "VAL-CI-007: pytest-rerunfailures in dev deps and --reruns 2 configured"
-if grep -q 'pytest-rerunfailures' pyproject.toml && (grep -q '\-\-reruns 2' pyproject.toml || grep -q '\-\-reruns 2' .github/workflows/ci.yml); then
+# VAL-CI-007: pytest-rerunfailures in dev deps (no global --reruns)
+echo "VAL-CI-007: pytest-rerunfailures in dev deps (no global --reruns)"
+if grep -q 'pytest-rerunfailures' pyproject.toml; then
     echo "  ✓ PASS"
 else
     echo "  ✗ FAIL"

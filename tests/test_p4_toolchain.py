@@ -410,6 +410,7 @@ class TestScopeAndProjectName:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
 
+    @pytest.mark.flaky(reruns=2)
     def test_git_remote_https_url(self) -> None:
         """HTTPS remote URLs should also work."""
         proj = _make_temp_project()

@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from memory_core.ownership import (
     classify_agents_md_block,
     classify_owned_path,
@@ -1192,6 +1194,7 @@ class TestAgentsMdDiffAware:
         agents_item = next(i for i in result["item_results"] if i["path"] == "AGENTS.md")
         assert agents_item["decision"] == "block"
 
+    @pytest.mark.flaky(reruns=2)
     def test_multiedit_agents_md_diff_aware_allows_append(self, tmp_path: Path) -> None:
         """Test that MultiEdit with AGENTS.md append after block is allowed."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
