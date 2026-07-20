@@ -1559,6 +1559,148 @@ def _build_readonly_source_repo_package(cwd: Path, host: str, event: str) -> dic
     }
 
 
+def _read_sync_timestamp(file_path: Path) -> float:
+    """Read timestamp from file, returning 0.0 on any error."""
+    if not file_path.exists():
+        return 0.0
+    try:
+        return float(file_path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return 0.0
+
+
+def _should_skip_sync(now: float, last_success: float, last_attempt: float) -> bool:
+    """Check if sync should be skipped based on backoff windows."""
+    # Skip if within 1-hour success window
+    if (now - last_success) < 3600:
+        return True
+    # Skip if within 5-minute backoff after recent attempt
+    if (now - last_attempt) < 300:
+        return True
+    return False
+
+
+def _normalize_posthog_host() -> str:
+    """Normalize PostHog host URL to ingestion endpoint and extract hostname."""
+    posthog_host = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip()
+    _trimmed = posthog_host.rstrip("/")
+    if _trimmed in ("https://app.posthog.com", "https://us.posthog.com"):
+        posthog_host = "https://us.i.posthog.com"
+    elif _trimmed == "https://eu.posthog.com":
+        posthog_host = "https://eu.i.posthog.com"
+    # Extract hostname from URL
+    if "://" in posthog_host:
+        return posthog_host.split("://", 1)[1].rstrip("/")
+    return posthog_host.rstrip("/")
+
+
+def _probe_posthog_network(hostname: str) -> bool:
+    """Probe network connectivity to PostHog host. Returns True if reachable."""
+    try:
+        sock = socket.create_connection((hostname, 443), timeout=2)
+        sock.close()
+        return True
+    except (socket.error, OSError):
+        return False
+
+
+def _read_pending_records(metrics_file: Path, offset: int) -> list[tuple[int, dict]]:
+    """Read incremental records from metrics.jsonl starting after offset.
+
+    Returns list of (line_number, record) tuples to handle blank/malformed lines.
+    """
+    records_with_lines = []
+    current_line = 0
+    with metrics_file.open("r", encoding="utf-8") as f:
+        for line in f:
+            current_line += 1
+            if current_line <= offset:
+                continue
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+                if isinstance(record, dict):
+                    records_with_lines.append((current_line, record))
+            except json.JSONDecodeError:
+                continue
+    return records_with_lines
+
+
+def _batch_send_records(
+    records_with_lines: list[tuple[int, dict]],
+    batch_size: int,
+    offset_file: Path
+) -> tuple[int, int]:
+    """Batch send records via telemetry_bridge. Returns (synced_count, last_synced_line)."""
+    from memory_core.tools.telemetry_bridge import telemetry
+
+    synced_records = 0
+    last_synced_line = 0
+
+    for chunk_start in range(0, len(records_with_lines), batch_size):
+        chunk = records_with_lines[chunk_start:chunk_start + batch_size]
+        events = []
+        for line_num, record in chunk:
+            event_name = str(record.get("event") or "memory.replayed_event")
+            events.append({"event_name": event_name, "properties": {**record}})
+
+        chunk_success = telemetry.batch_capture(events)
+        if not chunk_success:
+            break  # stop on first failure
+
+        synced_records += len(chunk)
+        last_synced_line = chunk[-1][0]
+        offset_file.write_text(str(last_synced_line), encoding="utf-8")
+
+    return synced_records, last_synced_line
+
+
+def _compact_metrics_jsonl(metrics_file: Path, last_synced_line: int, offset_file: Path) -> None:
+    """Compact metrics.jsonl after successful sync, keeping only unsent records."""
+    try:
+        remaining_lines = []
+        with metrics_file.open("r", encoding="utf-8") as f:
+            line_num = 0
+            for line in f:
+                line_num += 1
+                if line_num > last_synced_line:
+                    remaining_lines.append(line)
+
+        with metrics_file.open("w", encoding="utf-8") as f:
+            with exclusive_lock(f):
+                f.writelines(remaining_lines)
+                f.flush()
+                os.fsync(f.fileno())
+
+        offset_file.write_text("0", encoding="utf-8")
+    except OSError as exc:
+        _logger.debug("metrics.jsonl compaction failed: %s", exc)
+
+
+def _record_sync_outcome(
+    artifact_root: Path,
+    success: bool,
+    pending_count: int,
+    now: float,
+    attempt_file: Path
+) -> None:
+    """Record sync outcome: update timestamps and write status."""
+    if success:
+        success_file = artifact_root / ".last_sync_success"
+        try:
+            success_file.write_text(str(now), encoding="utf-8")
+        except OSError:
+            pass
+    else:
+        try:
+            attempt_file.write_text(str(now), encoding="utf-8")
+        except OSError:
+            pass
+    _write_sync_status(artifact_root, success, pending_count)
+
+
 def _maybe_sync_telemetry(artifact_root: Path) -> None:
     """Synchronize local telemetry metrics to PostHog during session-start.
 
@@ -1583,54 +1725,19 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
         last_sync_attempt_file = artifact_root / ".last_sync_attempt"
         offset_file = artifact_root / ".offset"
 
-        # Step 1: Check success window (3600s = 1 hour)
+        # Step 1-2: Check backoff windows
         now = time.time()
-        last_sync_success = 0.0
-        if last_sync_success_file.exists():
-            try:
-                last_sync_success = float(last_sync_success_file.read_text(encoding="utf-8").strip())
-            except (OSError, ValueError):
-                last_sync_success = 0.0
+        last_sync_success = _read_sync_timestamp(last_sync_success_file)
+        last_sync_attempt = _read_sync_timestamp(last_sync_attempt_file)
 
-        if (now - last_sync_success) < 3600:
-            return  # Skip: within 1-hour success window
-
-        # Step 2: Check attempt backoff (300s = 5 minutes)
-        last_sync_attempt = 0.0
-        if last_sync_attempt_file.exists():
-            try:
-                last_sync_attempt = float(last_sync_attempt_file.read_text(encoding="utf-8").strip())
-            except (OSError, ValueError):
-                last_sync_attempt = 0.0
-
-        if (now - last_sync_attempt) < 300:
-            return  # Skip: within 5-minute backoff after recent attempt
+        if _should_skip_sync(now, last_sync_success, last_sync_attempt):
+            return
 
         # Step 3: Probe network connectivity
-        # Use ingestion host (mirrors posthog SDK's determine_server_host)
-        posthog_host = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip()
-        _trimmed = posthog_host.rstrip("/")
-        if _trimmed in ("https://app.posthog.com", "https://us.posthog.com"):
-            posthog_host = "https://us.i.posthog.com"
-        elif _trimmed == "https://eu.posthog.com":
-            posthog_host = "https://eu.i.posthog.com"
-        # Extract hostname from URL (e.g., "https://us.i.posthog.com" -> "us.i.posthog.com")
-        if "://" in posthog_host:
-            posthog_hostname = posthog_host.split("://", 1)[1].rstrip("/")
-        else:
-            posthog_hostname = posthog_host.rstrip("/")
-
-        try:
-            sock = socket.create_connection((posthog_hostname, 443), timeout=2)
-            sock.close()
-        except (socket.error, OSError):
-            # Network unreachable: update .last_sync_attempt to avoid high-frequency probing
-            try:
-                last_sync_attempt_file.write_text(str(now), encoding="utf-8")
-            except OSError:
-                pass
-            # Update sync_status.json with failure
-            _write_sync_status(artifact_root, False, 0)
+        posthog_hostname = _normalize_posthog_host()
+        if not _probe_posthog_network(posthog_hostname):
+            # Network unreachable: update attempt and exit
+            _record_sync_outcome(artifact_root, False, 0, now, last_sync_attempt_file)
             return
 
         # Step 4: Read offset and incremental records
@@ -1644,101 +1751,32 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
             except (OSError, ValueError):
                 offset = 0
 
-        # Read incremental records with line numbers
-        # Track (line_number, record) tuples to handle blank/malformed lines correctly
-        records_with_lines = []
-        current_line = 0
-        with metrics_file.open("r", encoding="utf-8") as f:
-            for line in f:
-                current_line += 1
-                if current_line <= offset:
-                    continue
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                    if isinstance(record, dict):
-                        records_with_lines.append((current_line, record))
-                except json.JSONDecodeError:
-                    continue
-
+        records_with_lines = _read_pending_records(metrics_file, offset)
         if not records_with_lines:
             return
 
         pending_count = len(records_with_lines)
 
-        # Step 5: Batch send via telemetry_bridge.batch_capture (chunked)
+        # Step 5-8: Batch send and handle outcome
         try:
-            from memory_core.tools.telemetry_bridge import telemetry
+            synced_count, last_synced_line = _batch_send_records(
+                records_with_lines, BATCH_SIZE, offset_file
+            )
 
-            # Track both record count (for pending calculation) and line number (for offset/compaction)
-            synced_records = 0  # Number of records successfully sent
-            last_synced_line = offset  # Line number of last synced record
-
-            for chunk_start in range(0, len(records_with_lines), BATCH_SIZE):
-                chunk = records_with_lines[chunk_start:chunk_start + BATCH_SIZE]
-                events = []
-                for line_num, record in chunk:
-                    event_name = str(record.get("event") or "memory.replayed_event")
-                    events.append({"event_name": event_name, "properties": {**record}})
-
-                chunk_success = telemetry.batch_capture(events)
-                if not chunk_success:
-                    break  # stop on first failure, retry next session
-
-                # Update both counters: record count for pending calculation, line number for offset
-                synced_records += len(chunk)
-                last_synced_line = chunk[-1][0]  # Line number of last record in chunk
-                offset_file.write_text(str(last_synced_line), encoding="utf-8")
-
-            # Check if all records were synced
-            # all_synced is True when synced_records equals total records to sync
-            all_synced = (synced_records == len(records_with_lines))
-
+            all_synced = (synced_count == len(records_with_lines))
             if all_synced:
-                # Step 6: Success - update .last_sync_success
-                last_sync_success_file.write_text(str(now), encoding="utf-8")
-
-                # Step 7: Compact metrics.jsonl after successful sync
-                try:
-                    remaining_lines = []
-                    with metrics_file.open("r", encoding="utf-8") as f:
-                        line_num = 0
-                        for line in f:
-                            line_num += 1
-                            if line_num > last_synced_line:
-                                remaining_lines.append(line)
-
-                    with metrics_file.open("w", encoding="utf-8") as f:
-                        with exclusive_lock(f):
-                            f.writelines(remaining_lines)
-                            f.flush()
-                            os.fsync(f.fileno())
-
-                    offset_file.write_text("0", encoding="utf-8")
-                except OSError as exc:
-                    _logger.debug("metrics.jsonl compaction failed: %s", exc)
-
-                _write_sync_status(artifact_root, True, 0)
+                # Success path: update success timestamp and compact
+                _record_sync_outcome(artifact_root, True, 0, now, last_sync_attempt_file)
+                _compact_metrics_jsonl(metrics_file, last_synced_line, offset_file)
             else:
-                # Partial success: calculate remaining using record count (not line numbers)
-                remaining = len(records_with_lines) - synced_records
-                try:
-                    last_sync_attempt_file.write_text(str(now), encoding="utf-8")
-                except OSError:
-                    pass
-                _write_sync_status(artifact_root, False, remaining)
+                # Partial success: update attempt (not success) and record remaining
+                remaining = len(records_with_lines) - synced_count
+                _record_sync_outcome(artifact_root, False, remaining, now, last_sync_attempt_file)
 
         except Exception as exc:
-            # Send failed: update .last_sync_attempt (not .offset, retry next time)
+            # Send failed: update attempt and record failure
             _logger.debug("telemetry sync send failed: %s", exc)
-            try:
-                last_sync_attempt_file.write_text(str(now), encoding="utf-8")
-            except OSError:
-                pass
-            # Update sync_status.json with failure
-            _write_sync_status(artifact_root, False, pending_count)
+            _record_sync_outcome(artifact_root, False, pending_count, now, last_sync_attempt_file)
 
     except Exception as exc:
         # Top-level catch: sync must never break gateway flow
@@ -1779,146 +1817,135 @@ def _write_sync_status(artifact_root: Path, success: bool, pending_count: int) -
         pass
 
 
-def main() -> int:
-    start_time = time.time()
-    args = _parse_args()
-    raw_payload = sys.stdin.read()
-    payload = _read_payload(raw_payload)
-    cwd = _discover_cwd(payload)
-
-    # M3: Anti-pollution - source repo gets readonly context-package instead of noop
-    # Source repo develop mode: fall through to normal context-package build
+def _handle_source_repo_check(cwd: Path, host: str, event: str) -> int | None:
+    """Handle source repo readonly mode. Returns exit code if handled, None to continue."""
     if is_memory_core_source_repo(cwd):
         mode = get_source_repo_mode(cwd)
         if mode != "develop":
-            readonly_package = _build_readonly_source_repo_package(cwd, args.host, args.event)
+            readonly_package = _build_readonly_source_repo_package(cwd, host, event)
             sys.stdout.write(json.dumps(readonly_package, ensure_ascii=False) + "\n")
             return 0
-        # develop mode: fall through to normal build_context_package below
+    return None
 
-    if is_denied_project_root(cwd):
-        sys.stdout.write("{}\n")
-        return 0
 
-    if _should_noop_for_external_context(payload):
-        return _delegate_noop_response(args.host)
+def _emit_pretooluse_metrics(host: str, event: str, status: str, start_time: float) -> None:
+    """Emit metrics for pre-tool-use branch before returning."""
+    try:
+        from .memory_hook_metrics import emit_metrics
+        duration_ms = max(1, int((time.time() - start_time) * 1000))
+        minimal_package = {"status": status}
+        emit_metrics(ARTIFACT_ROOT, host, event, minimal_package, duration_ms=duration_ms)
+    except Exception as exc:
+        _logger.debug("pre-tool-use metrics emit skipped: %s", exc)
 
-    # ── PreToolUse guard: intercept write operations ──
-    if args.event == "pre-tool-use":
-        guard_script = Path(__file__).parent / "pretooluse_guard.py"
-        if guard_script.exists():
-            try:
-                guard_env = {**os.environ, "MEMORY_HOOK_ORIGINAL_CWD": str(cwd)}
-                proc = subprocess.run(
-                    [sys.executable, str(guard_script)],
-                    input=raw_payload,
-                    text=True,
-                    capture_output=True,
-                    timeout=5,
-                    env=guard_env,
-                )
-                if proc.stdout:
-                    sys.stdout.write(proc.stdout)
-                if proc.stderr:
-                    sys.stderr.write(proc.stderr)
-                # Emit metrics before returning from pre-tool-use branch
-                try:
-                    from .memory_hook_metrics import emit_metrics
-                    duration_ms = max(1, int((time.time() - start_time) * 1000))
-                    minimal_package = {"status": "ok" if proc.returncode == 0 else "error"}
-                    emit_metrics(ARTIFACT_ROOT, args.host, args.event, minimal_package, duration_ms=duration_ms)
-                except Exception as exc:
-                    _logger.debug("pre-tool-use metrics emit skipped: %s", exc)
-                return proc.returncode
-            except subprocess.TimeoutExpired:
-                append_error_log("pretooluse-guard", "guard timed out after 5s", {"cwd": str(cwd)})
-            except Exception as exc:
-                append_error_log("pretooluse-guard", "guard execution failed", {"error": str(exc)})
-        # Fallback: allow if guard unavailable or failed
-        print(json.dumps({"decision": "allow", "reason": "guard unavailable, allowing by default"}))
-        # Emit metrics before returning from pre-tool-use branch
+
+def _handle_pretooluse_guard(
+    args: argparse.Namespace, raw_payload: str, cwd: Path, start_time: float
+) -> int | None:
+    """Handle pre-tool-use event: intercept write operations via guard script.
+
+    Returns exit code if handled, None to continue to normal flow.
+    """
+    if args.event != "pre-tool-use":
+        return None
+
+    guard_script = Path(__file__).parent / "pretooluse_guard.py"
+    if guard_script.exists():
         try:
-            from .memory_hook_metrics import emit_metrics
-            duration_ms = max(1, int((time.time() - start_time) * 1000))
-            minimal_package = {"status": "ok"}
-            emit_metrics(ARTIFACT_ROOT, args.host, args.event, minimal_package, duration_ms=duration_ms)
+            guard_env = {**os.environ, "MEMORY_HOOK_ORIGINAL_CWD": str(cwd)}
+            proc = subprocess.run(
+                [sys.executable, str(guard_script)],
+                input=raw_payload,
+                text=True,
+                capture_output=True,
+                timeout=5,
+                env=guard_env,
+            )
+            if proc.stdout:
+                sys.stdout.write(proc.stdout)
+            if proc.stderr:
+                sys.stderr.write(proc.stderr)
+            status = "ok" if proc.returncode == 0 else "error"
+            _emit_pretooluse_metrics(args.host, args.event, status, start_time)
+            return proc.returncode
+        except subprocess.TimeoutExpired:
+            append_error_log("pretooluse-guard", "guard timed out after 5s", {"cwd": str(cwd)})
         except Exception as exc:
-            _logger.debug("pre-tool-use fallback metrics emit skipped: %s", exc)
-        return 0
+            append_error_log("pretooluse-guard", "guard execution failed", {"error": str(exc)})
 
-    # Async: Launch health check in background for session-start
-    if args.event == "session-start":
-        _launch_async_health_check(cwd)
-        # Runtime layer: update dynamic fields in STATE.md
-        project_scope = determine_project_scope(cwd)
-        _update_state_dynamic_fields(cwd, project_scope)
-        # Telemetry sync: batch send unsent metrics to PostHog
-        try:
-            _maybe_sync_telemetry(ARTIFACT_ROOT)
-        except Exception as exc:
-            _logger.debug("telemetry sync skipped: %s", exc)
+    # Fallback: allow if guard unavailable or failed
+    print(json.dumps({"decision": "allow", "reason": "guard unavailable, allowing by default"}))
+    _emit_pretooluse_metrics(args.host, args.event, "ok", start_time)
+    return 0
 
-    # F4: PromptSubmit real-time logging
-    if args.event == "prompt-submit":
-        try:
-            _log_prompt_submit(cwd, payload)
-        except Exception as exc:
-            _logger.warning("_log_prompt_submit failed: %s", exc)
 
-    writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
-    package = build_context_package(args.host, args.event, payload)
+def _handle_session_start_setup(cwd: Path) -> None:
+    """Handle session-start side effects: health check, state update, telemetry sync."""
+    _launch_async_health_check(cwd)
+    project_scope = determine_project_scope(cwd)
+    _update_state_dynamic_fields(cwd, project_scope)
+    try:
+        _maybe_sync_telemetry(ARTIFACT_ROOT)
+    except Exception as exc:
+        _logger.debug("telemetry sync skipped: %s", exc)
 
-    # Health Alert: Inject previous session's health report if available
-    if args.event == "session-start":
-        prev_health_report = cwd / "memory" / "system" / "health-report.json"
 
-        if prev_health_report.exists():
-            try:
-                report_text = prev_health_report.read_text()
+def _handle_prompt_submit_logging(cwd: Path, payload: dict[str, Any]) -> None:
+    """Handle prompt-submit real-time logging."""
+    try:
+        _log_prompt_submit(cwd, payload)
+    except Exception as exc:
+        _logger.warning("_log_prompt_submit failed: %s", exc)
 
-                report_data = json.loads(report_text)
 
-                if report_data.get("status") == "degraded":
+def _inject_health_alert(cwd: Path, package: dict) -> None:
+    """Inject previous session's health report if degraded (session-start only)."""
+    prev_health_report = cwd / "memory" / "system" / "health-report.json"
+    if not prev_health_report.exists():
+        return
+    try:
+        report_text = prev_health_report.read_text()
+        report_data = json.loads(report_text)
+        if report_data.get("status") == "degraded":
+            package.setdefault("system_context", {})
+            package["system_context"]["previous_health_alert"] = {
+                "status": "degraded",
+                "errors": report_data.get("validation_errors", [])[:5],
+                "note": "Detected from previous session startup health check",
+            }
+            append_error_log("health-check", "Project health degraded (from previous check)", report_data)
+    except Exception as e:
+        _logger.debug("Failed to read previous health report: %s", e)
 
-                    # Inject into system_context so the model can see and report it
-                    package.setdefault("system_context", {})
-                    package["system_context"]["previous_health_alert"] = {
-                        "status": "degraded",
-                        "errors": report_data.get("validation_errors", [])[:5], # Limit to top 5
-                        "note": "Detected from previous session startup health check"
-                    }
-                    # Also log it explicitly
-                    append_error_log("health-check", "Project health degraded (from previous check)", report_data)
-            except Exception as e:
-                _logger.debug("Failed to read previous health report: %s", e)
 
-    # L2: Verify integrity on session-start (after package is built)
-    if args.event == "session-start":
-        integrity_result = _integrity_verify(cwd)
-        if integrity_result and not integrity_result.get("ok", True):
-            # Key-missing is a warning, not a blocking failure
-            if integrity_result.get("skipped_reason") == "key_not_found":
-                _logger.info("Integrity protection skipped: key not found")
-            else:
-                append_error_log(
-                    "memory-hook-integrity",
-                    "project integrity check failed",
-                    {
-                        "host": args.host,
-                        "event": args.event,
-                        "cwd": str(cwd),
-                        "integrity": integrity_result,
-                    },
-                )
-                # M4: Block on integrity failure (no longer degraded)
-                package["status"] = "blocked"
-                package.setdefault("validation_errors", [])
-                if isinstance(package.get("validation_errors"), list):
-                    package["validation_errors"].append("integrity-check-failed")
-                    for err in integrity_result.get("errors", []):
-                        detail = err.get("detail", str(err))
-                        package["validation_errors"].append(f"integrity-error: {detail}")
+def _handle_integrity_check(
+    cwd: Path, package: dict, host: str, event: str
+) -> None:
+    """Verify project integrity on session-start. May set package status to 'blocked'."""
+    integrity_result = _integrity_verify(cwd)
+    if not integrity_result or integrity_result.get("ok", True):
+        return
+    if integrity_result.get("skipped_reason") == "key_not_found":
+        _logger.info("Integrity protection skipped: key not found")
+        return
+    append_error_log(
+        "memory-hook-integrity",
+        "project integrity check failed",
+        {"host": host, "event": event, "cwd": str(cwd), "integrity": integrity_result},
+    )
+    package["status"] = "blocked"
+    package.setdefault("validation_errors", [])
+    if isinstance(package.get("validation_errors"), list):
+        package["validation_errors"].append("integrity-check-failed")
+        for err in integrity_result.get("errors", []):
+            detail = err.get("detail", str(err))
+            package["validation_errors"].append(f"integrity-error: {detail}")
 
+
+def _write_artifacts_and_emit_metrics(
+    args: argparse.Namespace, writer: Any, package: dict, cwd: Path, start_time: float
+) -> bool:
+    """Write artifacts, re-sign manifest, and emit metrics. Returns write_ok status."""
     write_ok = writer.write(args.host, args.event, package)
     if not write_ok:
         append_error_log(
@@ -1927,19 +1954,19 @@ def main() -> int:
             {"host": args.host, "event": args.event, "error": writer.last_error},
         )
         print(f"[memory-hook-gateway] artifact write failed: {writer.last_error}", file=sys.stderr)
-
-    # L2: Re-sign manifest after successful artifact write
     if write_ok:
         _integrity_sign(cwd)
-
     try:
         from .memory_hook_metrics import emit_metrics
         duration_ms = max(1, int((time.time() - start_time) * 1000))
         emit_metrics(ARTIFACT_ROOT, args.host, args.event, package, duration_ms=duration_ms)
     except Exception as exc:
         _logger.debug("metrics emit skipped: %s", exc)
+    return write_ok
 
-    exit_code = 0
+
+def _compute_exit_code(args: argparse.Namespace, package: dict) -> int:
+    """Determine exit code based on package status."""
     if package["status"] != "ok":
         append_error_log(
             "memory-hook-gateway",
@@ -1957,14 +1984,67 @@ def main() -> int:
             f"project-map errors: {', '.join(package.get('validation_errors', [])) or 'none'}",
             file=sys.stderr,
         )
-        exit_code = 1
+        return 1
+    return 0
 
+
+def _dispatch_output(args: argparse.Namespace, package: dict,
+                     raw_payload: str, payload: dict, cwd: Path,
+                     exit_code: int) -> int:
+    """Handle final output dispatch: no-delegate JSON or delegate execution."""
     if args.no_delegate:
         sys.stdout.write(json.dumps(package, ensure_ascii=False) + "\n")
-    else:
-        exit_code = _execute_delegate(args, raw_payload, payload, cwd)
+        return exit_code
+    return _execute_delegate(args, raw_payload, payload, cwd)
 
-    return exit_code
+
+def main() -> int:
+    start_time = time.time()
+    args = _parse_args()
+    raw_payload = sys.stdin.read()
+    payload = _read_payload(raw_payload)
+    cwd = _discover_cwd(payload)
+
+    # M3: Anti-pollution - source repo gets readonly context-package instead of noop
+    source_result = _handle_source_repo_check(cwd, args.host, args.event)
+    if source_result is not None:
+        return source_result
+
+    if is_denied_project_root(cwd):
+        sys.stdout.write("{}\n")
+        return 0
+
+    if _should_noop_for_external_context(payload):
+        return _delegate_noop_response(args.host)
+
+    # ── PreToolUse guard: intercept write operations ──
+    guard_result = _handle_pretooluse_guard(args, raw_payload, cwd, start_time)
+    if guard_result is not None:
+        return guard_result
+
+    # Async: Launch health check in background for session-start
+    if args.event == "session-start":
+        _handle_session_start_setup(cwd)
+
+    # F4: PromptSubmit real-time logging
+    if args.event == "prompt-submit":
+        _handle_prompt_submit_logging(cwd, payload)
+
+    writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
+    package = build_context_package(args.host, args.event, payload)
+
+    # Health Alert: Inject previous session's health report if available
+    if args.event == "session-start":
+        _inject_health_alert(cwd, package)
+
+    # L2: Verify integrity on session-start (after package is built)
+    if args.event == "session-start":
+        _handle_integrity_check(cwd, package, args.host, args.event)
+
+    _write_artifacts_and_emit_metrics(args, writer, package, cwd, start_time)
+
+    exit_code = _compute_exit_code(args, package)
+    return _dispatch_output(args, package, raw_payload, payload, cwd, exit_code)
 
 
 def _gateway_excepthook(exc_type, exc_value, exc_tb):
