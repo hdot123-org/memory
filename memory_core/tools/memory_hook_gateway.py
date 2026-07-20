@@ -1604,7 +1604,7 @@ def _probe_posthog_network(hostname: str) -> bool:
         return False
 
 
-def _read_pending_records(metrics_file: Path, offset: int) -> list[tuple[int, dict]]:
+def _read_pending_records(metrics_file: Path, offset: int) -> list[tuple[int, dict[str, Any]]]:
     """Read incremental records from metrics.jsonl starting after offset.
 
     Returns list of (line_number, record) tuples to handle blank/malformed lines.
@@ -1629,7 +1629,7 @@ def _read_pending_records(metrics_file: Path, offset: int) -> list[tuple[int, di
 
 
 def _batch_send_records(
-    records_with_lines: list[tuple[int, dict]],
+    records_with_lines: list[tuple[int, dict[str, Any]]],
     batch_size: int,
     offset_file: Path
 ) -> tuple[int, int]:
@@ -1898,7 +1898,7 @@ def _handle_prompt_submit_logging(cwd: Path, payload: dict[str, Any]) -> None:
         _logger.warning("_log_prompt_submit failed: %s", exc)
 
 
-def _inject_health_alert(cwd: Path, package: dict) -> None:
+def _inject_health_alert(cwd: Path, package: dict[str, Any]) -> None:
     """Inject previous session's health report if degraded (session-start only)."""
     prev_health_report = cwd / "memory" / "system" / "health-report.json"
     if not prev_health_report.exists():
@@ -1919,7 +1919,7 @@ def _inject_health_alert(cwd: Path, package: dict) -> None:
 
 
 def _handle_integrity_check(
-    cwd: Path, package: dict, host: str, event: str
+    cwd: Path, package: dict[str, Any], host: str, event: str
 ) -> None:
     """Verify project integrity on session-start. May set package status to 'blocked'."""
     integrity_result = _integrity_verify(cwd)
@@ -1943,7 +1943,7 @@ def _handle_integrity_check(
 
 
 def _write_artifacts_and_emit_metrics(
-    args: argparse.Namespace, writer: Any, package: dict, cwd: Path, start_time: float
+    args: argparse.Namespace, writer: Any, package: dict[str, Any], cwd: Path, start_time: float
 ) -> bool:
     """Write artifacts, re-sign manifest, and emit metrics. Returns write_ok status."""
     write_ok = writer.write(args.host, args.event, package)
@@ -1962,10 +1962,10 @@ def _write_artifacts_and_emit_metrics(
         emit_metrics(ARTIFACT_ROOT, args.host, args.event, package, duration_ms=duration_ms)
     except Exception as exc:
         _logger.debug("metrics emit skipped: %s", exc)
-    return write_ok
+    return bool(write_ok)
 
 
-def _compute_exit_code(args: argparse.Namespace, package: dict) -> int:
+def _compute_exit_code(args: argparse.Namespace, package: dict[str, Any]) -> int:
     """Determine exit code based on package status."""
     if package["status"] != "ok":
         append_error_log(
@@ -1988,8 +1988,8 @@ def _compute_exit_code(args: argparse.Namespace, package: dict) -> int:
     return 0
 
 
-def _dispatch_output(args: argparse.Namespace, package: dict,
-                     raw_payload: str, payload: dict, cwd: Path,
+def _dispatch_output(args: argparse.Namespace, package: dict[str, Any],
+                     raw_payload: str, payload: dict[str, Any], cwd: Path,
                      exit_code: int) -> int:
     """Handle final output dispatch: no-delegate JSON or delegate execution."""
     if args.no_delegate:
@@ -2047,7 +2047,7 @@ def main() -> int:
     return _dispatch_output(args, package, raw_payload, payload, cwd, exit_code)
 
 
-def _gateway_excepthook(exc_type, exc_value, exc_tb):
+def _gateway_excepthook(exc_type: type[BaseException], exc_value: BaseException, exc_tb: Any) -> None:
     """Top-level exception hook: capture unexpected gateway crashes to JSONL."""
     try:
         metrics_dir = ARTIFACT_ROOT

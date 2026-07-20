@@ -2342,7 +2342,7 @@ def _finalize_ownership_toml(
                 try:
                     from .version_sync import patch_ownership_memory_version
                 except ImportError:
-                    from memory_core.tools.version_sync import patch_ownership_memory_version  # type: ignore
+                    from memory_core.tools.version_sync import patch_ownership_memory_version
                 if patch_ownership_memory_version(ownership_path, CURRENT_MEMORY_VERSION):
                     result["created"].append(f"file:ownership.toml (memory_version patched to {CURRENT_MEMORY_VERSION})")
                 else:
@@ -2700,7 +2700,7 @@ def _print_post_init_health_summary(target: Path) -> None:
         try:
             from .verify_consumer import verify
         except ImportError:
-            from memory_core.tools.verify_consumer import verify  # type: ignore
+            from memory_core.tools.verify_consumer import verify
         report = verify(target)
         passed = sum(1 for c in report.checks if c.passed)
         total = len(report.checks)

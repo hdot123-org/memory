@@ -987,10 +987,11 @@ def _read_current_version(memory_root: Path) -> str | None:
         text = lock_path.read_text(encoding="utf-8")
         if text.strip().startswith("{"):
             data = json.loads(text)
-            return data.get("version")
+            return str(data.get("version")) if data.get("version") is not None else None
         else:
             data = tomllib.loads(text)
-            return data.get("memory", {}).get("memory_version")
+            ver = data.get("memory", {}).get("memory_version")
+            return str(ver) if ver is not None else None
     except Exception:
         return None
 

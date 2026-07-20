@@ -122,7 +122,7 @@ def _extract_first_user_preview(msg: dict[str, Any] | None) -> str:
 
     for block in msg["content"]:
         if isinstance(block, dict) and block.get("type") == "text":
-            text = block.get("text", "")
+            text = str(block.get("text", ""))
             # 去除 system-reminder
             if "<system-reminder>" in text:
                 text = text.split("</system-reminder>")[-1].strip()
@@ -147,7 +147,7 @@ def _extract_assistant_summary_preview(msg: dict[str, Any] | None) -> str:
 
     for block in msg["content"]:
         if isinstance(block, dict) and block.get("type") == "text":
-            text = block.get("text", "")
+            text = str(block.get("text", ""))
             preview = text[:300]
             if len(text) > 300:
                 preview += "..."

@@ -8,7 +8,10 @@ so gateway wiring can stay thin without changing external behavior.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Collection
+from typing import TYPE_CHECKING, Any, Callable, Collection
+
+if TYPE_CHECKING:
+    from memory_core.tools.memory_hook_config import CoreConfig
 
 
 def _resolve_callbacks(config: "CoreConfig") -> dict[str, Callable]:
@@ -126,7 +129,7 @@ def evaluate_registration_commit_gate(
     return gate, [f"registration commit enforcement failed: status={status}"]
 
 
-def _safe_tb(basis: dict, key: str, default: Any = None) -> Any:
+def _safe_tb(basis: dict[str, Any], key: str, default: Any = None) -> Any:
     """Safely extract a key from a truth_basis dict at runtime."""
     return basis.get(key, default)
 
@@ -176,7 +179,7 @@ def _resolve_project_file(
 
 
 def _compute_truth_basis_errors(
-    truth_basis: dict,
+    truth_basis: dict[str, Any],
     decisions: list[str],
     lessons: list[str],
     docs_refs: list[str],
@@ -243,7 +246,7 @@ def _derive_status(
     return "degraded"
 
 
-def _derive_project_truth_status(truth_basis: dict, truth_basis_errors: list[str]) -> str:
+def _derive_project_truth_status(truth_basis: dict[str, Any], truth_basis_errors: list[str]) -> str:
     """Derive per-project truth status from truth_basis validation state."""
     if _safe_tb(truth_basis, "validation", "unknown") == "pass" and not truth_basis_errors:
         return "truth-ready"
@@ -261,7 +264,7 @@ def _assemble_system_context(
     registration_commit_policy: str,
     registration_commit_gate: dict[str, Any],
     global_canonical: list[Path],
-    truth_basis: dict,
+    truth_basis: dict[str, Any],
     truth_basis_refs: list[str],
     truth_basis_errors: list[str],
     governance_tuple_errors: list[str],
@@ -307,7 +310,7 @@ def _assemble_project_context(
     *,
     project_scope: str,
     project_file: Path,
-    truth_basis: dict,
+    truth_basis: dict[str, Any],
     project_truth_status: str,
     runtime_root: Path,
 ) -> dict[str, Any]:
