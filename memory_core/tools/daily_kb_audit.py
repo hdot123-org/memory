@@ -1532,6 +1532,86 @@ def _summarize_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _summarize_ssh(rec: dict[str, Any]) -> str:
+    """Return SSH status mark for a server record."""
+    ssh_ok = rec.get("ssh_ok")
+    return "✓" if ssh_ok else ("✗" if ssh_ok is False else "-")
+
+
+def _summarize_systemd(rec: dict[str, Any]) -> str:
+    """Return systemd services summary string."""
+    systemd = rec.get("systemd_services") or {}
+    if systemd:
+        up_n = sum(1 for s in systemd.values() if s == "running")
+        return f"systemd {up_n}/{len(systemd)}"
+    return "systemd -"
+
+
+def _summarize_containers(rec: dict[str, Any]) -> str:
+    """Return containers summary string."""
+    containers = rec.get("containers") or {}
+    if containers:
+        up_n = sum(
+            1 for s in containers.values()
+            if s and s != "DOWN"
+            and "restarting" not in s.lower()
+            and "unhealthy" not in s.lower()
+        )
+        return f"容器 {up_n}/{len(containers)} 正常"
+    return "容器 -"
+
+
+def _summarize_ports(rec: dict[str, Any]) -> str:
+    """Return ports summary string."""
+    ports = rec.get("ports") or {}
+    if ports:
+        return f"端口 {sum(1 for v in ports.values() if v)}/{len(ports)}"
+    return "端口 -"
+
+
+def _summarize_http(rec: dict[str, Any]) -> str:
+    """Return HTTP endpoints summary string."""
+    https = rec.get("http_endpoints") or {}
+    if https:
+        return f"HTTP {sum(1 for v in https.values() if v.get('ok'))}/{len(https)}"
+    return "HTTP -"
+
+
+def _summarize_disks(rec: dict[str, Any]) -> str:
+    """Return disk space summary string."""
+    disks = rec.get("disk_space") or {}
+    if not disks:
+        return "磁盘 -"
+    disk_parts = []
+    for d_mount, d_info in disks.items():
+        pct = d_info.get("use_pct", 0)
+        avail = d_info.get("avail", "?")
+        mark = "🔴" if pct >= 90 else ("🟡" if pct >= 80 else "✓")
+        disk_parts.append(f"{d_mount} {mark}{pct}% (剩{avail})")
+    return "磁盘 " + ", ".join(disk_parts)
+
+
+def _summarize_database_entry(name: str, rec: dict[str, Any]) -> str:
+    """Return formatted line for a single database entry."""
+    ok = rec.get("connect_ok")
+    mark = "✓" if ok else ("✗" if ok is False else "-")
+    return f"  {name}: {mark}"
+
+
+def _summarize_server_entry(name: str, rec: dict[str, Any]) -> list[str]:
+    """Return two formatted lines for a single server entry."""
+    ssh_mark = _summarize_ssh(rec)
+    s_summary = _summarize_systemd(rec)
+    c_summary = _summarize_containers(rec)
+    p_summary = _summarize_ports(rec)
+    h_summary = _summarize_http(rec)
+    d_summary = _summarize_disks(rec)
+    return [
+        f"  {name}: SSH {ssh_mark}, {s_summary}, {c_summary}, {p_summary}, {h_summary}",
+        f"        {d_summary}",
+    ]
+
+
 def _append_infra_summary(lines: list[str], report: dict[str, Any]) -> None:
     """向摘要里追加一段「🖥 基础设施」概览。无基础设施节点则跳过。"""
     infra = report.get("infrastructure")
@@ -1547,63 +1627,10 @@ def _append_infra_summary(lines: list[str], report: dict[str, Any]) -> None:
     lines.append("🖥 基础设施:")
 
     for name, rec in servers.items():
-        ssh_ok = rec.get("ssh_ok")
-        # ssh_ok 可能为 None（未检查）
-        ssh_mark = "✓" if ssh_ok else ("✗" if ssh_ok is False else "-")
-
-        systemd = rec.get("systemd_services") or {}
-        if systemd:
-            up_n = sum(1 for s in systemd.values() if s == "running")
-            s_summary = f"systemd {up_n}/{len(systemd)}"
-        else:
-            s_summary = "systemd -"
-
-        containers = rec.get("containers") or {}
-        if containers:
-            up_n = sum(
-                1 for s in containers.values()
-                if s and s != "DOWN"
-                and "restarting" not in s.lower()
-                and "unhealthy" not in s.lower()
-            )
-            c_summary = f"容器 {up_n}/{len(containers)} 正常"
-        else:
-            c_summary = "容器 -"
-
-        ports = rec.get("ports") or {}
-        p_summary = (
-            f"端口 {sum(1 for v in ports.values() if v)}/{len(ports)}"
-            if ports else "端口 -"
-        )
-
-        https = rec.get("http_endpoints") or {}
-        h_summary = (
-            f"HTTP {sum(1 for v in https.values() if v.get('ok'))}/{len(https)}"
-            if https else "HTTP -"
-        )
-
-        # 磁盘空间摘要
-        disks = rec.get("disk_space") or {}
-        if disks:
-            disk_parts = []
-            for d_mount, d_info in disks.items():
-                pct = d_info.get("use_pct", 0)
-                avail = d_info.get("avail", "?")
-                mark = "🔴" if pct >= 90 else ("🟡" if pct >= 80 else "✓")
-                disk_parts.append(f"{d_mount} {mark}{pct}% (剩{avail})")
-            d_summary = "磁盘 " + ", ".join(disk_parts)
-        else:
-            d_summary = "磁盘 -"
-
-        lines.append(
-            f"  {name}: SSH {ssh_mark}, {s_summary}, {c_summary}, {p_summary}, {h_summary}"
-        )
-        lines.append(f"        {d_summary}")
+        lines.extend(_summarize_server_entry(name, rec))
 
     for name, rec in databases.items():
-        ok = rec.get("connect_ok")
-        mark = "✓" if ok else ("✗" if ok is False else "-")
-        lines.append(f"  {name}: {mark}")
+        lines.append(_summarize_database_entry(name, rec))
 
 
 def notify_via_lark(report: dict[str, Any]) -> bool:
