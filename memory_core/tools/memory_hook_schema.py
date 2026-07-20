@@ -45,8 +45,8 @@ _DROP_PROJECT_KEYS = frozenset({
 
 
 def _diff_dicts(
-    input_obj: dict,
-    output_obj: dict,
+    input_obj: dict[str, Any],
+    output_obj: dict[str, Any],
     prefix: str,
     expected_keys: set[str],
     dropped: list[str],
@@ -70,8 +70,8 @@ def _diff_dicts(
 
 
 def _diff_list(
-    input_list: list,
-    output_list: list,
+    input_list: list[Any],
+    output_list: list[Any],
     prefix: str,
     expected_keys: set[str],
     dropped: list[str],
@@ -360,8 +360,8 @@ def _check_lossless_v2_to_memory_v1(package: dict[str, Any]) -> tuple[bool, list
 
 
 def is_lossless(
-    input_data: dict | str,
-    output_data: dict | None = None,
+    input_data: dict[str, Any] | str,
+    output_data: dict[str, Any] | None = None,
     expected_keys: set[str] | None = None,
 ) -> tuple[bool, list[str]]:
     """Return (is_lossless, list_of_dropped_keys).
@@ -388,7 +388,7 @@ def is_lossless(
         expected_keys = set()
 
     dropped: list[str] = []
-    _diff_dicts(input_data, output_data or {}, "", expected_keys, dropped)
+    _diff_dicts(input_data if isinstance(input_data, dict) else {}, output_data or {}, "", expected_keys, dropped)
     return (len(dropped) == 0, dropped)
 
 

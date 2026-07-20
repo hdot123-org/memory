@@ -55,7 +55,7 @@ class OwnershipDomain:
     recursive: bool = True
     description: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Normalize path to use forward slashes
         object.__setattr__(
             self, "path", self.path.replace("\\", "/").strip("/")
@@ -80,7 +80,7 @@ class OwnershipResource:
     domain: str | None = None
     description: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Normalize path to use forward slashes
         object.__setattr__(
             self, "path", self.path.replace("\\", "/").strip("/")
@@ -615,14 +615,14 @@ def validate_ownership_schema(ownership: MemoryOwnership) -> list[str]:
                 )
 
     # Check for resource downgrades
-    default_resource_map = {r.name: r for r in DEFAULT_OWNERSHIP_RESOURCES}
-    for current in ownership.resources:
-        if current.name in default_resource_map:
-            default = default_resource_map[current.name]
-            if current.level.value < default.level.value:
+    default_resource_map: dict[str, OwnershipResource] = {r.name: r for r in DEFAULT_OWNERSHIP_RESOURCES}
+    for res in ownership.resources:
+        if res.name in default_resource_map:
+            default_res = default_resource_map[res.name]
+            if res.level.value < default_res.level.value:
                 errors.append(
-                    f"Resource '{current.name}' downgraded from "
-                    f"{default.level.name} to {current.level.name}"
+                    f"Resource '{res.name}' downgraded from "
+                    f"{default_res.level.name} to {res.level.name}"
                 )
 
     return errors
@@ -702,7 +702,7 @@ def get_source_repo_mode(project_root: Path) -> str:
 
     ownership = load_memory_ownership(project_root)
     source_repo_policy = ownership.policy.get("source_repo", {})
-    mode = source_repo_policy.get("mode", SOURCE_REPO_MODE_READONLY)
+    mode: str = str(source_repo_policy.get("mode", SOURCE_REPO_MODE_READONLY))
 
     if mode not in VALID_SOURCE_REPO_MODES:
         return SOURCE_REPO_MODE_READONLY

@@ -26,6 +26,7 @@ from memory_core.ownership import (
     DEFAULT_OWNERSHIP_DOMAINS,
     DEFAULT_OWNERSHIP_RESOURCES,
     MemoryOwnership,
+    OwnershipResource,
     ProtectionLevel,
     get_source_repo_mode,
     is_memory_core_source_repo,
@@ -242,8 +243,8 @@ def _diff_ownership(
             plan["has_changes"] = True
 
     # Resource diff
-    current_resources = {r.name: r for r in current.resources}
-    proposed_resources = {r.name: r for r in proposed.resources}
+    current_resources: dict[str, OwnershipResource] = {r.name: r for r in current.resources}
+    proposed_resources: dict[str, OwnershipResource] = {r.name: r for r in proposed.resources}
 
     for name in set(current_resources) - set(proposed_resources):
         plan["resources_removed"].append(
@@ -258,20 +259,20 @@ def _diff_ownership(
         plan["has_changes"] = True
 
     for name in set(current_resources) & set(proposed_resources):
-        c = current_resources[name]
-        p = proposed_resources[name]
-        changes = {}
-        if c.path != p.path:
-            changes["path"] = {"from": c.path, "to": p.path}
-        if c.level != p.level:
-            changes["level"] = {
-                "from": c.level.name,
-                "to": p.level.name,
+        c_res: OwnershipResource = current_resources[name]
+        p_res: OwnershipResource = proposed_resources[name]
+        changes_res: dict[str, Any] = {}
+        if c_res.path != p_res.path:
+            changes_res["path"] = {"from": c_res.path, "to": p_res.path}
+        if c_res.level != p_res.level:
+            changes_res["level"] = {
+                "from": c_res.level.name,
+                "to": p_res.level.name,
             }
-        if c.domain != p.domain:
-            changes["domain"] = {"from": c.domain, "to": p.domain}
-        if changes:
-            plan["resources_modified"].append({"name": name, **changes})
+        if c_res.domain != p_res.domain:
+            changes_res["domain"] = {"from": c_res.domain, "to": p_res.domain}
+        if changes_res:
+            plan["resources_modified"].append({"name": name, **changes_res})
             plan["has_changes"] = True
 
     return plan

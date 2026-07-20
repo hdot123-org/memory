@@ -45,17 +45,17 @@ except ImportError:  # pragma: no cover - 防御性回退
     is_memory_core_source_repo = None  # type: ignore[assignment]
 
 try:
-    import yaml  # type: ignore[import-not-found]
+    import yaml
     _HAS_YAML = True
 except ImportError:  # pragma: no cover - 缺 PyYAML 时跳过基础设施检查
-    yaml = None  # type: ignore[assignment]
+    yaml = None
     _HAS_YAML = False
 
 # Import file utilities (REF-001 §4.8)
 try:
     from ._file_utils import now_iso
 except ImportError:
-    from _file_utils import now_iso  # type: ignore
+    from _file_utils import now_iso  # type: ignore[no-redef]
 
 
 # ---------------------------------------------------------------------------
@@ -779,13 +779,14 @@ def check_disk_space(
             continue
         warn_pct = int(dc.get("warn_pct", 80))
         crit_pct = int(dc.get("crit_pct", 90))
-        mount = dc.get("mount")
+        mount_config: Any = dc.get("mount")
         pattern = dc.get("pattern")
 
         # 通过 mount 精确匹配或 pattern 正则匹配
         matched_mount: str | None = None
-        if mount:
-            matched_mount = mount if mount in filesystems else None
+        if mount_config:
+            _mount_s = str(mount_config)
+            matched_mount = _mount_s if _mount_s in filesystems else None
         elif pattern:
             for fs_mount in filesystems:
                 if re.search(pattern, fs_mount):
@@ -793,7 +794,7 @@ def check_disk_space(
                     break
 
         if matched_mount is None:
-            label = mount or pattern or "?"
+            label = mount_config or pattern or "?"
             v = _make_violation(
                 "disk_full",
                 "warning",
@@ -1237,10 +1238,14 @@ def check_server(
     disk_checks = checks.get("disk_space") or []
     if disk_checks and ssh_ok:
         name = str(server.get("name", "unknown"))
+        normalized_checks: list[dict[str, Any]] = [
+            {"path": d} if isinstance(d, str) else d
+            for d in disk_checks
+        ]
         record["disk_space"] = check_disk_space(
             ssh_alias=str(ssh_alias),
             server_name=name,
-            disk_checks=[str(d) if not isinstance(d, dict) else d for d in disk_checks],
+            disk_checks=normalized_checks,
             global_violations=global_violations,
             record_violations=record["violations"],
         )

@@ -26,9 +26,8 @@ class ScopeResolverBase:
         scope_config_path: Path | None = None,
     ):
         self._config = config
-        if scope_config_path is not None:
-            self._scope_config_path = scope_config_path
-        else:
+        self._scope_config_path: Path | None = scope_config_path
+        if scope_config_path is None:
             env_path = os.environ.get(self.SCOPE_CONFIG_PATH_ENV)
             self._scope_config_path = Path(env_path).expanduser() if env_path else None
         self._scope_overrides: dict[str, dict[str, str]] = self._load_scope_overrides()

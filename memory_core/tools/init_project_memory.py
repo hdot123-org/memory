@@ -35,7 +35,7 @@ from typing import Any
 try:
     from .index_schema import build_headers, inject_headers, read_project_version
 except ImportError:
-    from memory_core.tools.index_schema import (  # type: ignore
+    from memory_core.tools.index_schema import (
         build_headers,
         inject_headers,
         read_project_version,

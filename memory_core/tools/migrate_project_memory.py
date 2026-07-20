@@ -59,9 +59,9 @@ try:
         MemoryOwnership,
     )
 except ImportError:
-    MemoryOwnership = None  # type: ignore
-    DEFAULT_OWNERSHIP_DOMAINS = []  # type: ignore
-    DEFAULT_OWNERSHIP_RESOURCES = []  # type: ignore
+    MemoryOwnership = None  # type: ignore[misc,assignment]
+    DEFAULT_OWNERSHIP_DOMAINS = []
+    DEFAULT_OWNERSHIP_RESOURCES = []
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -1492,7 +1492,7 @@ def _handle_rollback(target: Path) -> int:
         return 1
 
 
-def _emit_json_output(result: dict) -> None:
+def _emit_json_output(result: dict[str, Any]) -> None:
     """Print migration result as JSON."""
     output = dict(result)
     for key in ("from_version", "to_version", "target"):
@@ -1501,7 +1501,7 @@ def _emit_json_output(result: dict) -> None:
     print(json.dumps(output, indent=2, ensure_ascii=False))
 
 
-def _emit_text_output(result: dict) -> None:
+def _emit_text_output(result: dict[str, Any]) -> None:
     """Print migration result as human-readable text."""
     print("=" * 60)
     print("Project Memory Migration Report")

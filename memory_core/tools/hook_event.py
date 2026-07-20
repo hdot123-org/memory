@@ -27,13 +27,13 @@ from typing import Any
 try:
     from memory_core.tools._rule_errors import UnknownHostError
 except ImportError:
-    from ._rule_errors import UnknownHostError  # type: ignore
+    from ._rule_errors import UnknownHostError
 
 # Import now_iso utility (REF-001 §4.8)
 try:
     from memory_core.tools._file_utils import now_iso
 except ImportError:
-    from ._file_utils import now_iso  # type: ignore
+    from ._file_utils import now_iso
 
 # ---------------------------------------------------------------------------
 # Claude event name mapping

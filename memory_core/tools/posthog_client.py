@@ -40,7 +40,7 @@ try:
     import posthog
     _POSTHOG_AVAILABLE = True
 except ImportError:
-    posthog = None
+    posthog = None  # type: ignore[assignment]
     _POSTHOG_AVAILABLE = False
     logger.debug("posthog SDK not installed, analytics will be no-op")
 
@@ -59,7 +59,10 @@ class PostHogAnalytics:
         analytics.shutdown()  # Flush pending events
     """
 
-    _instance = None
+    _instance: PostHogAnalytics | None = None
+    _initialized: bool
+    _enabled: bool
+    _client: Any | None
 
     def __new__(cls) -> PostHogAnalytics:
         """Implement singleton pattern."""
@@ -103,7 +106,7 @@ class PostHogAnalytics:
         host = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip()
 
         try:
-            self._client = posthog.Posthog(
+            self._client = posthog.Posthog(  # type: ignore[no-untyped-call]
                 api_key=api_key,
                 host=host,
                 on_error=lambda e: logger.debug(f"PostHog error: {e}"),

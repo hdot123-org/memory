@@ -22,7 +22,7 @@ from typing import Any
 try:
     from memory_core.tools.error_logger import write_error_log
 except ImportError:
-    write_error_log = None  # type: ignore[misc,assignment]
+    write_error_log = None  # type: ignore[assignment]
 
 # F5: 签名模块导入（ImportError 时静默跳过）
 # 使用模块级导入避免 stale binding 问题（monkeypatch 能正确看到 patched 版本）
@@ -30,8 +30,8 @@ try:
     from memory_core.tools import memory_hook_integrity_keys as _integrity_keys
     from memory_core.tools import memory_hook_integrity_manifest as _integrity
 except ImportError:
-    _integrity = None  # type: ignore[misc,assignment]
-    _integrity_keys = None  # type: ignore[misc,assignment]
+    _integrity = None  # type: ignore[assignment]
+    _integrity_keys = None  # type: ignore[assignment]
 
 # ---------------------------------------------------------------------------
 # 常量 & 配置

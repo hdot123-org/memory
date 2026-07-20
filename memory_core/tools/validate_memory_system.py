@@ -29,9 +29,9 @@ for p in (str(_SCRIPT_DIR), str(_REPO_ROOT)):
         sys.path.insert(0, p)
 
 try:
-    from memory_hook_config import CoreConfig  # type: ignore
+    from memory_hook_config import CoreConfig
 except ImportError:
-    CoreConfig = None  # type: ignore
+    CoreConfig = None
 
 REQUIRED_PACKAGE_KEYS = {"status", "host", "event", "schema_version", "system_context", "task_context"}
 REQUIRED_SYSTEM_CONTEXT_KEYS = {"boot_entry", "state_entry"}
@@ -88,7 +88,7 @@ class ValidateResult:
 def check_gateway_import(result: ValidateResult) -> bool:
     """Verify the gateway module imports without raising."""
     try:
-        import memory_hook_gateway  # type: ignore  # noqa: F401
+        import memory_hook_gateway  # noqa: F401
         result.record("gateway_import", True, "memory_hook_gateway loaded")
         return True
     except Exception as exc:
@@ -99,7 +99,7 @@ def check_gateway_import(result: ValidateResult) -> bool:
 def check_core_builder_resolve(result: ValidateResult) -> tuple[bool, Any]:
     """Verify _resolve_core_builder returns a callable for the legacy provider."""
     try:
-        from memory_hook_gateway import _resolve_core_builder  # type: ignore
+        from memory_hook_gateway import _resolve_core_builder
         provider_name, builder, errors = _resolve_core_builder("legacy", allow_fallback=False)
         if not callable(builder):
             result.record("core_builder_resolve", False, "builder is not callable")
@@ -119,7 +119,7 @@ def _wrap_builder_with_kwargs(builder: Any) -> Any:
     sig = inspect.signature(builder)
     if len(sig.parameters) == 1:
         # Builder expects a single config argument (new interface)
-        def wrapped(**kwargs):
+        def wrapped(**kwargs: Any) -> Any:
             if CoreConfig is None:
                 return builder(**kwargs)
             config = CoreConfig(**kwargs)
@@ -132,7 +132,7 @@ def _wrap_builder_with_kwargs(builder: Any) -> Any:
 def check_context_package(result: ValidateResult, builder: Any) -> bool:
     """Verify the core builder produces a well-shaped context package."""
     try:
-        import memory_hook_gateway as gw  # type: ignore
+        import memory_hook_gateway as gw
 
         kwargs = dict(
             host="factory",
@@ -223,7 +223,7 @@ def check_context_package(result: ValidateResult, builder: Any) -> bool:
 def check_core_config_path(result: ValidateResult) -> bool:
     """Verify the CoreConfig-native assembly path works."""
     try:
-        from memory_hook_core import build_context_package_from_config  # type: ignore
+        from memory_hook_core import build_context_package_from_config
         if not callable(build_context_package_from_config):
             result.record("core_config_path", False, "build_context_package_from_config is not callable")
             return False
@@ -237,8 +237,8 @@ def check_core_config_path(result: ValidateResult) -> bool:
 def check_v1_schema(result: ValidateResult) -> bool:
     """Verify build_context_package_simple returns context-package-v1."""
     try:
-        from memory_hook_gateway import build_context_package_simple  # type: ignore
-        from memory_hook_schema import is_v1  # type: ignore
+        from memory_hook_gateway import build_context_package_simple
+        from memory_hook_schema import is_v1
         package = build_context_package_simple("factory", "test", {})
         if not is_v1(package):
             result.record("v1_schema", False, f"expected context-package-v1, got {package.get('schema_version')}")
@@ -258,7 +258,7 @@ def check_v1_schema(result: ValidateResult) -> bool:
 def check_package_imports(result: ValidateResult) -> bool:
     """Verify memory_core.tools public API is importable."""
     try:
-        import memory_core.tools  # type: ignore
+        import memory_core.tools
         assert hasattr(memory_core.tools, 'build_context_package')
         assert hasattr(memory_core.tools, 'CoreConfig')
         result.record("package_imports", True, "4 public symbols importable")
@@ -336,7 +336,7 @@ def _has_forbidden_state_name(rel_path: Path) -> bool:
     return rel_path.name in _FORBIDDEN_STATE_NAMES
 
 
-def _scan_file_content(filepath: Path, repo_root: Path) -> list[dict]:
+def _scan_file_content(filepath: Path, repo_root: Path) -> list[dict[str, Any]]:
     """Scan a .md file in a runtime location for business-specific strings.
 
     Only flags files directly under runtime directories like
@@ -344,7 +344,7 @@ def _scan_file_content(filepath: Path, repo_root: Path) -> list[dict]:
     memory/kb/global/.  Archived and source-code locations
     are exempt.
     """
-    findings: list[dict] = []
+    findings: list[dict[str, Any]] = []
     rel_path = filepath.relative_to(repo_root)
     rel_str = rel_path.as_posix()
 
@@ -383,7 +383,7 @@ def _scan_file_content(filepath: Path, repo_root: Path) -> list[dict]:
     return findings
 
 
-def detect_pollution(repo_root: Path) -> list[dict]:
+def detect_pollution(repo_root: Path) -> list[dict[str, Any]]:
     """Return list of pollution findings.
 
     Each dict has:
@@ -403,7 +403,7 @@ def detect_pollution(repo_root: Path) -> list[dict]:
     - Deny-list: ``.memory/`` directories outside ``memory/system/``
       or ``archive/``.
     """
-    findings: list[dict] = []
+    findings: list[dict[str, Any]] = []
 
     if not repo_root.is_dir():
         findings.append({
@@ -474,7 +474,7 @@ def detect_pollution(repo_root: Path) -> list[dict]:
 
     # De-duplicate by (path, rule) to avoid duplicates from Rule 1
     seen: set[tuple[str, str]] = set()
-    unique_findings: list[dict] = []
+    unique_findings: list[dict[str, Any]] = []
     for f in findings:
         key = (f["path"], f["rule"])
         if key not in seen:

@@ -233,7 +233,7 @@ class MetricsRegistry:
         for name, timer in self._timers.items():
             stats = timer.stats()
             if stats["count"] > 0:
-                record = {
+                timer_record: dict[str, Any] = {
                     "metric_type": "timer",
                     "name": name,
                     "count": stats["count"],
@@ -242,7 +242,7 @@ class MetricsRegistry:
                     "max_ms": stats["max_ms"],
                     "timestamp": _now_iso(),
                 }
-                _emit_to_jsonl(record)
+                _emit_to_jsonl(timer_record)
 
         # Clear after publishing
         self._counters.clear()

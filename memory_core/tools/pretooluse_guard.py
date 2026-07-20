@@ -60,7 +60,7 @@ def _write_metrics_jsonl(project_root: Path, record: dict[str, Any]) -> None:
         logging.getLogger(__name__).warning("metrics write failed: %s", exc)
 
 
-def _rule_result_to_hook_json(rule_result) -> dict[str, Any]:
+def _rule_result_to_hook_json(rule_result: Any) -> dict[str, Any]:
     """Convert RuleResult to hook JSON dict format (backward compatibility).
 
     The hook system expects a specific JSON format with 'decision', 'reason', 'scenario', etc.

@@ -586,7 +586,7 @@ class RouteTargetPolicyImpl(RouteTargetPolicy):
         # Global KB 配置 (v0.8.0+)
         self._global_kb_root = global_kb_root
         self._global_kb_enabled = global_kb_enabled
-        self._routes: dict[str, str] = {
+        self._routes: dict[str, str | None] = {
             "fact": None,  # evaluated lazily in resolve() to avoid stale date across midnight
             "global-rule": str(global_rule_path or (workspace_root / "memory" / "kb" / "global" / "memory-routing.md")),
             "source-material": str(workspace_root / "memory" / "docs" / "references"),
@@ -599,7 +599,10 @@ class RouteTargetPolicyImpl(RouteTargetPolicy):
         if kind == "fact":
             return str(self._workspace_root / "memory" / "log" / f"{datetime.now().date().isoformat()}.md")
         try:
-            return self._routes[kind]
+            value = self._routes[kind]
+            if value is None:
+                raise ValueError(f"route {kind!r} is not configured")
+            return value
         except KeyError:
             raise UnknownRouteKindError(f"unsupported route kind: {kind}")
 

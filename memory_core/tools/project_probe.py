@@ -21,7 +21,7 @@ _SKIP_DIRS = {
 }
 
 # 语言检测的文件 -> 语言映射
-_LANG_CONFIG_FILES: dict[str, str] = [
+_LANG_CONFIG_FILES: list[tuple[str, str]] = [
     # (文件名, 语言, 置信度标记)
     ("pyproject.toml", "Python"),
     ("requirements.txt", "Python"),
@@ -248,7 +248,7 @@ class ProjectProbe:
 
         if lang_counts:
             # 返回计数最高的语言
-            return max(lang_counts, key=lang_counts.get)
+            return max(lang_counts, key=lambda k: lang_counts[k])
 
         # 策略 2: 通过文件扩展名统计
         ext_counts: dict[str, int] = {}
@@ -261,7 +261,7 @@ class ProjectProbe:
                     ext_counts[lang] = ext_counts.get(lang, 0) + 1
 
         if ext_counts:
-            return max(ext_counts, key=ext_counts.get)
+            return max(ext_counts, key=lambda k: ext_counts[k])
 
         return ""
 
@@ -397,7 +397,7 @@ class ProjectProbe:
             markers["microservices"] = count
 
         if markers:
-            return max(markers, key=markers.get)
+            return max(markers, key=lambda k: markers[k])
 
         return ""
 

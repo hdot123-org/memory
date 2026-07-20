@@ -9,6 +9,8 @@ Part of REF-001 strangler fig scaffold phase.
 """
 from __future__ import annotations
 
+from typing import Any
+
 
 class MemoryCoreError(Exception):
     """Base class for all memory-core domain exceptions.
@@ -24,9 +26,9 @@ class MemoryCoreError(Exception):
 class RuleViolationError(MemoryCoreError):
     """Rule validation failure (corresponds to RuleResult.severity='block')."""
 
-    def __init__(self, rule_name: str, message: str, detail: dict | None = None):
+    def __init__(self, rule_name: str, message: str, detail: dict[str, Any] | None = None):
         self.rule_name = rule_name
-        self.detail = detail or {}
+        self.detail: dict[str, Any] = detail or {}
         super().__init__(f"[{rule_name}] {message}")
 
 

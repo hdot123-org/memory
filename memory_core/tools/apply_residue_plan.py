@@ -301,7 +301,7 @@ def _create_backup(
             src=str(src_path.relative_to(target)),
             dst=action.get("target_bucket"),  # This is the conceptual bucket, actual dst calculated later
             backup_path=str(backup_file.relative_to(backup_dir)),
-            sha256=sha256,
+            sha256=sha256 or "",
             timestamp=timestamp,
         )
         entries.append(entry)

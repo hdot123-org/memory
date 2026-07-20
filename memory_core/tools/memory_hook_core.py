@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from memory_core.tools.memory_hook_config import CoreConfig
 
 
-def _resolve_callbacks(config: "CoreConfig") -> dict[str, Callable]:
+def _resolve_callbacks(config: "CoreConfig") -> dict[str, Callable[..., Any]]:
     """Resolve callbacks from interface objects or individual config fields.
 
     When config carries composite interface attributes (policy_registry,
