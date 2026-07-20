@@ -236,6 +236,155 @@ class TelemetryBridge:
             logger.debug("telemetry_bridge.safe_capture failed for '%s': %s", event_name, exc)
             self._capture_error(exc, event_name, "safe_capture")
 
+    def _build_batch_items(
+        self,
+        events: list[dict[str, Any]],
+        distinct_id: str,
+    ) -> list[dict[str, Any]]:
+        """Build batch items list from events.
+
+        Extracted from batch_capture to reduce complexity.
+
+        Args:
+            events: List of event dicts with keys: event_name, properties
+            distinct_id: Project ID for all batch items
+
+        Returns:
+            List of batch item dicts ready for PostHog batch API
+        """
+        batch_items = []
+
+        for event_data in events:
+            if not isinstance(event_data, dict):
+                continue
+
+            event_name = str(event_data.get("event_name") or "memory.batched_event")
+            if not event_name.startswith("memory."):
+                event_name = f"memory.{event_name}"
+
+            properties = event_data.get("properties") or {}
+            sanitized = _sanitize_properties(properties)
+
+            # Mirror PostHog SDK _enqueue: add $geoip_disable and $is_server
+            # to match the wire format the server expects. Without these,
+            # some PostHog API versions reject the batch with HTTP 400.
+            enriched: dict[str, Any] = {
+                "memory_core_version": CURRENT_MEMORY_VERSION,
+                "host": _resolve_host(),
+                "$geoip_disable": True,
+                "$is_server": True,
+                **sanitized,
+            }
+
+            # Top-level timestamp is required by the PostHog batch API.
+            # The SDK's _enqueue always adds it; omitting it can trigger 400.
+            item_timestamp = datetime.now(timezone.utc).isoformat()
+
+            batch_items.append({
+                "event": event_name,
+                "properties": enriched,
+                "distinct_id": distinct_id,
+                "timestamp": item_timestamp,
+                "uuid": str(__import__("uuid").uuid4()),
+            })
+
+        return batch_items
+
+    def _post_batch_with_retries(
+        self,
+        batch_items: list[dict[str, Any]],
+        api_key: str,
+    ) -> bool:
+        """POST batch to PostHog with retry logic.
+
+        Extracted from batch_capture to reduce complexity.
+
+        Args:
+            batch_items: List of batch item dicts
+            api_key: PostHog API key
+
+        Returns:
+            True if POST succeeded, False otherwise
+        """
+        import urllib.error
+        import urllib.request
+
+        # Resolve ingestion host (mirrors SDK's determine_server_host)
+        raw_host = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip()
+        host = _resolve_ingestion_host(raw_host)
+
+        batch_url = f"{host}/batch/"
+        headers = {"Content-Type": "application/json"}
+        payload = json.dumps({
+            "api_key": api_key,
+            "batch": batch_items,
+            "sentAt": now_iso(),
+        }).encode("utf-8")
+
+        # Send without retry and a short timeout. Telemetry is lossy-tolerant
+        # (the caller swallows failures and retries on the next session), so it
+        # must NEVER block past the Factory hook budget (~10s). The previous
+        # 15s timeout × up to 2 retries (up to 45s) was the root cause of
+        # SessionEnd/Start hook timeouts when the PostHog endpoint was slow.
+        max_retries = 0
+        for attempt in range(max_retries + 1):
+            req = urllib.request.Request(
+                batch_url, data=payload, headers=headers, method="POST"
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=3) as response:
+                    response.read()  # Consume full response
+                logger.debug(
+                    "telemetry_bridge.batch_capture: sent %d events", len(batch_items)
+                )
+                return True
+
+            except urllib.error.HTTPError as http_exc:
+                # Read response body for diagnostics (str(HTTPError) omits it)
+                body_text = ""
+                try:
+                    body_text = http_exc.read().decode(
+                        "utf-8", errors="replace"
+                    )[:300]
+                except Exception:
+                    pass
+
+                # Retry on 429 (rate limit) and 5xx (server errors)
+                should_retry = http_exc.code == 429 or http_exc.code >= 500
+                if should_retry and attempt < max_retries:
+                    logger.debug(
+                        "telemetry_bridge.batch_capture: HTTP %d, retrying %d/%d",
+                        http_exc.code, attempt + 1, max_retries,
+                    )
+                    time.sleep(2 ** attempt)
+                    continue
+
+                # Non-retryable or exhausted retries: enrich message with body
+                if body_text:
+                    http_exc.msg = f"{http_exc.msg} [body: {body_text}]"
+                logger.debug(
+                    "telemetry_bridge.batch_capture: HTTP error: %s", http_exc
+                )
+                self._capture_error(http_exc, "batch", "batch_capture")
+                return False
+
+            except urllib.error.URLError as url_exc:
+                # Network-level error (timeout, DNS, connection refused)
+                if attempt < max_retries:
+                    logger.debug(
+                        "telemetry_bridge.batch_capture: URLError, retrying %d/%d: %s",
+                        attempt + 1, max_retries, url_exc,
+                    )
+                    time.sleep(2 ** attempt)
+                    continue
+                logger.debug(
+                    "telemetry_bridge.batch_capture: exhausted retries: %s", url_exc
+                )
+                self._capture_error(url_exc, "batch", "batch_capture")
+                return False
+
+        return False  # Should not reach here, but safety net
+
     def batch_capture(
         self,
         events: list[dict[str, Any]],
@@ -261,125 +410,14 @@ class TelemetryBridge:
         try:
             # Build batch payload
             distinct_id = self.get_project_id(cwd)
-            batch_items = []
-
-            for event_data in events:
-                if not isinstance(event_data, dict):
-                    continue
-
-                event_name = str(event_data.get("event_name") or "memory.batched_event")
-                if not event_name.startswith("memory."):
-                    event_name = f"memory.{event_name}"
-
-                properties = event_data.get("properties") or {}
-                sanitized = _sanitize_properties(properties)
-
-                # Mirror PostHog SDK _enqueue: add $geoip_disable and $is_server
-                # to match the wire format the server expects. Without these,
-                # some PostHog API versions reject the batch with HTTP 400.
-                enriched: dict[str, Any] = {
-                    "memory_core_version": CURRENT_MEMORY_VERSION,
-                    "host": _resolve_host(),
-                    "$geoip_disable": True,
-                    "$is_server": True,
-                    **sanitized,
-                }
-
-                # Top-level timestamp is required by the PostHog batch API.
-                # The SDK's _enqueue always adds it; omitting it can trigger 400.
-                item_timestamp = datetime.now(timezone.utc).isoformat()
-
-                batch_items.append({
-                    "event": event_name,
-                    "properties": enriched,
-                    "distinct_id": distinct_id,
-                    "timestamp": item_timestamp,
-                    "uuid": str(__import__("uuid").uuid4()),
-                })
+            batch_items = self._build_batch_items(events, distinct_id)
 
             if not batch_items:
                 return False
 
-            # Direct HTTP POST to PostHog batch API using stdlib
-            import urllib.error
-            import urllib.request
-
-            # Resolve ingestion host (mirrors SDK's determine_server_host)
-            raw_host = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip()
-            host = _resolve_ingestion_host(raw_host)
+            # POST to PostHog
             api_key = client.api_key
-
-            batch_url = f"{host}/batch/"
-            headers = {"Content-Type": "application/json"}
-            payload = json.dumps({
-                "api_key": api_key,
-                "batch": batch_items,
-                "sentAt": now_iso(),
-            }).encode("utf-8")
-
-            # Send without retry and a short timeout. Telemetry is lossy-tolerant
-            # (the caller swallows failures and retries on the next session), so it
-            # must NEVER block past the Factory hook budget (~10s). The previous
-            # 15s timeout × up to 2 retries (up to 45s) was the root cause of
-            # SessionEnd/Start hook timeouts when the PostHog endpoint was slow.
-            max_retries = 0
-            for attempt in range(max_retries + 1):
-                req = urllib.request.Request(
-                    batch_url, data=payload, headers=headers, method="POST"
-                )
-                try:
-                    with urllib.request.urlopen(req, timeout=3) as response:
-                        response.read()  # Consume full response
-                    logger.debug(
-                        "telemetry_bridge.batch_capture: sent %d events", len(batch_items)
-                    )
-                    return True
-
-                except urllib.error.HTTPError as http_exc:
-                    # Read response body for diagnostics (str(HTTPError) omits it)
-                    body_text = ""
-                    try:
-                        body_text = http_exc.read().decode(
-                            "utf-8", errors="replace"
-                        )[:300]
-                    except Exception:
-                        pass
-
-                    # Retry on 429 (rate limit) and 5xx (server errors)
-                    should_retry = http_exc.code == 429 or http_exc.code >= 500
-                    if should_retry and attempt < max_retries:
-                        logger.debug(
-                            "telemetry_bridge.batch_capture: HTTP %d, retrying %d/%d",
-                            http_exc.code, attempt + 1, max_retries,
-                        )
-                        time.sleep(2 ** attempt)
-                        continue
-
-                    # Non-retryable or exhausted retries: enrich message with body
-                    if body_text:
-                        http_exc.msg = f"{http_exc.msg} [body: {body_text}]"
-                    logger.debug(
-                        "telemetry_bridge.batch_capture: HTTP error: %s", http_exc
-                    )
-                    self._capture_error(http_exc, "batch", "batch_capture")
-                    return False
-
-                except urllib.error.URLError as url_exc:
-                    # Network-level error (timeout, DNS, connection refused)
-                    if attempt < max_retries:
-                        logger.debug(
-                            "telemetry_bridge.batch_capture: URLError, retrying %d/%d: %s",
-                            attempt + 1, max_retries, url_exc,
-                        )
-                        time.sleep(2 ** attempt)
-                        continue
-                    logger.debug(
-                        "telemetry_bridge.batch_capture: exhausted retries: %s", url_exc
-                    )
-                    self._capture_error(url_exc, "batch", "batch_capture")
-                    return False
-
-            return False  # Should not reach here, but safety net
+            return self._post_batch_with_retries(batch_items, api_key)
 
         except Exception as exc:
             # Analytics must never break the host application flow

@@ -414,6 +414,89 @@ def check_global_residue(
 # 检查 4: 大文件/数据库文件违规
 # ---------------------------------------------------------------------------
 
+_EXCLUDED_DIR_SEGMENTS = frozenset({
+    ".git", "node_modules", "__pycache__", ".venv", "venv",
+    "dist", "build", ".mypy_cache", ".pytest_cache"
+})
+
+
+def _is_excludable_path(item: Path, project_root: Path) -> bool:
+    """检查路径是否在排除目录列表中（.git/node_modules 等）。"""
+    try:
+        parts = item.relative_to(project_root).parts
+    except ValueError:
+        parts = item.parts
+    return any(seg in _EXCLUDED_DIR_SEGMENTS for seg in parts)
+
+
+def _check_single_file(item: Path, project_root: Path) -> dict[str, Any] | None:
+    """检查单个文件是否违反大文件/数据库规则。
+
+    Returns:
+        violation dict if violated, None otherwise.
+    """
+    try:
+        rel_for_report = str(item.relative_to(project_root)).replace("\\", "/")
+    except ValueError:
+        rel_for_report = str(item)
+
+    suffix = item.suffix.lower()
+    name_lower = item.name.lower()
+
+    # .sql 超过 1MB
+    if suffix == ".sql":
+        try:
+            size = item.stat().st_size
+        except OSError:
+            size = 0
+        if size > LARGE_SQL_THRESHOLD:
+            return _make_violation(
+                "large_file",
+                "critical",
+                rel_for_report,
+                f"大型 SQL 文件 ({size} bytes > 1MB)：数据 dump 不应入仓库",
+            )
+        return None
+
+    # 其他数据库/备份后缀
+    if any(name_lower.endswith(s) for s in DATABASE_FILE_SUFFIXES):
+        return _make_violation(
+            "large_file",
+            "critical",
+            rel_for_report,
+            f"数据库/备份文件 {item.name}：禁止入仓库（见 no-database-files-in-repo.md）",
+        )
+
+    return None
+
+
+def _check_backups_dir(base: Path, project_root: Path) -> dict[str, Any] | None:
+    """检查 backups/ 目录是否存在且非空。
+
+    Returns:
+        violation dict if violated, None otherwise.
+    """
+    backups_dir = base / "backups"
+    if not backups_dir.is_dir():
+        return None
+    try:
+        files = list(backups_dir.iterdir())
+    except OSError:
+        files = []
+    if not files:
+        return None
+    try:
+        rel = str(backups_dir.relative_to(project_root)).replace("\\", "/")
+    except ValueError:
+        rel = str(backups_dir)
+    return _make_violation(
+        "large_file",
+        "critical",
+        rel,
+        "backups/ 目录非空：数据库备份应放外部存储，不入仓库",
+    )
+
+
 def check_large_or_db_files(project_root: Path) -> list[dict[str, Any]]:
     """扫描项目根目录和 memory/kb/ 下的数据库/备份大文件。
 
@@ -435,71 +518,20 @@ def check_large_or_db_files(project_root: Path) -> list[dict[str, Any]]:
 
     for root in scan_roots:
         for item in root.rglob("*"):
-            if not item.is_file():
-                continue
-            if item in seen:
+            if not item.is_file() or item in seen:
                 continue
             seen.add(item)
-            # 跳过明显的依赖/构建产物目录，避免噪音
-            try:
-                parts = item.relative_to(project_root).parts
-            except ValueError:
-                parts = item.parts
-            if any(seg in {".git", "node_modules", "__pycache__", ".venv", "venv",
-                           "dist", "build", ".mypy_cache", ".pytest_cache"}
-                   for seg in parts):
+            if _is_excludable_path(item, project_root):
                 continue
-
-            name_lower = item.name.lower()
-            suffix = item.suffix.lower()
-            try:
-                rel_for_report = str(item.relative_to(project_root)).replace("\\", "/")
-            except ValueError:
-                rel_for_report = str(item)
-
-            # .sql 超过 1MB
-            if suffix == ".sql":
-                try:
-                    size = item.stat().st_size
-                except OSError:
-                    size = 0
-                if size > LARGE_SQL_THRESHOLD:
-                    violations.append(_make_violation(
-                        "large_file",
-                        "critical",
-                        rel_for_report,
-                        f"大型 SQL 文件 ({size} bytes > 1MB)：数据 dump 不应入仓库",
-                    ))
-                continue
-
-            # 其他数据库/备份后缀
-            if any(name_lower.endswith(s) for s in DATABASE_FILE_SUFFIXES):
-                violations.append(_make_violation(
-                    "large_file",
-                    "critical",
-                    rel_for_report,
-                    f"数据库/备份文件 {item.name}：禁止入仓库（见 no-database-files-in-repo.md）",
-                ))
+            v = _check_single_file(item, project_root)
+            if v is not None:
+                violations.append(v)
 
     # backups/ 目录存在（在项目根或 memory/kb 下）
     for base in (project_root, kb_dir):
-        backups_dir = base / "backups"
-        if backups_dir.is_dir():
-            try:
-                files = list(backups_dir.iterdir())
-            except OSError:
-                files = []
-            if files:
-                try:
-                    rel = str(backups_dir.relative_to(project_root)).replace("\\", "/")
-                except ValueError:
-                    rel = str(backups_dir)
-                violations.append(_make_violation(
-                    "large_file",
-                    "critical",
-                    rel,
-                    "backups/ 目录非空：数据库备份应放外部存储，不入仓库",
-                ))
+        v = _check_backups_dir(base, project_root)
+        if v is not None:
+            violations.append(v)
 
     return violations
 
@@ -1463,6 +1495,21 @@ def write_report(report: dict[str, Any]) -> Path:
 # 飞书通知（lark-cli）
 # ---------------------------------------------------------------------------
 
+def _summarize_violation_block(
+    label: str, viols: list[dict[str, Any]], lines: list[str]
+) -> tuple[int, int]:
+    """格式化违规块并追加到 lines,返回 (critical_count, warning_count)。"""
+    c = sum(1 for v in viols if v.get("severity") == "critical")
+    w = sum(1 for v in viols if v.get("severity") == "warning")
+    lines.append(f"• {label}: {len(viols)} 条违规 (critical={c}, warning={w})")
+    # 每个项目最多列 3 条详情，避免消息过长
+    for v in viols[:3]:
+        lines.append(f"    [{v.get('severity')}] {v.get('type')}: {v.get('detail')}")
+    if len(viols) > 3:
+        lines.append(f"    ...还有 {len(viols) - 3} 条")
+    return c, w
+
+
 def _summarize_report(report: dict[str, Any]) -> str:
     """生成飞书通知用的纯文本摘要。"""
     lines: list[str] = []
@@ -1489,16 +1536,9 @@ def _summarize_report(report: dict[str, Any]) -> str:
         viols = rec.get("violations", [])
         if not viols:
             continue
-        c = sum(1 for v in viols if v.get("severity") == "critical")
-        w = sum(1 for v in viols if v.get("severity") == "warning")
+        c, w = _summarize_violation_block(name, viols, lines)
         critical_count += c
         warning_count += w
-        lines.append(f"• {name}: {len(viols)} 条违规 (critical={c}, warning={w})")
-        # 每个项目最多列 3 条详情，避免消息过长
-        for v in viols[:3]:
-            lines.append(f"    [{v.get('severity')}] {v.get('type')}: {v.get('detail')}")
-        if len(viols) > 3:
-            lines.append(f"    ...还有 {len(viols) - 3} 条")
 
     # 基础设施违规
     infra = report.get("infrastructure") or {}
@@ -1507,20 +1547,10 @@ def _summarize_report(report: dict[str, Any]) -> str:
             viols = rec.get("violations", [])
             if not viols:
                 continue
-            c = sum(1 for v in viols if v.get("severity") == "critical")
-            w = sum(1 for v in viols if v.get("severity") == "warning")
+            label = f"[infra/{kind}] {_name}"
+            c, w = _summarize_violation_block(label, viols, lines)
             critical_count += c
             warning_count += w
-            label = f"[infra/{kind}] {_name}"
-            lines.append(
-                f"• {label}: {len(viols)} 条违规 (critical={c}, warning={w})"
-            )
-            for v in viols[:3]:
-                lines.append(
-                    f"    [{v.get('severity')}] {v.get('type')}: {v.get('detail')}"
-                )
-            if len(viols) > 3:
-                lines.append(f"    ...还有 {len(viols) - 3} 条")
 
     lines.insert(3, f"其中 critical={critical_count}, warning={warning_count}")
 
@@ -1757,6 +1787,95 @@ def _count_warning_infra(infra: dict[str, Any] | None) -> int:
     return n
 
 
+def _run_infra_check(no_infra: bool) -> dict[str, Any] | None:
+    """执行基础设施检查，异常时降级返回 None。"""
+    if no_infra:
+        return None
+    print("[audit] 基础设施检查开始…", file=sys.stderr)
+    try:
+        infra_results = check_infrastructure()
+        infra_viol = len(infra_results.get("violations", []))
+        print(
+            f"[audit] 基础设施检查完成: "
+            f"服务器={len(infra_results.get('servers', {}))} "
+            f"数据库={len(infra_results.get('databases', {}))} "
+            f"违规={infra_viol}",
+            file=sys.stderr,
+        )
+        return infra_results
+    except Exception as e:
+        print(f"[audit] 基础设施检查异常（已降级跳过）：{e}", file=sys.stderr)
+        return None
+
+
+def _handle_no_projects(
+    infra_results: dict[str, Any] | None, args: argparse.Namespace
+) -> int:
+    """处理无注册项目场景，返回退出码。"""
+    print(
+        f"[audit] 未发现注册项目（或 {LIFECYCLE_INDEX} 不存在）",
+        file=sys.stderr,
+    )
+    report = build_report({}, infrastructure=infra_results)
+    if not args.no_write:
+        out = write_report(report)
+        print(f"[audit] 空报告已写入: {out}")
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    if args.notify:
+        notify_via_lark(report)
+    infra_crit = _count_critical_infra(infra_results)
+    return 1 if infra_crit > 0 else 0
+
+
+def _audit_all_projects(
+    projects: list[tuple[str, Path]], global_fingerprints: dict[str, str]
+) -> dict[str, dict[str, Any]]:
+    """逐项目审计，单项目异常不影响整体。"""
+    projects_results: dict[str, dict[str, Any]] = {}
+    for name, root in projects:
+        print(f"[audit] 检查项目: {name} ({root})", file=sys.stderr)
+        try:
+            projects_results[name] = audit_project(name, root, global_fingerprints)
+        except Exception as e:
+            projects_results[name] = {
+                "path": str(root),
+                "violations": [_make_violation(
+                    "hash_mismatch", "warning", str(root),
+                    f"项目巡检异常：{e}",
+                )],
+                "error": str(e),
+            }
+    return projects_results
+
+
+def _summarize_to_console(
+    projects_results: dict[str, dict[str, Any]],
+    infra_results: dict[str, Any] | None,
+    report: dict[str, Any],
+) -> int:
+    """打印控制台摘要，返回 critical 计数。"""
+    crit = sum(
+        1 for r in projects_results.values()
+        for v in r.get("violations", [])
+        if v.get("severity") == "critical"
+    )
+    warn = sum(
+        1 for r in projects_results.values()
+        for v in r.get("violations", [])
+        if v.get("severity") == "warning"
+    )
+    if infra_results is not None:
+        crit += _count_critical_infra(infra_results)
+        warn += _count_warning_infra(infra_results)
+    print(
+        f"[audit] 完成: 项目={report['projects_checked']} "
+        f"违规={report['total_violations']} (critical={crit}, warning={warn})",
+        file=sys.stderr,
+    )
+    return crit
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI 入口。
 
@@ -1773,96 +1892,32 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = _parse_args(argv)
 
-    # 0. 基础设施检查（独立于项目检查，即便无项目也可执行）
-    infra_results: dict[str, Any] | None = None
-    if not args.no_infra:
-        print("[audit] 基础设施检查开始…", file=sys.stderr)
-        try:
-            infra_results = check_infrastructure()
-            infra_viol = len(infra_results.get("violations", []))
-            print(
-                f"[audit] 基础设施检查完成: "
-                f"服务器={len(infra_results.get('servers', {}))} "
-                f"数据库={len(infra_results.get('databases', {}))} "
-                f"违规={infra_viol}",
-                file=sys.stderr,
-            )
-        except Exception as e:  # 基础设施检查崩溃不能拖垮整个巡检
-            print(f"[audit] 基础设施检查异常（已降级跳过）：{e}", file=sys.stderr)
-            infra_results = None
+    # 0. 基础设施检查
+    infra_results = _run_infra_check(args.no_infra)
 
     # 1. 加载注册项目
     projects = load_registered_projects()
     if not projects:
-        print(
-            f"[audit] 未发现注册项目（或 {LIFECYCLE_INDEX} 不存在）",
-            file=sys.stderr,
-        )
-        # 仍写一份报告（含基础设施检查结果，若有），便于追踪
-        report = build_report({}, infrastructure=infra_results)
-        if not args.no_write:
-            out = write_report(report)
-            print(f"[audit] 空报告已写入: {out}")
-        if args.json:
-            print(json.dumps(report, ensure_ascii=False, indent=2))
-        if args.notify:
-            notify_via_lark(report)
-        # 即便无项目，基础设施 critical 也要让退出码反映
-        infra_crit = _count_critical_infra(infra_results)
-        return 1 if infra_crit > 0 else 0
+        return _handle_no_projects(infra_results, args)
 
-    # 2. 预计算全局 KB 指纹（所有项目共用，只算一次）
+    # 2. 预计算全局 KB 指纹
     global_fingerprints = build_global_kb_fingerprints()
     print(
         f"[audit] 全局 KB 指纹: {len(global_fingerprints)} 个知识文件",
         file=sys.stderr,
     )
 
-    # 3. 逐项目检查（单项目失败不影响其他）
-    projects_results: dict[str, dict[str, Any]] = {}
-    for name, root in projects:
-        print(f"[audit] 检查项目: {name} ({root})", file=sys.stderr)
-        try:
-            projects_results[name] = audit_project(name, root, global_fingerprints)
-        except Exception as e:
-            # 兜底：保证单项目异常不影响整体
-            projects_results[name] = {
-                "path": str(root),
-                "violations": [_make_violation(
-                    "hash_mismatch", "warning", str(root),
-                    f"项目巡检异常：{e}",
-                )],
-                "error": str(e),
-            }
+    # 3. 逐项目检查
+    projects_results = _audit_all_projects(projects, global_fingerprints)
 
-    # 4. 组装 + 写报告（含基础设施检查结果）
+    # 4. 组装 + 写报告
     report = build_report(projects_results, infrastructure=infra_results)
-    out_path: Path | None = None
     if not args.no_write:
         out_path = write_report(report)
         print(f"[audit] 报告已写入: {out_path}", file=sys.stderr)
 
-    # 5. 控制台摘要（项目 + 基础设施 critical/warning）
-    crit = sum(
-        1 for r in projects_results.values()
-        for v in r.get("violations", [])
-        if v.get("severity") == "critical"
-    )
-    warn = sum(
-        1 for r in projects_results.values()
-        for v in r.get("violations", [])
-        if v.get("severity") == "warning"
-    )
-    if infra_results is not None:
-        infra_crit = _count_critical_infra(infra_results)
-        infra_warn = _count_warning_infra(infra_results)
-        crit += infra_crit
-        warn += infra_warn
-    print(
-        f"[audit] 完成: 项目={report['projects_checked']} "
-        f"违规={report['total_violations']} (critical={crit}, warning={warn})",
-        file=sys.stderr,
-    )
+    # 5. 控制台摘要
+    crit = _summarize_to_console(projects_results, infra_results, report)
 
     # 6. 可选：JSON 到 stdout
     if args.json:
@@ -1872,7 +1927,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.notify:
         notify_via_lark(report)
 
-    # 8. 退出码：有 critical（项目或基础设施）→ 1，否则 0
+    # 8. 退出码
     return 1 if crit > 0 else 0
 
 

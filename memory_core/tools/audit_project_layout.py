@@ -969,70 +969,13 @@ def _check_root_vs_workspace_conflict(
     return has_root_memory and has_workspace_memory
 
 
-def plan_residue_migration(
-    audit_result: AuditResult,
+def _scan_root_pollution(
     target: Path,
-) -> MigrationPlan:
-    """Generate a migration plan from audit findings with stable schema.
-
-    This function generates a comprehensive migration plan that includes:
-    - actions: Detailed actions to take
-    - risk_level: Overall risk assessment (critical, high, medium, low)
-    - requires_human_confirmation: Whether manual review is needed
-    - backup_plan: Instructions for backing up critical files
-    - rollback_plan: Instructions for rolling back if needed
-    - forbidden_overwrites: List of files/patterns that must never be overwritten
-    - must_commit_together: Groups of files that are interdependent
-
-    Buckets (retained for compatibility):
-        - direct_manage: Items that can be directly managed by memory-core
-        - continue_active: Items that should continue to be used as-is
-        - legacy_readonly: Legacy items that should be kept read-only
-        - runtime_ignore: Runtime/tmp items that should be ignored
-        - needs_human_decision: Items requiring manual review
-        - root_pollution: Root-scattered files that need cleanup
-
-    Actions:
-        - adopt_existing_memory: Adopt existing memory structure into management
-        - create_missing_memory: Create missing memory structure (placeholder)
-        - move_root_pollution: Move root-scattered files to appropriate location
-        - ignore_runtime_artifact: Ignore runtime/tmp artifacts
-        - mark_legacy_readonly: Mark legacy items as read-only
-        - manual_decision_required: Requires human review and decision
-    """
-    buckets: dict[str, list[dict[str, Any]]] = {
-        "direct_manage": [],
-        "continue_active": [],
-        "legacy_readonly": [],
-        "runtime_ignore": [],
-        "needs_human_decision": [],
-        "root_pollution": [],
-    }
-
-    # Check for conflicts
-    has_multi_generation = any(f.kind == "multi_generation_conflict" for f in audit_result.findings)
-    has_root_vs_workspace = _check_root_vs_workspace_conflict(audit_result.findings)
-
-    # Generate actions from findings
-    actions: list[PlanAction] = []
-    for finding in audit_result.findings:
-        action = _determine_action(finding, has_multi_generation)
-        actions.append(action)
-
-        # Also populate buckets for backward compatibility
-        bucket = finding.suggested_bucket
-        item = {
-            "path": finding.path,
-            "severity": finding.severity,
-            "kind": finding.kind,
-            "message": finding.message,
-        }
-        if bucket in buckets:
-            buckets[bucket].append(item)
-        else:
-            buckets["needs_human_decision"].append(item)
-
-    # Add any root-level files/directories that might need migration
+    audit_result: AuditResult,
+    buckets: dict[str, list[dict[str, Any]]],
+    actions: list[PlanAction],
+) -> None:
+    """Scan root-level files/directories and populate root_pollution bucket."""
     for item in target.iterdir():
         name = item.name
         if item.is_symlink() and name in ROOT_DOCUMENT_ENTRYPOINT_DIRS:
@@ -1106,6 +1049,98 @@ def plan_residue_migration(
                         )
                     )
 
+
+def _populate_forbidden_overwrites(target: Path) -> list[str]:
+    """Populate forbidden_overwrites list using classify_owned_path.
+
+    Returns list of owned paths that should never be overwritten.
+    Falls back to LEGACY_FORBIDDEN_OVERWRITE_PATTERNS if ownership loading fails.
+    """
+    forbidden: list[str] = []
+    try:
+        ownership = load_memory_ownership(target)
+        # Check all files in the project
+        for item in target.rglob("*"):
+            if item.is_file():
+                try:
+                    rel_path = item.relative_to(target).as_posix()
+                    classification = classify_owned_path(rel_path, ownership=ownership)
+                    if isinstance(classification, Owned):
+                        forbidden.append(rel_path)
+                except (ValueError, OSError):
+                    pass
+    except Exception:
+        # Fallback to legacy patterns if ownership loading fails
+        forbidden = LEGACY_FORBIDDEN_OVERWRITE_PATTERNS.copy()
+    return forbidden
+
+
+def plan_residue_migration(
+    audit_result: AuditResult,
+    target: Path,
+) -> MigrationPlan:
+    """Generate a migration plan from audit findings with stable schema.
+
+    This function generates a comprehensive migration plan that includes:
+    - actions: Detailed actions to take
+    - risk_level: Overall risk assessment (critical, high, medium, low)
+    - requires_human_confirmation: Whether manual review is needed
+    - backup_plan: Instructions for backing up critical files
+    - rollback_plan: Instructions for rolling back if needed
+    - forbidden_overwrites: List of files/patterns that must never be overwritten
+    - must_commit_together: Groups of files that are interdependent
+
+    Buckets (retained for compatibility):
+        - direct_manage: Items that can be directly managed by memory-core
+        - continue_active: Items that should continue to be used as-is
+        - legacy_readonly: Legacy items that should be kept read-only
+        - runtime_ignore: Runtime/tmp items that should be ignored
+        - needs_human_decision: Items requiring manual review
+        - root_pollution: Root-scattered files that need cleanup
+
+    Actions:
+        - adopt_existing_memory: Adopt existing memory structure into management
+        - create_missing_memory: Create missing memory structure (placeholder)
+        - move_root_pollution: Move root-scattered files to appropriate location
+        - ignore_runtime_artifact: Ignore runtime/tmp artifacts
+        - mark_legacy_readonly: Mark legacy items as read-only
+        - manual_decision_required: Requires human review and decision
+    """
+    buckets: dict[str, list[dict[str, Any]]] = {
+        "direct_manage": [],
+        "continue_active": [],
+        "legacy_readonly": [],
+        "runtime_ignore": [],
+        "needs_human_decision": [],
+        "root_pollution": [],
+    }
+
+    # Check for conflicts
+    has_multi_generation = any(f.kind == "multi_generation_conflict" for f in audit_result.findings)
+    has_root_vs_workspace = _check_root_vs_workspace_conflict(audit_result.findings)
+
+    # Generate actions from findings
+    actions: list[PlanAction] = []
+    for finding in audit_result.findings:
+        action = _determine_action(finding, has_multi_generation)
+        actions.append(action)
+
+        # Also populate buckets for backward compatibility
+        bucket = finding.suggested_bucket
+        item = {
+            "path": finding.path,
+            "severity": finding.severity,
+            "kind": finding.kind,
+            "message": finding.message,
+        }
+        if bucket in buckets:
+            buckets[bucket].append(item)
+        else:
+            buckets["needs_human_decision"].append(item)
+
+    # Scan root-level pollution
+    _scan_root_pollution(target, audit_result, buckets, actions)
+
     # Calculate risk level
     risk_level = _calculate_risk_level(
         audit_result.findings,
@@ -1127,23 +1162,8 @@ def plan_residue_migration(
     # Generate must_commit_together groups
     must_commit_together = _generate_must_commit_together(audit_result.findings)
 
-    # Step 2.8: Populate forbidden_overwrites using classify_owned_path
-    forbidden_overwrites: list[str] = []
-    try:
-        ownership = load_memory_ownership(target)
-        # Check all files in the project
-        for item in target.rglob("*"):
-            if item.is_file():
-                try:
-                    rel_path = item.relative_to(target).as_posix()
-                    classification = classify_owned_path(rel_path, ownership=ownership)
-                    if isinstance(classification, Owned):
-                        forbidden_overwrites.append(rel_path)
-                except (ValueError, OSError):
-                    pass
-    except Exception:
-        # Fallback to legacy patterns if ownership loading fails
-        forbidden_overwrites = LEGACY_FORBIDDEN_OVERWRITE_PATTERNS.copy()
+    # Populate forbidden_overwrites using classify_owned_path
+    forbidden_overwrites = _populate_forbidden_overwrites(target)
 
     total_items = sum(len(v) for v in buckets.values())
 

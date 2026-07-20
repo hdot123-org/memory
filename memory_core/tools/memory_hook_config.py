@@ -89,7 +89,20 @@ class CoreConfig:
         )
 
     def __post_init__(self) -> None:
-        # --- Environment ---
+        # Group 1: Environment validation
+        self._validate_environment()
+
+        # Group 2: Paths validation
+        self._validate_paths()
+
+        # Group 3: Policy strings validation
+        self._validate_policy()
+
+        # Group 4: Callbacks validation
+        self._validate_callbacks()
+
+    def _validate_environment(self) -> None:
+        """Validate environment fields."""
         if self.host not in SUPPORTED_HOSTS:
             raise ValueError(
                 f"host must be one of {SUPPORTED_HOSTS}, got {self.host!r}"
@@ -115,7 +128,8 @@ class CoreConfig:
                 f"repo_root must be a Path, got {type(self.repo_root).__name__}"
             )
 
-        # --- Paths ---
+    def _validate_paths(self) -> None:
+        """Validate paths fields."""
         if not isinstance(self.required_canonical, list):
             raise TypeError(
                 f"required_canonical must be a list, got {type(self.required_canonical).__name__}"
@@ -137,7 +151,8 @@ class CoreConfig:
                 f"hook_contract_path must be a Path, got {type(self.hook_contract_path).__name__}"
             )
 
-        # --- Policy strings ---
+    def _validate_policy(self) -> None:
+        """Validate policy string fields."""
         if not isinstance(self.project_map_refs, list):
             raise TypeError(
                 f"project_map_refs must be a list, got {type(self.project_map_refs).__name__}"
@@ -159,7 +174,8 @@ class CoreConfig:
                 f"workspace_id must be a string, got {type(self.workspace_id).__name__}"
             )
 
-        # --- Callbacks ---
+    def _validate_callbacks(self) -> None:
+        """Validate that all callback fields are callable."""
         for _name in (
             "extract_excerpt_fn",
             "now_iso_fn",

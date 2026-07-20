@@ -110,131 +110,128 @@ def _split_shell_args(arg_string: str) -> list[str]:
     return args
 
 
-def _extract_path_from_execute(command: str) -> list[str]:  # noqa: C901
-    """Extract target paths from Execute command."""
+def _extract_mv_path(match: re.Match[str]) -> list[str]:
+    """Extract path from mv/git mv command."""
+    args = _split_shell_args(match.group(1))
+    return [args[-1]] if len(args) >= 2 else []
+
+
+def _extract_rm_path(match: re.Match[str]) -> list[str]:
+    """Extract paths from rm command (non-flag args)."""
+    args = _split_shell_args(match.group(1))
+    return [arg for arg in args if not arg.startswith("-")]
+
+
+def _extract_cp_path(match: re.Match[str]) -> list[str]:
+    """Extract destination path from cp command."""
+    args = _split_shell_args(match.group(1))
+    return [args[-1]] if len(args) >= 2 else []
+
+
+def _extract_rsync_path(match: re.Match[str]) -> list[str]:
+    """Extract destination path from rsync command."""
+    args = _split_shell_args(match.group(1))
+    return [args[-1]] if len(args) >= 2 else []
+
+
+def _extract_mkdir_path(match: re.Match[str]) -> list[str]:
+    """Extract paths from mkdir command (non-flag args)."""
+    args = _split_shell_args(match.group(1))
+    return [arg for arg in args if not arg.startswith("-")]
+
+
+def _extract_touch_path(match: re.Match[str]) -> list[str]:
+    """Extract paths from touch command (non-flag args)."""
+    args = _split_shell_args(match.group(1))
+    return [arg for arg in args if not arg.startswith("-")]
+
+
+def _extract_python_path(match: re.Match[str]) -> list[str]:
+    """Extract paths from python -c command."""
+    code = match.group(1)
     paths: list[str] = []
-    command = command.strip()
-
-    if not command:
-        return paths
-
-    # mv / git mv
-    mv_match = RE_MV.match(command)
-    if mv_match:
-        args = _split_shell_args(mv_match.group(1))
-        if len(args) >= 2:
-            paths.append(args[-1])
-        return paths
-
-    # rm
-    rm_match = RE_RM.match(command)
-    if rm_match:
-        args = _split_shell_args(rm_match.group(1))
-        for arg in args:
-            if not arg.startswith("-"):
-                paths.append(arg)
-        return paths
-
-    # cp
-    cp_match = RE_CP.match(command)
-    if cp_match:
-        args = _split_shell_args(cp_match.group(1))
-        if len(args) >= 2:
-            paths.append(args[-1])
-        return paths
-
-    # rsync
-    rsync_match = RE_RSYNC.match(command)
-    if rsync_match:
-        args = _split_shell_args(rsync_match.group(1))
-        if len(args) >= 2:
-            paths.append(args[-1])
-        return paths
-
-    # mkdir
-    mkdir_match = RE_MKDIR.match(command)
-    if mkdir_match:
-        args = _split_shell_args(mkdir_match.group(1))
-        for arg in args:
-            if not arg.startswith("-"):
-                paths.append(arg)
-        return paths
-
-    # touch
-    touch_match = RE_TOUCH.match(command)
-    if touch_match:
-        args = _split_shell_args(touch_match.group(1))
-        for arg in args:
-            if not arg.startswith("-"):
-                paths.append(arg)
-        return paths
-
-    # python -c
-    python_match = RE_PYTHON_C.match(command)
-    if python_match:
-        code = python_match.group(1)
-        open_matches = RE_PYTHON_OPEN.findall(code)
-        paths.extend(open_matches)
-        path_write_matches = RE_PYTHON_PATH.findall(code)
-        paths.extend(path_write_matches)
-        return paths
-
-    # node -e
-    node_match = RE_NODE_E.match(command)
-    if node_match:
-        code = node_match.group(1)
-        fs_write_matches = RE_NODE_FS_WRITE.findall(code)
-        paths.extend(fs_write_matches)
-        req_matches = RE_NODE_REQUIRE_FS.findall(code)
-        paths.extend(req_matches)
-        return paths
-
-    # shell redirect
-    redirect_match = RE_REDIRECT.search(command)
-    if redirect_match:
-        paths.append(redirect_match.group(1))
-        return paths
-
-    # tee
-    tee_match = RE_TEE.match(command)
-    if tee_match:
-        args = _split_shell_args(tee_match.group(1))
-        for arg in args:
-            if not arg.startswith("-"):
-                paths.append(arg)
-        return paths
-
-    # heredoc
-    heredoc_match = RE_HEREDOC.match(command)
-    if heredoc_match:
-        target = heredoc_match.group(1).strip()
-        if target:
-            paths.append(target)
-        return paths
-
-    # dd
-    dd_match = RE_DD.match(command)
-    if dd_match:
-        paths.append(dd_match.group(1))
-        return paths
-
-    # install
-    install_match = RE_INSTALL.match(command)
-    if install_match:
-        args = _split_shell_args(install_match.group(1))
-        if len(args) >= 2:
-            paths.append(args[-1])
-        return paths
-
-    # ln
-    ln_match = RE_LN.match(command)
-    if ln_match:
-        args = _split_shell_args(ln_match.group(1))
-        if len(args) >= 2:
-            paths.append(args[-1])
-        return paths
-
+    paths.extend(RE_PYTHON_OPEN.findall(code))
+    paths.extend(RE_PYTHON_PATH.findall(code))
     return paths
+
+
+def _extract_node_path(match: re.Match[str]) -> list[str]:
+    """Extract paths from node -e command."""
+    code = match.group(1)
+    paths: list[str] = []
+    paths.extend(RE_NODE_FS_WRITE.findall(code))
+    paths.extend(RE_NODE_REQUIRE_FS.findall(code))
+    return paths
+
+
+def _extract_redirect_path(match: re.Match[str]) -> list[str]:
+    """Extract path from shell redirect."""
+    return [match.group(1)]
+
+
+def _extract_tee_path(match: re.Match[str]) -> list[str]:
+    """Extract paths from tee command (non-flag args)."""
+    args = _split_shell_args(match.group(1))
+    return [arg for arg in args if not arg.startswith("-")]
+
+
+def _extract_heredoc_path(match: re.Match[str]) -> list[str]:
+    """Extract target path from heredoc."""
+    target = match.group(1).strip()
+    return [target] if target else []
+
+
+def _extract_dd_path(match: re.Match[str]) -> list[str]:
+    """Extract path from dd command."""
+    return [match.group(1)]
+
+
+def _extract_install_path(match: re.Match[str]) -> list[str]:
+    """Extract destination path from install command."""
+    args = _split_shell_args(match.group(1))
+    return [args[-1]] if len(args) >= 2 else []
+
+
+def _extract_ln_path(match: re.Match[str]) -> list[str]:
+    """Extract destination path from ln command."""
+    args = _split_shell_args(match.group(1))
+    return [args[-1]] if len(args) >= 2 else []
+
+
+def _extract_path_from_execute(command: str) -> list[str]:
+    """Extract target paths from Execute command.
+
+    Dispatch table: 14 command patterns → path extraction handlers.
+    """
+    command = command.strip()
+    if not command:
+        return []
+
+    # Dispatch table: (regex, handler)
+    # Note: RE_REDIRECT uses search(), others use match()
+    _DISPATCH = [
+        (RE_MV, _extract_mv_path, False),
+        (RE_RM, _extract_rm_path, False),
+        (RE_CP, _extract_cp_path, False),
+        (RE_RSYNC, _extract_rsync_path, False),
+        (RE_MKDIR, _extract_mkdir_path, False),
+        (RE_TOUCH, _extract_touch_path, False),
+        (RE_PYTHON_C, _extract_python_path, False),
+        (RE_NODE_E, _extract_node_path, False),
+        (RE_REDIRECT, _extract_redirect_path, True),  # uses search()
+        (RE_TEE, _extract_tee_path, False),
+        (RE_HEREDOC, _extract_heredoc_path, False),
+        (RE_DD, _extract_dd_path, False),
+        (RE_INSTALL, _extract_install_path, False),
+        (RE_LN, _extract_ln_path, False),
+    ]
+
+    for regex, handler, use_search in _DISPATCH:
+        match = regex.search(command) if use_search else regex.match(command)
+        if match:
+            return handler(match)
+
+    return []
 
 
 def _contains_owned_root_string(command: str) -> bool:

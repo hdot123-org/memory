@@ -67,6 +67,78 @@ import re
 _SESSION_HEADER_RE = re.compile(r'^### ([0-9a-f]{8})$')
 
 
+# ---------------------------------------------------------------------------
+# _read_a_layer field handlers (dispatch table)
+# ---------------------------------------------------------------------------
+
+
+def _handle_title_line(line: str, current: dict[str, Any]) -> None:
+    """Handle `- **标题**: ...` field line."""
+    current["title"] = line.split(": ", 1)[1] if ": " in line else ""
+
+
+def _handle_model_line(line: str, current: dict[str, Any]) -> None:
+    """Handle `- **模型**: ...` field line (includes duration parse)."""
+    rest = line.split(": ", 1)[1] if ": " in line else ""
+    # "GLM-5.1 (官方) | 时长: 2m35s"
+    parts = rest.split(" | ")
+    current["model"] = parts[0].strip() if parts else ""
+    for p in parts:
+        if "时长" in p:
+            current["duration"] = p.split(": ", 1)[1].strip()
+
+
+def _handle_token_line(line: str, current: dict[str, Any]) -> None:
+    """Handle `- **Token**: ...` field line (input=... output=...)."""
+    rest = line.split(": ", 1)[1] if ": " in line else ""
+    for token_part in rest.split():
+        if "=" in token_part:
+            k, v = token_part.split("=", 1)
+            try:
+                current[f"{k}_tokens"] = int(v)
+            except ValueError:
+                pass
+
+
+def _handle_tool_calls_line(line: str, current: dict[str, Any]) -> None:
+    """Handle `- **工具调用**: ...` field line."""
+    current["tool_calls_raw"] = line.split(": ", 1)[1] if ": " in line else ""
+
+
+def _handle_user_prompt_line(line: str, current: dict[str, Any]) -> None:
+    """Handle `- **用户意图**: ...` field line."""
+    current["user_prompt_preview"] = line.split(": ", 1)[1] if ": " in line else ""
+
+
+def _handle_assistant_summary_line(line: str, current: dict[str, Any]) -> None:
+    """Handle `- **助手摘要**: ...` field line."""
+    current["assistant_summary_preview"] = line.split(": ", 1)[1] if ": " in line else ""
+
+
+# Dispatch table: prefix → handler(current, line)
+# Order matters: first matching prefix wins (though prefixes are disjoint here).
+_LAYER_FIELD_HANDLERS: list[tuple[str, Any]] = [
+    ("- **标题**: ", _handle_title_line),
+    ("- **模型**: ", _handle_model_line),
+    ("- **Token**: ", _handle_token_line),
+    ("- **工具调用**: ", _handle_tool_calls_line),
+    ("- **用户意图**: ", _handle_user_prompt_line),
+    ("- **助手摘要**: ", _handle_assistant_summary_line),
+]
+
+
+def _dispatch_layer_field(line: str, current: dict[str, Any]) -> bool:
+    """Dispatch a field line to the appropriate handler.
+
+    Returns True if a handler matched, False otherwise.
+    """
+    for prefix, handler in _LAYER_FIELD_HANDLERS:
+        if line.startswith(prefix):
+            handler(line, current)
+            return True
+    return False
+
+
 def _read_a_layer(project_root: Path, target_date: str) -> list[dict[str, Any]] | None:
     """读取 {project}/memory/log/{date}-sessions.md，解析 session 记录。
 
@@ -90,32 +162,10 @@ def _read_a_layer(project_root: Path, target_date: str) -> list[dict[str, Any]] 
             if current and current.get("full_session_id"):
                 sessions.append(current)
             current = {"full_session_id": header_match.group(1)}
-        elif line.startswith("- **标题**: "):
-            current["title"] = line.split(": ", 1)[1] if ": " in line else ""
-        elif line.startswith("- **模型**: "):
-            rest = line.split(": ", 1)[1] if ": " in line else ""
-            # "GLM-5.1 (官方) | 时长: 2m35s"
-            parts = rest.split(" | ")
-            current["model"] = parts[0].strip() if parts else ""
-            for p in parts:
-                if "时长" in p:
-                    current["duration"] = p.split(": ", 1)[1].strip()
-        elif line.startswith("- **Token**: "):
-            rest = line.split(": ", 1)[1] if ": " in line else ""
-            # "input=123 output=456"
-            for token_part in rest.split():
-                if "=" in token_part:
-                    k, v = token_part.split("=", 1)
-                    try:
-                        current[f"{k}_tokens"] = int(v)
-                    except ValueError:
-                        pass
-        elif line.startswith("- **工具调用**: "):
-            current["tool_calls_raw"] = line.split(": ", 1)[1] if ": " in line else ""
-        elif line.startswith("- **用户意图**: "):
-            current["user_prompt_preview"] = line.split(": ", 1)[1] if ": " in line else ""
-        elif line.startswith("- **助手摘要**: "):
-            current["assistant_summary_preview"] = line.split(": ", 1)[1] if ": " in line else ""
+            continue
+        # 通过 dispatch table 分发字段行（覆盖全部 7 字段分支）
+        if current:
+            _dispatch_layer_field(line, current)
 
     # 保存最后一个
     if current and current.get("full_session_id"):

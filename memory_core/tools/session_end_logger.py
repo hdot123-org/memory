@@ -444,104 +444,132 @@ def _write_session_metrics(project_root: Path, info: dict[str, Any]) -> None:
         pass  # Metrics write must never break the hook
 
 
-def main(argv: list[str] | None = None) -> int:
-    """主入口。"""
-    # 设置超时
-    _set_timeout(TIMEOUT_SECONDS)
+def _resolve_jsonl_path(
+    args: argparse.Namespace,
+    stdin_payload: dict[str, Any],
+) -> tuple[str, str, str, Path | None]:
+    """Resolve session_id, project_root, transcript_path, and jsonl_path.
 
-    try:
-        args = _parse_args(argv)
-        stdin_payload = _read_stdin_payload()
+    Returns:
+        Tuple of (session_id, project_root_str, transcript_path, jsonl_path or None)
+        jsonl_path is None when resolution fails (caller should return 0)
+    """
+    session_id = args.session_id or stdin_payload.get("session_id", "")
+    project_root_str = args.project_root or stdin_payload.get("cwd", "")
+    transcript_path = stdin_payload.get("transcript_path", "")
 
-        # Factory hook stdin 直接提供 session_id / cwd / transcript_path
-        session_id = args.session_id or stdin_payload.get("session_id", "")
-        project_root_str = args.project_root or stdin_payload.get("cwd", "")
-        transcript_path = stdin_payload.get("transcript_path", "")
-
-        # 兜底：如果没有 transcript_path，按 session-dir 推断
-        if not transcript_path and session_id and project_root_str:
-            project_name = Path(project_root_str).name
-            sessions_base = Path.home() / ".factory" / "sessions"
+    # Fallback: infer from factory sessions dir
+    if not transcript_path and session_id and project_root_str:
+        project_name = Path(project_root_str).name
+        sessions_base = Path.home() / ".factory" / "sessions"
+        if sessions_base.exists():
             for d in sessions_base.iterdir():
                 if d.is_dir() and d.name.endswith(f"-{project_name}"):
                     transcript_path = str(d / f"{session_id}.jsonl")
                     break
 
-        # 参数不完整 → 静默退出
-        if not session_id or not project_root_str:
-            return 0
+    # Missing required params
+    if not session_id or not project_root_str:
+        return ("", "", "", None)
 
+    # Resolve jsonl path
+    if transcript_path:
+        jsonl_path = Path(transcript_path).expanduser().resolve()
+    elif args.session_dir:
+        session_dir = Path(args.session_dir).expanduser().resolve()
+        jsonl_path = session_dir / f"{session_id}.jsonl"
+    else:
+        return (session_id, project_root_str, transcript_path, None)
+
+    return (session_id, project_root_str, transcript_path, jsonl_path)
+
+
+def _safe_run_session_end(
+    session_id: str,
+    project_root_str: str,
+    jsonl_path: Path,
+) -> int:
+    """Execute session end logic with error handling.
+
+    Reads settings, extracts session info, writes logs and metrics.
+    All exceptions are caught and logged to C-layer error logger.
+
+    Returns:
+        0 on success or any error (never propagates exceptions)
+    """
+    try:
         project_root = Path(project_root_str).expanduser().resolve()
 
-        # jsonl 路径：优先用 transcript_path，否则用 session-dir 推断
-        if transcript_path:
-            jsonl_path = Path(transcript_path).expanduser().resolve()
-        elif args.session_dir:
-            session_dir = Path(args.session_dir).expanduser().resolve()
-            jsonl_path = session_dir / f"{session_id}.jsonl"
-        else:
-            return 0
-
-        # jsonl 不存在 → 静默退出
+        # Check jsonl exists
         if not jsonl_path.exists():
             if write_error_log is not None:
                 write_error_log(
                     project_root_str,
                     "transcript_missing",
-                    {
-                        "session_id": session_id,
-                        "expected_path": str(jsonl_path),
-                    },
+                    {"session_id": session_id, "expected_path": str(jsonl_path)},
                     f"transcript not found: {jsonl_path}",
                 )
             return 0
 
-        # settings.json 路径（同目录下）
+        # Read settings
         settings_path = jsonl_path.parent / f"{session_id}.settings.json"
-
-        # 读取 settings
         settings = _read_settings(settings_path)
 
-        # 流式提取信息（单遍遍历，O(1) 内存）
+        # Extract session info (single-pass, O(1) memory)
         info = _extract_session_info_streaming(jsonl_path, settings, session_id)
         if info is None:
             return 0
 
-        # 写入日志
+        # Write logs and metrics
         _write_daily_log(project_root, info)
-
-        # Write metrics to local JSONL (replaces PostHog telemetry)
         _write_session_metrics(project_root, info)
 
         return 0
 
     except SystemExit:
-        # SIGALRM 触发超时，记录到 C 层后静默退出
+        # SIGALRM timeout
         if write_error_log is not None:
             write_error_log(
-                project_root_str if "project_root_str" in dir() else "",
+                project_root_str,
                 "hook_timeout",
-                {
-                    "session_id": session_id if "session_id" in dir() else "",
-                    "timeout_seconds": TIMEOUT_SECONDS,
-                },
+                {"session_id": session_id, "timeout_seconds": TIMEOUT_SECONDS},
                 f"session_end_logger timed out after {TIMEOUT_SECONDS}s",
             )
         sys.exit(0)
     except Exception as exc:
-        # 任何异常静默退出，不阻塞 hook 链
-        # 记录到 C 层错误日志
+        # Any exception: log and return 0 (never block hook chain)
         if write_error_log is not None:
             error_type = "unknown_error"
             if isinstance(exc, json.JSONDecodeError):
                 error_type = "json_parse_error"
             write_error_log(
-                project_root_str if "project_root_str" in dir() else "",
+                project_root_str,
                 error_type,
-                {"error_class": type(exc).__name__, "session_id": session_id if "session_id" in dir() else ""},
+                {"error_class": type(exc).__name__, "session_id": session_id},
                 f"session_end_logger unexpected error: {exc}",
             )
         return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """主入口。"""
+    # 设置超时
+    _set_timeout(TIMEOUT_SECONDS)
+
+    args = _parse_args(argv)
+    stdin_payload = _read_stdin_payload()
+
+    # Resolve paths
+    session_id, project_root_str, transcript_path, jsonl_path = _resolve_jsonl_path(
+        args, stdin_payload
+    )
+
+    # Missing required params → silent exit
+    if not session_id or jsonl_path is None:
+        return 0
+
+    # Execute session end logic with error handling
+    return _safe_run_session_end(session_id, project_root_str, jsonl_path)
 
 
 if __name__ == "__main__":

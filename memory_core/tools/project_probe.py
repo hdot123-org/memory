@@ -297,53 +297,104 @@ class ProjectProbe:
 
         return ""
 
-    def _detect_project_type(self) -> str:
-        """通过目录结构和入口文件推断项目类型。"""
-        markers: dict[str, int] = {}
-
-        # Web/API 项目
+    def _detect_web_api_markers(self) -> int:
+        """检测 Web/API 项目标记数量。"""
+        count = 0
         for pattern in ["app.py", "main.py", "index.js", "server.js",
-                         "app.js", "index.ts", "server.ts"]:
+                        "app.js", "index.ts", "server.ts"]:
             if self._find_files(pattern):
-                markers["web/api"] = markers.get("web/api", 0) + 1
+                count += 1
+        return count
 
-        # CLI 工具
+    def _detect_cli_markers(self) -> int:
+        """检测 CLI 工具标记数量。"""
         if self._find_files("cli.py") or self._find_files("cli.js"):
-            markers["cli-tool"] = markers.get("cli-tool", 0) + 1
+            return 1
+        return 0
 
-        # 库/包
+    def _detect_library_markers(self) -> int:
+        """检测库/包项目标记数量。"""
         if self._find_files("setup.py") or self._find_files("pyproject.toml"):
             if self._find_files("src") and any(
                 d.is_dir() for d in (self.target / "src").iterdir()
                 if (self.target / "src").exists()
             ):
-                markers["library"] = markers.get("library", 0) + 1
+                return 1
+        return 0
 
-        # 前端项目
-        if self._find_files("package.json"):
-            for pattern in ["src/components", "src/pages", "public/index.html",
-                            "vite.config.js", "vite.config.ts",
-                            "webpack.config.js", "next.config.js"]:
-                if self._find_files(pattern.split("/")[-1]):
-                    markers["frontend"] = markers.get("frontend", 0) + 1
+    def _detect_frontend_markers(self) -> int:
+        """检测前端项目标记数量。"""
+        if not self._find_files("package.json"):
+            return 0
+        count = 0
+        for pattern in ["src/components", "src/pages", "public/index.html",
+                        "vite.config.js", "vite.config.ts",
+                        "webpack.config.js", "next.config.js"]:
+            if self._find_files(pattern.split("/")[-1]):
+                count += 1
+        return count
 
-        # 移动端
+    def _detect_mobile_markers(self) -> int:
+        """检测移动端项目标记数量。"""
+        count = 0
         for pattern in ["ios/", "android/", "Info.plist", "AndroidManifest.xml"]:
             if pattern.endswith("/"):
                 if (self.target / pattern).is_dir():
-                    markers["mobile"] = markers.get("mobile", 0) + 1
+                    count += 1
             elif self._find_files(pattern):
-                markers["mobile"] = markers.get("mobile", 0) + 1
+                count += 1
+        return count
+
+    def _detect_documentation_markers(self) -> int:
+        """检测文档/笔记项目标记数量。"""
+        if self._find_files("docs") and (self.target / "docs").is_dir():
+            return 1
+        return 0
+
+    def _detect_microservices_markers(self) -> int:
+        """检测微服务项目标记数量。"""
+        if self._find_files("docker-compose.yml") or self._find_files("docker-compose.yaml"):
+            return 1
+        return 0
+
+    def _detect_project_type(self) -> str:
+        """通过目录结构和入口文件推断项目类型。"""
+        markers: dict[str, int] = {}
+
+        # Web/API 项目
+        count = self._detect_web_api_markers()
+        if count > 0:
+            markers["web/api"] = count
+
+        # CLI 工具
+        count = self._detect_cli_markers()
+        if count > 0:
+            markers["cli-tool"] = count
+
+        # 库/包
+        count = self._detect_library_markers()
+        if count > 0:
+            markers["library"] = count
+
+        # 前端项目
+        count = self._detect_frontend_markers()
+        if count > 0:
+            markers["frontend"] = count
+
+        # 移动端
+        count = self._detect_mobile_markers()
+        if count > 0:
+            markers["mobile"] = count
 
         # 文档/笔记
-        if self._find_files("docs") and (self.target / "docs").is_dir():
-            if not markers:
-                markers["documentation"] = 1
+        count = self._detect_documentation_markers()
+        if count > 0 and not markers:
+            markers["documentation"] = 1
 
         # 微服务
-        docker_compose = self._find_files("docker-compose.yml") or self._find_files("docker-compose.yaml")
-        if docker_compose:
-            markers["microservices"] = markers.get("microservices", 0) + 1
+        count = self._detect_microservices_markers()
+        if count > 0:
+            markers["microservices"] = count
 
         if markers:
             return max(markers, key=markers.get)

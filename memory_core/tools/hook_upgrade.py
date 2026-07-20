@@ -290,86 +290,89 @@ def cmd_plan_upgrade(
 # apply-upgrade
 # ---------------------------------------------------------------------------
 
-def cmd_apply_upgrade(
-    *,
-    factory_home: Path | None = None,
-    yes: bool = False,
-    json_output: bool = False,
-    dry_run: bool = False,
+def _prompt_upgrade_approval() -> tuple[bool, dict[str, Any] | None]:
+    """Prompt user for upgrade approval.
+
+    Returns:
+        Tuple of (approved, abort_result_or_none)
+        If approved is False and abort_result is not None, caller should return abort_result
+    """
+    try:
+        response = input("Apply upgrade? [y/N] ").strip().lower()
+        if response in ("y", "yes"):
+            return (True, None)
+        abort_result = {"message": "Aborted by user"}
+        print("Aborted.")
+        return (False, abort_result)
+    except (EOFError, KeyboardInterrupt):
+        print("\nAborted.", file=sys.stderr)
+        abort_result = {"message": "Aborted by user"}
+        return (False, abort_result)
+
+
+def _backup_planned_files(
+    files_to_backup: list[str],
+    json_output: bool,
+) -> tuple[list[str], list[str]]:
+    """Backup files listed in the upgrade plan.
+
+    Returns:
+        Tuple of (backups_created, errors_encountered)
+    """
+    backups: list[str] = []
+    errors: list[str] = []
+
+    for file_path_str in files_to_backup:
+        file_path = Path(file_path_str)
+        if not file_path.exists():
+            continue
+
+        try:
+            backup = _backup_existing_file(file_path)
+            backups.append(str(backup))
+        except Exception as exc:
+            error_msg = f"Backup failed for {file_path}: {exc}"
+            errors.append(error_msg)
+            if json_output:
+                print(json.dumps({"errors": errors}, indent=2, ensure_ascii=False))
+            else:
+                print(f"[ERROR] Backup failed: {exc}", file=sys.stderr)
+            # Return early on first backup failure
+            return (backups, errors)
+
+    return (backups, errors)
+
+
+def _apply_upgrade_and_format(
+    factory_home: Path,
+    plan_actions: list[dict[str, Any]],
+    json_output: bool,
 ) -> dict[str, Any]:
-    """Backup existing files, preserve unrelated hooks, apply upgrades."""
+    """Execute the upgrade via install_factory_hooks and format the result.
+
+    Returns:
+        Result dict with keys: actions_applied, backups, errors, message
+    """
     from memory_core.tools.factory_global_hooks import (
         default_storage_root,
         install_factory_hooks,
     )
 
-    fh = (factory_home or default_factory_home()).expanduser()
-
-    # First, get the plan (suppress text output when json_output)
-    plan = cmd_plan_upgrade(factory_home=fh, json_output=json_output)
-
     result: dict[str, Any] = {
-        "factory_home": str(fh),
         "actions_applied": [],
         "backups": [],
         "errors": [],
-        "dry_run": dry_run,
     }
-
-    if not plan["actions"]:
-        result["message"] = "No upgrade actions needed"
-        if json_output:
-            print(json.dumps(result, indent=2, ensure_ascii=False))
-        else:
-            print("No upgrade actions needed ✓")
-        return result
-
-    # Require approval
-    if not yes and not dry_run:
-        try:
-            response = input("Apply upgrade? [y/N] ").strip().lower()
-            if response not in ("y", "yes"):
-                result["message"] = "Aborted by user"
-                print("Aborted.")
-                return result
-        except (EOFError, KeyboardInterrupt):
-            print("\nAborted.", file=sys.stderr)
-            result["message"] = "Aborted by user"
-            return result
-
-    if dry_run:
-        result["message"] = "Dry run — no changes applied"
-        result["planned_actions"] = plan["actions"]
-        if json_output:
-            print(json.dumps(result, indent=2, ensure_ascii=False))
-        else:
-            print(f"Dry run — would apply {len(plan['actions'])} action(s)")
-        return result
-
-    # Backup files
-    for file_path_str in plan.get("files_to_backup", []):
-        file_path = Path(file_path_str)
-        if file_path.exists():
-            try:
-                backup = _backup_existing_file(file_path)
-                result["backups"].append(str(backup))
-            except Exception as exc:
-                result["errors"].append(f"Backup failed for {file_path}: {exc}")
-                if json_output:
-                    print(json.dumps(result, indent=2, ensure_ascii=False))
-                else:
-                    print(f"[ERROR] Backup failed: {exc}", file=sys.stderr)
-                return result
 
     # Apply upgrade via install_factory_hooks (preserves unrelated hooks)
     install_result = install_factory_hooks(
-        factory_home=fh,
+        factory_home=factory_home,
         storage_root=default_storage_root(),
         dry_run=False,
     )
 
     if install_result.get("success"):
-        result["actions_applied"] = plan["actions"]
+        result["actions_applied"] = plan_actions
         result["backups"].extend(install_result.get("backups", []))
         result["message"] = "Upgrade applied successfully"
     else:
@@ -378,6 +381,7 @@ def cmd_apply_upgrade(
         )
         result["message"] = "Upgrade failed"
 
+    # Format output
     if json_output:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
@@ -391,6 +395,70 @@ def cmd_apply_upgrade(
                 print("  Backups created:")
                 for b in result["backups"]:
                     print(f"    - {b}")
+
+    return result
+
+
+def cmd_apply_upgrade(
+    *,
+    factory_home: Path | None = None,
+    yes: bool = False,
+    json_output: bool = False,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Backup existing files, preserve unrelated hooks, apply upgrades."""
+    from memory_core.tools.factory_global_hooks import default_factory_home
+
+    fh = (factory_home or default_factory_home()).expanduser()
+
+    # Get the upgrade plan
+    plan = cmd_plan_upgrade(factory_home=fh, json_output=json_output)
+
+    result: dict[str, Any] = {
+        "factory_home": str(fh),
+        "actions_applied": [],
+        "backups": [],
+        "errors": [],
+        "dry_run": dry_run,
+    }
+
+    # No actions needed
+    if not plan["actions"]:
+        result["message"] = "No upgrade actions needed"
+        if json_output:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print("No upgrade actions needed ✓")
+        return result
+
+    # Require approval (skip for dry_run)
+    if not yes and not dry_run:
+        approved, abort_result = _prompt_upgrade_approval()
+        if not approved and abort_result is not None:
+            result.update(abort_result)
+            return result
+
+    # Dry run: show planned actions without applying
+    if dry_run:
+        result["message"] = "Dry run — no changes applied"
+        result["planned_actions"] = plan["actions"]
+        if json_output:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+        else:
+            print(f"Dry run — would apply {len(plan['actions'])} action(s)")
+        return result
+
+    # Backup files
+    backups, errors = _backup_planned_files(plan.get("files_to_backup", []), json_output)
+    result["backups"] = backups
+    result["errors"] = errors
+    if errors:
+        # Backup failed, return early
+        return result
+
+    # Apply upgrade and format output
+    apply_result = _apply_upgrade_and_format(fh, plan["actions"], json_output)
+    result.update(apply_result)
 
     return result
 

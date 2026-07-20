@@ -507,66 +507,117 @@ class TruthBasisResolver:
             "conflict_status": _section_bullets(content, "### Conflict Status"),
         }
 
-    def _truth_basis_errors_for(self, path: Path, content: str | None) -> list[str]:
+    def _resolve_ref_paths(self, refs: list[str]) -> list[Path]:
+        """Resolve reference strings to absolute Path objects."""
+        return [
+            (self._config.repo_root / Path(item).expanduser()).resolve()
+            if not Path(item).expanduser().is_absolute()
+            else Path(item).expanduser()
+            for item in refs
+        ]
+
+    def _validate_section_presence(self, sections: dict[str, list[str]], path: Path) -> list[str]:
+        """Validate that all required sections are present."""
         errors: list[str] = []
-        if content is None:
-            return [f"missing truth canonical: {path}"]
-        if "Truth Basis" not in content:
-            return [f"truth basis section missing: {path}"]
-        sections = self._truth_basis_sections_for(path, content)
-        source_refs = sections["source_refs"]
-        authority_refs = sections["authority_refs"]
-        evidence_refs = sections["evidence_refs"]
-        conflict = sections["conflict_status"]
-        if not source_refs:
+        if not sections["source_refs"]:
             errors.append(f"source refs missing: {path}")
-        if not authority_refs:
+        if not sections["authority_refs"]:
             errors.append(f"authority refs missing: {path}")
-        if not evidence_refs:
+        if not sections["evidence_refs"]:
             errors.append(f"evidence refs missing: {path}")
-        if not conflict:
+        if not sections["conflict_status"]:
             errors.append(f"conflict status missing: {path}")
-        elif conflict != ["resolved"]:
-            errors.append(f"conflict status unresolved: {path}")
-        source_paths = [
-            (self._config.repo_root / Path(item).expanduser()).resolve()
-            if not Path(item).expanduser().is_absolute()
-            else Path(item).expanduser()
-            for item in source_refs
-        ]
-        authority_paths = [
-            (self._config.repo_root / Path(item).expanduser()).resolve()
-            if not Path(item).expanduser().is_absolute()
-            else Path(item).expanduser()
-            for item in authority_refs
-        ]
-        evidence_paths = [
-            (self._config.repo_root / Path(item).expanduser()).resolve()
-            if not Path(item).expanduser().is_absolute()
-            else Path(item).expanduser()
-            for item in evidence_refs
-        ]
-        for ref_path in [*source_paths, *authority_paths, *evidence_paths]:
+        return errors
+
+    def _validate_conflict_status(self, conflict: list[str], path: Path) -> list[str]:
+        """Validate that conflict status is resolved."""
+        if conflict and conflict != ["resolved"]:
+            return [f"conflict status unresolved: {path}"]
+        return []
+
+    def _validate_path_existence(self, paths: list[Path]) -> list[str]:
+        """Validate that all paths are within repo and exist on disk."""
+        errors: list[str] = []
+        for ref_path in paths:
             if not _path_is_under(ref_path, self._config.repo_root):
                 errors.append(f"truth ref outside repository: {ref_path}")
             if not ref_path.exists():
                 errors.append(f"truth ref missing on disk: {ref_path}")
+        return errors
+
+    def _validate_no_overlaps(self, source_refs: list[str], authority_refs: list[str], evidence_refs: list[str], path: Path) -> list[str]:
+        """Validate that ref types don't overlap."""
+        errors: list[str] = []
         if set(source_refs) == set(evidence_refs):
             errors.append(f"source refs and evidence refs must not be identical: {path}")
         if set(source_refs) & set(authority_refs):
             errors.append(f"source refs overlap authority refs: {path}")
         if set(authority_refs) & set(evidence_refs):
             errors.append(f"authority refs overlap evidence refs: {path}")
+        return errors
+
+    def _validate_authority_allowed(self, authority_paths: list[Path]) -> list[str]:
+        """Validate that all authority paths are allowed."""
+        errors: list[str] = []
         for authority_path in authority_paths:
             if not self._authority_ref_allowed(authority_path):
                 errors.append(f"authority ref is not formal canonical: {authority_path}")
+        return errors
+
+    def _validate_source_diversity(self, source_paths: list[Path], path: Path) -> list[str]:
+        """Validate that source paths include at least one non-canonical origin."""
         if source_paths and all(
             self._classify_truth_ref(sp) in {"global-canonical", "legal-core", "project-map-index"}
             for sp in source_paths
         ):
-            errors.append(f"source refs do not include a non-canonical origin: {path}")
+            return [f"source refs do not include a non-canonical origin: {path}"]
+        return []
+
+    def _validate_evidence_diversity(self, evidence_paths: list[Path], path: Path) -> list[str]:
+        """Validate that evidence paths include at least one lower-layer source."""
         if evidence_paths and not any(self._lower_evidence_ref(ep) for ep in evidence_paths):
-            errors.append(f"evidence refs do not include lower-layer support: {path}")
+            return [f"evidence refs do not include lower-layer support: {path}"]
+        return []
+
+    def _truth_basis_errors_for(self, path: Path, content: str | None) -> list[str]:
+        errors: list[str] = []
+        if content is None:
+            return [f"missing truth canonical: {path}"]
+        if "Truth Basis" not in content:
+            return [f"truth basis section missing: {path}"]
+
+        sections = self._truth_basis_sections_for(path, content)
+        source_refs = sections["source_refs"]
+        authority_refs = sections["authority_refs"]
+        evidence_refs = sections["evidence_refs"]
+        conflict = sections["conflict_status"]
+
+        # Phase 1: section presence
+        errors.extend(self._validate_section_presence(sections, path))
+
+        # Phase 2: conflict status
+        errors.extend(self._validate_conflict_status(conflict, path))
+
+        # Phase 3: resolve paths
+        source_paths = self._resolve_ref_paths(source_refs)
+        authority_paths = self._resolve_ref_paths(authority_refs)
+        evidence_paths = self._resolve_ref_paths(evidence_refs)
+
+        # Phase 4: path existence
+        errors.extend(self._validate_path_existence([*source_paths, *authority_paths, *evidence_paths]))
+
+        # Phase 5: no overlaps
+        errors.extend(self._validate_no_overlaps(source_refs, authority_refs, evidence_refs, path))
+
+        # Phase 6: authority allowed
+        errors.extend(self._validate_authority_allowed(authority_paths))
+
+        # Phase 7: source diversity
+        errors.extend(self._validate_source_diversity(source_paths, path))
+
+        # Phase 8: evidence diversity
+        errors.extend(self._validate_evidence_diversity(evidence_paths, path))
+
         return errors
 
     def truth_basis_for_scope(self, project_scope: str) -> TruthBasis:
