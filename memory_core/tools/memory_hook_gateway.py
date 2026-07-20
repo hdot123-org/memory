@@ -11,7 +11,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 if TYPE_CHECKING:
     from typing import TypeVar
@@ -156,13 +156,13 @@ PROJECT_LIFECYCLE_ROOT = _configured_project_lifecycle_root(WORKSPACE_ROOT)
 try:
     from .cmux_hook_state import default_hook_state_path, record_hook_event
 except ImportError:
-    pass  # type: ignore  # noqa: E402
+    pass  # noqa: E402
 
 # M3: Import is_memory_core_source_repo from ownership module
 try:
     from ..ownership import get_source_repo_mode, is_memory_core_source_repo
 except ImportError:
-    from memory_core.ownership import get_source_repo_mode, is_memory_core_source_repo  # type: ignore
+    from memory_core.ownership import get_source_repo_mode, is_memory_core_source_repo
 
 try:
     from .memory_hook_adapters.neutral_policy import NeutralGatewayBusinessPolicy
@@ -235,7 +235,7 @@ def _integrity_sign(project_root: Path) -> None:
         _logger.debug("integrity sign skipped: %s", exc)
 
 
-def _integrity_verify(project_root: Path) -> dict | None:
+def _integrity_verify(project_root: Path) -> dict[str, Any] | None:
     """Verify project manifest on session-start. Returns result dict or None."""
     try:
         from .memory_hook_integrity_keys import load_key
@@ -304,7 +304,7 @@ _ADAPTER_REGISTRY = {
 }
 
 
-def _load_adapter_profile(adapter_name: str, repo_root: Path, workspace_root: Path):
+def _load_adapter_profile(adapter_name: str, repo_root: Path, workspace_root: Path) -> dict[str, Any]:
     """Load adapter profile.
 
     Raises:
@@ -320,7 +320,7 @@ def _load_adapter_profile(adapter_name: str, repo_root: Path, workspace_root: Pa
     _mod_path, _fn_name = _ADAPTER_REGISTRY[adapter_name]
     _mod = importlib.import_module(_mod_path, package="memory_core.tools")
     _fn = getattr(_mod, _fn_name)
-    return _fn(repo_root, workspace_root)
+    return cast(dict[str, Any], _fn(repo_root, workspace_root))
 
 
 import threading
@@ -453,7 +453,7 @@ def _build_gateway_business_policy() -> GatewayBusinessPolicy:
         read_text_if_exists_fn=read_text_if_exists,
     )
     _policy_class = _adapter_config.get("GATEWAY_POLICY_CLASS", NeutralGatewayBusinessPolicy)
-    return _policy_class(config=config)
+    return cast(GatewayBusinessPolicy, _policy_class(config=config))
 
 
 def _get_gateway_business_policy() -> GatewayBusinessPolicy:
@@ -476,7 +476,7 @@ def _load_external_core_builder() -> CoreBuilder:
     builder = getattr(module, func_name)
     if not callable(builder):
         raise TypeError(f"external core builder is not callable: {module_name}.{func_name}")
-    return builder
+    return cast(Callable[..., dict[str, Any]], builder)
 
 
 def _resolve_core_builder(provider: str, *, allow_fallback: bool = True) -> tuple[str, CoreBuilder, list[str]]:
@@ -797,8 +797,7 @@ def _git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, An
         latest_commit = (head_commit.stdout or "").strip()
     except subprocess.TimeoutExpired:
         latest_commit = ""
-    commit_scope = [_normalize_repo_scope_entry(path) for path in REGISTRATION_GIT_SCOPE]
-    commit_scope = [path for path in commit_scope if path]
+    commit_scope: list[str] = [path for path in (_normalize_repo_scope_entry(p) for p in REGISTRATION_GIT_SCOPE) if path]
     commit_scope.extend(registration_paths)
     head_touched = _git_name_only("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", "--", *commit_scope)
     map_touched = any(any(_path_matches_scope(item, scope) for scope in commit_scope[: len(REGISTRATION_GIT_SCOPE)]) for item in head_touched)
@@ -862,7 +861,7 @@ def docs_refs_for_scope(project_scope: str) -> list[str]:
 
 
 def truth_basis_for_scope(project_scope: str) -> dict[str, Any]:
-    return _get_gateway_business_policy().truth_basis_for_scope(project_scope)
+    return cast(dict[str, Any], _get_gateway_business_policy().truth_basis_for_scope(project_scope))
 
 
 def write_targets() -> dict[str, Any]:
