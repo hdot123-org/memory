@@ -11,7 +11,62 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from typing import TypeVar
+
+    _T = TypeVar("_T")
+
+    # Dynamic constants injected via globals().update(profile) at runtime.
+    # Declared here for mypy static analysis.
+    PROJECT_MAP_ROOT: Path
+    PROJECT_MAP_FILES: list[Path]
+    PROJECT_MAP_GOVERNANCE: Path
+    TRUTH_MODEL: Path
+    GLOBAL_CANONICAL: list[Path]
+    AUTHORITY_ALLOWED_PATHS: set[Path]
+    LOWER_EVIDENCE_ROOTS: list[Path]
+    LEGAL_CORE_MARKERS: list[str]
+    REQUIRED_REGISTRY_SCOPES: list[str]
+    PROJECT_CANONICAL: dict[str, Path]
+    PROJECT_RUNTIME_ROOT: dict[str, Path]
+    PROJECT_DOC_REFS: dict[str, list[Path]]
+    DEFAULT_DECISION_REFS: list[Path]
+    PROJECT_DECISION_REFS: dict[str, list[Path]]
+    DEFAULT_LESSON_REFS: list[Path]
+    PROJECT_LESSON_REFS: dict[str, list[Path]]
+    GOVERNANCE_FROZEN_TUPLE_FILES: list[Path]
+    EVENT_CONTRACT_FILES: dict[str, Path]
+    FROZEN_TUPLE_EXPECTED: set[str]
+    FROZEN_TUPLE_LEGACY_MARKERS: set[str]
+    FORMAL_SOURCE_TYPES: set[str]
+    FORMAL_EVENT_TYPES: set[str]
+    FORMAL_EVENT_STATUSES: set[str]
+    FORMAL_FIELD_KEYS: set[str]
+    LEGACY_FIELD_KEYS: set[str]
+    REQUIRED_CANONICAL: list[Path]
+    HOOK_CONTRACT_PATH: Path
+    DEFAULT_PROJECT_SCOPE: str
+    SCOPE_MATCH_HINTS: dict[str, list[Path]]
+    POLICY_PACK_PATH: Path
+    POLICY_ALLOWED_SCOPES: set[str]
+    POLICY_SCOPE_INHERITS: dict[str, str]
+    GLOBAL_RULE_PATH: Path
+    ROUTE_PROJECT_RUNTIME_SCOPE: str
+    REGISTRATION_GIT_SCOPE: list[Path]
+    REGISTRATION_COMMIT_PHASE: str
+    REGISTRATION_COMMIT_POLICY: str
+    LEGALITY_SOURCE_POLICY: str
+    GOVERNANCE_BLOCKER_SCOPES: set[str]
+    EVENT_CONTRACT_BLOCKER_SCOPES: set[str]
+    CORE_EVIDENCE_REFS: list[str]
+    MEMORY_SYSTEM_PATH: Path
+    GATEWAY_POLICY_CLASS: Any
+    ARTIFACT_COMPACTION: dict[str, bool]
+    CLAUDE_HOOK_STATE_FILE: str | None
+    GLOBAL_KB_ROOT: Path | None
+    GLOBAL_KB_ENABLED: bool
 
 # Import file utilities (REF-001 §4.8)
 try:
@@ -169,7 +224,7 @@ import time  # noqa: E402
 _logger = logging.getLogger(__name__)
 
 # L2 Integrity — lazy-loaded to avoid circular imports
-def _integrity_sign(project_root: _Path) -> None:
+def _integrity_sign(project_root: Path) -> None:
     """Sign project manifest after artifact write. Non-blocking."""
     try:
         from .memory_hook_integrity_keys import load_or_create_key
@@ -180,7 +235,7 @@ def _integrity_sign(project_root: _Path) -> None:
         _logger.debug("integrity sign skipped: %s", exc)
 
 
-def _integrity_verify(project_root: _Path) -> dict | None:
+def _integrity_verify(project_root: Path) -> dict | None:
     """Verify project manifest on session-start. Returns result dict or None."""
     try:
         from .memory_hook_integrity_keys import load_key
