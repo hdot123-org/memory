@@ -6,11 +6,12 @@ import os
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 try:
     from ._file_utils import exclusive_lock, now_iso
 except ImportError:
-    from _file_utils import exclusive_lock, now_iso  # type: ignore[import-not-found]
+    from _file_utils import exclusive_lock, now_iso  # type: ignore[no-redef]
 
 
 class HookStateError(RuntimeError):
@@ -23,7 +24,7 @@ def _hook_state_lock_path(path: Path) -> Path:
 
 
 @contextmanager
-def _exclusive_hook_state_lock(path: Path):
+def _exclusive_hook_state_lock(path: Path) -> Iterator[None]:
     lock_path = _hook_state_lock_path(path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+", encoding="utf-8") as handle:
@@ -174,13 +175,13 @@ def record_hook_event(
         surface_state["last_cwd"] = str(payload.get("cwd") or "")
 
         if event_name == "session-start":
-            surface_state["session_start_count"] = int(surface_state.get("session_start_count") or 0) + 1
+            surface_state["session_start_count"] = int(surface_state.get("session_start_count") or 0) + 1  # type: ignore[arg-type]
         elif event_name == "prompt-submit":
-            surface_state["prompt_submit_count"] = int(surface_state.get("prompt_submit_count") or 0) + 1
+            surface_state["prompt_submit_count"] = int(surface_state.get("prompt_submit_count") or 0) + 1  # type: ignore[arg-type]
         elif event_name == "stop":
-            surface_state["stop_count"] = int(surface_state.get("stop_count") or 0) + 1
+            surface_state["stop_count"] = int(surface_state.get("stop_count") or 0) + 1  # type: ignore[arg-type]
         elif event_name == "notification":
-            surface_state["notification_count"] = int(surface_state.get("notification_count") or 0) + 1
+            surface_state["notification_count"] = int(surface_state.get("notification_count") or 0) + 1  # type: ignore[arg-type]
 
         state["updated_at"] = now
         _write_hook_state_unlocked(path, state)

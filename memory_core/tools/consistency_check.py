@@ -55,7 +55,7 @@ def _load_pyproject_version() -> str:
     return ""
 
 
-def check_version_consistency() -> tuple[list, list]:
+def check_version_consistency() -> tuple[list[str], list[str]]:
     """Check that constants.py and pyproject.toml versions match."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -75,7 +75,7 @@ def check_version_consistency() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_host_enum_coverage() -> tuple[list, list]:
+def check_host_enum_coverage() -> tuple[list[str], list[str]]:
     """Check host enumeration coverage in if/elif chains and choices."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -136,7 +136,7 @@ def check_host_enum_coverage() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_no_duplicate_version_definitions() -> tuple[list, list]:
+def check_no_duplicate_version_definitions() -> tuple[list[str], list[str]]:
     """Check that no other .py files define CURRENT_MEMORY_VERSION."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -180,7 +180,7 @@ def check_no_duplicate_version_definitions() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_init_validate_roundtrip() -> tuple[list, list]:
+def check_init_validate_roundtrip() -> tuple[list[str], list[str]]:
     """Run init, then validate, check generated files."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -249,7 +249,7 @@ def check_init_validate_roundtrip() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_required_imports_from_constants() -> tuple[list, list]:
+def check_required_imports_from_constants() -> tuple[list[str], list[str]]:
     """Check that required files import from constants."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -288,7 +288,7 @@ def check_required_imports_from_constants() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_docstring_host_mentions() -> tuple[list, list]:
+def check_docstring_host_mentions() -> tuple[list[str], list[str]]:
     """Check docstrings for host mentions (codex, claude without factory)."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -324,7 +324,7 @@ def check_docstring_host_mentions() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_no_handwritten_toml_parser() -> tuple[list, list]:
+def check_no_handwritten_toml_parser() -> tuple[list[str], list[str]]:
     """Check that _parse_adapter_toml uses tomllib, not handwritten parser."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -363,7 +363,7 @@ def check_no_handwritten_toml_parser() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_adapter_registry_complete() -> tuple[list, list]:
+def check_adapter_registry_complete() -> tuple[list[str], list[str]]:
     """Check that _ADAPTER_REGISTRY has the default entry (workbot has been archived)."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -394,7 +394,7 @@ def check_adapter_registry_complete() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_ruff_config_not_conflicting() -> tuple[list, list]:
+def check_ruff_config_not_conflicting() -> tuple[list[str], list[str]]:
     """Check that ruff.toml and pyproject.toml [tool.ruff] ignore lists are consistent."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -413,6 +413,7 @@ def check_ruff_config_not_conflicting() -> tuple[list, list]:
     has_ruff_toml_ruff = "[tool.ruff]" in ruff_toml_content
 
     if has_pyproject_ruff and has_ruff_toml_ruff:
+        assert pyproject_ruff_match is not None
         # Extract ignore lists from both
         def extract_ignores(content: str) -> set[str]:
             ignores: set[str] = set()
@@ -437,7 +438,7 @@ def check_ruff_config_not_conflicting() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_contributing_version_source() -> tuple[list, list]:
+def check_contributing_version_source() -> tuple[list[str], list[str]]:
     """Check CONTRIBUTING.md claims about version source vs constants.py."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -461,7 +462,7 @@ def check_contributing_version_source() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_package_data_coverage() -> tuple[list, list]:
+def check_package_data_coverage() -> tuple[list[str], list[str]]:
     """Check that package-data references packages in find include list."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -524,7 +525,7 @@ def check_package_data_coverage() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_adapter_schema_host_validation() -> tuple[list, list]:
+def check_adapter_schema_host_validation() -> tuple[list[str], list[str]]:
     """Check that load_adapter_toml validates host against SUPPORTED_HOSTS."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -594,7 +595,7 @@ def check_adapter_schema_host_validation() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_lock_parser_strict_toml() -> tuple[list, list]:
+def check_lock_parser_strict_toml() -> tuple[list[str], list[str]]:
     """Check that _parse_lock_file in validate_project_memory.py uses strict TOML parsing."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -640,7 +641,7 @@ def check_lock_parser_strict_toml() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_default_profile_compatibility() -> tuple[list, list]:
+def check_default_profile_compatibility() -> tuple[list[str], list[str]]:
     """Check that default runtime profile exists (workbot has been archived)."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -657,7 +658,7 @@ def check_default_profile_compatibility() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_provider_builder_called() -> tuple[list, list]:
+def check_provider_builder_called() -> tuple[list[str], list[str]]:
     """Check that provider_builder and shadow_builder are actually called."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -712,7 +713,7 @@ def check_provider_builder_called() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_test_version_hardcoding() -> tuple[list, list]:
+def check_test_version_hardcoding() -> tuple[list[str], list[str]]:
     """Check for hardcoded version strings in test files."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -748,7 +749,7 @@ def check_test_version_hardcoding() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_docs_version_references() -> tuple[list, list]:
+def check_docs_version_references() -> tuple[list[str], list[str]]:
     """Check for outdated version references in docs."""
     errors: list[str] = []
     warnings: list[str] = []
@@ -781,7 +782,7 @@ def check_docs_version_references() -> tuple[list, list]:
     return errors, warnings
 
 
-def check_validate_dry_run_coverage() -> tuple[list, list]:
+def check_validate_dry_run_coverage() -> tuple[list[str], list[str]]:
     """Check that dry_run branch lists all validation checks."""
     errors: list[str] = []
     warnings: list[str] = []

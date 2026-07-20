@@ -394,7 +394,7 @@ def sign_project(
         return None
 
     if now_iso is None:
-        def now_iso():
+        def now_iso() -> str:
             return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     resolved_root = project_root.resolve()
@@ -540,13 +540,13 @@ def sign_project_incremental(
         return None
 
     if now_iso is None:
-        def now_iso_fn():
+        def now_iso_fn() -> str:
             return datetime.now(timezone.utc).isoformat(timespec="seconds")
     elif callable(now_iso):
         now_iso_fn = now_iso
     else:
-        def _constant_now_iso():
-            return now_iso
+        def _constant_now_iso() -> str:
+            return str(now_iso)
         now_iso_fn = _constant_now_iso
 
     resolved_root = project_root.resolve()

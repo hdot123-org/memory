@@ -14,11 +14,11 @@ from __future__ import annotations
 import fcntl
 from contextlib import contextmanager
 from datetime import datetime
-from typing import IO
+from typing import IO, Iterator
 
 
 @contextmanager
-def exclusive_lock(file_obj: IO, *, label: str = ""):
+def exclusive_lock(file_obj: IO[str], *, label: str = "") -> Iterator[None]:
     """POSIX exclusive file lock context manager (blocking).
 
     Usage:
@@ -40,7 +40,7 @@ def exclusive_lock(file_obj: IO, *, label: str = ""):
 
 
 @contextmanager
-def try_exclusive_lock(file_obj: IO, *, label: str = ""):
+def try_exclusive_lock(file_obj: IO[str], *, label: str = "") -> Iterator[bool]:
     """Non-blocking POSIX exclusive file lock.
 
     Yields True if the lock was acquired, False if contended (another process

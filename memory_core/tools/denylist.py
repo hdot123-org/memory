@@ -42,7 +42,7 @@ class DenylistResult:
         return cls(denied=False)
 
     @classmethod
-    def denied(cls, rule: str, message: str) -> "DenylistResult":
+    def make_denied(cls, rule: str, message: str) -> "DenylistResult":
         """Create a result indicating the path is denied."""
         return cls(denied=True, rule=rule, message=message)
 
@@ -88,7 +88,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
     if tmpdir:
         tmpdir_path = Path(tmpdir).resolve()
         if target_resolved == tmpdir_path or str(target_resolved).startswith(str(tmpdir_path) + os.sep):
-            return DenylistResult.denied(
+            return DenylistResult.make_denied(
                 "tmpdir",
                 f"Path is under $TMPDIR ({tmpdir_path}). "
                 f"Temporary directories are not suitable for project memory."
@@ -102,7 +102,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
         or target_str == "/private/tmp"
         or target_str.startswith("/private/tmp/")
     ):
-        return DenylistResult.denied(
+        return DenylistResult.make_denied(
             "tmpdir",
             "Path is under /tmp. Temporary directories are not suitable for project memory."
         )
@@ -110,7 +110,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
     # 3. Check ~/.factory
     factory_path = (Path.home() / ".factory").resolve()
     if target_resolved == factory_path or str(target_resolved).startswith(str(factory_path) + os.sep):
-        return DenylistResult.denied(
+        return DenylistResult.make_denied(
             "factory",
             f"Path is under ~/.factory ({factory_path}). "
             f"Factory internal directories should not have project memory."
@@ -119,7 +119,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
     # 4. Check $HOME root (exact match)
     home_path = Path.home().resolve()
     if target_resolved == home_path:
-        return DenylistResult.denied(
+        return DenylistResult.make_denied(
             "home_root",
             f"Path is $HOME ({home_path}). "
             f"Initialize memory in a specific project directory, not the home root."
@@ -128,7 +128,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
     # 5. Check junk directory name patterns
     for pattern in JUNK_DIR_PATTERNS:
         if pattern.match(target_name):
-            return DenylistResult.denied(
+            return DenylistResult.make_denied(
                 "junk_pattern",
                 f"Directory name '{target_name}' matches junk pattern '{pattern.pattern}'. "
                 f"These directories are typically temporary or test artifacts."
@@ -138,7 +138,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
     if not allow_non_git:
         git_dir = target_resolved / ".git"
         if not git_dir.exists():
-            return DenylistResult.denied(
+            return DenylistResult.make_denied(
                 "non_git",
                 "Path is not a git repository (no .git directory found). "
                 "Use --allow-non-git to override this check if the directory is a valid project."
