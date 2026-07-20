@@ -101,9 +101,18 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 
 ## 铁律：CI 完成后 Webhook 路由
 
-**创建 PR 后必须调用 `scripts/write-pending-ci.sh <PR_NUMBER>`，确保 CI 完成后 webhook 能路由回当前 session。**
+**创建 PR 后必须调用 webhook 写入脚本，确保 CI 完成后 webhook 能路由回当前 session。**
 
-流程：创建 PR → 执行 `scripts/write-pending-ci.sh <PR_NUMBER>` → CI 完成后 n8n webhook 触发 trigger-ci-droid.sh → 读取 pending-ci.json → 注入当前 session。
+**全局脚本位置**：`~/.factory/webhook/scripts/write-pending-ci.sh`
+
+**本项目 wrapper**：`scripts/write-pending-ci.sh`（调用全局脚本，保持向后兼容）
+
+流程：创建 PR → 执行 `scripts/write-pending-ci.sh <PR_NUMBER>`（或 `~/.factory/webhook/scripts/write-pending-ci.sh <PR_NUMBER>`）→ CI 完成后 n8n webhook 触发 trigger-ci-droid.sh → 读取 pending-ci.json → 注入当前 session。
+
+**全局脚本特性**：
+- PROJECT_CWD 运行时检测（`git rev-parse --show-toplevel`），不硬编码
+- PYTHON_BIN 动态查找（`${PYTHON_BIN:-$(command -v python3)}`）
+- 需要 git repo 环境，除非提供显式 SESSION_ID
 
 ## Linear Gateway
 
