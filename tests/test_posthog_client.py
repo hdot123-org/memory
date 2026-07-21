@@ -114,8 +114,8 @@ def test_posthog_analytics_uses_default_key():
                 assert analytics._enabled, "Should be enabled with default key"
                 mock_posthog.Posthog.assert_called_once()
                 call_args = mock_posthog.Posthog.call_args
-                assert "api_key" in call_args.kwargs
-                assert call_args.kwargs["api_key"].startswith("phc_")
+                assert "project_api_key" in call_args.kwargs
+                assert call_args.kwargs["project_api_key"].startswith("phc_")
     finally:
         if old_val is not None:
             os.environ["POSTHOG_API_KEY"] = old_val
