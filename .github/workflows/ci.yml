@@ -45,6 +45,8 @@ jobs:
           ruff check .
       - name: BOUNDARY pollution guard
         run: python scripts/check_boundary.py
+      - name: Document classification guard
+        run: python scripts/check_doc_classification.py
       - name: Run tests with coverage
         run: python -m pytest -q tests --cov=memory_core --cov-report=xml
       - name: Timestamp - after tests

@@ -1,6 +1,7 @@
 # 文档分类决策树
 
-> 本文件是 Droid 文档记录的唯一分类指引。
+> 本文件是 Droid 文档记录的人类参考文档。
+> **路由表以 `memory_core/tools/doc_router.py` 中的 `DOC_CATEGORIES` 为准（single source of truth）。**
 > 当用户说"文档记录"、"记一下"、"写个文档"时，按此决策树分类。
 
 ## 分类流程图
@@ -32,6 +33,9 @@
   │
   ├─ 教训/经验/踩坑？
   │   └─ → memory/kb/lessons/
+  │
+  ├─ 重构记录/代码变更记录？
+  │   └─ → memory/docs/refactor-logs/
   │
   ├─ 计划/里程碑/执行方案？
   │   └─ → memory/docs/plans/
@@ -67,6 +71,8 @@
 | Bug、崩溃、报错、异常 | `memory/docs/bug-reports/` | 问题记录 |
 | Droid、配置、BYOK、模型 | `docs/guides/` | 使用指南 |
 | 审计、检查、扫描 | `memory/docs/audit/` | 审计记录 |
+| 重构、代码变更、refactor | `memory/docs/refactor-logs/` | 重构日志 |
+| 笔记、调研、临时记录 | `memory/docs/notes/` | 临时笔记 |
 | 不确定、先记下来 | `memory/docs/drafts/` | 草稿暂存 |
 
 ## 双写规则
@@ -86,5 +92,6 @@
 
 ## 版本
 
+- v1.2 — 2026-07-21 增加 refactor-logs、notes 类别；标注路由表以 DOC_CATEGORIES 为准
 - v1.1 — 2026-07-17 更新架构设计和协议规格路由到 tracked docs/
 - v1.0 — 2026-06-01 初始版本

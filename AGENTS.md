@@ -114,6 +114,17 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 - PYTHON_BIN 动态查找（`${PYTHON_BIN:-$(command -v python3)}`）
 - 需要 git repo 环境，除非提供显式 SESSION_ID
 
+## 铁律：文档类别同步
+
+**创建新文档类别时必须同步更新 `DOC_CATEGORIES`（`memory_core/tools/doc_router.py`）和 `docs/CLASSIFICATION.md`。**
+
+路由表代码是 single source of truth。任何新分类标签必须：
+1. 在 `memory_core/tools/doc_router.py` 的 `DOC_CATEGORIES` 字典中添加条目
+2. 在 `docs/CLASSIFICATION.md` 的决策树和快速分类表中同步添加
+3. 更新 `scripts/check_doc_classification.py` 的例外列表（如需要）
+
+不同步视为违规，CI 会拦截。
+
 ## Linear Gateway
 
 当 session tag 包含 `linear-gateway` 或用户要求处理 Linear issue 时，使用 `linear-gateway` skill。

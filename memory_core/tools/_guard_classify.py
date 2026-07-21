@@ -42,6 +42,7 @@ from ._guard_patterns import (
     UNCERTAIN_PATH_PATTERNS,
 )
 from ._rule_types import RuleResult
+from .doc_router import is_registered_doc_dir
 
 
 def _check_file_type_block(file_path: str) -> dict[str, str] | None:
@@ -233,6 +234,34 @@ def _extract_path_from_execute(command: str) -> list[str]:
     return []
 
 
+def _check_doc_routing(file_path: str) -> dict[str, str] | None:
+    """检查文件路径是否在注册的文档目录中。
+
+    当路径匹配 memory/docs/ 或 memory/kb/ 前缀时，校验是否在注册目录。
+    返回 block 结果 dict 表示被拦截，返回 None 表示放行。
+    """
+    p = Path(file_path)
+
+    # 检查是否是 memory/docs/ 或 memory/kb/ 下的路径
+    is_doc_path = False
+    for i, part in enumerate(p.parts):
+        if part in ("docs", "kb") and i > 0 and p.parts[i - 1] == "memory":
+            is_doc_path = True
+            break
+
+    if not is_doc_path:
+        return None
+
+    # 校验是否在注册目录
+    if not is_registered_doc_dir(p):
+        return {
+            "decision": "block",
+            "reason": f"文档路径未注册：{file_path}（必须使用 DOC_CATEGORIES 或 EXCEPTION_DIRS 中的目录）",
+        }
+
+    return None
+
+
 def _contains_owned_root_string(command: str) -> bool:
     """Check if command contains strings that might target owned paths."""
     owned_indicators = [
@@ -402,6 +431,17 @@ def _classify_write_edit(
             detail={"decision": decision}
         )
 
+    # 文档路由校验（memory/docs/ 或 memory/kb/ 下必须使用注册目录）
+    dr_block = _check_doc_routing(file_path)
+    if dr_block is not None:
+        decision = dr_block["decision"]
+        return RuleResult(
+            matched=(decision == "block"),
+            severity="error" if decision == "block" else "info",
+            message=dr_block["reason"],
+            detail={"decision": decision}
+        )
+
     result = classify_owned_path(file_path, ownership, project_root)
     if hasattr(result, "level"):
         return RuleResult(
@@ -460,6 +500,17 @@ def _classify_multiedit(
                 "path": path,
                 "decision": "block",
                 "reason": ft_block["reason"],
+            })
+            has_block = True
+            continue
+
+        # 文档路由校验（memory/docs/ 或 memory/kb/ 下必须使用注册目录）
+        dr_block = _check_doc_routing(path)
+        if dr_block is not None:
+            item_results.append({
+                "path": path,
+                "decision": "block",
+                "reason": dr_block["reason"],
             })
             has_block = True
             continue
