@@ -80,10 +80,6 @@ ignore_missing_imports = true
 exclude = ["workspace", "templates", "memory_core/workspace"]
 
 [[tool.mypy.overrides]]
-module = "memory_core.tools.auto_capture"
-strict = true
-
-[[tool.mypy.overrides]]
 module = "memory_core.tools.memory_hook_adapters.neutral_policy"
 strict = true
 
@@ -105,10 +101,6 @@ strict = true
 
 [[tool.mypy.overrides]]
 module = "memory_core.tools.task_dispatcher"
-strict = true
-
-[[tool.mypy.overrides]]
-module = "memory_core.tools.resilient_orchestrator"
 strict = true
 
 [[tool.mypy.overrides]]
@@ -153,7 +145,7 @@ strict = true
 
 [tool.deptry]
 ignore = [
-    "tomllib",  # stdlib in Python 3.11+, conditional import with tomli fallback
+    "tomllib",  # stdlib in Python 3.14
     "yaml",
 ]
 exclude = [

@@ -34,13 +34,11 @@ class TestModuleImport:
         from memory_core.tools.business_policy_checks import (
             EventContractChecker,
             FrozenTupleChecker,
-            LegalContractChecker,
             ProjectMapValidator,
             ScopeResolver,
             TruthBasisResolver,
         )
         assert ProjectMapValidator is not None
-        assert LegalContractChecker is not None
         assert FrozenTupleChecker is not None
         assert EventContractChecker is not None
         assert TruthBasisResolver is not None
@@ -168,24 +166,6 @@ class TestProjectMapValidator:
         errors = v.validate_unique_legal_system_contract()
         assert isinstance(errors, list)
         assert len(errors) > 0
-
-
-# ---------------------------------------------------------------------------
-# Test: LegalContractChecker
-# ---------------------------------------------------------------------------
-
-
-class TestLegalContractChecker:
-    def test_instantiation(self, config):
-        from memory_core.tools.business_policy_checks import LegalContractChecker
-        c = LegalContractChecker(config)
-        assert c is not None
-
-    def test_validate_delegates(self, config):
-        from memory_core.tools.business_policy_checks import LegalContractChecker
-        c = LegalContractChecker(config)
-        errors = c.validate_unique_legal_system_contract()
-        assert isinstance(errors, list)
 
 
 # ---------------------------------------------------------------------------

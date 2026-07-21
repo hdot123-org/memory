@@ -42,11 +42,7 @@ record() {
 # ── Extract version from pyproject.toml using python tomllib ──────────────────
 get_pyproject_version() {
   python3 -c "
-import sys
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
+import tomllib
 with open('pyproject.toml', 'rb') as f:
     data = tomllib.load(f)
 print(data['project']['version'])

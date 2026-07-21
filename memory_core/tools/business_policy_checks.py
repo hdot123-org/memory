@@ -230,22 +230,6 @@ class ProjectMapValidator(PolicyValidatorBase):
 
 
 # ---------------------------------------------------------------------------
-# 2. LegalContractChecker — legal contract 校验
-# ---------------------------------------------------------------------------
-
-class LegalContractChecker:
-    """Checks legal contract consistency across workspace docs."""
-
-    def __init__(self, config: GatewayBusinessPolicyConfig):
-        self._config = config
-
-    def validate_unique_legal_system_contract(self) -> list[str]:
-        """Validate unique legal system contract (delegates to ProjectMapValidator logic)."""
-        validator = ProjectMapValidator(self._config)
-        return validator.validate_unique_legal_system_contract()
-
-
-# ---------------------------------------------------------------------------
 # 3. FrozenTupleChecker — frozen tuple 校验
 # ---------------------------------------------------------------------------
 

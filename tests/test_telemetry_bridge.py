@@ -12,7 +12,7 @@ Tests cover:
 """
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -141,134 +141,6 @@ class TestTelemetryBridge:
         project_id = bridge.get_project_id(None)
         assert isinstance(project_id, str)
         assert len(project_id) > 0
-
-    def test_safe_capture_noop_when_disabled(self):
-        """safe_capture should be no-op when analytics is disabled."""
-        # Create a fresh instance (not singleton) to avoid state pollution
-        bridge = object.__new__(TelemetryBridge)
-        bridge._initialized = True
-        mock_analytics = MagicMock()
-        mock_analytics._enabled = False
-        bridge._analytics = mock_analytics
-
-        # Patch _is_enabled on this instance only
-        with patch.object(bridge, '_is_enabled', return_value=False):
-            bridge.safe_capture("test_event", {"key": "value"}, "/tmp")
-
-        # analytics.capture should not be called
-        mock_analytics.capture.assert_not_called()
-
-    @patch("memory_core.tools.telemetry_bridge.TelemetryBridge._is_enabled")
-    @patch("memory_core.tools.telemetry_bridge.TelemetryBridge.get_project_id")
-    def test_safe_capture_sanitizes_properties(
-        self, mock_get_project_id, mock_is_enabled
-    ):
-        """safe_capture should sanitize path-like properties."""
-        mock_is_enabled.return_value = True
-        mock_get_project_id.return_value = "test-project-abc123"
-
-        bridge = TelemetryBridge()
-        bridge._analytics = MagicMock()
-
-        bridge.safe_capture(
-            "test_event",
-            {"project_path": "/Users/test/project", "event_name": "test"},
-            "/tmp",
-        )
-
-        # Verify capture was called with sanitized properties
-        call_args = bridge._analytics.capture.call_args
-        properties = call_args.kwargs["properties"]
-        assert properties["project_path"] == "project"  # sanitized
-        assert properties["event_name"] == "test"  # not sanitized
-
-    @patch("memory_core.tools.telemetry_bridge.TelemetryBridge._is_enabled")
-    @patch("memory_core.tools.telemetry_bridge.TelemetryBridge.get_project_id")
-    def test_safe_capture_adds_memory_prefix(self, mock_get_project_id, mock_is_enabled):
-        """safe_capture should add 'memory.' prefix to event names."""
-        mock_is_enabled.return_value = True
-        mock_get_project_id.return_value = "test-project"
-
-        bridge = TelemetryBridge()
-        bridge._analytics = MagicMock()
-
-        bridge.safe_capture("test_event", {}, "/tmp")
-
-        call_args = bridge._analytics.capture.call_args
-        assert call_args.kwargs["event_name"] == "memory.test_event"
-
-    @patch("memory_core.tools.telemetry_bridge.TelemetryBridge._is_enabled")
-    @patch("memory_core.tools.telemetry_bridge.TelemetryBridge.get_project_id")
-    def test_safe_capture_preserves_memory_prefix(
-        self, mock_get_project_id, mock_is_enabled
-    ):
-        """safe_capture should not double-prefix event names already starting with 'memory.'."""
-        mock_is_enabled.return_value = True
-        mock_get_project_id.return_value = "test-project"
-
-        bridge = TelemetryBridge()
-        bridge._analytics = MagicMock()
-
-        bridge.safe_capture("memory.test_event", {}, "/tmp")
-
-        call_args = bridge._analytics.capture.call_args
-        assert call_args.kwargs["event_name"] == "memory.test_event"
-
-    @patch("memory_core.tools.telemetry_bridge.TelemetryBridge._is_enabled")
-    @patch("memory_core.tools.telemetry_bridge.TelemetryBridge.get_project_id")
-    def test_safe_capture_enriches_properties(
-        self, mock_get_project_id, mock_is_enabled
-    ):
-        """safe_capture should add version, host, and timestamp to properties."""
-        mock_is_enabled.return_value = True
-        mock_get_project_id.return_value = "test-project"
-
-        bridge = TelemetryBridge()
-        bridge._analytics = MagicMock()
-
-        bridge.safe_capture("test_event", {"custom": "value"}, "/tmp")
-
-        call_args = bridge._analytics.capture.call_args
-        properties = call_args.kwargs["properties"]
-        assert "memory_core_version" in properties
-        assert "host" in properties
-        assert "timestamp" in properties
-        assert properties["custom"] == "value"
-
-    @patch("memory_core.tools.telemetry_bridge.TelemetryBridge._is_enabled")
-    @patch("memory_core.tools.telemetry_bridge.TelemetryBridge.get_project_id")
-    def test_safe_capture_uses_project_id_as_distinct_id(
-        self, mock_get_project_id, mock_is_enabled
-    ):
-        """safe_capture should use project_id from get_project_id as distinct_id."""
-        mock_is_enabled.return_value = True
-        mock_get_project_id.return_value = "test-project-abc123"
-
-        # Create a fresh instance to avoid singleton state pollution
-        bridge = object.__new__(TelemetryBridge)
-        bridge._initialized = True
-        bridge._analytics = MagicMock()
-        bridge._is_enabled = mock_is_enabled
-        bridge.get_project_id = mock_get_project_id
-
-        bridge.safe_capture("test_event", {}, "/tmp")
-
-        call_args = bridge._analytics.capture.call_args
-        assert call_args.kwargs["distinct_id"] == "test-project-abc123"
-
-    @patch("memory_core.tools.telemetry_bridge.TelemetryBridge._is_enabled")
-    @patch("memory_core.tools.telemetry_bridge.TelemetryBridge.get_project_id")
-    def test_safe_capture_fail_safe(self, mock_get_project_id, mock_is_enabled):
-        """safe_capture should not raise exceptions."""
-        mock_is_enabled.return_value = True
-        mock_get_project_id.return_value = "test-project"
-
-        bridge = TelemetryBridge()
-        bridge._analytics = MagicMock()
-        bridge._analytics.capture.side_effect = Exception("Test error")
-
-        # Should not raise
-        bridge.safe_capture("test_event", {}, "/tmp")
 
     def test_flush_calls_shutdown(self):
         """flush should call analytics.shutdown()."""

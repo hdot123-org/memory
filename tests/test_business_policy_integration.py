@@ -559,7 +559,6 @@ class TestMultiPolicyInteraction:
 
     def test_project_map_and_legal_contract_combined(self, tmp_path: Path) -> None:
         from memory_core.tools.business_policy_checks import (
-            LegalContractChecker,
             ProjectMapValidator,
         )
 
@@ -586,10 +585,9 @@ class TestMultiPolicyInteraction:
         self._write_full_legal_docs(cfg)
 
         pm_validator = ProjectMapValidator(cfg)
-        legal_checker = LegalContractChecker(cfg)
 
         pm_errors = pm_validator.validate_project_map_files()
-        legal_errors = legal_checker.validate_unique_legal_system_contract()
+        legal_errors = pm_validator.validate_unique_legal_system_contract()
 
         assert pm_errors == []
         assert legal_errors == []

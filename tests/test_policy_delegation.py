@@ -14,8 +14,8 @@ from typing import Any
 import pytest
 
 from memory_core.tools.memory_hook_config import CoreConfig
-from memory_core.tools.memory_hook_impls import PathUtilsImpl, PolicyRegistryImpl
-from memory_core.tools.memory_hook_interfaces import PathUtils, PolicyRegistry
+from memory_core.tools.memory_hook_impls import PolicyRegistryImpl
+from memory_core.tools.memory_hook_interfaces import PolicyRegistry
 
 # ------------------------------------------------------------------
 # Mock gateway module (injected into sys.modules so that
@@ -158,12 +158,12 @@ class TestPolicyRegistryDelegation:
 
 
 # ==================================================================
-# TestInterfaceCoreConfig — 7 tests
+# TestInterfaceCoreConfig — PolicyRegistry only
 # ==================================================================
 
 
 class TestInterfaceCoreConfig:
-    """Verify CoreConfig accepts and correctly handles interface fields."""
+    """Verify CoreConfig accepts and correctly handles PolicyRegistry."""
 
     def test_config_accepts_policy_registry(
         self, base_config_kwargs: dict, registry: PolicyRegistryImpl
@@ -171,68 +171,6 @@ class TestInterfaceCoreConfig:
         config = CoreConfig(**base_config_kwargs, policy_registry=registry)
         assert config.policy_registry is registry
 
-    def test_config_accepts_path_utils(
-        self, base_config_kwargs: dict
-    ) -> None:
-        pu = PathUtilsImpl(Path("/tmp"))
-        config = CoreConfig(**base_config_kwargs, path_utils=pu)
-        assert config.path_utils is pu
-        assert isinstance(config.path_utils, PathUtils)
-
-    def test_uses_interfaces_true_when_both_set(
-        self, base_config_kwargs: dict, registry: PolicyRegistryImpl
-    ) -> None:
-        pu = PathUtilsImpl(Path("/tmp"))
-        config = CoreConfig(
-            **base_config_kwargs,
-            policy_registry=registry,
-            path_utils=pu,
-        )
-        assert config.uses_interfaces is True
-
-    def test_uses_interfaces_false_when_either_missing(
-        self, base_config_kwargs: dict, registry: PolicyRegistryImpl
-    ) -> None:
-        pu = PathUtilsImpl(Path("/tmp"))
-
-        # Only path_utils set
-        config_a = CoreConfig(**base_config_kwargs, path_utils=pu)
-        assert config_a.uses_interfaces is False
-
-        # Only policy_registry set
-        config_b = CoreConfig(**base_config_kwargs, policy_registry=registry)
-        assert config_b.uses_interfaces is False
-
     def test_both_default_to_none(self, base_config_kwargs: dict) -> None:
         config = CoreConfig(**base_config_kwargs)
         assert config.policy_registry is None
-        assert config.path_utils is None
-
-    def test_from_gateway_kwargs_accepts_interfaces(
-        self, base_config_kwargs: dict, registry: PolicyRegistryImpl
-    ) -> None:
-        pu = PathUtilsImpl(Path("/tmp"))
-        config = CoreConfig.from_gateway_kwargs(
-            **base_config_kwargs,
-            policy_registry=registry,
-            path_utils=pu,
-        )
-        assert config.policy_registry is registry
-        assert config.path_utils is pu
-        assert config.uses_interfaces is True
-
-    def test_build_from_config_with_interfaces(
-        self, base_config_kwargs: dict, registry: PolicyRegistryImpl
-    ) -> None:
-        """Verify to_gateway_kwargs carries interface objects through."""
-        pu = PathUtilsImpl(Path("/tmp"))
-        config = CoreConfig(
-            **base_config_kwargs,
-            policy_registry=registry,
-            path_utils=pu,
-        )
-
-        gw = config.to_gateway_kwargs()
-        assert isinstance(gw, dict)
-        assert isinstance(gw.get("policy_registry"), PolicyRegistryImpl)
-        assert isinstance(gw.get("path_utils"), PathUtilsImpl)

@@ -6,11 +6,7 @@ Separated from test_pretooluse_guard.py for isolated test runs:
 
 import json
 
-from memory_core.tools.memory_hook_impls import (
-    ClaudeDelegate,
-    CodexDelegate,
-    NoopHostDelegate,
-)
+from memory_core.tools.memory_hook_impls import NoopHostDelegate
 from memory_core.tools.memory_hook_interfaces import HostDelegate
 
 
@@ -25,10 +21,7 @@ class TestNoopHostDelegateAvailability:
         delegate = NoopHostDelegate()
         assert delegate.can_handle() is True
 
-    def test_real_delegates_host_unavailable_false(self) -> None:
-        """CodexDelegate and ClaudeDelegate default to host_unavailable=False."""
-        assert CodexDelegate().host_unavailable is False
-        assert ClaudeDelegate().host_unavailable is False
+
 
 
 class TestNoopHostDelegateResponse:

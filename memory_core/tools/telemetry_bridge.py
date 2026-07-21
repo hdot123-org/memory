@@ -197,44 +197,6 @@ class TelemetryBridge:
         except Exception:
             logger.debug("telemetry_bridge._capture_error: failed to emit error event")
 
-    def safe_capture(
-        self,
-        event_name: str,
-        properties: dict[str, Any] | None = None,
-        cwd: Path | str | None = None,
-    ) -> None:
-        """Capture an event with sanitization and automatic common properties.
-
-        Fail-safe: never raises. No-op when analytics is disabled.
-        Event name is automatically prefixed with 'memory.' if not already.
-        """
-        if not self._is_enabled() or self._analytics is None:
-            return
-
-        try:
-            final_event = event_name if event_name.startswith("memory.") else f"memory.{event_name}"
-
-            sanitized = _sanitize_properties(properties)
-
-            distinct_id = self.get_project_id(cwd)
-
-            enriched: dict[str, Any] = {
-                "memory_core_version": CURRENT_MEMORY_VERSION,
-                "host": _resolve_host(),
-                "timestamp": now_iso(),
-                **sanitized,
-            }
-
-            self._analytics.capture(
-                event_name=final_event,
-                properties=enriched,
-                distinct_id=distinct_id,
-            )
-        except Exception as exc:
-            # Analytics must never break the host application flow
-            logger.debug("telemetry_bridge.safe_capture failed for '%s': %s", event_name, exc)
-            self._capture_error(exc, event_name, "safe_capture")
-
     def _build_batch_items(
         self,
         events: list[dict[str, Any]],

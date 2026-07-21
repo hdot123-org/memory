@@ -412,7 +412,7 @@ def sign_project(
         rel_str = str(rel).replace("\\", "/")
         raw = fpath.read_bytes()
         sha = hashlib.sha256(raw).hexdigest()
-        hm = _hmac.new(key, raw, hashlib.sha256).hexdigest()
+        hm = _hmac_sha256(raw, key)
 
         # M4: Classify entry for ownership metadata
         ownership_id, protection_level, classification_source = _classify_entry(
@@ -595,7 +595,7 @@ def sign_project_incremental(
 
         raw = abs_path.read_bytes()
         sha = hashlib.sha256(raw).hexdigest()
-        hm = _hmac.new(key, raw, hashlib.sha256).hexdigest()
+        hm = _hmac_sha256(raw, key)
 
         # M4: Classify entry for ownership metadata
         ownership_id, protection_level, classification_source = _classify_entry(

@@ -1394,7 +1394,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "- 未被地图明确吸收\n",
         []
     ),
-    # I-F: Overview doc referenced by LegalContractChecker.validate_unique_legal_system_contract
+    # I-F: Overview doc referenced by ProjectMapValidator.validate_unique_legal_system_contract
     "memory/docs/记忆系统全景文档.md": lambda scope: (
         "# 记忆系统全景文档\n\n"
         "本文档提供记忆系统的全景视图，包括所有合法入口和核心文件。\n\n"

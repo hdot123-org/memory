@@ -51,7 +51,6 @@ from memory_core.tools._validation_constants import (
 from memory_core.tools.business_policy_checks import (
     EventContractChecker,
     FrozenTupleChecker,
-    LegalContractChecker,
     ProjectMapValidator,
     ScopeResolver,
     TruthBasisResolver,
@@ -502,22 +501,6 @@ class TestProjectMapValidator:
         assert len(errors) > 0
         error_text = " ".join(errors)
         assert "project-map entry" in error_text
-
-
-# ---------------------------------------------------------------------------
-# 4. LegalContractChecker tests
-# ---------------------------------------------------------------------------
-
-class TestLegalContractChecker:
-    """Tests for LegalContractChecker delegation."""
-
-    def test_delegates_to_project_map_validator(self, valid_config_with_files):
-        """LegalContractChecker should delegate to ProjectMapValidator."""
-        checker = LegalContractChecker(valid_config_with_files)
-        errors = checker.validate_unique_legal_system_contract()
-        validator = ProjectMapValidator(valid_config_with_files)
-        expected = validator.validate_unique_legal_system_contract()
-        assert errors == expected
 
 
 # ---------------------------------------------------------------------------

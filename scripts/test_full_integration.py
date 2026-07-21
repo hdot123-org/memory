@@ -537,7 +537,7 @@ class IntegrationTester:
         """Validate adapter.toml."""
         results: list[CheckResult] = []
         adapter_path = project / "memory/system/adapter.toml"
-        if adapter_path.exists() and tomllib:
+        if adapter_path.exists():
             try:
                 content = adapter_path.read_text(encoding="utf-8")
                 parsed = tomllib.loads(content)
@@ -567,19 +567,13 @@ class IntegrationTester:
                     "FAIL",
                     f"Failed to parse adapter.toml: {exc}",
                 ))
-        elif adapter_path.exists() and not tomllib:
-            results.append(CheckResult(
-                f"{project_name}:adapter_toml",
-                "SKIP",
-                "tomllib not available (Python < 3.11, tomli not installed)",
-            ))
         return results
 
     def _check_ownership_toml(self, project: Path, project_name: str) -> list[CheckResult]:
         """Validate ownership.toml."""
         results: list[CheckResult] = []
         ownership_path = project / "memory/system/ownership.toml"
-        if ownership_path.exists() and tomllib:
+        if ownership_path.exists():
             try:
                 content = ownership_path.read_text(encoding="utf-8")
                 parsed = tomllib.loads(content)
@@ -624,12 +618,6 @@ class IntegrationTester:
                     "FAIL",
                     f"Failed to parse ownership.toml: {exc}",
                 ))
-        elif ownership_path.exists() and not tomllib:
-            results.append(CheckResult(
-                f"{project_name}:ownership_toml",
-                "SKIP",
-                "tomllib not available (Python < 3.11, tomli not installed)",
-            ))
         return results
 
     def _check_required_dirs(self, project: Path, project_name: str) -> list[CheckResult]:

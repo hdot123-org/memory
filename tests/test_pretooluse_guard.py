@@ -1380,14 +1380,6 @@ class TestNoopHostDelegate:
         assert "policy_decision" in data
         assert data["policy_decision"] == "no_host"
 
-    def test_real_delegates_host_unavailable_false(self) -> None:
-        """Test that real delegates have host_unavailable=False."""
-        from memory_core.tools.memory_hook_impls import ClaudeDelegate, CodexDelegate
-
-        codex = CodexDelegate()
-        claude = ClaudeDelegate()
-        assert codex.host_unavailable is False
-        assert claude.host_unavailable is False
 
     def test_delegate_interface_has_host_unavailable_property(self) -> None:
         """Test that HostDelegate interface defines host_unavailable property."""

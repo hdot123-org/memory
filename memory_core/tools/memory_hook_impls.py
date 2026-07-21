@@ -23,7 +23,6 @@ from typing import Any, Callable
 try:
     from ._rule_helpers import (
         _existing_paths,
-        _get_write_targets_dict,
         _json_object_keys,
         _json_string_values,
         _markdown_code_tokens,
@@ -36,7 +35,6 @@ try:
 except ImportError:
     from _rule_helpers import (  # type: ignore
         _existing_paths,
-        _get_write_targets_dict,
         _json_object_keys,
         _json_string_values,
         _markdown_code_tokens,
@@ -123,142 +121,6 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # IF-1: HostDelegate Implementations
 # ---------------------------------------------------------------------------
-
-class CodexDelegate(HostDelegate):
-    """Delegate for Codex host."""
-
-    def __init__(
-        self,
-        surface_id: str | None = None,
-        which_cmd: Callable[[str], str | None] | None = None,
-        runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
-    ):
-        self.surface_id = surface_id or os.environ.get("CMUX_SURFACE_ID")
-        self._which = which_cmd or shutil.which
-        self._runner = runner or subprocess.run
-
-    def can_handle(self) -> bool:
-        return self._which("cmux") is not None and bool(self.surface_id)
-
-    def execute(
-        self,
-        event: str,
-        raw_payload: str,
-        payload: dict[str, Any],
-    ) -> subprocess.CompletedProcess[str]:
-        if self._which("cmux") is None:
-            return self.noop_response()
-        if not self.surface_id:
-            return self.noop_response()
-
-        return self._runner(
-            ["cmux", "codex-hook", event],
-            input=raw_payload,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-    def noop_response(self) -> subprocess.CompletedProcess[str]:
-        """Codex bypass: return empty JSON when formal cmux is unavailable."""
-        return subprocess.CompletedProcess(args=[], returncode=0, stdout="{}\n", stderr="")
-
-
-class ClaudeDelegate(HostDelegate):
-    """Delegate for Claude host."""
-
-    def __init__(
-        self,
-        workspace_id: str | None = None,
-        surface_id: str | None = None,
-        state_file: str | None = None,
-        repo_root: Path | None = None,
-        which_cmd: Callable[[str], str | None] | None = None,
-        runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
-        state_path_factory: Callable[[Path], Path] | None = None,
-        canonicalizer: Callable[[str, str], tuple[str, str]] | None = None,
-        state_recorder: Callable[..., Any] | None = None,
-    ):
-        self.workspace_id = workspace_id or os.environ.get("CMUX_WORKSPACE_ID")
-        self.surface_id = surface_id or os.environ.get("CMUX_SURFACE_ID")
-        # M2: state_file must be injected by adapter policy, not read from env directly.
-        # Adapters resolve CMUX_HOOK_STATE_FILE through their own policy layer.
-        self._state_file = state_file
-        self._repo_root = repo_root
-        self._which = which_cmd or shutil.which
-        self._runner = runner or subprocess.run
-        self._state_path_factory = state_path_factory
-        self._canonicalizer = canonicalizer
-        self._state_recorder = state_recorder
-
-    def can_handle(self) -> bool:
-        return (
-            self._which("cmux") is not None
-            and bool(self.workspace_id)
-            and bool(self.surface_id)
-        )
-
-    def execute(
-        self,
-        event: str,
-        raw_payload: str,
-        payload: dict[str, Any],
-    ) -> subprocess.CompletedProcess[str]:
-        if self._which("cmux") is None:
-            return self.noop_response()
-        if not self.workspace_id:
-            return self.noop_response()
-        if not self.surface_id:
-            return self.noop_response()
-
-        # State file resolution
-        if self._state_file:
-            state_file = self._state_file
-        else:
-            if self._state_path_factory is None:
-                try:
-                    from .cmux_hook_state import default_hook_state_path
-                except ImportError:
-                    from cmux_hook_state import default_hook_state_path  # type: ignore
-                state_file = str(default_hook_state_path(self._repo_root or Path.cwd()))
-            else:
-                state_file = str(self._state_path_factory(self._repo_root or Path.cwd()))
-
-        if self._canonicalizer is None:
-            workspace_ref = self.workspace_id
-            surface_ref = self.surface_id
-        else:
-            workspace_ref, surface_ref = self._canonicalizer(self.workspace_id, self.surface_id)
-
-        recorder = self._state_recorder
-        if recorder is None:
-            try:
-                from .cmux_hook_state import record_hook_event
-            except ImportError:
-                from cmux_hook_state import record_hook_event  # type: ignore
-            recorder = record_hook_event
-
-        recorder(
-            Path(state_file),
-            event_name=event,
-            workspace_ref=workspace_ref,
-            surface_ref=surface_ref,
-            payload=payload,
-        )
-
-        return self._runner(
-            ["cmux", "claude-hook", event, "--workspace", workspace_ref, "--surface", surface_ref],
-            input=raw_payload or "{}",
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-    def noop_response(self) -> subprocess.CompletedProcess[str]:
-        """Claude bypass: return empty response when formal cmux is unavailable."""
-        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-
-
 
 class FactoryDelegate(HostDelegate):
     """Neutral delegate for Factory host: returns empty JSON for all events.
@@ -1034,46 +896,3 @@ class DelegateRouter:
             return self.factory_delegate.noop_response()
         else:
             raise UnknownHostError(f"unknown host: {host}")
-
-
-# ---------------------------------------------------------------------------
-# IF-6: PathUtils Implementation
-# ---------------------------------------------------------------------------
-
-try:
-    from .memory_hook_interfaces import PathUtils
-except ImportError:
-    from memory_hook_interfaces import PathUtils  # type: ignore
-
-
-class PathUtilsImpl(PathUtils):
-    """Default path utilities implementation."""
-
-    def __init__(self, workspace_root: Path):
-        self._workspace_root = workspace_root
-
-    def extract_excerpt(self, path: Path, max_lines: int = 12) -> list[str]:
-        """Extract a brief excerpt from a file.
-
-        Mirrors the gateway's extract_excerpt: reads the file, strips each
-        line, skips blank lines, and returns up to max_lines non-empty lines.
-        """
-        if not path.exists():
-            return []
-        lines: list[str] = []
-        for line in path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
-            lines.append(stripped)
-            if len(lines) >= max_lines:
-                break
-        return lines
-
-    def write_targets(self) -> dict[str, Any]:
-        """Return the current write target map.
-
-        Mirrors the gateway's write_targets fallback dict, which is also
-        identical to WriteTargetPolicyImpl's internal targets structure.
-        """
-        return _get_write_targets_dict(self._workspace_root)

@@ -6,7 +6,7 @@ Integration tests verifying the full sedimentation pipeline:
 - VAL-CROSS-004: Multi-project sharing of global KB
 
 These tests combine:
-1. Auto-capture (session_end_logger.capture_candidates)
+1. Inline capture helper (replaces deleted auto_capture.capture_candidates)
 2. Promote CLI (promote_global_kb.main)
 3. Routing fallback (RouteTargetPolicyImpl.resolve_kb_file)
 4. Runtime profile (build_default_runtime_profile)
@@ -17,6 +17,74 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+
+
+def _capture_to_pending(
+    project_root: Path,
+    global_kb_root: Path,
+) -> list[dict]:
+    """Inline helper replacing deleted auto_capture.capture_candidates.
+
+    Scans project memory/kb/lessons/ and decisions/ for today's changes
+    and copies them to global_kb_root/pending/ with source metadata.
+    """
+    candidates: list[dict] = []
+    today = datetime.now().date()
+    captured_at = datetime.now().isoformat()
+
+    scan_dirs = [
+        project_root / "memory" / "kb" / "lessons",
+        project_root / "memory" / "kb" / "decisions",
+    ]
+
+    pending_dir = global_kb_root / "pending"
+    pending_dir.mkdir(parents=True, exist_ok=True)
+
+    for scan_dir in scan_dirs:
+        if not scan_dir.exists():
+            continue
+
+        for file_path in scan_dir.iterdir():
+            if not file_path.is_file():
+                continue
+
+            try:
+                mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                if mtime.date() != today:
+                    continue
+            except (OSError, ValueError):
+                continue
+
+            try:
+                content = file_path.read_text(encoding="utf-8")
+                project_name = project_root.name
+                category = file_path.parent.name
+                pending_filename = f"{project_name}_{category}_{file_path.name}"
+                pending_path = pending_dir / pending_filename
+
+                metadata_lines = [
+                    "---",
+                    f"source_project: {project_root}",
+                    f"source_file: {file_path.relative_to(project_root)}",
+                    f"captured_at: {captured_at}",
+                    "---",
+                    "",
+                ]
+
+                with pending_path.open("w", encoding="utf-8") as f:
+                    f.write("\n".join(metadata_lines))
+                    f.write(content)
+
+                candidates.append({
+                    "source_file": str(file_path.relative_to(project_root)),
+                    "source_project": str(project_root),
+                    "captured_at": captured_at,
+                    "pending_path": str(pending_path),
+                })
+            except (OSError, IOError):
+                pass
+
+    return candidates
 
 
 @pytest.fixture
@@ -127,8 +195,6 @@ class TestVALCross003SedimentationFullFlow:
         self, project_a: Path, shared_global_kb: Path
     ):
         """Step 1: Auto-capture creates pending candidate from today's changes."""
-        from memory_core.tools.auto_capture import capture_candidates
-
         # Create a lesson modified today
         today_ts = datetime.now().timestamp()
         lesson_file = project_a / "memory" / "kb" / "lessons" / "ssh-pitfall.md"
@@ -136,7 +202,7 @@ class TestVALCross003SedimentationFullFlow:
         os.utime(lesson_file, (today_ts, today_ts))
 
         # Capture candidates
-        candidates = capture_candidates(
+        candidates = _capture_to_pending(
             project_root=project_a,
             global_kb_root=shared_global_kb,
         )
@@ -155,7 +221,6 @@ class TestVALCross003SedimentationFullFlow:
         self, project_a: Path, shared_global_kb: Path
     ):
         """Step 2: Promote moves file from pending/ to formal category."""
-        from memory_core.tools.auto_capture import capture_candidates
         from memory_core.tools.promote_global_kb import main as promote_main
 
         # Step 2a: Create and capture a lesson
@@ -164,7 +229,7 @@ class TestVALCross003SedimentationFullFlow:
         lesson_file.write_text("# CI Cache\n\nUse pyc cache for faster builds.")
         os.utime(lesson_file, (today_ts, today_ts))
 
-        capture_candidates(
+        _capture_to_pending(
             project_root=project_a,
             global_kb_root=shared_global_kb,
         )
@@ -195,7 +260,6 @@ class TestVALCross003SedimentationFullFlow:
         self, project_a: Path, project_b: Path, shared_global_kb: Path
     ):
         """Step 3: New project (B) can read promoted knowledge via fallback."""
-        from memory_core.tools.auto_capture import capture_candidates
         from memory_core.tools.memory_hook_impls import RouteTargetPolicyImpl
         from memory_core.tools.promote_global_kb import main as promote_main
 
@@ -205,7 +269,7 @@ class TestVALCross003SedimentationFullFlow:
         lesson_file.write_text("# Docker Tips\n\nAlways use multi-stage builds.")
         os.utime(lesson_file, (today_ts, today_ts))
 
-        capture_candidates(
+        _capture_to_pending(
             project_root=project_a,
             global_kb_root=shared_global_kb,
         )
@@ -244,7 +308,6 @@ class TestVALCross003SedimentationFullFlow:
         self, project_a: Path, project_b: Path, shared_global_kb: Path
     ):
         """Complete end-to-end test of sedimentation flow."""
-        from memory_core.tools.auto_capture import capture_candidates
         from memory_core.tools.memory_hook_adapters.default_runtime_profile import (
             build_default_runtime_profile,
         )
@@ -258,7 +321,7 @@ class TestVALCross003SedimentationFullFlow:
         os.utime(lesson_file, (today_ts, today_ts))
 
         # 2. Session-end captures to pending
-        candidates = capture_candidates(
+        candidates = _capture_to_pending(
             project_root=project_a,
             global_kb_root=shared_global_kb,
         )
@@ -328,7 +391,6 @@ class TestVALCross004MultiProjectSharing:
         self, project_a: Path, project_b: Path, shared_global_kb: Path
     ):
         """Project B should be able to read knowledge promoted by Project A."""
-        from memory_core.tools.auto_capture import capture_candidates
         from memory_core.tools.memory_hook_impls import RouteTargetPolicyImpl
         from memory_core.tools.promote_global_kb import main as promote_main
 
@@ -338,7 +400,7 @@ class TestVALCross004MultiProjectSharing:
         lesson_file.write_text("# Pytest Fixtures\n\nUse @pytest.fixture for reusable setup.")
         os.utime(lesson_file, (today_ts, today_ts))
 
-        capture_candidates(
+        _capture_to_pending(
             project_root=project_a,
             global_kb_root=shared_global_kb,
         )
@@ -375,7 +437,6 @@ class TestVALCross004MultiProjectSharing:
         self, project_a: Path, project_b: Path, shared_global_kb: Path
     ):
         """Multiple promoted files should all be accessible across projects."""
-        from memory_core.tools.auto_capture import capture_candidates
         from memory_core.tools.memory_hook_impls import RouteTargetPolicyImpl
         from memory_core.tools.promote_global_kb import main as promote_main
 
@@ -393,7 +454,7 @@ class TestVALCross004MultiProjectSharing:
         os.utime(ci_file, (today_ts, today_ts))
 
         # Capture both
-        candidates = capture_candidates(
+        candidates = _capture_to_pending(
             project_root=project_a,
             global_kb_root=shared_global_kb,
         )
@@ -439,7 +500,6 @@ class TestVALCross004MultiProjectSharing:
         self, project_a: Path, project_b: Path, shared_global_kb: Path
     ):
         """Project-specific knowledge still takes priority over global KB."""
-        from memory_core.tools.auto_capture import capture_candidates
         from memory_core.tools.memory_hook_impls import RouteTargetPolicyImpl
         from memory_core.tools.promote_global_kb import main as promote_main
 
@@ -449,7 +509,7 @@ class TestVALCross004MultiProjectSharing:
         global_ssh.write_text("# SSH Guide (Global)\n\nGeneric SSH tips.")
         os.utime(global_ssh, (today_ts, today_ts))
 
-        capture_candidates(
+        _capture_to_pending(
             project_root=project_a,
             global_kb_root=shared_global_kb,
         )

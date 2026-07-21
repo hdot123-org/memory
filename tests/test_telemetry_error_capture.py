@@ -34,21 +34,6 @@ def bridge_with_mock():
 class TestErrorCaptureEmission:
     """VAL-PH-001: except blocks emit memory.error events."""
 
-    def test_safe_capture_emits_error_on_failure(self, bridge_with_mock):
-        bridge, mock = bridge_with_mock
-        mock.capture.side_effect = RuntimeError("connection refused")
-
-        bridge.safe_capture("test_event", {"key": "value"})
-
-        # The error event should have been captured
-        error_calls = [c for c in mock.capture.call_args_list if c.kwargs.get("event_name") == "memory.error"]
-        assert len(error_calls) == 1
-        props = error_calls[0].kwargs["properties"]
-        assert props["error_type"] == "RuntimeError"
-        assert "connection refused" in props["error_message"]
-        assert props["failed_event"] == "test_event"
-        assert props["method"] == "safe_capture"
-
     def test_batch_capture_emits_error_on_failure(self, bridge_with_mock):
         bridge, mock = bridge_with_mock
         # Force batch_capture to fail by making urllib.urlopen raise
@@ -67,7 +52,7 @@ class TestRecursionAvoidance:
     def test_capture_error_calls_analytics_directly(self, bridge_with_mock):
         bridge, mock = bridge_with_mock
 
-        bridge._capture_error(ValueError("test"), "test_event", "safe_capture")
+        bridge._capture_error(ValueError("test"), "test_event", "batch_capture")
 
         mock.capture.assert_called_once()
         call_kwargs = mock.capture.call_args.kwargs
@@ -85,11 +70,14 @@ class TestRecursionAvoidance:
 
         mock.capture.side_effect = counting_side_effect
 
-        bridge.safe_capture("test_event", {})
+        # batch_capture will fail and call _capture_error, which should not recurse
+        with patch.object(bridge, '_is_enabled', return_value=True):
+            with patch("urllib.request.urlopen", side_effect=OSError("network down")):
+                bridge.batch_capture([{"event_name": "test", "properties": {}}])
 
-        # Should be exactly 2 calls: 1 original + 1 error event attempt
+        # Should be exactly 1 call: _capture_error's attempt to emit error event
         # NOT infinite recursion
-        assert call_count[0] == 2
+        assert call_count[0] == 1
 
 
 class TestFailSafeDoubleFailure:
@@ -100,7 +88,6 @@ class TestFailSafeDoubleFailure:
         mock.capture.side_effect = RuntimeError("always fails")
 
         # Should not raise
-        bridge.safe_capture("test", {})
         bridge.batch_capture([{"event_name": "x"}])
         bridge.flush()
 
@@ -133,7 +120,8 @@ class TestEventNaming:
         bridge, mock = bridge_with_mock
         mock.capture.side_effect = RuntimeError("fail")
 
-        bridge.safe_capture("test_event", {})
+        with patch("urllib.request.urlopen", side_effect=OSError("network down")):
+            bridge.batch_capture([{"event_name": "test", "properties": {}}])
 
         error_calls = [c for c in mock.capture.call_args_list if c.kwargs.get("event_name") == "memory.error"]
         assert len(error_calls) == 1
@@ -151,7 +139,7 @@ class TestErrorCaptureSanitization:
 
         # Create exception with absolute path in message
         exc = ValueError("Failed to read /Users/testuser/project/data/file.txt")
-        bridge._capture_error(exc, "test_event", "safe_capture")
+        bridge._capture_error(exc, "test_event", "batch_capture")
 
         # Verify capture was called
         mock.capture.assert_called_once()

@@ -666,23 +666,6 @@ class TestMemoryAnchorExists:
         assert anchor_path.exists(), "tests/.memory-anchor.md does not exist"
 
 
-class TestLegalContractCheckerEndToEnd:
-    """VAL-P1-010: End-to-end LegalContractChecker passes."""
-
-    def test_legal_contract_checker_passes(self, tmp_path: Path) -> None:
-        """VAL-P1-010: LegalContractChecker.validate_unique_legal_system_contract() returns empty errors."""
-        from memory_core.tools.business_policy_checks import LegalContractChecker
-        from memory_core.tools.init_project_memory import init_project_memory
-
-        (tmp_path / ".git").mkdir()
-        init_project_memory(tmp_path, host="factory", mode="create")
-
-        config = _build_config_from_init(tmp_path)
-        checker = LegalContractChecker(config)
-        errors = checker.validate_unique_legal_system_contract()
-        assert errors == [], f"LegalContractChecker errors: {errors}"
-
-
 # ---------------------------------------------------------------------------
 # Phase 2 — Initialization Behavior Fixes (VAL-P2-001 through VAL-P2-008)
 # ---------------------------------------------------------------------------
@@ -1502,7 +1485,7 @@ class TestCrossLegacyMigrationPath:
 
         Note: init update mode scrubs AGENTS.md and deletes legacy hooks.json,
         but does NOT rewrite existing adapter.toml (preserved by update semantics).
-        The core assertions are AGENTS.md scrub + hooks.json deletion + LegalContractChecker pass.
+        The core assertions are AGENTS.md scrub + hooks.json deletion + ProjectMapValidator pass.
         """
         from memory_core.tools.init_project_memory import init_project_memory
 
@@ -1562,12 +1545,12 @@ canonical_files = []
         assert not codex_hooks.exists(), ".codex/hooks.json should be deleted"
         assert not claude_hooks.exists(), ".claude/hooks.json should be deleted"
 
-        # (c) LegalContractChecker returns zero errors
+        # (c) ProjectMapValidator returns zero errors
         config = _build_config_from_init(tmp_path)
-        from memory_core.tools.business_policy_checks import LegalContractChecker
-        checker = LegalContractChecker(config)
-        errors = checker.validate_unique_legal_system_contract()
-        assert errors == [], f"LegalContractChecker errors after migration: {errors}"
+        from memory_core.tools.business_policy_checks import ProjectMapValidator
+        validator = ProjectMapValidator(config)
+        errors = validator.validate_unique_legal_system_contract()
+        assert errors == [], f"ProjectMapValidator errors after migration: {errors}"
 
 
 class TestCrossAuditNoFalsePositivesFreshInit:

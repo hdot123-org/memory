@@ -1,6 +1,5 @@
-"""Tests for schema conversion, PathUtils, extended PolicyRegistry, and package entry."""
+"""Tests for schema conversion, extended PolicyRegistry, and package entry."""
 
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -92,54 +91,6 @@ class TestSchemaConversion:
         assert is_v2(v1_pkg) is False
         assert is_v2(unknown) is False
         assert is_v2(empty) is False
-
-
-# ---------------------------------------------------------------------------
-# PathUtils tests
-# ---------------------------------------------------------------------------
-
-class TestPathUtils:
-    """Tests for PathUtilsImpl."""
-
-    def test_extract_excerpt_reads_file(self, tmp_path: Path):
-        """Create a temp file, read excerpt returns stripped non-empty lines."""
-        from memory_core.tools.memory_hook_impls import PathUtilsImpl
-
-        f = tmp_path / "sample.txt"
-        f.write_text("line1\n\n  line2  \nline3\nline4\n", encoding="utf-8")
-        utils = PathUtilsImpl(tmp_path)
-        excerpt = utils.extract_excerpt(f, max_lines=3)
-        assert excerpt == ["line1", "line2", "line3"]
-
-    def test_extract_excerpt_handles_missing_file(self, tmp_path: Path):
-        """Returns [] for non-existent file."""
-        from memory_core.tools.memory_hook_impls import PathUtilsImpl
-
-        utils = PathUtilsImpl(tmp_path)
-        missing = tmp_path / "does_not_exist.txt"
-        assert utils.extract_excerpt(missing) == []
-
-    def test_write_targets_returns_dict(self):
-        """Returns a dict with expected keys."""
-        from memory_core.tools.memory_hook_impls import PathUtilsImpl
-
-        ws = Path("/tmp/ws_test")
-        utils = PathUtilsImpl(ws)
-        targets = utils.write_targets()
-        assert isinstance(targets, dict)
-        assert "fact" in targets
-        assert "global_canonical" in targets
-        assert "kb_policy" in targets
-        assert targets["kb_policy"]["mode"] == "read-first-CRUD"
-
-    def test_interface_matches_abc(self):
-        """PathUtilsImpl is instance of PathUtils ABC."""
-        from memory_core.tools.memory_hook_impls import PathUtilsImpl
-        from memory_core.tools.memory_hook_interfaces import PathUtils
-
-        ws = Path("/tmp/ws_test")
-        utils = PathUtilsImpl(ws)
-        assert isinstance(utils, PathUtils)
 
 
 # ---------------------------------------------------------------------------

@@ -17,23 +17,15 @@ RESOURCE  # unused variable (memory_core/ownership.py:37) - public API
 # Dynamic module loading via __getattr__
 __getattr__  # unused function (memory_core/tools/__init__.py:14) - lazy imports
 
-# Error classes used for exception handling
-RuleViolationError  # unused class (memory_core/tools/_rule_errors.py:26) - public API
-OwnershipError  # unused class (memory_core/tools/_rule_errors.py:35) - public API
-GuardBlockError  # unused class (memory_core/tools/_rule_errors.py:39) - public API
-PolicyViolationError  # unused class (memory_core/tools/_rule_errors.py:49) - public API
-
 # Rule evaluator interface implementation
 RuleEvaluator  # unused class (memory_core/tools/_rule_types.py:55) - interface
 _.evaluate  # unused method (memory_core/tools/_rule_types.py:67) - interface method
 
 # Entry points and public API
 plan_main  # unused function (memory_core/tools/audit_project_layout.py:1235) - entry point: memory-plan-residue
-capture_candidates  # unused function (memory_core/tools/auto_capture.py:20) - public API
 
 # Business policy checker interface implementations
 _.evaluate  # unused method (memory_core/tools/business_policy_checks.py:116) - interface method
-LegalContractChecker  # unused class (memory_core/tools/business_policy_checks.py:237) - registered checker
 _.evaluate  # unused method (memory_core/tools/business_policy_checks.py:420) - interface method
 ScopeResolver  # unused class (memory_core/tools/business_policy_checks.py:677) - registered resolver
 
@@ -89,18 +81,14 @@ _require_env  # unused function (memory_core/tools/memory_hook_gateway.py:1119) 
 _canonicalize_cmux_refs  # unused function (memory_core/tools/memory_hook_gateway.py:1126) - normalization helper
 
 # Delegate implementations (registered dynamically)
-CodexDelegate  # unused class (memory_core/tools/memory_hook_impls.py:128) - registered delegate
-ClaudeDelegate  # unused class (memory_core/tools/memory_hook_impls.py:168) - registered delegate
 _.host_unavailable  # unused property (memory_core/tools/memory_hook_impls.py:286) - interface method
 _.host_unavailable  # unused property (memory_core/tools/memory_hook_impls.py:323) - interface method
 _.get_policy  # unused method (memory_core/tools/memory_hook_impls.py:452) - interface method
 _.resolve_kb_file  # unused method (memory_core/tools/memory_hook_impls.py:609) - interface method
 _.route  # unused method (memory_core/tools/memory_hook_impls.py:1019) - interface method
-PathUtilsImpl  # unused class (memory_core/tools/memory_hook_impls.py:1050) - registered implementation
 
 # Integrity verification helpers
 key_info  # unused function (memory_core/tools/memory_hook_integrity_keys.py:64) - public API
-_hmac_sha256  # unused function (memory_core/tools/memory_hook_integrity_manifest.py:130) - cryptographic helper
 quick_check  # unused function (memory_core/tools/memory_hook_integrity_verify.py:189) - public API
 
 # Interface data structures
@@ -116,28 +104,12 @@ _.get_policy  # unused method (memory_core/tools/memory_hook_interfaces.py:97) -
 is_v2  # unused function (memory_core/tools/memory_hook_schema.py:205) - public API
 is_lossless  # unused function (memory_core/tools/memory_hook_schema.py:362) - public API
 
-# Observability interface methods
-_.child_span  # unused method (memory_core/tools/observability.py:80) - interface method
-_.record_span  # unused method (memory_core/tools/observability.py:87) - interface method
-_.measure  # unused method (memory_core/tools/observability.py:150) - interface method
-MetricsRegistry  # unused class (memory_core/tools/observability.py:189) - registry class
-_.publish  # unused method (memory_core/tools/observability.py:215) - interface method
-ErrorTracker  # unused class (memory_core/tools/observability.py:252) - tracker class
-_.recent  # unused method (memory_core/tools/observability.py:283) - interface method
-
 # Project probe fields
 git_branch  # unused variable (memory_core/tools/project_probe.py:144) - data structure field
 _.git_branch  # unused attribute (memory_core/tools/project_probe.py:189) - data structure field
 
 # Prompt validation
 check_prompt_or_raise  # unused function (memory_core/tools/prompt_validator.py:59) - public API
-
-# Orchestrator implementation
-ResilientOrchestrator  # unused class (memory_core/tools/resilient_orchestrator.py:12) - registered orchestrator
-_.dispatch_task  # unused method (memory_core/tools/resilient_orchestrator.py:27) - interface method
-
-# Telemetry helpers
-_.safe_capture  # unused method (memory_core/tools/telemetry_bridge.py:201) - error handling wrapper
 
 # Validation helpers
 _parse_frontmatter  # unused function (memory_core/tools/validate_project_memory.py:71) - internal parser
