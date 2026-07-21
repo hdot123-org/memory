@@ -17,6 +17,7 @@ made during the project lifecycle.
 | D-003 | 基于三核交叉核查的重构决策基线 | accepted | 2026-07-19 |
 | D-004 | v5 D+ 函数全量拆解完成（24 函数 CC>=21 → CC<=20，radon D+ 归零） | accepted | 2026-07-20 |
 | D-005 | mypy 183→0 类型安全加固完成（strict 模式全量通过） | accepted | 2026-07-21 |
+| D-006 | Python 版本锁死到 3.14 单版本（CI 矩阵缩减 75%，删除 ~225 行兼容代码） | accepted | 2026-07-22 |
 
 ## Process
 
