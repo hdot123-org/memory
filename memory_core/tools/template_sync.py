@@ -3,7 +3,6 @@
 This module produces **only text** -- no remote API calls, no credential
 access, no side effects beyond file writes (handled by the caller).
 """
-from __future__ import annotations
 
 from pathlib import Path
 

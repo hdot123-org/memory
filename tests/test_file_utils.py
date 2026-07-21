@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """Unit tests for _file_utils.py file utilities."""
-from __future__ import annotations
 
 import tempfile
 from datetime import datetime

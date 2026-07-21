@@ -14,13 +14,11 @@ The denylist is enforced at two points:
 1. init_project_memory.py: During memory initialization
 2. memory_hook_gateway.py: At runtime when processing hook events
 """
-from __future__ import annotations
 
 import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -33,8 +31,8 @@ class DenylistResult:
         message: Human-readable error message explaining the denial and available overrides
     """
     denied: bool
-    rule: Optional[str] = None
-    message: Optional[str] = None
+    rule: str | None = None
+    message: str | None = None
 
     @classmethod
     def denied_ok(cls) -> "DenylistResult":

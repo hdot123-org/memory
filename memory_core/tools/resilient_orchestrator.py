@@ -3,8 +3,6 @@ Resilient orchestrator wrapper that combines validation,
 dispatch, and automatic fallback.
 """
 
-from typing import Optional
-
 from .prompt_validator import validate_prompt
 from .task_dispatcher import TaskDispatcher, TaskResult
 
@@ -20,7 +18,7 @@ class ResilientOrchestrator:
     4. On failure → retry with fallback strategy
     """
 
-    def __init__(self, dispatcher: Optional[TaskDispatcher] = None):
+    def __init__(self, dispatcher: TaskDispatcher | None = None):
         self.dispatcher = dispatcher or TaskDispatcher()
         self.max_retries = 2
 

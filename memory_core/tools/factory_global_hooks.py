@@ -6,7 +6,6 @@ This module keeps that file host-owned and project-agnostic: the global hook
 calls one stable wrapper, and the memory runtime decides project identity from
 Factory's hook payload/current project directory.
 """
-from __future__ import annotations
 
 import argparse
 import json

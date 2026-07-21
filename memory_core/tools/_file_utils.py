@@ -9,7 +9,6 @@ Part of REF-001 strangler fig scaffold phase.
 Note: fcntl is POSIX-only. Windows support is not added (memory-core has
 never supported Windows).
 """
-from __future__ import annotations
 
 import fcntl
 from contextlib import contextmanager

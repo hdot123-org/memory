@@ -1,6 +1,5 @@
 """Tests for memory_core.tools.audit_project_layout module."""
 
-from __future__ import annotations
 
 import json
 from pathlib import Path

@@ -25,14 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-# Try to import tomllib (Python 3.11+) or fall back to tomli
-try:
-    import tomllib
-except ImportError:
-    try:
-        import tomli as tomllib  # type: ignore
-    except ImportError:
-        tomllib = None  # type: ignore
+import tomllib
 
 # Add memory_core to path for imports
 SCRIPT_DIR = Path(__file__).parent.resolve()

@@ -4,7 +4,6 @@ This module contains common functions that were previously duplicated
 across multiple modules (DRY principle).
 """
 
-from __future__ import annotations
 
 import hashlib
 from pathlib import Path

@@ -5,7 +5,6 @@ Covers: helper functions, A/B layer reading, data report generation,
 write_daily_log, fallback_check, enrich_with_b_layer, resolve_projects,
 process_project, main(), and CLI parsing.
 """
-from __future__ import annotations
 
 import argparse
 import json

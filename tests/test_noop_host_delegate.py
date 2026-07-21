@@ -3,7 +3,6 @@
 Separated from test_pretooluse_guard.py for isolated test runs:
     python -m pytest tests/test_noop_host_delegate.py -v
 """
-from __future__ import annotations
 
 import json
 

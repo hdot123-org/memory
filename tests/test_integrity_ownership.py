@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """M4 tests: Integrity ownership-aware signing, verify fail no re-sign, readonly zero side-effects."""
-from __future__ import annotations
 
 import hashlib
 import json

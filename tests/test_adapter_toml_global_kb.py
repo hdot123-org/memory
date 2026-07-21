@@ -9,7 +9,6 @@ Covers VAL-CONFIG-001 through VAL-CONFIG-005:
 - dump_adapter_toml serializes [global_kb] section
 """
 
-from __future__ import annotations
 
 import textwrap
 from pathlib import Path

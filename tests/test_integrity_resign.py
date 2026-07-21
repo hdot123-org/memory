@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """M4 tests: Re-sign CLI — explicit re-sign with audit trail."""
-from __future__ import annotations
 
 import json
 import subprocess

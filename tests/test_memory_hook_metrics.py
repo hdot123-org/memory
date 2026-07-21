@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Tests for memory_hook_metrics (T1.1)."""
-from __future__ import annotations
 
 import json
 import sys

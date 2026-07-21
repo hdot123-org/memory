@@ -4,7 +4,6 @@ Verifies that the validator returns the correct exit code in both
 healthy and broken scenarios.
 """
 
-from __future__ import annotations
 
 import os
 import subprocess

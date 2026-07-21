@@ -1,5 +1,4 @@
 """Schema conversion audit logging tests (Phase 4d: three-layer schema conversion audit + is_lossless self-check)."""
-from __future__ import annotations
 
 import os
 from typing import Any

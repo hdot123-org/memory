@@ -4,7 +4,6 @@ Triggered automatically by the hook wrapper when it detects a version mismatch
 between the installed memory-core package and a project's ownership.toml.
 Can also be invoked manually via `memory-sync-versions`.
 """
-from __future__ import annotations
 
 import argparse
 import json

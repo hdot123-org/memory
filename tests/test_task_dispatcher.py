@@ -1,5 +1,4 @@
 """Tests for task_dispatcher — resilient task delivery with long-prompt fallback."""
-from __future__ import annotations
 
 import os
 

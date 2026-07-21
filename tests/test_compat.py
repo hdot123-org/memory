@@ -1,5 +1,4 @@
 """Tests for compat.py (M6 step 6.4)."""
-from __future__ import annotations
 
 from memory_core.compat import (
     _COMPAT_MATRIX,

@@ -9,7 +9,6 @@ Covers:
 - TruthBasisResolver: truth_basis_for_scope, classify helpers
 - ScopeResolver: determine_project_scope, scope overrides, ref lookups
 """
-from __future__ import annotations
 
 import json
 import sys

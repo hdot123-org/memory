@@ -9,7 +9,6 @@ Covers:
 - Regression scenarios: core business flows remain intact after changes
 """
 
-from __future__ import annotations
 
 import json
 import sys

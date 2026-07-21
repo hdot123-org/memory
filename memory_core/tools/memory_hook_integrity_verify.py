@@ -8,7 +8,6 @@ M4: No auto re-sign on failure. Returns (ok=False, errors=[...]) only.
 Source repo: zero file side-effects (returns empty result without reading).
 Supports both v1 and v2 manifest schemas.
 """
-from __future__ import annotations
 
 import hashlib
 import hmac as _hmc

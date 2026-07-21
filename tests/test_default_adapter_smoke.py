@@ -7,7 +7,6 @@ Covers:
 - graceful handling when paths are missing (ci environment)
 """
 
-from __future__ import annotations
 
 import os
 import sys

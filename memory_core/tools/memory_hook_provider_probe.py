@@ -9,7 +9,6 @@ Usage:
   python3 workspace/tools/memory_hook_provider_probe.py
 """
 
-from __future__ import annotations
 
 import json
 import os

@@ -15,7 +15,6 @@ Backward compatibility: INDEX.md files without these headers are still
 considered valid; consumers should treat a missing index-schema header
 as "schema 1.0" or "legacy".
 """
-from __future__ import annotations
 
 import re
 from pathlib import Path

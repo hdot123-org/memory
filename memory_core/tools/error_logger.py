@@ -14,7 +14,6 @@ Usage:
     )
     # result: True if written successfully, False on internal error
 """
-from __future__ import annotations
 
 import inspect
 import json

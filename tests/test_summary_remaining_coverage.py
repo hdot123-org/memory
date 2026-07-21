@@ -12,7 +12,6 @@ Covers:
 - process_project: processing a single project
 - main: CLI entry point with various argument combinations
 """
-from __future__ import annotations
 
 import json
 from pathlib import Path

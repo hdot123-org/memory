@@ -4,7 +4,6 @@ Centralises all hardcoded Chinese marker strings and Markdown section
 headers used in gateway business-policy validation methods.
 """
 
-from __future__ import annotations
 
 # ---------------------------------------------------------------------------
 # Project-map index markers

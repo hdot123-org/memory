@@ -9,7 +9,6 @@ Covers:
 - Edge cases: missing files, corrupt JSON, bad payload, concurrent writes
 """
 
-from __future__ import annotations
 
 import json
 import sys

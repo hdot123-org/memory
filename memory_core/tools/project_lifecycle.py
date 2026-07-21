@@ -4,7 +4,6 @@ The lifecycle tracker is deliberately conservative: it records that a project
 path is active or missing, but it never deletes memory artifacts.  This keeps
 Codex workspace churn separate from memory retention.
 """
-from __future__ import annotations
 
 import hashlib
 import json

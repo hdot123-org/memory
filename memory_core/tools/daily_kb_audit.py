@@ -25,7 +25,6 @@ Usage:
     - 单个项目检查失败不影响其他项目
     - 基础设施清单文件缺失或 PyYAML 不可用时优雅降级（不崩溃）
 """
-from __future__ import annotations
 
 import argparse
 import json

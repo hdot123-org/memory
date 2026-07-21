@@ -10,7 +10,6 @@ Runs a series of structural checks against the gateway module:
 Prints a summary report to stdout and returns 0 on success, 1 on failure.
 """
 
-from __future__ import annotations
 
 import argparse
 import inspect

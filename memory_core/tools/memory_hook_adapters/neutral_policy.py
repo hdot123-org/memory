@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Host-neutral gateway business policy layer."""
 
-from __future__ import annotations
 
 from pathlib import Path
 

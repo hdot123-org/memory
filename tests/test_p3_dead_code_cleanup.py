@@ -5,7 +5,6 @@ Verifies that CLAUDE_HOOK_STATE_DIR does not appear anywhere in memory_core
 (except possibly in archive/ or docs/ which are not code).
 """
 
-from __future__ import annotations
 
 import shutil
 import subprocess

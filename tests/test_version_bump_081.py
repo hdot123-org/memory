@@ -5,7 +5,6 @@ Validates:
 - VAL-VERSION-002: CLI --version displays 0.9.0
 - VAL-FIX-004: ruff passes (covered separately)
 """
-from __future__ import annotations
 
 import subprocess
 import sys

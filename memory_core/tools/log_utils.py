@@ -3,7 +3,6 @@
 Provides a logging filter that redacts common sensitive patterns
 (passwords, tokens, API keys, private IPs) from log output.
 """
-from __future__ import annotations
 
 import logging
 import re

@@ -7,7 +7,6 @@ Validation assertions covered:
   VAL-F2-004: manifest.json created under memory/system/
   VAL-F2-005: manifest.json populated with baseline file hashes
 """
-from __future__ import annotations
 
 import json
 from pathlib import Path

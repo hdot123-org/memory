@@ -1,5 +1,4 @@
 """Tests for ownership_cli.py (M6 step 6.1)."""
-from __future__ import annotations
 
 import json
 from pathlib import Path

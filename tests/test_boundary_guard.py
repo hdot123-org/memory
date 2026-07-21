@@ -4,7 +4,6 @@ Asserts the live repository remains clean and the script catches obvious
 violations injected via tmp_path fixtures.
 """
 
-from __future__ import annotations
 
 import importlib.util
 import subprocess

@@ -4,7 +4,6 @@
 VAL-TEL-004: Gateway main() records duration_ms > 0 in emitted metrics
 VAL-TEL-005: Gateway duration_ms reflects actual execution time
 """
-from __future__ import annotations
 
 import json
 import sys

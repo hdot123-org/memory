@@ -9,7 +9,6 @@ Covers:
 - Boundary / edge cases: empty, None-equivalent, Unicode,超长路径,
   symlinks, exact-boundary paths
 """
-from __future__ import annotations
 
 import json
 import os

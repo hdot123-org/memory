@@ -7,7 +7,6 @@ Tests verify:
 - pending/README.md explains the promote and manual confirmation flow
 - The create function is idempotent (doesn't overwrite existing INDEX.md)
 """
-from __future__ import annotations
 
 from pathlib import Path
 

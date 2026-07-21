@@ -1,6 +1,5 @@
 """Tests for adapter.toml schema and loader (P4a)."""
 
-from __future__ import annotations
 
 import textwrap
 from pathlib import Path

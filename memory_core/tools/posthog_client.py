@@ -7,7 +7,6 @@ Features:
 - Singleton pattern for global instance
 - Data file-based key loading (not hardcoded in source)
 """
-from __future__ import annotations
 
 import logging
 import os
@@ -59,12 +58,12 @@ class PostHogAnalytics:
         analytics.shutdown()  # Flush pending events
     """
 
-    _instance: PostHogAnalytics | None = None
+    _instance: "PostHogAnalytics | None" = None
     _initialized: bool
     _enabled: bool
     _client: Any | None
 
-    def __new__(cls) -> PostHogAnalytics:
+    def __new__(cls) -> "PostHogAnalytics":
         """Implement singleton pattern."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)

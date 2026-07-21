@@ -6,7 +6,6 @@ Verifies:
 - git status shows no changes after hook run
 - File mtime unchanged after hook run
 """
-from __future__ import annotations
 
 import json
 import os

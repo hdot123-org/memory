@@ -4,7 +4,6 @@ This file systematically covers all major functions to achieve 95%+ coverage.
 Tests execute actual source code functions rather than simulating logic.
 """
 
-from __future__ import annotations
 
 import argparse
 import hashlib

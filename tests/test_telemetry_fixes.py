@@ -6,7 +6,6 @@ Verifies:
 - pre-tool-use branch calls emit_metrics() before returning
 - pre-tool-use metrics record has event, host, status, duration_ms fields
 """
-from __future__ import annotations
 
 import io
 import json

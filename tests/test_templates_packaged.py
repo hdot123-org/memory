@@ -1,5 +1,4 @@
 """Verify that template resources are accessible after install (i.e. packaged in wheel)."""
-from __future__ import annotations
 
 import importlib.resources as resources
 

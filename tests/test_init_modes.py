@@ -1,5 +1,4 @@
 """Tests for memory-init --mode create|adopt|update|repair."""
-from __future__ import annotations
 
 import subprocess
 import sys

@@ -1,5 +1,4 @@
 """Tests for PreToolUse guard."""
-from __future__ import annotations
 
 import json
 import os

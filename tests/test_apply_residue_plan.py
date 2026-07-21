@@ -11,7 +11,6 @@ Tests the safe migrator functionality including:
 - Destination exists rejection
 """
 
-from __future__ import annotations
 
 import json
 from pathlib import Path

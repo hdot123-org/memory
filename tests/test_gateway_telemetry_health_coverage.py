@@ -6,7 +6,6 @@ VAL-GW-004: Health report read/parse/inject into package tested
 VAL-GW-005: IF-5 facade factory methods tested
 """
 
-from __future__ import annotations
 
 import json
 import os

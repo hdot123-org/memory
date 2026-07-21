@@ -5,7 +5,6 @@ Verifies that _launch_async_health_check writes structured failure records
 when Popen fails (e.g., due to OSError, FileNotFoundError, etc.).
 """
 
-from __future__ import annotations
 
 import json
 import subprocess

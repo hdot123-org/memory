@@ -5,7 +5,6 @@ Covers:
 - Known version pairs: all original fields retained + necessary fields added
 - Unknown version pairs: raises ValueError with consistent error message
 """
-from __future__ import annotations
 
 import pytest
 

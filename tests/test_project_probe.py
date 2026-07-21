@@ -12,7 +12,6 @@ Covers:
 - --no-auto-fill flag behavior
 - Fill content correctness
 """
-from __future__ import annotations
 
 import json
 import subprocess

@@ -1,5 +1,4 @@
 """Tests for hook_upgrade.py (M6 step 6.2)."""
-from __future__ import annotations
 
 import json
 from pathlib import Path

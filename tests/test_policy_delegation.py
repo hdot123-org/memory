@@ -5,7 +5,6 @@ Covers:
 - PolicyRegistryImpl delegation stubs (8 tests)
 - CoreConfig interface fields: policy_registry, path_utils, uses_interfaces (7 tests)
 """
-from __future__ import annotations
 
 import sys
 from pathlib import Path

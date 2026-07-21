@@ -3,7 +3,6 @@
 Ensures that previously-silent fallback paths now emit warnings or errors
 so operators can observe degraded behavior.
 """
-from __future__ import annotations
 
 import json
 import warnings

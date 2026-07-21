@@ -8,7 +8,6 @@ Verifies:
 - VAL-TEL-003: Real errors still produce degraded status.
 """
 
-from __future__ import annotations
 
 import os
 from pathlib import Path

@@ -4,7 +4,6 @@ This module tests the tag extraction logic for both push tag and workflow_dispat
 trigger methods, mirroring the bash logic in .github/workflows/release-and-dispatch.yml
 """
 
-from __future__ import annotations
 
 import re
 from pathlib import Path
@@ -197,10 +196,7 @@ class TestPyprojectVersionConsistency:
     @pytest.fixture
     def pyproject_version(self) -> str:
         """Read version from pyproject.toml."""
-        try:
-            import tomllib
-        except ModuleNotFoundError:
-            import tomli as tomllib  # type: ignore[no-redef]
+        import tomllib
         pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
         with pyproject_path.open("rb") as f:
             config = tomllib.load(f)

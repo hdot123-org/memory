@@ -4,7 +4,6 @@
 Scans project memory/kb/lessons/ and decisions/ for today's changes
 and copies them to ~/.memory/global-kb/pending/ with source metadata.
 """
-from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Tests for ErrorSinkImpl human-readable output (T1.2)."""
-from __future__ import annotations
 
 import sys
 from pathlib import Path

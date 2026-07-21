@@ -1,5 +1,4 @@
 """Tests for repo_health_check.sh script."""
-from __future__ import annotations
 
 import subprocess
 from pathlib import Path

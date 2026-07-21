@@ -7,7 +7,6 @@ Verifies:
 - ownership_cli source-repo-mode subcommand works
 - pretooluse_guard still protects critical paths in develop mode
 """
-from __future__ import annotations
 
 import json
 import subprocess

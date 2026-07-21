@@ -7,7 +7,6 @@ import os
 import shutil
 import tempfile
 from dataclasses import dataclass
-from typing import Optional
 
 # Safe character limit for inline prompts (adjust based on actual limit)
 MAX_INLINE_CHARS = 40_000
@@ -21,13 +20,13 @@ class TaskResult:
     output: str
     method: str  # "inline" or "file_based"
     prompt_chars: int
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class TaskDispatcher:
     """Dispatches tasks to subagents with automatic fallback for long prompts."""
 
-    def __init__(self, workspace: Optional[str] = None):
+    def __init__(self, workspace: str | None = None):
         self.workspace = workspace or tempfile.mkdtemp(prefix="factory_tasks_")
         self.task_counter = 0
         self.results: list[TaskResult] = []

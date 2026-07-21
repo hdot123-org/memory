@@ -6,7 +6,6 @@ Verify F1-F5 end-to-end collaboration:
 - VAL-CROSS-003: Gateway session-start detects A/B/C layer changes
 - VAL-CROSS-004: Full lifecycle — init → heartbeat → session-end → summary → error
 """
-from __future__ import annotations
 
 import json
 from datetime import datetime, timezone

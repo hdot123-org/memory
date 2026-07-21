@@ -8,7 +8,6 @@ Verifies that health report includes layout_audit field with:
 - recommended_mode (fresh/adopt/update/repair/manual)
 """
 
-from __future__ import annotations
 
 import json
 import subprocess

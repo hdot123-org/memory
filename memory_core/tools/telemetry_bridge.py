@@ -9,7 +9,6 @@ Key design principles:
 - distinct_id uses project_id from project_lifecycle (not hardcoded)
 - Event names are prefixed with 'memory.' for namespace clarity
 """
-from __future__ import annotations
 
 import hashlib
 import json
@@ -123,10 +122,10 @@ class TelemetryBridge:
     automatic common properties, and fail-safe semantics.
     """
 
-    _instance: TelemetryBridge | None = None
+    _instance: "TelemetryBridge | None" = None
     _initialized: bool = False
 
-    def __new__(cls) -> TelemetryBridge:
+    def __new__(cls) -> "TelemetryBridge":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False

@@ -5,7 +5,6 @@ This module keeps policy-driven registration gate evaluation in one place
 so gateway wiring can stay thin without changing external behavior.
 """
 
-from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Collection

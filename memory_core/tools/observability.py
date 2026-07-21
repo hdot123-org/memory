@@ -6,7 +6,6 @@ without external SaaS dependencies.
 MetricsTimer, TraceContext, and MetricsRegistry bridge timing/trace data
 to the JSONL metrics pipeline via append_metrics_record.
 """
-from __future__ import annotations
 
 import hashlib
 import json
@@ -77,7 +76,7 @@ class TraceContext:
     def elapsed_ms(self) -> float:
         return (time.monotonic() - self.start_time) * 1000
 
-    def child_span(self, **meta: Any) -> TraceContext:
+    def child_span(self, **meta: Any) -> "TraceContext":
         return TraceContext(
             trace_id=self.trace_id,
             parent_span_id=self.span_id,
@@ -155,7 +154,7 @@ class MetricsTimer:
         self._emit_to_jsonl(elapsed_ms)
         return result
 
-    def __enter__(self) -> MetricsTimer:
+    def __enter__(self) -> "MetricsTimer":
         self._start = time.monotonic()
         return self
 

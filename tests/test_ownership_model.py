@@ -8,7 +8,6 @@ Covers:
 - Path escape rejection
 - Source repo detection
 """
-from __future__ import annotations
 
 from unittest.mock import patch
 

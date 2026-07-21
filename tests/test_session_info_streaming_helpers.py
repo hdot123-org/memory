@@ -9,7 +9,6 @@ This test file covers the 5 helpers extracted from _extract_session_info_streami
 
 These tests establish behavior baseline BEFORE refactoring.
 """
-from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime

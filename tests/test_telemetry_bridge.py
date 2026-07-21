@@ -10,7 +10,6 @@ Tests cover:
 - Automatic enrichment (version, host, timestamp)
 - Fail-safe behavior
 """
-from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch

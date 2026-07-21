@@ -8,7 +8,6 @@ Covers:
 - Idempotent: repeated calls produce same result
 - Placeholder (待填写) is replaced on first session-start
 """
-from __future__ import annotations
 
 import subprocess
 import sys

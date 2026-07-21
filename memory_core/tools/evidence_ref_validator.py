@@ -8,7 +8,6 @@ files that actually exist on disk. Used by:
 
 This module is the single source of truth for evidence ref validation.
 """
-from __future__ import annotations
 
 from pathlib import Path
 from typing import NamedTuple

@@ -31,7 +31,6 @@ manifest.json structure (v2):
   ]
 }
 """
-from __future__ import annotations
 
 import fnmatch
 import hashlib

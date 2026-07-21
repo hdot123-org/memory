@@ -13,7 +13,6 @@ Exit codes:
     1   one or more contract violations
     2   target path invalid / not initialized
 """
-from __future__ import annotations
 
 import argparse
 import json

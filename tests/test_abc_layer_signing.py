@@ -9,7 +9,6 @@ error_logger.py (C层) 在写入文件后调用 sign_project_incremental。
 2. 签名失败不阻塞主流程（mock signer 抛异常）
 3. 密钥不存在时不调用签名
 """
-from __future__ import annotations
 
 import hashlib
 import json

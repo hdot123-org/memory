@@ -19,7 +19,6 @@ Key guarantees:
     - Does NOT write real project state into the memory repository
     - Generated skeleton passes validate_project_memory.py
 """
-from __future__ import annotations
 
 import argparse
 import importlib.metadata

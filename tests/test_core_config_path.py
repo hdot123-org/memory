@@ -7,7 +7,6 @@ Covers:
 - Equivalence between simple and full API paths
 """
 
-from __future__ import annotations
 
 import os
 from pathlib import Path

@@ -9,7 +9,6 @@ Covers:
 - Boundary inputs: oversized strings / special characters
 """
 
-from __future__ import annotations
 
 import dataclasses
 import json

@@ -4,7 +4,6 @@ VAL-M2-003: _enrich_project_info_from_config (CC 37 -> <=20).
 This function has 0 direct tests in baseline; these tests must pass
 BEFORE refactoring begins to establish behavior baseline.
 """
-from __future__ import annotations
 
 import json
 from pathlib import Path

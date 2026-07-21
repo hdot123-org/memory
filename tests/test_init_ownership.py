@@ -8,7 +8,6 @@ Covers:
 - Apply ownership-aware forbidden path detection
 - Ownership.toml roundtrip
 """
-from __future__ import annotations
 
 import os
 from unittest.mock import patch

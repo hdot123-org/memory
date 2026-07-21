@@ -8,7 +8,6 @@ This module defines the core interfaces for the M2 refactoring:
 - IF-4: ArtifactSink / ErrorSink
 """
 
-from __future__ import annotations
 
 import subprocess
 from abc import ABC, abstractmethod

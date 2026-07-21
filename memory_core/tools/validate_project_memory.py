@@ -17,7 +17,6 @@ Exit codes:
     0 — all checks passed
     1 — one or more checks failed
 """
-from __future__ import annotations
 
 import argparse
 import importlib.metadata
@@ -28,17 +27,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+import tomllib
 
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
 from memory_core.constants import (
     CURRENT_MEMORY_VERSION,
     MIGRATION_LOG_LINE_PATTERN,
@@ -153,7 +148,7 @@ def _parse_lock_file(path: Path) -> dict[str, Any]:
         }
     # Canonical TOML format
     try:
-        return tomllib.loads(text)  # type: ignore[no-any-return]
+        return tomllib.loads(text)
     except Exception as exc:
         # Fallback: key=value lines (very old format)
         # Log the parse error so it is visible in logs / diagnostics.

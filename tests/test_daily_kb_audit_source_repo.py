@@ -2,7 +2,6 @@
 
 VAL-HOOK-009: daily_kb_audit 对 memory-core 源仓库不再报 version_mismatch 违规。
 """
-from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import patch

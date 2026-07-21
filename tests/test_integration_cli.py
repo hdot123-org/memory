@@ -3,7 +3,6 @@
 These tests exercise the full CLI entry points end-to-end, verifying
 that the packaged commands work correctly when invoked via python -m.
 """
-from __future__ import annotations
 
 import json
 import subprocess

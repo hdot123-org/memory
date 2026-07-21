@@ -3,7 +3,6 @@
 
 Each test asserts one VAL-P0-* validation contract requirement.
 """
-from __future__ import annotations
 
 import json
 import subprocess
@@ -109,10 +108,7 @@ class TestAgentsMdHostNeutral:
 class TestAdapterTomlHostFactory:
     def test_adapter_toml_host_factory(self, tmp_path: Path) -> None:
         """VAL-P0-003: adapter.toml routing.host == 'factory'."""
-        try:
-            import tomllib
-        except ModuleNotFoundError:
-            import tomli as tomllib
+        import tomllib
 
         from memory_core.tools.init_project_memory import init_project_memory
 

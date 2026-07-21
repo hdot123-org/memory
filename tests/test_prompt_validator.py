@@ -1,5 +1,4 @@
 """Tests for prompt_validator — pre-execution prompt length validation."""
-from __future__ import annotations
 
 import pytest
 

@@ -16,7 +16,6 @@ Output:
     JSON with findings array containing severity, kind, path, message, suggested_bucket
 """
 
-from __future__ import annotations
 
 import argparse
 import fnmatch

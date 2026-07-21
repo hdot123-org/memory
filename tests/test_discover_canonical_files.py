@@ -8,7 +8,6 @@ volatile-skip / manifest-skip.
 These tests establish the behavior baseline BEFORE refactoring the
 function from CC=45 to CC<=20 via Phase Extraction (5 helpers).
 """
-from __future__ import annotations
 
 import sys
 from pathlib import Path

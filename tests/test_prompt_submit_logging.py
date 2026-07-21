@@ -10,7 +10,6 @@ Covers:
 - VAL-F4-007: Cross-day session writes to correct date file
 - VAL-F4-008: Factory payload fields consumed correctly
 """
-from __future__ import annotations
 
 import json
 import re

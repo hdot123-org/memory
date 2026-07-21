@@ -24,7 +24,6 @@ _get_write_policy, _git_registration_probe, HookTimeoutError, _configured_artifa
 _configured_error_log, _configured_invalid_memory_root, _configured_project_lifecycle_root,
 _integrity_sign, _integrity_verify, _load_adapter_profile, reload_adapter.
 """
-from __future__ import annotations
 
 import json
 import signal

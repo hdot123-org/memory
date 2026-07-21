@@ -7,7 +7,6 @@ Verifies:
 - Normal verify still returns {ok: True} when key present and files match
 - Tampered verify still returns {ok: False, errors: [...]} when key present but files changed
 """
-from __future__ import annotations
 
 import logging
 import os

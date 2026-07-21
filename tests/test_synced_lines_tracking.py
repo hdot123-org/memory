@@ -4,7 +4,6 @@ This test file verifies that the offset tracking correctly uses file line number
 (not record count) to handle blank lines and malformed JSON without causing
 duplicate telemetry on retry.
 """
-from __future__ import annotations
 
 import json
 import time

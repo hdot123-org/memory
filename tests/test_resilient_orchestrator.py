@@ -1,5 +1,4 @@
 """Tests for resilient_orchestrator — validation + dispatch + auto-retry."""
-from __future__ import annotations
 
 from memory_core.tools.prompt_validator import MAX_PROMPT_CHARS
 from memory_core.tools.resilient_orchestrator import ResilientOrchestrator

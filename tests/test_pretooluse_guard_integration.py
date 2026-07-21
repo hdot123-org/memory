@@ -3,7 +3,6 @@
 Tests the full pipeline: gateway receives pre-tool-use event ->
 forwards payload to pretooluse_guard.py -> returns decision.
 """
-from __future__ import annotations
 
 import json
 import subprocess

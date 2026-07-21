@@ -8,7 +8,6 @@ Covers validation assertions:
 - VAL-CROSS-001: init full flow (config → routing works)
 """
 
-from __future__ import annotations
 
 from pathlib import Path
 

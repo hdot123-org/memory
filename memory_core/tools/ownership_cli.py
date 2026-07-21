@@ -13,7 +13,6 @@ Usage:
     python -m memory_core.tools.ownership_cli plan-update --project-root /path
     python -m memory_core.tools.ownership_cli apply-update --project-root /path --yes
 """
-from __future__ import annotations
 
 import argparse
 import json

@@ -3,7 +3,6 @@
 Replaces the 37 keyword-only parameters of build_context_package_core()
 with a single typed configuration object.
 """
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -245,7 +244,7 @@ class CoreConfig:
         core_evidence_refs: list[str] | None = None,
         policy_registry: PolicyRegistry | None = None,
         path_utils: PathUtils | None = None,
-    ) -> CoreConfig:
+    ) -> "CoreConfig":
         """Bridge: accept the current 37 kwargs and return a CoreConfig."""
         return cls(
             host=host,

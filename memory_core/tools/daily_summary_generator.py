@@ -8,7 +8,6 @@ Usage:
     python daily_summary_generator.py --today --project ~/my-project --dry-run
     python daily_summary_generator.py --today --all-projects --fallback-days 7
 """
-from __future__ import annotations
 
 import argparse
 import json

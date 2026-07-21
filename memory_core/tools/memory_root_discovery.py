@@ -4,7 +4,6 @@ The canonical project-root marker is a ``memory/system/`` directory.  This modul
 provides pure functions that resolve *repo root* and *workspace root* from an
 arbitrary starting path without depending on any gateway globals.
 """
-from __future__ import annotations
 
 import logging
 from pathlib import Path

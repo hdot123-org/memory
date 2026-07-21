@@ -7,7 +7,6 @@ Covers the 5 key behaviors of main():
 4. error log branches (transcript_missing, hook_timeout, unexpected error)
 5. silent exit on missing params
 """
-from __future__ import annotations
 
 import json
 from pathlib import Path

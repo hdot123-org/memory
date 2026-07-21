@@ -4,7 +4,6 @@ Each test constructs a miniature repository under tmp_path and calls
 detect_pollution() directly.  No real-repo state is touched.
 """
 
-from __future__ import annotations
 
 import sys
 from pathlib import Path

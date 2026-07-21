@@ -9,7 +9,6 @@ Covers validation that is NOT already tested in test_refactoring.py:
 - Valid construction sanity check
 """
 
-from __future__ import annotations
 
 from pathlib import Path
 from typing import Any

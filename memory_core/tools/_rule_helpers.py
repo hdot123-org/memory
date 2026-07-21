@@ -9,7 +9,6 @@ This module contains 8 functions that were duplicated across:
 
 Part of REF-001 strangler fig scaffold phase.
 """
-from __future__ import annotations
 
 import re
 from datetime import datetime

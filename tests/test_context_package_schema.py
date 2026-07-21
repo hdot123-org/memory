@@ -1,5 +1,4 @@
 """Tests for context package schema: memory-v1 and legacy conversions."""
-from __future__ import annotations
 
 from typing import Any
 

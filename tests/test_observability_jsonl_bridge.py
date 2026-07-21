@@ -3,7 +3,6 @@
 Verifies that MetricsTimer, TraceContext, and MetricsRegistry
 write timing/trace data to the JSONL metrics pipeline.
 """
-from __future__ import annotations
 
 import json
 import time

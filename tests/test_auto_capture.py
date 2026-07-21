@@ -4,7 +4,6 @@
 Auto-capture scans project memory/kb/lessons/ and decisions/ for today's changes
 and copies candidates to ~/.memory/global-kb/pending/ with source metadata.
 """
-from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta

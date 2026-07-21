@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Deep project memory health checker — runs asynchronously and writes a report."""
 
-from __future__ import annotations
 
 import argparse
 import json

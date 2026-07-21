@@ -14,7 +14,6 @@ Usage:
         for err in report.errors:
             print(f"ERROR: {err}")
 """
-from __future__ import annotations
 
 import importlib.metadata
 from dataclasses import dataclass, field

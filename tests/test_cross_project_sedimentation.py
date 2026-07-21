@@ -11,7 +11,6 @@ These tests combine:
 3. Routing fallback (RouteTargetPolicyImpl.resolve_kb_file)
 4. Runtime profile (build_default_runtime_profile)
 """
-from __future__ import annotations
 
 import os
 from datetime import datetime

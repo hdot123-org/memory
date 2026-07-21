@@ -1,5 +1,4 @@
 """Tests for migrate_project_memory.py: idempotent migration, backup, rollback, and atomic log append."""
-from __future__ import annotations
 
 import json
 import multiprocessing

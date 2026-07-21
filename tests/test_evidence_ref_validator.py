@@ -1,5 +1,4 @@
 """Tests for evidence_ref_validator module."""
-from __future__ import annotations
 
 from pathlib import Path
 

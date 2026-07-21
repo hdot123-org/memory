@@ -1,0 +1,56 @@
+{
+  "scan_metadata": {
+    "scan_date": "2026-07-19",
+    "tool": "radon cc -n D -s",
+    "scan_scope": "memory_core/ + scripts/",
+    "verification": "3 methods cross-checked (radon -n D, jq rank filter, manual grade counting)",
+    "total_d_plus": 27,
+    "grade_distribution": {"D": 14, "E": 8, "F": 5}
+  },
+  "d_plus_functions": [
+    {"rank": 1, "grade": "F", "cc": 118, "name": "init_project_memory", "file": "memory_core/tools/init_project_memory.py", "line": 1748, "is_dead": false, "has_duplicate": false},
+    {"rank": 2, "grade": "F", "cc": 54, "name": "classify_tool_use", "file": "memory_core/tools/_guard_classify.py", "line": 336, "is_dead": false, "has_duplicate": false},
+    {"rank": 3, "grade": "F", "cc": 51, "name": "migrate_project_memory", "file": "memory_core/tools/migrate_project_memory.py", "line": 974, "is_dead": false, "has_duplicate": false},
+    {"rank": 4, "grade": "F", "cc": 45, "name": "_discover_canonical_files", "file": "memory_core/tools/memory_hook_integrity_manifest.py", "line": 196, "is_dead": false, "has_duplicate": false, "note": "Previously missing from audit-focused 5 py scope"},
+    {"rank": 5, "grade": "F", "cc": 43, "name": "check_server", "file": "memory_core/tools/daily_kb_audit.py", "line": 958, "is_dead": false, "has_duplicate": false},
+    {"rank": 6, "grade": "E", "cc": 40, "name": "_extract_session_info_streaming", "file": "memory_core/tools/session_end_logger.py", "line": 141, "is_dead": false, "has_duplicate": true, "duplicate_note": "Similar to _extract_session_info (0.760-0.779), but below 0.80 threshold"},
+    {"rank": 7, "grade": "E", "cc": 38, "name": "build_context_package_core", "file": "memory_core/tools/memory_hook_core.py", "line": 129, "is_dead": false, "has_duplicate": false},
+    {"rank": 8, "grade": "E", "cc": 37, "name": "_enrich_project_info_from_config", "file": "memory_core/tools/init_project_memory.py", "line": 1089, "is_dead": false, "has_duplicate": false},
+    {"rank": 9, "grade": "E", "cc": 36, "name": "_append_infra_summary", "file": "memory_core/tools/daily_kb_audit.py", "line": 1489, "is_dead": false, "has_duplicate": false},
+    {"rank": 10, "grade": "E", "cc": 35, "name": "main", "file": "memory_core/tools/memory_hook_gateway.py", "line": 1880, "is_dead": false, "has_duplicate": false},
+    {"rank": 11, "grade": "E", "cc": 35, "name": "_extract_session_info", "file": "memory_core/tools/session_end_logger.py", "line": 289, "is_dead": true, "has_duplicate": true, "critical_note": "D+ function that is ALSO dead code - can be deleted immediately"},
+    {"rank": 12, "grade": "E", "cc": 33, "name": "migrate_v040_to_v050", "file": "memory_core/tools/migrate_project_memory.py", "line": 401, "is_dead": false, "has_duplicate": false},
+    {"rank": 13, "grade": "E", "cc": 33, "name": "_maybe_sync_telemetry", "file": "memory_core/tools/memory_hook_gateway.py", "line": 1660, "is_dead": false, "has_duplicate": false},
+    {"rank": 14, "grade": "D", "cc": 30, "name": "_extract_path_from_execute", "file": "memory_core/tools/_guard_classify.py", "line": 113, "is_dead": false, "has_duplicate": false},
+    {"rank": 15, "grade": "D", "cc": 28, "name": "_truth_basis_errors_for", "file": "memory_core/tools/memory_hook_gateway.py", "line": 729, "is_dead": false, "has_duplicate": true, "duplicate_note": "Cluster B: AST similarity 0.95 with business_policy_checks.py:517"},
+    {"rank": 16, "grade": "D", "cc": 28, "name": "_truth_basis_errors_for", "file": "memory_core/tools/business_policy_checks.py", "line": 517, "is_dead": false, "has_duplicate": true, "duplicate_note": "Cluster B: AST similarity 0.95 with gateway.py:729"},
+    {"rank": 17, "grade": "D", "cc": 26, "name": "main", "file": "memory_core/tools/migrate_project_memory.py", "line": 1262, "is_dead": false, "has_duplicate": false},
+    {"rank": 18, "grade": "D", "cc": 26, "name": "_read_a_layer", "file": "memory_core/tools/daily_summary_generator.py", "line": 70, "is_dead": false, "has_duplicate": false},
+    {"rank": 19, "grade": "D", "cc": 25, "name": "plan_residue_migration", "file": "memory_core/tools/audit_project_layout.py", "line": 973, "is_dead": false, "has_duplicate": false},
+    {"rank": 20, "grade": "D", "cc": 25, "name": "main", "file": "memory_core/tools/session_end_logger.py", "line": 521, "is_dead": false, "has_duplicate": false},
+    {"rank": 21, "grade": "D", "cc": 24, "name": "_detect_project_type", "file": "memory_core/tools/project_probe.py", "line": 300, "is_dead": false, "has_duplicate": false},
+    {"rank": 22, "grade": "D", "cc": 23, "name": "CoreConfig.__post_init__", "file": "memory_core/tools/memory_hook_config.py", "line": 91, "is_dead": false, "has_duplicate": false},
+    {"rank": 23, "grade": "D", "cc": 21, "name": "main", "file": "memory_core/tools/daily_kb_audit.py", "line": 1687, "is_dead": false, "has_duplicate": false},
+    {"rank": 24, "grade": "D", "cc": 21, "name": "cmd_apply_upgrade", "file": "memory_core/tools/hook_upgrade.py", "line": 293, "is_dead": false, "has_duplicate": false},
+    {"rank": 25, "grade": "D", "cc": 21, "name": "check_large_or_db_files", "file": "memory_core/tools/daily_kb_audit.py", "line": 424, "is_dead": false, "has_duplicate": false},
+    {"rank": 26, "grade": "D", "cc": 21, "name": "batch_capture", "file": "memory_core/tools/telemetry_bridge.py", "line": 239, "is_dead": false, "has_duplicate": false},
+    {"rank": 27, "grade": "D", "cc": 21, "name": "_summarize_report", "file": "memory_core/tools/daily_kb_audit.py", "line": 1420, "is_dead": false, "has_duplicate": false}
+  ],
+  "special_flags": {
+    "dead_d_plus_functions": [
+      {"rank": 11, "name": "_extract_session_info", "file": "memory_core/tools/session_end_logger.py", "line": 289, "cc": 35, "action": "DELETE - reduces D+ count by 1"}
+    ],
+    "d_plus_with_duplicates": [
+      {"ranks": [6, 11], "note": "_extract_session_info_streaming vs _extract_session_info (similarity 0.760-0.779, similar not duplicate)"},
+      {"ranks": [15, 16], "note": "_truth_basis_errors_for in gateway vs business_policy_checks (AST 0.95, true duplicate)"}
+    ],
+    "previously_missing_from_audit_scope": [
+      {"rank": 4, "name": "_discover_canonical_files", "file": "memory_hook_integrity_manifest.py", "note": "Top 5 P0 #4 - was outside the 5 audit-focused py files"}
+    ]
+  },
+  "radon_tool_caveats": {
+    "nested_function_blindspot": "radon cc does NOT report nested functions. 19 nested functions exist (all CC<21, no impact on D+ count).",
+    "comprehension_if_counting": "radon counts `if` clauses in list/dict comprehensions, which can inflate CC by 1-5 vs manual AST counting for some functions.",
+    "grade_thresholds": {"A": "1-5", "B": "6-10", "C": "11-20", "D": "21-30", "E": "31-40", "F": "41+"}
+  }
+}

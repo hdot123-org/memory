@@ -3,7 +3,6 @@
 Provides data structures and APIs for classifying paths as owned/protected
 vs not-owned, with support for domains, resources, and AGENTS.md block classification.
 """
-from __future__ import annotations
 
 import fnmatch
 import json
@@ -539,16 +538,6 @@ def load_memory_ownership(project_root: Path) -> MemoryOwnership:
             content = ownership_file.read_text(encoding="utf-8")
             data = tomllib.loads(content)
             return MemoryOwnership.from_dict(data)
-        except ImportError:
-            # Python < 3.11, try tomli
-            try:
-                import tomli
-
-                content = ownership_file.read_text(encoding="utf-8")
-                data = tomli.loads(content)
-                return MemoryOwnership.from_dict(data)
-            except ImportError:
-                pass  # Fall through to JSON fallback
         except Exception:
             pass  # Fall through to defaults
 

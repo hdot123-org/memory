@@ -11,7 +11,6 @@ Usage:
     python -m memory_core.tools.hook_upgrade plan-upgrade
     python -m memory_core.tools.hook_upgrade apply-upgrade --yes
 """
-from __future__ import annotations
 
 import argparse
 import json

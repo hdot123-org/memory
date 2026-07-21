@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """End-to-end test: memory-init writes INDEX.md with schema headers (T2.5 + T2.3)."""
-from __future__ import annotations
 
 import sys
 from pathlib import Path

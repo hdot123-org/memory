@@ -6,7 +6,6 @@ VAL-M3-001: 拆解前必须先补齐 main 的单元测试覆盖:
   - 有项目路径（正常审计 / 单项目异常 / critical/warning 返回码）
   - --json / --no-write / --notify 选项
 """
-from __future__ import annotations
 
 import json
 from pathlib import Path

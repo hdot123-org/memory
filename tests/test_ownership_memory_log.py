@@ -8,7 +8,6 @@ Covers:
 - VAL-F1-005: classify_owned_path Correctly Classifies memory/log/ Paths
 - VAL-F1-006: Existing Ownership Domains Unchanged
 """
-from __future__ import annotations
 
 import pytest
 

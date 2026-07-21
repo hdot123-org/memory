@@ -3,7 +3,6 @@
 Tests call memory_core.tools.migrate_project_memory.main() directly
 (import, not subprocess).
 """
-from __future__ import annotations
 
 import json
 import sys

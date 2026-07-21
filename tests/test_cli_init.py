@@ -3,7 +3,6 @@
 Tests call memory_core.tools.init_project_memory.main() directly
 (import, not subprocess) to avoid environment dependency on installed scripts.
 """
-from __future__ import annotations
 
 import json
 import sys
@@ -31,10 +30,7 @@ def _call_main(argv: list[str]) -> int:
 
 def _read_adapter_toml(target: Path) -> dict[str, Any]:
     """Parse adapter.toml from target .memory/ directory."""
-    try:
-        import tomllib
-    except ModuleNotFoundError:
-        import tomli as tomllib
+    import tomllib
     adapter_path = target / "memory" / "system" / "adapter.toml"
     with open(adapter_path, "rb") as f:
         return tomllib.load(f)

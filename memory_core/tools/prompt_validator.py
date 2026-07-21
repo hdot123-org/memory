@@ -4,7 +4,6 @@ Checks prompts before Task dispatch to prevent silent truncation.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 # Configuration — adjust based on actual Factory limits
 MAX_PROMPT_CHARS = 50_000
@@ -16,8 +15,8 @@ class ValidationResult:
     is_safe: bool
     char_count: int
     estimated_tokens: int
-    warning: Optional[str] = None
-    recommendation: Optional[str] = None
+    warning: str | None = None
+    recommendation: str | None = None
 
 
 def validate_prompt(prompt: str, *,

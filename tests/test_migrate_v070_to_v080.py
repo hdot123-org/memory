@@ -2,16 +2,12 @@
 
 Covers VAL-MIGRATE-001 through VAL-MIGRATE-005 and VAL-CROSS-002.
 """
-from __future__ import annotations
 
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
+import tomllib
 
 from memory_core.tools.adapter_toml_schema import load_adapter_toml
 

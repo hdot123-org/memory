@@ -20,7 +20,6 @@ Constraints:
     --token or --force is required (prevents accidental re-sign)
     Source repo: refuses to re-sign (zero side-effects)
 """
-from __future__ import annotations
 
 import argparse
 import json

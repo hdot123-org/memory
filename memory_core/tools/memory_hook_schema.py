@@ -1,6 +1,5 @@
 """Schema conversion: wb-hook-v2 → context-package-v1."""
 
-from __future__ import annotations
 
 import json
 import os

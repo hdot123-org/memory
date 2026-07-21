@@ -5,7 +5,6 @@ Covers: utility helpers, check_* functions, audit orchestration,
 report building, summary generation, CLI parsing, main(), and
 infrastructure health checks.
 """
-from __future__ import annotations
 
 import hashlib
 import json

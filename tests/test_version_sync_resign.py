@@ -3,7 +3,6 @@
 VAL-HOOK-008: version_sync 执行后 ownership.toml 版本更新且 manifest.json
 中对应条目 sha256 与实际文件匹配。
 """
-from __future__ import annotations
 
 import hashlib
 import json

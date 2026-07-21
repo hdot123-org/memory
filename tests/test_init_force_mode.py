@@ -10,7 +10,6 @@ Test cases:
 6. test_init_template_render_warning_on_special_chars - Template warnings on bad chars
 """
 
-from __future__ import annotations
 
 import inspect
 import os

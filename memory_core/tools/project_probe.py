@@ -3,7 +3,6 @@
 探测语言/框架/工具链/git/数据库/项目类型/项目概述。
 所有探测方法只读不写，失败返回默认值（不抛异常）。
 """
-from __future__ import annotations
 
 import logging
 import os

@@ -1,5 +1,4 @@
 """Tests for _guard_classify.py extracted module."""
-from __future__ import annotations
 
 import os
 from pathlib import Path

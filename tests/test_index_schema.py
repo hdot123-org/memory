@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Tests for index_schema (T2.5)."""
-from __future__ import annotations
 
 import sys
 from pathlib import Path

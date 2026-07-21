@@ -1,5 +1,4 @@
 """P2 B.Q6-3: is_lossless() generic API + schema audit log tests."""
-from __future__ import annotations
 
 import json
 from pathlib import Path

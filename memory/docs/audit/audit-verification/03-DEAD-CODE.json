@@ -1,0 +1,117 @@
+{
+  "scan_metadata": {
+    "scan_date": "2026-07-19",
+    "last_corrected": "2026-07-19 v5 (4-round 10-verification convergence, 0 discrepancies)",
+    "tool": "vulture --min-confidence 60",
+    "scan_scope": "memory_core/ + scripts/",
+    "vulture_total_entries": 129,
+    "verification_method": "Unified canonical spec: dead iff (no production use) AND (no test use, where import-only/comments/docstrings/exception-strings/type-annotations excluded) AND (no test failure on deletion).",
+    "verification": "4-round 10-verification convergence: bailian + kimi + GLM triple-core + 5 reverse/forward/cross checks + unified spec application",
+    "v5_canonical_spec": "Mechanical decision tree with no exceptions for tautological assertions or symbolic references. DOMAIN/RESOURCE judged ALIVE per spec condition 2 (actual attribute access in test) and condition 3 (test failure on deletion).",
+    "v5_changes_from_v4": "DOMAIN/RESOURCE removed (alive per spec); _sample and _section added (previously missed)."
+  },
+  "truly_dead_code_summary": {
+    "total_truly_dead": 44,
+    "by_type": {
+      "function": 20,
+      "method": 3,
+      "class": 4,
+      "attribute": 5,
+      "variable": 12
+    },
+    "false_positive_count": 85,
+    "false_positive_rate": "65.9% (85 of 129 vulture entries are not truly dead; arithmetic: 129 - 44 truly_dead = 85)",
+    "v5_changes": "v4 had 44 with DOMAIN/RESOURCE misclassified; v5 swaps them out for _sample/_section, total remains 44 but composition changed"
+  },
+  "truly_dead_code_detail": {
+    "functions": [
+      {"file": "memory_core/tools/apply_residue_plan.py", "line": 194, "name": "_matches_pattern", "refs": 1},
+      {"file": "memory_core/tools/cmux_hook_state.py", "line": 43, "name": "default_assignment_file_path", "refs": 1},
+      {"file": "memory_core/tools/cmux_hook_state.py", "line": 47, "name": "default_pm_bot_watch_assignment_file_path", "refs": 1},
+      {"file": "memory_core/tools/cmux_hook_state.py", "line": 51, "name": "default_codex_main_task_path", "refs": 1},
+      {"file": "memory_core/tools/cmux_hook_state.py", "line": 55, "name": "default_project_overview_json_path", "refs": 1},
+      {"file": "memory_core/tools/cmux_hook_state.py", "line": 59, "name": "default_project_overview_text_path", "refs": 1},
+      {"file": "memory_core/tools/cmux_hook_state.py", "line": 63, "name": "default_assignment_watcher_pid_path", "refs": 1},
+      {"file": "memory_core/tools/cmux_hook_state.py", "line": 67, "name": "default_assignment_watcher_log_path", "refs": 1},
+      {"file": "memory_core/tools/cmux_hook_state.py", "line": 159, "name": "get_surface_hook_state", "refs": 1},
+      {"file": "memory_core/tools/init_project_memory.py", "line": 718, "name": "template_policy_pack_json", "refs": 2, "note": "2nd ref is exception string"},
+      {"file": "memory_core/tools/init_project_memory.py", "line": 1448, "name": "template_keep", "refs": 1},
+      {"file": "memory_core/tools/memory_hook_metrics.py", "line": 38, "name": "_safe_int", "refs": 1},
+      {"file": "memory_core/tools/memory_hook_metrics.py", "line": 94, "name": "write_metrics", "refs": 1},
+      {"file": "memory_core/tools/memory_hook_schema.py", "line": 149, "name": "_emit_drop_audit", "refs": 1},
+      {"file": "memory_core/ownership.py", "line": 325, "name": "_is_path_under", "refs": 1},
+      {"file": "memory_core/tools/session_end_logger.py", "line": 78, "name": "_read_jsonl_lines", "refs": 2, "note": "2nd ref is docstring of streaming version"},
+      {"file": "memory_core/tools/session_end_logger.py", "line": 289, "name": "_extract_session_info", "refs": 2, "cc": 35, "grade": "E", "critical_note": "D+ function that is dead - DELETE IMMEDIATELY"},
+      {"file": "memory_core/tools/verify_consumer.py", "line": 170, "name": "_detect_actual_language", "refs": 1},
+      {"file": "scripts/test_full_integration.py", "line": 666, "name": "_check_required_indexeses", "refs": 1, "note": "Typo: should be 'indexes'"},
+      {"file": "scripts/profiling_helper.py", "line": 115, "name": "_sample", "refs": 1, "note": "v5 newly added: demo/sample function never invoked. main() inlines its own workload instead. Born dead in commit 709fe58."}
+    ],
+    "methods": [
+      {"file": "memory_core/tools/memory_hook_interfaces.py", "line": 195, "name": "legality_source_for_scope", "refs": 1},
+      {"file": "memory_core/tools/memory_hook_interfaces.py", "line": 197, "name": "registration_commit_phase_for_scope", "refs": 1},
+      {"file": "memory_core/tools/memory_hook_interfaces.py", "line": 279, "name": "get_required_gateway_inputs", "refs": 2}
+    ],
+    "classes": [
+      {"file": "memory_core/tools/memory_hook_interfaces.py", "line": 192, "name": "PolicyQueryProvider", "refs": 1},
+      {"file": "memory_core/tools/memory_hook_interfaces.py", "line": 206, "name": "GovernanceChecker", "refs": 1},
+      {"file": "memory_core/tools/memory_hook_interfaces.py", "line": 220, "name": "TruthBasisProvider", "refs": 1},
+      {"file": "scripts/profiling_helper.py", "line": 87, "name": "_ProfileClass", "refs": 1}
+    ],
+    "attributes": [
+      {"file": "memory_core/tools/memory_hook_impls.py", "line": 1079, "name": "_noop_delegate", "refs": 1},
+      {"file": "scripts/profiling_helper.py", "line": 99, "name": "_output", "refs": 1},
+      {"file": "scripts/profiling_helper.py", "line": 100, "name": "_sort_by", "refs": 1},
+      {"file": "scripts/profiling_helper.py", "line": 101, "name": "_top_n", "refs": 1},
+      {"file": "scripts/profiling_helper.py", "line": 98, "name": "_section", "refs": 1, "note": "v5 newly added: write-only attribute in _ProfileClass.__init__, never read back. Sibling of _output/_sort_by/_top_n which were already in JSON."}
+    ],
+    "variables": [
+      {"file": "memory_core/constants.py", "line": 36, "name": "MESSAGE_VERSION_MISMATCH_UPGRADE_NEEDED", "refs": 1},
+      {"file": "memory_core/constants.py", "line": 37, "name": "MESSAGE_VERSION_MISMATCH_DOWNGRADE_DETECTED", "refs": 1},
+      {"file": "memory_core/tools/audit_project_layout.py", "line": 101, "name": "ACTION_CREATE_MISSING_MEMORY", "refs": 1},
+      {"file": "memory_core/tools/daily_kb_audit.py", "line": 88, "name": "DATABASE_DIR_NAMES", "refs": 1},
+      {"file": "memory_core/tools/init_project_memory.py", "line": 110, "name": "PER_SCOPE_DIRECTORIES", "refs": 1},
+      {"file": "memory_core/tools/init_project_memory.py", "line": 1506, "name": "desired_keys", "refs": 1},
+      {"file": "memory_core/tools/memory_hook_integrity_manifest.py", "line": 77, "name": "SCHEMA_VERSION_V1", "refs": 1},
+      {"file": "memory_core/tools/memory_hook_schema.py", "line": 428, "name": "is_lossless_schema", "refs": 1},
+      {"file": "memory_core/tools/observability.py", "line": 288, "name": "metrics", "refs": 1, "note": "GLM-unique finding. Module-level MetricsRegistry() instance. 17 grep hits all false positives (metrics.jsonl filename, MetricsRegistry class, function names, comments)."},
+      {"file": "memory_core/tools/observability.py", "line": 289, "name": "error_tracker", "refs": 1, "note": "Module-level ErrorTracker() instance. tests/test_observability.py imports ErrorTracker class but not the instance."},
+      {"file": "memory_core/tools/prompt_validator.py", "line": 11, "name": "MAX_PROMPT_TOKENS", "refs": 1},
+      {"file": "memory_core/tools/apply_residue_plan.py", "line": 60, "name": "FORBIDDEN_OVERWRITE_PATTERNS", "refs": 1, "note": "GLM-unique finding. Defined as empty list [] placeholder. 3 grep hits = 1 def + 2 comments. LEGACY_FORBIDDEN_OVERWRITE_PATTERNS (different name) is alive in audit_project_layout.py:1147/1159."}
+    ],
+    "v5_removed_alive_symbols": [
+      {"file": "memory_core/ownership.py", "line": 36, "name": "DOMAIN", "verdict": "ALIVE", "reason": "Actual attribute access in tests/test_ownership_model.py:56 (OwnershipKind.DOMAIN != OwnershipKind.RESOURCE). Per v5 spec condition 2, actual test access means not dead. Deletion causes AttributeError test failure (condition 3)."},
+      {"file": "memory_core/ownership.py", "line": 37, "name": "RESOURCE", "verdict": "ALIVE", "reason": "Same as DOMAIN — actual attribute access in tests/test_ownership_model.py:56."}
+    ]
+  },
+  "special_flags": {
+    "dead_d_plus_function": [
+      {
+        "name": "_extract_session_info",
+        "file": "memory_core/tools/session_end_logger.py",
+        "line": 289,
+        "cc": 35,
+        "grade": "E",
+        "action": "DELETE IMMEDIATELY - reduces D+ count from 27 to 26"
+      }
+    ],
+    "typo_dead_code": [
+      {
+        "name": "_check_required_indexeses",
+        "file": "scripts/test_full_integration.py",
+        "line": 666,
+        "correct_spelling": "_check_required_indexes",
+        "action": "Delete - method is dead regardless of spelling"
+      }
+    ],
+    "cmux_hook_state_near_dead_module": {
+      "file": "memory_core/tools/cmux_hook_state.py",
+      "dead_functions_count": 9,
+      "note": "9 of cmux_hook_state's default_* functions are dead. Only reset_hook_state is alive (referenced in tests). Consider deleting the entire module if reset_hook_state can be relocated."
+    }
+  },
+  "audit_report_gap": {
+    "audit_reported_count": "129 vulture entries (unclassified)",
+    "v5_canonical_truly_dead": 44,
+    "audit_missed_classification": "Audit reported raw vulture count but did not filter to truly dead code. 85 of 129 entries are false positives (129 - 44 truly_dead = 85; used in tests or other source files)."
+  }
+}

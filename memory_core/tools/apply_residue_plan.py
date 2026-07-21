@@ -19,7 +19,6 @@ Safety guarantees:
     - Forbidden overwrites blocked (AGENTS.md, INDEX.md, project-map/**, CLAUDE.md)
     - Only low-risk auto actions allowed: move_root_pollution, ignore_runtime_artifact
 """
-from __future__ import annotations
 
 import argparse
 import json

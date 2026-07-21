@@ -4,7 +4,6 @@ Covers VAL-PH-001 through VAL-PH-007: error events emitted from fail-safe
 except blocks, recursion avoidance, structured properties, fail-safe
 double-failure, disabled-state no-op, and event naming.
 """
-from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 

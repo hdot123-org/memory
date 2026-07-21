@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """L2 Integrity Layer — Tests for key management, manifest signing, and verification."""
-from __future__ import annotations
 
 import hashlib
 import hmac as _hmac

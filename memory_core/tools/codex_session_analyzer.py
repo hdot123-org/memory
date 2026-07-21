@@ -14,7 +14,6 @@ Usage:
     # JSON output
     python codex_session_analyzer.py --thread-id 019e124c --json
 """
-from __future__ import annotations
 
 import argparse
 import json

@@ -18,12 +18,10 @@ The tool moves files from ~/.memory/global-kb/pending/ to one of:
 
 After promotion, INDEX.md is updated to reflect the new location.
 """
-from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
-from typing import List
 
 from memory_core.constants import CURRENT_MEMORY_VERSION
 
@@ -37,7 +35,7 @@ except ImportError:
 VALID_DOMAINS = ("operations", "engineering", "collaboration")
 
 
-def main(argv: List[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     """
     Main entry point for memory-promote CLI.
 

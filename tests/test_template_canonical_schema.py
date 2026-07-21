@@ -12,7 +12,6 @@ Test cases:
 5. test_init_writes_user_host_into_adapter_toml
 6. test_init_default_host_is_codex_when_unspecified
 """
-from __future__ import annotations
 
 from pathlib import Path
 

@@ -5,7 +5,6 @@ Each class handles one responsibility group and keeps method signatures
 compatible with the original GatewayBusinessPolicyImpl interface.
 """
 
-from __future__ import annotations
 
 from pathlib import Path
 from typing import Any

@@ -5,7 +5,6 @@ each gateway invocation. Disabled via MEMORY_HOOK_METRICS_DISABLED=1.
 
 Failure is non-blocking: callers should wrap emit_metrics in try/except.
 """
-from __future__ import annotations
 
 import json
 import logging

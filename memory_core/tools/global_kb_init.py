@@ -15,7 +15,7 @@ The global KB contains cross-project reusable knowledge organized into four doma
 This structure is created once and shared across all projects that enable global KB.
 """
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 # Domain definitions with descriptions
 DOMAIN_DEFINITIONS: dict[str, dict[str, Any]] = {
@@ -45,7 +45,7 @@ DOMAIN_DEFINITIONS: dict[str, dict[str, Any]] = {
 def create_global_kb_structure(
     global_kb_root: Path,
     force: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create the global knowledge base directory structure.
 
@@ -70,7 +70,7 @@ def create_global_kb_structure(
         - skipped_paths: List of paths skipped (already existed)
         - errors: List of error messages (empty if success)
     """
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "success": False,
         "global_kb_root": str(global_kb_root),
         "created_paths": [],
@@ -258,7 +258,7 @@ def get_global_kb_root() -> Path:
     return Path.home() / ".memory" / "global-kb"
 
 
-def is_global_kb_initialized(global_kb_root: Optional[Path] = None) -> bool:
+def is_global_kb_initialized(global_kb_root: Path | None = None) -> bool:
     """
     Check if the global KB structure has been initialized.
 

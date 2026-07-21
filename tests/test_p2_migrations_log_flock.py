@@ -4,7 +4,6 @@ Spawns 5 threads that simultaneously call the internal _append_migrations_log
 helper; asserts that exactly 5 lines are written, each line parses as valid
 migration-log format, with no truncation or corruption.
 """
-from __future__ import annotations
 
 import json
 import threading

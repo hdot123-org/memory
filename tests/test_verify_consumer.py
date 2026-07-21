@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Tests for verify_consumer CLI (T2.6)."""
-from __future__ import annotations
 
 import json
 import sys

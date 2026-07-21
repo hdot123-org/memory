@@ -4,7 +4,6 @@
 Generates, stores, and loads HMAC-SHA256 keys for project memory integrity.
 Key location: ~/.memory-core/keys/project-integrity.key
 """
-from __future__ import annotations
 
 import os
 import secrets

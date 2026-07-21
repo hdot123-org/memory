@@ -7,7 +7,6 @@ Covers:
     - Migration idempotency
     - Dry-run modes
 """
-from __future__ import annotations
 
 import json
 import os
@@ -17,11 +16,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
+import tomllib
 
 
 def _read_memory_lock(path: Path) -> dict:

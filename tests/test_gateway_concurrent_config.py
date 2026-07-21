@@ -7,7 +7,6 @@ Verifies:
 - Concurrent reads don't crash
 - Concurrent load_adapter_config + reads don't crash
 """
-from __future__ import annotations
 
 import importlib
 import os

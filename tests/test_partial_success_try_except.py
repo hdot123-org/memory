@@ -6,7 +6,6 @@ is wrapped in try/except OSError, matching the pattern in the outer except block
 If write_text fails with OSError in the partial-success branch, the exception must
 NOT propagate to the outer except block (which uses wrong pending_count).
 """
-from __future__ import annotations
 
 import json
 import time

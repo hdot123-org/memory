@@ -16,7 +16,6 @@ Claude event name mapping:
 Codex event names are already in the canonical form (--event CLI arg).
 """
 
-from __future__ import annotations
 
 import json
 from dataclasses import dataclass

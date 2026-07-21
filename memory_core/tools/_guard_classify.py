@@ -6,7 +6,6 @@ if-elif chain for Write, Edit, MultiEdit, NotebookEdit, Execute, Task.
 
 Part of REF-001 strangler fig scaffold phase.
 """
-from __future__ import annotations
 
 import os
 import re

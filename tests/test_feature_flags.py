@@ -1,5 +1,4 @@
 """Tests for feature_flags module."""
-from __future__ import annotations
 
 import pytest
 

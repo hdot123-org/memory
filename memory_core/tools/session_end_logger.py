@@ -13,7 +13,6 @@ Usage:
     echo '{"session_id": "...", "session_dir": "...", "project_root": "..."}' | \
         python session_end_logger.py --session-dir ... --session-id ... --project-root ...
 """
-from __future__ import annotations
 
 import argparse
 import json

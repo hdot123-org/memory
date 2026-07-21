@@ -1,6 +1,5 @@
 """Strict validation tests for load_adapter_toml."""
 
-from __future__ import annotations
 
 from pathlib import Path
 

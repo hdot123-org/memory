@@ -6,7 +6,6 @@ that runtime components (like memory_hook_core and adapters) depend on.
 Goal: Prevent "init generated files missing runtime dependencies" issues.
 """
 
-from __future__ import annotations
 
 import json
 import os

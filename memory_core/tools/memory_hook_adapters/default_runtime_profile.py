@@ -7,7 +7,6 @@ bindings and is intended to serve as the default
 profile for any new memory-enabled project.
 """
 
-from __future__ import annotations
 
 import os
 from pathlib import Path

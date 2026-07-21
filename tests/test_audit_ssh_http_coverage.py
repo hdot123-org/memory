@@ -4,7 +4,6 @@ Covers:
 - _check_systemd_services (lines 840-946): mock _run_ssh
 - HTTP endpoint health check in check_server (lines 1108-1171): mock subprocess.run
 """
-from __future__ import annotations
 
 import subprocess
 from unittest.mock import MagicMock

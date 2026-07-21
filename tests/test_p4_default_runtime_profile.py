@@ -1,6 +1,5 @@
 """Tests for default_runtime_profile (P4b)."""
 
-from __future__ import annotations
 
 import textwrap
 from pathlib import Path

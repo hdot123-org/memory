@@ -17,7 +17,6 @@ Acceptance criteria:
 - init adopt dry-run produces no file changes
 - business AGENTS/INDEX/project-map are not overwritten by default
 """
-from __future__ import annotations
 
 import json
 import os

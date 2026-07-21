@@ -22,7 +22,6 @@ Covers:
 - main(): json output + notify (lines 1730-1732)
 - main(): exit code with infra critical (lines 1750-1783)
 """
-from __future__ import annotations
 
 import json
 from unittest.mock import MagicMock

@@ -6,7 +6,6 @@ gateway exceptions, env-var behavior, and return-type validation.
 Does not duplicate test_validate_memory_system.py or the M6 batch-3 rollback tests.
 """
 
-from __future__ import annotations
 
 import sys
 from pathlib import Path

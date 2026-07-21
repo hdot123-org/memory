@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """Unit tests for _rule_errors.py exception hierarchy."""
-from __future__ import annotations
 
 import pytest
 

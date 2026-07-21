@@ -9,7 +9,6 @@ Priority order:
 Truthy values (case-insensitive): 1, true, yes, on
 Falsy values (case-insensitive): 0, false, no, off
 """
-from __future__ import annotations
 
 import logging
 import os

@@ -1,0 +1,150 @@
+{
+  "scan_metadata": {
+    "scan_date": "2026-07-19",
+    "last_corrected": "2026-07-19 v5 (4-round 10-verification convergence, 0 discrepancies)",
+    "method": "Python ast.walk + difflib.SequenceMatcher on ast.dump(annotate_fields=False) [M1 industry spec]",
+    "scan_scope": "memory_core/ + scripts/",
+    "similarity_threshold": 0.80,
+    "minimum_size_filter": ">=10 body lines OR >=50 AST tokens (SonarQube/jscpd industry default)",
+    "excluded_normalization_methods": [
+      "ast.dump(annotate_fields=True) — Python debugging format per official docs, inflates ratio via field-name strings; 47/47 pairs pass, no discriminative power",
+      "source text difflib — character-level sensitive to string literals",
+      "token-only (node type sequence) — too coarse for structural similarity"
+    ],
+    "verification": "4-round 10-verification convergence: bailian + kimi + GLM triple-core + 5 reverse/forward/cross checks + AST normalization deep dive + canonical spec application",
+    "v5_methodology_rationale": "Per Python ast.dump documentation, annotate_fields=True 'makes the code impossible to evaluate' (debugging only). Industry tools (PMD CPD, SonarQube, jscpd) all use token-based or annotate_fields=False. Prior counts using annotate_fields=True systematically over-reported duplicates."
+  },
+  "scan_summary": {
+    "total_functions_scanned": 921,
+    "same_name_pairs": 1375,
+    "candidate_pairs_inspected": 47,
+    "truly_duplicate_pairs_v5_canonical": 10,
+    "pairs_removed_by_m1_threshold": 9,
+    "pairs_removed_by_minimum_size_filter": 28,
+    "previous_v4_count_with_annotate_fields_true": 47,
+    "reduction_from_v4": "47 -> 10 (-80%)"
+  },
+  "duplicate_clusters": [
+    {
+      "cluster_id": "A",
+      "name": "GatewayBusinessPolicyImpl ↔ ScopeResolver",
+      "files": ["memory_core/tools/memory_hook_impls.py", "memory_core/tools/business_policy_checks.py"],
+      "v5_method_count": 5,
+      "v5_methods_passing_canonical_spec": [
+        {"name": "__init__", "m1_similarity": 1.0000, "body_lines": 11, "tokens": 92, "loc_a": "memory_hook_impls.py:718", "loc_b": "business_policy_checks.py:638"},
+        {"name": "determine_project_scope", "m1_similarity": 1.0000, "body_lines": 8, "tokens": 67, "loc_a": "memory_hook_impls.py:764", "loc_b": "business_policy_checks.py:681"},
+        {"name": "get_project_canonical", "m1_similarity": 1.0000, "body_lines": 5, "tokens": 66, "loc_a": "memory_hook_impls.py:774", "loc_b": "business_policy_checks.py:691"},
+        {"name": "get_project_runtime_root", "m1_similarity": 1.0000, "body_lines": 5, "tokens": 66, "loc_a": "memory_hook_impls.py:781", "loc_b": "business_policy_checks.py:698"},
+        {"name": "_load_scope_overrides", "m1_similarity": 1.0000, "body_lines": 22, "tokens": 201, "loc_a": "memory_hook_impls.py:731", "loc_b": "business_policy_checks.py:651"}
+      ],
+      "v5_methods_failing_size_filter": [
+        {"name": "_resolve_override_path", "reason": "lines=4, tokens=42 (need >=10 lines OR >=50 tokens)"},
+        {"name": "get_global_canonical", "reason": "lines=1, tokens=19"},
+        {"name": "get_required_canonical", "reason": "lines=1, tokens=19"},
+        {"name": "project_map_refs", "reason": "lines=1, tokens=25"},
+        {"name": "decision_refs_for_scope", "reason": "lines=2, tokens=42"},
+        {"name": "lesson_refs_for_scope", "reason": "lines=2, tokens=42"},
+        {"name": "docs_refs_for_scope", "reason": "lines=2, tokens=34"}
+      ],
+      "v4_to_v5_change": "12 -> 5 (-7 methods failing minimum-size filter)",
+      "extraction_recommendation": "Extract shared base class ScopeResolverBase with these 5 substantive methods; trivial 1-2 line methods can be duplicated or inlined.",
+      "estimated_loc_reduction": 75
+    },
+    {
+      "cluster_id": "B",
+      "name": "gateway ↔ TruthBasisResolver",
+      "files": ["memory_core/tools/memory_hook_gateway.py", "memory_core/tools/business_policy_checks.py"],
+      "v5_method_count": 1,
+      "v5_methods_passing_canonical_spec": [
+        {"name": "_truth_basis_errors_for", "m1_similarity": 0.9341, "body_lines": 60, "tokens": 568, "loc_a": "memory_hook_gateway.py:729", "loc_b": "business_policy_checks.py:517"}
+      ],
+      "v5_methods_failing": [
+        {"name": "_classify_truth_ref", "m1_similarity": 0.4452, "reason": "M1 < 0.80 (was 0.872 only with annotate_fields=True; coincidence of field-name literal strings)"},
+        {"name": "_lower_evidence_ref", "m1_similarity": 0.8347, "reason": "size insufficient: lines=1, tokens=29 (2-line dispatcher, SonarQube/jscpd minimum-size excludes)"},
+        {"name": "_truth_basis_sections_for", "m1_similarity": 0.9920, "reason": "size insufficient: lines=6, tokens=49 (1 token short of 50-token threshold; strictly fails per no-tolerance spec)"}
+      ],
+      "v4_to_v5_change": "4 -> 1 (-3 methods: 1 M1-fail, 2 size-fail)",
+      "extraction_recommendation": "Gateway should delegate to TruthBasisResolver for the 1 substantive method (_truth_basis_errors_for). Smaller methods are trivial wrappers.",
+      "estimated_loc_reduction": 60
+    },
+    {
+      "cluster_id": "C",
+      "name": "business_policy_checks internal 5 Validator class",
+      "files": ["memory_core/tools/business_policy_checks.py"],
+      "v5_method_count": 3,
+      "v5_methods_passing_canonical_spec": [
+        {"name": "evaluate(PMV-FTC)", "m1_similarity": 0.9226, "body_lines": 15, "tokens": 56, "loc_a": "business_policy_checks.py:108", "loc_b": "business_policy_checks.py:238"},
+        {"name": "evaluate(PMV-ECC)", "m1_similarity": 0.9239, "body_lines": 15, "tokens": 56, "loc_a": "business_policy_checks.py:108", "loc_b": "business_policy_checks.py:294"},
+        {"name": "evaluate(FTC-ECC)", "m1_similarity": 0.9289, "body_lines": 15, "tokens": 56, "loc_a": "business_policy_checks.py:238", "loc_b": "business_policy_checks.py:294"}
+      ],
+      "v5_methods_failing_size_filter": "All 10 __init__ pairs (PMV-LCC, PMV-FTC, PMV-ECC, PMV-TBR, LCC-FTC, LCC-ECC, LCC-TBR, FTC-ECC, FTC-TBR, ECC-TBR) — all single-line assignments (lines=1, tokens=13)",
+      "v4_to_v5_change": "13 -> 3 (-10 __init__ pairs failing minimum-size filter)",
+      "extraction_recommendation": "Extract PolicyValidatorBase with shared evaluate() template; __init__ duplication is trivial boilerplate.",
+      "estimated_loc_reduction": 45
+    },
+    {
+      "cluster_id": "D",
+      "name": "memory_hook_impls Delegate classes",
+      "files": ["memory_core/tools/memory_hook_impls.py"],
+      "v5_method_count": 0,
+      "v5_methods_failing_size_filter": [
+        {"name": "execute(Factory-Noop)", "reason": "lines=6, tokens=34"},
+        {"name": "can_handle(Factory-Noop)", "reason": "lines=1, tokens=7"},
+        {"name": "host_unavailable(Factory-Noop)", "reason": "lines=1, tokens=9"},
+        {"name": "noop_response(Codex-Claude)", "reason": "lines=2, tokens=28"}
+      ],
+      "v4_to_v5_change": "4 -> 0 (-4 all fail minimum-size filter; Delegate pattern stubs are trivial)",
+      "extraction_recommendation": "No action. Delegate pattern inherently requires method signatures duplicated across classes; size too small to warrant base class extraction.",
+      "estimated_loc_reduction": 0
+    },
+    {
+      "cluster_id": "E",
+      "name": "memory_hook_interfaces PolicyRegistry ↔ GatewayBusinessPolicy",
+      "files": ["memory_core/tools/memory_hook_interfaces.py"],
+      "v5_method_count": 0,
+      "v5_methods_failing": [
+        {"name": "validate_unique_legal_system_contract", "reason": "abstract method body=docstring+ellipsis, lines=2, tokens=14"},
+        {"name": "event_contract_blocker_errors", "reason": "abstract method, lines=2, tokens=14"},
+        {"name": "decision_refs_for_scope", "reason": "abstract method AND M1=0.7546 < 0.80"},
+        {"name": "lesson_refs_for_scope", "reason": "abstract method AND M1=0.5390 < 0.80"},
+        {"name": "docs_refs_for_scope", "reason": "abstract method (M1=0.9457 passes but size: lines=2, tokens=17 fails)"},
+        {"name": "truth_basis_for_scope", "reason": "abstract method (M1=0.9990 passes but size: lines=2, tokens=13 fails)"}
+      ],
+      "v4_to_v5_change": "6 -> 0 (-6 all abstract method declarations with docstring+ellipsis bodies; fail minimum-size filter AND 2 also fail M1<0.80)",
+      "extraction_recommendation": "Interface mirror, not implementation duplicate. Per spec 'interface mirror with different implementation = NOT duplicate'. Abstract method declarations across protocols are not 'duplicate code' — they're contract specifications.",
+      "estimated_loc_reduction": 0
+    },
+    {
+      "cluster_id": "F",
+      "name": "Independent cross-file duplicates",
+      "v5_pair_count": 1,
+      "v5_pairs_passing_canonical_spec": [
+        {"name": "_sha256_file", "m1_similarity": 0.8573, "body_lines": 9, "tokens": 65, "loc_a": "apply_residue_plan.py:156", "loc_b": "daily_kb_audit.py:122"}
+      ],
+      "v5_pairs_failing": [
+        {"name": "to_dict(arp-apl)", "reason": "M1=0.3623 << 0.80 (M2 artifact only)"},
+        {"name": "to_dict(arp-mhiv)", "reason": "M1=0.2143 << 0.80 AND size: lines=8, tokens=45"},
+        {"name": "__new__(phc-tb)", "reason": "M1=0.9540 passes but size: lines=5, tokens=41"},
+        {"name": "record(vms-vpm)", "reason": "M1=0.6626 < 0.80 AND size: lines=1, tokens=32"},
+        {"name": "_parse_version_tuple", "reason": "M1=1.0 passes but size: lines=2, tokens=31"},
+        {"name": "__post_init__", "reason": "M1=1.0 passes but size: lines=4, tokens=25"},
+        {"name": "_try_sign_file", "reason": "M1=0.7892 < 0.80"}
+      ],
+      "v4_to_v5_change": "8 -> 1 (-7 pairs: 4 M1-fail, 3 size-fail)",
+      "extraction_recommendation": "Extract shared utility module for _sha256_file. Other pairs are either coincidental (M1<0.80) or trivial (size insufficient).",
+      "estimated_loc_reduction": 15
+    }
+  ],
+  "v5_total_summary": {
+    "total_duplicate_pairs": 10,
+    "by_cluster": {"A": 5, "B": 1, "C": 3, "D": 0, "E": 0, "F": 1},
+    "total_estimated_loc_reduction": 195,
+    "key_methodology_finding": "annotate_fields=True (used in v1-v4) is Python's debugging format per official docs, not a similarity normalization method. Industry tools (PMD CPD, SonarQube, jscpd) all use token-based or annotate_fields=False. Switching to M1 (annotate_fields=False) plus minimum-size filter (>=10 lines OR >=50 tokens) reduced 47 candidates to 10 true duplicates (-80%)."
+  },
+  "audit_report_gap": {
+    "audit_reported_pairs": 3,
+    "v5_canonical_truly_duplicate_pairs": 10,
+    "audit_miss_rate": "70% (3 of 10 reported)",
+    "previous_inflated_count_rationale": "v1-v4 reported 65-66 pairs using annotate_fields=True which systematically over-counts; v5 canonical count is 10"
+  }
+}

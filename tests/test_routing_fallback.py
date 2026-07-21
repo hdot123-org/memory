@@ -11,7 +11,6 @@ Covers validation assertions:
 - VAL-WRITE-002: Global formal categories only written by promote
 """
 
-from __future__ import annotations
 
 from pathlib import Path
 

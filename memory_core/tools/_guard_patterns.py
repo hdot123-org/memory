@@ -6,7 +6,6 @@ regex patterns for command parsing in the tool-use guard.
 
 Part of REF-001 strangler fig scaffold phase.
 """
-from __future__ import annotations
 
 import re
 

@@ -8,7 +8,6 @@ Exit codes:
 - 0: allow
 - 2: block
 """
-from __future__ import annotations
 
 import json
 import os

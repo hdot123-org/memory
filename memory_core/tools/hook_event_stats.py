@@ -7,7 +7,6 @@ Usage:
     python hook_event_stats.py --date 2026-05-11 --json
     python hook_event_stats.py --today
 """
-from __future__ import annotations
 
 import argparse
 import json

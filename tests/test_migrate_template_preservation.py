@@ -8,7 +8,6 @@ Covers:
 - Idempotent second run (noop)
 - Missing/empty scope raises clear error
 """
-from __future__ import annotations
 
 import json
 from datetime import datetime, timezone

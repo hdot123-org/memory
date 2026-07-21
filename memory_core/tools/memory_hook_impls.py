@@ -8,7 +8,6 @@ This module provides default implementations for:
 - ArtifactSinkImpl / ErrorSinkImpl
 """
 
-from __future__ import annotations
 
 import json
 import os
@@ -388,7 +387,7 @@ class PolicyRegistryImpl(PolicyRegistry):
         self,
         policy_pack_path: Path | None = None,
         *,
-        config: GatewayBusinessPolicyConfig | None = None,
+        config: "GatewayBusinessPolicyConfig | None" = None,
         allowed_scopes: set[str] | None = None,
         scope_inherits: dict[str, str] | None = None,
         default_policies: dict[str, str] | None = None,

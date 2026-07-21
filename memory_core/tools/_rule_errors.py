@@ -7,7 +7,6 @@ consumer projects can precisely catch.
 
 Part of REF-001 strangler fig scaffold phase.
 """
-from __future__ import annotations
 
 from typing import Any
 

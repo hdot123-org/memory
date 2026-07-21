@@ -16,10 +16,7 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 
 
 def get_pyproject_version() -> str:
-    try:
-        import tomllib
-    except ModuleNotFoundError:
-        import tomli as tomllib  # type: ignore[no-redef]
+    import tomllib
     with open(PYPROJECT, "rb") as f:
         return tomllib.load(f)["project"]["version"]
 
