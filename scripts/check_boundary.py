@@ -72,7 +72,6 @@ EXEMPT_PATH_FRAGMENTS: tuple[str, ...] = (
     "docs/architecture/",  # project-level design docs (now tracked)
     "memory/log/",
     "memory/docs/runbooks/",
-    "memory/kb/infra/",
     "memory/kb/decisions/d-002-ci-pytest-strategy.md",
     "RESIDUE_INVENTORY.md",
     "RESIDUE_DISPOSITION_PLAN.md",

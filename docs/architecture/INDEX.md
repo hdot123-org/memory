@@ -1,6 +1,6 @@
-# Design 文档索引
+# Architecture 文档索引
 
-本目录收录 memory-core 模块的详细设计文档，涵盖总体架构、Gateway 门控、核心装配、接口契约、实现层、适配器层、策略治理、数据管道、Provider 回退机制、消费边界分析以及 API 契约。
+本目录收录 memory-core 模块的架构与设计文档，涵盖总体架构、Gateway 门控、核心装配、接口契约、实现层、适配器层、策略治理、数据管道、Provider 回退机制、消费边界分析、API 契约、集成方案及参考文档。
 
 ## 设计文档列表
 
@@ -17,6 +17,11 @@
 | [09-provider-fallback.md](09-provider-fallback.md) | Provider 与回退机制：external-core vs legacy 设计、降级策略 |
 | [10-consumer-boundary.md](10-consumer-boundary.md) | 消费边界与改进建议：消费面审计、消费者契约更新与建议 |
 | [API-CONTRACT.md](API-CONTRACT.md) | Memory API 契约（context-package-v1）：入口函数、出口结构、字段定义 |
+| [ci-notify-n8n-workflow.md](ci-notify-n8n-workflow.md) | CI 通知 n8n 工作流设计 |
+| [error-gateway-pipeline.md](error-gateway-pipeline.md) | Error Gateway 管道设计：PostHog → webhook → n8n → Droid 自动修复闭环 |
+| [linear-factory-integration.md](linear-factory-integration.md) | Linear + Factory 集成方案 |
+| [REF-000-architecture-audit-findings.md](REF-000-architecture-audit-findings.md) | 架构审计发现（参考文档） |
+| [REF-001-rule-engine-and-llm-isolation.md](REF-001-rule-engine-and-llm-isolation.md) | 规则引擎与 LLM 隔离（参考文档） |
 
 ## 法律地位声明
 本索引所列内容均为 **incoming-raw** 原始素材，受 `project-map/` 管辖。

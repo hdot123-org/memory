@@ -7,6 +7,7 @@
 | 文件 | 说明 |
 |------|------|
 | [prompt-truncation-engineering-solutions.md](prompt-truncation-engineering-solutions.md) | Task prompt 截断解决方案：系统性分析与应对策略 |
+| [projects/AEdu/INDEX.md](projects/AEdu/INDEX.md) | AEdu 研究索引（从 research/ 迁移） |
 
 ## 法律地位声明
 本索引所列内容均为 **incoming-raw** 原始素材，受 `project-map/` 管辖。

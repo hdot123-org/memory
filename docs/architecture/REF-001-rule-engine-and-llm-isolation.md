@@ -1,5 +1,5 @@
 ---
-type: "[DOC:DESIGN]"
+type: "[DOC:ARCHITECTURE]"
 title: "规则引擎统一与 LLM 隔离设计"
 shortname: REF-001
 status: 可评审

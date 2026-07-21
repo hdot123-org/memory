@@ -82,7 +82,7 @@ class TestDiscoverCanonicalFiles:
         docs_dir = tmp_path / "memory" / "docs"
         docs_dir.mkdir(parents=True)
         (docs_dir / "INDEX.md").write_text("# Index")
-        sub = docs_dir / "design"
+        sub = docs_dir / "notes"
         sub.mkdir()
         (sub / "arch.md").write_text("# Architecture")
 
@@ -91,7 +91,7 @@ class TestDiscoverCanonicalFiles:
         rel = {str(p.relative_to(tmp_path)) for p in result}
 
         assert "memory/docs/INDEX.md" in rel
-        assert "memory/docs/design/arch.md" in rel
+        assert "memory/docs/notes/arch.md" in rel
 
     def test_domain_flat(self, tmp_path: Path):
         """Case 4: Non-recursive domain only includes direct children."""

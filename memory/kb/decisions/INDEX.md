@@ -14,6 +14,7 @@ made during the project lifecycle.
 |----|-------|--------|------|
 | D-001 | Default adapter initialization | accepted | 2026-05-10 |
 | D-002 | gateway adapter 注入模式属于过度工程 | accepted（暂不清理） | 2026-07-18 |
+| D-002b | pytest 版本策略与 CI 缓存治理 | accepted | 2026-06-02 |
 | D-003 | 基于三核交叉核查的重构决策基线 | accepted | 2026-07-19 |
 | D-004 | v5 D+ 函数全量拆解完成（24 函数 CC>=21 → CC<=20，radon D+ 归零） | accepted | 2026-07-20 |
 | D-005 | mypy 183→0 类型安全加固完成（strict 模式全量通过） | accepted | 2026-07-21 |

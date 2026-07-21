@@ -24,7 +24,7 @@ These documents describe migration formats and historical migration processes. S
 
 ## Architecture / design docs
 
-Detailed design documents live under [`memory/docs/design/`](../memory/docs/design/):
+Detailed design documents live under [`docs/architecture/`](../../../docs/architecture/):
 
 - `01-architecture.md`
 - `02-gateway.md`

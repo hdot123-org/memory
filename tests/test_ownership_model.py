@@ -269,7 +269,7 @@ class TestClassifyOwnedPath:
 
     def test_domain_match_nested(self):
         """Should classify deeply nested paths under domains."""
-        result = classify_owned_path("memory/docs/design/01-architecture.md")
+        result = classify_owned_path("memory/docs/audit/test-file.md")
         assert isinstance(result, Owned)
         assert result.domain is not None
         assert result.domain.name == "memory_docs"

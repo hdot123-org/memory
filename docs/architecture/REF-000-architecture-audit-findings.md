@@ -1,5 +1,5 @@
 ---
-type: "[DOC:DESIGN]"
+type: "[DOC:ARCHITECTURE]"
 title: "memory-core 架构审计发现（157项）"
 shortname: REF-000
 status: 可评审
