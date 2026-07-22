@@ -143,6 +143,42 @@ class TestAdditionalContextAllowedWrites:
 
 
 # ===========================================================================
+# VAL-OUTPUT-004b: dict-valued allowed_writes (e.g. kb_policy) render as nested sub-items
+# ===========================================================================
+
+class TestAdditionalContextDictWrites:
+    """Dict-valued writes must render as nested sub-items, not dict repr."""
+
+    def test_dict_value_renders_as_subitems(self, gw):
+        """kb_policy dict renders each key as an indented sub-item."""
+        aw = {
+            "fact": "/project/memory/log/2026-07-22.md",
+            "kb_policy": {
+                "mode": "read-first-CRUD",
+                "overwrite_allowed": False,
+                "conflict_strategy": "preserve-and-escalate",
+            },
+        }
+        package = _sample_package(**{"allowed_writes": aw})
+        result = json.loads(gw._build_factory_hook_output(package, "session-start"))
+        ctx = result["hookSpecificOutput"]["additionalContext"]
+        # Dict repr must NOT leak into output
+        assert "{'mode':" not in ctx
+        # Each sub-key appears as its own line
+        assert "mode: read-first-CRUD" in ctx
+        assert "overwrite_allowed: False" in ctx
+        assert "conflict_strategy: preserve-and-escalate" in ctx
+
+    def test_string_value_still_renders_inline(self, gw):
+        """Non-dict (string) values still render inline as before."""
+        aw = {"decision": "/project/memory/kb/decisions"}
+        package = _sample_package(**{"allowed_writes": aw})
+        result = json.loads(gw._build_factory_hook_output(package, "session-start"))
+        ctx = result["hookSpecificOutput"]["additionalContext"]
+        assert "- decision: /project/memory/kb/decisions" in ctx
+
+
+# ===========================================================================
 # VAL-OUTPUT-005: additionalContext omits internal metadata
 # ===========================================================================
 

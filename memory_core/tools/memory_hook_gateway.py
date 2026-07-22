@@ -1231,8 +1231,13 @@ def _build_factory_hook_output(package: dict[str, Any], event: str) -> str:
     allowed_writes = package.get("allowed_writes", {})
     if allowed_writes:
         context_lines.append("### Allowed Writes")
-        for key, path in allowed_writes.items():
-            context_lines.append(f"- {key}: {path}")
+        for key, value in allowed_writes.items():
+            if isinstance(value, dict):
+                context_lines.append(f"- {key}:")
+                for sub_key, sub_val in value.items():
+                    context_lines.append(f"  - {sub_key}: {sub_val}")
+            else:
+                context_lines.append(f"- {key}: {value}")
         context_lines.append("")
 
     # Validation Warnings (only if non-empty)
