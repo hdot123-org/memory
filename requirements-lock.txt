@@ -21,7 +21,7 @@ mypy==2.3.0
 mypy-extensions==1.1.0
 packaging==26.2
 pathspec==1.1.1
-pip-tools==7.5.3
+pip-tools==7.6.0
 pluggy==1.6.0
 posthog==7.22.4
 pygments==2.20.0
