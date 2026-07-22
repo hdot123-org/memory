@@ -480,19 +480,19 @@ class TestPreToolUseGuard:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_guard_blocks_task_with_owned_path_references(self, tmp_path: Path) -> None:
-        """Test that Task with owned path references is blocked."""
+    def test_guard_allows_task_with_owned_path_references(self, tmp_path: Path) -> None:
+        """Task with owned path references is allowed (actual writes caught by Write/Edit guard)."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Task",
-            "prompt": "Move memory/kb/docs to a new location",
+            "prompt": "Analyze memory/kb/docs routing fallback behavior",
         }
 
         exit_code, result = self._run_guard(payload, tmp_path)
 
-        assert exit_code == 2
-        assert result["decision"] == "block"
+        assert exit_code == 0
+        assert result["decision"] == "allow"
 
     def test_guard_blocks_uncertain_path_with_owned_root_string(self, tmp_path: Path) -> None:
         """Test that uncertain path with owned root string is blocked."""
@@ -826,20 +826,20 @@ class TestTaskPayloadInjection:
         # Should not contain double injection
         assert injected.count("<!-- ownership-policy-injection -->") == 1
 
-    def test_task_blocks_with_policy_and_owned_reference(self, tmp_path: Path) -> None:
-        """Test that Task with owned path reference is blocked, but still has injected_prompt."""
+    def test_task_allows_with_policy_and_owned_reference(self, tmp_path: Path) -> None:
+        """Task with owned path reference is allowed, with injected_prompt containing policy."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {
             "tool_name": "Task",
-            "prompt": "Delete memory/kb/docs.md",
+            "prompt": "Analyze memory/kb/docs.md routing",
         }
 
         exit_code, result = self._run_guard(payload, tmp_path)
 
-        assert exit_code == 2
-        assert result["decision"] == "block"
-        # Still injects the policy block even when blocking
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+        # Injects the policy block
         assert "injected_prompt" in result
 
     def test_task_injection_includes_forbidden_instructions(self, tmp_path: Path) -> None:

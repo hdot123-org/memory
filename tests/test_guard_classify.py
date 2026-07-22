@@ -10,7 +10,6 @@ from memory_core.tools._guard_classify import (
     _extract_path_from_execute,
     _is_uncertain_path,
     _parse_multiedit_paths,
-    _parse_task_paths,
     _split_shell_args,
     classify_tool_use,
 )
@@ -339,35 +338,6 @@ class TestParseMultieditPaths:
         }
         result = _parse_multiedit_paths(payload)
         assert result == ["file1.txt"]
-
-
-class TestParseTaskPaths:
-    """Tests for _parse_task_paths helper."""
-
-    def test_extracts_memory_paths(self):
-        """_parse_task_paths extracts memory/ paths from prompt."""
-        payload = {"prompt": "Update memory/docs and memory/kb"}
-        result = _parse_task_paths(payload)
-        # Pattern is r"memory/[\w\-/]+" which matches word chars, hyphens, and slashes
-        # It does NOT match dots or extensions, so "memory/docs/INDEX.md" becomes "memory/docs/INDEX"
-        assert any("memory/docs" in p for p in result)
-        assert any("memory/kb" in p for p in result)
-
-    def test_extracts_agents_md(self):
-        """_parse_task_paths extracts AGENTS.md from prompt."""
-        payload = {"prompt": "Edit AGENTS.md to add new rule"}
-        result = _parse_task_paths(payload)
-        assert "AGENTS.md" in result
-
-    def test_returns_empty_for_no_prompt(self):
-        """_parse_task_paths returns empty for no prompt."""
-        result = _parse_task_paths({})
-        assert result == []
-
-    def test_returns_empty_for_non_string_prompt(self):
-        """_parse_task_paths returns empty for non-string prompt."""
-        result = _parse_task_paths({"prompt": 123})
-        assert result == []
 
 
 class TestClassifyToolUse:

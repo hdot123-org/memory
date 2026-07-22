@@ -307,24 +307,6 @@ def _parse_multiedit_paths(payload: dict[str, Any]) -> list[str]:
     return paths
 
 
-def _parse_task_paths(payload: dict[str, Any]) -> list[str]:
-    """Extract potential owned path references from Task payload."""
-    paths: list[str] = []
-    prompt = payload.get("prompt", "")
-    if not isinstance(prompt, str):
-        return paths
-
-    patterns = [
-        r"memory/[\w\-/]+",
-        r"AGENTS\.md",
-    ]
-    for pattern in patterns:
-        matches = re.findall(pattern, prompt)
-        paths.extend(matches)
-
-    return paths
-
-
 def _build_ownership_policy_block(project_root: Path) -> str:
     """Build ownership policy block for Task tool injection."""
     ownership = load_memory_ownership(project_root)
@@ -659,7 +641,13 @@ def _classify_execute(
 def _classify_task(
     payload: dict[str, Any], project_root: Path, ownership: Any
 ) -> RuleResult:
-    """Handle Task tool classification."""
+    """Handle Task tool classification.
+
+    Always allows the Task (with ownership policy injection).
+    Actual file-level protection is enforced by Write/Edit/MultiEdit handlers.
+    Blocking based on path strings in the prompt causes false positives for
+    analysis tasks that merely reference protected paths.
+    """
     fixed_root = _get_project_root_for_task(project_root)
 
     prompt = payload.get("prompt", "")
@@ -670,33 +658,10 @@ def _classify_task(
     else:
         injected_prompt = f"{policy_block}\n\n{prompt}" if isinstance(prompt, str) else prompt
 
-    paths = _parse_task_paths(payload)
-    if paths:
-        for path in paths:
-            result = classify_owned_path(path, load_memory_ownership(fixed_root), fixed_root)
-            if hasattr(result, "level"):
-                return RuleResult(
-                    matched=True,
-                    severity="error",
-                    message=f"Task references protected path '{path}': {result.reason}",
-                    detail={
-                        "decision": "block",
-                        "injected_prompt": injected_prompt,
-                    }
-                )
-        return RuleResult(
-            matched=False,
-            severity="info",
-            message="No owned paths in Task prompt",
-            detail={
-                "decision": "allow",
-                "injected_prompt": injected_prompt,
-            }
-        )
     return RuleResult(
         matched=False,
         severity="info",
-        message="Task without owned path references",
+        message="Task allowed with ownership policy injection",
         detail={
             "decision": "allow",
             "injected_prompt": injected_prompt,
