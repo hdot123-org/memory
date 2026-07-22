@@ -245,9 +245,10 @@ class TestExecuteDelegateNoop:
     """
 
     def test_factory_host_outputs_package_when_provided(self, gw, monkeypatch, tmp_path, capsys):
-        """Factory host outputs full package JSON when package is provided.
+        """Factory host outputs Factory JSON Output format when package is provided.
 
-        After fix-dispatch-output: Factory host outputs json.dumps(package).
+        After fix-factory-hook-output-format: Factory host outputs
+        _build_factory_hook_output(package, event).
         """
         args = argparse.Namespace(host="factory", event="session-start")
 
@@ -258,7 +259,13 @@ class TestExecuteDelegateNoop:
         assert exit_code == 0
         captured = capsys.readouterr()
         output = json.loads(captured.out.strip())
-        assert output == package
+        # Factory JSON Output format
+        assert "hookSpecificOutput" in output
+        assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+        assert "additionalContext" in output["hookSpecificOutput"]
+        assert output["suppressOutput"] is True
+        # additionalContext contains the allowed_reads path
+        assert "/a" in output["hookSpecificOutput"]["additionalContext"]
 
     def test_factory_host_returns_zero_no_package(self, gw, monkeypatch, tmp_path, capsys):
         """Factory host with no package outputs nothing and returns 0."""

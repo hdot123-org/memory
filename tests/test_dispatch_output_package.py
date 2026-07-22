@@ -42,10 +42,10 @@ class TestExecuteDelegateSignature:
 # ===========================================================================
 
 class TestFactoryHostOutputsPackage:
-    """Factory host (proc=None) outputs full package JSON, not {}."""
+    """Factory host (proc=None) outputs Factory JSON Output format."""
 
     def test_factory_host_outputs_full_package(self, gw, tmp_path, capsys):
-        """Factory host session-start outputs JSON with allowed_reads key."""
+        """Factory host session-start outputs Factory JSON Output with allowed_reads."""
         args = argparse.Namespace(host="factory", event="session-start")
         package = {
             "package_kind": "context-package",
@@ -62,8 +62,12 @@ class TestFactoryHostOutputsPackage:
         assert exit_code == 0
         captured = capsys.readouterr()
         output = json.loads(captured.out.strip())
-        assert output == package
-        assert "allowed_reads" in output
+        # Factory JSON Output format
+        assert "hookSpecificOutput" in output
+        assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        assert "Allowed Reads" in ctx
+        assert "/home/user/.memory/global-kb/operations" in ctx
 
     def test_factory_host_not_empty_json(self, gw, tmp_path, capsys):
         """Output is not {} for Factory host when package has content."""
@@ -82,10 +86,10 @@ class TestFactoryHostOutputsPackage:
         captured = capsys.readouterr()
         output = json.loads(captured.out.strip())
         assert output != {}
-        assert output["system_context"] == {"key": "value"}
+        assert output["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
 
     def test_factory_host_allowed_reads_nonempty(self, gw, tmp_path, capsys):
-        """Factory host session-start outputs non-empty allowed_reads list."""
+        """Factory host session-start outputs non-empty allowed_reads in additionalContext."""
         args = argparse.Namespace(host="factory", event="session-start")
         package = {
             "package_kind": "context-package",
@@ -103,8 +107,8 @@ class TestFactoryHostOutputsPackage:
 
         captured = capsys.readouterr()
         output = json.loads(captured.out.strip())
-        assert len(output["allowed_reads"]) == 3
-        assert any("infra" in r for r in output["allowed_reads"])
+        ctx = output["hookSpecificOutput"]["additionalContext"]
+        assert "global-kb/infra" in ctx
 
 
 # ===========================================================================

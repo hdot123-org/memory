@@ -1180,6 +1180,83 @@ def _build_degraded_package_with_error(
     }
 
 
+def _build_factory_hook_output(package: dict[str, Any], event: str) -> str:
+    """Build Factory JSON Output format from context-package.
+
+    Factory injects stdout for session-start and prompt-submit events.
+    This function extracts only the fields Agent needs (allowed_reads,
+    allowed_writes, validation_errors) and formats them as Markdown
+    in hookSpecificOutput.additionalContext.
+
+    Args:
+        package: Full context-package dict
+        event: Event name (session-start, prompt-submit, stop, etc.)
+
+    Returns:
+        JSON string for stdout
+
+    Output format:
+        {
+          "hookSpecificOutput": {
+            "hookEventName": "SessionStart" | "UserPromptSubmit",
+            "additionalContext": "Markdown formatted context"
+          },
+          "suppressOutput": true
+        }
+
+    Non-injection events output {}.
+    """
+    # Non-injection events: Factory does not inject stdout for these
+    if event not in ("session-start", "prompt-submit"):
+        return "{}"
+
+    # Map event to Factory hookEventName
+    hook_event_name = {
+        "session-start": "SessionStart",
+        "prompt-submit": "UserPromptSubmit",
+    }[event]
+
+    # Build additionalContext (Markdown format)
+    context_lines = ["## Memory Context", ""]
+
+    # Allowed Reads
+    allowed_reads = package.get("allowed_reads", [])
+    if allowed_reads:
+        context_lines.append("### Allowed Reads")
+        for path in allowed_reads:
+            context_lines.append(f"- {path}")
+        context_lines.append("")
+
+    # Allowed Writes
+    allowed_writes = package.get("allowed_writes", {})
+    if allowed_writes:
+        context_lines.append("### Allowed Writes")
+        for key, path in allowed_writes.items():
+            context_lines.append(f"- {key}: {path}")
+        context_lines.append("")
+
+    # Validation Warnings (only if non-empty)
+    validation_errors = package.get("validation_errors", [])
+    if validation_errors:
+        context_lines.append("### Validation Warnings")
+        for error in validation_errors:
+            context_lines.append(f"- {error}")
+        context_lines.append("")
+
+    additional_context = "\n".join(context_lines)
+
+    # Build Factory JSON Output
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": hook_event_name,
+            "additionalContext": additional_context,
+        },
+        "suppressOutput": True,
+    }
+
+    return json.dumps(output, ensure_ascii=False)
+
+
 def _execute_delegate(
     args: argparse.Namespace,
     raw_payload: str,
@@ -1239,9 +1316,9 @@ def _execute_delegate(
             sys.stderr.write(proc.stderr)
         return proc.returncode
     else:
-        # factory and others: skip delegate, output full context-package
+        # factory and others: skip delegate, output Factory JSON Output format
         if package is not None:
-            sys.stdout.write(json.dumps(package, ensure_ascii=False) + "\n")
+            sys.stdout.write(_build_factory_hook_output(package, args.event) + "\n")
         return 0
 
 
