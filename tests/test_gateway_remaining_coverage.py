@@ -244,42 +244,27 @@ class TestExecuteDelegateNoop:
     Lines 1310-1318: Factory host returns 0 with noop stdout
     """
 
-    def test_factory_host_returns_zero_with_noop_stdout(self, gw, monkeypatch, tmp_path, capsys):
-        """Factory host skips delegate and returns 0, writing noop stdout.
+    def test_factory_host_outputs_package_when_provided(self, gw, monkeypatch, tmp_path, capsys):
+        """Factory host outputs full package JSON when package is provided.
 
-        Executes lines 1310-1318: actual _execute_delegate call
+        After fix-dispatch-output: Factory host outputs json.dumps(package).
         """
         args = argparse.Namespace(host="factory", event="session-start")
 
-        # Mock _get_host_delegate to return a delegate with noop_response
-        mock_noop = MagicMock()
-        mock_noop.stdout = '{"decision": "allow"}\n'
+        package = {"package_kind": "context-package", "allowed_reads": ["/a"]}
 
-        mock_delegate = MagicMock()
-        mock_delegate.noop_response.return_value = mock_noop
-
-        monkeypatch.setattr(gw, "_get_host_delegate", lambda h: mock_delegate)
-
-        # Actually call _execute_delegate - executes lines 1310-1318
-        exit_code = gw._execute_delegate(args, "{}", {}, tmp_path)
+        exit_code = gw._execute_delegate(args, "{}", {}, tmp_path, package=package)
 
         assert exit_code == 0
         captured = capsys.readouterr()
-        assert '{"decision": "allow"}' in captured.out
+        output = json.loads(captured.out.strip())
+        assert output == package
 
-    def test_factory_host_returns_zero_no_noop_stdout(self, gw, monkeypatch, tmp_path, capsys):
-        """Factory host with no noop stdout still returns 0."""
+    def test_factory_host_returns_zero_no_package(self, gw, monkeypatch, tmp_path, capsys):
+        """Factory host with no package outputs nothing and returns 0."""
         args = argparse.Namespace(host="factory", event="session-start")
 
-        mock_noop = MagicMock()
-        mock_noop.stdout = ""
-
-        mock_delegate = MagicMock()
-        mock_delegate.noop_response.return_value = mock_noop
-
-        monkeypatch.setattr(gw, "_get_host_delegate", lambda h: mock_delegate)
-
-        # Actually call _execute_delegate
+        # package=None (default)
         exit_code = gw._execute_delegate(args, "{}", {}, tmp_path)
 
         assert exit_code == 0
@@ -2201,7 +2186,7 @@ class TestMainExecutionExtended:
         monkeypatch.setattr(gw, "append_error_log", lambda *args, **kwargs: None)
 
         # Mock _execute_delegate to return 0
-        monkeypatch.setattr(gw, "_execute_delegate", lambda *args: 0)
+        monkeypatch.setattr(gw, "_execute_delegate", lambda *args, **kwargs: 0)
 
         with patch("memory_core.tools.memory_hook_metrics.emit_metrics"):
             exit_code = gw.main()

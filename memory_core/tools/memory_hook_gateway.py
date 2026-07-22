@@ -1185,6 +1185,7 @@ def _execute_delegate(
     raw_payload: str,
     payload: dict[str, Any],
     cwd: Path,
+    package: dict[str, Any] | None = None,
 ) -> int:
     """Execute the host-specific delegate and return an exit code.
 
@@ -1238,10 +1239,9 @@ def _execute_delegate(
             sys.stderr.write(proc.stderr)
         return proc.returncode
     else:
-        # factory and others: skip delegate, return success
-        noop = _get_host_delegate(args.host).noop_response()
-        if noop.stdout:
-            sys.stdout.write(noop.stdout)
+        # factory and others: skip delegate, output full context-package
+        if package is not None:
+            sys.stdout.write(json.dumps(package, ensure_ascii=False) + "\n")
         return 0
 
 
@@ -2048,7 +2048,7 @@ def _dispatch_output(args: argparse.Namespace, package: dict[str, Any],
     if args.no_delegate:
         sys.stdout.write(json.dumps(package, ensure_ascii=False) + "\n")
         return exit_code
-    return _execute_delegate(args, raw_payload, payload, cwd)
+    return _execute_delegate(args, raw_payload, payload, cwd, package=package)
 
 
 def main() -> int:
