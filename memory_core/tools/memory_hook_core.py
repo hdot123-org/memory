@@ -207,9 +207,8 @@ def _compute_truth_basis_errors(
 
     # 全局知识库 fallback 读取路径 (v0.8.0+)
     if global_kb_enabled and global_kb_root is not None:
-        for domain in ("operations", "engineering", "collaboration"):
-            domain_dir = global_kb_root / domain
-            if domain_dir.exists():
+        for domain_dir in global_kb_root.iterdir():
+            if domain_dir.is_dir() and domain_dir.name != "pending":
                 reads.append(str(domain_dir))
 
     read_set = set(reads)
