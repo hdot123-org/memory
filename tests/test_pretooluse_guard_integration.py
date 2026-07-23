@@ -31,11 +31,6 @@ def _run_gateway(
     if cwd:
         env["FACTORY_PROJECT_DIR"] = str(cwd)
         env["MEMORY_HOOK_ORIGINAL_CWD"] = str(cwd)
-        # PWD must match the actual subprocess cwd to prevent leaking the
-        # parent process's PWD (which may be the memory-core source repo).
-        # subprocess.run(cwd=...) changes the actual cwd but does NOT update
-        # the PWD environment variable — it is inherited from os.environ.
-        env["PWD"] = str(cwd)
     if env_extra:
         env.update(env_extra)
 
@@ -47,11 +42,6 @@ def _run_gateway(
         if existing_pythonpath
         else str(_REPO_ROOT)
     )
-    # When running in a tmp_path, block the git-based source-repo fallback
-    # so the gateway subprocess does not resolve the parent memory-core repo
-    # and mistakenly enter readonly mode instead of running the guard.
-    if cwd:
-        full_env["GIT_CEILING_DIRECTORIES"] = str(cwd)
 
     result = subprocess.run(
         [sys.executable, "-m", "memory_core.tools.memory_hook_gateway", "--host", "factory", "--event", event, "--no-delegate"],
