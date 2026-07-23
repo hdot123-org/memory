@@ -139,15 +139,11 @@ CLI_COMMANDS = [
     "memory-promote",
 ]
 
-# CLIs that do meaningful work with no args.
-# For these CLIs the no-args test passes as long as the CLI does not crash
-# (exit code >= 0).  Audit tools like memory-audit-daily intentionally return
-# exit 1 when critical violations are found — that is a signal, not a crash.
+# CLIs that do meaningful work with no args (exit 0 is expected)
 CLI_NO_ARGS_OK = {
     "memory-consistency-check",  # Runs all consistency checks on the repo
     "memory-sync-versions",      # Scans all known projects for version sync
     "memory-promote",            # Lists pending candidates
-    "memory-audit-daily",        # Audit tool; exit 1 = critical violations found (design behavior)
 }
 
 
@@ -175,18 +171,12 @@ def layer1_smoke(qa: QAResult) -> None:
         # No-args test
         # Most CLIs should fail (exit != 0) with usage info when called with no args.
         # But some CLIs do meaningful work with no args (e.g. consistency-check runs checks).
-        # For whitelisted CLIs, accept any non-crash exit code (>= 0) since audit tools
-        # may intentionally return exit 1 when violations are found.
         start = time.monotonic()
-        # Audit tools may take longer to complete their scans
-        timeout = 60 if cmd_name in CLI_NO_ARGS_OK else 15
-        code, stdout, stderr = run_cmd([cmd_name], timeout=timeout)
+        code, stdout, stderr = run_cmd([cmd_name], timeout=15)
         ms = (time.monotonic() - start) * 1000
         if cmd_name in CLI_NO_ARGS_OK:
-            # Whitelisted CLIs: accept any exit code >= 0 (not a crash)
-            ok = code >= 0
+            ok = code == 0
         else:
-            # Other CLIs: expect exit code != 0 (usage error)
             ok = code != 0
         qa.add(TestResult(f"{cmd_name} (no args)", 1, ok, error="" if ok else "unexpected exit code", duration_ms=ms))
         status = color("PASS", GREEN) if ok else color("FAIL", RED)
