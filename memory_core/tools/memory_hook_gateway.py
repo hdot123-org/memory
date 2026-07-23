@@ -1984,29 +1984,30 @@ def _handle_pretooluse_guard(
     if args.event != "pre-tool-use":
         return None
 
-    guard_script = Path(__file__).parent / "pretooluse_guard.py"
-    if guard_script.exists():
-        try:
-            guard_env = {**os.environ, "MEMORY_HOOK_ORIGINAL_CWD": str(cwd)}
-            proc = subprocess.run(
-                [sys.executable, str(guard_script)],
-                input=raw_payload,
-                text=True,
-                capture_output=True,
-                timeout=5,
-                env=guard_env,
-            )
-            if proc.stdout:
-                sys.stdout.write(proc.stdout)
-            if proc.stderr:
-                sys.stderr.write(proc.stderr)
-            status = "ok" if proc.returncode == 0 else "error"
-            _emit_pretooluse_metrics(args.host, args.event, status, start_time)
-            return proc.returncode
-        except subprocess.TimeoutExpired:
-            append_error_log("pretooluse-guard", "guard timed out after 5s", {"cwd": str(cwd)})
-        except Exception as exc:
-            append_error_log("pretooluse-guard", "guard execution failed", {"error": str(exc)})
+    # Use -m module mode so absolute imports work (REF-001: guard uses
+    # 'from memory_core.tools._guard_classify import ...' which requires
+    # __package__ to be set; script mode sets __package__=None).
+    try:
+        guard_env = {**os.environ, "MEMORY_HOOK_ORIGINAL_CWD": str(cwd)}
+        proc = subprocess.run(
+            [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
+            input=raw_payload,
+            text=True,
+            capture_output=True,
+            timeout=5,
+            env=guard_env,
+        )
+        if proc.stdout:
+            sys.stdout.write(proc.stdout)
+        if proc.stderr:
+            sys.stderr.write(proc.stderr)
+        status = "ok" if proc.returncode == 0 else "error"
+        _emit_pretooluse_metrics(args.host, args.event, status, start_time)
+        return proc.returncode
+    except subprocess.TimeoutExpired:
+        append_error_log("pretooluse-guard", "guard timed out after 5s", {"cwd": str(cwd)})
+    except Exception as exc:
+        append_error_log("pretooluse-guard", "guard execution failed", {"error": str(exc)})
 
     # Fallback: allow if guard unavailable or failed
     print(json.dumps({"decision": "allow", "reason": "guard unavailable, allowing by default"}))
