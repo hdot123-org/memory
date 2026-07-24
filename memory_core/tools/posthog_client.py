@@ -105,7 +105,7 @@ class PostHogAnalytics:
         host = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip()
 
         try:
-            self._client = posthog.Posthog(
+            self._client = posthog.Posthog(  # type: ignore[no-untyped-call]
                 project_api_key=api_key,
                 host=host,
                 on_error=lambda e: logger.debug(f"PostHog error: {e}"),
