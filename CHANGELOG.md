@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.9.1] - 2026-07-24
+
+### Fixed
+- **SessionEnd hook SIGALRM boot-timeout 保护**: 修复 SessionEnd hook 在系统高负载时 import 超时被 Factory SIGINT 强杀的问题。添加 8 秒 SIGALRM boot-timeout 保护，让脚本在 Factory 10 秒 SIGINT 强杀前自行干净退出（exit 0）
+
 ## [0.9.0] - 2026-07-14
 
 ### Added

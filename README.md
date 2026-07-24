@@ -2,7 +2,7 @@
 
 memory-core provides a reusable `memory/` protocol, templates, schemas, and CLI tools for project-scoped memory management. It is an open-source library for initializing, validating, migrating, and auditing memory layouts; it does not store business project state in this repository.
 
-## Architecture (v0.9.0)
+## Architecture (v0.9.1)
 
 memory-core uses a **three-layer architecture**:
 
@@ -31,7 +31,7 @@ Routing follows a **project-first, global-fallback** policy: knowledge lookups h
 
 The project-level configuration lives in `memory/system/` (not `.memory/`). The hidden `.memory/` directory was removed in v0.5.0.
 
-## Telemetry Architecture (v0.9.0)
+## Telemetry Architecture (v0.9.1)
 
 memory-core uses a **local-first telemetry** design to minimize hook overhead while ensuring reliable data delivery:
 
@@ -60,20 +60,20 @@ hook event (PreToolUse / SessionEnd / gateway)
 Install from GitHub (non-editable, production use):
 
 ```bash
-pip install git+https://github.com/hdot123/memory.git@v0.9.0
+pip install git+https://github.com/hdot123/memory.git@v0.9.1
 ```
 
 Upgrade to a new version:
 
 ```bash
-pip install --upgrade git+https://github.com/hdot123/memory.git@v0.9.0
+pip install --upgrade git+https://github.com/hdot123/memory.git@v0.9.1
 ```
 
 Install from release wheel:
 
 ```bash
-gh release download v0.9.0 --repo hdot123/memory --pattern "*.whl"
-pip install memory_core-0.9.0-py3-none-any.whl
+gh release download v0.9.1 --repo hdot123/memory --pattern "*.whl"
+pip install memory_core-0.9.1-py3-none-any.whl
 ```
 
 For local development only:
@@ -236,6 +236,6 @@ python3 scripts/check_boundary.py
 
 ## Version and license
 
-- Current documented release: v0.9.0
+- Current documented release: v0.9.1
 - Python: >= 3.9
 - License: MIT. See [LICENSE](LICENSE).

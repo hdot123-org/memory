@@ -35,7 +35,7 @@ def test_ci_mode_detects_version_mismatch_in_constants():
     try:
         # Break version consistency
         broken_content = original_content.replace(
-            'CURRENT_MEMORY_VERSION = "0.9.0"',
+            'CURRENT_MEMORY_VERSION = "0.9.1"',
             'CURRENT_MEMORY_VERSION = "0.8.0"'
         )
         constants_path.write_text(broken_content)
@@ -59,7 +59,7 @@ def test_ci_mode_detects_version_mismatch_in_readme():
     try:
         # Break version consistency
         broken_content = original_content.replace(
-            "- Current documented release: v0.9.0",
+            "- Current documented release: v0.9.1",
             "- Current documented release: v0.8.0"
         )
         readme_path.write_text(broken_content)

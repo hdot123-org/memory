@@ -14,10 +14,26 @@ Usage:
         python session_end_logger.py --session-dir ... --session-id ... --project-root ...
 """
 
-import argparse
-import json
 import signal
 import sys
+
+# Factory hook runner 在 10 秒后发 SIGINT 强杀进程。
+# 如果模块级 import 耗时较长（系统重启后高负载），SIGINT 会在 import 期间触发，
+# 导致 KeyboardInterrupt + 退出码 1。
+# 提前设置 SIGALRM（8 秒），让脚本在 Factory 超时前自行干净退出（exit 0）。
+_BOOT_TIMEOUT = 8
+
+
+def _boot_timeout_handler(_signum: int, _frame: object) -> None:
+    sys.exit(0)
+
+
+signal.signal(signal.SIGALRM, _boot_timeout_handler)
+signal.alarm(_BOOT_TIMEOUT)
+
+# 以下 import 在 SIGALRM 保护下执行
+import argparse
+import json
 from collections import Counter, deque
 from datetime import datetime
 from pathlib import Path
