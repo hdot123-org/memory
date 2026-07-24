@@ -144,6 +144,7 @@ CLI_NO_ARGS_OK = {
     "memory-consistency-check",  # Runs all consistency checks on the repo
     "memory-sync-versions",      # Scans all known projects for version sync
     "memory-promote",            # Lists pending candidates
+    "memory-audit-daily",        # Reports daily memory audit; empty audit passes with exit 0
 }
 
 
