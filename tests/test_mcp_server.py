@@ -44,10 +44,29 @@ def _invoke(name: str, arguments: dict[str, Any]) -> Any:
 # lifecycle events via the gateway. The gateway checks the
 # MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE env var before writing.
 @pytest.fixture(autouse=True)
-def _prevent_lifecycle_writes(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure no lifecycle writes occur during tests."""
-    # Remove the env var to prevent lifecycle recording
-    monkeypatch.delenv("MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE", raising=False)
+def _prevent_lifecycle_writes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Ensure no lifecycle writes occur during tests by redirecting to tmp_path."""
+    # Redirect lifecycle_root to tmp_path
+    fake_lifecycle_root = tmp_path / "lifecycle"
+    monkeypatch.setattr(
+        "memory_core.tools.mcp_server.record_project_lifecycle",
+        lambda **kwargs: {"project_id": "test-project", "status": "active"},
+        raising=False,
+    )
+    # Also mock at the project_lifecycle module level
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr(
+        "memory_core.tools.project_lifecycle.record_project_lifecycle",
+        MagicMock(return_value={"project_id": "test-project", "status": "active"}),
+        raising=False,
+    )
+    # And in memory_hook_gateway which also calls it
+    monkeypatch.setattr(
+        "memory_core.tools.memory_hook_gateway.record_project_lifecycle",
+        MagicMock(return_value={"project_id": "test-project", "status": "active"}),
+        raising=False,
+    )
 
 
 # ---------------------------------------------------------------------------
