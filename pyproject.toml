@@ -33,6 +33,7 @@ Repository = "https://github.com/hdot123/memory"
 "Bug Tracker" = "https://github.com/hdot123/memory/issues"
 
 [project.optional-dependencies]
+mcp = ["mcp>=1.0,<2.0"]
 dev = [
     "pytest>=8.0,<9.0",
     "pytest-cov>=5.0",
@@ -62,6 +63,7 @@ memory-integrity-resign = "memory_core.tools.memory_integrity_resign:main"
 memory-sync-versions = "memory_core.tools.version_sync:main"
 memory-audit-daily = "memory_core.tools.daily_kb_audit:main"
 memory-lifecycle-rebuild = "memory_core.tools.project_lifecycle:rebuild_main"
+"memory-mcp-server" = "memory_core.tools.mcp_server:main_sync"
 
 [tool.setuptools.packages.find]
 include = ["memory_core*", "workspace*"]
@@ -143,6 +145,10 @@ strict = true
 
 [[tool.mypy.overrides]]
 module = "memory_core.tools.global_kb_init"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools.mcp_server"
 strict = true
 
 [tool.deptry]
