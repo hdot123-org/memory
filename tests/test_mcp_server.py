@@ -5,29 +5,54 @@ These tests exercise the tool implementations directly through ``call_tool``
 transport. Each tool returns a ``list[TextContent]`` whose first element's
 ``text`` is a JSON-stringified payload, so a small helper parses the payload
 for assertions.
+
+All write tests use pytest ``tmp_path`` fixture for isolation. No test writes
+to SOURCE_REPO_CWD, HOME, or ~/.memory-core directly.
 """
+
+from __future__ import annotations
 
 import asyncio
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
+from typing import Any
+from unittest.mock import patch
 
 import pytest
 
 from memory_core.tools import mcp_server
 from memory_core.tools.mcp_server import call_tool, list_tools
 
-# The memory-core source repository itself — used as a realistic project root
-# that is guaranteed to exist and contain memory/kb and memory/docs trees.
+# The memory-core source repository itself — used as a realistic read-only
+# project root that is guaranteed to exist and contain memory/kb and
+# memory/docs trees.  NEVER used as a write target.
 SOURCE_REPO_CWD = str(Path(__file__).resolve().parent.parent)
 
 
-def _invoke(name: str, arguments: dict) -> dict:
+def _invoke(name: str, arguments: dict[str, Any]) -> Any:
     """Call ``call_tool`` synchronously and parse the JSON payload."""
     result = asyncio.run(call_tool(name, arguments))
     assert result, "call_tool returned an empty list"
     return json.loads(result[0].text)
 
+
+# Prevent any test from writing to the real lifecycle registry.
+# load_context internally calls build_context_package_simple which records
+# lifecycle events via the gateway. The gateway checks the
+# MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE env var before writing.
+@pytest.fixture(autouse=True)
+def _prevent_lifecycle_writes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure no lifecycle writes occur during tests."""
+    # Remove the env var to prevent lifecycle recording
+    monkeypatch.delenv("MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE", raising=False)
+
+
+# ---------------------------------------------------------------------------
+# Read-only tool tests (no filesystem writes)
+# ---------------------------------------------------------------------------
 
 class TestLoadContext:
     def test_load_context(self) -> None:
@@ -38,7 +63,9 @@ class TestLoadContext:
 
 class TestSearchMemory:
     def test_search_memory(self) -> None:
-        payload = _invoke("search_memory", {"query": "hook", "cwd": SOURCE_REPO_CWD})
+        payload = _invoke(
+            "search_memory", {"query": "hook", "cwd": SOURCE_REPO_CWD}
+        )
         assert isinstance(payload, list)
         assert len(payload) >= 1
         first = payload[0]
@@ -56,7 +83,7 @@ class TestResolveDocPath:
         assert "path" in payload
         assert "memory/kb/lessons" in payload["path"]
 
-    def test_resolve_doc_path_invalid(self) -> None:
+    def test_resolve_doc_path_invalid_category(self) -> None:
         payload = _invoke(
             "resolve_doc_path",
             {"category": "nonexistent", "filename": "x.md", "cwd": SOURCE_REPO_CWD},
@@ -64,6 +91,23 @@ class TestResolveDocPath:
         assert payload["status"] == "error"
         assert "Unknown category" in payload["message"]
 
+    def test_resolve_doc_path_traversal_filename(self) -> None:
+        """resolve_doc_path must reject path-traversal filenames."""
+        payload = _invoke(
+            "resolve_doc_path",
+            {
+                "category": "note",
+                "filename": "../../../etc/passwd",
+                "cwd": SOURCE_REPO_CWD,
+            },
+        )
+        assert payload["status"] == "error"
+        assert "invalid" in payload["message"].lower() or "traversal" in payload["message"].lower()
+
+
+# ---------------------------------------------------------------------------
+# save_memory guard tests (no actual writes)
+# ---------------------------------------------------------------------------
 
 class TestSaveMemoryGuards:
     def test_save_memory_home_guard(self) -> None:
@@ -105,7 +149,10 @@ class TestSaveMemoryGuards:
             },
         )
         assert payload["status"] == "error"
-        assert "traversal" in payload["message"].lower() or "invalid" in payload["message"].lower()
+        assert (
+            "traversal" in payload["message"].lower()
+            or "invalid" in payload["message"].lower()
+        )
 
     def test_save_memory_absolute_path(self) -> None:
         payload = _invoke(
@@ -120,6 +167,35 @@ class TestSaveMemoryGuards:
         assert payload["status"] == "error"
 
 
+# ---------------------------------------------------------------------------
+# save_memory positive write test (tmp_path isolated)
+# ---------------------------------------------------------------------------
+
+class TestSaveMemorySuccess:
+    def test_save_memory_writes_file(self, tmp_path: Path) -> None:
+        """save_memory should create the file and report bytes_written."""
+        content = "# Test\nHello from MCP"
+        payload = _invoke(
+            "save_memory",
+            {
+                "category": "note",
+                "filename": "test-write.md",
+                "content": content,
+                "cwd": str(tmp_path),
+            },
+        )
+        # Successful save_memory returns {"path": ..., "bytes_written": ...}
+        assert "path" in payload
+        assert payload.get("bytes_written", 0) > 0
+        written_path = tmp_path / "memory" / "docs" / "notes" / "test-write.md"
+        assert written_path.exists()
+        assert written_path.read_text(encoding="utf-8") == content
+
+
+# ---------------------------------------------------------------------------
+# validate_write (read-only)
+# ---------------------------------------------------------------------------
+
 class TestValidateWrite:
     def test_validate_write(self) -> None:
         payload = _invoke(
@@ -133,26 +209,65 @@ class TestValidateWrite:
         assert "decision" in payload
 
 
+# ---------------------------------------------------------------------------
+# record_event tests (lifecycle writes mocked)
+# ---------------------------------------------------------------------------
+
 class TestRecordEvent:
-    def test_record_event_success(self) -> None:
-        payload = _invoke(
-            "record_event",
-            {"event": "session-start", "cwd": SOURCE_REPO_CWD},
-        )
+    def test_record_event_success(self, tmp_path: Path) -> None:
+        """record_event must NOT write to real ~/.memory-core."""
+        fake_record = {
+            "project_id": "test-project",
+            "project_name": "test",
+            "status": "active",
+        }
+        with patch(
+            "memory_core.tools.mcp_server.record_project_lifecycle",
+            return_value=fake_record,
+        ) as mock_fn:
+            payload = _invoke(
+                "record_event",
+                {"event": "session-start", "cwd": str(tmp_path)},
+            )
         assert payload["status"] == "recorded"
         assert payload["event"] == "session-start"
+        mock_fn.assert_called_once()
 
     def test_record_event_missing_cwd(self) -> None:
         payload = _invoke("record_event", {"event": "stop"})
         assert payload["status"] == "error"
 
 
-class TestGetHealth:
-    def test_get_health_no_report(self) -> None:
-        # Use /tmp as cwd — no health report there
-        payload = _invoke("get_health", {"cwd": "/tmp"})
-        assert payload["status"] in ("no_health_report", "error", "degraded", "ok")
+# ---------------------------------------------------------------------------
+# get_health tests
+# ---------------------------------------------------------------------------
 
+class TestGetHealth:
+    def test_get_health_no_report(self, tmp_path: Path) -> None:
+        payload = _invoke("get_health", {"cwd": str(tmp_path)})
+        assert payload["status"] == "no_health_report"
+
+    def test_get_health_positive(self, tmp_path: Path) -> None:
+        """Create a temp health-report.json and verify reading."""
+        health_dir = tmp_path / "memory" / "system"
+        health_dir.mkdir(parents=True)
+        report = {
+            "status": "ok",
+            "checks": {"hooks": "pass", "context": "pass"},
+            "score": 100,
+        }
+        (health_dir / "health-report.json").write_text(
+            json.dumps(report), encoding="utf-8"
+        )
+        payload = _invoke("get_health", {"cwd": str(tmp_path)})
+        assert payload["status"] == "ok"
+        assert payload["score"] == 100
+        assert "checks" in payload
+
+
+# ---------------------------------------------------------------------------
+# list_projects (read-only)
+# ---------------------------------------------------------------------------
 
 class TestListProjects:
     def test_list_projects(self) -> None:
@@ -160,17 +275,51 @@ class TestListProjects:
         assert isinstance(payload, list)
 
 
+# ---------------------------------------------------------------------------
+# get_daily_summary tests
+# ---------------------------------------------------------------------------
+
 class TestGetDailySummary:
-    def test_get_daily_summary_not_found(self) -> None:
+    def test_get_daily_summary_not_found(self, tmp_path: Path) -> None:
         payload = _invoke(
             "get_daily_summary",
-            {"date": "2020-01-01", "cwd": SOURCE_REPO_CWD},
+            {"date": "2020-01-01", "cwd": str(tmp_path)},
         )
         assert payload["found"] is False
 
+    def test_get_daily_summary_positive(self, tmp_path: Path) -> None:
+        """Create a temp session log and verify reading."""
+        log_dir = tmp_path / "memory" / "log"
+        log_dir.mkdir(parents=True)
+        log_content = "# 2025-06-15 Sessions\n\n- session 1\n- session 2\n"
+        (log_dir / "2025-06-15-sessions.md").write_text(
+            log_content, encoding="utf-8"
+        )
+        payload = _invoke(
+            "get_daily_summary",
+            {"date": "2025-06-15", "cwd": str(tmp_path)},
+        )
+        assert payload["found"] is True
+        assert payload["date"] == "2025-06-15"
+        assert "session 1" in payload["content"]
+
+    def test_get_daily_summary_invalid_date(self) -> None:
+        """Non-YYYY-MM-DD date must be rejected."""
+        payload = _invoke(
+            "get_daily_summary",
+            {"date": "../../etc/hostname", "cwd": "/tmp"},
+        )
+        assert payload["status"] == "error"
+        assert "invalid" in payload["message"].lower() or "date" in payload["message"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Tool filtering and unknown tool tests
+# ---------------------------------------------------------------------------
 
 class TestToolFiltering:
-    def test_tool_filtering(self) -> None:
+    def test_tool_filtering_list(self) -> None:
+        """list_tools respects _ALLOWED_TOOLS."""
         original = mcp_server._ALLOWED_TOOLS
         mcp_server._ALLOWED_TOOLS = {"search_memory"}
         try:
@@ -179,6 +328,50 @@ class TestToolFiltering:
             assert tools[0].name == "search_memory"
         finally:
             mcp_server._ALLOWED_TOOLS = original
+
+    def test_call_tool_filter_rejection(self) -> None:
+        """call_tool returns error when tool is excluded by _ALLOWED_TOOLS."""
+        original = mcp_server._ALLOWED_TOOLS
+        mcp_server._ALLOWED_TOOLS = {"search_memory"}
+        try:
+            payload = _invoke(
+                "load_context",
+                {"cwd": SOURCE_REPO_CWD},
+            )
+            assert payload["status"] == "error"
+            assert "not available" in payload["message"]
+        finally:
+            mcp_server._ALLOWED_TOOLS = original
+
+
+class TestUnknownTool:
+    def test_unknown_tool(self) -> None:
+        payload = _invoke("nonexistent_tool", {})
+        assert payload["status"] == "error"
+        assert "unknown" in payload["message"].lower() or "Unknown" in payload["message"]
+
+
+# ---------------------------------------------------------------------------
+# main_sync --tools CLI argument parsing
+# ---------------------------------------------------------------------------
+
+class TestMainSyncCLI:
+    def test_tools_no_value_fails(self) -> None:
+        """--tools with no following argument must exit non-zero."""
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "memory_core.tools.mcp_server",
+                "--tools",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            cwd=str(Path(__file__).resolve().parent.parent),
+        )
+        assert result.returncode != 0
+        assert "--tools" in result.stderr
 
 
 if __name__ == "__main__":
