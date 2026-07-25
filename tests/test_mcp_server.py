@@ -46,8 +46,7 @@ def _invoke(name: str, arguments: dict[str, Any]) -> Any:
 @pytest.fixture(autouse=True)
 def _prevent_lifecycle_writes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Ensure no lifecycle writes occur during tests by redirecting to tmp_path."""
-    # Redirect lifecycle_root to tmp_path
-    fake_lifecycle_root = tmp_path / "lifecycle"
+    # Mock record_project_lifecycle so no real lifecycle registry writes happen.
     monkeypatch.setattr(
         "memory_core.tools.mcp_server.record_project_lifecycle",
         lambda **kwargs: {"project_id": "test-project", "status": "active"},
