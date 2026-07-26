@@ -5,10 +5,14 @@ path is active or missing, but it never deletes memory artifacts.  This keeps
 Codex workspace churn separate from memory retention.
 """
 
+import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -205,3 +209,211 @@ def record_project_lifecycle(
     record["record_path"] = str(record_path)
     record["event_log"] = str(event_log)
     return record
+
+
+def _compute_path_index(lifecycle_root: Path) -> dict[str, Any]:
+    """Compute the path index from projects/*.json without writing.
+
+    Returns a dict with:
+        - total_files_scanned: number of projects/*.json files processed
+        - active_entries: number of records passing filters
+        - skipped_inactive: number of records with status != "active"
+        - skipped_missing: number of records with path_exists == False
+        - deduplicated: number of duplicate local_path entries removed
+        - paths: the computed paths dict
+    """
+    projects_dir = lifecycle_root / "projects"
+
+    total_files_scanned = 0
+    skipped_inactive = 0
+    skipped_missing = 0
+    deduplicated = 0
+
+    # Collect all active records, dedup by local_path
+    paths: dict[str, dict[str, Any]] = {}
+    # Track earliest first_observed_at per local_path across all records
+    first_observed_map: dict[str, str] = {}
+
+    if projects_dir.exists() and projects_dir.is_dir():
+        for project_file in sorted(projects_dir.glob("*.json")):
+            total_files_scanned += 1
+            try:
+                record = json.loads(project_file.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+
+            if not isinstance(record, dict):
+                continue
+
+            local_path = record.get("local_path")
+            if not isinstance(local_path, str) or not local_path:
+                continue
+
+            status = record.get("status")
+            if status != "active":
+                skipped_inactive += 1
+                continue
+
+            path_exists = record.get("path_exists")
+            if path_exists is False:
+                skipped_missing += 1
+                continue
+
+            observed_at = record.get("observed_at", "")
+            first_observed_at = record.get("first_observed_at", observed_at)
+
+            # Track earliest first_observed_at for this local_path
+            if local_path in first_observed_map:
+                if first_observed_at < first_observed_map[local_path]:
+                    first_observed_map[local_path] = first_observed_at
+            else:
+                first_observed_map[local_path] = first_observed_at
+
+            # Dedup: keep record with latest observed_at
+            if local_path in paths:
+                deduplicated += 1
+                existing_observed = paths[local_path].get("last_observed_at", "")
+                if observed_at > existing_observed:
+                    paths[local_path] = {
+                        "project_id": record.get("project_id"),
+                        "project_name": record.get("project_name"),
+                        "git_root": record.get("git_root"),
+                        "git_remote": record.get("git_remote"),
+                        "identity_source": record.get("identity_source"),
+                        "identity_value": record.get("identity_value"),
+                        "last_observed_at": observed_at,
+                    }
+            else:
+                paths[local_path] = {
+                    "project_id": record.get("project_id"),
+                    "project_name": record.get("project_name"),
+                    "git_root": record.get("git_root"),
+                    "git_remote": record.get("git_remote"),
+                    "identity_source": record.get("identity_source"),
+                    "identity_value": record.get("identity_value"),
+                    "last_observed_at": observed_at,
+                }
+
+    # Attach earliest first_observed_at to each entry
+    for local_path, entry in paths.items():
+        entry["first_observed_at"] = first_observed_map.get(local_path, entry.get("last_observed_at"))
+
+    active_entries = len(paths)
+
+    return {
+        "total_files_scanned": total_files_scanned,
+        "active_entries": active_entries,
+        "skipped_inactive": skipped_inactive,
+        "skipped_missing": skipped_missing,
+        "deduplicated": deduplicated,
+        "paths": paths,
+    }
+
+
+def rebuild_path_index(lifecycle_root: str | Path) -> dict[str, Any]:
+    """Rebuild path-index.json from projects/*.json files.
+
+    Traverses all per-project JSON files, filters inactive/missing records,
+    deduplicates by local_path (keeping latest observed_at), and atomically
+    writes path-index.json.
+
+    Returns a statistics dict with keys:
+        - total_files_scanned: number of projects/*.json files processed
+        - active_entries: number of records passing filters
+        - skipped_inactive: number of records with status != "active"
+        - skipped_missing: number of records with path_exists == False
+        - deduplicated: number of duplicate local_path entries removed
+        - paths: the rebuilt paths dict
+    """
+    lifecycle_root = Path(lifecycle_root)
+
+    # Compute the index
+    result = _compute_path_index(lifecycle_root)
+
+    # Build path-index.json structure
+    path_index = {
+        "schema_version": "project-lifecycle-path-index-v1",
+        "paths": result["paths"],
+    }
+
+    # Atomic write: temp file + os.replace
+    index_path = _path_index_path(lifecycle_root)
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Write to temp file in same directory, then atomic rename
+    fd, temp_path = tempfile.mkstemp(
+        dir=index_path.parent,
+        prefix=".path-index-",
+        suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(path_index, f, ensure_ascii=False, indent=2, sort_keys=True)
+            f.write("\n")
+        os.replace(temp_path, index_path)
+    except Exception:
+        # Clean up temp file on failure
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
+
+    return result
+
+
+def rebuild_main(argv: list[str] | None = None) -> None:
+    """CLI entry point for memory-lifecycle-rebuild."""
+    parser = argparse.ArgumentParser(
+        prog="memory-lifecycle-rebuild",
+        description="Rebuild path-index.json from projects/*.json files",
+    )
+    parser.add_argument(
+        "--lifecycle-root",
+        type=str,
+        default="~/.memory-core/project-lifecycle",
+        help="Path to lifecycle root (default: ~/.memory-core/project-lifecycle)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report what would be rebuilt without writing path-index.json",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output statistics as JSON",
+    )
+
+    args = parser.parse_args(argv)
+    lifecycle_root = Path(args.lifecycle_root).expanduser()
+
+    if args.dry_run:
+        # Dry run: compute but don't write
+        result = _compute_path_index(lifecycle_root)
+
+        if args.json_output:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print("dry-run: would rebuild path-index.json")
+            print(f"  total_files_scanned: {result['total_files_scanned']}")
+            print(f"  active_entries: {result['active_entries']}")
+            print(f"  skipped_inactive: {result['skipped_inactive']}")
+            print(f"  skipped_missing: {result['skipped_missing']}")
+            print(f"  deduplicated: {result['deduplicated']}")
+            print(f"  paths: {len(result['paths'])} entries")
+    else:
+        result = rebuild_path_index(lifecycle_root)
+        if args.json_output:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print("Rebuilt path-index.json:")
+            print(f"  total_files_scanned: {result['total_files_scanned']}")
+            print(f"  active_entries: {result['active_entries']}")
+            print(f"  skipped_inactive: {result['skipped_inactive']}")
+            print(f"  skipped_missing: {result['skipped_missing']}")
+            print(f"  deduplicated: {result['deduplicated']}")
+            print(f"  paths: {len(result['paths'])} entries")
+
+    sys.exit(0)
