@@ -4,6 +4,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 from memory_core.tools.factory_global_hooks import install_factory_hooks, merge_factory_settings
@@ -532,11 +533,6 @@ def test_wrapper_template_exports_project_cwd() -> None:
 # ---------------------------------------------------------------------------
 # Gateway MEMORY_HOOK_PROJECT_CWD env var usage (VAL-ROOT-004)
 # ---------------------------------------------------------------------------
-
-import importlib
-import subprocess
-import sys
-from pathlib import Path
 
 
 def test_gateway_uses_env_var_when_set(tmp_path: Path, monkeypatch) -> None:
