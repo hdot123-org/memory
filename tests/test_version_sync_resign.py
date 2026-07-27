@@ -27,11 +27,9 @@ from memory_core.tools.version_sync import (
     _try_resign_all,
     patch_adapter_toml_version,
     patch_memory_lock,
-    patch_ownership_memory_version,
     sync_all_known_projects,
     sync_single_project,
 )
-
 
 # ─────────────────────────────────────────────────────────────
 # VAL-SYNC-001: patch_memory_lock
