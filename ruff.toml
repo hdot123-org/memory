@@ -25,3 +25,4 @@ max-complexity = 20
 "memory_core/tools/migrate_project_memory.py" = ["C901"]
 "memory_core/tools/session_end_logger.py" = ["C901"]
 "memory_core/tools/daily_kb_audit.py" = ["C901"]
+"memory_core/tools/mcp_server.py" = ["C901"]

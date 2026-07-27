@@ -48,6 +48,7 @@ Detailed design documents live under [`docs/architecture/`](../../../docs/archit
 ## Specifications (extended)
 
 - [Multi-project scan](MULTI_PROJECT_SCAN_SPEC.md) — multi-project upgrade scan registry pointer spec (SPEC-012).
+- [Hook integration](HOOK_INTEGRATION_SPEC.md) — cross-IDE/platform hook configuration standards, event mapping, and verification methods.
 
 ## Engineering notes
 
