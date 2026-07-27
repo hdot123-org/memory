@@ -143,6 +143,7 @@ if [ -n "$ORIGINAL_CWD" ] && [ -d "$ORIGINAL_CWD" ]; then
         PROJECT_CWD="$GIT_ROOT"
     fi
 fi
+export MEMORY_HOOK_PROJECT_CWD="$PROJECT_CWD"
 
 HOME_ROOT=$(cd "${HOME:-$MEMORY_HOOK_GLOBAL_STATE_ROOT/..}" 2>/dev/null && pwd -P || true)
 PROJECT_CWD_RESOLVED=$(cd "$PROJECT_CWD" 2>/dev/null && pwd -P || true)
@@ -165,14 +166,6 @@ if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ] && [ ! -d "$PROJECT_CWD/memory
         >/dev/null 2>>"$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system/errors.log"; then
         echo '{"error": "project_init_failed", "message": "Failed to initialize project memory"}' >&2
         exit 1
-    fi
-fi
-
-# Version sync: patch ownership.toml if project version is stale
-if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD/memory/system" ] && [ -f "$PROJECT_CWD/memory/system/ownership.toml" ]; then
-    _OWNERSHIP_VER=$(grep -o '^memory_version[[:space:]]*=[[:space:]]*"[^"]*"' "$PROJECT_CWD/memory/system/ownership.toml" 2>/dev/null | grep -o '"[^"]*"$$' | tr -d '"' || true)
-    if [ -n "$_OWNERSHIP_VER" ] && [ "$_OWNERSHIP_VER" != "$memory_version" ]; then
-        sed -i.bak 's/^memory_version[[:space:]]*=.*/memory_version = "$memory_version"/' "$PROJECT_CWD/memory/system/ownership.toml" 2>/dev/null && rm -f "$PROJECT_CWD/memory/system/ownership.toml.bak" 2>/dev/null || true
     fi
 fi
 
