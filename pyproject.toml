@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "posthog>=3.0,<8.0",
+    "packaging>=24.0",
 ]
 license = "MIT"
 authors = [
@@ -60,6 +61,7 @@ memory-verify-consumer = "memory_core.tools.verify_consumer:main"
 memory-integrity-resign = "memory_core.tools.memory_integrity_resign:main"
 memory-sync-versions = "memory_core.tools.version_sync:main"
 memory-audit-daily = "memory_core.tools.daily_kb_audit:main"
+memory-lifecycle-rebuild = "memory_core.tools.project_lifecycle:rebuild_main"
 
 [tool.setuptools.packages.find]
 include = ["memory_core*", "workspace*"]
