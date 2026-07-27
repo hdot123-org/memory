@@ -167,6 +167,41 @@ memory-promote <file> --to operations|engineering|collaboration
 memory-promote --version
 ```
 
+### Global batch operations
+
+These commands operate across every project registered in the lifecycle path-index (`path-index.json`). They are used for lifecycle maintenance and, where noted, take no `--target`.
+
+#### `memory-sync-versions`
+
+Synchronizes the memory-core version pinned in project scope files. In global mode (no `--target`) it iterates every project in `path-index.json` and patches three files: `ownership.toml`, `memory.lock`, and `adapter.toml`, when the upgrade gate allows. With `--target` it applies the same logic to a single project.
+
+The upgrade gate allows patch and minor bumps with an unchanged `schema_version` and patches all three files. It blocks major bumps or schema-changing upgrades; in that case it still patches `ownership.toml` for backward compatibility and points the user at `memory-migrate`.
+
+```bash
+memory-sync-versions                              # Global: sync all projects
+memory-sync-versions --target /path/to/project    # Single project
+memory-sync-versions --dry-run --json
+```
+
+#### `memory-lifecycle-rebuild`
+
+Rebuilds `path-index.json` from the `projects/*.json` lifecycle records. Use it when the index is stale, missing entries, or has diverged from the on-disk `projects/` directory. It filters out inactive and missing records, deduplicates by `local_path` (keeping the record with the latest `observed_at`), and writes the result atomically.
+
+```bash
+memory-lifecycle-rebuild                          # Rebuild index in place
+memory-lifecycle-rebuild --dry-run --json
+memory-lifecycle-rebuild --lifecycle-root /custom/lifecycle/root
+```
+
+#### `memory-audit-daily`
+
+Global daily integrity audit. Iterates every registered project in `path-index.json` and checks manifest integrity, unsigned files, and version consistency. It has no `--target` option; it is always global.
+
+```bash
+memory-audit-daily --json
+memory-audit-daily --dry-run
+```
+
 ## Generated project layout
 
 A target project initialized by `memory-init` receives a project-local memory layout, and `memory-init` also ensures the shared global knowledge base exists:

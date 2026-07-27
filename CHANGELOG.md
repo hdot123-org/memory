@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `memory-lifecycle-rebuild` CLI: rebuilds `path-index.json` from `projects/*.json` lifecycle records. Filters inactive and missing records, deduplicates by `local_path` (keeping the latest `observed_at`), atomic write. Supports `--dry-run`, `--json`, `--lifecycle-root`.
+- `memory-sync-versions` three-file sync: now patches `ownership.toml` + `memory.lock` + `adapter.toml` when the upgrade gate allows (patch or minor with unchanged `schema_version`). The gate blocks major or schema-changing upgrades but still patches `ownership.toml` and points the user to `memory-migrate`.
+- `memory-audit-daily`: global-only daily audit (no `--target`) iterating all registered projects from `path-index.json`.
+
+### Fixed
+- `_try_resign_ownership` silent exception swallowing: expanded to `_try_resign_all`, which now reports errors instead of `except: pass`.
+- `path-index.json` divergence from the `projects/` directory: no rebuild mechanism existed before; `memory-lifecycle-rebuild` closes this gap.
+
 ## [0.9.1] - 2026-07-24
 
 ### Fixed
