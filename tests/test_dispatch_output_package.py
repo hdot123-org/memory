@@ -44,7 +44,7 @@ class TestExecuteDelegateSignature:
 class TestFactoryHostOutputsPackage:
     """Factory host (proc=None) outputs Factory JSON Output format."""
 
-    def test_factory_host_outputs_full_package(self, gw, tmp_path, capsys):
+    def test_factory_host_outputs_full_package(self, gw, tmp_path, capsys, monkeypatch):
         """Factory host session-start outputs Factory JSON Output with allowed_reads."""
         args = argparse.Namespace(host="factory", event="session-start")
         package = {
@@ -55,7 +55,7 @@ class TestFactoryHostOutputsPackage:
 
         # Mock _get_host_delegate - not used for factory (proc=None path)
         mock_delegate = MagicMock()
-        gw._get_host_delegate = lambda h: mock_delegate  # type: ignore[attr-defined]
+        monkeypatch.setattr(gw, "_get_host_delegate", lambda h: mock_delegate)  # type: ignore[attr-defined]
 
         exit_code = gw._execute_delegate(args, "{}", {}, tmp_path, package=package)
 
@@ -69,7 +69,7 @@ class TestFactoryHostOutputsPackage:
         assert "Allowed Reads" in ctx
         assert "/home/user/.memory/global-kb/operations" in ctx
 
-    def test_factory_host_not_empty_json(self, gw, tmp_path, capsys):
+    def test_factory_host_not_empty_json(self, gw, tmp_path, capsys, monkeypatch):
         """Output is not {} for Factory host when package has content."""
         args = argparse.Namespace(host="factory", event="prompt-submit")
         package = {
@@ -79,7 +79,7 @@ class TestFactoryHostOutputsPackage:
         }
 
         mock_delegate = MagicMock()
-        gw._get_host_delegate = lambda h: mock_delegate  # type: ignore[attr-defined]
+        monkeypatch.setattr(gw, "_get_host_delegate", lambda h: mock_delegate)  # type: ignore[attr-defined]
 
         gw._execute_delegate(args, "{}", {}, tmp_path, package=package)
 
@@ -88,7 +88,7 @@ class TestFactoryHostOutputsPackage:
         assert output != {}
         assert output["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
 
-    def test_factory_host_allowed_reads_nonempty(self, gw, tmp_path, capsys):
+    def test_factory_host_allowed_reads_nonempty(self, gw, tmp_path, capsys, monkeypatch):
         """Factory host session-start outputs non-empty allowed_reads in additionalContext."""
         args = argparse.Namespace(host="factory", event="session-start")
         package = {
@@ -101,7 +101,7 @@ class TestFactoryHostOutputsPackage:
         }
 
         mock_delegate = MagicMock()
-        gw._get_host_delegate = lambda h: mock_delegate  # type: ignore[attr-defined]
+        monkeypatch.setattr(gw, "_get_host_delegate", lambda h: mock_delegate)  # type: ignore[attr-defined]
 
         gw._execute_delegate(args, "{}", {}, tmp_path, package=package)
 
