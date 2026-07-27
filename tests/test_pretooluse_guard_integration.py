@@ -31,6 +31,12 @@ def _run_gateway(
     if cwd:
         env["FACTORY_PROJECT_DIR"] = str(cwd)
         env["MEMORY_HOOK_ORIGINAL_CWD"] = str(cwd)
+        # Override PWD to match subprocess cwd so _environment_cwd() returns
+        # tmp_path instead of the real repo path leaked from the parent shell.
+        # Without this, _discover_cwd() resolves to the real memory-core repo,
+        # causing _handle_source_repo_check() to short-circuit with a readonly
+        # package (no "decision" field) before the guard logic runs.
+        env["PWD"] = str(cwd)
     if env_extra:
         env.update(env_extra)
 
