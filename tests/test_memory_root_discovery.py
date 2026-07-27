@@ -82,6 +82,81 @@ class TestDiscoverProjectRoot:
         child.mkdir()
         assert discover_project_root(child) == _FALLBACK_REPO_ROOT
 
+    def test_git_with_memory_boundary_stops_walk(self, tmp_path: Path) -> None:
+        """VAL-ROOT-001: .git/ + memory/system/ is a hard boundary.
+
+        Simulates a subproject (e.g. OpenMontage) inside a parent tool/ dir:
+            tool/
+            ├── .git/
+            ├── memory/system/
+            └── OpenMontage/
+                ├── .git/
+                └── memory/system/
+
+        Starting from inside OpenMontage, discover_project_root should
+        return OpenMontage, NOT tool/.
+        """
+        parent = tmp_path / "tool"
+        parent.mkdir()
+        (parent / ".git").mkdir()
+        (parent / "memory" / "system").mkdir(parents=True)
+
+        child = parent / "OpenMontage"
+        child.mkdir()
+        (child / ".git").mkdir()
+        (child / "memory" / "system").mkdir(parents=True)
+
+        start = child / "src"
+        start.mkdir()
+
+        result = discover_project_root(start)
+        assert result.resolve() == child.resolve()
+
+    def test_parent_git_memory_not_preferred(self, tmp_path: Path) -> None:
+        """Both parent and child have .git/ + memory/system/ → child wins.
+
+        The nearest .git/ + memory/system/ boundary stops the walk first.
+        """
+        parent = tmp_path / "monorepo"
+        parent.mkdir()
+        (parent / ".git").mkdir()
+        (parent / "memory" / "system").mkdir(parents=True)
+
+        sub_a = parent / "project_a"
+        sub_a.mkdir()
+        (sub_a / ".git").mkdir()
+        (sub_a / "memory" / "system").mkdir(parents=True)
+
+        start = sub_a / "deep" / "nested"
+        start.mkdir(parents=True)
+
+        result = discover_project_root(start)
+        assert result.resolve() == sub_a.resolve()
+
+    def test_monorepo_fallback_unchanged(self, tmp_path: Path) -> None:
+        """VAL-ROOT-007: Subdirectory has memory/system/ but NO .git/ → walk continues.
+
+        Monorepo workspace dirs (no .git/) should still resolve to outermost
+        ancestor with memory/system/, preserving existing behavior.
+        """
+        outer = tmp_path / "monorepo"
+        outer.mkdir()
+        (outer / ".git").mkdir()
+        (outer / "memory" / "system").mkdir(parents=True)
+
+        # Workspace without .git/ (monorepo sub-workspace)
+        workspace = outer / "workspace"
+        workspace.mkdir()
+        (workspace / "memory" / "system").mkdir(parents=True)
+
+        start = workspace / "src"
+        start.mkdir()
+
+        result = discover_project_root(start)
+        # No .git/ at workspace level → walk continues to outer (which has .git/)
+        # outer has both .git/ and memory/system/ → stops at outer
+        assert result.resolve() == outer.resolve()
+
 
 # ---------------------------------------------------------------------------
 # discover_workspace_root

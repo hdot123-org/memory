@@ -115,7 +115,10 @@ except ImportError:
     from memory_core.tools.memory_root_discovery import discover_roots
     from memory_core.tools.project_lifecycle import record_project_lifecycle
     is_denied_project_root = _denylist.is_denied_project_root
-REPO_ROOT, WORKSPACE_ROOT = discover_roots(Path.cwd())
+# Use MEMORY_HOOK_PROJECT_CWD env var when available (set by wrapper), fallback to Path.cwd()
+_project_cwd_env = os.environ.get("MEMORY_HOOK_PROJECT_CWD", "")
+_cwd_seed = Path(_project_cwd_env) if _project_cwd_env else Path.cwd()
+REPO_ROOT, WORKSPACE_ROOT = discover_roots(_cwd_seed)
 _FORCE_HOOK = bool(os.environ.get("MEMORY_HOOK_FORCE") or os.environ.get("WORKBOT_FORCE_HOOK"))
 
 # Batch size for telemetry sync

@@ -489,3 +489,113 @@ def test_pretooluse_existing_user_hooks_preserved(monkeypatch, tmp_path: Path) -
         if "memory-hook" in str(h.get("command", ""))
     ]
     assert len(memory_hooks) >= 1
+
+
+# ---------------------------------------------------------------------------
+# render_wrapper template content tests (VAL-CROSS-001, VAL-ROOT-003)
+# ---------------------------------------------------------------------------
+
+from memory_core.tools.factory_global_hooks import render_wrapper
+
+
+def test_wrapper_template_has_no_version_sync_sed_block() -> None:
+    """VAL-CROSS-001: render_wrapper output must NOT contain the sed block.
+
+    The version sync sed block that patched ownership.toml memory_version
+    has been removed from the template (P0-1 source fix).
+    """
+    rendered = render_wrapper(
+        storage_root=Path("~/.memory-core"),
+        gateway_command="memory-hook-gateway",
+        init_command="memory-init",
+    )
+    # The sed block should not be present
+    assert "Version sync" not in rendered
+    assert "sed -i" not in rendered
+    assert "_OWNERSHIP_VER" not in rendered
+
+
+def test_wrapper_template_exports_project_cwd() -> None:
+    """VAL-ROOT-003: render_wrapper output must export MEMORY_HOOK_PROJECT_CWD.
+
+    After GIT_ROOT resolution, the wrapper must export PROJECT_CWD so
+    the gateway can use it instead of Path.cwd().
+    """
+    rendered = render_wrapper(
+        storage_root=Path("~/.memory-core"),
+        gateway_command="memory-hook-gateway",
+        init_command="memory-init",
+    )
+    assert 'export MEMORY_HOOK_PROJECT_CWD="$PROJECT_CWD"' in rendered
+
+
+# ---------------------------------------------------------------------------
+# Gateway MEMORY_HOOK_PROJECT_CWD env var usage (VAL-ROOT-004)
+# ---------------------------------------------------------------------------
+
+import importlib
+import subprocess
+import sys
+from pathlib import Path
+
+
+def test_gateway_uses_env_var_when_set(tmp_path: Path, monkeypatch) -> None:
+    """VAL-ROOT-004: Gateway uses MEMORY_HOOK_PROJECT_CWD when set.
+
+    When MEMORY_HOOK_PROJECT_CWD is set, discover_roots should use that
+    path as the seed instead of Path.cwd(). We test via subprocess to avoid
+    module-level global state pollution.
+    """
+    # Setup a project directory with memory/system/
+    project_dir = tmp_path / "myproject"
+    project_dir.mkdir()
+    (project_dir / "memory" / "system").mkdir(parents=True)
+    (project_dir / ".git").mkdir()
+
+    # Run a subprocess that sets the env var and imports the gateway module
+    script = f"""\
+import os
+os.environ["MEMORY_HOOK_PROJECT_CWD"] = "{project_dir}"
+from memory_core.tools.memory_hook_gateway import REPO_ROOT
+print(REPO_ROOT)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    actual_root = Path(result.stdout.strip())
+    assert actual_root.resolve() == project_dir.resolve()
+
+
+def test_gateway_fallback_to_cwd_when_no_env(tmp_path: Path, monkeypatch) -> None:
+    """VAL-ROOT-004: Gateway falls back to Path.cwd() when env var not set.
+
+    When MEMORY_HOOK_PROJECT_CWD is not set, discover_roots should use
+    Path.cwd() as the seed (backward compatible behavior). We test via
+    subprocess to avoid module-level global state pollution.
+    """
+    # Setup a project directory with memory/system/ in cwd
+    project_dir = tmp_path / "cwdproject"
+    project_dir.mkdir()
+    (project_dir / "memory" / "system").mkdir(parents=True)
+    (project_dir / ".git").mkdir()
+
+    # Run a subprocess that does NOT set the env var and uses cwd
+    script = """\
+import os
+os.environ.pop("MEMORY_HOOK_PROJECT_CWD", None)
+from memory_core.tools.memory_hook_gateway import REPO_ROOT
+print(REPO_ROOT)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        cwd=str(project_dir),
+    )
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    actual_root = Path(result.stdout.strip())
+    assert actual_root.resolve() == project_dir.resolve()

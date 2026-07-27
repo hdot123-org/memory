@@ -33,6 +33,12 @@ def discover_project_root(start_path: Path) -> Path:
     ``memory/system/``.  Continues walking after finding the first match
     until a ``.git/`` directory without ``memory/system/`` is encountered
     (monorepo sentinel) or the upward walk exceeds ``_MAX_UPWARD_DEPTH``.
+
+    **Hard boundary**: When a directory contains BOTH ``.git/`` AND ``memory/system/``,
+    it is treated as a self-contained project and the walk stops immediately,
+    returning that directory. This prevents subprojects (e.g., OpenMontage inside tool/)
+    from being hijacked by parent projects.
+
     Falls back to the repository root derived from this module's location
     when nothing is found.
     """
@@ -42,6 +48,11 @@ def discover_project_root(start_path: Path) -> Path:
     while True:
         if (current / _MEMORY_DIR).is_dir():
             outermost = current
+            # NEW: Hard boundary - if this directory also has .git/, it's a
+            # self-contained project. Stop walking up to prevent subproject hijack.
+            if (current / _GIT_DIR).exists():
+                _logger.debug("memory_root_discovery hard boundary at depth=%d path=%s", depth, current)
+                break
         if _has_git_not_memory(current):
             _logger.debug("memory_root_discovery stopped at depth=%d reason=%s", depth, "git_sentinel")
             break
