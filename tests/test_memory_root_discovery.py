@@ -179,6 +179,34 @@ class TestDiscoverWorkspaceRoot:
         (tmp_path / "memory_core").touch()
         assert discover_workspace_root(tmp_path) == tmp_path
 
+    def test_workspace_dir_without_initialized_memory(self, tmp_path: Path) -> None:
+        """workspace/ dir without ownership.toml is NOT a memory workspace.
+
+        Simulates workbot: has a workspace/ subdir for Python code, not a
+        memory workspace. discover_workspace_root should return project_root.
+        """
+        (tmp_path / "workspace").mkdir()
+        (tmp_path / "workspace" / "__init__.py").touch()
+        assert discover_workspace_root(tmp_path) == tmp_path
+
+    def test_workspace_dir_with_initialized_memory(self, tmp_path: Path) -> None:
+        """workspace/ dir WITH ownership.toml IS a memory workspace."""
+        ws = tmp_path / "workspace"
+        (ws / "memory" / "system").mkdir(parents=True)
+        (ws / "memory" / "system" / "ownership.toml").touch()
+        assert discover_workspace_root(tmp_path) == ws
+
+    def test_workspace_dir_with_errors_only_not_workspace(self, tmp_path: Path) -> None:
+        """workspace/ with only errors.log (no ownership.toml) is NOT workspace.
+
+        The hook auto-generates error logs in workspace/memory/system/ but
+        without ownership.toml it should not be treated as a real workspace.
+        """
+        ws = tmp_path / "workspace"
+        (ws / "memory" / "system").mkdir(parents=True)
+        (ws / "memory" / "system" / "errors.log").touch()
+        assert discover_workspace_root(tmp_path) == tmp_path
+
 
 # ---------------------------------------------------------------------------
 # discover_roots
