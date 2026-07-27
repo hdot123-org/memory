@@ -200,7 +200,7 @@ class TestTryResignAll:
 
         changed = [
             "memory/system/ownership.toml",
-            "memory.lock",
+            "memory/system/memory.lock",
             "memory/system/adapter.toml",
         ]
         _try_resign_all(tmp_path, changed)
@@ -254,7 +254,7 @@ def _make_project(tmp_path: Path, memory_version: str = "0.9.0") -> Path:
         encoding="utf-8",
     )
 
-    lock = project / "memory.lock"
+    lock = project / "memory" / "system" / "memory.lock"
     lock.write_text(
         f'memory_version = "{memory_version}"\n'
         f'schema_version = "context-package-v1"\n'
@@ -296,7 +296,7 @@ class TestSyncSingleProject:
         assert 'memory_version = "0.9.1"' in own_content
 
         # Check memory.lock patched
-        lock_content = (project / "memory.lock").read_text()
+        lock_content = (project / "memory" / "system" / "memory.lock").read_text()
         assert re.search(r'^memory_version\s*=\s*"0\.9\.1"', lock_content, re.MULTILINE)
 
         # Check adapter.toml patched
@@ -331,7 +331,7 @@ def _make_lifecycle_root(tmp_path: Path, projects: list[str]) -> Path:
             encoding="utf-8",
         )
         # memory.lock
-        (pdir / "memory.lock").write_text(
+        (pdir / "memory" / "system" / "memory.lock").write_text(
             'memory_version = "0.9.0"\nschema_version = "context-package-v1"\n'
             'adapter_version = "builtin"\nlock_reason = "memory-init"\n'
             'locked_at = "2026-01-01T00:00:00+00:00"\n',
@@ -375,7 +375,7 @@ class TestSyncAllKnownProjects:
             pdir = tmp_path / pname
             own = (pdir / "memory" / "system" / "ownership.toml").read_text()
             assert 'memory_version = "0.9.1"' in own
-            lock = (pdir / "memory.lock").read_text()
+            lock = (pdir / "memory" / "system" / "memory.lock").read_text()
             assert re.search(r'^memory_version\s*=\s*"0\.9\.1"', lock, re.MULTILINE)
             adapter = (pdir / "memory" / "system" / "adapter.toml").read_text()
             assert re.search(r'^version\s*=\s*"0\.9\.1"', adapter, re.MULTILINE)
@@ -407,7 +407,7 @@ class TestBlockedScenarios:
         assert 'memory_version = "1.0.0"' in own
 
         # memory.lock NOT patched
-        lock = (project / "memory.lock").read_text()
+        lock = (project / "memory" / "system" / "memory.lock").read_text()
         assert re.search(r'^memory_version\s*=\s*"0\.10\.2"', lock, re.MULTILINE)
 
         # adapter.toml NOT patched
@@ -438,7 +438,7 @@ class TestBlockedScenarios:
             encoding="utf-8",
         )
 
-        lock = project / "memory.lock"
+        lock = project / "memory" / "system" / "memory.lock"
         lock.write_text(
             'memory_version = "0.9.0"\n'
             'schema_version = "context-package-v2"\n'  # DIFFERENT from canonical
@@ -461,7 +461,7 @@ class TestBlockedScenarios:
         assert 'memory_version = "0.9.1"' in own
 
         # memory.lock NOT patched (schema change blocked)
-        lock_after = (project / "memory.lock").read_text()
+        lock_after = (project / "memory" / "system" / "memory.lock").read_text()
         assert re.search(r'^memory_version\s*=\s*"0\.9\.0"', lock_after, re.MULTILINE)
         # Gate was blocked
         assert result.get("gate_blocked") is True
