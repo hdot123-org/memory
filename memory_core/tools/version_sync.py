@@ -349,7 +349,7 @@ def sync_single_project(
         return result
 
     # Check lock and adapter files
-    lock_path = project_path / "memory.lock"
+    lock_path = project_path / "memory" / "system" / "memory.lock"
     adapter_path = project_path / "memory" / "system" / "adapter.toml"
 
     # Read schema_version from lock to detect schema change
@@ -390,7 +390,7 @@ def sync_single_project(
 
     if lock_path.exists():
         if patch_memory_lock(lock_path, target_version):
-            changed_paths.append("memory.lock")
+            changed_paths.append("memory/system/memory.lock")
 
     if adapter_path.exists():
         if patch_adapter_toml_version(adapter_path, target_version):
