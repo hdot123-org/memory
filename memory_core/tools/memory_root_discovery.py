@@ -86,9 +86,12 @@ def discover_workspace_root(project_root: Path) -> Path:
         # memory-core source repo — unified structure, workspace = repo root
         return project_root
 
-    # Consumer project: check for workspace/ or memory_core/ subdir
+    # Consumer project: check for workspace/ or memory_core/ subdir.
+    # For workspace/: only treat as workspace root if it has an initialized
+    # memory system (ownership.toml present), distinguishing a real memory
+    # workspace from an unrelated package directory named "workspace".
     ws = project_root / "workspace"
-    if ws.is_dir():
+    if (ws / _MEMORY_DIR / "ownership.toml").is_file():
         return ws
     ws = project_root / "memory_core"
     if ws.is_dir():
