@@ -100,22 +100,30 @@ def _load_context(cwd: str) -> dict[str, Any]:
 
 
 def _search_memory(query: str, cwd: str) -> list[dict[str, Any]]:
-    """Search ``memory/kb/`` and ``memory/docs/`` Markdown files for ``query``.
+    """Search project KB/docs and global KB Markdown files for ``query``.
 
-    Performs a case-insensitive substring search across all ``.md`` files in the
-    knowledge base and docs directories rooted at ``cwd``. Returns up to
-    :data:`_MAX_SEARCH_RESULTS` matches, each with file_path, relative_path,
-    line_number, matched_line, and context_type.
+    Performs a case-insensitive substring search across all ``.md`` files in:
+    1. Project layer: ``<cwd>/memory/kb/`` and ``<cwd>/memory/docs/``
+    2. Global layer: ``~/.memory/global-kb/`` (read-only cross-project fallback)
+
+    Returns up to :data:`_MAX_SEARCH_RESULTS` matches, each with file_path,
+    relative_path, line_number, matched_line, context_type, and source
+    (``"project"`` or ``"global"``).
     """
+    from memory_core.tools.global_kb_init import get_global_kb_root
+
     results: list[dict[str, Any]] = []
     query_lower = query.lower()
 
+    global_kb_root = str(get_global_kb_root())
+
     search_roots = [
-        (os.path.join(cwd, "memory", "kb"), "kb"),
-        (os.path.join(cwd, "memory", "docs"), "docs"),
+        (os.path.join(cwd, "memory", "kb"), "kb", cwd, "project"),
+        (os.path.join(cwd, "memory", "docs"), "docs", cwd, "project"),
+        (global_kb_root, "global", global_kb_root, "global"),
     ]
 
-    for root_dir, context_type in search_roots:
+    for root_dir, context_type, base_for_rel, source in search_roots:
         if not os.path.isdir(root_dir):
             # Skip missing directories gracefully.
             continue
@@ -124,7 +132,7 @@ def _search_memory(query: str, cwd: str) -> list[dict[str, Any]]:
                 if not filename.endswith(".md"):
                     continue
                 file_path = os.path.join(dirpath, filename)
-                relative_path = os.path.relpath(file_path, cwd)
+                relative_path = os.path.relpath(file_path, base_for_rel)
                 try:
                     with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
                         for line_number, line in enumerate(fh, start=1):
@@ -136,6 +144,7 @@ def _search_memory(query: str, cwd: str) -> list[dict[str, Any]]:
                                         "line_number": line_number,
                                         "matched_line": line.rstrip("\n"),
                                         "context_type": context_type,
+                                        "source": source,
                                     }
                                 )
                                 if len(results) >= _MAX_SEARCH_RESULTS:
@@ -447,9 +456,11 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="search_memory",
             description=(
-                "Search across the project knowledge base (memory/kb/) and docs "
-                "(memory/docs/) Markdown files by keyword. Returns matching lines "
-                "with file paths and line numbers. Case-insensitive."
+                "Search across the project knowledge base (memory/kb/), docs "
+                "(memory/docs/), and global knowledge base (~/.memory/global-kb/) "
+                "Markdown files by keyword. Returns matching lines with file paths "
+                "and line numbers. Case-insensitive. Results include a 'source' "
+                "field ('project' or 'global') to distinguish origin."
             ),
             inputSchema={
                 "type": "object",

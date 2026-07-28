@@ -90,6 +90,42 @@ class TestSearchMemory:
         assert "file_path" in first
         assert "line_number" in first
         assert "matched_line" in first
+        assert "source" in first
+
+    def test_search_memory_returns_project_source(self) -> None:
+        """Project-layer results must have source='project'."""
+        payload = _invoke(
+            "search_memory", {"query": "hook", "cwd": SOURCE_REPO_CWD}
+        )
+        project_hits = [r for r in payload if r.get("source") == "project"]
+        assert len(project_hits) >= 1
+
+    def test_search_memory_includes_global_kb(self, tmp_path: Path) -> None:
+        """Global KB results must appear with source='global'.
+
+        Creates a fake global-kb tree under a patched home directory so the
+        test does not depend on the real ~/.memory/global-kb content.
+        """
+        fake_home = tmp_path / "fakehome"
+        fake_global = fake_home / ".memory" / "global-kb" / "operations"
+        fake_global.mkdir(parents=True)
+        marker = "BaiduOCRUniqueMarkerKeyword"
+        (fake_global / "baidu-ocr.md").write_text(
+            f"# Baidu OCR\n\n{marker} line here\n", encoding="utf-8"
+        )
+
+        with patch.object(Path, "home", return_value=fake_home):
+            payload = _invoke(
+                "search_memory",
+                {"query": marker, "cwd": str(tmp_path)},
+            )
+
+        assert isinstance(payload, list)
+        assert len(payload) >= 1
+        global_hits = [r for r in payload if r.get("source") == "global"]
+        assert len(global_hits) >= 1
+        assert marker in global_hits[0]["matched_line"]
+        assert global_hits[0]["context_type"] == "global"
 
 
 class TestResolveDocPath:
