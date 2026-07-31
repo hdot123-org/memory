@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """M2 Interface Definitions for memory-hook-gateway.
 
 This module defines the core interfaces for the M2 refactoring:

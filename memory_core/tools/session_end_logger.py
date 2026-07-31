@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Session end logger — append session summary to daily log.
 
 在 Factory 的 SessionEnd hook 中被调用，轻量追加当前 session 摘要。

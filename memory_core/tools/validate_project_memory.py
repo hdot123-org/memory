@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Validate a project's memory/system/ directory structure and integrity.
 
 Usage:

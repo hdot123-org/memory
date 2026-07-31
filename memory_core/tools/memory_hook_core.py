@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """M4 core helpers extracted from memory_hook_gateway.
 
 This module keeps policy-driven registration gate evaluation in one place

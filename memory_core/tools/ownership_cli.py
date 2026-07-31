@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """M6: Ownership CLI — Manage project ownership configuration.
 
 Subcommands:
