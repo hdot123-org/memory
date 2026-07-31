@@ -1,9 +1,12 @@
 
-> Status: accepted
+> Status: superseded
+> Superseded by: D-008-python-version-rollback-312.md (2026-07-31)
 > Date: 2026-07-22
 > Source: Python 版本锁死 + 死代码清理 mission（2 PRs 合并，21/21 断言通过）
 > Tags: [decision, python-version, ci, py314, compatibility-cleanup]
 > Related: [D-005-mypy-type-safety-completion]
+
+> **Rollback Note (2026-07-31):** Python 3.14 稳定性问题（argparse 边缘 bug），Factory 平台标准化到 3.12，requires-python 锁定到 ==3.12.*。详见 D-008。
 
 ## 决策
 
