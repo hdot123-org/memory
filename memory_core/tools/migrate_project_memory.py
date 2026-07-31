@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Migrate a project's .memory/ directory between schema versions.
 
 Usage:

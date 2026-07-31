@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """One-click rollback drill for memory-hook core provider.
 
 Usage:

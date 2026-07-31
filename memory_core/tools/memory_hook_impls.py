@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """M2 Default Implementations for memory-hook-gateway interfaces.
 
 This module provides default implementations for:

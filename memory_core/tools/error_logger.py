@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """C 层错误日志模块 — JSON Lines 格式全局错误记录。
 
 被 A 层 (session_end_logger.py) 和 B 层 (daily_summary_generator.py) 调用。

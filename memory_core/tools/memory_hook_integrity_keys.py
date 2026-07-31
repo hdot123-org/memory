@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """L2 Integrity Layer — Key Management.
 
 Generates, stores, and loads HMAC-SHA256 keys for project memory integrity.

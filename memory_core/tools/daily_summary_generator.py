@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """每日日志数据报告生成器 — 读取 A 层 session 记录 + B 层 transcript，生成结构化数据报告。
 
 Usage:

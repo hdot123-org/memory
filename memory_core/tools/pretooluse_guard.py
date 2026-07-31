@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """PreToolUse guard for memory-core ownership protection.
 
 Reads stdin JSON payload, classifies the target path, and outputs
