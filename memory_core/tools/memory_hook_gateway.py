@@ -1207,10 +1207,19 @@ def _build_factory_hook_output(package: dict[str, Any], event: str) -> str:
           "suppressOutput": true
         }
 
-    Non-injection events output {}.
+    Non-injection events:
+    - When package status is 'ok' (no errors): return {"suppressOutput": true}
+      so Factory does not display empty '{}' to user.
+    - When package status is not 'ok' (degraded/errors): return '{}' so error
+      info remains visible to user.
     """
     # Non-injection events: Factory does not inject stdout for these
     if event not in ("session-start", "prompt-submit"):
+        # Suppress output for successful non-injection events to avoid
+        # empty '{}' spam in user output. When errors occurred (degraded
+        # status), do NOT suppress so user can see error details.
+        if package.get("status") == "ok":
+            return '{"suppressOutput": true}'
         return "{}"
 
     # Map event to Factory hookEventName

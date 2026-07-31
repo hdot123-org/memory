@@ -239,16 +239,27 @@ class TestSuppressOutput:
 # VAL-OUTPUT-007: non-injection events output empty JSON
 # ===========================================================================
 
-class TestNonInjectionEventsEmpty:
-    """Non-injection events must output {}."""
+class TestNonInjectionEventsSuppressed:
+    """Non-injection events suppress output when successful (VAL-HOOK-001)
+    and remain visible (``{}``) when degraded (VAL-HOOK-002)."""
 
     @pytest.mark.parametrize("event", [
         "stop", "notification", "pre-compact", "session-end",
         "post-tool-use", "subagent-stop",
     ])
-    def test_non_injection_events_output_empty(self, gw, event):
-        """Non-injection events output {}."""
+    def test_non_injection_events_ok_suppressed(self, gw, event):
+        """Successful (status ok) non-injection events output {"suppressOutput": true}."""
         package = _sample_package(event=event)
+        result = json.loads(gw._build_factory_hook_output(package, event))
+        assert result == {"suppressOutput": True}
+
+    @pytest.mark.parametrize("event", [
+        "stop", "notification", "pre-compact", "session-end",
+        "post-tool-use", "subagent-stop",
+    ])
+    def test_non_injection_events_degraded_not_suppressed(self, gw, event):
+        """Degraded (status != ok) non-injection events output {} so errors stay visible."""
+        package = _sample_package(event=event, status="degraded")
         result = json.loads(gw._build_factory_hook_output(package, event))
         assert result == {}
 
@@ -355,12 +366,28 @@ class TestExecuteDelegateIntegration:
         assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
         assert output.get("suppressOutput") is True
 
-    def test_factory_stop_outputs_empty(self, gw, tmp_path, capsys, monkeypatch):
-        """Factory host stop event outputs {}."""
+    def test_factory_stop_ok_suppressed(self, gw, tmp_path, capsys, monkeypatch):
+        """Factory host stop event (status ok) outputs {"suppressOutput": true}."""
         import argparse
         from unittest.mock import MagicMock
         args = argparse.Namespace(host="factory", event="stop")
         package = _sample_package(event="stop")
+
+        mock_delegate = MagicMock()
+        monkeypatch.setattr(gw, "_get_host_delegate", lambda h: mock_delegate)
+
+        gw._execute_delegate(args, "{}", {}, tmp_path, package=package)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output == {"suppressOutput": True}
+
+    def test_factory_stop_degraded_outputs_empty(self, gw, tmp_path, capsys, monkeypatch):
+        """Factory host stop event (degraded) outputs {} so errors stay visible."""
+        import argparse
+        from unittest.mock import MagicMock
+        args = argparse.Namespace(host="factory", event="stop")
+        package = _sample_package(event="stop", status="degraded")
 
         mock_delegate = MagicMock()
         monkeypatch.setattr(gw, "_get_host_delegate", lambda h: mock_delegate)
