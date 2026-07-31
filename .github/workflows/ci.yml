@@ -184,12 +184,12 @@ jobs:
       - name: Verify webhook secrets
         run: |
           if [ -z "$WEBHOOK_URL" ]; then
-            echo "::error::N8N_CI_WEBHOOK_URL secret is not configured"
-            exit 1
+            echo "::warning::N8N_CI_WEBHOOK_URL secret is not configured, skipping notification"
+            exit 0
           fi
           if [ -z "$N8N_CI_TOKEN" ]; then
-            echo "::error::N8N_CI_TOKEN secret is not configured"
-            exit 1
+            echo "::warning::N8N_CI_TOKEN secret is not configured, skipping notification"
+            exit 0
           fi
         env:
           WEBHOOK_URL: ${{ secrets.N8N_CI_WEBHOOK_URL }}
