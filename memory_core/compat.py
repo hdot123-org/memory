@@ -108,6 +108,13 @@ _COMPAT_MATRIX: dict[str, dict[str, str]] = {
         "min_installer_version": "0.9.1",
         "memory_lock_schema": CANONICAL_MEMORY_LOCK_SCHEMA,
     },
+    "0.9.2": {
+        "ownership_schema": OWNERSHIP_SCHEMA_VERSION,
+        "hook_schema": "factory-hooks-v1",
+        "manifest_version": "integrity-manifest-v2",
+        "min_installer_version": "0.9.2",
+        "memory_lock_schema": CANONICAL_MEMORY_LOCK_SCHEMA,
+    },
 }
 
 # Current versions (what this code supports)

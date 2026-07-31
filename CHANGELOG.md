@@ -10,6 +10,7 @@
 ### Fixed
 - `_try_resign_ownership` silent exception swallowing: expanded to `_try_resign_all`, which now reports errors instead of `except: pass`.
 - `path-index.json` divergence from the `projects/` directory: no rebuild mechanism existed before; `memory-lifecycle-rebuild` closes this gap.
+- 非注入事件（stop/notification/session-end）输出抑制：成功时返回 `{"suppressOutput": true}` 避免终端空输出干扰，降级状态仍返回 `{}` 保持错误可见 (PR #227)。
 
 ## [0.9.1] - 2026-07-24
 
