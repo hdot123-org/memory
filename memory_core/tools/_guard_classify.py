@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Tool classification logic extracted from pretooluse_guard.py.
 
 Contains the classify_tool_use function which handles the 6-tool

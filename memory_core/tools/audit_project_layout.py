@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Audit project memory layout and detect legacy/residue patterns.
 
 Usage:

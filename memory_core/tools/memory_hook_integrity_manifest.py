@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """L2 Integrity Layer — Manifest Generation & Signing.
 
 Computes SHA-256 + HMAC-SHA256 signatures for project canonical files

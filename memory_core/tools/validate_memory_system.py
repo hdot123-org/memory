@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Validate that the memory hook system is healthy and operational.
 
 Runs a series of structural checks against the gateway module:

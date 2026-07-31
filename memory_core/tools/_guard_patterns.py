@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Guard pattern definitions extracted from pretooluse_guard.py.
 
 Contains FORBIDDEN_SUFFIXES, FORBIDDEN_DIRS, and pre-compiled

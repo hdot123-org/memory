@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Initialize a memory/system/ directory skeleton in a target project.
 
 Usage:

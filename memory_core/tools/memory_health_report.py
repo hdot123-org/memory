@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Deep project memory health checker — runs asynchronously and writes a report."""
 
 
