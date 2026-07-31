@@ -13,7 +13,7 @@ tags: [hook, factory, performance, investigation]
 
 memory-hook 记录了过量事件：
 - events.jsonl 达到 82MB，包含 115,509 个事件
-- 单次会话（2026-07-31）记录 202 个 stop 事件和 82 个 session-start 事件
+- 单日（2026-07-31）记录 202 个 stop 事件和 82 个 session-start 事件
 - stop 事件在某些情况下密集出现（1-16 秒内多次）
 
 ## 根因分析
@@ -45,7 +45,7 @@ subagent-stop:       764 次（0.7%）
 
 **关键观察：**
 - post-tool-use 占比最高（67.6%），符合"每次工具调用触发两次"的设计
-- stop 事件在不同日期波动：2026-06-24 达到 891 次，2026-07-31 为 54 次
+- stop 事件在不同日期波动：2026-06-24 达到 891 次，2026-07-31 调查时已记录 202 次（当天仍在增长）
 - session-start 和 stop 数量相关，说明 Factory 频繁启动/停止会话
 
 ### 3. 密集 stop 事件的原因
@@ -56,12 +56,12 @@ subagent-stop:       764 次（0.7%）
 3. **工具调用密集**：复杂任务需要大量工具调用，间接触发更多事件
 4. **Factory 重试机制**：网络问题或超时时 Factory 可能重试会话
 
-**示例场景（2026-07-31 的 202 个 stop）：**
+**示例场景（2026-07-31 的 202 个 stop 事件）：**
 - 假设单次任务包含：1 session-start + 50 tool calls + 1 session-end
 - 每次 tool call 触发 pre-tool-use + post-tool-use = 100 个事件
 - 如果 Factory 启动了 4 个子代理，每个都有独立生命周期
 - 总计：4 × (1 + 100 + 1) = 408 个事件
-- 实际观察：82 session-start + 202 stop + 大量 tool-use 事件
+- 实际观察：82 session-start + 202 stop 事件 + 大量 tool-use 事件
 
 ### 4. 为什么 '{}' 输出导致问题
 
@@ -76,7 +76,7 @@ subagent-stop:       764 次（0.7%）
 
 ### 修复内容
 
-修改 `memory_core/tools/memory_hook_gateway.py` 的 `_format_factory_output()` 函数：
+修改 `memory_core/tools/memory_hook_gateway.py` 的 `_build_factory_hook_output()` 函数：
 
 **修改前：**
 ```python
