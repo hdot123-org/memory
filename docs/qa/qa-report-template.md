@@ -3,7 +3,7 @@
 > **日期**: YYYY-MM-DD
 > **版本**: v0.9.0
 > **触发**: PR #XXX / Nightly / Manual
-> **运行环境**: ubuntu-latest, Python 3.14
+> **运行环境**: ubuntu-latest, Python 3.12
 
 ---
 
@@ -227,7 +227,7 @@
 
 ### 环境信息
 
-- Python: 3.14.x
+- Python: 3.12.x
 - pytest: 8.x
 - ruff: 0.11.x
 - mypy: 1.10+
