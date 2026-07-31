@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Independent business-policy check classes extracted from GatewayBusinessPolicyImpl.
 
 Each class handles one responsibility group and keeps method signatures

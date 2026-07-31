@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Daily session summary tool — reads event logs and generates a report.
 
 Usage:

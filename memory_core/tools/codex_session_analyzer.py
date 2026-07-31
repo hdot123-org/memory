@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Codex session rollout analyzer — reads .jsonl rollout files and generates reports.
 
 Usage:

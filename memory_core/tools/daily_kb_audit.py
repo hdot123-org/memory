@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """每日记忆巡检脚本 — 检查所有接入项目的记忆纯度和完整性。
 
 对 ~/.memory-core/project-lifecycle/path-index.json 里注册的所有项目，

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Consistency checker for memory-core internal invariants.
 
 Usage:

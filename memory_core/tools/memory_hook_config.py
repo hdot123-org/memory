@@ -4,6 +4,8 @@ Replaces the 37 keyword-only parameters of build_context_package_core()
 with a single typed configuration object.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Collection

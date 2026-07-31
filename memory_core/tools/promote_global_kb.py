@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Promote knowledge items from pending/ to formal domains in global KB.
 
 This CLI tool implements the human confirmation step in the sedimentation mechanism:

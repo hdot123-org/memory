@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Install Factory Droid global hooks for the memory gateway.
 
 Factory stores user-level hook configuration in ``~/.factory/settings.json``.

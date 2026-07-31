@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Safe migrator for applying residue cleanup plans with backup/rollback support.
 
 Usage:

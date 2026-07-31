@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """Probe provider availability for memory-hook core.
 
 This module **does not perform rollback**. It probes whether the

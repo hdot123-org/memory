@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """M6: Hook Upgrade — Inspect and upgrade Factory memory hook installations.
 
 Subcommands:

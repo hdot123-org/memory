@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """L2 Integrity Layer — Verification Engine.
 
 Reads manifest.json and verifies SHA-256 + HMAC signatures against

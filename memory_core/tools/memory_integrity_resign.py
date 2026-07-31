@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.12
 """M4: Re-sign CLI — Explicit integrity re-sign with audit trail.
 
 Usage:
