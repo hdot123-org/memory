@@ -118,3 +118,5 @@ Public documentation should be safe for open-source readers.
 5. Verify: `pip install memory-core==x.y.z`
 
 <!-- INFRA-23 review-mapping test marker 1785619261 -->
+
+<!-- INFRA-24 e2e-mission-verify test marker 1785620671 -->
