@@ -753,12 +753,13 @@ read_secret(vault_id="ozqqpvh5yvvxvyu64npq62a3ti", item_id="elgcm2nzfza2hjb3yffp
 
 **GitHub Integration（GitHub → Linear 自动流转）：**
 
-通过 n8n 或第三方集成桥接 GitHub PR 事件到 Linear。
+通过 **Linear 原生 GitHub 集成** 实现（集成 ID: `7ee5340b`，service: `github`）。Linear 内置监听 GitHub PR 事件，自动映射状态流转，无需 n8n 或第三方桥接。
 
-**流转链路：**
-- PR open → Linear `In Progress`
-- Review requested → Linear `In Review`
-- PR merge → Linear `Done`
+| 流转规则 | GitHub 事件 | Linear 目标状态 |
+|----------|------------|----------------|
+| PR open → In Progress | `pull_request` opened | `In Progress` |
+| Review requested → In Review | `pull_request_review` / review requested | `In Review` |
+| PR merge → Done | `pull_request` closed+merged | `Done` |
 
 ### A.7 n8n Workflow
 
