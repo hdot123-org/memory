@@ -457,10 +457,95 @@ MCP 是 hook 不可用时的 fallback，不是 hook 的等价替代。
 
 ---
 
+## 9. 生命周期事件存储结构
+
+### 9.1 按项目分片存储
+
+从 v0.9.4 开始，生命周期事件从全局单文件 `events.jsonl` 迁移到按项目、按日期分片的存储结构。
+
+**旧结构（已弃用）**:
+```
+~/.memory-core/project-lifecycle/
+├── projects/
+│   └── {project_id}.json                    ← 状态文件（路径不变）
+├── path-index.json                          ← 路径索引（不变）
+└── events.jsonl                             ← 全局事件日志（已弃用，停止写入）
+```
+
+**新结构（v0.9.4+）**:
+```
+~/.memory-core/project-lifecycle/
+├── projects/
+│   ├── {project_id}.json                    ← 状态文件（路径不变）
+│   ├── {project_id}/                        ← 新增：按项目事件目录
+│   │   └── events/
+│   │       └── 2026-08-01.jsonl             ← 每日事件日志（按天追加）
+│   └── ...
+├── path-index.json                          ← 不变
+└── events.jsonl                             ← 已弃用（迁移工具会归档）
+```
+
+### 9.2 写入路径
+
+`record_project_lifecycle()` 函数现在执行 3 次写入：
+
+1. **状态文件** `projects/{project_id}.json` — 覆盖写入（不变）
+2. **路径索引** `path-index.json` — 覆盖写入（不变）
+3. **每日事件日志** `projects/{project_id}/events/{YYYY-MM-DD}.jsonl` — 追加写入（新增）
+
+返回字典的 `event_log` 字段指向新的每日事件文件路径。
+
+### 9.3 自动清理
+
+新增 `_cleanup_old_event_files()` 函数，在每次 hook 调用时机会性清理超过保留期的事件文件。
+
+**配置**:
+- 环境变量: `MEMORY_HOOK_LIFECYCLE_RETENTION_DAYS`（默认: 30）
+- 设置为 `0` 禁用清理
+- 通过 `projects/{project_id}/.last-cleanup` 哨兵文件节流，每个项目每天最多清理一次
+
+### 9.4 迁移工具
+
+提供 `memory-lifecycle-migrate` CLI 工具，将旧的 `events.jsonl` 迁移到新的按项目分片结构：
+
+```bash
+# 迁移（默认 lifecycle root）
+memory-lifecycle-migrate
+
+# 指定 lifecycle root
+memory-lifecycle-migrate --lifecycle-root ~/.memory-core/project-lifecycle
+
+# JSON 输出
+memory-lifecycle-migrate --json
+```
+
+**迁移行为**:
+1. 读取 `events.jsonl`，按 `project_id` 和日期分组
+2. 写入 `projects/{project_id}/events/{YYYY-MM-DD}.jsonl`
+3. 将原文件重命名为 `events.jsonl.archived`（字节相同）
+4. 输出统计信息（total_read, total_written, per_project, skipped, archive_path）
+
+**幂等性**: 重复运行不会产生重复数据或错误。
+
+### 9.5 向后兼容性
+
+以下组件不受此变更影响：
+
+| 组件 | 影响 | 原因 |
+|------|------|------|
+| `rebuild_path_index()` | 无 | 仅读取 `projects/*.json`，不依赖事件日志 |
+| `build_project_lifecycle_record()` | 无 | 构建记录字典，不写入事件文件 |
+| `hook_event_stats.py` | 无 | 读取 artifact `EVENT_LOG`（不同文件） |
+| 状态文件路径 | 无 | `projects/{project_id}.json` 路径不变 |
+| 路径索引 | 无 | `path-index.json` 路径不变 |
+
+---
+
 ## Changelog
 
 | Version | Date | Author | Change |
 |---------|------|--------|--------|
+| v1.3 | 2026-08-01 | droid | 新增第 9 章：生命周期事件存储结构（按项目分片、自动清理、迁移工具、向后兼容性） |
 | v1.2 | 2026-08-01 | droid | Section 5.5: 补充降级处理说明（非注入事件不检测内容级降级）；修复 section 编号重复（FAQ 改为 7，MCP 改为 8） |
 | v1.1 | 2026-07-25 | droid | 新增第 7 章：MCP 补充路径（Hook vs MCP 分层、平台矩阵、工具过滤、局限性） |
 | v1.0 | 2026-07-25 | droid | 初始版本：Factory 9/9 完整支持 + ZCode v3.4.2 dispatch 未实现记录 |

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.4] - 2026-08-01
+
+### Added
+- **生命周期事件按项目分片存储**：从全局 `events.jsonl` 迁移到 `projects/{project_id}/events/{YYYY-MM-DD}.jsonl` 结构，支持按项目和日期隔离事件，便于归档和清理。
+- **自动清理机制**：新增 `_cleanup_old_event_files()` 函数，通过 `MEMORY_HOOK_LIFECYCLE_RETENTION_DAYS` 环境变量配置保留天数（默认 30 天，设为 0 禁用），每个项目每天最多清理一次。
+- **迁移 CLI 工具**：`memory-lifecycle-migrate` 命令将旧的 `events.jsonl` 迁移到新的分片结构，支持幂等运行、自动归档原文件、输出统计信息。
+- **向后兼容性测试**：新增 VAL-COMPAT-01~04 和 VAL-CROSS-01~03 测试，验证 `rebuild_path_index()`、`build_project_lifecycle_record()`、`hook_event_stats.py` 不受影响，以及完整生命周期原子性、迁移后写入连续性、并发项目隔离。
+
+### Changed
+- **生命周期事件写入路径**：`record_project_lifecycle()` 现在写入 `projects/{project_id}/events/{YYYY-MM-DD}.jsonl` 而非全局 `events.jsonl`。返回字典的 `event_log` 字段指向新路径。
+- **文档更新**：HOOK_INTEGRATION_SPEC.md 新增第 9 章，说明新的事件存储结构、写入路径、自动清理、迁移工具和向后兼容性。
+
+### Notes
+- 全局 `events.jsonl` 已弃用但不会被删除，可通过 `memory-lifecycle-migrate` 迁移并归档为 `events.jsonl.archived`
+- 所有现有测试通过，无破坏性变更
+
 ## [0.9.3] - 2026-08-01
 
 ### Changed
