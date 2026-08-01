@@ -136,13 +136,53 @@ def test_build_project_lifecycle_record_correct(tmp_path: Path) -> None:
 def test_existing_tests_pass():
     """VAL-COMPAT-03: The full existing test suite passes after the change.
 
-    This is verified by running the full test suite in CI. If all tests pass,
-    this assertion is satisfied.
+    This assertion verifies that:
+    1. Core lifecycle functions are callable and have expected signatures
+    2. The test file count for lifecycle-related tests is at least 3 (sharding, rebuild, compat)
+
+    Full suite execution is covered by CI; this test catches regressions in
+    API surface that would indicate a breaking change.
     """
-    # This test is a placeholder. The actual verification happens when running
-    # pytest on the full test suite. If we reach this point without failures,
-    # the test suite is passing.
-    assert True
+    import inspect
+
+    # Verify core lifecycle functions have expected signatures (API stability)
+    from memory_core.tools.project_lifecycle import (
+        migrate_lifecycle_events,
+        rebuild_path_index,
+        record_project_lifecycle,
+    )
+
+    # record_project_lifecycle must accept lifecycle_root, cwd, host, event, payload, now_iso_fn
+    sig = inspect.signature(record_project_lifecycle)
+    assert set(sig.parameters.keys()) == {
+        "lifecycle_root", "cwd", "host", "event", "payload", "now_iso_fn"
+    }, "record_project_lifecycle signature changed — potential breaking change"
+
+    # migrate_lifecycle_events must accept lifecycle_root
+    sig = inspect.signature(migrate_lifecycle_events)
+    assert "lifecycle_root" in sig.parameters, "migrate_lifecycle_events signature changed"
+
+    # rebuild_path_index must accept lifecycle_root
+    sig = inspect.signature(rebuild_path_index)
+    assert "lifecycle_root" in sig.parameters, "rebuild_path_index signature changed"
+
+    # Verify the test file count for lifecycle-related tests is at least 3
+    # (gateway, rebuild, compat/cross) — catches accidental test deletion
+    import pathlib
+    tests_dir = pathlib.Path(__file__).parent
+    lifecycle_test_files = [
+        f for f in tests_dir.glob("test_*lifecycle*.py")
+    ] + [
+        f for f in tests_dir.glob("test_*compat*.py")
+    ] + [
+        f for f in tests_dir.glob("test_*cross*.py")
+    ]
+    # Deduplicate (a file matching multiple patterns would be counted once)
+    lifecycle_test_files = list(set(lifecycle_test_files))
+    assert len(lifecycle_test_files) >= 3, (
+        f"Expected at least 3 lifecycle-related test files, found {len(lifecycle_test_files)}: "
+        f"{[f.name for f in lifecycle_test_files]}. Tests may have been accidentally deleted."
+    )
 
 
 # ── VAL-COMPAT-04: hook_event_stats.py unaffected ─────────────────────────────────

@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
@@ -228,8 +229,9 @@ def _cleanup_old_event_files(
             pass
 
         return deleted_count
-    except Exception:
-        # Cleanup failures must never block the hook
+    except Exception as exc:
+        # Cleanup failures must never block the hook, but log the failure
+        warnings.warn(f"lifecycle cleanup failed for project '{project_id}': {exc}", stacklevel=2)
         return 0
 
 
@@ -288,16 +290,20 @@ def record_project_lifecycle(
 
     # Opportunistic cleanup of old event files (throttled to once per day)
     try:
-        retention_days = int(os.environ.get("MEMORY_HOOK_LIFECYCLE_RETENTION_DAYS", "30"))
+        try:
+            retention_days = int(os.environ.get("MEMORY_HOOK_LIFECYCLE_RETENTION_DAYS", "30"))
+        except ValueError:
+            # Non-integer env var value — fall back to default instead of silently disabling cleanup
+            retention_days = 30
         _cleanup_old_event_files(
             lifecycle_root=lifecycle_root,
             project_id=record["project_id"],
             retention_days=retention_days,
             now_fn=now_iso_fn,
         )
-    except Exception:
-        # Cleanup failures must never block the hook
-        pass
+    except Exception as exc:
+        # Cleanup failures must never block the hook, but log the failure
+        warnings.warn(f"lifecycle retention cleanup failed: {exc}", stacklevel=2)
 
     return record
 
@@ -541,12 +547,18 @@ def migrate_lifecycle_events(lifecycle_root: Path) -> dict[str, Any]:
             total_read += 1
             line = line.strip()
             if not line:
+                skipped += 1  # blank lines count toward skipped for stats reconciliation
                 continue
 
             # Parse JSON
             try:
                 event_data = json.loads(line)
             except json.JSONDecodeError:
+                skipped += 1
+                continue
+
+            # Guard: valid JSON that is not a dict (e.g., '123', '[1,2]') — skip gracefully
+            if not isinstance(event_data, dict):
                 skipped += 1
                 continue
 
