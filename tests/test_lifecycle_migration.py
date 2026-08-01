@@ -257,7 +257,8 @@ def test_migration_blank_lines_only(tmp_path: Path) -> None:
 
     assert stats["total_read"] == 3  # 3 blank lines counted
     assert stats["total_written"] == 0
-    assert stats["skipped"] == 0  # Blank lines are skipped but not counted as malformed
+    # Blank lines count toward skipped so stats reconcile: written + skipped == total_read
+    assert stats["skipped"] == 3
 
 
 # Additional test: multiple events for same project and date
