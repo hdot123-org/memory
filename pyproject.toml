@@ -65,6 +65,7 @@ memory-integrity-resign = "memory_core.tools.memory_integrity_resign:main"
 memory-sync-versions = "memory_core.tools.version_sync:main"
 memory-audit-daily = "memory_core.tools.daily_kb_audit:main"
 memory-lifecycle-rebuild = "memory_core.tools.project_lifecycle:rebuild_main"
+memory-lifecycle-migrate = "memory_core.tools.project_lifecycle:migrate_main"
 "memory-mcp-server" = "memory_core.tools.mcp_server:main_sync"
 
 [tool.setuptools.packages.find]

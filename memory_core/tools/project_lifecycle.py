@@ -508,3 +508,157 @@ def rebuild_main(argv: list[str] | None = None) -> None:
             print(f"  paths: {len(result['paths'])} entries")
 
     sys.exit(0)
+
+
+def migrate_lifecycle_events(lifecycle_root: Path) -> dict[str, Any]:
+    """Migrate global events.jsonl to per-project daily files.
+
+    Reads events.jsonl, groups by project_id + date, writes per-project daily files.
+    Archives original as events.jsonl.archived (byte-identical).
+
+    Returns stats: {total_read, total_written, per_project: {id: count}, skipped: count, archive_path: str}
+    """
+    lifecycle_root = Path(lifecycle_root)
+    events_jsonl = lifecycle_root / "events.jsonl"
+
+    # Idempotent: if events.jsonl doesn't exist, return zero stats
+    if not events_jsonl.exists():
+        return {
+            "total_read": 0,
+            "total_written": 0,
+            "per_project": {},
+            "skipped": 0,
+            "archive_path": None,
+        }
+
+    # Read and group events by project_id and date
+    grouped_events: dict[str, dict[str, list[str]]] = {}  # {project_id: {date: [lines]}}
+    total_read = 0
+    skipped = 0
+
+    with events_jsonl.open("r", encoding="utf-8") as f:
+        for line in f:
+            total_read += 1
+            line = line.strip()
+            if not line:
+                continue
+
+            # Parse JSON
+            try:
+                event_data = json.loads(line)
+            except json.JSONDecodeError:
+                skipped += 1
+                continue
+
+            # Extract required fields
+            project_id = event_data.get("project_id")
+            observed_at = event_data.get("observed_at")
+
+            if not project_id or not observed_at:
+                skipped += 1
+                continue
+
+            # Derive date from observed_at (first 10 chars: YYYY-MM-DD)
+            event_date = observed_at[:10]
+
+            # Group by project_id and date
+            if project_id not in grouped_events:
+                grouped_events[project_id] = {}
+            if event_date not in grouped_events[project_id]:
+                grouped_events[project_id][event_date] = []
+            grouped_events[project_id][event_date].append(line)
+
+    # Write per-project daily files
+    projects_dir = lifecycle_root / "projects"
+    total_written = 0
+    per_project_counts: dict[str, int] = {}
+
+    for project_id, date_groups in grouped_events.items():
+        project_events_dir = projects_dir / project_id / "events"
+        project_events_dir.mkdir(parents=True, exist_ok=True)
+
+        project_total = 0
+        for event_date, lines in date_groups.items():
+            daily_file = project_events_dir / f"{event_date}.jsonl"
+
+            # Check if file already exists (for idempotency)
+            existing_lines: set[str] = set()
+            if daily_file.exists():
+                with daily_file.open("r", encoding="utf-8") as f:
+                    existing_lines = {line.strip() for line in f if line.strip()}
+
+            # Append only new lines
+            new_lines = [line for line in lines if line not in existing_lines]
+            if new_lines:
+                with daily_file.open("a", encoding="utf-8") as f:
+                    for line in new_lines:
+                        f.write(line + "\n")
+                total_written += len(new_lines)
+                project_total += len(new_lines)
+            else:
+                # All lines already exist
+                total_written += len(lines)
+                project_total += len(lines)
+
+        per_project_counts[project_id] = project_total
+
+    # Archive original events.jsonl (atomic rename)
+    archive_path = lifecycle_root / "events.jsonl.archived"
+    try:
+        os.replace(events_jsonl, archive_path)
+    except OSError:
+        # If rename fails, try copy + delete as fallback
+        import shutil
+        shutil.copy2(events_jsonl, archive_path)
+        events_jsonl.unlink()
+
+    return {
+        "total_read": total_read,
+        "total_written": total_written,
+        "per_project": per_project_counts,
+        "skipped": skipped,
+        "archive_path": str(archive_path),
+    }
+
+
+def migrate_main(argv: list[str] | None = None) -> None:
+    """CLI entry point for memory-lifecycle-migrate."""
+    parser = argparse.ArgumentParser(
+        prog="memory-lifecycle-migrate",
+        description="Migrate global events.jsonl to per-project daily files",
+    )
+    parser.add_argument(
+        "--lifecycle-root",
+        type=str,
+        default="~/.memory-core/project-lifecycle",
+        help="Path to lifecycle root (default: ~/.memory-core/project-lifecycle)",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output statistics as JSON",
+    )
+
+    args = parser.parse_args(argv)
+    lifecycle_root = Path(args.lifecycle_root).expanduser()
+
+    stats = migrate_lifecycle_events(lifecycle_root)
+
+    if args.json_output:
+        print(json.dumps(stats, ensure_ascii=False, indent=2))
+    else:
+        print("Migration complete:")
+        print(f"  total_read: {stats['total_read']}")
+        print(f"  total_written: {stats['total_written']}")
+        print(f"  skipped: {stats['skipped']}")
+        if stats['per_project']:
+            print("  per_project:")
+            for project_id, count in sorted(stats['per_project'].items()):
+                print(f"    {project_id}: {count}")
+        if stats['archive_path']:
+            print(f"  archive_path: {stats['archive_path']}")
+        else:
+            print("  archive_path: (no migration needed, events.jsonl not found)")
+
+    sys.exit(0)
