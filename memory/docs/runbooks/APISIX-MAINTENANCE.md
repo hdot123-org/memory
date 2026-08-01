@@ -58,7 +58,7 @@ etcd 连接地址（APISIX 侧）：`http://etcd:2379`（Docker 内部网络）
 | `/mcp/showdoc/*` | `mcp-showdoc` | Consumer (key-auth) | ShowDoc MCP Proxy | 直连 8001，不走 APISIX |
 | `/showdoc/*` | `showdoc-route` | 无 | ShowDoc Web | APISIX 反代 ShowDoc |
 | `/n8n/*` | `n8n-route` | 无 | n8n :5678 | 自动化工作流 |
-| `/webhook/*` | `webhook-route` | 无 | n8n webhook receiver | 接收 GitLab/CI 事件 |
+| `/webhook/*` | `webhook-route` | 无 | n8n webhook receiver | 接收 Linear/CI 事件 |
 | `/gateway-admin/*` | `gateway-admin-route` | Consumer (key-auth) | gateway-admin 服务 | 网关管理接口 |
 
 ### 2.2 TCP 路由
