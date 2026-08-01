@@ -67,7 +67,7 @@ class TestPromoteCLIRegistration:
             text=True,
         )
         assert result.returncode == 0
-        assert "0.9.2" in result.stdout
+        assert "0.9.3" in result.stdout
 
 
 class TestPromoteCommandMode:
