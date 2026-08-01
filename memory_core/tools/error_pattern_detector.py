@@ -609,10 +609,10 @@ def run_pipeline(
         except OSError as e:
             error_msg = f"Failed to write registry to {registry_path}: {e}"
             print(f"error: {error_msg}", file=sys.stderr)
-            if write_error_log is not None and project_paths:
+            if write_error_log is not None and paths_list:
                 try:
                     write_error_log(
-                        project_root=str(project_paths[0]),
+                        project_root=str(paths_list[0]),
                         error_type="file_write_failed",
                         context={"registry_path": str(registry_path)},
                         error_msg=error_msg,
