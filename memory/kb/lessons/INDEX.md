@@ -16,3 +16,5 @@ Active lessons from project experience.
 | `gateway-globals-injection-mypy.md` | globals().update 动态注入导致 mypy name-defined errors（TYPE_CHECKING 解决方案） |
 | `ci-runtime-version-mismatch.md` | CI 测试版本与实际 runtime 版本脱节（3.9~3.12 vs 3.14），锁死单版本 |
 | `webhook-session-routing.md` | CI webhook session_id 路由失效（mtime scan 猜测 vs sessions-index.json 精确查找） |
+| `architecture-change-doc-audit.md` | 架构变更后需全量审计历史文档（events.jsonl → 分片后 4 份文档过时） |
+| `version-upgrade-fullchain-sync.md` | 版本升级需全链路同步（pyproject + constants + compat + README + tests） |
