@@ -24,14 +24,14 @@ from typing import Any
 try:
     from memory_core.tools.error_logger import write_error_log
 except ImportError:
-    write_error_log = None  # type: ignore[assignment]
+    write_error_log = None
 
 # Import-guarded now_iso for consistent timestamps
 try:
     from memory_core.tools._file_utils import now_iso
 except ImportError:
     try:
-        from _file_utils import now_iso  # type: ignore[no-redef]
+        from _file_utils import now_iso
     except ImportError:
         def now_iso() -> str:
             """Fallback now_iso if _file_utils unavailable."""
