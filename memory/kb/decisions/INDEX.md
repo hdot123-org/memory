@@ -23,6 +23,7 @@ made during the project lifecycle.
 | D-008 | Python 版本从 3.14 回滚到 3.12（稳定性问题 + 平台标准化） | accepted | 2026-07-31 |
 | D-009 | 生命周期事件按项目分片存储（events.jsonl → projects/{id}/events/{date}.jsonl） | accepted | 2026-08-01 |
 | D-010 | 生命周期工具健壮性修复策略（防御性编程 + 可观测性 + 优雅降级） | accepted | 2026-08-01 |
+| D-011 | Linear 原生 GitHub 集成替代自定义脚本（停用 github-linear-sync.sh） | accepted | 2026-08-01 |
 
 ## Process
 
