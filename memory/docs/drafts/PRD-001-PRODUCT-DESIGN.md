@@ -450,7 +450,11 @@ pip install memory-core
 ```
 ~/.memory-core/
 ├── keys/                          # HMAC 密钥
-├── project-lifecycle/             # 项目注册、path-index、events.jsonl
+├── project-lifecycle/             # 项目注册、path-index、per-project events
+│   └── projects/
+│       └── {project_id}/
+│           └── events/
+│               └── {YYYY-MM-DD}.jsonl  # 按项目按日分片事件日志
 └── quarantine/                    # 隔离区
 ```
 
@@ -521,9 +525,11 @@ memory/project-map/
 ~/.memory-core/
 ├── project-lifecycle/
 │   ├── path-index.json           # 路径索引，记录所有接入项目
-│   ├── projects/
-│   │   └── {project_id}.json     # 每个项目的生命周期记录
-│   └── events.jsonl              # 全局事件日志
+│   └── projects/
+│       ├── {project_id}.json     # 每个项目的生命周期记录（状态文件）
+│       └── {project_id}/         # 每个项目的事件目录
+│           └── events/
+│               └── {YYYY-MM-DD}.jsonl  # 按日分片事件日志
 ```
 
 - project_id 通过 git_remote 或 local_path 唯一标识
