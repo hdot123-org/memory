@@ -216,7 +216,7 @@ done
 
 ### 4.2 平台端到端验证
 
-在目标平台中执行以下操作，然后检查 `events.jsonl` 或 hook 输出日志：
+在目标平台中执行以下操作，然后检查 per-project 事件文件或 hook 输出日志：
 
 | 操作 | 预期事件 |
 |------|---------|
@@ -228,9 +228,9 @@ done
 
 **验证脚本**:
 ```bash
-# 检查最近 N 秒内是否有新事件
+# 检查最近 N 秒内是否有新事件（v0.9.4+ per-project 分片结构）
 TAIL_SECONDS=30
-find ~/.memory-core -name "events.jsonl" -newermt "-${TAIL_SECONDS} seconds" -exec tail -5 {} \;
+find ~/.memory-core/project-lifecycle -name "*.jsonl" -newermt "-${TAIL_SECONDS} seconds" -exec tail -5 {} \;
 ```
 
 ### 4.3 Dispatch 实现验证（新平台必做）

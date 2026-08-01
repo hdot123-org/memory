@@ -138,8 +138,11 @@ if event not in ("session-start", "prompt-submit"):
 ## 相关文件
 
 - `memory_core/tools/memory_hook_gateway.py` - hook 网关主逻辑
-- `~/.memory-core/project-lifecycle/events.jsonl` - 事件日志（82MB）
 - `memory_core/tools/project_lifecycle.py` - 事件记录逻辑
+
+**事件存储路径变更（v0.9.4）：**
+- ~~`~/.memory-core/project-lifecycle/events.jsonl`~~ - 已废弃（单文件无限追加）
+- `~/.memory-core/project-lifecycle/projects/{project_id}/events/{YYYY-MM-DD}.jsonl` - 当前结构（按项目按日分片）
 
 ## 验证方法
 
@@ -151,9 +154,13 @@ memory-hook --host factory --event stop
 # 测试降级状态（模拟错误）
 # 需要触发降级路径，观察输出仍为 '{}'
 
-# 检查事件日志
-wc -l ~/.memory-core/project-lifecycle/events.jsonl
-du -h ~/.memory-core/project-lifecycle/events.jsonl
+# 检查事件日志（v0.9.4+ per-project 分片结构）
+# 统计所有项目的今日事件文件
+find ~/.memory-core/project-lifecycle/projects -name "$(date +%Y-%m-%d).jsonl" -exec wc -l {} +
+find ~/.memory-core/project-lifecycle/projects -name "$(date +%Y-%m-%d).jsonl" -exec du -h {} +
+
+# 或统计所有事件文件
+find ~/.memory-core/project-lifecycle/projects -name "*.jsonl" | xargs wc -l
 ```
 
 ## 后续改进
