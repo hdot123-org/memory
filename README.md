@@ -202,6 +202,17 @@ memory-audit-daily --json
 memory-audit-daily --dry-run
 ```
 
+#### `memory-error-patterns`
+
+Global error pattern detector (Layer D). Scans `memory/log/*-errors.jsonl` files across projects, fingerprints recurring errors with smart normalization (paths, timestamps, UUIDs, hex, numbers all abstracted), and writes a machine-readable pattern registry to `memory/kb/patterns/registry.jsonl`. Patterns meeting thresholds (>=2 distinct days OR >=5 total count) are flagged with `threshold_met`. Detection only — no KB modification, no auto-lessons.
+
+```bash
+memory-error-patterns                                    # Auto-detect project from cwd
+memory-error-patterns --project /path/to/project         # Single project
+memory-error-patterns --all-projects                     # All projects (launchd daily 23:55)
+memory-error-patterns --dry-run --verbose                # Preview without writing registry
+```
+
 ## Generated project layout
 
 A target project initialized by `memory-init` receives a project-local memory layout, and `memory-init` also ensures the shared global knowledge base exists:
