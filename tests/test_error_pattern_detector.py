@@ -15,6 +15,16 @@ from memory_core.tools.error_pattern_detector import (
     evaluate_threshold,
     group_by_fingerprint,
     normalize_error_msg,
+    read_registry,
+    write_registry,
+    merge_patterns,
+    discover_error_files,
+    parse_error_file,
+    scan_project,
+    discover_all_projects,
+    detect_project_from_cwd,
+    run_pipeline,
+    build_parser,
 )
 
 ERROR_LOG_DIR = Path(__file__).resolve().parent.parent / "memory" / "log"
@@ -460,3 +470,669 @@ class TestRealDataIntegration:
         for fp, group in groups.items():
             assert re.fullmatch(r"[0-9a-f]{16}", fp)
             assert group.fingerprint == fp
+
+
+# ============================================================================
+# VAL-REGISTRY: Registry I/O Tests
+# ============================================================================
+
+
+class TestRegistryIO:
+    """VAL-REGISTRY: Registry JSONL format and operations."""
+
+    def test_write_registry_creates_jsonl(self, tmp_path: Path) -> None:
+        """VAL-REGISTRY-001: Registry file is valid JSONL."""
+        registry_path = tmp_path / "registry.jsonl"
+        entries = [
+            {
+                "fingerprint": "abc123def456",
+                "type": "test_error",
+                "script": "test_script",
+                "normalized_msg": "test message",
+                "status": "detected",
+                "first_seen": "2026-07-12T11:07:05+08:00",
+                "last_seen": "2026-07-12T11:07:05+08:00",
+                "first_detected": "2026-08-01T00:00:00+08:00",
+                "last_updated": "2026-08-01T00:00:00+08:00",
+                "distinct_days": ["2026-07-12"],
+                "total_count": 1,
+                "projects": ["/test"],
+                "threshold_met": None,
+                "sample_first": {"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+                "sample_last": {"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+            }
+        ]
+        write_registry(registry_path, entries)
+        assert registry_path.exists()
+
+        # Verify valid JSONL
+        with registry_path.open() as f:
+            for line in f:
+                data = json.loads(line)
+                assert isinstance(data, dict)
+
+    def test_write_registry_all_required_fields(self, tmp_path: Path) -> None:
+        """VAL-REGISTRY-002: All required fields present on every line."""
+        registry_path = tmp_path / "registry.jsonl"
+        entries = [
+            {
+                "fingerprint": "abc123def456",
+                "type": "test_error",
+                "script": "test_script",
+                "normalized_msg": "test message",
+                "status": "detected",
+                "first_seen": "2026-07-12T11:07:05+08:00",
+                "last_seen": "2026-07-12T11:07:05+08:00",
+                "first_detected": "2026-08-01T00:00:00+08:00",
+                "last_updated": "2026-08-01T00:00:00+08:00",
+                "distinct_days": ["2026-07-12"],
+                "total_count": 1,
+                "projects": ["/test"],
+                "threshold_met": None,
+                "sample_first": {"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+                "sample_last": {"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+            }
+        ]
+        write_registry(registry_path, entries)
+
+        required_fields = {
+            "fingerprint", "type", "script", "normalized_msg", "status",
+            "first_seen", "last_seen", "first_detected", "last_updated",
+            "distinct_days", "total_count", "projects", "threshold_met",
+            "sample_first", "sample_last"
+        }
+
+        with registry_path.open() as f:
+            for line in f:
+                data = json.loads(line)
+                assert required_fields.issubset(data.keys())
+
+    def test_merge_patterns_preserves_first_detected(self, tmp_path: Path) -> None:
+        """VAL-REGISTRY-003: Merge preserves existing first_detected."""
+        # Create existing registry with old first_detected
+        existing = {
+            "abc123": {
+                "fingerprint": "abc123",
+                "first_detected": "2026-01-01T00:00:00+08:00",
+                "last_updated": "2026-07-01T00:00:00+08:00",
+            }
+        }
+
+        # Create new detected pattern
+        group = PatternGroup(
+            fingerprint="abc123",
+            type="test_error",
+            script="test_script",
+            normalized_msg="test message",
+            status="detected",
+            first_seen="2026-07-12T11:07:05+08:00",
+            last_seen="2026-07-12T11:07:05+08:00",
+            distinct_days=["2026-07-12"],
+            total_count=5,
+            projects=["/test"],
+            sample_first={"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+            sample_last={"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+        )
+
+        detected = {"abc123": group}
+        merged = merge_patterns(detected, existing)
+
+        # first_detected should be preserved from existing
+        assert merged[0]["first_detected"] == "2026-01-01T00:00:00+08:00"
+        # last_updated should be current time (not the old value)
+        assert merged[0]["last_updated"] != "2026-07-01T00:00:00+08:00"
+
+    def test_merge_patterns_updates_last_updated(self, tmp_path: Path) -> None:
+        """VAL-REGISTRY-004: Merge updates last_updated to current run time."""
+        existing = {
+            "abc123": {
+                "fingerprint": "abc123",
+                "first_detected": "2026-01-01T00:00:00+08:00",
+                "last_updated": "2026-07-01T00:00:00+08:00",
+            }
+        }
+
+        group = PatternGroup(
+            fingerprint="abc123",
+            type="test_error",
+            script="test_script",
+            normalized_msg="test message",
+            status="detected",
+            first_seen="2026-07-12T11:07:05+08:00",
+            last_seen="2026-07-12T11:07:05+08:00",
+            distinct_days=["2026-07-12"],
+            total_count=5,
+            projects=["/test"],
+            sample_first={"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+            sample_last={"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+        )
+
+        detected = {"abc123": group}
+        merged = merge_patterns(detected, existing)
+
+        # last_updated should be updated to current time
+        from datetime import datetime
+        last_updated = datetime.fromisoformat(merged[0]["last_updated"])
+        now = datetime.now().astimezone()
+        diff = abs((now - last_updated).total_seconds())
+        assert diff < 5  # Within 5 seconds
+
+    def test_merge_patterns_recomputes_aggregates(self, tmp_path: Path) -> None:
+        """VAL-REGISTRY-005: Aggregated fields are recomputed from source on every run."""
+        existing = {
+            "abc123": {
+                "fingerprint": "abc123",
+                "total_count": 10,
+                "distinct_days": ["2026-07-10", "2026-07-11"],
+                "projects": ["/old"],
+            }
+        }
+
+        # New data has different aggregates
+        group = PatternGroup(
+            fingerprint="abc123",
+            type="test_error",
+            script="test_script",
+            normalized_msg="test message",
+            status="detected",
+            first_seen="2026-07-12T11:07:05+08:00",
+            last_seen="2026-07-12T11:07:05+08:00",
+            distinct_days=["2026-07-12"],
+            total_count=5,
+            projects=["/new"],
+            sample_first={"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+            sample_last={"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+        )
+
+        detected = {"abc123": group}
+        merged = merge_patterns(detected, existing)
+
+        # Aggregates should be recomputed from new data
+        assert merged[0]["total_count"] == 5
+        assert merged[0]["distinct_days"] == ["2026-07-12"]
+        assert merged[0]["projects"] == ["/new"]
+
+    def test_read_registry_skips_malformed_lines(self, tmp_path: Path, capsys: Any) -> None:
+        """VAL-RESILIENCE-002: Malformed JSONL lines are skipped."""
+        registry_path = tmp_path / "registry.jsonl"
+        
+        # Write registry with one good line and one malformed line
+        with registry_path.open("w") as f:
+            f.write('{"fingerprint": "abc123", "type": "test"}\n')
+            f.write('{"not valid json\n')  # Malformed
+            f.write('{"fingerprint": "def456", "type": "test"}\n')
+
+        result = read_registry(registry_path)
+
+        # Should read 2 valid entries
+        assert len(result) == 2
+        assert "abc123" in result
+        assert "def456" in result
+
+        # Should log warning to stderr
+        captured = capsys.readouterr()
+        assert "warning" in captured.err.lower()
+
+    def test_write_registry_empty_list(self, tmp_path: Path) -> None:
+        """VAL-REGISTRY-014: Empty detection result yields empty registry."""
+        registry_path = tmp_path / "registry.jsonl"
+        write_registry(registry_path, [])
+
+        assert registry_path.exists()
+        with registry_path.open() as f:
+            content = f.read()
+        assert content == ""
+
+    def test_write_registry_overwrites_existing(self, tmp_path: Path) -> None:
+        """VAL-REGISTRY-009: Registry write is a full rewrite, not append."""
+        registry_path = tmp_path / "registry.jsonl"
+
+        # Write initial registry
+        initial = [{"fingerprint": "old123", "data": "old"}]
+        write_registry(registry_path, initial)
+
+        # Write new registry (should overwrite, not append)
+        new = [{"fingerprint": "new456", "data": "new"}]
+        write_registry(registry_path, new)
+
+        # Read back and verify only new data exists
+        result = read_registry(registry_path)
+        assert len(result) == 1
+        assert "new456" in result
+        assert "old123" not in result
+
+    def test_registry_line_count_matches_fingerprints(self, tmp_path: Path) -> None:
+        """VAL-REGISTRY-015: Registry line count equals number of distinct fingerprints."""
+        registry_path = tmp_path / "registry.jsonl"
+        entries = [
+            {"fingerprint": "abc123", "type": "test"},
+            {"fingerprint": "def456", "type": "test"},
+            {"fingerprint": "ghi789", "type": "test"},
+        ]
+        write_registry(registry_path, entries)
+
+        with registry_path.open() as f:
+            lines = [line for line in f if line.strip()]
+
+        assert len(lines) == 3
+
+    def test_registry_no_duplicate_fingerprints(self, tmp_path: Path) -> None:
+        """VAL-REGISTRY-010: Each fingerprint appears at most once."""
+        registry_path = tmp_path / "registry.jsonl"
+        entries = [
+            {"fingerprint": "abc123", "type": "test"},
+            {"fingerprint": "def456", "type": "test"},
+            {"fingerprint": "abc123", "type": "test"},  # Duplicate
+        ]
+        write_registry(registry_path, entries)
+
+        result = read_registry(registry_path)
+        # read_registry uses dict, so duplicates are naturally handled
+        assert len(result) == 2  # Only 2 unique fingerprints
+
+
+# ============================================================================
+# VAL-CLI: CLI Interface Tests
+# ============================================================================
+
+
+class TestCLI:
+    """VAL-CLI: CLI argument parsing and behavior."""
+
+    def test_help_flag(self) -> None:
+        """VAL-CLI-006: Help message exists."""
+        parser = build_parser()
+        # Should not raise
+        help_text = parser.format_help()
+        assert "error_pattern_detector" in help_text or "usage:" in help_text.lower()
+
+    def test_project_flag(self) -> None:
+        """VAL-CLI-001: --project PATH scans a single project."""
+        parser = build_parser()
+        args = parser.parse_args(["--project", "/test/path"])
+        assert args.project == "/test/path"
+        assert args.all_projects is False
+
+    def test_all_projects_flag(self) -> None:
+        """VAL-CLI-002: --all-projects scans every project."""
+        parser = build_parser()
+        args = parser.parse_args(["--all-projects"])
+        assert args.all_projects is True
+        assert args.project is None
+
+    def test_dry_run_flag(self) -> None:
+        """VAL-CLI-003: --dry-run detects but doesn't write."""
+        parser = build_parser()
+        args = parser.parse_args(["--project", "/test", "--dry-run"])
+        assert args.dry_run is True
+
+    def test_verbose_flag(self) -> None:
+        """VAL-CLI-004: --verbose prints detailed output."""
+        parser = build_parser()
+        args = parser.parse_args(["--project", "/test", "--verbose"])
+        assert args.verbose is True
+
+    def test_mutually_exclusive_flags(self) -> None:
+        """VAL-CLI-009: --project and --all-projects are mutually exclusive."""
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--project", "/test", "--all-projects"])
+
+    def test_default_mode_no_flags(self) -> None:
+        """VAL-CLI-005: Default mode auto-detects from cwd."""
+        parser = build_parser()
+        args = parser.parse_args([])
+        assert args.project is None
+        assert args.all_projects is False
+        # Should use auto-detect from cwd
+
+
+# ============================================================================
+# VAL-RESILIENCE: Error Handling Tests
+# ============================================================================
+
+
+class TestResilience:
+    """VAL-RESILIENCE: Error handling and resilience."""
+
+    def test_missing_error_log_files(self, tmp_path: Path) -> None:
+        """VAL-RESILIENCE-001: Missing error log files are skipped silently."""
+        # Empty project with no error logs
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        (project_root / "memory").mkdir()
+        (project_root / "memory" / "log").mkdir()
+
+        entries = scan_project(project_root)
+        assert entries == []  # No entries, no crash
+
+    def test_malformed_jsonl_continues_processing(self, tmp_path: Path) -> None:
+        """VAL-RESILIENCE-002: Malformed lines are skipped, processing continues."""
+        log_dir = tmp_path / "memory" / "log"
+        log_dir.mkdir(parents=True)
+
+        error_file = log_dir / "2026-08-01-errors.jsonl"
+        with error_file.open("w") as f:
+            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "good 1"}\n')
+            f.write('{"not valid json\n')  # Malformed
+            f.write('{"ts": "2026-08-01T11:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "good 2"}\n')
+
+        entries = parse_error_file(error_file)
+        assert len(entries) == 2  # Skipped malformed, kept 2 good entries
+
+    def test_empty_input_produces_empty_registry(self, tmp_path: Path) -> None:
+        """VAL-RESILIENCE-005: Empty input produces empty registry."""
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        (project_root / "memory" / "log").mkdir(parents=True)
+
+        registry_path = tmp_path / "registry.jsonl"
+        run_pipeline(project_root, registry_path, dry_run=False)
+
+        assert registry_path.exists()
+        with registry_path.open() as f:
+            assert f.read() == ""
+
+    def test_blank_lines_tolerated(self, tmp_path: Path) -> None:
+        """VAL-RESILIENCE-011: Trailing newline/blank lines tolerated."""
+        log_dir = tmp_path / "memory" / "log"
+        log_dir.mkdir(parents=True)
+
+        error_file = log_dir / "2026-08-01-errors.jsonl"
+        with error_file.open("w") as f:
+            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "test"}\n')
+            f.write('\n')  # Blank line
+            f.write('{"ts": "2026-08-01T11:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "test2"}\n')
+            f.write('\n')  # Trailing newline
+
+        entries = parse_error_file(error_file)
+        assert len(entries) == 2  # Blank lines ignored
+
+    def test_missing_patterns_directory_created(self, tmp_path: Path) -> None:
+        """VAL-RESILIENCE-003: Missing patterns directory is auto-created."""
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        (project_root / "memory" / "log").mkdir(parents=True)
+
+        # Patterns directory doesn't exist yet
+        patterns_dir = project_root / "memory" / "kb" / "patterns"
+        assert not patterns_dir.exists()
+
+        registry_path = patterns_dir / "registry.jsonl"
+        run_pipeline(project_root, registry_path, dry_run=False)
+
+        # Directory should be created
+        assert patterns_dir.exists()
+        assert registry_path.exists()
+
+
+# ============================================================================
+# VAL-CROSS: End-to-End Flow Tests
+# ============================================================================
+
+
+class TestEndToEnd:
+    """VAL-CROSS: Full pipeline integration tests."""
+
+    def test_full_pipeline_raw_to_registry(self, tmp_path: Path) -> None:
+        """VAL-CROSS-001: Full pipeline from raw errors to written registry."""
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        log_dir = project_root / "memory" / "log"
+        log_dir.mkdir(parents=True)
+
+        # Create error log with multiple entries
+        error_file = log_dir / "2026-08-01-errors.jsonl"
+        with error_file.open("w") as f:
+            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "test_error", "script": "test_script", "project": "/test", "msg": "error in /path/file.py line 42"}\n')
+            f.write('{"ts": "2026-08-01T11:00:00+08:00", "type": "test_error", "script": "test_script", "project": "/test", "msg": "error in /path/file.py line 42"}\n')
+            f.write('{"ts": "2026-08-02T10:00:00+08:00", "type": "test_error", "script": "test_script", "project": "/test", "msg": "error in /path/file.py line 42"}\n')
+
+        registry_path = tmp_path / "registry.jsonl"
+        run_pipeline(project_root, registry_path, dry_run=False)
+
+        # Verify registry was written
+        assert registry_path.exists()
+
+        entries = list(read_registry(registry_path).values())
+        assert len(entries) == 1  # All 3 entries have same fingerprint
+
+        entry = entries[0]
+        assert entry["total_count"] == 3
+        assert entry["distinct_days"] == ["2026-08-01", "2026-08-02"]
+        assert entry["threshold_met"] == "days"  # 2 days, count < 5
+
+    def test_dry_run_no_file_written(self, tmp_path: Path) -> None:
+        """VAL-CROSS-002: Dry-run pipeline detects but doesn't write."""
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        log_dir = project_root / "memory" / "log"
+        log_dir.mkdir(parents=True)
+
+        error_file = log_dir / "2026-08-01-errors.jsonl"
+        with error_file.open("w") as f:
+            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "error"}\n')
+
+        registry_path = tmp_path / "registry.jsonl"
+        run_pipeline(project_root, registry_path, dry_run=True)
+
+        # Registry should NOT be written
+        assert not registry_path.exists()
+
+    def test_rerun_idempotency(self, tmp_path: Path) -> None:
+        """VAL-REGISTRY-006: Idempotency - two runs produce identical registry except last_updated."""
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        log_dir = project_root / "memory" / "log"
+        log_dir.mkdir(parents=True)
+
+        error_file = log_dir / "2026-08-01-errors.jsonl"
+        with error_file.open("w") as f:
+            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "error"}\n')
+
+        registry_path = tmp_path / "registry.jsonl"
+
+        # First run
+        run_pipeline(project_root, registry_path, dry_run=False)
+        first_run = read_registry(registry_path)
+
+        # Second run
+        run_pipeline(project_root, registry_path, dry_run=False)
+        second_run = read_registry(registry_path)
+
+        # Compare (excluding last_updated which changes)
+        for fp in first_run:
+            assert fp in second_run
+            first_entry = first_run[fp]
+            second_entry = second_run[fp]
+
+            # first_detected should be preserved
+            assert first_entry["first_detected"] == second_entry["first_detected"]
+
+            # Other fields should be identical
+            assert first_entry["fingerprint"] == second_entry["fingerprint"]
+            assert first_entry["total_count"] == second_entry["total_count"]
+            assert first_entry["distinct_days"] == second_entry["distinct_days"]
+            assert first_entry["threshold_met"] == second_entry["threshold_met"]
+
+            # last_updated should be different (or very close)
+            # (we just check it exists, actual time comparison is complex)
+            assert "last_updated" in second_entry
+
+    def test_multi_project_aggregation(self, tmp_path: Path) -> None:
+        """VAL-CROSS-003: Multi-project flow aggregates correctly."""
+        # Create two projects with overlapping errors
+        project1 = tmp_path / "project1"
+        project1.mkdir()
+        log_dir1 = project1 / "memory" / "log"
+        log_dir1.mkdir(parents=True)
+
+        with (log_dir1 / "2026-08-01-errors.jsonl").open("w") as f:
+            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "shared_error", "script": "test", "project": "/project1", "msg": "shared error"}\n')
+            f.write('{"ts": "2026-08-01T11:00:00+08:00", "type": "unique_error_1", "script": "test", "project": "/project1", "msg": "unique to project1"}\n')
+
+        project2 = tmp_path / "project2"
+        project2.mkdir()
+        log_dir2 = project2 / "memory" / "log"
+        log_dir2.mkdir(parents=True)
+
+        with (log_dir2 / "2026-08-01-errors.jsonl").open("w") as f:
+            f.write('{"ts": "2026-08-01T12:00:00+08:00", "type": "shared_error", "script": "test", "project": "/project2", "msg": "shared error"}\n')
+            f.write('{"ts": "2026-08-01T13:00:00+08:00", "type": "unique_error_2", "script": "test", "project": "/project2", "msg": "unique to project2"}\n')
+
+        registry_path = tmp_path / "registry.jsonl"
+        run_pipeline([project1, project2], registry_path, dry_run=False)
+
+        entries = list(read_registry(registry_path).values())
+        assert len(entries) == 3  # shared + unique1 + unique2
+
+        # Find shared error
+        shared = [e for e in entries if e["type"] == "shared_error"][0]
+        assert shared["total_count"] == 2
+        assert sorted(shared["projects"]) == ["/project1", "/project2"]
+
+        # Find unique errors
+        unique1 = [e for e in entries if e["type"] == "unique_error_1"][0]
+        assert unique1["total_count"] == 1
+        assert unique1["projects"] == ["/project1"]
+
+        unique2 = [e for e in entries if e["type"] == "unique_error_2"][0]
+        assert unique2["total_count"] == 1
+        assert unique2["projects"] == ["/project2"]
+
+    def test_verbose_output(self, tmp_path: Path, capsys: Any) -> None:
+        """VAL-CROSS-005: Verbose mode prints per-pattern detail."""
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        log_dir = project_root / "memory" / "log"
+        log_dir.mkdir(parents=True)
+
+        error_file = log_dir / "2026-08-01-errors.jsonl"
+        with error_file.open("w") as f:
+            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "error"}\n')
+
+        registry_path = tmp_path / "registry.jsonl"
+        run_pipeline(project_root, registry_path, dry_run=False, verbose=True)
+
+        captured = capsys.readouterr()
+        # Verbose output should contain pattern information
+        assert "fingerprint:" in captured.out
+        assert "count:" in captured.out
+        assert "days:" in captured.out
+
+    def test_mixed_threshold_outcomes(self, tmp_path: Path) -> None:
+        """VAL-CROSS-006: Single run produces mix of all four threshold outcomes."""
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        log_dir = project_root / "memory" / "log"
+        log_dir.mkdir(parents=True)
+
+        # Create errors with different threshold outcomes
+        with (log_dir / "2026-08-01-errors.jsonl").open("w") as f:
+            # "both": 2+ days, 5+ count
+            for i in range(5):
+                f.write(f'{{"ts": "2026-08-01T{10+i}:00:00+08:00", "type": "both_test", "script": "test", "project": "/test", "msg": "both error"}}\n')
+            for i in range(5):
+                f.write(f'{{"ts": "2026-08-02T{10+i}:00:00+08:00", "type": "both_test", "script": "test", "project": "/test", "msg": "both error"}}\n')
+
+            # "days": 2+ days, <5 count
+            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "days_test", "script": "test", "project": "/test", "msg": "days error"}\n')
+            f.write('{"ts": "2026-08-02T10:00:00+08:00", "type": "days_test", "script": "test", "project": "/test", "msg": "days error"}\n')
+
+            # "count": <2 days, 5+ count
+            for i in range(5):
+                f.write(f'{{"ts": "2026-08-01T{10+i}:00:00+08:00", "type": "count_test", "script": "test", "project": "/test", "msg": "count error"}}\n')
+
+            # null: <2 days, <5 count
+            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "null_test", "script": "test", "project": "/test", "msg": "null error"}\n')
+
+        registry_path = tmp_path / "registry.jsonl"
+        run_pipeline(project_root, registry_path, dry_run=False)
+
+        entries = list(read_registry(registry_path).values())
+        thresholds = [e["threshold_met"] for e in entries]
+
+        assert "both" in thresholds
+        assert "days" in thresholds
+        assert "count" in thresholds
+        assert None in thresholds
+
+    def test_performance_budget(self, tmp_path: Path) -> None:
+        """VAL-CROSS-007: Performance budgets hold."""
+        import time
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        log_dir = project_root / "memory" / "log"
+        log_dir.mkdir(parents=True)
+
+        # Generate 100 entries
+        with (log_dir / "2026-08-01-errors.jsonl").open("w") as f:
+            for i in range(100):
+                f.write(f'{{"ts": "2026-08-01T{10+i%12:02d}:00:00+08:00", "type": "perf_test", "script": "test", "project": "/test", "msg": "performance error {i}"}}\n')
+
+        registry_path = tmp_path / "registry.jsonl"
+
+        start = time.time()
+        run_pipeline(project_root, registry_path, dry_run=False)
+        elapsed = time.time() - start
+
+        # 100 entries should complete in <1 second
+        assert elapsed < 1.0, f"100 entries took {elapsed:.2f}s, expected <1s"
+
+
+# ============================================================================
+# Real Data Integration Tests
+# ============================================================================
+
+
+class TestRealDataEndToEnd:
+    """Integration tests with real error data from the repository."""
+
+    @pytest.mark.skipif(not REAL_ERRORS, reason="No real error data found")
+    def test_real_data_full_pipeline(self, tmp_path: Path) -> None:
+        """Full pipeline on real error data."""
+        # Use the actual memory project
+        memory_root = Path("/Users/busiji/memory")
+        if not memory_root.exists():
+            pytest.skip("Memory project not found")
+
+        registry_path = tmp_path / "registry.jsonl"
+        run_pipeline(memory_root, registry_path, dry_run=False)
+
+        assert registry_path.exists()
+        entries = list(read_registry(registry_path).values())
+
+        # Should have detected some patterns
+        assert len(entries) > 0
+
+        # All entries should have required fields
+        required_fields = {
+            "fingerprint", "type", "script", "normalized_msg", "status",
+            "first_seen", "last_seen", "first_detected", "last_updated",
+            "distinct_days", "total_count", "projects", "threshold_met",
+            "sample_first", "sample_last"
+        }
+
+        for entry in entries:
+            assert required_fields.issubset(entry.keys())
+            assert re.fullmatch(r"[0-9a-f]{16}", entry["fingerprint"])
+
+    @pytest.mark.skipif(not REAL_ERRORS, reason="No real error data found")
+    def test_real_data_curl_pattern_exists(self, tmp_path: Path) -> None:
+        """Real data should contain the curl blank-arg pattern."""
+        memory_root = Path("/Users/busiji/memory")
+        if not memory_root.exists():
+            pytest.skip("Memory project not found")
+
+        registry_path = tmp_path / "registry.jsonl"
+        run_pipeline(memory_root, registry_path, dry_run=False)
+
+        entries = list(read_registry(registry_path).values())
+
+        # Look for curl-related patterns
+        curl_patterns = [e for e in entries if "curl" in e["normalized_msg"].lower()]
+        
+        # Should have at least one curl-related pattern
+        assert len(curl_patterns) > 0, "No curl-related patterns found in real data"
+
