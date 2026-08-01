@@ -12,6 +12,13 @@
 - **生命周期事件写入路径**：`record_project_lifecycle()` 现在写入 `projects/{project_id}/events/{YYYY-MM-DD}.jsonl` 而非全局 `events.jsonl`。返回字典的 `event_log` 字段指向新路径。
 - **文档更新**：HOOK_INTEGRATION_SPEC.md 新增第 9 章，说明新的事件存储结构、写入路径、自动清理、迁移工具和向后兼容性。
 
+### Fixed
+- **迁移健壮性**：非对象 JSON 行（如 `123`、`[1,2]`）不再崩溃，通过 `isinstance(event_data, dict)` 守卫优雅跳过 (PR #232)。
+- **迁移统计准确性**：空行计入 `skipped` 计数器，确保 `written + skipped == total_read` 对账成立 (PR #232)。
+- **清理日志可见性**：`_cleanup_old_event_files()` 和 `record_project_lifecycle()` 中的清理异常现在发出 `warnings.warn()` 而非静默吞掉 (PR #232)。
+- **retention 环境变量容错**：非整数 `MEMORY_HOOK_LIFECYCLE_RETENTION_DAYS` 值回退到默认 30，不再静默禁用清理 (PR #232)。
+- **版本一致性**：0.9.3 → 0.9.4 全量同步（constants.py、compat.py、README.md、全部 test fixtures） (PR #232)。
+
 ### Notes
 - 全局 `events.jsonl` 已弃用但不会被删除，可通过 `memory-lifecycle-migrate` 迁移并归档为 `events.jsonl.archived`
 - 所有现有测试通过，无破坏性变更
