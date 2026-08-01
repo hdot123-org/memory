@@ -225,6 +225,18 @@ import time  # noqa: E402
 
 _logger = logging.getLogger(__name__)
 
+# Non-injection events: output suppressed, fast-path taken.
+# These events do not inject context into the user's session,
+# so we skip expensive build_context_package() and artifact writes.
+NON_INJECTION_EVENTS: frozenset[str] = frozenset({
+    "stop",
+    "notification",
+    "subagent-stop",
+    "post-tool-use",
+    "pre-compact",
+    "session-end",
+})
+
 # L2 Integrity — lazy-loaded to avoid circular imports
 def _integrity_sign(project_root: Path) -> None:
     """Sign project manifest after artifact write. Non-blocking."""
@@ -918,9 +930,15 @@ def _apply_artifact_compaction(package: dict[str, Any]) -> None:
         package.pop("allowed_writes", None)
 
 
-def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dict[str, Any]:
+def build_context_package(
+    host: str, event: str, payload: dict[str, Any],
+    lifecycle_record: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     cwd = _discover_cwd(payload)
-    lifecycle_record = _record_project_lifecycle_event(host=host, event=event, payload=payload, cwd=cwd)
+    # Lifecycle recording is now decoupled - record is passed in from main()
+    # If lifecycle_record is None, record it here for backward compatibility
+    if lifecycle_record is None:
+        lifecycle_record = _record_project_lifecycle_event(host=host, event=event, payload=payload, cwd=cwd)
     project_scope = determine_project_scope(cwd)
     business_policy = _get_gateway_business_policy()
     config = CoreConfig(
@@ -2090,6 +2108,58 @@ def _handle_integrity_check(
             package["validation_errors"].append(f"integrity-error: {detail}")
 
 
+def _emit_fast_path_metrics(args: argparse.Namespace, start_time: float) -> None:
+    """Emit minimal metrics for fast-path events (no context package).
+
+    Writes directly to metrics file without building a full package.
+    Non-blocking: exceptions are caught and logged.
+    """
+    try:
+        from .memory_hook_metrics import _resolve_metrics_path, append_metrics_record
+        duration_ms = max(1, int((time.time() - start_time) * 1000))
+        record = {
+            "timestamp": now_iso(),
+            "host": str(args.host),
+            "event": str(args.event),
+            "status": "fast_path",
+            "context_package_size_bytes": 0,
+            "validation_error_count": 0,
+            "missing_paths_count": 0,
+            "degraded": False,
+            "core_provider": "",
+            "package_kind": "",
+            "duration_ms": duration_ms,
+            "fast_path": True,
+        }
+        path = _resolve_metrics_path(ARTIFACT_ROOT)
+        append_metrics_record(path, record)
+    except Exception as exc:
+        _logger.debug("fast-path metrics emit skipped: %s", exc)
+
+
+def _record_event_log_minimal(args: argparse.Namespace, start_time: float) -> None:
+    """Write minimal event log entry for fast-path events.
+
+    Appends a single JSON line to EVENT_LOG without building full context.
+    Non-blocking: exceptions are caught and logged.
+    """
+    try:
+        duration_ms = max(1, int((time.time() - start_time) * 1000))
+        record = {
+            "timestamp": now_iso(),
+            "event": str(args.event),
+            "host": str(args.host),
+            "status": "ok",
+            "duration_ms": duration_ms,
+            "fast_path": True,
+        }
+        EVENT_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with EVENT_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        _logger.debug("fast-path event log skipped: %s", exc)
+
+
 def _write_artifacts_and_emit_metrics(
     args: argparse.Namespace, writer: Any, package: dict[str, Any], cwd: Path, start_time: float
 ) -> bool:
@@ -2178,8 +2248,43 @@ def main() -> int:
     if args.event == "prompt-submit":
         _handle_prompt_submit_logging(cwd, payload)
 
+    # Fast path for non-injection events: skip expensive build_context_package()
+    # Only apply fast path for factory host; other hosts go through full path
+    if args.event in NON_INJECTION_EVENTS and args.host == "factory":
+        lifecycle_record = None
+        try:
+            lifecycle_record = _record_project_lifecycle_event(
+                host=args.host,
+                event=args.event,
+                payload=payload,
+                cwd=cwd,
+            )
+        except Exception as exc:
+            _logger.debug("lifecycle recording failed for %s: %s", args.event, exc)
+
+        try:
+            _emit_fast_path_metrics(args, start_time)
+        except Exception as exc:
+            _logger.debug("fast-path metrics failed for %s: %s", args.event, exc)
+
+        try:
+            _record_event_log_minimal(args, start_time)
+        except Exception as exc:
+            _logger.debug("fast-path event log failed for %s: %s", args.event, exc)
+
+        sys.stdout.write('{"suppressOutput": true}\n')
+        return 0
+
+    # Injection events: full path with lifecycle pre-recorded
+    lifecycle_record = _record_project_lifecycle_event(
+        host=args.host,
+        event=args.event,
+        payload=payload,
+        cwd=cwd,
+    )
+
     writer = ArtifactWriter(CONTEXT_ROOT, ERROR_LOG, datetime_module=datetime)
-    package = build_context_package(args.host, args.event, payload)
+    package = build_context_package(args.host, args.event, payload, lifecycle_record=lifecycle_record)
 
     # Health Alert: Inject previous session's health report if available
     if args.event == "session-start":
