@@ -11,20 +11,17 @@ import pytest
 
 from memory_core.tools.error_pattern_detector import (
     PatternGroup,
+    build_parser,
     compute_fingerprint,
     evaluate_threshold,
     group_by_fingerprint,
-    normalize_error_msg,
-    read_registry,
-    write_registry,
     merge_patterns,
-    discover_error_files,
+    normalize_error_msg,
     parse_error_file,
-    scan_project,
-    discover_all_projects,
-    detect_project_from_cwd,
+    read_registry,
     run_pipeline,
-    build_parser,
+    scan_project,
+    write_registry,
 )
 
 ERROR_LOG_DIR = Path(__file__).resolve().parent.parent / "memory" / "log"
@@ -655,7 +652,7 @@ class TestRegistryIO:
     def test_read_registry_skips_malformed_lines(self, tmp_path: Path, capsys: Any) -> None:
         """VAL-RESILIENCE-002: Malformed JSONL lines are skipped."""
         registry_path = tmp_path / "registry.jsonl"
-        
+
         # Write registry with one good line and one malformed line
         with registry_path.open("w") as f:
             f.write('{"fingerprint": "abc123", "type": "test"}\n')
@@ -1132,7 +1129,7 @@ class TestRealDataEndToEnd:
 
         # Look for curl-related patterns
         curl_patterns = [e for e in entries if "curl" in e["normalized_msg"].lower()]
-        
+
         # Should have at least one curl-related pattern
         assert len(curl_patterns) > 0, "No curl-related patterns found in real data"
 
