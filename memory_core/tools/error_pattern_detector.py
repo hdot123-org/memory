@@ -24,19 +24,23 @@ from typing import Any
 try:
     from memory_core.tools.error_logger import write_error_log
 except ImportError:
-    write_error_log = None
+    write_error_log = None  # type: ignore[assignment]
 
 # Import-guarded now_iso for consistent timestamps
 try:
-    from memory_core.tools._file_utils import now_iso
+    from memory_core.tools._file_utils import now_iso as _now_iso_impl
 except ImportError:
     try:
-        from _file_utils import now_iso
+        from _file_utils import now_iso as _now_iso_impl  # type: ignore[no-redef]
     except ImportError:
-        def now_iso() -> str:
+        def _now_iso_impl() -> str:
             """Fallback now_iso if _file_utils unavailable."""
             from datetime import datetime
             return datetime.now().astimezone().isoformat(timespec="seconds")
+
+def now_iso() -> str:
+    """Wrapper for now_iso implementation."""
+    return _now_iso_impl()
 
 
 # ---------------------------------------------------------------------------
