@@ -217,9 +217,9 @@ class TestIsRegisteredDocDir:
 class TestExceptionDirs:
     """EXCEPTION_DIRS 常量测试。"""
 
-    def test_has_3_exceptions(self) -> None:
-        """EXCEPTION_DIRS 必须包含 3 个例外。"""
-        assert len(EXCEPTION_DIRS) == 3
+    def test_has_4_exceptions(self) -> None:
+        """EXCEPTION_DIRS 必须包含 4 个例外。"""
+        assert len(EXCEPTION_DIRS) == 4
 
     def test_contains_required_exceptions(self) -> None:
         """必须包含所有必需的例外。"""
@@ -227,5 +227,6 @@ class TestExceptionDirs:
             "memory/docs/archive/",
             "memory/docs/system/",
             "memory/kb/projects/",
+            "memory/kb/patterns/",
         }
         assert EXCEPTION_DIRS == required
