@@ -1,7 +1,5 @@
 """Tests for event file retention cleanup (VAL-RETENTION-01 through VAL-RETENTION-05)."""
 
-import json
-from datetime import datetime, timedelta
 from pathlib import Path
 
 from memory_core.tools.project_lifecycle import record_project_lifecycle

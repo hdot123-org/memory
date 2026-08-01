@@ -2,13 +2,11 @@
 
 import hashlib
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from memory_core.tools.project_lifecycle import migrate_lifecycle_events
-
 
 # ── VAL-MIGRATION-01: Migration reads old events.jsonl and emits per-project daily files
 
@@ -31,7 +29,7 @@ def test_migration_reads_old_events_and_emits_per_project_daily_files(tmp_path: 
             f.write(json.dumps(event) + "\n")
 
     # Run migration
-    stats = migrate_lifecycle_events(lifecycle_root)
+    migrate_lifecycle_events(lifecycle_root)
 
     # Verify 4 daily files created (2 projects x 2 dates)
     projects_dir = lifecycle_root / "projects"
@@ -116,7 +114,7 @@ def test_migration_is_idempotent(tmp_path: Path) -> None:
             f.write(json.dumps(event) + "\n")
 
     # Run migration first time
-    stats1 = migrate_lifecycle_events(lifecycle_root)
+    migrate_lifecycle_events(lifecycle_root)
 
     # Capture shasums of daily files
     daily_files = list((lifecycle_root / "projects").glob("*/events/*.jsonl"))
@@ -152,8 +150,8 @@ def test_migration_is_idempotent(tmp_path: Path) -> None:
 
 def test_migration_reports_statistics(tmp_path: Path, capsys) -> None:
     """VAL-MIGRATION-04: CLI prints human/machine-readable summary with all required stats."""
+
     from memory_core.tools.project_lifecycle import migrate_main
-    import sys
 
     lifecycle_root = tmp_path / "lifecycle"
     lifecycle_root.mkdir()
