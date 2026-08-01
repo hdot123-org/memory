@@ -21,6 +21,7 @@ made during the project lifecycle.
 | D-006 | Python 版本锁死到 3.14 单版本（CI 矩阵缩减 75%，删除 ~225 行兼容代码） | superseded | 2026-07-22 |
 | D-007 | 文档分类规则引擎升级（路由表 + guard 拦截 + CI 校验三层强制执行） | accepted | 2026-07-22 |
 | D-008 | Python 版本从 3.14 回滚到 3.12（稳定性问题 + 平台标准化） | accepted | 2026-07-31 |
+| D-009 | 生命周期事件按项目分片存储（events.jsonl → projects/{id}/events/{date}.jsonl） | accepted | 2026-08-01 |
 
 ## Process
 
