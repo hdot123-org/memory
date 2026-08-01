@@ -46,7 +46,7 @@ tags: [remediation, github-migration, retention, security, branch-cleanup]
 
 **retention 引擎（新增 artifact_retention.py，位于 memory_core/tools/）**：
 - clean_artifacts(target, days=30, dry_run=False) 清理超期 contexts/events
-- lifecycle events.jsonl >50MB 时轮转为 events-YYYYMM.jsonl（不覆盖已有归档）
+- ~~lifecycle events.jsonl >50MB 时轮转为 events-YYYYMM.jsonl~~ — 此方案已在 v0.9.4 被 per-project 按日分片替代（`projects/{project_id}/events/{YYYY-MM-DD}.jsonl`），并自动清理 >30 天的旧文件
 - CLI 入口 memory-retention-cleanup --target --days --dry-run
 - 安全保证：KB/docs/decisions 永不在清理范围，--dry-run 零修改
 
