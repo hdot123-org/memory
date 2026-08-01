@@ -116,3 +116,4 @@ Public documentation should be safe for open-source readers.
    ```
 4. GitHub Actions CI runs tests and release workflow publishes artifacts.
 5. Verify: `pip install memory-core==x.y.z`
+<!-- test review mapping 1785618996 -->
