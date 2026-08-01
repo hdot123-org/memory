@@ -100,6 +100,7 @@ DIRECTORY_STRUCTURE = [
     "memory/kb/projects",
     "memory/kb/decisions",
     "memory/kb/lessons",
+    "memory/kb/patterns",
     "memory/docs",
     "memory/log",
 ]
