@@ -7,6 +7,9 @@
 - `memory-sync-versions` three-file sync: now patches `ownership.toml` + `memory.lock` + `adapter.toml` when the upgrade gate allows (patch or minor with unchanged `schema_version`). The gate blocks major or schema-changing upgrades but still patches `ownership.toml` and points the user to `memory-migrate`.
 - `memory-audit-daily`: global-only daily audit (no `--target`) iterating all registered projects from `path-index.json`.
 
+### Changed
+- **Hook 性能优化**：非注入事件（stop、notification、subagent-stop、post-tool-use、pre-compact、session-end）实现快速路径，跳过 `build_context_package()` 和 artifact snapshot 写入，仅保留生命周期记录、metrics 和轻量审计日志。预期减少 90% 文件读取、60% git 子进程、50% 文件写入。注入事件（session-start、prompt-submit）行为不变。
+
 ### Fixed
 - `_try_resign_ownership` silent exception swallowing: expanded to `_try_resign_all`, which now reports errors instead of `except: pass`.
 - `path-index.json` divergence from the `projects/` directory: no rebuild mechanism existed before; `memory-lifecycle-rebuild` closes this gap.

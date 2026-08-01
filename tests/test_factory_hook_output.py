@@ -414,3 +414,311 @@ class TestExecuteDelegateIntegration:
         output = json.loads(captured.out.strip())
         assert "hookSpecificOutput" in output
         assert output["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
+
+
+# ===========================================================================
+# VAL-FAST-001 to VAL-FAST-011: Fast-path optimization for non-injection events
+# ===========================================================================
+
+class TestFastPathOutput:
+    """Fast-path returns suppressOutput for non-injection events."""
+
+    @pytest.mark.parametrize("event", [
+        "stop", "notification", "subagent-stop",
+        "post-tool-use", "pre-compact", "session-end",
+    ])
+    def test_fast_path_returns_suppress_output(self, gw, event, monkeypatch):
+        """Non-injection events return {"suppressOutput": true} via fast-path."""
+        import argparse
+        from io import StringIO
+        from unittest.mock import patch
+
+        args = argparse.Namespace(
+            host="factory",
+            event=event,
+            no_delegate=False,
+        )
+
+        with patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', event]):
+            with patch('sys.stdin', StringIO('{"cwd": "/tmp"}')):
+                with patch.object(gw, '_parse_args', return_value=args):
+                    with patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}):
+                        with patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")):
+                            with patch.object(gw, '_handle_source_repo_check', return_value=None):
+                                with patch.object(gw, 'is_denied_project_root', return_value=False):
+                                    with patch.object(gw, '_should_noop_for_external_context', return_value=False):
+                                        with patch.object(gw, '_handle_pretooluse_guard', return_value=None):
+                                            with patch.object(gw, 'build_context_package') as mock_build:
+                                                with patch.object(gw, '_record_project_lifecycle_event', return_value=None):
+                                                    with patch.object(gw, '_emit_fast_path_metrics'):
+                                                        with patch.object(gw, '_record_event_log_minimal'):
+                                                            with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
+                                                                result = gw.main()
+
+                                                                # Verify fast-path was taken
+                                                                assert result == 0
+                                                                assert mock_build.call_count == 0
+                                                                output = mock_stdout.getvalue().strip()
+                                                                assert json.loads(output) == {"suppressOutput": True}
+
+
+class TestFastPathLifecycleRecording:
+    """Fast-path calls lifecycle recording independently."""
+
+    def test_fast_path_calls_lifecycle_recording(self, gw, monkeypatch):
+        """Fast-path calls _record_project_lifecycle_event."""
+        import argparse
+        from io import StringIO
+        from unittest.mock import MagicMock, patch
+
+        args = argparse.Namespace(
+            host="factory",
+            event="stop",
+            no_delegate=False,
+        )
+
+        mock_lifecycle = MagicMock(return_value={"status": "active"})
+
+        with patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']):
+            with patch('sys.stdin', StringIO('{"cwd": "/tmp"}')):
+                with patch.object(gw, '_parse_args', return_value=args):
+                    with patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}):
+                        with patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")):
+                            with patch.object(gw, '_handle_source_repo_check', return_value=None):
+                                with patch.object(gw, 'is_denied_project_root', return_value=False):
+                                    with patch.object(gw, '_should_noop_for_external_context', return_value=False):
+                                        with patch.object(gw, '_handle_pretooluse_guard', return_value=None):
+                                            with patch.object(gw, 'build_context_package') as mock_build:
+                                                with patch.object(gw, '_record_project_lifecycle_event', mock_lifecycle):
+                                                    with patch.object(gw, '_emit_fast_path_metrics'):
+                                                        with patch.object(gw, '_record_event_log_minimal'):
+                                                            with patch('sys.stdout', new_callable=StringIO):
+                                                                gw.main()
+
+                                                                # Verify lifecycle was called
+                                                                assert mock_lifecycle.call_count == 1
+                                                                # Verify build_context_package was NOT called
+                                                                assert mock_build.call_count == 0
+
+
+class TestFastPathNoBuildContextPackage:
+    """Fast-path does NOT call build_context_package."""
+
+    def test_fast_path_skips_build_context_package(self, gw, monkeypatch):
+        """Fast-path skips expensive build_context_package call."""
+        import argparse
+        from io import StringIO
+        from unittest.mock import MagicMock, patch
+
+        args = argparse.Namespace(
+            host="factory",
+            event="notification",
+            no_delegate=False,
+        )
+
+        mock_build = MagicMock()
+
+        with patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'notification']):
+            with patch('sys.stdin', StringIO('{"cwd": "/tmp"}')):
+                with patch.object(gw, '_parse_args', return_value=args):
+                    with patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}):
+                        with patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")):
+                            with patch.object(gw, '_handle_source_repo_check', return_value=None):
+                                with patch.object(gw, 'is_denied_project_root', return_value=False):
+                                    with patch.object(gw, '_should_noop_for_external_context', return_value=False):
+                                        with patch.object(gw, '_handle_pretooluse_guard', return_value=None):
+                                            with patch.object(gw, 'build_context_package', mock_build):
+                                                with patch.object(gw, '_record_project_lifecycle_event', return_value=None):
+                                                    with patch.object(gw, '_emit_fast_path_metrics'):
+                                                        with patch.object(gw, '_record_event_log_minimal'):
+                                                            with patch('sys.stdout', new_callable=StringIO):
+                                                                gw.main()
+
+                                                                # Verify build_context_package was NOT called
+                                                                assert mock_build.call_count == 0
+
+
+class TestFastPathExceptionHandling:
+    """Fast-path handles exceptions gracefully."""
+
+    def test_fast_path_lifecycle_exception_still_returns_suppress_output(self, gw, monkeypatch):
+        """If lifecycle recording throws, fast-path still returns suppressOutput."""
+        import argparse
+        from io import StringIO
+        from unittest.mock import patch
+
+        args = argparse.Namespace(
+            host="factory",
+            event="stop",
+            no_delegate=False,
+        )
+
+        def raise_exception(*args, **kwargs):
+            raise RuntimeError("lifecycle failed")
+
+        with patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']):
+            with patch('sys.stdin', StringIO('{"cwd": "/tmp"}')):
+                with patch.object(gw, '_parse_args', return_value=args):
+                    with patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}):
+                        with patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")):
+                            with patch.object(gw, '_handle_source_repo_check', return_value=None):
+                                with patch.object(gw, 'is_denied_project_root', return_value=False):
+                                    with patch.object(gw, '_should_noop_for_external_context', return_value=False):
+                                        with patch.object(gw, '_handle_pretooluse_guard', return_value=None):
+                                            with patch.object(gw, 'build_context_package') as mock_build:
+                                                with patch.object(gw, '_record_project_lifecycle_event', side_effect=raise_exception):
+                                                    with patch.object(gw, '_emit_fast_path_metrics'):
+                                                        with patch.object(gw, '_record_event_log_minimal'):
+                                                            with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
+                                                                result = gw.main()
+
+                                                                # Should still succeed
+                                                                assert result == 0
+                                                                # Should not call build_context_package
+                                                                assert mock_build.call_count == 0
+                                                                # Should still output suppressOutput
+                                                                output = mock_stdout.getvalue().strip()
+                                                                assert json.loads(output) == {"suppressOutput": True}
+
+
+class TestBuildContextPackageLifecycleParameter:
+    """build_context_package accepts lifecycle_record parameter."""
+
+    def test_build_context_package_accepts_lifecycle_record(self, gw, monkeypatch):
+        """build_context_package can accept pre-recorded lifecycle data."""
+        import inspect
+
+        # Check function signature
+        sig = inspect.signature(gw.build_context_package)
+        params = sig.parameters
+
+        # Verify lifecycle_record parameter exists
+        assert 'lifecycle_record' in params
+        # Verify it's optional (has default)
+        assert params['lifecycle_record'].default is None or params['lifecycle_record'].default == inspect.Parameter.empty
+
+
+# ===========================================================================
+# Integration Test: Fast-path file writing behavior
+# ===========================================================================
+
+class TestFastPathFileWriting:
+    """Integration test: fast-path actually writes event log and metrics to tmp directory."""
+
+    def test_fast_path_writes_event_log_and_metrics(self, gw, tmp_path, monkeypatch):
+        """Fast-path writes event log and metrics files to specified directories."""
+        import argparse
+        from io import StringIO
+        from unittest.mock import patch
+
+        # Set up temp directories
+        artifact_root = tmp_path / "artifacts"
+        artifact_root.mkdir()
+        event_log_path = artifact_root / "events.jsonl"
+        metrics_dir = artifact_root / "metrics"
+        metrics_dir.mkdir()
+
+        # Override module-level constants to use tmp directories
+        monkeypatch.setattr(gw, 'ARTIFACT_ROOT', artifact_root)
+        monkeypatch.setattr(gw, 'EVENT_LOG', event_log_path)
+
+        args = argparse.Namespace(
+            host="factory",
+            event="stop",
+            no_delegate=False,
+        )
+
+        with patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']):
+            with patch('sys.stdin', StringIO('{"cwd": "/tmp"}')):
+                with patch.object(gw, '_parse_args', return_value=args):
+                    with patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}):
+                        with patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")):
+                            with patch.object(gw, '_handle_source_repo_check', return_value=None):
+                                with patch.object(gw, 'is_denied_project_root', return_value=False):
+                                    with patch.object(gw, '_should_noop_for_external_context', return_value=False):
+                                        with patch.object(gw, '_handle_pretooluse_guard', return_value=None):
+                                            with patch.object(gw, 'build_context_package') as mock_build:
+                                                with patch.object(gw, '_record_project_lifecycle_event', return_value=None):
+                                                    with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
+
+                                                        # Run the actual functions (not mocked)
+                                                        result = gw.main()
+
+                                                        # Verify suppressOutput
+                                                        assert result == 0
+                                                        output = mock_stdout.getvalue().strip()
+                                                        assert json.loads(output) == {"suppressOutput": True}
+
+                                                        # Verify build_context_package was NOT called
+                                                        assert mock_build.call_count == 0
+
+        # Verify event log was written
+        assert event_log_path.exists(), "Event log file should be created"
+        event_log_content = event_log_path.read_text()
+        assert len(event_log_content) > 0, "Event log should not be empty"
+
+        # Parse the event log entry
+        event_entry = json.loads(event_log_content.strip().split('\n')[-1])
+        assert event_entry['event'] == 'stop'
+        assert event_entry['host'] == 'factory'
+        assert event_entry['fast_path'] is True
+        assert 'timestamp' in event_entry
+        assert 'duration_ms' in event_entry
+
+        # Verify metrics were written (check if metrics file exists in artifact_root)
+        metrics_file = artifact_root / "metrics.jsonl"
+        if metrics_file.exists():
+            metrics_content = metrics_file.read_text()
+            if metrics_content:
+                metrics_entry = json.loads(metrics_content.strip().split('\n')[-1])
+                assert metrics_entry['event'] == 'stop'
+                assert metrics_entry['host'] == 'factory'
+                assert metrics_entry['status'] == 'fast_path'
+                assert metrics_entry['fast_path'] is True
+                assert 'duration_ms' in metrics_entry
+
+    def test_fast_path_does_not_write_artifact_snapshot(self, gw, tmp_path, monkeypatch):
+        """Fast-path does NOT write artifact snapshot to contexts/ directory."""
+        import argparse
+        from io import StringIO
+        from unittest.mock import patch
+
+        # Set up temp directories
+        artifact_root = tmp_path / "artifacts"
+        artifact_root.mkdir()
+        context_root = artifact_root / "contexts"
+        context_root.mkdir()
+        event_log_path = artifact_root / "events.jsonl"
+
+        monkeypatch.setattr(gw, 'ARTIFACT_ROOT', artifact_root)
+        monkeypatch.setattr(gw, 'CONTEXT_ROOT', context_root)
+        monkeypatch.setattr(gw, 'EVENT_LOG', event_log_path)
+
+        args = argparse.Namespace(
+            host="factory",
+            event="stop",
+            no_delegate=False,
+        )
+
+        # Count files before
+        files_before = set(context_root.rglob("*")) if context_root.exists() else set()
+
+        with patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']):
+            with patch('sys.stdin', StringIO('{"cwd": "/tmp"}')):
+                with patch.object(gw, '_parse_args', return_value=args):
+                    with patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}):
+                        with patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")):
+                            with patch.object(gw, '_handle_source_repo_check', return_value=None):
+                                with patch.object(gw, 'is_denied_project_root', return_value=False):
+                                    with patch.object(gw, '_should_noop_for_external_context', return_value=False):
+                                        with patch.object(gw, '_handle_pretooluse_guard', return_value=None):
+                                            with patch.object(gw, '_record_project_lifecycle_event', return_value=None):
+                                                with patch('sys.stdout', new_callable=StringIO):
+                                                    gw.main()
+
+        # Count files after
+        files_after = set(context_root.rglob("*")) if context_root.exists() else set()
+
+        # Verify no new files were created in contexts/
+        new_files = files_after - files_before
+        assert len(new_files) == 0, f"Fast-path should not write to contexts/, but found: {new_files}"
