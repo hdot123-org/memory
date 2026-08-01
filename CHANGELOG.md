@@ -1,14 +1,9 @@
 # Changelog
 
-## [Unreleased]
-
-### Added
-- `memory-lifecycle-rebuild` CLI: rebuilds `path-index.json` from `projects/*.json` lifecycle records. Filters inactive and missing records, deduplicates by `local_path` (keeping the latest `observed_at`), atomic write. Supports `--dry-run`, `--json`, `--lifecycle-root`.
-- `memory-sync-versions` three-file sync: now patches `ownership.toml` + `memory.lock` + `adapter.toml` when the upgrade gate allows (patch or minor with unchanged `schema_version`). The gate blocks major or schema-changing upgrades but still patches `ownership.toml` and points the user to `memory-migrate`.
-- `memory-audit-daily`: global-only daily audit (no `--target`) iterating all registered projects from `path-index.json`.
+## [0.9.3] - 2026-08-01
 
 ### Changed
-- **Hook 性能优化**：非注入事件（stop、notification、subagent-stop、post-tool-use、pre-compact、session-end）实现快速路径，跳过 `build_context_package()` 和 artifact snapshot 写入，仅保留生命周期记录、metrics 和轻量审计日志。预期减少 90% 文件读取、60% git 子进程、50% 文件写入。注入事件（session-start、prompt-submit）行为不变。
+- **Hook 性能优化**：非注入事件（stop、notification、subagent-stop、post-tool-use、pre-compact、session-end）实现快速路径，跳过 `build_context_package()` 和 artifact snapshot 写入，仅保留生命周期记录、metrics 和轻量审计日志。预期减少 90% 文件读取、60% git 子进程、50% 文件写入。注入事件（session-start、prompt-submit）行为不变 (PR #229)。
 
 ### Fixed
 - `_try_resign_ownership` silent exception swallowing: expanded to `_try_resign_all`, which now reports errors instead of `except: pass`.
