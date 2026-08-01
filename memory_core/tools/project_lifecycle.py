@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -161,6 +162,77 @@ def _update_path_index(path_index: dict[str, Any], record: dict[str, Any]) -> No
     }
 
 
+def _cleanup_old_event_files(
+    *,
+    lifecycle_root: Path,
+    project_id: str,
+    retention_days: int,
+    now_fn: Callable[[], Any] | None = None,
+) -> int:
+    """Delete event files older than retention_days. Returns count deleted.
+
+    Throttled via .last-cleanup sentinel — returns 0 if cleanup already ran today.
+    If retention_days is 0, cleanup is disabled and this returns 0 immediately.
+    All exceptions are caught and logged to prevent blocking the hook.
+    """
+    if retention_days <= 0:
+        return 0
+
+    try:
+        if now_fn is None:
+            now = datetime.now()
+        else:
+            result = now_fn()
+            if isinstance(result, datetime):
+                now = result
+            else:
+                # now_fn returned an ISO string; parse the date portion
+                now = datetime.fromisoformat(str(result)[:19])
+
+        today_str = now.strftime("%Y-%m-%d")
+        cutoff_date = now.date() - timedelta(days=retention_days)
+
+        project_dir = lifecycle_root / "projects" / project_id
+        events_dir = project_dir / "events"
+        sentinel_path = project_dir / ".last-cleanup"
+
+        # Throttle: check if cleanup already ran today
+        if sentinel_path.exists():
+            try:
+                last_cleanup_date = sentinel_path.read_text(encoding="utf-8").strip()
+                if last_cleanup_date == today_str:
+                    return 0
+            except OSError:
+                pass
+
+        if not events_dir.exists() or not events_dir.is_dir():
+            return 0
+
+        deleted_count = 0
+        for event_file in events_dir.glob("*.jsonl"):
+            # Parse date from filename: {YYYY-MM-DD}.jsonl
+            try:
+                file_date_str = event_file.stem  # e.g., "2026-08-01"
+                file_date = datetime.strptime(file_date_str, "%Y-%m-%d").date()
+                if file_date < cutoff_date:
+                    event_file.unlink()
+                    deleted_count += 1
+            except (ValueError, OSError):
+                # Skip files that don't match expected pattern or can't be deleted
+                continue
+
+        # Write/update the sentinel with today's date
+        try:
+            sentinel_path.write_text(today_str + "\n", encoding="utf-8")
+        except OSError:
+            pass
+
+        return deleted_count
+    except Exception:
+        # Cleanup failures must never block the hook
+        return 0
+
+
 def record_project_lifecycle(
     *,
     lifecycle_root: Path,
@@ -189,7 +261,6 @@ def record_project_lifecycle(
     _apply_indexed_identity(record, path_entry if isinstance(path_entry, dict) else None)
 
     record_path = projects_dir / f"{record['project_id']}.json"
-    event_log = lifecycle_root / "events.jsonl"
 
     if record_path.exists():
         try:
@@ -204,10 +275,30 @@ def record_project_lifecycle(
     rendered = json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     record_path.write_text(rendered, encoding="utf-8")
     _write_path_index(lifecycle_root, path_index)
+
+    # Per-project daily event file (replaces global events.jsonl)
+    event_date = record["observed_at"][:10]  # "2026-08-01" — first 10 chars of ISO timestamp
+    project_events_dir = projects_dir / record["project_id"] / "events"
+    project_events_dir.mkdir(parents=True, exist_ok=True)
+    event_log = project_events_dir / f"{event_date}.jsonl"
     with event_log.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
     record["record_path"] = str(record_path)
     record["event_log"] = str(event_log)
+
+    # Opportunistic cleanup of old event files (throttled to once per day)
+    try:
+        retention_days = int(os.environ.get("MEMORY_HOOK_LIFECYCLE_RETENTION_DAYS", "30"))
+        _cleanup_old_event_files(
+            lifecycle_root=lifecycle_root,
+            project_id=record["project_id"],
+            retention_days=retention_days,
+            now_fn=now_iso_fn,
+        )
+    except Exception:
+        # Cleanup failures must never block the hook
+        pass
+
     return record
 
 
