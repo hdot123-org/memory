@@ -1,0 +1,1 @@
+# INFRA-12 native integration test marker
