@@ -134,6 +134,6 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 - 不要依赖外部传入的 issue 内容，必须自行通过 Linear API 拉完整上下文
 - 仓库与目录路由规则在 `~/.factory/config/repositories.yml`
 - 执行完成后直接调用 Linear API 回写 comment
-- 不直接把 issue 改为 `Done`，状态流转交给 GitLab ↔ Linear 自动化
+- 不直接把 issue 改为 `Done`，状态流转交给 GitHub ↔ Linear 自动化（Linear 原生 GitHub 集成，ID: 7ee5340b）
 - 完整规范见 `docs/architecture/API-CONTRACT.md`
 

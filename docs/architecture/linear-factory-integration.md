@@ -753,12 +753,13 @@ read_secret(vault_id="ozqqpvh5yvvxvyu64npq62a3ti", item_id="elgcm2nzfza2hjb3yffp
 
 **GitHub Integration（GitHub → Linear 自动流转）：**
 
-通过 n8n 或第三方集成桥接 GitHub PR 事件到 Linear。
+通过 **Linear 原生 GitHub 集成** 实现（集成 ID: `7ee5340b`，service: `github`）。Linear 内置监听 GitHub PR 事件，自动映射状态流转，无需 n8n 或第三方桥接。
 
-**流转链路：**
-- PR open → Linear `In Progress`
-- Review requested → Linear `In Review`
-- PR merge → Linear `Done`
+| 流转规则 | GitHub 事件 | Linear 目标状态 |
+|----------|------------|----------------|
+| PR open → In Progress | `pull_request` opened | `In Progress` |
+| Review requested → In Review | `pull_request_review` / review requested | `In Review` |
+| PR merge → Done | `pull_request` closed+merged | `Done` |
 
 ### A.7 n8n Workflow
 
@@ -768,17 +769,14 @@ read_secret(vault_id="ozqqpvh5yvvxvyu64npq62a3ti", item_id="elgcm2nzfza2hjb3yffp
 |------|-----|
 | Workflow ID | `zV3mKyKEI04AanmI` |
 | 名称 | Linear Factory Gateway |
-| 状态 | 非激活（需验证后激活） |
+| 状态 | 激活（Active） |
 | Webhook 路径 | `/webhook/linear-factory` |
 | Credential | `CAoQRrdcqmpmS0Sn`（Factory API Key，从 1Password 导入） |
-| 节点数 | 7 个 |
+| 节点数 | 3 个 |
 
-**待完成：**
-1. 配置 n8n 环境变量：`FACTORY_COMPUTER_ID`、`FACTORY_MODEL`
-2. 在 n8n UI 中验证节点
-3. 激活 workflow
+**已完成：** workflow 已激活（active=1），正常运行于 node-22。
 
-### A.6 铁律
+### A.8 铁律
 
 - 所有代码通过 feature 分支 + GitHub PR 提交
 - 禁止 `git push origin main`（main 受保护）
