@@ -122,3 +122,5 @@ Public documentation should be safe for open-source readers.
 <!-- INFRA-24 e2e-mission-verify test marker 1785620671 -->
 
 <!-- INFRA-27 valt-chain-b test marker 1785691116 -->
+
+<!-- INFRA-28 valt-chain-c test marker 1785691961 -->
