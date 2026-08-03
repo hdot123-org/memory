@@ -80,17 +80,25 @@ def _fail_closed_with_raw_check(raw_input: str, reason: str) -> tuple[int, dict[
             pass
 
     if is_protected:
-        result = {
-            "decision": "block",
-            "reason": f"guard failure on protected path: {reason}",
-        }
+        decision = "block"
+        permission_decision = "deny"
+        reason_text = f"guard failure on protected path: {reason}"
         exit_code = 2
     else:
-        result = {
-            "decision": "allow",
-            "reason": f"guard failure, non-protected or undetermined path: {reason}",
-        }
+        decision = "allow"
+        permission_decision = "allow"
+        reason_text = f"guard failure, non-protected or undetermined path: {reason}"
         exit_code = 0
+
+    result = {
+        "decision": decision,
+        "reason": reason_text,
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": permission_decision,
+            "permissionDecisionReason": reason_text,
+        },
+    }
 
     # Write error log (non-blocking)
     try:
@@ -146,17 +154,25 @@ def _fail_closed_log_and_output(
 
     # Decide: deny if protected, allow otherwise
     if is_protected:
-        result = {
-            "decision": "block",
-            "reason": f"guard failure on protected path: {reason}",
-        }
+        decision = "block"
+        permission_decision = "deny"
+        reason_text = f"guard failure on protected path: {reason}"
         exit_code = 2
     else:
-        result = {
-            "decision": "allow",
-            "reason": f"guard failure, non-protected or undetermined path: {reason}",
-        }
+        decision = "allow"
+        permission_decision = "allow"
+        reason_text = f"guard failure, non-protected or undetermined path: {reason}"
         exit_code = 0
+
+    result = {
+        "decision": decision,
+        "reason": reason_text,
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": permission_decision,
+            "permissionDecisionReason": reason_text,
+        },
+    }
 
     # Write error log (non-blocking)
     try:
@@ -194,22 +210,44 @@ def _write_metrics_jsonl(project_root: Path, record: dict[str, Any]) -> None:
 
 
 def _rule_result_to_hook_json(rule_result: Any) -> dict[str, Any]:
-    """Convert RuleResult to hook JSON dict format (backward compatibility).
+    """Convert RuleResult to hook JSON dict format with dual-format output.
 
     The hook system expects a specific JSON format with 'decision', 'reason', 'scenario', etc.
     This function converts the internal RuleResult back to that format.
+
+    Output includes BOTH legacy format (decision/reason) AND Factory official format
+    (hookSpecificOutput.permissionDecision) for backward compatibility.
 
     Args:
         rule_result: RuleResult from classify_tool_use
 
     Returns:
-        Dict in hook JSON format: {decision, reason, scenario?, item_results?, injected_prompt?}
+        Dict in dual hook JSON format:
+        {
+            "decision": "allow"/"block",
+            "reason": "...",
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow"/"deny",
+                "permissionDecisionReason": "..."
+            },
+            ...other fields from rule_result.detail
+        }
     """
     from memory_core.tools._rule_types import RuleResult
 
     if not isinstance(rule_result, RuleResult):
         # Shouldn't happen, but handle gracefully
-        return {"decision": "allow", "reason": "Invalid result type"}
+        reason = "Invalid result type"
+        return {
+            "decision": "allow",
+            "reason": reason,
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "permissionDecisionReason": reason,
+            },
+        }
 
     # Start with the detail dict which contains decision, scenario, item_results, injected_prompt
     result_dict = dict(rule_result.detail)
@@ -220,6 +258,15 @@ def _rule_result_to_hook_json(rule_result: Any) -> dict[str, Any]:
 
     # Add reason from message
     result_dict["reason"] = rule_result.message
+
+    # Add Factory official format (hookSpecificOutput) for forward compatibility
+    # Map "block" → "deny", "allow" → "allow"
+    permission_decision = "deny" if result_dict["decision"] == "block" else "allow"
+    result_dict["hookSpecificOutput"] = {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": permission_decision,
+        "permissionDecisionReason": result_dict["reason"],
+    }
 
     return result_dict
 
