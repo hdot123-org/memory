@@ -8,6 +8,7 @@ Part of REF-001 strangler fig scaffold phase.
 """
 
 import re
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # 文件类型黑名单常量
@@ -105,3 +106,40 @@ UNCERTAIN_PATH_PATTERNS: list[str] = [
     r"\{",   # brace expansion
     r"\[",   # bracket expansion
 ]
+
+# ---------------------------------------------------------------------------
+# Protected path markers for fail-closed guard logic
+# ---------------------------------------------------------------------------
+
+PROTECTED_PATH_MARKERS: tuple[str, ...] = (
+    "memory/kb/",
+    "memory/system/",
+    "memory/docs/",
+    "memory/log/",
+)
+
+
+def is_protected_path_target(payload: dict[str, Any]) -> bool:
+    """Check if payload targets a protected path.
+
+    Fast path check for fail-closed logic. Does NOT call the full classifier.
+    Checks tool_input path fields (file_path, path, command) against
+    PROTECTED_PATH_MARKERS.
+
+    Args:
+        payload: Dict containing tool_input or direct path fields.
+
+    Returns:
+        True if any path field contains a protected marker, False otherwise.
+    """
+    # Normalize: check tool_input first, then top-level
+    tool_input = payload.get("tool_input", payload)
+
+    # Check each path field
+    for key in ("file_path", "path", "command"):
+        val = tool_input.get(key, "")
+        if isinstance(val, str):
+            for marker in PROTECTED_PATH_MARKERS:
+                if marker in val:
+                    return True
+    return False

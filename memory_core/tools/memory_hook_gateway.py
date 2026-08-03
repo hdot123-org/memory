@@ -12,6 +12,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
 
+# Import fail-closed guard helpers
+from memory_core.tools._guard_patterns import (
+    PROTECTED_PATH_MARKERS,
+    is_protected_path_target,
+)
+
 if TYPE_CHECKING:
     from typing import TypeVar
 
@@ -1985,6 +1991,7 @@ def _handle_pretooluse_guard(
     # Use -m module mode so absolute imports work (REF-001: guard uses
     # 'from memory_core.tools._guard_classify import ...' which requires
     # __package__ to be set; script mode sets __package__=None).
+    exc_type = "unknown"
     try:
         guard_env = {**os.environ, "MEMORY_HOOK_ORIGINAL_CWD": str(cwd)}
         proc = subprocess.run(
@@ -2003,14 +2010,60 @@ def _handle_pretooluse_guard(
         _emit_pretooluse_metrics(args.host, args.event, status, start_time)
         return proc.returncode
     except subprocess.TimeoutExpired:
+        exc_type = "TimeoutExpired"
         append_error_log("pretooluse-guard", "guard timed out after 5s", {"cwd": str(cwd)})
     except Exception as exc:
+        exc_type = type(exc).__name__
         append_error_log("pretooluse-guard", "guard execution failed", {"error": str(exc)})
 
-    # Fallback: allow if guard unavailable or failed
-    print(json.dumps({"decision": "allow", "reason": "guard unavailable, allowing by default"}))
-    _emit_pretooluse_metrics(args.host, args.event, "ok", start_time)
-    return 0
+    # Fail-closed: context-aware fallback instead of blanket allow
+    # Parse raw_payload to check if target path is protected
+    payload_dict: dict[str, Any] = {}
+    try:
+        payload_dict = json.loads(raw_payload) if raw_payload else {}
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    is_protected = is_protected_path_target(payload_dict) if payload_dict else False
+
+    # Write error log with redacted context
+    try:
+        from memory_core.tools._redaction import redact as _redact
+        from memory_core.tools.error_logger import write_error_log as _write_err
+
+        redacted_raw = _redact(raw_payload[:500]) if raw_payload else ""
+
+        _write_err(
+            project_root=str(cwd),
+            error_type="hook_timeout",
+            context={
+                "guard_failure": "gateway-fallback",
+                "is_protected": is_protected,
+                "payload_preview": redacted_raw,
+            },
+            error_msg=f"guard subprocess failed on {'protected' if is_protected else 'non-protected'} path (exception: {exc_type})",
+        )
+    except Exception:
+        pass  # error logging must not block
+
+    if is_protected:
+        # Fail-closed: deny protected paths
+        result = {
+            "decision": "block",
+            "reason": "guard unavailable, blocking protected path by default",
+        }
+        print(json.dumps(result))
+        _emit_pretooluse_metrics(args.host, args.event, "error", start_time)
+        return 2
+    else:
+        # Fail-open: allow non-protected or undetermined paths
+        result = {
+            "decision": "allow",
+            "reason": "guard unavailable, allowing non-protected path by default",
+        }
+        print(json.dumps(result))
+        _emit_pretooluse_metrics(args.host, args.event, "ok", start_time)
+        return 0
 
 
 def _handle_session_start_setup(cwd: Path) -> None:

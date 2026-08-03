@@ -13,11 +13,17 @@ import json
 import os
 import sys
 import time
+import logging
 from pathlib import Path
 from typing import Any
 
 from memory_core.tools._guard_classify import _get_project_root_for_task, classify_tool_use  # noqa: F401
-from memory_core.tools._guard_patterns import FORBIDDEN_DIRS, FORBIDDEN_SUFFIXES  # noqa: F401
+from memory_core.tools._guard_patterns import (  # noqa: F401
+    FORBIDDEN_DIRS,
+    FORBIDDEN_SUFFIXES,
+    PROTECTED_PATH_MARKERS,
+    is_protected_path_target,
+)
 from memory_core.tools.memory_hook_metrics import _resolve_metrics_path, append_metrics_record
 
 # Import now_iso utility (REF-001 §4.8)
@@ -47,6 +53,134 @@ def _load_project_root() -> Path | None:
 
 
 _now_iso = now_iso
+
+
+_logger = logging.getLogger(__name__)
+
+
+def _fail_closed_with_raw_check(raw_input: str, reason: str) -> tuple[int, dict[str, Any]]:
+    """Fail-closed handler for when JSON parsing fails.
+
+    Attempts to extract protected path markers from raw input string.
+    """
+    is_protected = False
+    payload: dict[str, Any] = {}
+
+    # Try to find protected markers in raw input
+    if raw_input:
+        for marker in PROTECTED_PATH_MARKERS:
+            if marker in raw_input:
+                is_protected = True
+                break
+        # Try to parse partial JSON for logging
+        try:
+            payload = json.loads(raw_input[:2000]) if raw_input else {}
+        except Exception:
+            # Could not parse, but we already checked markers
+            pass
+
+    if is_protected:
+        result = {
+            "decision": "block",
+            "reason": f"guard failure on protected path: {reason}",
+        }
+        exit_code = 2
+    else:
+        result = {
+            "decision": "allow",
+            "reason": f"guard failure, non-protected or undetermined path: {reason}",
+        }
+        exit_code = 0
+
+    # Write error log (non-blocking)
+    try:
+        project_root = _load_project_root()
+        if project_root is not None:
+            from memory_core.tools.error_logger import write_error_log
+            from memory_core.tools._redaction import redact
+
+            redacted_raw = redact(raw_input[:500]) if raw_input else ""
+            write_error_log(
+                project_root=str(project_root),
+                error_type="json_parse_error",
+                context={
+                    "guard_failure": "fail-closed",
+                    "is_protected": is_protected,
+                    "raw_input_preview": redacted_raw,
+                },
+                error_msg=reason,
+            )
+    except Exception as exc:
+        _logger.debug("error log write failed in _fail_closed_with_raw_check: %s", exc)
+
+    return exit_code, result
+
+
+def _fail_closed_log_and_output(
+    payload: dict[str, Any],
+    reason: str,
+    project_root: Path | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """Context-aware fail-closed: deny protected paths, allow others.
+
+    Called when the guard encounters an internal failure (JSON parse error,
+    stdin read exception, project root detection failure).
+
+    Args:
+        payload: Partial or empty payload (may not have been parsed successfully).
+        reason: Human-readable failure reason.
+        project_root: Project root if known, None otherwise.
+
+    Returns:
+        Tuple of (exit_code, result_dict).
+        exit_code: 2 for deny (protected path), 0 for allow (non-protected/undetermined).
+        result_dict: Decision JSON to print.
+    """
+    # Try to determine if the target path is protected
+    is_protected = False
+    if payload:
+        try:
+            is_protected = is_protected_path_target(payload)
+        except Exception as exc:
+            _logger.warning("is_protected_path_target check failed: %s", exc)
+
+    # Decide: deny if protected, allow otherwise
+    if is_protected:
+        result = {
+            "decision": "block",
+            "reason": f"guard failure on protected path: {reason}",
+        }
+        exit_code = 2
+    else:
+        result = {
+            "decision": "allow",
+            "reason": f"guard failure, non-protected or undetermined path: {reason}",
+        }
+        exit_code = 0
+
+    # Write error log (non-blocking)
+    try:
+        if project_root is not None:
+            from memory_core.tools.error_logger import write_error_log
+
+            # Redact payload before logging
+            from memory_core.tools._redaction import redact
+
+            redacted_payload = redact(json.dumps(payload)[:500])
+            write_error_log(
+                project_root=str(project_root),
+                error_type="json_parse_error",
+                context={
+                    "guard_failure": "fail-closed",
+                    "is_protected": is_protected,
+                    "payload_preview": redacted_payload,
+                },
+                error_msg=reason,
+            )
+    except Exception as exc:
+        _logger.debug("error log write failed: %s", exc)
+
+    return exit_code, result
 
 
 def _write_metrics_jsonl(project_root: Path, record: dict[str, Any]) -> None:
@@ -99,13 +233,18 @@ def main() -> int:
 
     # Read JSON payload from stdin
     try:
-        payload = json.load(sys.stdin)
+        raw_stdin = sys.stdin.read()
+        payload = json.loads(raw_stdin)
     except json.JSONDecodeError as e:
-        print(json.dumps({"decision": "allow", "reason": f"Invalid JSON input: {e}"}))
-        return 0
+        # Fail-closed: check raw stdin for protected path markers
+        exit_code, result = _fail_closed_with_raw_check(raw_stdin, f"Invalid JSON input: {e}")
+        print(json.dumps(result))
+        return exit_code
     except Exception as e:
-        print(json.dumps({"decision": "allow", "reason": f"Error reading input: {e}"}))
-        return 0
+        # Fail-closed: stdin read failed, no payload to check
+        exit_code, result = _fail_closed_with_raw_check("", f"Error reading input: {e}")
+        print(json.dumps(result))
+        return exit_code
 
     # Normalize payload: Factory hooks wrap tool params in tool_input
     # Standalone tests pass fields at top level
@@ -117,8 +256,14 @@ def main() -> int:
     # Get project root
     project_root = _load_project_root()
     if project_root is None:
-        print(json.dumps({"decision": "allow", "reason": "Cannot determine project root"}))
-        return 0
+        # Fail-closed: check payload for protected path
+        exit_code, result = _fail_closed_log_and_output(
+            payload,
+            "Cannot determine project root",
+            project_root=None
+        )
+        print(json.dumps(result))
+        return exit_code
 
     # Check if memory/system exists (if not, this isn't a memory-managed project)
     if not (project_root / "memory" / "system").exists():
