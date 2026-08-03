@@ -1,7 +1,9 @@
 # Droid Auto Review Workflow
-# Uses Bailian (Qwen 3.7 Plus) via Kong Proxy BYOK configuration
+# Uses Bailian (Qwen 3.7 Plus) via Kong Proxy BYOM configuration
 # Kong Proxy at ai.exa.edu.kg routes qwen3.7-plus to node1 via Tailscale
-# BYOK passed via droid-action `settings` input (official method)
+# BYOM customModels written to ~/.factory/settings.json before droid-action runs
+# (droid-action `settings` input targets ~/.factory/droid/settings.json which is
+#  a separate config namespace — customModels must go in ~/.factory/settings.json)
 
 name: Droid Auto Review
 
@@ -17,6 +19,8 @@ jobs:
   droid-review:
     if: github.event.pull_request.draft == false && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    env:
+      NVIDIA_KONG_PROXY_KEY: ${{ secrets.NVIDIA_KONG_PROXY_KEY }}
     permissions:
       contents: write
       pull-requests: write
@@ -28,29 +32,26 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
-      - name: Write BYOK settings file
-        env:
-          NVIDIA_KONG_PROXY_KEY: ${{ secrets.NVIDIA_KONG_PROXY_KEY }}
+      - name: Write BYOM settings file
         run: |
-          python3 -c "
-          import json, os
-          settings = {
-              'customModels': [{
-                  'model': 'qwen3.7-plus',
-                  'displayName': 'Bailian Qwen 3.7 Plus',
-                  'baseUrl': 'https://ai.exa.edu.kg/v1',
-                  'apiKey': os.environ['NVIDIA_KONG_PROXY_KEY'],
-                  'provider': 'generic-chat-completion-api',
-                  'maxOutputTokens': 65536,
-                  'noImageSupport': True
-              }]
+          mkdir -p ~/.factory
+          cat > ~/.factory/settings.json << 'SETTINGS_EOF'
+          {
+            "customModels": [
+              {
+                "model": "qwen3.7-plus",
+                "displayName": "Bailian Qwen 3.7 Plus",
+                "baseUrl": "https://ai.exa.edu.kg/v1",
+                "apiKey": "${NVIDIA_KONG_PROXY_KEY}",
+                "provider": "generic-chat-completion-api",
+                "maxOutputTokens": 65536,
+                "noImageSupport": true
+              }
+            ]
           }
-          os.makedirs(os.path.expanduser('~/.factory'), exist_ok=True)
-          path = os.path.expanduser('~/.factory/settings.json')
-          with open(path, 'w') as f:
-              json.dump(settings, f)
-          print('Valid JSON written to', path)
-          "
+          SETTINGS_EOF
+          echo "BYOM settings written to ~/.factory/settings.json"
+          python3 -c "import json; json.load(open('$HOME/.factory/settings.json')); print('JSON validation passed')"
       - name: Run Droid Auto Review
         uses: Factory-AI/droid-action@49188f4035f23e609bbeee36ec5b22e72212a8e5
         with:
