@@ -17,7 +17,6 @@ Usage:
 
 import inspect
 import json
-import re
 from pathlib import Path
 from typing import Any
 
@@ -36,11 +35,14 @@ try:
 except ImportError:
     from _file_utils import now_iso  # type: ignore
 
+# Import shared redaction module
+try:
+    from memory_core.tools._redaction import redact as _shared_redact
+except ImportError:
+    from _redaction import redact as _shared_redact  # type: ignore
+
 # 错误消息最大长度
 MAX_MSG_LENGTH = 500
-
-# API key 脱敏正则：匹配 sk- 开头后接至少 4 个字母数字的字符串
-_API_KEY_PATTERN = re.compile(r"sk-[a-zA-Z0-9]{4,}")
 
 # 支持的错误类型枚举
 VALID_ERROR_TYPES = frozenset({
@@ -73,8 +75,14 @@ def _detect_calling_script() -> str:
 
 
 def _redact_api_keys(text: str) -> str:
-    """将文本中的 API key 脱敏为 sk-...****。"""
-    return _API_KEY_PATTERN.sub("sk-...****", text)
+    """将文本中的 API key 脱敏。
+
+    Delegates to the shared ``_redaction.redact()`` module which covers
+    all 6 token formats (sk-, sk-ant-, ghp_, AKIA, lin_api_, glpat-)
+    plus auth headers, passwords, private IPs, and user paths.
+    """
+    # Delegate to shared redaction; use max_len=len(text) to avoid truncation
+    return _shared_redact(text, max_len=len(text) if text else 0)
 
 
 def _redact_context(ctx: dict[str, Any]) -> dict[str, Any]:
