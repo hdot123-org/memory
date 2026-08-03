@@ -117,12 +117,18 @@ Public documentation should be safe for open-source readers.
 4. GitHub Actions CI runs tests and release workflow publishes artifacts.
 5. Verify: `pip install memory-core==x.y.z`
 
-<!-- INFRA-23 review-mapping test marker 1785619261 -->
+<!-- INFRA-23 review-mapping test marker 1785737789 -->
 
 <!-- INFRA-24 e2e-mission-verify test marker 1785620671 -->
 
-<!-- INFRA-27 valt-chain-b test marker 1785691116 -->
+<!-- INFRA-27 valt-chain-b test marker 1785738372 -->
 
 <!-- INFRA-28 valt-chain-c test marker 1785691961 -->
+
+<!-- INFRA-1 linear-gateway-fullchain test marker 1785733640 -->
+
+<!-- INFRA-28 valt-chain-c test marker 1785738011 -->
+
+<!-- INFRA-26 valt-chain-a test marker 1785738928 -->
 
 <!-- INFRA-18 pipeline-validation test marker 1785712192 -->
