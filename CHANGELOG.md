@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/hdot123/memory/compare/v0.11.0...v0.11.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* 修复 branch-cleanup.yml 安全性问题 ([#289](https://github.com/hdot123/memory/issues/289)) ([fec5c85](https://github.com/hdot123/memory/commit/fec5c857b2f4d31fd4fdacc1be2b9d0ff2655069))
+
 ## [0.11.0](https://github.com/hdot123/memory/compare/v0.10.1...v0.11.0) (2026-08-04)
 
 
