@@ -132,6 +132,8 @@ gh workflow run release-and-dispatch.yml \
 
 使用 `scripts/release_rollback.sh` 回滚 release（需在 GitHub Release 页面手动删除对应 release）。
 
+> **完整操作手册**：详见 [`RELEASE.md`](RELEASE.md)，包含故障排查、下游通知、hotfix 流程等。
+
 ## Versioning
 
 遵循 [Semantic Versioning](https://semver.org/)：`MAJOR.MINOR.PATCH`
