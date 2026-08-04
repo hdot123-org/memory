@@ -15,11 +15,7 @@ Covers:
 import json
 import subprocess
 import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
-
 
 # ============================================================================
 # VAL-CROSS-005: Gateway fail-closed outputs hookSpecificOutput
@@ -50,8 +46,9 @@ class TestGatewayFailClosedHookSpecificOutput:
             )
 
             # Import gateway function
-            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
             from argparse import Namespace
+
+            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
 
             args = Namespace(host="factory", event="pre-tool-use")
 
@@ -96,8 +93,9 @@ class TestGatewayFailClosedHookSpecificOutput:
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = RuntimeError("guard crashed")
 
-            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
             from argparse import Namespace
+
+            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
 
             args = Namespace(host="factory", event="pre-tool-use")
 
@@ -138,8 +136,9 @@ class TestGatewayFailClosedHookSpecificOutput:
                 cmd=["python"], timeout=5, output="timeout"
             )
 
-            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
             from argparse import Namespace
+
+            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
 
             args = Namespace(host="factory", event="pre-tool-use")
 
@@ -192,8 +191,9 @@ class TestErrorLogContent:
                 cmd=["python"], timeout=5, output="timeout"
             )
 
-            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
             from argparse import Namespace
+
+            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
 
             args = Namespace(host="factory", event="pre-tool-use")
 
@@ -231,8 +231,9 @@ class TestErrorLogContent:
         ) as mock_write_log:
             mock_run.side_effect = RuntimeError("guard crashed")
 
-            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
             from argparse import Namespace
+
+            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
 
             args = Namespace(host="factory", event="pre-tool-use")
 
@@ -281,8 +282,9 @@ class TestFailClosedLogRedaction:
                 cmd=["python"], timeout=5, output="timeout"
             )
 
-            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
             from argparse import Namespace
+
+            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
 
             args = Namespace(host="factory", event="pre-tool-use")
 
@@ -337,8 +339,9 @@ class TestGatewayForwarding:
             mock_result.returncode = 0
             mock_run.return_value = mock_result
 
-            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
             from argparse import Namespace
+
+            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
 
             args = Namespace(host="factory", event="pre-tool-use")
 
@@ -427,7 +430,6 @@ class TestConsumerBehavioral:
 
     def test_log_utils_sanitizing_filter_redacts_user_paths(self):
         """SanitizingFilter redacts user paths from log messages."""
-        import logging
         from memory_core.tools.log_utils import SanitizingFilter
 
         filter_instance = SanitizingFilter()
@@ -656,8 +658,9 @@ class TestGatewayNonDictPayload:
                 cmd=["python"], timeout=5, output="timeout"
             )
 
-            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
             from argparse import Namespace
+
+            from memory_core.tools.memory_hook_gateway import _handle_pretooluse_guard
 
             args = Namespace(host="factory", event="pre-tool-use")
 
@@ -667,7 +670,7 @@ class TestGatewayNonDictPayload:
             sys.stdout = captured
 
             try:
-                exit_code = _handle_pretooluse_guard(
+                _handle_pretooluse_guard(
                     args, raw_payload, tmp_path, 0.0
                 )
             finally:

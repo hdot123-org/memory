@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -59,11 +59,11 @@ class TestProtectedPathDetection:
     def test_performance_under_1ms(self) -> None:
         """VAL-GUARD-012: Test that path check completes under 1ms."""
         payload = {"tool_input": {"file_path": "/some/path/memory/kb/file.txt"}}
-        
+
         # Warm up
         for _ in range(100):
             is_protected_path_target(payload)
-        
+
         # Measure 1000 iterations
         times = []
         for _ in range(1000):
@@ -71,13 +71,12 @@ class TestProtectedPathDetection:
             is_protected_path_target(payload)
             end = time.perf_counter()
             times.append((end - start) * 1000)  # Convert to ms
-        
+
         # Calculate statistics
         times.sort()
         median_ms = times[len(times) // 2]
         p99_ms = times[int(len(times) * 0.99)]
-        max_ms = max(times)
-        
+
         # Assert under 1ms median
         assert median_ms < 1.0, f"Median time {median_ms:.3f}ms exceeds 1ms"
         assert p99_ms < 2.0, f"P99 time {p99_ms:.3f}ms exceeds 2ms"
@@ -112,7 +111,7 @@ class TestInternalGuardFailClosed:
     def test_json_parse_error_protected_path_blocks(self, tmp_path: Path) -> None:
         """VAL-GUARD-001: JSON parse error on protected path should block."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        
+
         # Send invalid JSON with protected path marker
         result = subprocess.run(
             [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
@@ -122,7 +121,7 @@ class TestInternalGuardFailClosed:
             cwd=str(tmp_path),
             env={**os.environ, "FACTORY_PROJECT_DIR": str(tmp_path)},
         )
-        
+
         assert result.returncode == 2
         output = json.loads(result.stdout)
         assert output["decision"] == "block"
@@ -131,7 +130,7 @@ class TestInternalGuardFailClosed:
     def test_json_parse_error_non_protected_path_allows(self, tmp_path: Path) -> None:
         """VAL-GUARD-003: JSON parse error on non-protected path should allow."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        
+
         # Send invalid JSON with non-protected path
         result = subprocess.run(
             [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
@@ -141,7 +140,7 @@ class TestInternalGuardFailClosed:
             cwd=str(tmp_path),
             env={**os.environ, "FACTORY_PROJECT_DIR": str(tmp_path)},
         )
-        
+
         assert result.returncode == 0
         output = json.loads(result.stdout)
         assert output["decision"] == "allow"
@@ -150,7 +149,7 @@ class TestInternalGuardFailClosed:
     def test_json_parse_error_no_path_allows(self, tmp_path: Path) -> None:
         """VAL-GUARD-005: JSON parse error with no path info should allow."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        
+
         # Send invalid JSON with no path info
         result = subprocess.run(
             [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
@@ -160,7 +159,7 @@ class TestInternalGuardFailClosed:
             cwd=str(tmp_path),
             env={**os.environ, "FACTORY_PROJECT_DIR": str(tmp_path)},
         )
-        
+
         assert result.returncode == 0
         output = json.loads(result.stdout)
         assert output["decision"] == "allow"
@@ -177,7 +176,7 @@ class TestInternalGuardFailClosed:
         # Run guard in a way that _load_project_root returns None
         # We simulate this by patching Path.cwd to raise
         # Since the guard runs as a subprocess, we use a Python script inline
-        script = f"""
+        script = """
 import sys, os, json
 os.environ.pop('FACTORY_PROJECT_DIR', None)
 os.environ.pop('MEMORY_HOOK_ORIGINAL_CWD', None)
@@ -211,7 +210,7 @@ sys.exit(main())
         env.pop("FACTORY_PROJECT_DIR", None)
         env.pop("MEMORY_HOOK_ORIGINAL_CWD", None)
 
-        script = f"""
+        script = """
 import sys, os, json
 os.environ.pop('FACTORY_PROJECT_DIR', None)
 os.environ.pop('MEMORY_HOOK_ORIGINAL_CWD', None)
@@ -242,20 +241,21 @@ class TestGatewayFailClosed:
 
     def test_gateway_timeout_protected_path_blocks(self, tmp_path: Path) -> None:
         """VAL-GUARD-002: Gateway timeout on protected path should block."""
-        from memory_core.tools import memory_hook_gateway
         import argparse
-        
+
+        from memory_core.tools import memory_hook_gateway
+
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        
+
         args = argparse.Namespace(host="factory", event="pre-tool-use")
         raw_payload = json.dumps({"tool_input": {"file_path": "memory/log/file.txt"}})
-        
+
         # Mock subprocess.run to raise TimeoutExpired
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="guard", timeout=5)):
             exit_code = memory_hook_gateway._handle_pretooluse_guard(
                 args, raw_payload, tmp_path, time.time()
             )
-        
+
         assert exit_code == 2
         # Check stdout for block decision
         # Note: In real scenario, gateway prints to stdout. We'd need to capture it.
@@ -263,56 +263,59 @@ class TestGatewayFailClosed:
 
     def test_gateway_crash_protected_path_blocks(self, tmp_path: Path) -> None:
         """VAL-GUARD-002: Gateway crash on protected path should block."""
-        from memory_core.tools import memory_hook_gateway
         import argparse
-        
+
+        from memory_core.tools import memory_hook_gateway
+
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        
+
         args = argparse.Namespace(host="factory", event="pre-tool-use")
         raw_payload = json.dumps({"tool_input": {"file_path": "memory/kb/file.txt"}})
-        
+
         # Mock subprocess.run to raise Exception
         with patch("subprocess.run", side_effect=Exception("Guard crashed")):
             exit_code = memory_hook_gateway._handle_pretooluse_guard(
                 args, raw_payload, tmp_path, time.time()
             )
-        
+
         assert exit_code == 2
 
     def test_gateway_timeout_non_protected_path_allows(self, tmp_path: Path) -> None:
         """VAL-GUARD-004: Gateway timeout on non-protected path should allow."""
-        from memory_core.tools import memory_hook_gateway
         import argparse
-        
+
+        from memory_core.tools import memory_hook_gateway
+
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        
+
         args = argparse.Namespace(host="factory", event="pre-tool-use")
         raw_payload = json.dumps({"tool_input": {"file_path": "src/file.txt"}})
-        
+
         # Mock subprocess.run to raise TimeoutExpired
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="guard", timeout=5)):
             exit_code = memory_hook_gateway._handle_pretooluse_guard(
                 args, raw_payload, tmp_path, time.time()
             )
-        
+
         assert exit_code == 0
 
     def test_gateway_crash_non_protected_path_allows(self, tmp_path: Path) -> None:
         """VAL-GUARD-004: Gateway crash on non-protected path should allow."""
-        from memory_core.tools import memory_hook_gateway
         import argparse
-        
+
+        from memory_core.tools import memory_hook_gateway
+
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        
+
         args = argparse.Namespace(host="factory", event="pre-tool-use")
         raw_payload = json.dumps({"tool_input": {"file_path": "docs/file.txt"}})
-        
+
         # Mock subprocess.run to raise Exception
         with patch("subprocess.run", side_effect=Exception("Guard crashed")):
             exit_code = memory_hook_gateway._handle_pretooluse_guard(
                 args, raw_payload, tmp_path, time.time()
             )
-        
+
         assert exit_code == 0
 
 
@@ -345,15 +348,15 @@ class TestNormalPathsUnaffected:
     def test_normal_allow_path_unaffected(self, tmp_path: Path) -> None:
         """VAL-GUARD-008: Normal allow path should still work."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        
+
         payload = {
             "tool_name": "Write",
             "file_path": "src/file.txt",
             "content": "test content",
         }
-        
+
         exit_code, result = self._run_guard(payload, tmp_path)
-        
+
         assert exit_code == 0
         assert result["decision"] == "allow"
         # Reason should NOT indicate guard failure
@@ -362,15 +365,15 @@ class TestNormalPathsUnaffected:
     def test_normal_block_path_unaffected(self, tmp_path: Path) -> None:
         """VAL-GUARD-009: Normal block path should still work."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        
+
         payload = {
             "tool_name": "Write",
             "file_path": "memory/kb/file.txt",
             "content": "test content",
         }
-        
+
         exit_code, result = self._run_guard(payload, tmp_path)
-        
+
         assert exit_code == 2
         assert result["decision"] == "block"
         # Reason should indicate ownership classification, not guard failure
@@ -379,15 +382,15 @@ class TestNormalPathsUnaffected:
     def test_non_memory_project_still_allowed(self, tmp_path: Path) -> None:
         """VAL-GUARD-010: Non-memory project should still be allowed."""
         # Don't create memory/system
-        
+
         payload = {
             "tool_name": "Write",
             "file_path": "memory/kb/file.txt",
             "content": "test content",
         }
-        
+
         exit_code, result = self._run_guard(payload, tmp_path)
-        
+
         assert exit_code == 0
         assert result["decision"] == "allow"
         assert "not a memory-managed project" in result.get("reason", "").lower()
@@ -422,27 +425,27 @@ class TestExitCodes:
     def test_allow_returns_exit_0(self, tmp_path: Path) -> None:
         """VAL-GUARD-011: Allow decision returns exit 0."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        
+
         payload = {"tool_name": "Write", "file_path": "src/file.txt"}
         exit_code, result = self._run_guard(payload, tmp_path)
-        
+
         assert exit_code == 0
         assert result["decision"] == "allow"
 
     def test_block_returns_exit_2(self, tmp_path: Path) -> None:
         """VAL-GUARD-011: Block decision returns exit 2."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        
+
         payload = {"tool_name": "Write", "file_path": "memory/kb/file.txt"}
         exit_code, result = self._run_guard(payload, tmp_path)
-        
+
         assert exit_code == 2
         assert result["decision"] == "block"
 
     def test_fail_closed_block_returns_exit_2(self, tmp_path: Path) -> None:
         """VAL-GUARD-011: Fail-closed block returns exit 2."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        
+
         # Send invalid JSON with protected path
         result = subprocess.run(
             [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
@@ -452,7 +455,7 @@ class TestExitCodes:
             cwd=str(tmp_path),
             env={**os.environ, "FACTORY_PROJECT_DIR": str(tmp_path)},
         )
-        
+
         assert result.returncode == 2
         output = json.loads(result.stdout)
         assert output["decision"] == "block"
@@ -460,7 +463,7 @@ class TestExitCodes:
     def test_fail_open_allow_returns_exit_0(self, tmp_path: Path) -> None:
         """VAL-GUARD-011: Fail-open allow returns exit 0."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        
+
         # Send invalid JSON with non-protected path
         result = subprocess.run(
             [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
@@ -470,7 +473,7 @@ class TestExitCodes:
             cwd=str(tmp_path),
             env={**os.environ, "FACTORY_PROJECT_DIR": str(tmp_path)},
         )
-        
+
         assert result.returncode == 0
         output = json.loads(result.stdout)
         assert output["decision"] == "allow"

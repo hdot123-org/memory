@@ -6,10 +6,10 @@ compatibility while supporting the new Factory hook contract.
 """
 
 import json
-import pytest
-from unittest.mock import patch, MagicMock
-from memory_core.tools.pretooluse_guard import _rule_result_to_hook_json
+from unittest.mock import patch
+
 from memory_core.tools._rule_types import RuleResult
+from memory_core.tools.pretooluse_guard import _rule_result_to_hook_json
 
 
 class TestHookFormatMigration:
@@ -265,16 +265,16 @@ class TestEndToEndAllowFlow:
         }
 
         # Execute
-        from memory_core.tools.pretooluse_guard import main
         import sys
+
+        from memory_core.tools.pretooluse_guard import main
 
         with patch.object(sys, "stdin") as mock_stdin:
             mock_stdin.read.return_value = json.dumps(payload)
-            with patch.object(sys, "stdout") as mock_stdout:
-                # Capture print output
-                printed = []
-                with patch("builtins.print", side_effect=lambda x: printed.append(x)):
-                    exit_code = main()
+            # Capture print output
+            printed = []
+            with patch("builtins.print", side_effect=lambda x: printed.append(x)):
+                exit_code = main()
 
         # Verify
         assert exit_code == 0
@@ -320,15 +320,15 @@ class TestEndToEndDenyFlow:
         }
 
         # Execute
-        from memory_core.tools.pretooluse_guard import main
         import sys
+
+        from memory_core.tools.pretooluse_guard import main
 
         with patch.object(sys, "stdin") as mock_stdin:
             mock_stdin.read.return_value = json.dumps(payload)
-            with patch.object(sys, "stdout") as mock_stdout:
-                printed = []
-                with patch("builtins.print", side_effect=lambda x: printed.append(x)):
-                    exit_code = main()
+            printed = []
+            with patch("builtins.print", side_effect=lambda x: printed.append(x)):
+                exit_code = main()
 
         # Verify
         assert exit_code == 2
@@ -375,14 +375,15 @@ class TestGatewayTransparentForwarding:
         }
 
         # Execute
-        from memory_core.tools.pretooluse_guard import main
         import sys
+
+        from memory_core.tools.pretooluse_guard import main
 
         with patch.object(sys, "stdin") as mock_stdin:
             mock_stdin.read.return_value = json.dumps(payload)
             printed = []
             with patch("builtins.print", side_effect=lambda x: printed.append(x)):
-                exit_code = main()
+                main()
 
         # Verify
         result = json.loads(printed[0])

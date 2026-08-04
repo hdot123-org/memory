@@ -13,7 +13,6 @@ Covers:
 - Consumer module integration
 """
 
-import pytest
 from memory_core.tools._redaction import redact, redact_dict
 
 # Test fixtures — NOT real credentials, just random strings with token prefixes
@@ -306,25 +305,29 @@ class TestConsumerIntegration:
     """Test that consumer modules use shared redaction."""
 
     def test_log_utils_imports_redaction(self):
-        from memory_core.tools import log_utils
         import inspect
+
+        from memory_core.tools import log_utils
         source = inspect.getsource(log_utils)
         assert "_redaction" in source or "redact" in source
 
     def test_error_logger_imports_redaction(self):
-        from memory_core.tools import error_logger
         import inspect
+
+        from memory_core.tools import error_logger
         source = inspect.getsource(error_logger)
         assert "_redaction" in source or "redact" in source
 
     def test_telemetry_bridge_imports_redaction(self):
-        from memory_core.tools import telemetry_bridge
         import inspect
+
+        from memory_core.tools import telemetry_bridge
         source = inspect.getsource(telemetry_bridge)
         assert "_redaction" in source or "redact" in source
 
     def test_memory_hook_gateway_imports_redaction(self):
-        from memory_core.tools import memory_hook_gateway
         import inspect
+
+        from memory_core.tools import memory_hook_gateway
         source = inspect.getsource(memory_hook_gateway)
         assert "_redaction" in source or "redact" in source

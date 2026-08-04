@@ -10,10 +10,10 @@ Exit codes:
 """
 
 import json
+import logging
 import os
 import sys
 import time
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -64,7 +64,6 @@ def _fail_closed_with_raw_check(raw_input: str, reason: str) -> tuple[int, dict[
     Attempts to extract protected path markers from raw input string.
     """
     is_protected = False
-    payload: dict[str, Any] = {}
 
     # Try to find protected markers in raw input
     if raw_input:
@@ -72,9 +71,9 @@ def _fail_closed_with_raw_check(raw_input: str, reason: str) -> tuple[int, dict[
             if marker in raw_input:
                 is_protected = True
                 break
-        # Try to parse partial JSON for logging
+        # Try to parse partial JSON for logging (result used by caller context)
         try:
-            payload = json.loads(raw_input[:2000]) if raw_input else {}
+            json.loads(raw_input[:2000]) if raw_input else None
         except Exception:
             # Could not parse, but we already checked markers
             pass
@@ -104,8 +103,8 @@ def _fail_closed_with_raw_check(raw_input: str, reason: str) -> tuple[int, dict[
     try:
         project_root = _load_project_root()
         if project_root is not None:
-            from memory_core.tools.error_logger import write_error_log
             from memory_core.tools._redaction import redact
+            from memory_core.tools.error_logger import write_error_log
 
             redacted_raw = redact(raw_input[:500]) if raw_input else ""
             write_error_log(
@@ -177,10 +176,9 @@ def _fail_closed_log_and_output(
     # Write error log (non-blocking)
     try:
         if project_root is not None:
-            from memory_core.tools.error_logger import write_error_log
-
             # Redact payload before logging
             from memory_core.tools._redaction import redact
+            from memory_core.tools.error_logger import write_error_log
 
             redacted_payload = redact(json.dumps(payload)[:500])
             write_error_log(
