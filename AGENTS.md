@@ -125,6 +125,16 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 
 不同步视为违规，CI 会拦截。
 
+## 铁律：版本发版纪律
+
+**版本发版使用 release-please 自动化，禁止手动打 tag。**
+
+1. **Commit 规范** — 使用 conventional commits（`feat:`/`fix:`/`chore:`），release-please 据此自动决定版本号
+2. **禁止手动 tag** — 发版通过合并 release-please 的 Release PR 完成，不手动 `git tag`
+3. **手动发版** — 仅在 release-please 故障时使用 `workflow_dispatch` 触发 `release-and-dispatch.yml`
+4. **回滚** — 使用 `scripts/release_rollback.sh`，不要手动删 tag
+5. **发版指南** — 详见 `docs/guides/release-guide.md`
+
 ## Linear Gateway
 
 当 session tag 包含 `linear-gateway` 或用户要求处理 Linear issue 时，使用 `linear-gateway` skill。
