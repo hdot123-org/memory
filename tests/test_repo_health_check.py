@@ -1,5 +1,6 @@
 """Tests for repo_health_check.sh script."""
 
+import glob
 import subprocess
 from pathlib import Path
 
@@ -30,17 +31,17 @@ def test_ci_mode_version_consistency_passes():
 
 
 def test_ci_mode_detects_version_mismatch_in_constants():
-    """Test that --ci mode detects when constants.py version doesn't match pyproject.toml."""
-    constants_path = Path(__file__).parent.parent / "memory_core" / "constants.py"
-    original_content = constants_path.read_text()
+    """Test that --ci mode detects when __init__.py __version__ doesn't match pyproject.toml."""
+    init_path = Path(__file__).parent.parent / "memory_core" / "__init__.py"
+    original_content = init_path.read_text()
 
     try:
-        # Break version consistency
+        # Break version consistency by changing __version__ in __init__.py
         broken_content = original_content.replace(
-            f'CURRENT_MEMORY_VERSION = "{CURRENT_MEMORY_VERSION}"',
-            'CURRENT_MEMORY_VERSION = "0.8.0"'
+            f'__version__ = "{CURRENT_MEMORY_VERSION}"',
+            '__version__ = "0.8.0"'
         )
-        constants_path.write_text(broken_content)
+        init_path.write_text(broken_content)
 
         exit_code, stdout, stderr = run_health_check("--ci")
 
@@ -50,7 +51,14 @@ def test_ci_mode_detects_version_mismatch_in_constants():
         assert "FAIL" in stdout
     finally:
         # Restore original content
-        constants_path.write_text(original_content)
+        init_path.write_text(original_content)
+        # Remove stale .pyc files to ensure subsequent subprocess calls see the restored source
+        pycache_dir = init_path.parent / "__pycache__"
+        if pycache_dir.exists():
+            for pyc_file in glob.glob(str(pycache_dir / "__init__.cpython-*.pyc")):
+                Path(pyc_file).unlink(missing_ok=True)
+            for pyc_file in glob.glob(str(pycache_dir / "constants.cpython-*.pyc")):
+                Path(pyc_file).unlink(missing_ok=True)
 
 
 def test_ci_mode_detects_version_mismatch_in_readme():
