@@ -10,7 +10,7 @@ class TestSanitizingFilter:
         f = SanitizingFilter()
         result = f._redact("password=secret123")
         assert "secret123" not in result
-        assert "***REDACTED***" in result
+        assert "[REDACTED]" in result
 
     def test_redacts_token(self) -> None:
         f = SanitizingFilter()
@@ -21,13 +21,13 @@ class TestSanitizingFilter:
         f = SanitizingFilter()
         result = f._redact("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9")
         assert "eyJhbGciOiJIUzI1NiJ9" not in result
-        assert "***REDACTED***" in result
+        assert "[REDACTED]" in result
 
     def test_redacts_private_ip(self) -> None:
         f = SanitizingFilter()
         result = f._redact("connecting to 192.168.1.100:5432")
         assert "192.168.1.100" not in result
-        assert "***REDACTED_IP***" in result
+        assert "[REDACTED_IP]" in result
 
     def test_preserves_normal_text(self) -> None:
         f = SanitizingFilter()

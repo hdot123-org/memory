@@ -12,6 +12,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast
 
+# Import fail-closed guard helpers
+from memory_core.tools._guard_patterns import (
+    PROTECTED_PATH_MARKERS,
+    is_protected_path_target,
+)
+
 if TYPE_CHECKING:
     from typing import TypeVar
 
@@ -1520,57 +1526,25 @@ class HookTimeoutError(Exception):
 def _sanitize_for_log(text: str, max_len: int = 2000) -> str:
     """Strip sensitive patterns from text before writing to log files.
 
-    Replaces API keys, tokens, and secrets with ``[REDACTED]`` while
-    preserving the surrounding context so the log entry remains useful.
-
-    Patterns covered:
-    - OpenAI-style keys (sk-*, *-openai-*)
-    - Anthropic-style keys (sk-ant-*, cla-*)
+    Delegates to the shared ``_redaction.redact()`` module which covers:
+    - OpenAI-style keys (sk-*)
+    - Anthropic-style keys (sk-ant-*)
     - Linear API tokens (lin_api_*)
     - AWS keys (AKIA*)
-    - Bearer tokens (Authorization: Bearer <token>)
-    - Generic API key patterns (api_key=<value>, api-key: <value>)
-    - JSON string values for keys containing ``key``, ``secret``, ``token``,
-      ``password``, ``credential``, ``auth``
+    - GitHub PATs (ghp_*)
+    - GitLab PATs (glpat-*)
+    - JWT-like tokens (eyJ...)
+    - Bearer/Basic auth headers
+    - Password/secret key=value parameters
+    - Private IP addresses (192.168/10.x/172.16-31)
+    - User home paths (/Users/<name>/, /home/<name>/)
     """
-    if not text:
-        return text
-
-    # Limit to avoid processing enormous strings
-    text = text[:max_len]
-
-    # Bearer tokens in headers or env vars
-    text = re.sub(
-        r'(Authorization:\s*Bearer\s+)[^\s"\']+[\s"\']',
-        r'\1[REDACTED]',
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    # Common API key patterns
-    text = re.sub(
-        r'((?:api[_-]?key|api[_-]?token|secret[_-]?key|access[_-]?token|auth[_-]?token)\s*[:=]\s*)["\']?([^\s"\',}\]]+)',
-        r'\1[REDACTED]',
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    # Known token formats
-    text = re.sub(r'sk-[A-Za-z0-9]{10,}', '[REDACTED]', text)
-    text = re.sub(r'sk-ant-[A-Za-z0-9\-]{10,}', '[REDACTED]', text)
-    text = re.sub(r'lin_api_[A-Za-z0-9]{10,}', '[REDACTED]', text)
-    text = re.sub(r'AKIA[A-Za-z0-9]{12,}', '[REDACTED]', text)
-    text = re.sub(r'ghp_[A-Za-z0-9]{20,}', '[REDACTED]', text)
-    text = re.sub(r'glpat-[A-Za-z0-9\-]{10,}', '[REDACTED]', text)
-
-    # JWT-like tokens (three base64 segments separated by dots)
-    text = re.sub(
-        r'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}',
-        '[REDACTED]',
-        text,
-    )
-
-    return text
+    # Delegate to the shared redaction module
+    try:
+        from ._redaction import redact as _shared_redact
+    except ImportError:
+        from _redaction import redact as _shared_redact  # type: ignore
+    return _shared_redact(text, max_len=max_len)
 
 
 def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
@@ -2017,6 +1991,7 @@ def _handle_pretooluse_guard(
     # Use -m module mode so absolute imports work (REF-001: guard uses
     # 'from memory_core.tools._guard_classify import ...' which requires
     # __package__ to be set; script mode sets __package__=None).
+    exc_type = "unknown"
     try:
         guard_env = {**os.environ, "MEMORY_HOOK_ORIGINAL_CWD": str(cwd)}
         proc = subprocess.run(
@@ -2035,14 +2010,75 @@ def _handle_pretooluse_guard(
         _emit_pretooluse_metrics(args.host, args.event, status, start_time)
         return proc.returncode
     except subprocess.TimeoutExpired:
+        exc_type = "TimeoutExpired"
         append_error_log("pretooluse-guard", "guard timed out after 5s", {"cwd": str(cwd)})
     except Exception as exc:
+        exc_type = type(exc).__name__
         append_error_log("pretooluse-guard", "guard execution failed", {"error": str(exc)})
 
-    # Fallback: allow if guard unavailable or failed
-    print(json.dumps({"decision": "allow", "reason": "guard unavailable, allowing by default"}))
-    _emit_pretooluse_metrics(args.host, args.event, "ok", start_time)
-    return 0
+    # Fail-closed: context-aware fallback instead of blanket allow
+    # Parse raw_payload to check if target path is protected
+    payload_dict: dict[str, Any] = {}
+    try:
+        payload_dict = json.loads(raw_payload) if raw_payload else {}
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Guard against non-dict JSON payloads (e.g., JSON array or scalar)
+    is_protected = False
+    if isinstance(payload_dict, dict):
+        is_protected = is_protected_path_target(payload_dict)
+
+    # Write error log with redacted context
+    try:
+        from memory_core.tools._redaction import redact as _redact
+        from memory_core.tools.error_logger import write_error_log as _write_err
+
+        redacted_raw = _redact(raw_payload[:500]) if raw_payload else ""
+
+        _write_err(
+            project_root=str(cwd),
+            error_type="hook_timeout",
+            context={
+                "guard_failure": "gateway-fallback",
+                "is_protected": is_protected,
+                "payload_preview": redacted_raw,
+            },
+            error_msg=f"guard subprocess failed on {'protected' if is_protected else 'non-protected'} path (exception: {exc_type})",
+        )
+    except Exception:
+        pass  # error logging must not block
+
+    if is_protected:
+        # Fail-closed: deny protected paths
+        reason_text = "guard unavailable, blocking protected path by default"
+        result = {
+            "decision": "block",
+            "reason": reason_text,
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason_text,
+            },
+        }
+        print(json.dumps(result))
+        _emit_pretooluse_metrics(args.host, args.event, "error", start_time)
+        return 2
+    else:
+        # Fail-open: allow non-protected or undetermined paths
+        reason_text = "guard unavailable, allowing non-protected path by default"
+        result = {
+            "decision": "allow",
+            "reason": reason_text,
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "permissionDecisionReason": reason_text,
+            },
+        }
+        print(json.dumps(result))
+        _emit_pretooluse_metrics(args.host, args.event, "ok", start_time)
+        return 0
 
 
 def _handle_session_start_setup(cwd: Path) -> None:

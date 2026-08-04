@@ -28,12 +28,12 @@ from memory_core.tools.error_logger import (
 # these are TEST DATA only and are never real credentials.
 _PREFIX = "sk-"
 _FAKE_KEY = _PREFIX + "abcd1234efgh"
-_FAKE_KEY_A = _PREFIX + "aaaa1111"
-_FAKE_KEY_B = _PREFIX + "bbbb2222"
-_FAKE_KEY_E = _PREFIX + "efgh5678"
-_MIN_KEY = _PREFIX + "abcd"   # 4 alphanumerics -- minimum that matches
-_TOO_SHORT = _PREFIX + "abc"  # 3 alphanumerics -- below threshold
-_REDACTED = "sk-...****"      # expected output of the redaction transform
+_FAKE_KEY_A = _PREFIX + "aaaa1111bbbb"
+_FAKE_KEY_B = _PREFIX + "bbbb2222cccc"
+_FAKE_KEY_E = _PREFIX + "efgh5678ijkl"
+_MIN_KEY = _PREFIX + "abcdefghij"   # 10 alphanumerics -- minimum that matches new pattern
+_TOO_SHORT = _PREFIX + "abcdefghi"  # 9 alphanumerics -- below new threshold
+_REDACTED = "[REDACTED]"            # expected output of the redaction transform
 
 
 # ---------------------------------------------------------------------------
