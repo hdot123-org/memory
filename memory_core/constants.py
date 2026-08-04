@@ -2,7 +2,7 @@
 
 import re
 
-CURRENT_MEMORY_VERSION = "0.9.4"
+CURRENT_MEMORY_VERSION = "0.9.5"
 
 SUPPORTED_HOSTS = ("factory",)
 
