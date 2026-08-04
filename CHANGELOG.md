@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.2](https://github.com/hdot123/memory/compare/v0.13.1...v0.13.2) (2026-08-04)
+
+
+### Bug Fixes
+
+* upgrade-consumer 添加 --break-system-packages 修复 PEP 668 限制 ([#297](https://github.com/hdot123/memory/issues/297)) ([76c63cb](https://github.com/hdot123/memory/commit/76c63cb1837fee73d522d9ceac86ef1c069574aa))
+
 ## [0.13.1](https://github.com/hdot123/memory/compare/v0.13.0...v0.13.1) (2026-08-04)
 
 
