@@ -1,0 +1,136 @@
+name: Branch Cleanup
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: branch-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for branch inspection
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Delete orphan branches
+        env:
+          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+        run: |
+          DELETED_BRANCHES=()
+          # Get cutoff as epoch seconds for reliable comparison
+          CUTOFF_EPOCH=$(date -u -d '24 hours ago' '+%s' 2>/dev/null || date -u -v-24H '+%s')
+
+          echo "Cutoff epoch: $CUTOFF_EPOCH ($(date -u -d @$CUTOFF_EPOCH '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -r $CUTOFF_EPOCH '+%Y-%m-%dT%H:%M:%SZ'))"
+          echo ""
+
+          # Get all remote branches except main
+          BRANCHES=$(git branch -r | grep -v 'origin/main' | grep -v 'HEAD' | sed 's|origin/||' | xargs)
+
+          if [ -z "$BRANCHES" ]; then
+            echo "No branches found (besides main). Nothing to clean."
+            echo "deleted_count=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          echo "Checking branches: $BRANCHES"
+          echo ""
+
+          for BRANCH in $BRANCHES; do
+            echo "--- Checking branch: $BRANCH ---"
+
+            # Check if there's an open PR for this branch
+            PR_COUNT=$(gh pr list --head "$BRANCH" --state open --json number --jq 'length' 2>/dev/null || echo "0")
+
+            if [ "$PR_COUNT" != "0" ]; then
+              echo "  Has open PR ($PR_COUNT), skipping."
+              continue
+            fi
+
+            # Get last commit date for this branch as epoch seconds
+            LAST_COMMIT_EPOCH=$(git log -1 --format='%ct' "origin/$BRANCH" 2>/dev/null || echo "")
+
+            if [ -z "$LAST_COMMIT_EPOCH" ]; then
+              echo "  Could not get last commit date, skipping."
+              continue
+            fi
+
+            LAST_COMMIT_DATE=$(date -u -d "@$LAST_COMMIT_EPOCH" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -r "$LAST_COMMIT_EPOCH" '+%Y-%m-%dT%H:%M:%SZ')
+
+            # Compare epochs
+            if [ "$LAST_COMMIT_EPOCH" -lt "$CUTOFF_EPOCH" ]; then
+              echo "  No open PR and last commit ($LAST_COMMIT_DATE) is older than 24h."
+              echo "  Deleting branch: $BRANCH"
+
+              # Delete remote branch
+              if git push origin --delete "$BRANCH" 2>/dev/null; then
+                echo "  Branch deleted successfully."
+                DELETED_BRANCHES+=("$BRANCH")
+              else
+                echo "  Failed to delete branch (may already be deleted)."
+              fi
+            else
+              echo "  Last commit ($LAST_COMMIT_DATE) is within 24h, skipping."
+            fi
+
+            echo ""
+          done
+
+          # Store deleted branches in env for next step
+          DELETED_COUNT=${#DELETED_BRANCHES[@]}
+          echo "deleted_count=$DELETED_COUNT" >> "$GITHUB_ENV"
+
+          if [ "$DELETED_COUNT" -gt 0 ]; then
+            echo "Deleted $DELETED_COUNT branch(es):"
+            printf '%s\n' "${DELETED_BRANCHES[@]}" > /tmp/deleted_branches.txt
+          else
+            echo "No orphan branches to delete."
+          fi
+
+      - name: Create issue notification
+        if: env.deleted_count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+        run: |
+          DELETED_COUNT="${{ env.deleted_count }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
+
+          # Build issue body
+          {
+            echo "## Automated Branch Cleanup"
+            echo ""
+            echo "**Run date:** $RUN_DATE"
+            echo "**Deleted branches:** $DELETED_COUNT"
+            echo "**Workflow run:** $RUN_URL"
+            echo ""
+            echo "### Deleted branches"
+            echo ""
+            while IFS= read -r branch; do
+              echo "- \`$branch\`"
+            done < /tmp/deleted_branches.txt
+            echo ""
+            echo "---"
+            echo "*This issue was automatically created by the [Branch Cleanup]($RUN_URL) workflow.*"
+          } > /tmp/issue_body.md
+
+          # Create issue
+          gh issue create \
+            --title "Branch cleanup: $DELETED_COUNT orphan branch(es) deleted ($RUN_DATE)" \
+            --body-file /tmp/issue_body.md \
+            --label "automation,branch-cleanup"
