@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.10.0](https://github.com/hdot123/memory/compare/v0.9.5...v0.10.0) (2026-08-04)
+
+
+### Features
+
+* 引入 release-please 自动化版本管理 ([#270](https://github.com/hdot123/memory/issues/270)) ([95d80a0](https://github.com/hdot123/memory/commit/95d80a0d98679f07647b506d4b415c0d86faeee8))
+* 引入 release-please 自动化版本管理 ([#273](https://github.com/hdot123/memory/issues/273)) ([b1f7109](https://github.com/hdot123/memory/commit/b1f7109c8b679c3ac71d7048a0c0fe01a709eaae))
+
+
+### Bug Fixes
+
+* 修正 release-please manifest 格式，添加 tag 推送触发器 ([#276](https://github.com/hdot123/memory/issues/276)) ([853ce83](https://github.com/hdot123/memory/commit/853ce830bf4d0ae43f8a71cd1bee9bc9d72b9beb))
+
+
+### Documentation
+
+* 发布流程文档全面更新，对齐 release-please 自动化 ([#271](https://github.com/hdot123/memory/issues/271)) ([3c61440](https://github.com/hdot123/memory/commit/3c614406b8cb509016157f570d3605b26f592a14))
+* 更新发版流程文档对齐 release-please 自动化 (INFRA-37) ([#277](https://github.com/hdot123/memory/issues/277)) ([007658a](https://github.com/hdot123/memory/commit/007658acf6764a6049bc51aaace114dc12002c9a))
+* 标准化发版流程文档，引入 release-please 自动化 ([#274](https://github.com/hdot123/memory/issues/274)) ([09ad703](https://github.com/hdot123/memory/commit/09ad7031074c0d7454a09e21fe59217a588df170))
+
 ## [0.9.5] - 2026-08-04
 
 ### Added
