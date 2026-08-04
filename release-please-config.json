@@ -1,11 +1,19 @@
 {
-  "release-type": "python",
-  "include-v-in-tag": true,
   "packages": {
     ".": {
+      "release-type": "python",
+      "include-component-in-tags": false,
       "extra-files": [
         "memory_core/constants.py",
         "README.md"
+      ],
+      "changelog-types": [
+        {"type": "feat", "section": "Features", "hidden": false},
+        {"type": "fix", "section": "Bug Fixes", "hidden": false},
+        {"type": "perf", "section": "Performance", "hidden": false},
+        {"type": "chore", "section": "Miscellaneous", "hidden": false},
+        {"type": "docs", "section": "Documentation", "hidden": false},
+        {"type": "refactor", "section": "Code Refactoring", "hidden": false}
       ]
     }
   }
