@@ -8,8 +8,9 @@ Validates:
 
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 from memory_core.constants import CURRENT_MEMORY_VERSION
 
