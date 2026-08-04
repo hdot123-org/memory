@@ -314,9 +314,15 @@ def main() -> int:
 
     # Check if memory/system exists (if not, this isn't a memory-managed project)
     if not (project_root / "memory" / "system").exists():
+        reason_text = "Not a memory-managed project (no memory/system directory)"
         print(json.dumps({
             "decision": "allow",
-            "reason": "Not a memory-managed project (no memory/system directory)"
+            "reason": reason_text,
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "permissionDecisionReason": reason_text,
+            },
         }))
         return 0
 

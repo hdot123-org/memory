@@ -2024,7 +2024,10 @@ def _handle_pretooluse_guard(
     except (json.JSONDecodeError, ValueError):
         pass
 
-    is_protected = is_protected_path_target(payload_dict) if payload_dict else False
+    # Guard against non-dict JSON payloads (e.g., JSON array or scalar)
+    is_protected = False
+    if isinstance(payload_dict, dict):
+        is_protected = is_protected_path_target(payload_dict)
 
     # Write error log with redacted context
     try:
@@ -2048,18 +2051,30 @@ def _handle_pretooluse_guard(
 
     if is_protected:
         # Fail-closed: deny protected paths
+        reason_text = "guard unavailable, blocking protected path by default"
         result = {
             "decision": "block",
-            "reason": "guard unavailable, blocking protected path by default",
+            "reason": reason_text,
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason_text,
+            },
         }
         print(json.dumps(result))
         _emit_pretooluse_metrics(args.host, args.event, "error", start_time)
         return 2
     else:
         # Fail-open: allow non-protected or undetermined paths
+        reason_text = "guard unavailable, allowing non-protected path by default"
         result = {
             "decision": "allow",
-            "reason": "guard unavailable, allowing non-protected path by default",
+            "reason": reason_text,
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "permissionDecisionReason": reason_text,
+            },
         }
         print(json.dumps(result))
         _emit_pretooluse_metrics(args.host, args.event, "ok", start_time)

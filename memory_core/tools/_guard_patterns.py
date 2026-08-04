@@ -132,6 +132,10 @@ def is_protected_path_target(payload: dict[str, Any]) -> bool:
     Returns:
         True if any path field contains a protected marker, False otherwise.
     """
+    # Defensive check: non-dict payloads cannot have protected paths
+    if not isinstance(payload, dict):
+        return False
+
     # Normalize: check tool_input first, then top-level
     tool_input = payload.get("tool_input", payload)
 
