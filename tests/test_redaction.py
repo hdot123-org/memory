@@ -84,6 +84,29 @@ class TestAuthHeaders:
         result = redact("authorization: bearer mytoken123456789")
         assert "mytoken123456789" not in result
 
+    def test_redacts_bare_bearer_without_authorization_prefix(self):
+        """Bare 'Bearer <cred>' without 'Authorization:' prefix must be redacted.
+
+        Regression test for VAL-REDACT-008: the old SanitizingFilter had pattern
+        `(Bearer\\s+)\\S+` matching bare Bearer. The shared _redaction module
+        must preserve this coverage.
+        """
+        fake_cred = "somecredential123abc"
+        text = "Bearer " + fake_cred
+        result = redact(text)
+        assert fake_cred not in result
+        assert "Bearer" in result
+        assert "[REDACTED]" in result
+
+    def test_authorization_bearer_still_works(self):
+        """Ensure Authorization: Bearer pattern is not broken by bare Bearer addition."""
+        fake_cred = "auth-header-secret-value"
+        text = "Authorization: Bearer " + fake_cred
+        result = redact(text)
+        assert fake_cred not in result
+        assert "Bearer" in result
+        assert "[REDACTED]" in result
+
 
 class TestPasswordSecretParams:
     """Test password/secret parameter redaction."""

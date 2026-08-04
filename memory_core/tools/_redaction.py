@@ -34,6 +34,10 @@ _REDACT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Auth headers (case-insensitive)
     (re.compile(r"(Authorization:\s*Bearer\s+)[^\s\"']+", re.I), r"\1[REDACTED]"),
     (re.compile(r"(Authorization:\s*Basic\s+)[^\s\"']+", re.I), r"\1[REDACTED]"),
+    # Bare Bearer tokens (without Authorization: prefix) — catches log messages
+    # that contain "Bearer <token>" outside of a full header line.
+    # Placed AFTER the Authorization: patterns so the more specific match wins first.
+    (re.compile(r"(Bearer\s+)\S+", re.I), r"\1[REDACTED]"),
     # Password parameters
     (re.compile(r"(password|passwd|pwd)\s*[=:]\s*\S+", re.I), r"\1=[REDACTED]"),
     # Generic key=value secrets (including compound keys like secret_key, api_key, etc.)
