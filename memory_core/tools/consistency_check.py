@@ -28,9 +28,15 @@ def _load_constants() -> dict[str, Any]:
     content = CONSTANTS_PATH.read_text(encoding="utf-8")
     result: dict[str, Any] = {}
     # Extract CURRENT_MEMORY_VERSION
-    m = re.search(r'CURRENT_MEMORY_VERSION\s*=\s*"([^"]+)"', content)
-    if m:
-        result["CURRENT_MEMORY_VERSION"] = m.group(1)
+    # First try to import it directly (handles both assignment and import patterns)
+    try:
+        from memory_core.constants import CURRENT_MEMORY_VERSION
+        result["CURRENT_MEMORY_VERSION"] = CURRENT_MEMORY_VERSION
+    except ImportError:
+        # Fallback: try regex parsing for legacy format
+        m = re.search(r'CURRENT_MEMORY_VERSION\s*=\s*"([^"]+)"', content)
+        if m:
+            result["CURRENT_MEMORY_VERSION"] = m.group(1)
     # Extract SUPPORTED_HOSTS
     m = re.search(r'SUPPORTED_HOSTS\s*=\s*\(([^)]+)\)', content)
     if m:

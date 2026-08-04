@@ -2,7 +2,7 @@
 
 import re
 
-CURRENT_MEMORY_VERSION = "0.9.5"
+from memory_core import __version__ as CURRENT_MEMORY_VERSION  # noqa: F401
 
 SUPPORTED_HOSTS = ("factory",)
 

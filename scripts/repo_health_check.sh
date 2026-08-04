@@ -57,25 +57,10 @@ check_version_consistency() {
   pyproject_ver="$(get_pyproject_version)"
   PYPROJECT_VERSION="$pyproject_ver"
 
-  # constants.py: CURRENT_MEMORY_VERSION = "X.Y.Z"
+  # constants.py: CURRENT_MEMORY_VERSION (derived from __version__)
   constants_ver="$(python3 -c "
-import re, sys
-found = False
-for path in ['memory_core/constants.py', 'constants.py']:
-    try:
-        with open(path) as f:
-            for line in f:
-                m = re.match(r'^CURRENT_MEMORY_VERSION\s*=\s*[\"\\']([^\"\\' ]+)[\"\\']', line)
-                if m:
-                    print(m.group(1))
-                    found = True
-                    break
-        if found:
-            break
-    except FileNotFoundError:
-        continue
-if not found:
-    print('NOT_FOUND')
+from memory_core.constants import CURRENT_MEMORY_VERSION
+print(CURRENT_MEMORY_VERSION)
 ")"
 
   # README.md: "- Current documented release: vX.Y.Z"
