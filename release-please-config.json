@@ -4,10 +4,7 @@
       "release-type": "python",
       "include-component-in-tags": false,
       "extra-files": [
-        {
-          "path": "README.md",
-          "type": "rewrite"
-        }
+        "README.md"
       ],
       "changelog-types": [
         {"type": "feat", "section": "Features", "hidden": false},
