@@ -3,10 +3,7 @@
     ".": {
       "release-type": "python",
       "include-component-in-tags": false,
-      "extra-files": [
-        "memory_core/constants.py",
-        "README.md"
-      ],
+      "extra-files": ["README.md"],
       "changelog-types": [
         {"type": "feat", "section": "Features", "hidden": false},
         {"type": "fix", "section": "Bug Fixes", "hidden": false},
