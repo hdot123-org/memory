@@ -146,7 +146,7 @@ jobs:
       - name: Reinstall package
         run: |
           cd "$MEMORY_REPO_PATH"
-          /opt/homebrew/bin/python3 -m pip install -e . --break-system-packages
+          /opt/homebrew/bin/python3 -m pip install --break-system-packages -e .
       - name: Verify version matches release
         run: |
           cd "$MEMORY_REPO_PATH"
