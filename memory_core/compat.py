@@ -206,6 +206,35 @@ def _get_installed_version() -> str:
         return CURRENT_MEMORY_VERSION
 
 
+def _build_default_compat_entry() -> dict[str, str]:
+    """Build a default compatibility entry for a version not in _COMPAT_MATRIX.
+
+    When a new version is released, this avoids the need to manually add a
+    new dict entry in _COMPAT_MATRIX. The entry mirrors the structure of
+    existing entries and is computed from the current canonical schema versions.
+    """
+    return {
+        "ownership_schema": _CURRENT_VERSIONS["ownership_schema"],
+        "hook_schema": _CURRENT_VERSIONS["hook_schema"],
+        "manifest_version": _CURRENT_VERSIONS["manifest_version"],
+        "min_installer_version": CURRENT_MEMORY_VERSION,
+        "memory_lock_schema": _CURRENT_VERSIONS["memory_lock_schema"],
+    }
+
+
+def _get_compat_entry(version: str) -> dict[str, str]:
+    """Return the compatibility entry for a version, with a safe fallback.
+
+    If the version is explicitly registered in _COMPAT_MATRIX, return it.
+    Otherwise, fall back to a default entry computed from CURRENT_MEMORY_VERSION
+    rather than raising KeyError. This ensures newly released versions work
+    without requiring a manual _COMPAT_MATRIX update.
+    """
+    if version in _COMPAT_MATRIX:
+        return _COMPAT_MATRIX[version]
+    return _build_default_compat_entry()
+
+
 # ---------------------------------------------------------------------------
 # Check functions
 # ---------------------------------------------------------------------------
@@ -338,8 +367,8 @@ def check_compatibility(
     if check["status"] == "warning":
         report.warnings.append(check["detail"])
 
-    # Get matrix entry for this version (or current if not found)
-    matrix_entry = _COMPAT_MATRIX.get(version, _COMPAT_MATRIX.get(CURRENT_MEMORY_VERSION, {}))
+    # Get matrix entry for this version (with fallback to a sensible default)
+    matrix_entry = _get_compat_entry(version)
 
     # Check 3: Component versions
     component_checks = [
