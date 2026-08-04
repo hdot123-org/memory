@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/hdot123/memory/compare/v0.11.1...v0.12.0) (2026-08-04)
+
+
+### Features
+
+* release-please 启用 automerge，CI 通过后自动合并 ([#291](https://github.com/hdot123/memory/issues/291)) ([4671873](https://github.com/hdot123/memory/commit/467187320ab9eda2a1678aef0bf1d0c6476de211))
+
 ## [0.11.1](https://github.com/hdot123/memory/compare/v0.11.0...v0.11.1) (2026-08-04)
 
 
