@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/hdot123/memory/compare/v0.12.0...v0.13.0) (2026-08-04)
+
+
+### Features
+
+* 发版后自动升级 Mac 全局 memory-core 安装 ([#293](https://github.com/hdot123/memory/issues/293)) ([4bfc42f](https://github.com/hdot123/memory/commit/4bfc42f4d2712d815430305e56082bad21fdde92))
+
 ## [0.12.0](https://github.com/hdot123/memory/compare/v0.11.1...v0.12.0) (2026-08-04)
 
 
