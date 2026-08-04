@@ -55,6 +55,47 @@ hook event (PreToolUse / SessionEnd / gateway)
 - **Data sanitization**: Full file paths replaced with basenames before sending to PostHog
 - **PostHog**: Public API key built-in from data file (default_posthog_key.txt); set POSTHOG_API_KEY='' to disable
 
+## Guard & Safety Architecture
+
+memory-core ships a **PreToolUse guard** that sits between Factory and the filesystem, deciding whether each write tool call may touch project memory. The guard is fail-safe: when anything goes wrong, it errs on the side of protecting critical project state.
+
+**Guard flow:**
+
+```
+tool call (Write / Edit / MultiEdit / NotebookEdit / Execute)
+  │
+  ├─ read JSON payload from stdin
+  ├─ normalize absolute path → project-relative
+  ├─ classify path against ownership table
+  │     (memory/kb, memory/system, memory/docs, memory/log)
+  │
+  v
+decision: ALLOW (exit 0) | BLOCK (exit 2)
+```
+
+**Key design principles:**
+
+- **PreToolUse interception**: The guard intercepts `Write`, `Edit`, `MultiEdit`, `NotebookEdit`, and `Execute` before execution and uses ownership classification to allow or block operations against `memory/` directories. Allows produce exit code `0`; blocks produce exit code `2`.
+- **Fail-closed protection**: When the guard itself fails (JSON parse error, stdin read exception, project root detection failure, or subprocess timeout/crash), it falls back to context-aware fail-closed logic via `is_protected_path_target()`. Operations targeting protected paths (`memory/kb/`, `memory/system/`, `memory/docs/`, `memory/log/`) are **DENIED** on guard failure; non-protected paths are **ALLOWED** with an error log. This guarantees critical project state is never corrupted even when the guard crashes.
+- **Dual hook output format**: The guard emits JSON in both legacy and Factory official formats for backward compatibility:
+
+  ```json
+  {
+    "decision": "allow",
+    "reason": "path not in protected domains",
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "allow",
+      "permissionDecisionReason": "path not in protected domains"
+    }
+  }
+  ```
+
+  The gateway transparently forwards this output. Note the mapping: legacy `block` → official `deny`.
+
+- **Shared redaction module**: `memory_core/tools/_redaction.py` provides centralized `redact()` and `redact_dict()` functions covering API tokens (`sk-`, `sk-ant-`, `ghp_`, `AKIA`, `lin_api_`, `glpat-`), JWT-like tokens, auth headers (`Authorization: Bearer/Basic`, bare `Bearer`), password/secret parameters, private IP addresses (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`), and user home paths. All four log/metric consumers (`log_utils`, `gateway`, `error_logger`, `telemetry_bridge`) delegate to this shared module so no secret ever leaks through an output channel.
+- **Absolute path normalization**: The ownership classifier normalizes absolute file paths to project-root-relative before classification (`_normalize_to_project_relative`). This ensures all four protected markers are correctly blocked regardless of whether Factory sends relative or absolute paths — closing a classification bypass that otherwise let absolute-path writes slip past relative-path matching.
+
 ## Install
 
 Install from GitHub (non-editable, production use):
