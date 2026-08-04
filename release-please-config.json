@@ -3,7 +3,12 @@
     ".": {
       "release-type": "python",
       "include-component-in-tags": false,
-      "extra-files": ["README.md"],
+      "extra-files": [
+        {
+          "path": "README.md",
+          "type": "rewrite"
+        }
+      ],
       "changelog-types": [
         {"type": "feat", "section": "Features", "hidden": false},
         {"type": "fix", "section": "Bug Fixes", "hidden": false},
