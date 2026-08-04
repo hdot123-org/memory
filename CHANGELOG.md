@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.5] - 2026-08-04
+
+### Added
+- **release-please 自动化版本管理**：引入 [release-please](https://github.com/googleapis/release-please) 自动管理版本号、CHANGELOG 和 GitHub Release。基于 Conventional Commits 自动判定版本级别（patch/minor/major）。
+- **发版流程文档**：新增 `docs/guides/release-guide.md` 发版指南，覆盖自动发版、手动发版、回滚、下游通知全流程。
+
+### Changed
+- **版本号一致性**：pyproject.toml、constants.py、README.md 统一为 0.9.5
+- **测试版本号读取**：测试文件通过 `CURRENT_MEMORY_VERSION` 动态读取版本号，消除硬编码
+
+### Notes
+- release-please 使用 `packages` 模式，manifest 格式为 `{"\u002e": "X.Y.Z"}`
+- `release-and-dispatch.yml` 支持 tag 推送触发（`push: tags: [v*]`）和手动触发（`workflow_dispatch`）
+
 ## [0.9.4] - 2026-08-01
 
 ### Added
