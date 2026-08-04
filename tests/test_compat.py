@@ -7,6 +7,7 @@ from memory_core.compat import (
     _check_min_installer,
     _check_newer_than_known,
     _check_version_registered,
+    _get_compat_entry,
     check_compatibility,
     format_report,
 )
@@ -163,8 +164,10 @@ class TestCompatMatrix:
                     f"Version {version} missing field {field}"
                 )
 
-    def test_current_version_in_matrix(self) -> None:
-        assert CURRENT_MEMORY_VERSION in _COMPAT_MATRIX
+    def test_current_version_has_compat_entry(self) -> None:
+        """CURRENT_MEMORY_VERSION must have a compat entry (via matrix or fallback)."""
+        entry = _get_compat_entry(CURRENT_MEMORY_VERSION)
+        assert entry["min_installer_version"] == CURRENT_MEMORY_VERSION
 
     def test_current_versions_dict_complete(self) -> None:
         expected_keys = [
