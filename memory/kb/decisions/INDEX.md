@@ -23,6 +23,8 @@ made during the project lifecycle.
 | D-008 | Python 版本从 3.14 回滚到 3.12（稳定性问题 + 平台标准化） | accepted | 2026-07-31 |
 | D-009 | 生命周期事件按项目分片存储（events.jsonl → projects/{id}/events/{date}.jsonl） | accepted | 2026-08-01 |
 | D-010 | 生命周期工具健壮性修复策略（防御性编程 + 可观测性 + 优雅降级） | accepted | 2026-08-01 |
+| D-011 | Bounded Everything 作为架构哲学（运行时边界常量层 + 共享 redaction + fail-closed） | accepted | 2026-08-03 |
+| D-012 | 工程进化能力——技术债跟踪（四层进化基础设施，待 D-011 完成后讨论） | tech-debt | 2026-08-03 |
 
 ## Process
 

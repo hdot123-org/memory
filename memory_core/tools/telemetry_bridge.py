@@ -41,6 +41,12 @@ _INGESTION_HOST_MAP = {
 # Keys that likely contain file system paths and should be sanitized
 _PATH_KEY_FRAGMENTS = ("path", "file", "cwd", "dir", "root")
 
+# Import shared redaction module
+try:
+    from ._redaction import redact as _shared_redact
+except ImportError:
+    from _redaction import redact as _shared_redact  # type: ignore
+
 
 def _looks_like_path_key(key: str) -> bool:
     """Return True if the key name suggests its value may be a file path."""
@@ -49,11 +55,18 @@ def _looks_like_path_key(key: str) -> bool:
 
 
 def _sanitize_value(value: Any) -> Any:
-    """Replace string values that look like absolute paths with their basename."""
+    """Redact secrets first, then replace absolute paths with their basename.
+
+    Ordering is critical: redact() runs BEFORE basename downgrade so that
+    secrets embedded in paths are caught even after path truncation.
+    """
     if not isinstance(value, str):
         return value
     if not value:
         return value
+    # Step 1: Redact secrets (tokens, passwords, IPs, user paths)
+    value = _shared_redact(value, max_len=len(value))
+    # Step 2: Basename downgrade for absolute paths
     try:
         as_path = Path(value)
         # Check both POSIX absolute, current OS separator, and Windows drive letter

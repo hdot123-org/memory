@@ -18,3 +18,5 @@ Active lessons from project experience.
 | `webhook-session-routing.md` | CI webhook session_id 路由失效（mtime scan 猜测 vs sessions-index.json 精确查找） |
 | `architecture-change-doc-audit.md` | 架构变更后需全量审计历史文档（events.jsonl → 分片后 4 份文档过时） |
 | `version-upgrade-fullchain-sync.md` | 版本升级需全链路同步（pyproject + constants + compat + README + tests） |
+| `contract-driven-extension.md` | 契约驱动扩展：声明式版本协商优于硬编码兼容矩阵（oh-my-cli 对比教训） |
+| `defense-in-depth-security.md` | 纵深安全 vs 扁平规则：信任根是安全体系的锚点（oh-my-cli 对比教训） |

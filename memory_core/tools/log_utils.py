@@ -5,18 +5,13 @@ Provides a logging filter that redacts common sensitive patterns
 """
 
 import logging
-import re
 from typing import Any
 
-# Patterns to redact from log output (order matters: Bearer first, then generic)
-_REDACT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"(Bearer\s+)\S+", re.I), r"\1***REDACTED***"),
-    (re.compile(r"(password|passwd|pwd)\s*[=:]\s*\S+", re.I), r"\1=***REDACTED***"),
-    (re.compile(r"(token|api[_-]?key|secret|authorization)\s*[=:]\s*['\"]?\S+", re.I), r"\1=***REDACTED***"),
-    (re.compile(r"192\.168\.\d{1,3}\.\d{1,3}"), "***REDACTED_IP***"),
-    (re.compile(r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}"), "***REDACTED_IP***"),
-    (re.compile(r"172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"), "***REDACTED_IP***"),
-]
+# Delegate to the shared redaction module
+try:
+    from ._redaction import redact as _shared_redact
+except ImportError:
+    from _redaction import redact as _shared_redact  # type: ignore
 
 
 class SanitizingFilter(logging.Filter):
@@ -31,9 +26,8 @@ class SanitizingFilter(logging.Filter):
 
     @staticmethod
     def _redact(text: str) -> str:
-        for pattern, replacement in _REDACT_PATTERNS:
-            text = pattern.sub(replacement, text)
-        return text
+        """Redact sensitive data using the shared redaction module."""
+        return _shared_redact(text, max_len=len(text) if text else 0)
 
     @staticmethod
     def _redact_args(args: Any) -> Any:

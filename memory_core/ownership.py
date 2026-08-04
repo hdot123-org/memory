@@ -350,6 +350,59 @@ def _check_path_escape(rel_path: str) -> bool:
     return False
 
 
+def _normalize_to_project_relative(path: str, project_root: Path) -> str:
+    """Convert absolute path to project-relative if it's under project_root.
+
+    Returns the original path unchanged if:
+    - It's already relative
+    - It's absolute but not under project_root
+    """
+    if not path or not project_root:
+        return path
+
+    # Check if path is absolute
+    if not path.startswith('/') and not path.startswith('~'):
+        return path
+
+    try:
+        # Use resolve() to handle symlinks and normalize paths
+        # This is important for macOS where /tmp -> /private/tmp
+        abs_path = Path(path).resolve()
+        abs_root = project_root.resolve()
+
+        # Check if path is under project_root using parts comparison
+        try:
+            rel_path = abs_path.relative_to(abs_root)
+            return str(rel_path)
+        except ValueError:
+            # Path is not under project_root
+            return path
+    except (OSError, RuntimeError):
+        # If resolve fails (e.g., path doesn't exist), fall back to string comparison
+        path_obj = Path(path)
+        root_obj = Path(project_root)
+
+        # Get absolute paths (without resolving symlinks)
+        abs_path = path_obj if path_obj.is_absolute() else Path.cwd() / path_obj
+        abs_root = root_obj if root_obj.is_absolute() else Path.cwd() / root_obj
+
+        # Normalize to string for comparison
+        path_str = str(abs_path)
+        root_str = str(abs_root)
+
+        # Ensure root ends with / for proper prefix matching
+        if not root_str.endswith('/'):
+            root_str += '/'
+
+        # Check if path is under project_root
+        if path_str.startswith(root_str):
+            # Extract relative part
+            rel_part = path_str[len(root_str):]
+            return rel_part if rel_part else path
+
+        return path
+
+
 def classify_owned_path(
     rel_path: str | Path,
     ownership: MemoryOwnership | None = None,
@@ -365,11 +418,25 @@ def classify_owned_path(
     Returns:
         Owned if the path is protected, NotOwned otherwise
     """
-    path_str = _normalize_rel_path(rel_path)
+    original = str(rel_path)
 
-    # Reject path escape attempts
-    if _check_path_escape(str(rel_path)):
+    # Normalize absolute paths to project-relative before classification.
+    # If the absolute path is under project_root, it becomes relative and
+    # will be checked against ownership domains.
+    # If it's outside project_root (or no project_root given), it stays
+    # absolute and will be rejected by _check_path_escape.
+    if project_root is not None:
+        normalized = _normalize_to_project_relative(original, project_root)
+    else:
+        normalized = original
+
+    # Reject path escape attempts on the normalized path.
+    # After _normalize_to_project_relative, paths under project_root are relative
+    # and won't trigger the escape check. Paths outside remain absolute.
+    if _check_path_escape(normalized):
         return NotOwned(reason="Path escape detected - path rejected")
+
+    path_str = _normalize_rel_path(normalized)
 
     # Use default ownership if none provided
     if ownership is None:
