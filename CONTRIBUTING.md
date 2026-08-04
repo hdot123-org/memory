@@ -45,7 +45,8 @@
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `ci.yml` | push/PR to `main` | ruff lint + pytest (ci-ok gate) |
-| `release.yml` | tag `v*` | release pipeline |
+| `release-please.yml` | push to `main` | 自动版本管理，创建 Release PR |
+| `release-and-dispatch.yml` | tag `v*` / workflow_dispatch | release pipeline + 下游通知 |
 
 The `ci.yml` workflow validates:
 - Ruff lint passes
@@ -67,7 +68,7 @@ ruff check . && python -m pytest tests/
 ## Code style
 
 - Use ruff with the repository configuration.
-- Target Python 3.9+.
+- Target Python 3.12.
 - Use concise commit messages: `feat:`, `fix:`, `chore:`, `docs:`.
 
 ## Test naming convention
@@ -94,28 +95,52 @@ Public documentation should be safe for open-source readers.
 - Do not add internal session records, agent transcripts, or private review notes.
 - Redact sensitive information before opening a PR.
 
+## Release Process
+
+本项目使用 [release-please](https://github.com/googleapis/release-please-action) 自动化版本管理。
+
+### 自动发版流程
+
+1. **提交代码** — 使用 [Conventional Commits](https://www.conventionalcommits.org/) 格式：
+   - `feat:` → minor 版本（0.9.5 → 0.9.6）
+   - `fix:` → patch 版本（0.9.5 → 0.9.6）
+   - `feat!:` 或 `fix!:` → major 版本（0.9.5 → 1.0.0）
+   - `chore:`, `docs:`, `test:`, `refactor:` → 不触发新版本
+2. **合并 PR 到 main** — release-please 自动创建 Release PR
+3. **合并 Release PR** — 自动创建 tag + GitHub Release + 构建 wheel
+
+### 版本号维护
+
+release-please 自动更新以下文件：
+- `pyproject.toml`
+- `memory_core/constants.py`
+- `README.md`
+- `CHANGELOG.md`
+
+测试文件通过 `CURRENT_MEMORY_VERSION` 动态读取版本号，无需手动更新。
+
+### 手动发版（备用）
+
+通过 GitHub Actions 的 `workflow_dispatch` 手动触发 `release-and-dispatch.yml`：
+```bash
+gh workflow run release-and-dispatch.yml \
+  -f release_tag=v0.9.6 \
+  -f dispatch_targets="owner/repo1,owner/repo2"
+```
+
+### 回滚
+
+使用 `scripts/release_rollback.sh` 回滚 release（需在 GitHub Release 页面手动删除对应 release）。
+
 ## Versioning
 
-- Maintain version only in `pyproject.toml` under `[project].version`.
-- Follow SemVer: MAJOR.MINOR.PATCH.
-- Release tags must use `vX.Y.Z` and match `pyproject.toml`.
+遵循 [Semantic Versioning](https://semver.org/)：`MAJOR.MINOR.PATCH`
 
-## Release process
+- **MAJOR** — 不兼容的 API 变更
+- **MINOR** — 向后兼容的新功能
+- **PATCH** — 向后兼容的 bug 修复
 
-1. Update `pyproject.toml` version.
-2. Commit and push to GitHub:
-   ```bash
-   git add pyproject.toml
-   git commit -m "chore: bump version to x.y.z"
-   git push origin main
-   ```
-3. Create and push tag:
-   ```bash
-   git tag vx.y.z
-   git push origin vx.y.z
-   ```
-4. GitHub Actions CI runs tests and release workflow publishes artifacts.
-5. Verify: `pip install memory-core==x.y.z`
+Python 版本：CI 固定 3.12（见决策 D-008）。
 
 <!-- INFRA-23 review-mapping test marker 1785737789 -->
 
