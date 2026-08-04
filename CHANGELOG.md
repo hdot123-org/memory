@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/hdot123/memory/compare/v0.9.5...v0.10.0) (2026-08-04)
+
+
+### Features
+
+* 引入 release-please 自动化版本管理 ([#270](https://github.com/hdot123/memory/issues/270)) ([95d80a0](https://github.com/hdot123/memory/commit/95d80a0d98679f07647b506d4b415c0d86faeee8))
+
 ## [0.9.4] - 2026-08-01
 
 ### Added
