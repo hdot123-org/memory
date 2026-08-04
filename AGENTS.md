@@ -135,6 +135,16 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 4. **回滚** — 使用 `scripts/release_rollback.sh`，不要手动删 tag
 5. **发版指南** — 详见 `docs/guides/release-guide.md`
 
+## 铁律：版本号由 release-please 管理
+
+**版本号由 release-please 自动管理，禁止手动修改。**
+
+核心要点：
+- 不要手动修改 `pyproject.toml`、`memory_core/constants.py`、`.release-please-manifest.json` 中的版本号
+- 不要手动编辑 `CHANGELOG.md` 的版本条目（release-please 自动生成）
+- 使用 Conventional Commits 格式（`feat:`, `fix:` 等）触发版本变更
+- 合并 Release PR 时，release-please 自动完成版本号更新 + CHANGELOG + tag + GitHub Release
+
 ## Linear Gateway
 
 当 session tag 包含 `linear-gateway` 或用户要求处理 Linear issue 时，使用 `linear-gateway` skill。

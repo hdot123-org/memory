@@ -103,7 +103,8 @@ gh run list --workflow=release-and-dispatch.yml --limit 1
 | `pyproject.toml` | `[project].version` |
 | `memory_core/constants.py` | `CURRENT_MEMORY_VERSION` |
 | `README.md` | `Current documented release` 行 + 所有 install 命令中的 `@vX.Y.Z` |
-| `.release-please-manifest.json` | `{"version": "X.Y.Z"}` |
+| `.release-please-manifest.json` | `{"\u002e": "X.Y.Z"}`（path-keyed，`\u002e` 即根路径 `.`） |
+| `CHANGELOG.md` | 最新 `## [X.Y.Z]` 条目 |
 
 **测试文件**：所有测试通过 `from memory_core.constants import CURRENT_MEMORY_VERSION` 动态读取版本号，无需手动更新。
 
@@ -172,14 +173,18 @@ git tag -d v0.9.x
 
 ## 4. 下游通知机制
 
-### 自动通知（release-please 流程）
+### 触发方式
 
-release-please 创建 release 后，`.github/workflows/release-please.yml` 的 `build-and-upload` job 会尝试通知下游：
+`release-and-dispatch.yml` 负责下游通知，支持两种触发方式：
 
-- **触发条件**：`needs.release-please.outputs.release_created == 'true'`
-- **通知方式**：通过 `secrets.DISPATCH_TOKEN` 调用 `gh api repos/{target}/dispatches`
-- **事件类型**：`memory_release_published`
-- **payload**：`{"release_tag": "vX.Y.Z", "source_sha": "..."}`
+| 触发方式 | 说明 |
+|---------|------|
+| `push: tags: [v*]` | release-please 创建 tag 时自动触发 |
+| `workflow_dispatch` | 手动触发（如需指定 `dispatch_targets`） |
+
+release-please 合并 Release PR 后自动创建 tag，`release-and-dispatch.yml` 监听 `push: tags: [v*]` 自动运行 release pipeline。当需要指定下游仓库列表或 tag 触发未生效时，使用 `workflow_dispatch` 手动触发。
+
+> **注意**：`release-please.yml` 只负责运行 release-please-action（创建 tag + GitHub Release），不包含下游通知逻辑。下游通知由 `release-and-dispatch.yml` 完成。
 
 ### 手动通知
 

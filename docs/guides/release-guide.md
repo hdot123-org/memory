@@ -1,5 +1,7 @@
 # Release Guide
 
+> **完整操作手册**：本文档为快速参考。完整发版操作手册（含故障排查、hotfix 流程）详见 [RELEASE.md](../../RELEASE.md)。
+
 本指南描述 memory-core 的发布流程。
 
 ## 自动发版（推荐）

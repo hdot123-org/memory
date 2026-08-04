@@ -102,7 +102,7 @@ Public documentation should be safe for open-source readers.
 ### 自动发版流程
 
 1. **提交代码** — 使用 [Conventional Commits](https://www.conventionalcommits.org/) 格式：
-   - `feat:` → minor 版本（0.9.5 → 0.9.6）
+   - `feat:` → minor 版本（0.9.5 → 0.10.0）
    - `fix:` → patch 版本（0.9.5 → 0.9.6）
    - `feat!:` 或 `fix!:` → major 版本（0.9.5 → 1.0.0）
    - `chore:`, `docs:`, `test:`, `refactor:` → 不触发新版本
