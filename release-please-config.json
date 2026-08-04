@@ -5,8 +5,8 @@
       "include-component-in-tags": false,
       "extra-files": [
         {
-          "path": "README.md",
-          "type": "rewrite"
+          "type": "generic",
+          "path": "README.md"
         }
       ],
       "changelog-types": [
