@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/hdot123/memory/compare/v0.13.0...v0.13.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* 修复 upgrade-consumer 使用错误 Python 路径，修复 workflow_dispatch 发版失败 ([#295](https://github.com/hdot123/memory/issues/295)) ([2bbdb3d](https://github.com/hdot123/memory/commit/2bbdb3dd0c9f498740b919e661c51ba0daa6e02c))
+
 ## [0.13.0](https://github.com/hdot123/memory/compare/v0.12.0...v0.13.0) (2026-08-04)
 
 
