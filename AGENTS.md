@@ -152,7 +152,7 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 - **触发时间**：每天 UTC 06:00（`cron: '0 6 * * *'`）+ 手动 `workflow_dispatch`
 - **逻辑**：列出除 `main` 外的所有远程分支 → 用 `gh pr list --head <branch>` 检查是否有 open PR → 无 PR 且最后 commit 超过 24 小时的分支被自动删除
 - **通知**：如有分支被删除，自动创建 Issue 列出被删分支清单
-- **认证**：使用 `DISPATCH_TOKEN` secret
+- **认证**：checkout 使用默认 `GITHUB_TOKEN`（只读），删除分支和创建 Issue 使用 `DISPATCH_TOKEN` secret（写入权限）
 - **无需手动干预**：无需人工/agent 主动清理，CI 自动完成分支卫生
 
 ## Linear Gateway
