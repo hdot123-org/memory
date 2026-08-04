@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/hdot123/memory/compare/v0.10.1...v0.11.0) (2026-08-04)
+
+
+### Features
+
+* 添加自动清理孤立分支的 GitHub Actions workflow ([#286](https://github.com/hdot123/memory/issues/286)) ([7609869](https://github.com/hdot123/memory/commit/76098691b87f0601956580f4b865cafdd69d5100))
+
 ## [0.10.1](https://github.com/hdot123/memory/compare/v0.10.0...v0.10.1) (2026-08-04)
 
 
