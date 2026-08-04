@@ -4,8 +4,10 @@
       "release-type": "python",
       "include-component-in-tags": false,
       "extra-files": [
-        "memory_core/constants.py",
-        "README.md"
+        {
+          "path": "README.md",
+          "type": "rewrite"
+        }
       ],
       "changelog-types": [
         {"type": "feat", "section": "Features", "hidden": false},
