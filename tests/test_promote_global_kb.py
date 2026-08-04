@@ -13,6 +13,7 @@ import sys
 
 import pytest
 
+from memory_core.constants import CURRENT_MEMORY_VERSION
 from memory_core.tools.global_kb_init import create_global_kb_structure
 
 
@@ -67,7 +68,7 @@ class TestPromoteCLIRegistration:
             text=True,
         )
         assert result.returncode == 0
-        assert "0.9.5" in result.stdout
+        assert CURRENT_MEMORY_VERSION in result.stdout
 
 
 class TestPromoteCommandMode:

@@ -10,6 +10,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import tomllib
+
+from memory_core.constants import CURRENT_MEMORY_VERSION
+
 # ---------------------------------------------------------------------------
 # VAL-VERSION-001: Version numbers are globally consistent at 0.9.5
 # ---------------------------------------------------------------------------
@@ -19,17 +23,22 @@ class TestVersionConsistency:
     """VAL-VERSION-001: constants.py, pyproject.toml, compat.py all at 0.9.5."""
 
     def test_constants_current_memory_version_is_091(self) -> None:
-        """constants.py CURRENT_MEMORY_VERSION must be '0.9.5'."""
+        """constants.py CURRENT_MEMORY_VERSION must match pyproject.toml version."""
         from memory_core.constants import CURRENT_MEMORY_VERSION
-        assert CURRENT_MEMORY_VERSION == "0.9.5", (
-            f"Expected CURRENT_MEMORY_VERSION='0.9.5', got '{CURRENT_MEMORY_VERSION}'"
+        pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        with pyproject_path.open("rb") as f:
+            config = tomllib.load(f)
+        pyproject_version = config["project"]["version"]
+        assert CURRENT_MEMORY_VERSION == pyproject_version, (
+            f"constants.CURRENT_MEMORY_VERSION='{CURRENT_MEMORY_VERSION}' "
+            f"does not match pyproject.toml version='{pyproject_version}'"
         )
 
     def test_pyproject_toml_version_is_091(self) -> None:
         """pyproject.toml version must be '0.9.5'."""
         pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
         content = pyproject_path.read_text(encoding="utf-8")
-        # Look for version = "0.9.5" in [project] section
+        # Look for the version field in [project] section
         found = False
         in_project_section = False
         for line in content.splitlines():
@@ -40,8 +49,8 @@ class TestVersionConsistency:
             if stripped.startswith("[") and in_project_section:
                 break
             if in_project_section and stripped.startswith("version"):
-                assert "0.9.5" in stripped, (
-                    f"Expected version = \"0.9.5\" in pyproject.toml, got: {stripped}"
+                assert CURRENT_MEMORY_VERSION in stripped, (
+                    f"Expected version = \"{CURRENT_MEMORY_VERSION}\" in pyproject.toml, got: {stripped}"
                 )
                 found = True
                 break
@@ -50,15 +59,15 @@ class TestVersionConsistency:
     def test_compat_matrix_has_091_entry(self) -> None:
         """compat.py _COMPAT_MATRIX must contain '0.9.5' key."""
         from memory_core.compat import _COMPAT_MATRIX
-        assert "0.9.5" in _COMPAT_MATRIX, (
-            f"'0.9.5' not found in _COMPAT_MATRIX. "
+        assert CURRENT_MEMORY_VERSION in _COMPAT_MATRIX, (
+            f"'{CURRENT_MEMORY_VERSION}' not found in _COMPAT_MATRIX. "
             f"Known versions: {sorted(_COMPAT_MATRIX.keys())}"
         )
 
     def test_compat_matrix_091_has_required_fields(self) -> None:
         """_COMPAT_MATRIX['0.9.5'] must have all required component keys."""
         from memory_core.compat import _COMPAT_MATRIX
-        entry = _COMPAT_MATRIX["0.9.5"]
+        entry = _COMPAT_MATRIX[CURRENT_MEMORY_VERSION]
         required_keys = {
             "ownership_schema",
             "hook_schema",
@@ -67,12 +76,12 @@ class TestVersionConsistency:
             "memory_lock_schema",
         }
         missing = required_keys - set(entry.keys())
-        assert not missing, f"_COMPAT_MATRIX['0.9.5'] missing keys: {missing}"
+        assert not missing, f"_COMPAT_MATRIX['{CURRENT_MEMORY_VERSION}'] missing keys: {missing}"
 
     def test_compat_matrix_091_min_installer_is_091(self) -> None:
         """_COMPAT_MATRIX['0.9.5']['min_installer_version'] must be '0.9.5'."""
         from memory_core.compat import _COMPAT_MATRIX
-        assert _COMPAT_MATRIX["0.9.5"]["min_installer_version"] == "0.9.5"
+        assert _COMPAT_MATRIX[CURRENT_MEMORY_VERSION]["min_installer_version"] == CURRENT_MEMORY_VERSION
 
 
 # ---------------------------------------------------------------------------
@@ -93,8 +102,8 @@ class TestCLIVersionFlag:
         )
         # argparse prints version to stdout
         combined = result.stdout + result.stderr
-        assert "0.9.5" in combined, (
-            f"Expected '0.9.5' in memory-init --version output. "
+        assert CURRENT_MEMORY_VERSION in combined, (
+            f"Expected '{CURRENT_MEMORY_VERSION}' in memory-init --version output. "
             f"stdout: {result.stdout!r}, stderr: {result.stderr!r}"
         )
 
@@ -107,8 +116,8 @@ class TestCLIVersionFlag:
             cwd=Path(__file__).resolve().parent.parent,
         )
         combined = result.stdout + result.stderr
-        assert "0.9.5" in combined, (
-            f"Expected '0.9.5' in memory-migrate --version output. "
+        assert CURRENT_MEMORY_VERSION in combined, (
+            f"Expected '{CURRENT_MEMORY_VERSION}' in memory-migrate --version output. "
             f"stdout: {result.stdout!r}, stderr: {result.stderr!r}"
         )
 
@@ -125,7 +134,7 @@ class TestAdapterTomlSchemaVersion:
         """AdapterConfig default adapter_version must be '0.9.5'."""
         from memory_core.tools.adapter_toml_schema import AdapterConfig
         config = AdapterConfig(project_name="test", project_scope="test")
-        assert config.adapter_version == "0.9.5", (
-            f"Expected AdapterConfig default adapter_version='0.9.5', "
+        assert config.adapter_version == CURRENT_MEMORY_VERSION, (
+            f"Expected AdapterConfig default adapter_version='{CURRENT_MEMORY_VERSION}', "
             f"got '{config.adapter_version}'"
         )

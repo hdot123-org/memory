@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from memory_core.constants import CURRENT_MEMORY_VERSION
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -61,7 +63,7 @@ class TestMemoryInitCLI:
             capture_output=True, text=True, cwd=REPO_ROOT,
         )
         assert result.returncode == 0
-        assert "0.9.5" in result.stdout
+        assert CURRENT_MEMORY_VERSION in result.stdout
 
 
 class TestMemoryValidateCLI:
