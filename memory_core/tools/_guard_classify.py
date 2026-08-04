@@ -234,6 +234,38 @@ def _extract_path_from_execute(command: str) -> list[str]:
     return []
 
 
+def _normalize_to_project_relative(file_path: str, project_root: Path) -> str:
+    """Normalize an absolute file_path to project-root-relative.
+
+    The ownership classifier (classify_owned_path) expects relative paths.
+    When Factory sends absolute paths (which it does for Write/Edit tools),
+    _check_path_escape rejects them as path-escape attempts before domain
+    matching can fire. This helper converts absolute paths under project_root
+    to their relative equivalents so ownership domains like memory/system/
+    and memory/log/ are correctly identified.
+
+    Args:
+        file_path: The file path (may be absolute or relative)
+        project_root: The project root directory
+
+    Returns:
+        Project-root-relative path string if the absolute path is under
+        project_root, otherwise the original path unchanged.
+    """
+    p = Path(file_path)
+    if not p.is_absolute():
+        return file_path
+
+    resolved_root = project_root.resolve()
+    try:
+        relative = p.resolve().relative_to(resolved_root)
+        return str(relative)
+    except ValueError:
+        # Path is absolute but not under project_root — return as-is.
+        # classify_owned_path will reject it via _check_path_escape (correct).
+        return file_path
+
+
 def _check_doc_routing(file_path: str) -> dict[str, str] | None:
     """检查文件路径是否在注册的文档目录中。
 
@@ -424,7 +456,9 @@ def _classify_write_edit(
             detail={"decision": decision}
         )
 
-    result = classify_owned_path(file_path, ownership, project_root)
+    # Normalize absolute paths to project-relative for ownership classification
+    normalized_path = _normalize_to_project_relative(file_path, project_root)
+    result = classify_owned_path(normalized_path, ownership, project_root)
     if hasattr(result, "level"):
         return RuleResult(
             matched=True,
@@ -498,7 +532,9 @@ def _classify_multiedit(
             continue
 
         # Normal path classification
-        result = classify_owned_path(path, ownership, project_root)
+        # Normalize absolute paths to project-relative for ownership classification
+        normalized_path = _normalize_to_project_relative(path, project_root)
+        result = classify_owned_path(normalized_path, ownership, project_root)
         if hasattr(result, "level"):
             item_results.append({
                 "path": path,
@@ -549,7 +585,9 @@ def _classify_notebook(
             detail={"decision": "allow"}
         )
 
-    result = classify_owned_path(notebook_path, ownership, project_root)
+    # Normalize absolute paths to project-relative for ownership classification
+    normalized_path = _normalize_to_project_relative(notebook_path, project_root)
+    result = classify_owned_path(normalized_path, ownership, project_root)
     if hasattr(result, "level"):
         return RuleResult(
             matched=True,
@@ -608,7 +646,9 @@ def _classify_execute(
             if not Path(expanded).is_absolute():
                 check_path = expanded
 
-            result = classify_owned_path(check_path, ownership, project_root)
+            # Normalize absolute paths to project-relative for ownership classification
+            normalized_path = _normalize_to_project_relative(check_path, project_root)
+            result = classify_owned_path(normalized_path, ownership, project_root)
             if hasattr(result, "level"):
                 return RuleResult(
                     matched=True,
