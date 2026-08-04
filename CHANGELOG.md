@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/hdot123/memory/compare/v0.10.0...v0.10.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* release-please 使用 DISPATCH_TOKEN 触发下游 workflow ([#284](https://github.com/hdot123/memory/issues/284)) ([221040d](https://github.com/hdot123/memory/commit/221040d9ce807a56f7d7d6417d9e7587852a41c0))
+
 ## [0.10.0](https://github.com/hdot123/memory/compare/v0.9.5...v0.10.0) (2026-08-04)
 
 
