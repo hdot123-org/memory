@@ -353,15 +353,23 @@ def _check_path_escape(rel_path: str) -> bool:
 def _normalize_to_project_relative(path: str, project_root: Path) -> str:
     """Convert absolute path to project-relative if it's under project_root.
 
+    This is the single source of truth for absolute-to-relative normalization,
+    shared by all ownership classification paths via ``classify_owned_path``.
+
     Returns the original path unchanged if:
     - It's already relative
     - It's absolute but not under project_root
+    - It begins with ``~`` (not shell-expanded by pathlib; rejected downstream
+      by ``_check_path_escape``)
     """
     if not path or not project_root:
         return path
 
-    # Check if path is absolute
-    if not path.startswith('/') and not path.startswith('~'):
+    # Check if path is absolute. Path.is_absolute() handles cross-platform
+    # detection (POSIX '/' and Windows 'C:\\'). Tilde ('~') is not treated as
+    # absolute by pathlib (it is never shell-expanded), so it falls through
+    # here unchanged and is rejected downstream by _check_path_escape.
+    if not Path(path).is_absolute():
         return path
 
     try:
