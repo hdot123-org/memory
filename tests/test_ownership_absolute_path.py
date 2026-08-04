@@ -5,55 +5,15 @@ by the normal ownership classifier, not just memory/kb and memory/docs.
 
 The gap: classify_owned_path (_check_path_escape) early-returns on absolute
 paths, so memory/system/ and memory/log/ were ALLOWED in normal operation.
-The fix: _guard_classify normalizes absolute paths to project-root-relative
-before calling classify_owned_path.
+The fix: classify_owned_path normalizes absolute paths to project-root-relative
+before checking ownership domains.
 """
 
 from pathlib import Path
 
 import pytest
 
-from memory_core.tools._guard_classify import (
-    _normalize_to_project_relative,
-    classify_tool_use,
-)
-
-
-class TestNormalizeToProjectRelative:
-    """Test the _normalize_to_project_relative helper."""
-
-    def test_absolute_path_under_project_root(self, tmp_path: Path) -> None:
-        """Absolute path under project root is converted to relative."""
-        abs_path = str(tmp_path / "memory/system/errors.log")
-        result = _normalize_to_project_relative(abs_path, tmp_path)
-        assert result == "memory/system/errors.log"
-
-    def test_relative_path_unchanged(self, tmp_path: Path) -> None:
-        """Relative paths are returned as-is."""
-        rel_path = "memory/system/errors.log"
-        result = _normalize_to_project_relative(rel_path, tmp_path)
-        assert result == rel_path
-
-    def test_absolute_path_outside_project_root(self, tmp_path: Path) -> None:
-        """Absolute path NOT under project root is returned as-is."""
-        abs_path = "/completely/different/path/memory/system/file.txt"
-        result = _normalize_to_project_relative(abs_path, tmp_path)
-        assert result == abs_path
-
-    @pytest.mark.parametrize(
-        "marker",
-        [
-            "memory/kb/file.md",
-            "memory/docs/file.md",
-            "memory/system/file.txt",
-            "memory/log/file.log",
-        ],
-    )
-    def test_all_domain_markers_normalized(self, tmp_path: Path, marker: str) -> None:
-        """All 4 protected domain markers are correctly normalized from absolute."""
-        abs_path = str(tmp_path / marker)
-        result = _normalize_to_project_relative(abs_path, tmp_path)
-        assert result == marker
+from memory_core.tools._guard_classify import classify_tool_use
 
 
 class TestAbsolutePathsBlockedByNormalClassifier:
