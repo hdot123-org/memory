@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from memory_core.constants import CURRENT_MEMORY_VERSION
+
 
 class TestReleaseTagExtraction:
     """Test suite for release workflow tag extraction logic."""
@@ -205,7 +207,7 @@ class TestPyprojectVersionConsistency:
     def test_current_pyproject_version_matches_expected(self, pyproject_version: str):
         """Verify current pyproject.toml version is as expected."""
         # This test documents the current version
-        assert pyproject_version == "0.9.5"
+        assert pyproject_version == CURRENT_MEMORY_VERSION
 
     def test_tag_matches_pyproject_version(self, pyproject_version: str):
         """Simulate the workflow version verification logic.
@@ -218,7 +220,7 @@ class TestPyprojectVersionConsistency:
             exit 1
         fi
         """
-        tag = "v0.9.5"  # Simulated extracted tag
+        tag = f"v{pyproject_version}"  # Simulated extracted tag
         py_ver = f"v{pyproject_version}"
         assert tag == py_ver, f"Tag {tag} does not match pyproject.toml version {py_ver}"
 
