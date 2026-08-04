@@ -128,3 +128,37 @@ jobs:
               -f event_type="${DISPATCH_EVENT_TYPE}" \
               -f client_payload="{\"release_tag\":\"${RELEASE_TAG}\",\"source_sha\":\"${SOURCE_SHA}\"}"
           done
+
+  upgrade-consumer:
+    needs: release
+    runs-on: self-hosted
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    env:
+      MEMORY_REPO_PATH: /Users/busiji/memory
+    steps:
+      - name: Pull latest code
+        run: |
+          cd "$MEMORY_REPO_PATH"
+          git fetch origin
+          git checkout main
+          git pull --ff-only origin main
+      - name: Reinstall package
+        run: |
+          cd "$MEMORY_REPO_PATH"
+          pip3 install -e .
+      - name: Verify version matches release
+        run: |
+          cd "$MEMORY_REPO_PATH"
+          INSTALLED=$(python3 -c "from memory_core import __version__; print(__version__)")
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+          else
+            TAG_VERSION="${{ inputs.release_tag }}"
+            TAG_VERSION="${TAG_VERSION#v}"
+          fi
+          echo "Installed: $INSTALLED, Expected: $TAG_VERSION"
+          if [ "$INSTALLED" != "$TAG_VERSION" ]; then
+            echo "::error::Version mismatch: installed=$INSTALLED, expected=$TAG_VERSION"
+            exit 1
+          fi
+          echo "✓ memory-core upgraded to $INSTALLED"
