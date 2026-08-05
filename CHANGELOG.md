@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.3](https://github.com/hdot123/memory/compare/v0.13.2...v0.13.3) (2026-08-05)
+
+
+### Bug Fixes
+
+* 根治 SessionEnd hook SIGINT 崩溃 ([#300](https://github.com/hdot123/memory/issues/300)) ([1ffe055](https://github.com/hdot123/memory/commit/1ffe055ca6eb01333ce38b82c320c9a6a77b2c0c))
+
 ## [0.13.2](https://github.com/hdot123/memory/compare/v0.13.1...v0.13.2) (2026-08-04)
 
 
