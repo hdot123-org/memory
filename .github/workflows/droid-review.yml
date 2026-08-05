@@ -53,7 +53,7 @@ jobs:
           echo "BYOM settings written to ~/.factory/settings.json"
           python3 -c "import json; json.load(open('$HOME/.factory/settings.json')); print('JSON validation passed')"
       - name: Run Droid Auto Review
-        uses: Factory-AI/droid-action@49188f4035f23e609bbeee36ec5b22e72212a8e5
+        uses: Factory-AI/droid-action@2041e7cc36d1390346bdaa6616e4bf7ac6b96b27
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
