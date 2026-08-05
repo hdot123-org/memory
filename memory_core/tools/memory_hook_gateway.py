@@ -18,11 +18,15 @@ def _sigint_handler(_signum: int, _frame: object) -> None:
     sys.exit(0)
 
 
-signal.signal(signal.SIGALRM, _boot_timeout_handler)
-signal.alarm(_BOOT_TIMEOUT)
-signal.signal(signal.SIGINT, _sigint_handler)
+# 仅在作为脚本直接执行时安装信号处理器。
+# pytest import 时 __name__ != "__main__"，不安装 SIGALRM，避免 8s 定时器
+# 在测试收集阶段触发 sys.exit 导致整个 pytest 会话崩溃。
+if __name__ == "__main__":
+    signal.signal(signal.SIGALRM, _boot_timeout_handler)
+    signal.alarm(_BOOT_TIMEOUT)
+    signal.signal(signal.SIGINT, _sigint_handler)
 
-# 以下 import 在 SIGALRM + SIGINT 保护下执行
+# 以下 import 在 SIGALRM + SIGINT 保护下执行（仅 __main__ 时）
 import argparse
 import hashlib
 import json
