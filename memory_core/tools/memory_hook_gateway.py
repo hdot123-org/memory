@@ -1,13 +1,38 @@
 #!/usr/bin/env python3.12
 
+import signal
+import sys
+
+# Factory hook runner 在 10 秒后发 SIGINT 强杀进程。
+# 如果模块级 import 耗时较长（系统重启后高负载），SIGINT 会在 import 期间触发，
+# 导致 KeyboardInterrupt + 退出码 1。
+# 提前设置 SIGALRM（8 秒）+ SIGINT handler，让脚本在 Factory 超时前自行干净退出（exit 0）。
+_BOOT_TIMEOUT = 8
+
+
+def _boot_timeout_handler(_signum: int, _frame: object) -> None:
+    sys.exit(0)
+
+
+def _sigint_handler(_signum: int, _frame: object) -> None:
+    sys.exit(0)
+
+
+# 仅在作为脚本直接执行时安装信号处理器。
+# pytest import 时 __name__ != "__main__"，不安装 SIGALRM，避免 8s 定时器
+# 在测试收集阶段触发 sys.exit 导致整个 pytest 会话崩溃。
+if __name__ == "__main__":
+    signal.signal(signal.SIGALRM, _boot_timeout_handler)
+    signal.alarm(_BOOT_TIMEOUT)
+    signal.signal(signal.SIGINT, _sigint_handler)
+
+# 以下 import 在 SIGALRM + SIGINT 保护下执行（仅 __main__ 时）
 import argparse
 import hashlib
 import json
 import os
 import re
-import signal
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, cast

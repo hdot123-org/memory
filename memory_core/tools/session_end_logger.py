@@ -28,10 +28,23 @@ def _boot_timeout_handler(_signum: int, _frame: object) -> None:
     sys.exit(0)
 
 
-signal.signal(signal.SIGALRM, _boot_timeout_handler)
-signal.alarm(_BOOT_TIMEOUT)
+# Factory 10s 超时发 SIGINT → Python 转 KeyboardInterrupt (BaseException)
+# 现有 except 只抓 SystemExit + Exception，漏掉 KeyboardInterrupt → exit 1
+# 安装 SIGINT handler：SIGINT → sys.exit(0) → SystemExit(0)，
+# 被现有 except SystemExit 捕获，干净退出
+def _sigint_handler(_signum: int, _frame: object) -> None:
+    sys.exit(0)
 
-# 以下 import 在 SIGALRM 保护下执行
+
+# 仅在作为脚本直接执行时安装信号处理器。
+# pytest import 时 __name__ != "__main__"，不安装 SIGALRM，避免 8s 定时器
+# 在测试收集阶段触发 sys.exit 导致整个 pytest 会话崩溃。
+if __name__ == "__main__":
+    signal.signal(signal.SIGALRM, _boot_timeout_handler)
+    signal.alarm(_BOOT_TIMEOUT)
+    signal.signal(signal.SIGINT, _sigint_handler)
+
+# 以下 import 在 SIGALRM + SIGINT 保护下执行（仅 __main__ 时）
 import argparse
 import json
 from collections import Counter, deque
