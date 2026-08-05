@@ -5,12 +5,14 @@ on:
     types: [completed]
   pull_request:
     types: [opened, synchronize, reopened]
+  schedule:
+    - cron: '*/30 * * * *'
   workflow_dispatch:
     inputs:
       pr_number:
         description: 'PR number to merge'
-        required: true
-        type: number
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -27,26 +29,24 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          DISPATCH_PR: ${{ github.event.inputs.pr_number }}
           CHECK_PRS: ${{ toJSON(github.event.check_run.pull_requests) }}
-          CHECK_SHA: ${{ github.event.check_run.head_sha }}
+          MANUAL_PR: ${{ github.event.inputs.pr_number }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            [ -n "$PR_NUMBER" ] && echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" = "check_run" ]; then
+            NUM=$(echo "$CHECK_PRS" | jq -r ".[0].number // empty")
+            [ -n "$NUM" ] && echo "pr_number=$NUM" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$MANUAL_PR" ]; then
+            echo "pr_number=$MANUAL_PR" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" = "schedule" ]; then
+            # On schedule, find the first open PR from whitelist authors
+            PR=$(gh pr list --repo "$REPO" --state open --json number,author --jq '[.[] | select(.author.login == "hdot123" or .author.login == "app/github-actions" or .author.login == "dependabot[bot]")] | .[0].number // empty' 2>/dev/null || true)
+            [ -n "$PR" ] && echo "pr_number=$PR" >> "$GITHUB_OUTPUT"
+          fi
+        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-        run: |
-          PR=""
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            PR="$DISPATCH_PR"
-          elif [ "$EVENT_NAME" = "pull_request" ]; then
-            PR="$PR_NUMBER"
-          elif [ "$EVENT_NAME" = "check_run" ]; then
-            PR=$(echo "$CHECK_PRS" | jq -r '.[0].number // empty')
-            if [ -z "$PR" ] && [ -n "$CHECK_SHA" ]; then
-              PR=$(gh api "repos/$REPO/commits/$CHECK_SHA/pulls" --jq '.[0].number // empty' 2>/dev/null || true)
-            fi
-          fi
-          if [ -n "$PR" ]; then
-            echo "pr_number=$PR" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Run auto-merge
         if: steps.resolve.outputs.pr_number != ''
