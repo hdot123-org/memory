@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.4](https://github.com/hdot123/memory/compare/v0.13.3...v0.13.4) (2026-08-05)
+
+
+### Bug Fixes
+
+* 创建 auto-merge workflow，接入 shared-workflows 引擎 ([#306](https://github.com/hdot123/memory/issues/306)) ([3a501e7](https://github.com/hdot123/memory/commit/3a501e788ef83e445c5c33a48961989a0d667586))
+
 ## [0.13.3](https://github.com/hdot123/memory/compare/v0.13.2...v0.13.3) (2026-08-05)
 
 
