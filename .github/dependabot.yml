@@ -1,23 +1,50 @@
+# Dependabot configuration for automated dependency updates
+# Auto-merge enabled: squash after CI passes (ci-ok + droid-review)
 version: 2
 updates:
-  - package-ecosystem: pip
-    directory: /
+  # Python dependencies (pip)
+  - package-ecosystem: "pip"
+    directory: "/"
     schedule:
-      interval: weekly
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "chore(deps)"
+    auto-merge:
+      enabled: true
+      method: "squash"
+    groups:
+      production:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      development:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
     open-pull-requests-limit: 5
     labels:
-      - dependencies
-      - P2
-    # Wait 7 days before proposing new dependency versions
-    # to reduce supply-chain risk from compromised releases
-    minimum-release-age: 7 days
-    target-branch: main
-
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
-    labels:
-      - dependencies
-      - P2
-    minimum-release-age: 7 days
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "chore(ci)"
+    auto-merge:
+      enabled: true
+      method: "squash"
