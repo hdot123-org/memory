@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.15.0](https://github.com/hdot123/memory/compare/v0.14.0...v0.15.0) (2026-08-05)
+
+
+### Features
+
+* stub添加定时扫描+workflow_dispatch兜底重试机制 ([9afa8c2](https://github.com/hdot123/memory/commit/9afa8c22b5fe212b86c8a934216ffdff17a314fe))
+
+
+### Bug Fixes
+
+* pull_request改为pull_request_target，修复bot触发被action_required拦截 ([79b3bc5](https://github.com/hdot123/memory/commit/79b3bc5df18be4ddf7970a1fd8136f785925570a))
+
 ## [0.14.0](https://github.com/hdot123/memory/compare/v0.13.4...v0.14.0) (2026-08-05)
 
 
