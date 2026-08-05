@@ -31,7 +31,17 @@ def _boot_timeout_handler(_signum: int, _frame: object) -> None:
 signal.signal(signal.SIGALRM, _boot_timeout_handler)
 signal.alarm(_BOOT_TIMEOUT)
 
-# 以下 import 在 SIGALRM 保护下执行
+# Factory 10s 超时发 SIGINT → Python 转 KeyboardInterrupt (BaseException)
+# 现有 except 只抓 SystemExit + Exception，漏掉 KeyboardInterrupt → exit 1
+# 安装 SIGINT handler：SIGINT → sys.exit(0) → SystemExit(0)，
+# 被现有 except SystemExit 捕获，干净退出
+def _sigint_handler(_signum: int, _frame: object) -> None:
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, _sigint_handler)
+
+# 以下 import 在 SIGALRM + SIGINT 保护下执行
 import argparse
 import json
 from collections import Counter, deque
