@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/hdot123/memory/compare/v0.13.4...v0.14.0) (2026-08-05)
+
+
+### Features
+
+* 添加 dependabot 配置，启用 auto-merge 自动合并 ([#305](https://github.com/hdot123/memory/issues/305)) ([128d14c](https://github.com/hdot123/memory/commit/128d14cdf25c9fa9ecf9a2b2f50ff9adc67399ad))
+
 ## [0.13.4](https://github.com/hdot123/memory/compare/v0.13.3...v0.13.4) (2026-08-05)
 
 
