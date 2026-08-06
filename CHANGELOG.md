@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.4](https://github.com/hdot123/memory/compare/v0.15.3...v0.15.4) (2026-08-06)
+
+
+### Bug Fixes
+
+* 修复 lesson 幽灵引用、缺失 Truth Basis 和格式问题 ([#317](https://github.com/hdot123/memory/issues/317)) ([f80a18f](https://github.com/hdot123/memory/commit/f80a18f5f00809c97e51313c5599561b7065b3be))
+
 ## [0.15.3](https://github.com/hdot123/memory/compare/v0.15.2...v0.15.3) (2026-08-06)
 
 
