@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.2](https://github.com/hdot123/memory/compare/v0.15.1...v0.15.2) (2026-08-06)
+
+
+### Documentation
+
+* 修正文档索引引用并清理 lesson 失效 refs (INFRA-69) ([4a97828](https://github.com/hdot123/memory/commit/4a978282f19af9f5fd8fe3b779be8b120111d12b))
+
 ## [0.15.1](https://github.com/hdot123/memory/compare/v0.15.0...v0.15.1) (2026-08-06)
 
 
