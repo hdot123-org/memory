@@ -8,9 +8,7 @@ updated: 2026-04-15
 source: local-canonical
 confidence: high
 tags: [lesson, cmux, runtime, python, venv, guard]
-related: [workbot-hook-contract, workbot-truth-model, workbot-memory-routing]
-
-> **注**：workbot-* 文件已归档至 archive/legacy-workbot/。
+related: [hook-contract, truth-model, memory-routing]
 ---
 
 # CMUX Project Virtualenv Is Mandatory
@@ -32,12 +30,17 @@ related: [workbot-hook-contract, workbot-truth-model, workbot-memory-routing]
   - `PATH=<project_dir>/.venv/bin:$PATH`
 - assignment 生成、hook bridge、watcher 进程统一使用项目虚拟环境解释器运行。
 
-## Evidence Refs
+## Truth Basis
 
-- `<cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
-- `<cmux-skills-dir>/references/workbot/cmux-multi-pane-agent-runtime-requirements.md`
+### Source Refs
+- `AGENTS.md`
+- `memory/kb/global/hook-contract.md`
 
-## Verification Refs
+### Authority Refs
+- `memory/kb/global/memory-system.md`
 
-- `python3 -m py_compile <cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
-- `python3 <cmux-skills-dir>/scripts/bootstrap_claude_runtime.py --project-dir /tmp/cmux-no-venv-smoke --bot-name pm-bot` (预期 fail-fast)
+### Evidence Refs
+- `tests/test_cmux_hook_state_unit.py`
+
+### Conflict Status
+- `resolved`

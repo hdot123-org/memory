@@ -8,9 +8,7 @@ updated: 2026-04-15
 source: local-canonical
 confidence: high
 tags: [lesson, cmux, runtime, guard, foreground, bootstrap]
-related: [workbot-hook-contract, workbot-truth-model, workbot-memory-routing]
-
-> **注**：workbot-* 文件已归档至 archive/legacy-workbot/。
+related: [hook-contract, truth-model, memory-routing]
 ---
 
 # CMUX Single Runtime and Foreground Guard
@@ -32,14 +30,17 @@ related: [workbot-hook-contract, workbot-truth-model, workbot-memory-routing]
   - workspace mismatch -> `task_blocked`
   - non-agent foreground command -> `task_blocked` and no continue dispatch
 
-## Evidence Refs
+## Truth Basis
 
-- `<cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
-- `<cmux-skills-dir>/scripts/watch_cmux_assignments.py`
-- `<cmux-skills-dir>/references/workbot/cmux-multi-pane-agent-runtime-requirements.md`
+### Source Refs
+- `AGENTS.md`
+- `memory/kb/global/hook-contract.md`
 
-## Verification Refs
+### Authority Refs
+- `memory/kb/global/memory-system.md`
 
-- `python3 -m py_compile <cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
-- `python3 -m py_compile <cmux-skills-dir>/scripts/watch_cmux_assignments.py`
-- `python3 <cmux-skills-dir>/scripts/watch_cmux_assignments.py --assignment-file memory_core/artifacts/cmux-runtime/cmux-assignment.json --hook-state-file memory_core/artifacts/cmux-runtime/hook-state.json --once`
+### Evidence Refs
+- `tests/test_cmux_hook_state.py`
+
+### Conflict Status
+- `resolved`

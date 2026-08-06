@@ -16,4 +16,19 @@ Status: active
 
 ## Recovery path
 
-- 正式入口：`<cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
+- 正式入口：`memory_core/tools/` (cmux runtime scripts are external to this repo)
+
+## Truth Basis
+
+### Source Refs
+- `AGENTS.md`
+- `memory/kb/global/memory-system.md`
+
+### Authority Refs
+- `memory/kb/global/hook-contract.md`
+
+### Evidence Refs
+- `tests/conftest.py`
+
+### Conflict Status
+- `resolved`

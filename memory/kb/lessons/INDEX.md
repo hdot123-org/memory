@@ -20,3 +20,5 @@ Active lessons from project experience.
 | `version-upgrade-fullchain-sync.md` | 版本升级需全链路同步（pyproject + constants + compat + README + tests） |
 | `contract-driven-extension.md` | 契约驱动扩展：声明式版本协商优于硬编码兼容矩阵（oh-my-cli 对比教训） |
 | `defense-in-depth-security.md` | 纵深安全 vs 扁平规则：信任根是安全体系的锚点（oh-my-cli 对比教训） |
+| `over-engineering-validation-trap.md` | 过度设计验证陷阱：未验证问题存在就开始设计解决方案 |
+| `worker-commit-to-main-divergence.md` | Worker 直接 commit 到 main 导致分支 diverge（4+ 次重复） |

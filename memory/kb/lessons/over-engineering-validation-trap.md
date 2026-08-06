@@ -54,3 +54,19 @@
 ❌ 研究竞品 → 采纳竞品架构 → 为架构寻找问题
 ✅ 确认问题 → 实测根因 → 最小修复 → 验证
 ```
+
+
+## Truth Basis
+
+### Source Refs
+- `AGENTS.md`
+- `memory/docs/记忆系统全景文档.md`
+
+### Authority Refs
+- `memory/kb/global/memory-system.md`
+
+### Evidence Refs
+- `tests/conftest.py`
+
+### Conflict Status
+- `resolved`

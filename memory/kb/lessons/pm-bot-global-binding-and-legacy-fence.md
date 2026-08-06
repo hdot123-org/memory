@@ -8,9 +8,7 @@ updated: 2026-04-14
 source: local-canonical
 confidence: high
 tags: [lesson, pm-bot, memory, legacy, binding, cmux]
-related: [workbot-project-canonical, workbot-truth-model, workbot-hook-contract]
-
-> **注**：workbot-* 文件已归档至 archive/legacy-workbot/。
+related: [memory-system, hook-contract, memory-routing]
 ---
 
 # PM Bot Global Binding and Legacy Fence
@@ -55,11 +53,11 @@ related: [workbot-project-canonical, workbot-truth-model, workbot-hook-contract]
 
 ### Source Refs
 - `AGENTS.md`
-- `.claude/agents/pm-bot.md`
+- `memory/docs/记忆系统全景文档.md`
 
 ### Authority Refs
-- `memory/kb/projects/workbot.md`
-- `memory/kb/global/workbot-truth-model.md`
+- `memory/kb/global/truth-model.md`
+- `memory/kb/global/memory-system.md`
 
 ### Evidence Refs
 - `memory_core/tools/memory_hook_gateway.py`
