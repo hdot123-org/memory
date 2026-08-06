@@ -175,3 +175,27 @@ find ~/.memory-core/project-lifecycle/projects -name "*.jsonl" | xargs wc -l
 **来源：** memory-hook gateway 过度事件调查  
 **日期：** 2026-07-31  
 **触发：** Factory 平台 200+ stop 事件导致输出干扰
+
+## Truth Basis
+
+### Source Refs
+
+- memory/docs/记忆系统全景文档.md
+
+### Authority Refs
+
+- memory/kb/global/hook-contract.md
+- memory/kb/global/memory-system.md
+- project-map/INDEX.md
+
+### Evidence Refs
+
+- tests/test_hook_event.py
+- tests/test_hook_event_stats.py
+- memory_core/tools/hook_event.py
+- memory_core/tools/memory_hook_gateway.py
+
+### Conflict Status
+
+- resolved
+

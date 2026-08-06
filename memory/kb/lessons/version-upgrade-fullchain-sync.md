@@ -76,3 +76,29 @@ rg "0\.9\.4" memory_core/constants.py memory_core/compat.py
 ---
 **来源：** v0.9.3 → v0.9.4 版本升级 CI 失败
 **日期：** 2026-08-01
+
+## Truth Basis
+
+### Source Refs
+
+- memory/docs/记忆系统全景文档.md
+
+### Authority Refs
+
+- memory/kb/global/memory-system.md
+- memory/kb/global/kb-format-spec.md
+- project-map/INDEX.md
+
+### Evidence Refs
+
+- tests/test_version_consistency.py
+- tests/test_version_bump_081.py
+- tests/test_constants.py
+- tests/test_compat.py
+- memory_core/constants.py
+- memory_core/compat.py
+
+### Conflict Status
+
+- resolved
+

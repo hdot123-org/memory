@@ -22,3 +22,4 @@ Active lessons from project experience.
 | `version-upgrade-fullchain-sync.md` | 版本升级需全链路同步（pyproject + constants + compat + README + tests） |
 | `contract-driven-extension.md` | 契约驱动扩展：声明式版本协商优于硬编码兼容矩阵（oh-my-cli 对比教训） |
 | `defense-in-depth-security.md` | 纵深安全 vs 扁平规则：信任根是安全体系的锚点（oh-my-cli 对比教训） |
+| `excessive-hook-events.md` | 过度 Hook 事件：Factory 平台行为分析与输出抑制模式 |

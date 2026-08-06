@@ -59,3 +59,26 @@ rg "events\.jsonl" memory/docs/ memory/kb/ --type md
 ---
 **来源：** v0.9.4 生命周期事件分片后的文档一致性审计
 **日期：** 2026-08-01
+
+## Truth Basis
+
+### Source Refs
+
+- memory/docs/记忆系统全景文档.md
+
+### Authority Refs
+
+- memory/kb/global/memory-system.md
+- memory/kb/global/kb-format-spec.md
+- project-map/INDEX.md
+
+### Evidence Refs
+
+- tests/test_discover_canonical_files.py
+- tests/test_consistency_check.py
+- memory_core/tools/consistency_check.py
+
+### Conflict Status
+
+- resolved
+

@@ -65,3 +65,26 @@ memory-core 的组件没有生命周期状态——要么存在要么不存在�
 - 对比文档：oh-my-cli 契约驱动扩展分析文档（contracts.md）
 - 差距总结：oh-my-cli 工程对比分析文档（gap-priorities.md）→ G-01-1, G-01-2, G-01-3
 - 相关教训：`version-upgrade-fullchain-sync.md`（硬编码矩阵的维护痛点）
+
+## Truth Basis
+
+### Source Refs
+
+- memory/docs/记忆系统全景文档.md
+
+### Authority Refs
+
+- memory/kb/global/truth-model.md
+- memory/kb/global/memory-routing.md
+- project-map/INDEX.md
+
+### Evidence Refs
+
+- tests/test_compat.py
+- tests/test_compat_and_cross_flows.py
+- memory_core/compat.py
+
+### Conflict Status
+
+- resolved
+
