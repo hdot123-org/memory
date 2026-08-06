@@ -56,17 +56,12 @@ related: [workbot-project-canonical, workbot-truth-model, workbot-hook-contract]
 ### Source Refs
 - `AGENTS.md`
 - `.claude/agents/pm-bot.md`
-- `docs/cmux-subagent-runtime-chain.md`
-- `docs/cmux-subagent-runtime-truth-table.md`
 
 ### Authority Refs
 - `memory/kb/projects/workbot.md`
 - `memory/kb/global/workbot-truth-model.md`
 
 ### Evidence Refs
-- `docs/cmux-subagent-runtime-chain.md`
-- `docs/cmux-subagent-runtime-truth-table.md`
-- `docs/cmux-subagent-minimal-operating-guideline.md`
 - `memory_core/tools/memory_hook_gateway.py`
 
 ### Conflict Status
