@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.3](https://github.com/hdot123/memory/compare/v0.15.2...v0.15.3) (2026-08-06)
+
+
+### Bug Fixes
+
+* 创建 memory_core.md 项目规范并修复 INDEX.md 幻影条目 ([#315](https://github.com/hdot123/memory/issues/315)) ([231cdc6](https://github.com/hdot123/memory/commit/231cdc6449926f3128046bdc17c2fb21439a7d40))
+
 ## [0.15.2](https://github.com/hdot123/memory/compare/v0.15.1...v0.15.2) (2026-08-06)
 
 
