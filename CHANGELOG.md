@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.6](https://github.com/hdot123/memory/compare/v0.15.5...v0.15.6) (2026-08-06)
+
+
+### Documentation
+
+* 修正发版文档漂移，补充 upgrade-consumer 流程描述 ([#314](https://github.com/hdot123/memory/issues/314)) ([3b76c8c](https://github.com/hdot123/memory/commit/3b76c8c098f0de7b88f8e8fb8efd5c9c5979a0ae))
+
 ## [0.15.5](https://github.com/hdot123/memory/compare/v0.15.4...v0.15.5) (2026-08-06)
 
 
