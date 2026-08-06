@@ -108,3 +108,18 @@ mission 执行过程中发现并修复的基础设施问题：
 - Webhook 路由教训：`memory/kb/lessons/webhook-session-routing.md`
 - 详细重构日志：`memory/docs/refactor-logs/v5-dplus-refactor-2026-07-20.md`
 - validation-state.json：30/30 assertions passed
+
+## Truth Basis
+
+### Source Refs
+- memory/docs/refactor-logs/v5-dplus-refactor-2026-07-20.md
+
+### Authority Refs
+- memory/kb/global/memory-system.md
+
+### Evidence Refs
+- tests/test_refactoring.py
+- memory_core/tools/business_policy_checks.py
+
+### Conflict Status
+- resolved

@@ -74,3 +74,18 @@ oh-my-cli 的 bounded everything 有四个一致特征，应作为 memory-core �
 - 差距总结：oh-my-cli 工程对比分析文档（gap-priorities.md）→ G-07-1, G-07-2, G-07-3, G-07-4
 - 跨维度交叉差距：系统性边界 vs 局部边界（01:Gap4, 03:Gap5, 07:Gap1, 07:Gap4）
 - 相关决策：D-010（健壮性修复策略，与本决策互补）
+
+## Truth Basis
+
+### Source Refs
+- memory/docs/plans/PLAN-STATUS.md
+
+### Authority Refs
+- memory/kb/global/truth-model.md
+
+### Evidence Refs
+- tests/test_guard_fail_closed.py
+- memory_core/tools/_guard_classify.py
+
+### Conflict Status
+- resolved

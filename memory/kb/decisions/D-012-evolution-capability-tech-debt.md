@@ -55,3 +55,18 @@ memory-core 当前是反应式进化：发现问题 → 手动打补丁。没有
 - 自治循环、session 压缩、delivery brief 等 agent 能力不适用于 hook 库
 
 详见 oh-my-cli 工程对比分析文档（gap-priorities.md）。
+
+## Truth Basis
+
+### Source Refs
+- memory/docs/plans/PLAN-STATUS.md
+
+### Authority Refs
+- memory/kb/global/memory-system.md
+
+### Evidence Refs
+- tests/test_validate_memory_system.py
+- memory_core/tools/validate_memory_system.py
+
+### Conflict Status
+- resolved

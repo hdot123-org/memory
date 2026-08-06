@@ -54,3 +54,18 @@
 - mypy baseline：`docs/typing-tech-debt.md`（gateway 69 errors 属于此 baseline 的一部分）
 - 覆盖率盲区报告：`memory/docs/audit/coverage-gaps-2026-07-18.md`
 - 审计 SOP：`memory/docs/audit/audit-sop.md`
+
+## Truth Basis
+
+### Source Refs
+- memory/docs/audit/coverage-gaps-2026-07-18.md
+
+### Authority Refs
+- memory/kb/global/truth-model.md
+
+### Evidence Refs
+- tests/test_memory_hook_gateway_coverage.py
+- memory_core/tools/memory_hook_gateway.py
+
+### Conflict Status
+- resolved
