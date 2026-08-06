@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.5](https://github.com/hdot123/memory/compare/v0.15.4...v0.15.5) (2026-08-06)
+
+
+### Bug Fixes
+
+* 填充全局规范文件并创建 KB 格式规范 ([#319](https://github.com/hdot123/memory/issues/319)) ([678aafa](https://github.com/hdot123/memory/commit/678aafabe81a442a242b8791c649a9d8be197582))
+
 ## [0.15.4](https://github.com/hdot123/memory/compare/v0.15.3...v0.15.4) (2026-08-06)
 
 
