@@ -35,7 +35,7 @@ release-and-dispatch.yml (tag push 触发):
   test → release → upgrade-consumer
         ↓
 upgrade-consumer (self-hosted runner):
-  git pull main + pip install -e . + 验证 __version__ == tag 版本
+  git pull main + pip install --break-system-packages -e . + 验证 __version__ == tag 版本
 ```
 
 ### 触发条件
@@ -218,13 +218,15 @@ gh workflow run release-and-dispatch.yml \
 
 ### upgrade-consumer 自动升级
 
-`release-and-dispatch.yml` 的 `upgrade-consumer` job 运行在 self-hosted runner（用户 Mac）上，在 release job 完成后自动执行：
+`release-and-dispatch.yml` 的 `upgrade-consumer` 是 release 流水线的第三个 job，在 `release` job 成功后运行，运行在 self-hosted runner（用户 Mac）上。触发条件与整条流水线一致：tag push（`refs/tags/`）或 `workflow_dispatch`。该 job 执行：
 
-1. `git pull origin main`（拉取最新 main）
-2. `pip install -e .`（重新安装 memory-core）
-3. 验证 `memory_core.__version__` 与 tag 版本一致
+1. 拉取最新 main：`git fetch origin` → `git checkout main` → `git pull --ff-only origin main`
+2. 重新安装 memory-core：`/opt/homebrew/bin/python3 -m pip install --break-system-packages -e .`
+   - 使用 `/opt/homebrew/bin/python3` 确保命中 Homebrew Python（CHANGELOG #295）
+   - `--break-system-packages` 应对 PEP 668 externally-managed 限制（CHANGELOG #297）
+3. 校验 `memory_core.__version__` 与 release tag 版本一致
 
-确保发版后本地 Mac 的全局 memory-core 安装即时升级，无需手动 `pip install`。
+确保发版后本地 Mac 的全局 memory-core 安装即时升级，无需手动 `pip install`（自动升级最初引入见 CHANGELOG #293）。
 
 > **前提**：self-hosted runner 需在线。如果 runner 离线，该 job 会 pending，不影响 release 和下游通知。
 

@@ -1,7 +1,19 @@
-"""Version synchronization: patch ownership.toml memory_version across known projects.
+"""Version synchronization: patch version across known consumer projects.
 
-Manual CLI tool invoked via `memory-sync-versions`. Currently there is no hook
-auto-trigger; version_sync is not called from the session-start handler.
+Invoked MANUALLY via the ``memory-sync-versions`` CLI. There is no automatic
+trigger from the hook wrapper — version_sync is not called from the
+session-start handler (the wrapper's version-sync sed block was removed as a
+P0-1 fix; see ``test_wrapper_template_has_no_version_sync_sed_block``).
+
+``sync_single_project()`` patches all three version-carrying files
+(``ownership.toml``, ``memory.lock``, ``adapter.toml``) when the upgrade gate
+permits (patch/minor upgrade with ``schema_version`` unchanged). When the gate
+is BLOCKED (major upgrade or schema change) it patches ONLY ``ownership.toml``
+for backward compatibility and sets ``gate_blocked=True``.
+
+``memory-init --mode update`` is a separate path: it calls only
+``patch_ownership_memory_version()`` and therefore patches ONLY
+``ownership.toml`` (it does not run the full three-file version_sync flow).
 """
 
 import argparse

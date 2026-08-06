@@ -26,7 +26,7 @@ release-and-dispatch.yml (tag push 触发):
   test → release → upgrade-consumer
         ↓
 upgrade-consumer (self-hosted runner):
-  git pull main + pip install -e . + 验证 __version__ == tag 版本
+  git pull main + pip install --break-system-packages -e . + 验证 __version__ == tag 版本
 ```
 
 ### Commit 消息规范
@@ -63,6 +63,10 @@ gh release list --limit 3
 # 确认 wheel 已上传
 gh release view v0.9.x --json assets
 ```
+
+### upgrade-consumer 自动升级
+
+release 流水线的第三个 job `upgrade-consumer` 在 `release` 成功后于 self-hosted runner（用户 Mac）运行：拉取最新 main 并用 `pip install --break-system-packages -e .` 重新安装 memory-core，再校验已安装版本与 tag 一致，使本地 Mac 全局安装即时升级。完整说明详见 [RELEASE.md](../../RELEASE.md) 的「下游通知机制 / upgrade-consumer 自动升级」。
 
 ## 手动发版（备用）
 
