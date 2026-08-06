@@ -69,8 +69,8 @@ def test_ci_mode_detects_version_mismatch_in_readme():
     try:
         # Break version consistency
         broken_content = original_content.replace(
-            f"- Current documented release: v{CURRENT_MEMORY_VERSION}",
-            "- Current documented release: v0.8.0"
+            f"- 当前文档版本：v{CURRENT_MEMORY_VERSION}",
+            "- 当前文档版本：v0.8.0"
         )
         readme_path.write_text(broken_content)
 

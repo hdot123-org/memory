@@ -102,7 +102,7 @@ gh run list --workflow=release-and-dispatch.yml --limit 1
 |------|------|
 | `pyproject.toml` | `[project].version` |
 | `memory_core/constants.py` | `CURRENT_MEMORY_VERSION` |
-| `README.md` | `Current documented release` 行 + 所有 install 命令中的 `@vX.Y.Z` |
+| `README.md` | `当前文档版本` 行 + 所有 install 命令中的 `@vX.Y.Z` |
 | `.release-please-manifest.json` | `{"\u002e": "X.Y.Z"}`（path-keyed，`\u002e` 即根路径 `.`） |
 | `CHANGELOG.md` | 最新 `## [X.Y.Z]` 条目 |
 
