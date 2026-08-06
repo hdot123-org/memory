@@ -55,18 +55,17 @@
 ✅ 确认问题 → 实测根因 → 最小修复 → 验证
 ```
 
-
 ## Truth Basis
 
 ### Source Refs
-- `AGENTS.md`
-- `memory/docs/记忆系统全景文档.md`
+- memory/docs/记忆系统全景文档.md
 
 ### Authority Refs
-- `memory/kb/global/memory-system.md`
+- memory/kb/global/memory-system.md
+- project-map/INDEX.md
 
 ### Evidence Refs
-- `tests/conftest.py`
+- tests/test_business_policy_paths.py
 
 ### Conflict Status
-- `resolved`
+- resolved

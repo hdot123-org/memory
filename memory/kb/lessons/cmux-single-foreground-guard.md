@@ -4,11 +4,10 @@ title: "CMUX Single Runtime and Foreground Guard"
 shortname: CMUX-SINGLE-FOREGROUND-GUARD
 status: active
 created: 2026-04-15
-updated: 2026-04-15
+updated: 2026-08-06
 source: local-canonical
 confidence: high
 tags: [lesson, cmux, runtime, guard, foreground, bootstrap]
-related: [hook-contract, truth-model, memory-routing]
 ---
 
 # CMUX Single Runtime and Foreground Guard
@@ -16,9 +15,9 @@ related: [hook-contract, truth-model, memory-routing]
 ## Active Truth
 
 - `workbot` runtime enforces single cmux workspace at bootstrap time.
-- `bootstrap_claude_runtime.py` acquires a project lock before bootstrapping and releases it on all exit paths.
-- `watch_cmux_assignments.py` blocks execution when assignment workspace is not the selected workspace.
-- `watch_cmux_assignments.py` blocks `auto_continue` when foreground command is not `claude` or `codex`.
+- Runtime bootstrap acquires a project lock before bootstrapping and releases it on all exit paths.
+- Assignment watcher blocks execution when assignment workspace is not the selected workspace.
+- Assignment watcher blocks `auto_continue` when foreground command is not `claude` or `codex`.
 
 ## Fix Summary
 
@@ -33,14 +32,16 @@ related: [hook-contract, truth-model, memory-routing]
 ## Truth Basis
 
 ### Source Refs
-- `AGENTS.md`
-- `memory/kb/global/hook-contract.md`
+- AGENTS.md
+- memory/docs/记忆系统全景文档.md
 
 ### Authority Refs
-- `memory/kb/global/memory-system.md`
+- memory/kb/global/memory-system.md
+- memory/kb/global/hook-contract.md
 
 ### Evidence Refs
-- `tests/test_cmux_hook_state.py`
+- memory_core/tools/memory_hook_gateway.py
+- tests/test_business_policy_paths.py
 
 ### Conflict Status
-- `resolved`
+- resolved

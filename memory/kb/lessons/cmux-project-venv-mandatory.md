@@ -4,11 +4,10 @@ title: "CMUX Project Virtualenv Is Mandatory"
 shortname: CMUX-PROJECT-VENV-MANDATORY
 status: active
 created: 2026-04-15
-updated: 2026-04-15
+updated: 2026-08-06
 source: local-canonical
 confidence: high
 tags: [lesson, cmux, runtime, python, venv, guard]
-related: [hook-contract, truth-model, memory-routing]
 ---
 
 # CMUX Project Virtualenv Is Mandatory
@@ -24,7 +23,7 @@ related: [hook-contract, truth-model, memory-routing]
 
 ## Runtime Enforcement
 
-- `bootstrap_claude_runtime.py` 在 runtime 启动前执行虚拟环境 preflight。
+- Runtime bootstrap 在启动前执行虚拟环境 preflight。
 - agent 启动环境显式注入：
   - `VIRTUAL_ENV=<project_dir>/.venv`
   - `PATH=<project_dir>/.venv/bin:$PATH`
@@ -33,14 +32,16 @@ related: [hook-contract, truth-model, memory-routing]
 ## Truth Basis
 
 ### Source Refs
-- `AGENTS.md`
-- `memory/kb/global/hook-contract.md`
+- AGENTS.md
+- memory/docs/记忆系统全景文档.md
 
 ### Authority Refs
-- `memory/kb/global/memory-system.md`
+- memory/kb/global/memory-system.md
+- memory/kb/global/hook-contract.md
 
 ### Evidence Refs
-- `tests/test_cmux_hook_state_unit.py`
+- memory_core/tools/memory_hook_gateway.py
+- tests/test_business_policy_paths.py
 
 ### Conflict Status
-- `resolved`
+- resolved
