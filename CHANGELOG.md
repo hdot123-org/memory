@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/hdot123/memory/compare/v0.15.0...v0.15.1) (2026-08-06)
+
+
+### Bug Fixes
+
+* 补全基础层缺失的 project-map/global canonical 文件及 CI 守卫适配 ([#310](https://github.com/hdot123/memory/issues/310)) ([76c2e28](https://github.com/hdot123/memory/commit/76c2e28fab0f415e1fe53ae4562fbbeda402b500))
+
 ## [0.15.0](https://github.com/hdot123/memory/compare/v0.14.0...v0.15.0) (2026-08-05)
 
 
