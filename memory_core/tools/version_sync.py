@@ -1,8 +1,7 @@
 """Version synchronization: patch ownership.toml memory_version across known projects.
 
-Triggered automatically by the hook wrapper when it detects a version mismatch
-between the installed memory-core package and a project's ownership.toml.
-Can also be invoked manually via `memory-sync-versions`.
+Manual CLI tool invoked via `memory-sync-versions`. Currently there is no hook
+auto-trigger; version_sync is not called from the session-start handler.
 """
 
 import argparse

@@ -21,6 +21,12 @@ release-please 自动创建 Release PR
    合并 Release PR
         ↓
 自动创建 tag + GitHub Release + 构建 wheel
+        ↓
+release-and-dispatch.yml (tag push 触发):
+  test → release → upgrade-consumer
+        ↓
+upgrade-consumer (self-hosted runner):
+  git pull main + pip install -e . + 验证 __version__ == tag 版本
 ```
 
 ### Commit 消息规范
@@ -108,7 +114,7 @@ gh workflow run release-and-dispatch.yml \
 | 文件 | 用途 |
 |------|------|
 | `.github/workflows/release-please.yml` | 自动发版工作流 |
-| `.github/workflows/release-and-dispatch.yml` | 手动发版 + 下游通知 |
+| `.github/workflows/release-and-dispatch.yml` | 发布流水线（test → release → upgrade-consumer）+ 下游通知 |
 | `release-please-config.json` | release-please 配置 |
 | `.release-please-manifest.json` | 当前版本清单 |
 | `scripts/release_rollback.sh` | 回滚脚本 |
