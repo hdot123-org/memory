@@ -1,83 +1,83 @@
 # memory-core
 
-memory-core provides a reusable `memory/` protocol, templates, schemas, and CLI tools for project-scoped memory management. It is an open-source library for initializing, validating, migrating, and auditing memory layouts; it does not store business project state in this repository.
+memory-core 提供可复用的 `memory/` 协议、模板、Schema 和 CLI 工具，用于项目级记忆管理。它是一个开源库，负责初始化、校验、迁移和审计记忆布局；本仓库不存储任何业务项目状态。
 
-## Architecture (v0.15.0) <!-- x-release-please-version -->
+## 架构 (v0.15.0) <!-- x-release-please-version -->
 
-memory-core uses a **three-layer architecture**:
+memory-core 采用**三层架构**：
 
 ```
-~/.memory-core/              ← Layer 1: Global runtime (never modified)
-~/.memory/global-kb/         ← Layer 2: Global knowledge base (NEW in v0.8.0)
-  operations/                ← Operations knowledge (servers, deployment, SSH, ...)
-  engineering/               ← Engineering knowledge (CI/CD, toolchain, decisions)
-  collaboration/             ← Collaboration knowledge (agent workflows, docs)
-  pending/                   ← Auto-captured candidates awaiting promotion
+~/.memory-core/              ← Layer 1: 全局运行时（永不修改）
+~/.memory/global-kb/         ← Layer 2: 全局知识库（v0.8.0 新增）
+  operations/                ← 运维知识（服务器、部署、SSH 等）
+  engineering/               ← 工程知识（CI/CD、工具链、决策）
+  collaboration/             ← 协作知识（Agent 工作流、文档）
+  pending/                   ← 自动捕获的待晋升候选
 /Users/project/
-  memory/                    ← Layer 3: Single project entry point
-    system/                  ← Config & state files
-      adapter.toml           ← Now includes [global_kb] section (v0.8.0+)
+  memory/                    ← Layer 3: 单项目入口
+    system/                  ← 配置与状态文件
+      adapter.toml           ← v0.8.0+ 起包含 [global_kb] 段
       ownership.toml
       memory.lock
       migrations.log
       manifest.json
       integrity-audit.jsonl
-    kb/                      ← Project knowledge base (project-first routing)
-    docs/                    ← Documentation
-    log/                     ← Logs
+    kb/                      ← 项目知识库（项目优先路由）
+    docs/                    ← 文档
+    log/                     ← 日志
 ```
 
-Routing follows a **project-first, global-fallback** policy: knowledge lookups hit the project `memory/kb/` first, then fall back to the global `~/.memory/global-kb/` when a domain entry is missing. The global fallback is enabled via the `[global_kb]` section in `memory/system/adapter.toml` (`memory-init` writes it automatically).
+路由遵循**项目优先、全局兜底**策略：知识查找先命中项目 `memory/kb/`，当某领域条目缺失时再 fallback 到全局 `~/.memory/global-kb/`。全局兜底通过 `memory/system/adapter.toml` 中的 `[global_kb]` 段启用（`memory-init` 自动写入）。
 
-The project-level configuration lives in `memory/system/` (not `.memory/`). The hidden `.memory/` directory was removed in v0.5.0.
+项目级配置位于 `memory/system/`（而非 `.memory/`）。隐藏目录 `.memory/` 在 v0.5.0 中已移除。
 
-## Telemetry Architecture (v0.15.0) <!-- x-release-please-version -->
+## 遥测架构 (v0.15.0) <!-- x-release-please-version -->
 
-memory-core uses a **local-first telemetry** design to minimize hook overhead while ensuring reliable data delivery:
+memory-core 采用**本地优先遥测**设计，最大限度降低 hook 开销，同时确保数据可靠送达：
 
-**Data flow:**
+**数据流：**
 ```
-hook event (PreToolUse / SessionEnd / gateway)
+hook 事件 (PreToolUse / SessionEnd / gateway)
   │
-  ├─ Write local JSONL (metrics.jsonl) — microseconds, zero network blocking
+  ├─ 写入本地 JSONL (metrics.jsonl) — 微秒级，零网络阻塞
   │
-  └─ session-start sync (hourly window):
-       1. Check .last_sync timestamp; skip if < 3600s
-       2. Probe PostHog connectivity (2s timeout)
-       3. Batch send unsent records via .offset sidecar
-       4. Update .offset on success; truncate synced records from JSONL
+  └─ session-start 同步（每小时窗口）：
+       1. 检查 .last_sync 时间戳；若 < 3600s 则跳过
+       2. 探测 PostHog 连通性（2s 超时）
+       3. 通过 .offset 伴车文件批量发送未投递记录
+       4. 成功后更新 .offset；从 JSONL 中截断已同步记录
 ```
 
-**Key design principles:**
-- **Hook hot path**: Only local JSONL writes (microseconds), no PostHog SDK imports, zero network blocking
-- **Batch sync on session-start**: Hourly rate limit, 2s connectivity probe, incremental via offset sidecar
-- **Fail-safe**: All telemetry wrapped in try/except; analytics failures never affect hook behavior
-- **Data sanitization**: Full file paths replaced with basenames before sending to PostHog
-- **PostHog**: Public API key built-in from data file (default_posthog_key.txt); set POSTHOG_API_KEY='' to disable
+**核心设计原则：**
+- **Hook 热路径**：仅写入本地 JSONL（微秒级），不导入 PostHog SDK，零网络阻塞
+- **session-start 批量同步**：每小时限流，2s 连通性探测，通过 offset 伴车文件增量推进
+- **故障安全**：所有遥测逻辑包裹在 try/except 中；分析失败绝不影响 hook 行为
+- **数据脱敏**：发送到 PostHog 前，完整文件路径替换为 basename
+- **PostHog**：内置公开 API Key（来自 data 文件 default_posthog_key.txt）；设置 `POSTHOG_API_KEY=''` 可禁用
 
-## Guard & Safety Architecture
+## 守卫与安全架构
 
-memory-core ships a **PreToolUse guard** that sits between Factory and the filesystem, deciding whether each write tool call may touch project memory. The guard is fail-safe: when anything goes wrong, it errs on the side of protecting critical project state.
+memory-core 内置 **PreToolUse 守卫**，位于 Factory 与文件系统之间，决定每次写工具调用是否允许触碰项目记忆。守卫采用故障关闭设计：出现任何异常时，优先保护关键项目状态。
 
-**Guard flow:**
+**守卫流程：**
 
 ```
-tool call (Write / Edit / MultiEdit / NotebookEdit / Execute)
+工具调用 (Write / Edit / MultiEdit / NotebookEdit / Execute)
   │
-  ├─ read JSON payload from stdin
-  ├─ normalize absolute path → project-relative
-  ├─ classify path against ownership table
+  ├─ 从 stdin 读取 JSON 载荷
+  ├─ 绝对路径归一化为项目相对路径
+  ├─ 按所有权表分类路径
   │     (memory/kb, memory/system, memory/docs, memory/log)
   │
   v
-decision: ALLOW (exit 0) | BLOCK (exit 2)
+决策: ALLOW (exit 0) | BLOCK (exit 2)
 ```
 
-**Key design principles:**
+**核心设计原则：**
 
-- **PreToolUse interception**: The guard intercepts `Write`, `Edit`, `MultiEdit`, `NotebookEdit`, and `Execute` before execution and uses ownership classification to allow or block operations against `memory/` directories. Allows produce exit code `0`; blocks produce exit code `2`.
-- **Fail-closed protection**: When the guard itself fails (JSON parse error, stdin read exception, project root detection failure, or subprocess timeout/crash), it falls back to context-aware fail-closed logic via `is_protected_path_target()`. Operations targeting protected paths (`memory/kb/`, `memory/system/`, `memory/docs/`, `memory/log/`) are **DENIED** on guard failure; non-protected paths are **ALLOWED** with an error log. This guarantees critical project state is never corrupted even when the guard crashes.
-- **Dual hook output format**: The guard emits JSON in both legacy and Factory official formats for backward compatibility:
+- **PreToolUse 拦截**：守卫在执行前拦截 `Write`、`Edit`、`MultiEdit`、`NotebookEdit` 和 `Execute`，通过所有权分类决定允许或阻止对 `memory/` 目录的操作。允许操作返回退出码 `0`；阻止操作返回退出码 `2`。
+- **故障关闭保护**：当守卫自身失败时（JSON 解析错误、stdin 读取异常、项目根目录探测失败或子进程超时/崩溃），通过 `is_protected_path_target()` 回退到上下文感知的故障关闭逻辑。针对受保护路径（`memory/kb/`、`memory/system/`、`memory/docs/`、`memory/log/`）的操作在守卫失败时**一律拒绝**；非保护路径**允许通过**并记录错误日志。这确保即使守卫崩溃，关键项目状态也绝不会被损坏。
+- **双格式 hook 输出**：守卫同时输出旧版和 Factory 官方格式的 JSON，以保持向后兼容：
 
   ```json
   {
@@ -91,86 +91,86 @@ decision: ALLOW (exit 0) | BLOCK (exit 2)
   }
   ```
 
-  The gateway transparently forwards this output. Note the mapping: legacy `block` → official `deny`.
+  gateway 透明转发此输出。注意映射关系：旧版 `block` → 官方 `deny`。
 
-- **Shared redaction module**: `memory_core/tools/_redaction.py` provides centralized `redact()` and `redact_dict()` functions covering API tokens (`sk-`, `sk-ant-`, `ghp_`, `AKIA`, `lin_api_`, `glpat-`), JWT-like tokens, auth headers (`Authorization: Bearer/Basic`, bare `Bearer`), password/secret parameters, private IP addresses (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`), and user home paths. All four log/metric consumers (`log_utils`, `gateway`, `error_logger`, `telemetry_bridge`) delegate to this shared module so no secret ever leaks through an output channel.
-- **Absolute path normalization**: The ownership classifier normalizes absolute file paths to project-root-relative before classification via a single shared `_normalize_to_project_relative` function (single source of truth, following the same consolidation pattern as the shared redaction module). It lives in `memory_core/ownership.py` and is invoked once inside `classify_owned_path`, so every classifier path — Write/Edit, MultiEdit, NotebookEdit, and Execute — benefits from consistent absolute-path handling without duplicating the logic. This ensures all four protected markers are correctly blocked regardless of whether Factory sends relative or absolute paths — closing a classification bypass that otherwise let absolute-path writes slip past relative-path matching.
+- **共享脱敏模块**：`memory_core/tools/_redaction.py` 提供集中的 `redact()` 和 `redact_dict()` 函数，覆盖 API token（`sk-`、`sk-ant-`、`ghp_`、`AKIA`、`lin_api_`、`glpat-`）、JWT 类 token、认证头（`Authorization: Bearer/Basic`、裸 `Bearer`）、密码/密钥参数、私有 IP 地址（`192.168.x.x`、`10.x.x.x`、`172.16-31.x.x`）和用户 home 路径。全部四个日志/指标消费者（`log_utils`、`gateway`、`error_logger`、`telemetry_bridge`）均委托此共享模块，确保任何输出通道都不会泄露密钥。
+- **绝对路径归一化**：所有权分类器通过单一共享函数 `_normalize_to_project_relative` 将绝对文件路径归一化为项目根相对路径（单一事实源，遵循与共享脱敏模块相同的整合模式）。该函数位于 `memory_core/ownership.py`，在 `classify_owned_path` 内部仅调用一次，因此每条分类路径（Write/Edit、MultiEdit、NotebookEdit、Execute）都受益于一致的绝对路径处理，无需重复逻辑。这确保无论 Factory 发送相对路径还是绝对路径，四个保护标记都能被正确阻止，杜绝了绝对路径写操作绕过相对路径匹配的分类漏洞。
 
-## Install
+## 安装
 
-Install from GitHub (non-editable, production use):
+从 GitHub 安装（非可编辑模式，生产用途）：
 
 ```bash
 pip install git+https://github.com/hdot123/memory.git@v0.15.0 <!-- x-release-please-version -->
 ```
 
-Upgrade to a new version:
+升级到新版本：
 
 ```bash
 pip install --upgrade git+https://github.com/hdot123/memory.git@v0.15.0 <!-- x-release-please-version -->
 ```
 
-Install from release wheel:
+从 release wheel 安装：
 
 ```bash
 gh release download v0.15.0 --repo hdot123/memory --pattern "*.whl" <!-- x-release-please-version -->
 pip install memory_core-0.15.0 <!-- x-release-please-version -->
 ```
 
-For local development only:
+仅用于本地开发：
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-**Note**: Production deployments should use `pip install` (non-editable). Editable installs (`pip install -e`) are for development only.
+**注意**：生产部署应使用 `pip install`（非可编辑模式）。可编辑安装（`pip install -e`）仅用于开发。
 
-## Quickstart
+## 快速开始
 
-Initialize a target project:
+初始化目标项目：
 
 ```bash
 memory-init --target /path/to/project
 ```
 
-Validate the generated memory layout:
+校验生成的记忆布局：
 
 ```bash
 memory-validate --target /path/to/project
 ```
 
-Migrate between schema versions:
+在 Schema 版本间迁移：
 
 ```bash
 memory-migrate --target /path/to/project --from 0.7.0 --to 0.8.0
 ```
 
-## Core CLI commands
+## 核心 CLI 命令
 
 ### `memory-init`
 
-Creates or updates the standard project memory structure under `memory/system/`. Auto-fills detected project metadata (language, framework, toolchain, git remote) into project scope files.
+在 `memory/system/` 下创建或更新标准项目记忆结构。自动检测项目元数据（语言、框架、工具链、git remote）并填充到项目 scope 文件中。
 
-Starting with v0.8.0, `memory-init` also creates the global knowledge base structure at `~/.memory/global-kb/` (idempotent) and writes the `[global_kb]` section into `memory/system/adapter.toml` to enable project-first / global-fallback routing.
+从 v0.8.0 起，`memory-init` 还会在 `~/.memory/global-kb/` 创建全局知识库结构（幂等操作），并在 `memory/system/adapter.toml` 中写入 `[global_kb]` 段以启用项目优先 / 全局兜底路由。
 
 ```bash
 memory-init --target /path/to/project [--scope my-project] [--host factory] [--mode create|adopt|update|repair] [--dry-run] [--force] [--no-clobber] [--no-auto-fill] [--json] [--version]
 ```
 
-Modes:
+模式说明：
 
-| Mode | Purpose |
+| 模式 | 用途 |
 |---|---|
-| `create` | Create a new memory layout. |
-| `adopt` | Adopt an existing project while preserving business entry files. |
-| `update` | Update marked memory-managed blocks and create missing files. |
-| `repair` | Recreate missing required files without overwriting existing files. |
+| `create` | 创建新的记忆布局。 |
+| `adopt` | 采纳已有项目，保留业务入口文件。 |
+| `update` | 更新带标记的记忆管理块，补建缺失文件。 |
+| `repair` | 仅补建缺失的必需文件，不覆盖已有文件。 |
 
-`memory-init` protects existing `AGENTS.md`, `INDEX.md`, `project-map/**`, and `CLAUDE.md` unless a managed block can be safely updated.
+`memory-init` 保护已有的 `AGENTS.md`、`INDEX.md`、`project-map/**` 和 `CLAUDE.md`，除非可以安全更新受管块。
 
-### Layout governance
+### 布局治理
 
-Use these commands before or after adoption to inspect legacy layouts, runtime residue, and root-level generated reports:
+在采纳前后使用以下命令检查遗留布局、运行时残留和根级生成报告：
 
 ```bash
 memory-audit-layout --target /path/to/project --json
@@ -178,11 +178,11 @@ memory-plan-residue --target /path/to/project --output residue-plan.json
 memory-apply-residue-plan --target /path/to/project --plan residue-plan.json --dry-run
 ```
 
-`memory-apply-residue-plan` only applies low-risk actions automatically, such as moving recognized generated root reports to `artifacts/reports/`. It does not overwrite protected business entry points.
+`memory-apply-residue-plan` 仅自动执行低风险操作，例如将已识别的根级生成报告移动到 `artifacts/reports/`。不会覆盖受保护的业务入口文件。
 
 ### `memory-validate`
 
-Checks that `memory/system/` exists, required files are present, frontmatter and TOML are valid, version fields are compatible, and pollution guards pass.
+检查 `memory/system/` 是否存在、必需文件是否齐全、frontmatter 和 TOML 是否合法、版本字段是否兼容、污染守卫是否通过。
 
 ```bash
 memory-validate --target /path/to/project [--dry-run] [--json]
@@ -190,53 +190,53 @@ memory-validate --target /path/to/project [--dry-run] [--json]
 
 ### `memory-migrate`
 
-Runs version/schema migrations and records the result in `migrations.log`.
+执行版本/Schema 迁移，并将结果记录到 `migrations.log`。
 
 ```bash
 memory-migrate --target /path/to/project --from 0.7.0 --to 0.8.0 [--dry-run] [--json] [--version]
 ```
 
-The `0.7.0 → 0.8.0` migration injects the `[global_kb]` section into `adapter.toml` (with defaults `enabled = true`, `root = "~/.memory/global-kb"`) and bumps the pinned version. It is idempotent: if `[global_kb]` already exists, it only updates the version.
+`0.7.0 → 0.8.0` 迁移会向 `adapter.toml` 注入 `[global_kb]` 段（默认 `enabled = true`、`root = "~/.memory/global-kb"`）并更新锁定版本。该操作是幂等的：若 `[global_kb]` 已存在，则仅更新版本。
 
 ### `memory-promote`
 
-Promotes auto-captured knowledge candidates from the global KB `pending/` directory into a formal domain (`operations/`, `engineering/`, or `collaboration/`). This is the human confirmation step of the sedimentation flow: `session-end` auto-captures candidates into `~/.memory/global-kb/pending/`, and `memory-promote` moves a reviewed file into its target domain and updates `INDEX.md`.
+将全局 KB `pending/` 目录中自动捕获的知识候选提升为正式领域（`operations/`、`engineering/` 或 `collaboration/`）。这是沉淀流的人工确认步骤：`session-end` 自动捕获候选到 `~/.memory/global-kb/pending/`，`memory-promote` 将审核后的文件移入目标领域并更新 `INDEX.md`。
 
 ```bash
-memory-promote                                          # List pending candidates
+memory-promote                                          # 列出待处理候选
 memory-promote <file> --to operations|engineering|collaboration
 memory-promote --version
 ```
 
-### Global batch operations
+### 全局批量操作
 
-These commands operate across every project registered in the lifecycle path-index (`path-index.json`). They are used for lifecycle maintenance and, where noted, take no `--target`.
+以下命令跨生命周期 path-index（`path-index.json`）中注册的所有项目执行。用于生命周期维护，如无特殊说明不带 `--target`。
 
 #### `memory-sync-versions`
 
-Synchronizes the memory-core version pinned in project scope files. In global mode (no `--target`) it iterates every project in `path-index.json` and patches three files: `ownership.toml`, `memory.lock`, and `adapter.toml`, when the upgrade gate allows. With `--target` it applies the same logic to a single project.
+同步项目 scope 文件中锁定的 memory-core 版本。全局模式（不带 `--target`）遍历 `path-index.json` 中的每个项目，在升级门允许时修补三个文件：`ownership.toml`、`memory.lock` 和 `adapter.toml`。带 `--target` 时对单个项目执行相同逻辑。
 
-The upgrade gate allows patch and minor bumps with an unchanged `schema_version` and patches all three files. It blocks major bumps or schema-changing upgrades; in that case it still patches `ownership.toml` for backward compatibility and points the user at `memory-migrate`.
+升级门允许 patch 和 minor 版本升级（要求 `schema_version` 不变），并修补全部三个文件。阻止 major 版本升级或 Schema 变更；此情况下仍修补 `ownership.toml` 以保持向后兼容，并提示用户使用 `memory-migrate`。
 
 ```bash
-memory-sync-versions                              # Global: sync all projects
-memory-sync-versions --target /path/to/project    # Single project
+memory-sync-versions                              # 全局：同步所有项目
+memory-sync-versions --target /path/to/project    # 单项目
 memory-sync-versions --dry-run --json
 ```
 
 #### `memory-lifecycle-rebuild`
 
-Rebuilds `path-index.json` from the `projects/*.json` lifecycle records. Use it when the index is stale, missing entries, or has diverged from the on-disk `projects/` directory. It filters out inactive and missing records, deduplicates by `local_path` (keeping the record with the latest `observed_at`), and writes the result atomically.
+从 `projects/*.json` 生命周期记录重建 `path-index.json`。当索引过期、缺失条目或与磁盘上的 `projects/` 目录不一致时使用。过滤非活跃和缺失记录，按 `local_path` 去重（保留 `observed_at` 最新的记录），原子写入结果。
 
 ```bash
-memory-lifecycle-rebuild                          # Rebuild index in place
+memory-lifecycle-rebuild                          # 原地重建索引
 memory-lifecycle-rebuild --dry-run --json
 memory-lifecycle-rebuild --lifecycle-root /custom/lifecycle/root
 ```
 
 #### `memory-audit-daily`
 
-Global daily integrity audit. Iterates every registered project in `path-index.json` and checks manifest integrity, unsigned files, and version consistency. It has no `--target` option; it is always global.
+全局每日完整性审计。遍历 `path-index.json` 中注册的每个项目，检查 manifest 完整性、未签名文件和版本一致性。无 `--target` 选项，始终为全局操作。
 
 ```bash
 memory-audit-daily --json
@@ -245,21 +245,21 @@ memory-audit-daily --dry-run
 
 #### `memory-error-patterns`
 
-Global error pattern detector (Layer D). Scans `memory/log/*-errors.jsonl` files across projects, fingerprints recurring errors with smart normalization (paths, timestamps, UUIDs, hex, numbers all abstracted), and writes a machine-readable pattern registry to `memory/kb/patterns/registry.jsonl`. Patterns meeting thresholds (>=2 distinct days OR >=5 total count) are flagged with `threshold_met`. Detection only — no KB modification, no auto-lessons.
+全局错误模式检测器（Layer D）。跨项目扫描 `memory/log/*-errors.jsonl` 文件，通过智能归一化（路径、时间戳、UUID、hex、数字全部抽象化）对重复错误进行指纹识别，将机器可读的模式注册表写入 `memory/kb/patterns/registry.jsonl`。满足阈值（>=2 个不同天数 或 >=5 次总计数）的模式标记为 `threshold_met`。仅检测，不修改 KB，不自动生成 lesson。
 
 ```bash
-memory-error-patterns                                    # Auto-detect project from cwd
-memory-error-patterns --project /path/to/project         # Single project
-memory-error-patterns --all-projects                     # All projects (launchd daily 23:55)
-memory-error-patterns --dry-run --verbose                # Preview without writing registry
+memory-error-patterns                                    # 从 cwd 自动检测项目
+memory-error-patterns --project /path/to/project         # 单项目
+memory-error-patterns --all-projects                     # 所有项目（launchd 每日 23:55）
+memory-error-patterns --dry-run --verbose                # 预览不写入注册表
 ```
 
-## Generated project layout
+## 生成的项目布局
 
-A target project initialized by `memory-init` receives a project-local memory layout, and `memory-init` also ensures the shared global knowledge base exists:
+由 `memory-init` 初始化的目标项目获得项目级记忆布局，同时 `memory-init` 确保共享全局知识库存在：
 
 ```text
-~/.memory/global-kb/                  ← Layer 2: shared global KB (created once, idempotent)
+~/.memory/global-kb/                  ← Layer 2: 共享全局 KB（创建一次，幂等）
 ├── INDEX.md
 ├── operations/
 │   └── README.md
@@ -267,14 +267,14 @@ A target project initialized by `memory-init` receives a project-local memory la
 │   └── README.md
 ├── collaboration/
 │   └── README.md
-└── pending/                          ← Auto-captured candidates (promote via memory-promote)
+└── pending/                          ← 自动捕获的候选（通过 memory-promote 晋升）
     └── README.md
 
 <project>/
 ├── memory/
 │   ├── system/
 │   │   ├── memory.lock
-│   │   ├── adapter.toml              ← Includes [global_kb] section (v0.8.0+)
+│   │   ├── adapter.toml              ← v0.8.0+ 起包含 [global_kb] 段
 │   │   ├── migrations.log
 │   │   ├── manifest.json
 │   │   ├── integrity-audit.jsonl
@@ -288,31 +288,31 @@ A target project initialized by `memory-init` receives a project-local memory la
 └── INDEX.md
 ```
 
-The global KB (`~/.memory/global-kb/`) is shared across every project that enables global routing; each project still owns its own `memory/`, `project-map/`, and `artifacts/memory-hook/`. Project memory and runtime artifacts belong to the target project. The memory-core repository contains the reusable protocol, code, templates, schemas, fixtures, and documentation.
+全局 KB（`~/.memory/global-kb/`）在所有启用全局路由的项目间共享；每个项目仍拥有自己的 `memory/`、`project-map/` 和 `artifacts/memory-hook/`。项目记忆和运行时 artifacts 属于目标项目。memory-core 仓库包含可复用的协议、代码、模板、Schema、fixture 和文档。
 
-## Global hook setup
+## 全局 Hook 设置
 
-memory-core supports Factory Droid global hook entry points. Global hooks act as stable wrappers and route each event back to the current project directory.
+memory-core 支持 Factory Droid 全局 hook 入口点。全局 hook 作为稳定封装层，将每个事件路由回当前项目目录。
 
-Factory Droid:
+Factory Droid：
 
 ```bash
 memory-factory-hooks install --storage-root ~/.memory-core
 ```
 
-Global state under `~/.memory-core` stores host-level lifecycle/path-index data and integrity keys; it is not a project memory pool. Project memory lives under the target project’s `memory/system/`, `memory/`, and `artifacts/memory-hook/` paths.
+`~/.memory-core` 下的全局状态存储主机级生命周期/path-index 数据和完整性密钥，不是项目记忆池。项目记忆位于目标项目的 `memory/system/`、`memory/` 和 `artifacts/memory-hook/` 路径下。
 
-## Documentation
+## 文档
 
-- [Documentation index](docs/INDEX.md)
-- [`.memory/` specification](docs/specs/DOT_MEMORY_SPEC.md)
-- [`memory.lock` specification](docs/specs/MEMORY_LOCK_SPEC.md)
-- [Repository boundary](docs/specs/BOUNDARY.md)
-- [Architecture design documents](docs/architecture/INDEX.md)
-- [Changelog](CHANGELOG.md)
-- [Contributing](CONTRIBUTING.md)
+- [文档索引](docs/INDEX.md)
+- [`.memory/` 规范](docs/specs/DOT_MEMORY_SPEC.md)
+- [`memory.lock` 规范](docs/specs/MEMORY_LOCK_SPEC.md)
+- [仓库边界](docs/specs/BOUNDARY.md)
+- [架构设计文档](docs/architecture/INDEX.md)
+- [更新日志](CHANGELOG.md)
+- [贡献指南](CONTRIBUTING.md)
 
-## Development and verification
+## 开发与验证
 
 ```bash
 ruff check .
@@ -321,8 +321,8 @@ python -m pytest tests/
 python3 scripts/check_boundary.py
 ```
 
-## Version and license
+## 版本与许可
 
-- Current documented release: v0.15.0 <!-- x-release-please-version -->
+- 当前文档版本：v0.15.0 <!-- x-release-please-version -->
 - Python: >= 3.9
-- License: MIT. See [LICENSE](LICENSE).
+- 许可证：MIT，详见 [LICENSE](LICENSE)。
