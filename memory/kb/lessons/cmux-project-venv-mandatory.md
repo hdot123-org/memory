@@ -4,13 +4,10 @@ title: "CMUX Project Virtualenv Is Mandatory"
 shortname: CMUX-PROJECT-VENV-MANDATORY
 status: active
 created: 2026-04-15
-updated: 2026-04-15
+updated: 2026-08-06
 source: local-canonical
 confidence: high
 tags: [lesson, cmux, runtime, python, venv, guard]
-related: [workbot-hook-contract, workbot-truth-model, workbot-memory-routing]
-
-> **注**：workbot-* 文件已归档至 archive/legacy-workbot/。
 ---
 
 # CMUX Project Virtualenv Is Mandatory
@@ -26,18 +23,25 @@ related: [workbot-hook-contract, workbot-truth-model, workbot-memory-routing]
 
 ## Runtime Enforcement
 
-- `bootstrap_claude_runtime.py` 在 runtime 启动前执行虚拟环境 preflight。
+- Runtime bootstrap 在启动前执行虚拟环境 preflight。
 - agent 启动环境显式注入：
   - `VIRTUAL_ENV=<project_dir>/.venv`
   - `PATH=<project_dir>/.venv/bin:$PATH`
 - assignment 生成、hook bridge、watcher 进程统一使用项目虚拟环境解释器运行。
 
-## Evidence Refs
+## Truth Basis
 
-- `<cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
-- `<cmux-skills-dir>/references/workbot/cmux-multi-pane-agent-runtime-requirements.md`
+### Source Refs
+- AGENTS.md
+- memory/docs/记忆系统全景文档.md
 
-## Verification Refs
+### Authority Refs
+- memory/kb/global/memory-system.md
+- memory/kb/global/hook-contract.md
 
-- `python3 -m py_compile <cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
-- `python3 <cmux-skills-dir>/scripts/bootstrap_claude_runtime.py --project-dir /tmp/cmux-no-venv-smoke --bot-name pm-bot` (预期 fail-fast)
+### Evidence Refs
+- memory_core/tools/memory_hook_gateway.py
+- tests/test_business_policy_paths.py
+
+### Conflict Status
+- resolved

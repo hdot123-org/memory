@@ -16,4 +16,20 @@ Status: active
 
 ## Recovery path
 
-- 正式入口：`<cmux-skills-dir>/scripts/bootstrap_claude_runtime.py`
+- 正式入口：cmux 引导脚本（参见 routing rules）
+
+## Truth Basis
+
+### Source Refs
+- AGENTS.md
+- memory/docs/记忆系统全景文档.md
+
+### Authority Refs
+- memory/kb/global/memory-system.md
+- memory/kb/global/memory-routing.md
+
+### Evidence Refs
+- memory_core/tools/memory_hook_gateway.py
+
+### Conflict Status
+- resolved

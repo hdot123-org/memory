@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.15.5](https://github.com/hdot123/memory/compare/v0.15.4...v0.15.5) (2026-08-06)
+
+
+### Bug Fixes
+
+* 填充全局规范文件并创建 KB 格式规范 ([#319](https://github.com/hdot123/memory/issues/319)) ([678aafa](https://github.com/hdot123/memory/commit/678aafabe81a442a242b8791c649a9d8be197582))
+
+## [0.15.4](https://github.com/hdot123/memory/compare/v0.15.3...v0.15.4) (2026-08-06)
+
+
+### Bug Fixes
+
+* 修复 lesson 幽灵引用、缺失 Truth Basis 和格式问题 ([#317](https://github.com/hdot123/memory/issues/317)) ([f80a18f](https://github.com/hdot123/memory/commit/f80a18f5f00809c97e51313c5599561b7065b3be))
+
+## [0.15.3](https://github.com/hdot123/memory/compare/v0.15.2...v0.15.3) (2026-08-06)
+
+
+### Bug Fixes
+
+* 创建 memory_core.md 项目规范并修复 INDEX.md 幻影条目 ([#315](https://github.com/hdot123/memory/issues/315)) ([231cdc6](https://github.com/hdot123/memory/commit/231cdc6449926f3128046bdc17c2fb21439a7d40))
+
 ## [0.15.2](https://github.com/hdot123/memory/compare/v0.15.1...v0.15.2) (2026-08-06)
 
 

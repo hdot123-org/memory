@@ -76,6 +76,6 @@ memory-core 的 guard 在 JSON 解析失败时 exit 0（放行），是 fail-ope
 
 ## 关联
 
-- 对比文档：`/Users/busiji/tool/oh-my-cli-analysis/03-security.md`
-- 差距总结：`/Users/busiji/tool/oh-my-cli-analysis/08-gap-priorities.md` → G-03-1, G-03-2, G-03-3, G-03-4, G-03-5
+- 对比文档：oh-my-cli 安全架构分析文档（security.md）
+- 差距总结：oh-my-cli 工程对比分析文档（gap-priorities.md）→ G-03-1, G-03-2, G-03-3, G-03-4, G-03-5
 - 相关教训：`pretooluse-guard-coverage-gap.md`（白名单盲区的具体案例）

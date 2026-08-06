@@ -10,6 +10,8 @@ Active lessons from project experience.
 | `cmux-single-foreground-guard.md` | CMUX enforces single runtime and foreground guard |
 | `pm-bot-global-binding-and-legacy-fence.md` | PM bot global binding rules and legacy fence |
 | `tmux-retired-cmux-only.md` | tmux retired; only cmux allowed for workbot runtime |
+| `over-engineering-validation-trap.md` | 过度设计验证陷阱：未验证问题存在就设计解决方案 |
+| `worker-commit-to-main-divergence.md` | Worker 直接 commit 到 main 导致分支 diverge（4+ 次重复） |
 | `audit-verification-methodology.md` | 代码审计核查的 4 个系统性盲区（范围锚定/命令漂移/AST bug/工具信任） |
 | `pretooluse-guard-coverage-gap.md` | [技术债 P1] PreToolUse Guard 白名单盲区：未消费 CLASSIFICATION.md，根目录 deny patterns 缺失 |
 | `pytest-fixture-finalizer-leak.md` | Python 3.11 CI 中 pytest-rerunfailures + pytest 8.x 的 fixture finalizer 泄漏问题（全局 --reruns 是反模式） |
