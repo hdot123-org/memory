@@ -79,3 +79,28 @@ memory-core 的 guard 在 JSON 解析失败时 exit 0（放行），是 fail-ope
 - 对比文档：oh-my-cli 安全架构分析文档（security.md）
 - 差距总结：oh-my-cli 工程对比分析文档（gap-priorities.md）→ G-03-1, G-03-2, G-03-3, G-03-4, G-03-5
 - 相关教训：`pretooluse-guard-coverage-gap.md`（白名单盲区的具体案例）
+
+## Truth Basis
+
+### Source Refs
+
+- memory/docs/记忆系统全景文档.md
+
+### Authority Refs
+
+- memory/kb/global/truth-model.md
+- memory/kb/global/project-map-governance.md
+- project-map/INDEX.md
+
+### Evidence Refs
+
+- tests/test_guard_classify.py
+- tests/test_guard_patterns.py
+- tests/test_guard_fail_closed.py
+- memory_core/tools/_guard_classify.py
+- memory_core/tools/_guard_patterns.py
+
+### Conflict Status
+
+- resolved
+

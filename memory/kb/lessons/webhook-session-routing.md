@@ -103,3 +103,26 @@ cat ~/.factory/webhook/locks/pending-ci.json
 - 项目 wrapper：`scripts/write-pending-ci.sh`
 - sessions-index：`~/.factory/sessions/sessions-index.json`
 - pending-ci lock：`~/.factory/webhook/locks/pending-ci.json`
+
+## Truth Basis
+
+### Source Refs
+
+- memory/docs/记忆系统全景文档.md
+
+### Authority Refs
+
+- memory/kb/global/hook-contract.md
+- memory/kb/global/memory-routing.md
+- project-map/INDEX.md
+
+### Evidence Refs
+
+- tests/test_gateway_project_lifecycle.py
+- memory_core/tools/project_lifecycle.py
+- memory_core/tools/memory_hook_gateway.py
+
+### Conflict Status
+
+- resolved
+

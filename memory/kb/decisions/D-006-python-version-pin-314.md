@@ -64,3 +64,18 @@ test job 只跑 `["3.14"]`，advisory-security/typing 也改为 `"3.14"`。CI �
 ## 教训
 
 详见 `memory/kb/lessons/ci-runtime-version-mismatch.md`：CI 测的版本和实际跑的版本必须一致。
+
+## Truth Basis
+
+### Source Refs
+- memory/docs/plans/PLAN-STATUS.md
+
+### Authority Refs
+- memory/kb/global/memory-system.md
+
+### Evidence Refs
+- tests/test_version_bump_081.py
+- memory_core/tools/consistency_check.py
+
+### Conflict Status
+- resolved

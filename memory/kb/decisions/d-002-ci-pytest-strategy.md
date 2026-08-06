@@ -90,3 +90,18 @@ script:
 ## 相关决策
 
 - [ci-pyc-cache-pollution Lesson](../../kb/lessons/ci-pyc-cache-pollution.md)
+
+## Truth Basis
+
+### Source Refs
+- memory/docs/plans/PLAN-STATUS.md
+
+### Authority Refs
+- memory/kb/global/memory-system.md
+
+### Evidence Refs
+- tests/conftest.py
+- memory_core/tools/validate_memory_system.py
+
+### Conflict Status
+- resolved

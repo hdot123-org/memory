@@ -113,3 +113,18 @@
 - 方法论教训（含 AST 标准化盲区）：`memory/kb/lessons/audit-verification-methodology.md`
 - AST 标准化陷阱（v5 揭示的最严重盲区）：`memory/docs/audit/audit-verification/05-METHODOLOGY-LESSONS.md` 第 5 盲区
 - 原始 audit 报告（已清理）：worker transcript 在 mission `e688ce4d-286b-48e7-80ef-9c16b9017aa8`
+
+## Truth Basis
+
+### Source Refs
+- memory/docs/audit/audit-sop.md
+
+### Authority Refs
+- memory/kb/global/truth-model.md
+
+### Evidence Refs
+- tests/test_business_policy_smoke.py
+- memory_core/tools/business_policy_checks.py
+
+### Conflict Status
+- resolved

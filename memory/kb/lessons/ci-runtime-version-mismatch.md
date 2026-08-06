@@ -42,3 +42,28 @@ CI 永远抓不到 3.14 的边缘行为。
 ## 解决方案
 
 锁死到 3.14 单版本（PR #184），CI 只跑 3.14。详见 D-006。
+
+## Truth Basis
+
+### Source Refs
+
+- memory/docs/记忆系统全景文档.md
+- memory/system/adapter.toml
+
+### Authority Refs
+
+- memory/kb/global/memory-system.md
+- memory/kb/global/hook-contract.md
+- project-map/INDEX.md
+
+### Evidence Refs
+
+- tests/test_version_consistency.py
+- tests/test_version_bump_081.py
+- memory_core/constants.py
+- memory_core/compat.py
+
+### Conflict Status
+
+- resolved
+

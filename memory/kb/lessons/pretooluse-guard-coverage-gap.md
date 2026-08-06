@@ -197,3 +197,30 @@ def classify_against_decision_tree(file_path, content_keywords):
 - 规则引擎源码：`memory_core/tools/pretooluse_guard.py`, `memory_core/tools/_guard_classify.py`, `memory_core/tools/_guard_patterns.py`
 - ownership 配置：`memory/system/ownership.toml`
 - hook 入口：`~/.factory/hooks.json`, `~/.factory/bin/memory-hook`
+
+## Truth Basis
+
+### Source Refs
+
+- memory/docs/记忆系统全景文档.md
+- memory/docs/audit/audit-sop.md
+
+### Authority Refs
+
+- memory/kb/global/truth-model.md
+- memory/kb/global/hook-contract.md
+- project-map/INDEX.md
+
+### Evidence Refs
+
+- tests/test_pretooluse_guard.py
+- tests/test_pretooluse_guard_integration.py
+- tests/test_guard_classify.py
+- tests/test_guard_patterns.py
+- memory_core/tools/pretooluse_guard.py
+- memory_core/tools/_guard_classify.py
+
+### Conflict Status
+
+- resolved
+

@@ -104,3 +104,25 @@ if TYPE_CHECKING:
 - 类型声明位置：`memory_core/tools/memory_hook_gateway.py:1-60`（TYPE_CHECKING 块）
 - 动态注入逻辑：`memory_core/tools/memory_hook_gateway.py:_load_profile()`
 - 验证命令：`mypy memory_core/tools/memory_hook_gateway.py`（0 errors）
+
+## Truth Basis
+
+### Source Refs
+
+- memory/docs/记忆系统全景文档.md
+
+### Authority Refs
+
+- memory/kb/global/memory-system.md
+- memory/kb/global/truth-model.md
+- project-map/INDEX.md
+
+### Evidence Refs
+
+- tests/test_gateway_truth_basis_coverage.py
+- memory_core/tools/memory_hook_gateway.py
+
+### Conflict Status
+
+- resolved
+

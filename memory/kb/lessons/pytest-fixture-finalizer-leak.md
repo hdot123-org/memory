@@ -99,3 +99,26 @@ pytest-rerunfailures==15.0
 - CI workflow: `.github/workflows/ci.yml`
 - pyproject.toml: `addopts` 变更
 - conftest.py: 新增 `_reset_telemetry_singleton` fixture
+
+## Truth Basis
+
+### Source Refs
+
+- memory/docs/记忆系统全景文档.md
+
+### Authority Refs
+
+- memory/kb/global/memory-system.md
+- memory/kb/global/project-map-governance.md
+- project-map/INDEX.md
+
+### Evidence Refs
+
+- tests/test_gateway_project_lifecycle.py
+- memory_core/tools/project_lifecycle.py
+- conftest.py
+
+### Conflict Status
+
+- resolved
+

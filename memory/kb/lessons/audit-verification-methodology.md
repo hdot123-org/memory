@@ -103,3 +103,27 @@ v5 终版结论：4 轮 10 次核查收敛，0 差异。27 D+ / 19 nested / 真�
 
 - 详细核查数据：`memory/docs/audit/audit-verification/`（7 个文件，25 次核查完整记录）
 - 决策记录：`memory/kb/decisions/D-003-audit-verification-refactor-basis.md`
+
+## Truth Basis
+
+### Source Refs
+
+- memory/docs/audit/audit-verification
+- memory/docs/audit/audit-sop.md
+
+### Authority Refs
+
+- memory/kb/global/truth-model.md
+- memory/kb/global/memory-system.md
+- project-map/INDEX.md
+
+### Evidence Refs
+
+- tests/test_business_policy_integration.py
+- tests/test_business_policy_paths.py
+- memory_core/tools/business_policy_checks.py
+
+### Conflict Status
+
+- resolved
+

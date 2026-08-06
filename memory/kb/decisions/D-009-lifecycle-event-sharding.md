@@ -43,3 +43,18 @@ projects/{project_id}/events/{YYYY-MM-DD}.jsonl
 ## PR
 - PR #231: 生命周期事件按项目分片 + 自动轮转清理
 - PR #232: 健壮性改进（5 项 scrutiny 修复 + 版本一致性）
+
+## Truth Basis
+
+### Source Refs
+- memory/docs/plans/PLAN-STATUS.md
+
+### Authority Refs
+- memory/kb/global/memory-system.md
+
+### Evidence Refs
+- tests/test_event_sharding.py
+- memory_core/tools/project_lifecycle.py
+
+### Conflict Status
+- resolved

@@ -55,3 +55,18 @@ D-006 将 Python 版本锁定到 3.14 单版本（2026-07-22），但后续发�
 ## 教训
 
 详见 `memory/kb/lessons/platform-standardization.md`：与平台保持版本一致可降低维护成本，避免版本碎片化。
+
+## Truth Basis
+
+### Source Refs
+- memory/docs/plans/PLAN-STATUS.md
+
+### Authority Refs
+- memory/kb/global/memory-system.md
+
+### Evidence Refs
+- tests/test_version_bump_081.py
+- memory_core/tools/consistency_check.py
+
+### Conflict Status
+- resolved
