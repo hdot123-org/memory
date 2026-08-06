@@ -56,3 +56,18 @@ DOC_CATEGORIES 字典写死在 `memory_core/tools/doc_router.py` 中，包含 10
 ## 教训
 
 "声明 ≠ 执行"——CLASSIFICATION.md 声明了分类规则但无人执行，跟 CI 版本脱节是同一个模式。根治方法是代码强制执行，不是靠 Agent 自觉。
+
+## Truth Basis
+
+### Source Refs
+- memory/docs/refactor-logs/doc-routing-engine-2026-07-22.md
+
+### Authority Refs
+- memory/kb/global/memory-routing.md
+
+### Evidence Refs
+- tests/test_doc_router.py
+- memory_core/tools/doc_router.py
+
+### Conflict Status
+- resolved

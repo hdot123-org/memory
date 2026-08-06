@@ -139,3 +139,18 @@ mission 执行过程中发现并修复的基础设施问题：
 - gateway globals().update 教训：`memory/kb/lessons/gateway-globals-injection-mypy.md`
 - 详细重构日志：`memory/docs/refactor-logs/mypy-183-to-0-2026-07-21.md`
 - validation-state.json：5/5 assertions passed（VAL-DOC-001 ~ VAL-DOC-005）
+
+## Truth Basis
+
+### Source Refs
+- memory/docs/refactor-logs/mypy-183-to-0-2026-07-21.md
+
+### Authority Refs
+- memory/kb/global/memory-system.md
+
+### Evidence Refs
+- tests/test_rule_types.py
+- memory_core/tools/_validation_constants.py
+
+### Conflict Status
+- resolved

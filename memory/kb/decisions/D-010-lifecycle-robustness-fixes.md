@@ -44,3 +44,18 @@ PR #231 引入生命周期事件分片后，scrutiny 审查发现 5 个非阻塞
 
 ## PR
 - PR #232: 健壮性改进（5 项 scrutiny 修复 + 版本一致性）
+
+## Truth Basis
+
+### Source Refs
+- memory/docs/plans/PLAN-STATUS.md
+
+### Authority Refs
+- memory/kb/global/memory-system.md
+
+### Evidence Refs
+- tests/test_lifecycle_migration.py
+- memory_core/tools/project_lifecycle.py
+
+### Conflict Status
+- resolved
