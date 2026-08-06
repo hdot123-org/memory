@@ -44,6 +44,7 @@ SKIP_FILES: frozenset[str] = frozenset({
 TOP_LEVEL_EXCEPTIONS: frozenset[str] = frozenset({
     "memory/docs/INDEX.md",
     "memory/kb/INDEX.md",
+    "memory/docs/记忆系统全景文档.md",
 })
 
 

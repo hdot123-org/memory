@@ -63,14 +63,14 @@ from memory_core.constants import CURRENT_MEMORY_VERSION
 print(CURRENT_MEMORY_VERSION)
 ")"
 
-  # README.md: "- Current documented release: vX.Y.Z"
+  # README.md: "- 当前文档版本：vX.Y.Z" (中文, 当前标准) or "- Current documented release: vX.Y.Z" (en)
   readme_ver="$(python3 -c "
 import re
 ver = 'NOT_FOUND'
 try:
     with open('README.md') as f:
         for line in f:
-            m = re.search(r'Current documented release:\s*v?(\d+\.\d+\.\d+)', line)
+            m = re.search(r'(?:Current documented release|当前文档版本)[:：]\s*v?(\d+\.\d+\.\d+)', line)
             if m:
                 ver = m.group(1)
                 break

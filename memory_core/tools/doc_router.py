@@ -25,6 +25,7 @@ EXCEPTION_DIRS: frozenset[str] = frozenset({
     "memory/docs/system/",
     "memory/kb/projects/",
     "memory/kb/patterns/",
+    "memory/kb/global/",
 })
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

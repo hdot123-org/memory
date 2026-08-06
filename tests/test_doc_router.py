@@ -166,6 +166,7 @@ class TestIsRegisteredDocDir:
             (Path("memory/docs/archive/"), True),
             (Path("memory/docs/system/"), True),
             (Path("memory/kb/projects/"), True),
+            (Path("memory/kb/global/"), True),
         ],
     )
     def test_exception_directories(self, path: Path, expected: bool) -> None:
@@ -217,9 +218,9 @@ class TestIsRegisteredDocDir:
 class TestExceptionDirs:
     """EXCEPTION_DIRS 常量测试。"""
 
-    def test_has_4_exceptions(self) -> None:
-        """EXCEPTION_DIRS 必须包含 4 个例外。"""
-        assert len(EXCEPTION_DIRS) == 4
+    def test_has_5_exceptions(self) -> None:
+        """EXCEPTION_DIRS 必须包含 5 个例外。"""
+        assert len(EXCEPTION_DIRS) == 5
 
     def test_contains_required_exceptions(self) -> None:
         """必须包含所有必需的例外。"""
@@ -228,5 +229,6 @@ class TestExceptionDirs:
             "memory/docs/system/",
             "memory/kb/projects/",
             "memory/kb/patterns/",
+            "memory/kb/global/",
         }
         assert EXCEPTION_DIRS == required
