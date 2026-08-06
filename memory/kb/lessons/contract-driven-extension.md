@@ -62,6 +62,6 @@ memory-core 的组件没有生命周期状态——要么存在要么不存在�
 
 ## 关联
 
-- 对比文档：`/Users/busiji/tool/oh-my-cli-analysis/01-contracts.md`
-- 差距总结：`/Users/busiji/tool/oh-my-cli-analysis/08-gap-priorities.md` → G-01-1, G-01-2, G-01-3
+- 对比文档：oh-my-cli 契约驱动扩展分析文档（contracts.md）
+- 差距总结：oh-my-cli 工程对比分析文档（gap-priorities.md）→ G-01-1, G-01-2, G-01-3
 - 相关教训：`version-upgrade-fullchain-sync.md`（硬编码矩阵的维护痛点）

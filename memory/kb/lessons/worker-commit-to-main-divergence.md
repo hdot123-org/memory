@@ -62,3 +62,18 @@ cf5d191 main@{3}: pull origin main: Fast-forward    ← Worker 运行前的干�
 
 - 所有 mission worker session
 - 任何在本地 main 上直接 commit 的操作
+
+## Truth Basis
+
+### Source Refs
+- memory/docs/记忆系统全景文档.md
+
+### Authority Refs
+- memory/kb/global/memory-system.md
+- project-map/INDEX.md
+
+### Evidence Refs
+- tests/test_business_policy_paths.py
+
+### Conflict Status
+- resolved
