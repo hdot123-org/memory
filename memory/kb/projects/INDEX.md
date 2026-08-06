@@ -6,10 +6,5 @@ Active project canonicals.
 
 | File | Summary |
 |------|---------|
-| `workbot.md` | Workbot project canonical — memory system, truth model, and hook contract |
-
-## Sub-directories
-
-| Directory | Summary |
-|-----------|---------|
-| `axonhub-rebase/` | AxonHub rebase 项目 — CANONICAL.md + PLAN.md + STATE.md |
+| `default.md` | Generic project scope template for default adapter |
+| `memory_core.md` | memory-core 只读协议仓库项目规范 |
