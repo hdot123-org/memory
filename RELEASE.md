@@ -30,6 +30,12 @@ release-please 自动创建/更新 Release PR
    合并 Release PR
         ↓
 自动创建 tag + GitHub Release + 构建 wheel
+        ↓
+release-and-dispatch.yml (tag push 触发):
+  test → release → upgrade-consumer
+        ↓
+upgrade-consumer (self-hosted runner):
+  git pull main + pip install -e . + 验证 __version__ == tag 版本
 ```
 
 ### 触发条件
@@ -210,6 +216,18 @@ gh workflow run release-and-dispatch.yml \
 
 消费项目收到 `repository_dispatch` 事件后，应自动更新 memory-core 依赖版本。
 
+### upgrade-consumer 自动升级
+
+`release-and-dispatch.yml` 的 `upgrade-consumer` job 运行在 self-hosted runner（用户 Mac）上，在 release job 完成后自动执行：
+
+1. `git pull origin main`（拉取最新 main）
+2. `pip install -e .`（重新安装 memory-core）
+3. 验证 `memory_core.__version__` 与 tag 版本一致
+
+确保发版后本地 Mac 的全局 memory-core 安装即时升级，无需手动 `pip install`。
+
+> **前提**：self-hosted runner 需在线。如果 runner 离线，该 job 会 pending，不影响 release 和下游通知。
+
 ---
 
 ## 5. Hotfix 发版流程
@@ -359,7 +377,7 @@ gh workflow run release-please.yml
 | 文件 | 用途 |
 |------|------|
 | `.github/workflows/release-please.yml` | 自动发版工作流 |
-| `.github/workflows/release-and-dispatch.yml` | 手动发版 + 下游通知 |
+| `.github/workflows/release-and-dispatch.yml` | 发布流水线（test → release → upgrade-consumer）+ 下游通知 |
 | `release-please-config.json` | release-please 配置 |
 | `.release-please-manifest.json` | 当前版本清单 |
 | `scripts/release_rollback.sh` | 回滚脚本 |
