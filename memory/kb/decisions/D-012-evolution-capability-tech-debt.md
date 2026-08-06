@@ -54,4 +54,4 @@ memory-core 当前是反应式进化：发现问题 → 手动打补丁。没有
 - G-07-4（fail-closed）被原分析排在 P25（中优），但三模型一致认为应提升到 Top 3
 - 自治循环、session 压缩、delivery brief 等 agent 能力不适用于 hook 库
 
-详见 `/Users/busiji/tool/oh-my-cli-analysis/08-gap-priorities.md`。
+详见 oh-my-cli 工程对比分析文档（gap-priorities.md）。

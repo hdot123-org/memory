@@ -70,7 +70,7 @@ oh-my-cli 的 bounded everything 有四个一致特征，应作为 memory-core �
 
 ## 关联
 
-- 对比文档：`/Users/busiji/tool/oh-my-cli-analysis/07-bounded-design.md`
-- 差距总结：`/Users/busiji/tool/oh-my-cli-analysis/08-gap-priorities.md` → G-07-1, G-07-2, G-07-3, G-07-4
+- 对比文档：oh-my-cli 有限性设计分析文档（bounded-design.md）
+- 差距总结：oh-my-cli 工程对比分析文档（gap-priorities.md）→ G-07-1, G-07-2, G-07-3, G-07-4
 - 跨维度交叉差距：系统性边界 vs 局部边界（01:Gap4, 03:Gap5, 07:Gap1, 07:Gap4）
 - 相关决策：D-010（健壮性修复策略，与本决策互补）
