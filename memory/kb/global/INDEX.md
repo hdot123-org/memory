@@ -10,6 +10,7 @@ See project-map/ingestion-registry-map.md for registration rules.
 - `memory-routing.md` — 记忆路由规则
 - `hook-contract.md` — Hook 契约
 - `project-map-governance.md` — 项目地图治理
+- `kb-format-spec.md` — KB 格式规范（Truth Basis 结构与校验语义）
 
 ## 使用说明
 
