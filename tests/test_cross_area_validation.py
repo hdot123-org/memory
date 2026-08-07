@@ -16,6 +16,7 @@ Also covers scrutiny-identified gap:
 """
 
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -24,6 +25,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+# Tools may not be installed in all CI environments (e.g. Coverage Audit job)
+HAS_MYPY = shutil.which("mypy") is not None
+HAS_RUFF = shutil.which("ruff") is not None
 
 REPO_ROOT = Path(__file__).parent.parent
 CONSOLE_SCRIPT = REPO_ROOT / ".venv" / "bin" / "memory-hook-gateway"
@@ -422,6 +427,7 @@ class TestEnvVarWithoutMarkers:
 
 # ─── VAL-NR-005: mypy --strict for touched files ─────────────────────────────
 
+@pytest.mark.skipif(not HAS_MYPY, reason="mypy not installed in this environment")
 class TestMypyStrictTouchedFiles:
     """mypy --strict must pass for all 4 touched files.
 
@@ -534,6 +540,7 @@ class TestMypyStrictTouchedFiles:
 
 # ─── VAL-NR-006: ruff check clean ───────────────────────────────────────────
 
+@pytest.mark.skipif(not HAS_RUFF, reason="ruff not installed in this environment")
 class TestRuffCheckClean:
     """ruff check must be clean for all touched files."""
 
