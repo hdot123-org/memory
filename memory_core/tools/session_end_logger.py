@@ -47,6 +47,7 @@ if __name__ == "__main__":
 # 以下 import 在 SIGALRM + SIGINT 保护下执行（仅 __main__ 时）
 import argparse
 import json
+import time
 from collections import Counter, deque
 from datetime import datetime
 from pathlib import Path
@@ -69,6 +70,16 @@ from memory_core.tools.memory_hook_metrics import _resolve_metrics_path, append_
 
 # 超时处理：整体超时 2s
 TIMEOUT_SECONDS = 2
+
+# 确定性预算扫描常量（L3 层约束）
+# 时间预算 1.8s < TIMEOUT_SECONDS(2s)，留出余量
+TIME_BUDGET: float = 1.8
+# 字节预算 8MB
+BYTE_BUDGET: int = 8 * 1024 * 1024
+# 每次读取 64KB chunk
+CHUNK_SIZE: int = 64 * 1024
+# 单行最大 1MB，超过则跳过
+MAX_LINE: int = 1024 * 1024
 
 
 def _set_timeout(seconds: int) -> None:
@@ -266,13 +277,14 @@ def _build_session_info_dict(
 def _extract_session_info_streaming(
     jsonl_path: Path, settings: dict[str, Any], session_id: str
 ) -> dict[str, Any] | None:
-    """从 JSONL 文件单遍流式提取 session 摘要信息。
+    """从 JSONL 文件单遍流式提取 session 摘要信息（确定性预算扫描）。
+
+    使用 chunk-based 读取而非 readline，每 chunk 后检查时间和字节预算。
+    超预算时返回已采集 info + truncated=True 标记。
+    单行 > MAX_LINE 的行被跳过，防止巨型行卡住 readline。
+    所有 13 个 session info 字段在截断时仍然填充（部分可能为空/默认值）。
 
     不构建 lines 列表，内存占用恒定为 O(1)。
-
-    - last_assistant_message: collections.deque(maxlen=1)
-    - tool_calls: Counter 累加
-    - 对任意大小文件保证 tool_calls 统计完整性（全量遍历）
     """
     if not jsonl_path.exists():
         return None
@@ -284,52 +296,103 @@ def _extract_session_info_streaming(
     end_time: datetime | None = None
     tool_calls: Counter[str] = Counter()
     total_tool_calls = 0
+    truncated = False
+
+    start_monotonic = time.monotonic()
+    bytes_read = 0
+    # Buffer for incomplete lines across chunk boundaries
+    line_buffer = ""
+
+    def _process_line(raw_line: str) -> None:
+        """Process a single JSONL line, updating session state."""
+        nonlocal session_start, first_user_message, start_time, end_time
+        nonlocal total_tool_calls
+
+        raw_line = raw_line.strip()
+        if not raw_line:
+            return
+
+        # Skip oversized lines (VAL-LOG-004)
+        if len(raw_line.encode("utf-8")) > MAX_LINE:
+            return
+
+        try:
+            line = json.loads(raw_line)
+        except (json.JSONDecodeError, ValueError):
+            return
+
+        event_type = line.get("type")
+
+        # session_start
+        if event_type == "session_start":
+            session_start = line
+            ts = line.get("timestamp", "")
+            parsed = _parse_jsonl_timestamp(ts)
+            if parsed:
+                start_time = parsed
+
+        # message 事件
+        elif event_type == "message":
+            msg = line.get("message", {})
+            role = msg.get("role", "")
+            content = msg.get("content", [])
+            ts = line.get("timestamp", "")
+
+            parsed_ts = _parse_jsonl_timestamp(ts)
+            if parsed_ts:
+                if end_time is None or parsed_ts > end_time:
+                    end_time = parsed_ts
+
+            # 第一条 user message
+            if role == "user" and first_user_message is None:
+                first_user_message = msg
+
+            # 最后一条 assistant message (deque maxlen=1)
+            if role == "assistant":
+                last_assistant_deque.append(msg)
+
+                # 统计 tool_use (Counter 累加)
+                tc, count = _collect_tool_uses(content)
+                tool_calls.update(tc)
+                total_tool_calls += count
 
     try:
-        with jsonl_path.open("r", encoding="utf-8") as f:
-            for raw_line in f:
-                raw_line = raw_line.strip()
-                if not raw_line:
-                    continue
+        with jsonl_path.open("rb") as f:
+            while True:
+                # Check budgets BEFORE reading next chunk
+                elapsed = time.monotonic() - start_monotonic
+                if elapsed > TIME_BUDGET:
+                    truncated = True
+                    break
+                if bytes_read > BYTE_BUDGET:
+                    truncated = True
+                    break
+
+                chunk_bytes = f.read(CHUNK_SIZE)
+                if not chunk_bytes:
+                    break  # EOF
+
+                bytes_read += len(chunk_bytes)
+
+                # Decode chunk and split into lines
                 try:
-                    line = json.loads(raw_line)
-                except json.JSONDecodeError:
+                    chunk_text = chunk_bytes.decode("utf-8", errors="replace")
+                except (UnicodeDecodeError, ValueError):
                     continue
 
-                event_type = line.get("type")
+                # Prepend any leftover from previous chunk
+                text = line_buffer + chunk_text
+                lines = text.split("\n")
 
-                # session_start
-                if event_type == "session_start":
-                    session_start = line
-                    ts = line.get("timestamp", "")
-                    parsed = _parse_jsonl_timestamp(ts)
-                    if parsed:
-                        start_time = parsed
+                # The last element may be an incomplete line — save for next chunk
+                line_buffer = lines.pop()
 
-                # message 事件
-                elif event_type == "message":
-                    msg = line.get("message", {})
-                    role = msg.get("role", "")
-                    content = msg.get("content", [])
-                    ts = line.get("timestamp", "")
+                for line_text in lines:
+                    _process_line(line_text)
 
-                    parsed_ts = _parse_jsonl_timestamp(ts)
-                    if parsed_ts:
-                        if end_time is None or parsed_ts > end_time:
-                            end_time = parsed_ts
-
-                    # 第一条 user message
-                    if role == "user" and first_user_message is None:
-                        first_user_message = msg
-
-                    # 最后一条 assistant message (deque maxlen=1)
-                    if role == "assistant":
-                        last_assistant_deque.append(msg)
-
-                        # 统计 tool_use (Counter 累加，全量遍历保证完整)
-                        tc, count = _collect_tool_uses(content)
-                        tool_calls.update(tc)
-                        total_tool_calls += count
+        # Process any remaining buffer after EOF
+        if line_buffer.strip():
+            _process_line(line_buffer)
 
     except (OSError, IOError):
         return None
@@ -348,7 +411,7 @@ def _extract_session_info_streaming(
     model = settings.get("model", "unknown")
 
     # Build and return the final dict
-    return _build_session_info_dict(
+    result = _build_session_info_dict(
         session_id=session_id,
         title=title,
         model=model,
@@ -360,6 +423,12 @@ def _extract_session_info_streaming(
         total_tool_calls=total_tool_calls,
         settings=settings,
     )
+
+    # Add truncated marker if budget was exceeded (VAL-LOG-007, VAL-LOG-008)
+    if truncated:
+        result["truncated"] = True
+
+    return result
 
 
 
