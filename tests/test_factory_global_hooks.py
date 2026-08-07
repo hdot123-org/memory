@@ -6,6 +6,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 from memory_core.tools.factory_global_hooks import install_factory_hooks, merge_factory_settings
 from memory_core.tools.project_lifecycle import record_project_lifecycle
@@ -595,3 +596,85 @@ print(REPO_ROOT)
     assert result.returncode == 0, f"subprocess failed: {result.stderr}"
     actual_root = Path(result.stdout.strip())
     assert actual_root.resolve() == project_dir.resolve()
+
+
+# ---------------------------------------------------------------------------
+# render_wrapper absolute path resolution tests
+# ---------------------------------------------------------------------------
+
+
+def test_render_wrapper_resolves_bare_name_to_absolute_path() -> None:
+    """render_wrapper with bare gateway name resolves via shutil.which().
+
+    When gateway_command is a bare name (e.g. 'memory-hook-gateway'),
+    render_wrapper() must use shutil.which() to resolve it to an absolute
+    path before embedding in the wrapper template. This prevents intermittent
+    'exec: memory-hook-gateway: not found' errors.
+    """
+    fake_abs_path = "/usr/local/bin/memory-hook-gateway"
+    with patch("memory_core.tools.factory_global_hooks.shutil.which", return_value=fake_abs_path):
+        rendered = render_wrapper(
+            storage_root=Path("~/.memory-core"),
+            gateway_command="memory-hook-gateway",
+            init_command="memory-init",
+        )
+    # The resolved absolute path must appear in the wrapper template
+    assert fake_abs_path in rendered
+    # The bare name should NOT appear as the default for MEMORY_HOOK_GATEWAY
+    # (it should be the resolved path instead)
+    assert f"MEMORY_HOOK_GATEWAY=${{MEMORY_HOOK_GATEWAY:-{fake_abs_path}}}" in rendered or \
+           f"MEMORY_HOOK_GATEWAY=${{MEMORY_HOOK_GATEWAY:-'{fake_abs_path}'}}" in rendered
+
+
+def test_render_wrapper_preserves_absolute_path_as_is() -> None:
+    """render_wrapper with absolute path preserves it without calling shutil.which().
+
+    When gateway_command is already an absolute path, render_wrapper() must
+    use it as-is without calling shutil.which().
+    """
+    abs_path = "/opt/homebrew/bin/memory-hook-gateway"
+    with patch("memory_core.tools.factory_global_hooks.shutil.which") as mock_which:
+        rendered = render_wrapper(
+            storage_root=Path("~/.memory-core"),
+            gateway_command=abs_path,
+            init_command="memory-init",
+        )
+        # shutil.which should NOT be called for absolute paths
+        mock_which.assert_not_called()
+    # The absolute path must appear in the wrapper template
+    assert abs_path in rendered
+
+
+def test_render_wrapper_falls_back_to_bare_name_when_which_fails() -> None:
+    """render_wrapper falls back to bare name when shutil.which() returns None.
+
+    If shutil.which() cannot find the gateway binary, render_wrapper() must
+    fall back to the bare name (preserve existing behavior, no crash).
+    """
+    with patch("memory_core.tools.factory_global_hooks.shutil.which", return_value=None):
+        rendered = render_wrapper(
+            storage_root=Path("~/.memory-core"),
+            gateway_command="memory-hook-gateway",
+            init_command="memory-init",
+        )
+    # The bare name should still appear in the wrapper template (fallback)
+    assert "memory-hook-gateway" in rendered
+
+
+def test_render_wrapper_memory_hook_gateway_env_var_still_takes_precedence() -> None:
+    """MEMORY_HOOK_GATEWAY env var override still takes precedence.
+
+    Even when render_wrapper resolves the gateway to an absolute path,
+    the wrapper template must still allow MEMORY_HOOK_GATEWAY env var
+    to override it (backward compatibility).
+    """
+    fake_abs_path = "/usr/local/bin/memory-hook-gateway"
+    with patch("memory_core.tools.factory_global_hooks.shutil.which", return_value=fake_abs_path):
+        rendered = render_wrapper(
+            storage_root=Path("~/.memory-core"),
+            gateway_command="memory-hook-gateway",
+            init_command="memory-init",
+        )
+    # The template must use ${MEMORY_HOOK_GATEWAY:-...} syntax, which means
+    # the env var takes precedence when set
+    assert "MEMORY_HOOK_GATEWAY=${MEMORY_HOOK_GATEWAY:-" in rendered

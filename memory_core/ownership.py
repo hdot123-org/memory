@@ -6,6 +6,7 @@ vs not-owned, with support for domains, resources, and AGENTS.md block classific
 
 import fnmatch
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -725,15 +726,31 @@ def is_memory_core_source_repo(path: Path, git_detector: Callable[[Path], Path |
             # Use injected git_detector for testing
             git_path = git_detector(resolved)
         else:
-            # Use subprocess to detect git root
-            git_root_result = subprocess.run(
-                ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if git_root_result.returncode == 0 and git_root_result.stdout.strip():
-                git_path = Path(git_root_result.stdout.strip())
+            # Reuse MEMORY_HOOK_PROJECT_CWD env var (set by shell wrapper)
+            # to skip git subprocess entirely when possible
+            project_cwd_env = os.environ.get("MEMORY_HOOK_PROJECT_CWD")
+            if project_cwd_env and Path(project_cwd_env).resolve() == resolved:
+                # Env var matches resolved path — already know this is the project root
+                # No need to spawn git subprocess
+                git_path = resolved
+            else:
+                # Use subprocess to detect git root with timeout
+                try:
+                    git_root_result = subprocess.run(
+                        ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        timeout=2,
+                    )
+                    if git_root_result.returncode == 0 and git_root_result.stdout.strip():
+                        git_path = Path(git_root_result.stdout.strip())
+                except subprocess.TimeoutExpired:
+                    # Git subprocess timed out — graceful degradation
+                    git_path = None
+                except FileNotFoundError:
+                    # git binary not on PATH — graceful degradation
+                    git_path = None
 
         if git_path is not None:
             git_markers = [

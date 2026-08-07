@@ -302,6 +302,42 @@ memory-factory-hooks install --storage-root ~/.memory-core
 
 `~/.memory-core` 下的全局状态存储主机级生命周期/path-index 数据和完整性密钥，不是项目记忆池。项目记忆位于目标项目的 `memory/system/`、`memory/` 和 `artifacts/memory-hook/` 路径下。
 
+## SessionEnd Hook 安全架构
+
+SessionEnd hook 运行在 Factory 会话关闭的最后时刻，必须在严格超时窗口内干净退出。早期实现在导入阶段或巨型日志扫描时收到 SIGINT 会抛出 traceback 并以非零码退出，导致 Factory 误判为崩溃。本节记录 v0.15.6 引入的四层防护。
+
+**1. 引导守卫（hook_runtime_guard.py）**
+
+`memory-hook-gateway` 的 console-script 入口点从 `memory_hook_gateway:main` 改为 `hook_runtime_guard:gateway_main`。新入口在导入 gateway 模块**之前**先安装信号处理器，确保即使 import 阶段耗时也能干净退出：
+
+| 信号 | 行为 | 超时 |
+|---|---|---|
+| `SIGALRM` | `_exit0_handler` → `sys.exit(0)` | 8 秒（早于 Factory 的 10s 硬超时） |
+| `SIGINT` | 同上，`exit 0`，无 traceback | — |
+
+`_BOOT_SECONDS = 8` 仅在 `__main__` 上下文安装，pytest import 时不触发定时器，避免测试被误杀。
+
+**2. 日志确定性预算扫描（session_end_logger.py）**
+
+`_extract_session_info_streaming` 重写为确定性双预算扫描，防止超大 JSONL 文件挂起进程：
+
+| 参数 | 值 | 含义 |
+|---|---|---|
+| `TIME_BUDGET` | 1.8s | 单次扫描时间上限 |
+| `BYTE_BUDGET` | 8 MB | 单次扫描字节上限 |
+| `CHUNK_SIZE` | 64 KB | 每次读取块大小 |
+| `MAX_LINE` | 1 MB | 超过此长度的行直接跳过 |
+
+达到任一预算时立即停止并写入 `truncated: true` 标记，保留已采集的有效片段。
+
+**3. Git 子进程超时与 CWD 复用（ownership.py）**
+
+`discover_project_root` 的 `git rev-parse` 子进程增加 `timeout=2`，防止损坏的 git 仓库无限阻塞。同时优先复用 shell wrapper 注入的 `MEMORY_HOOK_PROJECT_CWD` 环境变量，减少冗余子进程探测。
+
+**4. Wrapper 绝对路径解析（factory_global_hooks.py）**
+
+`render_wrapper()` 在安装时通过 `shutil.which()` 将裸 `memory-hook-gateway` 解析为绝对路径，写入 wrapper 脚本。这解决了 Factory daemon 执行上下文中 PATH 未正确展开导致命令找不到的问题。
+
 ## 文档
 
 - [文档索引](docs/INDEX.md)

@@ -111,8 +111,19 @@ def render_wrapper(
     init_command: str = "memory-init",
 ) -> str:
     """Render the shell wrapper installed into ``~/.factory/bin``."""
+    # Resolve bare gateway_command to absolute path via shutil.which() to
+    # prevent intermittent 'exec: memory-hook-gateway: not found' errors
+    # when the daemon's execution context doesn't resolve PATH correctly.
+    # If resolution fails, fall back to the bare name (preserve existing
+    # behavior). MEMORY_HOOK_GATEWAY env var override still takes precedence.
+    resolved_gateway = gateway_command
+    if not _looks_like_path(gateway_command):
+        which_result = shutil.which(gateway_command)
+        if which_result is not None:
+            resolved_gateway = which_result
+
     quoted_storage = shlex.quote(str(storage_root.expanduser()))
-    quoted_gateway = shlex.quote(gateway_command)
+    quoted_gateway = shlex.quote(resolved_gateway)
     quoted_init = shlex.quote(init_command)
 
     # Import version at render time so the baked-in version is always current
