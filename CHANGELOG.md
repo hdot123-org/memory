@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.7](https://github.com/hdot123/memory/compare/v0.15.6...v0.15.7) (2026-08-07)
+
+
+### Bug Fixes
+
+* **kb:** 补充全量 Truth Basis 覆盖，消除知识库验证死角 ([#323](https://github.com/hdot123/memory/issues/323)) ([47e306d](https://github.com/hdot123/memory/commit/47e306daa3ba413d41a8f11254fd29913749a97c))
+* 根治 SessionEnd hook SIGINT 崩溃，增强日志和 git 操作健壮性 ([#324](https://github.com/hdot123/memory/issues/324)) ([bddb4a5](https://github.com/hdot123/memory/commit/bddb4a5d427c12961f712ee0c92f17fb0fa8adc6))
+
 ## [0.15.6](https://github.com/hdot123/memory/compare/v0.15.5...v0.15.6) (2026-08-06)
 
 
