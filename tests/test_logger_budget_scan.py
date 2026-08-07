@@ -23,19 +23,16 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from memory_core.tools.session_end_logger import (
     BYTE_BUDGET,
     CHUNK_SIZE,
     MAX_LINE,
-    TIMEOUT_SECONDS,
     TIME_BUDGET,
+    TIMEOUT_SECONDS,
     _extract_session_info_streaming,
     _set_timeout,
     main,
 )
-
 
 # ─── VAL-LOG-009: Budget constants defined and positive ───────────────────────
 
