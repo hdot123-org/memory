@@ -1,0 +1,72 @@
+# Evolution Governance CI Check
+# Blocks PRs that modify evolution governance paths unless authored by @busiji.
+# This prevents bots (including Droid) from modifying their own governance rules.
+
+name: Evolution Governance
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  governance-check:
+    name: Block non-owner governance modifications
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for protected path modifications
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          # Get list of changed files in the PR
+          CHANGED=$(git diff --name-only origin/main...HEAD 2>/dev/null || git diff --name-only HEAD~1...HEAD 2>/dev/null || echo "")
+
+          if [ -z "$CHANGED" ]; then
+            echo "No changed files detected, skipping governance check"
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          # Check if PR touches protected paths
+          TOUCHED_PROTECTED=false
+
+          # Check .evolution/config.yml
+          if echo "$CHANGED" | grep -q "^\.evolution/config\.yml$"; then
+            echo "PROTECTED: .evolution/config.yml modified"
+            TOUCHED_PROTECTED=true
+          fi
+
+          # Check scripts/evolution_scanner.py
+          if echo "$CHANGED" | grep -q "^scripts/evolution_scanner\.py$"; then
+            echo "PROTECTED: scripts/evolution_scanner.py modified"
+            TOUCHED_PROTECTED=true
+          fi
+
+          # Check .github/workflows/evolution-*.yml
+          if echo "$CHANGED" | grep -q "^\.github/workflows/evolution-.*\.yml$"; then
+            echo "PROTECTED: evolution workflow file modified"
+            TOUCHED_PROTECTED=true
+          fi
+
+          if [ "$TOUCHED_PROTECTED" = "true" ]; then
+            echo ""
+            echo "PR author: $PR_AUTHOR"
+            if [ "$PR_AUTHOR" != "busiji" ]; then
+              echo ""
+              echo "ERROR: Non-owner ($PR_AUTHOR) cannot modify evolution governance paths."
+              echo "Protected paths: .evolution/config.yml, scripts/evolution_scanner.py, .github/workflows/evolution-*.yml"
+              echo "Only @busiji is authorized to modify these files."
+              exit 1
+            else
+              echo "OK: Owner (@busiji) modifying governance paths"
+            fi
+          else
+            echo "No protected paths modified, governance check passed"
+          fi

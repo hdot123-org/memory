@@ -17,3 +17,8 @@
 /docs/              @hdot123
 /README.md          @hdot123
 /CONTRIBUTING.md    @hdot123
+
+# Evolution governance — human approval required
+.evolution/                           @busiji
+scripts/evolution_scanner.py           @busiji
+.github/workflows/evolution-*.yml      @busiji
