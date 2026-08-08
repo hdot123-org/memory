@@ -57,8 +57,10 @@ def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict]:
 
 
 def normalize_finding(raw: dict) -> Finding:
+    from evolution_adapters import sanitize_structured_field as ssf
+    from evolution_adapters import sanitize_text as st
     sev = raw.get("severity", "info")
-    return Finding(raw.get("rule_id", "UNKNOWN"), sev if sev in ("critical", "warning", "info") else "info", raw.get("category", "unknown"), raw.get("description", ""), raw.get("location", ""), raw.get("evidence", ""))
+    return Finding(ssf(raw.get("rule_id", "UNKNOWN")), sev if sev in ("critical", "warning", "info") else "info", ssf(raw.get("category", "unknown")), st(raw.get("description", "")), ssf(raw.get("location", "")), st(raw.get("evidence", "")))
 
 
 def _parse_issue_fields(body: str) -> tuple[str | None, str | None]:
@@ -67,9 +69,9 @@ def _parse_issue_fields(body: str) -> tuple[str | None, str | None]:
         # Stop at description/evidence sections — no structured fields beyond this point
         if line.startswith("**Description**") or line.startswith("**Evidence**"):
             break
-        if line.startswith("**Rule ID**:"):
+        if rule_id is None and line.startswith("**Rule ID**:"):
             rule_id = line.split(":", 1)[1].strip()
-        elif line.startswith("**Location**:"):
+        elif location is None and line.startswith("**Location**:"):
             location = line.split(":", 1)[1].strip()
         if rule_id and location:
             break  # early exit once both found
@@ -115,12 +117,9 @@ def sort_by_severity(findings: list[Finding], severity_order: list[str]) -> list
     order = {s: i for i, s in enumerate(severity_order)}
     return sorted(findings, key=lambda f: order.get(f.severity, 99))
 def create_issue(finding: Finding, dedup_label: str) -> bool:
-    from evolution_adapters import sanitize_structured_field, sanitize_text
-    safe_rule_id = sanitize_structured_field(finding.rule_id)
-    safe_location = sanitize_structured_field(finding.location)
-    body = (f"@droid\n\n**Rule ID**: {safe_rule_id}\n**Severity**: {finding.severity}\n"
-            f"**Category**: {finding.category}\n**Location**: {safe_location}\n"
-            f"**Description**: {sanitize_text(finding.description)}\n**Evidence**: {sanitize_text(finding.evidence)}")
+    body = (f"@droid\n\n**Rule ID**: {finding.rule_id}\n**Severity**: {finding.severity}\n"
+            f"**Category**: {finding.category}\n**Location**: {finding.location}\n"
+            f"**Description**: {finding.description}\n**Evidence**: {finding.evidence}")
     try:
         result = subprocess.run(["gh", "issue", "create", "--title", f"[evolution] {finding.rule_id}", "--label", dedup_label, "--body", body], capture_output=True, text=True, timeout=30)
         return result.returncode == 0

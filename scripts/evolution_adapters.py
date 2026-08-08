@@ -17,8 +17,10 @@ def sanitize_text(text: str, max_len: int = 500) -> str:
     """
     # Remove @ mentions (prevent triggering GitHub users/bots)
     text = re.sub(r'@(\w+)', r'\1', text)
-    # Remove markdown headings, code fences, list markers at line start
-    text = re.sub(r'^[#`>-]+\s*', '', text, flags=re.MULTILINE)
+    # Strip inline links [text](url) → text and inline images ![alt](url) → alt
+    text = re.sub(r'!?\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    # Remove markdown headings, code fences, list markers at line start (including ~ for ~~~ fences)
+    text = re.sub(r'^[#`>~-]+\s*', '', text, flags=re.MULTILINE)
     # Truncate
     if len(text) > max_len:
         text = text[:max_len] + "..."
@@ -38,8 +40,8 @@ def sanitize_structured_field(text: str, max_len: int = 100) -> str:
     Returns:
         Sanitized field with control characters removed
     """
-    # Remove all control characters (newlines, tabs, etc.)
-    text = re.sub(r'[\x00-\x1f\x7f]', '', text)
+    # Remove all control characters (newlines, tabs, etc.) including Unicode line/paragraph separators
+    text = re.sub(r'[\x00-\x1f\x7f\u0085\u2028\u2029]', '', text)
     # Truncate
     if len(text) > max_len:
         text = text[:max_len]
