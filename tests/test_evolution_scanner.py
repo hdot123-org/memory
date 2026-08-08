@@ -577,6 +577,7 @@ def test_run_audit_tool_receives_repo_root(tmp_path):
 def test_main_passes_repo_root_to_run_audit_tool():
     """main() passes repo_root to run_audit_tool so registry_jsonl resolves correctly."""
     import inspect
+
     from evolution_scanner import main as main_func
 
     source = inspect.getsource(main_func)
