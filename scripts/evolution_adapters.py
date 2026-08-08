@@ -1,4 +1,28 @@
 """Adapter functions for converting audit tool output to Finding-compatible dicts."""
+import re
+
+
+def sanitize_text(text: str, max_len: int = 500) -> str:
+    """Sanitize text to prevent prompt injection attacks.
+
+    Removes @ mentions (to prevent triggering GitHub users/bots),
+    removes dangerous markdown formatting, and truncates to max_len.
+
+    Args:
+        text: Text to sanitize
+        max_len: Maximum length before truncation (default 500)
+
+    Returns:
+        Sanitized text
+    """
+    # Remove @ mentions (prevent triggering GitHub users/bots)
+    text = re.sub(r'@(\w+)', r'\1', text)
+    # Remove markdown headings, code fences, list markers at line start
+    text = re.sub(r'^[#`>-]+\s*', '', text, flags=re.MULTILINE)
+    # Truncate
+    if len(text) > max_len:
+        text = text[:max_len] + "..."
+    return text
 
 
 def adapt_daily_audit(raw: dict) -> list[dict]:
