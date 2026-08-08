@@ -258,7 +258,7 @@ def test_isolation_label(tmp_path):
             stdout='[{"number": 42, "title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\\n**Location**: file.md"}]',
         )
 
-        check_isolation(findings, history_path, 3, "evolution-isolated")
+        check_isolation(findings, history_path, 3, "evolution-isolated", "evolution-found")
 
         # Verify gh issue edit was called with --add-label evolution-isolated
         edit_calls = [

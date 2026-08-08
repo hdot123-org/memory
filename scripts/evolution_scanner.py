@@ -26,10 +26,10 @@ def load_config(repo_root: Path) -> dict:
 
 
 def check_kill_switch(repo_root: Path) -> bool:
-    if (repo_root / ".evolution" / "DISABLED").exists():
+    killed = (repo_root / ".evolution" / "DISABLED").exists()
+    if killed:
         print("[evolution] Kill switch active, exiting")
-        return True
-    return False
+    return killed
 
 
 def run_audit_tool(tool: dict) -> list[dict]:
@@ -45,48 +45,43 @@ def run_audit_tool(tool: dict) -> list[dict]:
 
 
 def normalize_finding(raw: dict) -> Finding:
-    severity = raw.get("severity", "info")
-    if severity not in ["critical", "warning", "info"]:
-        severity = "info"
-    return Finding(
-        rule_id=raw.get("rule_id", "UNKNOWN"),
-        severity=severity,
-        category=raw.get("category", "unknown"),
-        description=raw.get("description", ""),
-        location=raw.get("location", ""),
-        evidence=raw.get("evidence", ""),
-    )
+    sev = raw.get("severity", "info")
+    sev = sev if sev in ("critical", "warning", "info") else "info"
+    return Finding(raw.get("rule_id", "UNKNOWN"), sev, raw.get("category", "unknown"),
+                   raw.get("description", ""), raw.get("location", ""), raw.get("evidence", ""))
+
+
+def _parse_issue_fields(body: str) -> tuple[str | None, str | None]:
+    rule_id = location = None
+    for line in body.split("\n"):
+        if line.startswith("**Rule ID**:"):
+            rule_id = line.split(":", 1)[1].strip()
+        elif line.startswith("**Location**:"):
+            location = line.split(":", 1)[1].strip()
+    return rule_id, location
 
 
 def get_open_issues(dedup_label: str) -> list[dict]:
-    """Fetch open issues and parse rule_id + location from structured body."""
     try:
         result = subprocess.run(
-            ["gh", "issue", "list", "--label", dedup_label, "--state", "open", "--json", "title,body,number"],
-            capture_output=True, text=True, timeout=30,
-        )
+            ["gh", "issue", "list", "--label", dedup_label, "--state", "open",
+             "--json", "title,body,number"],
+            capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
             return []
         issues = []
         for issue in json.loads(result.stdout):
-            body = issue.get("body", "")
-            rule_id = None
-            location = None
-            for line in body.split("\n"):
-                if line.startswith("**Rule ID**:"):
-                    rule_id = line.split(":", 1)[1].strip()
-                elif line.startswith("**Location**:"):
-                    location = line.split(":", 1)[1].strip()
+            rule_id, location = _parse_issue_fields(issue.get("body", ""))
             if rule_id and location:
-                issues.append({"rule_id": rule_id, "location": location, "number": issue.get("number")})
+                issues.append({"rule_id": rule_id, "location": location,
+                               "number": issue.get("number")})
         return issues
     except Exception:
         return []
 
 
 def deduplicate(findings: list[Finding], open_issues: list[dict]) -> list[Finding]:
-    """Skip findings that already have open issues (matched by rule_id + location)."""
-    issue_keys = {(issue["rule_id"], issue["location"]) for issue in open_issues}
+    issue_keys = {(i["rule_id"], i["location"]) for i in open_issues}
     return [f for f in findings if (f.rule_id, f.location) not in issue_keys]
 
 
@@ -97,10 +92,9 @@ def detect_regressions(findings: list[Finding], history_path: Path) -> list[Find
         with open(history_path) as f:
             resolved = json.load(f).get("resolved_findings", [])
         for finding in findings:
-            for r in resolved:
-                if r["rule_id"] == finding.rule_id and r["location"] == finding.location:
-                    finding.severity = "critical"
-                    break
+            if any(r["rule_id"] == finding.rule_id and r["location"] == finding.location
+                   for r in resolved):
+                finding.severity = "critical"
     except Exception:
         pass
     return findings
@@ -112,63 +106,43 @@ def sort_by_severity(findings: list[Finding], severity_order: list[str]) -> list
 
 
 def create_issue(finding: Finding, dedup_label: str) -> bool:
-    body = f"@droid\n\n**Rule ID**: {finding.rule_id}\n**Severity**: {finding.severity}\n**Category**: {finding.category}\n**Location**: {finding.location}\n**Description**: {finding.description}\n**Evidence**: {finding.evidence}"
+    body = (f"@droid\n\n**Rule ID**: {finding.rule_id}\n**Severity**: {finding.severity}\n"
+            f"**Category**: {finding.category}\n**Location**: {finding.location}\n"
+            f"**Description**: {finding.description}\n**Evidence**: {finding.evidence}")
     try:
         result = subprocess.run(
-            ["gh", "issue", "create", "--title", f"[evolution] {finding.rule_id}", "--label", dedup_label, "--body", body],
-            capture_output=True, text=True, timeout=30,
-        )
+            ["gh", "issue", "create", "--title", f"[evolution] {finding.rule_id}",
+             "--label", dedup_label, "--body", body],
+            capture_output=True, text=True, timeout=30)
         return result.returncode == 0
     except Exception:
         return False
 
 
-def update_history(history_path: Path, findings: list[Finding], issues_created: int, snapshot_limit: int):
-    """Update findings history and compute resolved_findings by comparing snapshots."""
-    data = {"snapshots": [], "resolved_findings": []}
+def update_history(history_path: Path, findings: list[Finding],
+                   issues_created: int, snapshot_limit: int):
+    data: dict = {"snapshots": [], "resolved_findings": []}
     if history_path.exists():
         with open(history_path) as f:
             data = json.load(f)
-
-    # Compute resolved_findings: findings in PREVIOUS snapshot but not in CURRENT
-    current_finding_keys = {(f.rule_id, f.location) for f in findings}
-    previous_findings = []
-    if data.get("snapshots"):
-        previous_findings = data["snapshots"][-1].get("findings", [])
-
+    current_keys = {(f.rule_id, f.location) for f in findings}
+    prev = data["snapshots"][-1].get("findings", []) if data.get("snapshots") else []
     now_iso = datetime.now(timezone.utc).isoformat()
-    resolved_findings = []
-    for pf in previous_findings:
-        key = (pf.get("rule_id"), pf.get("location"))
-        if key not in current_finding_keys:
-            resolved_findings.append({
-                "rule_id": pf.get("rule_id"),
-                "location": pf.get("location"),
-                "resolved_at": now_iso,
-            })
-
-    # Append to existing resolved_findings (bounded)
-    existing_resolved = data.get("resolved_findings", [])
-    all_resolved = existing_resolved + resolved_findings
-    if len(all_resolved) > snapshot_limit:
-        all_resolved = all_resolved[-snapshot_limit:]
-    data["resolved_findings"] = all_resolved
-
-    snapshot = {
+    new_resolved = [{"rule_id": p["rule_id"], "location": p["location"], "resolved_at": now_iso}
+                    for p in prev if (p.get("rule_id"), p.get("location")) not in current_keys]
+    all_resolved = data.get("resolved_findings", []) + new_resolved
+    data["resolved_findings"] = all_resolved[-snapshot_limit:]
+    data["snapshots"].append({
         "timestamp": now_iso,
         "tick_id": datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"),
-        "findings": [asdict(f) for f in findings],
-        "issues_created": issues_created,
-    }
-    data["snapshots"].append(snapshot)
-    if len(data["snapshots"]) > snapshot_limit:
-        data["snapshots"] = data["snapshots"][-snapshot_limit:]
+        "findings": [asdict(f) for f in findings], "issues_created": issues_created})
+    data["snapshots"] = data["snapshots"][-snapshot_limit:]
     with open(history_path, "w") as f:
         json.dump(data, f, indent=2)
 
 
-def check_isolation(findings: list[Finding], history_path: Path, threshold: int, failure_label: str):
-    """Check if findings have been open for threshold consecutive snapshots and apply isolation label."""
+def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
+                    failure_label: str, dedup_label: str):
     if not history_path.exists():
         return
     try:
@@ -176,46 +150,27 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
             snapshots = json.load(f)["snapshots"]
         if len(snapshots) < threshold:
             return
-
         recent = snapshots[-threshold:]
         for finding in findings:
-            # Count consecutive occurrences
-            count = sum(
-                1 for s in recent
-                if any(f["rule_id"] == finding.rule_id and f["location"] == finding.location
-                       for f in s["findings"])
-            )
-
-            if count >= threshold:
-                # Find matching open issue
-                result = subprocess.run(
-                    ["gh", "issue", "list", "--label", "evolution-found", "--state", "open",
-                     "--json", "number,title,body"],
-                    capture_output=True, text=True, timeout=30,
-                )
-                if result.returncode != 0:
-                    continue
-
-                issues = json.loads(result.stdout)
-                for issue in issues:
-                    body = issue.get("body", "")
-                    # Parse rule_id and location from issue body
-                    issue_rule_id = None
-                    issue_location = None
-                    for line in body.split("\n"):
-                        if line.startswith("**Rule ID**:"):
-                            issue_rule_id = line.split(":", 1)[1].strip()
-                        elif line.startswith("**Location**:"):
-                            issue_location = line.split(":", 1)[1].strip()
-
-                    # Match and apply isolation label
-                    if issue_rule_id == finding.rule_id and issue_location == finding.location:
-                        issue_number = issue.get("number")
-                        subprocess.run(
-                            ["gh", "issue", "edit", str(issue_number), "--add-label", failure_label],
-                            capture_output=True, text=True, timeout=30,
-                        )
-                        break
+            count = sum(1 for s in recent if any(
+                f["rule_id"] == finding.rule_id and f["location"] == finding.location
+                for f in s["findings"]))
+            if count < threshold:
+                continue
+            result = subprocess.run(
+                ["gh", "issue", "list", "--label", dedup_label, "--state", "open",
+                 "--json", "number,title,body"],
+                capture_output=True, text=True, timeout=30)
+            if result.returncode != 0:
+                continue
+            for issue in json.loads(result.stdout):
+                rid, loc = _parse_issue_fields(issue.get("body", ""))
+                if rid == finding.rule_id and loc == finding.location:
+                    subprocess.run(
+                        ["gh", "issue", "edit", str(issue["number"]),
+                         "--add-label", failure_label],
+                        capture_output=True, text=True, timeout=30)
+                    break
     except Exception:
         pass
 
@@ -226,33 +181,16 @@ def main():
         sys.exit(0)
     config = load_config(repo_root)
     history_path = repo_root / ".evolution" / "findings_over_time.json"
-    raw_findings = []
-    for tool in config["audit_tools"]:
-        raw_findings.extend(run_audit_tool(tool))
-
-    # Normalize ALL findings (pre-dedup) for snapshots/isolation tracking
+    raw_findings = [r for t in config["audit_tools"] for r in run_audit_tool(t)]
     all_findings = [normalize_finding(r) for r in raw_findings]
-
-    # Detect regressions
     findings = detect_regressions(all_findings, history_path)
-
-    # Deduplicate against open issues (for issue creation only)
     open_issues = get_open_issues(config["dedup_label"])
-    deduped_findings = deduplicate(findings, open_issues)
-
-    # Sort by severity and create issues
-    deduped_findings = sort_by_severity(deduped_findings, config["severity_order"])
-    issues_created = 0
-    for finding in deduped_findings[: config["max_issues_per_tick"]]:
-        if create_issue(finding, config["dedup_label"]):
-            issues_created += 1
-
-    # Update history with ALL findings (pre-dedup) for isolation tracking
+    deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
+    issues_created = sum(
+        1 for f in deduped[:config["max_issues_per_tick"]] if create_issue(f, config["dedup_label"]))
     update_history(history_path, all_findings, issues_created, config["snapshot_limit"])
-
-    # Check isolation on ALL findings (pre-dedup)
-    check_isolation(all_findings, history_path, config["isolation_threshold"], config["failure_label"])
-
+    check_isolation(all_findings, history_path, config["isolation_threshold"],
+                    config["failure_label"], config["dedup_label"])
     print(f"[evolution] Tick complete: {len(all_findings)} findings, {issues_created} issues created")
 
 
