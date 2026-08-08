@@ -106,7 +106,10 @@ def test_dedup_existing_issues():
         Finding("RULE_001", "warning", "consistency", "Issue 1", "file1.md", "evidence"),
         Finding("RULE_002", "warning", "consistency", "Issue 2", "file2.md", "evidence"),
     ]
-    open_issues = ["RULE_001|file1.md"]
+    # Open issues now parsed as dicts with rule_id, location, number
+    open_issues = [
+        {"rule_id": "RULE_001", "location": "file1.md", "number": 42}
+    ]
 
     deduped = deduplicate(findings, open_issues)
     assert len(deduped) == 1
@@ -114,14 +117,33 @@ def test_dedup_existing_issues():
 
 
 def test_max_3_issues():
-    """5 findings → only 3 Issues created."""
+    """Scanner creates at most max_issues_per_tick issues."""
     findings = [
         Finding(f"RULE_{i}", "warning", "test", f"Issue {i}", f"file{i}.md", "evidence")
         for i in range(5)
     ]
-    # In actual usage, we'd slice to max_issues_per_tick=3
-    limited = findings[:3]
-    assert len(limited) == 3
+    # Dedup: no open issues
+    open_issues = []
+    deduped = deduplicate(findings, open_issues)
+    deduped = sort_by_severity(deduped, ["critical", "warning", "info"])
+
+    # Simulate the main() loop with max_issues_per_tick=3
+    max_issues = 3
+    issues_created = 0
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        for finding in deduped[:max_issues]:
+            if create_issue(finding, "evolution-found"):
+                issues_created += 1
+
+    assert issues_created == 3
+    assert mock_run.call_count == 3
+    # Verify each call was 'gh issue create' with correct labels
+    for call in mock_run.call_args_list:
+        args = call[0][0]
+        assert args[0] == "gh"
+        assert args[1] == "issue"
+        assert args[2] == "create"
 
 
 def test_severity_sort():
@@ -140,21 +162,41 @@ def test_severity_sort():
 
 
 def test_regression_detection(tmp_path):
-    """Resolved finding reappears → severity upgraded to critical."""
+    """Regression detection: update_history() computes resolved_findings by comparing snapshots."""
     history_path = tmp_path / "findings_over_time.json"
-    history_data = {
-        "snapshots": [],
-        "resolved_findings": [
-            {"rule_id": "RULE_001", "location": "file1.md", "resolved_at": "2026-01-01"}
-        ],
-    }
-    with open(history_path, "w") as f:
-        json.dump(history_data, f)
 
-    findings = [Finding("RULE_001", "warning", "test", "Reappeared", "file1.md", "evidence")]
-    updated = detect_regressions(findings, history_path)
+    # Tick 1: Two findings present
+    findings_1 = [
+        Finding("RULE_001", "warning", "test", "Issue 1", "file1.md", "evidence"),
+        Finding("RULE_002", "warning", "test", "Issue 2", "file2.md", "evidence"),
+    ]
+    update_history(history_path, findings_1, 1, 100)
 
-    assert updated[0].severity == "critical"
+    # Tick 2: Only RULE_001 present, RULE_002 is gone (should be resolved)
+    findings_2 = [
+        Finding("RULE_001", "warning", "test", "Issue 1", "file1.md", "evidence"),
+    ]
+    update_history(history_path, findings_2, 1, 100)
+
+    # Verify resolved_findings was populated
+    with open(history_path) as f:
+        data = json.load(f)
+
+    assert len(data["resolved_findings"]) == 1
+    assert data["resolved_findings"][0]["rule_id"] == "RULE_002"
+    assert data["resolved_findings"][0]["location"] == "file2.md"
+    assert "resolved_at" in data["resolved_findings"][0]
+
+    # Tick 3: RULE_002 reappears - should be marked as critical regression
+    findings_3 = [
+        Finding("RULE_001", "warning", "test", "Issue 1", "file1.md", "evidence"),
+        Finding("RULE_002", "warning", "test", "Reappeared", "file2.md", "evidence"),
+    ]
+    updated = detect_regressions(findings_3, history_path)
+
+    # RULE_002 should be upgraded to critical
+    rule_002_finding = next(f for f in updated if f.rule_id == "RULE_002")
+    assert rule_002_finding.severity == "critical"
 
 
 def test_audit_tool_failure():
@@ -188,7 +230,7 @@ def test_findings_over_time(tmp_path):
 
 
 def test_isolation_label(tmp_path):
-    """Same finding 3 ticks → isolated label applied."""
+    """Same finding 3 ticks → gh issue edit --add-label called with correct issue number."""
     history_path = tmp_path / "findings_over_time.json"
 
     # Create 3 snapshots with the same finding
@@ -210,10 +252,30 @@ def test_isolation_label(tmp_path):
     findings = [Finding("RULE_001", "warning", "test", "Stuck", "file.md", "evidence")]
 
     with patch("evolution_scanner.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0)
+        # Mock gh issue list to return matching issue
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='[{"number": 42, "title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\\n**Location**: file.md"}]',
+        )
+
         check_isolation(findings, history_path, 3, "evolution-isolated")
-        # Should have called gh issue list to find the issue to label
-        assert mock_run.called
+
+        # Verify gh issue edit was called with --add-label evolution-isolated
+        edit_calls = [
+            call for call in mock_run.call_args_list
+            if len(call[0]) > 0 and len(call[0][0]) >= 4
+            and call[0][0][1] == "issue" and call[0][0][2] == "edit"
+        ]
+
+        assert len(edit_calls) > 0, "gh issue edit was not called"
+        edit_call = edit_calls[0]
+        args = edit_call[0][0]
+        assert args[0] == "gh"
+        assert args[1] == "issue"
+        assert args[2] == "edit"
+        assert args[3] == "42"  # Issue number extracted from gh issue list
+        assert "--add-label" in args
+        assert "evolution-isolated" in args
 
 
 def test_issue_body_contains_droid():
@@ -239,11 +301,13 @@ def test_get_open_issues():
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout='[{"title": "Issue 1", "body": "RULE_001|file1.md"}]',
+            stdout='[{"title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\\n**Location**: file1.md", "number": 42}]',
         )
         issues = get_open_issues("evolution-found")
         assert len(issues) == 1
-        assert "RULE_001|file1.md" in issues[0]
+        assert issues[0]["rule_id"] == "RULE_001"
+        assert issues[0]["location"] == "file1.md"
+        assert issues[0]["number"] == 42
 
 
 def test_dedup_no_duplicates():
