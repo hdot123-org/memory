@@ -40,6 +40,11 @@ jobs:
           python-version: '3.12'
       - name: Install package
         run: pip install -e .
+      - name: Cache evolution history
+        uses: actions/cache@v4
+        with:
+          path: .evolution/findings_over_time.json
+          key: evolution-history
       - name: Run evolution scanner
         run: python scripts/evolution_scanner.py
         env:
