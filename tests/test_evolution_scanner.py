@@ -874,14 +874,15 @@ def test_isolated_issue_suppresses_rebuild():
         assert issues[0]["rule_id"] == "RULE_001"
         assert issues[0]["location"] == "file.md"
 
-        # Verify the gh command uses --search for OR semantics (not two --label flags)
+        # Verify single-prefix OR form: label:evolution-found,evolution-isolated
         call_args = mock_run.call_args[0][0]
         assert "--search" in call_args, f"--search not found in command args: {call_args}"
         search_idx = call_args.index("--search")
         search_value = call_args[search_idx + 1]
-        assert "label:evolution-found" in search_value, f"evolution-found not in search: {search_value}"
-        assert "label:evolution-isolated" in search_value, f"evolution-isolated not in search: {search_value}"
-        # Verify no two --label flags are used (AND semantics bug)
+        assert search_value == "label:evolution-found,evolution-isolated", f"Expected single-prefix OR form, got: {search_value}"
+        # Single label: prefix with comma-separated values is OR; repeated label: prefix is wrong
+        assert search_value.count("label:") == 1, f"Should have single label: prefix, got: {search_value}"
+        # Verify no --label flags are used (AND semantics bug)
         label_count = call_args.count("--label")
         assert label_count == 0, f"Should use --search, not --label flags. Found {label_count} --label flags"
 

@@ -78,7 +78,7 @@ def _parse_issue_fields(body: str) -> tuple[str | None, str | None]:
 
 def get_open_issues(dedup_label: str) -> list[dict]:
     try:
-        result = subprocess.run(["gh", "issue", "list", "--search", f"label:{dedup_label},label:evolution-isolated",
+        result = subprocess.run(["gh", "issue", "list", "--search", f"label:{dedup_label},evolution-isolated",
                                   "--state", "open", "--limit", "200", "--json", "title,body,number"],
                                   capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
