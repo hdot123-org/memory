@@ -45,6 +45,7 @@ dev = [
     "deptry>=0.15",
     "vulture>=2.10",
     "pdoc>=14.0",
+    "pyyaml>=6.0",
     "mcp>=1.0,<2.0",
 ]
 
@@ -215,6 +216,5 @@ DEP002 = [
     "vulture",
     "pdoc",
 ]
-DEP003 = ["yaml"]
 
 
