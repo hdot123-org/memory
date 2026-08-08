@@ -30,8 +30,6 @@ def check_kill_switch(repo_root: Path) -> bool:
         print("[evolution] Kill switch active, exiting")
         return True
     return False
-
-
 def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict]:
     from evolution_adapters import ADAPTER_MAP
     try:
@@ -59,17 +57,21 @@ def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict]:
 
 def normalize_finding(raw: dict) -> Finding:
     sev = raw.get("severity", "info")
-    return Finding(raw.get("rule_id", "UNKNOWN"), sev if sev in ("critical", "warning", "info") else "info",
-                   raw.get("category", "unknown"), raw.get("description", ""), raw.get("location", ""), raw.get("evidence", ""))
+    return Finding(raw.get("rule_id", "UNKNOWN"), sev if sev in ("critical", "warning", "info") else "info", raw.get("category", "unknown"), raw.get("description", ""), raw.get("location", ""), raw.get("evidence", ""))
 
 
 def _parse_issue_fields(body: str) -> tuple[str | None, str | None]:
     rule_id = location = None
     for line in body.split("\n"):
+        # Stop at description/evidence sections — no structured fields beyond this point
+        if line.startswith("**Description**") or line.startswith("**Evidence**"):
+            break
         if line.startswith("**Rule ID**:"):
             rule_id = line.split(":", 1)[1].strip()
         elif line.startswith("**Location**:"):
             location = line.split(":", 1)[1].strip()
+        if rule_id and location:
+            break  # early exit once both found
     return rule_id, location
 
 
@@ -91,8 +93,6 @@ def get_open_issues(dedup_label: str) -> list[dict]:
 def deduplicate(findings: list[Finding], open_issues: list[dict]) -> list[Finding]:
     issue_keys = {(i["rule_id"], i["location"]) for i in open_issues}
     return [f for f in findings if (f.rule_id, f.location) not in issue_keys]
-
-
 def detect_regressions(findings: list[Finding], history_path: Path) -> list[Finding]:
     if not history_path.exists():
         return findings
@@ -111,7 +111,6 @@ def detect_regressions(findings: list[Finding], history_path: Path) -> list[Find
 def sort_by_severity(findings: list[Finding], severity_order: list[str]) -> list[Finding]:
     order = {s: i for i, s in enumerate(severity_order)}
     return sorted(findings, key=lambda f: order.get(f.severity, 99))
-
 def create_issue(finding: Finding, dedup_label: str) -> bool:
     from evolution_adapters import sanitize_text
     body = (f"@droid\n\n**Rule ID**: {finding.rule_id}\n**Severity**: {finding.severity}\n"

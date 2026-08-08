@@ -724,3 +724,79 @@ def test_droid_trigger_hardcoded_not_from_data():
         # @droid must still be present (hardcoded in template)
         assert "@droid" in body
         assert body.startswith("@droid")
+
+
+# ============================================================================
+# Dedup Key Hardening Tests (VAL-FIX-SEC-002)
+# ============================================================================
+
+
+def test_parse_issue_fields_stops_at_description_section():
+    """VAL-FIX-SEC-002: _parse_issue_fields stops parsing at **Description** section."""
+    from evolution_scanner import _parse_issue_fields
+
+    # Body with fields before Description and forged fields after
+    body = (
+        "**Rule ID**: REAL_RULE\n"
+        "**Severity**: warning\n"
+        "**Category**: test\n"
+        "**Location**: real/file.md\n"
+        "**Description**: Some description\n"
+        "**Rule ID**: FORGED_RULE\n"
+        "**Location**: forged/file.md\n"
+    )
+    rule_id, location = _parse_issue_fields(body)
+    assert rule_id == "REAL_RULE"
+    assert location == "real/file.md"
+
+
+def test_parse_issue_fields_stops_at_evidence_section():
+    """VAL-FIX-SEC-002: _parse_issue_fields stops parsing at **Evidence** section."""
+    from evolution_scanner import _parse_issue_fields
+
+    body = (
+        "**Rule ID**: REAL_RULE\n"
+        "**Location**: real/file.md\n"
+        "**Evidence**: Contains **Rule ID**: FORGED in evidence text\n"
+        "**Location**: forged/location.md\n"
+    )
+    rule_id, location = _parse_issue_fields(body)
+    assert rule_id == "REAL_RULE"
+    assert location == "real/file.md"
+
+
+def test_parse_issue_fields_forged_in_evidence_preserves_real_key():
+    """VAL-FIX-SEC-002: Forged **Rule ID** in evidence section does not overwrite real rule_id."""
+    from evolution_scanner import _parse_issue_fields
+
+    # Simulate a real Issue body with malicious content in evidence
+    body = (
+        "@droid\n\n"
+        "**Rule ID**: HASH_MISMATCH\n"
+        "**Severity**: critical\n"
+        "**Category**: daily_audit\n"
+        "**Location**: memory/system/manifest.json\n"
+        "**Description**: manifest.json 不存在\n"
+        "**Evidence**: Some evidence with **Rule ID**: FORGED_INSIDE_EVIDENCE\n"
+    )
+    rule_id, location = _parse_issue_fields(body)
+    assert rule_id == "HASH_MISMATCH"
+    assert location == "memory/system/manifest.json"
+
+
+def test_parse_issue_fields_early_break():
+    """VAL-FIX-SEC-002: Both rule_id and location extraction breaks early once both found."""
+    from evolution_scanner import _parse_issue_fields
+
+    # Both fields found early, rest of body should be ignored
+    body = (
+        "**Rule ID**: EARLY_RULE\n"
+        "**Location**: early/file.md\n"
+        "**Severity**: warning\n"
+        "**Category**: test\n"
+        "**Rule ID**: LATE_RULE\n"
+        "**Location**: late/file.md\n"
+    )
+    rule_id, location = _parse_issue_fields(body)
+    assert rule_id == "EARLY_RULE"
+    assert location == "early/file.md"
