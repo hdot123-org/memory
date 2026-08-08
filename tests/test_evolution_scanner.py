@@ -1,6 +1,8 @@
 """Tests for evolution scanner."""
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -942,3 +944,79 @@ def test_check_isolation_single_api_call(tmp_path):
             and call[0][0][1] == "issue" and call[0][0][2] == "edit"
         ]
         assert len(edit_calls) == 3, f"Expected 3 gh issue edit calls, got {len(edit_calls)}"
+
+
+# ============================================================================
+# Robustness Tests (VAL-FIX-ROBUST-004/005/006)
+# ============================================================================
+
+
+def test_atomic_write_uses_temp_file(tmp_path):
+    """VAL-FIX-ROBUST-004: History writes use atomic temp file + rename."""
+    history_path = tmp_path / "history.json"
+    finding = Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")
+
+    # Mock os.replace to track if it was called
+    with patch("evolution_scanner.os.replace") as mock_replace:
+        update_history(history_path, [finding], 1, 100)
+
+        # Verify os.replace was called with temp file and final path
+        assert mock_replace.called, "os.replace should be called for atomic write"
+        replace_call = mock_replace.call_args[0]
+        temp_file = replace_call[0]
+        final_file = replace_call[1]
+
+        # Temp file should end with .tmp
+        assert temp_file.suffix == ".tmp", f"Temp file should end with .tmp, got {temp_file}"
+        # Final file should be the history path
+        assert final_file == history_path, f"Final file should be {history_path}, got {final_file}"
+        # Temp file should have been written before rename
+        assert temp_file.exists(), f"Temp file {temp_file} should exist before rename"
+
+
+def test_corrupted_history_doesnt_crash(tmp_path):
+    """VAL-FIX-ROBUST-005: Scanner handles corrupted history JSON gracefully."""
+    history_path = tmp_path / "history.json"
+
+    # Write corrupted JSON
+    history_path.write_text("{ invalid json content [[")
+
+    finding = Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")
+
+    # Should not crash, should reset to empty state
+    update_history(history_path, [finding], 1, 100)
+
+    # Verify history was reset to valid state
+    assert history_path.exists(), "History file should exist after reset"
+    data = json.loads(history_path.read_text())
+    assert "snapshots" in data, "Reset history should have snapshots key"
+    assert "resolved_findings" in data, "Reset history should have resolved_findings key"
+    assert len(data["snapshots"]) == 1, "Should have one snapshot from this tick"
+    assert len(data["resolved_findings"]) == 0, "Should have no resolved findings after reset"
+
+
+def test_env_var_kill_switch():
+    """VAL-FIX-ROBUST-006: EVOLUTION_DISABLED environment variable triggers kill switch."""
+    # Create a temporary repo root with no DISABLED file
+    with tempfile.TemporaryDirectory() as tmpdir:
+        repo_root = Path(tmpdir)
+        (repo_root / ".evolution").mkdir()
+
+        # Test with EVOLUTION_DISABLED=1
+        with patch.dict(os.environ, {"EVOLUTION_DISABLED": "1"}):
+            assert check_kill_switch(repo_root) is True, "EVOLUTION_DISABLED=1 should trigger kill switch"
+
+        # Test with EVOLUTION_DISABLED=true
+        with patch.dict(os.environ, {"EVOLUTION_DISABLED": "true"}):
+            assert check_kill_switch(repo_root) is True, "EVOLUTION_DISABLED=true should trigger kill switch"
+
+        # Test with EVOLUTION_DISABLED=False (should not trigger)
+        with patch.dict(os.environ, {"EVOLUTION_DISABLED": "false"}):
+            assert check_kill_switch(repo_root) is False, "EVOLUTION_DISABLED=false should not trigger kill switch"
+
+        # Test with EVOLUTION_DISABLED unset (should not trigger)
+        env_copy = os.environ.copy()
+        if "EVOLUTION_DISABLED" in env_copy:
+            del env_copy["EVOLUTION_DISABLED"]
+        with patch.dict(os.environ, env_copy, clear=True):
+            assert check_kill_switch(repo_root) is False, "Unset EVOLUTION_DISABLED should not trigger kill switch"

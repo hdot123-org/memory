@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Evolution scanner: observe → normalize → create Issues → track progress."""
 import json
+import os
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -26,7 +27,7 @@ def load_config(repo_root: Path) -> dict:
 
 
 def check_kill_switch(repo_root: Path) -> bool:
-    if (repo_root / ".evolution" / "DISABLED").exists():
+    if (repo_root / ".evolution" / "DISABLED").exists() or os.environ.get("EVOLUTION_DISABLED", "").lower() in ("1", "true", "yes"):
         print("[evolution] Kill switch active, exiting")
         return True
     return False
@@ -101,9 +102,10 @@ def detect_regressions(findings: list[Finding], history_path: Path) -> list[Find
         with open(history_path) as f:
             resolved = json.load(f).get("resolved_findings", [])
         for finding in findings:
-            if any(r["rule_id"] == finding.rule_id and r["location"] == finding.location
-                   for r in resolved):
+            if any(r["rule_id"] == finding.rule_id and r["location"] == finding.location for r in resolved):
                 finding.severity = "critical"
+    except (json.JSONDecodeError, ValueError):
+        print(f"[evolution] Warning: {history_path} corrupted, skipping regression detection")
     except Exception:
         pass
     return findings
@@ -116,11 +118,9 @@ def create_issue(finding: Finding, dedup_label: str) -> bool:
     from evolution_adapters import sanitize_text
     body = (f"@droid\n\n**Rule ID**: {finding.rule_id}\n**Severity**: {finding.severity}\n"
             f"**Category**: {finding.category}\n**Location**: {finding.location}\n"
-            + f"**Description**: {sanitize_text(finding.description)}\n**Evidence**: {sanitize_text(finding.evidence)}")
+            f"**Description**: {sanitize_text(finding.description)}\n**Evidence**: {sanitize_text(finding.evidence)}")
     try:
-        result = subprocess.run(["gh", "issue", "create", "--title", f"[evolution] {finding.rule_id}",
-                                  "--label", dedup_label, "--body", body],
-                                 capture_output=True, text=True, timeout=30)
+        result = subprocess.run(["gh", "issue", "create", "--title", f"[evolution] {finding.rule_id}", "--label", dedup_label, "--body", body], capture_output=True, text=True, timeout=30)
         return result.returncode == 0
     except Exception:
         return False
@@ -129,8 +129,12 @@ def create_issue(finding: Finding, dedup_label: str) -> bool:
 def update_history(history_path: Path, findings: list[Finding], issues_created: int, snapshot_limit: int):
     data: dict = {"snapshots": [], "resolved_findings": []}
     if history_path.exists():
-        with open(history_path) as f:
-            data = json.load(f)
+        try:
+            with open(history_path) as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, ValueError):
+            print(f"[evolution] Warning: {history_path} corrupted, resetting")
+            data = {"snapshots": [], "resolved_findings": []}
     current_keys = {(f.rule_id, f.location) for f in findings}
     prev = data["snapshots"][-1].get("findings", []) if data.get("snapshots") else []
     now = datetime.now(timezone.utc)
@@ -141,8 +145,10 @@ def update_history(history_path: Path, findings: list[Finding], issues_created: 
     data["snapshots"].append({"timestamp": now_iso, "tick_id": now.strftime("%Y%m%d-%H%M%S"),
                                "findings": [asdict(f) for f in findings], "issues_created": issues_created})
     data["snapshots"] = data["snapshots"][-snapshot_limit:]
-    with open(history_path, "w") as f:
+    tmp_path = history_path.with_suffix(".tmp")
+    with open(tmp_path, "w") as f:
         json.dump(data, f, indent=2)
+    os.replace(tmp_path, history_path)
 
 
 def check_isolation(findings: list[Finding], history_path: Path, threshold: int, failure_label: str, dedup_label: str):
@@ -159,18 +165,12 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
             return
         all_issues = json.loads(result.stdout) if result.stdout.strip() else []
         for finding in findings:
-            count = sum(1 for s in recent if any(
-                f["rule_id"] == finding.rule_id and f["location"] == finding.location
-                for f in s["findings"]))
-            if count < threshold:
+            if sum(1 for s in recent if any(f["rule_id"] == finding.rule_id and f["location"] == finding.location for f in s["findings"])) < threshold:
                 continue
             for issue in all_issues:
                 rid, loc = _parse_issue_fields(issue.get("body", ""))
                 if rid == finding.rule_id and loc == finding.location:
-                    subprocess.run(
-                        ["gh", "issue", "edit", str(issue["number"]),
-                         "--add-label", failure_label],
-                        capture_output=True, text=True, timeout=30)
+                    subprocess.run(["gh", "issue", "edit", str(issue["number"]), "--add-label", failure_label], capture_output=True, text=True, timeout=30)
                     break
     except Exception:
         pass
