@@ -26,19 +26,32 @@ def load_config(repo_root: Path) -> dict:
 
 
 def check_kill_switch(repo_root: Path) -> bool:
-    killed = (repo_root / ".evolution" / "DISABLED").exists()
-    if killed:
+    if (repo_root / ".evolution" / "DISABLED").exists():
         print("[evolution] Kill switch active, exiting")
-    return killed
+        return True
+    return False
 
 
-def run_audit_tool(tool: dict) -> list[dict]:
+def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict]:
+    from evolution_adapters import ADAPTER_MAP
     try:
+        if tool.get("output_format") == "registry_jsonl":
+            source = tool.get("source_file", "")
+            path = Path(source) if Path(source).is_absolute() else (repo_root or Path.cwd()) / source
+            if not path.exists():
+                return []
+            lines = [json.loads(line) for line in path.read_text().strip().splitlines() if line.strip()]
+            adapter = ADAPTER_MAP.get(tool["name"])
+            return adapter(lines) if adapter else lines
         result = subprocess.run(tool["command"].split(), capture_output=True, text=True, timeout=60)
-        if result.returncode != 0:
-            print(f"[evolution] Warning: {tool['name']} failed: {result.stderr}")
+        if not result.stdout.strip():
             return []
-        return json.loads(result.stdout) if result.stdout.strip() else []
+        try:
+            raw = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return []
+        adapter = ADAPTER_MAP.get(tool["name"])
+        return adapter(raw) if adapter else (raw if isinstance(raw, list) else [raw])
     except Exception as e:
         print(f"[evolution] Warning: {tool['name']} crashed: {e}")
         return []
@@ -46,9 +59,8 @@ def run_audit_tool(tool: dict) -> list[dict]:
 
 def normalize_finding(raw: dict) -> Finding:
     sev = raw.get("severity", "info")
-    sev = sev if sev in ("critical", "warning", "info") else "info"
-    return Finding(raw.get("rule_id", "UNKNOWN"), sev, raw.get("category", "unknown"),
-                   raw.get("description", ""), raw.get("location", ""), raw.get("evidence", ""))
+    return Finding(raw.get("rule_id", "UNKNOWN"), sev if sev in ("critical", "warning", "info") else "info",
+                   raw.get("category", "unknown"), raw.get("description", ""), raw.get("location", ""), raw.get("evidence", ""))
 
 
 def _parse_issue_fields(body: str) -> tuple[str | None, str | None]:
@@ -63,18 +75,14 @@ def _parse_issue_fields(body: str) -> tuple[str | None, str | None]:
 
 def get_open_issues(dedup_label: str) -> list[dict]:
     try:
-        result = subprocess.run(
-            ["gh", "issue", "list", "--label", dedup_label, "--state", "open",
-             "--json", "title,body,number"],
-            capture_output=True, text=True, timeout=30)
+        result = subprocess.run(["gh", "issue", "list", "--label", dedup_label, "--state", "open",
+                                  "--json", "title,body,number"], capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
             return []
-        issues = []
-        for issue in json.loads(result.stdout):
-            rule_id, location = _parse_issue_fields(issue.get("body", ""))
-            if rule_id and location:
-                issues.append({"rule_id": rule_id, "location": location,
-                               "number": issue.get("number")})
+        issues = [{"rule_id": rid, "location": loc, "number": i["number"]}
+                  for i in json.loads(result.stdout)
+                  for rid, loc in [_parse_issue_fields(i.get("body", ""))]
+                  if rid and loc]
         return issues
     except Exception:
         return []
@@ -110,39 +118,34 @@ def create_issue(finding: Finding, dedup_label: str) -> bool:
             f"**Category**: {finding.category}\n**Location**: {finding.location}\n"
             f"**Description**: {finding.description}\n**Evidence**: {finding.evidence}")
     try:
-        result = subprocess.run(
-            ["gh", "issue", "create", "--title", f"[evolution] {finding.rule_id}",
-             "--label", dedup_label, "--body", body],
-            capture_output=True, text=True, timeout=30)
+        result = subprocess.run(["gh", "issue", "create", "--title", f"[evolution] {finding.rule_id}",
+                                  "--label", dedup_label, "--body", body],
+                                 capture_output=True, text=True, timeout=30)
         return result.returncode == 0
     except Exception:
         return False
 
 
-def update_history(history_path: Path, findings: list[Finding],
-                   issues_created: int, snapshot_limit: int):
+def update_history(history_path: Path, findings: list[Finding], issues_created: int, snapshot_limit: int):
     data: dict = {"snapshots": [], "resolved_findings": []}
     if history_path.exists():
         with open(history_path) as f:
             data = json.load(f)
     current_keys = {(f.rule_id, f.location) for f in findings}
     prev = data["snapshots"][-1].get("findings", []) if data.get("snapshots") else []
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
     new_resolved = [{"rule_id": p["rule_id"], "location": p["location"], "resolved_at": now_iso}
                     for p in prev if (p.get("rule_id"), p.get("location")) not in current_keys]
-    all_resolved = data.get("resolved_findings", []) + new_resolved
-    data["resolved_findings"] = all_resolved[-snapshot_limit:]
-    data["snapshots"].append({
-        "timestamp": now_iso,
-        "tick_id": datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"),
-        "findings": [asdict(f) for f in findings], "issues_created": issues_created})
+    data["resolved_findings"] = (data.get("resolved_findings", []) + new_resolved)[-snapshot_limit:]
+    data["snapshots"].append({"timestamp": now_iso, "tick_id": now.strftime("%Y%m%d-%H%M%S"),
+                               "findings": [asdict(f) for f in findings], "issues_created": issues_created})
     data["snapshots"] = data["snapshots"][-snapshot_limit:]
     with open(history_path, "w") as f:
         json.dump(data, f, indent=2)
 
 
-def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
-                    failure_label: str, dedup_label: str):
+def check_isolation(findings: list[Finding], history_path: Path, threshold: int, failure_label: str, dedup_label: str):
     if not history_path.exists():
         return
     try:
@@ -186,8 +189,7 @@ def main():
     findings = detect_regressions(all_findings, history_path)
     open_issues = get_open_issues(config["dedup_label"])
     deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
-    issues_created = sum(
-        1 for f in deduped[:config["max_issues_per_tick"]] if create_issue(f, config["dedup_label"]))
+    issues_created = sum(1 for f in deduped[:config["max_issues_per_tick"]] if create_issue(f, config["dedup_label"]))
     update_history(history_path, all_findings, issues_created, config["snapshot_limit"])
     check_isolation(all_findings, history_path, config["isolation_threshold"],
                     config["failure_label"], config["dedup_label"])

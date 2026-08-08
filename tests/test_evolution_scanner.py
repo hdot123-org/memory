@@ -21,6 +21,11 @@ from evolution_scanner import (
     sort_by_severity,
     update_history,
 )
+from evolution_adapters import (
+    adapt_daily_audit,
+    adapt_consistency_check,
+    adapt_error_patterns,
+)
 
 
 def test_kill_switch(tmp_path):
@@ -334,3 +339,189 @@ def test_update_history_empty(tmp_path):
 
     assert len(data["snapshots"]) == 1
     assert "resolved_findings" in data
+
+
+# ============================================================================
+# Exit Code and Adapter Tests (VAL-FIX-EXIT-001, VAL-FIX-ADAPT-*)
+# ============================================================================
+
+
+def test_exit_code_nonzero_with_findings():
+    """VAL-FIX-EXIT-001: returncode=1 + valid stdout → findings returned."""
+    # Real daily audit output with violations
+    real_output = {
+        "audit_date": "2026-08-08",
+        "projects": {
+            "memory": {
+                "violations": [
+                    {
+                        "type": "hash_mismatch",
+                        "severity": "critical",
+                        "file": "memory/system/manifest.json",
+                        "detail": "manifest.json 不存在：项目未签名",
+                    }
+                ]
+            }
+        },
+        "infrastructure": {"servers": {}},
+    }
+    tool = {"name": "daily_kb_audit", "command": "memory-audit-daily --json"}
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        # Simulate tool returning exit code 1 (found violations) with valid JSON
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout=json.dumps(real_output), stderr=""
+        )
+        result = run_audit_tool(tool)
+
+        # Should return findings despite non-zero exit code
+        assert len(result) > 0
+        assert result[0]["rule_id"] == "HASH_MISMATCH"
+        assert result[0]["severity"] == "critical"
+
+
+def test_adapt_daily_audit():
+    """VAL-FIX-ADAPT-001: Real daily audit JSON → Finding dicts."""
+    # Real format captured from memory-audit-daily --json
+    raw_output = {
+        "audit_date": "2026-08-08",
+        "projects": {
+            "memory": {
+                "path": "/Users/busiji/memory",
+                "violations": [
+                    {
+                        "type": "hash_mismatch",
+                        "severity": "critical",
+                        "file": "memory/system/manifest.json",
+                        "detail": "manifest.json 不存在：项目未签名（缺少完整性清单）",
+                    }
+                ],
+                "note": "memory-core 源仓库：跳过 KB 未签名/残留/大文件检查",
+            }
+        },
+        "infrastructure": {
+            "servers": {
+                "node-00": {
+                    "host": "47.111.21.195",
+                    "violations": [
+                        {
+                            "type": "container_down",
+                            "severity": "critical",
+                            "file": "node-00/openclaw",
+                            "detail": "期望容器未运行：openclaw",
+                        }
+                    ],
+                }
+            }
+        },
+    }
+
+    findings = adapt_daily_audit(raw_output)
+
+    assert len(findings) == 2
+    # First finding from projects
+    assert findings[0]["rule_id"] == "HASH_MISMATCH"
+    assert findings[0]["severity"] == "critical"
+    assert findings[0]["category"] == "daily_audit"
+    assert findings[0]["location"] == "memory/system/manifest.json"
+    assert "manifest.json" in findings[0]["description"]
+    # Second finding from infrastructure
+    assert findings[1]["rule_id"] == "CONTAINER_DOWN"
+    assert findings[1]["location"] == "node-00/openclaw"
+
+
+def test_adapt_consistency_check():
+    """VAL-FIX-ADAPT-002: Real consistency check JSON → Finding dicts."""
+    # Real format captured from memory-consistency-check --json
+    raw_output = {
+        "errors": [
+            "[init_validate_roundtrip] init_project_memory failed: ",
+        ],
+        "warnings": [
+            "[docstring_host_mentions] /Users/busiji/memory/tests/test_hook_event.py: docstring mentions codex and claude but not factory",
+        ],
+        "checks": [
+            {
+                "name": "init_validate_roundtrip",
+                "errors": ["init_project_memory failed: "],
+                "warnings": [],
+                "passed": False,
+            }
+        ],
+    }
+
+    findings = adapt_consistency_check(raw_output)
+
+    assert len(findings) == 2
+    # Error finding
+    assert findings[0]["rule_id"] == "INIT_VALIDATE_ROUNDTRIP"
+    assert findings[0]["severity"] == "warning"
+    assert findings[0]["category"] == "consistency"
+    assert "init_project_memory failed" in findings[0]["description"]
+    # Warning finding
+    assert findings[1]["rule_id"] == "DOCSTRING_HOST_MENTIONS"
+    assert findings[1]["severity"] == "info"
+    assert findings[1]["location"] == "/Users/busiji/memory/tests/test_hook_event.py"
+
+
+def test_adapt_error_patterns():
+    """VAL-FIX-ADAPT-003: Real registry.jsonl format → Finding dicts."""
+    # Real format from memory/kb/patterns/registry.jsonl
+    raw_lines = [
+        {
+            "fingerprint": "30a2abcbf1334863",
+            "type": "llm_api_error",
+            "script": "daily_summary_generator",
+            "normalized_msg": "LLM API curl error:",
+            "status": "detected",
+            "first_seen": "2026-06-02T23:57:06.732633+08:00",
+            "last_seen": "2026-06-02T23:57:06.732633+08:00",
+            "distinct_days": ["2026-06-02"],
+            "total_count": 1,
+            "projects": ["/Users/busiji/memory"],
+            "threshold_met": None,  # Not threshold yet
+        },
+        {
+            "fingerprint": "81316c864847d7da",
+            "type": "json_parse_error",
+            "script": "pretooluse_guard",
+            "normalized_msg": "Invalid JSON input: Expecting value",
+            "status": "detected",
+            "total_count": 2,
+            "threshold_met": "days",  # Meets threshold
+        },
+        {
+            "fingerprint": "843d8aabcfed4c0c",
+            "type": "transcript_missing",
+            "script": "session_end_logger",
+            "normalized_msg": "transcript not found",
+            "status": "detected",
+            "total_count": 5,
+            "threshold_met": "both",  # Meets both thresholds
+        },
+    ]
+
+    findings = adapt_error_patterns(raw_lines)
+
+    # Only entries with threshold_met should be converted
+    assert len(findings) == 2
+    # First threshold entry
+    assert findings[0]["rule_id"] == "ERROR_PATTERN_JSON_PARSE_ERROR"
+    assert findings[0]["severity"] == "warning"  # "days" threshold
+    assert findings[0]["category"] == "error_pattern"
+    assert findings[0]["location"] == "pretooluse_guard"
+    assert "fingerprint=81316c864847d7da" in findings[0]["evidence"]
+    # Second threshold entry (both)
+    assert findings[1]["rule_id"] == "ERROR_PATTERN_TRANSCRIPT_MISSING"
+    assert findings[1]["severity"] == "critical"  # "both" threshold
+
+
+def test_config_has_json_flags():
+    """VAL-FIX-ADAPT-004: Config commands include --json flags."""
+    config_path = Path(__file__).parent.parent / ".evolution" / "config.yml"
+    with open(config_path) as f:
+        config_content = f.read()
+
+    # Check that --json flags are present
+    assert "memory-audit-daily --json" in config_content
+    assert "memory-consistency-check --json" in config_content

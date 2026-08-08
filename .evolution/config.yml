@@ -6,12 +6,13 @@ isolation_threshold: 3
 failure_label: evolution-isolated
 audit_tools:
   - name: daily_kb_audit
-    command: "memory-audit-daily"
+    command: "memory-audit-daily --json"
     output_format: json
   - name: consistency_check
-    command: "memory-consistency-check"
+    command: "memory-consistency-check --json"
     output_format: json
   - name: error_patterns
     command: "memory-error-patterns"
-    output_format: json
+    output_format: registry_jsonl
+    source_file: "memory/kb/patterns/registry.jsonl"
 snapshot_limit: 100
