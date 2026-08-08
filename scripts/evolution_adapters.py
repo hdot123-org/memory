@@ -25,6 +25,27 @@ def sanitize_text(text: str, max_len: int = 500) -> str:
     return text
 
 
+def sanitize_structured_field(text: str, max_len: int = 100) -> str:
+    """Sanitize structured fields (rule_id, location) to prevent field injection.
+
+    Strips control characters (newlines, tabs, etc.) that could enable forging
+    body headers. Truncates to max_len.
+
+    Args:
+        text: Field value to sanitize
+        max_len: Maximum length (default 100 for structured fields)
+
+    Returns:
+        Sanitized field with control characters removed
+    """
+    # Remove all control characters (newlines, tabs, etc.)
+    text = re.sub(r'[\x00-\x1f\x7f]', '', text)
+    # Truncate
+    if len(text) > max_len:
+        text = text[:max_len]
+    return text
+
+
 def adapt_daily_audit(raw: dict) -> list[dict]:
     """Convert nested daily audit output to flat Finding dicts.
 

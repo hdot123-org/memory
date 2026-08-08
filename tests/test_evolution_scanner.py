@@ -997,6 +997,34 @@ def test_corrupted_history_doesnt_crash(tmp_path):
     assert len(data["resolved_findings"]) == 0, "Should have no resolved findings after reset"
 
 
+def test_structured_fields_sanitized():
+    """Defense-in-depth: rule_id and location stripped of control chars to prevent field injection."""
+    # Attempt to inject newlines into structured fields
+    finding = Finding(
+        rule_id="RULE_001\n**Severity**: critical",  # Attempt to forge severity
+        severity="warning",
+        category="test",
+        description="Normal description",
+        location="file.md\n**Rule ID**: FORGED",  # Attempt to forge rule_id
+        evidence="Normal evidence",
+    )
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        create_issue(finding, "evolution-found")
+
+        call_args = mock_run.call_args[0][0]
+        body_index = call_args.index("--body") + 1
+        body = call_args[body_index]
+
+        # Newlines in rule_id and location should be stripped
+        assert "RULE_001\n**Severity**: critical" not in body
+        assert "file.md\n**Rule ID**: FORGED" not in body
+        # Sanitized versions should be present
+        assert "RULE_001" in body
+        assert "file.md" in body
+
+
 def test_env_var_kill_switch():
     """VAL-FIX-ROBUST-006: EVOLUTION_DISABLED environment variable triggers kill switch."""
     # Create a temporary repo root with no DISABLED file

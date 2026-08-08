@@ -115,9 +115,11 @@ def sort_by_severity(findings: list[Finding], severity_order: list[str]) -> list
     order = {s: i for i, s in enumerate(severity_order)}
     return sorted(findings, key=lambda f: order.get(f.severity, 99))
 def create_issue(finding: Finding, dedup_label: str) -> bool:
-    from evolution_adapters import sanitize_text
-    body = (f"@droid\n\n**Rule ID**: {finding.rule_id}\n**Severity**: {finding.severity}\n"
-            f"**Category**: {finding.category}\n**Location**: {finding.location}\n"
+    from evolution_adapters import sanitize_structured_field, sanitize_text
+    safe_rule_id = sanitize_structured_field(finding.rule_id)
+    safe_location = sanitize_structured_field(finding.location)
+    body = (f"@droid\n\n**Rule ID**: {safe_rule_id}\n**Severity**: {finding.severity}\n"
+            f"**Category**: {finding.category}\n**Location**: {safe_location}\n"
             f"**Description**: {sanitize_text(finding.description)}\n**Evidence**: {sanitize_text(finding.evidence)}")
     try:
         result = subprocess.run(["gh", "issue", "create", "--title", f"[evolution] {finding.rule_id}", "--label", dedup_label, "--body", body], capture_output=True, text=True, timeout=30)
