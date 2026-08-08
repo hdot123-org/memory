@@ -12,6 +12,7 @@ dependencies = [
     "posthog>=3.0,<8.0",
     "packaging>=24.0",
     "mcp>=1.0,<2.0",
+    "pyyaml>=6.0",
 ]
 license = "MIT"
 authors = [
@@ -45,7 +46,6 @@ dev = [
     "deptry>=0.15",
     "vulture>=2.10",
     "pdoc>=14.0",
-    "pyyaml>=6.0",
     "mcp>=1.0,<2.0",
 ]
 
