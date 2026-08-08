@@ -162,3 +162,12 @@ ADAPTER_MAP = {
     "consistency_check": adapt_consistency_check,
     "error_patterns": adapt_error_patterns,
 }
+
+
+def quarantine_corrupted_file(history_path) -> None:
+    """Rename corrupted history file to quarantine path with timestamp."""
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    qpath = history_path.with_suffix(f".corrupted.{ts}.json")
+    history_path.rename(qpath)
+    print(f"[evolution] Warning: {history_path} corrupted, quarantined to {qpath}")

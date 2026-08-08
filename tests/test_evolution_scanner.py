@@ -991,12 +991,15 @@ def test_corrupted_history_doesnt_crash(tmp_path):
     history_path = tmp_path / "history.json"
 
     # Write corrupted JSON
-    history_path.write_text("{ invalid json content [[")
+    corrupted_content = "{ invalid json content [["
+    history_path.write_text(corrupted_content)
 
     finding = Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")
 
-    # Should not crash, should reset to empty state
-    update_history(history_path, [finding], 1, 100)
+    # Capture printed warnings
+    with patch("builtins.print") as mock_print:
+        # Should not crash, should quarantine and reset to empty state
+        update_history(history_path, [finding], 1, 100)
 
     # Verify history was reset to valid state
     assert history_path.exists(), "History file should exist after reset"
@@ -1005,6 +1008,89 @@ def test_corrupted_history_doesnt_crash(tmp_path):
     assert "resolved_findings" in data, "Reset history should have resolved_findings key"
     assert len(data["snapshots"]) == 1, "Should have one snapshot from this tick"
     assert len(data["resolved_findings"]) == 0, "Should have no resolved findings after reset"
+
+    # Verify quarantine file was created (VAL-HARD-008)
+    quarantine_files = list(tmp_path.glob("history.corrupted.*.json"))
+    assert len(quarantine_files) == 1, f"Expected 1 quarantine file, found {len(quarantine_files)}"
+    quarantine_file = quarantine_files[0]
+    
+    # Verify quarantine file contains original corrupted content
+    assert quarantine_file.read_text() == corrupted_content, "Quarantine file must contain original corrupted content"
+    
+    # Verify warning message includes quarantine path
+    warning_calls = [call for call in mock_print.call_args_list if "quarantined" in str(call)]
+    assert len(warning_calls) > 0, "Expected warning message with quarantine path"
+    assert str(quarantine_file) in str(warning_calls[0]), "Warning must include quarantine file path"
+
+
+def test_corruption_quarantine_update_history(tmp_path):
+    """VAL-HARD-008: Corrupted history file is quarantined, not silently overwritten.
+    
+    When findings_over_time.json is corrupted (JSONDecodeError), update_history()
+    must rename it to a quarantine path (e.g., findings_over_time.corrupted.{timestamp}.json)
+    so resolved_findings can be recovered manually. The original recovery permanently
+    loses all regression baselines.
+    """
+    history_path = tmp_path / "findings_over_time.json"
+    
+    # Create corrupted JSON with valid data that would be lost
+    corrupted_content = '{"snapshots": [{"timestamp": "2026-01-01T00:00:00Z"}], "INVALID": [['
+    history_path.write_text(corrupted_content)
+    
+    finding = Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")
+    
+    # Capture warnings
+    with patch("builtins.print") as mock_print:
+        update_history(history_path, [finding], 1, 100)
+    
+    # Verify original path has fresh data (quarantine successful)
+    assert history_path.exists()
+    new_data = json.loads(history_path.read_text())
+    assert new_data["snapshots"][0]["timestamp"] != "2026-01-01T00:00:00Z"
+    
+    # Verify quarantine file exists
+    quarantine_files = list(tmp_path.glob("findings_over_time.corrupted.*.json"))
+    assert len(quarantine_files) == 1, "Corrupted file must be quarantined"
+    quarantine_file = quarantine_files[0]
+    
+    # Verify quarantine contains original corrupted content
+    assert quarantine_file.read_text() == corrupted_content
+    
+    # Verify warning message
+    warning_str = " ".join(str(call) for call in mock_print.call_args_list)
+    assert "corrupted" in warning_str
+    assert "quarantined" in warning_str
+    assert str(quarantine_file.name) in warning_str
+
+
+def test_corruption_quarantine_detect_regressions(tmp_path):
+    """VAL-HARD-008: detect_regressions also quarantines corrupted history.
+    
+    When detect_regressions encounters corrupted JSON, it must quarantine
+    the file before continuing with empty state.
+    """
+    history_path = tmp_path / "findings_over_time.json"
+    
+    corrupted_content = '{broken json'
+    history_path.write_text(corrupted_content)
+    
+    findings = [Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")]
+    
+    # Capture warnings
+    with patch("builtins.print") as mock_print:
+        result = detect_regressions(findings, history_path)
+    
+    # Function should return findings without crashing
+    assert len(result) == 1
+    assert result[0].rule_id == "RULE_001"
+    
+    # Original path should be gone (renamed to quarantine)
+    assert not history_path.exists(), "Original corrupted file must be removed"
+    
+    # Quarantine file should exist
+    quarantine_files = list(tmp_path.glob("findings_over_time.corrupted.*.json"))
+    assert len(quarantine_files) == 1, "Corrupted file must be quarantined"
+    assert quarantine_files[0].read_text() == corrupted_content
 
 
 def test_structured_fields_sanitized():

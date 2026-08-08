@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
+from evolution_adapters import quarantine_corrupted_file
 
 
 @dataclass
@@ -106,7 +107,7 @@ def detect_regressions(findings: list[Finding], history_path: Path) -> list[Find
             if any(r["rule_id"] == finding.rule_id and r["location"] == finding.location for r in resolved):
                 finding.severity = "critical"
     except (json.JSONDecodeError, ValueError):
-        print(f"[evolution] Warning: {history_path} corrupted, skipping regression detection")
+        quarantine_corrupted_file(history_path)
     except Exception:
         pass
     return findings
@@ -126,14 +127,14 @@ def create_issue(finding: Finding, dedup_label: str) -> bool:
         return False
 
 
-def update_history(history_path: Path, findings: list[Finding], issues_created: int, snapshot_limit: int):
+def update_history(history_path: Path, findings: list[Finding], issues_created: int, snapshot_limit: int) -> None:
     data: dict = {"snapshots": [], "resolved_findings": []}
     if history_path.exists():
         try:
             with open(history_path) as f:
                 data = json.load(f)
         except (json.JSONDecodeError, ValueError):
-            print(f"[evolution] Warning: {history_path} corrupted, resetting")
+            quarantine_corrupted_file(history_path)
             data = {"snapshots": [], "resolved_findings": []}
     current_keys = {(f.rule_id, f.location) for f in findings}
     prev = data["snapshots"][-1].get("findings", []) if data.get("snapshots") else []
@@ -151,7 +152,7 @@ def update_history(history_path: Path, findings: list[Finding], issues_created: 
     os.replace(tmp_path, history_path)
 
 
-def check_isolation(findings: list[Finding], history_path: Path, threshold: int, failure_label: str, dedup_label: str):
+def check_isolation(findings: list[Finding], history_path: Path, threshold: int, failure_label: str, dedup_label: str) -> None:
     if not history_path.exists():
         return
     try:
@@ -176,7 +177,7 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
         pass
 
 
-def main():
+def main() -> None:
     repo_root = Path(__file__).parent.parent
     if check_kill_switch(repo_root):
         sys.exit(0)
@@ -194,7 +195,6 @@ def main():
     update_history(history_path, all_findings, issues_created, config["snapshot_limit"])
     check_isolation(all_findings, history_path, config["isolation_threshold"], config["failure_label"], config["dedup_label"])
     print(f"[evolution] Tick complete: {len(all_findings)} findings, {issues_created} issues created")
-
 
 if __name__ == "__main__":
     main()
