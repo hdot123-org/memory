@@ -184,7 +184,7 @@ def main():
         sys.exit(0)
     config = load_config(repo_root)
     history_path = repo_root / ".evolution" / "findings_over_time.json"
-    raw_findings = [r for t in config["audit_tools"] for r in run_audit_tool(t)]
+    raw_findings = [r for t in config["audit_tools"] for r in run_audit_tool(t, repo_root)]
     all_findings = [normalize_finding(r) for r in raw_findings]
     findings = detect_regressions(all_findings, history_path)
     open_issues = get_open_issues(config["dedup_label"])

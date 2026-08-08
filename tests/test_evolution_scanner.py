@@ -525,3 +525,60 @@ def test_config_has_json_flags():
     # Check that --json flags are present
     assert "memory-audit-daily --json" in config_content
     assert "memory-consistency-check --json" in config_content
+
+
+# ============================================================================
+# Cache Key and repo_root Tests (VAL-FIX-HIST-001 cache pattern)
+# ============================================================================
+
+
+def test_cache_key_contains_run_id():
+    """VAL-FIX-HIST-001: Cache key uses run-scoped pattern with github.run_id."""
+    workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-scan.yml"
+    with open(workflow_path) as f:
+        content = f.read()
+
+    # Cache key must contain github.run_id for run-scoped saves
+    assert "evolution-history-${{ github.run_id }}" in content
+    # restore-keys must have stable prefix for cross-run restore
+    assert "restore-keys: evolution-history-" in content
+
+
+def test_run_audit_tool_receives_repo_root(tmp_path):
+    """run_audit_tool with repo_root resolves relative registry_jsonl paths correctly."""
+    # Create a fake registry.jsonl under the provided repo root
+    source_file = "memory/kb/patterns/registry.jsonl"
+    full_path = tmp_path / source_file
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    full_path.write_text(
+        '{"fingerprint": "abc123", "type": "test_error", "script": "test_script", '
+        '"normalized_msg": "test error msg", "status": "detected", '
+        '"total_count": 5, "threshold_met": "both"}\n'
+    )
+
+    tool = {
+        "name": "error_patterns",
+        "output_format": "registry_jsonl",
+        "source_file": source_file,
+    }
+
+    # With repo_root, relative path resolves to tmp_path/memory/kb/patterns/registry.jsonl
+    result = run_audit_tool(tool, tmp_path)
+    assert len(result) == 1
+    assert result[0]["rule_id"] == "ERROR_PATTERN_TEST_ERROR"
+
+    # With a different repo_root that has no file, returns empty
+    other_root = tmp_path / "empty_project"
+    other_root.mkdir()
+    result_other = run_audit_tool(tool, other_root)
+    assert result_other == []
+
+
+def test_main_passes_repo_root_to_run_audit_tool():
+    """main() passes repo_root to run_audit_tool so registry_jsonl resolves correctly."""
+    import inspect
+    from evolution_scanner import main as main_func
+
+    source = inspect.getsource(main_func)
+    # Verify that run_audit_tool is called with repo_root argument
+    assert "run_audit_tool(t, repo_root)" in source
