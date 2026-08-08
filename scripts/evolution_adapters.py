@@ -90,28 +90,72 @@ def adapt_consistency_check(raw: dict) -> list[dict]:
     Input format: {errors: [str], warnings: [str], checks: [{name, errors, warnings, passed}]}
     """
     findings = []
+    seen = set()  # Track (description, location) pairs to avoid duplicates
+
     # Top-level errors
     for error_str in raw.get("errors", []):
         rule_id = _extract_rule_id(error_str)
-        findings.append({
-            "rule_id": rule_id,
-            "severity": "warning",
-            "category": "consistency",
-            "description": error_str,
-            "location": "",
-            "evidence": error_str,
-        })
+        location = _extract_location(error_str)
+        key = (error_str, location)
+        if key not in seen:
+            seen.add(key)
+            findings.append({
+                "rule_id": rule_id,
+                "severity": "warning",
+                "category": "consistency",
+                "description": error_str,
+                "location": location,
+                "evidence": error_str,
+            })
     # Top-level warnings
     for warning_str in raw.get("warnings", []):
         rule_id = _extract_rule_id(warning_str)
-        findings.append({
-            "rule_id": rule_id,
-            "severity": "info",
-            "category": "consistency",
-            "description": warning_str,
-            "location": _extract_location(warning_str),
-            "evidence": warning_str,
-        })
+        location = _extract_location(warning_str)
+        key = (warning_str, location)
+        if key not in seen:
+            seen.add(key)
+            findings.append({
+                "rule_id": rule_id,
+                "severity": "info",
+                "category": "consistency",
+                "description": warning_str,
+                "location": location,
+                "evidence": warning_str,
+            })
+    # Process checks array
+    for check in raw.get("checks", []):
+        if not isinstance(check, dict):
+            continue
+        # Check errors
+        for error_str in check.get("errors", []):
+            rule_id = _extract_rule_id(error_str)
+            location = _extract_location(error_str)
+            key = (error_str, location)
+            if key not in seen:
+                seen.add(key)
+                findings.append({
+                    "rule_id": rule_id,
+                    "severity": "warning",
+                    "category": "consistency",
+                    "description": error_str,
+                    "location": location,
+                    "evidence": error_str,
+                })
+        # Check warnings
+        for warning_str in check.get("warnings", []):
+            rule_id = _extract_rule_id(warning_str)
+            location = _extract_location(warning_str)
+            key = (warning_str, location)
+            if key not in seen:
+                seen.add(key)
+                findings.append({
+                    "rule_id": rule_id,
+                    "severity": "info",
+                    "category": "consistency",
+                    "description": warning_str,
+                    "location": location,
+                    "evidence": warning_str,
+                })
     return findings
 
 

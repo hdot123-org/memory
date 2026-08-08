@@ -437,6 +437,7 @@ def test_adapt_daily_audit():
 def test_adapt_consistency_check():
     """VAL-FIX-ADAPT-002: Real consistency check JSON → Finding dicts."""
     # Real format captured from memory-consistency-check --json
+    # Note: top-level errors/warnings contain the same strings as checks[].errors/warnings
     raw_output = {
         "errors": [
             "[init_validate_roundtrip] init_project_memory failed: ",
@@ -447,7 +448,7 @@ def test_adapt_consistency_check():
         "checks": [
             {
                 "name": "init_validate_roundtrip",
-                "errors": ["init_project_memory failed: "],
+                "errors": ["[init_validate_roundtrip] init_project_memory failed: "],
                 "warnings": [],
                 "passed": False,
             }
@@ -456,6 +457,7 @@ def test_adapt_consistency_check():
 
     findings = adapt_consistency_check(raw_output)
 
+    # Should produce exactly 2 findings: duplicate (same string in top-level and checks) is removed
     assert len(findings) == 2
     # Error finding
     assert findings[0]["rule_id"] == "INIT_VALIDATE_ROUNDTRIP"
@@ -1507,4 +1509,162 @@ def test_main_handles_gh_failure_gracefully():
         # Verify no issues were created (deduplicate and create_issue not called)
         # When get_open_issues fails, we skip the entire issue creation flow
         assert not any("create_issue" in str(call) for call in mock_print.call_args_list)
+
+
+# ============================================================================
+# VAL-HARD-010: Consistency check checks array tests
+# ============================================================================
+
+
+def test_consistency_check_processes_checks_array():
+    """VAL-HARD-010: adapt_consistency_check processes checks array entries.
+    
+    Each check entry's errors and warnings must be converted to Finding dicts.
+    The docstring documents this input format but the original implementation
+    only processes top-level errors and warnings.
+    """
+    # Real format from memory-consistency-check --json
+    # Findings ONLY in checks array, top-level is empty
+    raw_output = {
+        "errors": [],
+        "warnings": [],
+        "checks": [
+            {
+                "name": "index_integrity",
+                "errors": ["[index_integrity] INDEX.md references non-existent file: missing.md"],
+                "warnings": [],
+                "passed": False,
+            },
+            {
+                "name": "docstring_host_mentions",
+                "errors": [],
+                "warnings": ["[docstring_host_mentions] /path/to/test.py: docstring mentions codex"],
+                "passed": False,
+            },
+        ],
+        "passed": False,
+    }
+
+    findings = adapt_consistency_check(raw_output)
+
+    # Should produce 2 findings from checks array
+    assert len(findings) == 2, f"Expected 2 findings from checks array, got {len(findings)}"
+    
+    # First finding from check error
+    error_finding = next((f for f in findings if f["severity"] == "warning"), None)
+    assert error_finding is not None, "Should have an error finding (severity=warning)"
+    assert error_finding["rule_id"] == "INDEX_INTEGRITY"
+    assert "INDEX.md references non-existent file" in error_finding["description"]
+    
+    # Second finding from check warning
+    warning_finding = next((f for f in findings if f["severity"] == "info"), None)
+    assert warning_finding is not None, "Should have a warning finding (severity=info)"
+    assert warning_finding["rule_id"] == "DOCSTRING_HOST_MENTIONS"
+    assert warning_finding["location"] == "/path/to/test.py"
+
+
+def test_consistency_check_no_duplicate_findings():
+    """VAL-HARD-010: No duplicate findings when top-level and checks overlap.
+    
+    When the same error appears in both top-level errors and checks[].errors,
+    it should only appear once in the output.
+    """
+    # Same error appears in both top-level and checks
+    duplicate_error = "[init_validate_roundtrip] init_project_memory failed: "
+    raw_output = {
+        "errors": [duplicate_error],
+        "warnings": [],
+        "checks": [
+            {
+                "name": "init_validate_roundtrip",
+                "errors": [duplicate_error],  # Same error as top-level
+                "warnings": [],
+                "passed": False,
+            },
+        ],
+        "passed": False,
+    }
+
+    findings = adapt_consistency_check(raw_output)
+
+    # Should produce exactly 1 finding, not 2
+    assert len(findings) == 1, f"Expected 1 finding (no duplicates), got {len(findings)}"
+    assert findings[0]["description"] == duplicate_error
+
+
+def test_consistency_check_extract_location_applied_consistently():
+    """VAL-HARD-010: _extract_location applied to both errors and warnings consistently.
+    
+    The original implementation only applied _extract_location to warnings,
+    not to errors. This asymmetry must be fixed.
+    """
+    # Error string with extractable location
+    raw_output = {
+        "errors": [
+            "[consistency_check] /path/to/file.md: some error message",
+        ],
+        "warnings": [
+            "[docstring_check] /path/to/other.py: some warning message",
+        ],
+        "checks": [],
+        "passed": False,
+    }
+
+    findings = adapt_consistency_check(raw_output)
+
+    assert len(findings) == 2
+    
+    # Error finding should have location extracted
+    error_finding = next(f for f in findings if f["severity"] == "warning")
+    assert error_finding["location"] == "/path/to/file.md", \
+        f"Error location should be extracted, got: {error_finding['location']}"
+    
+    # Warning finding should have location extracted
+    warning_finding = next(f for f in findings if f["severity"] == "info")
+    assert warning_finding["location"] == "/path/to/other.py", \
+        f"Warning location should be extracted, got: {warning_finding['location']}"
+
+
+def test_consistency_check_checks_array_with_both_errors_and_warnings():
+    """VAL-HARD-010: Checks array with both errors and warnings produces correct findings.
+    
+    Verify that a single check with both errors and warnings produces
+    the correct number and types of findings.
+    """
+    raw_output = {
+        "errors": [],
+        "warnings": [],
+        "checks": [
+            {
+                "name": "multi_issue_check",
+                "errors": [
+                    "[multi_issue_check] /file1.md: error 1",
+                    "[multi_issue_check] /file2.md: error 2",
+                ],
+                "warnings": [
+                    "[multi_issue_check] /file3.py: warning 1",
+                ],
+                "passed": False,
+            },
+        ],
+        "passed": False,
+    }
+
+    findings = adapt_consistency_check(raw_output)
+
+    # Should produce 3 findings: 2 errors + 1 warning
+    assert len(findings) == 3
+    
+    # Count by severity
+    errors = [f for f in findings if f["severity"] == "warning"]
+    warnings = [f for f in findings if f["severity"] == "info"]
+    
+    assert len(errors) == 2, f"Expected 2 error findings, got {len(errors)}"
+    assert len(warnings) == 1, f"Expected 1 warning finding, got {len(warnings)}"
+    
+    # Verify locations extracted
+    locations = {f["location"] for f in findings}
+    assert "/file1.md" in locations
+    assert "/file2.md" in locations
+    assert "/file3.py" in locations
 
