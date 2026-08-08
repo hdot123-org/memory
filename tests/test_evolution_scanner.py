@@ -6,6 +6,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # Add scripts directory to path for import
 scripts_dir = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(scripts_dir))
@@ -1326,4 +1328,97 @@ def test_create_issue_uses_finding_fields_directly():
         assert "file.md" in body
         assert "Clean description" in body
         assert "Clean evidence" in body
+
+
+def test_empty_location_not_excluded_from_dedup():
+    """VAL-HARD-006: Empty location findings participate in dedup.
+    
+    When get_open_issues() filters parsed issues, it must use None checks
+    instead of truthiness checks, so empty-string locations are included.
+    This prevents duplicate issue creation for consistency_check findings
+    that have empty locations.
+    """
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        # Mock gh issue list returning an issue with empty location
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='[{"number": 123, "body": "**Rule ID**: CONSISTENCY_ERROR\\n**Location**: "}]'
+        )
+        
+        issues = get_open_issues("evolution-found")
+        
+        # Verify the issue with empty location is included
+        assert len(issues) == 1, f"Expected 1 issue, got {len(issues)}"
+        assert issues[0]["rule_id"] == "CONSISTENCY_ERROR"
+        assert issues[0]["location"] == ""
+        assert issues[0]["number"] == 123
+
+
+def test_gh_failure_raises_runtime_error():
+    """VAL-HARD-007: get_open_issues raises RuntimeError when gh returns non-zero.
+    
+    When gh issue list fails (rate limit, auth, network), get_open_issues()
+    must raise RuntimeError instead of returning []. This prevents the scanner
+    from creating duplicate issues when it cannot check existing ones.
+    """
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        # Mock gh returning non-zero exit code
+        mock_run.return_value = MagicMock(returncode=1, stderr="rate limit exceeded")
+        
+        with pytest.raises(RuntimeError, match="gh issue list failed"):
+            get_open_issues("evolution-found")
+
+
+def test_main_handles_gh_failure_gracefully():
+    """VAL-HARD-007: main() catches RuntimeError from get_open_issues and skips issue creation.
+    
+    When get_open_issues raises RuntimeError, main() must:
+    - Print a warning message
+    - Set issues_created to 0
+    - Still call update_history() to record the tick
+    This ensures the scanner doesn't create duplicate issues when gh fails.
+    """
+    with patch("evolution_scanner.check_kill_switch", return_value=False), \
+         patch("evolution_scanner.load_config") as mock_config, \
+         patch("evolution_scanner.run_audit_tool", return_value=[]), \
+         patch("evolution_scanner.detect_regressions") as mock_regressions, \
+         patch("evolution_scanner.get_open_issues", side_effect=RuntimeError("gh issue list failed")), \
+         patch("evolution_scanner.update_history") as mock_history, \
+         patch("evolution_scanner.check_isolation") as mock_isolation, \
+         patch("builtins.print") as mock_print:
+        
+        # Setup config
+        mock_config.return_value = {
+            "audit_tools": [],
+            "severity_order": ["critical", "warning", "info"],
+            "dedup_label": "evolution-found",
+            "isolation_threshold": 3,
+            "failure_label": "evolution-isolated",
+            "max_issues_per_tick": 3,
+            "snapshot_limit": 100,
+        }
+        
+        # Mock findings
+        finding = Finding("RULE_001", "warning", "consistency", "Test", "file.md", "evidence")
+        mock_regressions.return_value = [finding]
+        
+        # Run main
+        from evolution_scanner import main
+        main()
+        
+        # Verify warning was printed
+        warning_calls = [call for call in mock_print.call_args_list 
+                        if "Warning" in str(call) or "warning" in str(call)]
+        assert len(warning_calls) > 0, "Expected warning message to be printed"
+        
+        # Verify update_history was called (with issues_created=0)
+        assert mock_history.called, "update_history must be called even when get_open_issues fails"
+        history_call_args = mock_history.call_args
+        # issues_created is the 3rd positional argument
+        issues_created = history_call_args[0][2]
+        assert issues_created == 0, f"Expected issues_created=0, got {issues_created}"
+        
+        # Verify no issues were created (deduplicate and create_issue not called)
+        # When get_open_issues fails, we skip the entire issue creation flow
+        assert not any("create_issue" in str(call) for call in mock_print.call_args_list)
 

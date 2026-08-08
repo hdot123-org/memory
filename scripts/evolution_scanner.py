@@ -84,14 +84,13 @@ def get_open_issues(dedup_label: str) -> list[dict]:
                                   "--state", "open", "--limit", "200", "--json", "title,body,number"],
                                   capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
-            return []
-        issues = [{"rule_id": rid, "location": loc, "number": i["number"]}
-                  for i in json.loads(result.stdout)
-                  for rid, loc in [_parse_issue_fields(i.get("body", ""))]
-                  if rid and loc]
-        return issues
-    except Exception:
-        return []
+            raise RuntimeError(f"gh issue list failed: {result.stderr}")
+        return [{"rule_id": rid, "location": loc, "number": i["number"]}
+                for i in json.loads(result.stdout)
+                for rid, loc in [_parse_issue_fields(i.get("body", ""))]
+                if rid is not None and loc is not None]
+    except Exception as e:
+        raise RuntimeError(f"Failed to fetch open issues: {e}") from None
 
 
 def deduplicate(findings: list[Finding], open_issues: list[dict]) -> list[Finding]:
@@ -183,15 +182,17 @@ def main():
         sys.exit(0)
     config = load_config(repo_root)
     history_path = repo_root / ".evolution" / "findings_over_time.json"
-    raw_findings = [r for t in config["audit_tools"] for r in run_audit_tool(t, repo_root)]
-    all_findings = [normalize_finding(r) for r in raw_findings]
+    all_findings = [normalize_finding(r) for t in config["audit_tools"] for r in run_audit_tool(t, repo_root)]
     findings = detect_regressions(all_findings, history_path)
-    open_issues = get_open_issues(config["dedup_label"])
-    deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
-    issues_created = sum(1 for f in deduped[:config["max_issues_per_tick"]] if create_issue(f, config["dedup_label"]))
+    try:
+        open_issues = get_open_issues(config["dedup_label"])
+        deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
+        issues_created = sum(1 for f in deduped[:config["max_issues_per_tick"]] if create_issue(f, config["dedup_label"]))
+    except RuntimeError as e:
+        print(f"[evolution] Warning: {e}")
+        issues_created = 0
     update_history(history_path, all_findings, issues_created, config["snapshot_limit"])
-    check_isolation(all_findings, history_path, config["isolation_threshold"],
-                    config["failure_label"], config["dedup_label"])
+    check_isolation(all_findings, history_path, config["isolation_threshold"], config["failure_label"], config["dedup_label"])
     print(f"[evolution] Tick complete: {len(all_findings)} findings, {issues_created} issues created")
 
 
