@@ -800,3 +800,145 @@ def test_parse_issue_fields_early_break():
     rule_id, location = _parse_issue_fields(body)
     assert rule_id == "EARLY_RULE"
     assert location == "early/file.md"
+
+
+# ============================================================================
+# GH API Efficiency and Isolation Tests (VAL-FIX-ROBUST-001/002/003)
+# ============================================================================
+
+
+def test_gh_limit_200_in_get_open_issues():
+    """VAL-FIX-ROBUST-001: get_open_issues includes --limit 200 to prevent dedup failure."""
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]")
+        get_open_issues("evolution-found")
+
+        # Verify --limit 200 is in the gh command args
+        call_args = mock_run.call_args[0][0]
+        assert "--limit" in call_args
+        limit_idx = call_args.index("--limit")
+        assert call_args[limit_idx + 1] == "200"
+
+
+def test_gh_limit_200_in_check_isolation(tmp_path):
+    """VAL-FIX-ROBUST-001: check_isolation includes --limit 200 in gh issue list call."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "tick_id": "20260101-000000",
+                "findings": [{"rule_id": "RULE_001", "location": "file.md"}],
+                "issues_created": 1,
+            }
+            for _ in range(3)
+        ],
+        "resolved_findings": [],
+    }
+    with open(history_path, "w") as f:
+        json.dump(history_data, f)
+
+    findings = [Finding("RULE_001", "warning", "test", "Stuck", "file.md", "evidence")]
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]")
+        check_isolation(findings, history_path, 3, "evolution-isolated", "evolution-found")
+
+        # Find the gh issue list call
+        list_calls = [
+            call for call in mock_run.call_args_list
+            if len(call[0]) > 0 and len(call[0][0]) >= 3
+            and call[0][0][0] == "gh" and call[0][0][1] == "issue" and call[0][0][2] == "list"
+        ]
+        assert len(list_calls) > 0, "gh issue list was not called"
+        call_args = list_calls[0][0][0]
+        assert "--limit" in call_args
+        limit_idx = call_args.index("--limit")
+        assert call_args[limit_idx + 1] == "200"
+
+
+def test_isolated_issue_suppresses_rebuild():
+    """VAL-FIX-ROBUST-002: Issues with evolution-isolated label are counted in dedup."""
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        # Mock returns an issue with evolution-isolated label
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='[{"title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\\n**Location**: file.md", "number": 42}]',
+        )
+        issues = get_open_issues("evolution-found")
+
+        # Verify the isolated issue is included in the results
+        assert len(issues) == 1
+        assert issues[0]["rule_id"] == "RULE_001"
+        assert issues[0]["location"] == "file.md"
+
+        # Verify the gh command includes both labels (OR logic)
+        call_args = mock_run.call_args[0][0]
+        # Find all --label arguments
+        label_values = []
+        for i, arg in enumerate(call_args):
+            if arg == "--label" and i + 1 < len(call_args):
+                label_values.append(call_args[i + 1])
+        assert "evolution-found" in label_values, f"evolution-found not in {label_values}"
+        assert "evolution-isolated" in label_values, f"evolution-isolated not in {label_values}"
+
+
+def test_check_isolation_single_api_call(tmp_path):
+    """VAL-FIX-ROBUST-003: check_isolation makes exactly 1 gh issue list call regardless of finding count."""
+    history_path = tmp_path / "findings_over_time.json"
+    # Create 3 snapshots with multiple findings
+    history_data = {
+        "snapshots": [
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "tick_id": "20260101-000000",
+                "findings": [
+                    {"rule_id": "RULE_001", "location": "file1.md"},
+                    {"rule_id": "RULE_002", "location": "file2.md"},
+                    {"rule_id": "RULE_003", "location": "file3.md"},
+                ],
+                "issues_created": 3,
+            }
+            for _ in range(3)
+        ],
+        "resolved_findings": [],
+    }
+    with open(history_path, "w") as f:
+        json.dump(history_data, f)
+
+    # 3 findings that all meet the threshold
+    findings = [
+        Finding("RULE_001", "warning", "test", "Stuck 1", "file1.md", "evidence"),
+        Finding("RULE_002", "warning", "test", "Stuck 2", "file2.md", "evidence"),
+        Finding("RULE_003", "warning", "test", "Stuck 3", "file3.md", "evidence"),
+    ]
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        # Mock gh issue list to return matching issues
+        issues_data = [
+            {"number": 41, "title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\n**Location**: file1.md"},
+            {"number": 42, "title": "[evolution] RULE_002", "body": "**Rule ID**: RULE_002\n**Location**: file2.md"},
+            {"number": 43, "title": "[evolution] RULE_003", "body": "**Rule ID**: RULE_003\n**Location**: file3.md"},
+        ]
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps(issues_data),
+        )
+
+        check_isolation(findings, history_path, 3, "evolution-isolated", "evolution-found")
+
+        # Count gh issue list calls - should be exactly 1
+        list_calls = [
+            call for call in mock_run.call_args_list
+            if len(call[0]) > 0 and len(call[0][0]) >= 3
+            and call[0][0][0] == "gh" and call[0][0][1] == "issue" and call[0][0][2] == "list"
+        ]
+        assert len(list_calls) == 1, f"Expected exactly 1 gh issue list call, got {len(list_calls)}"
+
+        # Verify gh issue edit was called 3 times (once per finding)
+        edit_calls = [
+            call for call in mock_run.call_args_list
+            if len(call[0]) > 0 and len(call[0][0]) >= 4
+            and call[0][0][1] == "issue" and call[0][0][2] == "edit"
+        ]
+        assert len(edit_calls) == 3, f"Expected 3 gh issue edit calls, got {len(edit_calls)}"

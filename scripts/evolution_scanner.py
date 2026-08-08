@@ -77,8 +77,9 @@ def _parse_issue_fields(body: str) -> tuple[str | None, str | None]:
 
 def get_open_issues(dedup_label: str) -> list[dict]:
     try:
-        result = subprocess.run(["gh", "issue", "list", "--label", dedup_label, "--state", "open",
-                                  "--json", "title,body,number"], capture_output=True, text=True, timeout=30)
+        result = subprocess.run(["gh", "issue", "list", "--label", dedup_label, "--label", "evolution-isolated",
+                                  "--state", "open", "--limit", "200", "--json", "title,body,number"],
+                                  capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
             return []
         issues = [{"rule_id": rid, "location": loc, "number": i["number"]}
@@ -153,19 +154,17 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
         if len(snapshots) < threshold:
             return
         recent = snapshots[-threshold:]
+        result = subprocess.run(["gh", "issue", "list", "--label", dedup_label, "--state", "open", "--limit", "200", "--json", "number,title,body"], capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            return
+        all_issues = json.loads(result.stdout) if result.stdout.strip() else []
         for finding in findings:
             count = sum(1 for s in recent if any(
                 f["rule_id"] == finding.rule_id and f["location"] == finding.location
                 for f in s["findings"]))
             if count < threshold:
                 continue
-            result = subprocess.run(
-                ["gh", "issue", "list", "--label", dedup_label, "--state", "open",
-                 "--json", "number,title,body"],
-                capture_output=True, text=True, timeout=30)
-            if result.returncode != 0:
-                continue
-            for issue in json.loads(result.stdout):
+            for issue in all_issues:
                 rid, loc = _parse_issue_fields(issue.get("body", ""))
                 if rid == finding.rule_id and loc == finding.location:
                     subprocess.run(
