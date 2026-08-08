@@ -8,6 +8,11 @@ from unittest.mock import MagicMock, patch
 scripts_dir = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(scripts_dir))
 
+from evolution_adapters import (
+    adapt_consistency_check,
+    adapt_daily_audit,
+    adapt_error_patterns,
+)
 from evolution_scanner import (
     Finding,
     check_isolation,
@@ -20,11 +25,6 @@ from evolution_scanner import (
     run_audit_tool,
     sort_by_severity,
     update_history,
-)
-from evolution_adapters import (
-    adapt_daily_audit,
-    adapt_consistency_check,
-    adapt_error_patterns,
 )
 
 
