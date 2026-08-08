@@ -874,15 +874,16 @@ def test_isolated_issue_suppresses_rebuild():
         assert issues[0]["rule_id"] == "RULE_001"
         assert issues[0]["location"] == "file.md"
 
-        # Verify the gh command includes both labels (OR logic)
+        # Verify the gh command uses --search for OR semantics (not two --label flags)
         call_args = mock_run.call_args[0][0]
-        # Find all --label arguments
-        label_values = []
-        for i, arg in enumerate(call_args):
-            if arg == "--label" and i + 1 < len(call_args):
-                label_values.append(call_args[i + 1])
-        assert "evolution-found" in label_values, f"evolution-found not in {label_values}"
-        assert "evolution-isolated" in label_values, f"evolution-isolated not in {label_values}"
+        assert "--search" in call_args, f"--search not found in command args: {call_args}"
+        search_idx = call_args.index("--search")
+        search_value = call_args[search_idx + 1]
+        assert "label:evolution-found" in search_value, f"evolution-found not in search: {search_value}"
+        assert "label:evolution-isolated" in search_value, f"evolution-isolated not in search: {search_value}"
+        # Verify no two --label flags are used (AND semantics bug)
+        label_count = call_args.count("--label")
+        assert label_count == 0, f"Should use --search, not --label flags. Found {label_count} --label flags"
 
 
 def test_check_isolation_single_api_call(tmp_path):
