@@ -55,6 +55,12 @@ jobs:
           path: .evolution/findings_over_time.json
           key: evolution-history-${{ github.run_id }}
           restore-keys: evolution-history-
+      - name: Ensure labels exist
+        env:
+          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+        run: |
+          gh label create "evolution-found" --color FBCA04 --description "Evolution scanner finding" --force || true
+          gh label create "evolution-isolated" --color B60205 --description "Stuck 3+ ticks" --force || true
       - name: Run evolution scanner
         run: python scripts/evolution_scanner.py
         env:

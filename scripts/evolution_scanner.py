@@ -214,7 +214,9 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
             for issue in all_issues:
                 rid, loc = _parse_issue_fields(issue.get("body", ""))
                 if rid == finding.rule_id and loc == finding.location:
-                    subprocess.run(["gh", "issue", "edit", str(issue["number"]), "--add-label", failure_label], capture_output=True, text=True, timeout=30)
+                    edit_result = subprocess.run(["gh", "issue", "edit", str(issue["number"]), "--add-label", failure_label], capture_output=True, text=True, timeout=30)
+                    if edit_result.returncode != 0:
+                        print(f"[evolution] Warning: gh issue edit failed for issue #{issue['number']}: {edit_result.stderr.strip()}")
                     break
     except (json.JSONDecodeError, KeyError, TypeError, subprocess.SubprocessError, OSError) as e:
         print(f"[evolution] Warning: check_isolation failed: {e}")
@@ -237,6 +239,7 @@ def main() -> None:
     all_findings = [normalize_finding(r) for _, res in raw_results if res is not None for r in res]
     all_findings = dedup_intra_tick(all_findings)
     findings = detect_regressions(all_findings, history_path)
+    deduped = []
     try:
         open_issues = get_open_issues(config["dedup_label"])
         deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
@@ -247,6 +250,11 @@ def main() -> None:
     update_history(history_path, all_findings, issues_created, config["snapshot_limit"], failed_categories)
     check_isolation(all_findings, history_path, config["isolation_threshold"], config["failure_label"], config["dedup_label"])
     print(f"[evolution] Tick complete: {len(all_findings)} findings, {issues_created} issues created")
+
+    # P1-2: Hard exit when findings exist but zero issues created
+    if deduped and issues_created == 0:
+        print("::error::findings exist but zero issues created")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

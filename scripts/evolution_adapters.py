@@ -6,8 +6,15 @@ import re
 def sanitize_text(text: str, max_len: int = 500) -> str:
     """Sanitize untrusted text before it is embedded in an Issue body.
 
-    Removes @-mentions, inline links/images, line-leading markdown, bidi
-    override characters, and control characters; truncates to max_len.
+    Character removal (bidi/zero-width, control chars, inline links, HTML comments)
+    runs FIRST in a fixed-point loop (max 3 iterations), THEN pattern defenses
+    (credential redaction, @mention stripping, markdown line-start stripping).
+
+    The fixed-point loop is needed because one removal step can re-expose patterns
+    that another step handles. For example, removing zero-width chars from
+    'ghp_AAAA\\u200bBBBB...' reassembles the credential pattern; removing inline
+    links from '@[]()droid' regenerates '@droid'.
+
     Also redacts common credential patterns (VAL-FOLLOWUP-005).
 
     RESIDUAL RISK: This is NOT a complete prompt-injection defense. Plain-text
@@ -22,7 +29,29 @@ def sanitize_text(text: str, max_len: int = 500) -> str:
     Returns:
         Sanitized text
     """
-    # Redact common credential patterns before other processing
+    # ReDoS prevention: pre-truncate to 4× max_len before regex processing
+    text = text[:max_len * 4]
+
+    # Phase 1: Fixed-point loop for character removal (max 3 iterations)
+    # This must run BEFORE pattern defenses so that removable characters
+    # cannot be inserted within patterns to bypass redaction/stripping.
+    for _iteration in range(3):
+        previous = text
+        # Strip Unicode bidi override / zero-width characters
+        text = re.sub(r'[\u200b-\u200f\u202a-\u202e\u2066-\u2069]', '', text)
+        # Strip control characters (keep \t and \n which are legitimate in descriptions)
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\r]', '', text)
+        # Strip inline links [text](url) → text and inline images ![alt](url) → alt
+        text = re.sub(r'!?\[([^\]]{0,500})\]\([^)]{0,500}\)', r'\1', text)
+        # Strip HTML comments <!--...--> (prevent hidden instruction injection)
+        text = re.sub(r'<!--.{0,2000}?>', '', text, flags=re.DOTALL)
+        # Strip unclosed HTML comment <!--...$ (prevent partial marker forgery)
+        text = re.sub(r'<!--.{0,2000}$', '', text, flags=re.DOTALL)
+        if text == previous:
+            break  # Fixed point reached
+
+    # Phase 2: Pattern defenses (run AFTER character removal)
+    # Redact common credential patterns
     # GitHub tokens (ghp_, github_pat_)
     text = re.sub(r'ghp_[A-Za-z0-9]{20,}', '***REDACTED***', text)
     text = re.sub(r'github_pat_[A-Za-z0-9_]+', '***REDACTED***', text)
@@ -32,19 +61,8 @@ def sanitize_text(text: str, max_len: int = 500) -> str:
     text = re.sub(r'xox[bpoa]-[A-Za-z0-9-]+', '***REDACTED***', text)
     # OpenAI keys (sk-...)
     text = re.sub(r'sk-[A-Za-z0-9]{20,}', '***REDACTED***', text)
-
-    # ReDoS prevention: pre-truncate to 4× max_len before regex processing
-    text = text[:max_len * 4]
-    # Strip HTML comments before other processing (prevent hidden instruction injection)
-    text = re.sub(r'<!--.{0,2000}?>', '', text, flags=re.DOTALL)
-    # Strip Unicode bidi override characters (prevent text obfuscation attacks)
-    text = re.sub(r'[\u200b-\u200f\u202a-\u202e\u2066-\u2069]', '', text)
-    # Strip control characters (keep \t and \n which are legitimate in descriptions)
-    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\r]', '', text)
     # Remove @ mentions (use @+ to strip multi-@ like @@droid → droid)
     text = re.sub(r'@+(\w+)', r'\1', text)
-    # Strip inline links [text](url) → text and inline images ![alt](url) → alt
-    text = re.sub(r'!?\[([^\]]{0,500})\]\([^)]{0,500}\)', r'\1', text)
     # Remove markdown headings, code fences, list markers at line start (including ~ for ~~~ fences)
     text = re.sub(r'^[#`>~-]+\s*', '', text, flags=re.MULTILINE)
     # Truncate
