@@ -7,9 +7,11 @@
 
 name: Droid Auto Review
 
+# Security: use pull_request_target only.
+# This runs the workflow from the BASE branch (main), not the PR head,
+# preventing malicious PRs from accessing secrets via modified workflows.
+# The ref fix below ensures the correct PR code is checked out for review.
 on:
-  pull_request:
-    types: [opened, ready_for_review, reopened, synchronize]
   pull_request_target:
     types: [opened, ready_for_review, reopened, synchronize]
 
