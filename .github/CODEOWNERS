@@ -19,8 +19,8 @@
 /CONTRIBUTING.md    @hdot123
 
 # Evolution governance — human approval required
-.evolution/                           @busiji
-scripts/evolution_scanner.py           @busiji
-scripts/evolution_adapters.py          @busiji
-scripts/evolution_utils.py             @busiji
-.github/workflows/evolution-*.yml      @busiji
+.evolution/                           @hdot123
+scripts/evolution_scanner.py           @hdot123
+scripts/evolution_adapters.py          @hdot123
+scripts/evolution_utils.py             @hdot123
+.github/workflows/evolution-*.yml      @hdot123

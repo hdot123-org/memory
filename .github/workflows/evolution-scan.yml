@@ -7,7 +7,7 @@
 # GITHUB_TOKEN (github-actions[bot]) has author_association NONE, so Issues created
 # with it would NOT trigger droid.yml, breaking the autonomous loop:
 #   scanner → Issue @droid → droid.yml → Droid → PR → CI → auto-merge
-# DISPATCH_TOKEN is a PAT belonging to @busiji (OWNER), so Issues created with it
+# DISPATCH_TOKEN is a PAT belonging to @hdot123 (OWNER), so Issues created with it
 # have author_association OWNER and correctly trigger droid.yml.
 #
 # Fallback options if DISPATCH_TOKEN is unavailable:

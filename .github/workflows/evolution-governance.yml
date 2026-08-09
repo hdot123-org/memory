@@ -1,5 +1,5 @@
 # Evolution Governance CI Check
-# Blocks PRs that modify evolution governance paths unless authored by @busiji.
+# Blocks PRs that modify evolution governance paths unless authored by @hdot123.
 # This prevents bots (including Droid) from modifying their own governance rules.
 
 name: Evolution Governance
@@ -76,14 +76,14 @@ jobs:
           if [ "$TOUCHED_PROTECTED" = "true" ]; then
             echo ""
             echo "PR author: $PR_AUTHOR"
-            if [ "$PR_AUTHOR" != "busiji" ]; then
+            if [ "$PR_AUTHOR" != "hdot123" ]; then
               echo ""
               echo "ERROR: Non-owner ($PR_AUTHOR) cannot modify evolution governance paths."
               echo "Protected paths: .evolution/ (all files), scripts/evolution_*.py, .github/workflows/evolution-*.yml, .github/CODEOWNERS"
-              echo "Only @busiji is authorized to modify these files."
+              echo "Only @hdot123 is authorized to modify these files."
               exit 1
             else
-              echo "OK: Owner (@busiji) modifying governance paths"
+              echo "OK: Owner (@hdot123) modifying governance paths"
             fi
           else
             echo "No protected paths modified, governance check passed"
