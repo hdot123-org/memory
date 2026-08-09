@@ -7,8 +7,12 @@
 
 name: Droid Auto Review
 
+# Security: use pull_request_target only.
+# This runs the workflow from the BASE branch (main), not the PR head,
+# preventing malicious PRs from accessing secrets via modified workflows.
+# The ref fix below ensures the correct PR code is checked out for review.
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, ready_for_review, reopened, synchronize]
 
 concurrency:
@@ -31,6 +35,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
       - name: Write BYOM settings file
         run: |
@@ -58,5 +63,6 @@ jobs:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
+          security_review_model: "claude-opus-4-5"
           review_model: "qwen3.7-plus"
           allowed_bots: "dependabot[bot]"

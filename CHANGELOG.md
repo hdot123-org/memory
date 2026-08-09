@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.15.9](https://github.com/hdot123/memory/compare/v0.15.8...v0.15.9) (2026-08-09)
+
+
+### Bug Fixes
+
+* **security:** 修复 droid-review P1 审查发现（checkout ref + check过滤 + deploy脚本加固） ([#332](https://github.com/hdot123/memory/issues/332)) ([60ca129](https://github.com/hdot123/memory/commit/60ca129264ad3641108a51fb21b0ef74b306e7c9))
+
+## [0.15.8](https://github.com/hdot123/memory/compare/v0.15.7...v0.15.8) (2026-08-09)
+
+
+### Bug Fixes
+
+* **security:** 四层纵深防御架构 — 消除3个现有安全漏洞 + 全链路安全门禁 ([#329](https://github.com/hdot123/memory/issues/329)) ([270844d](https://github.com/hdot123/memory/commit/270844d04b89a243904c56e17e435abc05ed0cb1))
+* 修复 8 个 P2 审计发现（bidi字符+隔离碰撞+异常吞没+shlex+懒加载+副作用） ([#328](https://github.com/hdot123/memory/issues/328)) ([1f9d804](https://github.com/hdot123/memory/commit/1f9d804d572f3a8eb13304b78a1761528ef3cc9f))
+* 修复进化扫描器 16 个缺陷（安全加固+健壮性+正确性） ([#326](https://github.com/hdot123/memory/issues/326)) ([5560c5c](https://github.com/hdot123/memory/commit/5560c5c64739acda3f157912877109b89e2f8b84))
+
 ## [0.15.7](https://github.com/hdot123/memory/compare/v0.15.6...v0.15.7) (2026-08-07)
 
 

@@ -12,8 +12,8 @@ COMMIT_SHA="${3}"
 GH_TOKEN="${4}"
 
 # Retry configuration
-# NVIDIA nemotron-3-super-120b model takes 12-21 minutes for review
-MAX_ATTEMPTS=60
+# Model review takes 10-35+ minutes depending on PR complexity
+MAX_ATTEMPTS=120
 WAIT_SECONDS=30
 
 # For push events (not pull_request), skip gracefully
@@ -36,9 +36,17 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
     -H "Accept: application/vnd.github+json" \
     "https://api.github.com/repos/${REPOSITORY}/commits/${COMMIT_SHA}/check-runs?check_name=droid-review")
   
-  # Extract the conclusion of the first matching check
-  STATUS=$(echo "$CHECKS" | jq -r '.check_runs[0].conclusion // "pending"')
-  
+  # Extract the conclusion of the latest non-cancelled check run.
+  # When dual triggers exist, two check runs are created and one is cancelled.
+  # We must select the one that actually completed.
+  STATUS=$(echo "$CHECKS" | jq -r '
+    .check_runs
+    | map(select(.conclusion != null and .conclusion != "cancelled" and .conclusion != "skipped"))
+    | sort_by(.started_at)
+    | last
+    | .conclusion // "pending"
+  ')
+
   echo "droid-review conclusion: $STATUS"
   
   # Decision logic
@@ -46,8 +54,8 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
     echo "✓ droid-review passed"
     exit 0
   elif [ "$STATUS" = "neutral" ] || [ "$STATUS" = "skipped" ]; then
-    echo "○ droid-review skipped (likely Dependabot PR without FACTORY_API_KEY access)"
-    exit 0
+    echo "✗ BLOCK: droid-review was skipped/neutral — security audit did not run. Merge not allowed."
+    exit 1
   elif [ "$STATUS" = "failure" ]; then
     # Check if this is a Dependabot PR that failed due to missing FACTORY_API_KEY
     PR_INFO=$(curl -s -H "Authorization: token $GH_TOKEN" \

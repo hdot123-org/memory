@@ -2688,6 +2688,11 @@ def main(argv: list[str] | None = None) -> int:
         if result["success"] and not result["dry_run"]:
             _print_post_init_health_summary(target)
 
+            # Security baseline reminder
+            print("\n🔒 安全基线提醒: 运行以下命令部署 CI 安全 workflow:")
+            print("  bash scripts/deploy-security-baseline.sh .")
+            print("  (或对远程仓库: bash scripts/deploy-security-baseline.sh --repo owner/repo)")
+
     return 0 if result["success"] else 1
 
 
