@@ -33,11 +33,16 @@ jobs:
           # --method GET is explicit because --field would switch gh api to POST (which 404s on this endpoint)
           # per_page goes in the URL query string, NOT as --field (which also triggers POST)
           # P2-4: Also get previous_filename to detect file renames
-          if ! CHANGED=$(gh api --method GET "repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100" --paginate --jq '.[] | .filename, (.previous_filename // empty)' 2>&1); then
+          # Capture stderr separately to prevent mixing error/warning text into $CHANGED
+          # which is used for protected path pattern matching
+          ERR_BUF=$(mktemp)
+          if ! CHANGED=$(gh api --method GET "repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100" --paginate --jq '.[] | .filename, (.previous_filename // empty)' 2>"$ERR_BUF"); then
             echo "ERROR: Failed to fetch PR changed files via API:" >&2
-            echo "$CHANGED" >&2
+            cat "$ERR_BUF" >&2
+            rm -f "$ERR_BUF"
             exit 1
           fi
+          rm -f "$ERR_BUF"
 
           if [ -z "$CHANGED" ]; then
             echo "No changed files detected, skipping governance check"
@@ -59,6 +64,14 @@ jobs:
           # Check scripts/evolution_*.py (all evolution scripts)
           if echo "$CHANGED" | grep -q "^scripts/evolution_.*\.py$"; then
             echo "PROTECTED: evolution scanner script modified"
+            TOUCHED_PROTECTED=true
+          fi
+
+          # P1-A: Protect entire scripts/ directory to prevent module poisoning
+          # The scanner runs with scripts/ on sys.path, so any new file (e.g. yaml.py)
+          # can shadow stdlib/PyPI modules and execute code with DISPATCH_TOKEN.
+          if echo "$CHANGED" | grep -q "^scripts/"; then
+            echo "PROTECTED: scripts/ directory modified (module poisoning protection)"
             TOUCHED_PROTECTED=true
           fi
 

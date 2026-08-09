@@ -10,6 +10,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
+
+# P1-A: Restore script directory to sys.path when PYTHONSAFEPATH is set.
+# PYTHONSAFEPATH prevents automatic insertion of the script's directory, blocking
+# module poisoning attacks (e.g. scripts/yaml.py shadowing PyYAML).
+# We explicitly add only our own directory back, after stdlib imports are resolved.
+_SCRIPT_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+
 from evolution_adapters import TOOL_TO_CATEGORIES, sanitize_structured_field, sanitize_text
 from evolution_utils import _parse_issue_fields, dedup_intra_tick, load_history, validate_config
 
@@ -34,6 +43,24 @@ def check_kill_switch(repo_root: Path) -> bool:
         print("[evolution] Kill switch active, exiting")
         return True
     return False
+
+
+def ensure_labels(dedup_label: str, failure_label: str) -> None:
+    """Ensure required GitHub labels exist before running the scanner."""
+    labels = [
+        (dedup_label, "FBCA04", "Evolution scanner finding"),
+        (failure_label, "B60205", "Stuck 3+ ticks"),
+    ]
+    for name, color, desc in labels:
+        try:
+            result = subprocess.run(
+                ["gh", "label", "create", name, "--color", color, "--description", desc, "--force"],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode != 0 and result.stderr.strip():
+                print(f"[evolution] Warning: Failed to ensure label '{name}': {result.stderr.strip()}")
+        except Exception as e:
+            print(f"[evolution] Warning: ensure_labels failed for '{name}': {e}")
 
 
 def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict] | None:
@@ -73,7 +100,10 @@ def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict] | No
                 return None
             adapter = ADAPTER_MAP.get(tool["name"])
             return adapter(lines) if adapter else lines
-        result = subprocess.run(shlex.split(tool["command"]), capture_output=True, text=True, timeout=60)
+        # P2-B: Strip GitHub tokens from audit subprocess environment.
+        # Audit tools do not need gh access; leaking DISPATCH_TOKEN expands trust boundary.
+        safe_env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}
+        result = subprocess.run(shlex.split(tool["command"]), capture_output=True, text=True, timeout=60, env=safe_env)
         # Log stderr as warning when exit code is non-zero (audit tools exit non-zero on findings)
         if result.returncode != 0:
             stderr = result.stderr.strip()
@@ -177,7 +207,7 @@ def update_history(history_path: Path, findings: list[Finding], issues_created: 
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()
     # Skip findings whose category came from a failed tool (prevents false "resolved")
-    new_resolved = [{"rule_id": p["rule_id"], "location": p["location"], "resolved_at": now_iso}
+    new_resolved = [{"rule_id": p.get("rule_id", ""), "location": p.get("location", ""), "resolved_at": now_iso}
                     for p in prev if (p.get("rule_id"), p.get("location")) not in current_keys
                     and (not failed_categories or p.get("category") not in failed_categories)]
     data["resolved_findings"] = (data.get("resolved_findings", []) + new_resolved)[-snapshot_limit:]
@@ -228,6 +258,7 @@ def main() -> None:
         sys.exit(0)
     config = load_config(repo_root)
     validate_config(config)
+    ensure_labels(config["dedup_label"], config["failure_label"])
 
     history_path = repo_root / ".evolution" / "findings_over_time.json"
     # Track tool failures to prevent false "resolved" cascade
@@ -236,10 +267,15 @@ def main() -> None:
     for tool_name, result in raw_results:
         if result is None:  # Tool failed
             failed_categories.update(TOOL_TO_CATEGORIES.get(tool_name, set()))
+    # Fail when all audit tools failed (prevents silent completion on broken pipeline)
+    if config["audit_tools"] and all(result is None for _, result in raw_results):
+        print("::error::All audit tools failed, cannot produce reliable findings")
+        sys.exit(1)
     all_findings = [normalize_finding(r) for _, res in raw_results if res is not None for r in res]
     all_findings = dedup_intra_tick(all_findings)
     findings = detect_regressions(all_findings, history_path)
     deduped = []
+    gh_failed = False
     try:
         open_issues = get_open_issues(config["dedup_label"])
         deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
@@ -247,6 +283,7 @@ def main() -> None:
     except RuntimeError as e:
         print(f"[evolution] Warning: {e}")
         issues_created = 0
+        gh_failed = True
     update_history(history_path, all_findings, issues_created, config["snapshot_limit"], failed_categories)
     check_isolation(all_findings, history_path, config["isolation_threshold"], config["failure_label"], config["dedup_label"])
     print(f"[evolution] Tick complete: {len(all_findings)} findings, {issues_created} issues created")
@@ -254,6 +291,10 @@ def main() -> None:
     # P1-2: Hard exit when findings exist but zero issues created
     if deduped and issues_created == 0:
         print("::error::findings exist but zero issues created")
+        sys.exit(1)
+    # P2-A: Hard exit when GitHub API unavailable and findings exist (prevents silent loop death)
+    if gh_failed and all_findings:
+        print("::error::GitHub API unavailable, cannot verify dedup; aborting tick to prevent silent loop death")
         sys.exit(1)
 
 

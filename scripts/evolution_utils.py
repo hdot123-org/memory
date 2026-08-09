@@ -130,6 +130,13 @@ def load_history(history_path: Path):
             valid_findings = [f for f in snapshot['findings'] if isinstance(f, dict)]
             if len(valid_findings) != len(snapshot['findings']):
                 print(f"[evolution] Warning: Filtered {len(snapshot['findings']) - len(valid_findings)} non-dict findings from snapshot {i} in {history_path}")
+            # P3: Deep-validate finding dicts have required keys for dedup
+            required_finding_keys = {"rule_id", "location"}
+            before_count = len(valid_findings)
+            valid_findings = [f for f in valid_findings if required_finding_keys.issubset(f.keys())]
+            if len(valid_findings) < before_count:
+                dropped = before_count - len(valid_findings)
+                print(f"[evolution] Warning: Dropped {dropped} findings missing rule_id/location in snapshot {i} in {history_path}")
             snapshot['findings'] = valid_findings
             valid_snapshots.append(snapshot)
         else:
