@@ -1,4 +1,5 @@
 """Adapter functions for converting audit tool output to Finding-compatible dicts."""
+import hashlib
 import re
 
 
@@ -20,14 +21,18 @@ def sanitize_text(text: str, max_len: int = 500) -> str:
     Returns:
         Sanitized text
     """
+    # ReDoS prevention: pre-truncate to 4× max_len before regex processing
+    text = text[:max_len * 4]
+    # Strip HTML comments before other processing (prevent hidden instruction injection)
+    text = re.sub(r'<!--.{0,2000}?>', '', text, flags=re.DOTALL)
     # Strip Unicode bidi override characters (prevent text obfuscation attacks)
-    text = re.sub(r'[\u202a-\u202e\u2066-\u2069]', '', text)
+    text = re.sub(r'[\u200b-\u200f\u202a-\u202e\u2066-\u2069]', '', text)
     # Strip control characters (keep \t and \n which are legitimate in descriptions)
     text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\r]', '', text)
-    # Remove @ mentions (prevent triggering GitHub users/bots)
-    text = re.sub(r'@(\w+)', r'\1', text)
+    # Remove @ mentions (use @+ to strip multi-@ like @@droid → droid)
+    text = re.sub(r'@+(\w+)', r'\1', text)
     # Strip inline links [text](url) → text and inline images ![alt](url) → alt
-    text = re.sub(r'!?\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    text = re.sub(r'!?\[([^\]]{0,500})\]\([^)]{0,500}\)', r'\1', text)
     # Remove markdown headings, code fences, list markers at line start (including ~ for ~~~ fences)
     text = re.sub(r'^[#`>~-]+\s*', '', text, flags=re.MULTILINE)
     # Truncate
@@ -40,7 +45,8 @@ def sanitize_structured_field(text: str, max_len: int = 100) -> str:
     """Sanitize structured fields (rule_id, location) to prevent field injection.
 
     Strips control characters (newlines, tabs, etc.) that could enable forging
-    body headers. Strips leading/trailing whitespace. Truncates to max_len.
+    body headers. Strips leading/trailing whitespace. Strips bidi characters.
+    Truncates to max_len with hash suffix on truncation to prevent collision.
 
     Args:
         text: Field value to sanitize
@@ -51,11 +57,14 @@ def sanitize_structured_field(text: str, max_len: int = 100) -> str:
     """
     # Remove all control characters (newlines, tabs, etc.) including Unicode line/paragraph separators
     text = re.sub(r'[\x00-\x1f\x7f\u0085\u2028\u2029]', '', text)
+    # Strip bidi override/formatting characters (prevent dedup asymmetry attacks)
+    text = re.sub(r'[\u200b-\u200f\u202a-\u202e]', '', text)
     # Strip leading/trailing whitespace
     text = text.strip()
-    # Truncate
+    # Truncate with hash suffix to prevent collision of different long values
     if len(text) > max_len:
-        text = text[:max_len]
+        hash_suffix = hashlib.md5(text.encode()).hexdigest()[:8]
+        text = text[:max_len - 9] + "." + hash_suffix
     return text
 
 
@@ -97,78 +106,59 @@ def adapt_daily_audit(raw: dict) -> list[dict]:
     return findings
 
 
+def _consistency_key(error_str: str) -> tuple:
+    """Generate dedup key for consistency check findings.
+
+    Includes content hash to prevent different errors with the same rule_id
+    and location (both empty for many consistency errors) from collapsing
+    into the same dedup key.
+    """
+    rule_id = _extract_rule_id(error_str)
+    location = _extract_location(error_str)
+    content_hash = hashlib.md5(error_str.encode()).hexdigest()[:8]
+    return (rule_id, location, content_hash)
+
+
+def _consistency_finding(error_str: str, severity: str) -> dict:
+    """Build a Finding dict from a consistency check error/warning string."""
+    return {
+        "rule_id": _extract_rule_id(error_str),
+        "severity": severity,
+        "category": "consistency",
+        "description": error_str,
+        "location": _extract_location(error_str),
+        "evidence": error_str,
+    }
+
+
 def adapt_consistency_check(raw: dict) -> list[dict]:
     """Convert consistency check output to Finding dicts.
 
     Input format: {errors: [str], warnings: [str], checks: [{name, errors, warnings, passed}]}
     """
     findings = []
-    seen = set()  # Track (description, location) pairs to avoid duplicates
+    seen = set()  # Track _consistency_key tuples to avoid duplicates
+
+    def _add(error_str: str, severity: str):
+        key = _consistency_key(error_str)
+        if key not in seen:
+            seen.add(key)
+            findings.append(_consistency_finding(error_str, severity))
 
     # Top-level errors
     for error_str in raw.get("errors", []):
-        rule_id = _extract_rule_id(error_str)
-        location = _extract_location(error_str)
-        key = (error_str, location)
-        if key not in seen:
-            seen.add(key)
-            findings.append({
-                "rule_id": rule_id,
-                "severity": "warning",
-                "category": "consistency",
-                "description": error_str,
-                "location": location,
-                "evidence": error_str,
-            })
+        _add(error_str, "warning")
     # Top-level warnings
     for warning_str in raw.get("warnings", []):
-        rule_id = _extract_rule_id(warning_str)
-        location = _extract_location(warning_str)
-        key = (warning_str, location)
-        if key not in seen:
-            seen.add(key)
-            findings.append({
-                "rule_id": rule_id,
-                "severity": "info",
-                "category": "consistency",
-                "description": warning_str,
-                "location": location,
-                "evidence": warning_str,
-            })
+        _add(warning_str, "info")
     # Process checks array
     for check in raw.get("checks", []):
         if not isinstance(check, dict):
             continue
-        # Check errors
         for error_str in check.get("errors", []):
-            rule_id = _extract_rule_id(error_str)
-            location = _extract_location(error_str)
-            key = (error_str, location)
-            if key not in seen:
-                seen.add(key)
-                findings.append({
-                    "rule_id": rule_id,
-                    "severity": "warning",
-                    "category": "consistency",
-                    "description": error_str,
-                    "location": location,
-                    "evidence": error_str,
-                })
-        # Check warnings
+            _add(error_str, "warning")
         for warning_str in check.get("warnings", []):
-            rule_id = _extract_rule_id(warning_str)
-            location = _extract_location(warning_str)
-            key = (warning_str, location)
-            if key not in seen:
-                seen.add(key)
-                findings.append({
-                    "rule_id": rule_id,
-                    "severity": "info",
-                    "category": "consistency",
-                    "description": warning_str,
-                    "location": location,
-                    "evidence": warning_str,
-                })
+            _add(warning_str, "info")
     return findings
 
 
@@ -180,11 +170,20 @@ def _extract_rule_id(text: str) -> str:
 
 
 def _extract_location(text: str) -> str:
-    """Extract file path from string like '[check] /path/to/file: message'."""
+    """Extract file path from string like '[check] /path/to/file: message'.
+
+    Only returns a path if it looks like a valid file path:
+    - Has a file extension (contains '.')
+    - OR starts with '/' (absolute path)
+    Otherwise returns empty string to prevent message text from being treated as location.
+    """
     if "]" in text:
         rest = text[text.index("]") + 1:].strip()
         if ":" in rest:
-            return rest.split(":")[0].strip()
+            candidate = rest.split(":")[0].strip()
+            # Validate: must have extension or be absolute path
+            if "." in candidate or candidate.startswith("/"):
+                return candidate
     return ""
 
 
