@@ -28,13 +28,13 @@ if [[ "$TARGET" == "--repo" ]]; then
     exit 1
   fi
   # Clone to temp, deploy, push
-  TMPDIR=$(mktemp -d)
-  gh repo clone "$REPO_NAME" "$TMPDIR" 2>/dev/null || {
+  CLONE_DIR=$(mktemp -d)
+  gh repo clone "$REPO_NAME" "$CLONE_DIR" 2>/dev/null || {
     echo "Error: Cannot clone $REPO_NAME"
-    rm -rf "$TMPDIR"
+    rm -rf "$CLONE_DIR"
     exit 1
   }
-  TARGET="$TMPDIR"
+  TARGET="$CLONE_DIR"
   CLEANUP=true
 fi
 
@@ -85,22 +85,18 @@ if [[ -n "$REPO_FULL_NAME" ]] && [[ "${SKIP_BRANCH_PROTECTION:-}" != "1" ]]; the
   EXISTING=$(gh api "repos/$REPO_FULL_NAME/branches/main/protection" 2>/dev/null || echo "")
   
   if [[ -n "$EXISTING" ]]; then
-    # Update existing protection
-    gh api "repos/$REPO_FULL_NAME/branches/main/protection" -X PUT \
-      --input - << 'PROTECT_EOF'
-{
-  "required_status_checks": {
-    "strict": true,
-    "contexts": ["ci-ok", "droid-review"]
-  },
-  "enforce_admins": true,
-  "required_pull_request_reviews": {
-    "required_approving_review_count": 0
-  },
-  "restrictions": null
-}
-PROTECT_EOF
-    echo "  [+] enforce_admins=true set"
+    # Merge existing settings with required security additions.
+    # This preserves all existing configuration (reviewers, restrictions,
+    # signed commits, linear history, etc.) and only adds/updates the fields
+    # needed for the security baseline.
+    MERGED=$(echo "$EXISTING" | jq '
+      # Ensure required_status_checks includes ci-ok and droid-review
+      .required_status_checks.contexts = ((.required_status_checks.contexts // []) + ["ci-ok", "droid-review"] | unique)
+      | .required_status_checks.strict = true
+      | .enforce_admins = true
+    ')
+    echo "$MERGED" | gh api "repos/$REPO_FULL_NAME/branches/main/protection" -X PUT --input -
+    echo "  [+] enforce_admins=true set (existing config preserved)"
   else
     echo "  [!] No branch protection found, skipping enforce_admins (set up branch protection first)"
   fi
@@ -110,10 +106,23 @@ fi
 if [[ "${CLEANUP:-}" == "true" ]]; then
   cd "$TARGET"
   git add -A
-  git commit -m "chore(security): 部署安全基线（droid-review + auto-merge + check脚本 + 安全模板）" 2>/dev/null || true
-  git push origin main 2>/dev/null || git push origin master 2>/dev/null || true
+  git commit -m "chore(security): 部署安全基线（droid-review + auto-merge + check脚本 + 安全模板）" 2>/dev/null || {
+    echo "  [!] Nothing to commit (baseline may already be deployed)"
+    rm -rf "$TARGET"
+    exit 0
+  }
+  if git push origin main 2>&1; then
+    echo "  [+] Pushed to main and cleaned up"
+  elif git push origin master 2>&1; then
+    echo "  [+] Pushed to master and cleaned up"
+  else
+    echo "  [✗] ERROR: Push failed. Branch protection may block direct push to main."
+    echo "      The deploy script sets enforce_admins=true which prevents direct pushes."
+    echo "      Recommendation: deploy via PR instead of --repo."
+    echo "      Temp clone preserved at: $TARGET"
+    exit 1
+  fi
   rm -rf "$TARGET"
-  echo "  [+] Pushed to remote and cleaned up"
 fi
 
 echo ""
