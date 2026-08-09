@@ -12,8 +12,8 @@ COMMIT_SHA="${3}"
 GH_TOKEN="${4}"
 
 # Retry configuration
-# NVIDIA nemotron-3-super-120b model takes 12-21 minutes for review
-MAX_ATTEMPTS=60
+# Model review takes 10-35+ minutes depending on PR complexity
+MAX_ATTEMPTS=120
 WAIT_SECONDS=30
 
 # For push events (not pull_request), skip gracefully
