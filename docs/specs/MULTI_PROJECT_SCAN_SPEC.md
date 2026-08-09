@@ -43,7 +43,7 @@ registry 是 TOML 格式的索引文件，位于 memory 仓库中：
 name = "workbot"
 local_path = "/Users/<user>/tool/workbot"
 repo = "https://github.com/hdot123/workbot"
-memory_lock = { memory_version = "0.1.0", schema_version = "wb-hook-v2", adapter_version = "builtin" }
+memory_lock = { memory_version = "0.1.0", schema_version = "context-package-v1", adapter_version = "builtin" }
 
 [[project]]
 name = "axonhub"
@@ -75,7 +75,7 @@ memory_lock = { memory_version = "0.2.0", schema_version = "context-package-v1",
 memory_lock 是从各项目 memory.lock 文件提取的版本指针：
 
 ```toml
-memory_lock = { memory_version = "0.1.0", schema_version = "wb-hook-v2", adapter_version = "builtin" }
+memory_lock = { memory_version = "0.1.0", schema_version = "context-package-v1", adapter_version = "builtin" }
 ```
 
 ### 2.5 registry 不包含的内容
@@ -137,7 +137,7 @@ registry 只包含：
       "repo": "https://github.com/hdot123/workbot",
       "current": {
         "memory_version": "0.1.0",
-        "schema_version": "wb-hook-v2",
+        "schema_version": "context-package-v1",
         "adapter_version": "builtin"
       },
       "status": "behind",
@@ -266,7 +266,7 @@ codex     | 0.2.0   | current| none    | no        | -
 name = "new-project"
 local_path = "/path/to/project"
 repo = "https://github.com/org/new-project"
-memory_lock = { memory_version = "0.1.0", schema_version = "wb-hook-v2", adapter_version = "builtin" }
+memory_lock = { memory_version = "0.1.0", schema_version = "context-package-v1", adapter_version = "builtin" }
 ```
 
 ### 7.2 移除项目

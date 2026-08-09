@@ -45,7 +45,7 @@ def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dic
 | 2 | `event` | `str` | 是 | `"session-start"` / `"prompt-submit"` / `"stop"` / `"notification"` | 触发事件类型 |
 | 3 | `payload` | `dict[str, Any]` | 是 | 任意 JSON 对象 | 事件载荷（cwd、task_ref、session_id 等） |
 
-> **Schema 双层说明**：核心内部使用 `wb-hook-v2` 进行 context package 组装，对外输出时转换为 `context-package-v1` 格式。内部 v2 包含完整的 system_context、project_context、task_context 三层结构；外部 v1 为精简后的消费契约。
+> **Schema 双层说明**：核心内部使用内部 v2 schema 进行 context package 组装，对外输出时转换为 `context-package-v1` 格式。内部 v2 包含完整的 system_context、project_context、task_context 三层结构；外部 v1 为精简后的消费契约。
 
 ### 2.3 调用示例
 

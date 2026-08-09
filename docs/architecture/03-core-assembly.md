@@ -21,7 +21,7 @@ related: [DES-001, DES-004, DES-005]
 > 来源文件：`memory_core/tools/memory_hook_core.py`
 > 生成日期：2026-04-26
 
-> **Schema 双层说明**：核心内部使用 `wb-hook-v2` 进行 context package 组装，对外输出时转换为 `context-package-v1` 格式。Gateway 层通过 `_apply_artifact_compaction()` 执行 v2→v1 的字段裁剪和格式转换。
+> **Schema 双层说明**：核心内部使用内部 v2 schema 进行 context package 组装，对外输出时转换为 `context-package-v1` 格式。Gateway 层通过 `_apply_artifact_compaction()` 执行 v2→v1 的字段裁剪和格式转换。
 
 ---
 
@@ -194,7 +194,7 @@ related: [DES-001, DES-004, DES-005]
 
 | Key | 类型 | 来源 |
 |-----|------|------|
-| `schema_version` | `str` | 硬编码 `"wb-hook-v2"` |
+| `schema_version` | `str` | 内部 v2 版本标识 |
 | `generated_at` | `str` | `now_iso_fn()` |
 | `host` | `str` | 入参 `host` |
 | `event` | `str` | 入参 `event` |

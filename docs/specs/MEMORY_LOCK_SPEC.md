@@ -62,7 +62,7 @@ lock_reason = "initial"
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | memory_version | SemVer string | 是 | memory-core 的发布版本，如 0.1.0 |
-| schema_version | string | 是 | hook/schema 版本标识，如 wb-hook-v2、context-package-v1 |
+| schema_version | string | 是 | hook/schema 版本标识，如 context-package-v1 |
 | adapter_version | string | 否 | adapter 版本，默认 builtin |
 | locked_at | ISO-8601 | 否 | 最后锁定/升级时间 |
 | lock_reason | string | 否 | 锁定原因枚举 |
@@ -84,7 +84,7 @@ lock_reason = "initial"
 
 [[compat]]
 memory_version = "0.1.0"
-schema_versions = ["wb-hook-v2", "context-package-v1"]
+schema_versions = ["context-package-v1"]
 adapter_versions = ["builtin"]
 status = "stable"
 
