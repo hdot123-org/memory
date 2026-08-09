@@ -113,11 +113,11 @@ Public documentation should be safe for open-source readers.
 
 release-please 自动更新以下文件：
 - `pyproject.toml`
-- `memory_core/constants.py`
+- `memory_core/__init__.py`（`__version__` 字段）
 - `README.md`
 - `CHANGELOG.md`
 
-测试文件通过 `CURRENT_MEMORY_VERSION` 动态读取版本号，无需手动更新。
+版本号的单一来源为 `memory_core/__init__.py` 的 `__version__`；`memory_core/constants.py` 通过 `from memory_core import __version__ as CURRENT_MEMORY_VERSION` 引用该值，与 `pyproject.toml` 保持同步，无需 release-please 单独维护。测试文件通过 `CURRENT_MEMORY_VERSION` 动态读取版本号，无需手动更新。
 
 ### 手动发版（备用）
 
