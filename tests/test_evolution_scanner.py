@@ -1,6 +1,7 @@
 """Tests for evolution scanner."""
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -24,6 +25,7 @@ from evolution_scanner import (
     create_issue,
     deduplicate,
     detect_regressions,
+    ensure_labels,
     get_open_issues,
     normalize_finding,
     run_audit_tool,
@@ -3528,3 +3530,208 @@ def test_sanitize_structured_field_bidi_isolate_cannot_forge_dedup_key():
     plain = "RULE_001"
     injected = "RULE\u2066_001"
     assert sanitize_structured_field(injected) == plain, "Bidi isolate must not create a distinct sanitized value"
+
+
+# ============================================================================
+# P1-A / P2-A / P2-B Tests (Opus Round 4 Audit)
+# ============================================================================
+
+
+def test_main_exits_nonzero_when_github_api_fails(tmp_path):
+    """P2-A: main() exits non-zero when GitHub API fails and findings exist."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [{'name': 'test_tool', 'command': 'echo "[]"'}],
+        'severity_order': {'critical': 3, 'warning': 2, 'info': 1},
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 3,
+        'snapshot_limit': 100,
+        'github': {'owner': 'test', 'repo': 'test'}
+    }
+
+    finding = Finding("RULE_001", "warning", "test", "test", "test.md", "test")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.run_audit_tool', return_value=[{'rule_id': 'RULE_001', 'severity': 'warning', 'category': 'test', 'description': 'test', 'location': 'test.md', 'evidence': 'test'}]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[finding]), \
+         patch('evolution_scanner.detect_regressions', return_value=[finding]), \
+         patch('evolution_scanner.get_open_issues', side_effect=RuntimeError("rate limit exceeded")), \
+         patch('evolution_scanner.create_issue'), \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'):
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 1
+
+
+def test_main_no_exit_when_github_fails_but_no_findings():
+    """P2-A: main() should NOT exit when GitHub API fails but no findings exist."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [{'name': 'test_tool', 'command': 'echo "[]"'}],
+        'severity_order': {'critical': 3, 'warning': 2, 'info': 1},
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 3,
+        'snapshot_limit': 100,
+        'github': {'owner': 'test', 'repo': 'test'}
+    }
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[]), \
+         patch('evolution_scanner.detect_regressions', return_value=[]), \
+         patch('evolution_scanner.get_open_issues', side_effect=RuntimeError("rate limit exceeded")), \
+         patch('evolution_scanner.create_issue'), \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'):
+
+        # Should NOT raise SystemExit (no findings to protect)
+        main()
+
+
+def test_run_audit_tool_strips_gh_token_from_subprocess():
+    """P2-B: run_audit_tool strips GH_TOKEN from subprocess environment."""
+    from evolution_scanner import run_audit_tool
+
+    tool = {'name': 'test_tool', 'command': 'echo "[]"', 'output_format': 'json'}
+    captured_env = {}
+
+    original_run = subprocess.run
+
+    def fake_run(*args, **kwargs):
+        captured_env.update(kwargs.get('env', {}))
+        # Return a successful result with empty findings
+        result = original_run(args[0] if args else kwargs.get('args'),
+                              capture_output=True, text=True, timeout=5)
+        return result
+
+    with patch.dict(os.environ, {'GH_TOKEN': 'secret_token', 'GITHUB_TOKEN': 'another_secret'}):
+        with patch('evolution_scanner.subprocess.run', side_effect=fake_run):
+            run_audit_tool(tool, Path('.'))
+
+    assert 'GH_TOKEN' not in captured_env, "GH_TOKEN must be stripped from audit subprocess env"
+    assert 'GITHUB_TOKEN' not in captured_env, "GITHUB_TOKEN must be stripped from audit subprocess env"
+
+
+def test_scanner_restores_sys_path_with_safepath():
+    """P1-A: Scanner explicitly restores scripts/ dir to sys.path for PYTHONSAFEPATH."""
+    import evolution_scanner
+
+    script_dir = str(Path(evolution_scanner.__file__).resolve().parent)
+    assert script_dir in sys.path, \
+        "Scanner's directory must be in sys.path (restored by explicit sys.path.insert)"
+
+
+# ============================================================================
+# INFRA-92 Tests (Scanner Hardening: labels, silent completion, history validation)
+# ============================================================================
+
+
+def test_ensure_labels_creates_labels():
+    """ensure_labels creates both dedup_label and failure_label."""
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        ensure_labels("evolution-found", "evolution-isolated")
+
+        # Should call gh label create twice (one per label)
+        create_calls = [c for c in mock_run.call_args_list if c[0][0][1] == "label" and c[0][0][2] == "create"]
+        assert len(create_calls) == 2
+        # Verify label names
+        all_args = [c[0][0] for c in create_calls]
+        assert any("evolution-found" in args for args in all_args)
+        assert any("evolution-isolated" in args for args in all_args)
+
+
+def test_main_fails_when_all_tools_fail():
+    """When all audit tools fail, main() exits non-zero instead of silently completing."""
+    with patch("evolution_scanner.check_kill_switch", return_value=False), \
+         patch("evolution_scanner.load_config") as mock_config, \
+         patch("evolution_scanner.validate_config"), \
+         patch("evolution_scanner.ensure_labels"), \
+         patch("evolution_scanner.run_audit_tool", return_value=None), \
+         patch("evolution_scanner.update_history") as mock_history, \
+         patch("builtins.print"):
+
+        mock_config.return_value = {
+            "audit_tools": [
+                {"name": "tool1", "command": "cmd1", "output_format": "json"},
+                {"name": "tool2", "command": "cmd2", "output_format": "json"},
+            ],
+            "severity_order": ["critical", "warning", "info"],
+            "dedup_label": "evolution-found",
+            "isolation_threshold": 3,
+            "failure_label": "evolution-isolated",
+            "max_issues_per_tick": 3,
+            "snapshot_limit": 100,
+        }
+
+        from evolution_scanner import main
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 1
+        # update_history should NOT be called when all tools fail
+        assert not mock_history.called
+
+
+def test_load_history_filters_findings_missing_keys(tmp_path):
+    """load_history drops findings missing rule_id or location keys."""
+    from evolution_utils import load_history
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "tick_id": "20260101-000000",
+                "findings": [
+                    {"rule_id": "GOOD", "location": "file.md", "severity": "warning"},
+                    {"severity": "warning"},  # Missing rule_id and location
+                    {"rule_id": "PARTIAL"},  # Missing location
+                    {"location": "file2.md"},  # Missing rule_id
+                ],
+                "issues_created": 1,
+            }
+        ],
+        "resolved_findings": [],
+    }
+    with open(history_path, "w") as f:
+        json.dump(history_data, f)
+
+    data = load_history(history_path)
+    assert data is not None
+    findings = data["snapshots"][0]["findings"]
+    assert len(findings) == 1  # Only the complete finding survives
+    assert findings[0]["rule_id"] == "GOOD"
+
+
+def test_update_history_handles_malformed_prev_findings(tmp_path):
+    """update_history doesn't crash on findings missing rule_id/location in previous snapshot."""
+    history_path = tmp_path / "findings_over_time.json"
+    # First tick with a malformed finding (missing rule_id)
+    malformed_data = {
+        "snapshots": [{
+            "timestamp": "2026-01-01T00:00:00Z",
+            "tick_id": "20260101-000000",
+            "findings": [{"severity": "warning"}],  # Missing rule_id, location
+            "issues_created": 0,
+        }],
+        "resolved_findings": [],
+    }
+    with open(history_path, "w") as f:
+        json.dump(malformed_data, f)
+
+    # Second tick - should not crash even though prev findings are malformed
+    findings = [Finding("RULE_1", "warning", "test", "Issue", "file.md", "evidence")]
+    # This should NOT raise KeyError
+    update_history(history_path, findings, 1, 100)
+
+    data = json.loads(history_path.read_text())
+    assert len(data["snapshots"]) == 2
