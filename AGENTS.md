@@ -87,17 +87,19 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 
 ## 铁律：合并纪律（droid-review 门禁）
 
-**`gh pr merge --admin` 必须先检查 droid-review 失败原因，不可盲目跳过。**
+**禁止 `gh pr merge --admin`。任何 check 失败都不允许绕过合并，必须修复或等待恢复后重新触发。**
 
 决策流程：
 1. 运行 `gh pr checks <PR#>` 查看所有 check 状态
 2. 如果 droid-review 失败，分析失败原因：
-   - **模型/API 故障**（如 "model unavailable"、"API timeout"、"rate limit"）→ 可接受，使用 `--admin` 合并
-   - **代码审查发现**（P1/P2 bug、security issue、correctness problem）→ **禁止跳过**，必须修复后重新提交
+   - **模型/API 故障**（如 "model unavailable"、"API timeout"、"rate limit"）→ 等待恢复后重新触发，不可绕过
+   - **代码审查发现**（P1/P2 bug、security issue、correctness problem）→ 必须修复后重新提交
    - **P3 发现**（typo、style、minor improvement）→ 如果快速修复则修复，否则作为 follow-up 跟踪
-3. 记录 `--admin` 合并的原因到 PR comment，便于后续审计
+3. CI 持续失败时，回滚或修复根因，不要绕过
 
 **ci-ok 门禁已包含 droid-review**：ci.yml 的 ci-ok job 会查询 droid-review check 状态。当 droid-review 失败时，ci-ok 也会失败，阻止标准合并。
+
+**enforce_admins: true**：分支保护已启用管理员强制执行，`--admin` 旁路已被 GitHub 层面堵死。
 
 ## 铁律：CI 完成后 Webhook 路由
 

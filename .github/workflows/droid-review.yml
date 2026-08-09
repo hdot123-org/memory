@@ -10,6 +10,8 @@ name: Droid Auto Review
 on:
   pull_request:
     types: [opened, ready_for_review, reopened, synchronize]
+  pull_request_target:
+    types: [opened, ready_for_review, reopened, synchronize]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -58,5 +60,6 @@ jobs:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
+          security_review_model: "claude-opus-4-5"
           review_model: "qwen3.7-plus"
           allowed_bots: "dependabot[bot]"
