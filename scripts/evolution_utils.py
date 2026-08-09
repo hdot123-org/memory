@@ -26,8 +26,13 @@ def validate_config(config: dict) -> None:
         config: Configuration dictionary from .evolution/config.yml
 
     Raises:
-        SystemExit: If any required keys are missing
+        SystemExit: If config is not a dict or any required keys are missing
     """
+    # VAL-R3-006: Guard against None (empty config.yml → yaml.safe_load returns None)
+    if not isinstance(config, dict):
+        print("[evolution] Error: config.yml must be a YAML mapping (got empty or invalid file)")
+        sys.exit(1)
+
     missing_keys = [key for key in REQUIRED_CONFIG_KEYS if key not in config]
     if missing_keys:
         print(f"[evolution] Error: Missing required config keys: {', '.join(missing_keys)}")
@@ -112,18 +117,31 @@ def load_history(history_path: Path):
         quarantine_corrupted_file(history_path)
         return None
 
-    # Deep validation: each snapshot must be a dict with 'findings' key
+    # Deep validation: each snapshot must be a dict with 'findings' as a list
     # Skip corrupt entries with a warning, preserve valid entries (VAL-FOLLOWUP-001)
     valid_snapshots = []
     for i, snapshot in enumerate(data['snapshots']):
         if isinstance(snapshot, dict) and 'findings' in snapshot:
+            # P2-3: findings must be a list
+            if not isinstance(snapshot['findings'], list):
+                print(f"[evolution] Warning: Snapshot at index {i} has non-list findings in {history_path}, skipped")
+                continue
+            # Filter non-dict entries from findings
+            valid_findings = [f for f in snapshot['findings'] if isinstance(f, dict)]
+            if len(valid_findings) != len(snapshot['findings']):
+                print(f"[evolution] Warning: Filtered {len(snapshot['findings']) - len(valid_findings)} non-dict findings from snapshot {i} in {history_path}")
+            snapshot['findings'] = valid_findings
             valid_snapshots.append(snapshot)
         else:
             print(f"[evolution] Warning: Corrupt snapshot at index {i} in {history_path}, skipped")
     data['snapshots'] = valid_snapshots
 
+    # VAL-R3-004: resolved_findings must be a list; reset to [] if not
+    if 'resolved_findings' in data and not isinstance(data['resolved_findings'], list):
+        print(f"[evolution] Warning: resolved_findings is not a list in {history_path}, resetting to []")
+        data['resolved_findings'] = []
     # Validate resolved_findings entries: each must be dict with rule_id and location
-    if isinstance(data.get('resolved_findings'), list):
+    elif isinstance(data.get('resolved_findings'), list):
         valid_resolved = []
         for i, entry in enumerate(data['resolved_findings']):
             if isinstance(entry, dict) and 'rule_id' in entry and 'location' in entry:

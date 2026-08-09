@@ -24,3 +24,4 @@ scripts/evolution_scanner.py           @hdot123
 scripts/evolution_adapters.py          @hdot123
 scripts/evolution_utils.py             @hdot123
 .github/workflows/evolution-*.yml      @hdot123
+/scripts/                              @hdot123

@@ -32,7 +32,8 @@ jobs:
           # Fail-closed: if API call fails, exit with error instead of silently passing governance
           # --method GET is explicit because --field would switch gh api to POST (which 404s on this endpoint)
           # per_page goes in the URL query string, NOT as --field (which also triggers POST)
-          if ! CHANGED=$(gh api --method GET "repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100" --paginate --jq '.[].filename' 2>&1); then
+          # P2-4: Also get previous_filename to detect file renames
+          if ! CHANGED=$(gh api --method GET "repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100" --paginate --jq '.[] | .filename, (.previous_filename // empty)' 2>&1); then
             echo "ERROR: Failed to fetch PR changed files via API:" >&2
             echo "$CHANGED" >&2
             exit 1
