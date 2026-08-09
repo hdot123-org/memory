@@ -3,10 +3,15 @@ import re
 
 
 def sanitize_text(text: str, max_len: int = 500) -> str:
-    """Sanitize text to prevent prompt injection attacks.
+    """Sanitize untrusted text before it is embedded in an Issue body.
 
-    Removes @ mentions (to prevent triggering GitHub users/bots),
-    removes dangerous markdown formatting, and truncates to max_len.
+    Removes @-mentions, inline links/images, line-leading markdown, bidi
+    override characters, and control characters; truncates to max_len.
+
+    RESIDUAL RISK: This is NOT a complete prompt-injection defense. Plain-text
+    imperative instructions aimed at the consuming agent are intentionally NOT
+    neutralized, because description/evidence must remain readable. The Issue
+    body therefore structurally marks untrusted regions (see create_issue).
 
     Args:
         text: Text to sanitize
@@ -17,6 +22,8 @@ def sanitize_text(text: str, max_len: int = 500) -> str:
     """
     # Strip Unicode bidi override characters (prevent text obfuscation attacks)
     text = re.sub(r'[\u202a-\u202e\u2066-\u2069]', '', text)
+    # Strip control characters (keep \t and \n which are legitimate in descriptions)
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\r]', '', text)
     # Remove @ mentions (prevent triggering GitHub users/bots)
     text = re.sub(r'@(\w+)', r'\1', text)
     # Strip inline links [text](url) → text and inline images ![alt](url) → alt
@@ -69,20 +76,22 @@ def adapt_daily_audit(raw: dict) -> list[dict]:
                 "location": violation.get("file", ""),
                 "evidence": f"Project: {project_name}, Detail: {violation.get('detail', '')}",
             })
-    # Infrastructure servers are also under projects or separately
+    # Infrastructure servers and databases carry the same violations schema
     infra = raw.get("infrastructure", {})
-    for server_name, server_data in infra.get("servers", {}).items():
-        if not isinstance(server_data, dict):
-            continue
-        for violation in server_data.get("violations", []):
-            findings.append({
-                "rule_id": violation.get("type", "UNKNOWN").upper(),
-                "severity": violation.get("severity", "info"),
-                "category": "daily_audit",
-                "description": violation.get("detail", ""),
-                "location": violation.get("file", ""),
-                "evidence": f"Server: {server_name}, Detail: {violation.get('detail', '')}",
-            })
+    for kind in ("servers", "databases"):
+        for name, data in infra.get(kind, {}).items():
+            if not isinstance(data, dict):
+                continue
+            for violation in data.get("violations", []):
+                label = "Server" if kind == "servers" else "Database"
+                findings.append({
+                    "rule_id": violation.get("type", "UNKNOWN").upper(),
+                    "severity": violation.get("severity", "info"),
+                    "category": "daily_audit",
+                    "description": violation.get("detail", ""),
+                    "location": violation.get("file", ""),
+                    "evidence": f"{label}: {name}, Detail: {violation.get('detail', '')}",
+                })
     return findings
 
 

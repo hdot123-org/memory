@@ -40,6 +40,8 @@ jobs:
           python-version: '3.12'
       - name: Install package
         run: pip install -e .
+      - name: Generate error patterns
+        run: memory-error-patterns --all-projects
       - name: Cache evolution history
         uses: actions/cache@v4
         with:
