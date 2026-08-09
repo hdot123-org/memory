@@ -4,8 +4,8 @@ Validates that the protected path patterns in evolution-governance.yml
 correctly detect files that are renamed into or out of protected paths.
 """
 import re
-import pytest
 
+import pytest
 
 # These patterns are extracted from .github/workflows/evolution-governance.yml
 # They must match the grep patterns used in the governance check
