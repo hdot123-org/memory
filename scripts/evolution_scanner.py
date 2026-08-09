@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from evolution_adapters import sanitize_structured_field, sanitize_text, TOOL_TO_CATEGORIES
+from evolution_adapters import TOOL_TO_CATEGORIES, sanitize_structured_field, sanitize_text
 from evolution_utils import _parse_issue_fields, dedup_intra_tick, load_history
 
 

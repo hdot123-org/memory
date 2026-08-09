@@ -2125,7 +2125,7 @@ def test_update_history_skips_failed_tool_categories(tmp_path):
     tick2: tool fails, F1 should NOT be in resolved_findings (because tool failed)
     tick3: tool recovers, F1 present again, should NOT be flagged as regression
     """
-    from evolution_scanner import update_history, detect_regressions
+    from evolution_scanner import detect_regressions, update_history
 
     history_path = tmp_path / "findings_over_time.json"
 
