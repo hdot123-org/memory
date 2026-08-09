@@ -66,6 +66,11 @@ def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict] | No
                     lines.append(json.loads(line))
                 except json.JSONDecodeError as e:
                     print(f"[evolution] Warning: {tool['name']} JSONL line {lineno} malformed, skipped: {e}")
+            # If all lines failed to parse, treat as tool failure (None) not empty success ([])
+            # This prevents false "resolved" cascade when registry is corrupted
+            if not lines:
+                print(f"[evolution] Warning: {tool['name']} all JSONL lines malformed, treating as tool failure")
+                return None
             adapter = ADAPTER_MAP.get(tool["name"])
             return adapter(lines) if adapter else lines
         result = subprocess.run(shlex.split(tool["command"]), capture_output=True, text=True, timeout=60)

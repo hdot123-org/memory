@@ -2275,6 +2275,25 @@ def test_jsonl_malformed_line_skipped(tmp_path):
         f"Expected warning about malformed JSONL line. Warnings: {warning_calls}"
 
 
+def test_jsonl_all_lines_malformed_returns_none(tmp_path):
+    """P2-3: When ALL JSONL lines are malformed, run_audit_tool returns None (tool failure),
+    not [] (empty success). This prevents false 'resolved' cascade when registry is corrupted.
+    """
+    source_file = "memory/kb/patterns/registry.jsonl"
+    full_path = tmp_path / source_file
+    full_path.parent.mkdir(parents=True, exist_ok=True)
+    # All lines are malformed JSON
+    full_path.write_text(
+        '{broken json line 1\n'
+        '{broken json line 2\n'
+        '{broken json line 3\n'
+    )
+    tool = {"name": "error_patterns", "output_format": "registry_jsonl", "source_file": source_file}
+    with patch("builtins.print"):
+        result = run_audit_tool(tool, tmp_path)
+    assert result is None, f"Expected None when all JSONL lines malformed, got {result}"
+
+
 def test_dedup_intra_tick_keeps_highest_severity():
     """VAL-OPUS5-SCN-004: dedup_intra_tick() keeps highest severity per (rule_id, location).
 
