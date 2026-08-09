@@ -1668,3 +1668,111 @@ def test_consistency_check_checks_array_with_both_errors_and_warnings():
     assert "/file2.md" in locations
     assert "/file3.py" in locations
 
+
+# ============================================================================
+# P2 Follow-up Tests (bidi, quarantine collision, exception logging, shlex, immutability)
+# ============================================================================
+
+
+def test_sanitize_text_strips_bidi_override_chars():
+    """P2-1: Unicode bidi override characters stripped to prevent text obfuscation."""
+    from evolution_adapters import sanitize_text
+
+    malicious = "normal\u202etext"  # U+202E RIGHT-TO-LEFT OVERRIDE
+    result = sanitize_text(malicious)
+    assert "\u202e" not in result
+    assert "\u202d" not in sanitize_text("x\u202dy")  # LTR OVERRIDE
+    assert "\u2066" not in sanitize_text("x\u2066y")  # LTR ISOLATE
+    assert "\u2069" not in sanitize_text("x\u2069y")  # POP DIRECTIONAL ISOLATE
+
+
+def test_quarantine_collision_handling(tmp_path):
+    """P2-2: quarantine_corrupted_file handles timestamp collision without crashing."""
+    from evolution_adapters import quarantine_corrupted_file
+
+    f1 = tmp_path / "history1.json"
+    f1.write_text('{"bad"')
+    f2 = tmp_path / "history2.json"
+    f2.write_text('{"also bad"')
+
+    quarantine_corrupted_file(f1)
+    quarantine_corrupted_file(f2)
+
+    qfiles = list(tmp_path.glob("*.corrupted.*.json"))
+    assert len(qfiles) == 2, f"Expected 2 quarantine files, got {len(qfiles)}"
+
+
+def test_check_isolation_logs_exception(tmp_path):
+    """P2-3: check_isolation logs exception instead of silently swallowing."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"timestamp": "2026-01-01T00:00:00Z", "tick_id": "t1", "findings": [{"rule_id": "RULE_001", "location": "file.md"}], "issues_created": 1}
+            for _ in range(3)
+        ],
+        "resolved_findings": [],
+    }
+    history_path.write_text(json.dumps(history_data))
+    findings = [Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")]
+
+    with patch("evolution_scanner.subprocess.run", side_effect=Exception("gh crashed")), \
+         patch("builtins.print") as mock_print:
+        check_isolation(findings, history_path, 3, "iso", "dedup")
+
+    warning_calls = [c for c in mock_print.call_args_list if "check_isolation" in str(c)]
+    assert len(warning_calls) > 0, "check_isolation should log exception"
+
+
+def test_detect_regressions_no_mutation(tmp_path):
+    """P2-7: detect_regressions does not mutate input Finding objects."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [{"findings": [], "timestamp": "2026-01-01T00:00:00Z", "tick_id": "x", "issues_created": 0}],
+        "resolved_findings": [{"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z"}],
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    original = Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")
+    findings = [original]
+    result = detect_regressions(findings, history_path)
+
+    assert original.severity == "warning", "Input Finding must not be mutated"
+    assert result[0].severity == "critical", "Returned copy should have critical severity"
+
+
+def test_create_issue_logs_exception():
+    """P2-5: create_issue logs exception when gh fails with exception."""
+    finding = Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")
+
+    with patch("evolution_scanner.subprocess.run", side_effect=Exception("gh crashed")), \
+         patch("builtins.print") as mock_print:
+        result = create_issue(finding, "evolution-found")
+
+    assert result is False
+    warning_calls = [c for c in mock_print.call_args_list if "create_issue" in str(c)]
+    assert len(warning_calls) > 0, "create_issue should log exception"
+
+
+def test_normalize_finding_no_lazy_imports():
+    """P2-6: normalize_finding has no import statements in its body."""
+    import inspect
+
+    from evolution_scanner import normalize_finding
+
+    source = inspect.getsource(normalize_finding)
+    assert "import " not in source, f"normalize_finding should not contain imports. Source:\n{source}"
+
+
+def test_run_audit_tool_uses_shlex_split():
+    """P2-8: run_audit_tool uses shlex.split to handle paths with spaces."""
+    tool = {"name": "test_tool", "command": "echo '/path with spaces/file.json'"}
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+        run_audit_tool(tool)
+
+        args = mock_run.call_args[0][0]
+        # shlex.split keeps '/path with spaces/file.json' as single token
+        assert any("path with spaces" in str(a) for a in args), \
+            f"Path with spaces should be preserved as single argument. Args: {args}"
+

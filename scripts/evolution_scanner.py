@@ -2,14 +2,15 @@
 """Evolution scanner: observe → normalize → create Issues → track progress."""
 import json
 import os
+import shlex
 import subprocess
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from evolution_adapters import quarantine_corrupted_file
+from evolution_adapters import quarantine_corrupted_file, sanitize_structured_field, sanitize_text
 
 
 @dataclass
@@ -43,7 +44,7 @@ def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict]:
             lines = [json.loads(line) for line in path.read_text().strip().splitlines() if line.strip()]
             adapter = ADAPTER_MAP.get(tool["name"])
             return adapter(lines) if adapter else lines
-        result = subprocess.run(tool["command"].split(), capture_output=True, text=True, timeout=60)
+        result = subprocess.run(shlex.split(tool["command"]), capture_output=True, text=True, timeout=60)
         if not result.stdout.strip():
             return []
         try:
@@ -58,10 +59,8 @@ def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict]:
 
 
 def normalize_finding(raw: dict) -> Finding:
-    from evolution_adapters import sanitize_structured_field as ssf
-    from evolution_adapters import sanitize_text as st
     sev = raw.get("severity", "info")
-    return Finding(ssf(raw.get("rule_id", "UNKNOWN")), sev if sev in ("critical", "warning", "info") else "info", ssf(raw.get("category", "unknown")), st(raw.get("description", "")), ssf(raw.get("location", "")), st(raw.get("evidence", "")))
+    return Finding(sanitize_structured_field(raw.get("rule_id", "UNKNOWN")), sev if sev in ("critical", "warning", "info") else "info", sanitize_structured_field(raw.get("category", "unknown")), sanitize_text(raw.get("description", "")), sanitize_structured_field(raw.get("location", "")), sanitize_text(raw.get("evidence", "")))
 
 
 def _parse_issue_fields(body: str) -> tuple[str | None, str | None]:
@@ -103,13 +102,11 @@ def detect_regressions(findings: list[Finding], history_path: Path) -> list[Find
     try:
         with open(history_path) as f:
             resolved = json.load(f).get("resolved_findings", [])
-        for finding in findings:
-            if any(r["rule_id"] == finding.rule_id and r["location"] == finding.location for r in resolved):
-                finding.severity = "critical"
+        return [replace(f, severity="critical") if any(r["rule_id"] == f.rule_id and r["location"] == f.location for r in resolved) else f for f in findings]
     except (json.JSONDecodeError, ValueError):
         quarantine_corrupted_file(history_path)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[evolution] Warning: detect_regressions error: {e}")
     return findings
 
 
@@ -123,7 +120,8 @@ def create_issue(finding: Finding, dedup_label: str) -> bool:
     try:
         result = subprocess.run(["gh", "issue", "create", "--title", f"[evolution] {finding.rule_id}", "--label", dedup_label, "--body", body], capture_output=True, text=True, timeout=30)
         return result.returncode == 0
-    except Exception:
+    except Exception as e:
+        print(f"[evolution] Warning: create_issue failed for {finding.rule_id}: {e}")
         return False
 
 
@@ -173,8 +171,8 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
                 if rid == finding.rule_id and loc == finding.location:
                     subprocess.run(["gh", "issue", "edit", str(issue["number"]), "--add-label", failure_label], capture_output=True, text=True, timeout=30)
                     break
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[evolution] Warning: check_isolation failed: {e}")
 
 
 def main() -> None:
