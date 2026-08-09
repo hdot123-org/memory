@@ -3203,3 +3203,147 @@ def test_load_history_findings_list_of_strings_filtered(tmp_path):
     assert result['snapshots'][0]['findings'][0]['rule_id'] == 'RULE_001'
     assert result['snapshots'][0]['findings'][1]['rule_id'] == 'RULE_002'
 
+
+# ============================================================================
+# Round 3 Robustness Tests (VAL-R3-004, VAL-R3-005, VAL-R3-006)
+# ============================================================================
+
+
+def test_load_history_non_list_resolved_findings(tmp_path):
+    """VAL-R3-004: load_history validates resolved_findings container type.
+
+    When resolved_findings is a dict/string/int instead of a list,
+    it must be reset to [] with a warning, preventing crashes in
+    detect_regressions and update_history.
+    """
+    history_path = tmp_path / "findings_over_time.json"
+
+    # Create history with resolved_findings as a dict (invalid)
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": {"not": "a_list"}
+    }
+    with open(history_path, "w") as f:
+        json.dump(history_data, f)
+
+    # Should not crash, should reset to []
+    with patch("builtins.print") as mock_print:
+        result = load_history(history_path)
+
+        assert result is not None
+        assert result["resolved_findings"] == []
+
+        # Verify warning was printed
+        warning_calls = [call for call in mock_print.call_args_list
+                        if "resolved_findings" in str(call) and "not a list" in str(call)]
+        assert len(warning_calls) > 0, "Expected warning about non-list resolved_findings"
+
+    # Test with resolved_findings as string
+    history_data["resolved_findings"] = "invalid_string"
+    with open(history_path, "w") as f:
+        json.dump(history_data, f)
+
+    result = load_history(history_path)
+    assert result["resolved_findings"] == []
+
+    # Test with resolved_findings as int
+    history_data["resolved_findings"] = 42
+    with open(history_path, "w") as f:
+        json.dump(history_data, f)
+
+    result = load_history(history_path)
+    assert result["resolved_findings"] == []
+
+
+def test_load_history_non_list_findings_in_snapshot(tmp_path):
+    """VAL-R3-005: load_history validates snapshot findings element types.
+
+    When a snapshot's findings is not a list (dict/int/string),
+    the snapshot must be skipped as corrupt, preventing crashes
+    in update_history and detect_regressions.
+    """
+    history_path = tmp_path / "findings_over_time.json"
+
+    # Create history with mixed valid/invalid snapshots
+    history_data = {
+        "snapshots": [
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "tick_id": "20260101-000000",
+                "findings": "not_a_list",  # Invalid: string
+                "issues_created": 0
+            },
+            {
+                "timestamp": "2026-01-02T00:00:00Z",
+                "tick_id": "20260102-000000",
+                "findings": {"not": "a_list"},  # Invalid: dict
+                "issues_created": 0
+            },
+            {
+                "timestamp": "2026-01-03T00:00:00Z",
+                "tick_id": "20260103-000000",
+                "findings": 42,  # Invalid: int
+                "issues_created": 0
+            },
+            {
+                "timestamp": "2026-01-04T00:00:00Z",
+                "tick_id": "20260104-000000",
+                "findings": [{"rule_id": "RULE_001", "location": "file.md"}],  # Valid
+                "issues_created": 1
+            }
+        ],
+        "resolved_findings": []
+    }
+
+    with open(history_path, "w") as f:
+        json.dump(history_data, f)
+
+    # Should skip invalid snapshots, preserve valid ones
+    with patch("builtins.print") as mock_print:
+        result = load_history(history_path)
+
+        assert result is not None
+        assert len(result["snapshots"]) == 1, "Should only have 1 valid snapshot"
+        assert result["snapshots"][0]["tick_id"] == "20260104-000000"
+
+        # Verify warnings were printed for skipped snapshots
+        warning_calls = [call for call in mock_print.call_args_list
+                        if "non-list findings" in str(call)]
+        assert len(warning_calls) == 3, f"Expected 3 warnings for non-list findings, got {len(warning_calls)}"
+
+
+def test_validate_config_none():
+    """VAL-R3-006: validate_config guards against None config.
+
+    When config.yml is empty, yaml.safe_load returns None.
+    validate_config(None) must produce a clear error message and exit(1),
+    not crash with TypeError.
+    """
+    from evolution_utils import validate_config
+
+    # Test with None (empty config.yml)
+    with patch("builtins.print") as mock_print:
+        with pytest.raises(SystemExit) as exc_info:
+            validate_config(None)
+
+        assert exc_info.value.code == 1
+
+        # Verify clear error message
+        error_calls = [call for call in mock_print.call_args_list
+                      if "must be a YAML mapping" in str(call)]
+        assert len(error_calls) > 0, "Expected error message about YAML mapping"
+
+    # Test with other non-dict types
+    with pytest.raises(SystemExit) as exc_info:
+        validate_config("not_a_dict")
+    assert exc_info.value.code == 1
+
+    with pytest.raises(SystemExit) as exc_info:
+        validate_config(42)
+    assert exc_info.value.code == 1
+
+    with pytest.raises(SystemExit) as exc_info:
+        validate_config([])
+    assert exc_info.value.code == 1
+
+

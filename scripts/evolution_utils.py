@@ -26,8 +26,13 @@ def validate_config(config: dict) -> None:
         config: Configuration dictionary from .evolution/config.yml
 
     Raises:
-        SystemExit: If any required keys are missing
+        SystemExit: If config is not a dict or any required keys are missing
     """
+    # VAL-R3-006: Guard against None (empty config.yml → yaml.safe_load returns None)
+    if not isinstance(config, dict):
+        print("[evolution] Error: config.yml must be a YAML mapping (got empty or invalid file)")
+        sys.exit(1)
+
     missing_keys = [key for key in REQUIRED_CONFIG_KEYS if key not in config]
     if missing_keys:
         print(f"[evolution] Error: Missing required config keys: {', '.join(missing_keys)}")
@@ -130,5 +135,10 @@ def load_history(history_path: Path):
         else:
             print(f"[evolution] Warning: Corrupt snapshot at index {i} in {history_path}, skipped")
     data['snapshots'] = valid_snapshots
+
+    # VAL-R3-004: resolved_findings must be a list; reset to [] if not
+    if 'resolved_findings' in data and not isinstance(data['resolved_findings'], list):
+        print(f"[evolution] Warning: resolved_findings is not a list in {history_path}, resetting to []")
+        data['resolved_findings'] = []
 
     return data
