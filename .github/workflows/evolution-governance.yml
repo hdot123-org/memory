@@ -67,6 +67,14 @@ jobs:
             TOUCHED_PROTECTED=true
           fi
 
+          # P1-A: Protect entire scripts/ directory to prevent module poisoning
+          # The scanner runs with scripts/ on sys.path, so any new file (e.g. yaml.py)
+          # can shadow stdlib/PyPI modules and execute code with DISPATCH_TOKEN.
+          if echo "$CHANGED" | grep -q "^scripts/"; then
+            echo "PROTECTED: scripts/ directory modified (module poisoning protection)"
+            TOUCHED_PROTECTED=true
+          fi
+
           # Check .github/workflows/evolution-*.yml
           if echo "$CHANGED" | grep -q "^\.github/workflows/evolution-.*\.yml$"; then
             echo "PROTECTED: evolution workflow file modified"

@@ -10,6 +10,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
+
+# P1-A: Restore script directory to sys.path when PYTHONSAFEPATH is set.
+# PYTHONSAFEPATH prevents automatic insertion of the script's directory, blocking
+# module poisoning attacks (e.g. scripts/yaml.py shadowing PyYAML).
+# We explicitly add only our own directory back, after stdlib imports are resolved.
+_SCRIPT_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+
 from evolution_adapters import TOOL_TO_CATEGORIES, sanitize_structured_field, sanitize_text
 from evolution_utils import _parse_issue_fields, dedup_intra_tick, load_history, validate_config
 
@@ -91,7 +100,10 @@ def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict] | No
                 return None
             adapter = ADAPTER_MAP.get(tool["name"])
             return adapter(lines) if adapter else lines
-        result = subprocess.run(shlex.split(tool["command"]), capture_output=True, text=True, timeout=60)
+        # P2-B: Strip GitHub tokens from audit subprocess environment.
+        # Audit tools do not need gh access; leaking DISPATCH_TOKEN expands trust boundary.
+        safe_env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}
+        result = subprocess.run(shlex.split(tool["command"]), capture_output=True, text=True, timeout=60, env=safe_env)
         # Log stderr as warning when exit code is non-zero (audit tools exit non-zero on findings)
         if result.returncode != 0:
             stderr = result.stderr.strip()
@@ -263,6 +275,7 @@ def main() -> None:
     all_findings = dedup_intra_tick(all_findings)
     findings = detect_regressions(all_findings, history_path)
     deduped = []
+    gh_failed = False
     try:
         open_issues = get_open_issues(config["dedup_label"])
         deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
@@ -270,6 +283,7 @@ def main() -> None:
     except RuntimeError as e:
         print(f"[evolution] Warning: {e}")
         issues_created = 0
+        gh_failed = True
     update_history(history_path, all_findings, issues_created, config["snapshot_limit"], failed_categories)
     check_isolation(all_findings, history_path, config["isolation_threshold"], config["failure_label"], config["dedup_label"])
     print(f"[evolution] Tick complete: {len(all_findings)} findings, {issues_created} issues created")
@@ -277,6 +291,10 @@ def main() -> None:
     # P1-2: Hard exit when findings exist but zero issues created
     if deduped and issues_created == 0:
         print("::error::findings exist but zero issues created")
+        sys.exit(1)
+    # P2-A: Hard exit when GitHub API unavailable and findings exist (prevents silent loop death)
+    if gh_failed and all_findings:
+        print("::error::GitHub API unavailable, cannot verify dedup; aborting tick to prevent silent loop death")
         sys.exit(1)
 
 
