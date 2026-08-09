@@ -357,7 +357,7 @@ def _compute_path_index(lifecycle_root: Path) -> dict[str, Any]:
                 continue
 
             observed_at = record.get("observed_at", "")
-            first_observed_at = record.get("first_observed_at", observed_at)
+            first_observed_at = record.get("first_observed_at") or observed_at
 
             # Track earliest first_observed_at for this local_path
             if local_path in first_observed_map:

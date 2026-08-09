@@ -12,6 +12,7 @@ dependencies = [
     "posthog>=3.0,<8.0",
     "packaging>=24.0",
     "mcp>=1.0,<2.0",
+    "pyyaml>=6.0",
 ]
 license = "MIT"
 authors = [
@@ -204,6 +205,7 @@ DEP001 = [
     "yaml",
     "memory_hook_gateway",
     "tomllib",
+    "evolution_adapters",
 ]
 DEP002 = [
     "pytest-cov",
@@ -215,6 +217,5 @@ DEP002 = [
     "vulture",
     "pdoc",
 ]
-DEP003 = ["yaml"]
 
 

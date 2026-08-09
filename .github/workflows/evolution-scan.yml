@@ -1,0 +1,52 @@
+# Evolution Scanner Workflow
+# Runs the evolution scanner on a cron schedule to detect regressions and create Issues.
+#
+# CRITICAL TOKEN STRATEGY:
+# This workflow MUST use DISPATCH_TOKEN (a PAT), NOT GITHUB_TOKEN.
+# Reason: droid.yml requires author_association OWNER|MEMBER|COLLABORATOR to trigger.
+# GITHUB_TOKEN (github-actions[bot]) has author_association NONE, so Issues created
+# with it would NOT trigger droid.yml, breaking the autonomous loop:
+#   scanner → Issue @droid → droid.yml → Droid → PR → CI → auto-merge
+# DISPATCH_TOKEN is a PAT belonging to @busiji (OWNER), so Issues created with it
+# have author_association OWNER and correctly trigger droid.yml.
+#
+# Fallback options if DISPATCH_TOKEN is unavailable:
+# 1. Use a GitHub App installation token (finer-grained, auditable)
+# 2. Modify droid.yml to also accept author_association NONE (weakens security)
+# 3. Use workflow_dispatch chain: scanner creates Issue with GITHUB_TOKEN, then
+#    a second workflow with a PAT comments @droid on the Issue (workaround)
+
+name: Evolution Scan
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: evolution-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package
+        run: pip install -e .
+      - name: Cache evolution history
+        uses: actions/cache@v4
+        with:
+          path: .evolution/findings_over_time.json
+          key: evolution-history-${{ github.run_id }}
+          restore-keys: evolution-history-
+      - name: Run evolution scanner
+        run: python scripts/evolution_scanner.py
+        env:
+          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
