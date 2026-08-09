@@ -2591,8 +2591,9 @@ def test_sanitize_text_redos_bounded():
     A pathological input of 80KB with many '[' characters does not cause
     exponential backtracking. Processing completes in under 1 second.
     """
-    from evolution_adapters import sanitize_text
     import time
+
+    from evolution_adapters import sanitize_text
 
     # 80KB of pathological input (many [ characters that could trigger backtracking)
     pathological = "[" * 80000 + "]" * 100
