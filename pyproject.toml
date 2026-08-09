@@ -206,6 +206,7 @@ DEP001 = [
     "memory_hook_gateway",
     "tomllib",
     "evolution_adapters",
+    "evolution_utils",
 ]
 DEP002 = [
     "pytest-cov",
