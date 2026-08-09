@@ -15,6 +15,8 @@ def sanitize_text(text: str, max_len: int = 500) -> str:
     Returns:
         Sanitized text
     """
+    # Strip Unicode bidi override characters (prevent text obfuscation attacks)
+    text = re.sub(r'[\u202a-\u202e\u2066-\u2069]', '', text)
     # Remove @ mentions (prevent triggering GitHub users/bots)
     text = re.sub(r'@(\w+)', r'\1', text)
     # Strip inline links [text](url) → text and inline images ![alt](url) → alt
@@ -211,7 +213,14 @@ ADAPTER_MAP = {
 def quarantine_corrupted_file(history_path) -> None:
     """Rename corrupted history file to quarantine path with timestamp."""
     from datetime import datetime, timezone
+    if not history_path.exists():
+        return
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     qpath = history_path.with_suffix(f".corrupted.{ts}.json")
+    # Handle collision: if quarantine file already exists, append counter
+    counter = 1
+    while qpath.exists():
+        qpath = history_path.with_suffix(f".corrupted.{ts}.{counter}.json")
+        counter += 1
     history_path.rename(qpath)
     print(f"[evolution] Warning: {history_path} corrupted, quarantined to {qpath}")
