@@ -88,7 +88,7 @@ def sanitize_structured_field(text: str, max_len: int = 100) -> str:
     # Remove all control characters (newlines, tabs, etc.) including Unicode line/paragraph separators
     text = re.sub(r'[\x00-\x1f\x7f\u0085\u2028\u2029]', '', text)
     # Strip bidi override/formatting characters (prevent dedup asymmetry attacks)
-    text = re.sub(r'[\u200b-\u200f\u202a-\u202e]', '', text)
+    text = re.sub(r'[\u200b-\u200f\u202a-\u202e\u2066-\u2069]', '', text)
     # Strip leading/trailing whitespace
     text = text.strip()
     # Truncate with hash suffix to prevent collision of different long values

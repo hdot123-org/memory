@@ -2968,6 +2968,7 @@ def test_valid_severity_helper():
 
 
 # ============================================================================
+# ============================================================================
 # VAL-R3-001/002/003 Tests (Opus Round 3 Audit — sanitize_text Ordering)
 # ============================================================================
 
@@ -3347,3 +3348,183 @@ def test_validate_config_none():
     assert exc_info.value.code == 1
 
 
+# ============================================================================
+# INFRA-90 Remaining Audit Findings Tests (P2/P3)
+# ============================================================================
+
+
+def test_update_history_calls_fsync(tmp_path):
+    """P3-4: update_history calls os.fsync to ensure durability before rename."""
+    history_path = tmp_path / "history.json"
+
+    fsync_called = []
+
+    original_fsync = os.fsync
+
+    def track_fsync(fd):
+        fsync_called.append(fd)
+        return original_fsync(fd)
+
+    with patch("evolution_scanner.os.fsync", side_effect=track_fsync):
+        update_history(history_path, [], 1, 100)
+
+    assert len(fsync_called) == 1, f"Expected os.fsync to be called once, got {len(fsync_called)} times"
+    assert isinstance(fsync_called[0], int), f"Expected file descriptor (int), got {type(fsync_called[0])}"
+
+
+def test_update_history_calls_fsync_before_replace(tmp_path):
+    """P3-4: fsync is called before os.replace to guarantee durability ordering."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_path.write_text(json.dumps({"snapshots": [], "resolved_findings": []}))
+
+    call_order = []
+
+    original_fsync = os.fsync
+    original_replace = os.replace
+
+    def fake_fsync(fd):
+        call_order.append("fsync")
+        return original_fsync(fd)
+
+    def fake_replace(src, dst):
+        call_order.append("replace")
+        return original_replace(src, dst)
+
+    finding = Finding("RULE_001", "warning", "test", "Test finding", "file.md", "evidence")
+
+    with patch("evolution_scanner.os.fsync", side_effect=fake_fsync), patch(
+        "evolution_scanner.os.replace", side_effect=fake_replace
+    ):
+        update_history(history_path, [finding], 1, 100)
+
+    assert call_order == ["fsync", "replace"], f"Expected fsync before replace, got: {call_order}"
+
+
+def test_detect_regressions_safe_subscript_non_dict_resolved(tmp_path):
+    """P2-2: detect_regressions uses safe .get() on resolved_findings entries."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [{"findings": [], "timestamp": "2026-01-01T00:00:00Z", "tick_id": "x", "issues_created": 0}],
+        "resolved_findings": [
+            "not_a_dict",
+            {"resolved_at": "2026-01-01T00:00:00Z"},
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z"},
+        ],
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    findings = [
+        Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence"),
+        Finding("RULE_002", "warning", "test", "Other", "other.md", "evidence"),
+    ]
+
+    result = detect_regressions(findings, history_path)
+
+    rule_001 = next(f for f in result if f.rule_id == "RULE_001")
+    rule_002 = next(f for f in result if f.rule_id == "RULE_002")
+    assert rule_001.severity == "critical", "RULE_001 matches resolved entry, should be critical"
+    assert rule_002.severity == "warning", "RULE_002 does not match, should stay warning"
+
+
+def test_load_history_skips_corrupt_resolved_findings(tmp_path):
+    """P2-2: load_history validates resolved_findings entries, skipping corrupt ones."""
+    from evolution_utils import load_history
+
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"findings": [], "timestamp": "2026-01-01T00:00:00Z", "tick_id": "t1", "issues_created": 0}
+        ],
+        "resolved_findings": [
+            "not_a_dict",
+            {"resolved_at": "2026-01-01T00:00:00Z"},
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z"},
+            {"rule_id": "RULE_002", "location": "other.md", "resolved_at": "2026-01-01T00:00:00Z"},
+        ],
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    with patch("builtins.print") as mock_print:
+        result = load_history(history_path)
+
+    assert result is not None
+    assert len(result["resolved_findings"]) == 2, (
+        f"Expected 2 valid resolved_findings, got {len(result['resolved_findings'])}"
+    )
+    resolved_ids = {r["rule_id"] for r in result["resolved_findings"]}
+    assert resolved_ids == {"RULE_001", "RULE_002"}
+
+    warning_messages = [str(c) for c in mock_print.call_args_list]
+    assert any("resolved_findings" in msg and "skipped" in msg.lower() for msg in warning_messages), (
+        f"Expected warning about corrupt resolved_findings. Messages: {warning_messages}"
+    )
+    assert history_path.exists()
+
+
+def test_load_history_resolved_findings_not_a_list(tmp_path):
+    """P2-2: load_history tolerates resolved_findings being a non-list type without crashing."""
+    from evolution_utils import load_history
+
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": "not_a_list",
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    result = load_history(history_path)
+    assert result is not None
+    assert result["resolved_findings"] == []
+
+
+def test_sanitize_text_strips_unclosed_html_comment():
+    """P3-5: sanitize_text strips unclosed HTML comments to prevent hidden content."""
+    from evolution_adapters import sanitize_text
+
+    text = "visible text <!-- hidden content without closing tag"
+    result = sanitize_text(text)
+    assert "<!--" not in result, f"Unclosed comment should be stripped, got: {result}"
+    assert "hidden content" not in result, f"Hidden content should be stripped, got: {result}"
+    assert "visible text" in result
+
+    closed = "before <!-- comment --> after"
+    result2 = sanitize_text(closed)
+    assert "comment" not in result2
+    assert "before" in result2
+    assert "after" in result2
+
+
+def test_sanitize_structured_field_strips_bidi_isolate_chars():
+    """P3-9: sanitize_structured_field strips bidi isolate chars consistently with sanitize_text."""
+    from evolution_adapters import sanitize_structured_field
+
+    # U+2066 LEFT-TO-RIGHT ISOLATE
+    assert sanitize_structured_field("rule\u2066_001") == "rule_001"
+    # U+2067 RIGHT-TO-LEFT ISOLATE
+    assert sanitize_structured_field("rule\u2067_001") == "rule_001"
+    # U+2068 FIRST STRONG ISOLATE
+    assert sanitize_structured_field("rule\u2068_001") == "rule_001"
+    # U+2069 POP DIRECTIONAL ISOLATE
+    assert sanitize_structured_field("rule\u2069_001") == "rule_001"
+
+    # Combined with existing bidi override chars
+    combined = "R\u202eU\u2066LE"
+    result = sanitize_structured_field(combined)
+    assert "\u202e" not in result
+    assert "\u2066" not in result
+    assert result == "RULE"
+
+    # Verify same behavior as sanitize_text for these chars (consistency)
+    from evolution_adapters import sanitize_text
+
+    for char in ["\u2066", "\u2067", "\u2068", "\u2069"]:
+        assert sanitize_structured_field(f"a{char}b") == sanitize_text(f"a{char}b")[:3]
+
+
+def test_sanitize_structured_field_bidi_isolate_cannot_forge_dedup_key():
+    """P3-9: Bidi isolate chars cannot create dedup-asymmetric structured fields."""
+    from evolution_adapters import sanitize_structured_field
+
+    plain = "RULE_001"
+    injected = "RULE\u2066_001"
+    assert sanitize_structured_field(injected) == plain, "Bidi isolate must not create a distinct sanitized value"

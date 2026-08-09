@@ -140,5 +140,14 @@ def load_history(history_path: Path):
     if 'resolved_findings' in data and not isinstance(data['resolved_findings'], list):
         print(f"[evolution] Warning: resolved_findings is not a list in {history_path}, resetting to []")
         data['resolved_findings'] = []
+    # Validate resolved_findings entries: each must be dict with rule_id and location
+    elif isinstance(data.get('resolved_findings'), list):
+        valid_resolved = []
+        for i, entry in enumerate(data['resolved_findings']):
+            if isinstance(entry, dict) and 'rule_id' in entry and 'location' in entry:
+                valid_resolved.append(entry)
+            else:
+                print(f"[evolution] Warning: Corrupt resolved_findings at index {i} in {history_path}, skipped")
+        data['resolved_findings'] = valid_resolved
 
     return data

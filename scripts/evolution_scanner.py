@@ -140,7 +140,7 @@ def detect_regressions(findings: list[Finding], history_path: Path) -> list[Find
     if data is None:
         return findings
     resolved = data.get("resolved_findings", [])
-    return [replace(f, severity="critical") if any(r["rule_id"] == f.rule_id and r["location"] == f.location for r in resolved) else f for f in findings]
+    return [replace(f, severity="critical") if any(r.get("rule_id", "") == f.rule_id and r.get("location", "") == f.location for r in resolved if isinstance(r, dict)) else f for f in findings]
 
 
 def sort_by_severity(findings: list[Finding], severity_order: list[str]) -> list[Finding]:
