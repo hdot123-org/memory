@@ -24,6 +24,7 @@ from evolution_scanner import (
     create_issue,
     deduplicate,
     detect_regressions,
+    ensure_labels,
     get_open_issues,
     normalize_finding,
     run_audit_tool,
@@ -3528,3 +3529,109 @@ def test_sanitize_structured_field_bidi_isolate_cannot_forge_dedup_key():
     plain = "RULE_001"
     injected = "RULE\u2066_001"
     assert sanitize_structured_field(injected) == plain, "Bidi isolate must not create a distinct sanitized value"
+
+
+# ============================================================================
+# INFRA-92: Harden evolution scanner CI tests
+# ============================================================================
+
+
+def test_ensure_labels_creates_labels():
+    """INFRA-92: ensure_labels creates both dedup_label and failure_label."""
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        ensure_labels("evolution-found", "evolution-isolated")
+
+        # Should call gh label create twice (one per label)
+        create_calls = [c for c in mock_run.call_args_list if c[0][0][1] == "label" and c[0][0][2] == "create"]
+        assert len(create_calls) == 2
+        # Verify label names
+        all_args = [c[0][0] for c in create_calls]
+        assert any("evolution-found" in args for args in all_args)
+        assert any("evolution-isolated" in args for args in all_args)
+
+
+def test_main_fails_when_all_tools_fail():
+    """INFRA-92: When all audit tools fail, main() exits non-zero instead of silently completing."""
+    with patch("evolution_scanner.check_kill_switch", return_value=False), \
+         patch("evolution_scanner.load_config") as mock_config, \
+         patch("evolution_scanner.validate_config"), \
+         patch("evolution_scanner.ensure_labels"), \
+         patch("evolution_scanner.run_audit_tool", return_value=None), \
+         patch("evolution_scanner.update_history") as mock_history, \
+         patch("builtins.print"):
+
+        mock_config.return_value = {
+            "audit_tools": [
+                {"name": "tool1", "command": "cmd1", "output_format": "json"},
+                {"name": "tool2", "command": "cmd2", "output_format": "json"},
+            ],
+            "severity_order": ["critical", "warning", "info"],
+            "dedup_label": "evolution-found",
+            "isolation_threshold": 3,
+            "failure_label": "evolution-isolated",
+            "max_issues_per_tick": 3,
+            "snapshot_limit": 100,
+        }
+
+        from evolution_scanner import main
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 1
+        # update_history should NOT be called when all tools fail
+        assert not mock_history.called
+
+
+def test_load_history_filters_findings_missing_keys(tmp_path):
+    """INFRA-92: load_history drops findings missing rule_id or location keys."""
+    from evolution_utils import load_history
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "tick_id": "20260101-000000",
+                "findings": [
+                    {"rule_id": "GOOD", "location": "file.md", "severity": "warning"},
+                    {"severity": "warning"},  # Missing rule_id and location
+                    {"rule_id": "PARTIAL"},  # Missing location
+                    {"location": "file2.md"},  # Missing rule_id
+                ],
+                "issues_created": 1,
+            }
+        ],
+        "resolved_findings": [],
+    }
+    with open(history_path, "w") as f:
+        json.dump(history_data, f)
+
+    data = load_history(history_path)
+    assert data is not None
+    findings = data["snapshots"][0]["findings"]
+    assert len(findings) == 1  # Only the complete finding survives
+    assert findings[0]["rule_id"] == "GOOD"
+
+
+def test_update_history_handles_malformed_prev_findings(tmp_path):
+    """INFRA-92: update_history doesn't crash on findings missing rule_id/location in previous snapshot."""
+    history_path = tmp_path / "findings_over_time.json"
+    # First tick with a malformed finding (missing rule_id)
+    malformed_data = {
+        "snapshots": [{
+            "timestamp": "2026-01-01T00:00:00Z",
+            "tick_id": "20260101-000000",
+            "findings": [{"severity": "warning"}],  # Missing rule_id, location
+            "issues_created": 0,
+        }],
+        "resolved_findings": [],
+    }
+    with open(history_path, "w") as f:
+        json.dump(malformed_data, f)
+
+    # Second tick - should not crash even though prev findings are malformed
+    findings = [Finding("RULE_1", "warning", "test", "Issue", "file.md", "evidence")]
+    # This should NOT raise KeyError
+    update_history(history_path, findings, 1, 100)
+
+    data = json.loads(history_path.read_text())
+    assert len(data["snapshots"]) == 2

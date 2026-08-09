@@ -36,6 +36,24 @@ def check_kill_switch(repo_root: Path) -> bool:
     return False
 
 
+def ensure_labels(dedup_label: str, failure_label: str) -> None:
+    """Ensure required GitHub labels exist before running the scanner."""
+    labels = [
+        (dedup_label, "FBCA04", "Evolution scanner finding"),
+        (failure_label, "B60205", "Stuck 3+ ticks"),
+    ]
+    for name, color, desc in labels:
+        try:
+            result = subprocess.run(
+                ["gh", "label", "create", name, "--color", color, "--description", desc, "--force"],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode != 0 and result.stderr.strip():
+                print(f"[evolution] Warning: Failed to ensure label '{name}': {result.stderr.strip()}")
+        except Exception as e:
+            print(f"[evolution] Warning: ensure_labels failed for '{name}': {e}")
+
+
 def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict] | None:
     """Run an audit tool and return findings, or None on failure.
 
@@ -177,7 +195,7 @@ def update_history(history_path: Path, findings: list[Finding], issues_created: 
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()
     # Skip findings whose category came from a failed tool (prevents false "resolved")
-    new_resolved = [{"rule_id": p["rule_id"], "location": p["location"], "resolved_at": now_iso}
+    new_resolved = [{"rule_id": p.get("rule_id", ""), "location": p.get("location", ""), "resolved_at": now_iso}
                     for p in prev if (p.get("rule_id"), p.get("location")) not in current_keys
                     and (not failed_categories or p.get("category") not in failed_categories)]
     data["resolved_findings"] = (data.get("resolved_findings", []) + new_resolved)[-snapshot_limit:]
@@ -228,6 +246,7 @@ def main() -> None:
         sys.exit(0)
     config = load_config(repo_root)
     validate_config(config)
+    ensure_labels(config["dedup_label"], config["failure_label"])
 
     history_path = repo_root / ".evolution" / "findings_over_time.json"
     # Track tool failures to prevent false "resolved" cascade
@@ -236,6 +255,10 @@ def main() -> None:
     for tool_name, result in raw_results:
         if result is None:  # Tool failed
             failed_categories.update(TOOL_TO_CATEGORIES.get(tool_name, set()))
+    # Fail when all audit tools failed (prevents silent completion on broken pipeline)
+    if config["audit_tools"] and all(result is None for _, result in raw_results):
+        print("::error::All audit tools failed, cannot produce reliable findings")
+        sys.exit(1)
     all_findings = [normalize_finding(r) for _, res in raw_results if res is not None for r in res]
     all_findings = dedup_intra_tick(all_findings)
     findings = detect_regressions(all_findings, history_path)
