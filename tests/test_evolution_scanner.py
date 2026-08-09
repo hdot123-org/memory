@@ -1703,7 +1703,11 @@ def test_quarantine_collision_handling(tmp_path):
 
 
 def test_check_isolation_logs_exception(tmp_path):
-    """P2-3: check_isolation logs exception instead of silently swallowing."""
+    """P2-3: check_isolation logs caught exceptions instead of silently swallowing.
+
+    After narrowing the except clause to (json.JSONDecodeError, KeyError, TypeError),
+    we trigger a json.JSONDecodeError by having gh issue list return malformed JSON.
+    """
     history_path = tmp_path / "findings_over_time.json"
     history_data = {
         "snapshots": [
@@ -1715,8 +1719,9 @@ def test_check_isolation_logs_exception(tmp_path):
     history_path.write_text(json.dumps(history_data))
     findings = [Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")]
 
-    with patch("evolution_scanner.subprocess.run", side_effect=Exception("gh crashed")), \
+    with patch("evolution_scanner.subprocess.run") as mock_run, \
          patch("builtins.print") as mock_print:
+        mock_run.return_value = MagicMock(returncode=0, stdout="not valid json {{{")
         check_isolation(findings, history_path, 3, "iso", "dedup")
 
     warning_calls = [c for c in mock_print.call_args_list if "check_isolation" in str(c)]
@@ -1775,4 +1780,253 @@ def test_run_audit_tool_uses_shlex_split():
         # shlex.split keeps '/path with spaces/file.json' as single token
         assert any("path with spaces" in str(a) for a in args), \
             f"Path with spaces should be preserved as single argument. Args: {args}"
+
+
+# ============================================================================
+# INFRA-81 Regression Tests
+# ============================================================================
+
+
+def test_adapt_daily_audit_includes_database_violations():
+    """INFRA-81: adapt_daily_audit parses infrastructure.databases violations.
+
+    Database violations used to be silently dropped because the adapter only
+    iterated infrastructure.servers.
+    """
+    raw = {
+        "infrastructure": {
+            "databases": {
+                "prod_db": {
+                    "violations": [
+                        {
+                            "type": "db_unreachable",
+                            "severity": "critical",
+                            "file": "config/db.yml",
+                            "detail": "无法连接到生产数据库",
+                        }
+                    ]
+                }
+            }
+        }
+    }
+    findings = adapt_daily_audit(raw)
+    assert len(findings) == 1
+    assert findings[0]["rule_id"] == "DB_UNREACHABLE"
+    assert findings[0]["severity"] == "critical"
+    assert findings[0]["category"] == "daily_audit"
+    assert findings[0]["location"] == "config/db.yml"
+    assert "Database: prod_db" in findings[0]["evidence"]
+
+
+def test_adapt_daily_audit_servers_and_databases_combined():
+    """INFRA-81: servers and databases are both parsed and produce distinct evidence."""
+    raw = {
+        "infrastructure": {
+            "servers": {
+                "node-00": {
+                    "violations": [
+                        {"type": "container_down", "severity": "critical",
+                         "file": "node-00/openclaw", "detail": "down"}
+                    ]
+                }
+            },
+            "databases": {
+                "prod_db": {
+                    "violations": [
+                        {"type": "db_unreachable", "severity": "critical",
+                         "file": "config/db.yml", "detail": "unreachable"}
+                    ]
+                }
+            },
+        }
+    }
+    findings = adapt_daily_audit(raw)
+    assert len(findings) == 2
+    assert any("Server: node-00" in f["evidence"] for f in findings)
+    assert any("Database: prod_db" in f["evidence"] for f in findings)
+
+
+def test_update_history_handles_missing_snapshots_key(tmp_path):
+    """INFRA-81: update_history tolerates valid JSON lacking the snapshots key.
+
+    Previously data["snapshots"].append(...) raised KeyError on a file like {}.
+    """
+    history_path = tmp_path / "findings_over_time.json"
+    history_path.write_text("{}")
+    findings = [Finding("RULE_1", "warning", "test", "Issue", "file.md", "evidence")]
+
+    # Should not raise
+    update_history(history_path, findings, 0, 100)
+
+    data = json.loads(history_path.read_text())
+    assert "snapshots" in data
+    assert isinstance(data["snapshots"], list)
+    assert len(data["snapshots"]) == 1
+    assert data["snapshots"][0]["findings"][0]["rule_id"] == "RULE_1"
+
+
+def test_update_history_handles_missing_resolved_findings_key(tmp_path):
+    """INFRA-81: update_history also tolerates a missing resolved_findings key."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_path.write_text('{"snapshots": []}')
+    findings = [Finding("RULE_1", "warning", "test", "Issue", "file.md", "evidence")]
+
+    update_history(history_path, findings, 0, 100)
+
+    data = json.loads(history_path.read_text())
+    assert "resolved_findings" in data
+    assert isinstance(data["resolved_findings"], list)
+
+
+def test_create_issue_title_uses_sanitized_rule_id():
+    """INFRA-81: rule_id with newline is sanitized so --title contains no newline."""
+    raw = {
+        "rule_id": "RULE\nINJECT",
+        "severity": "warning",
+        "category": "test",
+        "description": "d",
+        "location": "file.md",
+        "evidence": "e",
+    }
+    finding = normalize_finding(raw)
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        create_issue(finding, "evolution-found")
+
+        call_args = mock_run.call_args[0][0]
+        title_index = call_args.index("--title") + 1
+        title = call_args[title_index]
+        assert "\n" not in title
+        assert "RULE" in title
+        assert "INJECT" in title
+
+
+def test_normalize_finding_sanitizes_category():
+    """INFRA-81: category with newline + forged header does not inject into body.
+
+    The sanitized category has no newline, so a forged **Rule ID** in the
+    category cannot overwrite the real rule_id when re-parsed.
+    """
+    raw = {
+        "rule_id": "REAL_RULE",
+        "severity": "warning",
+        "category": "benign\n**Rule ID**: FORGED",
+        "description": "d",
+        "location": "loc.md",
+        "evidence": "e",
+    }
+    finding = normalize_finding(raw)
+    assert "\n" not in finding.category
+
+    from evolution_scanner import _parse_issue_fields
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        create_issue(finding, "evolution-found")
+
+        call_args = mock_run.call_args[0][0]
+        body = call_args[call_args.index("--body") + 1]
+        rule_id, location = _parse_issue_fields(body)
+        assert rule_id == "REAL_RULE", f"Forged rule_id must not win, got {rule_id}"
+        assert location == "loc.md"
+
+
+def test_sanitize_text_strips_control_chars():
+    """INFRA-81: sanitize_text strips control chars but preserves tab and newline."""
+    from evolution_adapters import sanitize_text
+
+    result = sanitize_text("a\x00b\rc\td\ne")
+    assert "\x00" not in result
+    assert "\r" not in result
+    assert "\t" in result
+    assert "\n" in result
+    assert "a" in result and "b" in result and "c" in result
+    assert "d" in result and "e" in result
+
+
+def test_create_issue_body_has_untrusted_data_markers():
+    """INFRA-81: Issue body marks untrusted data regions for the consuming agent.
+
+    The UNTRUSTED-DATA-BEGIN/END HTML comments must be present, and the
+    header prefixes used by _parse_issue_fields must remain unchanged so
+    rule_id/location extraction still works.
+    """
+    from evolution_scanner import _parse_issue_fields
+
+    finding = Finding("RULE_001", "warning", "test", "desc", "file.md", "evidence")
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        create_issue(finding, "evolution-found")
+
+        call_args = mock_run.call_args[0][0]
+        body = call_args[call_args.index("--body") + 1]
+
+    assert "UNTRUSTED-DATA-BEGIN" in body
+    assert "UNTRUSTED-DATA-END" in body
+    rule_id, location = _parse_issue_fields(body)
+    assert rule_id == "RULE_001"
+    assert location == "file.md"
+
+
+def test_check_isolation_does_not_swallow_unexpected_exceptions(tmp_path):
+    """INFRA-81: narrowed except clause lets unexpected errors propagate.
+
+    A non-(JSONDecodeError/KeyError/TypeError) exception must NOT be swallowed.
+    """
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"timestamp": "2026-01-01T00:00:00Z", "tick_id": "t1",
+             "findings": [{"rule_id": "RULE_001", "location": "file.md"}], "issues_created": 1}
+            for _ in range(3)
+        ],
+        "resolved_findings": [],
+    }
+    history_path.write_text(json.dumps(history_data))
+    findings = [Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")]
+
+    with patch("evolution_scanner.subprocess.run", side_effect=RuntimeError("unexpected")), \
+         pytest.raises(RuntimeError, match="unexpected"):
+        check_isolation(findings, history_path, 3, "iso", "dedup")
+
+
+def test_workflow_generates_error_patterns():
+    """INFRA-81: CI workflow has a step generating registry.jsonl before scanning."""
+    workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-scan.yml"
+    with open(workflow_path) as f:
+        content = f.read()
+
+    assert "memory-error-patterns --all-projects" in content
+    # The generate step must come before the scan step
+    gen_idx = content.index("Generate error patterns")
+    scan_idx = content.index("Run evolution scanner")
+    assert gen_idx < scan_idx, "Generate error patterns step must precede Run evolution scanner"
+
+
+def test_config_error_patterns_no_dead_command():
+    """INFRA-81: error_patterns entry has no misleading dead command field."""
+    config_path = Path(__file__).parent.parent / ".evolution" / "config.yml"
+    with open(config_path) as f:
+        lines = f.read().splitlines()
+
+    # Find the error_patterns block
+    in_block = False
+    block_lines = []
+    for line in lines:
+        if line.strip().startswith("- name: error_patterns"):
+            in_block = True
+            block_lines.append(line)
+            continue
+        if in_block:
+            if line.startswith("  - ") or (line and not line.startswith(" ")):
+                break
+            block_lines.append(line)
+    block_text = "\n".join(block_lines)
+    assert "name: error_patterns" in block_text
+    assert "output_format: registry_jsonl" in block_text
+    assert "source_file:" in block_text
+    # No active command key (only a comment referencing the CI step)
+    assert "command:" not in block_text
 
