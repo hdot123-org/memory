@@ -3112,20 +3112,25 @@ def test_main_exits_nonzero_when_zero_issues_from_label_failure():
         'github': {'owner': 'test', 'repo': 'test'}
     }
 
+    # deduped must be non-empty for the exit condition to trigger
+    stuck_finding = Finding("RULE_001", "warning", "test", "test", "test.md", "test")
+
     with patch('evolution_scanner.check_kill_switch', return_value=False), \
          patch('evolution_scanner.load_config', return_value=config), \
          patch('evolution_scanner.run_audit_tool', return_value=[{'rule_id': 'RULE_001', 'severity': 'warning', 'category': 'test', 'description': 'test', 'location': 'test.md', 'evidence': 'test'}]), \
-         patch('evolution_scanner.dedup_intra_tick') as mock_dedup, \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[stuck_finding]), \
          patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.deduplicate', return_value=[]), \
-         patch('evolution_scanner.sort_by_severity', return_value=[]), \
+         patch('evolution_scanner.deduplicate', return_value=[stuck_finding]), \
+         patch('evolution_scanner.sort_by_severity', return_value=[stuck_finding]), \
          patch('evolution_scanner.create_issue', return_value=False), \
          patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.detect_regressions', return_value=[MagicMock()]), \
-         pytest.raises(SystemExit) as exc_info:
+         patch('evolution_scanner.detect_regressions', return_value=[stuck_finding]), \
+         patch('evolution_scanner.check_isolation'):
 
-        main()
+        with pytest.raises(SystemExit) as exc_info:
+            main()
 
+        # 在上下文管理器退出后检查退出码
         assert exc_info.value.code == 1
 
 
