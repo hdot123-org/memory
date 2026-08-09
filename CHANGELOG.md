@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.9](https://github.com/hdot123/memory/compare/v0.15.8...v0.15.9) (2026-08-09)
+
+
+### Bug Fixes
+
+* **security:** 修复 droid-review P1 审查发现（checkout ref + check过滤 + deploy脚本加固） ([#332](https://github.com/hdot123/memory/issues/332)) ([60ca129](https://github.com/hdot123/memory/commit/60ca129264ad3641108a51fb21b0ef74b306e7c9))
+
 ## [0.15.8](https://github.com/hdot123/memory/compare/v0.15.7...v0.15.8) (2026-08-09)
 
 
