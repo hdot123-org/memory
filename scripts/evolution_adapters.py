@@ -40,17 +40,19 @@ def sanitize_structured_field(text: str, max_len: int = 100) -> str:
     """Sanitize structured fields (rule_id, location) to prevent field injection.
 
     Strips control characters (newlines, tabs, etc.) that could enable forging
-    body headers. Truncates to max_len.
+    body headers. Strips leading/trailing whitespace. Truncates to max_len.
 
     Args:
         text: Field value to sanitize
         max_len: Maximum length (default 100 for structured fields)
 
     Returns:
-        Sanitized field with control characters removed
+        Sanitized field with control characters removed and whitespace stripped
     """
     # Remove all control characters (newlines, tabs, etc.) including Unicode line/paragraph separators
     text = re.sub(r'[\x00-\x1f\x7f\u0085\u2028\u2029]', '', text)
+    # Strip leading/trailing whitespace
+    text = text.strip()
     # Truncate
     if len(text) > max_len:
         text = text[:max_len]
@@ -216,6 +218,14 @@ ADAPTER_MAP = {
     "daily_kb_audit": adapt_daily_audit,
     "consistency_check": adapt_consistency_check,
     "error_patterns": adapt_error_patterns,
+}
+
+# Map tool names to the set of category values their findings carry.
+# Used by update_history to skip false "resolved" when a tool fails.
+TOOL_TO_CATEGORIES = {
+    "daily_kb_audit": {"daily_audit"},
+    "consistency_check": {"consistency"},
+    "error_patterns": {"error_pattern"},
 }
 
 
