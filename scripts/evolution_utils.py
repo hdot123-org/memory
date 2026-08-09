@@ -122,4 +122,14 @@ def load_history(history_path: Path):
             print(f"[evolution] Warning: Corrupt snapshot at index {i} in {history_path}, skipped")
     data['snapshots'] = valid_snapshots
 
+    # Validate resolved_findings entries: each must be dict with rule_id and location
+    if isinstance(data.get('resolved_findings'), list):
+        valid_resolved = []
+        for i, entry in enumerate(data['resolved_findings']):
+            if isinstance(entry, dict) and 'rule_id' in entry and 'location' in entry:
+                valid_resolved.append(entry)
+            else:
+                print(f"[evolution] Warning: Corrupt resolved_findings at index {i} in {history_path}, skipped")
+        data['resolved_findings'] = valid_resolved
+
     return data
