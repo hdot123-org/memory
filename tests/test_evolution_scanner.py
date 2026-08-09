@@ -2656,3 +2656,313 @@ def test_extract_location_validates_path_format():
     # No bracket
     assert _extract_location("check /path/to/file.md: message") == ""
 
+
+# ============================================================================
+# VAL-FOLLOWUP-001/002 Tests (P2 Robustness — Opus Audit Followup)
+# ============================================================================
+
+
+def test_load_history_skips_corrupt_snapshot(tmp_path):
+    """VAL-FOLLOWUP-001: load_history skips corrupt snapshot entries, preserving valid ones.
+
+    Each entry in the snapshots list must be a dict with a 'findings' key.
+    Corrupt entries (non-dict or missing 'findings') are skipped with a warning.
+    Valid entries are preserved in the returned data.
+    """
+    from evolution_utils import load_history
+
+    history_path = tmp_path / "findings_over_time.json"
+
+    # Valid history with mixed valid and corrupt snapshot entries
+    history_data = {
+        "snapshots": [
+            # Valid entry
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "tick_id": "t1",
+                "findings": [{"rule_id": "R1", "location": "f.md"}],
+                "issues_created": 1,
+            },
+            # Corrupt entry: not a dict
+            "not_a_dict",
+            # Corrupt entry: dict missing 'findings' key
+            {"timestamp": "2026-01-01T01:00:00Z", "tick_id": "t2", "no_findings": True},
+            # Valid entry
+            {
+                "timestamp": "2026-01-01T02:00:00Z",
+                "tick_id": "t3",
+                "findings": [],
+                "issues_created": 0,
+            },
+            # Corrupt entry: None
+            None,
+            # Valid entry
+            {
+                "timestamp": "2026-01-01T03:00:00Z",
+                "tick_id": "t4",
+                "findings": [{"rule_id": "R2", "location": "g.md"}],
+                "issues_created": 1,
+            },
+        ],
+        "resolved_findings": [],
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    with patch("builtins.print") as mock_print:
+        result = load_history(history_path)
+
+    # Should return data with only valid snapshots preserved
+    assert result is not None, "load_history should return data, not None"
+    assert len(result["snapshots"]) == 3, f"Expected 3 valid snapshots, got {len(result['snapshots'])}"
+    assert result["snapshots"][0]["tick_id"] == "t1"
+    assert result["snapshots"][1]["tick_id"] == "t3"
+    assert result["snapshots"][2]["tick_id"] == "t4"
+
+    # Warning should mention corrupt snapshots being skipped
+    warning_messages = [str(c) for c in mock_print.call_args_list]
+    assert any("corrupt" in msg.lower() or "skipped" in msg.lower() for msg in warning_messages), \
+        f"Expected warning about corrupt snapshots being skipped. Messages: {warning_messages}"
+
+
+def test_load_history_all_snapshots_corrupt_returns_empty(tmp_path):
+    """VAL-FOLLOWUP-001: When all snapshots are corrupt, return data with empty snapshots list.
+
+    If every snapshot entry is corrupt, load_history should skip all of them
+    and return data with an empty snapshots list (not quarantine the file).
+    """
+    from evolution_utils import load_history
+
+    history_path = tmp_path / "findings_over_time.json"
+
+    # All snapshots are corrupt
+    history_data = {
+        "snapshots": [
+            "not_a_dict",
+            {"no_findings": True},
+            None,
+            42,
+        ],
+        "resolved_findings": [],
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    with patch("builtins.print"):
+        result = load_history(history_path)
+
+    # All corrupt → skip all, return data with empty snapshots list
+    assert result is not None, "load_history should return data, not None"
+    assert len(result["snapshots"]) == 0, "All snapshots were corrupt, should have empty list"
+    assert result["resolved_findings"] == [], "resolved_findings should be preserved"
+    # File should still exist (not quarantined)
+    assert history_path.exists(), "File should not be quarantined when all snapshots are corrupt"
+
+
+def test_main_missing_config_key_exits_cleanly(tmp_path):
+    """VAL-FOLLOWUP-002: main() validates required config keys before accessing them.
+
+    When a required key is missing (e.g. audit_tools, github.owner, github.repo),
+    the scanner exits with code 1 and a clear error message identifying the missing
+    key, rather than crashing with a raw KeyError traceback.
+    """
+    from evolution_scanner import main
+
+    # Config missing required keys
+    incomplete_config = {
+        "severity_order": ["critical", "warning", "info"],
+        # Missing: audit_tools, dedup_label, isolation_threshold, failure_label,
+        #          max_issues_per_tick, snapshot_limit
+    }
+
+    with patch("evolution_scanner.check_kill_switch", return_value=False), \
+         patch("evolution_scanner.load_config", return_value=incomplete_config), \
+         patch("builtins.print") as mock_print, \
+         pytest.raises(SystemExit) as exc_info:
+
+        main()
+
+    # Should exit with code 1
+    assert exc_info.value.code == 1, f"Expected exit code 1, got {exc_info.value.code}"
+
+    # Should print a clear error message identifying the missing key
+    error_messages = [str(c) for c in mock_print.call_args_list]
+    error_text = " ".join(error_messages).lower()
+    assert "missing" in error_text or "required" in error_text, \
+        f"Expected error message about missing config key. Messages: {error_messages}"
+    # Should mention at least one of the missing keys
+    assert any(key in error_text for key in ["audit_tools", "dedup_label", "max_issues_per_tick"]), \
+        f"Expected error message to mention missing key name. Messages: {error_messages}"
+
+
+def test_main_config_drift_protection_all_keys_present():
+    """VAL-FOLLOWUP-002: main() proceeds normally when all required config keys are present."""
+    from evolution_scanner import main
+
+    # Complete config with all required keys
+    complete_config = {
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 3,
+        "snapshot_limit": 100,
+    }
+
+    with patch("evolution_scanner.check_kill_switch", return_value=False), \
+         patch("evolution_scanner.load_config", return_value=complete_config), \
+         patch("evolution_scanner.run_audit_tool", return_value=[]), \
+         patch("evolution_scanner.detect_regressions", return_value=[]), \
+         patch("evolution_scanner.get_open_issues", return_value=[]), \
+         patch("evolution_scanner.update_history"), \
+         patch("evolution_scanner.check_isolation"), \
+         patch("builtins.print"):
+
+        # Should not raise SystemExit
+        main()
+        # If we get here without exception, the test passes
+
+# ============================================================================
+# VAL-FOLLOWUP-003/004 Tests (P2/P3 Audit — Deep Validation, Credential Redaction, fsync)
+# ============================================================================
+
+
+def test_load_history_deep_validation_quarantines_corrupt_snapshot(tmp_path):
+    """VAL-FOLLOWUP-001: load_history skips corrupt snapshot (not a dict), preserves valid ones."""
+    from evolution_utils import load_history
+
+    history_path = tmp_path / "findings_over_time.json"
+    # snapshots is a valid list, but one entry is a string (not a dict)
+    history_data = {
+        "snapshots": [
+            {"timestamp": "2026-01-01T00:00:00Z", "tick_id": "t1", "findings": [], "issues_created": 0},
+            "not_a_dict",  # Corrupt entry
+            {"timestamp": "2026-01-01T02:00:00Z", "tick_id": "t3", "findings": [{"rule_id": "R1"}], "issues_created": 1},
+        ],
+        "resolved_findings": [],
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    with patch("builtins.print"):
+        result = load_history(history_path)
+
+    # Should skip corrupt entry and preserve valid ones
+    assert result is not None, "load_history must return data, not None"
+    assert len(result["snapshots"]) == 2, f"Expected 2 valid snapshots, got {len(result['snapshots'])}"
+    assert result["snapshots"][0]["tick_id"] == "t1"
+    assert result["snapshots"][1]["tick_id"] == "t3"
+    # File should still exist (not quarantined)
+    assert history_path.exists(), "File should not be quarantined"
+
+
+def test_load_history_deep_validation_quarantines_missing_findings(tmp_path):
+    """VAL-FOLLOWUP-001: load_history skips snapshot dict lacking 'findings' key, preserves valid ones."""
+    from evolution_utils import load_history
+
+    history_path = tmp_path / "findings_over_time.json"
+    # Snapshot is a dict but missing the 'findings' key
+    history_data = {
+        "snapshots": [
+            {"timestamp": "2026-01-01T00:00:00Z", "tick_id": "t1", "findings": [], "issues_created": 0},
+            {"timestamp": "2026-01-01T01:00:00Z", "tick_id": "t2", "no_findings_key": True},  # Missing 'findings'
+            {"timestamp": "2026-01-01T02:00:00Z", "tick_id": "t3", "findings": [{"rule_id": "R1"}], "issues_created": 1},
+        ],
+        "resolved_findings": [],
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    with patch("builtins.print"):
+        result = load_history(history_path)
+
+    # Should skip corrupt entry and preserve valid ones
+    assert result is not None, "load_history must return data, not None"
+    assert len(result["snapshots"]) == 2, f"Expected 2 valid snapshots, got {len(result['snapshots'])}"
+    assert result["snapshots"][0]["tick_id"] == "t1"
+    assert result["snapshots"][1]["tick_id"] == "t3"
+    # File should still exist (not quarantined)
+    assert history_path.exists(), "File should not be quarantined"
+
+
+def test_config_missing_key_exits():
+    """VAL-FOLLOWUP-004: main() exits with code 1 when required config key is missing."""
+    from evolution_scanner import main
+
+    # Config missing 'audit_tools' key
+    incomplete_config = {
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        # Missing: audit_tools, max_issues_per_tick, snapshot_limit, isolation_threshold, failure_label
+    }
+
+    with patch("evolution_scanner.check_kill_switch", return_value=False), \
+         patch("evolution_scanner.load_config", return_value=incomplete_config), \
+         patch("builtins.print") as mock_print, \
+         pytest.raises(SystemExit) as exc_info:
+        main()
+
+    assert exc_info.value.code == 1, f"Expected exit code 1, got {exc_info.value.code}"
+
+    # Error message should mention missing keys
+    error_text = " ".join(str(c) for c in mock_print.call_args_list)
+    assert "missing" in error_text.lower() or "required" in error_text.lower()
+
+
+def test_sanitize_text_redacts_credentials():
+    """VAL-FOLLOWUP-005: sanitize_text redacts common credential patterns."""
+    from evolution_adapters import sanitize_text
+    # Construct tokens dynamically to avoid triggering secret scanners in CI
+    prefix_ghp = "ghp" + "_"
+    ghp_token = prefix_ghp + "A" * 25
+    result = sanitize_text(f"token is {ghp_token} here")
+    assert ghp_token not in result
+    assert "***REDACTED***" in result
+    # GitHub fine-grained token (github_pat_)
+    github_pat = "github_" + "pat" + "_" + "B" * 25
+    result = sanitize_text(f"token is {github_pat} here")
+    assert github_pat not in result
+    assert "***REDACTED***" in result
+    # AWS access key (AKIA...)
+    aws_key = "AK" + "IA" + "T" * 16
+    result = sanitize_text(f"aws key {aws_key} leaked")
+    assert aws_key not in result
+    assert "***REDACTED***" in result
+    # Slack token (xoxb-)
+    slack_token = "xo" + "xb" + "-" + "1" * 25
+    result = sanitize_text(f"slack {slack_token} exposed")
+    assert slack_token not in result
+    assert "***REDACTED***" in result
+    # OpenAI key (sk-...)
+    openai_key = "s" + "k" + "-" + "C" * 25
+    result = sanitize_text(f"openai {openai_key} leaked")
+    assert openai_key not in result
+    assert "***REDACTED***" in result
+
+def test_normalize_finding_preserves_critical_severity():
+    """VAL-FOLLOWUP-006: normalize_finding preserves 'critical' severity (does not downgrade)."""
+    raw = {
+        "rule_id": "CRITICAL_RULE",
+        "severity": "critical",
+        "category": "test",
+        "description": "Critical issue",
+        "location": "file.md",
+        "evidence": "evidence",
+    }
+    finding = normalize_finding(raw)
+    assert finding.severity == "critical", f"Expected critical, got {finding.severity}"
+
+
+def test_valid_severity_helper():
+    """VAL-FOLLOWUP-006: _valid_severity helper returns valid severity or defaults to 'info'."""
+    from evolution_scanner import _valid_severity
+
+    # Valid severities preserved
+    assert _valid_severity("critical") == "critical"
+    assert _valid_severity("warning") == "warning"
+    assert _valid_severity("info") == "info"
+
+    # Invalid severities default to 'info'
+    assert _valid_severity("invalid") == "info"
+    assert _valid_severity("error") == "info"
+    assert _valid_severity("fatal") == "info"
+    assert _valid_severity("") == "info"
+    assert _valid_severity("CRITICAL") == "info"  # Case-sensitive
+

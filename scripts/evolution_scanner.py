@@ -11,7 +11,7 @@ from pathlib import Path
 
 import yaml
 from evolution_adapters import TOOL_TO_CATEGORIES, sanitize_structured_field, sanitize_text
-from evolution_utils import _parse_issue_fields, dedup_intra_tick, load_history
+from evolution_utils import _parse_issue_fields, dedup_intra_tick, load_history, validate_config
 
 
 @dataclass
@@ -94,16 +94,21 @@ def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict] | No
         return None
 
 
+def _valid_severity(sev: str) -> str:
+    """Return sev if it's a valid severity, else 'info'."""
+    return sev if sev in ("critical", "warning", "info") else "info"
+
+
 def normalize_finding(raw: dict) -> Finding:
     """Convert raw audit output dict to a sanitized Finding. Null-safe."""
-    sev = str(raw.get("severity") or "info")
+    sev = _valid_severity(str(raw.get("severity") or "info"))
     return Finding(
-        sanitize_structured_field(str(raw.get("rule_id") or "UNKNOWN")),
-        sev if sev in ("critical", "warning", "info") else "info",
-        sanitize_structured_field(str(raw.get("category") or "unknown")),
-        sanitize_text(str(raw.get("description") or "")),
-        sanitize_structured_field(str(raw.get("location") or "")),
-        sanitize_text(str(raw.get("evidence") or "")),
+        rule_id=sanitize_structured_field(str(raw.get("rule_id") or "UNKNOWN")),
+        severity=sev,
+        category=sanitize_structured_field(str(raw.get("category") or "unknown")),
+        description=sanitize_text(str(raw.get("description") or "")),
+        location=sanitize_structured_field(str(raw.get("location") or "")),
+        evidence=sanitize_text(str(raw.get("evidence") or "")),
     )
 
 
@@ -182,6 +187,8 @@ def update_history(history_path: Path, findings: list[Finding], issues_created: 
     tmp_path = history_path.with_suffix(".tmp")
     with open(tmp_path, "w") as f:
         json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp_path, history_path)
 
 
@@ -218,6 +225,8 @@ def main() -> None:
     if check_kill_switch(repo_root):
         sys.exit(0)
     config = load_config(repo_root)
+    validate_config(config)
+
     history_path = repo_root / ".evolution" / "findings_over_time.json"
     # Track tool failures to prevent false "resolved" cascade
     raw_results = [(t["name"], run_audit_tool(t, repo_root)) for t in config["audit_tools"]]

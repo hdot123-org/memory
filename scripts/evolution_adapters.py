@@ -8,6 +8,7 @@ def sanitize_text(text: str, max_len: int = 500) -> str:
 
     Removes @-mentions, inline links/images, line-leading markdown, bidi
     override characters, and control characters; truncates to max_len.
+    Also redacts common credential patterns (VAL-FOLLOWUP-005).
 
     RESIDUAL RISK: This is NOT a complete prompt-injection defense. Plain-text
     imperative instructions aimed at the consuming agent are intentionally NOT
@@ -21,6 +22,17 @@ def sanitize_text(text: str, max_len: int = 500) -> str:
     Returns:
         Sanitized text
     """
+    # Redact common credential patterns before other processing
+    # GitHub tokens (ghp_, github_pat_)
+    text = re.sub(r'ghp_[A-Za-z0-9]{20,}', '***REDACTED***', text)
+    text = re.sub(r'github_pat_[A-Za-z0-9_]+', '***REDACTED***', text)
+    # AWS access keys (AKIA...)
+    text = re.sub(r'AKIA[A-Z0-9]{16}', '***REDACTED***', text)
+    # Slack tokens (xoxb-, xoxp-, xoxo-, xoxa-)
+    text = re.sub(r'xox[bpoa]-[A-Za-z0-9-]+', '***REDACTED***', text)
+    # OpenAI keys (sk-...)
+    text = re.sub(r'sk-[A-Za-z0-9]{20,}', '***REDACTED***', text)
+
     # ReDoS prevention: pre-truncate to 4× max_len before regex processing
     text = text[:max_len * 4]
     # Strip HTML comments before other processing (prevent hidden instruction injection)
