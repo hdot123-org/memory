@@ -30,7 +30,9 @@ jobs:
         run: |
           # Get list of changed files via GitHub API (not git diff, which is empty with pull_request_target)
           # Fail-closed: if API call fails, exit with error instead of silently passing governance
-          if ! CHANGED=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate --field per_page=100 --jq '.[].filename' 2>&1); then
+          # --method GET is explicit because --field would switch gh api to POST (which 404s on this endpoint)
+          # per_page goes in the URL query string, NOT as --field (which also triggers POST)
+          if ! CHANGED=$(gh api --method GET "repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100" --paginate --jq '.[].filename' 2>&1); then
             echo "ERROR: Failed to fetch PR changed files via API:" >&2
             echo "$CHANGED" >&2
             exit 1
@@ -47,27 +49,15 @@ jobs:
           # Check if PR touches protected paths
           TOUCHED_PROTECTED=false
 
-          # Check .evolution/config.yml
-          if echo "$CHANGED" | grep -q "^\.evolution/config\.yml$"; then
-            echo "PROTECTED: .evolution/config.yml modified"
+          # Check entire .evolution/ directory (config, kill switch, history, etc.)
+          if echo "$CHANGED" | grep -q "^\.evolution/"; then
+            echo "PROTECTED: .evolution/ directory modified"
             TOUCHED_PROTECTED=true
           fi
 
-          # Check scripts/evolution_scanner.py
-          if echo "$CHANGED" | grep -q "^scripts/evolution_scanner\.py$"; then
-            echo "PROTECTED: scripts/evolution_scanner.py modified"
-            TOUCHED_PROTECTED=true
-          fi
-
-          # Check scripts/evolution_adapters.py
-          if echo "$CHANGED" | grep -q "^scripts/evolution_adapters\.py$"; then
-            echo "PROTECTED: scripts/evolution_adapters.py modified"
-            TOUCHED_PROTECTED=true
-          fi
-
-          # Check scripts/evolution_utils.py
-          if echo "$CHANGED" | grep -q "^scripts/evolution_utils\.py$"; then
-            echo "PROTECTED: scripts/evolution_utils.py modified"
+          # Check scripts/evolution_*.py (all evolution scripts)
+          if echo "$CHANGED" | grep -q "^scripts/evolution_.*\.py$"; then
+            echo "PROTECTED: evolution scanner script modified"
             TOUCHED_PROTECTED=true
           fi
 
@@ -77,13 +67,19 @@ jobs:
             TOUCHED_PROTECTED=true
           fi
 
+          # Check .github/CODEOWNERS (defines who can review governance changes)
+          if echo "$CHANGED" | grep -q "^\.github/CODEOWNERS$"; then
+            echo "PROTECTED: CODEOWNERS file modified"
+            TOUCHED_PROTECTED=true
+          fi
+
           if [ "$TOUCHED_PROTECTED" = "true" ]; then
             echo ""
             echo "PR author: $PR_AUTHOR"
             if [ "$PR_AUTHOR" != "busiji" ]; then
               echo ""
               echo "ERROR: Non-owner ($PR_AUTHOR) cannot modify evolution governance paths."
-              echo "Protected paths: .evolution/config.yml, scripts/evolution_scanner.py, scripts/evolution_adapters.py, scripts/evolution_utils.py, .github/workflows/evolution-*.yml"
+              echo "Protected paths: .evolution/ (all files), scripts/evolution_*.py, .github/workflows/evolution-*.yml, .github/CODEOWNERS"
               echo "Only @busiji is authorized to modify these files."
               exit 1
             else
