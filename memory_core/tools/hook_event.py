@@ -61,7 +61,7 @@ _VALID_EVENT_TYPES = {"session-start", "prompt-submit", "notification", "stop"}
 class HookEvent:
     """Normalized hook event produced by a host (factory, or legacy Codex/Claude)."""
 
-    source: str  # "codex" | "claude"
+    source: str  # "factory" | legacy "codex" | "claude"
     event_type: str  # "session-start" | "prompt-submit" | "notification" | "stop"
     payload: dict[str, Any]
     cwd: Path
