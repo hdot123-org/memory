@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.12](https://github.com/hdot123/memory/compare/v0.15.11...v0.15.12) (2026-08-09)
+
+
+### Bug Fixes
+
+* **evolution:** P1 labels bootstrap + exit code + P2 深度校验 + 重命名防护 ([#341](https://github.com/hdot123/memory/issues/341)) ([16a9b96](https://github.com/hdot123/memory/commit/16a9b96b240bf31e7b2fb003ac378a498ca161bd))
+
 ## [0.15.11](https://github.com/hdot123/memory/compare/v0.15.10...v0.15.11) (2026-08-09)
 
 
