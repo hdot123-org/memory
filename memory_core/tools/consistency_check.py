@@ -441,7 +441,14 @@ def check_ruff_config_not_conflicting() -> tuple[list[str], list[str]]:
 
 
 def check_contributing_version_source() -> tuple[list[str], list[str]]:
-    """Check CONTRIBUTING.md claims about version source vs constants.py."""
+    """Check CONTRIBUTING.md claims about version source vs constants.py.
+
+    Only flag the SPECIFIC stale claim that the version is *only* in
+    pyproject.toml. Do NOT use a generic ``"version" in content.lower()``
+    substring match: that matches every legitimate versioning discussion
+    (e.g. "Semantic Versioning", "版本号", "Versioning") and causes false
+    positives on every scanner tick. See INFRA-110.
+    """
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -451,8 +458,17 @@ def check_contributing_version_source() -> tuple[list[str], list[str]]:
 
     content = contributing_path.read_text(encoding="utf-8")
 
-    # Check if it claims version is only in pyproject.toml
-    if "版本号只在 `pyproject.toml`" in content or "version" in content.lower():
+    # Only flag the specific stale claim that version is ONLY in pyproject.toml.
+    # Do NOT use a generic "version" substring match — that matches every
+    # legitimate versioning discussion (e.g. "Semantic Versioning", "版本号")
+    # and causes false positives. See INFRA-110.
+    stale_claims = [
+        "版本号只在 `pyproject.toml`",
+        "version is only in pyproject.toml",
+    ]
+    has_stale_claim = any(claim in content for claim in stale_claims)
+
+    if has_stale_claim:
         # Check if constants.py also defines CURRENT_MEMORY_VERSION
         constants = _load_constants()
         if constants.get("CURRENT_MEMORY_VERSION"):
