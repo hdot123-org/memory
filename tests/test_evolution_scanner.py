@@ -675,7 +675,7 @@ def test_sanitize_text_removes_markdown_formatting():
 
 def test_create_issue_applies_sanitization():
     """Sanitization now happens at entry level (normalize_finding), not sink level.
-    
+
     This test verifies that when data goes through normalize_finding first,
     the resulting Finding has sanitized fields that create_issue uses directly.
     """
@@ -1015,10 +1015,10 @@ def test_corrupted_history_doesnt_crash(tmp_path):
     quarantine_files = list(tmp_path.glob("history.corrupted.*.json"))
     assert len(quarantine_files) == 1, f"Expected 1 quarantine file, found {len(quarantine_files)}"
     quarantine_file = quarantine_files[0]
-    
+
     # Verify quarantine file contains original corrupted content
     assert quarantine_file.read_text() == corrupted_content, "Quarantine file must contain original corrupted content"
-    
+
     # Verify warning message includes quarantine path
     warning_calls = [call for call in mock_print.call_args_list if "quarantined" in str(call)]
     assert len(warning_calls) > 0, "Expected warning message with quarantine path"
@@ -1027,37 +1027,37 @@ def test_corrupted_history_doesnt_crash(tmp_path):
 
 def test_corruption_quarantine_update_history(tmp_path):
     """VAL-HARD-008: Corrupted history file is quarantined, not silently overwritten.
-    
+
     When findings_over_time.json is corrupted (JSONDecodeError), update_history()
     must rename it to a quarantine path (e.g., findings_over_time.corrupted.{timestamp}.json)
     so resolved_findings can be recovered manually. The original recovery permanently
     loses all regression baselines.
     """
     history_path = tmp_path / "findings_over_time.json"
-    
+
     # Create corrupted JSON with valid data that would be lost
     corrupted_content = '{"snapshots": [{"timestamp": "2026-01-01T00:00:00Z"}], "INVALID": [['
     history_path.write_text(corrupted_content)
-    
+
     finding = Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")
-    
+
     # Capture warnings
     with patch("builtins.print") as mock_print:
         update_history(history_path, [finding], 1, 100)
-    
+
     # Verify original path has fresh data (quarantine successful)
     assert history_path.exists()
     new_data = json.loads(history_path.read_text())
     assert new_data["snapshots"][0]["timestamp"] != "2026-01-01T00:00:00Z"
-    
+
     # Verify quarantine file exists
     quarantine_files = list(tmp_path.glob("findings_over_time.corrupted.*.json"))
     assert len(quarantine_files) == 1, "Corrupted file must be quarantined"
     quarantine_file = quarantine_files[0]
-    
+
     # Verify quarantine contains original corrupted content
     assert quarantine_file.read_text() == corrupted_content
-    
+
     # Verify warning message
     warning_str = " ".join(str(call) for call in mock_print.call_args_list)
     assert "corrupted" in warning_str
@@ -1067,28 +1067,28 @@ def test_corruption_quarantine_update_history(tmp_path):
 
 def test_corruption_quarantine_detect_regressions(tmp_path):
     """VAL-HARD-008: detect_regressions also quarantines corrupted history.
-    
+
     When detect_regressions encounters corrupted JSON, it must quarantine
     the file before continuing with empty state.
     """
     history_path = tmp_path / "findings_over_time.json"
-    
+
     corrupted_content = '{broken json'
     history_path.write_text(corrupted_content)
-    
+
     findings = [Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")]
-    
+
     # Capture warnings
-    with patch("builtins.print") as mock_print:
+    with patch("builtins.print"):
         result = detect_regressions(findings, history_path)
-    
+
     # Function should return findings without crashing
     assert len(result) == 1
     assert result[0].rule_id == "RULE_001"
-    
+
     # Original path should be gone (renamed to quarantine)
     assert not history_path.exists(), "Original corrupted file must be removed"
-    
+
     # Quarantine file should exist
     quarantine_files = list(tmp_path.glob("findings_over_time.corrupted.*.json"))
     assert len(quarantine_files) == 1, "Corrupted file must be quarantined"
@@ -1097,7 +1097,7 @@ def test_corruption_quarantine_detect_regressions(tmp_path):
 
 def test_structured_fields_sanitized():
     """Defense-in-depth: rule_id and location stripped of control chars to prevent field injection.
-    
+
     Note: Sanitization now happens in normalize_finding (entry level), not create_issue.
     This test verifies the end-to-end: raw data → normalize_finding → create_issue body.
     """
@@ -1164,12 +1164,12 @@ def test_env_var_kill_switch():
 
 def test_category_injection_cannot_forge_dedup_key():
     """VAL-HARD-001: Category field injection cannot forge dedup key.
-    
+
     A Finding whose category contains a newline + forged Rule ID cannot cause
     _parse_issue_fields() to return the forged rule_id.
     """
     from evolution_scanner import _parse_issue_fields, create_issue
-    
+
     # Malicious category with injection attempt
     finding = Finding(
         rule_id="REAL_RULE",
@@ -1179,19 +1179,19 @@ def test_category_injection_cannot_forge_dedup_key():
         location="file.md",
         evidence="Normal evidence",
     )
-    
+
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         create_issue(finding, "evolution-found")
-        
+
         # Extract body from subprocess call
         call_args = mock_run.call_args[0][0]
         body_index = call_args.index("--body") + 1
         body = call_args[body_index]
-        
+
         # Parse the body fields
         rule_id, location = _parse_issue_fields(body)
-        
+
         # Real rule_id must be preserved, not forged
         assert rule_id == "REAL_RULE", f"Expected REAL_RULE, got {rule_id}"
         assert location == "file.md"
@@ -1199,20 +1199,20 @@ def test_category_injection_cannot_forge_dedup_key():
 
 def test_sanitize_text_cannot_be_bypassed_by_inline_links():
     """VAL-HARD-002: sanitize_text cannot be bypassed by inline links.
-    
+
     Inline link [text](url) must be stripped to just text.
     """
     from evolution_adapters import sanitize_text
-    
+
     # Inline link with malicious URL
     malicious = "Click [here](https://evil.example/phish) for details"
     result = sanitize_text(malicious)
-    
+
     # Link text preserved, URL removed
     assert "here" in result
     assert "https://evil.example/phish" not in result
     assert "[here]" not in result  # Markdown syntax removed
-    
+
     # Multiple inline links
     multi = "See [link1](url1) and [link2](url2)"
     result = sanitize_text(multi)
@@ -1224,21 +1224,21 @@ def test_sanitize_text_cannot_be_bypassed_by_inline_links():
 
 def test_sanitize_text_cannot_be_bypassed_by_inline_images():
     """VAL-HARD-003: sanitize_text cannot be bypassed by inline images.
-    
+
     Inline image ![alt](url) must be stripped to just alt text.
     Prevents tracking pixel exfiltration via GitHub's camo proxy.
     """
     from evolution_adapters import sanitize_text
-    
+
     # Tracking pixel attempt
     malicious = "![tracking](https://tracker.example/pixel.png)"
     result = sanitize_text(malicious)
-    
+
     # Alt text preserved, URL removed
     assert "tracking" in result
     assert "https://tracker.example/pixel.png" not in result
     assert "![" not in result  # Image syntax removed
-    
+
     # Multiple inline images
     multi = "![img1](url1) text ![img2](url2)"
     result = sanitize_text(multi)
@@ -1250,31 +1250,31 @@ def test_sanitize_text_cannot_be_bypassed_by_inline_images():
 
 def test_sanitize_structured_field_cannot_be_bypassed_by_unicode_separators():
     """VAL-HARD-004: sanitize_structured_field cannot be bypassed by Unicode line separators.
-    
+
     Unicode line/paragraph separators (\\u2028, \\u2029, \\u0085) must be stripped.
     These characters are treated as line breaks by GitHub's renderer.
     """
     from evolution_adapters import sanitize_structured_field
-    
+
     # Line separator U+2028 - should be stripped (no line break injection)
     malicious_2028 = "real\u2028**Severity**: critical"
     result = sanitize_structured_field(malicious_2028)
     assert "\u2028" not in result
     # After stripping, it's a single line: "real**Severity**: critical"
     assert result == "real**Severity**: critical"
-    
+
     # Paragraph separator U+2029
     malicious_2029 = "real\u2029**Rule ID**: FORGED"
     result = sanitize_structured_field(malicious_2029)
     assert "\u2029" not in result
     assert result == "real**Rule ID**: FORGED"
-    
+
     # Next line U+0085
     malicious_0085 = "real\u0085**Location**: forged"
     result = sanitize_structured_field(malicious_0085)
     assert "\u0085" not in result
     assert result == "real**Location**: forged"
-    
+
     # All separators combined - all stripped, leaving a single line
     combined = "field\u2028\u2029\u0085injection"
     result = sanitize_structured_field(combined)
@@ -1286,20 +1286,20 @@ def test_sanitize_structured_field_cannot_be_bypassed_by_unicode_separators():
 
 def test_sanitize_text_cannot_be_bypassed_by_tilde_code_fences():
     """VAL-HARD-005: sanitize_text cannot be bypassed by alternative code fences.
-    
+
     GitHub accepts ~~~ as an alternative to ``` for fenced code blocks.
     The tilde must be added to the markdown strip char class.
     """
     from evolution_adapters import sanitize_text
-    
+
     # Tilde code fence
     malicious = "~~~python\nprint('evil')\n~~~"
     result = sanitize_text(malicious)
-    
+
     # Tildes should be stripped
     assert "~~~" not in result
     assert "~" not in result  # All tildes removed
-    
+
     # Mixed fences
     mixed = "```python\ncode1\n~~~\ncode2\n```"
     result = sanitize_text(mixed)
@@ -1309,12 +1309,12 @@ def test_sanitize_text_cannot_be_bypassed_by_tilde_code_fences():
 
 def test_parse_issue_fields_is_write_once():
     """VAL-HARD-009: _parse_issue_fields is write-once (first match wins).
-    
+
     The first **Rule ID**: match must be authoritative; subsequent matches
     must be ignored (no overwrite).
     """
     from evolution_scanner import _parse_issue_fields
-    
+
     # Body with TWO Rule ID lines before Description
     body = (
         "**Rule ID**: FIRST_RULE\n"
@@ -1324,13 +1324,13 @@ def test_parse_issue_fields_is_write_once():
         "**Location**: second/file.md\n"
         "**Description**: Some description\n"
     )
-    
+
     rule_id, location = _parse_issue_fields(body)
-    
+
     # First values must be preserved
     assert rule_id == "FIRST_RULE", f"Expected FIRST_RULE, got {rule_id}"
     assert location == "first/file.md", f"Expected first/file.md, got {location}"
-    
+
     # Test with forged values in Category (between Rule ID and Location)
     body_injection = (
         "**Rule ID**: REAL_RULE\n"
@@ -1340,7 +1340,7 @@ def test_parse_issue_fields_is_write_once():
         "**Location**: real/file.md\n"
         "**Description**: Description\n"
     )
-    
+
     rule_id, location = _parse_issue_fields(body_injection)
     assert rule_id == "REAL_RULE"
     assert location == "real/file.md"
@@ -1348,11 +1348,11 @@ def test_parse_issue_fields_is_write_once():
 
 def test_normalize_finding_applies_sanitization():
     """Verify normalize_finding applies sanitization to all fields.
-    
+
     This ensures sanitization happens at entry point, not at sink.
     """
     from evolution_scanner import normalize_finding
-    
+
     # Raw finding with malicious content in all fields
     raw = {
         "rule_id": "RULE_001\n**Severity**: critical",
@@ -1362,9 +1362,9 @@ def test_normalize_finding_applies_sanitization():
         "location": "file.md\n**Location**: forged.md",
         "evidence": "![tracking](https://tracker.example/pixel.png)",
     }
-    
+
     finding = normalize_finding(raw)
-    
+
     # Structured fields: control chars removed
     assert "\n" not in finding.rule_id
     assert "RULE_001" in finding.rule_id
@@ -1372,7 +1372,7 @@ def test_normalize_finding_applies_sanitization():
     assert "test" in finding.category
     assert "\n" not in finding.location
     assert "file.md" in finding.location
-    
+
     # Text fields: links, images, mentions removed
     assert "[here]" not in finding.description
     assert "here" in finding.description
@@ -1385,12 +1385,12 @@ def test_normalize_finding_applies_sanitization():
 
 def test_create_issue_uses_finding_fields_directly():
     """Verify create_issue does not apply per-sink sanitization.
-    
+
     Sanitization now happens in normalize_finding, so create_issue
     should use finding fields directly without additional sanitization.
     """
     from evolution_scanner import create_issue
-    
+
     # Finding with already-sanitized fields
     finding = Finding(
         rule_id="RULE_001",  # Already sanitized
@@ -1400,16 +1400,16 @@ def test_create_issue_uses_finding_fields_directly():
         location="file.md",  # Already sanitized
         evidence="Clean evidence",  # Already sanitized
     )
-    
+
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         create_issue(finding, "evolution-found")
-        
+
         # Extract body
         call_args = mock_run.call_args[0][0]
         body_index = call_args.index("--body") + 1
         body = call_args[body_index]
-        
+
         # Fields should appear as-is (no double sanitization)
         assert "RULE_001" in body
         assert "test" in body
@@ -1420,7 +1420,7 @@ def test_create_issue_uses_finding_fields_directly():
 
 def test_empty_location_not_excluded_from_dedup():
     """VAL-HARD-006: Empty location findings participate in dedup.
-    
+
     When get_open_issues() filters parsed issues, it must use None checks
     instead of truthiness checks, so empty-string locations are included.
     This prevents duplicate issue creation for consistency_check findings
@@ -1432,9 +1432,9 @@ def test_empty_location_not_excluded_from_dedup():
             returncode=0,
             stdout='[{"number": 123, "body": "**Rule ID**: CONSISTENCY_ERROR\\n**Location**: "}]'
         )
-        
+
         issues = get_open_issues("evolution-found")
-        
+
         # Verify the issue with empty location is included
         assert len(issues) == 1, f"Expected 1 issue, got {len(issues)}"
         assert issues[0]["rule_id"] == "CONSISTENCY_ERROR"
@@ -1444,7 +1444,7 @@ def test_empty_location_not_excluded_from_dedup():
 
 def test_gh_failure_raises_runtime_error():
     """VAL-HARD-007: get_open_issues raises RuntimeError when gh returns non-zero.
-    
+
     When gh issue list fails (rate limit, auth, network), get_open_issues()
     must raise RuntimeError instead of returning []. This prevents the scanner
     from creating duplicate issues when it cannot check existing ones.
@@ -1452,14 +1452,14 @@ def test_gh_failure_raises_runtime_error():
     with patch("evolution_scanner.subprocess.run") as mock_run:
         # Mock gh returning non-zero exit code
         mock_run.return_value = MagicMock(returncode=1, stderr="rate limit exceeded")
-        
+
         with pytest.raises(RuntimeError, match="gh issue list failed"):
             get_open_issues("evolution-found")
 
 
 def test_main_handles_gh_failure_gracefully():
     """VAL-HARD-007: main() catches RuntimeError from get_open_issues and skips issue creation.
-    
+
     When get_open_issues raises RuntimeError, main() must:
     - Print a warning message
     - Set issues_created to 0
@@ -1472,9 +1472,9 @@ def test_main_handles_gh_failure_gracefully():
          patch("evolution_scanner.detect_regressions") as mock_regressions, \
          patch("evolution_scanner.get_open_issues", side_effect=RuntimeError("gh issue list failed")), \
          patch("evolution_scanner.update_history") as mock_history, \
-         patch("evolution_scanner.check_isolation") as mock_isolation, \
+         patch("evolution_scanner.check_isolation"), \
          patch("builtins.print") as mock_print:
-        
+
         # Setup config
         mock_config.return_value = {
             "audit_tools": [],
@@ -1485,27 +1485,27 @@ def test_main_handles_gh_failure_gracefully():
             "max_issues_per_tick": 3,
             "snapshot_limit": 100,
         }
-        
+
         # Mock findings
         finding = Finding("RULE_001", "warning", "consistency", "Test", "file.md", "evidence")
         mock_regressions.return_value = [finding]
-        
+
         # Run main
         from evolution_scanner import main
         main()
-        
+
         # Verify warning was printed
-        warning_calls = [call for call in mock_print.call_args_list 
+        warning_calls = [call for call in mock_print.call_args_list
                         if "Warning" in str(call) or "warning" in str(call)]
         assert len(warning_calls) > 0, "Expected warning message to be printed"
-        
+
         # Verify update_history was called (with issues_created=0)
         assert mock_history.called, "update_history must be called even when get_open_issues fails"
         history_call_args = mock_history.call_args
         # issues_created is the 3rd positional argument
         issues_created = history_call_args[0][2]
         assert issues_created == 0, f"Expected issues_created=0, got {issues_created}"
-        
+
         # Verify no issues were created (deduplicate and create_issue not called)
         # When get_open_issues fails, we skip the entire issue creation flow
         assert not any("create_issue" in str(call) for call in mock_print.call_args_list)
@@ -1518,7 +1518,7 @@ def test_main_handles_gh_failure_gracefully():
 
 def test_consistency_check_processes_checks_array():
     """VAL-HARD-010: adapt_consistency_check processes checks array entries.
-    
+
     Each check entry's errors and warnings must be converted to Finding dicts.
     The docstring documents this input format but the original implementation
     only processes top-level errors and warnings.
@@ -1549,13 +1549,13 @@ def test_consistency_check_processes_checks_array():
 
     # Should produce 2 findings from checks array
     assert len(findings) == 2, f"Expected 2 findings from checks array, got {len(findings)}"
-    
+
     # First finding from check error
     error_finding = next((f for f in findings if f["severity"] == "warning"), None)
     assert error_finding is not None, "Should have an error finding (severity=warning)"
     assert error_finding["rule_id"] == "INDEX_INTEGRITY"
     assert "INDEX.md references non-existent file" in error_finding["description"]
-    
+
     # Second finding from check warning
     warning_finding = next((f for f in findings if f["severity"] == "info"), None)
     assert warning_finding is not None, "Should have a warning finding (severity=info)"
@@ -1565,7 +1565,7 @@ def test_consistency_check_processes_checks_array():
 
 def test_consistency_check_no_duplicate_findings():
     """VAL-HARD-010: No duplicate findings when top-level and checks overlap.
-    
+
     When the same error appears in both top-level errors and checks[].errors,
     it should only appear once in the output.
     """
@@ -1594,7 +1594,7 @@ def test_consistency_check_no_duplicate_findings():
 
 def test_consistency_check_extract_location_applied_consistently():
     """VAL-HARD-010: _extract_location applied to both errors and warnings consistently.
-    
+
     The original implementation only applied _extract_location to warnings,
     not to errors. This asymmetry must be fixed.
     """
@@ -1613,12 +1613,12 @@ def test_consistency_check_extract_location_applied_consistently():
     findings = adapt_consistency_check(raw_output)
 
     assert len(findings) == 2
-    
+
     # Error finding should have location extracted
     error_finding = next(f for f in findings if f["severity"] == "warning")
     assert error_finding["location"] == "/path/to/file.md", \
         f"Error location should be extracted, got: {error_finding['location']}"
-    
+
     # Warning finding should have location extracted
     warning_finding = next(f for f in findings if f["severity"] == "info")
     assert warning_finding["location"] == "/path/to/other.py", \
@@ -1627,7 +1627,7 @@ def test_consistency_check_extract_location_applied_consistently():
 
 def test_consistency_check_checks_array_with_both_errors_and_warnings():
     """VAL-HARD-010: Checks array with both errors and warnings produces correct findings.
-    
+
     Verify that a single check with both errors and warnings produces
     the correct number and types of findings.
     """
@@ -1654,14 +1654,14 @@ def test_consistency_check_checks_array_with_both_errors_and_warnings():
 
     # Should produce 3 findings: 2 errors + 1 warning
     assert len(findings) == 3
-    
+
     # Count by severity
     errors = [f for f in findings if f["severity"] == "warning"]
     warnings = [f for f in findings if f["severity"] == "info"]
-    
+
     assert len(errors) == 2, f"Expected 2 error findings, got {len(errors)}"
     assert len(warnings) == 1, f"Expected 1 warning finding, got {len(warnings)}"
-    
+
     # Verify locations extracted
     locations = {f["location"] for f in findings}
     assert "/file1.md" in locations
