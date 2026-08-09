@@ -22,9 +22,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO: ${{ github.repository }}
         run: |
-          # Get list of changed files in the PR
-          CHANGED=$(git diff --name-only origin/main...HEAD 2>/dev/null || git diff --name-only HEAD~1...HEAD 2>/dev/null || echo "")
+          # Get list of changed files via GitHub API (not git diff, which is empty with pull_request_target)
+          CHANGED=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --jq '.[].filename' 2>/dev/null || echo "")
 
           if [ -z "$CHANGED" ]; then
             echo "No changed files detected, skipping governance check"
@@ -49,6 +50,18 @@ jobs:
             TOUCHED_PROTECTED=true
           fi
 
+          # Check scripts/evolution_adapters.py
+          if echo "$CHANGED" | grep -q "^scripts/evolution_adapters\.py$"; then
+            echo "PROTECTED: scripts/evolution_adapters.py modified"
+            TOUCHED_PROTECTED=true
+          fi
+
+          # Check scripts/evolution_utils.py
+          if echo "$CHANGED" | grep -q "^scripts/evolution_utils\.py$"; then
+            echo "PROTECTED: scripts/evolution_utils.py modified"
+            TOUCHED_PROTECTED=true
+          fi
+
           # Check .github/workflows/evolution-*.yml
           if echo "$CHANGED" | grep -q "^\.github/workflows/evolution-.*\.yml$"; then
             echo "PROTECTED: evolution workflow file modified"
@@ -61,7 +74,7 @@ jobs:
             if [ "$PR_AUTHOR" != "busiji" ]; then
               echo ""
               echo "ERROR: Non-owner ($PR_AUTHOR) cannot modify evolution governance paths."
-              echo "Protected paths: .evolution/config.yml, scripts/evolution_scanner.py, .github/workflows/evolution-*.yml"
+              echo "Protected paths: .evolution/config.yml, scripts/evolution_scanner.py, scripts/evolution_adapters.py, scripts/evolution_utils.py, .github/workflows/evolution-*.yml"
               echo "Only @busiji is authorized to modify these files."
               exit 1
             else
