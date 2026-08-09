@@ -46,8 +46,8 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
     echo "✓ droid-review passed"
     exit 0
   elif [ "$STATUS" = "neutral" ] || [ "$STATUS" = "skipped" ]; then
-    echo "○ droid-review skipped (likely Dependabot PR without FACTORY_API_KEY access)"
-    exit 0
+    echo "✗ BLOCK: droid-review was skipped/neutral — security audit did not run. Merge not allowed."
+    exit 1
   elif [ "$STATUS" = "failure" ]; then
     # Check if this is a Dependabot PR that failed due to missing FACTORY_API_KEY
     PR_INFO=$(curl -s -H "Authorization: token $GH_TOKEN" \
