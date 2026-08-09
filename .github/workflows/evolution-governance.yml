@@ -8,6 +8,10 @@ on:
   pull_request_target:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   governance-check:
     name: Block non-owner governance modifications
@@ -25,7 +29,12 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           # Get list of changed files via GitHub API (not git diff, which is empty with pull_request_target)
-          CHANGED=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --jq '.[].filename' 2>/dev/null || echo "")
+          # Fail-closed: if API call fails, exit with error instead of silently passing governance
+          if ! CHANGED=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate --field per_page=100 --jq '.[].filename' 2>&1); then
+            echo "ERROR: Failed to fetch PR changed files via API:" >&2
+            echo "$CHANGED" >&2
+            exit 1
+          fi
 
           if [ -z "$CHANGED" ]; then
             echo "No changed files detected, skipping governance check"
