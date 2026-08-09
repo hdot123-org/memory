@@ -104,7 +104,10 @@ def test_jq_extracts_conclusion():
 
     # Verify jq usage
     assert 'jq -r' in content
-    assert '.check_runs[0].conclusion' in content
+    # P1 fix: filter out cancelled/skipped runs and select latest completed
+    # (dual-trigger creates two check runs; one gets cancelled by concurrency)
+    assert 'cancelled' in content
+    assert 'sort_by(.started_at)' in content
 
 
 def test_ci_yml_calls_script():
