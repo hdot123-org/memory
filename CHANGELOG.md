@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.10](https://github.com/hdot123/memory/compare/v0.15.9...v0.15.10) (2026-08-09)
+
+
+### Bug Fixes
+
+* **evolution:** 修复进化扫描器稳定性与正确性缺陷 (INFRA-81) ([#331](https://github.com/hdot123/memory/issues/331)) ([4e4c14e](https://github.com/hdot123/memory/commit/4e4c14effb5bf22fb0d15b8c9ad304ace7c62c6b))
+
 ## [0.15.9](https://github.com/hdot123/memory/compare/v0.15.8...v0.15.9) (2026-08-09)
 
 
