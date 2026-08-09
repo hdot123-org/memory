@@ -3090,3 +3090,111 @@ def test_sanitize_text_fixed_point_loop_used():
     assert bidi_pos < credential_pos, \
         "Character removal (bidi strip) must appear before credential redaction in source"
 
+
+# ============================================================================
+# P1/P2 Audit Tests (2026-08-10)
+# ============================================================================
+
+
+def test_main_exits_nonzero_when_zero_issues_from_label_failure():
+    """P1-2: main() 应该在有发现但零个 issue 创建时退出（label 缺失场景）"""
+    from evolution_scanner import main
+
+    # Mock 配置和依赖
+    config = {
+        'audit_tools': [{'name': 'test_tool', 'command': 'echo "[]"'}],
+        'severity_order': {'critical': 3, 'warning': 2, 'info': 1},
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 3,
+        'snapshot_limit': 100,
+        'github': {'owner': 'test', 'repo': 'test'}
+    }
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.run_audit_tool', return_value=[{'rule_id': 'RULE_001', 'severity': 'warning', 'category': 'test', 'description': 'test', 'location': 'test.md', 'evidence': 'test'}]), \
+         patch('evolution_scanner.dedup_intra_tick') as mock_dedup, \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.deduplicate', return_value=[]), \
+         patch('evolution_scanner.sort_by_severity', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=False), \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.detect_regressions', return_value=[MagicMock()]), \
+         pytest.raises(SystemExit) as exc_info:
+
+        main()
+
+        assert exc_info.value.code == 1
+
+
+def test_load_history_findings_wrong_type_skipped(tmp_path):
+    """P2-3: load_history 应该跳过 findings 不是列表的 snapshot"""
+    from evolution_utils import load_history
+
+    history_path = tmp_path / 'history.json'
+    history_data = {
+        'snapshots': [
+            {
+                'timestamp': '2024-01-01T00:00:00Z',
+                'tick_id': 'tick1',
+                'findings': 'not a list',  # 错误的类型
+                'issues_created': 0
+            },
+            {
+                'timestamp': '2024-01-01T01:00:00Z',
+                'tick_id': 'tick2',
+                'findings': [{'rule_id': 'RULE_001', 'severity': 'warning', 'category': 'test', 'description': 'test', 'location': 'test.md', 'evidence': 'test'}],
+                'issues_created': 1
+            }
+        ],
+        'resolved_findings': []
+    }
+
+    with open(history_path, 'w') as f:
+        json.dump(history_data, f)
+
+    result = load_history(history_path)
+
+    # 应该只保留第二个有效的 snapshot
+    assert len(result['snapshots']) == 1
+    assert result['snapshots'][0]['tick_id'] == 'tick2'
+    assert len(result['snapshots'][0]['findings']) == 1
+
+
+def test_load_history_findings_list_of_strings_filtered(tmp_path):
+    """P2-3: load_history 应该过滤掉 findings 列表中的非 dict 条目"""
+    from evolution_utils import load_history
+
+    history_path = tmp_path / 'history.json'
+    history_data = {
+        'snapshots': [
+            {
+                'timestamp': '2024-01-01T00:00:00Z',
+                'tick_id': 'tick1',
+                'findings': [
+                    {'rule_id': 'RULE_001', 'severity': 'warning', 'category': 'test', 'description': 'test', 'location': 'test.md', 'evidence': 'test'},
+                    'not a dict',
+                    123,
+                    None,
+                    {'rule_id': 'RULE_002', 'severity': 'info', 'category': 'test', 'description': 'test2', 'location': 'test2.md', 'evidence': 'test2'}
+                ],
+                'issues_created': 0
+            }
+        ],
+        'resolved_findings': []
+    }
+
+    with open(history_path, 'w') as f:
+        json.dump(history_data, f)
+
+    result = load_history(history_path)
+
+    # 应该只保留两个有效的 dict 条目
+    assert len(result['snapshots']) == 1
+    assert len(result['snapshots'][0]['findings']) == 2
+    assert all(isinstance(f, dict) for f in result['snapshots'][0]['findings'])
+    assert result['snapshots'][0]['findings'][0]['rule_id'] == 'RULE_001'
+    assert result['snapshots'][0]['findings'][1]['rule_id'] == 'RULE_002'
+
