@@ -1,4 +1,8 @@
-"""HookEvent — unified event normalization for Codex/Claude dual-host memory hooks.
+"""HookEvent — unified event normalization for memory hooks (factory host, INV-6).
+
+The public entry point ``parse_hook_event`` accepts the **factory** host.
+``from_codex_payload`` and ``from_claude_payload`` remain as internal parsers
+for legacy Codex/Claude payload shapes.
 
 This module provides:
 - ``HookEvent`` dataclass: canonical event representation across hosts.
@@ -14,6 +18,7 @@ Claude event name mapping:
     Stop             → stop
 
 Codex event names are already in the canonical form (--event CLI arg).
+Factory passes canonical event names via ``--event`` (same path as Codex).
 """
 
 
@@ -54,7 +59,7 @@ _VALID_EVENT_TYPES = {"session-start", "prompt-submit", "notification", "stop"}
 
 @dataclass
 class HookEvent:
-    """Normalized hook event produced by either Codex or Claude host."""
+    """Normalized hook event produced by a host (factory, or legacy Codex/Claude)."""
 
     source: str  # "codex" | "claude"
     event_type: str  # "session-start" | "prompt-submit" | "notification" | "stop"
@@ -165,7 +170,7 @@ def to_context_package_input(event: HookEvent) -> dict[str, Any]:
     The returned dict is compatible with:
         build_context_package(host, event, payload)
 
-    Both Codex and Claude HookEvents produce the same output structure.
+    Both factory and legacy Codex/Claude HookEvents produce the same output structure.
     """
     return {
         "host": event.source,
