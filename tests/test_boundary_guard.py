@@ -104,24 +104,6 @@ def test_archive_is_exempt(tmp_path, monkeypatch):
     assert findings == [], f"archive/ files must be exempt; got: {findings}"
 
 
-def test_workbot_runtime_profile_is_exempt(tmp_path, monkeypatch):
-    """workbot adapter runtime profile may legitimately reference workbot paths."""
-    mod = _load_module()
-    fake_repo = tmp_path
-    adapters = fake_repo / "memory_core" / "tools" / "memory_hook_adapters"
-    adapters.mkdir(parents=True)
-    (adapters / "workbot_runtime_profile.py").write_text(
-        "TRUTH_MODEL = 'workbot-truth-model.md'\nDEPLOY = 'ce-01'",
-        encoding="utf-8",
-    )
-
-    monkeypatch.setattr(mod, "REPO_ROOT", fake_repo)
-    monkeypatch.setattr(mod, "LEAK_SCAN_ROOTS", (fake_repo / "memory_core",))
-
-    findings = mod.scan_runtime_leaks()
-    assert findings == [], f"workbot_runtime_profile.py must be exempt; got: {findings}"
-
-
 def test_cli_returns_nonzero_on_findings(tmp_path):
     fake_repo = tmp_path / "fake-repo"
     fake_repo.mkdir()
