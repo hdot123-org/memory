@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.15.11](https://github.com/hdot123/memory/compare/v0.15.10...v0.15.11) (2026-08-09)
+
+
+### Bug Fixes
+
+* **evolution:** Opus 5 审计上层修复 — 扫描器核心、适配器消毒、治理 CI ([#335](https://github.com/hdot123/memory/issues/335)) ([42a2120](https://github.com/hdot123/memory/commit/42a2120391b2551c4affcd523c686ff248bcd64d))
+* **evolution:** 修复剩余 P2/P3 审计发现 ([#339](https://github.com/hdot123/memory/issues/339)) ([12d2f78](https://github.com/hdot123/memory/commit/12d2f789cb49ebec397ca155fd1f63c26e87d303))
+* **evolution:** 修复治理 CI P1-1/P2-1/P2-3 审计发现 ([#337](https://github.com/hdot123/memory/issues/337)) ([13ae087](https://github.com/hdot123/memory/commit/13ae0878ddb9a362271a2f58cc23c7317fa4094a))
+* **governance:** 修正 owner 用户名 busiji → hdot123 ([#338](https://github.com/hdot123/memory/issues/338)) ([c6f824d](https://github.com/hdot123/memory/commit/c6f824d7fe12deea4709bec27e99d7c2e528c0cd))
+
 ## [0.15.10](https://github.com/hdot123/memory/compare/v0.15.9...v0.15.10) (2026-08-09)
 
 
