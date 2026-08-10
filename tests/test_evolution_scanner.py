@@ -4086,20 +4086,25 @@ def test_evolution_self_audit_tool_health_boundary(tmp_path, monkeypatch):
 
 
 def test_evolution_self_audit_findings_sufficient(tmp_path, monkeypatch):
-    """check_findings_over_time does NOT warn when latest snapshot has >=5 findings."""
+    """check_findings_over_time does NOT warn when latest snapshot is recent."""
+    from datetime import datetime, timedelta, timezone
+
     from memory_core.tools import evolution_self_audit
 
     monkeypatch.setattr(
         evolution_self_audit, "FINDINGS_OVER_TIME",
         tmp_path / "findings_over_time.json",
     )
+    monkeypatch.setattr(evolution_self_audit, "STALE_THRESHOLD_HOURS", 48)
 
-    # Latest snapshot has 10 findings - well above min=5
+    # Latest snapshot is recent — should not warn
+    recent_time = datetime.now(timezone.utc).isoformat()
+    older_recent = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     findings_items = [{"rule_id": f"RULE_{i}", "severity": "warning"} for i in range(10)]
     history_data = {
         "snapshots": [
-            {"timestamp": "2026-01-01T00:00:00+00:00", "findings": []},
-            {"timestamp": "2026-01-02T00:00:00+00:00", "findings": findings_items},
+            {"timestamp": older_recent, "findings": []},
+            {"timestamp": recent_time, "findings": findings_items},
         ]
     }
     (tmp_path / "findings_over_time.json").write_text(json.dumps(history_data))
@@ -4109,7 +4114,7 @@ def test_evolution_self_audit_findings_sufficient(tmp_path, monkeypatch):
 
 
 def test_evolution_self_audit_findings_insufficient(tmp_path, monkeypatch):
-    """check_findings_over_time warns when latest snapshot has <5 findings."""
+    """check_findings_over_time warns when there are no snapshots."""
     from memory_core.tools import evolution_self_audit
 
     monkeypatch.setattr(
@@ -4117,21 +4122,92 @@ def test_evolution_self_audit_findings_insufficient(tmp_path, monkeypatch):
         tmp_path / "findings_over_time.json",
     )
 
-    # Latest snapshot has only 2 findings - below min=5
-    findings_items = [{"rule_id": f"RULE_{i}", "severity": "warning"} for i in range(2)]
-    history_data = {
-        "snapshots": [
-            {"timestamp": "2026-01-01T00:00:00+00:00", "findings": [{"rule_id": "OLD"}] * 20},
-            {"timestamp": "2026-01-02T00:00:00+00:00", "findings": findings_items},
-        ]
-    }
+    # File exists but has empty snapshots list
+    history_data = {"snapshots": [], "resolved_findings": []}
     (tmp_path / "findings_over_time.json").write_text(json.dumps(history_data))
 
     result = evolution_self_audit.check_findings_over_time()
     assert len(result) == 1
     assert result[0]["rule_id"] == "EVOLUTION_FINDINGS_INSUFFICIENT"
     assert result[0]["severity"] == "warning"
-    assert "count=2" in result[0]["evidence"]
+    assert "snapshots count=0" in result[0]["evidence"]
+
+
+def test_evolution_self_audit_findings_stale(tmp_path, monkeypatch):
+    """check_findings_over_time warns when last snapshot is older than threshold."""
+    from datetime import datetime, timedelta, timezone
+
+    from memory_core.tools import evolution_self_audit
+
+    monkeypatch.setattr(
+        evolution_self_audit, "FINDINGS_OVER_TIME",
+        tmp_path / "findings_over_time.json",
+    )
+    monkeypatch.setattr(evolution_self_audit, "STALE_THRESHOLD_HOURS", 48)
+
+    # Last snapshot is 72 hours old — exceeds 48h threshold
+    old_time = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+    history_data = {
+        "snapshots": [
+            {"timestamp": old_time, "findings": [{"rule_id": "OLD"}]},
+        ]
+    }
+    (tmp_path / "findings_over_time.json").write_text(json.dumps(history_data))
+
+    result = evolution_self_audit.check_findings_over_time()
+    assert len(result) == 1
+    assert result[0]["rule_id"] == "EVOLUTION_FINDINGS_STALE"
+    assert result[0]["severity"] == "warning"
+    assert "threshold=48" in result[0]["evidence"]
+
+
+def test_evolution_self_audit_findings_recent_ok(tmp_path, monkeypatch):
+    """check_findings_over_time passes when snapshot is recent, even with few findings."""
+    from datetime import datetime, timezone
+
+    from memory_core.tools import evolution_self_audit
+
+    monkeypatch.setattr(
+        evolution_self_audit, "FINDINGS_OVER_TIME",
+        tmp_path / "findings_over_time.json",
+    )
+    monkeypatch.setattr(evolution_self_audit, "STALE_THRESHOLD_HOURS", 48)
+
+    # Recent snapshot with only 2 findings — should NOT trigger (was the old false-positive)
+    recent_time = datetime.now(timezone.utc).isoformat()
+    history_data = {
+        "snapshots": [
+            {"timestamp": recent_time, "findings": [{"rule_id": f"R{i}"} for i in range(2)]},
+        ]
+    }
+    (tmp_path / "findings_over_time.json").write_text(json.dumps(history_data))
+
+    result = evolution_self_audit.check_findings_over_time()
+    assert len(result) == 0
+
+
+def test_evolution_self_audit_findings_zero_ok(tmp_path, monkeypatch):
+    """check_findings_over_time passes with 0 findings in a recent snapshot (healthy codebase)."""
+    from datetime import datetime, timezone
+
+    from memory_core.tools import evolution_self_audit
+
+    monkeypatch.setattr(
+        evolution_self_audit, "FINDINGS_OVER_TIME",
+        tmp_path / "findings_over_time.json",
+    )
+    monkeypatch.setattr(evolution_self_audit, "STALE_THRESHOLD_HOURS", 48)
+
+    recent_time = datetime.now(timezone.utc).isoformat()
+    history_data = {
+        "snapshots": [
+            {"timestamp": recent_time, "findings": []},
+        ]
+    }
+    (tmp_path / "findings_over_time.json").write_text(json.dumps(history_data))
+
+    result = evolution_self_audit.check_findings_over_time()
+    assert len(result) == 0
 
 
 def test_evolution_self_audit_findings_missing(tmp_path, monkeypatch):

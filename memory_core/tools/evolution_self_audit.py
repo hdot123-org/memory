@@ -3,6 +3,7 @@
 import json
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]  # memory/
 EVOLUTION_DIR = PROJECT_ROOT / ".evolution"
 SUPPRESS_JSON = EVOLUTION_DIR / "suppress.json"
 FINDINGS_OVER_TIME = EVOLUTION_DIR / "findings_over_time.json"
+STALE_THRESHOLD_HOURS = 48
 EVOLUTION_CONFIG = EVOLUTION_DIR / "config.yml"
 
 FACTORY_HOME = Path.home() / ".factory"
@@ -58,7 +60,7 @@ def check_findings_over_time() -> list[dict[str, Any]]:
     if not FINDINGS_OVER_TIME.exists():
         findings.append({
             "rule_id": "EVOLUTION_FINDINGS_MISSING",
-            "severity": "warning",  # Changed from critical to warning
+            "severity": "warning",
             "description": "findings_over_time.json does not exist",
             "location": str(FINDINGS_OVER_TIME),
             "evidence": "file missing",
@@ -69,16 +71,40 @@ def check_findings_over_time() -> list[dict[str, Any]]:
     try:
         data = json.loads(FINDINGS_OVER_TIME.read_text())
         snapshots = data.get("snapshots", [])
-        findings_list = snapshots[-1].get("findings", []) if snapshots else []
-        if len(findings_list) < 5:
+        if not snapshots:
             findings.append({
                 "rule_id": "EVOLUTION_FINDINGS_INSUFFICIENT",
                 "severity": "warning",
-                "description": "findings_over_time.json has insufficient findings",
+                "description": "findings_over_time.json has no snapshots",
                 "location": str(FINDINGS_OVER_TIME),
-                "evidence": f"count={len(findings_list)}, min=5",
+                "evidence": "snapshots count=0",
                 "category": CATEGORY,
             })
+            return findings
+
+        # Recency check: verify the last snapshot is recent enough
+        last_snapshot = snapshots[-1]
+        timestamp_str = last_snapshot.get("timestamp", "")
+        if timestamp_str:
+            try:
+                last_time = datetime.fromisoformat(timestamp_str)
+                now = datetime.now(timezone.utc)
+                # Handle naive datetimes by assuming UTC
+                if last_time.tzinfo is None:
+                    last_time = last_time.replace(tzinfo=timezone.utc)
+                age_hours = (now - last_time).total_seconds() / 3600
+                if age_hours > STALE_THRESHOLD_HOURS:
+                    findings.append({
+                        "rule_id": "EVOLUTION_FINDINGS_STALE",
+                        "severity": "warning",
+                        "description": "findings_over_time.json last snapshot is stale",
+                        "location": str(FINDINGS_OVER_TIME),
+                        "evidence": f"age={age_hours:.1f}h, threshold={STALE_THRESHOLD_HOURS}h",
+                        "category": CATEGORY,
+                    })
+            except (ValueError, TypeError):
+                # Malformed timestamp — skip recency check, don't crash
+                pass
     except Exception as e:
         findings.append({
             "rule_id": "EVOLUTION_FINDINGS_INVALID",
