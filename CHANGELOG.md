@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.15.23](https://github.com/hdot123/memory/compare/v0.15.22...v0.15.23) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** [INFRA-103] 修复 validate_project_memory 文档字符串主机引用不一致 ([#396](https://github.com/hdot123/memory/issues/396)) ([f7889f1](https://github.com/hdot123/memory/commit/f7889f19dda50cd0bbf344c74e71151acfa879b2))
+* **evolution:** [INFRA-118] 将 status_enum 校验接入 validate_project_memory ([#384](https://github.com/hdot123/memory/issues/384)) ([cf11419](https://github.com/hdot123/memory/commit/cf114196c5e9bc2c54fa5dc1dba7aeadb55d9a48))
+* **validator:** [INFRA-106] _parse_lock_file 改为严格 TOML 解析 ([#392](https://github.com/hdot123/memory/issues/392)) ([d3d663a](https://github.com/hdot123/memory/commit/d3d663a629034f0c99a998951d15346aeaf98ff3))
+
 ## [0.15.22](https://github.com/hdot123/memory/compare/v0.15.21...v0.15.22) (2026-08-10)
 
 
