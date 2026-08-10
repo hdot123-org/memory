@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.21](https://github.com/hdot123/memory/compare/v0.15.20...v0.15.21) (2026-08-10)
+
+
+### Documentation
+
+* [INFRA-109] 清理 MEMORY_LOCK_SPEC 中的旧版本 0.1.0 引用 ([#389](https://github.com/hdot123/memory/issues/389)) ([8d78a3d](https://github.com/hdot123/memory/commit/8d78a3d7f8d3bb0abd4fd53a801ae36d50b65bbf))
+
 ## [0.15.20](https://github.com/hdot123/memory/compare/v0.15.19...v0.15.20) (2026-08-10)
 
 
