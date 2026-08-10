@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.15.13](https://github.com/hdot123/memory/compare/v0.15.12...v0.15.13) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** INFRA-92 加固进化扫描器 CI ([#347](https://github.com/hdot123/memory/issues/347)) ([835dce9](https://github.com/hdot123/memory/commit/835dce92b485259048bbc0a04c913d2a5b01e0de))
+* **evolution:** P1-A 模块投毒防护 + P2-A API 失败退出 + P2-B token 隔离 ([#346](https://github.com/hdot123/memory/issues/346)) ([be8341a](https://github.com/hdot123/memory/commit/be8341a504c2c2f31804fac932274d4ea195a807))
+
+
+### Documentation
+
+* [INFRA-105] 修正 CONTRIBUTING.md 版本号来源说明（CONTRIBUTING_VERSION_SOURCE）([#359](https://github.com/hdot123/memory/issues/359)) ([f0e41c5](https://github.com/hdot123/memory/commit/f0e41c592f8fe9905bc595f55447d7bb157d4b2c))
+
 ## [0.15.12](https://github.com/hdot123/memory/compare/v0.15.11...v0.15.12) (2026-08-09)
 
 
