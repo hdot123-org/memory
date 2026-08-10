@@ -174,7 +174,7 @@ memory/
 
 ```python
 {
-    "schema_version": "wb-hook-v2",
+    "schema_version": "internal-v2",
     "generated_at": "...",
     "host": "...",
     "event": "...",
@@ -364,7 +364,7 @@ main()
 
 ```json
 {
-  "schema_version": "wb-hook-v2",
+  "schema_version": "internal-v2",
   "generated_at": "2026-04-26T...",
   "host": "codex" | "claude",
   "event": "session-start" | "prompt-submit" | "stop" | "notification",

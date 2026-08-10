@@ -23,7 +23,7 @@ related: [DES-001, DES-007, DES-008]
 > 状态：可评审
 > 分析对象：`<memory-repo>`（memory 仓库）
 
-> **消费者契约更新**：本文档中的消费者契约已更新为 `context-package-v1`，内部核心使用 `wb-hook-v2`，通过 Gateway 层的 `_apply_artifact_compaction()` 进行转换。
+> **消费者契约更新**：本文档中的消费者契约已更新为 `context-package-v1`，内部核心使用内部 v2 schema，通过 Gateway 层的 `_apply_artifact_compaction()` 进行转换。
 
 ---
 
@@ -351,12 +351,12 @@ def build_context_package_core(config: CoreConfig) -> dict[str, Any]:
 
 ### 3.3 Context Package 返回契约
 
-Gateway 返回的 context package 应遵循以下稳定契约（当前 `wb-hook-v2` 版本）：
+Gateway 返回的 context package 应遵循以下稳定契约（内部 v2 版本）：
 
 ```python
 {
     # === 元数据 ===
-    "schema_version": "wb-hook-v2",          # 固定
+    "schema_version": "internal-v2",           # 内部 v2 固定版本
     "generated_at": "2026-04-26T12:00:00",   # ISO 时间戳
     "host": "codex",                         # 主机标识
     "event": "session-start",                # 事件名

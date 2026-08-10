@@ -18,7 +18,7 @@ related: [DES-007, DES-009, DES-010]
 
 # 08-data-pipeline.md
 
-> **v2→v1 转换层说明**：核心内部使用 `wb-hook-v2` schema 进行数据组装，包含完整的 system_context、project_context、task_context 三层结构。对外输出时通过 `_apply_artifact_compaction()` 转换为 `context-package-v1` 格式，裁剪内部诊断字段，保留消费者契约字段。
+> **v2→v1 转换层说明**：核心内部使用内部 v2 schema 进行数据组装，包含完整的 system_context、project_context、task_context 三层结构。对外输出时通过 `_apply_artifact_compaction()` 转换为 `context-package-v1` 格式，裁剪内部诊断字段，保留消费者契约字段。
 
 ## 1 Context Package 生命周期
 
@@ -161,7 +161,7 @@ Event log 是 JSONL 文件（[memory_hook_impls.py:1020-1021](<memory-repo>/memo
 
 | Key | 类型 | 说明 |
 |-----|------|------|
-| `schema_version` | `str` | 固定值 `"wb-hook-v2"` |
+| `schema_version` | `str` | 内部 v2 版本标识 |
 | `generated_at` | `str` | ISO 时间戳 |
 | `host` | `str` | `"codex"` 或 `"claude"` |
 | `event` | `str` | `"session-start"` / `"prompt-submit"` / `"stop"` / `"notification"` |
