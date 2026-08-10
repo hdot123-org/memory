@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.20](https://github.com/hdot123/memory/compare/v0.15.19...v0.15.20) (2026-08-10)
+
+
+### Bug Fixes
+
+* **docs:** 清除 10-consumer-boundary.md 过期版本引用 ([#386](https://github.com/hdot123/memory/issues/386)) ([c74854e](https://github.com/hdot123/memory/commit/c74854ecba6f27ffc389244b45ff1911a8bbdbc4))
+
 ## [0.15.19](https://github.com/hdot123/memory/compare/v0.15.18...v0.15.19) (2026-08-10)
 
 
