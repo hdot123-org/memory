@@ -1,5 +1,6 @@
 """Tests for PreToolUse guard."""
 
+import io
 import json
 import os
 import subprocess
@@ -13,6 +14,15 @@ from memory_core.ownership import (
     classify_agents_md_block,
     classify_owned_path,
 )
+
+
+def _make_fake_stdin(text: str) -> io.StringIO:
+    """Create a fake stdin object whose ``read()`` returns ``text``.
+
+    Used for monkeypatching ``sys.stdin`` in tests that call ``main()``
+    directly (see INFRA-141/145 stdin-IO regression tests).
+    """
+    return io.StringIO(text)
 
 
 class TestPreToolUseGuard:
@@ -882,6 +892,210 @@ class TestPreToolUseGuard:
         if error_log_dir.exists():
             error_files = list(error_log_dir.glob("*-errors.jsonl"))
             assert not error_files, f"Expected no error log, found: {error_files}"
+
+
+class TestInvisibleUnicodeStdin:
+    """Regression tests for INFRA-145: invisible Unicode characters that
+    survive str.strip() and cause false json_parse_error."""
+
+    def test_zero_width_space_only_stdin_allows_without_error(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """\\u200b (zero-width space) only on stdin should allow, not error."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\u200b"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_zero_width_non_joiner_only_stdin_allows(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """\\u200c (ZWNJ) only on stdin should allow."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\u200c"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_zero_width_joiner_only_stdin_allows(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """\\u200d (ZWJ) only on stdin should allow."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\u200d"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_word_joiner_only_stdin_allows(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """\\u2060 (word joiner) only on stdin should allow."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\u2060"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_multiple_invisible_chars_mix_allows(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """Mix of invisible chars + whitespace should allow."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\u200b \u200c\n\u200d\t\u2060"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_double_bom_allows_without_error(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """Double BOM \\ufeff\\ufeff should allow (INFRA-145 regression)."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\ufeff\ufeff"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_bom_with_invisible_chars_allows(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """BOM + invisible chars should allow."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\ufeff\u200b\x00\u200c"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_invisible_chars_with_valid_json_parses_correctly(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """Invisible chars prefixed to valid JSON should still parse."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        payload = {
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(tmp_path / "test.txt"), "content": "hi"},
+        }
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\ufeff\u200b" + json.dumps(payload)))
+        exit_code = main()
+        captured = capsys.readouterr()
+        json.loads(captured.out)  # parse to confirm valid JSON output
+        assert exit_code == 0
+
+    def test_zero_width_space_only_does_not_write_error_log(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """\\u200b only should NOT write any error log."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\u200b"))
+        main()
+        log_dir = tmp_path / "memory" / "log"
+        if log_dir.exists():
+            for f in log_dir.glob("*-errors.jsonl"):
+                content = f.read_text()
+                assert (
+                    "json_parse_error" not in content
+                ), f"False json_parse_error logged for \\u200b stdin: {content}"
+
+    def test_multiple_bom_does_not_write_error_log(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """Double BOM should NOT write any error log."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\ufeff\ufeff"))
+        main()
+        log_dir = tmp_path / "memory" / "log"
+        if log_dir.exists():
+            for f in log_dir.glob("*-errors.jsonl"):
+                content = f.read_text()
+                assert (
+                    "json_parse_error" not in content
+                ), f"False json_parse_error logged for double BOM stdin: {content}"
+
+
+class TestStdinDecodeError:
+    """Regression tests for INFRA-145: UnicodeDecodeError from stdin read."""
+
+    def test_unicode_decode_error_treated_as_empty(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """sys.stdin.read() raising UnicodeDecodeError should allow, not crash."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+
+        class _BadStdin:
+            def read(self):
+                raise UnicodeDecodeError(
+                    "utf-8", b"\xff\xfe", 0, 1, "invalid start byte"
+                )
+
+            def __getattr__(self, name):
+                raise AttributeError(name)
+
+        monkeypatch.setattr("sys.stdin", _BadStdin())
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_value_error_treated_as_empty(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """sys.stdin.read() raising ValueError should allow, not crash."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+
+        class _BadStdin:
+            def read(self):
+                raise ValueError("io error")
+
+            def __getattr__(self, name):
+                raise AttributeError(name)
+
+        monkeypatch.setattr("sys.stdin", _BadStdin())
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
 
 
 class TestPreToolUseGuardDirect:

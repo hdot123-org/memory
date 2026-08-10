@@ -58,6 +58,20 @@ _now_iso = now_iso
 _logger = logging.getLogger(__name__)
 
 
+# Invisible/non-content characters that are not valid JSON content but
+# str.strip() does not remove them, causing json.loads() to fail with
+# "Expecting value: line 1 column 1 (char 0)" — triggering false
+# json_parse_error logs (INFRA-143, INFRA-145).
+# Covers: BOM (\ufeff), null bytes (\x00), zero-width chars (\u200b \u200c
+# \u200d \u2060 \u180e), bidi marks (\u200e \u200f \u202a-\u202e),
+# soft hyphen (\u00ad), invisible math operators (\u2061-\u2064).
+# str.maketrans + translate removes ALL occurrences in a single pass,
+# including multiple BOMs.
+_INVISIBLE_CHARS = str.maketrans(
+    "", "", "\ufeff\x00\u200b\u200c\u200d\u2060\u180e\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2061\u2062\u2063\u2064\u00ad"
+)
+
+
 def _fail_closed_with_raw_check(raw_input: str, reason: str) -> tuple[int, dict[str, Any]]:
     """Fail-closed handler for when JSON parsing fails.
 
@@ -279,18 +293,20 @@ def main() -> int:
     # Read JSON payload from stdin
     try:
         raw_stdin = sys.stdin.read()
-    except OSError:
-        # stdin unavailable (closed pipe / bad file descriptor) — treat as
-        # empty stdin: a no-op rather than a JSON parse failure (INFRA-141).
+    except (OSError, ValueError, UnicodeDecodeError) as stdin_exc:
+        # stdin unavailable or contains non-decodable bytes — treat as empty
+        # stdin: a no-op rather than a JSON parse failure.
+        # OSError: closed pipe / bad file descriptor (INFRA-141).
+        # UnicodeDecodeError: non-UTF-8 bytes on stdin (subclass of ValueError).
+        # ValueError: covers io.UnsupportedOperation and other decode failures (INFRA-145).
+        _logger.debug("stdin read failed (%s), treating as empty", stdin_exc)
         raw_stdin = ""
 
-    # Strip BOM (\ufeff) and null bytes (\x00) before parsing.
+    # Strip invisible/non-content characters before parsing (INFRA-143, INFRA-145).
     # These are not valid JSON content but str.strip() does not remove them,
     # causing json.loads() to fail with "Expecting value: line 1 column 1
-    # (char 0)" — the same pattern flagged by INFRA-143.
-    raw_stdin = raw_stdin.replace("\x00", "")
-    if raw_stdin.startswith("\ufeff"):
-        raw_stdin = raw_stdin[1:]
+    # (char 0)" — triggering false json_parse_error logs.
+    raw_stdin = raw_stdin.translate(_INVISIBLE_CHARS)
 
     # Empty/whitespace-only stdin is a legitimate no-op (hook invoked
     # without a tool_use payload), not an error — skip error logging.
