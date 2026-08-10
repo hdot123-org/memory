@@ -449,10 +449,19 @@ def test_normalize_location():
     assert normalize_location("./tests/test_foo.py") == "tests/test_foo.py"
     assert normalize_location("scripts/evolution_adapters.py") == "scripts/evolution_adapters.py"
 
+    # Dot-prefixed directories must NOT be corrupted (lstrip char-set bug regression guard)
+    assert normalize_location(".github/workflows/ci.yml") == ".github/workflows/ci.yml"
+    assert normalize_location(".evolution/suppress.json") == ".evolution/suppress.json"
+    assert normalize_location("./.github/workflows/ci.yml") == ".github/workflows/ci.yml"
+    assert normalize_location("./.evolution/config.yml") == ".evolution/config.yml"
+
     # Absolute paths with /memory/ marker (local development)
     assert normalize_location("/Users/busiji/memory/tests/test_foo.py") == "tests/test_foo.py"
     assert normalize_location("/Users/busiji/memory/scripts/evolution_adapters.py") == "scripts/evolution_adapters.py"
     assert normalize_location("/home/user/memory/README.md") == "README.md"
+    # Dot-prefixed dirs through absolute path normalization
+    assert normalize_location("/Users/busiji/memory/.github/workflows/ci.yml") == ".github/workflows/ci.yml"
+    assert normalize_location("/Users/busiji/memory/.evolution/config.yml") == ".evolution/config.yml"
 
     # Absolute paths with /memory-core/ marker
     assert normalize_location("/Users/runner/work/memory-core/memory-core/scripts/foo.py") == "scripts/foo.py"
