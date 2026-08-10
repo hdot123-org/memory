@@ -186,6 +186,84 @@ class TestCheckContributingVersionSource:
         assert isinstance(errors, list)
         assert isinstance(warnings, list)
 
+    def test_no_warning_on_legitimate_versioning_discussion(self) -> None:
+        """Regression test for INFRA-110.
+
+        CONTRIBUTING.md legitimately discusses versioning (e.g. "Semantic
+        Versioning", "版本号", "Versioning") without making a stale claim that
+        the version is *only* in pyproject.toml. Such content must NOT trigger
+        a warning.
+        """
+        legitimate_content = (
+            "# Contributing\n\n"
+            "## Versioning\n\n"
+            "We follow Semantic Versioning (SemVer).\n\n"
+            "版本号的单一来源为 `memory_core/__init__.py` 的 `__version__`。\n"
+            "The version source is documented correctly here.\n"
+        )
+
+        def fake_read_text(self, encoding=None):
+            if self.name == "CONTRIBUTING.md":
+                return legitimate_content
+            return original_read_text(self, encoding=encoding)
+
+        original_read_text = Path.read_text
+        with patch.object(Path, "read_text", fake_read_text):
+            errors, warnings = check_contributing_version_source()
+
+        assert errors == []
+        assert warnings == []
+
+    def test_warning_on_chinese_stale_claim(self) -> None:
+        """A stale Chinese claim that the version is only in pyproject.toml
+        must trigger a warning when constants.py defines a version."""
+        stale_content = (
+            "# Contributing\n\n"
+            "版本号只在 `pyproject.toml` 中维护。\n"
+        )
+
+        def fake_read_text(self, encoding=None):
+            if self.name == "CONTRIBUTING.md":
+                return stale_content
+            return original_read_text(self, encoding=encoding)
+
+        original_read_text = Path.read_text
+        with patch.object(Path, "read_text", fake_read_text), \
+                patch(
+                    "memory_core.tools.consistency_check._load_constants",
+                    return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
+                ):
+            errors, warnings = check_contributing_version_source()
+
+        assert errors == []
+        assert len(warnings) == 1
+        assert "CONTRIBUTING.md" in warnings[0]
+
+    def test_warning_on_english_stale_claim(self) -> None:
+        """A stale English claim that the version is only in pyproject.toml
+        must trigger a warning when constants.py defines a version."""
+        stale_content = (
+            "# Contributing\n\n"
+            "The version is only in pyproject.toml.\n"
+        )
+
+        def fake_read_text(self, encoding=None):
+            if self.name == "CONTRIBUTING.md":
+                return stale_content
+            return original_read_text(self, encoding=encoding)
+
+        original_read_text = Path.read_text
+        with patch.object(Path, "read_text", fake_read_text), \
+                patch(
+                    "memory_core.tools.consistency_check._load_constants",
+                    return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
+                ):
+            errors, warnings = check_contributing_version_source()
+
+        assert errors == []
+        assert len(warnings) == 1
+        assert "CONTRIBUTING.md" in warnings[0]
+
 
 class TestCheckPackageDataCoverage:
     """Tests for check_package_data_coverage function."""
