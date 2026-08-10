@@ -3850,20 +3850,18 @@ def test_evolution_self_audit_ci_mode(tmp_path, monkeypatch, capsys):
     assert "SKIP check_repositories_yml" in captured.err
 
 
-def test_evolution_self_audit_suppress_empty(tmp_path, monkeypatch):
-    """check_suppress_json reports warning when suppressed list is empty."""
+def test_evolution_self_audit_suppress_empty_is_valid(tmp_path, monkeypatch):
+    """check_suppress_json treats an empty suppressed list as valid (no warning)."""
     monkeypatch.setattr(
         "evolution_self_audit.SUPPRESS_JSON",
         tmp_path / "suppress.json",
     )
-    # Write suppress.json with empty suppressed list
+    # suppress.json with empty suppressed list is a valid, healthy state
     (tmp_path / "suppress.json").write_text(
         json.dumps({"suppressed": []}), encoding="utf-8"
     )
     findings = check_suppress_json()
-    assert len(findings) == 1
-    assert findings[0]["rule_id"] == "EVOLUTION_SUPPRESS_EMPTY"
-    assert findings[0]["severity"] == "warning"
+    assert findings == []
 
 
 def test_adapt_audit_layout():
