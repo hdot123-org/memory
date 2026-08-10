@@ -188,10 +188,9 @@ schema_version = "1.0"
         assert result["memory"]["memory_version"] == "0.3.0"
 
     def test_parse_fallback_format(self, tmp_path: Path) -> None:
-        """Test parsing fallback key=value format."""
+        """Test parsing top-level key=value format (valid TOML)."""
         lock_file = tmp_path / "memory.lock"
-        # This format is not JSON-like (no { or [ at start)
-        # So it will go through TOML parsing first, then fallback if that fails
+        # Top-level key=value pairs are valid TOML; strict parsing succeeds.
         lock_file.write_text("""# Comment
 memory_version = "0.3.0"
 schema_version = "1.0"
