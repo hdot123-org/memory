@@ -41,6 +41,34 @@ class TestPreToolUseGuard:
 
         return result.returncode, output
 
+    def _run_guard_raw(self, raw_input: str, cwd: Path | None = None) -> tuple[int, dict[str, Any]]:
+        """Run the guard with raw stdin string and return (exit_code, result).
+
+        Unlike _run_guard which takes a dict payload, this passes the raw
+        string directly to the guard's stdin. Useful for testing empty,
+        whitespace-only, or malformed JSON inputs.
+        """
+        env = os.environ.copy()
+        if cwd:
+            env["FACTORY_PROJECT_DIR"] = str(cwd)
+            env["MEMORY_HOOK_ORIGINAL_CWD"] = str(cwd)
+
+        result = subprocess.run(
+            [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
+            input=raw_input,
+            capture_output=True,
+            text=True,
+            cwd=str(cwd) if cwd else None,
+            env=env,
+        )
+
+        try:
+            output = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            output = {"raw_stdout": result.stdout, "stderr": result.stderr}
+
+        return result.returncode, output
+
     def test_guard_blocks_write_to_owned_path(self, tmp_path: Path) -> None:
         """Test that Write to owned path is blocked."""
         # Create .memory to make it a memory-managed project
@@ -661,6 +689,46 @@ class TestPreToolUseGuard:
         assert exit_code == 0
         assert result["decision"] == "allow"
         assert "Unknown tool" in result["reason"]
+
+    # ========== 空/纯空白 stdin 处理测试 (INFRA-138) ==========
+
+    def test_empty_stdin_allows_without_error(self, tmp_path: Path) -> None:
+        """Empty stdin should allow and NOT write error log."""
+        exit_code, result = self._run_guard_raw("", tmp_path)
+
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+        assert "empty stdin" in result["reason"].lower()
+
+    def test_whitespace_stdin_allows_without_error(self, tmp_path: Path) -> None:
+        """Whitespace-only stdin should allow and NOT write error log."""
+        exit_code, result = self._run_guard_raw("   \n  ", tmp_path)
+
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+        assert "empty stdin" in result["reason"].lower()
+
+    def test_malformed_nonempty_json_goes_through_fail_closed(self, tmp_path: Path) -> None:
+        """Malformed non-empty JSON should go through fail-closed path, not be treated as empty."""
+        # Create memory/system so project root resolution works
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        exit_code, result = self._run_guard_raw("{invalid", tmp_path)
+
+        # Should NOT be treated as empty stdin — reason must indicate guard failure
+        assert "empty stdin" not in result.get("reason", "").lower()
+        assert "guard failure" in result["reason"].lower()
+
+    def test_empty_stdin_does_not_write_error_log(self, tmp_path: Path) -> None:
+        """Empty stdin should not write to the error log (json_parse_error)."""
+        exit_code, result = self._run_guard_raw("", tmp_path)
+
+        assert exit_code == 0
+        # Verify no error log was written to memory/log/*-errors.jsonl
+        error_log_dir = tmp_path / "memory" / "log"
+        if error_log_dir.exists():
+            error_files = list(error_log_dir.glob("*-errors.jsonl"))
+            assert not error_files, f"Expected no error log, found: {error_files}"
 
 
 class TestPreToolUseGuardDirect:
