@@ -1,4 +1,4 @@
-"""Coverage tests for memory_hook_gateway.py key paths.
+"""Coverage tests for memory_hook_gateway.py key paths (factory primary host, codex/claude legacy delegates).
 
 Coverage: 82% (862/1053 statements covered)
 
