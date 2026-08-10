@@ -279,6 +279,20 @@ def main() -> int:
     # Read JSON payload from stdin
     try:
         raw_stdin = sys.stdin.read()
+        # Empty/whitespace-only stdin is a legitimate no-op (hook invoked
+        # without a tool_use payload), not an error — skip error logging.
+        if not raw_stdin.strip():
+            reason_text = "Empty stdin, no tool use to guard"
+            print(json.dumps({
+                "decision": "allow",
+                "reason": reason_text,
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "allow",
+                    "permissionDecisionReason": reason_text,
+                },
+            }))
+            return 0
         payload = json.loads(raw_stdin)
     except json.JSONDecodeError as e:
         # Fail-closed: check raw stdin for protected path markers
