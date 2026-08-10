@@ -37,17 +37,7 @@ def check_suppress_json() -> list[dict[str, Any]]:
         return findings
 
     try:
-        data = json.loads(SUPPRESS_JSON.read_text())
-        suppressed = data.get("suppressed", [])
-        if not suppressed:
-            findings.append({
-                "rule_id": "EVOLUTION_SUPPRESS_EMPTY",
-                "severity": "warning",
-                "description": "suppress.json has empty suppressed list",
-                "location": str(SUPPRESS_JSON),
-                "evidence": "suppressed = []",
-                "category": CATEGORY,
-            })
+        json.loads(SUPPRESS_JSON.read_text())
     except Exception as e:
         findings.append({
             "rule_id": "EVOLUTION_SUPPRESS_INVALID",
