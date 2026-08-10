@@ -263,10 +263,10 @@ def test_isolation_label(tmp_path):
     findings = [Finding("RULE_001", "warning", "test", "Stuck", "file.md", "evidence")]
 
     with patch("evolution_scanner.subprocess.run") as mock_run:
-        # Mock gh issue list to return matching issue
+        # Mock gh issue list to return matching issue (createdAt needed for age gate)
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout='[{"number": 42, "title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\\n**Location**: file.md"}]',
+            stdout='[{"number": 42, "title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\\n**Location**: file.md", "createdAt": "2020-01-01T00:00:00Z"}]',
         )
 
         check_isolation(findings, history_path, 3, "evolution-isolated", "evolution-found")
@@ -967,9 +967,9 @@ def test_check_isolation_single_api_call(tmp_path):
     with patch("evolution_scanner.subprocess.run") as mock_run:
         # Mock gh issue list to return matching issues
         issues_data = [
-            {"number": 41, "title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\n**Location**: file1.md"},
-            {"number": 42, "title": "[evolution] RULE_002", "body": "**Rule ID**: RULE_002\n**Location**: file2.md"},
-            {"number": 43, "title": "[evolution] RULE_003", "body": "**Rule ID**: RULE_003\n**Location**: file3.md"},
+            {"number": 41, "title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\n**Location**: file1.md", "createdAt": "2020-01-01T00:00:00Z"},
+            {"number": 42, "title": "[evolution] RULE_002", "body": "**Rule ID**: RULE_002\n**Location**: file2.md", "createdAt": "2020-01-01T00:00:00Z"},
+            {"number": 43, "title": "[evolution] RULE_003", "body": "**Rule ID**: RULE_003\n**Location**: file3.md", "createdAt": "2020-01-01T00:00:00Z"},
         ]
         mock_run.return_value = MagicMock(
             returncode=0,

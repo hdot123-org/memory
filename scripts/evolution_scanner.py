@@ -187,12 +187,9 @@ def apply_suppressions(findings: list[Finding], suppressions: list[dict]) -> lis
     return [f for f in findings if not any(_matches_suppression(f, s) for s in suppressions)]
 
 
-def get_open_issues(dedup_label: str, failure_label: str = "") -> list[dict]:
-    # Build search query: always match dedup_label, optionally match failure_label
-    if failure_label:
-        search = f"label:{dedup_label},{failure_label}"
-    else:
-        search = f"label:{dedup_label}"
+def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated") -> list[dict]:
+    # Build search query: always match dedup_label AND failure_label (isolated issues count as open)
+    search = f"label:{dedup_label},{failure_label}"
     try:
         result = subprocess.run(["gh", "issue", "list", "--search", search,
                                   "--state", "open", "--limit", "200", "--json", "title,body,number"],
