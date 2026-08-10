@@ -143,3 +143,77 @@ body = (f"> ⚙️ 此 Issue 由 evolution scanner 自动创建。任务管理�
 | `.github/workflows/evolution-scan.yml` | scanner 定时触发 workflow |
 | `.github/workflows/droid.yml` | droid 自动触发 workflow |
 | `~/.factory/webhook/scripts/trigger-droid.sh` | webhook 触发 droid |
+
+
+---
+
+## 8. 附录：`Closes #GitHub号` 冗余保障评估
+
+### 8.1 背景
+
+GitHub 支持两种 PR body 关键字来自动关闭 Issue：
+
+- `Fixes #<issue_number>` — GitHub 原生关键字，PR merge 时关闭指定 Issue
+- `Closes #<issue_number>` — 语义同上，效果完全等价
+
+本项目的当前闭环机制是通过 PR body 中的 `Fixes INFRA-xxx` 引用 Linear issue。当 PR merge 时，Linear 原生 GitHub 集成检测到关联的 GitHub Issue 被关闭，自动同步关闭对应的 Linear Issue。
+
+本节评估是否需要额外在 PR body 中加入 `Closes #<GitHub Issue 号>` 作为冗余保障。
+
+### 8.2 当前闭环机制分析
+
+**当前链路**：
+
+```
+PR merge → GitHub 检测到 Fixes INFRA-xxx
+    → GitHub 自动关闭关联的 GitHub Issue
+    → Linear 原生 GitHub 集成检测到 Issue 关闭
+    → Linear 自动同步关闭对应的 Linear Issue
+```
+
+**已验证事实**：
+
+- `Fixes INFRA-xxx` 关键字在 PR merge 时可正确触发 GitHub Issue 自动关闭（GitHub 文档 + 实际验证）
+- Linear 原生 GitHub 集成可检测到 GitHub Issue 状态变更并同步关闭 Linear Issue（已在实际 issue 中验证）
+- 此闭环机制不依赖任何自定义代码或脚本，完全由 GitHub 和 Linear 平台原生能力实现
+
+**结论：当前闭环机制完整且已验证有效。**
+
+### 8.3 `Closes #GitHub号` 作为冗余的利弊分析
+
+#### 利（引入 `Closes #`）
+
+| 方面 | 说明 |
+|------|------|
+| 双重保障 | 如果 Linear GitHub 集成的反向同步出现故障，`Closes #` 可以在 GitHub 侧独立关闭 Issue |
+| 显式关联 | PR 和 GitHub Issue 之间的关联更加明确，便于人工追溯 |
+
+#### 弊（引入 `Closes #`）
+
+| 方面 | 说明 |
+|------|------|
+| 增加复杂度 | droid 创建 PR 时需要额外查询 GitHub Issue 号并写入 PR body，增加 linear-gateway skill 的逻辑复杂度 |
+| 冗余机制 | 当前 `Fixes INFRA-xxx` 闭环已验证有效，引入冗余机制可能带来维护负担 |
+| 一致性问题 | 如果 `Closes #` 和 `Fixes INFRA-xxx` 同时存在但行为不一致（如 `Closes #` 关闭了但 Linear 未同步），反而增加排查复杂度 |
+| 与当前职责模型冲突 | 当前模型中 GitHub Issue 是 scanner 自动产物，不需要人工维护。引入 `Closes #` 需要在 droid 流程中硬编码 GitHub Issue 号的传递，偏离了「GitHub 全自动、Linear 人+agent」的职责分工 |
+
+### 8.4 结论：当前不实施
+
+**决策**：当前不在 PR body 中引入 `Closes #GitHub号` 作为冗余保障。
+
+**理由**：
+
+1. 当前 `Fixes INFRA-xxx` 闭环机制已验证有效，无实际故障记录
+2. 引入冗余机制的复杂度和维护成本高于其收益
+3. 与当前「GitHub 全自动、Linear 人+agent」的职责模型保持一致
+
+### 8.5 重新评估触发条件
+
+以下任一条件满足时，应重新评估是否需要引入 `Closes #GitHub号`：
+
+| 触发条件 | 说明 |
+|----------|------|
+| Linear GitHub 集成同步故障 | 出现 GitHub Issue 已关闭但 Linear Issue 未同步关闭的实际情况 |
+| 闭环失败频率超过阈值 | 连续 3 次或累计 5 次出现 PR merge 后 Issue 未正确关闭 |
+| 架构变更 | 如果未来 Linear 集成方案发生变化（如迁移到其他平台），需要重新评估闭环机制 |
+| 审计发现风险 | 安全审计或 code review 发现当前闭环存在盲区 |
