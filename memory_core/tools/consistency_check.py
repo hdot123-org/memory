@@ -8,6 +8,7 @@ Usage:
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -192,15 +193,28 @@ def check_init_validate_roundtrip() -> tuple[list[str], list[str]]:
 
         # Run init
         try:
+            # This self-test intentionally runs init inside a TemporaryDirectory,
+            # which lives under $TMPDIR and is not a git repo. The denylist
+            # correctly rejects such paths in production, so we must explicitly
+            # opt in to the test-only bypass here. Relying on the parent
+            # process environment (e.g. conftest.py setting the bypass during
+            # pytest) makes the check silently pass under tests but fail when
+            # the evolution scanner runs consistency_check.py standalone.
+            child_env = {**os.environ, "MEMORY_CORE_BYPASS_DENYLIST": "1"}
             result = subprocess.run(
                 [sys.executable, "-m", "memory_core.tools.init_project_memory",
-                 "--target", str(tmp_path), "--host", "factory"],
+                 "--target", str(tmp_path), "--host", "factory",
+                 "--allow-non-git"],
                 capture_output=True,
                 text=True,
                 cwd=str(REPO_ROOT),
+                env=child_env,
             )
             if result.returncode != 0:
-                errors.append(f"init_project_memory failed: {result.stderr}")
+                # init_project_memory prints diagnostics to stdout, not stderr;
+                # fall back to stdout so the error message is never empty.
+                detail = result.stderr.strip() or result.stdout.strip()
+                errors.append(f"init_project_memory failed: {detail}")
                 return errors, warnings
         except Exception as exc:
             errors.append(f"init_project_memory exception: {exc}")
@@ -242,9 +256,13 @@ def check_init_validate_roundtrip() -> tuple[list[str], list[str]]:
                 capture_output=True,
                 text=True,
                 cwd=str(REPO_ROOT),
+                env=child_env,
             )
             if result.returncode != 0:
-                errors.append(f"validate_project_memory failed: {result.stderr}")
+                # validate_project_memory prints diagnostics to stdout; fall
+                # back to stdout so the error message is never empty.
+                detail = result.stderr.strip() or result.stdout.strip()
+                errors.append(f"validate_project_memory failed: {detail}")
         except Exception as exc:
             errors.append(f"validate_project_memory exception: {exc}")
 
