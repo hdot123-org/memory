@@ -14,9 +14,12 @@ scripts_dir = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(scripts_dir))
 
 from evolution_adapters import (
+    adapt_audit_layout,
     adapt_consistency_check,
     adapt_daily_audit,
     adapt_error_patterns,
+    adapt_evolution_self_audit,
+    adapt_validate_project,
 )
 from evolution_scanner import (
     Finding,
@@ -3764,3 +3767,136 @@ def test_update_history_handles_malformed_prev_findings(tmp_path):
 
     data = json.loads(history_path.read_text())
     assert len(data["snapshots"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Tests for evolution_self_audit (CI environment handling)
+# ---------------------------------------------------------------------------
+
+memory_tools_dir = Path(__file__).parent.parent / "memory_core" / "tools"
+sys.path.insert(0, str(memory_tools_dir))
+
+from evolution_self_audit import (
+    check_orphan_locks,
+    check_repositories_yml,
+    check_suppress_json,
+    check_trigger_droid,
+)
+
+
+def test_evolution_self_audit_ci_mode(tmp_path, monkeypatch, capsys):
+    """evolution_self_audit skips checks for non-existent local-only files in CI."""
+    # Point all ~/.factory/ paths to a tmp directory that doesn't contain them
+    monkeypatch.setattr(
+        "evolution_self_audit.TRIGGER_DROID",
+        tmp_path / "webhook" / "scripts" / "trigger-droid.sh",
+    )
+    monkeypatch.setattr(
+        "evolution_self_audit.REPOSITORIES_YML",
+        tmp_path / "config" / "repositories.yml",
+    )
+    monkeypatch.setattr(
+        "evolution_self_audit.LOCK_DIR",
+        tmp_path / "webhook" / "locks",
+    )
+
+    # All three checks should return empty findings (no false positives)
+    assert check_trigger_droid() == []
+    assert check_repositories_yml() == []
+    assert check_orphan_locks() == []
+
+    # Skip messages should go to stderr
+    captured = capsys.readouterr()
+    assert "SKIP check_trigger_droid" in captured.err
+    assert "SKIP check_repositories_yml" in captured.err
+
+
+def test_evolution_self_audit_suppress_empty(tmp_path, monkeypatch):
+    """check_suppress_json reports warning when suppressed list is empty."""
+    monkeypatch.setattr(
+        "evolution_self_audit.SUPPRESS_JSON",
+        tmp_path / "suppress.json",
+    )
+    # Write suppress.json with empty suppressed list
+    (tmp_path / "suppress.json").write_text(
+        json.dumps({"suppressed": []}), encoding="utf-8"
+    )
+    findings = check_suppress_json()
+    assert len(findings) == 1
+    assert findings[0]["rule_id"] == "EVOLUTION_SUPPRESS_EMPTY"
+    assert findings[0]["severity"] == "warning"
+
+
+def test_adapt_audit_layout():
+    """adapt_audit_layout transforms audit_layout output correctly."""
+    raw = {
+        "stdout": json.dumps({
+            "violations": [
+                {
+                    "type": "DAILY_KB_STALE",
+                    "severity": "warning",
+                    "file": "memory/kb/test.md",
+                    "detail": "KB entries stale",
+                }
+            ]
+        }),
+        "stderr": "",
+        "exit_code": 0,
+    }
+    result = adapt_audit_layout(raw)
+    assert len(result) == 1
+    assert result[0]["rule_id"] == "DAILY_KB_STALE"
+    assert result[0]["severity"] == "warning"
+    assert "location" in result[0]
+
+
+def test_adapt_validate_project():
+    """adapt_validate_project transforms validate_project output correctly."""
+    raw = {
+        "stdout": json.dumps({
+            "violations": [
+                {
+                    "type": "PROJECT_MISSING_CONFIG",
+                    "severity": "warning",
+                    "file": ".",
+                    "detail": "No pyproject.toml found",
+                }
+            ]
+        }),
+        "stderr": "",
+        "exit_code": 0,
+    }
+    result = adapt_validate_project(raw)
+    assert len(result) == 1
+    assert result[0]["rule_id"] == "PROJECT_MISSING_CONFIG"
+
+
+def test_adapt_evolution_self_audit(tmp_path, monkeypatch):
+    """adapt_evolution_self_audit passes through findings with location normalization."""
+    # Point to valid suppress.json so check_suppress_json doesn't produce extra findings
+    monkeypatch.setattr(
+        "memory_core.tools.evolution_self_audit.SUPPRESS_JSON",
+        tmp_path / "suppress.json",
+    )
+    (tmp_path / "suppress.json").write_text(
+        json.dumps({"suppressed": ["rule_1"]}), encoding="utf-8"
+    )
+
+    raw = {
+        "stdout": json.dumps([
+            {
+                "rule_id": "EVOLUTION_SUPPRESS_EMPTY",
+                "severity": "warning",
+                "description": "test finding",
+                "location": str(tmp_path / "some" / "path"),
+                "evidence": "test",
+                "category": "evolution_self_audit",
+            }
+        ]),
+        "stderr": "",
+        "exit_code": 0,
+    }
+    result = adapt_evolution_self_audit(raw)
+    assert len(result) == 1
+    assert result[0]["rule_id"] == "EVOLUTION_SUPPRESS_EMPTY"
+    assert "category" in result[0]

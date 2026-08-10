@@ -1,0 +1,334 @@
+"""Evolution self-audit tool: 6 checks for pipeline health."""
+
+import json
+import sys
+import time
+from pathlib import Path
+
+# Module-level constants for testability (monkeypatch in tests)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]  # memory/
+EVOLUTION_DIR = PROJECT_ROOT / ".evolution"
+SUPPRESS_JSON = EVOLUTION_DIR / "suppress.json"
+FINDINGS_OVER_TIME = EVOLUTION_DIR / "findings_over_time.json"
+EVOLUTION_CONFIG = EVOLUTION_DIR / "config.yml"
+
+FACTORY_HOME = Path.home() / ".factory"
+LOCK_DIR = FACTORY_HOME / "webhook" / "locks"
+TRIGGER_DROID = FACTORY_HOME / "webhook" / "scripts" / "trigger-droid.sh"
+REPOSITORIES_YML = FACTORY_HOME / "config" / "repositories.yml"
+
+CATEGORY = "evolution_self_audit"
+
+
+def check_suppress_json() -> list[dict]:
+    """Check 1: verify suppress.json exists and is valid."""
+    findings = []
+
+    if not SUPPRESS_JSON.exists():
+        findings.append({
+            "rule_id": "EVOLUTION_SUPPRESS_MISSING",
+            "severity": "critical",
+            "description": "suppress.json does not exist",
+            "location": str(SUPPRESS_JSON),
+            "evidence": "file missing",
+            "category": CATEGORY,
+        })
+        return findings
+
+    try:
+        data = json.loads(SUPPRESS_JSON.read_text())
+        suppressed = data.get("suppressed", [])
+        if not suppressed:
+            findings.append({
+                "rule_id": "EVOLUTION_SUPPRESS_EMPTY",
+                "severity": "warning",
+                "description": "suppress.json has empty suppressed list",
+                "location": str(SUPPRESS_JSON),
+                "evidence": "suppressed = []",
+                "category": CATEGORY,
+            })
+    except Exception as e:
+        findings.append({
+            "rule_id": "EVOLUTION_SUPPRESS_INVALID",
+            "severity": "critical",
+            "description": "suppress.json is invalid",
+            "location": str(SUPPRESS_JSON),
+            "evidence": str(e),
+            "category": CATEGORY,
+        })
+
+    return findings
+
+
+def check_findings_over_time() -> list[dict]:
+    """Check 2: verify findings_over_time.json has recent data."""
+    findings = []
+
+    if not FINDINGS_OVER_TIME.exists():
+        findings.append({
+            "rule_id": "EVOLUTION_FINDINGS_MISSING",
+            "severity": "critical",
+            "description": "findings_over_time.json does not exist",
+            "location": str(FINDINGS_OVER_TIME),
+            "evidence": "file missing",
+            "category": CATEGORY,
+        })
+        return findings
+
+    try:
+        data = json.loads(FINDINGS_OVER_TIME.read_text())
+        findings_list = data.get("findings", [])
+        if len(findings_list) < 5:
+            findings.append({
+                "rule_id": "EVOLUTION_FINDINGS_INSUFFICIENT",
+                "severity": "warning",
+                "description": "findings_over_time.json has insufficient findings",
+                "location": str(FINDINGS_OVER_TIME),
+                "evidence": f"count={len(findings_list)}, min=5",
+                "category": CATEGORY,
+            })
+    except Exception as e:
+        findings.append({
+            "rule_id": "EVOLUTION_FINDINGS_INVALID",
+            "severity": "critical",
+            "description": "findings_over_time.json is invalid",
+            "location": str(FINDINGS_OVER_TIME),
+            "evidence": str(e),
+            "category": CATEGORY,
+        })
+
+    return findings
+
+
+def check_orphan_locks() -> list[dict]:
+    """Check 3: detect orphan lock files older than 60 minutes."""
+    findings = []
+
+    if not LOCK_DIR.is_dir():
+        # Skip in CI environments where ~/.factory/ files don't exist
+        print(
+            f"[evolution_self_audit] SKIP check_orphan_locks: "
+            f"{LOCK_DIR} not found (expected in CI)",
+            file=sys.stderr,
+        )
+        return findings
+
+    now = time.time()
+    max_age_seconds = 60 * 60
+
+    for lock_file in LOCK_DIR.glob("*.lock"):
+        try:
+            mtime = lock_file.stat().st_mtime
+            age = now - mtime
+            if age > max_age_seconds:
+                findings.append({
+                    "rule_id": "EVOLUTION_ORPHAN_LOCK",
+                    "severity": "warning",
+                    "description": "Orphan lock file older than 60 minutes",
+                    "location": str(lock_file),
+                    "evidence": f"age={age/60:.1f}min",
+                    "category": CATEGORY,
+                })
+        except Exception as e:
+            findings.append({
+                "rule_id": "EVOLUTION_LOCK_CHECK_ERROR",
+                "severity": "warning",
+                "description": "Failed to check lock file",
+                "location": str(lock_file),
+                "evidence": str(e),
+                "category": CATEGORY,
+            })
+
+    return findings
+
+
+def check_trigger_droid() -> list[dict]:
+    """Check 4: verify trigger-droid.sh exists and contains key functions."""
+    findings = []
+
+    if not TRIGGER_DROID.exists():
+        # Skip in CI environments where ~/.factory/ files don't exist
+        print(
+            f"[evolution_self_audit] SKIP check_trigger_droid: "
+            f"{TRIGGER_DROID} not found (expected in CI)",
+            file=sys.stderr,
+        )
+        return findings
+
+    try:
+        content = TRIGGER_DROID.read_text()
+        required_functions = ["resolve_issue_ref", "resolve_pr_ref"]
+        for func in required_functions:
+            if f"function {func}" not in content and f"{func}()" not in content:
+                findings.append({
+                    "rule_id": "EVOLUTION_TRIGGER_REGRESSION",
+                    "severity": "critical",
+                    "description": "trigger-droid.sh missing required function",
+                    "location": str(TRIGGER_DROID),
+                    "evidence": f"function={func}",
+                    "category": CATEGORY,
+                })
+    except Exception as e:
+        findings.append({
+            "rule_id": "EVOLUTION_TRIGGER_READ_ERROR",
+            "severity": "critical",
+            "description": "Failed to read trigger-droid.sh",
+            "location": str(TRIGGER_DROID),
+            "evidence": str(e),
+            "category": CATEGORY,
+        })
+
+    return findings
+
+
+def check_repositories_yml() -> list[dict]:
+    """Check 5: verify repositories.yml has memory-core entry."""
+    findings = []
+
+    if not REPOSITORIES_YML.exists():
+        # Skip in CI environments where ~/.factory/ files don't exist
+        print(
+            f"[evolution_self_audit] SKIP check_repositories_yml: "
+            f"{REPOSITORIES_YML} not found (expected in CI)",
+            file=sys.stderr,
+        )
+        return findings
+
+    try:
+        import yaml
+
+        data = yaml.safe_load(REPOSITORIES_YML.read_text())
+        if not isinstance(data, dict):
+            findings.append({
+                "rule_id": "EVOLUTION_ROUTING_MISCONFIG",
+                "severity": "critical",
+                "description": "repositories.yml is not a valid YAML mapping",
+                "location": str(REPOSITORIES_YML),
+                "evidence": f"type={type(data).__name__}",
+                "category": CATEGORY,
+            })
+            return findings
+
+        repos = data.get("repositories", {})
+        if not isinstance(repos, dict):
+            findings.append({
+                "rule_id": "EVOLUTION_ROUTING_MISCONFIG",
+                "severity": "critical",
+                "description": "repositories.yml missing repositories section",
+                "location": str(REPOSITORIES_YML),
+                "evidence": "repositories key missing or invalid",
+                "category": CATEGORY,
+            })
+            return findings
+
+        if "memory-core" not in repos:
+            findings.append({
+                "rule_id": "EVOLUTION_ROUTING_MISCONFIG",
+                "severity": "critical",
+                "description": "repositories.yml missing memory-core entry",
+                "location": str(REPOSITORIES_YML),
+                "evidence": "memory-core not found",
+                "category": CATEGORY,
+            })
+    except ImportError:
+        findings.append({
+            "rule_id": "EVOLUTION_ROUTING_MISCONFIG",
+            "severity": "warning",
+            "description": "PyYAML not available for repositories.yml check",
+            "location": str(REPOSITORIES_YML),
+            "evidence": "yaml module missing",
+            "category": CATEGORY,
+        })
+    except Exception as e:
+        findings.append({
+            "rule_id": "EVOLUTION_ROUTING_READ_ERROR",
+            "severity": "critical",
+            "description": "Failed to read repositories.yml",
+            "location": str(REPOSITORIES_YML),
+            "evidence": str(e),
+            "category": CATEGORY,
+        })
+
+    return findings
+
+
+def check_config_yml() -> list[dict]:
+    """Check 6: verify .evolution/config.yml has 6 audit tools."""
+    findings = []
+
+    if not EVOLUTION_CONFIG.exists():
+        findings.append({
+            "rule_id": "EVOLUTION_CONFIG_MISSING",
+            "severity": "critical",
+            "description": "config.yml does not exist",
+            "location": str(EVOLUTION_CONFIG),
+            "evidence": "file missing",
+            "category": CATEGORY,
+        })
+        return findings
+
+    try:
+        import yaml
+
+        data = yaml.safe_load(EVOLUTION_CONFIG.read_text())
+        if not isinstance(data, dict):
+            findings.append({
+                "rule_id": "EVOLUTION_CONFIG_INVALID",
+                "severity": "critical",
+                "description": "config.yml is not a valid YAML mapping",
+                "location": str(EVOLUTION_CONFIG),
+                "evidence": f"type={type(data).__name__}",
+                "category": CATEGORY,
+            })
+            return findings
+
+        audit_tools = data.get("audit_tools", [])
+        if not isinstance(audit_tools, list) or len(audit_tools) < 6:
+            findings.append({
+                "rule_id": "EVOLUTION_CONFIG_INSUFFICIENT",
+                "severity": "warning",
+                "description": "config.yml has insufficient audit tools",
+                "location": str(EVOLUTION_CONFIG),
+                "evidence": f"count={len(audit_tools) if isinstance(audit_tools, list) else 0}, min=6",
+                "category": CATEGORY,
+            })
+    except ImportError:
+        findings.append({
+            "rule_id": "EVOLUTION_CONFIG_PARSE_ERROR",
+            "severity": "warning",
+            "description": "PyYAML not available for config.yml check",
+            "location": str(EVOLUTION_CONFIG),
+            "evidence": "yaml module missing",
+            "category": CATEGORY,
+        })
+    except Exception as e:
+        findings.append({
+            "rule_id": "EVOLUTION_CONFIG_READ_ERROR",
+            "severity": "critical",
+            "description": "Failed to read config.yml",
+            "location": str(EVOLUTION_CONFIG),
+            "evidence": str(e),
+            "category": CATEGORY,
+        })
+
+    return findings
+
+
+def main() -> int:
+    """Run all 6 checks and output findings as JSON."""
+    all_findings: list[dict] = []
+    all_findings.extend(check_suppress_json())
+    all_findings.extend(check_findings_over_time())
+    all_findings.extend(check_orphan_locks())
+    all_findings.extend(check_trigger_droid())
+    all_findings.extend(check_repositories_yml())
+    all_findings.extend(check_config_yml())
+
+    json.dump(all_findings, sys.stdout, indent=2)
+    print()
+
+    return 0 if not all_findings else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

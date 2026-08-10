@@ -69,6 +69,7 @@ memory-lifecycle-rebuild = "memory_core.tools.project_lifecycle:rebuild_main"
 memory-lifecycle-migrate = "memory_core.tools.project_lifecycle:migrate_main"
 "memory-mcp-server" = "memory_core.tools.mcp_server:main_sync"
 memory-error-patterns = "memory_core.tools.error_pattern_detector:main"
+memory-evolution-audit = "memory_core.tools.evolution_self_audit:main"
 
 [tool.setuptools.packages.find]
 include = ["memory_core*", "workspace*"]
