@@ -17,7 +17,7 @@ def normalize_location(location: str) -> str:
     location = location.strip()
     # If not an absolute path, just strip leading ./
     if not location.startswith("/"):
-        return location.lstrip("./")
+        return location.removeprefix("./")
     # Try to find repo-relative portion after known markers
     # CI patterns: /Users/runner/work/{repo}/{repo}/... or /home/runner/work/{repo}/{repo}/...
     # Local patterns: /Users/busiji/memory/... or any path containing /memory/ or /memory-core/
@@ -25,7 +25,7 @@ def normalize_location(location: str) -> str:
         idx = location.rfind(marker)  # Use rfind to get the LAST occurrence
         if idx != -1:
             relative = location[idx + len(marker):]
-            return relative.lstrip("./")
+            return relative.removeprefix("./")
     # No known marker found; return original value as safe fallback
     return location
 
