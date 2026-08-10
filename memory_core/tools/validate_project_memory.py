@@ -129,9 +129,9 @@ def _is_json_like(text: str) -> bool:
 def _parse_lock_file(path: Path) -> dict[str, Any]:
     """Parse memory.lock as TOML (canonical) or JSON (legacy).
 
-    If TOML parsing fails and the file is not JSON, falls back to a very
-    old key=value format but marks the result with ``_parse_warning`` so
-    callers know the data may be unreliable.
+    TOML parsing is strict: invalid TOML raises ``tomllib.TOMLDecodeError``
+    so callers can report a parse error rather than silently recovering
+    unreliable data via a legacy key=value fallback.
     """
     text = path.read_text(encoding="utf-8")
     if _is_json_like(text):
@@ -146,30 +146,8 @@ def _parse_lock_file(path: Path) -> dict[str, Any]:
                 "lock_reason": data.get("lock_reason", ""),
             }
         }
-    # Canonical TOML format
-    try:
-        return tomllib.loads(text)
-    except Exception as exc:
-        # Fallback: key=value lines (very old format)
-        # Log the parse error so it is visible in logs / diagnostics.
-        logger.warning(
-            "TOML parse of %s failed (%s); falling back to legacy key=value parsing",
-            path,
-            exc,
-        )
-        result: dict[str, Any] = {"memory": {}}
-        for line in text.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or line.startswith("["):
-                continue
-            kv = line.split("=", 1)
-            if len(kv) == 2:
-                key = kv[0].strip()
-                val = kv[1].strip().strip('"').strip("'")
-                result["memory"][key] = val
-        # Mark the result so callers know parsing was unreliable.
-        result["_parse_warning"] = "TOML parse failed; data recovered via legacy fallback"
-        return result
+    # Canonical TOML format — strict: invalid TOML raises, callers handle it.
+    return tomllib.loads(text)
 
 
 def _parse_adapter_toml(path: Path) -> dict[str, str]:
