@@ -80,7 +80,6 @@ EXEMPT_PATH_FRAGMENTS: tuple[str, ...] = (
     "/.git/",
     ".pytest_cache",
     ".ruff_cache",
-    "memory_hook_adapters/workbot_runtime_profile.py",
     "scripts/check_boundary.py",
     "tests/test_boundary_guard.py",
     "tests/test_sync_config.py",

@@ -644,7 +644,7 @@ def check_lock_parser_strict_toml() -> tuple[list[str], list[str]]:
 
 
 def check_default_profile_compatibility() -> tuple[list[str], list[str]]:
-    """Check that default runtime profile exists (workbot has been archived)."""
+    """Check that default runtime profile exists."""
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -653,9 +653,6 @@ def check_default_profile_compatibility() -> tuple[list[str], list[str]]:
     if not default_file.exists():
         errors.append("default_runtime_profile.py: file not found")
         return errors, warnings
-
-    # workbot has been archived to archive/legacy-workbot/, no longer required
-    warnings.append("workbot_runtime_profile.py has been archived (not an error)")
 
     return errors, warnings
 
