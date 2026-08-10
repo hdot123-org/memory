@@ -1590,6 +1590,9 @@ For manual testing:
 def _cleanup_legacy_hooks_json(target: Path, result: dict[str, Any] | None) -> None:
     """Delete legacy .codex/hooks.json and .claude/hooks.json files (VAL-P4-011).
 
+    These legacy host directories are superseded by factory (the sole supported
+    host; see SUPPORTED_HOSTS), which uses ~/.factory/bin/memory-hook instead.
+
     This is a no-op in adopt mode (preserves existing files) and runs in
     create/update/repair modes.
     """
@@ -1625,7 +1628,9 @@ def update_agents_md(
 
     Legacy scrubbing (VAL-P4-010): In update mode, removes any references to
     ~/.codex/bin/memory-hook or ~/.claude/bin/memory-hook from the AGENTS.md
-    content (both inside and outside the hook block).
+    content (both inside and outside the hook block). These legacy hosts are
+    superseded by factory (the sole supported host; see SUPPORTED_HOSTS), which
+    uses ~/.factory/bin/memory-hook.
     """
     if result is None:
         return
@@ -1642,7 +1647,7 @@ def update_agents_md(
     ]
 
     def _scrub_legacy_refs(text: str) -> tuple[str, bool]:
-        """Remove legacy codex/claude hook references from text. Returns (new_text, was_modified)."""
+        """Remove legacy codex/claude hook references from text. These legacy hosts are superseded by factory (sole supported host; see SUPPORTED_HOSTS). Returns (new_text, was_modified)."""
         modified = False
         for pattern in legacy_host_patterns:
             if pattern in text:
@@ -2429,7 +2434,7 @@ def init_project_memory(
     target: Path,
     *,
     scope: str | None = None,
-    host: str = "codex",
+    host: str = "factory",
     dry_run: bool = False,
     json_output: bool = False,
     force: bool = False,
@@ -2443,7 +2448,7 @@ def init_project_memory(
     Args:
         target: Path to the target project root.
         scope: Explicit project scope name (auto-discovered if omitted).
-        host: Host platform for hook config ("codex" or "claude").
+        host: Host platform for hook gateway configuration ("factory"; sole supported host, see SUPPORTED_HOSTS).
         dry_run: If True, only report what would be created.
         json_output: If True, return structured output dict.
         force: If True, overwrite existing files.
