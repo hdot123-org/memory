@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memory-core"
-version = "0.15.27"
+version = "0.15.28"
 description = "Independent memory hook core and gateway runtime."
 readme = "README.md"
 requires-python = "==3.12.*"

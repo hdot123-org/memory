@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.28](https://github.com/hdot123/memory/compare/v0.15.27...v0.15.28) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** 修复 scanner 结构性缺陷和 adapter location 规范化 ([#412](https://github.com/hdot123/memory/issues/412)) ([31e3a88](https://github.com/hdot123/memory/commit/31e3a88e05f52767a59a4fbf89e8f6f9f8f4609f))
+
 ## [0.15.27](https://github.com/hdot123/memory/compare/v0.15.26...v0.15.27) (2026-08-10)
 
 
