@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.15.26](https://github.com/hdot123/memory/compare/v0.15.25...v0.15.26) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** [INFRA-129] 错误模式检测器过滤测试产物防止误报 ([#400](https://github.com/hdot123/memory/issues/400)) ([7a3d35b](https://github.com/hdot123/memory/commit/7a3d35b35d85ec564d38823109441ef1be3283ee))
+* **evolution:** [INFRA-96] 修复 test_hook_event.py docstring 缺少 factory 提及 ([#406](https://github.com/hdot123/memory/issues/406)) ([6b4bdaa](https://github.com/hdot123/memory/commit/6b4bdaaed57c7a12f32e04533f29914950f89f49))
+
+
+### Documentation
+
+* **test:** [INFRA-98] 修复 test_memory_hook_gateway_coverage.py 文档字符串主机提及一致性 ([#404](https://github.com/hdot123/memory/issues/404)) ([b53e96d](https://github.com/hdot123/memory/commit/b53e96d790e093036e5b34f839faff6797a9ffc1))
+* **test:** [INFRA-99] 修复 test_init_completeness.py 文档字符串主机提及一致性 ([#403](https://github.com/hdot123/memory/issues/403)) ([6d8c1ca](https://github.com/hdot123/memory/commit/6d8c1ca8cb84c67b2315c4ea3361f4fe58cc7b01))
+
 ## [0.15.25](https://github.com/hdot123/memory/compare/v0.15.24...v0.15.25) (2026-08-10)
 
 
