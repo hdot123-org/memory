@@ -797,15 +797,15 @@ def test_create_issue_body_contains_linear_redirect_notice():
         location="test/file.md",
         evidence="Test evidence",
     )
-    
+
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         create_issue(finding, "evolution-found")
-        
+
         call_args = mock_run.call_args[0][0]
         body_index = call_args.index("--body") + 1
         body = call_args[body_index]
-        
+
         # Must contain Linear redirect notice
         assert "任务管理、优先级、状态跟踪请前往 Linear" in body
         assert "此 Issue 会在对应 PR 合并后自动关闭" in body
@@ -825,15 +825,15 @@ def test_create_issue_body_contains_scanner_source_marker():
         location="test/file.md",
         evidence="Test evidence",
     )
-    
+
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         create_issue(finding, "evolution-found")
-        
+
         call_args = mock_run.call_args[0][0]
         body_index = call_args.index("--body") + 1
         body = call_args[body_index]
-        
+
         # Must contain scanner-source marker at the end
         assert "<!-- scanner-source: evolution-scan -->" in body
         # Marker should be at the end (after UNTRUSTED-DATA-END)
@@ -845,7 +845,7 @@ def test_create_issue_body_contains_scanner_source_marker():
 def test_parse_issue_fields_with_enhanced_template():
     """VAL-ISSUEFLOW-006: _parse_issue_fields correctly parses enhanced template."""
     from evolution_scanner import _parse_issue_fields
-    
+
     body = (
         "> ⚙️ 此 Issue 由 evolution scanner 自动创建。任务管理、优先级、状态跟踪请前往 Linear。此 Issue 会在对应 PR 合并后自动关闭。\n\n"
         "**Rule ID**: TEST_RULE_001\n"
@@ -858,7 +858,7 @@ def test_parse_issue_fields_with_enhanced_template():
         "<!-- UNTRUSTED-DATA-END -->\n"
         "<!-- scanner-source: evolution-scan -->"
     )
-    
+
     rule_id, location = _parse_issue_fields(body)
     assert rule_id == "TEST_RULE_001", f"Expected 'TEST_RULE_001', got '{rule_id}'"
     assert location == "test/file.md", f"Expected 'test/file.md', got '{location}'"
