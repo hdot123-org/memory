@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.18](https://github.com/hdot123/memory/compare/v0.15.17...v0.15.18) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** [INFRA-122] adapter 去重 + 吞吐修复 + 清理死文本 ([#382](https://github.com/hdot123/memory/issues/382)) ([48a063a](https://github.com/hdot123/memory/commit/48a063a1b28b1e78b1f57a1d52267dfea4096d3e))
+
 ## [0.15.17](https://github.com/hdot123/memory/compare/v0.15.16...v0.15.17) (2026-08-10)
 
 
