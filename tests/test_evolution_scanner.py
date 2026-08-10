@@ -439,28 +439,28 @@ def test_adapt_daily_audit():
 def test_normalize_location():
     """Test normalize_location converts absolute paths to repo-relative."""
     from evolution_adapters import normalize_location
-    
+
     # Empty/whitespace inputs
     assert normalize_location("") == ""
     assert normalize_location("   ") == ""
-    
+
     # Relative paths (no leading /)
     assert normalize_location("tests/test_foo.py") == "tests/test_foo.py"
     assert normalize_location("./tests/test_foo.py") == "tests/test_foo.py"
     assert normalize_location("scripts/evolution_adapters.py") == "scripts/evolution_adapters.py"
-    
+
     # Absolute paths with /memory/ marker (local development)
     assert normalize_location("/Users/busiji/memory/tests/test_foo.py") == "tests/test_foo.py"
     assert normalize_location("/Users/busiji/memory/scripts/evolution_adapters.py") == "scripts/evolution_adapters.py"
     assert normalize_location("/home/user/memory/README.md") == "README.md"
-    
+
     # Absolute paths with /memory-core/ marker
     assert normalize_location("/Users/runner/work/memory-core/memory-core/scripts/foo.py") == "scripts/foo.py"
-    
+
     # CI runner paths (GitHub Actions)
     assert normalize_location("/Users/runner/work/memory/memory/tests/test_foo.py") == "tests/test_foo.py"
     assert normalize_location("/home/runner/work/memory/memory/scripts/foo.py") == "scripts/foo.py"
-    
+
     # Unknown absolute path (fallback to original)
     assert normalize_location("/unknown/path/file.py") == "/unknown/path/file.py"
 
