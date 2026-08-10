@@ -620,7 +620,7 @@ def check_shared_resources(target: Path, memory_root: Path, result: CheckResult)
 
     Checks:
     - AGENTS.md markers are paired (MEMORY_HOOK_BEGIN and MEMORY_HOOK_END)
-    - .claude/hooks.json or .codex/hooks.json entries are complete
+    - .factory/hooks.json entries are complete
     """
     all_ok = True
 
