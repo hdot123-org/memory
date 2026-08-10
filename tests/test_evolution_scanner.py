@@ -4085,6 +4085,69 @@ def test_evolution_self_audit_tool_health_boundary(tmp_path, monkeypatch):
     assert len(findings) == 0
 
 
+def test_evolution_self_audit_findings_sufficient(tmp_path, monkeypatch):
+    """check_findings_over_time does NOT warn when latest snapshot has >=5 findings."""
+    from memory_core.tools import evolution_self_audit
+
+    monkeypatch.setattr(
+        evolution_self_audit, "FINDINGS_OVER_TIME",
+        tmp_path / "findings_over_time.json",
+    )
+
+    # Latest snapshot has 10 findings - well above min=5
+    findings_items = [{"rule_id": f"RULE_{i}", "severity": "warning"} for i in range(10)]
+    history_data = {
+        "snapshots": [
+            {"timestamp": "2026-01-01T00:00:00+00:00", "findings": []},
+            {"timestamp": "2026-01-02T00:00:00+00:00", "findings": findings_items},
+        ]
+    }
+    (tmp_path / "findings_over_time.json").write_text(json.dumps(history_data))
+
+    result = evolution_self_audit.check_findings_over_time()
+    assert result == []
+
+
+def test_evolution_self_audit_findings_insufficient(tmp_path, monkeypatch):
+    """check_findings_over_time warns when latest snapshot has <5 findings."""
+    from memory_core.tools import evolution_self_audit
+
+    monkeypatch.setattr(
+        evolution_self_audit, "FINDINGS_OVER_TIME",
+        tmp_path / "findings_over_time.json",
+    )
+
+    # Latest snapshot has only 2 findings - below min=5
+    findings_items = [{"rule_id": f"RULE_{i}", "severity": "warning"} for i in range(2)]
+    history_data = {
+        "snapshots": [
+            {"timestamp": "2026-01-01T00:00:00+00:00", "findings": [{"rule_id": "OLD"}] * 20},
+            {"timestamp": "2026-01-02T00:00:00+00:00", "findings": findings_items},
+        ]
+    }
+    (tmp_path / "findings_over_time.json").write_text(json.dumps(history_data))
+
+    result = evolution_self_audit.check_findings_over_time()
+    assert len(result) == 1
+    assert result[0]["rule_id"] == "EVOLUTION_FINDINGS_INSUFFICIENT"
+    assert result[0]["severity"] == "warning"
+    assert "count=2" in result[0]["evidence"]
+
+
+def test_evolution_self_audit_findings_missing(tmp_path, monkeypatch):
+    """check_findings_over_time reports EVOLUTION_FINDINGS_MISSING when file doesn't exist."""
+    from memory_core.tools import evolution_self_audit
+
+    monkeypatch.setattr(
+        evolution_self_audit, "FINDINGS_OVER_TIME",
+        tmp_path / "nonexistent.json",
+    )
+
+    result = evolution_self_audit.check_findings_over_time()
+    assert len(result) == 1
+    assert result[0]["rule_id"] == "EVOLUTION_FINDINGS_MISSING"
+
+
 def test_update_history_tool_status(tmp_path):
     """update_history writes tool_status to snapshot when provided."""
     history_path = tmp_path / "history.json"

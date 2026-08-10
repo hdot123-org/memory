@@ -68,7 +68,8 @@ def check_findings_over_time() -> list[dict[str, Any]]:
 
     try:
         data = json.loads(FINDINGS_OVER_TIME.read_text())
-        findings_list = data.get("findings", [])
+        snapshots = data.get("snapshots", [])
+        findings_list = snapshots[-1].get("findings", []) if snapshots else []
         if len(findings_list) < 5:
             findings.append({
                 "rule_id": "EVOLUTION_FINDINGS_INSUFFICIENT",
