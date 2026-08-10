@@ -61,14 +61,41 @@ _logger = logging.getLogger(__name__)
 # Invisible/non-content characters that are not valid JSON content but
 # str.strip() does not remove them, causing json.loads() to fail with
 # "Expecting value: line 1 column 1 (char 0)" — triggering false
-# json_parse_error logs (INFRA-143, INFRA-145).
-# Covers: BOM (\ufeff), null bytes (\x00), zero-width chars (\u200b \u200c
-# \u200d \u2060 \u180e), bidi marks (\u200e \u200f \u202a-\u202e),
-# soft hyphen (\u00ad), invisible math operators (\u2061-\u2064).
-# str.maketrans + translate removes ALL occurrences in a single pass,
-# including multiple BOMs.
+# json_parse_error logs.
+#
+# This is the category-based fix for INFRA-149. It supersedes the prior
+# hardcoded char allowlist that drove the recurring INFRA-138 / INFRA-141 /
+# INFRA-143 / INFRA-145 / INFRA-149 whack-a-mole: each ticket added a few
+# more characters, but always left a residual gap of ~206 uncovered control
+# (Cc) and format (Cf) characters (e.g. U+2066 LRI, U+0600 Arabic number
+# sign, U+E0001 language tag) that still triggered the false error.
+#
+# Instead of enumerating individual chars, we strip ALL non-whitespace
+# Unicode Cc (control) and Cf (format) characters by category. Whitespace
+# controls (\t \n \r etc.) are intentionally excluded because str.strip()
+# already handles them and because they are legitimate within JSON strings.
+#
+# The ranges below were derived by iterating over the whole Unicode range
+# and keeping every codepoint whose unicodedata.category() is Cc or Cf and
+# that is NOT whitespace — 225 characters across 25 contiguous ranges. They
+# are a static, precomputed constant; unicodedata is NOT imported at runtime.
+_INVISIBLE_UNICODE_RANGES: tuple[tuple[int, int], ...] = (
+    (0x0000, 0x0008), (0x000E, 0x001B), (0x007F, 0x0084), (0x0086, 0x009F),
+    (0x00AD, 0x00AD), (0x0600, 0x0605), (0x061C, 0x061C), (0x06DD, 0x06DD),
+    (0x070F, 0x070F), (0x0890, 0x0891), (0x08E2, 0x08E2), (0x180E, 0x180E),
+    (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x2064), (0x2066, 0x206F),
+    (0xFEFF, 0xFEFF), (0xFFF9, 0xFFFB), (0x110BD, 0x110BD), (0x110CD, 0x110CD),
+    (0x13430, 0x1343F), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A),
+    (0xE0001, 0xE0001), (0xE0020, 0xE007F),
+)
 _INVISIBLE_CHARS = str.maketrans(
-    "", "", "\ufeff\x00\u200b\u200c\u200d\u2060\u180e\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2061\u2062\u2063\u2064\u00ad"
+    "",
+    "",
+    "".join(
+        chr(cp)
+        for _start, _end in _INVISIBLE_UNICODE_RANGES
+        for cp in range(_start, _end + 1)
+    ),
 )
 
 

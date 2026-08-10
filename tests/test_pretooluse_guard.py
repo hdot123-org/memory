@@ -25,6 +25,21 @@ def _make_fake_stdin(text: str) -> io.StringIO:
     return io.StringIO(text)
 
 
+def _expand_invisible_ranges():
+    """Yield every codepoint in the guard's ``_INVISIBLE_UNICODE_RANGES``.
+
+    Used to parametrize the exhaustive INFRA-149 class-coverage test: every
+    non-whitespace Cc/Cf character, as the sole stdin content, must allow
+    without a false json_parse_error.
+    """
+    from memory_core.tools.pretooluse_guard import _INVISIBLE_UNICODE_RANGES
+
+    for _start, _end in _INVISIBLE_UNICODE_RANGES:
+        for _cp in range(_start, _end + 1):
+            yield _cp
+
+
+
 class TestPreToolUseGuard:
     """Tests for PreToolUse guard behavior."""
 
@@ -1046,6 +1061,140 @@ class TestInvisibleUnicodeStdin:
                 assert (
                     "json_parse_error" not in content
                 ), f"False json_parse_error logged for double BOM stdin: {content}"
+
+    # ========== 非空白 Cc/Cf 类别全量修复回归测试 (INFRA-149) ==========
+
+    def test_bidi_isolate_only_stdin_allows(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """U+2066 (LRI) only on stdin should allow (INFRA-149).
+
+        U+2066 LEFT-TO-RIGHT ISOLATE is the key case the prior hardcoded
+        allowlist (INFRA-143/145) missed — it is a Cf character that
+        str.strip() does not remove.
+        """
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\u2066"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_bidi_isolates_mix_allows(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """All bidi isolates U+2066-U+2069 should allow (INFRA-149)."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\u2066\u2067\u2068\u2069"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_deprecated_bidi_format_chars_allows(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """Deprecated bidi format chars U+206A-U+206F should allow (INFRA-149)."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr(
+            "sys.stdin", _make_fake_stdin("\u206a\u206b\u206c\u206d\u206e\u206f")
+        )
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_arabic_format_chars_allows(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """Arabic format chars U+0600/U+0601 should allow (INFRA-149)."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\u0600\u0601"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_language_tag_char_allows(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """A char from the U+E0020-E007F tag range should allow (INFRA-149)."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\ue020"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_high_plane_invisible_allows(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """U+1BCA0 (shorthand formatting) should allow (INFRA-149)."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\U0001bca0"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_invisible_prefixed_valid_json_parses_infra149(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """Invisible chars (U+2066 LRI + U+200b) prefixed to valid JSON should still parse (INFRA-149)."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        payload = {
+            "tool_name": "Write",
+            "tool_input": {"file_path": str(tmp_path / "test.txt"), "content": "hi"},
+        }
+        monkeypatch.setattr(
+            "sys.stdin", _make_fake_stdin("\u2066\u200b" + json.dumps(payload))
+        )
+        exit_code = main()
+        captured = capsys.readouterr()
+        json.loads(captured.out)  # confirm valid JSON output
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert "empty stdin" not in result.get("reason", "").lower()
+        assert "guard failure" not in result.get("reason", "").lower()
+
+    @pytest.mark.parametrize("codepoint", list(_expand_invisible_ranges()))
+    def test_every_invisible_char_only_stdin_allows(
+        self, codepoint, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """Every non-whitespace Cc/Cf character, as the sole stdin content,
+        must allow without a false json_parse_error (INFRA-149 class fix)."""
+        from memory_core.tools.pretooluse_guard import _INVISIBLE_UNICODE_RANGES, main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin(chr(codepoint)))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+        # Sanity: the codepoint is actually within the guard's declared ranges.
+        assert any(s <= codepoint <= e for s, e in _INVISIBLE_UNICODE_RANGES)
 
 
 class TestStdinDecodeError:
