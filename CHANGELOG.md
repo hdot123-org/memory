@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.14](https://github.com/hdot123/memory/compare/v0.15.13...v0.15.14) (2026-08-10)
+
+
+### Bug Fixes
+
+* **docs:** 清除文档中过期的 wb-hook-v2 schema 引用 ([#371](https://github.com/hdot123/memory/issues/371)) ([b645495](https://github.com/hdot123/memory/commit/b6454952f5558e506a99b0dd8bdc9f67cbaabf13))
+
 ## [0.15.13](https://github.com/hdot123/memory/compare/v0.15.12...v0.15.13) (2026-08-10)
 
 
