@@ -448,6 +448,16 @@ def check_contributing_version_source() -> tuple[list[str], list[str]]:
     substring match: that matches every legitimate versioning discussion
     (e.g. "Semantic Versioning", "版本号", "Versioning") and causes false
     positives on every scanner tick. See INFRA-110.
+
+    INFRA-121 hardening:
+    - The warning message includes a ``CONTRIBUTING.md:`` prefix so the
+      evolution scanner's ``_extract_location()`` can parse a file path.
+      Without this, the finding had ``location=""`` and could not be
+      properly deduped or resolved, causing stale findings to persist
+      and generate false-positive issue reports indefinitely.
+    - Lines that quote the stale claim in a historical/migration context
+      (e.g. "Previously, ...", "Fixed: ...") are skipped to avoid false
+      positives on documentation that describes the fix itself.
     """
     errors: list[str] = []
     warnings: list[str] = []
@@ -466,14 +476,46 @@ def check_contributing_version_source() -> tuple[list[str], list[str]]:
         "版本号只在 `pyproject.toml`",
         "version is only in pyproject.toml",
     ]
-    has_stale_claim = any(claim in content for claim in stale_claims)
+
+    # Context prefixes indicating the stale claim is quoted in historical or
+    # migration documentation (changelog entries, migration notes), not made
+    # as a current assertion. Skipping these prevents false positives on text
+    # that documents the fix. See INFRA-121.
+    historical_markers = (
+        "previously",
+        "historically",
+        "moved from",
+        "changed from",
+        "fixed:",
+        "fix:",
+        "修复",
+        "已修复",
+        "迁移",
+        "旧版",
+        "原来",
+        "之前",
+    )
+
+    # Scan line-by-line so we can skip historical/migration context.
+    has_stale_claim = False
+    for line in content.splitlines():
+        stripped = line.strip().lower()
+        if any(stripped.startswith(m) for m in historical_markers):
+            continue
+        if any(claim in line for claim in stale_claims):
+            has_stale_claim = True
+            break
 
     if has_stale_claim:
         # Check if constants.py also defines CURRENT_MEMORY_VERSION
         constants = _load_constants()
         if constants.get("CURRENT_MEMORY_VERSION"):
+            # INFRA-121: Include "CONTRIBUTING.md:" prefix so the evolution
+            # scanner's _extract_location() can parse a file path. Without
+            # this, the finding had location="" and could not be resolved,
+            # causing stale false-positive reports to persist indefinitely.
             warnings.append(
-                "CONTRIBUTING.md claims version is only in pyproject.toml, "
+                "CONTRIBUTING.md: claims version is only in pyproject.toml, "
                 "but constants.py also defines CURRENT_MEMORY_VERSION"
             )
 

@@ -264,6 +264,98 @@ class TestCheckContributingVersionSource:
         assert len(warnings) == 1
         assert "CONTRIBUTING.md" in warnings[0]
 
+    def test_warning_includes_parseable_location(self) -> None:
+        """Regression test for INFRA-121.
+
+        The warning message must include a ``CONTRIBUTING.md:`` prefix so
+        the evolution scanner's ``_extract_location()`` can parse a file
+        path from the bracket-prefixed finding string. Without this, the
+        finding had ``location=""`` and could not be properly deduped or
+        resolved, causing stale findings to persist indefinitely.
+        """
+        stale_content = (
+            "# Contributing\n\n"
+            "The version is only in pyproject.toml.\n"
+        )
+
+        def fake_read_text(self, encoding=None):
+            if self.name == "CONTRIBUTING.md":
+                return stale_content
+            return original_read_text(self, encoding=encoding)
+
+        original_read_text = Path.read_text
+        with patch.object(Path, "read_text", fake_read_text), \
+                patch(
+                    "memory_core.tools.consistency_check._load_constants",
+                    return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
+                ):
+            errors, warnings = check_contributing_version_source()
+
+        assert len(warnings) == 1
+        # The raw warning must start with "CONTRIBUTING.md:" so that after
+        # the scanner wraps it as "[contributing_version_source] CONTRIBUTING.md: ..."
+        # the _extract_location() function can parse "CONTRIBUTING.md".
+        assert warnings[0].startswith("CONTRIBUTING.md:")
+
+    def test_no_warning_on_historical_documentation(self) -> None:
+        """Regression test for INFRA-121.
+
+        Lines that quote the stale claim in a historical or migration context
+        (e.g. "Previously, the version was only in pyproject.toml") must NOT
+        trigger a warning. This prevents false positives on changelog entries
+        or migration notes that document the fix.
+        """
+        historical_content = (
+            "# Contributing\n\n"
+            "## Version History\n\n"
+            "Previously, the version was only in pyproject.toml, "
+            "but this was fixed in v0.15.15.\n\n"
+            "Fixed: version is only in pyproject.toml caused confusion.\n"
+        )
+
+        def fake_read_text(self, encoding=None):
+            if self.name == "CONTRIBUTING.md":
+                return historical_content
+            return original_read_text(self, encoding=encoding)
+
+        original_read_text = Path.read_text
+        with patch.object(Path, "read_text", fake_read_text), \
+                patch(
+                    "memory_core.tools.consistency_check._load_constants",
+                    return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
+                ):
+            errors, warnings = check_contributing_version_source()
+
+        assert errors == []
+        assert warnings == []
+
+    def test_no_warning_on_chinese_historical_context(self) -> None:
+        """Regression test for INFRA-121.
+
+        Chinese historical markers (之前, 原来, 修复, etc.) must also suppress
+        the stale claim detection on that line.
+        """
+        historical_content = (
+            "# Contributing\n\n"
+            "之前的版本号只在 `pyproject.toml` 中维护，现已迁移到 __init__.py。\n"
+        )
+
+        def fake_read_text(self, encoding=None):
+            if self.name == "CONTRIBUTING.md":
+                return historical_content
+            return original_read_text(self, encoding=encoding)
+
+        original_read_text = Path.read_text
+        with patch.object(Path, "read_text", fake_read_text), \
+                patch(
+                    "memory_core.tools.consistency_check._load_constants",
+                    return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
+                ):
+            errors, warnings = check_contributing_version_source()
+
+        assert errors == []
+        assert warnings == []
+
 
 class TestCheckPackageDataCoverage:
     """Tests for check_package_data_coverage function."""
