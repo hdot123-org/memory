@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.19](https://github.com/hdot123/memory/compare/v0.15.18...v0.15.19) (2026-08-10)
+
+
+### Documentation
+
+* 更新 release-guide 版本影响列表述避免版本引用误报（INFRA-117） ([#385](https://github.com/hdot123/memory/issues/385)) ([bb2068b](https://github.com/hdot123/memory/commit/bb2068b7dee03c410308d9fc6d5fbffb3150a4ef))
+
 ## [0.15.18](https://github.com/hdot123/memory/compare/v0.15.17...v0.15.18) (2026-08-10)
 
 
