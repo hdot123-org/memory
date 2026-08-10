@@ -14,7 +14,7 @@ related: [DES-001, DES-007, DES-008]
 
 > 文档编号：DES-010 | 版本：V1.0 | 日期：2026-04-26 | 维护人：codex
 
-> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-05-14 (v0.4.0 Beta)。如需精确接口签名，请参考源码和 ShowDoc Python API 文档。
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-08-10。如需精确接口签名，请参考源码（`memory_core/tools/`）。
 
 # 消费边界分析与改进建议
 
@@ -513,7 +513,7 @@ Gateway 返回的 context package 应遵循以下稳定契约（内部 v2 版本
 | Gateway | `<memory-repo>/memory_core/tools/memory_hook_gateway.py` | `<consumer-repo>/memory_core/tools/memory_hook_gateway.py` |
 | Core | `<memory-repo>/memory_core/tools/memory_hook_core.py` | `<consumer-repo>/memory_core/tools/memory_hook_core.py` |
 | Interfaces | `<memory-repo>/memory_core/tools/memory_hook_interfaces.py` | `<consumer-repo>/memory_core/tools/memory_hook_interfaces.py` |
-| Impl  s | `<memory-repo>/memory_core/tools/memory_hook_impls.py` | `<consumer-repo>/memory_core/tools/memory_hook_impls.py` |
+| Impls | `<memory-repo>/memory_core/tools/memory_hook_impls.py` | `<consumer-repo>/memory_core/tools/memory_hook_impls.py` |
 | Runtime Profile | `<memory-repo>/memory_core/tools/memory_hook_adapters/workbot_runtime_profile.py` | `<consumer-repo>/memory_core/tools/memory_hook_adapters/workbot_runtime_profile.py` |
 | Workbot Policy | `<memory-repo>/memory_core/tools/memory_hook_adapters/workbot_policy.py` | `<consumer-repo>/memory_core/tools/memory_hook_adapters/workbot_policy.py` |
 | Neutral Policy | `<memory-repo>/memory_core/tools/memory_hook_adapters/neutral_policy.py` | `<consumer-repo>/memory_core/tools/memory_hook_adapters/neutral_policy.py` |
