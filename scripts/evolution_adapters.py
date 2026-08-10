@@ -165,6 +165,12 @@ def adapt_consistency_check(raw: dict) -> list[dict]:
     """Convert consistency check output to Finding dicts.
 
     Input format: {errors: [str], warnings: [str], checks: [{name, errors, warnings, passed}]}
+
+    Only processes top-level errors and warnings (which carry the [check_name]
+    prefix needed for rule_id and location extraction). Per-check arrays contain
+    the same strings WITHOUT the prefix, producing duplicate CONSISTENCY_ERROR
+    findings with empty locations that cannot be deduped or resolved, causing
+    persistent false-positive evolution reports. See INFRA-122.
     """
     findings = []
     seen = set()  # Track _consistency_key tuples to avoid duplicates
@@ -175,20 +181,13 @@ def adapt_consistency_check(raw: dict) -> list[dict]:
             seen.add(key)
             findings.append(_consistency_finding(error_str, severity))
 
-    # Top-level errors
+    # Process only top-level errors and warnings.
+    # The consistency check tool always populates top-level with [check_name]
+    # prefix; per-check arrays are redundant copies without the prefix.
     for error_str in raw.get("errors", []):
         _add(error_str, "warning")
-    # Top-level warnings
     for warning_str in raw.get("warnings", []):
         _add(warning_str, "info")
-    # Process checks array
-    for check in raw.get("checks", []):
-        if not isinstance(check, dict):
-            continue
-        for error_str in check.get("errors", []):
-            _add(error_str, "warning")
-        for warning_str in check.get("warnings", []):
-            _add(warning_str, "info")
     return findings
 
 
