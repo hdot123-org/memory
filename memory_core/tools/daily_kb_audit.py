@@ -1711,7 +1711,7 @@ def notify_via_lark(report: dict[str, Any]) -> bool:
         )
         return False
 
-    print(f"[notify] 已发送飞书通知到 chat {chat_id}")
+    print(f"[notify] 已发送飞书通知到 chat {chat_id}", file=sys.stderr)
     return True
 
 
@@ -1823,7 +1823,7 @@ def _handle_no_projects(
     report = build_report({}, infrastructure=infra_results)
     if not args.no_write:
         out = write_report(report)
-        print(f"[audit] 空报告已写入: {out}")
+        print(f"[audit] 空报告已写入: {out}", file=sys.stderr)
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     if args.notify:
