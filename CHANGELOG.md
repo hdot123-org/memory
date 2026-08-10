@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.17](https://github.com/hdot123/memory/compare/v0.15.16...v0.15.17) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** [INFRA-122] 修复 CONTRIBUTING_VERSION_SOURCE 持续误报 ([#380](https://github.com/hdot123/memory/issues/380)) ([67ced14](https://github.com/hdot123/memory/commit/67ced14e06dcc62d915df773118e31ea41e4f7f1))
+
 ## [0.15.16](https://github.com/hdot123/memory/compare/v0.15.15...v0.15.16) (2026-08-10)
 
 
