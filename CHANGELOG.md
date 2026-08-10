@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.4](https://github.com/hdot123/memory/compare/v0.16.3...v0.16.4) (2026-08-10)
+
+
+### Bug Fixes
+
+* 移除 droid-wiki/Ownership-Model.md 的 git 追踪（.gitignore 已覆盖但未 rm --cached） ([#437](https://github.com/hdot123/memory/issues/437)) ([828f62a](https://github.com/hdot123/memory/commit/828f62ac0f0e3c30c0bb25339734d360c15abc79))
+
 ## [0.16.3](https://github.com/hdot123/memory/compare/v0.16.2...v0.16.3) (2026-08-10)
 
 
