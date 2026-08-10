@@ -39,7 +39,7 @@ Gateway 是 memory-hook 系统的 **入口门控 + 上下文组装器 + 主机�
 
 2. **外部上下文过滤**（行 914-915）：通过 `should_noop_for_external_context()` 判断当前工作目录是否在仓库内，若不在且无 `MEMORY_HOOK_FORCE`/`WORKBOT_FORCE_HOOK` 环境变量，则走 noop 分支直接返回。
 
-3. **上下文包组装**（行 917）：调用 `build_context_package()` 将 host、event、payload 组装为结构化 JSON 上下文包（schema 版本 `wb-hook-v2`），包含 system_context、project_context、task_context、allowed_reads、allowed_writes 五大区块。
+3. **上下文包组装**（行 917）：调用 `build_context_package()` 将 host、event、payload 组装为结构化 JSON 上下文包（内部 v2 schema 格式），包含 system_context、project_context、task_context、allowed_reads、allowed_writes 五大区块。
 
 4. **产物写入**（行 918）：调用 `write_artifacts()` 将上下文包写入 `artifacts/memory-hook/contexts/` 目录（快照 + latest 双写），并追加到 `events.jsonl`。
 
