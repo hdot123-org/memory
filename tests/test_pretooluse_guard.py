@@ -730,6 +730,87 @@ class TestPreToolUseGuard:
             error_files = list(error_log_dir.glob("*-errors.jsonl"))
             assert not error_files, f"Expected no error log, found: {error_files}"
 
+    # ========== stdin IO 异常处理测试 (INFRA-141) ==========
+
+    def test_stdin_read_oserror_treated_as_empty(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """sys.stdin.read() raising OSError must be treated as empty stdin (allow, no error).
+
+        Regression test for INFRA-141: previously the generic ``except Exception``
+        handler routed stdin read failures into ``_fail_closed_with_raw_check``,
+        which hardcodes ``error_type="json_parse_error"`` — a false label since
+        no JSON parsing was ever attempted.
+        """
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setenv("MEMORY_HOOK_ORIGINAL_CWD", str(tmp_path))
+
+        def _raise_oserror(*args: Any, **kwargs: Any) -> str:
+            raise OSError("Bad file descriptor")
+
+        monkeypatch.setattr(sys.stdin, "read", _raise_oserror)
+
+        exit_code = main()
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert result["decision"] == "allow"
+        assert "empty stdin" in result["reason"].lower()
+
+    def test_stdin_read_oserror_does_not_write_error_log(
+        self, tmp_path: Path, monkeypatch, capsys
+    ) -> None:
+        """sys.stdin.read() OSError must NOT write a json_parse_error log.
+
+        Mirrors ``test_empty_stdin_does_not_write_error_log`` for the IO-failure
+        path. The error log is reserved for genuine JSON parse errors.
+        """
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setenv("MEMORY_HOOK_ORIGINAL_CWD", str(tmp_path))
+
+        def _raise_oserror(*args: Any, **kwargs: Any) -> str:
+            raise OSError("Bad file descriptor")
+
+        monkeypatch.setattr(sys.stdin, "read", _raise_oserror)
+
+        exit_code = main()
+
+        assert exit_code == 0
+        # Verify no error log was written to memory/log/*-errors.jsonl
+        error_log_dir = tmp_path / "memory" / "log"
+        if error_log_dir.exists():
+            error_files = list(error_log_dir.glob("*-errors.jsonl"))
+            assert not error_files, f"Expected no error log, found: {error_files}"
+
+    def test_malformed_nonempty_json_still_logs_json_parse_error(
+        self, tmp_path: Path
+    ) -> None:
+        """Regression guard: non-empty malformed JSON must still fail-closed AND write a json_parse_error log.
+
+        Confirms the INFRA-141 fix did not break the legitimate json_parse_error
+        path (which is now the only path into ``_fail_closed_with_raw_check``).
+        """
+        # Create memory/system so project root resolution works
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        exit_code, result = self._run_guard_raw("{not valid json", tmp_path)
+
+        # Fail-closed path: reason indicates guard failure, not empty stdin
+        assert "empty stdin" not in result.get("reason", "").lower()
+        assert "guard failure" in result["reason"].lower()
+        # json_parse_error log must be written
+        error_log_dir = tmp_path / "memory" / "log"
+        error_files = list(error_log_dir.glob("*-errors.jsonl"))
+        assert error_files, "Expected json_parse_error log to be written"
+        # Verify the log content references json_parse_error
+        log_content = error_files[0].read_text()
+        assert "json_parse_error" in log_content
+
 
 class TestPreToolUseGuardDirect:
     """Direct tests for guard functions without subprocess."""
