@@ -11,6 +11,7 @@ import pytest
 
 from memory_core.tools.error_pattern_detector import (
     PatternGroup,
+    _is_test_artifact,
     build_parser,
     compute_fingerprint,
     evaluate_threshold,
@@ -1132,4 +1133,225 @@ class TestRealDataEndToEnd:
 
         # Should have at least one curl-related pattern
         assert len(curl_patterns) > 0, "No curl-related patterns found in real data"
+
+
+# ============================================================================
+# VAL-TEST-ARTIFACT: Test Artifact Filtering Tests
+# ============================================================================
+
+
+class TestTestArtifactFiltering:
+    """Tests for _is_test_artifact() — prevents false-positive findings."""
+
+    @staticmethod
+    def _make_entry(
+        session_id: str = "",
+        expected_path: str = "",
+        msg: str = "",
+        ctx: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        entry: dict[str, Any] = {
+            "ts": "2026-07-24T09:37:47+08:00",
+            "type": "transcript_missing",
+            "script": "session_end_logger",
+            "project": "/Users/busiji/memory",
+            "msg": msg,
+            "ctx": ctx if ctx is not None else {},
+        }
+        if session_id:
+            entry["ctx"]["session_id"] = session_id
+        if expected_path:
+            entry["ctx"]["expected_path"] = expected_path
+        return entry
+
+    def test_test_session_id_filtered(self) -> None:
+        """session_id='test' is recognized as a test artifact."""
+        entry = self._make_entry(
+            session_id="test",
+            expected_path="/Users/x/.factory/sessions/test.jsonl",
+            msg="transcript not found: /Users/x/.factory/sessions/test.jsonl",
+        )
+        assert _is_test_artifact(entry) is True
+
+    def test_test_dash_prefix_session_id_filtered(self) -> None:
+        """session_id='test-verification-123' is a test artifact."""
+        entry = self._make_entry(
+            session_id="test-verification-123",
+            expected_path="/private/tmp/nonexist.jsonl",
+            msg="transcript not found: /private/tmp/nonexist.jsonl",
+        )
+        assert _is_test_artifact(entry) is True
+
+    def test_test_no_transcript_session_id_filtered(self) -> None:
+        """session_id='test-no-transcript' is a test artifact."""
+        entry = self._make_entry(
+            session_id="test-no-transcript",
+            expected_path="/Users/x/test-no-transcript.jsonl",
+            msg="transcript not found: /Users/x/test-no-transcript.jsonl",
+        )
+        assert _is_test_artifact(entry) is True
+
+    def test_debug_prefix_filtered(self) -> None:
+        """session_id='debug-123' is a test artifact."""
+        entry = self._make_entry(session_id="debug-123")
+        assert _is_test_artifact(entry) is True
+
+    def test_dummy_prefix_filtered(self) -> None:
+        """session_id='dummy' is a test artifact."""
+        entry = self._make_entry(session_id="dummy")
+        assert _is_test_artifact(entry) is True
+
+    def test_tmp_path_filtered(self) -> None:
+        """Paths under /tmp/ are recognized as test artifacts."""
+        entry = self._make_entry(
+            session_id="a1b2c3d4",
+            expected_path="/tmp/x.jsonl",
+            msg="transcript not found: /tmp/x.jsonl",
+        )
+        assert _is_test_artifact(entry) is True
+
+    def test_private_tmp_path_filtered(self) -> None:
+        """Paths under /private/tmp/ (macOS canonical /tmp) are test artifacts."""
+        entry = self._make_entry(
+            session_id="a1b2c3d4",
+            expected_path="/private/tmp/nonexist.jsonl",
+            msg="transcript not found: /private/tmp/nonexist.jsonl",
+        )
+        assert _is_test_artifact(entry) is True
+
+    def test_var_tmp_path_filtered(self) -> None:
+        """Paths under /var/tmp/ are test artifacts."""
+        entry = self._make_entry(
+            session_id="real-session",
+            expected_path="/var/tmp/transcript.jsonl",
+            msg="transcript not found: /var/tmp/transcript.jsonl",
+        )
+        assert _is_test_artifact(entry) is True
+
+    def test_real_session_not_filtered(self) -> None:
+        """A real-looking entry with UUID session_id and ~/.factory path passes."""
+        entry = self._make_entry(
+            session_id="a1b2c3d4",
+            expected_path="/Users/busiji/.factory/sessions/-Users-busiji-memory/a1b2c3d4.jsonl",
+            msg="transcript not found: /Users/busiji/.factory/sessions/-Users-busiji-memory/a1b2c3d4.jsonl",
+        )
+        assert _is_test_artifact(entry) is False
+
+    def test_contest_not_filtered(self) -> None:
+        """session_id='contest' does NOT start with 'test' — not filtered."""
+        entry = self._make_entry(session_id="contest")
+        assert _is_test_artifact(entry) is False
+
+    def test_no_ctx_not_filtered(self) -> None:
+        """Entries without ctx are not filtered."""
+        entry: dict[str, Any] = {"ts": "2026-01-01T00:00:00+08:00", "type": "t", "msg": "error"}
+        assert _is_test_artifact(entry) is False
+
+    def test_empty_session_id_not_filtered(self) -> None:
+        """Empty session_id does not trigger filtering."""
+        entry = self._make_entry(
+            session_id="",
+            expected_path="/Users/x/app/file.jsonl",
+            msg="error in /Users/x/app/file.jsonl",
+        )
+        assert _is_test_artifact(entry) is False
+
+    def test_case_insensitive_session_id(self) -> None:
+        """session_id='TEST-123' (uppercase) is still filtered."""
+        entry = self._make_entry(session_id="TEST-123")
+        assert _is_test_artifact(entry) is True
+
+
+class TestPipelineArtifactFiltering:
+    """End-to-end tests verifying the pipeline filters test artifacts."""
+
+    def test_pipeline_excludes_test_artifacts(self, tmp_path: Path) -> None:
+        """Pipeline filters entries with test session_ids before grouping."""
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        log_dir = project_root / "memory" / "log"
+        log_dir.mkdir(parents=True)
+
+        error_file = log_dir / "2026-08-01-errors.jsonl"
+        with error_file.open("w") as f:
+            # 5 test entries (same fingerprint, would trigger 'both' threshold)
+            for i in range(5):
+                f.write(json.dumps({
+                    "ts": f"2026-08-0{1 + i % 2}T10:00:00+08:00",
+                    "type": "transcript_missing",
+                    "script": "session_end_logger",
+                    "project": str(project_root),
+                    "ctx": {"session_id": "test", "expected_path": f"/tmp/file{i}.jsonl"},
+                    "msg": f"transcript not found: /tmp/file{i}.jsonl",
+                }) + "\n")
+
+        registry_path = tmp_path / "registry.jsonl"
+        run_pipeline(project_root, registry_path, dry_run=False)
+
+        # Registry should be empty (all entries were test artifacts)
+        assert registry_path.exists()
+        with registry_path.open() as f:
+            content = f.read()
+        assert content == "", "Test artifacts should be filtered out, registry must be empty"
+
+    def test_pipeline_mixed_entries(self, tmp_path: Path) -> None:
+        """Pipeline keeps real entries while filtering test entries."""
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        log_dir = project_root / "memory" / "log"
+        log_dir.mkdir(parents=True)
+
+        error_file = log_dir / "2026-08-01-errors.jsonl"
+        with error_file.open("w") as f:
+            # Test artifact (should be filtered)
+            f.write(json.dumps({
+                "ts": "2026-08-01T10:00:00+08:00",
+                "type": "transcript_missing",
+                "script": "session_end_logger",
+                "project": str(project_root),
+                "ctx": {"session_id": "test", "expected_path": "/tmp/x.jsonl"},
+                "msg": "transcript not found: /tmp/x.jsonl",
+            }) + "\n")
+            # Real entry (should be kept)
+            f.write(json.dumps({
+                "ts": "2026-08-01T11:00:00+08:00",
+                "type": "llm_api_error",
+                "script": "daily_summary_generator",
+                "project": str(project_root),
+                "ctx": {"session_id": "a1b2c3d4"},
+                "msg": "LLM API error in /Users/x/app.py",
+            }) + "\n")
+
+        registry_path = tmp_path / "registry.jsonl"
+        run_pipeline(project_root, registry_path, dry_run=False)
+
+        entries = list(read_registry(registry_path).values())
+        # Only the real entry should appear
+        assert len(entries) == 1
+        assert entries[0]["type"] == "llm_api_error"
+
+    def test_pipeline_verbose_reports_excluded(self, tmp_path: Path, capsys: Any) -> None:
+        """Verbose mode reports how many test artifacts were excluded."""
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        log_dir = project_root / "memory" / "log"
+        log_dir.mkdir(parents=True)
+
+        error_file = log_dir / "2026-08-01-errors.jsonl"
+        with error_file.open("w") as f:
+            for i in range(3):
+                f.write(json.dumps({
+                    "ts": "2026-08-01T10:00:00+08:00",
+                    "type": "transcript_missing",
+                    "script": "session_end_logger",
+                    "project": str(project_root),
+                    "ctx": {"session_id": "test", "expected_path": f"/tmp/f{i}.jsonl"},
+                    "msg": f"transcript not found: /tmp/f{i}.jsonl",
+                }) + "\n")
+
+        registry_path = tmp_path / "registry.jsonl"
+        run_pipeline(project_root, registry_path, dry_run=False, verbose=True)
+
+        captured = capsys.readouterr()
+        assert "excluded" in captured.err.lower() or "excluded" in captured.out.lower()
 

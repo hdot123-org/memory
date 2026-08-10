@@ -132,6 +132,69 @@ def compute_fingerprint(error_type: str, script: str, normalized_msg: str) -> st
 
 
 # ---------------------------------------------------------------------------
+# Test Artifact Filtering
+# ---------------------------------------------------------------------------
+
+# Session ID prefixes that indicate manual testing, not production sessions.
+# Real Factory session IDs are UUIDs or 8-char hex strings.
+_TEST_SESSION_ID_PREFIXES = (
+    "test", "debug", "dummy", "fake", "example", "sample", "placeholder",
+    "foobar", "xxx", "yyy",
+)
+
+# Directory prefixes for temporary/system paths that indicate non-production
+# data (manual CLI testing with temp paths).
+_TEMP_PATH_PREFIXES = (
+    "/tmp/", "/private/tmp/", "/var/tmp/", "/dev/shm/", "/temp/",
+)
+
+
+def _is_test_artifact(entry: dict[str, Any]) -> bool:
+    """Detect whether an error log entry is a test/manual-testing artifact.
+
+    Test artifacts are created when tools (e.g. session_end_logger) are invoked
+    manually from the command line with non-production data. These entries
+    pollute the error log but don't represent real production failures.
+
+    Detection signals (any one triggers filtering):
+    1. ``ctx.session_id`` matches an obvious test prefix (test, debug, dummy…)
+    2. Any path-like value in ``ctx`` or ``msg`` references a temp directory
+
+    Args:
+        entry: Parsed error log entry dict
+
+    Returns:
+        True if the entry looks like a test artifact (should be excluded)
+    """
+    ctx = entry.get("ctx")
+    if not isinstance(ctx, dict):
+        ctx = {}
+
+    msg = str(entry.get("msg", ""))
+
+    # --- Signal 1: test-like session_id ---
+    session_id = str(ctx.get("session_id", ""))
+    if session_id:
+        sid_lower = session_id.lower()
+        if sid_lower.startswith(_TEST_SESSION_ID_PREFIXES):
+            return True
+
+    # --- Signal 2: temp-directory paths in ctx values or msg ---
+    # Collect all string values from ctx plus msg for path scanning
+    candidates: list[str] = [msg]
+    for value in ctx.values():
+        if isinstance(value, str):
+            candidates.append(value)
+
+    for text in candidates:
+        for prefix in _TEMP_PATH_PREFIXES:
+            if prefix in text:
+                return True
+
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Pattern Group Data Structure
 # ---------------------------------------------------------------------------
 
@@ -594,8 +657,20 @@ def run_pipeline(
         entries = scan_project(project_path)
         all_entries.extend(entries)
 
+    # Step 2.5: Filter out test/manual-testing artifacts so they don't
+    # inflate pattern counts or generate false-positive findings.
+    # (e.g. session_end_logger invoked with session_id="test" or temp paths)
+    filtered_entries = [e for e in all_entries if not _is_test_artifact(e)]
+    excluded_count = len(all_entries) - len(filtered_entries)
+    if verbose and excluded_count > 0:
+        print(
+            f"[filter] excluded {excluded_count} test artifact(s) "
+            f"from pattern detection",
+            file=sys.stderr,
+        )
+
     # Step 3-4: Fingerprint and group
-    groups = group_by_fingerprint(all_entries)
+    groups = group_by_fingerprint(filtered_entries)
 
     # Step 5: Evaluate thresholds (done inside merge_patterns)
 
