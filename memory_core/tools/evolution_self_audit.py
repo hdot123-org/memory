@@ -1,4 +1,4 @@
-"""Evolution self-audit tool: 6 checks for pipeline health."""
+"""Evolution self-audit tool: 7 checks for pipeline health."""
 
 import json
 import sys
@@ -356,9 +356,24 @@ def check_tool_health() -> list[dict[str, Any]]:
                     "evidence": f"failed_count={failed_count}/3",
                     "category": CATEGORY,
                 })
+    except json.JSONDecodeError as e:
+        findings.append({
+            "rule_id": "EVOLUTION_TOOL_HEALTH_ERROR",
+            "severity": "warning",
+            "description": "Failed to parse findings_over_time.json for tool health check",
+            "location": str(FINDINGS_OVER_TIME),
+            "evidence": str(e),
+            "category": CATEGORY,
+        })
     except Exception as e:
-        # If we can't read/parse the file, just return empty (non-blocking)
-        print(f"[evolution_self_audit] Warning: check_tool_health failed: {e}", file=sys.stderr)
+        findings.append({
+            "rule_id": "EVOLUTION_TOOL_HEALTH_ERROR",
+            "severity": "warning",
+            "description": "Tool health check encountered an unexpected error",
+            "location": str(FINDINGS_OVER_TIME),
+            "evidence": str(e),
+            "category": CATEGORY,
+        })
 
     return findings
 

@@ -4051,6 +4051,42 @@ def test_evolution_self_audit_tool_health_file_missing(tmp_path, monkeypatch):
     assert len(findings) == 0
 
 
+def test_evolution_self_audit_tool_health_boundary(tmp_path, monkeypatch):
+    """check_tool_health does NOT report when tool fails only 2 of 3 ticks (below threshold)."""
+    from memory_core.tools import evolution_self_audit
+
+    monkeypatch.setattr(
+        evolution_self_audit, "FINDINGS_OVER_TIME",
+        tmp_path / "findings_over_time.json",
+    )
+
+    # Create history with 2 failures + 1 success in last 3 snapshots
+    history_data = {
+        "snapshots": [
+            {
+                "timestamp": "2026-01-01T00:00:00+00:00",
+                "findings": [],
+                "tool_status": {"audit_layout": "failed", "daily_kb_audit": "ok"},
+            },
+            {
+                "timestamp": "2026-01-02T00:00:00+00:00",
+                "findings": [],
+                "tool_status": {"audit_layout": "failed", "daily_kb_audit": "ok"},
+            },
+            {
+                "timestamp": "2026-01-03T00:00:00+00:00",
+                "findings": [],
+                "tool_status": {"audit_layout": "ok", "daily_kb_audit": "ok"},
+            },
+        ]
+    }
+    (tmp_path / "findings_over_time.json").write_text(json.dumps(history_data))
+
+    findings = evolution_self_audit.check_tool_health()
+    # 2 of 3 is below the threshold of 3 consecutive, so no finding
+    assert len(findings) == 0
+
+
 def test_update_history_tool_status(tmp_path):
     """update_history writes tool_status to snapshot when provided."""
     history_path = tmp_path / "history.json"
