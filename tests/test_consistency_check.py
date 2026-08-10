@@ -159,10 +159,10 @@ class TestCheckAdapterRegistryComplete:
         assert isinstance(errors, list)
         assert isinstance(warnings, list)
 
-    def test_adapter_registry_has_workbot_and_default(self) -> None:
+    def test_adapter_registry_has_default_entry(self) -> None:
         """Test that adapter registry has required entries."""
         errors, warnings = check_adapter_registry_complete()
-        # Check that no errors about missing workbot or default
+        # Check that no errors about missing default
         for error in errors:
             assert "not found" not in error.lower()
 
