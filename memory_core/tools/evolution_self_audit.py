@@ -4,6 +4,7 @@ import json
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 # Module-level constants for testability (monkeypatch in tests)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]  # memory/
@@ -20,9 +21,9 @@ REPOSITORIES_YML = FACTORY_HOME / "config" / "repositories.yml"
 CATEGORY = "evolution_self_audit"
 
 
-def check_suppress_json() -> list[dict]:
+def check_suppress_json() -> list[dict[str, Any]]:
     """Check 1: verify suppress.json exists and is valid."""
-    findings = []
+    findings: list[dict[str, Any]] = []
 
     if not SUPPRESS_JSON.exists():
         findings.append({
@@ -60,9 +61,9 @@ def check_suppress_json() -> list[dict]:
     return findings
 
 
-def check_findings_over_time() -> list[dict]:
+def check_findings_over_time() -> list[dict[str, Any]]:
     """Check 2: verify findings_over_time.json has recent data."""
-    findings = []
+    findings: list[dict[str, Any]] = []
 
     if not FINDINGS_OVER_TIME.exists():
         findings.append({
@@ -100,9 +101,9 @@ def check_findings_over_time() -> list[dict]:
     return findings
 
 
-def check_orphan_locks() -> list[dict]:
+def check_orphan_locks() -> list[dict[str, Any]]:
     """Check 3: detect orphan lock files older than 60 minutes."""
-    findings = []
+    findings: list[dict[str, Any]] = []
 
     if not LOCK_DIR.is_dir():
         # Skip in CI environments where ~/.factory/ files don't exist
@@ -142,9 +143,9 @@ def check_orphan_locks() -> list[dict]:
     return findings
 
 
-def check_trigger_droid() -> list[dict]:
+def check_trigger_droid() -> list[dict[str, Any]]:
     """Check 4: verify trigger-droid.sh exists and contains key functions."""
-    findings = []
+    findings: list[dict[str, Any]] = []
 
     if not TRIGGER_DROID.exists():
         # Skip in CI environments where ~/.factory/ files don't exist
@@ -181,9 +182,9 @@ def check_trigger_droid() -> list[dict]:
     return findings
 
 
-def check_repositories_yml() -> list[dict]:
+def check_repositories_yml() -> list[dict[str, Any]]:
     """Check 5: verify repositories.yml has memory-core entry."""
-    findings = []
+    findings: list[dict[str, Any]] = []
 
     if not REPOSITORIES_YML.exists():
         # Skip in CI environments where ~/.factory/ files don't exist
@@ -252,9 +253,9 @@ def check_repositories_yml() -> list[dict]:
     return findings
 
 
-def check_config_yml() -> list[dict]:
+def check_config_yml() -> list[dict[str, Any]]:
     """Check 6: verify .evolution/config.yml has 6 audit tools."""
-    findings = []
+    findings: list[dict[str, Any]] = []
 
     if not EVOLUTION_CONFIG.exists():
         findings.append({
@@ -316,7 +317,7 @@ def check_config_yml() -> list[dict]:
 
 def main() -> int:
     """Run all 6 checks and output findings as JSON."""
-    all_findings: list[dict] = []
+    all_findings: list[dict[str, Any]] = []
     all_findings.extend(check_suppress_json())
     all_findings.extend(check_findings_over_time())
     all_findings.extend(check_orphan_locks())
