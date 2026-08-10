@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.5](https://github.com/hdot123/memory/compare/v0.16.4...v0.16.5) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** [INFRA-154] 修复 check_findings_over_time 读取错误的 JSON 键导致 EVOLUTION_FINDINGS_INSUFFICIENT 永远误报 ([#436](https://github.com/hdot123/memory/issues/436)) ([f454590](https://github.com/hdot123/memory/commit/f4545901eadaf2dc06fba6fc39a9710e348cc307))
+
 ## [0.16.4](https://github.com/hdot123/memory/compare/v0.16.3...v0.16.4) (2026-08-10)
 
 
