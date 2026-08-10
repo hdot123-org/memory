@@ -63,6 +63,6 @@ jobs:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
-          security_review_model: "claude-opus-4-5"
+          security_review_model: "qwen3.7-plus"
           review_model: "qwen3.7-plus"
           allowed_bots: "dependabot[bot]"
