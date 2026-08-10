@@ -4,7 +4,7 @@ Covers:
 - from_codex_payload: parsing Codex raw JSON into HookEvent
 - from_claude_payload: parsing Claude raw JSON with event name mapping
 - to_context_package_input: output structure consistency
-- parse_hook_event: unified entry point dispatch
+- parse_hook_event: unified factory host entry point dispatch
 - Edge cases: empty payload, invalid JSON, unknown event types
 """
 
@@ -330,7 +330,7 @@ class TestParseHookEvent:
 class TestCrossHostNormalization:
 
     def test_same_event_type_after_normalization(self):
-        """Claude SessionStart and Codex session-start map to same type."""
+        """Cross-host normalization: Claude and Codex session-start map to the same event type (factory host shares the Codex path)."""
         claude_raw = json.dumps({"event": "SessionStart", "cwd": "/repo"})
         codex_raw = json.dumps({"cwd": "/repo"})
 
