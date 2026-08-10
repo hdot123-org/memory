@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.25](https://github.com/hdot123/memory/compare/v0.15.24...v0.15.25) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** [INFRA-100] 修复 test_dispatch_output_package 文档字符串主机引用不一致 ([#401](https://github.com/hdot123/memory/issues/401)) ([0f76ba4](https://github.com/hdot123/memory/commit/0f76ba49c8ba271d2ffc3bf4573ae5ba42d307fb))
+
 ## [0.15.24](https://github.com/hdot123/memory/compare/v0.15.23...v0.15.24) (2026-08-10)
 
 
