@@ -7,6 +7,7 @@ from memory_core import __version__ as CURRENT_MEMORY_VERSION  # noqa: F401
 __all__ = [
     "CURRENT_MEMORY_VERSION",
     "SUPPORTED_HOSTS",
+    "STATUS_ENUMERATIONS",
     "SYSTEM_DIR",
     "REQUIRED_MEMORY_FILES",
     "REQUIRED_MEMORY_DIRS",
@@ -20,6 +21,18 @@ __all__ = [
 ]
 
 SUPPORTED_HOSTS = ("factory",)
+
+# Project lifecycle status enumerations — valid values for the ``status`` field
+# in a project's ``memory/kb/projects/<name>/STATE.md`` frontmatter.
+# ``active`` is the canonical default used by project templates.
+STATUS_ENUMERATIONS = (
+    "active",
+    "planning",
+    "paused",
+    "deprecated",
+    "archived",
+    "dormant",
+)
 
 SYSTEM_DIR = "memory/system"
 

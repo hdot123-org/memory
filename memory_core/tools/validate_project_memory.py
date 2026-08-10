@@ -39,6 +39,7 @@ from memory_core.constants import (
     MIGRATION_LOG_LINE_PATTERN,
     REQUIRED_MEMORY_DIRS,
     REQUIRED_MEMORY_FILES,
+    STATUS_ENUMERATIONS,
     SUPPORTED_HOSTS,
 )
 from memory_core.ownership import (
@@ -732,6 +733,70 @@ def check_kb_evidence_refs(target: Path, result: CheckResult) -> bool:
     return all_ok
 
 
+def check_status_enum(target: Path, result: CheckResult) -> bool:
+    """Verify STATE.md ``status`` field (if present) is in STATUS_ENUMERATIONS.
+
+    Scans ``memory/kb/projects/*/STATE.md``. LENIENT: a STATE.md with no
+    ``status`` key in its frontmatter records a PASS (skipped) and does not
+    fail validation — this avoids false positives on templates that have not
+    yet filled in a status.
+    """
+    all_ok = True
+    # target / "memory" / "system" is memory_root; the projects dir is
+    # target / "memory" / "kb" / "projects".
+    projects_dir = target / "memory" / "kb" / "projects"
+
+    try:
+        state_files = sorted(projects_dir.glob("*/STATE.md"))
+    except Exception as exc:
+        result.record("status_enum", False, f"glob error: {exc}")
+        return False
+
+    if not state_files:
+        result.record("status_enum", True, "no STATE.md files to validate")
+        return True
+
+    for state_path in state_files:
+        project_name = state_path.parent.name
+        try:
+            text = state_path.read_text(encoding="utf-8")
+        except Exception as exc:
+            result.record(
+                f"status_enum:{project_name}", False, f"read error: {exc}"
+            )
+            all_ok = False
+            continue
+
+        try:
+            frontmatter = _parse_frontmatter(text)
+        except Exception as exc:
+            result.record(
+                f"status_enum:{project_name}", False, f"frontmatter parse error: {exc}"
+            )
+            all_ok = False
+            continue
+
+        # LENIENT: only validate when a status key is present.
+        if "status" not in frontmatter:
+            result.record(
+                f"status_enum:{project_name}", True, "no status key in frontmatter (skipped)"
+            )
+            continue
+
+        value = frontmatter["status"]
+        if value in STATUS_ENUMERATIONS:
+            result.record(f"status_enum:{project_name}", True, f"status={value}")
+        else:
+            result.record(
+                f"status_enum:{project_name}",
+                False,
+                f"invalid status '{value}', must be one of: {', '.join(STATUS_ENUMERATIONS)}",
+            )
+            all_ok = False
+
+    return all_ok
+
+
 # ---------------------------------------------------------------------------
 # Main validation entry point
 # ---------------------------------------------------------------------------
@@ -764,6 +829,7 @@ def validate_project_memory(
         result.record("dry_run:migrations_log", True, "would check migrations.log")
         result.record("dry_run:semver", True, "would check memory_version SemVer format")
         result.record("dry_run:host_enum", True, "would check adapter host enum")
+        result.record("dry_run:status_enum", True, "would check STATE.md status enum")
         result.record("dry_run:ownership", True, "would check ownership declaration")
         result.record("dry_run:domain_integrity", True, "would check domain integrity")
         result.record("dry_run:document_paths", True, "would check document paths")
@@ -792,6 +858,7 @@ def validate_project_memory(
     check_document_paths(memory_root, result)
     check_shared_resources(target, memory_root, result)
     check_kb_evidence_refs(target, result)
+    check_status_enum(target, result)
 
     return result
 
