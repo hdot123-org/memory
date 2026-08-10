@@ -3868,19 +3868,16 @@ def test_evolution_self_audit_suppress_empty(tmp_path, monkeypatch):
 
 def test_adapt_audit_layout():
     """adapt_audit_layout transforms audit_layout output correctly."""
+    # Scanner calls json.loads() before passing to adapter, so raw is already parsed
     raw = {
-        "stdout": json.dumps({
-            "violations": [
-                {
-                    "type": "DAILY_KB_STALE",
-                    "severity": "warning",
-                    "file": "memory/kb/test.md",
-                    "detail": "KB entries stale",
-                }
-            ]
-        }),
-        "stderr": "",
-        "exit_code": 0,
+        "violations": [
+            {
+                "type": "DAILY_KB_STALE",
+                "severity": "warning",
+                "file": "memory/kb/test.md",
+                "detail": "KB entries stale",
+            }
+        ]
     }
     result = adapt_audit_layout(raw)
     assert len(result) == 1
@@ -3891,19 +3888,16 @@ def test_adapt_audit_layout():
 
 def test_adapt_validate_project():
     """adapt_validate_project transforms validate_project output correctly."""
+    # Scanner calls json.loads() before passing to adapter, so raw is already parsed
     raw = {
-        "stdout": json.dumps({
-            "violations": [
-                {
-                    "type": "PROJECT_MISSING_CONFIG",
-                    "severity": "warning",
-                    "file": ".",
-                    "detail": "No pyproject.toml found",
-                }
-            ]
-        }),
-        "stderr": "",
-        "exit_code": 0,
+        "violations": [
+            {
+                "type": "PROJECT_MISSING_CONFIG",
+                "severity": "warning",
+                "file": ".",
+                "detail": "No pyproject.toml found",
+            }
+        ]
     }
     result = adapt_validate_project(raw)
     assert len(result) == 1
@@ -3921,20 +3915,17 @@ def test_adapt_evolution_self_audit(tmp_path, monkeypatch):
         json.dumps({"suppressed": ["rule_1"]}), encoding="utf-8"
     )
 
-    raw = {
-        "stdout": json.dumps([
-            {
-                "rule_id": "EVOLUTION_SUPPRESS_EMPTY",
-                "severity": "warning",
-                "description": "test finding",
-                "location": str(tmp_path / "some" / "path"),
-                "evidence": "test",
-                "category": "evolution_self_audit",
-            }
-        ]),
-        "stderr": "",
-        "exit_code": 0,
-    }
+    # Scanner calls json.loads() before passing to adapter, so raw is already parsed
+    raw = [
+        {
+            "rule_id": "EVOLUTION_SUPPRESS_EMPTY",
+            "severity": "warning",
+            "description": "test finding",
+            "location": str(tmp_path / "some" / "path"),
+            "evidence": "test",
+            "category": "evolution_self_audit",
+        }
+    ]
     result = adapt_evolution_self_audit(raw)
     assert len(result) == 1
     assert result[0]["rule_id"] == "EVOLUTION_SUPPRESS_EMPTY"

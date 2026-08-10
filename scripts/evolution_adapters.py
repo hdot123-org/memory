@@ -272,15 +272,10 @@ def adapt_error_patterns(lines: list[dict]) -> list[dict]:
 def adapt_audit_layout(raw: dict) -> list[dict]:
     """Convert audit layout output to Finding dicts.
 
-    Input format: {stdout: json_str, stderr: str, exit_code: int}
-    where json_str contains {violations: [{type, severity, file, detail}]}
+    Input format: parsed JSON object {violations: [{type, severity, file, detail}]}
+    Scanner passes json.loads() result directly, so raw is the parsed dict.
     """
-    import json
-
-    try:
-        data = json.loads(raw.get("stdout", "{}"))
-    except (json.JSONDecodeError, TypeError):
-        return []
+    data = raw if isinstance(raw, dict) else {}
 
     findings = []
     for violation in data.get("violations", []):
@@ -298,15 +293,10 @@ def adapt_audit_layout(raw: dict) -> list[dict]:
 def adapt_validate_project(raw: dict) -> list[dict]:
     """Convert validate project output to Finding dicts.
 
-    Input format: {stdout: json_str, stderr: str, exit_code: int}
-    where json_str contains {violations: [{type, severity, file, detail}]}
+    Input format: parsed JSON object {violations: [{type, severity, file, detail}]}
+    Scanner passes json.loads() result directly, so raw is the parsed dict.
     """
-    import json
-
-    try:
-        data = json.loads(raw.get("stdout", "{}"))
-    except (json.JSONDecodeError, TypeError):
-        return []
+    data = raw if isinstance(raw, dict) else {}
 
     findings = []
     for violation in data.get("violations", []):
@@ -321,19 +311,13 @@ def adapt_validate_project(raw: dict) -> list[dict]:
     return findings
 
 
-def adapt_evolution_self_audit(raw: dict) -> list[dict]:
-    """Pass through evolution self-audit output (already in Finding format).
+def adapt_evolution_self_audit(raw: dict | list) -> list[dict]:
+    """Convert evolution self-audit output to Finding dicts.
 
-    Input format: {stdout: json_str, stderr: str, exit_code: int}
-    where json_str contains a list of Finding dicts.
-    This adapter normalizes the location field.
+    Input format: parsed JSON (list of finding dicts or {findings: [...]})
+    Scanner passes json.loads() result directly, so raw is the parsed data.
     """
-    import json
-
-    try:
-        data = json.loads(raw.get("stdout", "[]"))
-    except (json.JSONDecodeError, TypeError):
-        return []
+    data = raw if isinstance(raw, (list, dict)) else {}
 
     findings = []
     # Handle both list format and dict with "findings" key

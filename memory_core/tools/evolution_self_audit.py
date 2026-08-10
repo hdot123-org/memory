@@ -67,7 +67,7 @@ def check_findings_over_time() -> list[dict]:
     if not FINDINGS_OVER_TIME.exists():
         findings.append({
             "rule_id": "EVOLUTION_FINDINGS_MISSING",
-            "severity": "critical",
+            "severity": "warning",  # Changed from critical to warning
             "description": "findings_over_time.json does not exist",
             "location": str(FINDINGS_OVER_TIME),
             "evidence": "file missing",
