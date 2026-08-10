@@ -284,6 +284,14 @@ def main() -> int:
         # empty stdin: a no-op rather than a JSON parse failure (INFRA-141).
         raw_stdin = ""
 
+    # Strip BOM (\ufeff) and null bytes (\x00) before parsing.
+    # These are not valid JSON content but str.strip() does not remove them,
+    # causing json.loads() to fail with "Expecting value: line 1 column 1
+    # (char 0)" — the same pattern flagged by INFRA-143.
+    raw_stdin = raw_stdin.replace("\x00", "")
+    if raw_stdin.startswith("\ufeff"):
+        raw_stdin = raw_stdin[1:]
+
     # Empty/whitespace-only stdin is a legitimate no-op (hook invoked
     # without a tool_use payload), not an error — skip error logging.
     if not raw_stdin.strip():

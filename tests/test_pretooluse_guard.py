@@ -811,6 +811,78 @@ class TestPreToolUseGuard:
         log_content = error_files[0].read_text()
         assert "json_parse_error" in log_content
 
+    # ========== BOM/null-byte stdin 处理测试 (INFRA-143) ==========
+
+    def test_bom_only_stdin_allows_without_error(self, tmp_path: Path) -> None:
+        """BOM-only stdin (\ufeff) should allow without error (INFRA-143).
+
+        str.strip() does not remove U+FEFF, so without explicit stripping
+        it reaches json.loads() and triggers "Expecting value: line 1
+        column 1 (char 0)" — the same error pattern as empty stdin.
+        """
+        exit_code, result = self._run_guard_raw("\ufeff", tmp_path)
+
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+        assert "empty stdin" in result["reason"].lower()
+
+    def test_null_byte_only_stdin_allows_without_error(self, tmp_path: Path) -> None:
+        """Null-byte-only stdin (\\x00) should allow without error (INFRA-143).
+
+        str.strip() does not remove \\x00, so without explicit stripping
+        it reaches json.loads() and triggers the same error pattern.
+        """
+        exit_code, result = self._run_guard_raw("\x00", tmp_path)
+
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+        assert "empty stdin" in result["reason"].lower()
+
+    def test_bom_null_byte_mix_allows_without_error(self, tmp_path: Path) -> None:
+        """Mix of BOM, null bytes and whitespace should allow without error (INFRA-143)."""
+        exit_code, result = self._run_guard_raw("\x00\ufeff  \n\x00", tmp_path)
+
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+        assert "empty stdin" in result["reason"].lower()
+
+    def test_bom_prefixed_valid_json_parses_correctly(self, tmp_path: Path) -> None:
+        """BOM-prefixed valid JSON should be parsed correctly after BOM stripping (INFRA-143).
+
+        This confirms BOM stripping doesn't corrupt valid payloads — the guard
+        should classify the tool use as if no BOM were present.
+        """
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {"tool_name": "Read", "tool_input": {"file_path": "/tmp/test.txt"}}
+        exit_code, result = self._run_guard_raw(
+            "\ufeff" + json.dumps(payload), tmp_path
+        )
+
+        # Should NOT hit empty-stdin or fail-closed paths
+        assert "empty stdin" not in result.get("reason", "").lower()
+        assert "guard failure" not in result.get("reason", "").lower()
+
+    def test_bom_only_stdin_does_not_write_error_log(self, tmp_path: Path) -> None:
+        """BOM-only stdin should not write a json_parse_error log (INFRA-143)."""
+        exit_code, result = self._run_guard_raw("\ufeff", tmp_path)
+
+        assert exit_code == 0
+        error_log_dir = tmp_path / "memory" / "log"
+        if error_log_dir.exists():
+            error_files = list(error_log_dir.glob("*-errors.jsonl"))
+            assert not error_files, f"Expected no error log, found: {error_files}"
+
+    def test_null_byte_only_stdin_does_not_write_error_log(self, tmp_path: Path) -> None:
+        """Null-byte-only stdin should not write a json_parse_error log (INFRA-143)."""
+        exit_code, result = self._run_guard_raw("\x00", tmp_path)
+
+        assert exit_code == 0
+        error_log_dir = tmp_path / "memory" / "log"
+        if error_log_dir.exists():
+            error_files = list(error_log_dir.glob("*-errors.jsonl"))
+            assert not error_files, f"Expected no error log, found: {error_files}"
+
 
 class TestPreToolUseGuardDirect:
     """Direct tests for guard functions without subprocess."""
