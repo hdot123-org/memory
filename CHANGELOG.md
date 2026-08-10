@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/hdot123/memory/compare/v0.15.32...v0.16.0) (2026-08-10)
+
+
+### Features
+
+* **evolution:** 扩展审计工具至6个，新增 evolution_self_audit 自检工具 ([#414](https://github.com/hdot123/memory/issues/414)) ([e250b0e](https://github.com/hdot123/memory/commit/e250b0e1df6b481744f25f1803383996b1ffbca0))
+
 ## [0.15.32](https://github.com/hdot123/memory/compare/v0.15.31...v0.15.32) (2026-08-10)
 
 
