@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.24](https://github.com/hdot123/memory/compare/v0.15.23...v0.15.24) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** [INFRA-102] 修复 memory_hook_impls 模块文档字符串主机引用不一致 ([#398](https://github.com/hdot123/memory/issues/398)) ([bdfc68e](https://github.com/hdot123/memory/commit/bdfc68e63482ec2899034f80ca84bbf555ad608b))
+
 ## [0.15.23](https://github.com/hdot123/memory/compare/v0.15.22...v0.15.23) (2026-08-10)
 
 
