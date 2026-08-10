@@ -279,29 +279,31 @@ def main() -> int:
     # Read JSON payload from stdin
     try:
         raw_stdin = sys.stdin.read()
-        # Empty/whitespace-only stdin is a legitimate no-op (hook invoked
-        # without a tool_use payload), not an error — skip error logging.
-        if not raw_stdin.strip():
-            reason_text = "Empty stdin, no tool use to guard"
-            print(json.dumps({
-                "decision": "allow",
-                "reason": reason_text,
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "allow",
-                    "permissionDecisionReason": reason_text,
-                },
-            }))
-            return 0
+    except OSError:
+        # stdin unavailable (closed pipe / bad file descriptor) — treat as
+        # empty stdin: a no-op rather than a JSON parse failure (INFRA-141).
+        raw_stdin = ""
+
+    # Empty/whitespace-only stdin is a legitimate no-op (hook invoked
+    # without a tool_use payload), not an error — skip error logging.
+    if not raw_stdin.strip():
+        reason_text = "Empty stdin, no tool use to guard"
+        print(json.dumps({
+            "decision": "allow",
+            "reason": reason_text,
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "permissionDecisionReason": reason_text,
+            },
+        }))
+        return 0
+
+    try:
         payload = json.loads(raw_stdin)
     except json.JSONDecodeError as e:
         # Fail-closed: check raw stdin for protected path markers
         exit_code, result = _fail_closed_with_raw_check(raw_stdin, f"Invalid JSON input: {e}")
-        print(json.dumps(result))
-        return exit_code
-    except Exception as e:
-        # Fail-closed: stdin read failed, no payload to check
-        exit_code, result = _fail_closed_with_raw_check("", f"Error reading input: {e}")
         print(json.dumps(result))
         return exit_code
 
