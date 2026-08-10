@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.29](https://github.com/hdot123/memory/compare/v0.15.28...v0.15.29) (2026-08-10)
+
+
+### Bug Fixes
+
+* **guard:** [INFRA-138] 修复 pretooluse_guard 空 stdin 触发 json_parse_error 误报 ([#415](https://github.com/hdot123/memory/issues/415)) ([7dd35cc](https://github.com/hdot123/memory/commit/7dd35cc49a119397c38a509c01eb3f90b5d47bbb))
+
 ## [0.15.28](https://github.com/hdot123/memory/compare/v0.15.27...v0.15.28) (2026-08-10)
 
 
