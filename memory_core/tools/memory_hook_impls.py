@@ -2,7 +2,7 @@
 """M2 Default Implementations for memory-hook-gateway interfaces.
 
 This module provides default implementations for:
-- HostDelegateImpl (Codex/Claude delegates)
+- HostDelegateImpl (Factory delegate)
 - PolicyRegistryImpl
 - RouteTargetPolicyImpl / WriteTargetPolicyImpl
 - ArtifactSinkImpl / ErrorSinkImpl
