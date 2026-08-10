@@ -271,12 +271,12 @@ def main() -> None:
     if config["audit_tools"] and all(result is None for _, result in raw_results):
         print("::error::All audit tools failed, cannot produce reliable findings")
         sys.exit(1)
-    
+
     # P1-1: Warn when some adapters fail (partial failure detection)
     failed_tools_count = sum(1 for _, result in raw_results if result is None)
     if 0 < failed_tools_count < len(raw_results):
         print(f"[evolution] Warning: {failed_tools_count}/{len(raw_results)} adapter(s) failed, results may be incomplete")
-    
+
     all_findings = [normalize_finding(r) for _, res in raw_results if res is not None for r in res]
     all_findings = dedup_intra_tick(all_findings)
     findings = detect_regressions(all_findings, history_path)
