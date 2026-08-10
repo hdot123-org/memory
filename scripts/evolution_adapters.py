@@ -268,10 +268,87 @@ def adapt_error_patterns(lines: list[dict]) -> list[dict]:
     return findings
 
 
+def adapt_audit_layout(raw: dict) -> list[dict]:
+    """Convert audit layout output to Finding dicts.
+
+    Input format: parsed JSON object {violations: [{type, severity, file, detail}]}
+    Scanner passes json.loads() result directly, so raw is the parsed dict.
+    """
+    data = raw if isinstance(raw, dict) else {}
+
+    findings = []
+    for violation in data.get("violations", []):
+        findings.append({
+            "rule_id": violation.get("type", "UNKNOWN").upper(),
+            "severity": violation.get("severity", "info"),
+            "category": "audit_layout",
+            "description": violation.get("detail", ""),
+            "location": normalize_location(violation.get("file", "")),
+            "evidence": f"Detail: {violation.get('detail', '')}",
+        })
+    return findings
+
+
+def adapt_validate_project(raw: dict) -> list[dict]:
+    """Convert validate project output to Finding dicts.
+
+    Input format: parsed JSON object {violations: [{type, severity, file, detail}]}
+    Scanner passes json.loads() result directly, so raw is the parsed dict.
+    """
+    data = raw if isinstance(raw, dict) else {}
+
+    findings = []
+    for violation in data.get("violations", []):
+        findings.append({
+            "rule_id": violation.get("type", "UNKNOWN").upper(),
+            "severity": violation.get("severity", "info"),
+            "category": "validate_project",
+            "description": violation.get("detail", ""),
+            "location": normalize_location(violation.get("file", "")),
+            "evidence": f"Detail: {violation.get('detail', '')}",
+        })
+    return findings
+
+
+def adapt_evolution_self_audit(raw: dict | list) -> list[dict]:
+    """Convert evolution self-audit output to Finding dicts.
+
+    Input format: parsed JSON (list of finding dicts or {findings: [...]})
+    Scanner passes json.loads() result directly, so raw is the parsed data.
+    """
+    data = raw if isinstance(raw, (list, dict)) else {}
+
+    findings = []
+    # Handle both list format and dict with "findings" key
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        items = data.get("findings", [])
+
+    for finding in items:
+        if not isinstance(finding, dict):
+            continue
+        # Normalize location to repo-relative path
+        location = normalize_location(finding.get("location", ""))
+
+        findings.append({
+            "rule_id": finding.get("rule_id", "UNKNOWN"),
+            "severity": finding.get("severity", "info"),
+            "category": finding.get("category", "evolution_self_audit"),
+            "description": finding.get("description", ""),
+            "location": location,
+            "evidence": finding.get("evidence", ""),
+        })
+    return findings
+
+
 ADAPTER_MAP = {
     "daily_kb_audit": adapt_daily_audit,
     "consistency_check": adapt_consistency_check,
     "error_patterns": adapt_error_patterns,
+    "audit_layout": adapt_audit_layout,
+    "validate_project": adapt_validate_project,
+    "evolution_self_audit": adapt_evolution_self_audit,
 }
 
 # Map tool names to the set of category values their findings carry.
@@ -280,6 +357,9 @@ TOOL_TO_CATEGORIES = {
     "daily_kb_audit": {"daily_audit"},
     "consistency_check": {"consistency"},
     "error_patterns": {"error_pattern"},
+    "audit_layout": {"audit_layout"},
+    "validate_project": {"validate_project"},
+    "evolution_self_audit": {"evolution_self_audit"},
 }
 
 
