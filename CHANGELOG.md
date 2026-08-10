@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.22](https://github.com/hdot123/memory/compare/v0.15.21...v0.15.22) (2026-08-10)
+
+
+### Bug Fixes
+
+* **consistency:** [INFRA-104] init_project_memory docstring 补全 factory 主机引用并修正 host 默认值 ([#394](https://github.com/hdot123/memory/issues/394)) ([2b1b8af](https://github.com/hdot123/memory/commit/2b1b8af1e55d05ac856da8b8b4db0a067ff37ca5))
+* **evolution:** [INFRA-125] 修复审计适配器静默失效 ([#393](https://github.com/hdot123/memory/issues/393)) ([e28b01b](https://github.com/hdot123/memory/commit/e28b01b33a4300652c3b4dd6dfd490e2915e22f8))
+
 ## [0.15.21](https://github.com/hdot123/memory/compare/v0.15.20...v0.15.21) (2026-08-10)
 
 
