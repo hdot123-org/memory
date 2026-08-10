@@ -88,7 +88,7 @@ class TestNoHooksJson:
 
 class TestAgentsMdHostNeutral:
     def test_agents_md_no_legacy_host_strings(self, tmp_path: Path) -> None:
-        """VAL-P0-002: AGENTS.md must not contain codex/claude path strings."""
+        """VAL-P0-002: AGENTS.md must not contain legacy codex/claude path strings (factory-only host)."""
         from memory_core.tools.init_project_memory import init_project_memory
 
         (tmp_path / ".git").mkdir()
@@ -1222,7 +1222,7 @@ class TestClaudeGlobalHooksDeleted:
 
 
 class TestCodexClaudeTestFilesDeleted:
-    """VAL-P4-003: test files for codex/claude wrappers are deleted."""
+    """VAL-P4-003: test files for legacy codex/claude wrappers are deleted (factory host retained)."""
 
     def test_test_codex_global_hooks_not_exists(self) -> None:
         """VAL-P4-003: tests/test_codex_global_hooks.py does not exist."""
@@ -1236,7 +1236,7 @@ class TestCodexClaudeTestFilesDeleted:
 
 
 class TestPyprojectTomlNoCodexClaudeEntryPoints:
-    """VAL-P4-004: pyproject.toml drops codex/claude entry points."""
+    """VAL-P4-004: pyproject.toml drops legacy codex/claude entry points (factory retained)."""
 
     def test_pyproject_no_codex_hooks(self) -> None:
         """VAL-P4-004: pyproject.toml does not contain 'memory-codex-hooks'."""
@@ -1273,7 +1273,7 @@ class TestFactoryGlobalHooksNoCodexProbe:
 
 
 class TestHookUpgradeNoCodexClaudeImports:
-    """VAL-P4-009: hook_upgrade.py no codex/claude imports."""
+    """VAL-P4-009: hook_upgrade.py no legacy codex/claude imports (factory only)."""
 
     def test_hook_upgrade_no_codex_import(self) -> None:
         """VAL-P4-009: hook_upgrade.py does not import from deleted modules."""
@@ -1284,7 +1284,7 @@ class TestHookUpgradeNoCodexClaudeImports:
 
 
 class TestInitUpdateScrubsLegacyAgentsMd:
-    """VAL-P4-010: init update mode scrubs legacy codex/claude hooks from AGENTS.md."""
+    """VAL-P4-010: init update mode scrubs legacy codex/claude hooks from AGENTS.md (factory replaces them)."""
 
     def test_update_mode_scrubs_codex_hook_from_agents_md(self, tmp_path: Path) -> None:
         """VAL-P4-010: update mode removes ~/.codex/bin/memory-hook from AGENTS.md."""
@@ -1343,7 +1343,7 @@ More content.
 
 
 class TestInitUpdateDeletesLegacyHooksJson:
-    """VAL-P4-011: init update mode deletes legacy .codex/hooks.json and .claude/hooks.json."""
+    """VAL-P4-011: init update mode deletes legacy .codex/hooks.json and .claude/hooks.json (factory only)."""
 
     def test_update_deletes_codex_hooks_json(self, tmp_path: Path) -> None:
         """VAL-P4-011: update mode removes .codex/hooks.json."""
@@ -1376,7 +1376,7 @@ class TestInitUpdateDeletesLegacyHooksJson:
 
 
 class TestReadmeNoCodexClaudeHostRefs:
-    """VAL-P4-012: README.md no --host codex|claude references."""
+    """VAL-P4-012: README.md no --host codex|claude references (factory only)."""
 
     def test_readme_no_codex_host(self) -> None:
         """VAL-P4-012: README.md does not contain '--host codex'."""
