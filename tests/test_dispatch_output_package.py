@@ -217,7 +217,7 @@ class TestDispatchOutputForwardsPackage:
 # ===========================================================================
 
 class TestRealDelegateUnaffected:
-    """When proc is not None (codex/claude delegate), behavior is unchanged."""
+    """When proc is not None (real codex/claude delegate, unlike factory's proc=None path), behavior is unchanged."""
 
     def test_codex_delegate_stdout_forwarded(self, gw, tmp_path, capsys, monkeypatch):
         """codex delegate stdout is forwarded as before."""
