@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -4163,7 +4164,7 @@ def test_evolution_self_audit_tool_health_boundary(tmp_path, monkeypatch):
 
 
 def test_evolution_self_audit_findings_sufficient(tmp_path, monkeypatch):
-    """check_findings_over_time does NOT warn when latest snapshot has >=5 findings."""
+    """check_findings_over_time does NOT warn when latest snapshot is recent."""
     from memory_core.tools import evolution_self_audit
 
     monkeypatch.setattr(
@@ -4171,12 +4172,13 @@ def test_evolution_self_audit_findings_sufficient(tmp_path, monkeypatch):
         tmp_path / "findings_over_time.json",
     )
 
-    # Latest snapshot has 10 findings - well above min=5
+    # Latest snapshot is recent (1 hour ago) so no staleness warning
     findings_items = [{"rule_id": f"RULE_{i}", "severity": "warning"} for i in range(10)]
+    now = datetime.now(timezone.utc)
     history_data = {
         "snapshots": [
-            {"timestamp": "2026-01-01T00:00:00+00:00", "findings": []},
-            {"timestamp": "2026-01-02T00:00:00+00:00", "findings": findings_items},
+            {"timestamp": (now - timedelta(hours=2)).isoformat(), "findings": []},
+            {"timestamp": (now - timedelta(hours=1)).isoformat(), "findings": findings_items},
         ]
     }
     (tmp_path / "findings_over_time.json").write_text(json.dumps(history_data))
@@ -4185,8 +4187,8 @@ def test_evolution_self_audit_findings_sufficient(tmp_path, monkeypatch):
     assert result == []
 
 
-def test_evolution_self_audit_findings_insufficient(tmp_path, monkeypatch):
-    """check_findings_over_time warns when latest snapshot has <5 findings."""
+def test_evolution_self_audit_findings_stale(tmp_path, monkeypatch):
+    """check_findings_over_time warns when latest snapshot is older than 48 hours."""
     from memory_core.tools import evolution_self_audit
 
     monkeypatch.setattr(
@@ -4194,21 +4196,21 @@ def test_evolution_self_audit_findings_insufficient(tmp_path, monkeypatch):
         tmp_path / "findings_over_time.json",
     )
 
-    # Latest snapshot has only 2 findings - below min=5
-    findings_items = [{"rule_id": f"RULE_{i}", "severity": "warning"} for i in range(2)]
+    # Latest snapshot is 72 hours old - beyond the 48h threshold
+    now = datetime.now(timezone.utc)
     history_data = {
         "snapshots": [
-            {"timestamp": "2026-01-01T00:00:00+00:00", "findings": [{"rule_id": "OLD"}] * 20},
-            {"timestamp": "2026-01-02T00:00:00+00:00", "findings": findings_items},
+            {"timestamp": (now - timedelta(hours=73)).isoformat(), "findings": []},
+            {"timestamp": (now - timedelta(hours=72)).isoformat(), "findings": [{"rule_id": "OLD"}] * 2},
         ]
     }
     (tmp_path / "findings_over_time.json").write_text(json.dumps(history_data))
 
     result = evolution_self_audit.check_findings_over_time()
     assert len(result) == 1
-    assert result[0]["rule_id"] == "EVOLUTION_FINDINGS_INSUFFICIENT"
+    assert result[0]["rule_id"] == "EVOLUTION_FINDINGS_STALE"
     assert result[0]["severity"] == "warning"
-    assert "count=2" in result[0]["evidence"]
+    assert "age=" in result[0]["evidence"]
 
 
 def test_evolution_self_audit_findings_missing(tmp_path, monkeypatch):
