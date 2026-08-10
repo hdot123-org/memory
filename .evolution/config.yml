@@ -16,10 +16,10 @@ audit_tools:
     output_format: registry_jsonl
     source_file: "memory/kb/patterns/registry.jsonl"
   - name: audit_layout
-    command: "memory-audit-layout --json"
+    command: "memory-audit-layout --target . --json"
     output_format: json
   - name: validate_project
-    command: "memory-validate --json"
+    command: "memory-validate --target . --json"
     output_format: json
   - name: evolution_self_audit
     command: "memory-evolution-audit --json"

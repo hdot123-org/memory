@@ -245,7 +245,7 @@ def create_issue(finding: Finding, dedup_label: str) -> bool:
 
 
 def update_history(history_path: Path, findings: list[Finding], issues_created: int, snapshot_limit: int,
-                   failed_categories: set[str] | None = None) -> None:
+                   failed_categories: set[str] | None = None, tool_status: dict[str, str] | None = None) -> None:
     data = load_history(history_path) or {"snapshots": [], "resolved_findings": []}
     data.setdefault("snapshots", [])
     data.setdefault("resolved_findings", [])
@@ -258,8 +258,11 @@ def update_history(history_path: Path, findings: list[Finding], issues_created: 
                     for p in prev if (p.get("rule_id"), p.get("location")) not in current_keys
                     and (not failed_categories or p.get("category") not in failed_categories)]
     data["resolved_findings"] = (data.get("resolved_findings", []) + new_resolved)[-snapshot_limit:]
-    data["snapshots"].append({"timestamp": now_iso, "tick_id": now.strftime("%Y%m%d-%H%M%S"),
-                               "findings": [asdict(f) for f in findings], "issues_created": issues_created})
+    snapshot = {"timestamp": now_iso, "tick_id": now.strftime("%Y%m%d-%H%M%S"),
+                "findings": [asdict(f) for f in findings], "issues_created": issues_created}
+    if tool_status is not None:
+        snapshot["tool_status"] = tool_status
+    data["snapshots"].append(snapshot)
     data["snapshots"] = data["snapshots"][-snapshot_limit:]
     tmp_path = history_path.with_suffix(".tmp")
     with open(tmp_path, "w") as f:
@@ -355,7 +358,9 @@ def main() -> None:
         print(f"[evolution] Warning: {e}")
         issues_created = 0
         gh_failed = True
-    update_history(history_path, all_findings, issues_created, config["snapshot_limit"], failed_categories)
+    # Build tool_status dict for health tracking
+    tool_status = {name: 'failed' if result is None else 'ok' for name, result in raw_results}
+    update_history(history_path, all_findings, issues_created, config["snapshot_limit"], failed_categories, tool_status)
     check_isolation(all_findings, history_path, config["isolation_threshold"], config["failure_label"], config["dedup_label"])
     print(f"[evolution] Tick complete: {len(all_findings)} findings, {issues_created} issues created")
 
