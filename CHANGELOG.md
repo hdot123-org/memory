@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.2](https://github.com/hdot123/memory/compare/v0.16.1...v0.16.2) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** 修复审计工具缺少--target参数，新增工具健康检查 ([#430](https://github.com/hdot123/memory/issues/430)) ([0b21c95](https://github.com/hdot123/memory/commit/0b21c95ea971ef7fa56192d676d896c09dd9fec9))
+
 ## [0.16.1](https://github.com/hdot123/memory/compare/v0.16.0...v0.16.1) (2026-08-10)
 
 
