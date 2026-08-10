@@ -3962,3 +3962,146 @@ def test_adapt_evolution_self_audit(tmp_path, monkeypatch):
     assert result[0]["location"] == "scripts/test.py"
     # Verify dot-prefixed path is normalized (leading ./ stripped)
     assert result[1]["location"] == "local/file.md"
+
+
+def test_evolution_self_audit_tool_health(tmp_path, monkeypatch):
+    """check_tool_health reports warning when tool fails for 3 consecutive ticks."""
+    from memory_core.tools import evolution_self_audit
+
+    monkeypatch.setattr(
+        evolution_self_audit, "FINDINGS_OVER_TIME",
+        tmp_path / "findings_over_time.json",
+    )
+
+    # Create history with 3 consecutive failures for a tool
+    history_data = {
+        "snapshots": [
+            {
+                "timestamp": "2026-01-01T00:00:00+00:00",
+                "findings": [],
+                "tool_status": {"audit_layout": "failed", "daily_kb_audit": "ok"},
+            },
+            {
+                "timestamp": "2026-01-02T00:00:00+00:00",
+                "findings": [],
+                "tool_status": {"audit_layout": "failed", "daily_kb_audit": "ok"},
+            },
+            {
+                "timestamp": "2026-01-03T00:00:00+00:00",
+                "findings": [],
+                "tool_status": {"audit_layout": "failed", "daily_kb_audit": "ok"},
+            },
+        ]
+    }
+    (tmp_path / "findings_over_time.json").write_text(json.dumps(history_data))
+
+    findings = evolution_self_audit.check_tool_health()
+    assert len(findings) == 1
+    assert findings[0]["rule_id"] == "EVOLUTION_TOOL_HEALTH"
+    assert findings[0]["severity"] == "warning"
+    assert findings[0]["location"] == "audit_layout"
+    assert "3 consecutive" in findings[0]["description"]
+
+
+def test_evolution_self_audit_tool_health_ok(tmp_path, monkeypatch):
+    """check_tool_health returns empty when tools are healthy."""
+    from memory_core.tools import evolution_self_audit
+
+    monkeypatch.setattr(
+        evolution_self_audit, "FINDINGS_OVER_TIME",
+        tmp_path / "findings_over_time.json",
+    )
+
+    # Create history with all tools healthy
+    history_data = {
+        "snapshots": [
+            {
+                "timestamp": "2026-01-01T00:00:00+00:00",
+                "findings": [],
+                "tool_status": {"audit_layout": "ok", "daily_kb_audit": "ok"},
+            },
+            {
+                "timestamp": "2026-01-02T00:00:00+00:00",
+                "findings": [],
+                "tool_status": {"audit_layout": "ok", "daily_kb_audit": "ok"},
+            },
+            {
+                "timestamp": "2026-01-03T00:00:00+00:00",
+                "findings": [],
+                "tool_status": {"audit_layout": "ok", "daily_kb_audit": "ok"},
+            },
+        ]
+    }
+    (tmp_path / "findings_over_time.json").write_text(json.dumps(history_data))
+
+    findings = evolution_self_audit.check_tool_health()
+    assert len(findings) == 0
+
+
+def test_evolution_self_audit_tool_health_file_missing(tmp_path, monkeypatch):
+    """check_tool_health returns empty when findings_over_time.json doesn't exist."""
+    from memory_core.tools import evolution_self_audit
+
+    monkeypatch.setattr(
+        evolution_self_audit, "FINDINGS_OVER_TIME",
+        tmp_path / "nonexistent.json",
+    )
+
+    findings = evolution_self_audit.check_tool_health()
+    assert len(findings) == 0
+
+
+def test_evolution_self_audit_tool_health_boundary(tmp_path, monkeypatch):
+    """check_tool_health does NOT report when tool fails only 2 of 3 ticks (below threshold)."""
+    from memory_core.tools import evolution_self_audit
+
+    monkeypatch.setattr(
+        evolution_self_audit, "FINDINGS_OVER_TIME",
+        tmp_path / "findings_over_time.json",
+    )
+
+    # Create history with 2 failures + 1 success in last 3 snapshots
+    history_data = {
+        "snapshots": [
+            {
+                "timestamp": "2026-01-01T00:00:00+00:00",
+                "findings": [],
+                "tool_status": {"audit_layout": "failed", "daily_kb_audit": "ok"},
+            },
+            {
+                "timestamp": "2026-01-02T00:00:00+00:00",
+                "findings": [],
+                "tool_status": {"audit_layout": "failed", "daily_kb_audit": "ok"},
+            },
+            {
+                "timestamp": "2026-01-03T00:00:00+00:00",
+                "findings": [],
+                "tool_status": {"audit_layout": "ok", "daily_kb_audit": "ok"},
+            },
+        ]
+    }
+    (tmp_path / "findings_over_time.json").write_text(json.dumps(history_data))
+
+    findings = evolution_self_audit.check_tool_health()
+    # 2 of 3 is below the threshold of 3 consecutive, so no finding
+    assert len(findings) == 0
+
+
+def test_update_history_tool_status(tmp_path):
+    """update_history writes tool_status to snapshot when provided."""
+    history_path = tmp_path / "history.json"
+    findings = [Finding(
+        rule_id="TEST_RULE",
+        severity="warning",
+        category="test",
+        description="test",
+        location="test.py",
+        evidence="test",
+    )]
+    tool_status = {"daily_kb_audit": "ok", "audit_layout": "failed"}
+
+    update_history(history_path, findings, 0, 100, tool_status=tool_status)
+
+    data = json.loads(history_path.read_text())
+    assert len(data["snapshots"]) == 1
+    assert data["snapshots"][0]["tool_status"] == tool_status
