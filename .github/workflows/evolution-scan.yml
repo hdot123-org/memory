@@ -3,18 +3,17 @@
 #
 # CRITICAL TOKEN STRATEGY:
 # This workflow MUST use DISPATCH_TOKEN (a PAT), NOT GITHUB_TOKEN.
-# Reason: droid.yml requires author_association OWNER|MEMBER|COLLABORATOR to trigger.
-# GITHUB_TOKEN (github-actions[bot]) has author_association NONE, so Issues created
-# with it would NOT trigger droid.yml, breaking the autonomous loop:
-#   scanner → Issue @droid → droid.yml → Droid → PR → CI → auto-merge
-# DISPATCH_TOKEN is a PAT belonging to @hdot123 (OWNER), so Issues created with it
-# have author_association OWNER and correctly trigger droid.yml.
+# Reason: DISPATCH_TOKEN is a PAT belonging to @hdot123 (OWNER). Issues created
+# with it have author=hdot123, which satisfies CODEOWNERS and governance checks.
+# The trigger chain is:
+#   GitHub Issue (DISPATCH_TOKEN, author=hdot123) → Linear 原生 GitHub Issue Sync
+#   → Linear webhook → n8n → trigger-droid.sh → droid exec --tag linear-gateway
+#   → PR → CI → 合并
 #
 # Fallback options if DISPATCH_TOKEN is unavailable:
 # 1. Use a GitHub App installation token (finer-grained, auditable)
-# 2. Modify droid.yml to also accept author_association NONE (weakens security)
-# 3. Use workflow_dispatch chain: scanner creates Issue with GITHUB_TOKEN, then
-#    a second workflow with a PAT comments @droid on the Issue (workaround)
+# 2. Use workflow_dispatch chain: scanner creates Issue with GITHUB_TOKEN, then
+#    a second workflow with a PAT comments on the Issue (workaround)
 
 name: Evolution Scan
 
