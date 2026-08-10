@@ -119,6 +119,18 @@ class TestCheckInitValidateRoundtrip:
         assert isinstance(errors, list)
         assert isinstance(warnings, list)
 
+    def test_init_validate_roundtrip_succeeds(self) -> None:
+        """The roundtrip must complete with no errors.
+
+        Regression test for INFRA-95: the roundtrip runs init inside a
+        TemporaryDirectory, which the denylist rejects unless the bypass env
+        var is set explicitly by the function itself. Without the bypass the
+        evolution scanner reported a false-positive CONSISTENCY_ERROR with an
+        empty error message ("init_project_memory failed: ").
+        """
+        errors, warnings = check_init_validate_roundtrip()
+        assert errors == [], f"roundtrip produced errors: {errors}"
+
 
 class TestCheckRequiredImportsFromConstants:
     """Tests for check_required_imports_from_constants function."""

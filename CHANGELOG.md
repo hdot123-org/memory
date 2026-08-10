@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.27](https://github.com/hdot123/memory/compare/v0.15.26...v0.15.27) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** [INFRA-95] 修复 init_validate_roundtrip 误报 CONSISTENCY_ERROR ([#408](https://github.com/hdot123/memory/issues/408)) ([95b5faa](https://github.com/hdot123/memory/commit/95b5faa388a54bee0687a79e5ffae5e2e4de4f4f))
+
 ## [0.15.26](https://github.com/hdot123/memory/compare/v0.15.25...v0.15.26) (2026-08-10)
 
 
