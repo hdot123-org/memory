@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.6](https://github.com/hdot123/memory/compare/v0.16.5...v0.16.6) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** 用时效性检查替换 findings 数量阈值，修复 EVOLUTION_FINDINGS_INSUFFICIENT 误报 ([#442](https://github.com/hdot123/memory/issues/442)) ([e0a4edf](https://github.com/hdot123/memory/commit/e0a4edfcd77fc120bbab1947b775c8c2437a5553))
+
 ## [0.16.5](https://github.com/hdot123/memory/compare/v0.16.4...v0.16.5) (2026-08-10)
 
 
