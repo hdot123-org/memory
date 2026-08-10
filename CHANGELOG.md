@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.30](https://github.com/hdot123/memory/compare/v0.15.29...v0.15.30) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** [INFRA-139] 修复 normalize_location 的 lstrip 字符集缺陷 ([#417](https://github.com/hdot123/memory/issues/417)) ([ad46e3e](https://github.com/hdot123/memory/commit/ad46e3ead4e35a170aad469bec5ba3c90ed59a2b))
+
 ## [0.15.29](https://github.com/hdot123/memory/compare/v0.15.28...v0.15.29) (2026-08-10)
 
 
