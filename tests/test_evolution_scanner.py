@@ -289,8 +289,8 @@ def test_isolation_label(tmp_path):
         assert "evolution-isolated" in args
 
 
-def test_issue_body_contains_droid():
-    """Created Issue body contains @droid trigger."""
+def test_issue_body_no_droid_trigger():
+    """Created Issue body no longer contains @droid trigger (droid.yml removed)."""
     finding = Finding("RULE_001", "warning", "test", "Issue", "file.md", "evidence")
 
     with patch("evolution_scanner.subprocess.run") as mock_run:
@@ -298,11 +298,11 @@ def test_issue_body_contains_droid():
         result = create_issue(finding, "evolution-found")
 
         assert result is True
-        # Check that the body parameter contains @droid
+        # Check that the body parameter no longer contains @droid (dead text)
         call_args = mock_run.call_args[0][0]
         body_index = call_args.index("--body") + 1
         body = call_args[body_index]
-        assert "@droid" in body
+        assert not body.startswith("@droid")
         assert "RULE_001" in body
         assert "warning" in body
 
@@ -704,11 +704,11 @@ def test_create_issue_applies_sanitization():
         body_index = call_args.index("--body") + 1
         body = call_args[body_index]
 
-        # @droid should only appear once at the start (hardcoded trigger)
-        # NOT in description or evidence (they were sanitized by normalize_finding)
+        # @droid should NOT appear in the body anymore (droid.yml removed)
+        # Only sanitized description/evidence content should be present
         droid_count = body.count("@droid")
-        assert droid_count == 1, f"@droid should appear exactly once (hardcoded), found {droid_count} times"
-        assert body.startswith("@droid")
+        assert droid_count == 0, f"@droid should not appear in body (removed), found {droid_count} times"
+        assert not body.startswith("@droid")
 
         # Evidence should be truncated (not contain the full 600 x's)
         assert "x" * 600 not in body
@@ -718,8 +718,8 @@ def test_create_issue_applies_sanitization():
         assert "# Malicious header" not in body
 
 
-def test_droid_trigger_hardcoded_not_from_data():
-    """VAL-FIX-SEC-001: @droid trigger in body template is hardcoded, never from finding data."""
+def test_droid_trigger_removed():
+    """VAL-FIX-SEC-001: @droid trigger removed from body template (droid.yml deleted)."""
     # Finding with no @ mentions at all
     finding = Finding(
         rule_id="RULE_002",
@@ -738,9 +738,11 @@ def test_droid_trigger_hardcoded_not_from_data():
         body_index = call_args.index("--body") + 1
         body = call_args[body_index]
 
-        # @droid must still be present (hardcoded in template)
-        assert "@droid" in body
-        assert body.startswith("@droid")
+        # @droid must NOT be present (droid.yml deleted, dead text removed)
+        assert "@droid" not in body
+        assert not body.startswith("@droid")
+        # Body should start with **Rule ID**
+        assert body.startswith("**Rule ID**")
 
 
 # ============================================================================
