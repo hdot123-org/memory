@@ -315,8 +315,56 @@ def check_config_yml() -> list[dict[str, Any]]:
     return findings
 
 
+def check_tool_health() -> list[dict[str, Any]]:
+    """Check 7: detect tools that have failed for 3 consecutive ticks."""
+    findings: list[dict[str, Any]] = []
+
+    if not FINDINGS_OVER_TIME.exists():
+        return findings
+
+    try:
+        data = json.loads(FINDINGS_OVER_TIME.read_text())
+        snapshots = data.get("snapshots", [])
+
+        # Need at least 3 snapshots to check for consecutive failures
+        if len(snapshots) < 3:
+            return findings
+
+        # Get the last 3 snapshots
+        recent_snapshots = snapshots[-3:]
+
+        # Collect all tool names from the snapshots
+        all_tools: set[str] = set()
+        for snapshot in recent_snapshots:
+            tool_status = snapshot.get("tool_status", {})
+            all_tools.update(tool_status.keys())
+
+        # Check each tool for 3 consecutive failures
+        for tool_name in all_tools:
+            failed_count = 0
+            for snapshot in recent_snapshots:
+                tool_status = snapshot.get("tool_status", {})
+                if tool_status.get(tool_name) == "failed":
+                    failed_count += 1
+
+            if failed_count >= 3:
+                findings.append({
+                    "rule_id": "EVOLUTION_TOOL_HEALTH",
+                    "severity": "warning",
+                    "description": f"Tool '{tool_name}' has failed for 3 consecutive ticks",
+                    "location": tool_name,
+                    "evidence": f"failed_count={failed_count}/3",
+                    "category": CATEGORY,
+                })
+    except Exception as e:
+        # If we can't read/parse the file, just return empty (non-blocking)
+        print(f"[evolution_self_audit] Warning: check_tool_health failed: {e}", file=sys.stderr)
+
+    return findings
+
+
 def main() -> int:
-    """Run all 6 checks and output findings as JSON."""
+    """Run all 7 checks and output findings as JSON."""
     all_findings: list[dict[str, Any]] = []
     all_findings.extend(check_suppress_json())
     all_findings.extend(check_findings_over_time())
@@ -324,6 +372,7 @@ def main() -> int:
     all_findings.extend(check_trigger_droid())
     all_findings.extend(check_repositories_yml())
     all_findings.extend(check_config_yml())
+    all_findings.extend(check_tool_health())
 
     json.dump(all_findings, sys.stdout, indent=2)
     print()
