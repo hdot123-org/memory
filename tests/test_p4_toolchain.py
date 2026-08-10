@@ -648,8 +648,7 @@ class TestValidatorEnhancedChecks:
             import shutil
             shutil.rmtree(proj, ignore_errors=True)
 
-    # NOTE: status_enum validation is not wired into validate_project_memory.py
-    @pytest.mark.skip(reason="STATUS_ENUMERATIONS not wired into validate_project_memory.py")
+    # NOTE: status_enum validation is now wired into validate_project_memory.py
     def test_reject_invalid_status_enum(self) -> None:
         """STATE.md with invalid status should fail validation."""
         proj = _make_temp_project()
@@ -657,8 +656,13 @@ class TestValidatorEnhancedChecks:
             _run_script(INIT_SCRIPT, ["--target", str(proj), "--scope", "my_project"])
             state = proj / "memory" / "kb" / "projects" / "my_project" / "STATE.md"
             text = state.read_text(encoding="utf-8")
-            text = text.replace("status: active", "status: invalid_status")
-            state.write_text(text, encoding="utf-8")
+            # The STATE.md template does not ship a literal "status: active"
+            # line (it uses a {{STATUS}} placeholder), so a plain .replace()
+            # would be a no-op. Inject an explicit YAML frontmatter block with
+            # an invalid status so check_status_enum catches it regardless of
+            # how the template rendered the placeholder.
+            injected = "---\nstatus: invalid_status\n---\n" + text
+            state.write_text(injected, encoding="utf-8")
 
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
             data = json.loads(result.stdout)

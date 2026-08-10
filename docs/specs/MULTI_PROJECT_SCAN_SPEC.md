@@ -43,13 +43,13 @@ registry 是 TOML 格式的索引文件，位于 memory 仓库中：
 name = "workbot"
 local_path = "/Users/<user>/tool/workbot"
 repo = "https://github.com/hdot123/workbot"
-memory_lock = { memory_version = "0.1.0", schema_version = "context-package-v1", adapter_version = "builtin" }
+memory_lock = { memory_version = "0.1.5", schema_version = "context-package-v1", adapter_version = "builtin" }
 
 [[project]]
 name = "axonhub"
 local_path = "/Users/<user>/tool/axonhub"
 repo = "https://github.com/hdot123/axonhub"
-memory_lock = { memory_version = "0.1.0", schema_version = "context-package-v1", adapter_version = "builtin" }
+memory_lock = { memory_version = "0.1.5", schema_version = "context-package-v1", adapter_version = "builtin" }
 
 [[project]]
 name = "codex"
@@ -75,7 +75,7 @@ memory_lock = { memory_version = "0.2.0", schema_version = "context-package-v1",
 memory_lock 是从各项目 memory.lock 文件提取的版本指针：
 
 ```toml
-memory_lock = { memory_version = "0.1.0", schema_version = "context-package-v1", adapter_version = "builtin" }
+memory_lock = { memory_version = "0.15.19", schema_version = "context-package-v1", adapter_version = "builtin" }
 ```
 
 ### 2.5 registry 不包含的内容
@@ -136,7 +136,7 @@ registry 只包含：
       "local_path": "/Users/<user>/tool/workbot",
       "repo": "https://github.com/hdot123/workbot",
       "current": {
-        "memory_version": "0.1.0",
+        "memory_version": "0.1.5",
         "schema_version": "context-package-v1",
         "adapter_version": "builtin"
       },
@@ -145,7 +145,7 @@ registry 只包含：
       "compat_status": "compatible",
       "requires_migration": true,
       "task_card": {
-        "title": "升级 workbot memory-core 0.1.0 -> 0.2.0",
+        "title": "升级 workbot memory-core 0.1.5 -> 0.2.0",
         "priority": "P3",
         "type": "minor-upgrade",
         "actions": ["execute migration 002", "update memory.lock", "run tests"]
@@ -156,7 +156,7 @@ registry 只包含：
       "local_path": "/Users/<user>/tool/axonhub",
       "repo": "https://github.com/hdot123/axonhub",
       "current": {
-        "memory_version": "0.1.0",
+        "memory_version": "0.1.5",
         "schema_version": "context-package-v1",
         "adapter_version": "builtin"
       },
@@ -165,7 +165,7 @@ registry 只包含：
       "compat_status": "compatible",
       "requires_migration": false,
       "task_card": {
-        "title": "升级 axonhub memory-core 0.1.0 -> 0.2.0",
+        "title": "升级 axonhub memory-core 0.1.5 -> 0.2.0",
         "priority": "P3",
         "type": "minor-upgrade",
         "actions": ["update memory.lock", "run tests"]
@@ -234,8 +234,8 @@ task_card 是可以直接交给主线程分派的任务描述：
 ```
 Project   | Version | Status | Upgrade | Migration | Task
 ----------|---------|--------|---------|-----------|------
-workbot   | 0.1.0   | behind | minor   | yes       | 创建任务卡
-axonhub   | 0.1.0   | behind | minor   | no        | 创建任务卡
+workbot   | 0.1.5   | behind | minor   | yes       | 创建任务卡
+axonhub   | 0.1.5   | behind | minor   | no        | 创建任务卡
 codex     | 0.2.0   | current| none    | no        | -
 ```
 
@@ -266,7 +266,7 @@ codex     | 0.2.0   | current| none    | no        | -
 name = "new-project"
 local_path = "/path/to/project"
 repo = "https://github.com/org/new-project"
-memory_lock = { memory_version = "0.1.0", schema_version = "context-package-v1", adapter_version = "builtin" }
+memory_lock = { memory_version = "0.15.19", schema_version = "context-package-v1", adapter_version = "builtin" }
 ```
 
 ### 7.2 移除项目
