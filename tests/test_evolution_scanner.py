@@ -439,7 +439,8 @@ def test_adapt_daily_audit():
 def test_adapt_consistency_check():
     """VAL-FIX-ADAPT-002: Real consistency check JSON → Finding dicts."""
     # Real format captured from memory-consistency-check --json
-    # Note: top-level errors/warnings contain the same strings as checks[].errors/warnings
+    # INFRA-122: only top-level errors/warnings are processed (with [check_name]
+    # prefix); the per-check arrays carry unprefixed copies and are ignored.
     raw_output = {
         "errors": [
             "[init_validate_roundtrip] init_project_memory failed: ",
@@ -450,7 +451,7 @@ def test_adapt_consistency_check():
         "checks": [
             {
                 "name": "init_validate_roundtrip",
-                "errors": ["[init_validate_roundtrip] init_project_memory failed: "],
+                "errors": ["init_project_memory failed: "],
                 "warnings": [],
                 "passed": False,
             }
@@ -459,7 +460,7 @@ def test_adapt_consistency_check():
 
     findings = adapt_consistency_check(raw_output)
 
-    # Should produce exactly 2 findings: duplicate (same string in top-level and checks) is removed
+    # Should produce exactly 2 findings from top-level only (per-check ignored)
     assert len(findings) == 2
     # Error finding
     assert findings[0]["rule_id"] == "INIT_VALIDATE_ROUNDTRIP"
@@ -1519,28 +1520,34 @@ def test_main_handles_gh_failure_gracefully():
 
 
 def test_consistency_check_processes_checks_array():
-    """VAL-HARD-010: adapt_consistency_check processes checks array entries.
+    """VAL-HARD-010: adapt_consistency_check processes top-level arrays.
 
-    Each check entry's errors and warnings must be converted to Finding dicts.
-    The docstring documents this input format but the original implementation
-    only processes top-level errors and warnings.
+    INFRA-122: The adapter now processes ONLY top-level errors and warnings
+    (which carry the [check_name] prefix). Per-check arrays contain the same
+    strings without the prefix and are ignored to avoid duplicate findings.
+    This test verifies top-level entries with the prefix are correctly processed.
     """
     # Real format from memory-consistency-check --json
-    # Findings ONLY in checks array, top-level is empty
+    # Findings in top-level arrays (with [check_name] prefix); per-check arrays
+    # carry the unprefixed copies and must be ignored.
     raw_output = {
-        "errors": [],
-        "warnings": [],
+        "errors": [
+            "[index_integrity] INDEX.md references non-existent file: missing.md",
+        ],
+        "warnings": [
+            "[docstring_host_mentions] /path/to/test.py: docstring mentions codex",
+        ],
         "checks": [
             {
                 "name": "index_integrity",
-                "errors": ["[index_integrity] INDEX.md references non-existent file: missing.md"],
+                "errors": ["INDEX.md references non-existent file: missing.md"],
                 "warnings": [],
                 "passed": False,
             },
             {
                 "name": "docstring_host_mentions",
                 "errors": [],
-                "warnings": ["[docstring_host_mentions] /path/to/test.py: docstring mentions codex"],
+                "warnings": ["/path/to/test.py: docstring mentions codex"],
                 "passed": False,
             },
         ],
@@ -1549,8 +1556,8 @@ def test_consistency_check_processes_checks_array():
 
     findings = adapt_consistency_check(raw_output)
 
-    # Should produce 2 findings from checks array
-    assert len(findings) == 2, f"Expected 2 findings from checks array, got {len(findings)}"
+    # Should produce 2 findings from top-level arrays only
+    assert len(findings) == 2, f"Expected 2 findings from top-level arrays, got {len(findings)}"
 
     # First finding from check error
     error_finding = next((f for f in findings if f["severity"] == "warning"), None)
@@ -1566,24 +1573,18 @@ def test_consistency_check_processes_checks_array():
 
 
 def test_consistency_check_no_duplicate_findings():
-    """VAL-HARD-010: No duplicate findings when top-level and checks overlap.
+    """VAL-HARD-010: No duplicate findings when the same string appears twice in top-level.
 
-    When the same error appears in both top-level errors and checks[].errors,
-    it should only appear once in the output.
+    INFRA-122: The adapter now processes only top-level errors and warnings.
+    This test verifies that the SAME string appearing twice in top-level arrays
+    produces only 1 finding (dedup via content hash).
     """
-    # Same error appears in both top-level and checks
+    # Same error appears twice in top-level
     duplicate_error = "[init_validate_roundtrip] init_project_memory failed: "
     raw_output = {
-        "errors": [duplicate_error],
+        "errors": [duplicate_error, duplicate_error],  # Same error twice in top-level
         "warnings": [],
-        "checks": [
-            {
-                "name": "init_validate_roundtrip",
-                "errors": [duplicate_error],  # Same error as top-level
-                "warnings": [],
-                "passed": False,
-            },
-        ],
+        "checks": [],
         "passed": False,
     }
 
@@ -1628,27 +1629,21 @@ def test_consistency_check_extract_location_applied_consistently():
 
 
 def test_consistency_check_checks_array_with_both_errors_and_warnings():
-    """VAL-HARD-010: Checks array with both errors and warnings produces correct findings.
+    """VAL-HARD-010: Top-level with both errors and warnings produces correct findings.
 
-    Verify that a single check with both errors and warnings produces
+    INFRA-122: The adapter now processes only top-level errors and warnings.
+    Verify that top-level arrays with both errors and warnings produce
     the correct number and types of findings.
     """
     raw_output = {
-        "errors": [],
-        "warnings": [],
-        "checks": [
-            {
-                "name": "multi_issue_check",
-                "errors": [
-                    "[multi_issue_check] /file1.md: error 1",
-                    "[multi_issue_check] /file2.md: error 2",
-                ],
-                "warnings": [
-                    "[multi_issue_check] /file3.py: warning 1",
-                ],
-                "passed": False,
-            },
+        "errors": [
+            "[multi_issue_check] /file1.md: error 1",
+            "[multi_issue_check] /file2.md: error 2",
         ],
+        "warnings": [
+            "[multi_issue_check] /file3.py: warning 1",
+        ],
+        "checks": [],
         "passed": False,
     }
 
@@ -1669,6 +1664,38 @@ def test_consistency_check_checks_array_with_both_errors_and_warnings():
     assert "/file1.md" in locations
     assert "/file2.md" in locations
     assert "/file3.py" in locations
+
+
+def test_no_consistency_error_duplicate_from_double_processing():
+    """INFRA-122: Real consistency check format must not produce duplicate findings.
+
+    The consistency check tool puts prefixed strings in top-level and unprefixed
+    strings in per-check arrays. The adapter must only process top-level to avoid
+    creating duplicate CONSISTENCY_ERROR findings with empty locations.
+    """
+    raw_output = {
+        "errors": [],
+        "warnings": [
+            "[contributing_version_source] CONTRIBUTING.md: claims version is only in pyproject.toml",
+        ],
+        "checks": [
+            {
+                "name": "contributing_version_source",
+                "errors": [],
+                "warnings": ["CONTRIBUTING.md: claims version is only in pyproject.toml"],
+                "passed": True,
+            },
+        ],
+        "passed": True,
+    }
+    findings = adapt_consistency_check(raw_output)
+    # Should produce exactly 1 finding (from top-level), not 2
+    assert len(findings) == 1, f"Expected 1 finding, got {len(findings)}: {findings}"
+    # The finding should have the specific rule_id, not generic CONSISTENCY_ERROR
+    assert findings[0]["rule_id"] == "CONTRIBUTING_VERSION_SOURCE"
+    # No CONSISTENCY_ERROR duplicate should exist
+    consistency_errors = [f for f in findings if f["rule_id"] == "CONSISTENCY_ERROR"]
+    assert len(consistency_errors) == 0, f"Found duplicate CONSISTENCY_ERROR findings: {consistency_errors}"
 
 
 # ============================================================================
