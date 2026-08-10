@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.3](https://github.com/hdot123/memory/compare/v0.16.2...v0.16.3) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evolution:** [INFRA-150] 移除 EVOLUTION_SUPPRESS_EMPTY 误报规则 ([#433](https://github.com/hdot123/memory/issues/433)) ([05f7ad0](https://github.com/hdot123/memory/commit/05f7ad0e019438aefa8974bb500d4c4dc8f0acc3))
+* **guard:** [INFRA-149] pretooluse_guard 改为按 Unicode 类别剥离全部 Cc/Cf 不可见字符 ([#429](https://github.com/hdot123/memory/issues/429)) ([6f0436d](https://github.com/hdot123/memory/commit/6f0436df2f1e9f4d798979c63677f1303f8fcad4))
+
 ## [0.16.2](https://github.com/hdot123/memory/compare/v0.16.1...v0.16.2) (2026-08-10)
 
 
