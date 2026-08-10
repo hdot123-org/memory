@@ -3,6 +3,32 @@ import hashlib
 import re
 
 
+def normalize_location(location: str) -> str:
+    """Normalize location to repo-relative path.
+
+    - Strips CI runner absolute path prefixes (e.g. /Users/runner/work/repo/repo/...)
+    - Strips common absolute path prefixes to find repo-relative portion
+    - Returns empty string if location is empty or only whitespace
+    - Returns the normalized path (without leading ./)
+    """
+    if not location or not location.strip():
+        return ""
+    location = location.strip()
+    # If not an absolute path, just strip leading ./
+    if not location.startswith("/"):
+        return location.lstrip("./")
+    # Try to find repo-relative portion after known markers
+    # CI patterns: /Users/runner/work/{repo}/{repo}/... or /home/runner/work/{repo}/{repo}/...
+    # Local patterns: /Users/busiji/memory/... or any path containing /memory/ or /memory-core/
+    for marker in ("/memory-core/", "/memory/"):
+        idx = location.rfind(marker)  # Use rfind to get the LAST occurrence
+        if idx != -1:
+            relative = location[idx + len(marker):]
+            return relative.lstrip("./")
+    # No known marker found; return original value as safe fallback
+    return location
+
+
 def sanitize_text(text: str, max_len: int = 500) -> str:
     """Sanitize untrusted text before it is embedded in an Issue body.
 
@@ -114,7 +140,7 @@ def adapt_daily_audit(raw: dict) -> list[dict]:
                 "severity": violation.get("severity", "info"),
                 "category": "daily_audit",
                 "description": violation.get("detail", ""),
-                "location": violation.get("file", ""),
+                "location": normalize_location(violation.get("file", "")),
                 "evidence": f"Project: {project_name}, Detail: {violation.get('detail', '')}",
             })
     # Infrastructure servers and databases carry the same violations schema
@@ -130,7 +156,7 @@ def adapt_daily_audit(raw: dict) -> list[dict]:
                     "severity": violation.get("severity", "info"),
                     "category": "daily_audit",
                     "description": violation.get("detail", ""),
-                    "location": violation.get("file", ""),
+                    "location": normalize_location(violation.get("file", "")),
                     "evidence": f"{label}: {name}, Detail: {violation.get('detail', '')}",
                 })
     return findings
@@ -212,7 +238,7 @@ def _extract_location(text: str) -> str:
             candidate = rest.split(":")[0].strip()
             # Validate: must have extension or be absolute path
             if "." in candidate or candidate.startswith("/"):
-                return candidate
+                return normalize_location(candidate)
     return ""
 
 
@@ -232,7 +258,7 @@ def adapt_error_patterns(lines: list[dict]) -> list[dict]:
             "severity": "critical" if threshold == "both" else "warning",
             "category": "error_pattern",
             "description": entry.get("normalized_msg", ""),
-            "location": f"{entry.get('script', 'unknown')}",
+            "location": normalize_location(f"{entry.get('script', 'unknown')}"),
             "evidence": (
                 f"fingerprint={entry.get('fingerprint', '')}, "
                 f"count={entry.get('total_count', 0)}, "

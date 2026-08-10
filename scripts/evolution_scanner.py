@@ -132,19 +132,66 @@ def _valid_severity(sev: str) -> str:
 def normalize_finding(raw: dict) -> Finding:
     """Convert raw audit output dict to a sanitized Finding. Null-safe."""
     sev = _valid_severity(str(raw.get("severity") or "info"))
+    rule_id = sanitize_structured_field(str(raw.get("rule_id") or "UNKNOWN"))
+    location = sanitize_structured_field(str(raw.get("location") or ""))
+    # Append _NO_LOCATION suffix when location is empty for tracking
+    if not location:
+        rule_id = f"{rule_id}_NO_LOCATION"
     return Finding(
-        rule_id=sanitize_structured_field(str(raw.get("rule_id") or "UNKNOWN")),
+        rule_id=rule_id,
         severity=sev,
         category=sanitize_structured_field(str(raw.get("category") or "unknown")),
         description=sanitize_text(str(raw.get("description") or "")),
-        location=sanitize_structured_field(str(raw.get("location") or "")),
+        location=location,
         evidence=sanitize_text(str(raw.get("evidence") or "")),
     )
 
 
-def get_open_issues(dedup_label: str) -> list[dict]:
+# Minimum issue age (days) before evolution-isolated label is applied.
+# Prevents signal dilution: only label issues that are truly stuck, not just persistent.
+ISOLATION_MIN_AGE_DAYS = 7
+
+
+def load_suppressions(repo_root: Path) -> list[dict]:
+    """Load suppression list from .evolution/suppress.json.
+
+    Returns empty list when file is missing or empty (non-blocking).
+    """
+    suppress_path = repo_root / ".evolution" / "suppress.json"
+    if not suppress_path.exists():
+        return []
     try:
-        result = subprocess.run(["gh", "issue", "list", "--search", f"label:{dedup_label},evolution-isolated",
+        with open(suppress_path, encoding="utf-8") as f:
+            data = json.load(f)
+        entries = data.get("suppressed", [])
+        if not isinstance(entries, list):
+            print("[evolution] Warning: suppress.json 'suppressed' is not a list, treating as empty")
+            return []
+        return entries
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"[evolution] Warning: Failed to load suppress.json: {e}")
+        return []
+
+
+def _matches_suppression(finding: Finding, entry: dict) -> bool:
+    """Check if a finding matches a suppression entry. Supports '*' wildcard."""
+    rule_match = entry.get("rule_id", "") in ("*", finding.rule_id)
+    loc_match = entry.get("location", "") in ("*", finding.location)
+    return rule_match and loc_match
+
+
+def apply_suppressions(findings: list[Finding], suppressions: list[dict]) -> list[Finding]:
+    """Filter out findings that match any suppression entry."""
+    if not suppressions:
+        return findings
+    return [f for f in findings if not any(_matches_suppression(f, s) for s in suppressions)]
+
+
+def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated") -> list[dict]:
+    # Build search query: always match dedup_label AND failure_label (isolated issues count as open)
+    search = f"label:{dedup_label},{failure_label}"
+    try:
+        result = subprocess.run(["gh", "issue", "list", "--search", search,
                                   "--state", "open", "--limit", "200", "--json", "title,body,number"],
                                   capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
@@ -231,22 +278,33 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
         return
     recent = snapshots[-threshold:]
     try:
-        result = subprocess.run(["gh", "issue", "list", "--label", dedup_label, "--state", "open", "--limit", "200", "--json", "number,title,body"], capture_output=True, text=True, timeout=30)
+        result = subprocess.run(["gh", "issue", "list", "--label", dedup_label, "--state", "open", "--limit", "200", "--json", "number,title,body,createdAt"], capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
             stderr = result.stderr.strip()
             if stderr:
                 print(f"[evolution] Warning: gh issue list stderr (isolation): {stderr}")
             return
         all_issues = json.loads(result.stdout) if result.stdout.strip() else []
+        now = datetime.now(timezone.utc)
         for finding in findings:
             if sum(1 for s in recent if any(f["rule_id"] == finding.rule_id and f["location"] == finding.location for f in s["findings"])) < threshold:
                 continue
             for issue in all_issues:
                 rid, loc = _parse_issue_fields(issue.get("body", ""))
                 if rid == finding.rule_id and loc == finding.location:
-                    edit_result = subprocess.run(["gh", "issue", "edit", str(issue["number"]), "--add-label", failure_label], capture_output=True, text=True, timeout=30)
-                    if edit_result.returncode != 0:
-                        print(f"[evolution] Warning: gh issue edit failed for issue #{issue['number']}: {edit_result.stderr.strip()}")
+                    # Check issue age: only label if issue is old enough
+                    created_at_str = issue.get("createdAt", "")
+                    try:
+                        created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+                        age_days = (now - created_at).days
+                        if age_days >= ISOLATION_MIN_AGE_DAYS:
+                            edit_result = subprocess.run(["gh", "issue", "edit", str(issue["number"]), "--add-label", failure_label], capture_output=True, text=True, timeout=30)
+                            if edit_result.returncode != 0:
+                                print(f"[evolution] Warning: gh issue edit failed for issue #{issue['number']}: {edit_result.stderr.strip()}")
+                        else:
+                            print(f"[evolution] Issue #{issue['number']} is only {age_days} days old (threshold: {ISOLATION_MIN_AGE_DAYS}), skipping isolation label")
+                    except (ValueError, TypeError) as e:
+                        print(f"[evolution] Warning: Failed to parse createdAt for issue #{issue['number']}: {e}")
                     break
     except (json.JSONDecodeError, KeyError, TypeError, subprocess.SubprocessError, OSError) as e:
         print(f"[evolution] Warning: check_isolation failed: {e}")
@@ -279,11 +337,18 @@ def main() -> None:
 
     all_findings = [normalize_finding(r) for _, res in raw_results if res is not None for r in res]
     all_findings = dedup_intra_tick(all_findings)
+    # Load and apply suppression list (P2-2: prevent amplification loop)
+    suppressions = load_suppressions(repo_root)
+    before_suppression = len(all_findings)
+    all_findings = apply_suppressions(all_findings, suppressions)
+    suppressed_count = before_suppression - len(all_findings)
+    if suppressed_count > 0:
+        print(f"[evolution] Suppressed {suppressed_count} findings by suppress.json")
     findings = detect_regressions(all_findings, history_path)
     deduped = []
     gh_failed = False
     try:
-        open_issues = get_open_issues(config["dedup_label"])
+        open_issues = get_open_issues(config["dedup_label"], config["failure_label"])
         deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
         issues_created = sum(1 for f in deduped[:config["max_issues_per_tick"]] if create_issue(f, config["dedup_label"]))
     except RuntimeError as e:

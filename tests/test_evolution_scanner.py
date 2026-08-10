@@ -80,10 +80,10 @@ def test_normalize_finding_invalid_severity():
 
 
 def test_normalize_finding_missing_fields():
-    """Missing fields get defaults."""
+    """Missing fields get defaults; empty location triggers _NO_LOCATION suffix."""
     raw = {}
     finding = normalize_finding(raw)
-    assert finding.rule_id == "UNKNOWN"
+    assert finding.rule_id == "UNKNOWN_NO_LOCATION"
     assert finding.severity == "info"
     assert finding.category == "unknown"
 
@@ -263,10 +263,10 @@ def test_isolation_label(tmp_path):
     findings = [Finding("RULE_001", "warning", "test", "Stuck", "file.md", "evidence")]
 
     with patch("evolution_scanner.subprocess.run") as mock_run:
-        # Mock gh issue list to return matching issue
+        # Mock gh issue list to return matching issue (createdAt needed for age gate)
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout='[{"number": 42, "title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\\n**Location**: file.md"}]',
+            stdout='[{"number": 42, "title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\\n**Location**: file.md", "createdAt": "2020-01-01T00:00:00Z"}]',
         )
 
         check_isolation(findings, history_path, 3, "evolution-isolated", "evolution-found")
@@ -436,6 +436,35 @@ def test_adapt_daily_audit():
     assert findings[1]["location"] == "node-00/openclaw"
 
 
+def test_normalize_location():
+    """Test normalize_location converts absolute paths to repo-relative."""
+    from evolution_adapters import normalize_location
+
+    # Empty/whitespace inputs
+    assert normalize_location("") == ""
+    assert normalize_location("   ") == ""
+
+    # Relative paths (no leading /)
+    assert normalize_location("tests/test_foo.py") == "tests/test_foo.py"
+    assert normalize_location("./tests/test_foo.py") == "tests/test_foo.py"
+    assert normalize_location("scripts/evolution_adapters.py") == "scripts/evolution_adapters.py"
+
+    # Absolute paths with /memory/ marker (local development)
+    assert normalize_location("/Users/busiji/memory/tests/test_foo.py") == "tests/test_foo.py"
+    assert normalize_location("/Users/busiji/memory/scripts/evolution_adapters.py") == "scripts/evolution_adapters.py"
+    assert normalize_location("/home/user/memory/README.md") == "README.md"
+
+    # Absolute paths with /memory-core/ marker
+    assert normalize_location("/Users/runner/work/memory-core/memory-core/scripts/foo.py") == "scripts/foo.py"
+
+    # CI runner paths (GitHub Actions)
+    assert normalize_location("/Users/runner/work/memory/memory/tests/test_foo.py") == "tests/test_foo.py"
+    assert normalize_location("/home/runner/work/memory/memory/scripts/foo.py") == "scripts/foo.py"
+
+    # Unknown absolute path (fallback to original)
+    assert normalize_location("/unknown/path/file.py") == "/unknown/path/file.py"
+
+
 def test_adapt_consistency_check():
     """VAL-FIX-ADAPT-002: Real consistency check JSON → Finding dicts."""
     # Real format captured from memory-consistency-check --json
@@ -470,7 +499,8 @@ def test_adapt_consistency_check():
     # Warning finding
     assert findings[1]["rule_id"] == "DOCSTRING_HOST_MENTIONS"
     assert findings[1]["severity"] == "info"
-    assert findings[1]["location"] == "/Users/busiji/memory/tests/test_hook_event.py"
+    # Location is normalized to repo-relative by normalize_location
+    assert findings[1]["location"] == "tests/test_hook_event.py"
 
 
 def test_adapt_error_patterns():
@@ -937,9 +967,9 @@ def test_check_isolation_single_api_call(tmp_path):
     with patch("evolution_scanner.subprocess.run") as mock_run:
         # Mock gh issue list to return matching issues
         issues_data = [
-            {"number": 41, "title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\n**Location**: file1.md"},
-            {"number": 42, "title": "[evolution] RULE_002", "body": "**Rule ID**: RULE_002\n**Location**: file2.md"},
-            {"number": 43, "title": "[evolution] RULE_003", "body": "**Rule ID**: RULE_003\n**Location**: file3.md"},
+            {"number": 41, "title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\n**Location**: file1.md", "createdAt": "2020-01-01T00:00:00Z"},
+            {"number": 42, "title": "[evolution] RULE_002", "body": "**Rule ID**: RULE_002\n**Location**: file2.md", "createdAt": "2020-01-01T00:00:00Z"},
+            {"number": 43, "title": "[evolution] RULE_003", "body": "**Rule ID**: RULE_003\n**Location**: file3.md", "createdAt": "2020-01-01T00:00:00Z"},
         ]
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -2375,8 +2405,8 @@ def test_normalize_finding_handles_null_values():
     assert isinstance(finding.description, str)
     assert isinstance(finding.location, str)
     assert isinstance(finding.evidence, str)
-    # Defaults applied
-    assert finding.rule_id == "UNKNOWN"
+    # Defaults applied; empty location triggers _NO_LOCATION suffix
+    assert finding.rule_id == "UNKNOWN_NO_LOCATION"
     assert finding.severity == "info"
     assert finding.category == "unknown"
 
