@@ -3874,16 +3874,25 @@ def test_adapt_audit_layout():
             {
                 "type": "DAILY_KB_STALE",
                 "severity": "warning",
-                "file": "memory/kb/test.md",
+                "file": "/Users/busiji/memory/kb/test.md",  # Absolute path
                 "detail": "KB entries stale",
+            },
+            {
+                "type": "ANOTHER_VIOLATION",
+                "severity": "info",
+                "file": "relative/path.md",  # Relative path
+                "detail": "Another issue",
             }
         ]
     }
     result = adapt_audit_layout(raw)
-    assert len(result) == 1
+    assert len(result) == 2
     assert result[0]["rule_id"] == "DAILY_KB_STALE"
     assert result[0]["severity"] == "warning"
-    assert "location" in result[0]
+    # Verify location is normalized to repo-relative
+    assert result[0]["location"] == "kb/test.md"
+    # Verify relative path stays as-is
+    assert result[1]["location"] == "relative/path.md"
 
 
 def test_adapt_validate_project():
@@ -3894,14 +3903,24 @@ def test_adapt_validate_project():
             {
                 "type": "PROJECT_MISSING_CONFIG",
                 "severity": "warning",
-                "file": ".",
+                "file": "/Users/runner/work/memory/memory/config.yml",  # CI absolute path
                 "detail": "No pyproject.toml found",
+            },
+            {
+                "type": "MISSING_FILE",
+                "severity": "info",
+                "file": "./local/path.md",  # Dot-prefixed relative
+                "detail": "File missing",
             }
         ]
     }
     result = adapt_validate_project(raw)
-    assert len(result) == 1
+    assert len(result) == 2
     assert result[0]["rule_id"] == "PROJECT_MISSING_CONFIG"
+    # Verify location is normalized to repo-relative
+    assert result[0]["location"] == "config.yml"
+    # Verify dot-prefixed path is normalized (leading ./ stripped)
+    assert result[1]["location"] == "local/path.md"
 
 
 def test_adapt_evolution_self_audit(tmp_path, monkeypatch):
@@ -3916,17 +3935,30 @@ def test_adapt_evolution_self_audit(tmp_path, monkeypatch):
     )
 
     # Scanner calls json.loads() before passing to adapter, so raw is already parsed
+    # Test that normalize_location is applied (not Path.relative_to)
     raw = [
         {
             "rule_id": "EVOLUTION_SUPPRESS_EMPTY",
             "severity": "warning",
             "description": "test finding",
-            "location": str(tmp_path / "some" / "path"),
+            "location": "/Users/runner/work/memory/memory/scripts/test.py",  # CI absolute path
             "evidence": "test",
+            "category": "evolution_self_audit",
+        },
+        {
+            "rule_id": "ANOTHER_RULE",
+            "severity": "info",
+            "description": "another test",
+            "location": "./local/file.md",  # Dot-prefixed relative
+            "evidence": "test2",
             "category": "evolution_self_audit",
         }
     ]
     result = adapt_evolution_self_audit(raw)
-    assert len(result) == 1
+    assert len(result) == 2
     assert result[0]["rule_id"] == "EVOLUTION_SUPPRESS_EMPTY"
     assert "category" in result[0]
+    # Verify location is normalized via normalize_location (not Path.relative_to)
+    assert result[0]["location"] == "scripts/test.py"
+    # Verify dot-prefixed path is normalized (leading ./ stripped)
+    assert result[1]["location"] == "local/file.md"

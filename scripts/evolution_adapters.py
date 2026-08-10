@@ -1,7 +1,6 @@
 """Adapter functions for converting audit tool output to Finding-compatible dicts."""
 import hashlib
 import re
-from pathlib import Path
 
 
 def normalize_location(location: str) -> str:
@@ -284,7 +283,7 @@ def adapt_audit_layout(raw: dict) -> list[dict]:
             "severity": violation.get("severity", "info"),
             "category": "audit_layout",
             "description": violation.get("detail", ""),
-            "location": violation.get("file", ""),
+            "location": normalize_location(violation.get("file", "")),
             "evidence": f"Detail: {violation.get('detail', '')}",
         })
     return findings
@@ -305,7 +304,7 @@ def adapt_validate_project(raw: dict) -> list[dict]:
             "severity": violation.get("severity", "info"),
             "category": "validate_project",
             "description": violation.get("detail", ""),
-            "location": violation.get("file", ""),
+            "location": normalize_location(violation.get("file", "")),
             "evidence": f"Detail: {violation.get('detail', '')}",
         })
     return findings
@@ -325,21 +324,12 @@ def adapt_evolution_self_audit(raw: dict | list) -> list[dict]:
         items = data
     elif isinstance(data, dict):
         items = data.get("findings", [])
-    else:
-        return []
 
     for finding in items:
         if not isinstance(finding, dict):
             continue
-        # Normalize location to be relative path
-        location = finding.get("location", "")
-        if location.startswith("/"):
-            # Convert absolute path to relative
-            try:
-                location = str(Path(location).relative_to(Path.cwd()))
-            except ValueError:
-                # Path is not relative to cwd, keep as-is
-                pass
+        # Normalize location to repo-relative path
+        location = normalize_location(finding.get("location", ""))
 
         findings.append({
             "rule_id": finding.get("rule_id", "UNKNOWN"),
