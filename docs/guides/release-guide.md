@@ -33,9 +33,9 @@ upgrade-consumer (self-hosted runner):
 
 | 前缀 | 版本影响 | 示例 |
 |------|---------|------|
-| `feat:` | minor (+0.0.1 → +0.1.0) | `feat: 添加 memory-doctor 命令` |
-| `fix:` | patch (+0.0.1) | `fix: 修复 ownership 分类器绝对路径问题` |
-| `feat!:` / `fix!:` | major (+1.0.0) | `feat!: 重构 hook 输出格式` |
+| `feat:` | minor（minor 版本 +1） | `feat: 添加 memory-doctor 命令` |
+| `fix:` | patch（patch 版本 +1） | `fix: 修复 ownership 分类器绝对路径问题` |
+| `feat!:` / `fix!:` | major（major 版本 +1） | `feat!: 重构 hook 输出格式` |
 | `chore:` / `docs:` / `test:` / `refactor:` | 不触发版本 | `chore: 更新依赖` |
 
 > **注意：** commit 消息必须使用中文（项目铁律）。
