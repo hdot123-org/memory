@@ -20,7 +20,14 @@ if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
 from evolution_adapters import TOOL_TO_CATEGORIES, sanitize_structured_field, sanitize_text
-from evolution_utils import _parse_issue_fields, auto_close_resolved, dedup_intra_tick, load_history, validate_config
+from evolution_utils import (
+    _parse_issue_fields,
+    auto_close_resolved,
+    dedup_intra_tick,
+    load_history,
+    reconcile_in_progress,
+    validate_config,
+)
 
 
 @dataclass
@@ -380,6 +387,9 @@ def main() -> None:
     # auto_close had already executed. Now auto_close only runs on healthy ticks.
     # GAP-C3: Pass history_path for grace period check (2 consecutive absences required)
     auto_close_resolved(all_findings, config["dedup_label"], failed_categories, history_path)
+
+    # GAP-E: Check for stuck issues (open > 72h, no PR) and add advisory comments
+    reconcile_in_progress(config["dedup_label"])
 
 
 if __name__ == "__main__":
