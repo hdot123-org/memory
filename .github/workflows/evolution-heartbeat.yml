@@ -33,6 +33,11 @@ jobs:
           restore-keys: |
             evolution-history-
             evolution-heartbeat-
+      - name: Ensure labels exist
+        env:
+          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+        run: |
+          gh label create "evolution-heartbeat" --color D93F0B --description "Evolution heartbeat alert" --force || true
       - name: Run heartbeat check
         run: python scripts/evolution_heartbeat.py
         env:
