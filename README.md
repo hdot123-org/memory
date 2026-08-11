@@ -338,6 +338,21 @@ SessionEnd hook 运行在 Factory 会话关闭的最后时刻，必须在严格�
 
 `render_wrapper()` 在安装时通过 `shutil.which()` 将裸 `memory-hook-gateway` 解析为绝对路径，写入 wrapper 脚本。这解决了 Factory daemon 执行上下文中 PATH 未正确展开导致命令找不到的问题。
 
+## Evolution Scanner 与 Issue 自动维护
+
+memory-core 仓库自身通过 evolution scanner（`scripts/evolution_scanner.py`，GitHub Actions cron 每 30 分钟触发）进行自动化维护。scanner 会在审计发现问题时自动创建带 `evolution-found` 标签的 GitHub Issue，并在问题自愈后自动关闭，避免 Issue 无限堆积。
+
+### 已解决 Issues 自动关闭机制
+
+scanner 每次运行末尾会调用 `auto_close_resolved()`（`scripts/evolution_utils.py`）作为补偿机制，关闭已经不再出现的 finding 对应的 open Issue：
+
+- **触发时机** — 在本次扫描创建新 Issue **之后**执行，避免误关闭刚创建的 Issue
+- **判定标准** — 以 `(rule_id, location)` 为键，构建当前扫描的 findings 集合；对所有 open 的 `evolution-found` Issue 解析 body 中的 `rule_id` 与 `location`，若该键**不在**当前 findings 集合中，则视为「已解决」
+- **执行动作** — 通过 `gh issue close` 关闭对应 Issue，并附带中文说明评论（`该 finding 在最近一次扫描中已不再出现，自动关闭此 Issue。`）
+- **保留对象** — 仍在当前 findings 中出现的 Issue 保持 open；无法解析出 `rule_id`/`location` 的 Issue 被跳过（不关闭）
+
+完整的 GitHub↔Linear Issue 流转链路与职责约定见 [Issue 流转链路文档](docs/architecture/issue-flow.md)。
+
 ## 文档
 
 - [文档索引](docs/INDEX.md)
