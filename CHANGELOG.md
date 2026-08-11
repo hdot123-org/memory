@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.5](https://github.com/hdot123/memory/compare/v0.19.4...v0.19.5) (2026-08-11)
+
+
+### Bug Fixes
+
+* 添加 auto_close 优雅期防止误关闭 (INFRA-455) ([#478](https://github.com/hdot123/memory/issues/478)) ([98b0061](https://github.com/hdot123/memory/commit/98b006123ddcc38547c41d529900ebaeb5a46be1))
+
 ## [0.19.4](https://github.com/hdot123/memory/compare/v0.19.3...v0.19.4) (2026-08-11)
 
 
