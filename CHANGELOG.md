@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/hdot123/memory/compare/v0.16.6...v0.17.0) (2026-08-11)
+
+
+### Features
+
+* **docs:** GitHub↔Linear Issue 流转约定文档 + Scanner 模板增强 ([#445](https://github.com/hdot123/memory/issues/445)) ([e22d9dd](https://github.com/hdot123/memory/commit/e22d9ddc235c532c2a8803b1128033fca03e54b1))
+
 ## [0.16.6](https://github.com/hdot123/memory/compare/v0.16.5...v0.16.6) (2026-08-10)
 
 

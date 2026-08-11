@@ -1,3 +1,3 @@
 """memory-core: Independent memory hook core and gateway runtime."""
 
-__version__ = "0.16.6"
+__version__ = "0.17.0"
