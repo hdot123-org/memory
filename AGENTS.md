@@ -169,3 +169,36 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 - 不直接把 issue 改为 `Done`，状态流转交给 GitHub ↔ Linear 自动化（Linear 原生 GitHub 集成，ID: 7ee5340b）
 - 完整规范见 `docs/architecture/API-CONTRACT.md`
 
+## Issue 流转约定
+
+### 核心原则
+
+**Linear 是唯一任务管理面板，GitHub Issue 是 scanner 自动产物。**
+
+- **Linear 职责**：需求管理、缺陷跟踪、优先级分配、负责人指定、状态管理
+- **GitHub 职责**：scanner 入口、代码托管、PR 流程、Code Review、CI/CD
+- **GitHub Issue 定位**：evolution scanner 自动创建的记录，不是人工任务管理的主要入口
+
+### 职责边界
+
+| 维度 | GitHub | Linear |
+|------|--------|--------|
+| 角色定位 | scanner 入口、代码实现、PR、review、CI | 唯一任务管理面板 |
+| Issue 定位 | scanner 自动产物和同步源，不作为主要人工管理面 | 唯一人工任务管理面 |
+| 操作方式 | 全自动（scanner + CI + merge） | 人 + agent |
+| 管理内容 | 不需要人管 | 需求、缺陷、优先级、负责人、状态、项目进度 |
+
+### 当前闭环机制
+
+PR body 中使用 `Fixes INFRA-xxx` 关键字即可实现自动闭环：
+
+1. PR merge 时，GitHub 自动关闭关联的 GitHub Issue
+2. Linear 原生 GitHub 集成检测到 GitHub Issue 关闭，自动同步关闭对应的 Linear Issue
+3. 无需额外代码改动或手动操作
+
+**此机制已验证有效。**
+
+### 完整文档
+
+详细的流转链路、职责约定和故障排查指南，请参考：[`docs/architecture/issue-flow.md`](docs/architecture/issue-flow.md)
+
