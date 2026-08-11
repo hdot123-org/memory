@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.20.0](https://github.com/hdot123/memory/compare/v0.19.6...v0.20.0) (2026-08-11)
+
+
+### Features
+
+* **evolution:** [INFRA-175] 新增 GitHub→Linear 反向补偿工具，修复 Linear 僵尸 Issue ([#490](https://github.com/hdot123/memory/issues/490)) ([5b9b0de](https://github.com/hdot123/memory/commit/5b9b0de7310a3bb1c8536e1a446cea2b888ced30))
+
+
+### Bug Fixes
+
+* 修复配额饥饿问题，self_audit 独立配额池 (INFRA-198) ([#497](https://github.com/hdot123/memory/issues/497)) ([27aa1ee](https://github.com/hdot123/memory/commit/27aa1eed001ef6c353b2ff4ef6d723b5100af860))
+
 ## [0.19.6](https://github.com/hdot123/memory/compare/v0.19.5...v0.19.6) (2026-08-11)
 
 
