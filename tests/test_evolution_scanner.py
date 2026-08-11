@@ -4913,7 +4913,9 @@ def test_reconcile_handles_api_failure(tmp_path):
 def test_reconcile_called_in_main():
     """VAL-RECON-007: reconcile_in_progress is called in main() after auto_close_resolved."""
     # Read the scanner source to verify the call order
-    with open("scripts/evolution_scanner.py") as f:
+    # Use __file__-based absolute path — relative paths fail in CI where CWD may differ
+    scanner_path = Path(__file__).parent.parent / "scripts" / "evolution_scanner.py"
+    with open(scanner_path) as f:
         scanner_code = f.read()
 
     # Find the positions of auto_close_resolved and reconcile_in_progress calls
