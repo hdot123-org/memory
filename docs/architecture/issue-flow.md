@@ -21,9 +21,9 @@ PR (body 包含 Fixes INFRA-xxx)
     ↓
 CI → merge
     ↓
-GitHub Issue 自动关闭 (Fixes 关键字触发)
+GitHub Issue 自动关闭 (scanner auto_close_resolved)
     ↓
-Linear Issue 同步关闭 (Linear 原生 GitHub 集成)
+Linear Issue 关闭 (Linear GitHub 集成检测 PR merge)
 ```
 
 ### 链路说明
@@ -33,14 +33,16 @@ Linear Issue 同步关闭 (Linear 原生 GitHub 集成)
 3. **GitHub Issue 同步到 Linear** — 通过 Linear 原生 GitHub 集成自动完成，Linear issue 带有 `syncedWith: github` 标记
 4. **Linear issue 下有 linkback 评论** — linear-code bot 在 GitHub issue 下添加 linkback 评论
 5. **Linear issue 进入 infra 工作流** — 在 Linear 中可管理负责人、状态、PR 附件等
-6. **droid 创建 PR** — PR body 包含 `Fixes INFRA-xxx`，触发 GitHub 的自动闭环
+6. **droid 创建 PR** — PR body 包含 `Fixes INFRA-xxx`，Linear GitHub 集成据此追踪 PR 状态
 7. **CI 通过后 merge** — 现有 CI 和 auto-merge 机制
-8. **GitHub Issue 自动关闭** — `Fixes` 关键字在 PR merge 时自动关闭关联 issue（GitHub 原生能力，仅作用于 GitHub Issue）
-9. **Linear Issue 同步关闭** — Linear 原生 GitHub 集成检测到 GitHub Issue 状态变更为 closed，自动同步关闭对应的 Linear Issue
+8. **GitHub Issue 自动关闭** — scanner 下次运行时 `auto_close_resolved()` 检测到 finding 已解决，自动关闭关联 GitHub Issue
+9. **Linear Issue 关闭** — Linear 原生 GitHub 集成检测到 PR merge（通过 `Fixes INFRA-xxx` 引用），自动将 Linear Issue 流转为 Done
 
-> **注意**：GitHub 不直接关闭 Linear Issue。闭环是两步完成的：
-> 1. GitHub 关闭 GitHub Issue（GitHub 原生 `Fixes` 关键字能力）
-> 2. Linear 原生 GitHub 集成检测到 GitHub Issue 关闭 → 同步关闭 Linear Issue（Linear 平台集成能力）
+> **注意**：GitHub Issue 与 Linear Issue 的关闭是两条独立路径，均由各自平台能力实现：
+> 1. **Linear Issue**：Linear GitHub 集成检测到 PR merge（通过 PR body 中的 `Fixes INFRA-xxx` 引用）→ 自动流转为 Done
+> 2. **GitHub Issue**：scanner 下次运行时 `auto_close_resolved()` 检测到 finding 已解决 → 自动关闭 GitHub Issue
+>
+> `Fixes INFRA-xxx` 不是 GitHub 原生关键字（GitHub 仅识别 `Fixes #<number>`），而是 Linear GitHub 集成的追踪标识。
 
 ---
 
@@ -65,12 +67,12 @@ Linear Issue 同步关闭 (Linear 原生 GitHub 集成)
 
 ### 3.1 PR 合并闭环（主要路径）
 
-当前闭环通过 PR body 中的 `Fixes INFRA-xxx` 关键字实现，分两步：
+当前闭环通过 PR body 中的 `Fixes INFRA-xxx` 引用实现，两条独立路径：
 
-1. **GitHub Issue 自动关闭** — PR merge 时，GitHub 检测到 `Fixes INFRA-xxx` 关键字，自动关闭关联的 GitHub Issue（GitHub 原生能力，仅作用于 GitHub Issue）
-2. **Linear Issue 同步关闭** — Linear 原生 GitHub 集成检测到 GitHub Issue 状态变更为 closed，自动同步关闭对应的 Linear Issue（Linear 平台集成能力，非 GitHub 直接关闭 Linear）
+1. **Linear Issue 关闭** — Linear 原生 GitHub 集成检测到 PR merge（通过 `Fixes INFRA-xxx` 引用），自动将 Linear Issue 流转为 Done。`Fixes INFRA-xxx` 是 Linear 集成的追踪标识，非 GitHub 原生关键字。
+2. **GitHub Issue 关闭** — scanner 下次运行时 `auto_close_resolved()` 检测到 finding 已解决（代码已修复），自动关闭关联的 GitHub Issue（参见 3.2 节补偿机制）。
 
-**此机制已验证有效。**
+**此机制已验证有效。** 两条路径独立运作，不相互依赖。
 
 ### 3.2 Scanner 自动关闭已解决 Issues（补偿机制）
 
@@ -125,7 +127,7 @@ body = (f"> ⚙️ 此 Issue 由 evolution scanner 自动创建。任务管理�
 | GitHub issue 下有 linear-code bot linkback 评论 | ✅ 已验证 | 已在实际 issue 中验证 |
 | Linear issue 进入 infra 工作流 | ✅ 已验证 | 负责人、状态、PR 附件可见 |
 | GitHub issue 关闭 → Linear 同步关闭 | ✅ 已验证 | 闭环已验证 |
-| 当前闭环机制 | ✅ 已验证 | PR 使用 `Fixes INFRA-xxx` 即可闭环 |
+| 当前闭环机制 | ✅ 已验证 | PR 使用 `Fixes INFRA-xxx` + scanner auto_close 即可闭环 |
 
 ---
 
@@ -173,7 +175,7 @@ GitHub 支持两种 PR body 关键字来自动关闭 Issue：
 - `Fixes #<issue_number>` — GitHub 原生关键字，PR merge 时关闭指定 Issue
 - `Closes #<issue_number>` — 语义同上，效果完全等价
 
-本项目的当前闭环机制是通过 PR body 中的 `Fixes INFRA-xxx` 引用 Linear issue。当 PR merge 时，Linear 原生 GitHub 集成检测到关联的 GitHub Issue 被关闭，自动同步关闭对应的 Linear Issue。
+本项目的当前闭环机制是通过 PR body 中的 `Fixes INFRA-xxx` 引用 Linear issue。当 PR merge 时，Linear 原生 GitHub 集成检测到该引用，自动将 Linear Issue 流转为 Done；GitHub Issue 则由 scanner 的 `auto_close_resolved()` 在下次扫描时关闭。
 
 本节评估是否需要额外在 PR body 中加入 `Closes #<GitHub Issue 号>` 作为冗余保障。
 
@@ -182,15 +184,17 @@ GitHub 支持两种 PR body 关键字来自动关闭 Issue：
 **当前链路**：
 
 ```
-PR merge → GitHub 检测到 Fixes INFRA-xxx
-    → GitHub 自动关闭关联的 GitHub Issue
-    → Linear 原生 GitHub 集成检测到 Issue 关闭
-    → Linear 自动同步关闭对应的 Linear Issue
+PR merge
+    → Linear GitHub 集成检测到 Fixes INFRA-xxx 引用
+    → Linear Issue 自动流转为 Done
+    （独立路径）
+    → scanner 下次运行 auto_close_resolved()
+    → GitHub Issue 自动关闭
 ```
 
 **已验证事实**：
 
-- `Fixes INFRA-xxx` 关键字在 PR merge 时可正确触发 GitHub Issue 自动关闭（GitHub 文档 + 实际验证）
+- `Fixes INFRA-xxx` 引用在 PR merge 时被 Linear GitHub 集成检测，触发 Linear Issue 流转为 Done（Linear 集成能力，实际验证）
 - Linear 原生 GitHub 集成可检测到 GitHub Issue 状态变更并同步关闭 Linear Issue（已在实际 issue 中验证）
 - 此闭环机制不依赖任何自定义代码或脚本，完全由 GitHub 和 Linear 平台原生能力实现
 

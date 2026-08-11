@@ -21,7 +21,7 @@ PostHog Alert (错误频率 >10/hr)
         → trigger-error-droid.sh (触发脚本)
           → droid exec --tag error-gateway (Factory Droid 自动修复)
             → GitHub Issue (创建/复用)
-            → 修复 PR (Closes #N, 合并后 Issue 自动关闭)
+            → 修复 PR (Fixes INFRA-xxx, 合并后 Issue 自动关闭)
 ```
 
 ### 1.1 各环节职责
@@ -103,7 +103,7 @@ EXISTING=$(gh issue list \
 - **必须搜索 `--state all`**（不仅仅是 open），防止已关闭 Issue 被重复创建
 - Issue 创建是硬性前置条件，未获得 Issue 号前不得开始代码修复
 - GitHub Issue 为错误管道自动产物，任务管理/优先级/状态跟踪请前往 Linear（参见 `docs/architecture/issue-flow.md` 职责约定）
-- PR body 必须包含 `Fixes #<issue-number>`，合并后 Issue 自动关闭
+- PR body 必须包含 `Fixes INFRA-xxx`（Linear issue 标识），合并后 Issue 自动关闭
 
 ## 4. 四层防护机制
 
@@ -173,7 +173,7 @@ webhook server (adnanh/webhook, port 5555) 挂了时：
 
 - 分支命名：`fix/posthog-<error_type>-<timestamp>`
 - Commit 消息：中文，包含根因和修复描述
-- PR body 必须包含 `Closes #<issue-number>`
+- PR body 必须包含 `Fixes INFRA-xxx`（Linear issue 标识）
 - 所有 Issue comment 必须使用中文
 
 ## 7. 参考文档

@@ -682,7 +682,7 @@ def template_inbox_md(project_name: str) -> tuple[str, list[str]]:
         content = """\
 # 收件箱
 
-临时任务捕获区。用于快速记录待处理事项，后续应整理到正式任务管理系统。
+临时任务捕获区。用于快速记录待处理事项，后续应整理到 Linear（唯一任务管理面板）。
 
 ## 待处理事项
 
@@ -699,7 +699,7 @@ def template_inbox_md(project_name: str) -> tuple[str, list[str]]:
 # RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER
 # 收件箱
 
-临时任务捕获区。用于快速记录待处理事项，后续应整理到正式任务管理系统。
+临时任务捕获区。用于快速记录待处理事项，后续应整理到 Linear（唯一任务管理面板）。
 
 ## 待处理事项
 
