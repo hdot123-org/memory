@@ -4940,20 +4940,21 @@ def test_reconcile_stuck_issue_detected_and_commented():
 
     with patch("evolution_utils.subprocess.run") as mock_run:
         # First call: list issues; Second call: check for PR (no PR found)
-        # Third call: add comment
+        # Third call: check existing comments for sentinel; Fourth call: add comment
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout="[]", stderr=""),  # no PR
+            MagicMock(returncode=0, stdout="", stderr=""),  # no existing sentinel
             MagicMock(returncode=0, stdout="", stderr=""),  # comment added
         ]
 
         reconcile_in_progress("evolution-found")
 
-        # Verify: list issues, check PR, add comment
-        assert mock_run.call_count == 3
+        # Verify: list issues, check PR, check comments, add comment
+        assert mock_run.call_count == 4
 
         # Check the comment call
-        comment_call = mock_run.call_args_list[2]
+        comment_call = mock_run.call_args_list[3]
         comment_args = comment_call[0][0]
         assert comment_args[0:4] == ["gh", "issue", "comment", "456"]
         # Comment should be in Chinese
@@ -5088,10 +5089,11 @@ def test_reconcile_no_force_close_or_label_changes():
     ]
 
     with patch("evolution_utils.subprocess.run") as mock_run:
-        # Mock: list issues + check PR (no PR) + add comment
+        # Mock: list issues + check PR (no PR) + check comments + add comment
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout="[]", stderr=""),  # no PR
+            MagicMock(returncode=0, stdout="", stderr=""),  # no existing sentinel
             MagicMock(returncode=0, stdout="", stderr=""),  # comment
         ]
 
@@ -5141,3 +5143,120 @@ def test_reconcile_full_test_suite_passes():
     from evolution_utils import reconcile_in_progress
 
     assert callable(reconcile_in_progress)
+
+
+def test_reconcile_idempotency_second_tick_no_duplicate_comment():
+    """Idempotency guard: second consecutive tick does NOT re-comment.
+
+    When reconcile_in_progress() is called twice for the same stuck issue,
+    the second call should detect the sentinel in existing comments and
+    skip adding a duplicate advisory comment.
+    """
+    from evolution_utils import RECON_ADVISORY_SENTINEL, reconcile_in_progress
+
+    # Create a stuck issue (old, no PR)
+    old_date = (datetime.now(timezone.utc) - timedelta(days=4)).isoformat()
+    mock_issues = [
+        {
+            "number": 999,
+            "body": "**Rule ID**: IDEMPOTENT_RULE\n**Location**: idempotent/file.py",
+            "createdAt": old_date,
+        }
+    ]
+
+    # First tick: no existing comments with sentinel
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),  # list issues
+            MagicMock(returncode=0, stdout="[]", stderr=""),  # no PR
+            MagicMock(returncode=0, stdout="", stderr=""),  # no existing comments with sentinel
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment added
+        ]
+
+        reconcile_in_progress("evolution-found")
+
+        # Verify: 4 calls (list, pr check, comment check, comment add)
+        assert mock_run.call_count == 4
+
+        # Verify comment was added
+        comment_call = mock_run.call_args_list[3]
+        comment_args = comment_call[0][0]
+        assert comment_args[0:4] == ["gh", "issue", "comment", "999"]
+        assert RECON_ADVISORY_SENTINEL in comment_args[-1]
+
+    # Second tick: sentinel already present in comments
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),  # list issues
+            MagicMock(returncode=0, stdout="[]", stderr=""),  # no PR
+            MagicMock(returncode=0, stdout=f"{RECON_ADVISORY_SENTINEL}\nprevious comment", stderr=""),  # sentinel found
+        ]
+
+        reconcile_in_progress("evolution-found")
+
+        # Verify: only 3 calls (list, pr check, comment check)
+        # NO fourth call to add comment
+        assert mock_run.call_count == 3
+
+        # Verify no comment was added
+        for call in mock_run.call_args_list:
+            args = call[0][0]
+            if args[2] == "comment":
+                pytest.fail("Second tick should NOT add comment when sentinel exists")
+
+
+def test_reconcile_idempotency_sentinel_in_comment():
+    """Sentinel is embedded in the advisory comment for future detection."""
+    from evolution_utils import RECON_ADVISORY_SENTINEL, reconcile_in_progress
+
+    old_date = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
+    mock_issues = [
+        {
+            "number": 888,
+            "body": "**Rule ID**: SENTINEL_TEST\n**Location**: test/sentinel.py",
+            "createdAt": old_date,
+        }
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),  # list
+            MagicMock(returncode=0, stdout="[]", stderr=""),  # no PR
+            MagicMock(returncode=0, stdout="", stderr=""),  # no existing sentinel
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment added
+        ]
+
+        reconcile_in_progress("evolution-found")
+
+        # Verify the comment contains the sentinel
+        comment_call = mock_run.call_args_list[3]
+        comment_body = comment_call[0][0][-1]
+        assert RECON_ADVISORY_SENTINEL in comment_body, "Comment must contain idempotency sentinel"
+        assert "卡住" in comment_body, "Comment should be in Chinese"
+
+
+def test_reconcile_idempotency_check_failure_fail_open():
+    """When comment check fails, proceed to comment (fail-open)."""
+    from evolution_utils import reconcile_in_progress
+
+    old_date = (datetime.now(timezone.utc) - timedelta(days=4)).isoformat()
+    mock_issues = [
+        {
+            "number": 777,
+            "body": "**Rule ID**: FAIL_OPEN_RULE\n**Location**: failopen/file.py",
+            "createdAt": old_date,
+        }
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),  # list
+            MagicMock(returncode=0, stdout="[]", stderr=""),  # no PR
+            MagicMock(returncode=1, stderr="API error", stdout=""),  # comment check fails
+            MagicMock(returncode=0, stdout="", stderr=""),  # still add comment
+        ]
+
+        reconcile_in_progress("evolution-found")
+
+        # Verify: 4 calls (fail-open, still attempt to comment)
+        assert mock_run.call_count == 4

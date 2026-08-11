@@ -2,6 +2,7 @@
 import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from evolution_adapters import quarantine_corrupted_file, sanitize_structured_field
@@ -321,6 +322,11 @@ def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set
         print(f"[evolution] Protected {protected_count} issue(s) from auto-close due to failed audit categories")
 
 
+# GAP-E: Sentinel for idempotency guard in reconcile_in_progress()
+# Prevents duplicate advisory comments on every scanner tick
+RECON_ADVISORY_SENTINEL = "<!-- evolution-recon-advisory -->"
+
+
 def reconcile_in_progress(dedup_label: str) -> None:
     """Check for stuck evolution-found issues (open > 72h, no PR).
 
@@ -328,11 +334,13 @@ def reconcile_in_progress(dedup_label: str) -> None:
     associated PR. Adds an advisory comment (Chinese) to stuck issues.
     ADVISORY ONLY - never force-closes or changes labels.
 
+    Idempotency guard: embeds a hidden HTML sentinel in the comment. Before
+    commenting, scans the issue's existing comments for the sentinel. If found,
+    skips commenting to prevent duplicate advisories on every tick.
+
     Args:
         dedup_label: Label used to identify evolution scanner issues
     """
-    from datetime import datetime, timezone
-
     RECON_STUCK_THRESHOLD_HOURS = 72
 
     # Fetch all open evolution-found issues with createdAt
@@ -391,8 +399,23 @@ def reconcile_in_progress(dedup_label: str) -> None:
             print(f"[evolution] Warning: Failed to check PR association for issue #{issue_number}: {e}")
             continue
 
-        # Issue is stuck (old + no PR) - add advisory comment
+        # Idempotency guard: check if advisory comment already exists
+        try:
+            comments_result = subprocess.run(
+                ["gh", "issue", "view", str(issue_number),
+                 "--json", "comments", "--jq", ".comments[].body"],
+                capture_output=True, text=True, timeout=30
+            )
+            if comments_result.returncode == 0 and RECON_ADVISORY_SENTINEL in comments_result.stdout:
+                print(f"[evolution] Skip advisory for #{issue_number}: sentinel already present (idempotency guard)")
+                continue
+        except Exception as e:
+            print(f"[evolution] Warning: Failed to check comments for #{issue_number}: {e}")
+            # On failure, proceed to comment (fail-open to avoid silent skip)
+
+        # Issue is stuck (old + no PR) - add advisory comment with sentinel
         comment_msg = (
+            f"{RECON_ADVISORY_SENTINEL}\n"
             f"⚠️ 此 Issue 已卡住 {int(age_hours)} 小时（超过 {RECON_STUCK_THRESHOLD_HOURS}h 阈值），"
             f"未检测到关联的 PR。可能需要人工检查进度或重新评估优先级。\n\n"
             f"此评论仅为提醒，不会自动关闭或修改 Issue 状态。"
