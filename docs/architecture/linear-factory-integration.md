@@ -849,7 +849,14 @@ CLI 模式优势：
 
 ```
 收到 webhook 调用
-  ├─ 提取参数（ISSUE_REF, TEAM_KEY, 等）
+  ├─ 提取参数（ISSUE_REF, TEAM_KEY, ACTION, TYPE 等）
+  ├─ 参数解析守卫（ISSUE_REF/UUID 至少一个非空，必要时反查）
+  ├─ 团队白名单（仅 INFRA）
+  ├─ 事件过滤层：
+  │     ├─ remove/delete 事件 → skip
+  │     ├─ Comment.create 事件 → skip（GAP-D: 不触发 droid exec）
+  │     └─ Issue.update 非 Done/Cancelled 转换 → skip（防风暴）
+  ├─ Gate A 状态门禁（Done/Cancelled 转换需有 Droid session 记录）
   ├─ 根据 TEAM_KEY 路由到目标仓库（读 repositories.yml）
   ├─ 后台启动 droid exec
   │     ├─ --auto medium --output-format json
@@ -862,6 +869,12 @@ CLI 模式优势：
   ├─ 成功 → Linear comment（改动摘要 + PR 链接）
   └─ 失败 → Linear comment（错误摘要 + 阻塞原因）
 ```
+
+> **事件触发策略**：droid 仅在 `Issue.create`（新 Issue）与手动 `resume` 时触发。
+> `Comment.create` 不触发 droid exec（INFRA-180 / GAP-D）—— Comment 事件主要来自
+> GitHub↔Linear 同步与 bot 回写，非人工指令触发源；`Issue.update` 仅在 Done/Cancelled
+> 转换时经 Gate A 校验。该过滤逻辑位于 `~/.factory/webhook/scripts/trigger-droid.sh`
+> （全局 webhook 脚本，非本仓库版本控制范围）。
 
 ### B.6 launchd 服务管理
 
