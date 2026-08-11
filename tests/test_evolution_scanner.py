@@ -4700,3 +4700,61 @@ def test_get_open_issues_empty_closed():
         assert len(issues) == 1
         assert issues[0]["rule_id"] == "RULE_A"
 
+
+# ============================================================================
+# GAP-C3 v2: Integration test for production ordering (Issue #455)
+# ============================================================================
+
+
+def test_single_absence_production_order_no_close(tmp_path):
+    """GAP-C3 v2: Integration test verifying production ordering (update_history then auto_close_resolved).
+
+    In production, main() calls update_history() BEFORE auto_close_resolved().
+    This test verifies that a SINGLE absence does NOT close the issue when
+    following the production ordering. This is the exact scenario that was
+    broken in v1 (Issue #455).
+    """
+    from evolution_utils import auto_close_resolved
+
+    history_path = tmp_path / "findings_over_time.json"
+
+    # Tick 1: RULE_001 present in history
+    findings_tick1 = [Finding("RULE_001", "warning", "test", "Issue 1", "file1.py", "evidence")]
+    update_history(history_path, findings_tick1, 1, 100)
+
+    # Tick 2: RULE_001 absent (single absence in production ordering)
+    findings_tick2 = []  # Empty - RULE_001 is not present
+
+    # PRODUCTION ORDERING: update_history THEN auto_close_resolved
+    update_history(history_path, findings_tick2, 0, 100)
+
+    # Now call auto_close_resolved with history_path (as main() does)
+    # Mock gh subprocess calls
+    mock_issues = [
+        {"number": 101, "body": "**Rule ID**: RULE_001\n**Location**: file1.py"}
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        # Mock gh issue list (open issues)
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps(mock_issues),
+            stderr=""
+        )
+
+        # Call auto_close_resolved with history_path (production call signature)
+        auto_close_resolved(findings_tick2, "evolution-found", None, history_path)
+
+        # Verify: should NOT call gh issue close (only list was called)
+        # With GRACE_PERIOD_TICKS=2, a single absence (count=1) should defer close
+        close_calls = [
+            call for call in mock_run.call_args_list
+            if len(call[0]) > 0 and len(call[0][0]) >= 3
+            and call[0][0][0] == "gh" and call[0][0][1] == "issue" and call[0][0][2] == "close"
+        ]
+
+        assert len(close_calls) == 0, (
+            f"Expected 0 close calls (grace period should defer), got {len(close_calls)}. "
+            f"This means the grace period is not working correctly."
+        )
+

@@ -8,6 +8,11 @@ from evolution_adapters import quarantine_corrupted_file, sanitize_structured_fi
 
 _SEV_RANK = {"critical": 3, "warning": 2, "info": 1}
 
+# GAP-C3: Grace period for auto-close
+# A finding must be absent for this many consecutive ticks before its issue is closed.
+# Prevents false closures from transient adapter failures.
+GRACE_PERIOD_TICKS = 2
+
 # Required config keys for evolution scanner
 REQUIRED_CONFIG_KEYS = [
     "audit_tools",
@@ -177,7 +182,56 @@ def load_history(history_path: Path):
     return data
 
 
-def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set[str] | None = None) -> None:
+def _count_consecutive_absences(rule_id: str, location: str, history_path: Path) -> int:
+    """Count consecutive absences of a finding in history snapshots.
+
+    GAP-C3 FIX (v2): Walks backwards through history snapshots to count how many
+    consecutive recent snapshots lack the (rule_id, location) pair.
+
+    CRITICAL INVARIANT: main() calls update_history() BEFORE auto_close_resolved(),
+    so the current tick's snapshot is ALREADY the most-recent entry in history.
+    This function MUST NOT add +1 for the current tick — doing so double-counts
+    it and defeats the grace period (Issue #455).
+
+    When called, the function is invoked because the finding is absent in the
+    current tick. Since update_history() already wrote the current snapshot
+    (which does not contain this finding), the first snapshot examined is
+    already the current tick's absence.
+
+    Args:
+        rule_id: The rule ID to check
+        location: The location to check
+        history_path: Path to findings_over_time.json
+
+    Returns:
+        Number of consecutive absences (0 if no history or finding present in
+        most recent snapshot)
+    """
+    data = load_history(history_path)
+    if data is None:
+        return 0
+
+    snapshots = data.get("snapshots", [])
+    if not snapshots:
+        return 0
+
+    # Walk backwards through snapshots counting consecutive absences
+    absence_count = 0
+    for snapshot in reversed(snapshots):
+        findings = snapshot.get("findings", [])
+        present = any(
+            f.get("rule_id") == rule_id and f.get("location") == location
+            for f in findings if isinstance(f, dict)
+        )
+        if present:
+            break
+        absence_count += 1
+
+    return absence_count
+
+
+def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set[str] | None = None,
+                       history_path: Path | None = None) -> None:
     """Close GitHub Issues whose findings are no longer present in current scan.
 
     Compares current findings against open evolution-found GitHub Issues.
@@ -189,11 +243,17 @@ def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set
     disappear from the current scan even though the underlying problem may
     still exist. Such issues are skipped with a warning instead (GAP-C1).
 
+    GAP-C3: Issues must be absent for GRACE_PERIOD_TICKS consecutive ticks
+    before closing. Uses history_path to count absences. When history_path
+    is provided, only closes after the grace period is satisfied.
+
     Args:
         findings: List of Finding objects from current scan
         dedup_label: Label used to identify evolution scanner issues
         failed_categories: Set of audit categories whose tool failed this tick.
             Issues whose category is in this set are protected from auto-close.
+        history_path: Path to findings_over_time.json for grace period check.
+            If None, falls back to immediate close (backward compatibility).
     """
     # Build set of current finding keys
     current_keys = {(f.rule_id, f.location) for f in findings}
@@ -217,6 +277,7 @@ def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set
     # Close issues not in current findings
     closed_count = 0
     protected_count = 0
+    grace_deferred_count = 0
     for issue in issues:
         rule_id, location = _parse_issue_fields(issue.get("body", ""))
         if rule_id is None or location is None:
@@ -232,6 +293,14 @@ def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set
                 if category and category in failed_categories:
                     protected_count += 1
                     print(f"[evolution] Skip auto-close #{issue['number']}: category '{category}' tool failed this tick ({rule_id} @ {location})")
+                    continue
+
+            # GAP-C3: Check grace period using history
+            if history_path is not None:
+                absence_count = _count_consecutive_absences(rule_id, location, history_path)
+                if absence_count < GRACE_PERIOD_TICKS:
+                    grace_deferred_count += 1
+                    print(f"[evolution] Skip auto-close #{issue['number']}: absent {absence_count}/{GRACE_PERIOD_TICKS} ticks (grace period)")
                     continue
 
             # This finding is no longer present - close the issue
@@ -257,3 +326,5 @@ def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set
         print(f"[evolution] Auto-closed {closed_count} resolved issues")
     if protected_count > 0:
         print(f"[evolution] Protected {protected_count} issue(s) from auto-close due to failed audit categories")
+    if grace_deferred_count > 0:
+        print(f"[evolution] Deferred {grace_deferred_count} issue(s) auto-close due to grace period")
