@@ -5185,3 +5185,177 @@ def test_config_has_max_self_audit_issues_per_tick():
     config = load_config(repo_root)
     assert "max_self_audit_issues_per_tick" in config, \
         "config.yml must have max_self_audit_issues_per_tick"
+
+
+# ===========================================================================
+# Heartbeat tests (VAL-HB-*)
+# ===========================================================================
+from evolution_heartbeat import (
+    check_history_freshness,
+    check_pr_coverage,
+    create_alert_issue,
+    main as heartbeat_main,
+)
+
+
+def test_heartbeat_freshness_ok():
+    """VAL-HB-003: Recent snapshot passes freshness check."""
+    tmp = Path(tempfile.mkdtemp())
+    history = tmp / "findings_over_time.json"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    history.write_text(json.dumps({
+        "snapshots": [{"timestamp": now_iso, "tick_id": "t1", "findings": [], "issues_created": 0}],
+        "resolved_findings": {},
+    }))
+
+    result = check_history_freshness(history_path=history, threshold_hours=6)
+    assert result is None
+
+
+def test_heartbeat_freshness_stale():
+    """VAL-HB-003: Old snapshot triggers freshness alert."""
+    tmp = Path(tempfile.mkdtemp())
+    history = tmp / "findings_over_time.json"
+    old_ts = (datetime.now(timezone.utc) - timedelta(hours=10)).isoformat()
+    history.write_text(json.dumps({
+        "snapshots": [{"timestamp": old_ts, "tick_id": "t1", "findings": [], "issues_created": 0}],
+        "resolved_findings": {},
+    }))
+
+    result = check_history_freshness(history_path=history, threshold_hours=6)
+    assert result is not None
+    assert "stale" in result
+
+
+def test_heartbeat_freshness_no_file():
+    """VAL-HB-003: Missing history file triggers alert."""
+    result = check_history_freshness(history_path=Path("/nonexistent/path.json"), threshold_hours=6)
+    assert result is not None
+    assert "does not exist" in result
+
+
+def test_heartbeat_freshness_empty_snapshots():
+    """VAL-HB-003: Empty snapshots list triggers alert."""
+    tmp = Path(tempfile.mkdtemp())
+    history = tmp / "findings_over_time.json"
+    history.write_text(json.dumps({"snapshots": [], "resolved_findings": {}}))
+
+    result = check_history_freshness(history_path=history, threshold_hours=6)
+    assert result is not None
+    assert "no snapshots" in result
+
+
+def test_heartbeat_freshness_bad_json():
+    """VAL-HB-003: Corrupted JSON triggers alert."""
+    tmp = Path(tempfile.mkdtemp())
+    history = tmp / "findings_over_time.json"
+    history.write_text("not valid json{{{")
+
+    result = check_history_freshness(history_path=history, threshold_hours=6)
+    assert result is not None
+    assert "Cannot read" in result
+
+
+def test_heartbeat_pr_coverage_all_have_prs():
+    """VAL-HB-004: Issues with PRs produce no alerts."""
+    issues_json = json.dumps([{"number": 1, "title": "Test", "createdAt": "2026-01-01"}])
+    prs_json = json.dumps([{"number": 10}])
+
+    def mock_run(cmd, **kw):
+        mock_result = MagicMock()
+        if "issue" in cmd and "list" in cmd:
+            mock_result.stdout = issues_json
+            mock_result.returncode = 0
+        elif "pr" in cmd and "list" in cmd:
+            mock_result.stdout = prs_json
+            mock_result.returncode = 0
+        else:
+            mock_result.stdout = ""
+            mock_result.returncode = 0
+        return mock_result
+
+    with patch("evolution_heartbeat.subprocess.run", side_effect=mock_run):
+        alerts = check_pr_coverage()
+    assert alerts == []
+
+
+def test_heartbeat_pr_coverage_missing_pr():
+    """VAL-HB-004: Issue without PR triggers alert."""
+    issues_json = json.dumps([{"number": 42, "title": "Missing PR Issue", "createdAt": "2026-01-01"}])
+
+    def mock_run(cmd, **kw):
+        mock_result = MagicMock()
+        if "issue" in cmd and "list" in cmd:
+            mock_result.stdout = issues_json
+            mock_result.returncode = 0
+        elif "pr" in cmd and "list" in cmd:
+            mock_result.stdout = "[]"  # No PRs found
+            mock_result.returncode = 0
+        else:
+            mock_result.stdout = ""
+            mock_result.returncode = 0
+        return mock_result
+
+    with patch("evolution_heartbeat.subprocess.run", side_effect=mock_run):
+        alerts = check_pr_coverage()
+    assert len(alerts) == 1
+    assert "#42" in alerts[0]
+    assert "no associated PR" in alerts[0]
+
+
+def test_heartbeat_create_alert_issue():
+    """VAL-HB-005: Alert issue created when anomalies detected."""
+    def mock_run(cmd, **kw):
+        mock_result = MagicMock()
+        if "issue" in cmd and "list" in cmd:
+            mock_result.stdout = "[]"  # No existing alerts
+            mock_result.returncode = 0
+        elif "label" in cmd:
+            mock_result.stdout = ""
+            mock_result.returncode = 0
+        elif "issue" in cmd and "create" in cmd:
+            mock_result.stdout = "https://github.com/owner/repo/issues/999"
+            mock_result.returncode = 0
+        else:
+            mock_result.stdout = ""
+            mock_result.returncode = 0
+        return mock_result
+
+    with patch("evolution_heartbeat.subprocess.run", side_effect=mock_run):
+        created = create_alert_issue(["Test alert"], "stale-pipeline")
+    assert created is True
+
+
+def test_heartbeat_create_alert_issue_dedup():
+    """VAL-HB-005: Existing open alert prevents duplicate creation."""
+    def mock_run(cmd, **kw):
+        mock_result = MagicMock()
+        if "issue" in cmd and "list" in cmd:
+            mock_result.stdout = json.dumps([{"number": 500}])
+            mock_result.returncode = 0
+        else:
+            mock_result.stdout = ""
+            mock_result.returncode = 0
+        return mock_result
+
+    with patch("evolution_heartbeat.subprocess.run", side_effect=mock_run):
+        created = create_alert_issue(["Test alert"], "stale-pipeline")
+    assert created is False
+
+
+def test_heartbeat_main_all_ok():
+    """Heartbeat main returns 0 when all checks pass."""
+    with patch("evolution_heartbeat.check_history_freshness", return_value=None), \
+         patch("evolution_heartbeat.check_pr_coverage", return_value=[]):
+        rc = heartbeat_main()
+    assert rc == 0
+
+
+def test_heartbeat_main_alert():
+    """Heartbeat main returns 1 when anomalies detected."""
+    with patch("evolution_heartbeat.check_history_freshness",
+               return_value="stale: 10h ago"), \
+         patch("evolution_heartbeat.check_pr_coverage", return_value=[]), \
+         patch("evolution_heartbeat.create_alert_issue", return_value=True):
+        rc = heartbeat_main()
+    assert rc == 1
