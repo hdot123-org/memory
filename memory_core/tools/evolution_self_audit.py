@@ -1,14 +1,19 @@
-"""Evolution self-audit tool: 8 checks for pipeline health."""
+"""Evolution self-audit tool: 10 checks for pipeline health."""
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+# Regex to extract Linear identifier (e.g., INFRA-191) from linkback comments
+LINEAR_REF_RE = re.compile(r"([A-Z]+-\d+)")
 # Module-level constants for testability (monkeypatch in tests)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]  # memory/
 EVOLUTION_DIR = PROJECT_ROOT / ".evolution"
@@ -404,6 +409,161 @@ def check_tool_health() -> list[dict[str, Any]]:
     return findings
 
 
+def extract_linear_ref(issue_number: Any, repo: str) -> str | None:
+    """Extract Linear identifier from GitHub Issue linkback comment.
+
+    Scans all comments on the issue for one containing 'linear-linkback', then
+    regex-extracts the first [A-Z]+-\\d+ identifier (e.g., INFRA-191).
+
+    Returns:
+        Linear identifier (e.g., 'INFRA-191') or None if not found.
+    """
+    try:
+        result = subprocess.run(
+            ["gh", "api", f"repos/{repo}/issues/{issue_number}/comments"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return None
+
+        comments = json.loads(result.stdout) if result.stdout.strip() else []
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+        return None
+
+    for comment in comments:
+        body = comment.get("body", "") or ""
+        if "linear-linkback" in body:
+            match = LINEAR_REF_RE.search(body)
+            if match:
+                return match.group(1)
+
+    return None
+
+
+def linear_graphql_query(query: str, variables: dict, api_key: str, timeout: int = 10) -> dict | None:
+    """Execute Linear GraphQL query using stdlib urllib.
+
+    Returns:
+        Parsed JSON response dict, or None on error.
+    """
+    payload = json.dumps({"query": query, "variables": variables}).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.linear.app/graphql",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read()
+        return json.loads(body)
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, Exception):
+        return None
+
+
+def check_linear_sync_health() -> list[dict[str, Any]]:
+    """Check 8: verify GitHub issues have Linear counterparts."""
+    findings = []
+
+    # Check if LINEAR_API_KEY is available
+    linear_api_key = os.environ.get("LINEAR_API_KEY")
+    if not linear_api_key:
+        # No API key, skip check gracefully
+        return findings
+
+    # Query GitHub evolution-found issues
+    try:
+        result = subprocess.run(
+            [
+                "gh", "issue", "list",
+                "--label", "evolution-found",
+                "--state", "open",
+                "--limit", "200",
+                "--json", "number,title,body",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if result.returncode != 0:
+            return findings
+
+        gh_issues = json.loads(result.stdout) if result.stdout.strip() else []
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+        return findings
+
+    if not gh_issues:
+        return findings
+
+    # Get repository info for extract_linear_ref
+    try:
+        repo_result = subprocess.run(
+            ["gh", "repo", "view", "--json", "nameWithOwner"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if repo_result.returncode != 0:
+            return findings
+        repo_data = json.loads(repo_result.stdout)
+        repo = repo_data.get("nameWithOwner", "")
+        if not repo:
+            return findings
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+        return findings
+
+    # Check each GitHub issue for Linear counterpart
+    for issue in gh_issues:
+        issue_number = issue.get("number")
+        if not issue_number:
+            continue
+
+        # Extract real Linear identifier from linkback comment
+        linear_ref = extract_linear_ref(issue_number, repo)
+
+        if not linear_ref:
+            # No linkback comment found — report as missing sync
+            findings.append({
+                "rule_id": "EVOLUTION_LINEAR_SYNC_MISSING",
+                "severity": "warning",
+                "category": CATEGORY,
+                "description": f"GitHub issue #{issue_number} has no Linear counterpart",
+                "location": f"github-issue-{issue_number}",
+                "evidence": "linear_ref=none",
+            })
+            continue
+
+        # Query Linear API for this identifier using verified pattern
+        query = 'query($id: String!) { issue(id: $id) { id state { name type } } }'
+        response = linear_graphql_query(query, {"id": linear_ref}, linear_api_key)
+
+        if not response:
+            # API error, skip this issue gracefully
+            continue
+
+        # Check if Linear issue exists
+        linear_issue = response.get("data", {}).get("issue")
+        if not linear_issue:
+            # Linear issue not found
+            findings.append({
+                "rule_id": "EVOLUTION_LINEAR_SYNC_MISSING",
+                "severity": "warning",
+                "category": CATEGORY,
+                "description": f"GitHub issue #{issue_number} has no Linear counterpart",
+                "location": f"github-issue-{issue_number}",
+                "evidence": f"linear_ref={linear_ref}, found=0",
+            })
+
+    return findings
+
+
 def check_linear_sync() -> list[dict[str, Any]]:
     """Check 8: GitHub evolution-found issues missing Linear sync (GAP-A / INFRA-174).
 
@@ -569,6 +729,23 @@ def check_reverse_closure() -> list[dict[str, Any]]:
     if not gh_closed:
         return findings
 
+    # Get repository info for extract_linear_ref
+    try:
+        repo_result = subprocess.run(
+            ["gh", "repo", "view", "--json", "nameWithOwner"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if repo_result.returncode != 0:
+            return findings
+        repo_data = json.loads(repo_result.stdout)
+        repo = repo_data.get("nameWithOwner", "")
+        if not repo:
+            return findings
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+        return findings
+
     open_states = {"In Progress", "Todo", "Backlog", "Triage", "Canceled"}
 
     for issue in gh_closed:
@@ -576,60 +753,43 @@ def check_reverse_closure() -> list[dict[str, Any]]:
         if not issue_number:
             continue
 
-        linear_id = f"INFRA-{issue_number}"
+        # Extract real Linear identifier from linkback comment
+        linear_ref = extract_linear_ref(issue_number, repo)
 
-        try:
-            query = f"""
-            query {{
-                issues(filter: {{identifier: {{eq: "{linear_id}"}}}}) {{
-                    nodes {{
-                        identifier
-                        state {{
-                            name
-                        }}
-                    }}
-                }}
-            }}
-            """
-
-            response = requests.post(
-                "https://api.linear.app/graphql",
-                headers={
-                    "Authorization": f"Bearer {linear_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={"query": query},
-                timeout=10,
-            )
-
-            if response.status_code != 200:
-                continue
-
-            data = response.json()
-            nodes = data.get("data", {}).get("issues", {}).get("nodes", [])
-
-            if not nodes:
-                continue
-
-            state_name = nodes[0].get("state", {}).get("name", "")
-            if state_name in open_states:
-                findings.append({
-                    "rule_id": "EVOLUTION_REVERSE_CLOSURE",
-                    "severity": "warning",
-                    "category": CATEGORY,
-                    "description": f"GitHub issue #{issue_number} closed but Linear {linear_id} still open ({state_name})",
-                    "location": f"github-issue-{issue_number}",
-                    "evidence": f"linear_id={linear_id}, linear_state={state_name}",
-                })
-
-        except Exception:
+        if not linear_ref:
+            # No linkback comment found — skip (cannot verify without ref)
             continue
+
+        # Query Linear API for this identifier using verified pattern
+        query = 'query($id: String!) { issue(id: $id) { id identifier state { name type } } }'
+        response = linear_graphql_query(query, {"id": linear_ref}, linear_api_key)
+
+        if not response:
+            # API error, skip this issue gracefully
+            continue
+
+        # Check if Linear issue exists
+        linear_issue = response.get("data", {}).get("issue")
+        if not linear_issue:
+            # Linear issue not found — no mismatch to report
+            continue
+
+        state_name = linear_issue.get("state", {}).get("name", "")
+        if state_name in open_states:
+            findings.append({
+                "rule_id": "EVOLUTION_REVERSE_CLOSURE",
+                "severity": "warning",
+                "category": CATEGORY,
+                "description": f"GitHub issue #{issue_number} closed but Linear {linear_ref} still open ({state_name})",
+                "location": f"github-issue-{issue_number}",
+                "evidence": f"linear_ref={linear_ref}, linear_state={state_name}",
+            })
 
     return findings
 
 
 def main() -> int:
-    """Run all 9 checks and output findings as JSON."""
+    """Run all 10 checks and output findings as JSON."""
     all_findings: list[dict[str, Any]] = []
     all_findings.extend(check_suppress_json())
     all_findings.extend(check_findings_over_time())
@@ -639,6 +799,7 @@ def main() -> int:
     all_findings.extend(check_config_yml())
     all_findings.extend(check_tool_health())
     all_findings.extend(check_linear_sync())
+    all_findings.extend(check_linear_sync_health())
     all_findings.extend(check_reverse_closure())
 
     json.dump(all_findings, sys.stdout, indent=2)

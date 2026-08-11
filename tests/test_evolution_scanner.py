@@ -5406,28 +5406,6 @@ def test_heartbeat_freshness_check_fresh():
         assert result["stale"] is False, "Should not detect stale history"
         assert result["age_hours"] < 2, "Age should be < 2 hours"
 
-    with patch.object(evolution_self_audit, "check_suppress_json", return_value=[]), \
-         patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]), \
-         patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]), \
-         patch.object(evolution_self_audit, "check_trigger_droid", return_value=[]), \
-         patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]), \
-         patch.object(evolution_self_audit, "check_config_yml", return_value=[]), \
-         patch.object(evolution_self_audit, "check_tool_health", return_value=[]), \
-         patch.object(evolution_self_audit, "check_reverse_closure", return_value=[]), \
-         patch.object(evolution_self_audit, "check_linear_sync_health", return_value=[{
-             "rule_id": "TEST",
-             "severity": "warning",
-             "category": "evolution_self_audit",
-             "description": "test",
-             "location": "test",
-             "evidence": "test",
-         }]) as mock_check:
-
-        result = evolution_self_audit.main()
-        mock_check.assert_called_once()
-        assert result == 1  # Has findings
-
-
 
 def test_heartbeat_pr_coverage_check_missing_pr():
     """VAL-HB-004: Heartbeat detects issues without associated PRs."""
@@ -5610,9 +5588,248 @@ def test_heartbeat_detects_stale_and_creates_alert():
             # Verify alert was created
             assert mock_run.call_count == 2, "Should call gh twice (list + create)"
 
+
+
+# ---------------------------------------------------------------------------
+# GAP-A: Linear Sync Health Check (Check 8)
+# ---------------------------------------------------------------------------
+
+def test_check_linear_sync_health_exists():
+    """VAL-LINSYNC-001: check_linear_sync_health function exists."""
+    from memory_core.tools import evolution_self_audit
+    assert hasattr(evolution_self_audit, "check_linear_sync_health")
+    assert callable(evolution_self_audit.check_linear_sync_health)
+
+
+def test_check_linear_sync_health_detects_missing_linear(monkeypatch):
+    """VAL-LINSYNC-002: Detects GitHub issues without Linear counterpart."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    # Mock GitHub issues
+    gh_issues = [
+        {
+            "number": 100,
+            "title": "[evolution] RULE_1",
+            "body": "**Rule ID**: RULE_1\n**Location**: file1.py\n**Category**: daily_audit\n",
+        },
+        {
+            "number": 101,
+            "title": "[evolution] RULE_2",
+            "body": "**Rule ID**: RULE_2\n**Location**: file2.py\n**Category**: daily_audit\n",
+        },
+    ]
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout=json.dumps(gh_issues), stderr="")
+        if cmd[:2] == ["gh", "repo"]:
+            return Mock(returncode=0, stdout=json.dumps({"nameWithOwner": "hdot123/memory"}), stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    # extract_linear_ref: #100 has INFRA-150, #101 has no linkback
+    def mock_extract_ref(issue_number, repo):
+        if issue_number == 100:
+            return "INFRA-150"
+        return None
+
+    # linear_graphql_query: INFRA-150 exists in Linear
+    def mock_linear_query(query, variables, api_key, timeout=10):
+        if variables.get("id") == "INFRA-150":
+            return {"data": {"issue": {"id": "abc", "identifier": "INFRA-150", "state": {"name": "Done", "type": "completed"}}}}
+        return {"data": {"issue": None}}
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch.object(evolution_self_audit, "extract_linear_ref", side_effect=mock_extract_ref), \
+         patch.object(evolution_self_audit, "linear_graphql_query", side_effect=mock_linear_query):
+
+        findings = evolution_self_audit.check_linear_sync_health()
+
+        # Should detect #101 is missing from Linear (no linkback comment)
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "EVOLUTION_LINEAR_SYNC_MISSING"
+        assert findings[0]["severity"] == "warning"
+        assert findings[0]["category"] == "evolution_self_audit"
+        assert "#101" in findings[0]["description"]
+
+
+def test_check_linear_sync_health_handles_api_failure(monkeypatch):
+    """VAL-LINSYNC-003: Handles Linear API unavailability gracefully."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    gh_issues = [
+        {
+            "number": 100,
+            "title": "[evolution] RULE_1",
+            "body": "**Rule ID**: RULE_1\n**Location**: file1.py\n",
+        },
+    ]
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout=json.dumps(gh_issues), stderr="")
+        if cmd[:2] == ["gh", "repo"]:
+            return Mock(returncode=0, stdout=json.dumps({"nameWithOwner": "hdot123/memory"}), stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    # Test 1: Missing LINEAR_API_KEY
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {}, clear=True):
+        findings = evolution_self_audit.check_linear_sync_health()
+        # Should return empty or warning, not crash
+        assert isinstance(findings, list)
+
+    # Test 2: API failure
+    def mock_extract_ref(issue_number, repo):
+        return "INFRA-150"
+
+    def mock_linear_query_fail(query, variables, api_key, timeout=10):
+        return None
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch.object(evolution_self_audit, "extract_linear_ref", side_effect=mock_extract_ref), \
+         patch.object(evolution_self_audit, "linear_graphql_query", side_effect=mock_linear_query_fail):
+
+        findings = evolution_self_audit.check_linear_sync_health()
+        # Should handle gracefully, not crash
+        assert isinstance(findings, list)
+
+
+def test_check_linear_sync_health_schema_compliance():
+    """VAL-LINSYNC-004: Output follows Finding schema (6 fields)."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    gh_issues = [
+        {
+            "number": 100,
+            "title": "[evolution] RULE_1",
+            "body": "**Rule ID**: RULE_1\n**Location**: file1.py\n",
+        },
+    ]
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout=json.dumps(gh_issues), stderr="")
+        if cmd[:2] == ["gh", "repo"]:
+            return Mock(returncode=0, stdout=json.dumps({"nameWithOwner": "hdot123/memory"}), stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    def mock_extract_ref(issue_number, repo):
+        return "INFRA-100"
+
+    def mock_linear_query(query, variables, api_key, timeout=10):
+        # Linear issue not found → triggers finding
+        return {"data": {"issue": None}}
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch.object(evolution_self_audit, "extract_linear_ref", side_effect=mock_extract_ref), \
+         patch.object(evolution_self_audit, "linear_graphql_query", side_effect=mock_linear_query):
+
+        findings = evolution_self_audit.check_linear_sync_health()
+
+        # Each finding must have all 6 required fields
+        assert len(findings) == 1
+        for finding in findings:
+            assert "rule_id" in finding
+            assert "severity" in finding
+            assert "category" in finding
+            assert "description" in finding
+            assert "location" in finding
+            assert "evidence" in finding
+            assert finding["category"] == "evolution_self_audit"
+
+
+def test_check_linear_sync_health_in_main():
+    """VAL-LINSYNC-005: Check included in main() run."""
+    from unittest.mock import patch
+
+    from memory_core.tools import evolution_self_audit
+
+    with patch.object(evolution_self_audit, "check_suppress_json", return_value=[]), \
+         patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]), \
+         patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]), \
+         patch.object(evolution_self_audit, "check_trigger_droid", return_value=[]), \
+         patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]), \
+         patch.object(evolution_self_audit, "check_config_yml", return_value=[]), \
+         patch.object(evolution_self_audit, "check_tool_health", return_value=[]), \
+         patch.object(evolution_self_audit, "check_reverse_closure", return_value=[]), \
+         patch.object(evolution_self_audit, "check_linear_sync_health", return_value=[{
+             "rule_id": "TEST",
+             "severity": "warning",
+             "category": "evolution_self_audit",
+             "description": "test",
+             "location": "test",
+             "evidence": "test",
+         }]) as mock_check:
+
+        result = evolution_self_audit.main()
+        mock_check.assert_called_once()
+        assert result == 1  # Has findings
+
+
+def test_check_linear_sync_health_all_synced():
+    """All GitHub issues have Linear counterparts - no findings."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    gh_issues = [
+        {
+            "number": 100,
+            "title": "[evolution] RULE_1",
+            "body": "**Rule ID**: RULE_1\n**Location**: file1.py\n",
+        },
+    ]
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout=json.dumps(gh_issues), stderr="")
+        if cmd[:2] == ["gh", "repo"]:
+            return Mock(returncode=0, stdout=json.dumps({"nameWithOwner": "hdot123/memory"}), stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    def mock_extract_ref(issue_number, repo):
+        return "INFRA-100"
+
+    def mock_linear_query(query, variables, api_key, timeout=10):
+        # Linear issue found and Done → synced, no finding
+        return {"data": {"issue": {"id": "abc", "state": {"name": "Done", "type": "completed"}}}}
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch.object(evolution_self_audit, "extract_linear_ref", side_effect=mock_extract_ref), \
+         patch.object(evolution_self_audit, "linear_graphql_query", side_effect=mock_linear_query):
+
         findings = evolution_self_audit.check_linear_sync_health()
         assert findings == []
-        mock_post.assert_not_called()  # No Linear API calls if no GitHub issues
+
+
+def test_check_linear_sync_health_no_github_issues():
+    """No GitHub evolution-found issues - no findings."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout="[]", stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch.object(evolution_self_audit, "linear_graphql_query") as mock_linear:
+
+        findings = evolution_self_audit.check_linear_sync_health()
+        assert findings == []
+        mock_linear.assert_not_called()  # No Linear API calls if no GitHub issues
 
 
 # GAP-B: Reverse Closure Detection Tests
@@ -5648,43 +5865,31 @@ def test_check_reverse_closure_detects_mismatch(monkeypatch):
     def mock_subprocess_run(cmd, **kwargs):
         if cmd[:3] == ["gh", "issue", "list"]:
             return Mock(returncode=0, stdout=json.dumps(gh_closed_issues), stderr="")
+        if cmd[:2] == ["gh", "repo"]:
+            return Mock(returncode=0, stdout=json.dumps({"nameWithOwner": "hdot123/memory"}), stderr="")
         return Mock(returncode=0, stdout="[]", stderr="")
+
+    def mock_extract_ref(issue_number, repo):
+        if issue_number == 200:
+            return "INFRA-200"
+        elif issue_number == 201:
+            return "INFRA-201"
+        return None
+
+    def mock_linear_query(query, variables, api_key, timeout=10):
+        linear_id = variables.get("id")
+        if linear_id == "INFRA-200":
+            # INFRA-200 is Done (closed in Linear too)
+            return {"data": {"issue": {"id": "abc", "identifier": "INFRA-200", "state": {"name": "Done", "type": "completed"}}}}
+        elif linear_id == "INFRA-201":
+            # INFRA-201 is still In Progress (mismatch: GH closed, Linear open)
+            return {"data": {"issue": {"id": "def", "identifier": "INFRA-201", "state": {"name": "In Progress", "type": "started"}}}}
+        return {"data": {"issue": None}}
 
     with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
          patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
-         patch("evolution_self_audit.requests.post") as mock_post:
-
-        def post_side_effect(url, **kwargs):
-            mock_resp = Mock()
-            mock_resp.status_code = 200
-            query_str = kwargs.get("json", {}).get("query", "")
-            # INFRA-200 is Done (closed in Linear too)
-            if "INFRA-200" in query_str:
-                mock_resp.json.return_value = {
-                    "data": {
-                        "issues": {
-                            "nodes": [{
-                                "identifier": "INFRA-200",
-                                "state": {"name": "Done"}
-                            }]
-                        }
-                    }
-                }
-            # INFRA-201 is still In Progress (mismatch: GH closed, Linear open)
-            else:
-                mock_resp.json.return_value = {
-                    "data": {
-                        "issues": {
-                            "nodes": [{
-                                "identifier": "INFRA-201",
-                                "state": {"name": "In Progress"}
-                            }]
-                        }
-                    }
-                }
-            return mock_resp
-
-        mock_post.side_effect = post_side_effect
+         patch.object(evolution_self_audit, "extract_linear_ref", side_effect=mock_extract_ref), \
+         patch.object(evolution_self_audit, "linear_graphql_query", side_effect=mock_linear_query):
 
         findings = evolution_self_audit.check_reverse_closure()
 
@@ -5694,6 +5899,7 @@ def test_check_reverse_closure_detects_mismatch(monkeypatch):
         assert findings[0]["severity"] == "warning"
         assert findings[0]["category"] == "evolution_self_audit"
         assert "#201" in findings[0]["description"]
+        assert "INFRA-201" in findings[0]["evidence"]
         assert "INFRA-201" in findings[0]["evidence"]
 
 
@@ -5714,26 +5920,21 @@ def test_check_reverse_closure_all_in_sync():
     def mock_subprocess_run(cmd, **kwargs):
         if cmd[:3] == ["gh", "issue", "list"]:
             return Mock(returncode=0, stdout=json.dumps(gh_closed_issues), stderr="")
+        if cmd[:2] == ["gh", "repo"]:
+            return Mock(returncode=0, stdout=json.dumps({"nameWithOwner": "hdot123/memory"}), stderr="")
         return Mock(returncode=0, stdout="[]", stderr="")
+
+    def mock_extract_ref(issue_number, repo):
+        return "INFRA-200"
+
+    def mock_linear_query(query, variables, api_key, timeout=10):
+        # Linear issue is also Done (in sync)
+        return {"data": {"issue": {"id": "abc", "identifier": "INFRA-200", "state": {"name": "Done", "type": "completed"}}}}
 
     with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
          patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
-         patch("evolution_self_audit.requests.post") as mock_post:
-
-        # Linear issue is also Done (in sync)
-        mock_resp = Mock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "data": {
-                "issues": {
-                    "nodes": [{
-                        "identifier": "INFRA-200",
-                        "state": {"name": "Done"}
-                    }]
-                }
-            }
-        }
-        mock_post.return_value = mock_resp
+         patch.object(evolution_self_audit, "extract_linear_ref", side_effect=mock_extract_ref), \
+         patch.object(evolution_self_audit, "linear_graphql_query", side_effect=mock_linear_query):
 
         findings = evolution_self_audit.check_reverse_closure()
         assert findings == []
@@ -5768,9 +5969,9 @@ def test_check_reverse_closure_handles_api_failure(monkeypatch):
     # Test 2: API failure
     with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
          patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
-         patch("evolution_self_audit.requests.post") as mock_post:
+         patch.object(evolution_self_audit, "linear_graphql_query") as mock_query:
 
-        mock_post.side_effect = Exception("API Error")
+        mock_query.side_effect = Exception("API Error")
         findings = evolution_self_audit.check_reverse_closure()
         assert isinstance(findings, list)
         # Should handle gracefully, not crash
@@ -5793,26 +5994,32 @@ def test_check_reverse_closure_schema_compliance():
     def mock_subprocess_run(cmd, **kwargs):
         if cmd[:3] == ["gh", "issue", "list"]:
             return Mock(returncode=0, stdout=json.dumps(gh_closed_issues), stderr="")
+        if cmd[:2] == ["gh", "repo"]:
+            return Mock(returncode=0, stdout=json.dumps({"nameWithOwner": "test/repo"}), stderr="")
         return Mock(returncode=0, stdout="[]", stderr="")
 
-    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
-         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
-         patch("evolution_self_audit.requests.post") as mock_post:
+    def mock_extract_linear_ref(number):
+        return "INFRA-200"
 
+    def mock_linear_query(query, variables, api_key, timeout=10):
         # Linear issue is still open (mismatch)
-        mock_resp = Mock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
+        return {
             "data": {
-                "issues": {
-                    "nodes": [{
-                        "identifier": "INFRA-200",
-                        "state": {"name": "In Progress"}
-                    }]
+                "issue": {
+                    "id": "test-id",
+                    "identifier": "INFRA-200",
+                    "state": {
+                        "name": "In Progress",
+                        "type": "started"
+                    }
                 }
             }
         }
-        mock_post.return_value = mock_resp
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch("evolution_self_audit.extract_linear_ref", side_effect=mock_extract_linear_ref), \
+         patch("evolution_self_audit.linear_graphql_query", side_effect=mock_linear_query):
 
         findings = evolution_self_audit.check_reverse_closure()
 
@@ -5868,9 +6075,8 @@ def test_check_reverse_closure_no_closed_issues():
 
     with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
          patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
-         patch("evolution_self_audit.requests.post") as mock_post:
+         patch("evolution_self_audit.linear_graphql_query") as mock_query:
 
         findings = evolution_self_audit.check_reverse_closure()
         assert findings == []
-        mock_post.assert_not_called()  # No Linear API calls if no closed GitHub issues
-
+        mock_query.assert_not_called()  # No Linear API calls if no closed GitHub issues
