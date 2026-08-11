@@ -456,7 +456,7 @@ Droid 执行代码后应：
 
 建议：
 - 分支名包含 Linear issue 标识（如 `factory/INFRA-2`）
-- PR 描述中包含 `Closes INFRA-2` 或对应 issue ID
+- PR 描述中包含 `Fixes INFRA-2` 或对应 issue ID
 
 ---
 

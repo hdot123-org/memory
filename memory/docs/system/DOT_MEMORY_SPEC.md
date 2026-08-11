@@ -252,7 +252,7 @@ Runtime required：被 `memory_hook_impls.py` workbot adapter 在任务操作时
 ```markdown
 # 收件箱
 
-临时任务捕获区。用于快速记录待处理事项，后续应整理到正式任务管理系统。
+临时任务捕获区。用于快速记录待处理事项，后续应整理到 Linear（唯一人工任务管理面）。
 
 ## 待处理事项
 

@@ -102,7 +102,8 @@ EXISTING=$(gh issue list \
 
 - **必须搜索 `--state all`**（不仅仅是 open），防止已关闭 Issue 被重复创建
 - Issue 创建是硬性前置条件，未获得 Issue 号前不得开始代码修复
-- PR body 必须包含 `Closes #<issue-number>`，合并后 Issue 自动关闭
+- GitHub Issue 为错误管道自动产物，任务管理/优先级/状态跟踪请前往 Linear（参见 `docs/architecture/issue-flow.md` 职责约定）
+- PR body 必须包含 `Fixes #<issue-number>`，合并后 Issue 自动关闭
 
 ## 4. 四层防护机制
 
