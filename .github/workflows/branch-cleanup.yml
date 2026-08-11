@@ -3,6 +3,8 @@ name: Branch Cleanup
 on:
   schedule:
     - cron: '0 6 * * *'  # Daily at 06:00 UTC
+  pull_request:
+    types: [closed]
   workflow_dispatch:
 
 permissions:
@@ -37,6 +39,16 @@ jobs:
           CUTOFF_EPOCH=$(date -u -d '24 hours ago' '+%s' 2>/dev/null || date -u -v-24H '+%s')
 
           echo "Cutoff epoch: $CUTOFF_EPOCH ($(date -u -d @$CUTOFF_EPOCH '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -r $CUTOFF_EPOCH '+%Y-%m-%dT%H:%M:%SZ'))"
+          echo ""
+
+          # Determine cleanup mode based on trigger source
+          IMMEDIATE_MODE="false"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            IMMEDIATE_MODE="true"
+            echo "Triggered by pull_request:closed — immediate cleanup mode (24h threshold skipped)."
+          else
+            echo "Triggered by ${{ github.event_name }} — scheduled cleanup mode (24h threshold enforced)."
+          fi
           echo ""
 
           # Get all remote branches except main
@@ -76,9 +88,13 @@ jobs:
 
             LAST_COMMIT_DATE=$(date -u -d "@$LAST_COMMIT_EPOCH" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -r "$LAST_COMMIT_EPOCH" '+%Y-%m-%dT%H:%M:%SZ')
 
-            # Compare epochs
-            if [ "$LAST_COMMIT_EPOCH" -lt "$CUTOFF_EPOCH" ]; then
-              echo "  No open PR and last commit ($LAST_COMMIT_DATE) is older than 24h."
+            # Determine if branch should be deleted
+            if [ "$IMMEDIATE_MODE" = "true" ] || [ "$LAST_COMMIT_EPOCH" -lt "$CUTOFF_EPOCH" ]; then
+              if [ "$IMMEDIATE_MODE" = "true" ]; then
+                echo "  Immediate mode: orphan branch with no open PR, deleting."
+              else
+                echo "  No open PR and last commit ($LAST_COMMIT_DATE) is older than 24h."
+              fi
               echo "  Deleting branch: $BRANCH"
 
               # Delete remote branch
