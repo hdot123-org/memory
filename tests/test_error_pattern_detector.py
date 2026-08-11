@@ -16,10 +16,12 @@ from memory_core.tools.error_pattern_detector import (
     compute_fingerprint,
     evaluate_threshold,
     group_by_fingerprint,
+    main,
     merge_patterns,
     normalize_error_msg,
     parse_error_file,
     read_registry,
+    resolve_patterns,
     run_pipeline,
     scan_project,
     write_registry,
@@ -1417,4 +1419,387 @@ class TestPipelineArtifactFiltering:
 
         captured = capsys.readouterr()
         assert "excluded" in captured.err.lower() or "excluded" in captured.out.lower()
+
+
+# ============================================================================
+# INFRA-186: Resolved Pattern Persistence & Resolve Command Tests
+# ============================================================================
+
+
+class TestMergePatternsResolvedPersistence:
+    """INFRA-186: merge_patterns() preserves resolved entries no longer detected."""
+
+    @staticmethod
+    def _make_group(fp: str, error_type: str = "test_error") -> PatternGroup:
+        return PatternGroup(
+            fingerprint=fp,
+            type=error_type,
+            script="test_script",
+            normalized_msg="test message",
+            status="detected",
+            first_seen="2026-07-12T11:07:05+08:00",
+            last_seen="2026-07-12T11:07:05+08:00",
+            distinct_days=["2026-07-12"],
+            total_count=5,
+            projects=["/test"],
+            sample_first={"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+            sample_last={"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+        )
+
+    def test_resolved_entry_not_detected_is_preserved(self) -> None:
+        """INFRA-186: A resolved entry absent from current detection stays in registry."""
+        existing = {
+            "resolved_fp_001": {
+                "fingerprint": "resolved_fp_001",
+                "type": "test_error",
+                "script": "test_script",
+                "normalized_msg": "old resolved error",
+                "status": "resolved",
+                "resolved_at": "2026-07-15T10:00:00+08:00",
+                "first_detected": "2026-01-01T00:00:00+08:00",
+                "last_updated": "2026-07-15T10:00:00+08:00",
+            },
+        }
+
+        # Current detection has a different pattern, resolved one is absent
+        detected = {"detected_fp_002": self._make_group("detected_fp_002")}
+        merged = merge_patterns(detected, existing)
+
+        # Both the detected and the resolved-absent entries should be present
+        merged_fps = {e["fingerprint"] for e in merged}
+        assert "resolved_fp_001" in merged_fps
+        assert "detected_fp_002" in merged_fps
+
+        # The resolved entry keeps its status and resolved_at
+        resolved_entry = next(e for e in merged if e["fingerprint"] == "resolved_fp_001")
+        assert resolved_entry["status"] == "resolved"
+        assert resolved_entry["resolved_at"] == "2026-07-15T10:00:00+08:00"
+
+    def test_detected_entry_not_detected_is_dropped(self) -> None:
+        """INFRA-186: A non-resolved entry absent from current detection is dropped."""
+        existing = {
+            "detected_fp_001": {
+                "fingerprint": "detected_fp_001",
+                "type": "test_error",
+                "script": "test_script",
+                "normalized_msg": "old detected error",
+                "status": "detected",
+                "first_detected": "2026-01-01T00:00:00+08:00",
+                "last_updated": "2026-07-15T10:00:00+08:00",
+            },
+        }
+
+        # Current detection is empty — old detected entry should be dropped
+        detected: dict[str, PatternGroup] = {}
+        merged = merge_patterns(detected, existing)
+
+        merged_fps = {e["fingerprint"] for e in merged}
+        assert "detected_fp_001" not in merged_fps
+
+    def test_resolved_and_detected_both_preserved(self) -> None:
+        """INFRA-186: Resolved entry stays while detected entry gets merged."""
+        existing = {
+            "resolved_fp": {
+                "fingerprint": "resolved_fp",
+                "type": "resolved_type",
+                "script": "test_script",
+                "normalized_msg": "resolved message",
+                "status": "resolved",
+                "resolved_at": "2026-07-15T10:00:00+08:00",
+                "first_detected": "2026-01-01T00:00:00+08:00",
+            },
+            "detected_fp": {
+                "fingerprint": "detected_fp",
+                "type": "test_error",
+                "script": "test_script",
+                "normalized_msg": "test message",
+                "status": "detected",
+                "first_detected": "2026-06-01T00:00:00+08:00",
+            },
+        }
+
+        # Only detected_fp is in current detection
+        detected = {"detected_fp": self._make_group("detected_fp")}
+        merged = merge_patterns(detected, existing)
+
+        merged_fps = {e["fingerprint"] for e in merged}
+        assert merged_fps == {"resolved_fp", "detected_fp"}
+
+    def test_result_sorted_by_fingerprint(self) -> None:
+        """INFRA-186: Result is sorted by fingerprint for determinism."""
+        existing = {
+            "zzz_resolved": {
+                "fingerprint": "zzz_resolved",
+                "status": "resolved",
+                "resolved_at": "2026-07-15T10:00:00+08:00",
+                "first_detected": "2026-01-01T00:00:00+08:00",
+            },
+            "aaa_resolved": {
+                "fingerprint": "aaa_resolved",
+                "status": "resolved",
+                "resolved_at": "2026-07-15T10:00:00+08:00",
+                "first_detected": "2026-01-01T00:00:00+08:00",
+            },
+        }
+
+        # detected pattern sorts between the two resolved entries
+        detected = {"mmm_detected": self._make_group("mmm_detected")}
+        merged = merge_patterns(detected, existing)
+
+        fps = [e["fingerprint"] for e in merged]
+        assert fps == sorted(fps)
+        assert fps == ["aaa_resolved", "mmm_detected", "zzz_resolved"]
+
+    def test_resolved_entry_re_detected_keeps_resolved_status(self) -> None:
+        """INFRA-186: When a resolved entry is re-detected, status stays resolved (INFRA-184)."""
+        existing = {
+            "resolved_fp": {
+                "fingerprint": "resolved_fp",
+                "status": "resolved",
+                "resolved_at": "2026-07-15T10:00:00+08:00",
+                "first_detected": "2026-01-01T00:00:00+08:00",
+            },
+        }
+
+        # The resolved pattern is now re-detected
+        detected = {"resolved_fp": self._make_group("resolved_fp")}
+        merged = merge_patterns(detected, existing)
+
+        assert len(merged) == 1
+        assert merged[0]["status"] == "resolved"
+        assert merged[0]["resolved_at"] == "2026-07-15T10:00:00+08:00"
+
+
+class TestResolvePatterns:
+    """INFRA-186: --resolve and --resolve-type CLI command tests."""
+
+    @staticmethod
+    def _write_registry(
+        registry_path: Path,
+        entries: list[dict[str, Any]],
+    ) -> None:
+        """Helper to write a registry.jsonl file."""
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        with registry_path.open("w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry) + "\n")
+
+    @staticmethod
+    def _make_registry_entry(
+        fp: str,
+        error_type: str = "test_error",
+        status: str = "detected",
+    ) -> dict[str, Any]:
+        return {
+            "fingerprint": fp,
+            "type": error_type,
+            "script": "test_script",
+            "normalized_msg": "test message",
+            "status": status,
+            "first_seen": "2026-07-12T11:07:05+08:00",
+            "last_seen": "2026-07-12T11:07:05+08:00",
+            "first_detected": "2026-08-01T00:00:00+08:00",
+            "last_updated": "2026-08-01T00:00:00+08:00",
+            "distinct_days": ["2026-07-12"],
+            "total_count": 5,
+            "projects": ["/test"],
+            "threshold_met": "both",
+            "sample_first": {"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+            "sample_last": {"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+        }
+
+    def test_resolve_by_fingerprint(self, tmp_path: Path, capsys: Any) -> None:
+        """INFRA-186: --resolve <fingerprint> marks a single pattern as resolved."""
+        registry_path = tmp_path / "registry.jsonl"
+        self._write_registry(registry_path, [
+            self._make_registry_entry("fp_001"),
+            self._make_registry_entry("fp_002"),
+        ])
+
+        count = resolve_patterns(fingerprint="fp_001", registry_path=registry_path)
+
+        assert count == 1
+        registry = read_registry(registry_path)
+        assert registry["fp_001"]["status"] == "resolved"
+        assert "resolved_at" in registry["fp_001"]
+        # Unmatched entry should be unchanged
+        assert registry["fp_002"]["status"] == "detected"
+        assert "resolved_at" not in registry["fp_002"]
+
+        captured = capsys.readouterr()
+        assert "Resolved 1 pattern(s)" in captured.out
+        assert "fp_001" in captured.out
+
+    def test_resolve_type_marks_all_of_type(self, tmp_path: Path, capsys: Any) -> None:
+        """INFRA-186: --resolve-type <type> marks all patterns of that type."""
+        registry_path = tmp_path / "registry.jsonl"
+        self._write_registry(registry_path, [
+            self._make_registry_entry("fp_001", error_type="transcript_missing"),
+            self._make_registry_entry("fp_002", error_type="transcript_missing"),
+            self._make_registry_entry("fp_003", error_type="llm_api_error"),
+        ])
+
+        count = resolve_patterns(
+            pattern_type="transcript_missing",
+            registry_path=registry_path,
+        )
+
+        assert count == 2
+        registry = read_registry(registry_path)
+        assert registry["fp_001"]["status"] == "resolved"
+        assert registry["fp_002"]["status"] == "resolved"
+        # Different type should be unchanged
+        assert registry["fp_003"]["status"] == "detected"
+
+        captured = capsys.readouterr()
+        assert "Resolved 2 pattern(s)" in captured.out
+
+    def test_resolve_missing_registry(self, tmp_path: Path, capsys: Any) -> None:
+        """INFRA-186: Resolve handles missing registry gracefully."""
+        registry_path = tmp_path / "nonexistent.jsonl"
+        count = resolve_patterns(fingerprint="fp_001", registry_path=registry_path)
+
+        assert count == 0
+        captured = capsys.readouterr()
+        assert "no registry found" in captured.err
+
+    def test_resolve_empty_registry(self, tmp_path: Path, capsys: Any) -> None:
+        """INFRA-186: Resolve handles empty registry gracefully."""
+        registry_path = tmp_path / "registry.jsonl"
+        registry_path.parent.mkdir(parents=True, exist_ok=True)
+        registry_path.write_text("")
+
+        count = resolve_patterns(fingerprint="fp_001", registry_path=registry_path)
+
+        assert count == 0
+        captured = capsys.readouterr()
+        assert "registry is empty" in captured.err
+
+    def test_resolve_no_matching_patterns(self, tmp_path: Path, capsys: Any) -> None:
+        """INFRA-186: Resolve prints message when no patterns match."""
+        registry_path = tmp_path / "registry.jsonl"
+        self._write_registry(registry_path, [
+            self._make_registry_entry("fp_001"),
+        ])
+
+        count = resolve_patterns(fingerprint="nonexistent_fp", registry_path=registry_path)
+
+        assert count == 0
+        captured = capsys.readouterr()
+        assert "No matching patterns found" in captured.out
+
+    def test_resolve_no_matching_type(self, tmp_path: Path, capsys: Any) -> None:
+        """INFRA-186: Resolve-type prints message when no patterns match the type."""
+        registry_path = tmp_path / "registry.jsonl"
+        self._write_registry(registry_path, [
+            self._make_registry_entry("fp_001", error_type="type_a"),
+        ])
+
+        count = resolve_patterns(
+            pattern_type="nonexistent_type",
+            registry_path=registry_path,
+        )
+
+        assert count == 0
+        captured = capsys.readouterr()
+        assert "No matching patterns found" in captured.out
+
+    def test_resolve_already_resolved_stays_resolved(self, tmp_path: Path) -> None:
+        """INFRA-186: Re-resolving an already-resolved entry keeps it resolved."""
+        registry_path = tmp_path / "registry.jsonl"
+        entry = self._make_registry_entry("fp_001", status="resolved")
+        entry["resolved_at"] = "2026-07-15T10:00:00+08:00"
+        self._write_registry(registry_path, [entry])
+
+        count = resolve_patterns(fingerprint="fp_001", registry_path=registry_path)
+
+        assert count == 1
+        registry = read_registry(registry_path)
+        assert registry["fp_001"]["status"] == "resolved"
+        # resolved_at should be updated to current time
+        assert registry["fp_001"]["resolved_at"] != "2026-07-15T10:00:00+08:00"
+
+    def test_resolve_preserves_other_entries(self, tmp_path: Path) -> None:
+        """INFRA-186: Resolving one pattern does not alter other entries."""
+        registry_path = tmp_path / "registry.jsonl"
+        self._write_registry(registry_path, [
+            self._make_registry_entry("fp_001"),
+            self._make_registry_entry("fp_002"),
+            self._make_registry_entry("fp_003"),
+        ])
+
+        resolve_patterns(fingerprint="fp_002", registry_path=registry_path)
+
+        registry = read_registry(registry_path)
+        # All three entries should still be present
+        assert len(registry) == 3
+        # Only fp_002 should be resolved
+        assert registry["fp_001"]["status"] == "detected"
+        assert registry["fp_002"]["status"] == "resolved"
+        assert registry["fp_003"]["status"] == "detected"
+
+
+class TestResolveCLIArgs:
+    """INFRA-186: CLI argument parsing for --resolve and --resolve-type."""
+
+    def test_resolve_flag_parsed(self) -> None:
+        """--resolve FINGERPRINT is parsed correctly."""
+        parser = build_parser()
+        args = parser.parse_args(["--resolve", "abc123def456"])
+        assert args.resolve == "abc123def456"
+        assert args.resolve_type is None
+
+    def test_resolve_type_flag_parsed(self) -> None:
+        """--resolve-type TYPE is parsed correctly."""
+        parser = build_parser()
+        args = parser.parse_args(["--resolve-type", "transcript_missing"])
+        assert args.resolve_type == "transcript_missing"
+        assert args.resolve is None
+
+    def test_resolve_and_resolve_type_mutually_exclusive(self) -> None:
+        """--resolve and --resolve-type are mutually exclusive."""
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--resolve", "abc", "--resolve-type", "type_a"])
+
+    def test_resolve_with_project_not_excluded(self) -> None:
+        """--resolve can be combined with --project (but resolve takes priority in _main_inner)."""
+        parser = build_parser()
+        args = parser.parse_args(["--project", "/test", "--resolve", "abc"])
+        assert args.resolve == "abc"
+        assert args.project == "/test"
+
+    def test_help_includes_resolve(self) -> None:
+        """Help text includes --resolve and --resolve-type."""
+        parser = build_parser()
+        help_text = parser.format_help()
+        assert "--resolve" in help_text
+        assert "--resolve-type" in help_text
+
+
+class TestResolveCLIMain:
+    """INFRA-186: main() routes to resolve_patterns when --resolve is given."""
+
+    def test_main_resolve_calls_resolve_patterns(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """main() with --resolve invokes resolve_patterns and returns early."""
+        # Set cwd to tmp_path so default registry path resolves there
+        monkeypatch.chdir(tmp_path)
+        # No registry → should print warning and return 0, no crash
+        main(["--resolve", "nonexistent_fp"])
+
+    def test_main_resolve_type_calls_resolve_patterns(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: Any,
+    ) -> None:
+        """main() with --resolve-type invokes resolve_patterns and returns early."""
+        monkeypatch.chdir(tmp_path)
+        main(["--resolve-type", "transcript_missing"])
+        captured = capsys.readouterr()
+        assert "no registry found" in captured.err
 
