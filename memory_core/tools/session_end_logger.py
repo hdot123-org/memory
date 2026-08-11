@@ -597,15 +597,10 @@ def _safe_run_session_end(
     try:
         project_root = Path(project_root_str).expanduser().resolve()
 
-        # Check jsonl exists
+        # Missing transcript is an expected, benign condition — the hook simply
+        # has nothing to process. Not an error: logging it pollutes error logs
+        # and triggers false-positive evolution scanner findings (INFRA-164).
         if not jsonl_path.exists():
-            if write_error_log is not None:
-                write_error_log(
-                    project_root_str,
-                    "transcript_missing",
-                    {"session_id": session_id, "expected_path": str(jsonl_path)},
-                    f"transcript not found: {jsonl_path}",
-                )
             return 0
 
         # Read settings
