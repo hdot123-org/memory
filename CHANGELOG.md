@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.6](https://github.com/hdot123/memory/compare/v0.19.5...v0.19.6) (2026-08-11)
+
+
+### Bug Fixes
+
+* 添加 reconcile_in_progress 对账机制和幂等性守卫 (Fixes [#456](https://github.com/hdot123/memory/issues/456)) ([#491](https://github.com/hdot123/memory/issues/491)) ([5ce7811](https://github.com/hdot123/memory/commit/5ce7811eade8bd5151829213630343582bc71513))
+
 ## [0.19.5](https://github.com/hdot123/memory/compare/v0.19.4...v0.19.5) (2026-08-11)
 
 
