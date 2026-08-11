@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/hdot123/memory/compare/v0.21.0...v0.22.0) (2026-08-11)
+
+
+### Features
+
+* 添加 evolution heartbeat 独立健康监控管道 (INFRA-204) ([#504](https://github.com/hdot123/memory/issues/504)) ([3188c7e](https://github.com/hdot123/memory/commit/3188c7e3f55863bafc11d53cd549664acf5f2280))
+
 ## [0.21.0](https://github.com/hdot123/memory/compare/v0.20.0...v0.21.0) (2026-08-11)
 
 
