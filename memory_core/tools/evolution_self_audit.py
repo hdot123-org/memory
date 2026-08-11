@@ -540,6 +540,7 @@ def check_linear_sync() -> list[dict[str, Any]]:
     return findings
 
 
+<<<<<<< HEAD
 def check_heartbeat_channel() -> list[dict[str, Any]]:
     """Check 9: verify evolution heartbeat marker is fresh (INFRA-204).
 
@@ -600,6 +601,95 @@ def check_heartbeat_channel() -> list[dict[str, Any]]:
             "evidence": str(e),
             "category": CATEGORY,
         })
+=======
+def check_reverse_closure() -> list[dict[str, Any]]:
+    """Check 9: detect GitHub↔Linear closure state mismatches."""
+    findings = []
+
+    linear_api_key = os.environ.get("LINEAR_API_KEY")
+    if not linear_api_key:
+        return findings
+
+    try:
+        result = subprocess.run(
+            [
+                "gh", "issue", "list",
+                "--label", "evolution-found",
+                "--state", "closed",
+                "--limit", "200",
+                "--json", "number,title,body",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if result.returncode != 0:
+            return findings
+
+        gh_closed = json.loads(result.stdout) if result.stdout.strip() else []
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+        return findings
+
+    if not gh_closed:
+        return findings
+
+    open_states = {"In Progress", "Todo", "Backlog", "Triage", "Canceled"}
+
+    for issue in gh_closed:
+        issue_number = issue.get("number")
+        if not issue_number:
+            continue
+
+        linear_id = f"INFRA-{issue_number}"
+
+        try:
+            query = f"""
+            query {{
+                issues(filter: {{identifier: {{eq: "{linear_id}"}}}}) {{
+                    nodes {{
+                        identifier
+                        state {{
+                            name
+                        }}
+                    }}
+                }}
+            }}
+            """
+
+            response = requests.post(
+                "https://api.linear.app/graphql",
+                headers={
+                    "Authorization": f"Bearer {linear_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"query": query},
+                timeout=10,
+            )
+
+            if response.status_code != 200:
+                continue
+
+            data = response.json()
+            nodes = data.get("data", {}).get("issues", {}).get("nodes", [])
+
+            if not nodes:
+                continue
+
+            state_name = nodes[0].get("state", {}).get("name", "")
+            if state_name in open_states:
+                findings.append({
+                    "rule_id": "EVOLUTION_REVERSE_CLOSURE",
+                    "severity": "warning",
+                    "category": CATEGORY,
+                    "description": f"GitHub issue #{issue_number} closed but Linear {linear_id} still open ({state_name})",
+                    "location": f"github-issue-{issue_number}",
+                    "evidence": f"linear_id={linear_id}, linear_state={state_name}",
+                })
+
+        except Exception:
+            continue
+>>>>>>> 9eab5fa (fix: 添加反向闭环检测 (Check 9)，检测 GitHub 关闭但 Linear 未同步的问题 (Fixes #457))
 
     return findings
 
@@ -615,7 +705,11 @@ def main() -> int:
     all_findings.extend(check_config_yml())
     all_findings.extend(check_tool_health())
     all_findings.extend(check_linear_sync())
+<<<<<<< HEAD
     all_findings.extend(check_heartbeat_channel())
+=======
+    all_findings.extend(check_reverse_closure())
+>>>>>>> 9eab5fa (fix: 添加反向闭环检测 (Check 9)，检测 GitHub 关闭但 Linear 未同步的问题 (Fixes #457))
 
     json.dump(all_findings, sys.stdout, indent=2)
     print()
