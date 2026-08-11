@@ -552,11 +552,20 @@ def test_adapt_error_patterns():
             "total_count": 5,
             "threshold_met": "both",  # Meets both thresholds
         },
+        {
+            "fingerprint": "resolved_test_001",
+            "type": "some_error",
+            "script": "some_script",
+            "normalized_msg": "resolved error",
+            "status": "resolved",  # RESOLVED — should be skipped (INFRA-184)
+            "total_count": 10,
+            "threshold_met": "both",  # Would normally generate critical finding
+        },
     ]
 
     findings = adapt_error_patterns(raw_lines)
 
-    # Only entries with threshold_met should be converted
+    # Only entries with threshold_met should be converted; resolved entries skipped
     assert len(findings) == 2
     # First threshold entry
     assert findings[0]["rule_id"] == "ERROR_PATTERN_JSON_PARSE_ERROR"
@@ -567,6 +576,11 @@ def test_adapt_error_patterns():
     # Second threshold entry (both)
     assert findings[1]["rule_id"] == "ERROR_PATTERN_TRANSCRIPT_MISSING"
     assert findings[1]["severity"] == "critical"  # "both" threshold
+    # Resolved entry must NOT appear in findings (INFRA-184)
+    resolved_rule_ids = [f["rule_id"] for f in findings if "SOME_ERROR" in f["rule_id"]]
+    assert resolved_rule_ids == []
+    for f in findings:
+        assert "resolved_test_001" not in f["evidence"]
 
 
 def test_config_has_json_flags():

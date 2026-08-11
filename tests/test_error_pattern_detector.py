@@ -650,6 +650,69 @@ class TestRegistryIO:
         assert merged[0]["distinct_days"] == ["2026-07-12"]
         assert merged[0]["projects"] == ["/new"]
 
+    def test_merge_patterns_preserves_resolved_status(self, tmp_path: Path) -> None:
+        """VAL-REGISTRY-006: Merge preserves resolved status from existing entry (INFRA-184).
+
+        When an existing registry entry is marked status="resolved", merge_patterns
+        must preserve that status (and resolved_at) instead of overwriting it back
+        to "detected", so manual resolutions stay durable across runs.
+        """
+        existing = {
+            "abc123": {
+                "fingerprint": "abc123",
+                "status": "resolved",
+                "resolved_at": "2026-07-15T10:00:00+08:00",
+                "first_detected": "2026-01-01T00:00:00+08:00",
+            }
+        }
+
+        # New detection of the same pattern (status defaults to "detected")
+        group = PatternGroup(
+            fingerprint="abc123",
+            type="test_error",
+            script="test_script",
+            normalized_msg="test message",
+            status="detected",
+            first_seen="2026-07-12T11:07:05+08:00",
+            last_seen="2026-07-12T11:07:05+08:00",
+            distinct_days=["2026-07-12"],
+            total_count=5,
+            projects=["/test"],
+            sample_first={"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+            sample_last={"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+        )
+
+        detected = {"abc123": group}
+        merged = merge_patterns(detected, existing)
+
+        # resolved status and resolved_at must be preserved, not overwritten
+        assert merged[0]["status"] == "resolved"
+        assert merged[0]["resolved_at"] == "2026-07-15T10:00:00+08:00"
+
+    def test_merge_patterns_detected_status_when_no_existing(self, tmp_path: Path) -> None:
+        """VAL-REGISTRY-007: New patterns default to status=detected (INFRA-184)."""
+        group = PatternGroup(
+            fingerprint="new_fp",
+            type="test_error",
+            script="test_script",
+            normalized_msg="test message",
+            status="detected",
+            first_seen="2026-07-12T11:07:05+08:00",
+            last_seen="2026-07-12T11:07:05+08:00",
+            distinct_days=["2026-07-12"],
+            total_count=5,
+            projects=["/test"],
+            sample_first={"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+            sample_last={"ts": "2026-07-12T11:07:05+08:00", "msg": "test"},
+        )
+
+        detected = {"new_fp": group}
+        merged = merge_patterns(detected, existing={})
+
+        # No existing entry → default detected status, no resolved_at
+        assert merged[0]["status"] == "detected"
+        assert "resolved_at" not in merged[0]
+
     def test_read_registry_skips_malformed_lines(self, tmp_path: Path, capsys: Any) -> None:
         """VAL-RESILIENCE-002: Malformed JSONL lines are skipped."""
         registry_path = tmp_path / "registry.jsonl"

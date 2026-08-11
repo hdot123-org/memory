@@ -426,12 +426,23 @@ def merge_patterns(
             if fd and isinstance(fd, str):
                 first_detected = fd
 
+        # Preserve "resolved" status from existing entry so manual resolutions
+        # are durable across runs (INFRA-184). Default to the group's status.
+        status: str = group.status
+        resolved_at: str | None = None
+        if fp in existing:
+            existing_entry = existing[fp]
+            existing_status = existing_entry.get("status")
+            if existing_status == "resolved":
+                status = "resolved"
+                resolved_at = existing_entry.get("resolved_at")
+
         entry: dict[str, Any] = {
             "fingerprint": fp,
             "type": group.type,
             "script": group.script,
             "normalized_msg": group.normalized_msg,
-            "status": group.status,
+            "status": status,
             "first_seen": group.first_seen,
             "last_seen": group.last_seen,
             "first_detected": first_detected,
@@ -443,6 +454,8 @@ def merge_patterns(
             "sample_first": group.sample_first,
             "sample_last": group.sample_last,
         }
+        if resolved_at:
+            entry["resolved_at"] = resolved_at
         result.append(entry)
 
     return result
