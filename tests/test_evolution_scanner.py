@@ -3748,6 +3748,41 @@ def test_main_no_exit_when_github_fails_but_no_findings():
         main()
 
 
+def test_main_does_not_auto_close_when_p2a_exits(tmp_path):
+    """GAP-G (INFRA-172): auto_close_resolved must NOT run when P2-A triggers hard exit."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [{'name': 'test_tool', 'command': 'echo "[]"'}],
+        'severity_order': {'critical': 3, 'warning': 2, 'info': 1},
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 3,
+        'snapshot_limit': 100,
+        'github': {'owner': 'test', 'repo': 'test'}
+    }
+
+    finding = Finding("RULE_001", "warning", "test", "test", "test.md", "test")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.run_audit_tool', return_value=[{'rule_id': 'RULE_001', 'severity': 'warning', 'category': 'test', 'description': 'test', 'location': 'test.md', 'evidence': 'test'}]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[finding]), \
+         patch('evolution_scanner.detect_regressions', return_value=[finding]), \
+         patch('evolution_scanner.get_open_issues', side_effect=RuntimeError("rate limit exceeded")), \
+         patch('evolution_scanner.create_issue'), \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved') as mock_auto_close:
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 1
+        # GAP-G: auto_close_resolved must NOT be called when P2-A causes hard exit
+        mock_auto_close.assert_not_called()
+
+
 def test_run_audit_tool_strips_gh_token_from_subprocess():
     """P2-B: run_audit_tool strips GH_TOKEN from subprocess environment."""
     from evolution_scanner import run_audit_tool

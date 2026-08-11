@@ -366,9 +366,6 @@ def main() -> None:
     check_isolation(all_findings, history_path, config["isolation_threshold"], config["failure_label"], config["dedup_label"])
     print(f"[evolution] Tick complete: {len(all_findings)} findings, {issues_created} issues created")
 
-    # Auto-close resolved issues (after issue creation to avoid closing newly created ones)
-    auto_close_resolved(all_findings, config["dedup_label"])
-
     # P1-2: Hard exit when findings exist but zero issues created
     if deduped and issues_created == 0:
         print("::error::findings exist but zero issues created")
@@ -377,6 +374,11 @@ def main() -> None:
     if gh_failed and all_findings:
         print("::error::GitHub API unavailable, cannot verify dedup; aborting tick to prevent silent loop death")
         sys.exit(1)
+
+    # GAP-G: auto_close_resolved moved AFTER P1-2/P2-A hard exit checks.
+    # Previously called before these checks, meaning if P2-A triggered a hard exit,
+    # auto_close had already executed. Now auto_close only runs on healthy ticks.
+    auto_close_resolved(all_findings, config["dedup_label"])
 
 
 if __name__ == "__main__":
