@@ -315,10 +315,13 @@ def test_issue_body_no_droid_trigger():
 def test_get_open_issues():
     """Fetch open issues with evolution-found label."""
     with patch("evolution_scanner.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout='[{"title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\\n**Location**: file1.md", "number": 42}]',
-        )
+        mock_run.side_effect = [
+            MagicMock(
+                returncode=0,
+                stdout='[{"title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\\n**Location**: file1.md", "number": 42}]',
+            ),  # open query
+            MagicMock(returncode=0, stdout="[]", stderr=""),  # closed query
+        ]
         issues = get_open_issues("evolution-found")
         assert len(issues) == 1
         assert issues[0]["rule_id"] == "RULE_001"
@@ -964,11 +967,14 @@ def test_parse_issue_fields_early_break():
 def test_gh_limit_200_in_get_open_issues():
     """VAL-FIX-ROBUST-001: get_open_issues includes --limit 200 to prevent dedup failure."""
     with patch("evolution_scanner.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="[]")
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="[]"),  # open query
+            MagicMock(returncode=0, stdout="[]"),  # closed query
+        ]
         get_open_issues("evolution-found")
 
-        # Verify --limit 200 is in the gh command args
-        call_args = mock_run.call_args[0][0]
+        # Verify --limit 200 is in the gh command args (first call, open query)
+        call_args = mock_run.call_args_list[0][0][0]
         assert "--limit" in call_args
         limit_idx = call_args.index("--limit")
         assert call_args[limit_idx + 1] == "200"
@@ -1015,10 +1021,13 @@ def test_isolated_issue_suppresses_rebuild():
     """VAL-FIX-ROBUST-002: Issues with evolution-isolated label are counted in dedup."""
     with patch("evolution_scanner.subprocess.run") as mock_run:
         # Mock returns an issue with evolution-isolated label
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout='[{"title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\\n**Location**: file.md", "number": 42}]',
-        )
+        mock_run.side_effect = [
+            MagicMock(
+                returncode=0,
+                stdout='[{"title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\\n**Location**: file.md", "number": 42}]',
+            ),  # open query
+            MagicMock(returncode=0, stdout="[]", stderr=""),  # closed query
+        ]
         issues = get_open_issues("evolution-found")
 
         # Verify the isolated issue is included in the results
@@ -1027,7 +1036,7 @@ def test_isolated_issue_suppresses_rebuild():
         assert issues[0]["location"] == "file.md"
 
         # Verify single-prefix OR form: label:evolution-found,evolution-isolated
-        call_args = mock_run.call_args[0][0]
+        call_args = mock_run.call_args_list[0][0][0]
         assert "--search" in call_args, f"--search not found in command args: {call_args}"
         search_idx = call_args.index("--search")
         search_value = call_args[search_idx + 1]
@@ -1568,10 +1577,13 @@ def test_empty_location_not_excluded_from_dedup():
     """
     with patch("evolution_scanner.subprocess.run") as mock_run:
         # Mock gh issue list returning an issue with empty location
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout='[{"number": 123, "body": "**Rule ID**: CONSISTENCY_ERROR\\n**Location**: "}]'
-        )
+        mock_run.side_effect = [
+            MagicMock(
+                returncode=0,
+                stdout='[{"number": 123, "body": "**Rule ID**: CONSISTENCY_ERROR\\n**Location**: "}]'
+            ),  # open query
+            MagicMock(returncode=0, stdout="[]", stderr=""),  # closed query
+        ]
 
         issues = get_open_issues("evolution-found")
 
@@ -4913,3 +4925,154 @@ def test_existing_auto_close_tests_still_pass(tmp_path):
         close_call = mock_run.call_args_list[1]
         close_args = close_call[0][0]
         assert close_args[0:4] == ["gh", "issue", "close", "102"]
+
+
+# ============================================================================
+# GAP-C2: Dedup includes recently closed issues (Fixes #454)
+# ============================================================================
+
+def test_get_open_issues_queries_both_states():
+    """VAL-DEDUP-001: get_open_issues makes two gh calls: open + closed."""
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+        ]
+        get_open_issues("evolution-found")
+        assert mock_run.call_count == 2
+        open_call_args = mock_run.call_args_list[0][0][0]
+        assert "--state" in open_call_args
+        assert open_call_args[open_call_args.index("--state") + 1] == "open"
+        closed_call_args = mock_run.call_args_list[1][0][0]
+        assert "--state" in closed_call_args
+        assert closed_call_args[closed_call_args.index("--state") + 1] == "closed"
+
+
+def test_get_open_issues_closed_uses_limit_100():
+    """VAL-DEDUP-001: closed query uses --limit 100 to bound the window."""
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+        ]
+        get_open_issues("evolution-found")
+        closed_call_args = mock_run.call_args_list[1][0][0]
+        assert "--limit" in closed_call_args
+        assert closed_call_args[closed_call_args.index("--limit") + 1] == "100"
+
+
+def test_get_open_issues_dedup_set_includes_closed():
+    """VAL-DEDUP-002: dedup set includes keys from both open and closed issues."""
+    open_data = json.dumps([
+        {"title": "[evolution] RULE_A", "body": "**Rule ID**: RULE_A\n**Location**: file_a.py", "number": 10}
+    ])
+    closed_data = json.dumps([
+        {"title": "[evolution] RULE_B", "body": "**Rule ID**: RULE_B\n**Location**: file_b.py", "number": 20}
+    ])
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=open_data, stderr=""),
+            MagicMock(returncode=0, stdout=closed_data, stderr=""),
+        ]
+        issues = get_open_issues("evolution-found")
+        assert len(issues) == 2
+        keys = {(i["rule_id"], i["location"]) for i in issues}
+        assert ("RULE_A", "file_a.py") in keys
+        assert ("RULE_B", "file_b.py") in keys
+
+
+def test_recently_closed_issue_prevents_recreation():
+    """VAL-DEDUP-003: finding matching a recently closed issue is NOT re-created."""
+    closed_data = json.dumps([
+        {"title": "[evolution] RULE_X", "body": "**Rule ID**: RULE_X\n**Location**: stale.py", "number": 99}
+    ])
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+            MagicMock(returncode=0, stdout=closed_data, stderr=""),
+        ]
+        issues = get_open_issues("evolution-found")
+        # Dedup set should contain RULE_X
+        assert len(issues) == 1
+        assert issues[0]["rule_id"] == "RULE_X"
+        assert issues[0]["location"] == "stale.py"
+        # Verify that deduplicate() would suppress RULE_X
+        from evolution_scanner import Finding, deduplicate
+        findings = [Finding("RULE_X", "warning", "test", "desc", "stale.py", "ev")]
+        deduped = deduplicate(findings, issues)
+        assert len(deduped) == 0, "RULE_X should be suppressed by closed issue dedup"
+
+
+def test_open_issue_still_blocks_creation():
+    """VAL-DEDUP-004: open issues still block creation (regression check)."""
+    open_data = json.dumps([
+        {"title": "[evolution] RULE_Y", "body": "**Rule ID**: RULE_Y\n**Location**: open.py", "number": 50}
+    ])
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=open_data, stderr=""),
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+        ]
+        issues = get_open_issues("evolution-found")
+        assert len(issues) == 1
+        assert issues[0]["rule_id"] == "RULE_Y"
+        from evolution_scanner import Finding, deduplicate
+        findings = [Finding("RULE_Y", "warning", "test", "desc", "open.py", "ev")]
+        deduped = deduplicate(findings, issues)
+        assert len(deduped) == 0, "RULE_Y should be suppressed by open issue dedup"
+
+
+def test_mixed_open_and_closed_dedup():
+    """VAL-DEDUP-005: both open and closed issues contribute to dedup set."""
+    open_data = json.dumps([
+        {"title": "[evolution] RULE_OPEN", "body": "**Rule ID**: RULE_OPEN\n**Location**: open.py", "number": 1}
+    ])
+    closed_data = json.dumps([
+        {"title": "[evolution] RULE_CLOSED", "body": "**Rule ID**: RULE_CLOSED\n**Location**: closed.py", "number": 2}
+    ])
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=open_data, stderr=""),
+            MagicMock(returncode=0, stdout=closed_data, stderr=""),
+        ]
+        issues = get_open_issues("evolution-found")
+        assert len(issues) == 2
+        from evolution_scanner import Finding, deduplicate
+        findings = [
+            Finding("RULE_OPEN", "warning", "test", "desc", "open.py", "ev"),
+            Finding("RULE_CLOSED", "warning", "test", "desc", "closed.py", "ev"),
+            Finding("RULE_NEW", "warning", "test", "desc", "new.py", "ev"),
+        ]
+        deduped = deduplicate(findings, issues)
+        assert len(deduped) == 1
+        assert deduped[0].rule_id == "RULE_NEW"
+
+
+def test_get_open_issues_handles_closed_query_failure():
+    """GAP-C2: closed query failure is gracefully handled; open issues still returned."""
+    open_data = json.dumps([
+        {"title": "[evolution] RULE_OPEN", "body": "**Rule ID**: RULE_OPEN\n**Location**: open.py", "number": 1}
+    ])
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=open_data, stderr=""),
+            MagicMock(returncode=1, stdout="", stderr="API error"),
+        ]
+        issues = get_open_issues("evolution-found")
+        assert len(issues) == 1
+        assert issues[0]["rule_id"] == "RULE_OPEN"
+
+
+def test_get_open_issues_empty_closed():
+    """GAP-C2: empty closed results handled correctly."""
+    open_data = json.dumps([
+        {"title": "[evolution] RULE_A", "body": "**Rule ID**: RULE_A\n**Location**: a.py", "number": 10}
+    ])
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=open_data, stderr=""),
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+        ]
+        issues = get_open_issues("evolution-found")
+        assert len(issues) == 1
+        assert issues[0]["rule_id"] == "RULE_A"

@@ -187,24 +187,34 @@ def apply_suppressions(findings: list[Finding], suppressions: list[dict]) -> lis
     return [f for f in findings if not any(_matches_suppression(f, s) for s in suppressions)]
 
 
-def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated") -> list[dict]:
-    # Build search query: always match dedup_label AND failure_label (isolated issues count as open)
-    search = f"label:{dedup_label},{failure_label}"
-    try:
-        result = subprocess.run(["gh", "issue", "list", "--search", search,
-                                  "--state", "open", "--limit", "200", "--json", "title,body,number"],
-                                  capture_output=True, text=True, timeout=30)
-        if result.returncode != 0:
-            stderr = result.stderr.strip()
-            if stderr:
-                print(f"[evolution] Warning: gh issue list stderr: {stderr}")
+def _query_issues(search: str, state: str, limit: int) -> list[dict]:
+    """Query GitHub issues with given state and limit. Returns parsed list or empty on failure."""
+    result = subprocess.run(["gh", "issue", "list", "--search", search,
+                              "--state", state, "--limit", str(limit), "--json", "title,body,number"],
+                              capture_output=True, text=True, timeout=30)
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        if stderr:
+            print(f"[evolution] Warning: gh issue list stderr ({state}): {stderr}")
+        if state == "open":
             raise RuntimeError(f"gh issue list failed: {result.stderr}")
+        return []
+    return json.loads(result.stdout) if result.stdout.strip() else []
+
+
+def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated") -> list[dict]:
+    # Build search query: match dedup_label AND failure_label (isolated issues count as open)
+    search = f"label:{dedup_label},{failure_label}"
+    # GAP-C2: Query BOTH open and closed issues to prevent re-creating recently closed issues
+    try:
+        all_issues = _query_issues(search, "open", 200)
+        all_issues.extend(_query_issues(search, "closed", 100))
         return [{"rule_id": rid, "location": loc, "number": i["number"]}
-                for i in json.loads(result.stdout)
+                for i in all_issues
                 for rid, loc in [_parse_issue_fields(i.get("body", ""))]
                 if rid is not None and loc is not None]
     except Exception as e:
-        raise RuntimeError(f"Failed to fetch open issues: {e}") from None
+        raise RuntimeError(f"Failed to fetch issues: {e}") from None
 
 
 def deduplicate(findings: list[Finding], open_issues: list[dict]) -> list[Finding]:
