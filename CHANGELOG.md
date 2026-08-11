@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.3](https://github.com/hdot123/memory/compare/v0.18.2...v0.18.3) (2026-08-11)
+
+
+### Bug Fixes
+
+* GAP-G 调整 auto_close_resolved 执行顺序到 P2-A 检查之后 (INFRA-172) ([#461](https://github.com/hdot123/memory/issues/461)) ([3035280](https://github.com/hdot123/memory/commit/30352808532f1e95a844462a1a2f9705d8c4851d))
+
 ## [0.18.2](https://github.com/hdot123/memory/compare/v0.18.1...v0.18.2) (2026-08-11)
 
 
