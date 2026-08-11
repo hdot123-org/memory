@@ -5185,3 +5185,228 @@ def test_config_has_max_self_audit_issues_per_tick():
     config = load_config(repo_root)
     assert "max_self_audit_issues_per_tick" in config, \
         "config.yml must have max_self_audit_issues_per_tick"
+
+
+# ---------------------------------------------------------------------------
+# GAP-A: Linear Sync Health Check (Check 8)
+# ---------------------------------------------------------------------------
+
+def test_check_linear_sync_health_exists():
+    """VAL-LINSYNC-001: check_linear_sync_health function exists."""
+    from memory_core.tools import evolution_self_audit
+    assert hasattr(evolution_self_audit, "check_linear_sync_health")
+    assert callable(evolution_self_audit.check_linear_sync_health)
+
+
+def test_check_linear_sync_health_detects_missing_linear(monkeypatch):
+    """VAL-LINSYNC-002: Detects GitHub issues without Linear counterpart."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    # Mock GitHub issues
+    gh_issues = [
+        {
+            "number": 100,
+            "title": "[evolution] RULE_1",
+            "body": "**Rule ID**: RULE_1\n**Location**: file1.py\n**Category**: daily_audit\n",
+        },
+        {
+            "number": 101,
+            "title": "[evolution] RULE_2",
+            "body": "**Rule ID**: RULE_2\n**Location**: file2.py\n**Category**: daily_audit\n",
+        },
+    ]
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout=json.dumps(gh_issues), stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    # Mock Linear API - RULE_1 exists, RULE_2 doesn't
+    def mock_linear_query(query, **kwargs):
+        if "INFRA-100" in query:
+            return {"data": {"issues": {"nodes": [{"identifier": "INFRA-100"}]}}}
+        return {"data": {"issues": {"nodes": []}}}
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch("evolution_self_audit.requests.post") as mock_post:
+
+        def post_side_effect(url, **kwargs):
+            mock_resp = Mock()
+            mock_resp.status_code = 200
+            # Extract INFRA-xxx from query
+            query_str = kwargs.get("json", {}).get("query", "")
+            if "INFRA-100" in query_str:
+                mock_resp.json.return_value = {"data": {"issues": {"nodes": [{"identifier": "INFRA-100"}]}}}
+            else:
+                mock_resp.json.return_value = {"data": {"issues": {"nodes": []}}}
+            return mock_resp
+
+        mock_post.side_effect = post_side_effect
+
+        findings = evolution_self_audit.check_linear_sync_health()
+
+        # Should detect RULE_2 is missing from Linear
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "EVOLUTION_LINEAR_SYNC_MISSING"
+        assert findings[0]["severity"] == "warning"
+        assert findings[0]["category"] == "evolution_self_audit"
+
+
+def test_check_linear_sync_health_handles_api_failure(monkeypatch):
+    """VAL-LINSYNC-003: Handles Linear API unavailability gracefully."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    gh_issues = [
+        {
+            "number": 100,
+            "title": "[evolution] RULE_1",
+            "body": "**Rule ID**: RULE_1\n**Location**: file1.py\n",
+        },
+    ]
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout=json.dumps(gh_issues), stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    # Test 1: Missing LINEAR_API_KEY
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {}, clear=True):
+        findings = evolution_self_audit.check_linear_sync_health()
+        # Should return empty or warning, not crash
+        assert isinstance(findings, list)
+
+    # Test 2: API failure
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch("evolution_self_audit.requests.post") as mock_post:
+
+        mock_post.side_effect = Exception("API Error")
+        findings = evolution_self_audit.check_linear_sync_health()
+        # Should handle gracefully, not crash
+        assert isinstance(findings, list)
+
+
+def test_check_linear_sync_health_schema_compliance():
+    """VAL-LINSYNC-004: Output follows Finding schema (6 fields)."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    gh_issues = [
+        {
+            "number": 100,
+            "title": "[evolution] RULE_1",
+            "body": "**Rule ID**: RULE_1\n**Location**: file1.py\n",
+        },
+    ]
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout=json.dumps(gh_issues), stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch("evolution_self_audit.requests.post") as mock_post:
+
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": {"issues": {"nodes": []}}}
+        mock_post.return_value = mock_resp
+
+        findings = evolution_self_audit.check_linear_sync_health()
+
+        # Each finding must have all 6 required fields
+        for finding in findings:
+            assert "rule_id" in finding
+            assert "severity" in finding
+            assert "category" in finding
+            assert "description" in finding
+            assert "location" in finding
+            assert "evidence" in finding
+            assert finding["category"] == "evolution_self_audit"
+
+
+def test_check_linear_sync_health_in_main():
+    """VAL-LINSYNC-005: Check included in main() run."""
+    from unittest.mock import patch
+
+    from memory_core.tools import evolution_self_audit
+
+    with patch.object(evolution_self_audit, "check_suppress_json", return_value=[]), \
+         patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]), \
+         patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]), \
+         patch.object(evolution_self_audit, "check_trigger_droid", return_value=[]), \
+         patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]), \
+         patch.object(evolution_self_audit, "check_config_yml", return_value=[]), \
+         patch.object(evolution_self_audit, "check_tool_health", return_value=[]), \
+         patch.object(evolution_self_audit, "check_linear_sync_health", return_value=[{
+             "rule_id": "TEST",
+             "severity": "warning",
+             "category": "evolution_self_audit",
+             "description": "test",
+             "location": "test",
+             "evidence": "test",
+         }]) as mock_check:
+
+        result = evolution_self_audit.main()
+        mock_check.assert_called_once()
+        assert result == 1  # Has findings
+
+
+def test_check_linear_sync_health_all_synced():
+    """All GitHub issues have Linear counterparts - no findings."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    gh_issues = [
+        {
+            "number": 100,
+            "title": "[evolution] RULE_1",
+            "body": "**Rule ID**: RULE_1\n**Location**: file1.py\n",
+        },
+    ]
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout=json.dumps(gh_issues), stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch("evolution_self_audit.requests.post") as mock_post:
+
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": {"issues": {"nodes": [{"identifier": "INFRA-100"}]}}}
+        mock_post.return_value = mock_resp
+
+        findings = evolution_self_audit.check_linear_sync_health()
+        assert findings == []
+
+
+def test_check_linear_sync_health_no_github_issues():
+    """No GitHub evolution-found issues - no findings."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout="[]", stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch("evolution_self_audit.requests.post") as mock_post:
+
+        findings = evolution_self_audit.check_linear_sync_health()
+        assert findings == []
+        mock_post.assert_not_called()  # No Linear API calls if no GitHub issues

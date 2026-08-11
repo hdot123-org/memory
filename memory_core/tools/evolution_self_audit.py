@@ -1,11 +1,18 @@
-"""Evolution self-audit tool: 7 checks for pipeline health."""
+"""Evolution self-audit tool: 8 checks for pipeline health."""
 
 import json
+import os
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+try:
+    import requests
+except ImportError:
+    requests = None  # type: ignore[assignment]
 
 # Module-level constants for testability (monkeypatch in tests)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]  # memory/
@@ -395,8 +402,99 @@ def check_tool_health() -> list[dict[str, Any]]:
     return findings
 
 
+def check_linear_sync_health() -> list[dict[str, Any]]:
+    """Check 8: verify GitHub issues have Linear counterparts."""
+    findings = []
+
+    # Check if LINEAR_API_KEY is available
+    linear_api_key = os.environ.get("LINEAR_API_KEY")
+    if not linear_api_key:
+        # No API key, skip check gracefully
+        return findings
+
+    # Query GitHub evolution-found issues
+    try:
+        result = subprocess.run(
+            [
+                "gh", "issue", "list",
+                "--label", "evolution-found",
+                "--state", "open",
+                "--limit", "200",
+                "--json", "number,title,body",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if result.returncode != 0:
+            return findings
+
+        gh_issues = json.loads(result.stdout) if result.stdout.strip() else []
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+        return findings
+
+    if not gh_issues:
+        return findings
+
+    # Check each GitHub issue for Linear counterpart
+    for issue in gh_issues:
+        issue_number = issue.get("number")
+        if not issue_number:
+            continue
+
+        # Construct expected Linear identifier
+        linear_id = f"INFRA-{issue_number}"
+
+        # Query Linear API for this identifier
+        try:
+            query = f"""
+            query {{
+                issues(filter: {{identifier: {{eq: "{linear_id}"}}}}) {{
+                    nodes {{
+                        identifier
+                    }}
+                }}
+            }}
+            """
+
+            response = requests.post(
+                "https://api.linear.app/graphql",
+                headers={
+                    "Authorization": f"Bearer {linear_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"query": query},
+                timeout=10,
+            )
+
+            if response.status_code != 200:
+                # API error, skip this issue gracefully
+                continue
+
+            data = response.json()
+            nodes = data.get("data", {}).get("issues", {}).get("nodes", [])
+
+            # If no Linear issue found, report finding
+            if not nodes:
+                findings.append({
+                    "rule_id": "EVOLUTION_LINEAR_SYNC_MISSING",
+                    "severity": "warning",
+                    "category": CATEGORY,
+                    "description": f"GitHub issue #{issue_number} has no Linear counterpart",
+                    "location": f"github-issue-{issue_number}",
+                    "evidence": f"expected={linear_id}, found=0",
+                })
+
+        except Exception:
+            # Any error during Linear API call, skip gracefully
+            continue
+
+    return findings
+
+
 def main() -> int:
-    """Run all 7 checks and output findings as JSON."""
+    """Run all 8 checks and output findings as JSON."""
     all_findings: list[dict[str, Any]] = []
     all_findings.extend(check_suppress_json())
     all_findings.extend(check_findings_over_time())
@@ -405,6 +503,7 @@ def main() -> int:
     all_findings.extend(check_repositories_yml())
     all_findings.extend(check_config_yml())
     all_findings.extend(check_tool_health())
+    all_findings.extend(check_linear_sync_health())
 
     json.dump(all_findings, sys.stdout, indent=2)
     print()
