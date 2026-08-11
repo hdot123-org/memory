@@ -190,10 +190,10 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 
 ### 当前闭环机制
 
-PR body 中使用 `Fixes INFRA-xxx` 关键字即可实现自动闭环：
+PR body 中使用 `Fixes INFRA-xxx` 引用即可实现自动闭环，两条独立路径：
 
-1. PR merge 时，GitHub 自动关闭关联的 GitHub Issue
-2. Linear 原生 GitHub 集成检测到 GitHub Issue 关闭，自动同步关闭对应的 Linear Issue
+1. **Linear Issue**：Linear GitHub 集成检测到 PR merge（通过 `Fixes INFRA-xxx` 引用），自动流转为 Done
+2. **GitHub Issue**：scanner 下次运行时 `auto_close_resolved()` 检测到 finding 已解决，自动关闭
 3. 无需额外代码改动或手动操作
 
 **此机制已验证有效。**
