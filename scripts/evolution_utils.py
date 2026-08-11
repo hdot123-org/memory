@@ -2,6 +2,7 @@
 import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from evolution_adapters import quarantine_corrupted_file, sanitize_structured_field
@@ -328,3 +329,124 @@ def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set
         print(f"[evolution] Protected {protected_count} issue(s) from auto-close due to failed audit categories")
     if grace_deferred_count > 0:
         print(f"[evolution] Deferred {grace_deferred_count} issue(s) auto-close due to grace period")
+
+
+# GAP-E: Reconciliation sentinel for idempotency
+# Embedded as hidden HTML comment so it's invisible in GitHub UI
+RECON_ADVISORY_SENTINEL = "<!-- evolution-recon-advisory -->"
+
+
+def reconcile_in_progress(dedup_label: str) -> int:
+    """Check for stuck evolution-found issues (open > 72h, no PR).
+
+    GAP-E: Detects issues that have been open for more than 72 hours with no
+    associated PR. Adds an advisory comment (Chinese) to stuck issues.
+    ADVISORY ONLY - never force-closes or changes labels.
+
+    Idempotency guard: embeds a hidden HTML sentinel in the comment. Before
+    commenting, scans the issue's existing comments for the sentinel. If found,
+    skips commenting to prevent duplicate advisories on every tick.
+
+    Args:
+        dedup_label: Label used to identify evolution scanner issues
+
+    Returns:
+        Number of stuck issues that were flagged with advisory comments
+    """
+    RECON_STUCK_THRESHOLD_HOURS = 72
+
+    # Fetch all open evolution-found issues with createdAt
+    try:
+        result = subprocess.run(
+            ["gh", "issue", "list", "--search", f"label:{dedup_label}",
+             "--state", "open", "--limit", "200", "--json", "number,body,createdAt"],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode != 0:
+            print(f"[evolution] Warning: Failed to list open issues for reconciliation: {result.stderr}")
+            return 0
+
+        issues = json.loads(result.stdout) if result.stdout.strip() else []
+    except Exception as e:
+        print(f"[evolution] Warning: Failed to fetch open issues for reconciliation: {e}")
+        return 0
+
+    now = datetime.now(timezone.utc)
+    stuck_count = 0
+
+    for issue in issues:
+        issue_number = issue.get("number")
+        created_at_str = issue.get("createdAt", "")
+
+        # Parse creation time
+        try:
+            created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+            age_hours = (now - created_at).total_seconds() / 3600
+        except (ValueError, TypeError):
+            # Skip issues with invalid createdAt
+            continue
+
+        # Skip recent issues (< 72h threshold)
+        if age_hours < RECON_STUCK_THRESHOLD_HOURS:
+            continue
+
+        # Check for associated PR (search for "Fixes #N" in PR bodies)
+        try:
+            pr_result = subprocess.run(
+                ["gh", "pr", "list", "--search", f"Fixes #{issue_number}",
+                 "--state", "all", "--limit", "1", "--json", "number"],
+                capture_output=True, text=True, timeout=30
+            )
+            if pr_result.returncode != 0:
+                print(f"[evolution] Warning: Failed to check PR for issue #{issue_number}: {pr_result.stderr}")
+                continue
+
+            prs = json.loads(pr_result.stdout) if pr_result.stdout.strip() else []
+
+            # If PR exists, issue is not stuck
+            if prs:
+                continue
+
+        except Exception as e:
+            print(f"[evolution] Warning: Failed to check PR association for issue #{issue_number}: {e}")
+            continue
+
+        # Idempotency guard: check if advisory comment already exists
+        try:
+            comments_result = subprocess.run(
+                ["gh", "issue", "view", str(issue_number),
+                 "--json", "comments", "--jq", ".comments[].body"],
+                capture_output=True, text=True, timeout=30
+            )
+            if comments_result.returncode == 0 and RECON_ADVISORY_SENTINEL in comments_result.stdout:
+                print(f"[evolution] Skip advisory for #{issue_number}: sentinel already present (idempotency guard)")
+                continue
+        except Exception as e:
+            print(f"[evolution] Warning: Failed to check comments for #{issue_number}: {e}")
+            # On failure, proceed to comment (fail-open to avoid silent skip)
+
+        # Issue is stuck (old + no PR) - add advisory comment with sentinel
+        comment_msg = (
+            f"{RECON_ADVISORY_SENTINEL}\n"
+            f"⚠️ 此 Issue 已卡住 {int(age_hours)} 小时（超过 {RECON_STUCK_THRESHOLD_HOURS}h 阈值），"
+            f"未检测到关联的 PR。可能需要人工检查进度或重新评估优先级。\n\n"
+            f"此评论仅为提醒，不会自动关闭或修改 Issue 状态。"
+        )
+
+        try:
+            comment_result = subprocess.run(
+                ["gh", "issue", "comment", str(issue_number), "--body", comment_msg],
+                capture_output=True, text=True, timeout=30
+            )
+            if comment_result.returncode == 0:
+                stuck_count += 1
+                print(f"[evolution] Advisory: Issue #{issue_number} stuck for {int(age_hours)}h with no PR")
+            else:
+                print(f"[evolution] Warning: Failed to comment on issue #{issue_number}: {comment_result.stderr}")
+        except Exception as e:
+            print(f"[evolution] Warning: Failed to comment on issue #{issue_number}: {e}")
+
+    if stuck_count > 0:
+        print(f"[evolution] Reconciliation: {stuck_count} stuck issue(s) flagged with advisory comments")
+
+    return stuck_count
