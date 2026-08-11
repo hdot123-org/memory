@@ -1635,6 +1635,7 @@ def test_main_handles_gh_failure_gracefully():
             "isolation_threshold": 3,
             "failure_label": "evolution-isolated",
             "max_issues_per_tick": 3,
+            "max_self_audit_issues_per_tick": 1,
             "snapshot_limit": 100,
         }
 
@@ -2270,6 +2271,7 @@ def test_main_filters_none_results_no_false_resolved():
             "isolation_threshold": 3,
             "failure_label": "evolution-isolated",
             "max_issues_per_tick": 3,
+            "max_self_audit_issues_per_tick": 1,
             "snapshot_limit": 100,
         }
         # tool_a fails (None), tool_b succeeds with 1 finding
@@ -2983,6 +2985,7 @@ def test_main_config_drift_protection_all_keys_present():
         "isolation_threshold": 3,
         "failure_label": "evolution-isolated",
         "max_issues_per_tick": 3,
+        "max_self_audit_issues_per_tick": 1,
         "snapshot_limit": 100,
     }
 
@@ -3287,6 +3290,7 @@ def test_main_exits_nonzero_when_zero_issues_from_label_failure():
         'isolation_threshold': 3,
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 3,
+        'max_self_audit_issues_per_tick': 1,
         'snapshot_limit': 100,
         'github': {'owner': 'test', 'repo': 'test'}
     }
@@ -3724,6 +3728,7 @@ def test_main_exits_nonzero_when_github_api_fails(tmp_path):
         'isolation_threshold': 3,
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 3,
+        'max_self_audit_issues_per_tick': 1,
         'snapshot_limit': 100,
         'github': {'owner': 'test', 'repo': 'test'}
     }
@@ -3756,6 +3761,7 @@ def test_main_no_exit_when_github_fails_but_no_findings():
         'isolation_threshold': 3,
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 3,
+        'max_self_audit_issues_per_tick': 1,
         'snapshot_limit': 100,
         'github': {'owner': 'test', 'repo': 'test'}
     }
@@ -3785,6 +3791,7 @@ def test_main_does_not_auto_close_when_p2a_exits(tmp_path):
         'isolation_threshold': 3,
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 3,
+        'max_self_audit_issues_per_tick': 1,
         'snapshot_limit': 100,
         'github': {'owner': 'test', 'repo': 'test'}
     }
@@ -5126,3 +5133,457 @@ def test_reconcile_returns_count(tmp_path):
         stuck_count = reconcile_in_progress("evolution-found")
 
         assert stuck_count == 3, "Should return count of all stuck issues"
+
+
+# ============================================================================
+# INFRA-198: Independent quota pools (regular vs evolution_self_audit)
+# ============================================================================
+
+
+def test_regular_and_self_audit_get_independent_quotas():
+    """INFRA-198: Regular and self_audit findings get independent issue quotas."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 1,
+        'max_self_audit_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    regular = Finding("REG_001", "warning", "consistency", "Regular", "file1.md", "ev1")
+    self_audit = Finding("SA_001", "warning", "evolution_self_audit", "Self audit", "file2.md", "ev2")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[regular, self_audit]), \
+         patch('evolution_scanner.detect_regressions', return_value=[regular, self_audit]), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'):
+        main()
+        assert mock_create.call_count == 2
+        created_findings = [call[0][0] for call in mock_create.call_args_list]
+        categories = {f.category for f in created_findings}
+        assert "consistency" in categories
+        assert "evolution_self_audit" in categories
+
+
+def test_regular_quota_exhaustion_does_not_block_self_audit():
+    """INFRA-198: Regular quota exhaustion does NOT block self_audit."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 1,
+        'max_self_audit_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    critical = Finding("CRIT_001", "critical", "daily_audit", "Critical", "file1.md", "ev1")
+    self_audit = Finding("SA_001", "warning", "evolution_self_audit", "Self audit", "file2.md", "ev2")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[critical, self_audit]), \
+         patch('evolution_scanner.detect_regressions', return_value=[critical, self_audit]), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'):
+        main()
+        assert mock_create.call_count == 2
+        created_findings = [call[0][0] for call in mock_create.call_args_list]
+        categories = {f.category for f in created_findings}
+        assert "evolution_self_audit" in categories, "Self-audit must NOT be blocked by regular quota"
+        assert "daily_audit" in categories
+
+
+def test_self_audit_quota_is_capped():
+    """INFRA-198: Self-audit findings capped at max_self_audit_issues_per_tick."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 5,
+        'max_self_audit_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    sa_findings = [
+        Finding(f"SA_{i}", "warning", "evolution_self_audit", f"SA {i}", f"file{i}.md", f"ev{i}")
+        for i in range(3)
+    ]
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=sa_findings), \
+         patch('evolution_scanner.detect_regressions', return_value=sa_findings), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'):
+        main()
+        assert mock_create.call_count == 1
+        created = mock_create.call_args_list[0][0][0]
+        assert created.category == "evolution_self_audit"
+
+
+def test_mixed_findings_sorted_correctly_within_each_pool():
+    """INFRA-198: Each pool maintains severity sort independently."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 2,
+        'max_self_audit_issues_per_tick': 2,
+        'snapshot_limit': 100,
+    }
+
+    findings = [
+        Finding("REG_CRIT", "critical", "daily_audit", "Critical", "f1.md", "ev"),
+        Finding("REG_INFO", "info", "consistency", "Info", "f2.md", "ev"),
+        Finding("REG_WARN", "warning", "daily_audit", "Warning", "f3.md", "ev"),
+        Finding("SA_INFO", "info", "evolution_self_audit", "SA Info", "f4.md", "ev"),
+        Finding("SA_WARN", "warning", "evolution_self_audit", "SA Warn", "f5.md", "ev"),
+    ]
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=findings), \
+         patch('evolution_scanner.detect_regressions', return_value=findings), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'):
+        main()
+        assert mock_create.call_count == 4
+        created = [call[0][0] for call in mock_create.call_args_list]
+        regular_created = [f for f in created if f.category != "evolution_self_audit"]
+        sa_created = [f for f in created if f.category == "evolution_self_audit"]
+        assert regular_created[0].severity == "critical"
+        assert regular_created[1].severity == "warning"
+        assert sa_created[0].severity == "warning"
+        assert sa_created[1].severity == "info"
+
+
+def test_config_has_max_self_audit_issues_per_tick():
+    """INFRA-198: config.yml must contain max_self_audit_issues_per_tick."""
+    from pathlib import Path
+
+    from evolution_scanner import load_config
+
+    # Find repo root by looking for .evolution/config.yml
+    repo_root = Path(__file__).parent.parent
+    config = load_config(repo_root)
+    assert "max_self_audit_issues_per_tick" in config, \
+        "config.yml must have max_self_audit_issues_per_tick"
+
+# ==================== Observer Heartbeat Tests ====================
+# Tests for VAL-HB-001 through VAL-HB-006
+
+def test_heartbeat_script_exists():
+    """VAL-HB-006: evolution_heartbeat.py script exists."""
+    script_path = Path(__file__).parent.parent / "scripts" / "evolution_heartbeat.py"
+    assert script_path.exists(), "scripts/evolution_heartbeat.py must exist"
+
+
+def test_heartbeat_workflow_yaml_exists():
+    """VAL-HB-001: evolution-heartbeat.yml exists with valid YAML."""
+    import yaml
+    workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-heartbeat.yml"
+    assert workflow_path.exists(), ".github/workflows/evolution-heartbeat.yml must exist"
+
+    # Validate YAML syntax
+    with open(workflow_path) as f:
+        data = yaml.safe_load(f)
+    assert data is not None, "YAML must be parseable"
+    assert isinstance(data, dict), "YAML must be a mapping"
+
+
+def test_heartbeat_workflow_has_independent_cron():
+    """VAL-HB-002: Heartbeat has independent cron schedule (every 2 hours)."""
+    import yaml
+    workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-heartbeat.yml"
+
+    with open(workflow_path) as f:
+        data = yaml.safe_load(f)
+
+    # Must have on.schedule.cron trigger
+    # YAML 1.1 parses bare 'on' as boolean True
+    on_triggers = data.get("on") or data.get(True)
+    assert on_triggers is not None, "Workflow must have 'on' triggers"
+    assert "schedule" in on_triggers, "Workflow must have schedule trigger"
+    assert isinstance(on_triggers["schedule"], list), "schedule must be a list"
+    assert len(on_triggers["schedule"]) > 0, "schedule must have at least one entry"
+
+    # Verify cron pattern (every 2 hours)
+    cron_entry = on_triggers["schedule"][0].get("cron", "")
+    assert cron_entry, "schedule must have 'cron' field"
+    # Expected: '0 */2 * * *' (every 2 hours at minute 0)
+    assert "*/2" in cron_entry or "0 */2" in cron_entry, \
+        f"Cron should run every 2 hours, got: {cron_entry}"
+
+
+def test_heartbeat_freshness_check_stale():
+    """VAL-HB-003: Heartbeat detects stale findings_over_time.json."""
+    from evolution_heartbeat import check_history_freshness
+
+    # Create a history file with old snapshot (> 2 hours ago)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        history_path = Path(tmpdir) / "findings_over_time.json"
+        old_time = datetime.now(timezone.utc) - timedelta(hours=3)
+        data = {
+            "snapshots": [
+                {"timestamp": old_time.isoformat(), "tick_id": "old", "findings": []}
+            ]
+        }
+        with open(history_path, "w") as f:
+            json.dump(data, f)
+
+        # Should detect staleness
+        result = check_history_freshness(history_path, max_age_hours=2)
+        assert result["stale"] is True, "Should detect stale history"
+        assert "age_hours" in result, "Should report age in hours"
+        assert result["age_hours"] > 2, "Age should be > 2 hours"
+
+
+def test_heartbeat_freshness_check_fresh():
+    """VAL-HB-003: Heartbeat accepts fresh findings_over_time.json."""
+    from evolution_heartbeat import check_history_freshness
+
+    # Create a history file with recent snapshot (< 1 hour ago)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        history_path = Path(tmpdir) / "findings_over_time.json"
+        recent_time = datetime.now(timezone.utc) - timedelta(minutes=30)
+        data = {
+            "snapshots": [
+                {"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}
+            ]
+        }
+        with open(history_path, "w") as f:
+            json.dump(data, f)
+
+        # Should NOT detect staleness
+        result = check_history_freshness(history_path, max_age_hours=2)
+        assert result["stale"] is False, "Should not detect stale history"
+        assert result["age_hours"] < 2, "Age should be < 2 hours"
+
+
+def test_heartbeat_pr_coverage_check_missing_pr():
+    """VAL-HB-004: Heartbeat detects issues without associated PRs."""
+    from evolution_heartbeat import check_pr_coverage
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        # Mock: 2 open evolution-found issues
+        mock_run.side_effect = [
+            # First call: list open issues
+            subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=json.dumps([
+                    {"number": 100, "title": "[evolution] TEST_RULE_1", "createdAt": (datetime.now(timezone.utc) - timedelta(hours=36)).isoformat()},
+                    {"number": 101, "title": "[evolution] TEST_RULE_2", "createdAt": (datetime.now(timezone.utc) - timedelta(hours=12)).isoformat()},
+                ]),
+                stderr=""
+            ),
+            # Second call: check PR for issue 100 (no PR)
+            subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="[]",
+                stderr=""
+            ),
+            # Third call: check PR for issue 101 (no PR)
+            subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="[]",
+                stderr=""
+            ),
+        ]
+
+        result = check_pr_coverage("evolution-found")
+        assert result["issues_without_pr"] == 2, "Should detect 2 issues without PRs"
+        assert result["total_issues"] == 2, "Should report total issue count"
+
+
+def test_heartbeat_pr_coverage_check_with_pr():
+    """VAL-HB-004: Heartbeat accepts issues with associated PRs."""
+    from evolution_heartbeat import check_pr_coverage
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        # Mock: 1 open evolution-found issue with PR
+        mock_run.side_effect = [
+            # First call: list open issues
+            subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=json.dumps([
+                    {"number": 100, "title": "[evolution] TEST_RULE_1", "createdAt": (datetime.now(timezone.utc) - timedelta(hours=36)).isoformat()},
+                ]),
+                stderr=""
+            ),
+            # Second call: check PR for issue 100 (has PR)
+            subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=json.dumps([{"number": 50}]),
+                stderr=""
+            ),
+        ]
+
+        result = check_pr_coverage("evolution-found")
+        assert result["issues_without_pr"] == 0, "Should detect 0 issues without PRs"
+        assert result["total_issues"] == 1, "Should report total issue count"
+
+
+def test_heartbeat_creates_alert_on_anomaly():
+    """VAL-HB-005: Heartbeat creates alert issue when anomaly detected."""
+    from evolution_heartbeat import create_alert_issue
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="https://github.com/test/repo/issues/999",
+            stderr=""
+        )
+
+        result = create_alert_issue(
+            stale_history=True,
+            issues_without_pr=2,
+            dedup_label="evolution-found"
+        )
+
+        assert result is True, "Should successfully create alert issue"
+        # Verify gh issue create was called
+        assert mock_run.called, "gh issue create should be called"
+        call_args = mock_run.call_args[0][0]
+        assert "gh" in call_args[0], "Should call gh command"
+        assert "issue" in call_args[1], "Should call 'issue' subcommand"
+        assert "create" in call_args[2], "Should call 'create' subcommand"
+
+
+def test_heartbeat_no_alert_when_clean():
+    """VAL-HB-005: Heartbeat does not create alert when no anomalies."""
+    from evolution_heartbeat import create_alert_issue
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        result = create_alert_issue(
+            stale_history=False,
+            issues_without_pr=0,
+            dedup_label="evolution-found"
+        )
+
+        assert result is False, "Should not create alert when clean"
+        assert not mock_run.called, "gh issue create should NOT be called"
+
+
+def test_heartbeat_main_integration():
+    """VAL-HB-006: Integration test for heartbeat main() flow."""
+    from evolution_heartbeat import main
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        history_path = Path(tmpdir) / "findings_over_time.json"
+
+        # Create fresh history
+        recent_time = datetime.now(timezone.utc) - timedelta(minutes=30)
+        data = {
+            "snapshots": [
+                {"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}
+            ]
+        }
+        with open(history_path, "w") as f:
+            json.dump(data, f)
+
+        with patch("evolution_heartbeat.subprocess.run") as mock_run:
+            # Mock: no open issues (clean state)
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="[]",
+                stderr=""
+            )
+
+            # Run heartbeat
+            with patch("evolution_heartbeat.Path") as mock_path:
+                mock_path.return_value = Path(tmpdir)
+                exit_code = main(history_path=history_path)
+
+            # Should exit 0 (clean state)
+            assert exit_code == 0, "Should exit 0 on clean state"
+
+
+def test_heartbeat_detects_stale_and_creates_alert():
+    """VAL-HB-003 + VAL-HB-005: Heartbeat detects stale history and creates alert."""
+    from evolution_heartbeat import main
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        history_path = Path(tmpdir) / "findings_over_time.json"
+
+        # Create stale history (> 2 hours old)
+        old_time = datetime.now(timezone.utc) - timedelta(hours=3)
+        data = {
+            "snapshots": [
+                {"timestamp": old_time.isoformat(), "tick_id": "old", "findings": []}
+            ]
+        }
+        with open(history_path, "w") as f:
+            json.dump(data, f)
+
+        with patch("evolution_heartbeat.subprocess.run") as mock_run:
+            # Mock: no open issues, but gh issue create succeeds
+            mock_run.side_effect = [
+                # First: list issues (none)
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
+                # Second: create alert issue
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="https://github.com/test/repo/issues/999", stderr=""),
+            ]
+
+            # Run heartbeat
+            with patch("evolution_heartbeat.Path") as mock_path:
+                mock_path.return_value = Path(tmpdir)
+                exit_code = main(history_path=history_path)
+
+            # Should exit 1 (anomaly detected)
+            assert exit_code == 1, "Should exit 1 when anomaly detected"
+            # Verify alert was created
+            assert mock_run.call_count == 2, "Should call gh twice (list + create)"

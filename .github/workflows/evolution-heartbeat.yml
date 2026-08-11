@@ -1,0 +1,35 @@
+name: Evolution Heartbeat
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'  # Every 2 hours
+  workflow_dispatch: {}
+
+concurrency:
+  group: evolution-heartbeat
+  cancel-in-progress: false
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install package
+        run: pip install -e .
+      - name: Cache evolution history
+        uses: actions/cache@v4
+        with:
+          path: .evolution/findings_over_time.json
+          key: evolution-history-${{ github.run_id }}
+          restore-keys: evolution-history-
+      - name: Run heartbeat check
+        run: python scripts/evolution_heartbeat.py
+        env:
+          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+          PYTHONSAFEPATH: '1'
