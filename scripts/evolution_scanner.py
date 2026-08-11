@@ -20,7 +20,7 @@ if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
 from evolution_adapters import TOOL_TO_CATEGORIES, sanitize_structured_field, sanitize_text
-from evolution_utils import _parse_issue_fields, dedup_intra_tick, load_history, validate_config
+from evolution_utils import _parse_issue_fields, auto_close_resolved, dedup_intra_tick, load_history, validate_config
 
 
 @dataclass
@@ -365,6 +365,9 @@ def main() -> None:
     update_history(history_path, all_findings, issues_created, config["snapshot_limit"], failed_categories, tool_status)
     check_isolation(all_findings, history_path, config["isolation_threshold"], config["failure_label"], config["dedup_label"])
     print(f"[evolution] Tick complete: {len(all_findings)} findings, {issues_created} issues created")
+
+    # Auto-close resolved issues (after issue creation to avoid closing newly created ones)
+    auto_close_resolved(all_findings, config["dedup_label"])
 
     # P1-2: Hard exit when findings exist but zero issues created
     if deduped and issues_created == 0:

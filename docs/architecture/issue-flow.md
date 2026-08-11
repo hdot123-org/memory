@@ -35,8 +35,12 @@ Linear Issue 同步关闭 (Linear 原生 GitHub 集成)
 5. **Linear issue 进入 infra 工作流** — 在 Linear 中可管理负责人、状态、PR 附件等
 6. **droid 创建 PR** — PR body 包含 `Fixes INFRA-xxx`，触发 GitHub 的自动闭环
 7. **CI 通过后 merge** — 现有 CI 和 auto-merge 机制
-8. **GitHub Issue 自动关闭** — `Fixes` 关键字在 PR merge 时自动关闭关联 issue
-9. **Linear Issue 同步关闭** — Linear 原生 GitHub 集成自动同步关闭状态
+8. **GitHub Issue 自动关闭** — `Fixes` 关键字在 PR merge 时自动关闭关联 issue（GitHub 原生能力，仅作用于 GitHub Issue）
+9. **Linear Issue 同步关闭** — Linear 原生 GitHub 集成检测到 GitHub Issue 状态变更为 closed，自动同步关闭对应的 Linear Issue
+
+> **注意**：GitHub 不直接关闭 Linear Issue。闭环是两步完成的：
+> 1. GitHub 关闭 GitHub Issue（GitHub 原生 `Fixes` 关键字能力）
+> 2. Linear 原生 GitHub 集成检测到 GitHub Issue 关闭 → 同步关闭 Linear Issue（Linear 平台集成能力）
 
 ---
 
@@ -57,15 +61,27 @@ Linear Issue 同步关闭 (Linear 原生 GitHub 集成)
 
 ---
 
-## 3. 当前闭环机制
+## 3. 关闭机制
 
-当前闭环通过 PR body 中的 `Fixes INFRA-xxx` 关键字实现：
+### 3.1 PR 合并闭环（主要路径）
 
-1. droid 创建 PR 时，body 中包含对应 Linear issue 的引用（如 `Fixes INFRA-123`）
-2. PR merge 时，GitHub 自动关闭关联的 GitHub Issue
-3. Linear 原生 GitHub 集成检测到 GitHub Issue 关闭，自动同步关闭对应的 Linear Issue
+当前闭环通过 PR body 中的 `Fixes INFRA-xxx` 关键字实现，分两步：
 
-**此机制已验证有效，无需额外代码改动。**
+1. **GitHub Issue 自动关闭** — PR merge 时，GitHub 检测到 `Fixes INFRA-xxx` 关键字，自动关闭关联的 GitHub Issue（GitHub 原生能力，仅作用于 GitHub Issue）
+2. **Linear Issue 同步关闭** — Linear 原生 GitHub 集成检测到 GitHub Issue 状态变更为 closed，自动同步关闭对应的 Linear Issue（Linear 平台集成能力，非 GitHub 直接关闭 Linear）
+
+**此机制已验证有效。**
+
+### 3.2 Scanner 自动关闭已解决 Issues（补偿机制）
+
+当 finding 在扫描中不再出现时，`auto_close_resolved()` 函数（`scripts/evolution_utils.py`）会自动关闭对应的 open GitHub Issue：
+
+1. Scanner 完成扫描后，获取所有 open 的 evolution-found GitHub Issue
+2. 对比当前扫描的 findings 集合（按 rule_id + location 匹配）
+3. 不在当前 findings 中的 Issue 通过 `gh issue close` 关闭，附带中文说明
+4. 此调用在 Issue 创建之后执行，不会误关闭刚创建的 Issue
+
+此补偿机制确保：当 finding 自行解决（如代码修复后审计通过）时，对应的 GitHub Issue 不会无限期保持 open。
 
 ---
 
@@ -140,6 +156,7 @@ body = (f"> ⚙️ 此 Issue 由 evolution scanner 自动创建。任务管理�
 | 文件 | 职责 |
 |------|------|
 | `scripts/evolution_scanner.py` | scanner 主逻辑，创建 GitHub Issue |
+| `scripts/evolution_utils.py` | scanner 工具函数，包括 `auto_close_resolved()` 补偿关闭 |
 | `.github/workflows/evolution-scan.yml` | scanner 定时触发 workflow |
 | `.github/workflows/droid.yml` | droid 自动触发 workflow |
 | `~/.factory/webhook/scripts/trigger-droid.sh` | webhook 触发 droid |
