@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import requests
+
 # Module-level constants for testability (monkeypatch in tests)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]  # memory/
 EVOLUTION_DIR = PROJECT_ROOT / ".evolution"
@@ -540,7 +542,6 @@ def check_linear_sync() -> list[dict[str, Any]]:
     return findings
 
 
-<<<<<<< HEAD
 def check_heartbeat_channel() -> list[dict[str, Any]]:
     """Check 9: verify evolution heartbeat marker is fresh (INFRA-204).
 
@@ -601,7 +602,9 @@ def check_heartbeat_channel() -> list[dict[str, Any]]:
             "evidence": str(e),
             "category": CATEGORY,
         })
-=======
+    return findings
+
+
 def check_reverse_closure() -> list[dict[str, Any]]:
     """Check 9: detect GitHub↔Linear closure state mismatches."""
     findings = []
@@ -689,7 +692,6 @@ def check_reverse_closure() -> list[dict[str, Any]]:
 
         except Exception:
             continue
->>>>>>> 9eab5fa (fix: 添加反向闭环检测 (Check 9)，检测 GitHub 关闭但 Linear 未同步的问题 (Fixes #457))
 
     return findings
 
@@ -705,11 +707,8 @@ def main() -> int:
     all_findings.extend(check_config_yml())
     all_findings.extend(check_tool_health())
     all_findings.extend(check_linear_sync())
-<<<<<<< HEAD
     all_findings.extend(check_heartbeat_channel())
-=======
     all_findings.extend(check_reverse_closure())
->>>>>>> 9eab5fa (fix: 添加反向闭环检测 (Check 9)，检测 GitHub 关闭但 Linear 未同步的问题 (Fixes #457))
 
     json.dump(all_findings, sys.stdout, indent=2)
     print()

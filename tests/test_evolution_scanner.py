@@ -5406,6 +5406,11 @@ def test_heartbeat_freshness_check_fresh():
         assert result["stale"] is False, "Should not detect stale history"
         assert result["age_hours"] < 2, "Age should be < 2 hours"
 
+
+def test_check_linear_sync_in_main():
+    """GAP-A: main() returns 1 when check_linear_sync reports findings."""
+    from memory_core.tools import evolution_self_audit
+
     with patch.object(evolution_self_audit, "check_suppress_json", return_value=[]), \
          patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]), \
          patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]), \
@@ -5414,7 +5419,8 @@ def test_heartbeat_freshness_check_fresh():
          patch.object(evolution_self_audit, "check_config_yml", return_value=[]), \
          patch.object(evolution_self_audit, "check_tool_health", return_value=[]), \
          patch.object(evolution_self_audit, "check_reverse_closure", return_value=[]), \
-         patch.object(evolution_self_audit, "check_linear_sync_health", return_value=[{
+         patch.object(evolution_self_audit, "check_heartbeat_channel", return_value=[]), \
+         patch.object(evolution_self_audit, "check_linear_sync", return_value=[{
              "rule_id": "TEST",
              "severity": "warning",
              "category": "evolution_self_audit",
@@ -5624,7 +5630,6 @@ def test_heartbeat_detects_stale_and_creates_alert():
 
             # Should exit 1 (anomaly detected)
             assert exit_code == 1, "Should exit 1 when anomaly detected"
-<<<<<<< HEAD
             # Verify alert was created (pr list + alert dedup check + create)
             assert mock_run.call_count == 3, "Should call gh 3 times (pr list + alert check + create)"
 
@@ -5790,13 +5795,20 @@ def test_check_heartbeat_channel_in_main(tmp_path, monkeypatch):
         "category": "evolution_self_audit",
     }
 
-=======
-            # Verify alert was created
-            assert mock_run.call_count == 2, "Should call gh twice (list + create)"
+    with patch.object(evolution_self_audit, "check_suppress_json", return_value=[]), \
+         patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]), \
+         patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]), \
+         patch.object(evolution_self_audit, "check_trigger_droid", return_value=[]), \
+         patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]), \
+         patch.object(evolution_self_audit, "check_config_yml", return_value=[]), \
+         patch.object(evolution_self_audit, "check_tool_health", return_value=[]), \
+         patch.object(evolution_self_audit, "check_linear_sync", return_value=[]), \
+         patch.object(evolution_self_audit, "check_reverse_closure", return_value=[]), \
+         patch.object(evolution_self_audit, "check_heartbeat_channel", return_value=[finding]) as mock_hb:
 
-        findings = evolution_self_audit.check_linear_sync_health()
-        assert findings == []
-        mock_post.assert_not_called()  # No Linear API calls if no GitHub issues
+        exit_code = evolution_self_audit.main()
+        assert exit_code == 1, "main() should return 1 when check_heartbeat_channel reports a finding"
+        mock_hb.assert_called_once()
 
 
 # GAP-B: Reverse Closure Detection Tests
@@ -6017,7 +6029,6 @@ def test_check_reverse_closure_in_main():
 
     from memory_core.tools import evolution_self_audit
 
->>>>>>> 9eab5fa (fix: 添加反向闭环检测 (Check 9)，检测 GitHub 关闭但 Linear 未同步的问题 (Fixes #457))
     with patch.object(evolution_self_audit, "check_suppress_json", return_value=[]), \
          patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]), \
          patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]), \
@@ -6025,12 +6036,20 @@ def test_check_reverse_closure_in_main():
          patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]), \
          patch.object(evolution_self_audit, "check_config_yml", return_value=[]), \
          patch.object(evolution_self_audit, "check_tool_health", return_value=[]), \
-<<<<<<< HEAD
-         patch.object(evolution_self_audit, "check_heartbeat_channel", return_value=[finding]) as mock_hb:
+         patch.object(evolution_self_audit, "check_heartbeat_channel", return_value=[]), \
+         patch.object(evolution_self_audit, "check_linear_sync", return_value=[]), \
+         patch.object(evolution_self_audit, "check_reverse_closure", return_value=[{
+             "rule_id": "TEST",
+             "severity": "warning",
+             "category": "evolution_self_audit",
+             "description": "test",
+             "location": "test",
+             "evidence": "test",
+         }]) as mock_check:
 
-        exit_code = evolution_self_audit.main()
-        assert exit_code == 1, "main() should return 1 when check_heartbeat_channel reports a finding"
-        mock_hb.assert_called_once()
+        result = evolution_self_audit.main()
+        mock_check.assert_called_once()
+        assert result == 1  # Has findings
 
 
 # ============================================================================
@@ -6192,20 +6211,6 @@ def test_main_writes_monitor_heartbeat(tmp_path):
         data = json.loads(monitor_path.read_text())
         assert data["status"] == "ok"
         assert data["anomalies_detected"] == 0
-=======
-         patch.object(evolution_self_audit, "check_linear_sync_health", return_value=[]), \
-         patch.object(evolution_self_audit, "check_reverse_closure", return_value=[{
-             "rule_id": "TEST",
-             "severity": "warning",
-             "category": "evolution_self_audit",
-             "description": "test",
-             "location": "test",
-             "evidence": "test",
-         }]) as mock_check:
-
-        result = evolution_self_audit.main()
-        mock_check.assert_called_once()
-        assert result == 1  # Has findings
 
 
 def test_check_reverse_closure_no_closed_issues():
@@ -6226,5 +6231,3 @@ def test_check_reverse_closure_no_closed_issues():
         findings = evolution_self_audit.check_reverse_closure()
         assert findings == []
         mock_post.assert_not_called()  # No Linear API calls if no closed GitHub issues
-
->>>>>>> 9eab5fa (fix: 添加反向闭环检测 (Check 9)，检测 GitHub 关闭但 Linear 未同步的问题 (Fixes #457))
