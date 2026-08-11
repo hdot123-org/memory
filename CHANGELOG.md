@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.2](https://github.com/hdot123/memory/compare/v0.22.1...v0.22.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* 为 check_reverse_closure 的 findings 变量添加类型标注 (INFRA-207) ([#511](https://github.com/hdot123/memory/issues/511)) ([ee724f5](https://github.com/hdot123/memory/commit/ee724f55b79216db8543cc8776d2c21863db337e))
+
 ## [0.22.1](https://github.com/hdot123/memory/compare/v0.22.0...v0.22.1) (2026-08-11)
 
 
