@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.6](https://github.com/hdot123/memory/compare/v0.18.5...v0.18.6) (2026-08-11)
+
+
+### Bug Fixes
+
+* evolution scanner 跳过已解决的错误模式 (INFRA-184) ([#469](https://github.com/hdot123/memory/issues/469)) ([f5cee9d](https://github.com/hdot123/memory/commit/f5cee9d1674d11f01af13bf2e8b4963ce4b311d7))
+
 ## [0.18.5](https://github.com/hdot123/memory/compare/v0.18.4...v0.18.5) (2026-08-11)
 
 
