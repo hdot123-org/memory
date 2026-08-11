@@ -36,6 +36,7 @@ from evolution_scanner import (
     sort_by_severity,
     update_history,
 )
+from evolution_utils import auto_close_resolved
 
 
 def test_kill_switch(tmp_path):
@@ -4245,3 +4246,130 @@ def test_update_history_tool_status(tmp_path):
     data = json.loads(history_path.read_text())
     assert len(data["snapshots"]) == 1
     assert data["snapshots"][0]["tool_status"] == tool_status
+
+
+# ============================================================================
+# auto_close_resolved() Tests
+# ============================================================================
+
+
+def test_auto_close_resolved_closes_stale_issues():
+    """auto_close_resolved closes issues NOT in current findings."""
+
+    # Current scan has only RULE_001
+    current_findings = [
+        Finding(
+            rule_id="RULE_001",
+            severity="warning",
+            category="test",
+            description="current issue",
+            location="file1.py",
+            evidence="evidence1",
+        )
+    ]
+
+    # Mock gh CLI responses
+    mock_issues = [
+        {
+            "number": 101,
+            "body": "**Rule ID**: RULE_001\n**Location**: file1.py\n**Description**: current",
+        },
+        {
+            "number": 102,
+            "body": "**Rule ID**: RULE_002\n**Location**: file2.py\n**Description**: stale",
+        },
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        # First call: list issues
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # close issue 102
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found")
+
+        # Verify: should call list, then close only issue 102
+        assert mock_run.call_count == 2
+
+        # Check the close call
+        close_call = mock_run.call_args_list[1]
+        close_args = close_call[0][0]
+        assert close_args[0:4] == ["gh", "issue", "close", "102"]
+        assert "--comment" in close_args
+        assert "finding" in close_args[-1] and "最近一次扫描" in close_args[-1]
+
+
+def test_auto_close_resolved_does_not_close_active_issues():
+    """auto_close_resolved does NOT close issues that ARE in current findings."""
+
+    # Current scan has both rules
+    current_findings = [
+        Finding("RULE_001", "warning", "test", "desc1", "file1.py", "ev1"),
+        Finding("RULE_002", "info", "test", "desc2", "file2.py", "ev2"),
+    ]
+
+    # Both issues exist in GitHub
+    mock_issues = [
+        {"number": 101, "body": "**Rule ID**: RULE_001\n**Location**: file1.py"},
+        {"number": 102, "body": "**Rule ID**: RULE_002\n**Location**: file2.py"},
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout=json.dumps(mock_issues), stderr=""
+        )
+
+        auto_close_resolved(current_findings, "evolution-found")
+
+        # Should only call list, NOT close
+        assert mock_run.call_count == 1
+        call_args = mock_run.call_args[0][0]
+        assert call_args[0:3] == ["gh", "issue", "list"]
+
+
+def test_auto_close_resolved_handles_empty_list():
+    """auto_close_resolved handles empty issue list gracefully."""
+
+    current_findings = [
+        Finding("RULE_001", "warning", "test", "desc", "file.py", "ev")
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+
+        auto_close_resolved(current_findings, "evolution-found")
+
+        # Should call list only
+        assert mock_run.call_count == 1
+
+
+def test_auto_close_resolved_skips_malformed_issues():
+    """auto_close_resolved skips issues with missing or malformed body."""
+
+    current_findings = [
+        Finding("RULE_001", "warning", "test", "desc", "file.py", "ev")
+    ]
+
+    # Issue 101 has no body, issue 102 is malformed
+    mock_issues = [
+        {"number": 101, "body": ""},
+        {"number": 102, "body": "This is not a valid evolution issue body"},
+        {
+            "number": 103,
+            "body": "**Rule ID**: RULE_999\n**Location**: stale.py",
+        },
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # close 103
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found")
+
+        # Should close only issue 103 (stale), skip 101 and 102 (malformed)
+        assert mock_run.call_count == 2
+        close_call = mock_run.call_args_list[1]
+        assert close_call[0][0][3] == "103"

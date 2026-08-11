@@ -1,5 +1,6 @@
 """Utility functions for evolution scanner."""
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -158,3 +159,65 @@ def load_history(history_path: Path):
         data['resolved_findings'] = valid_resolved
 
     return data
+
+
+def auto_close_resolved(findings: list, dedup_label: str) -> None:
+    """Close GitHub Issues whose findings are no longer present in current scan.
+
+    Compares current findings against open evolution-found GitHub Issues.
+    Issues whose (rule_id, location) is NOT in current findings are closed
+    via `gh issue close` with an explanatory comment.
+
+    Args:
+        findings: List of Finding objects from current scan
+        dedup_label: Label used to identify evolution scanner issues
+    """
+    # Build set of current finding keys
+    current_keys = {(f.rule_id, f.location) for f in findings}
+
+    # Fetch all open evolution-found issues
+    try:
+        result = subprocess.run(
+            ["gh", "issue", "list", "--search", f"label:{dedup_label}",
+             "--state", "open", "--limit", "200", "--json", "number,body"],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode != 0:
+            print(f"[evolution] Warning: Failed to list open issues: {result.stderr}")
+            return
+
+        issues = json.loads(result.stdout) if result.stdout.strip() else []
+    except Exception as e:
+        print(f"[evolution] Warning: Failed to fetch open issues: {e}")
+        return
+
+    # Close issues not in current findings
+    closed_count = 0
+    for issue in issues:
+        rule_id, location = _parse_issue_fields(issue.get("body", ""))
+        if rule_id is None or location is None:
+            continue
+
+        issue_key = (rule_id, location)
+        if issue_key not in current_keys:
+            # This finding is no longer present - close the issue
+            close_msg = (
+                f"该 finding 在最近一次扫描中已不再出现，自动关闭此 Issue。"
+                f"（Rule: {rule_id}, Location: {location}）"
+            )
+            try:
+                close_result = subprocess.run(
+                    ["gh", "issue", "close", str(issue["number"]),
+                     "--comment", close_msg],
+                    capture_output=True, text=True, timeout=30
+                )
+                if close_result.returncode == 0:
+                    closed_count += 1
+                    print(f"[evolution] Closed issue #{issue['number']}: {rule_id} @ {location}")
+                else:
+                    print(f"[evolution] Warning: Failed to close issue #{issue['number']}: {close_result.stderr}")
+            except Exception as e:
+                print(f"[evolution] Warning: Failed to close issue #{issue['number']}: {e}")
+
+    if closed_count > 0:
+        print(f"[evolution] Auto-closed {closed_count} resolved issues")
