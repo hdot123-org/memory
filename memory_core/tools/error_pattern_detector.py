@@ -458,6 +458,22 @@ def merge_patterns(
             entry["resolved_at"] = resolved_at
         result.append(entry)
 
+    # Carry over resolved entries that are no longer detected, so their
+    # resolved status persists across runs (INFRA-186). Without this,
+    # a resolved pattern that stops occurring gets dropped from the
+    # registry, losing its resolved status permanently. Only resolved
+    # entries are carried over — detected entries that disappeared should
+    # be dropped (they may have been fixed).
+    result_fps = {e["fingerprint"] for e in result}
+    for fp in sorted(existing.keys()):
+        if fp in result_fps:
+            continue
+        entry = existing[fp]
+        if entry.get("status") == "resolved":
+            result.append(entry)
+
+    # Sort by fingerprint for determinism
+    result.sort(key=lambda e: e["fingerprint"])
     return result
 
 
@@ -720,6 +736,74 @@ def run_pipeline(
 
 
 # ---------------------------------------------------------------------------
+# Resolve Command (INFRA-186)
+# ---------------------------------------------------------------------------
+
+
+def resolve_patterns(
+    fingerprint: str | None = None,
+    pattern_type: str | None = None,
+    registry_path: Path | None = None,
+) -> int:
+    """Mark error patterns as resolved in the registry (INFRA-186).
+
+    Loads the registry, matches entries by fingerprint (exact) or type
+    (all patterns of that type), sets ``status="resolved"`` with an
+    ISO timestamp, writes the registry back, and prints a summary.
+
+    Exactly one of *fingerprint* or *pattern_type* must be provided.
+
+    Args:
+        fingerprint: Specific pattern fingerprint to resolve.
+        pattern_type: Resolve all patterns matching this type.
+        registry_path: Optional explicit registry path. Defaults to
+            ``<cwd>/memory/kb/patterns/registry.jsonl``.
+
+    Returns:
+        Number of patterns resolved.
+    """
+    if registry_path is None:
+        registry_path = Path.cwd() / "memory" / "kb" / "patterns" / "registry.jsonl"
+
+    # No registry exists → nothing to resolve
+    if not registry_path.exists():
+        print("warning: no registry found, nothing to resolve", file=sys.stderr)
+        return 0
+
+    registry = read_registry(registry_path)
+    if not registry:
+        print("warning: registry is empty, nothing to resolve", file=sys.stderr)
+        return 0
+
+    run_time = now_iso()
+    resolved_fps: list[str] = []
+
+    for fp in sorted(registry.keys()):
+        entry = registry[fp]
+        match = False
+        if fingerprint is not None:
+            match = fp == fingerprint
+        elif pattern_type is not None:
+            match = entry.get("type") == pattern_type
+
+        if match:
+            entry["status"] = "resolved"
+            entry["resolved_at"] = run_time
+            resolved_fps.append(fp)
+
+    if not resolved_fps:
+        print("No matching patterns found")
+        return 0
+
+    # Write the updated registry
+    write_registry(registry_path, list(registry.values()))
+
+    fps_str = ", ".join(resolved_fps)
+    print(f"Resolved {len(resolved_fps)} pattern(s): [{fps_str}]")
+    return len(resolved_fps)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -751,6 +835,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--verbose",
         action="store_true",
         help="Print detailed detection output to stdout",
+    )
+
+    # Resolve operations (INFRA-186) — mutually exclusive with each other
+    resolve_group = parser.add_mutually_exclusive_group()
+    resolve_group.add_argument(
+        "--resolve",
+        type=str,
+        metavar="FINGERPRINT",
+        help="Mark a specific pattern as resolved by fingerprint",
+    )
+    resolve_group.add_argument(
+        "--resolve-type",
+        type=str,
+        metavar="TYPE",
+        help="Mark all patterns of a given type as resolved (e.g., transcript_missing)",
     )
     return parser
 
@@ -784,6 +883,14 @@ def _main_inner(argv: list[str] | None = None) -> None:
     """Inner main logic (exceptions caught by outer main)."""
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # Resolve mode (INFRA-186) — takes priority over scan mode
+    if args.resolve or args.resolve_type:
+        resolve_patterns(
+            fingerprint=args.resolve,
+            pattern_type=args.resolve_type,
+        )
+        return
 
     # Determine project paths to scan
     project_paths: list[Path] = []
