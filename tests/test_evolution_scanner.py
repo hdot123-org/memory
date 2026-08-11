@@ -4408,3 +4408,117 @@ def test_auto_close_resolved_skips_malformed_issues():
         assert mock_run.call_count == 2
         close_call = mock_run.call_args_list[1]
         assert close_call[0][0][3] == "103"
+
+
+# ============================================================================
+# GAP-C1: auto_close_resolved failed_categories protection Tests
+# ============================================================================
+
+
+def test_auto_close_resolved_protects_failed_categories():
+    """GAP-C1: issues whose category is in failed_categories are NOT closed.
+
+    A crashed audit tool emits no findings, so its issues temporarily vanish
+    from the current scan. They must be protected from premature auto-close.
+    """
+
+    # Current scan has nothing for RULE_002 (its tool failed)
+    current_findings = [
+        Finding("RULE_001", "warning", "consistency", "active", "file1.py", "ev1"),
+    ]
+
+    # Both issues open; RULE_002 belongs to a failed category
+    mock_issues = [
+        {"number": 101, "body": "**Rule ID**: RULE_001\n**Category**: consistency\n**Location**: file1.py"},
+        {"number": 102, "body": "**Rule ID**: RULE_002\n**Category**: daily_audit\n**Location**: file2.py"},
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        # list + nothing else (102 must NOT be closed)
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found", failed_categories={"daily_audit"})
+
+        # Only the list call happened; issue 102 was protected, not closed
+        assert mock_run.call_count == 1
+        call_args = mock_run.call_args[0][0]
+        assert call_args[0:3] == ["gh", "issue", "list"]
+
+
+def test_auto_close_resolved_closes_when_category_not_failed():
+    """GAP-C1: issues whose category is NOT in failed_categories are closed normally."""
+
+    current_findings = [
+        Finding("RULE_001", "warning", "consistency", "active", "file1.py", "ev1"),
+    ]
+
+    # RULE_002 (stale) has a healthy category; RULE_003 (stale) has a failed category
+    mock_issues = [
+        {"number": 101, "body": "**Rule ID**: RULE_001\n**Category**: consistency\n**Location**: file1.py"},
+        {"number": 102, "body": "**Rule ID**: RULE_002\n**Category**: consistency\n**Location**: file2.py"},
+        {"number": 103, "body": "**Rule ID**: RULE_003\n**Category**: daily_audit\n**Location**: file3.py"},
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # close 102 (healthy, stale)
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found", failed_categories={"daily_audit"})
+
+        # list + exactly one close (102). 103 must be protected.
+        assert mock_run.call_count == 2
+        close_call = mock_run.call_args_list[1]
+        assert close_call[0][0][3] == "102"
+
+
+def test_auto_close_resolved_all_categories_failed_protects_all():
+    """GAP-C1: when every stale issue's category failed, nothing is closed."""
+
+    current_findings = []  # nothing in current scan
+
+    mock_issues = [
+        {"number": 201, "body": "**Rule ID**: RULE_A\n**Category**: daily_audit\n**Location**: a.py"},
+        {"number": 202, "body": "**Rule ID**: RULE_B\n**Category**: consistency\n**Location**: b.py"},
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found",
+                            failed_categories={"daily_audit", "consistency"})
+
+        # list only; no close calls
+        assert mock_run.call_count == 1
+
+
+def test_auto_close_resolved_no_category_field_still_closes():
+    """GAP-C1: legacy issues without a Category line are closed (no protection info)."""
+
+    current_findings = [
+        Finding("RULE_001", "warning", "consistency", "active", "file1.py", "ev1"),
+    ]
+
+    # RULE_002 is stale and has NO Category line (legacy issue body)
+    mock_issues = [
+        {"number": 101, "body": "**Rule ID**: RULE_001\n**Location**: file1.py"},
+        {"number": 102, "body": "**Rule ID**: RULE_002\n**Location**: file2.py"},
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # close 102
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found", failed_categories={"daily_audit"})
+
+        # Without a parseable category we cannot prove it failed -> close it.
+        assert mock_run.call_count == 2
+        close_call = mock_run.call_args_list[1]
+        assert close_call[0][0][3] == "102"

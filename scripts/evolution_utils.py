@@ -87,6 +87,22 @@ def _parse_issue_fields(body: str):
     return rule_id, location
 
 
+def _parse_issue_category(body: str) -> str | None:
+    """Parse the Category field from an issue body.
+
+    Used by auto_close_resolved to decide whether an issue belongs to a failed
+    audit category (GAP-C1). Returns the category string, or None when the
+    field is absent (e.g. legacy issues created without the Category line).
+    """
+    for line in body.split('\n'):
+        if line.startswith('**Description**') or line.startswith('**Evidence**'):
+            break
+        if line.startswith('**Category**:'):
+            value = line.split(':', 1)[1].strip()
+            return value or None
+    return None
+
+
 def load_history(history_path: Path):
     """Load evolution history from JSON file with structural validation.
 
@@ -161,16 +177,23 @@ def load_history(history_path: Path):
     return data
 
 
-def auto_close_resolved(findings: list, dedup_label: str) -> None:
+def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set[str] | None = None) -> None:
     """Close GitHub Issues whose findings are no longer present in current scan.
 
     Compares current findings against open evolution-found GitHub Issues.
     Issues whose (rule_id, location) is NOT in current findings are closed
     via `gh issue close` with an explanatory comment.
 
+    Issues whose category belongs to a failed audit tool are NOT closed: a
+    crashed/timed-out tool emits no findings, so its issues temporarily
+    disappear from the current scan even though the underlying problem may
+    still exist. Such issues are skipped with a warning instead (GAP-C1).
+
     Args:
         findings: List of Finding objects from current scan
         dedup_label: Label used to identify evolution scanner issues
+        failed_categories: Set of audit categories whose tool failed this tick.
+            Issues whose category is in this set are protected from auto-close.
     """
     # Build set of current finding keys
     current_keys = {(f.rule_id, f.location) for f in findings}
@@ -193,6 +216,7 @@ def auto_close_resolved(findings: list, dedup_label: str) -> None:
 
     # Close issues not in current findings
     closed_count = 0
+    protected_count = 0
     for issue in issues:
         rule_id, location = _parse_issue_fields(issue.get("body", ""))
         if rule_id is None or location is None:
@@ -200,6 +224,16 @@ def auto_close_resolved(findings: list, dedup_label: str) -> None:
 
         issue_key = (rule_id, location)
         if issue_key not in current_keys:
+            # GAP-C1: protect issues whose category came from a failed audit tool.
+            # A failed tool emits no findings, so its issues vanish from the
+            # current scan even though the underlying problem may still exist.
+            if failed_categories:
+                category = _parse_issue_category(issue.get("body", ""))
+                if category and category in failed_categories:
+                    protected_count += 1
+                    print(f"[evolution] Skip auto-close #{issue['number']}: category '{category}' tool failed this tick ({rule_id} @ {location})")
+                    continue
+
             # This finding is no longer present - close the issue
             close_msg = (
                 f"该 finding 在最近一次扫描中已不再出现，自动关闭此 Issue。"
@@ -221,3 +255,5 @@ def auto_close_resolved(findings: list, dedup_label: str) -> None:
 
     if closed_count > 0:
         print(f"[evolution] Auto-closed {closed_count} resolved issues")
+    if protected_count > 0:
+        print(f"[evolution] Protected {protected_count} issue(s) from auto-close due to failed audit categories")
