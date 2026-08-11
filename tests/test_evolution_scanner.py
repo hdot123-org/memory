@@ -4772,8 +4772,9 @@ def test_reconcile_in_progress_exists():
 
 def test_reconcile_detects_stuck_issue(tmp_path):
     """VAL-RECON-002: Detects issues open > 72h with no PR."""
+    from datetime import datetime, timedelta, timezone
+
     from evolution_utils import reconcile_in_progress
-    from datetime import datetime, timezone, timedelta
 
     # Mock an issue open for 100 hours (> 72h threshold)
     old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
@@ -4801,8 +4802,9 @@ def test_reconcile_detects_stuck_issue(tmp_path):
 
 def test_reconcile_ignores_recent_issue(tmp_path):
     """VAL-RECON-003: Does not flag issues < 72h old."""
+    from datetime import datetime, timedelta, timezone
+
     from evolution_utils import reconcile_in_progress
-    from datetime import datetime, timezone, timedelta
 
     # Mock a recent issue (10h old)
     recent_date = (datetime.now(timezone.utc) - timedelta(hours=10)).isoformat().replace("+00:00", "Z")
@@ -4828,8 +4830,9 @@ def test_reconcile_ignores_recent_issue(tmp_path):
 
 def test_reconcile_ignores_issue_with_pr(tmp_path):
     """VAL-RECON-004: Does not flag issues that have associated PRs."""
+    from datetime import datetime, timedelta, timezone
+
     from evolution_utils import reconcile_in_progress
-    from datetime import datetime, timezone, timedelta
 
     # Mock an old issue (> 72h)
     old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
@@ -4856,8 +4859,9 @@ def test_reconcile_ignores_issue_with_pr(tmp_path):
 
 def test_reconcile_adds_advisory_comment(tmp_path):
     """VAL-RECON-005: Adds advisory comment to stuck issues."""
+    from datetime import datetime, timedelta, timezone
+
     from evolution_utils import reconcile_in_progress
-    from datetime import datetime, timezone, timedelta
 
     old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
     mock_issues = [
@@ -4923,8 +4927,9 @@ def test_reconcile_called_in_main():
 
 def test_reconcile_idempotency_guard(tmp_path):
     """VAL-RECON-008: Idempotency guard prevents duplicate comments."""
+    from datetime import datetime, timedelta, timezone
+
     from evolution_utils import reconcile_in_progress
-    from datetime import datetime, timezone, timedelta
 
     old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
     mock_issues = [
@@ -4959,8 +4964,9 @@ def test_reconcile_idempotency_guard(tmp_path):
 
 def test_reconcile_returns_count(tmp_path):
     """VAL-RECON-009: Returns count of stuck issues."""
+    from datetime import datetime, timedelta, timezone
+
     from evolution_utils import reconcile_in_progress
-    from datetime import datetime, timezone, timedelta
 
     # Mock 3 old issues
     old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")

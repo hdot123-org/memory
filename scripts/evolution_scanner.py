@@ -20,7 +20,14 @@ if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
 from evolution_adapters import TOOL_TO_CATEGORIES, sanitize_structured_field, sanitize_text
-from evolution_utils import _parse_issue_fields, auto_close_resolved, dedup_intra_tick, load_history, reconcile_in_progress, validate_config
+from evolution_utils import (
+    _parse_issue_fields,
+    auto_close_resolved,
+    dedup_intra_tick,
+    load_history,
+    reconcile_in_progress,
+    validate_config,
+)
 
 
 @dataclass
