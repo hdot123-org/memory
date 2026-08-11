@@ -607,7 +607,7 @@ def check_heartbeat_channel() -> list[dict[str, Any]]:
 
 def check_reverse_closure() -> list[dict[str, Any]]:
     """Check 9: detect GitHub↔Linear closure state mismatches."""
-    findings = []
+    findings: list[dict[str, Any]] = []
 
     linear_api_key = os.environ.get("LINEAR_API_KEY")
     if not linear_api_key:
