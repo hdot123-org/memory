@@ -11,10 +11,7 @@ from pathlib import Path
 
 import yaml
 
-# P1-A: Restore script directory to sys.path when PYTHONSAFEPATH is set.
-# PYTHONSAFEPATH prevents automatic insertion of the script's directory, blocking
-# module poisoning attacks (e.g. scripts/yaml.py shadowing PyYAML).
-# We explicitly add only our own directory back, after stdlib imports are resolved.
+# P1-A: Restore script dir to sys.path (PYTHONSAFEPATH blocks auto-insert to prevent module poisoning).
 _SCRIPT_DIR = str(Path(__file__).resolve().parent)
 if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
@@ -73,17 +70,9 @@ def ensure_labels(dedup_label: str, failure_label: str) -> None:
 def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict] | None:
     """Run an audit tool and return findings, or None on failure.
 
-    Returns None when the tool failed to produce usable output:
-    - Exception/timeout during execution
-    - Source file missing for registry_jsonl tools
-    - Non-zero exit code with empty stdout (tool truly failed)
-    - JSON decode error in stdout
-
-    Returns [] when the tool succeeded but produced no findings.
-
-    Note: Audit tools exit non-zero when they find problems but still produce
-    valid JSON stdout. We log stderr as a warning but still parse stdout when
-    it contains valid JSON.
+    Returns None on failure (exception, missing source file, empty stdout, JSON
+    decode error). Returns [] on success with no findings. Non-zero exit codes
+    with valid JSON stdout are still parsed (audit tools exit non-zero on findings).
     """
     from evolution_adapters import ADAPTER_MAP
     try:
@@ -372,7 +361,11 @@ def main() -> None:
     try:
         open_issues = get_open_issues(config["dedup_label"], config["failure_label"])
         deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
-        issues_created = sum(1 for f in deduped[:config["max_issues_per_tick"]] if create_issue(f, config["dedup_label"]))
+        # INFRA-198: independent quotas so critical findings don't starve self_audit
+        regular = [f for f in deduped if f.category != "evolution_self_audit"]
+        self_audit = [f for f in deduped if f.category == "evolution_self_audit"]
+        issues_created = sum(1 for f in regular[:config["max_issues_per_tick"]] if create_issue(f, config["dedup_label"]))
+        issues_created += sum(1 for f in self_audit[:config["max_self_audit_issues_per_tick"]] if create_issue(f, config["dedup_label"]))
     except RuntimeError as e:
         print(f"[evolution] Warning: {e}")
         issues_created = 0
@@ -392,9 +385,7 @@ def main() -> None:
         print("::error::GitHub API unavailable, cannot verify dedup; aborting tick to prevent silent loop death")
         sys.exit(1)
 
-    # GAP-G: auto_close_resolved moved AFTER P1-2/P2-A hard exit checks.
-    # Previously called before these checks, meaning if P2-A triggered a hard exit,
-    # auto_close had already executed. Now auto_close only runs on healthy ticks.
+    # GAP-G: auto_close runs AFTER P1-2/P2-A hard exits so failed ticks don't close issues.
     auto_close_resolved(all_findings, config["dedup_label"], failed_categories, history_path)
 
     # GAP-E: Reconciliation - check for stuck issues (advisory only)

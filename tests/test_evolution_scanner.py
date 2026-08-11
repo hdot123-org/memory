@@ -1635,6 +1635,7 @@ def test_main_handles_gh_failure_gracefully():
             "isolation_threshold": 3,
             "failure_label": "evolution-isolated",
             "max_issues_per_tick": 3,
+            "max_self_audit_issues_per_tick": 1,
             "snapshot_limit": 100,
         }
 
@@ -2270,6 +2271,7 @@ def test_main_filters_none_results_no_false_resolved():
             "isolation_threshold": 3,
             "failure_label": "evolution-isolated",
             "max_issues_per_tick": 3,
+            "max_self_audit_issues_per_tick": 1,
             "snapshot_limit": 100,
         }
         # tool_a fails (None), tool_b succeeds with 1 finding
@@ -2983,6 +2985,7 @@ def test_main_config_drift_protection_all_keys_present():
         "isolation_threshold": 3,
         "failure_label": "evolution-isolated",
         "max_issues_per_tick": 3,
+        "max_self_audit_issues_per_tick": 1,
         "snapshot_limit": 100,
     }
 
@@ -3287,6 +3290,7 @@ def test_main_exits_nonzero_when_zero_issues_from_label_failure():
         'isolation_threshold': 3,
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 3,
+        'max_self_audit_issues_per_tick': 1,
         'snapshot_limit': 100,
         'github': {'owner': 'test', 'repo': 'test'}
     }
@@ -3724,6 +3728,7 @@ def test_main_exits_nonzero_when_github_api_fails(tmp_path):
         'isolation_threshold': 3,
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 3,
+        'max_self_audit_issues_per_tick': 1,
         'snapshot_limit': 100,
         'github': {'owner': 'test', 'repo': 'test'}
     }
@@ -3756,6 +3761,7 @@ def test_main_no_exit_when_github_fails_but_no_findings():
         'isolation_threshold': 3,
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 3,
+        'max_self_audit_issues_per_tick': 1,
         'snapshot_limit': 100,
         'github': {'owner': 'test', 'repo': 'test'}
     }
@@ -3785,6 +3791,7 @@ def test_main_does_not_auto_close_when_p2a_exits(tmp_path):
         'isolation_threshold': 3,
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 3,
+        'max_self_audit_issues_per_tick': 1,
         'snapshot_limit': 100,
         'github': {'owner': 'test', 'repo': 'test'}
     }
@@ -4996,3 +5003,181 @@ def test_reconcile_returns_count(tmp_path):
         stuck_count = reconcile_in_progress("evolution-found")
 
         assert stuck_count == 3, "Should return count of all stuck issues"
+
+
+# ============================================================================
+# INFRA-198: Independent quota pools (regular vs evolution_self_audit)
+# ============================================================================
+
+
+def test_regular_and_self_audit_get_independent_quotas():
+    """INFRA-198: Regular and self_audit findings get independent issue quotas."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 1,
+        'max_self_audit_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    regular = Finding("REG_001", "warning", "consistency", "Regular", "file1.md", "ev1")
+    self_audit = Finding("SA_001", "warning", "evolution_self_audit", "Self audit", "file2.md", "ev2")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[regular, self_audit]), \
+         patch('evolution_scanner.detect_regressions', return_value=[regular, self_audit]), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'):
+        main()
+        assert mock_create.call_count == 2
+        created_findings = [call[0][0] for call in mock_create.call_args_list]
+        categories = {f.category for f in created_findings}
+        assert "consistency" in categories
+        assert "evolution_self_audit" in categories
+
+
+def test_regular_quota_exhaustion_does_not_block_self_audit():
+    """INFRA-198: Regular quota exhaustion does NOT block self_audit."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 1,
+        'max_self_audit_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    critical = Finding("CRIT_001", "critical", "daily_audit", "Critical", "file1.md", "ev1")
+    self_audit = Finding("SA_001", "warning", "evolution_self_audit", "Self audit", "file2.md", "ev2")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[critical, self_audit]), \
+         patch('evolution_scanner.detect_regressions', return_value=[critical, self_audit]), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'):
+        main()
+        assert mock_create.call_count == 2
+        created_findings = [call[0][0] for call in mock_create.call_args_list]
+        categories = {f.category for f in created_findings}
+        assert "evolution_self_audit" in categories, "Self-audit must NOT be blocked by regular quota"
+        assert "daily_audit" in categories
+
+
+def test_self_audit_quota_is_capped():
+    """INFRA-198: Self-audit findings capped at max_self_audit_issues_per_tick."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 5,
+        'max_self_audit_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    sa_findings = [
+        Finding(f"SA_{i}", "warning", "evolution_self_audit", f"SA {i}", f"file{i}.md", f"ev{i}")
+        for i in range(3)
+    ]
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=sa_findings), \
+         patch('evolution_scanner.detect_regressions', return_value=sa_findings), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'):
+        main()
+        assert mock_create.call_count == 1
+        created = mock_create.call_args_list[0][0][0]
+        assert created.category == "evolution_self_audit"
+
+
+def test_mixed_findings_sorted_correctly_within_each_pool():
+    """INFRA-198: Each pool maintains severity sort independently."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 2,
+        'max_self_audit_issues_per_tick': 2,
+        'snapshot_limit': 100,
+    }
+
+    findings = [
+        Finding("REG_CRIT", "critical", "daily_audit", "Critical", "f1.md", "ev"),
+        Finding("REG_INFO", "info", "consistency", "Info", "f2.md", "ev"),
+        Finding("REG_WARN", "warning", "daily_audit", "Warning", "f3.md", "ev"),
+        Finding("SA_INFO", "info", "evolution_self_audit", "SA Info", "f4.md", "ev"),
+        Finding("SA_WARN", "warning", "evolution_self_audit", "SA Warn", "f5.md", "ev"),
+    ]
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=findings), \
+         patch('evolution_scanner.detect_regressions', return_value=findings), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'):
+        main()
+        assert mock_create.call_count == 4
+        created = [call[0][0] for call in mock_create.call_args_list]
+        regular_created = [f for f in created if f.category != "evolution_self_audit"]
+        sa_created = [f for f in created if f.category == "evolution_self_audit"]
+        assert regular_created[0].severity == "critical"
+        assert regular_created[1].severity == "warning"
+        assert sa_created[0].severity == "warning"
+        assert sa_created[1].severity == "info"
+
+
+def test_config_has_max_self_audit_issues_per_tick():
+    """INFRA-198: config.yml must contain max_self_audit_issues_per_tick."""
+    from evolution_scanner import load_config
+    from pathlib import Path
+    config = load_config(Path("/tmp/infra-198-work"))
+    assert "max_self_audit_issues_per_tick" in config, \
+        "config.yml must have max_self_audit_issues_per_tick"
