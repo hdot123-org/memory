@@ -5194,6 +5194,8 @@ from evolution_heartbeat import (
     check_history_freshness,
     check_pr_coverage,
     create_alert_issue,
+)
+from evolution_heartbeat import (
     main as heartbeat_main,
 )
 
