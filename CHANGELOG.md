@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.7](https://github.com/hdot123/memory/compare/v0.18.6...v0.18.7) (2026-08-11)
+
+
+### Documentation
+
+* 纠正 Linear/GitHub 职责约定的文档漂移 (INFRA-182) ([#467](https://github.com/hdot123/memory/issues/467)) ([61f1354](https://github.com/hdot123/memory/commit/61f13542b7a62def907fcbd6e53641bba1f93393))
+
 ## [0.18.6](https://github.com/hdot123/memory/compare/v0.18.5...v0.18.6) (2026-08-11)
 
 
