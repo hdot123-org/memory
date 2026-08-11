@@ -22,6 +22,7 @@ REQUIRED_CONFIG_KEYS = [
     "isolation_threshold",
     "failure_label",
     "max_issues_per_tick",
+    "max_self_audit_issues_per_tick",
     "snapshot_limit",
 ]
 
