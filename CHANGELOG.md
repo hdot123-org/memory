@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/hdot123/memory/compare/v0.19.0...v0.19.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* 标记 llm_api_error 错误模式为已解决 (INFRA-189) ([#475](https://github.com/hdot123/memory/issues/475)) ([6882c18](https://github.com/hdot123/memory/commit/6882c18c69dd09540b97ed94a09d9a189f4d3f61))
+
 ## [0.19.0](https://github.com/hdot123/memory/compare/v0.18.7...v0.19.0) (2026-08-11)
 
 
