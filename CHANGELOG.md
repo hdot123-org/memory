@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.4](https://github.com/hdot123/memory/compare/v0.18.3...v0.18.4) (2026-08-11)
+
+
+### Bug Fixes
+
+* 纠正 Linear/GitHub 职责约定的文档漂移 ([#462](https://github.com/hdot123/memory/issues/462)) ([5729856](https://github.com/hdot123/memory/commit/5729856f7f2d590f7728b5f03dd1ab7a27e12457))
+
 ## [0.18.3](https://github.com/hdot123/memory/compare/v0.18.2...v0.18.3) (2026-08-11)
 
 
