@@ -4760,6 +4760,7 @@ def test_single_absence_production_order_no_close(tmp_path):
 
 
 # ============================================================================
+# ============================================================================
 # GAP-A (INFRA-174): Linear 同步失败检测 — detect_sync_orphans() 单元测试
 # ============================================================================
 
@@ -4887,3 +4888,241 @@ def test_detect_sync_orphans_multiple():
     orphan_numbers = {o["number"] for o in orphans}
     assert orphan_numbers == {201, 205}
 
+
+# ============================================================================
+# GAP-E: Reconciliation tests
+# ============================================================================
+
+
+def test_reconcile_in_progress_exists():
+    """VAL-RECON-001: reconcile_in_progress function exists and is callable."""
+    from evolution_utils import reconcile_in_progress
+    assert callable(reconcile_in_progress)
+
+
+def test_reconcile_detects_stuck_issue(tmp_path):
+    """VAL-RECON-002: Detects issues open > 72h with no PR."""
+    from datetime import datetime, timedelta, timezone
+
+    from evolution_utils import reconcile_in_progress
+
+    # Mock an issue open for 100 hours (> 72h threshold)
+    old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
+    mock_issues = [
+        {
+            "number": 42,
+            "body": "**Rule ID**: RULE_001\n**Location**: file.py",
+            "createdAt": old_date
+        }
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        # Mock calls: issue list, PR list (none), comment list (none), comment create
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),  # issue list
+            MagicMock(returncode=0, stdout="[]", stderr=""),  # PR list (no PRs)
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment list (no comments)
+            MagicMock(returncode=0, stdout="", stderr="")   # comment create
+        ]
+
+        stuck_count = reconcile_in_progress("evolution-found")
+
+        assert stuck_count > 0, "Should detect stuck issue"
+
+
+def test_reconcile_ignores_recent_issue(tmp_path):
+    """VAL-RECON-003: Does not flag issues < 72h old."""
+    from datetime import datetime, timedelta, timezone
+
+    from evolution_utils import reconcile_in_progress
+
+    # Mock a recent issue (10h old)
+    recent_date = (datetime.now(timezone.utc) - timedelta(hours=10)).isoformat().replace("+00:00", "Z")
+    mock_issues = [
+        {
+            "number": 43,
+            "body": "**Rule ID**: RULE_002\n**Location**: file.py",
+            "createdAt": recent_date
+        }
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps(mock_issues),
+            stderr=""
+        )
+
+        stuck_count = reconcile_in_progress("evolution-found")
+
+        assert stuck_count == 0, "Should not flag recent issue"
+
+
+def test_reconcile_ignores_issue_with_pr(tmp_path):
+    """VAL-RECON-004: Does not flag issues that have associated PRs."""
+    from datetime import datetime, timedelta, timezone
+
+    from evolution_utils import reconcile_in_progress
+
+    # Mock an old issue (> 72h)
+    old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
+    mock_issues = [
+        {
+            "number": 44,
+            "body": "**Rule ID**: RULE_003\n**Location**: file.py",
+            "createdAt": old_date
+        }
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        # First call: gh issue list
+        # Second call: gh pr list (returns a PR)
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout=json.dumps([{"number": 99}]), stderr="")
+        ]
+
+        stuck_count = reconcile_in_progress("evolution-found")
+
+        assert stuck_count == 0, "Should not flag issue with PR"
+
+
+def test_reconcile_adds_advisory_comment(tmp_path):
+    """VAL-RECON-005: Adds advisory comment to stuck issues."""
+    from datetime import datetime, timedelta, timezone
+
+    from evolution_utils import reconcile_in_progress
+
+    old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
+    mock_issues = [
+        {
+            "number": 45,
+            "body": "**Rule ID**: RULE_004\n**Location**: file.py",
+            "createdAt": old_date
+        }
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        # Mock calls: issue list, PR list (none), comment list (none), comment create
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),  # issue list
+            MagicMock(returncode=0, stdout="[]", stderr=""),  # PR list (no PRs)
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment list (no comments)
+            MagicMock(returncode=0, stdout="", stderr="")   # comment create
+        ]
+
+        stuck_count = reconcile_in_progress("evolution-found")
+
+        assert stuck_count == 1, "Should flag one stuck issue"
+
+        # Verify comment was created
+        comment_calls = [
+            call for call in mock_run.call_args_list
+            if len(call[0]) > 0 and len(call[0][0]) >= 3
+            and call[0][0][0] == "gh" and call[0][0][1] == "issue" and call[0][0][2] == "comment"
+        ]
+        assert len(comment_calls) > 0, "Should have called gh issue comment"
+
+
+def test_reconcile_handles_api_failure(tmp_path):
+    """VAL-RECON-006: Handles gh CLI failures gracefully."""
+    from evolution_utils import reconcile_in_progress
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="API error"
+        )
+
+        # Should not crash
+        stuck_count = reconcile_in_progress("evolution-found")
+        assert stuck_count == 0
+
+
+def test_reconcile_called_in_main():
+    """VAL-RECON-007: reconcile_in_progress is called in main() after auto_close_resolved."""
+    # Read the scanner source to verify the call order
+    # Use __file__-based absolute path — relative paths fail in CI where CWD may differ
+    scanner_path = Path(__file__).parent.parent / "scripts" / "evolution_scanner.py"
+    with open(scanner_path) as f:
+        scanner_code = f.read()
+
+    # Find the positions of auto_close_resolved and reconcile_in_progress calls
+    auto_close_pos = scanner_code.find("auto_close_resolved(")
+    reconcile_pos = scanner_code.find("reconcile_in_progress(")
+
+    assert auto_close_pos != -1, "auto_close_resolved should be called"
+    assert reconcile_pos != -1, "reconcile_in_progress should be called"
+    assert reconcile_pos > auto_close_pos, "reconcile_in_progress should be called after auto_close_resolved"
+
+
+def test_reconcile_idempotency_guard(tmp_path):
+    """VAL-RECON-008: Idempotency guard prevents duplicate comments."""
+    from datetime import datetime, timedelta, timezone
+
+    from evolution_utils import reconcile_in_progress
+
+    old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
+    mock_issues = [
+        {
+            "number": 46,
+            "body": "**Rule ID**: RULE_005\n**Location**: file.py",
+            "createdAt": old_date
+        }
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        # Mock: issue list, PR list (none), comment list (sentinel already present)
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+            MagicMock(returncode=0, stdout="<!-- evolution-recon-advisory -->", stderr="")
+        ]
+
+        stuck_count = reconcile_in_progress("evolution-found")
+
+        # Should skip commenting because sentinel is already present
+        assert stuck_count == 0, "Should not comment when sentinel already present"
+
+        # Verify no comment create call
+        comment_calls = [
+            call for call in mock_run.call_args_list
+            if len(call[0]) > 0 and len(call[0][0]) >= 3
+            and call[0][0][0] == "gh" and call[0][0][1] == "issue" and call[0][0][2] == "comment"
+        ]
+        assert len(comment_calls) == 0, "Should not have called gh issue comment"
+
+
+def test_reconcile_returns_count(tmp_path):
+    """VAL-RECON-009: Returns count of stuck issues."""
+    from datetime import datetime, timedelta, timezone
+
+    from evolution_utils import reconcile_in_progress
+
+    # Mock 3 old issues
+    old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
+    mock_issues = [
+        {"number": 47, "body": "**Rule ID**: R1\n**Location**: f1.py", "createdAt": old_date},
+        {"number": 48, "body": "**Rule ID**: R2\n**Location**: f2.py", "createdAt": old_date},
+        {"number": 49, "body": "**Rule ID**: R3\n**Location**: f3.py", "createdAt": old_date}
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        # All have no PRs, no existing comments
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr="")
+        ]
+
+        stuck_count = reconcile_in_progress("evolution-found")
+
+        assert stuck_count == 3, "Should return count of all stuck issues"
