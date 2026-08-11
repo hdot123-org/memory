@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.3](https://github.com/hdot123/memory/compare/v0.19.2...v0.19.3) (2026-08-11)
+
+
+### Bug Fixes
+
+* **guard:** [INFRA-191] 扩展不可见字符剥离范围至 Cs/Co 类别并抑制空预览误报日志 ([#482](https://github.com/hdot123/memory/issues/482)) ([f919586](https://github.com/hdot123/memory/commit/f9195868227ab37203f7f0301f7e0c39efdff0f1))
+
 ## [0.19.2](https://github.com/hdot123/memory/compare/v0.19.1...v0.19.2) (2026-08-11)
 
 
