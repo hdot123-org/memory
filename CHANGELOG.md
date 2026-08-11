@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.2](https://github.com/hdot123/memory/compare/v0.19.1...v0.19.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* get_open_issues 查询 open + closed 状态防止重复创建 issue ([#477](https://github.com/hdot123/memory/issues/477)) ([59bd3c9](https://github.com/hdot123/memory/commit/59bd3c91593394a81358fac1c4cd796d0eb3e210)), closes [#454](https://github.com/hdot123/memory/issues/454)
+
 ## [0.19.1](https://github.com/hdot123/memory/compare/v0.19.0...v0.19.1) (2026-08-11)
 
 
