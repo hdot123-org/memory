@@ -5179,6 +5179,9 @@ def test_config_has_max_self_audit_issues_per_tick():
     from pathlib import Path
 
     from evolution_scanner import load_config
-    config = load_config(Path("/tmp/infra-198-work"))
+
+    # Find repo root by looking for .evolution/config.yml
+    repo_root = Path(__file__).parent.parent
+    config = load_config(repo_root)
     assert "max_self_audit_issues_per_tick" in config, \
         "config.yml must have max_self_audit_issues_per_tick"
