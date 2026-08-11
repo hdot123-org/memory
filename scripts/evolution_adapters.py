@@ -250,6 +250,9 @@ def adapt_error_patterns(lines: list[dict]) -> list[dict]:
     """
     findings = []
     for entry in lines:
+        # Skip resolved patterns — they should not generate new findings (INFRA-184)
+        if entry.get("status") == "resolved":
+            continue
         threshold = entry.get("threshold_met")
         if not threshold:
             continue
