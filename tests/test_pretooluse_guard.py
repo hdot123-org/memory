@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -26,15 +27,20 @@ def _make_fake_stdin(text: str) -> io.StringIO:
 
 
 def _expand_invisible_ranges():
-    """Yield every codepoint in the guard's ``_INVISIBLE_UNICODE_RANGES``.
+    """Yield every codepoint in the guard's ``_CC_CF_RANGES``.
 
     Used to parametrize the exhaustive INFRA-149 class-coverage test: every
     non-whitespace Cc/Cf character, as the sole stdin content, must allow
     without a false json_parse_error.
-    """
-    from memory_core.tools.pretooluse_guard import _INVISIBLE_UNICODE_RANGES
 
-    for _start, _end in _INVISIBLE_UNICODE_RANGES:
+    Only the Cc/Cf ranges are expanded (not the Cs/Co ranges added in
+    INFRA-191) because the Cs/Co set is ~21000 codepoints — too large to
+    call main() once per codepoint. The Cs/Co ranges are covered by the
+    dedicated INFRA-191 tests below.
+    """
+    from memory_core.tools.pretooluse_guard import _CC_CF_RANGES
+
+    for _start, _end in _CC_CF_RANGES:
         for _cp in range(_start, _end + 1):
             yield _cp
 
@@ -1184,7 +1190,7 @@ class TestInvisibleUnicodeStdin:
     ) -> None:
         """Every non-whitespace Cc/Cf character, as the sole stdin content,
         must allow without a false json_parse_error (INFRA-149 class fix)."""
-        from memory_core.tools.pretooluse_guard import _INVISIBLE_UNICODE_RANGES, main
+        from memory_core.tools.pretooluse_guard import _CC_CF_RANGES, main
 
         monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
         monkeypatch.setattr("sys.stdin", _make_fake_stdin(chr(codepoint)))
@@ -1193,11 +1199,128 @@ class TestInvisibleUnicodeStdin:
         result = json.loads(captured.out)
         assert exit_code == 0
         assert result["decision"] == "allow"
-        # Sanity: the codepoint is actually within the guard's declared ranges.
-        assert any(s <= codepoint <= e for s, e in _INVISIBLE_UNICODE_RANGES)
+        # Sanity: the codepoint is actually within the guard's declared Cc/Cf ranges.
+        assert any(s <= codepoint <= e for s, e in _CC_CF_RANGES)
+
+    # ========== Cs/Co 类别扩展回归测试 (INFRA-191) ==========
+
+    def test_surrogate_chars_stripped_before_json_parse(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """Lone surrogate characters (Cs category) are stripped before JSON
+        parsing, preventing false json_parse_error (INFRA-191).
+
+        U+D800 is a lone surrogate that str.strip() does not remove; without
+        explicit stripping it reaches json.loads() and triggers "Expecting
+        value: line 1 column 1 (char 0)".
+        """
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\ud800"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+        assert "empty stdin" in result["reason"].lower()
+
+    def test_surrogate_range_chars_all_allow(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """Representative lone surrogates across U+D800-U+DFFF should allow (INFRA-191)."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\ud800\udbff\udc00\udfff"))
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+
+    def test_private_use_area_chars_all_allow(
+        self, monkeypatch, tmp_path, capsys
+    ) -> None:
+        """Private-use area characters (Co category) are stripped before JSON
+        parsing, preventing false json_parse_error (INFRA-191).
+
+        U+E000 (BMP PUA), U+F0000 (Supplementary PUA-A), and U+100000
+        (Supplementary PUA-B) are private-use characters that str.strip()
+        does not remove.
+        """
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr(
+            "sys.stdin", _make_fake_stdin("\ue000\U000f0000\U00100000")
+        )
+        exit_code = main()
+        captured = capsys.readouterr()
+        result = json.loads(captured.out)
+        assert exit_code == 0
+        assert result["decision"] == "allow"
+        assert "empty stdin" in result["reason"].lower()
+
+    def test_surrogate_chars_do_not_write_error_log(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        """Lone surrogate chars should NOT write any error log (INFRA-191)."""
+        from memory_core.tools.pretooluse_guard import main
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\ud800\udfff"))
+        main()
+        log_dir = tmp_path / "memory" / "log"
+        if log_dir.exists():
+            for f in log_dir.glob("*-errors.jsonl"):
+                content = f.read_text()
+                assert (
+                    "json_parse_error" not in content
+                ), f"False json_parse_error logged for surrogate stdin: {content}"
 
 
-class TestStdinDecodeError:
+class TestEmptyPreviewSkipsErrorLog:
+    """INFRA-191: when raw_input_preview is empty after redaction/stripping,
+    no json_parse_error log is written — it is non-actionable noise."""
+
+    def test_empty_preview_skips_error_log(self, tmp_path, monkeypatch) -> None:
+        """When raw_input_preview is empty after redaction, no json_parse_error
+        log is written — this is non-actionable noise (INFRA-191)."""
+        from memory_core.tools.pretooluse_guard import _fail_closed_with_raw_check
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+
+        write_called = []
+        with patch(
+            "memory_core.tools.error_logger.write_error_log"
+        ) as mock_write:
+            mock_write.side_effect = lambda **kw: write_called.append(kw) or True
+            exit_code, result = _fail_closed_with_raw_check("", "test reason")
+
+        assert exit_code == 0  # allow (non-protected, empty input)
+        assert result["decision"] == "allow"
+        assert len(write_called) == 0  # no error log written for empty preview
+
+    def test_nonempty_preview_still_writes_error_log(self, tmp_path, monkeypatch) -> None:
+        """Regression guard: a non-empty malformed input must still write the
+        json_parse_error log (INFRA-191 must not over-suppress)."""
+        from memory_core.tools.pretooluse_guard import _fail_closed_with_raw_check
+
+        monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
+
+        write_called = []
+        with patch(
+            "memory_core.tools.error_logger.write_error_log"
+        ) as mock_write:
+            mock_write.side_effect = lambda **kw: write_called.append(kw) or True
+            exit_code, result = _fail_closed_with_raw_check(
+                "{not valid json", "test reason"
+            )
+
+        assert exit_code == 0  # non-protected → allow
+        assert result["decision"] == "allow"
+        assert len(write_called) == 1  # error log still written for non-empty input
     """Regression tests for INFRA-145: UnicodeDecodeError from stdin read."""
 
     def test_unicode_decode_error_treated_as_empty(
