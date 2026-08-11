@@ -280,6 +280,30 @@ def update_history(history_path: Path, findings: list[Finding], issues_created: 
     os.replace(tmp_path, history_path)
 
 
+def write_heartbeat(repo_root: Path, issues_created: int, findings_count: int) -> None:
+    """Write heartbeat marker for independent monitoring (INFRA-204).
+
+    Written at the END of a successful tick. If the scanner crashes
+    mid-tick, this file won't be updated, allowing the independent
+    heartbeat monitor to detect partial failures.
+    """
+    now = datetime.now(timezone.utc)
+    heartbeat = {
+        "timestamp": now.isoformat(),
+        "tick_id": now.strftime("%Y%m%d-%H%M%S"),
+        "status": "ok",
+        "issues_created": issues_created,
+        "findings_count": findings_count,
+    }
+    heartbeat_path = repo_root / ".evolution" / "heartbeat.json"
+    tmp_path = heartbeat_path.with_suffix(".tmp")
+    with open(tmp_path, "w") as f:
+        json.dump(heartbeat, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, heartbeat_path)
+
+
 def check_isolation(findings: list[Finding], history_path: Path, threshold: int, failure_label: str, dedup_label: str) -> None:
     data = load_history(history_path)
     if data is None:
@@ -373,6 +397,9 @@ def main() -> None:
     # Build tool_status dict for health tracking
     tool_status = {name: 'failed' if result is None else 'ok' for name, result in raw_results}
     update_history(history_path, all_findings, issues_created, config["snapshot_limit"], failed_categories, tool_status)
+    # INFRA-204: Write heartbeat marker after a successful tick (after history saved).
+    # Must come BEFORE P1-2/P2-A hard-exit checks so the marker is always written.
+    write_heartbeat(repo_root, issues_created, len(all_findings))
     check_isolation(all_findings, history_path, config["isolation_threshold"], config["failure_label"], config["dedup_label"])
     print(f"[evolution] Tick complete: {len(all_findings)} findings, {issues_created} issues created")
 

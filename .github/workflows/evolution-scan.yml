@@ -51,7 +51,9 @@ jobs:
       - name: Cache evolution history
         uses: actions/cache@v4
         with:
-          path: .evolution/findings_over_time.json
+          path: |
+            .evolution/findings_over_time.json
+            .evolution/heartbeat.json
           key: evolution-history-${{ github.run_id }}
           restore-keys: evolution-history-
       - name: Ensure labels exist
