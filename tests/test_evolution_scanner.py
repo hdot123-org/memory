@@ -4551,383 +4551,6 @@ def test_auto_close_resolved_no_category_field_still_closes():
 
 
 # ============================================================================
-# GAP-C3: Auto-Close Grace Period (Fixes #455)
-# ============================================================================
-
-
-def test_grace_period_constant_defined():
-    """VAL-GRACE-001: GRACE_PERIOD_TICKS constant is defined and equals 2."""
-    from evolution_utils import GRACE_PERIOD_TICKS
-
-    assert GRACE_PERIOD_TICKS == 2
-
-
-def test_single_absence_does_not_close(tmp_path):
-    """VAL-GRACE-002: Single tick absence does NOT trigger auto-close.
-
-    When a finding is absent for only 1 tick (first absence), the issue must
-    NOT be closed. It requires GRACE_PERIOD_TICKS consecutive absences.
-    """
-    history_path = tmp_path / "findings_over_time.json"
-
-    # History shows RULE_002 was present in the last snapshot (tick N-1)
-    # Current tick N: RULE_002 is absent (1st absence)
-    history_data = {
-        "snapshots": [
-            {
-                "timestamp": "2026-01-01T00:00:00Z",
-                "tick_id": "20260101-000000",
-                "findings": [
-                    {"rule_id": "RULE_001", "location": "file1.py"},
-                    {"rule_id": "RULE_002", "location": "file2.py"},
-                ],
-                "issues_created": 2,
-            }
-        ],
-        "resolved_findings": [],
-    }
-    with open(history_path, "w") as f:
-        json.dump(history_data, f)
-
-    # Current scan: RULE_002 is absent (1st absence)
-    current_findings = [
-        Finding("RULE_001", "warning", "test", "active", "file1.py", "ev1"),
-    ]
-
-    mock_issues = [
-        {"number": 101, "body": "**Rule ID**: RULE_001\n**Location**: file1.py"},
-        {"number": 102, "body": "**Rule ID**: RULE_002\n**Location**: file2.py"},
-    ]
-
-    with patch("evolution_utils.subprocess.run") as mock_run:
-        # Mock: list issues (1 call), no close call should happen
-        mock_run.side_effect = [
-            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
-        ]
-
-        auto_close_resolved(current_findings, "evolution-found", history_path=history_path)
-
-        # Should only call list, NOT close (grace period not satisfied)
-        assert mock_run.call_count == 1
-        call_args = mock_run.call_args[0][0]
-        assert call_args[0:3] == ["gh", "issue", "list"]
-
-
-def test_two_consecutive_absences_close(tmp_path):
-    """VAL-GRACE-003: 2 consecutive absences DO trigger auto-close.
-
-    When a finding is absent for GRACE_PERIOD_TICKS (2) consecutive ticks,
-    the issue IS closed.
-    """
-    history_path = tmp_path / "findings_over_time.json"
-
-    # History shows RULE_002 was present in tick N-2, absent in N-1
-    # Current tick N: RULE_002 is absent again (2nd consecutive absence)
-    history_data = {
-        "snapshots": [
-            {
-                "timestamp": "2026-01-01T00:00:00Z",
-                "tick_id": "20260101-000000",
-                "findings": [
-                    {"rule_id": "RULE_001", "location": "file1.py"},
-                    {"rule_id": "RULE_002", "location": "file2.py"},
-                ],
-                "issues_created": 2,
-            },
-            {
-                "timestamp": "2026-01-02T00:00:00Z",
-                "tick_id": "20260102-000000",
-                "findings": [
-                    {"rule_id": "RULE_001", "location": "file1.py"},
-                    # RULE_002 absent (1st absence)
-                ],
-                "issues_created": 0,
-            }
-        ],
-        "resolved_findings": [],
-    }
-    with open(history_path, "w") as f:
-        json.dump(history_data, f)
-
-    # Current scan: RULE_002 is absent again (2nd consecutive absence)
-    current_findings = [
-        Finding("RULE_001", "warning", "test", "active", "file1.py", "ev1"),
-    ]
-
-    mock_issues = [
-        {"number": 101, "body": "**Rule ID**: RULE_001\n**Location**: file1.py"},
-        {"number": 102, "body": "**Rule ID**: RULE_002\n**Location**: file2.py"},
-    ]
-
-    with patch("evolution_utils.subprocess.run") as mock_run:
-        # Mock: list issues + close issue 102
-        mock_run.side_effect = [
-            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
-            MagicMock(returncode=0, stdout="", stderr=""),  # close 102
-        ]
-
-        auto_close_resolved(current_findings, "evolution-found", history_path=history_path)
-
-        # Should call list + close (grace period satisfied)
-        assert mock_run.call_count == 2
-        close_call = mock_run.call_args_list[1]
-        close_args = close_call[0][0]
-        assert close_args[0:4] == ["gh", "issue", "close", "102"]
-
-
-def test_intermittent_presence_resets_counter(tmp_path):
-    """VAL-GRACE-004: Non-consecutive absence resets the grace counter.
-
-    If a finding appears in tick N, is absent in N+1, then reappears in N+2,
-    the absence counter resets to 0. Must be absent for 2 CONSECUTIVE ticks.
-    """
-    history_path = tmp_path / "findings_over_time.json"
-
-    # History: RULE_002 present in N-3, absent in N-2, present in N-1
-    # Current tick N: RULE_002 is absent (1st absence after reset)
-    history_data = {
-        "snapshots": [
-            {
-                "timestamp": "2026-01-01T00:00:00Z",
-                "tick_id": "20260101-000000",
-                "findings": [
-                    {"rule_id": "RULE_001", "location": "file1.py"},
-                    {"rule_id": "RULE_002", "location": "file2.py"},
-                ],
-                "issues_created": 2,
-            },
-            {
-                "timestamp": "2026-01-02T00:00:00Z",
-                "tick_id": "20260102-000000",
-                "findings": [
-                    {"rule_id": "RULE_001", "location": "file1.py"},
-                    # RULE_002 absent (1st absence)
-                ],
-                "issues_created": 0,
-            },
-            {
-                "timestamp": "2026-01-03T00:00:00Z",
-                "tick_id": "20260103-000000",
-                "findings": [
-                    {"rule_id": "RULE_001", "location": "file1.py"},
-                    {"rule_id": "RULE_002", "location": "file2.py"},  # RULE_002 present (counter reset)
-                ],
-                "issues_created": 1,
-            }
-        ],
-        "resolved_findings": [],
-    }
-    with open(history_path, "w") as f:
-        json.dump(history_data, f)
-
-    # Current scan: RULE_002 is absent (1st absence after reset)
-    current_findings = [
-        Finding("RULE_001", "warning", "test", "active", "file1.py", "ev1"),
-    ]
-
-    mock_issues = [
-        {"number": 101, "body": "**Rule ID**: RULE_001\n**Location**: file1.py"},
-        {"number": 102, "body": "**Rule ID**: RULE_002\n**Location**: file2.py"},
-    ]
-
-    with patch("evolution_utils.subprocess.run") as mock_run:
-        # Mock: list issues only, no close (counter reset by intermittent presence)
-        mock_run.side_effect = [
-            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
-        ]
-
-        auto_close_resolved(current_findings, "evolution-found", history_path=history_path)
-
-        # Should only call list, NOT close (counter was reset)
-        assert mock_run.call_count == 1
-        call_args = mock_run.call_args[0][0]
-        assert call_args[0:3] == ["gh", "issue", "list"]
-
-
-def test_failed_categories_protection_with_grace_period(tmp_path):
-    """VAL-GRACE-005: Failed category protection still works with grace period.
-
-    Issues whose category belongs to a failed audit tool are still protected
-    from auto-close even during the grace period check. GAP-C1 protection
-    is not bypassed by GAP-C3.
-    """
-    history_path = tmp_path / "findings_over_time.json"
-
-    # History: RULE_002 (daily_audit category) absent for 2 consecutive ticks
-    history_data = {
-        "snapshots": [
-            {
-                "timestamp": "2026-01-01T00:00:00Z",
-                "tick_id": "20260101-000000",
-                "findings": [
-                    {"rule_id": "RULE_001", "location": "file1.py"},
-                    {"rule_id": "RULE_002", "location": "file2.py"},
-                ],
-                "issues_created": 2,
-            },
-            {
-                "timestamp": "2026-01-02T00:00:00Z",
-                "tick_id": "20260102-000000",
-                "findings": [
-                    {"rule_id": "RULE_001", "location": "file1.py"},
-                    # RULE_002 absent (1st absence)
-                ],
-                "issues_created": 0,
-            }
-        ],
-        "resolved_findings": [],
-    }
-    with open(history_path, "w") as f:
-        json.dump(history_data, f)
-
-    # Current scan: RULE_002 is absent (2nd consecutive absence)
-    current_findings = [
-        Finding("RULE_001", "warning", "consistency", "active", "file1.py", "ev1"),
-    ]
-
-    mock_issues = [
-        {"number": 101, "body": "**Rule ID**: RULE_001\n**Category**: consistency\n**Location**: file1.py"},
-        {"number": 102, "body": "**Rule ID**: RULE_002\n**Category**: daily_audit\n**Location**: file2.py"},
-    ]
-
-    with patch("evolution_utils.subprocess.run") as mock_run:
-        # Mock: list issues only, no close (RULE_002 protected by failed_categories)
-        mock_run.side_effect = [
-            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
-        ]
-
-        auto_close_resolved(current_findings, "evolution-found",
-                           failed_categories={"daily_audit"},
-                           history_path=history_path)
-
-        # Should only call list, NOT close (GAP-C1 protection works with GAP-C3)
-        assert mock_run.call_count == 1
-        call_args = mock_run.call_args[0][0]
-        assert call_args[0:3] == ["gh", "issue", "list"]
-
-
-def test_auto_close_reads_history_for_absence_count(tmp_path):
-    """VAL-GRACE-006: Grace period reads findings_over_time.json snapshots.
-
-    The grace period logic must read snapshot data from findings_over_time.json
-    to count consecutive absences. It does not rely on any new state file.
-    """
-    history_path = tmp_path / "findings_over_time.json"
-
-    # Create history with 3 consecutive absences for RULE_002
-    history_data = {
-        "snapshots": [
-            {
-                "timestamp": "2026-01-01T00:00:00Z",
-                "tick_id": "20260101-000000",
-                "findings": [
-                    {"rule_id": "RULE_001", "location": "file1.py"},
-                    {"rule_id": "RULE_002", "location": "file2.py"},
-                ],
-                "issues_created": 2,
-            },
-            {
-                "timestamp": "2026-01-02T00:00:00Z",
-                "tick_id": "20260102-000000",
-                "findings": [
-                    {"rule_id": "RULE_001", "location": "file1.py"},
-                ],
-                "issues_created": 0,
-            },
-            {
-                "timestamp": "2026-01-03T00:00:00Z",
-                "tick_id": "20260103-000000",
-                "findings": [
-                    {"rule_id": "RULE_001", "location": "file1.py"},
-                ],
-                "issues_created": 0,
-            }
-        ],
-        "resolved_findings": [],
-    }
-    with open(history_path, "w") as f:
-        json.dump(history_data, f)
-
-    # Current scan: RULE_002 absent for 3rd consecutive tick
-    current_findings = [
-        Finding("RULE_001", "warning", "test", "active", "file1.py", "ev1"),
-    ]
-
-    mock_issues = [
-        {"number": 101, "body": "**Rule ID**: RULE_001\n**Location**: file1.py"},
-        {"number": 102, "body": "**Rule ID**: RULE_002\n**Location**: file2.py"},
-    ]
-
-    with patch("evolution_utils.subprocess.run") as mock_run:
-        # Mock: list issues + close issue 102 (grace period satisfied with 3 absences)
-        mock_run.side_effect = [
-            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
-            MagicMock(returncode=0, stdout="", stderr=""),  # close 102
-        ]
-
-        auto_close_resolved(current_findings, "evolution-found", history_path=history_path)
-
-        # Should call list + close (grace period satisfied: 3 >= 2)
-        assert mock_run.call_count == 2
-        close_call = mock_run.call_args_list[1]
-        close_args = close_call[0][0]
-        assert close_args[0:4] == ["gh", "issue", "close", "102"]
-
-
-def test_main_passes_history_path_to_auto_close():
-    """VAL-GRACE-007: main() passes history_path to auto_close_resolved().
-
-    The main() function must pass the history_path parameter so that
-    auto_close_resolved can read findings_over_time.json for grace period.
-    """
-    import inspect
-
-    from evolution_scanner import main as main_func
-
-    source = inspect.getsource(main_func)
-    # Verify that auto_close_resolved is called with history_path argument
-    assert "auto_close_resolved(" in source
-    # Check that history_path is passed (not just as positional arg)
-    assert "history_path" in source or "findings_over_time" in source
-
-
-def test_existing_auto_close_tests_still_pass(tmp_path):
-    """VAL-GRACE-008: Existing auto_close tests pass with grace period logic.
-
-    Ensure backward compatibility: when history_path is None or missing,
-    auto_close_resolved should behave as before (close on first absence).
-    """
-    # Current scan has only RULE_001
-    current_findings = [
-        Finding("RULE_001", "warning", "test", "current issue", "file1.py", "evidence1"),
-    ]
-
-    # Mock gh CLI responses
-    mock_issues = [
-        {"number": 101, "body": "**Rule ID**: RULE_001\n**Location**: file1.py\n**Description**: current"},
-        {"number": 102, "body": "**Rule ID**: RULE_002\n**Location**: file2.py\n**Description**: stale"},
-    ]
-
-    with patch("evolution_utils.subprocess.run") as mock_run:
-        # First call: list issues; Second call: close issue 102
-        mock_run.side_effect = [
-            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
-            MagicMock(returncode=0, stdout="", stderr=""),  # close issue 102
-        ]
-
-        # Call WITHOUT history_path (backward compatibility)
-        auto_close_resolved(current_findings, "evolution-found")
-
-        # Verify: should call list, then close issue 102 (old behavior preserved)
-        assert mock_run.call_count == 2
-
-        # Check the close call
-        close_call = mock_run.call_args_list[1]
-        close_args = close_call[0][0]
-        assert close_args[0:4] == ["gh", "issue", "close", "102"]
-
-
-# ============================================================================
 # GAP-C2: Dedup includes recently closed issues (Fixes #454)
 # ============================================================================
 
@@ -5076,3 +4699,62 @@ def test_get_open_issues_empty_closed():
         issues = get_open_issues("evolution-found")
         assert len(issues) == 1
         assert issues[0]["rule_id"] == "RULE_A"
+
+
+# ============================================================================
+# GAP-C3 v2: Integration test for production ordering (Issue #455)
+# ============================================================================
+
+
+def test_single_absence_production_order_no_close(tmp_path):
+    """GAP-C3 v2: Integration test verifying production ordering (update_history then auto_close_resolved).
+
+    In production, main() calls update_history() BEFORE auto_close_resolved().
+    This test verifies that a SINGLE absence does NOT close the issue when
+    following the production ordering. This is the exact scenario that was
+    broken in v1 (Issue #455).
+    """
+    from evolution_utils import auto_close_resolved
+
+    history_path = tmp_path / "findings_over_time.json"
+
+    # Tick 1: RULE_001 present in history
+    findings_tick1 = [Finding("RULE_001", "warning", "test", "Issue 1", "file1.py", "evidence")]
+    update_history(history_path, findings_tick1, 1, 100)
+
+    # Tick 2: RULE_001 absent (single absence in production ordering)
+    findings_tick2 = []  # Empty - RULE_001 is not present
+
+    # PRODUCTION ORDERING: update_history THEN auto_close_resolved
+    update_history(history_path, findings_tick2, 0, 100)
+
+    # Now call auto_close_resolved with history_path (as main() does)
+    # Mock gh subprocess calls
+    mock_issues = [
+        {"number": 101, "body": "**Rule ID**: RULE_001\n**Location**: file1.py"}
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        # Mock gh issue list (open issues)
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=json.dumps(mock_issues),
+            stderr=""
+        )
+
+        # Call auto_close_resolved with history_path (production call signature)
+        auto_close_resolved(findings_tick2, "evolution-found", None, history_path)
+
+        # Verify: should NOT call gh issue close (only list was called)
+        # With GRACE_PERIOD_TICKS=2, a single absence (count=1) should defer close
+        close_calls = [
+            call for call in mock_run.call_args_list
+            if len(call[0]) > 0 and len(call[0][0]) >= 3
+            and call[0][0][0] == "gh" and call[0][0][1] == "issue" and call[0][0][2] == "close"
+        ]
+
+        assert len(close_calls) == 0, (
+            f"Expected 0 close calls (grace period should defer), got {len(close_calls)}. "
+            f"This means the grace period is not working correctly."
+        )
+

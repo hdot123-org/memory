@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.4](https://github.com/hdot123/memory/compare/v0.19.3...v0.19.4) (2026-08-11)
+
+
+### Documentation
+
+* 完善 trigger-droid.sh 事件过滤文档，记录 Comment.create 全过滤 (INFRA-180) ([#485](https://github.com/hdot123/memory/issues/485)) ([4dfb926](https://github.com/hdot123/memory/commit/4dfb926793de6edc0740854a544acdef5d4ef6a1))
+
 ## [0.19.3](https://github.com/hdot123/memory/compare/v0.19.2...v0.19.3) (2026-08-11)
 
 
