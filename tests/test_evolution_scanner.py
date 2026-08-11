@@ -5176,8 +5176,9 @@ def test_mixed_findings_sorted_correctly_within_each_pool():
 
 def test_config_has_max_self_audit_issues_per_tick():
     """INFRA-198: config.yml must contain max_self_audit_issues_per_tick."""
-    from evolution_scanner import load_config
     from pathlib import Path
+
+    from evolution_scanner import load_config
     config = load_config(Path("/tmp/infra-198-work"))
     assert "max_self_audit_issues_per_tick" in config, \
         "config.yml must have max_self_audit_issues_per_tick"
