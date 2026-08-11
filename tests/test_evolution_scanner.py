@@ -4767,6 +4767,136 @@ def test_single_absence_production_order_no_close(tmp_path):
 
 
 # ============================================================================
+# ============================================================================
+# GAP-A (INFRA-174): Linear 同步失败检测 — detect_sync_orphans() 单元测试
+# ============================================================================
+
+
+def test_detect_sync_orphans_finds_orphan():
+    """GAP-A: 无 linkback、不在 Linear、超过阈值 → 判定为孤立。"""
+    from evolution_utils import detect_sync_orphans
+
+    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
+    created_at = (now - timedelta(minutes=60)).isoformat()
+    gh_issues = [
+        {
+            "number": 101,
+            "title": "RULE_X at file_a.py",
+            "created_at": created_at,
+            "has_linear_linkback": False,
+        }
+    ]
+    linear_titles: set[str] = set()
+
+    orphans = detect_sync_orphans(gh_issues, linear_titles, threshold_minutes=30, now=now)
+
+    assert len(orphans) == 1
+    assert orphans[0]["number"] == 101
+
+
+def test_detect_sync_orphans_skips_recent_issue():
+    """GAP-A: 无 linkback 但创建时间过近（未超阈值）→ 不是孤立（给 Linear 同步时间）。"""
+    from evolution_utils import detect_sync_orphans
+
+    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
+    created_at = (now - timedelta(minutes=10)).isoformat()
+    gh_issues = [
+        {
+            "number": 102,
+            "title": "RULE_Y at file_b.py",
+            "created_at": created_at,
+            "has_linear_linkback": False,
+        }
+    ]
+    linear_titles: set[str] = set()
+
+    orphans = detect_sync_orphans(gh_issues, linear_titles, threshold_minutes=30, now=now)
+
+    assert orphans == []
+
+
+def test_detect_sync_orphans_skips_synced_issue():
+    """GAP-A: 已有 linear-linkback → 已同步，不是孤立。"""
+    from evolution_utils import detect_sync_orphans
+
+    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
+    created_at = (now - timedelta(minutes=60)).isoformat()
+    gh_issues = [
+        {
+            "number": 103,
+            "title": "RULE_Z at file_c.py",
+            "created_at": created_at,
+            "has_linear_linkback": True,
+        }
+    ]
+    linear_titles: set[str] = set()
+
+    orphans = detect_sync_orphans(gh_issues, linear_titles, threshold_minutes=30, now=now)
+
+    assert orphans == []
+
+
+def test_detect_sync_orphans_skips_title_in_linear():
+    """GAP-A: 无 linkback 但标题在 Linear 中已存在 → linkback 缺失但 Linear issue 已创建，不是孤立。"""
+    from evolution_utils import detect_sync_orphans
+
+    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
+    title = "RULE_W at file_d.py"
+    created_at = (now - timedelta(minutes=60)).isoformat()
+    gh_issues = [
+        {
+            "number": 104,
+            "title": title,
+            "created_at": created_at,
+            "has_linear_linkback": False,
+        }
+    ]
+    linear_titles = {title}
+
+    orphans = detect_sync_orphans(gh_issues, linear_titles, threshold_minutes=30, now=now)
+
+    assert orphans == []
+
+
+def test_detect_sync_orphans_empty_list():
+    """GAP-A: 空 gh_issues → 空结果。"""
+    from evolution_utils import detect_sync_orphans
+
+    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
+    orphans = detect_sync_orphans([], set(), threshold_minutes=30, now=now)
+
+    assert orphans == []
+
+
+def test_detect_sync_orphans_multiple():
+    """GAP-A: 孤立与非孤立混合 → 正确过滤。"""
+    from evolution_utils import detect_sync_orphans
+
+    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
+    old = (now - timedelta(minutes=90)).isoformat()
+    recent = (now - timedelta(minutes=5)).isoformat()
+
+    gh_issues = [
+        # 孤立：无 linkback + 不在 Linear + 超阈值
+        {"number": 201, "title": "orphan old", "created_at": old, "has_linear_linkback": False},
+        # 非孤立：有 linkback
+        {"number": 202, "title": "synced", "created_at": old, "has_linear_linkback": True},
+        # 非孤立：标题在 Linear 中
+        {"number": 203, "title": "in linear", "created_at": old, "has_linear_linkback": False},
+        # 非孤立：过近
+        {"number": 204, "title": "too recent", "created_at": recent, "has_linear_linkback": False},
+        # 孤立：另一条孤立
+        {"number": 205, "title": "orphan old 2", "created_at": old, "has_linear_linkback": False},
+    ]
+    linear_titles = {"in linear"}
+
+    orphans = detect_sync_orphans(gh_issues, linear_titles, threshold_minutes=30, now=now)
+
+    orphan_numbers = {o["number"] for o in orphans}
+    assert orphan_numbers == {201, 205}
+
+
+# ============================================================================
 # GAP-E: Reconciliation tests
 # ============================================================================
 
