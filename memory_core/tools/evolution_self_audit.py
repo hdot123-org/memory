@@ -1,6 +1,8 @@
-"""Evolution self-audit tool: 7 checks for pipeline health."""
+"""Evolution self-audit tool: 8 checks for pipeline health."""
 
 import json
+import os
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -18,7 +20,14 @@ EVOLUTION_CONFIG = EVOLUTION_DIR / "config.yml"
 FACTORY_HOME = Path.home() / ".factory"
 LOCK_DIR = FACTORY_HOME / "webhook" / "locks"
 TRIGGER_DROID = FACTORY_HOME / "webhook" / "scripts" / "trigger-droid.sh"
+RECONCILE_SCRIPT = FACTORY_HOME / "webhook" / "scripts" / "reconcile-evolution.sh"
 REPOSITORIES_YML = FACTORY_HOME / "config" / "repositories.yml"
+
+# GAP-A (INFRA-174): Linear 同步失败检测配置
+# 被审计的 GitHub 仓库（evolution-found 标签所在仓库）
+REPO_NAME = os.environ.get("EVOLUTION_AUDIT_REPO", "hdot123/memory")
+# GitHub Issue 创建后超过此分钟数仍无 linear-linkback 视为同步失败
+GAP_A_AUDIT_THRESHOLD_MIN = 30
 
 CATEGORY = "evolution_self_audit"
 
@@ -395,8 +404,141 @@ def check_tool_health() -> list[dict[str, Any]]:
     return findings
 
 
+def check_linear_sync() -> list[dict[str, Any]]:
+    """Check 8: GitHub evolution-found issues missing Linear sync (GAP-A / INFRA-174).
+
+    When Linear's native GitHub integration fails to sync, a GitHub issue created
+    by the evolution scanner has no corresponding Linear record. Such orphaned
+    issues never receive a ``<!-- linear-linkback -->`` comment. This check
+    queries GitHub for open evolution-found issues and flags any that are older
+    than GAP_A_AUDIT_THRESHOLD_MIN minutes yet lack a Linear linkback.
+
+    Uses ``gh`` CLI via subprocess. The elevated dispatch token
+    (``GH_TOKEN``/``GITHUB_TOKEN``) is stripped from the subprocess environment so
+    it is not leaked into a child process; ``gh`` falls back to keychain auth.
+    When ``gh`` is unavailable or unauthenticated (typical in CI), the check is
+    skipped gracefully rather than producing false positives.
+    """
+    findings: list[dict[str, Any]] = []
+
+    # Strip elevated dispatch token so it is not leaked into the subprocess;
+    # gh falls back to keychain auth. Matches run_audit_tool's security pattern.
+    safe_env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}
+
+    # Query all open evolution-found GitHub issues (recent set; age-filtered below)
+    try:
+        result = subprocess.run(
+            ["gh", "issue", "list", "--repo", REPO_NAME,
+             "--label", "evolution-found", "--state", "open",
+             "--json", "number,title,createdAt", "--limit", "50"],
+            capture_output=True, text=True, timeout=30, env=safe_env,
+        )
+    except FileNotFoundError:
+        print(
+            "[evolution_self_audit] SKIP check_linear_sync: "
+            "gh CLI not found (expected in CI)",
+            file=sys.stderr,
+        )
+        return findings
+    except Exception as e:
+        findings.append({
+            "rule_id": "LINEAR_SYNC_CHECK_ERROR",
+            "severity": "warning",
+            "description": "Failed to query GitHub for evolution-found issues",
+            "location": "gh issue list",
+            "evidence": str(e),
+            "category": CATEGORY,
+        })
+        return findings
+
+    if result.returncode != 0:
+        # gh unavailable / unauthenticated (expected in CI) — skip
+        print(
+            f"[evolution_self_audit] SKIP check_linear_sync: "
+            f"gh returned exit code {result.returncode} "
+            f"(no auth or gh unavailable, expected in CI)",
+            file=sys.stderr,
+        )
+        return findings
+
+    try:
+        issues = json.loads(result.stdout) if result.stdout.strip() else []
+    except json.JSONDecodeError as e:
+        findings.append({
+            "rule_id": "LINEAR_SYNC_CHECK_ERROR",
+            "severity": "warning",
+            "description": "Failed to parse GitHub issue list response",
+            "location": "gh issue list",
+            "evidence": str(e),
+            "category": CATEGORY,
+        })
+        return findings
+
+    now = datetime.now(timezone.utc)
+    checked = 0
+    for issue in issues:
+        number = issue.get("number")
+        created_at_str = issue.get("createdAt", "")
+        if number is None:
+            continue
+
+        # Parse createdAt (ISO 8601, may end with 'Z')
+        try:
+            normalized = (created_at_str.replace("Z", "+00:00")
+                          if created_at_str.endswith("Z") else created_at_str)
+            created_at = datetime.fromisoformat(normalized)
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            continue
+
+        age_minutes = (now - created_at).total_seconds() / 60
+        # Only check issues old enough that Linear should have synced by now
+        if age_minutes <= GAP_A_AUDIT_THRESHOLD_MIN:
+            continue
+
+        checked += 1
+
+        # Check for linear-linkback comment
+        try:
+            cresult = subprocess.run(
+                ["gh", "issue", "view", str(number), "--repo", REPO_NAME,
+                 "--json", "comments", "--jq", ".comments[].body"],
+                capture_output=True, text=True, timeout=15, env=safe_env,
+            )
+            has_linkback = (
+                cresult.returncode == 0
+                and "linear-linkback" in (cresult.stdout or "")
+            )
+        except Exception:
+            # Comment fetch failed — be conservative, treat as not-yet-checked
+            has_linkback = False
+
+        if not has_linkback:
+            findings.append({
+                "rule_id": "LINEAR_SYNC_GAP",
+                "severity": "critical",
+                "description": (
+                    "GitHub evolution-found issue has no Linear linkback "
+                    "(Linear sync may have failed)"
+                ),
+                "location": str(RECONCILE_SCRIPT),
+                "evidence": (
+                    f"GitHub Issue #{number} has no Linear linkback "
+                    f"after {int(age_minutes)} minutes"
+                ),
+                "category": CATEGORY,
+            })
+
+    if checked == 0 and not findings:
+        # No issues old enough to evaluate — nothing to report
+        pass
+
+    return findings
+
+
 def main() -> int:
-    """Run all 7 checks and output findings as JSON."""
+    """Run all 8 checks and output findings as JSON."""
     all_findings: list[dict[str, Any]] = []
     all_findings.extend(check_suppress_json())
     all_findings.extend(check_findings_over_time())
@@ -405,6 +547,7 @@ def main() -> int:
     all_findings.extend(check_repositories_yml())
     all_findings.extend(check_config_yml())
     all_findings.extend(check_tool_health())
+    all_findings.extend(check_linear_sync())
 
     json.dump(all_findings, sys.stdout, indent=2)
     print()

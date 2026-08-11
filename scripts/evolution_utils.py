@@ -332,6 +332,93 @@ def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set
         print(f"[evolution] Deferred {grace_deferred_count} issue(s) auto-close due to grace period")
 
 
+# ============================================================================
+# GAP-A (INFRA-174): Linear 同步失败检测 — GitHub→Linear 反向对账
+# ============================================================================
+
+# 孤立 Issue 判定阈值（分钟）：GitHub Issue 创建后超过此时间仍无 Linear 同步，
+# 视为 Linear native GitHub 集成同步失败。
+GAP_A_THRESHOLD_MIN = 30
+
+
+def _parse_iso_timestamp(ts: str) -> datetime | None:
+    """解析 ISO 8601 时间戳为带时区的 datetime（UTC）。
+
+    兼容尾部 'Z' 与无时区两种情况。解析失败返回 None。
+    """
+    try:
+        # fromisoformat 在 Python 3.11+ 才支持 'Z'，这里统一归一化
+        normalized = ts.replace("Z", "+00:00") if ts.endswith("Z") else ts
+        dt = datetime.fromisoformat(normalized)
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def detect_sync_orphans(
+    gh_issues: list[dict],
+    linear_titles: set[str],
+    threshold_minutes: int = GAP_A_THRESHOLD_MIN,
+    now: datetime | None = None,
+) -> list[dict]:
+    """检测 GitHub Issue 在 Linear 中没有对应的孤立 Issue（GAP-A / INFRA-174）。
+
+    当 Linear native GitHub 集成同步失败（API 限流、集成故障）时，evolution
+    scanner 创建的 GitHub Issue 在 Linear 中没有对应记录，导致 Linear webhook
+    永不触发、droid 永不处理。本函数通过反向对账（GitHub→Linear）识别这类孤立
+    Issue，供 reconcile-evolution.sh 补偿创建 Linear Issue。
+
+    Args:
+        gh_issues: GitHub Issue 列表，每个元素是 dict 包含:
+            - number: int (GitHub issue number)
+            - title: str (issue title)
+            - created_at: str (ISO 8601 timestamp)
+            - has_linear_linkback: bool (是否有 <!-- linear-linkback --> 评论)
+        linear_titles: Linear 中 evolution-found issue 的标题集合
+        threshold_minutes: 超过此时间（分钟）仍无 Linear 同步视为孤立
+        now: 当前时间（测试注入），默认 datetime.now(timezone.utc)
+
+    Returns:
+        孤立 GitHub Issue 列表（list of dict，同输入格式）
+
+    判定条件（全部满足才视为孤立）：
+        1. has_linear_linkback == False（无 Linear 同步标记）
+        2. 标题不在 linear_titles 中（Linear 中没有同标题 issue）
+        3. age > threshold_minutes（给 Linear 足够的同步时间）
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    # 防御：注入的 now 若为 naive，按 UTC 处理，避免与 tz-aware created_at 相减报错
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+
+    orphans: list[dict] = []
+    for issue in gh_issues:
+        # 条件 1：已存在 Linear linkback → 已同步，跳过
+        if issue.get("has_linear_linkback", False):
+            continue
+
+        # 条件 2：标题在 Linear 中已存在 → linkback 虽缺失但 Linear issue 已创建，跳过
+        title = issue.get("title", "")
+        if title in linear_titles:
+            continue
+
+        # 条件 3：age > threshold（给 Linear 足够的同步窗口）
+        created_at = _parse_iso_timestamp(issue.get("created_at", ""))
+        if created_at is None:
+            # 无法解析时间戳，保守跳过（不误判）
+            continue
+        age_minutes = (now - created_at).total_seconds() / 60
+        if age_minutes <= threshold_minutes:
+            continue
+
+        orphans.append(issue)
+
+    return orphans
+
+
 # GAP-E: Reconciliation sentinel for idempotency
 # Embedded as hidden HTML comment so it's invisible in GitHub UI
 RECON_ADVISORY_SENTINEL = "<!-- evolution-recon-advisory -->"

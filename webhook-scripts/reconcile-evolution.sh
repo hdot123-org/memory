@@ -197,6 +197,185 @@ if [ "$TERMINAL_COUNT" -gt 0 ]; then
     done <<< "$TERMINAL_ISSUES"
 fi
 
+# === GAP-A (INFRA-174): GitHub→Linear 反向对账 — 检测 Linear 同步失败 ===
+# 当 Linear native GitHub 集成同步失败（API 限流、集成故障）时，evolution scanner
+# 创建的 GitHub Issue 在 Linear 中无对应记录，Linear webhook 永不触发、droid 永不处理。
+# 本节通过反向对账（GitHub→Linear）检测孤立 Issue 并补偿创建 Linear Issue。
+#
+# 注意：必须在下面的 ISSUE_COUNT==0 提前退出检查之前执行 —— 孤立 Issue 意味着
+# Linear 无记录，ISSUE_COUNT 可能为 0，否则会跳过本节。
+GAP_A_THRESHOLD_MIN=30
+
+GH_EVOLUTION_ISSUES=$(gh issue list --repo "$REPO" --label evolution-found --state open \
+    --json number,title,createdAt --limit 50 2>>"$LOG_FILE" || echo "[]")
+
+GH_EVOLUTION_COUNT=$(echo "$GH_EVOLUTION_ISSUES" | /opt/homebrew/bin/python3 -c "import json,sys; data=json.load(sys.stdin); print(len(data))" 2>/dev/null || echo "0")
+GH_EVOLUTION_COUNT=$(echo "$GH_EVOLUTION_COUNT" | tr -d '[:space:]')
+
+if [ "$GH_EVOLUTION_COUNT" -gt 0 ]; then
+    log "GAP-A: checking ${GH_EVOLUTION_COUNT} open evolution-found GitHub issues for Linear sync"
+
+    # 构建 Linear 标题集合（来自 $LINEAR_ISSUES 的第 3 字段，临时文件避免 subshell 传递问题）
+    LINEAR_TITLES_TMP=$(mktemp 2>/dev/null || echo "/tmp/gap-a-linear-titles.$$")
+    echo "$LINEAR_ISSUES" | awk -F'|' 'NF>=3 {print $3}' > "$LINEAR_TITLES_TMP" 2>/dev/null || true
+
+    # 检测第一个孤立 Issue：无 linear-linkback + 标题不在 Linear + age > 阈值
+    GAP_A_ORPHAN=$(LINEAR_TITLES_TMP="$LINEAR_TITLES_TMP" REPO="$REPO" \
+        GAP_A_THRESHOLD_MIN="$GAP_A_THRESHOLD_MIN" \
+        /opt/homebrew/bin/python3 -c "
+import json, os, subprocess, sys
+from datetime import datetime, timezone
+
+# 从 stdin 读取 GitHub issues JSON
+try:
+    issues = json.load(sys.stdin)
+except Exception:
+    issues = []
+
+threshold = int(os.environ.get('GAP_A_THRESHOLD_MIN', '30'))
+now = datetime.now(timezone.utc)
+
+repo = os.environ.get('REPO', '')
+titles_path = os.environ.get('LINEAR_TITLES_TMP', '')
+linear_titles = set()
+try:
+    with open(titles_path) as f:
+        linear_titles = {line.strip() for line in f if line.strip()}
+except Exception:
+    pass
+
+def has_linkback(number):
+    try:
+        r = subprocess.run(
+            ['gh', 'issue', 'view', str(number), '--repo', repo,
+             '--json', 'comments', '--jq', '.comments[].body'],
+            capture_output=True, text=True, timeout=15
+        )
+        return 'linear-linkback' in (r.stdout or '')
+    except Exception:
+        # 查询失败时保守视为已有 linkback，避免误补偿
+        return True
+
+for issue in issues:
+    title = issue.get('title', '')
+    number = issue.get('number')
+    created = issue.get('createdAt', '')
+    if number is None or not title:
+        continue
+    try:
+        ca = datetime.fromisoformat(created.replace('Z', '+00:00'))
+        age_min = (now - ca).total_seconds() / 60
+    except Exception:
+        continue
+    if age_min <= threshold:
+        continue
+    if title in linear_titles:
+        continue
+    if has_linkback(number):
+        continue
+    # 找到孤立 Issue，输出 number<TAB>title
+    print(f'{number}\t{title}')
+    break
+" <<< "$GH_EVOLUTION_ISSUES" 2>>"$LOG_FILE" || echo "")
+
+    rm -f "$LINEAR_TITLES_TMP" 2>/dev/null || true
+
+    if [ -n "$GAP_A_ORPHAN" ]; then
+        O_NUMBER=$(echo "$GAP_A_ORPHAN" | cut -f1)
+        O_TITLE=$(echo "$GAP_A_ORPHAN" | cut -f2-)
+        log "GAP-A: orphan detected — GitHub Issue #${O_NUMBER} has no Linear sync, compensating"
+
+        # 补偿创建 Linear Issue（解析 evolution-found 标签 → issueCreate → 回写评论）
+        GAP_A_RESULT=$(TEAM_ID="$TEAM_ID" LINEAR_API_KEY="$LINEAR_API_KEY" \
+            O_NUMBER="$O_NUMBER" O_TITLE="$O_TITLE" REPO="$REPO" \
+            /opt/homebrew/bin/python3 -c "
+import json, os, sys, urllib.request
+
+team_id = os.environ['TEAM_ID']
+api_key = os.environ['LINEAR_API_KEY']
+o_number = os.environ['O_NUMBER']
+o_title = os.environ['O_TITLE']
+repo = os.environ['REPO']
+gh_url = f'https://github.com/{repo}/issues/{o_number}'
+
+def gql(query, variables=None):
+    payload = {'query': query}
+    if variables:
+        payload['variables'] = variables
+    req = urllib.request.Request(
+        'https://api.linear.app/graphql',
+        data=json.dumps(payload).encode(),
+        headers={'Authorization': api_key, 'Content-Type': 'application/json'},
+        method='POST'
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode())
+
+# 1. 解析 evolution-found 标签 ID
+label_query = '''query (\$tid: String!) {
+    team(id: \$tid) {
+        labels(filter: { name: { eq: \"evolution-found\" } }) {
+            nodes { id name }
+        }
+    }
+}'''
+label_data = gql(label_query, {'tid': team_id})
+nodes = label_data.get('data', {}).get('team', {}).get('labels', {}).get('nodes', [])
+label_id = nodes[0]['id'] if nodes else None
+
+# 2. 创建 Linear Issue
+desc = (
+    f'## Compensation 创建（GAP-A / INFRA-174）\\n\\n'
+    f'Linear native GitHub 集成未能自动同步此 Issue，由 reconcile-evolution.sh 反向对账补偿创建。\\n\\n'
+    f'**GitHub Issue**: {gh_url}\\n'
+    f'**Title**: {o_title}\\n\\n'
+    f'请参考 GitHub Issue 获取完整 finding 详情。'
+)
+create_mut = '''mutation (\$tid: String!, \$title: String!, \$desc: String!, \$labels: [String!]) {
+    issueCreate(input: {
+        teamId: \$tid,
+        title: \$title,
+        description: \$desc,
+        labelIds: \$labels
+    }) {
+        issue { id identifier url }
+    }
+}'''
+create_vars = {'tid': team_id, 'title': o_title, 'desc': desc, 'labels': [label_id] if label_id else []}
+create_data = gql(create_mut, create_vars)
+issue_node = create_data.get('data', {}).get('issueCreate', {}).get('issue', {})
+if not issue_node:
+    errs = create_data.get('errors', [])
+    print('ERROR: ' + json.dumps(errs, ensure_ascii=False), file=sys.stderr)
+    sys.exit(1)
+
+linear_uuid = issue_node['id']
+linear_ref = issue_node['identifier']
+
+# 3. 回写评论关联 GitHub Issue
+comment_mut = '''mutation (\$iid: String!, \$body: String!) {
+    commentCreate(input: { issueId: \$iid, body: \$body }) {
+        comment { id }
+    }
+}'''
+comment_body = f'GitHub Issue: {gh_url}（补偿创建，Linear 集成同步失败）'
+gql(comment_mut, {'iid': linear_uuid, 'body': comment_body})
+
+print(f'{linear_ref}|{linear_uuid}')
+" 2>>"$LOG_FILE" || echo "")
+
+        if [ -n "$GAP_A_RESULT" ]; then
+            log "GAP-A: created Linear Issue ${GAP_A_RESULT} for GitHub #${O_NUMBER} (next tick will trigger droid)"
+        else
+            log "GAP-A: WARNING — Linear issue creation failed for GitHub #${O_NUMBER}"
+        fi
+    else
+        log "GAP-A: no orphaned GitHub issues detected"
+    fi
+else
+    log "GAP-A: no open evolution-found GitHub issues to check"
+fi
+
 if [ "$ISSUE_COUNT" -eq 0 ]; then
     log "Nothing to reconcile"
     exit 0
