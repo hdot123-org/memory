@@ -22,17 +22,6 @@ jobs:
           python-version: '3.12'
       - name: Install package
         run: pip install -e .
-      - name: Cache evolution history
-        uses: actions/cache@v4
-        with:
-          path: |
-            .evolution/findings_over_time.json
-            .evolution/heartbeat.json
-            .evolution/monitor_heartbeat.json
-          key: evolution-heartbeat-${{ github.run_id }}
-          restore-keys: |
-            evolution-history-
-            evolution-heartbeat-
       - name: Ensure labels exist
         env:
           GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
