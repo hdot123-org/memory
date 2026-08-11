@@ -378,7 +378,7 @@ def main() -> None:
     # GAP-G: auto_close_resolved moved AFTER P1-2/P2-A hard exit checks.
     # Previously called before these checks, meaning if P2-A triggered a hard exit,
     # auto_close had already executed. Now auto_close only runs on healthy ticks.
-    auto_close_resolved(all_findings, config["dedup_label"])
+    auto_close_resolved(all_findings, config["dedup_label"], failed_categories)
 
 
 if __name__ == "__main__":
