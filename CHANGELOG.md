@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.2](https://github.com/hdot123/memory/compare/v0.18.1...v0.18.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* transcript_missing 不再记录为错误 (INFRA-164) ([#452](https://github.com/hdot123/memory/issues/452)) ([209dc02](https://github.com/hdot123/memory/commit/209dc02e4bb6f69a7ceb38c5f936c46e980f063a))
+
 ## [0.18.1](https://github.com/hdot123/memory/compare/v0.18.0...v0.18.1) (2026-08-11)
 
 
