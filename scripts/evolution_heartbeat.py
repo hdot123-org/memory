@@ -8,6 +8,7 @@ evolution scanner pipeline:
   3. Create alert issues when anomalies are detected
 """
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -19,6 +20,8 @@ FRESHNESS_THRESHOLD_HOURS = 2  # Alert if no snapshot within 2 hours
 PR_CHECK_WINDOW_ISSUES = 10  # Check last N evolution-found issues
 ALERT_LABEL = "evolution-heartbeat"
 EVOLUTION_FOUND_LABEL = "evolution-found"
+HEARTBEAT_MARKER_PATH = Path(".evolution/heartbeat.json")
+MONITOR_HEARTBEAT_PATH = Path(".evolution/monitor_heartbeat.json")
 
 
 def check_history_freshness(
@@ -141,19 +144,100 @@ def check_pr_coverage(label: str = EVOLUTION_FOUND_LABEL) -> dict:
     return result
 
 
+def alert_issue_exists(label: str = ALERT_LABEL) -> bool:
+    """Check if an open heartbeat alert issue already exists (INFRA-204 dedup)."""
+    try:
+        result = subprocess.run(
+            ["gh", "issue", "list", "--label", label, "--state", "open",
+             "--limit", "10", "--json", "number"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            return False
+        issues = json.loads(result.stdout) if result.stdout.strip() else []
+        return len(issues) > 0
+    except Exception:
+        return False
+
+
+def check_heartbeat_marker(max_age_hours: int = FRESHNESS_THRESHOLD_HOURS) -> dict:
+    """Check dedicated heartbeat.json marker freshness (INFRA-204).
+
+    This is a more precise signal than findings_over_time.json: the
+    heartbeat is written at the END of a successful tick, so staleness
+    means the scanner either didn't run or failed mid-tick.
+    """
+    result: dict = {"stale": True, "age_hours": float("inf"), "message": ""}
+
+    if not HEARTBEAT_MARKER_PATH.exists():
+        result["message"] = f"Heartbeat marker {HEARTBEAT_MARKER_PATH} does not exist"
+        return result
+
+    try:
+        data = json.loads(HEARTBEAT_MARKER_PATH.read_text())
+        ts_str = data.get("timestamp", "")
+        if not ts_str:
+            result["message"] = "Heartbeat marker has no timestamp"
+            return result
+
+        ts = datetime.fromisoformat(ts_str)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+
+        now = datetime.now(timezone.utc)
+        age_hours = (now - ts).total_seconds() / 3600
+        result["age_hours"] = age_hours
+
+        if age_hours > max_age_hours:
+            result["stale"] = True
+            result["message"] = (
+                f"heartbeat.json is stale: last heartbeat "
+                f"{age_hours:.1f}h ago (threshold: {max_age_hours}h)"
+            )
+        else:
+            result["stale"] = False
+            result["message"] = f"Heartbeat marker: OK ({age_hours:.1f}h old)"
+    except (json.JSONDecodeError, ValueError, TypeError, OSError) as exc:
+        result["message"] = f"Cannot read heartbeat marker: {exc}"
+
+    return result
+
+
+def write_monitor_heartbeat(anomalies: int) -> None:
+    """Write monitor heartbeat marker for meta-monitoring (INFRA-204).
+
+    Allows the scanner's self-audit to detect if the heartbeat monitor
+    workflow itself has stopped running.
+    """
+    now = datetime.now(timezone.utc)
+    data = {
+        "timestamp": now.isoformat(),
+        "status": "ok" if anomalies == 0 else "anomaly",
+        "anomalies_detected": anomalies,
+    }
+    tmp = MONITOR_HEARTBEAT_PATH.with_suffix(".tmp")
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, MONITOR_HEARTBEAT_PATH)
+
+
 def create_alert_issue(
     stale_history: bool,
     issues_without_pr: int,
     dedup_label: str = EVOLUTION_FOUND_LABEL,
+    heartbeat_stale: bool = False,
 ) -> bool:
     """Create a GitHub Issue for detected pipeline anomalies.
 
     Returns True if an issue was created, False if no anomaly or creation failed.
     """
-    if not stale_history and issues_without_pr == 0:
+    if not stale_history and issues_without_pr == 0 and not heartbeat_stale:
         return False
 
     anomalies = []
+    if heartbeat_stale:
+        anomalies.append("heartbeat.json marker is stale (scanner may have stopped)")
     if stale_history:
         anomalies.append("findings_over_time.json is stale (no recent snapshot)")
     if issues_without_pr > 0:
@@ -197,6 +281,13 @@ def create_alert_issue(
 
 def main(history_path: Path = HISTORY_PATH) -> int:
     """Run heartbeat checks and alert on anomalies. Returns process exit code."""
+    # INFRA-204: Check dedicated heartbeat marker (most precise signal)
+    heartbeat = check_heartbeat_marker()
+    if heartbeat["stale"]:
+        print(f"[heartbeat] ALERT: {heartbeat['message']}")
+    else:
+        print(f"[heartbeat] {heartbeat['message']}")
+
     # Check 1: History freshness
     freshness = check_history_freshness(history_path)
     if freshness["stale"]:
@@ -214,14 +305,23 @@ def main(history_path: Path = HISTORY_PATH) -> int:
     else:
         print("[heartbeat] PR coverage: OK")
 
+    # INFRA-204: Write monitor heartbeat for meta-monitoring
+    anomaly_count = sum([heartbeat["stale"], freshness["stale"], bool(coverage["issues_without_pr"] > 0)])
+
     # Create alert issue if any anomaly detected
-    if freshness["stale"] or coverage["issues_without_pr"] > 0:
-        create_alert_issue(
-            stale_history=freshness["stale"],
-            issues_without_pr=coverage["issues_without_pr"],
-        )
+    if heartbeat["stale"] or freshness["stale"] or coverage["issues_without_pr"] > 0:
+        if alert_issue_exists():
+            print("[heartbeat] Open alert issue already exists, skipping duplicate creation")
+        else:
+            create_alert_issue(
+                stale_history=freshness["stale"],
+                issues_without_pr=coverage["issues_without_pr"],
+                heartbeat_stale=heartbeat["stale"],
+            )
+        write_monitor_heartbeat(anomaly_count)
         return 1  # Non-zero exit signals anomaly to CI
 
+    write_monitor_heartbeat(anomaly_count)
     print("[heartbeat] All checks passed")
     return 0
 

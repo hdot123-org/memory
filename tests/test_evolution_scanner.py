@@ -5534,6 +5534,13 @@ def test_heartbeat_main_integration():
         with open(history_path, "w") as f:
             json.dump(data, f)
 
+        # INFRA-204: create fresh heartbeat marker so check_heartbeat_marker passes
+        heartbeat_path = Path(tmpdir) / "heartbeat.json"
+        with open(heartbeat_path, "w") as f:
+            json.dump({"timestamp": recent_time.isoformat(), "status": "ok"}, f)
+
+        monitor_path = Path(tmpdir) / "monitor_heartbeat.json"
+
         with patch("evolution_heartbeat.subprocess.run") as mock_run:
             # Mock: no open issues (clean state)
             mock_run.return_value = subprocess.CompletedProcess(
@@ -5544,8 +5551,8 @@ def test_heartbeat_main_integration():
             )
 
             # Run heartbeat
-            with patch("evolution_heartbeat.Path") as mock_path:
-                mock_path.return_value = Path(tmpdir)
+            with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path), \
+                 patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path):
                 exit_code = main(history_path=history_path)
 
             # Should exit 0 (clean state)
@@ -5569,21 +5576,367 @@ def test_heartbeat_detects_stale_and_creates_alert():
         with open(history_path, "w") as f:
             json.dump(data, f)
 
+        # INFRA-204: fresh heartbeat marker so only history staleness triggers alert
+        recent_time = datetime.now(timezone.utc) - timedelta(minutes=30)
+        heartbeat_path = Path(tmpdir) / "heartbeat.json"
+        with open(heartbeat_path, "w") as f:
+            json.dump({"timestamp": recent_time.isoformat(), "status": "ok"}, f)
+
+        monitor_path = Path(tmpdir) / "monitor_heartbeat.json"
+
         with patch("evolution_heartbeat.subprocess.run") as mock_run:
-            # Mock: no open issues, but gh issue create succeeds
+            # Mock: no open issues, no existing alert, then create alert
             mock_run.side_effect = [
-                # First: list issues (none)
+                # check_pr_coverage: list issues (none)
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
-                # Second: create alert issue
+                # alert_issue_exists: list alert issues (none, so create proceeds)
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
+                # create_alert_issue: create
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="https://github.com/test/repo/issues/999", stderr=""),
             ]
 
             # Run heartbeat
-            with patch("evolution_heartbeat.Path") as mock_path:
-                mock_path.return_value = Path(tmpdir)
+            with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path), \
+                 patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path):
                 exit_code = main(history_path=history_path)
 
             # Should exit 1 (anomaly detected)
             assert exit_code == 1, "Should exit 1 when anomaly detected"
-            # Verify alert was created
-            assert mock_run.call_count == 2, "Should call gh twice (list + create)"
+            # Verify alert was created (pr list + alert dedup check + create)
+            assert mock_run.call_count == 3, "Should call gh 3 times (pr list + alert check + create)"
+
+
+# ============================================================================
+# INFRA-204: Scanner heartbeat marker (write_heartbeat) Tests
+# ============================================================================
+
+
+def test_write_heartbeat_creates_file(tmp_path):
+    """INFRA-204: write_heartbeat creates heartbeat.json with correct fields."""
+    from evolution_scanner import write_heartbeat
+
+    # Use a temp .evolution dir as repo_root
+    repo_root = tmp_path
+    evolution_dir = repo_root / ".evolution"
+    evolution_dir.mkdir()
+
+    write_heartbeat(repo_root, issues_created=2, findings_count=5)
+
+    heartbeat_path = evolution_dir / "heartbeat.json"
+    assert heartbeat_path.exists(), "heartbeat.json should be created"
+
+    data = json.loads(heartbeat_path.read_text())
+    assert "timestamp" in data
+    assert "tick_id" in data
+    assert data["status"] == "ok"
+    assert data["issues_created"] == 2
+    assert data["findings_count"] == 5
+    # timestamp should be a valid ISO string
+    datetime.fromisoformat(data["timestamp"])
+    # tick_id should be YYYYMMDD-HHMMSS format
+    assert len(data["tick_id"]) == len("20260101-000000")
+
+
+def test_write_heartbeat_atomic_write(tmp_path):
+    """INFRA-204: write_heartbeat leaves no .tmp file after atomic write."""
+    from evolution_scanner import write_heartbeat
+
+    repo_root = tmp_path
+    (repo_root / ".evolution").mkdir()
+
+    write_heartbeat(repo_root, issues_created=0, findings_count=0)
+
+    heartbeat_path = repo_root / ".evolution" / "heartbeat.json"
+    tmp_path_check = heartbeat_path.with_suffix(".tmp")
+    assert heartbeat_path.exists(), "Final heartbeat.json should exist"
+    assert not tmp_path_check.exists(), "No .tmp file should remain after atomic write"
+
+
+# ============================================================================
+# INFRA-204: Self-audit Check 8 (check_heartbeat_channel) Tests
+# ============================================================================
+
+
+def test_check_heartbeat_channel_missing(tmp_path, monkeypatch):
+    """INFRA-204: check_heartbeat_channel reports EVOLUTION_HEARTBEAT_MISSING when file absent."""
+    from memory_core.tools import evolution_self_audit
+
+    monkeypatch.setattr(
+        evolution_self_audit, "HEARTBEAT_FILE",
+        tmp_path / "nonexistent.json",
+    )
+
+    result = evolution_self_audit.check_heartbeat_channel()
+    assert len(result) == 1
+    assert result[0]["rule_id"] == "EVOLUTION_HEARTBEAT_MISSING"
+    assert result[0]["severity"] == "critical"
+
+
+def test_check_heartbeat_channel_fresh(tmp_path, monkeypatch):
+    """INFRA-204: check_heartbeat_channel returns no findings when heartbeat is fresh."""
+    from memory_core.tools import evolution_self_audit
+
+    heartbeat_path = tmp_path / "heartbeat.json"
+    monkeypatch.setattr(evolution_self_audit, "HEARTBEAT_FILE", heartbeat_path)
+
+    recent_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    data = {"timestamp": recent_time.isoformat(), "status": "ok"}
+    heartbeat_path.write_text(json.dumps(data))
+
+    result = evolution_self_audit.check_heartbeat_channel()
+    assert result == []
+
+
+def test_check_heartbeat_channel_stale(tmp_path, monkeypatch):
+    """INFRA-204: check_heartbeat_channel reports STALE when heartbeat older than 2h."""
+    from memory_core.tools import evolution_self_audit
+
+    heartbeat_path = tmp_path / "heartbeat.json"
+    monkeypatch.setattr(evolution_self_audit, "HEARTBEAT_FILE", heartbeat_path)
+
+    old_time = datetime.now(timezone.utc) - timedelta(hours=3)
+    data = {"timestamp": old_time.isoformat(), "status": "ok"}
+    heartbeat_path.write_text(json.dumps(data))
+
+    result = evolution_self_audit.check_heartbeat_channel()
+    assert len(result) == 1
+    assert result[0]["rule_id"] == "EVOLUTION_HEARTBEAT_STALE"
+    assert result[0]["severity"] == "critical"
+    assert "age=" in result[0]["evidence"]
+
+
+def test_check_heartbeat_channel_invalid_json(tmp_path, monkeypatch):
+    """INFRA-204: check_heartbeat_channel reports INVALID when heartbeat is corrupted JSON."""
+    from memory_core.tools import evolution_self_audit
+
+    heartbeat_path = tmp_path / "heartbeat.json"
+    monkeypatch.setattr(evolution_self_audit, "HEARTBEAT_FILE", heartbeat_path)
+
+    heartbeat_path.write_text("{ broken json [[[")
+
+    result = evolution_self_audit.check_heartbeat_channel()
+    assert len(result) == 1
+    assert result[0]["rule_id"] == "EVOLUTION_HEARTBEAT_INVALID"
+    assert result[0]["severity"] == "critical"
+
+
+def test_check_heartbeat_channel_missing_timestamp(tmp_path, monkeypatch):
+    """INFRA-204: check_heartbeat_channel reports INVALID when timestamp field is missing."""
+    from memory_core.tools import evolution_self_audit
+
+    heartbeat_path = tmp_path / "heartbeat.json"
+    monkeypatch.setattr(evolution_self_audit, "HEARTBEAT_FILE", heartbeat_path)
+
+    # No timestamp field
+    heartbeat_path.write_text(json.dumps({"status": "ok"}))
+
+    result = evolution_self_audit.check_heartbeat_channel()
+    assert len(result) == 1
+    assert result[0]["rule_id"] == "EVOLUTION_HEARTBEAT_INVALID"
+    assert result[0]["severity"] == "critical"
+
+
+def test_check_heartbeat_channel_schema_compliance(tmp_path, monkeypatch):
+    """INFRA-204: check_heartbeat_channel finding has all 6 required schema fields."""
+    from memory_core.tools import evolution_self_audit
+
+    monkeypatch.setattr(
+        evolution_self_audit, "HEARTBEAT_FILE",
+        tmp_path / "nonexistent.json",
+    )
+
+    result = evolution_self_audit.check_heartbeat_channel()
+    assert len(result) == 1
+    finding = result[0]
+    required_fields = {"rule_id", "severity", "description", "location", "evidence", "category"}
+    assert required_fields.issubset(finding.keys()), (
+        f"Missing fields: {required_fields - set(finding.keys())}"
+    )
+
+
+def test_check_heartbeat_channel_in_main(tmp_path, monkeypatch):
+    """INFRA-204: main() calls check_heartbeat_channel and returns 1 on finding."""
+    from memory_core.tools import evolution_self_audit
+
+    finding = {
+        "rule_id": "EVOLUTION_HEARTBEAT_MISSING",
+        "severity": "critical",
+        "description": "test heartbeat missing",
+        "location": str(tmp_path / "heartbeat.json"),
+        "evidence": "file missing",
+        "category": "evolution_self_audit",
+    }
+
+    with patch.object(evolution_self_audit, "check_suppress_json", return_value=[]), \
+         patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]), \
+         patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]), \
+         patch.object(evolution_self_audit, "check_trigger_droid", return_value=[]), \
+         patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]), \
+         patch.object(evolution_self_audit, "check_config_yml", return_value=[]), \
+         patch.object(evolution_self_audit, "check_tool_health", return_value=[]), \
+         patch.object(evolution_self_audit, "check_heartbeat_channel", return_value=[finding]) as mock_hb:
+
+        exit_code = evolution_self_audit.main()
+        assert exit_code == 1, "main() should return 1 when check_heartbeat_channel reports a finding"
+        mock_hb.assert_called_once()
+
+
+# ============================================================================
+# INFRA-204: Heartbeat Monitor Improvements Tests
+# ============================================================================
+
+
+def test_alert_issue_exists_true():
+    """INFRA-204: alert_issue_exists returns True when an open alert issue exists."""
+    from evolution_heartbeat import alert_issue_exists
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout=json.dumps([{"number": 42}]),
+            stderr="",
+        )
+        assert alert_issue_exists() is True
+
+
+def test_alert_issue_exists_false():
+    """INFRA-204: alert_issue_exists returns False when no open alert issue exists."""
+    from evolution_heartbeat import alert_issue_exists
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="[]", stderr="",
+        )
+        assert alert_issue_exists() is False
+
+
+def test_check_heartbeat_marker_fresh(tmp_path):
+    """INFRA-204: check_heartbeat_marker returns stale=False for a fresh marker."""
+    from evolution_heartbeat import check_heartbeat_marker
+
+    marker_path = tmp_path / "heartbeat.json"
+    recent_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    marker_path.write_text(json.dumps({"timestamp": recent_time.isoformat()}))
+
+    with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", marker_path):
+        result = check_heartbeat_marker()
+
+    assert result["stale"] is False
+    assert result["age_hours"] < 2
+
+
+def test_check_heartbeat_marker_stale(tmp_path):
+    """INFRA-204: check_heartbeat_marker returns stale=True for an old marker."""
+    from evolution_heartbeat import check_heartbeat_marker
+
+    marker_path = tmp_path / "heartbeat.json"
+    old_time = datetime.now(timezone.utc) - timedelta(hours=5)
+    marker_path.write_text(json.dumps({"timestamp": old_time.isoformat()}))
+
+    with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", marker_path):
+        result = check_heartbeat_marker()
+
+    assert result["stale"] is True
+
+
+def test_check_heartbeat_marker_missing(tmp_path):
+    """INFRA-204: check_heartbeat_marker returns stale=True when marker absent."""
+    from evolution_heartbeat import check_heartbeat_marker
+
+    marker_path = tmp_path / "nonexistent.json"
+    with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", marker_path):
+        result = check_heartbeat_marker()
+
+    assert result["stale"] is True
+
+
+def test_write_monitor_heartbeat_creates_file(tmp_path):
+    """INFRA-204: write_monitor_heartbeat creates monitor_heartbeat.json with correct fields."""
+    from evolution_heartbeat import write_monitor_heartbeat
+
+    monitor_path = tmp_path / "monitor_heartbeat.json"
+    with patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path):
+        write_monitor_heartbeat(anomalies=0)
+
+    assert monitor_path.exists(), "monitor_heartbeat.json should be created"
+    data = json.loads(monitor_path.read_text())
+    assert "timestamp" in data
+    assert data["status"] == "ok"
+    assert data["anomalies_detected"] == 0
+    datetime.fromisoformat(data["timestamp"])
+
+    # Verify anomaly variant
+    with patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path):
+        write_monitor_heartbeat(anomalies=2)
+    data = json.loads(monitor_path.read_text())
+    assert data["status"] == "anomaly"
+    assert data["anomalies_detected"] == 2
+
+    # No .tmp file should remain
+    assert not monitor_path.with_suffix(".tmp").exists()
+
+
+def test_main_dedup_skips_duplicate_alert(tmp_path):
+    """INFRA-204: main() skips create_alert_issue when an open alert already exists."""
+    from evolution_heartbeat import main
+
+    # Fresh history + fresh heartbeat marker so only dedup path is exercised via anomaly
+    recent_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    history_path = tmp_path / "findings_over_time.json"
+    history_path.write_text(json.dumps({
+        "snapshots": [{"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}]
+    }))
+    heartbeat_path = tmp_path / "heartbeat.json"
+    heartbeat_path.write_text(json.dumps({"timestamp": recent_time.isoformat(), "status": "ok"}))
+    monitor_path = tmp_path / "monitor_heartbeat.json"
+
+    # Force an anomaly via stale history (use stale time) so alert path is entered
+    stale_time = datetime.now(timezone.utc) - timedelta(hours=5)
+    history_path.write_text(json.dumps({
+        "snapshots": [{"timestamp": stale_time.isoformat(), "tick_id": "old", "findings": []}]
+    }))
+
+    with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path), \
+         patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path), \
+         patch("evolution_heartbeat.subprocess.run") as mock_run, \
+         patch("evolution_heartbeat.create_alert_issue") as mock_create:
+
+        # check_pr_coverage list -> no issues; alert_issue_exists -> one open alert
+        mock_run.side_effect = [
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps([{"number": 7}]), stderr=""),
+        ]
+
+        exit_code = main(history_path=history_path)
+
+        assert exit_code == 1, "Should exit 1 (anomaly detected)"
+        mock_create.assert_not_called()
+
+
+def test_main_writes_monitor_heartbeat(tmp_path):
+    """INFRA-204: main() writes the monitor heartbeat marker on a clean run."""
+    from evolution_heartbeat import main
+
+    recent_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    history_path = tmp_path / "findings_over_time.json"
+    history_path.write_text(json.dumps({
+        "snapshots": [{"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}]
+    }))
+    heartbeat_path = tmp_path / "heartbeat.json"
+    heartbeat_path.write_text(json.dumps({"timestamp": recent_time.isoformat(), "status": "ok"}))
+    monitor_path = tmp_path / "monitor_heartbeat.json"
+
+    with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path), \
+         patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path), \
+         patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="[]", stderr=""
+        )
+
+        exit_code = main(history_path=history_path)
+
+        assert exit_code == 0, "Should exit 0 on clean state"
+        assert monitor_path.exists(), "main() should write monitor_heartbeat.json"
+        data = json.loads(monitor_path.read_text())
+        assert data["status"] == "ok"
+        assert data["anomalies_detected"] == 0

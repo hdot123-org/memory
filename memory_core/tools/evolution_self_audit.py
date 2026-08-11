@@ -1,4 +1,4 @@
-"""Evolution self-audit tool: 8 checks for pipeline health."""
+"""Evolution self-audit tool: 9 checks for pipeline health."""
 
 import json
 import os
@@ -16,6 +16,9 @@ SUPPRESS_JSON = EVOLUTION_DIR / "suppress.json"
 FINDINGS_OVER_TIME = EVOLUTION_DIR / "findings_over_time.json"
 STALE_THRESHOLD_HOURS = 48
 EVOLUTION_CONFIG = EVOLUTION_DIR / "config.yml"
+
+HEARTBEAT_FILE = EVOLUTION_DIR / "heartbeat.json"
+HEARTBEAT_STALE_THRESHOLD_HOURS = 2  # Scanner runs every 30 min; 2h = 4 missed ticks
 
 FACTORY_HOME = Path.home() / ".factory"
 LOCK_DIR = FACTORY_HOME / "webhook" / "locks"
@@ -537,8 +540,72 @@ def check_linear_sync() -> list[dict[str, Any]]:
     return findings
 
 
+def check_heartbeat_channel() -> list[dict[str, Any]]:
+    """Check 9: verify evolution heartbeat marker is fresh (INFRA-204).
+
+    Unlike Check 2 (which reads findings_over_time.json with a 48h threshold),
+    this check reads the dedicated heartbeat.json marker with a 2h threshold.
+    The heartbeat is written at the END of a successful tick, so staleness
+    here means the scanner is either not running or failing mid-tick.
+    """
+    findings: list[dict[str, Any]] = []
+
+    if not HEARTBEAT_FILE.exists():
+        findings.append({
+            "rule_id": "EVOLUTION_HEARTBEAT_MISSING",
+            "severity": "critical",
+            "description": "Heartbeat marker does not exist — scanner has never completed a tick or heartbeat was lost",
+            "location": str(HEARTBEAT_FILE),
+            "evidence": "file missing",
+            "category": CATEGORY,
+        })
+        return findings
+
+    try:
+        data = json.loads(HEARTBEAT_FILE.read_text())
+        ts_str = data.get("timestamp", "")
+        if not ts_str:
+            findings.append({
+                "rule_id": "EVOLUTION_HEARTBEAT_INVALID",
+                "severity": "critical",
+                "description": "Heartbeat marker has no timestamp field",
+                "location": str(HEARTBEAT_FILE),
+                "evidence": "timestamp field empty or missing",
+                "category": CATEGORY,
+            })
+            return findings
+
+        ts = datetime.fromisoformat(ts_str)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+
+        now = datetime.now(timezone.utc)
+        age_hours = (now - ts).total_seconds() / 3600
+
+        if age_hours > HEARTBEAT_STALE_THRESHOLD_HOURS:
+            findings.append({
+                "rule_id": "EVOLUTION_HEARTBEAT_STALE",
+                "severity": "critical",
+                "description": "Evolution scanner heartbeat is stale — scanner may have stopped running or is failing mid-tick",
+                "location": str(HEARTBEAT_FILE),
+                "evidence": f"age={age_hours:.1f}h, threshold={HEARTBEAT_STALE_THRESHOLD_HOURS}h, last_tick={ts_str}",
+                "category": CATEGORY,
+            })
+    except (json.JSONDecodeError, ValueError, TypeError, OSError) as e:
+        findings.append({
+            "rule_id": "EVOLUTION_HEARTBEAT_INVALID",
+            "severity": "critical",
+            "description": "Heartbeat marker is invalid or unreadable",
+            "location": str(HEARTBEAT_FILE),
+            "evidence": str(e),
+            "category": CATEGORY,
+        })
+
+    return findings
+
+
 def main() -> int:
-    """Run all 8 checks and output findings as JSON."""
+    """Run all 9 checks and output findings as JSON."""
     all_findings: list[dict[str, Any]] = []
     all_findings.extend(check_suppress_json())
     all_findings.extend(check_findings_over_time())
@@ -548,6 +615,7 @@ def main() -> int:
     all_findings.extend(check_config_yml())
     all_findings.extend(check_tool_health())
     all_findings.extend(check_linear_sync())
+    all_findings.extend(check_heartbeat_channel())
 
     json.dump(all_findings, sys.stdout, indent=2)
     print()

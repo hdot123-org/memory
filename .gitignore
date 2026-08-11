@@ -83,3 +83,5 @@ output/
 
 # Evolution runtime artifacts (not for tracking)
 .evolution/findings_over_time.json
+.evolution/heartbeat.json
+.evolution/monitor_heartbeat.json
