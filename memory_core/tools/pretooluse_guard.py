@@ -71,15 +71,24 @@ _logger = logging.getLogger(__name__)
 # sign, U+E0001 language tag) that still triggered the false error.
 #
 # Instead of enumerating individual chars, we strip ALL non-whitespace
-# Unicode Cc (control) and Cf (format) characters by category. Whitespace
-# controls (\t \n \r etc.) are intentionally excluded because str.strip()
-# already handles them and because they are legitimate within JSON strings.
+# Unicode Cc (control), Cf (format), Cs (surrogate), and Co (private-use)
+# characters by category. Whitespace controls (\t \n \r etc.) are
+# intentionally excluded because str.strip() already handles them and
+# because they are legitimate within JSON strings.
 #
-# The ranges below were derived by iterating over the whole Unicode range
-# and keeping every codepoint whose unicodedata.category() is Cc or Cf and
-# that is NOT whitespace — 225 characters across 25 contiguous ranges. They
-# are a static, precomputed constant; unicodedata is NOT imported at runtime.
-_INVISIBLE_UNICODE_RANGES: tuple[tuple[int, int], ...] = (
+# The Cc/Cf ranges below were derived by iterating over the whole Unicode
+# range and keeping every codepoint whose unicodedata.category() is Cc or Cf
+# and that is NOT whitespace — 225 characters across 25 contiguous ranges.
+# The Cs (surrogate) and Co (private-use) ranges were added later (INFRA-191)
+# because lone surrogates and private-use characters also survive
+# str.strip() and break json.loads(). They are static, precomputed
+# constants; unicodedata is NOT imported at runtime.
+#
+# The Cc/Cf ranges are kept separate from Cs/Co so the exhaustive regression
+# test (which expands every codepoint and calls main() once per char) can
+# iterate over the small ~225-char Cc/Cf set without exploding to the
+# ~21000-char Cs/Co set. The Cs/Co ranges are covered by dedicated tests.
+_CC_CF_RANGES: tuple[tuple[int, int], ...] = (
     (0x0000, 0x0008), (0x000E, 0x001B), (0x007F, 0x0084), (0x0086, 0x009F),
     (0x00AD, 0x00AD), (0x0600, 0x0605), (0x061C, 0x061C), (0x06DD, 0x06DD),
     (0x070F, 0x070F), (0x0890, 0x0891), (0x08E2, 0x08E2), (0x180E, 0x180E),
@@ -88,6 +97,13 @@ _INVISIBLE_UNICODE_RANGES: tuple[tuple[int, int], ...] = (
     (0x13430, 0x1343F), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A),
     (0xE0001, 0xE0001), (0xE0020, 0xE007F),
 )
+# Cs (Surrogate): lone surrogates that should never appear in valid JSON.
+# Co (Private Use Area): private-use characters that aren't valid JSON content.
+_CS_CO_RANGES: tuple[tuple[int, int], ...] = (
+    (0xD800, 0xDFFF),
+    (0xE000, 0xF8FF), (0xF0000, 0xFFFFD), (0x100000, 0x10FFFD),
+)
+_INVISIBLE_UNICODE_RANGES: tuple[tuple[int, int], ...] = _CC_CF_RANGES + _CS_CO_RANGES
 _INVISIBLE_CHARS = str.maketrans(
     "",
     "",
@@ -148,6 +164,12 @@ def _fail_closed_with_raw_check(raw_input: str, reason: str) -> tuple[int, dict[
             from memory_core.tools.error_logger import write_error_log
 
             redacted_raw = redact(raw_input[:500]) if raw_input else ""
+            # Skip logging when the redacted preview is empty — the input
+            # was effectively garbage (empty after stripping or fully
+            # redacted), and logging it only creates noise that triggers
+            # false evolution scanner findings (INFRA-191).
+            if not redacted_raw:
+                return exit_code, result
             write_error_log(
                 project_root=str(project_root),
                 error_type="json_parse_error",
