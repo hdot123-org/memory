@@ -5346,6 +5346,7 @@ def test_check_linear_sync_health_in_main():
          patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]), \
          patch.object(evolution_self_audit, "check_config_yml", return_value=[]), \
          patch.object(evolution_self_audit, "check_tool_health", return_value=[]), \
+         patch.object(evolution_self_audit, "check_reverse_closure", return_value=[]), \
          patch.object(evolution_self_audit, "check_linear_sync_health", return_value=[{
              "rule_id": "TEST",
              "severity": "warning",
@@ -5410,3 +5411,263 @@ def test_check_linear_sync_health_no_github_issues():
         findings = evolution_self_audit.check_linear_sync_health()
         assert findings == []
         mock_post.assert_not_called()  # No Linear API calls if no GitHub issues
+
+
+# GAP-B: Reverse Closure Detection Tests
+
+
+def test_check_reverse_closure_exists():
+    """VAL-REVCLOSE-001: check_reverse_closure function exists."""
+    from memory_core.tools import evolution_self_audit
+    assert hasattr(evolution_self_audit, "check_reverse_closure")
+    assert callable(evolution_self_audit.check_reverse_closure)
+
+
+def test_check_reverse_closure_detects_mismatch(monkeypatch):
+    """VAL-REVCLOSE-002: Detects GitHub-closed / Linear-open mismatches."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    # Mock GitHub CLOSED issues
+    gh_closed_issues = [
+        {
+            "number": 200,
+            "title": "[evolution] RULE_CLOSED_1",
+            "body": "**Rule ID**: RULE_CLOSED_1\n**Location**: file1.py\n**Category**: daily_audit\n",
+        },
+        {
+            "number": 201,
+            "title": "[evolution] RULE_CLOSED_2",
+            "body": "**Rule ID**: RULE_CLOSED_2\n**Location**: file2.py\n**Category**: daily_audit\n",
+        },
+    ]
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout=json.dumps(gh_closed_issues), stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch("evolution_self_audit.requests.post") as mock_post:
+
+        def post_side_effect(url, **kwargs):
+            mock_resp = Mock()
+            mock_resp.status_code = 200
+            query_str = kwargs.get("json", {}).get("query", "")
+            # INFRA-200 is Done (closed in Linear too)
+            if "INFRA-200" in query_str:
+                mock_resp.json.return_value = {
+                    "data": {
+                        "issues": {
+                            "nodes": [{
+                                "identifier": "INFRA-200",
+                                "state": {"name": "Done"}
+                            }]
+                        }
+                    }
+                }
+            # INFRA-201 is still In Progress (mismatch: GH closed, Linear open)
+            else:
+                mock_resp.json.return_value = {
+                    "data": {
+                        "issues": {
+                            "nodes": [{
+                                "identifier": "INFRA-201",
+                                "state": {"name": "In Progress"}
+                            }]
+                        }
+                    }
+                }
+            return mock_resp
+
+        mock_post.side_effect = post_side_effect
+
+        findings = evolution_self_audit.check_reverse_closure()
+
+        # Should detect one mismatch: GH #201 closed but Linear INFRA-201 still open
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "EVOLUTION_REVERSE_CLOSURE"
+        assert findings[0]["severity"] == "warning"
+        assert findings[0]["category"] == "evolution_self_audit"
+        assert "#201" in findings[0]["description"]
+        assert "INFRA-201" in findings[0]["evidence"]
+
+
+def test_check_reverse_closure_all_in_sync():
+    """VAL-REVCLOSE-003: All-in-sync case produces no findings."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    gh_closed_issues = [
+        {
+            "number": 200,
+            "title": "[evolution] RULE_CLOSED_1",
+            "body": "**Rule ID**: RULE_CLOSED_1\n**Location**: file1.py\n",
+        },
+    ]
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout=json.dumps(gh_closed_issues), stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch("evolution_self_audit.requests.post") as mock_post:
+
+        # Linear issue is also Done (in sync)
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "data": {
+                "issues": {
+                    "nodes": [{
+                        "identifier": "INFRA-200",
+                        "state": {"name": "Done"}
+                    }]
+                }
+            }
+        }
+        mock_post.return_value = mock_resp
+
+        findings = evolution_self_audit.check_reverse_closure()
+        assert findings == []
+
+
+def test_check_reverse_closure_handles_api_failure(monkeypatch):
+    """VAL-REVCLOSE-004: Handles Linear API failure gracefully."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    gh_closed_issues = [
+        {
+            "number": 200,
+            "title": "[evolution] RULE_CLOSED_1",
+            "body": "**Rule ID**: RULE_CLOSED_1\n**Location**: file1.py\n",
+        },
+    ]
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout=json.dumps(gh_closed_issues), stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    # Test 1: Missing LINEAR_API_KEY
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {}, clear=True):
+        findings = evolution_self_audit.check_reverse_closure()
+        assert isinstance(findings, list)
+        # Should not crash
+
+    # Test 2: API failure
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch("evolution_self_audit.requests.post") as mock_post:
+
+        mock_post.side_effect = Exception("API Error")
+        findings = evolution_self_audit.check_reverse_closure()
+        assert isinstance(findings, list)
+        # Should handle gracefully, not crash
+
+
+def test_check_reverse_closure_schema_compliance():
+    """VAL-REVCLOSE-006: Output follows Finding schema (6 fields)."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    gh_closed_issues = [
+        {
+            "number": 200,
+            "title": "[evolution] RULE_CLOSED_1",
+            "body": "**Rule ID**: RULE_CLOSED_1\n**Location**: file1.py\n",
+        },
+    ]
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout=json.dumps(gh_closed_issues), stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch("evolution_self_audit.requests.post") as mock_post:
+
+        # Linear issue is still open (mismatch)
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "data": {
+                "issues": {
+                    "nodes": [{
+                        "identifier": "INFRA-200",
+                        "state": {"name": "In Progress"}
+                    }]
+                }
+            }
+        }
+        mock_post.return_value = mock_resp
+
+        findings = evolution_self_audit.check_reverse_closure()
+
+        # Each finding must have all 6 required fields
+        for finding in findings:
+            assert "rule_id" in finding
+            assert "severity" in finding
+            assert "category" in finding
+            assert "description" in finding
+            assert "location" in finding
+            assert "evidence" in finding
+            assert finding["category"] == "evolution_self_audit"
+
+
+def test_check_reverse_closure_in_main():
+    """VAL-REVCLOSE-005: Check included in main() run."""
+    from unittest.mock import patch
+
+    from memory_core.tools import evolution_self_audit
+
+    with patch.object(evolution_self_audit, "check_suppress_json", return_value=[]), \
+         patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]), \
+         patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]), \
+         patch.object(evolution_self_audit, "check_trigger_droid", return_value=[]), \
+         patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]), \
+         patch.object(evolution_self_audit, "check_config_yml", return_value=[]), \
+         patch.object(evolution_self_audit, "check_tool_health", return_value=[]), \
+         patch.object(evolution_self_audit, "check_linear_sync_health", return_value=[]), \
+         patch.object(evolution_self_audit, "check_reverse_closure", return_value=[{
+             "rule_id": "TEST",
+             "severity": "warning",
+             "category": "evolution_self_audit",
+             "description": "test",
+             "location": "test",
+             "evidence": "test",
+         }]) as mock_check:
+
+        result = evolution_self_audit.main()
+        mock_check.assert_called_once()
+        assert result == 1  # Has findings
+
+
+def test_check_reverse_closure_no_closed_issues():
+    """No closed GitHub issues - no findings."""
+    from unittest.mock import Mock, patch
+
+    from memory_core.tools import evolution_self_audit
+
+    def mock_subprocess_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "list"]:
+            return Mock(returncode=0, stdout="[]", stderr="")
+        return Mock(returncode=0, stdout="[]", stderr="")
+
+    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
+         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
+         patch("evolution_self_audit.requests.post") as mock_post:
+
+        findings = evolution_self_audit.check_reverse_closure()
+        assert findings == []
+        mock_post.assert_not_called()  # No Linear API calls if no closed GitHub issues
