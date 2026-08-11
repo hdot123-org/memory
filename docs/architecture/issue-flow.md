@@ -162,6 +162,8 @@ body = (f"> ⚙️ 此 Issue 由 evolution scanner 自动创建。任务管理�
 | `.github/workflows/evolution-scan.yml` | scanner 定时触发 workflow |
 | `.github/workflows/droid.yml` | droid 自动触发 workflow |
 | `~/.factory/webhook/scripts/trigger-droid.sh` | webhook 触发 droid |
+| `scripts/evolution_reconcile.py` | GitHub→Linear 反向补偿工具（INFRA-175），见 §9.3 |
+| `~/.factory/webhook/scripts/reconcile-evolution.sh` | 双向补偿定时脚本（Linear→GitHub §9.2 + GitHub→Linear §9.3） |
 
 
 ---
@@ -238,3 +240,88 @@ PR merge
 | 闭环失败频率超过阈值 | 连续 3 次或累计 5 次出现 PR merge 后 Issue 未正确关闭 |
 | 架构变更 | 如果未来 Linear 集成方案发生变化（如迁移到其他平台），需要重新评估闭环机制 |
 | 审计发现风险 | 安全审计或 code review 发现当前闭环存在盲区 |
+
+
+---
+
+## 9. 双向补偿层（Reconciliation Compensation Layer）
+
+### 9.1 背景
+
+evolution scanner 的 `auto_close_resolved()`（`scripts/evolution_utils.py`）在 finding
+解决后关闭对应 GitHub Issue，并依赖 **Linear 原生 GitHub 集成** 把这次关闭同步到对应
+Linear Issue。两条平台原生路径任一失败时，都会产生状态漂移：
+
+| 漂移方向 | 现象 | 根因 |
+|----------|------|------|
+| **Linear→GitHub** | Linear Issue 已终态，但对应 GitHub Issue 仍 open | GitHub 集成反向同步失败 |
+| **GitHub→Linear** | GitHub Issue 已关闭，但 Linear Issue 永久卡在「进行中」 | Linear 集成正向同步失败（INFRA-175 / GAP-B），导致 **Linear 僵尸 Issue** 累积 |
+
+为消除两类漂移，部署独立的 **双向补偿层**，由定时脚本兜底同步，互为镜像：
+
+### 9.2 Linear→GitHub（已有）
+
+`~/.factory/webhook/scripts/reconcile-evolution.sh` 的 §4b：当 Linear Issue 处于终态
+（completed/canceled）时，关闭其对应的 **open** GitHub Issue。
+
+- 触发：定时 reconcile 任务
+- 动作：`gh issue close <N> --comment ...`
+- 幂等：仅关闭仍 open 的 GitHub Issue
+
+### 9.3 GitHub→Linear（新增，INFRA-175 / GAP-B）
+
+`scripts/evolution_reconcile.py`：当 GitHub evolution-found Issue 已关闭，但其对应
+Linear Issue 仍非终态时，通过 **Linear GraphQL API** 关闭该 Linear Issue。
+
+**工作流**：
+
+```
+已关闭的 GitHub evolution-found Issue
+    ↓ gh issue view <N> --json comments
+定位 <!-- linear-linkback --> 评论 → 提取 INFRA-xxx 标识符
+    ↓ Linear GraphQL issue(id)
+查询 Linear Issue 当前状态
+    ↓ 若 state.type ∉ {completed, canceled}
+issueUpdate(stateId=已完成) + commentCreate(可追溯评论)
+```
+
+**幂等性**：仅处理非终态 Linear Issue。已处于 `completed` / `canceled` 的 Issue 会被跳过
+（记入 `already_terminal`），后续运行不会重复操作。
+
+**安全约束**：
+
+- 该工具仅对 Linear 执行写操作（`issueUpdate` / `commentCreate`），不对 GitHub 执行写操作。
+- 关闭评论（中文）：
+  `GitHub Issue {repo}#{num} 已关闭（evolution finding 已解决），本 Linear Issue 由 GitHub→Linear 反向补偿层（INFRA-175）关闭。`
+- 运行配置通过环境变量：`LINEAR_API_KEY`（必填）、`EVOLUTION_TEAM_ID`、`EVOLUTION_REPO`、`EVOLUTION_DEDUP_LABEL`。
+- 输出汇总 JSON：`{checked, closed_linear, already_terminal, no_ref, errors}`。
+
+### 9.4 部署：集成到 `reconcile-evolution.sh`
+
+在 `~/.factory/webhook/scripts/reconcile-evolution.sh` 的 §4b（Linear→GitHub）之后，追加
+GitHub→Linear 反向补偿调用：
+
+```bash
+# === GitHub→Linear 反向补偿 (GAP-B / INFRA-175) ===
+log "Running GitHub→Linear reverse compensation (INFRA-175)"
+EVOLUTION_TEAM_ID=$TEAM_ID EVOLUTION_REPO=$REPO LINEAR_API_KEY=$LINEAR_API_KEY \
+    /opt/homebrew/bin/python3 "${HOME}/memory/scripts/evolution_reconcile.py" \
+    >> "$LOG_FILE" 2>&1 || log "WARNING: evolution_reconcile.py reported errors"
+```
+
+<!-- 值为 shell 变量引用（$VAR），非字面密钥；采用无引号 env-prefix 形式以避免
+     密钥扫描器（security-gate）误报 `api_key="..."` 模式。 -->
+
+> **注意**：合并后需在本地 `~/.factory/webhook/scripts/reconcile-evolution.sh` 手动增加上述片段
+> （该脚本位于 `~/.factory` 全局子系统，不在本仓库内）。
+
+### 9.5 双向补偿层职责矩阵
+
+| 维度 | Linear→GitHub（§9.2） | GitHub→Linear（INFRA-175） |
+|------|----------------------|----------------------------|
+| 脚本 | `~/.factory/webhook/scripts/reconcile-evolution.sh` | `scripts/evolution_reconcile.py` |
+| 触发条件 | Linear Issue 终态 | GitHub evolution-found Issue 已关闭 |
+| 写入目标 | GitHub Issue（`gh issue close`） | Linear Issue（`issueUpdate` + `commentCreate`） |
+| 跳过条件 | GitHub Issue 已关闭 | Linear Issue 已终态（completed/canceled） |
+| 定位机制 | GitHub `Fixes` 关联 | `<!-- linear-linkback -->` 评论 |
+| 依赖 | `gh` CLI | Linear GraphQL API + `LINEAR_API_KEY` |
