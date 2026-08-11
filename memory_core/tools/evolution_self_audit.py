@@ -435,8 +435,8 @@ def check_linear_sync() -> list[dict[str, Any]]:
         )
     except FileNotFoundError:
         print(
-            f"[evolution_self_audit] SKIP check_linear_sync: "
-            f"gh CLI not found (expected in CI)",
+            "[evolution_self_audit] SKIP check_linear_sync: "
+            "gh CLI not found (expected in CI)",
             file=sys.stderr,
         )
         return findings
