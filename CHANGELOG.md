@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/hdot123/memory/compare/v0.17.0...v0.18.0) (2026-08-11)
+
+
+### Features
+
+* 添加已解决 Issues 自动关闭机制及文档更新 ([#447](https://github.com/hdot123/memory/issues/447)) ([3313974](https://github.com/hdot123/memory/commit/33139744e37794b48dffd23f830b3f3d1ec61e68))
+
 ## [0.17.0](https://github.com/hdot123/memory/compare/v0.16.6...v0.17.0) (2026-08-11)
 
 
