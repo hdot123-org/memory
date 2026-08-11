@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.5](https://github.com/hdot123/memory/compare/v0.18.4...v0.18.5) (2026-08-11)
+
+
+### Bug Fixes
+
+* auto_close_resolved 增加 failed_categories 保护 (INFRA-176) ([#464](https://github.com/hdot123/memory/issues/464)) ([7aeb2a3](https://github.com/hdot123/memory/commit/7aeb2a3fbadb5c27f2ed037b6f0bf41d31fc3878))
+
 ## [0.18.4](https://github.com/hdot123/memory/compare/v0.18.3...v0.18.4) (2026-08-11)
 
 
