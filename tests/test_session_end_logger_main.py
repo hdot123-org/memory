@@ -119,8 +119,8 @@ class TestMainPathResolution:
 class TestMainErrorLogBranches:
     """main() error logging behavior."""
 
-    def test_transcript_missing_logs_error(self, tmp_path: Path) -> None:
-        """When transcript doesn't exist, write_error_log is called with 'transcript_missing'."""
+    def test_transcript_missing_does_not_log_error(self, tmp_path: Path) -> None:
+        """Missing transcript is a benign condition — no error log (INFRA-164)."""
         missing_jsonl = tmp_path / "missing.jsonl"
 
         stdin_payload = {
@@ -137,10 +137,7 @@ class TestMainErrorLogBranches:
                 rc = main([])
 
         assert rc == 0
-        # Check write_error_log was called with transcript_missing
-        if mock_err.called:
-            call_args = mock_err.call_args
-            assert call_args[0][1] == "transcript_missing"
+        mock_err.assert_not_called()
 
     def test_successful_run_with_valid_jsonl(self, tmp_path: Path) -> None:
         """Valid jsonl with session_start → completes successfully."""
