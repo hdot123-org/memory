@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/hdot123/memory/compare/v0.18.7...v0.19.0) (2026-08-11)
+
+
+### Features
+
+* evolution scanner 跳过已解决错误模式增强 (INFRA-186) ([#472](https://github.com/hdot123/memory/issues/472)) ([dd805ad](https://github.com/hdot123/memory/commit/dd805ad3218d046d5a694bca622c930273528c54))
+
 ## [0.18.7](https://github.com/hdot123/memory/compare/v0.18.6...v0.18.7) (2026-08-11)
 
 
