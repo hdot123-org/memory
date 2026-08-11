@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/hdot123/memory/compare/v0.22.0...v0.22.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* 解决 PR [#507](https://github.com/hdot123/memory/issues/507) merge conflict ([#509](https://github.com/hdot123/memory/issues/509)) ([0076ab8](https://github.com/hdot123/memory/commit/0076ab81df2877bed53b879ff72e545b2b9af1b2))
+
 ## [0.22.0](https://github.com/hdot123/memory/compare/v0.21.0...v0.22.0) (2026-08-11)
 
 
