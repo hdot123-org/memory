@@ -63,19 +63,20 @@ from memory_core.constants import CURRENT_MEMORY_VERSION
 print(CURRENT_MEMORY_VERSION)
 ")"
 
-  # README.md: "- 当前文档版本：vX.Y.Z" (中文, 当前标准) or "- Current documented release: vX.Y.Z" (en)
-  # NOTE: 必须使用字面 CJK 字符（非 \u 转义）。实测 \u 转义在 CI 的 python3 -c 双引号
-  # 传递环境下 re 模块无法正确解析，导致 readme=NOT_FOUND；字面 CJK 在 CI 已验证可用。
+  # README.md: extract version from the release-please marker line.
+  # Uses ASCII-only pattern (x-release-please-version) to avoid CJK encoding
+  # issues in CI's python3 -c inline execution.
   readme_ver="$(python3 -c "
 import re
 ver = 'NOT_FOUND'
 try:
     with open('README.md', encoding='utf-8') as f:
         for line in f:
-            m = re.search(r'(?:Current documented release|当前文档版本)[:：]\s*v?(\d+\.\d+\.\d+)', line)
-            if m:
-                ver = m.group(1)
-                break
+            if line.startswith('- ') and 'x-release-please-version' in line:
+                m = re.search(r'v(\d+\.\d+\.\d+)', line)
+                if m:
+                    ver = m.group(1)
+                    break
 except FileNotFoundError:
     pass
 print(ver)
