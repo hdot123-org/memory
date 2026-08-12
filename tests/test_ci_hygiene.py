@@ -150,3 +150,71 @@ def test_ci_tarball_extraction_isolated():
             f"tar extraction must target /tmp to avoid overwriting repo "
             f"files (README.md, LICENSE): {line}"
         )
+
+
+# ============================================================================
+# Fix-has-test guard structure assertions (VAL-CIGUARD-001 through VAL-CIGUARD-004)
+# ============================================================================
+
+def test_ci_has_fix_has_test_guard():
+    """VAL-CIGUARD-001: ci.yml test job contains fix-has-test step."""
+    ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    test_job = ci["jobs"]["test"]
+    steps = test_job["steps"]
+    guard_step = next(
+        (s for s in steps if "fix-has-test" in s.get("name", "").lower()
+         or "check_fix_has_test" in s.get("run", "")),
+        None
+    )
+    assert guard_step is not None, "Fix-has-test guard step not found in test job"
+    assert "check_fix_has_test.py" in guard_step.get("run", "")
+
+
+def test_fix_has_test_guard_not_advisory():
+    """VAL-CIGUARD-002: Step is not continue-on-error (blocking, not advisory)."""
+    ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    test_job = ci["jobs"]["test"]
+    steps = test_job["steps"]
+    guard_step = next(
+        (s for s in steps if "fix-has-test" in s.get("name", "").lower()
+         or "check_fix_has_test" in s.get("run", "")),
+        None
+    )
+    assert guard_step is not None
+    assert guard_step.get("continue-on-error") is not True, \
+        "Fix-has-test guard must not be continue-on-error"
+
+
+def test_fix_has_test_guard_pr_only():
+    """VAL-CIGUARD-003: Step gated on pull_request events only."""
+    ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    test_job = ci["jobs"]["test"]
+    steps = test_job["steps"]
+    guard_step = next(
+        (s for s in steps if "fix-has-test" in s.get("name", "").lower()
+         or "check_fix_has_test" in s.get("run", "")),
+        None
+    )
+    assert guard_step is not None
+    if_condition = guard_step.get("if", "")
+    assert "pull_request" in str(if_condition), \
+        f"Fix-has-test guard must be gated on pull_request, got: {if_condition}"
+
+
+def test_fix_has_test_guard_uses_gh_token():
+    """VAL-CROSS-002: CI step uses GH_TOKEN env var for gh API calls."""
+    ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    test_job = ci["jobs"]["test"]
+    steps = test_job["steps"]
+    guard_step = next(
+        (s for s in steps if "fix-has-test" in s.get("name", "").lower()
+         or "check_fix_has_test" in s.get("run", "")),
+        None
+    )
+    assert guard_step is not None
+    env = guard_step.get("env", {})
+    assert "GH_TOKEN" in env or "GITHUB_TOKEN" in env, \
+        "Fix-has-test guard step must set GH_TOKEN or GITHUB_TOKEN"
+    token_value = env.get("GH_TOKEN") or env.get("GITHUB_TOKEN")
+    assert "secrets.GITHUB_TOKEN" in str(token_value), \
+        f"Token must reference secrets.GITHUB_TOKEN, got: {token_value}"
