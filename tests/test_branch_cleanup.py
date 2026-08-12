@@ -1081,3 +1081,80 @@ def test_cross_actionlint_passes():
     )
 
     assert result.returncode == 0, f"actionlint failed:\n{result.stdout}\n{result.stderr}"
+
+
+# ============================================================================
+# VAL-BRANCH-021: Fully-merged branch is NOT falsely protected
+# (regression: 3-dot symmetric difference inflated unique-commit count)
+# ============================================================================
+def test_fully_merged_branch_not_falsely_protected(tmp_path: Path):
+    """
+    A branch whose commits are ALL already in main must NOT be protected,
+    even when main has advanced and the branch has a CLOSED-not-merged PR.
+
+    Regression test for INFRA-220: the script used `origin/main...origin/$BRANCH`
+    (3-dot symmetric difference) which counts main's new commits too, inflating
+    the unique-commit count and causing fully-merged branches to be falsely
+    "protected". The fix uses 2-dot `origin/main..origin/$BRANCH` (commits in
+    branch but not in main), so a fully-merged branch reports 0 unique commits.
+    """
+    now = datetime.now(timezone.utc)
+    old_date = now - timedelta(days=2)  # older than 24h threshold
+
+    # Set up a fixture repo with one feature branch.
+    branches = [("merged-feature", old_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Cherry-pick the branch's commit onto main, then advance main with extra
+    # commits. This makes the branch fully contained in main (0 unique-to-branch
+    # commits) while main has moved forward.
+    subprocess.run(["git", "checkout", "main"], cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "merge", "--no-ff", "-m", "Merge feature into main", "origin/merged-feature"],
+        cwd=clone_dir, check=True, capture_output=True,
+    )
+    # Advance main with two additional commits
+    for i in range(2):
+        (clone_dir / f"advance-{i}.txt").write_text(f"advance {i}\n")
+        subprocess.run(["git", "add", "."], cwd=clone_dir, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", f"Advance main {i}"],
+            cwd=clone_dir, check=True, capture_output=True,
+        )
+    subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
+
+    # Sanity: the branch should have 0 commits not in main (2-dot range)
+    check = subprocess.run(
+        ["git", "rev-list", "--count", "origin/main..origin/merged-feature"],
+        cwd=clone_dir, capture_output=True, text=True,
+    )
+    assert check.stdout.strip() == "0", (
+        f"Fixture setup wrong: branch should have 0 unique commits, got {check.stdout.strip()}"
+    )
+
+    # Mock gh: branch has a CLOSED (not merged) PR — the condition that triggers
+    # the protection check. With the bug, the 3-dot range would see main's extra
+    # commits and falsely protect. With the fix, 2-dot sees 0 and does NOT protect.
+    mock_gh = create_gh_mock(tmp_path, {
+        "merged-feature": [{"number": 200, "state": "CLOSED"}],
+    })
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "merged-feature" not in remaining_branches, (
+        "Fully-merged branch (0 unique commits) must NOT be protected — "
+        "it should be deleted. stdout:\n" + stdout
+    )
+    # The protection path was NOT taken; verify no PROTECTED marker for this branch
+    assert "PROTECTED" not in stdout or "merged-feature" not in stdout.split("PROTECTED")[-1].split("\n")[0], (
+        "Branch should not appear in protected list. stdout:\n" + stdout
+    )
