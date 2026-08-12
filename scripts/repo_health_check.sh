@@ -68,7 +68,7 @@ print(CURRENT_MEMORY_VERSION)
 import re
 ver = 'NOT_FOUND'
 try:
-    with open('README.md') as f:
+    with open('README.md', encoding='utf-8') as f:
         for line in f:
             m = re.search(r'(?:Current documented release|当前文档版本)[:：]\s*v?(\d+\.\d+\.\d+)', line)
             if m:
@@ -101,7 +101,7 @@ check_readme_install_versions() {
 import re
 refs = set()
 try:
-    with open('README.md') as f:
+    with open('README.md', encoding='utf-8') as f:
         content = f.read()
     # Match @vX.Y.Z patterns (install commands)
     for m in re.finditer(r'@v(\d+\.\d+\.\d+)', content):
