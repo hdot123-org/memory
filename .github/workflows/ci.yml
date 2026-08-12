@@ -54,7 +54,7 @@ jobs:
       - name: Shell lint
         run: |
           shellcheck scripts/*.sh
-          actionlint .github/workflows/
+          actionlint .github/workflows/*.yml
       - name: BOUNDARY pollution guard
         run: python scripts/check_boundary.py
       - name: Document classification guard
