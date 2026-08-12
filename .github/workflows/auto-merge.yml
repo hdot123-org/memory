@@ -1,14 +1,30 @@
 name: Auto Merge
 
+# 为什么用 workflow_run + schedule 而非 check_run（INFRA-212）
+# ----------------------------------------------------------------
+# GitHub 为防止递归调用，不会把 check_run / check_suite 事件投递给其他
+# workflow——只要该 check 由 GitHub Actions 工作流产生。本仓库的 CI、QA、
+# droid-review、evolution-governance 全部是 GitHub Actions 工作流，因此
+# check_run: completed 实际上永远不会触发，导致 CI 全绿后 PR 不自动合并，
+# 只能靠手动 workflow_dispatch。
+#
+# 正确做法：
+#   1. workflow_run       —— 上游工作流成功结束时触发（快速路径）
+#   2. schedule           —— 每 10 分钟扫描兜底，保证任何遗漏事件都能收敛
+#   3. pull_request_target —— PR 打开/更新时立即尝试一次
+#   4. workflow_dispatch   —— 手动触发（不指定 PR 号则扫描全部 open PR）
 on:
-  check_run:
+  workflow_run:
+    workflows: ["CI", "QA", "Droid Auto Review", "Evolution Governance"]
     types: [completed]
   pull_request_target:
     types: [opened, synchronize, reopened]
+  schedule:
+    - cron: '*/10 * * * *'
   workflow_dispatch:
     inputs:
       pr_number:
-        description: 'PR number to merge'
+        description: 'PR number to merge (empty = sweep all open PRs)'
         required: false
         type: string
 
@@ -18,31 +34,70 @@ permissions:
   checks: read
 
 jobs:
-  auto-merge:
+  resolve:
+    name: Resolve candidate PRs
     runs-on: ubuntu-latest
+    # workflow_run 只有在结论为 success 时才尝试合并；其余事件各自自行门控。
+    if: |
+      github.event_name == 'pull_request_target' ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     outputs:
-      pr_number: ${{ steps.resolve.outputs.pr_number }}
+      pr_numbers: ${{ steps.resolve.outputs.pr_numbers }}
     steps:
       - id: resolve
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          CHECK_PRS: ${{ toJSON(github.event.check_run.pull_requests) }}
+          WR_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           MANUAL_PR: ${{ github.event.inputs.pr_number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
-          if [ "$EVENT_NAME" = "pull_request_target" ]; then
-            [ -n "$PR_NUMBER" ] && echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          elif [ "$EVENT_NAME" = "check_run" ]; then
-            NUM=$(echo "$CHECK_PRS" | jq -r ".[0].number // empty")
-            [ -n "$NUM" ] && echo "pr_number=$NUM" >> "$GITHUB_OUTPUT"
-          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$MANUAL_PR" ]; then
-            echo "pr_number=$MANUAL_PR" >> "$GITHUB_OUTPUT"
-          fi
+          set -eu
+          echo "Event: $EVENT_NAME"
+          case "$EVENT_NAME" in
+            pull_request_target)
+              if [ -n "$PR_NUMBER" ]; then
+                echo "pr_numbers=[\"$PR_NUMBER\"]" >> "$GITHUB_OUTPUT"
+              fi
+              ;;
+            workflow_dispatch)
+              if [ -n "$MANUAL_PR" ]; then
+                echo "pr_numbers=[\"$MANUAL_PR\"]" >> "$GITHUB_OUTPUT"
+              else
+                # 未指定 PR 号：扫描所有 open PR
+                PRS=$(gh pr list --repo "$REPO" --state open --json number --jq '[.[].number]')
+                echo "pr_numbers=$PRS" >> "$GITHUB_OUTPUT"
+              fi
+              ;;
+            workflow_run)
+              # 按完成工作流的 head SHA 反查关联的 open PR
+              PRS=$(gh pr list --repo "$REPO" --state open --json number,headRefOid \
+                    --jq "[.[] | select(.headRefOid == \"$WR_HEAD_SHA\") | .number]")
+              echo "pr_numbers=$PRS" >> "$GITHUB_OUTPUT"
+              ;;
+            schedule)
+              PRS=$(gh pr list --repo "$REPO" --state open --json number --jq '[.[].number]')
+              echo "pr_numbers=$PRS" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
+  auto-merge:
+    name: Auto-merge PR
+    needs: resolve
+    if: needs.resolve.outputs.pr_numbers != '' && needs.resolve.outputs.pr_numbers != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        pr_number: ${{ fromJSON(needs.resolve.outputs.pr_numbers) }}
+    steps:
       - name: Run auto-merge
-        if: steps.resolve.outputs.pr_number != ''
         uses: hdot123/shared-workflows/auto-merge@5a0fc1b8946a170a12687d8614d56189e1f8dab5
         with:
-          pr-number: ${{ steps.resolve.outputs.pr_number }}
+          pr-number: ${{ matrix.pr_number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
