@@ -267,45 +267,45 @@ class TestVALCLOSE020:
 
 
 # ---------------------------------------------------------------------------
-# VAL-CLOSE-004: Linear API error -> fail-open close
+# VAL-CLOSE-004: Linear API error -> fail-closed (VAL-FAILOPEN-003, VAL-FAILOPEN-004)
 # ---------------------------------------------------------------------------
 
 class TestVALCLOSE004:
-    """Linear API error/unreachable -> fail-open close with warning."""
+    """Linear API error/unreachable -> fail-closed (prevents unverified close)."""
 
     @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
     @patch("evolution_utils.urllib.request.urlopen")
-    def test_urlerror_fail_open(self, mock_urlopen):
-        """VAL-CLOSE-004: URLError -> fail-open close."""
+    def test_urlerror_fail_closed(self, mock_urlopen):
+        """VAL-CLOSE-004/VAL-FAILOPEN-003: URLError -> fail-closed, returns False."""
         mock_urlopen.side_effect = urllib.error.URLError("Network unreachable")
         issue_body = "<!-- linear-linkback INFRA-123 -->"
 
         result = _verify_fix_merged_via_linear(issue_body)
-        assert result is True  # fail-open
+        assert result is False  # fail-closed
 
     @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
     @patch("evolution_utils.urllib.request.urlopen")
-    def test_timeout_fail_open(self, mock_urlopen):
-        """VAL-CLOSE-004: Timeout -> fail-open close."""
+    def test_timeout_fail_closed(self, mock_urlopen):
+        """VAL-CLOSE-004/VAL-FAILOPEN-004: Timeout -> fail-closed, returns False."""
         import socket
         mock_urlopen.side_effect = socket.timeout("timed out")
         issue_body = "<!-- linear-linkback INFRA-123 -->"
 
         result = _verify_fix_merged_via_linear(issue_body)
-        assert result is True  # fail-open
+        assert result is False  # fail-closed
 
 
 # ---------------------------------------------------------------------------
-# VAL-CLOSE-013: Linear GraphQL errors field -> fail-open close
+# VAL-CLOSE-013: Linear GraphQL errors field -> fail-closed (VAL-FAILOPEN-001)
 # ---------------------------------------------------------------------------
 
 class TestVALCLOSE013:
-    """Linear GraphQL errors field -> fail-open close."""
+    """Linear GraphQL errors field -> fail-closed (prevents unverified close)."""
 
     @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
     @patch("evolution_utils.urllib.request.urlopen")
     def test_graphql_errors_field(self, mock_urlopen):
-        """VAL-CLOSE-013: Response has 'errors' field -> fail-open close."""
+        """VAL-CLOSE-013/VAL-FAILOPEN-001: Response has 'errors' field -> fail-closed, returns False."""
         mock_urlopen.return_value.__enter__ = MagicMock(
             return_value=_mock_urlopen({
                 "errors": [{"message": "Something went wrong"}]
@@ -315,20 +315,20 @@ class TestVALCLOSE013:
 
         issue_body = "<!-- linear-linkback INFRA-123 -->"
         result = _verify_fix_merged_via_linear(issue_body)
-        assert result is True  # fail-open
+        assert result is False  # fail-closed
 
 
 # ---------------------------------------------------------------------------
-# VAL-CLOSE-014: Linear issue null -> fail-open close
+# VAL-CLOSE-014: Linear issue null -> fail-closed (VAL-FAILOPEN-002)
 # ---------------------------------------------------------------------------
 
 class TestVALCLOSE014:
-    """Linear issue null (deleted) -> fail-open close."""
+    """Linear issue null (deleted) -> fail-closed (prevents unverified close)."""
 
     @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
     @patch("evolution_utils.urllib.request.urlopen")
     def test_issue_null(self, mock_urlopen):
-        """VAL-CLOSE-014: data.issue is null -> fail-open close."""
+        """VAL-CLOSE-014/VAL-FAILOPEN-002: data.issue is null -> fail-closed, returns False."""
         mock_urlopen.return_value.__enter__ = MagicMock(
             return_value=_mock_urlopen({"data": {"issue": None}})
         )
@@ -336,7 +336,7 @@ class TestVALCLOSE014:
 
         issue_body = "<!-- linear-linkback INFRA-123 -->"
         result = _verify_fix_merged_via_linear(issue_body)
-        assert result is True  # fail-open
+        assert result is False  # fail-closed
 
 
 # ---------------------------------------------------------------------------
@@ -1236,3 +1236,143 @@ class TestVALCLOSE027:
 
         # gh pr view should NOT be called (short-circuited by state check)
         assert not mock_subprocess.called
+
+
+# ---------------------------------------------------------------------------
+# VAL-FAILOPEN-005: Comment fetch failure -> fail-closed
+# ---------------------------------------------------------------------------
+
+class TestVALFAILOPEN005:
+    """Comment fetch failure (non-zero return code) -> fail-closed (VAL-FAILOPEN-005)."""
+
+    @patch("evolution_utils.subprocess.run")
+    def test_comment_fetch_nonzero_returns_false(self, mock_subprocess):
+        """VAL-FAILOPEN-005: Comment fetch returns non-zero -> returns False."""
+        mock_subprocess.return_value = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="gh: issue not found"
+        )
+        issue_body = "**Rule ID**: RULE_001\n**Location**: file.py"
+        # No linkback in body, so it tries to fetch comments
+        result = _verify_fix_merged_via_linear(issue_body, issue_number=123)
+        assert result is False  # fail-closed
+
+
+# ---------------------------------------------------------------------------
+# VAL-FAILOPEN-006: Comment fetch exception -> fail-closed
+# ---------------------------------------------------------------------------
+
+class TestVALFAILOPEN006:
+    """Comment fetch exception -> fail-closed (VAL-FAILOPEN-006)."""
+
+    @patch("evolution_utils.subprocess.run")
+    def test_comment_fetch_exception_returns_false(self, mock_subprocess):
+        """VAL-FAILOPEN-006: Comment fetch raises exception -> returns False."""
+        mock_subprocess.side_effect = Exception("subprocess failed")
+        issue_body = "**Rule ID**: RULE_001\n**Location**: file.py"
+        # No linkback in body, so it tries to fetch comments
+        result = _verify_fix_merged_via_linear(issue_body, issue_number=123)
+        assert result is False  # fail-closed
+
+
+# ---------------------------------------------------------------------------
+# VAL-FAILOPEN-007: Warning logs for all fail-closed paths
+# ---------------------------------------------------------------------------
+
+class TestVALFAILOPEN007:
+    """All fail-closed paths must emit warning-level logs (VAL-FAILOPEN-007)."""
+
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.urllib.request.urlopen")
+    def test_graphql_errors_warning_log(self, mock_urlopen, caplog):
+        """VAL-FAILOPEN-007: GraphQL errors -> warning log."""
+        mock_urlopen.return_value.__enter__ = MagicMock(
+            return_value=_mock_urlopen({
+                "errors": [{"message": "API error"}]
+            })
+        )
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        issue_body = "<!-- linear-linkback INFRA-123 -->"
+        import logging
+        with caplog.at_level(logging.WARNING):
+            _verify_fix_merged_via_linear(issue_body)
+
+        assert any("fail-closed" in record.message for record in caplog.records)
+        assert any(record.levelname == "WARNING" for record in caplog.records)
+
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.urllib.request.urlopen")
+    def test_issue_null_warning_log(self, mock_urlopen, caplog):
+        """VAL-FAILOPEN-007: Issue null -> warning log."""
+        mock_urlopen.return_value.__enter__ = MagicMock(
+            return_value=_mock_urlopen({"data": {"issue": None}})
+        )
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        issue_body = "<!-- linear-linkback INFRA-123 -->"
+        import logging
+        with caplog.at_level(logging.WARNING):
+            _verify_fix_merged_via_linear(issue_body)
+
+        assert any("fail-closed" in record.message for record in caplog.records)
+        assert any(record.levelname == "WARNING" for record in caplog.records)
+
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.urllib.request.urlopen")
+    def test_urlerror_warning_log(self, mock_urlopen, caplog):
+        """VAL-FAILOPEN-007: URLError -> warning log."""
+        mock_urlopen.side_effect = urllib.error.URLError("Network error")
+        issue_body = "<!-- linear-linkback INFRA-123 -->"
+
+        import logging
+        with caplog.at_level(logging.WARNING):
+            _verify_fix_merged_via_linear(issue_body)
+
+        assert any("fail-closed" in record.message for record in caplog.records)
+        assert any(record.levelname == "WARNING" for record in caplog.records)
+
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.urllib.request.urlopen")
+    def test_generic_exception_warning_log(self, mock_urlopen, caplog):
+        """VAL-FAILOPEN-007: Generic exception -> warning log."""
+        mock_urlopen.side_effect = RuntimeError("Unexpected error")
+        issue_body = "<!-- linear-linkback INFRA-123 -->"
+
+        import logging
+        with caplog.at_level(logging.WARNING):
+            _verify_fix_merged_via_linear(issue_body)
+
+        assert any("fail-closed" in record.message for record in caplog.records)
+        assert any(record.levelname == "WARNING" for record in caplog.records)
+
+    @patch("evolution_utils.subprocess.run")
+    def test_comment_fetch_failure_warning_log(self, mock_subprocess, caplog):
+        """VAL-FAILOPEN-007: Comment fetch failure -> warning log."""
+        mock_subprocess.return_value = MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="gh: issue not found"
+        )
+        issue_body = "**Rule ID**: RULE_001\n**Location**: file.py"
+
+        import logging
+        with caplog.at_level(logging.WARNING):
+            _verify_fix_merged_via_linear(issue_body, issue_number=123)
+
+        assert any("fail-closed" in record.message for record in caplog.records)
+        assert any(record.levelname == "WARNING" for record in caplog.records)
+
+    @patch("evolution_utils.subprocess.run")
+    def test_comment_fetch_exception_warning_log(self, mock_subprocess, caplog):
+        """VAL-FAILOPEN-007: Comment fetch exception -> warning log."""
+        mock_subprocess.side_effect = Exception("subprocess failed")
+        issue_body = "**Rule ID**: RULE_001\n**Location**: file.py"
+
+        import logging
+        with caplog.at_level(logging.WARNING):
+            _verify_fix_merged_via_linear(issue_body, issue_number=123)
+
+        assert any("fail-closed" in record.message for record in caplog.records)
+        assert any(record.levelname == "WARNING" for record in caplog.records)

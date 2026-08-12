@@ -7116,8 +7116,8 @@ def test_val_cross_004_linear_no_pr_attachment(tmp_path):
 # --------------------------------------------------------------------------
 # VAL-CROSS-005: Linear API failure → fail-open close
 # --------------------------------------------------------------------------
-def test_val_cross_005_linear_api_failure_fail_open(tmp_path):
-    """VAL-CROSS-005: Linear API unreachable → issue still closes (fail-open)."""
+def test_val_cross_005_linear_api_failure_fail_closed(tmp_path):
+    """VAL-CROSS-005/VAL-FAILOPEN-003: Linear API unreachable → issue does NOT close (fail-closed)."""
     history_path = tmp_path / "findings_over_time.json"
     history_data = {
         "snapshots": [
@@ -7142,22 +7142,20 @@ def test_val_cross_005_linear_api_failure_fail_open(tmp_path):
          patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
-            MagicMock(returncode=0, stdout="", stderr=""),  # close
         ]
 
         auto_close_resolved(current_findings, "evolution-found",
                            failed_categories=set(), history_path=history_path)
 
-        # Issue closed despite Linear failure (fail-open)
-        assert mock_run.call_count == 2
-        close_call = mock_run.call_args_list[1]
-        assert close_call[0][0][2] == "close"
-        assert close_call[0][0][3] == "101"
+        # Issue NOT closed due to Linear failure (fail-closed)
+        # Only 1 call: get open issues. No close call because Linear API failed.
+        assert mock_run.call_count == 1, \
+            "Should only call gh issue list, not gh issue close (fail-closed blocks close)"
 
-        # Verify fail-open warning logged
+        # Verify fail-closed warning logged
         warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
-        assert any("fail-open" in call.lower() for call in warning_calls), \
-            "Warning log should contain 'fail-open' message"
+        assert any("fail-closed" in call.lower() for call in warning_calls), \
+            "Warning log should contain 'fail-closed' message"
 
 
 # --------------------------------------------------------------------------
