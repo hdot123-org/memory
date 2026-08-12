@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.24.0](https://github.com/hdot123/memory/compare/v0.23.1...v0.24.0) (2026-08-12)
+
+
+### Features
+
+* 新增 fix-has-test CI 门禁 ([#550](https://github.com/hdot123/memory/issues/550)) ([fc1331c](https://github.com/hdot123/memory/commit/fc1331c697e9d66373130de888e7ae746db495b7))
+
+
+### Bug Fixes
+
+* 修复 evolution scanner close/reopen 循环（Linear 终端态检查 + 抑制策略） ([#551](https://github.com/hdot123/memory/issues/551)) ([f967c7f](https://github.com/hdot123/memory/commit/f967c7fb382cdea8f0a47d64b65fe38c1bf24d6e))
+
 ## [0.23.1](https://github.com/hdot123/memory/compare/v0.23.0...v0.23.1) (2026-08-12)
 
 
