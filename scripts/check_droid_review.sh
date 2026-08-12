@@ -39,9 +39,13 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
   # Extract the conclusion of the latest non-cancelled check run.
   # When dual triggers exist, two check runs are created and one is cancelled.
   # We must select the one that actually completed.
+  # Note: "skipped" is NOT excluded here — Dependabot PRs cause the droid-review
+  # job to be skipped (job-level if condition), and we need to see that conclusion
+  # to apply the Dependabot exception below. Only "cancelled" is excluded
+  # (dual-trigger race where one run is cancelled mid-flight).
   STATUS=$(echo "$CHECKS" | jq -r '
     .check_runs
-    | map(select(.conclusion != null and .conclusion != "cancelled" and .conclusion != "skipped"))
+    | map(select(.conclusion != null and .conclusion != "cancelled"))
     | sort_by(.started_at)
     | last
     | .conclusion // "pending"
@@ -54,6 +58,17 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
     echo "✓ droid-review passed"
     exit 0
   elif [ "$STATUS" = "neutral" ] || [ "$STATUS" = "skipped" ]; then
+    # Check if this is a Dependabot PR — droid-review workflow explicitly
+    # skips Dependabot PRs (FACTORY_API_KEY not accessible to fork PRs),
+    # which results in a "skipped" conclusion. Allow these through.
+    PR_INFO=$(curl -s -H "Authorization: token $GH_TOKEN" \
+      -H "Accept: application/vnd.github+json" \
+      "https://api.github.com/repos/${REPOSITORY}/commits/${COMMIT_SHA}/pulls")
+    PR_AUTHOR=$(echo "$PR_INFO" | jq -r '.[0].user.login // ""')
+    if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
+      echo "○ droid-review was skipped but PR is from Dependabot (workflow skips Dependabot), allowing"
+      exit 0
+    fi
     echo "✗ BLOCK: droid-review was skipped/neutral — security audit did not run. Merge not allowed."
     exit 1
   elif [ "$STATUS" = "failure" ]; then
