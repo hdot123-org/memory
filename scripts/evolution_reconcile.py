@@ -99,7 +99,7 @@ def gh_json(args: list[str], repo: str) -> Any:
     return json.loads(stdout)
 
 
-def list_closed_evolution_issues(repo: str, label: str) -> list[dict]:
+def list_closed_evolution_issues(repo: str, label: str) -> list[dict[str, Any]]:
     """列出最近关闭的 evolution-found GitHub Issue。
 
     Returns:
@@ -149,8 +149,8 @@ def extract_linear_ref(issue_number: Any, repo: str) -> str | None:
 # Linear GraphQL 操作（urllib，遵循「无第三方依赖」原则）
 # ---------------------------------------------------------------------------
 def linear_request(
-    query: str, api_key: str, variables: dict | None = None
-) -> dict:
+    query: str, api_key: str, variables: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """向 Linear GraphQL endpoint 发起 POST 请求。
 
     Args:
@@ -181,7 +181,8 @@ def linear_request(
     data = json.loads(body)
     if "errors" in data:
         raise RuntimeError(f"Linear API errors: {data['errors']}")
-    return data.get("data", {})
+    result: dict[str, Any] = data.get("data", {})
+    return result
 
 
 def get_team_done_state_id(team_id: str, api_key: str) -> str | None:
@@ -200,11 +201,12 @@ def get_team_done_state_id(team_id: str, api_key: str) -> str | None:
     )
     for state in states:
         if state.get("type") == "completed":
-            return state.get("id")
+            state_id: str | None = state.get("id")
+            return state_id
     return None
 
 
-def get_linear_issue(identifier: str, api_key: str) -> dict | None:
+def get_linear_issue(identifier: str, api_key: str) -> dict[str, Any] | None:
     """按标识符（如 INFRA-175）获取 Linear Issue。
 
     Returns:
@@ -248,7 +250,7 @@ def close_linear_issue(
 # ---------------------------------------------------------------------------
 # 编排
 # ---------------------------------------------------------------------------
-def reconcile(repo: str, label: str, team_id: str, api_key: str) -> dict:
+def reconcile(repo: str, label: str, team_id: str, api_key: str) -> dict[str, Any]:
     """GitHub→Linear 反向补偿编排。
 
     流程：
