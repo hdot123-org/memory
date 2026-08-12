@@ -7116,7 +7116,8 @@ def test_val_cross_005_linear_api_failure_fail_open(tmp_path):
 
     import urllib.error
     with patch("evolution_utils.subprocess.run") as mock_run, \
-         patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Connection refused")):
+         patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Connection refused")), \
+         patch("evolution_utils.logger") as mock_logger:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout="", stderr=""),  # close
@@ -7130,6 +7131,11 @@ def test_val_cross_005_linear_api_failure_fail_open(tmp_path):
         close_call = mock_run.call_args_list[1]
         assert close_call[0][0][2] == "close"
         assert close_call[0][0][3] == "101"
+
+        # Verify fail-open warning logged
+        warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
+        assert any("fail-open" in call.lower() for call in warning_calls), \
+            "Warning log should contain 'fail-open' message"
 
 
 # --------------------------------------------------------------------------
