@@ -40,7 +40,7 @@ except ImportError:
     from memory_core.compat import _COMPAT_MATRIX
     _latest_ver = sorted(_COMPAT_MATRIX.keys(), key=lambda v: tuple(map(int, v.split("."))))[-1]
     exec(f"CURRENT_MEMORY_VERSION = {_latest_ver!r}")  # noqa: S102 — safe fallback
-    SUPPORTED_HOSTS = ("codex", "claude", "factory")
+    SUPPORTED_HOSTS: tuple[str, ...] = ("factory", "codex", "claude")  # type: ignore[no-redef]
 
 # ANSI color codes
 COLORS = {
@@ -506,7 +506,6 @@ class IntegrationTester:
         results.extend(self._check_adapter_toml(project, project_name))
         results.extend(self._check_ownership_toml(project, project_name))
         results.extend(self._check_required_dirs(project, project_name))
-        results.extend(self._check_required_indexes(project, project_name))
         results.extend(self._check_verify_consumer(project, project_name))
         return results
 

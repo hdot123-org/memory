@@ -23,6 +23,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -44,13 +45,14 @@ def _run(
     )
 
 
-def get_pr_data(pr_number: int) -> dict:
+def get_pr_data(pr_number: int) -> dict[str, Any]:
     """Fetch PR data via gh CLI."""
     try:
         result = _run(
             ["gh", "pr", "view", str(pr_number), "--json", "commits,files,author"]
         )
-        return json.loads(result.stdout)
+        data: dict[str, Any] = json.loads(result.stdout)
+        return data
     except FileNotFoundError:
         print(
             "Error: gh CLI not found. Install GitHub CLI or use --base for local mode.",
@@ -65,7 +67,7 @@ def get_pr_data(pr_number: int) -> dict:
         raise SystemExit(2)
 
 
-def get_local_data(base_ref: str, cwd: Path | None = None) -> dict:
+def get_local_data(base_ref: str, cwd: Path | None = None) -> dict[str, Any]:
     """Get commits and changed files from git."""
     try:
         log_result = _run(["git", "log", f"{base_ref}..HEAD", "--format=%s"], cwd=cwd)
@@ -118,7 +120,7 @@ def has_test_files(files: list[str]) -> bool:
     return any(f.startswith("tests/") for f in files if f)
 
 
-def _extract_commits(data: dict) -> list[str]:
+def _extract_commits(data: dict[str, Any]) -> list[str]:
     """Extract commit message headlines from PR data."""
     raw = data.get("commits", [])
     if not raw:
@@ -128,7 +130,7 @@ def _extract_commits(data: dict) -> list[str]:
     return [str(c) for c in raw]
 
 
-def _extract_files(data: dict) -> list[str]:
+def _extract_files(data: dict[str, Any]) -> list[str]:
     """Extract file paths from PR data."""
     raw = data.get("files", [])
     if not raw:
@@ -138,11 +140,12 @@ def _extract_files(data: dict) -> list[str]:
     return [str(f) for f in raw]
 
 
-def _extract_author(data: dict) -> str:
+def _extract_author(data: dict[str, Any]) -> str:
     """Extract author login from PR data."""
     author = data.get("author", "")
     if isinstance(author, dict):
-        return author.get("login", "")
+        login: str = author.get("login", "")
+        return login
     return str(author)
 
 
