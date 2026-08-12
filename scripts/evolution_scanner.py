@@ -226,6 +226,139 @@ def detect_regressions(findings: list[Finding], history_path: Path) -> list[Find
     return [replace(f, severity="critical") if any(r.get("rule_id", "") == f.rule_id and r.get("location", "") == f.location for r in resolved if isinstance(r, dict)) else f for f in findings]
 
 
+def _reopen_closed_issue(rule_id: str, location: str, dedup_label: str, history_path: Path) -> bool:
+    """Search closed GitHub Issues for matching (rule_id, location), reopen if under limit.
+
+    VAL-REOPEN-001-014: Reopen mechanism for reappeared resolved findings.
+
+    Args:
+        rule_id: The rule ID to search for
+        location: The location to search for
+        dedup_label: Label used to identify evolution scanner issues
+        history_path: Path to findings_over_time.json for reopen counter
+
+    Returns:
+        True if issue was reopened, False if no match or limit reached
+    """
+    # Load history to check reopen count
+    data = load_history(history_path)
+    if data is None:
+        return False
+
+    resolved = data.get("resolved_findings", [])
+
+    # Find the matching resolved finding
+    matching_resolved = None
+    for r in resolved:
+        if isinstance(r, dict) and r.get("rule_id") == rule_id and r.get("location") == location:
+            matching_resolved = r
+            break
+
+    if matching_resolved is None:
+        # Not in resolved_findings - shouldn't happen if detect_regressions upgraded it
+        return False
+
+    # Check reopen count (backward compat: default to 0 if missing)
+    reopen_count = matching_resolved.get("reopen_count", 0)
+
+    # VAL-REOPEN-003: Reopen limit reached (count >= 3)
+    if reopen_count >= 3:
+        print(f"[evolution] Reopen limit reached for {rule_id} @ {location} (count={reopen_count}), will create new issue")
+        return False
+
+    # VAL-REOPEN-008: Search closed issues only
+    try:
+        result = subprocess.run(
+            ["gh", "issue", "list", "--search", f"label:{dedup_label}",
+             "--state", "closed", "--limit", "200", "--json", "number,body"],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode != 0:
+            # VAL-REOPEN-013: gh issue list failure → return False
+            print(f"[evolution] Warning: Failed to list closed issues for reopen: {result.stderr}")
+            return False
+
+        closed_issues = json.loads(result.stdout) if result.stdout.strip() else []
+    except Exception as e:
+        # VAL-REOPEN-013: Exception → return False
+        print(f"[evolution] Warning: Exception listing closed issues: {e}")
+        return False
+
+    # VAL-REOPEN-014: Multiple matching closed issues - deterministic selection (first match)
+    matching_issue = None
+    for issue in closed_issues:
+        # VAL-REOPEN-011: Malformed issue body - skip gracefully
+        try:
+            issue_rule_id, issue_location = _parse_issue_fields(issue.get("body", ""))
+            if issue_rule_id == rule_id and issue_location == location:
+                matching_issue = issue
+                break
+        except Exception as e:
+            # Malformed body - skip this issue
+            print(f"[evolution] Warning: Failed to parse issue #{issue.get('number')} body: {e}")
+            continue
+
+    if matching_issue is None:
+        # VAL-REOPEN-002: No closed Issue match → return False
+        return False
+
+    # VAL-REOPEN-009: Reopen comment contains regression context
+    reopen_comment = (
+        f"回归检测：此 finding 在解决后再次出现，自动重新打开此 Issue。\n"
+        f"（Rule: {rule_id}, Location: {location}，第 {reopen_count + 1} 次重新打开）"
+    )
+
+    # Reopen the issue
+    try:
+        reopen_result = subprocess.run(
+            ["gh", "issue", "reopen", str(matching_issue["number"]),
+             "--comment", reopen_comment],
+            capture_output=True, text=True, timeout=30
+        )
+        if reopen_result.returncode != 0:
+            print(f"[evolution] Warning: Failed to reopen issue #{matching_issue['number']}: {reopen_result.stderr}")
+            return False
+    except Exception as e:
+        print(f"[evolution] Warning: Exception reopening issue #{matching_issue['number']}: {e}")
+        return False
+
+    # VAL-REOPEN-004: Increment reopen counter in history JSON
+    matching_resolved["reopen_count"] = reopen_count + 1
+
+    # Write updated history back to file
+    try:
+        tmp_path = history_path.with_suffix(".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, history_path)
+    except Exception as e:
+        print(f"[evolution] Warning: Failed to update reopen counter in history: {e}")
+        # Reopen succeeded but counter update failed - still return True
+
+    print(f"[evolution] Reopened issue #{matching_issue['number']}: {rule_id} @ {location} (reopen #{reopen_count + 1})")
+    return True
+
+
+def _process_findings_with_reopen(
+    findings: list[Finding], quota: int, resolved_keys: set[tuple[str, str]],
+    dedup_label: str, history_path: Path,
+) -> int:
+    """Process findings: try reopen for resolved regressions, else create new issue.
+
+    Returns the count of issues created (reopened issues are not counted).
+    """
+    created = 0
+    for f in findings[:quota]:
+        if f.severity == "critical" and (f.rule_id, f.location) in resolved_keys:
+            if _reopen_closed_issue(f.rule_id, f.location, dedup_label, history_path):
+                continue
+        if create_issue(f, dedup_label):
+            created += 1
+    return created
+
+
 def sort_by_severity(findings: list[Finding], severity_order: list[str]) -> list[Finding]:
     order = {s: i for i, s in enumerate(severity_order)}
     return sorted(findings, key=lambda f: order.get(f.severity, 99))
@@ -380,6 +513,13 @@ def main() -> None:
     if suppressed_count > 0:
         print(f"[evolution] Suppressed {suppressed_count} findings by suppress.json")
     findings = detect_regressions(all_findings, history_path)
+    # Load resolved_findings set for reopen decisions (VAL-REOPEN)
+    _resolved_keys = set()
+    _hist_data = load_history(history_path)
+    if _hist_data is not None:
+        for r in _hist_data.get("resolved_findings", []):
+            if isinstance(r, dict):
+                _resolved_keys.add((r.get("rule_id", ""), r.get("location", "")))
     deduped = []
     gh_failed = False
     try:
@@ -388,8 +528,16 @@ def main() -> None:
         # INFRA-198: independent quotas so critical findings don't starve self_audit
         regular = [f for f in deduped if f.category != "evolution_self_audit"]
         self_audit = [f for f in deduped if f.category == "evolution_self_audit"]
-        issues_created = sum(1 for f in regular[:config["max_issues_per_tick"]] if create_issue(f, config["dedup_label"]))
-        issues_created += sum(1 for f in self_audit[:config["max_self_audit_issues_per_tick"]] if create_issue(f, config["dedup_label"]))
+        # VAL-REOPEN: For regression findings (upgraded to critical by detect_regressions),
+        # try to reopen a matching closed issue before creating a new one.
+        issues_created = _process_findings_with_reopen(
+            regular, config["max_issues_per_tick"], _resolved_keys,
+            config["dedup_label"], history_path,
+        )
+        issues_created += _process_findings_with_reopen(
+            self_audit, config["max_self_audit_issues_per_tick"], _resolved_keys,
+            config["dedup_label"], history_path,
+        )
     except RuntimeError as e:
         print(f"[evolution] Warning: {e}")
         issues_created = 0
