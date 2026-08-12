@@ -333,14 +333,22 @@ def _verify_fix_merged_via_linear(issue_body: str) -> bool:
 
         # Check if any PR is merged
         for pr_attachment in github_prs:
-            # Extract PR number from URL and check via gh CLI
+            # Extract PR number and repo from URL, check via gh CLI
             pr_url = pr_attachment.get("url", "")
             pr_match = re.search(r'/pull/(\d+)', pr_url)
             if pr_match:
                 pr_number = pr_match.group(1)
+                # Extract owner/repo so cross-repo PRs are verified against the
+                # correct repository. Without --repo, gh pr view only checks the
+                # current repo context and silently fails (fail-open) for PRs in
+                # other repos — the merge state is never actually confirmed.
+                repo_match = re.search(r'github\.com/([^/]+/[^/]+)/pull/', pr_url)
+                gh_cmd = ["gh", "pr", "view", pr_number, "--json", "mergedAt"]
+                if repo_match:
+                    gh_cmd.extend(["--repo", repo_match.group(1)])
                 try:
                     result = subprocess.run(
-                        ["gh", "pr", "view", pr_number, "--json", "mergedAt"],
+                        gh_cmd,
                         capture_output=True,
                         text=True,
                         timeout=10
