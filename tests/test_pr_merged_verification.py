@@ -493,6 +493,99 @@ class TestVALCLOSE015:
 
 
 # ---------------------------------------------------------------------------
+# VAL-CLOSE-025: Cross-repo PR - repo extracted from URL for gh pr view --repo
+# ---------------------------------------------------------------------------
+
+class TestVALCLOSE025:
+    """Cross-repo PR verification: --repo flag passed to gh pr view."""
+
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.urllib.request.urlopen")
+    @patch("evolution_utils.subprocess.run")
+    def test_cross_repo_pr_passes_repo_flag(self, mock_subprocess, mock_urlopen):
+        """VAL-CLOSE-025: Cross-repo PR -> gh pr view includes --repo owner/name."""
+        response = _linear_issue_response("INFRA-123", [
+            {
+                "id": "att-42",
+                "url": "https://github.com/hdot123/shared-workflows/pull/42",
+                "attachmentType": "github",
+                "metadata": {}
+            }
+        ])
+        mock_urlopen.return_value.__enter__ = MagicMock(
+            return_value=_mock_urlopen(response)
+        )
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_subprocess.return_value = _mock_gh_pr_merged(42)
+
+        issue_body = "<!-- linear-linkback INFRA-123 -->"
+        result = _verify_fix_merged_via_linear(issue_body)
+
+        # gh pr view called with --repo hdot123/shared-workflows
+        assert mock_subprocess.called
+        call_args = mock_subprocess.call_args[0][0]
+        assert "42" in call_args
+        assert "--repo" in call_args
+        repo_idx = call_args.index("--repo")
+        assert call_args[repo_idx + 1] == "hdot123/shared-workflows"
+        assert result is True
+
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.urllib.request.urlopen")
+    @patch("evolution_utils.subprocess.run")
+    def test_cross_repo_pr_unmerged_returns_false(self, mock_subprocess, mock_urlopen):
+        """VAL-CLOSE-025: Cross-repo PR not merged -> returns False (no fail-open)."""
+        response = _linear_issue_response("INFRA-123", [
+            {
+                "id": "att-42",
+                "url": "https://github.com/hdot123/shared-workflows/pull/42",
+                "attachmentType": "github",
+                "metadata": {}
+            }
+        ])
+        mock_urlopen.return_value.__enter__ = MagicMock(
+            return_value=_mock_urlopen(response)
+        )
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_subprocess.return_value = _mock_gh_pr_unmerged(42)
+
+        issue_body = "<!-- linear-linkback INFRA-123 -->"
+        result = _verify_fix_merged_via_linear(issue_body)
+        assert result is False
+
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.urllib.request.urlopen")
+    @patch("evolution_utils.subprocess.run")
+    def test_same_repo_pr_also_passes_repo_flag(self, mock_subprocess, mock_urlopen):
+        """VAL-CLOSE-025: Same-repo PR -> --repo still passed (explicit context)."""
+        response = _linear_issue_response("INFRA-123", [
+            {
+                "id": "att-523",
+                "url": "https://github.com/hdot123/memory/pull/523",
+                "attachmentType": "github",
+                "metadata": {}
+            }
+        ])
+        mock_urlopen.return_value.__enter__ = MagicMock(
+            return_value=_mock_urlopen(response)
+        )
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_subprocess.return_value = _mock_gh_pr_merged(523)
+
+        issue_body = "<!-- linear-linkback INFRA-123 -->"
+        _verify_fix_merged_via_linear(issue_body)
+
+        assert mock_subprocess.called
+        call_args = mock_subprocess.call_args[0][0]
+        assert "--repo" in call_args
+        repo_idx = call_args.index("--repo")
+        assert call_args[repo_idx + 1] == "hdot123/memory"
+
+
+# ---------------------------------------------------------------------------
 # VAL-CLOSE-001: Happy path - merged PR -> closed
 # ---------------------------------------------------------------------------
 
