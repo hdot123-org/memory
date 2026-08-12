@@ -96,11 +96,14 @@ def test_all_workflows_pass_actionlint():
         pytest.skip("actionlint not installed")
     workflows = list((REPO_ROOT / ".github/workflows").glob("*.yml"))
     assert len(workflows) > 0
-    result = subprocess.run(
-        ["actionlint"] + [str(w) for w in workflows],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["actionlint"] + [str(w) for w in workflows],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        pytest.skip("actionlint not installed")
     assert result.returncode == 0, f"actionlint failed:\n{result.stdout}\n{result.stderr}"
 
 
