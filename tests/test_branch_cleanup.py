@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Tests for branch_cleanup.sh script."""
 
 import json
@@ -1157,4 +1159,87 @@ def test_fully_merged_branch_not_falsely_protected(tmp_path: Path):
     # The protection path was NOT taken; verify no PROTECTED marker for this branch
     assert "PROTECTED" not in stdout or "merged-feature" not in stdout.split("PROTECTED")[-1].split("\n")[0], (
         "Branch should not appear in protected list. stdout:\n" + stdout
+    )
+
+
+# ============================================================================
+# VAL-BRANCH-022: IMMEDIATE_MODE deletes branch with a MERGED PR
+# ============================================================================
+def test_immediate_mode_deletes_merged_pr_branch(tmp_path: Path):
+    """When --immediate <branch> and the branch has a MERGED PR (state "MERGED"),
+    the branch IS deleted even though it has unique commits not in main.
+
+    GitHub/gh-CLI state values are "OPEN", "CLOSED", "MERGED". A MERGED PR has
+    state "MERGED" (NOT "CLOSED"), so CLOSED_NOT_MERGED_COUNT is 0 for merged
+    PRs → not protected → eligible for deletion. This is the correct, intended
+    behavior: a merged PR's branch should be cleaned up.
+    """
+    now = datetime.now(timezone.utc)
+    old_date = now - timedelta(days=2)  # 2 days ago
+
+    branches = [("merged-feature", old_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Mock gh to return a MERGED PR for this branch
+    mock_gh = create_gh_mock(tmp_path, {
+        "merged-feature": [{"number": 200, "state": "MERGED"}],
+    })
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--immediate",
+        "merged-feature",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "merged-feature" not in remaining_branches, (
+        "Branch with a MERGED PR should be deleted in immediate mode"
+    )
+    assert exit_code == 0, f"Expected exit 0, got {exit_code}. stderr: {stderr}"
+
+
+# ============================================================================
+# VAL-BRANCH-023: SCHEDULED_MODE protects branch with CLOSED-not-merged PR + unique commits
+# ============================================================================
+def test_scheduled_mode_protects_closed_not_merged_with_unique_commits(tmp_path: Path):
+    """When a branch has a CLOSED (not merged) PR AND unique commits not in
+    main, it is PROTECTED (not deleted) even in scheduled mode with an old
+    branch.
+
+    The fixture creates branches with commits not present in main, so
+    UNIQUE_COUNT will be > 0. Combined with a CLOSED PR, the safety-protection
+    feature kicks in and the branch is preserved.
+    """
+    now = datetime.now(timezone.utc)
+    old_date = now - timedelta(days=2)  # 2 days ago
+
+    branches = [("closed-unmerged", old_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Mock gh to return a CLOSED (not merged) PR for this branch
+    mock_gh = create_gh_mock(tmp_path, {
+        "closed-unmerged": [{"number": 300, "state": "CLOSED"}],
+    })
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "closed-unmerged" in remaining_branches, (
+        "Branch with CLOSED-not-merged PR and unique commits should be PROTECTED"
+    )
+    assert "PROTECTED" in stdout.upper(), (
+        f"Output should contain 'PROTECTED' for protected branch. stdout: {stdout}"
     )
