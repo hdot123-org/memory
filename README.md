@@ -390,7 +390,7 @@ shellcheck scripts/*.sh
 actionlint .github/workflows/*.yml
 ```
 
-**CI 安全门禁：** `.github/workflows/droid-review.yml` 已启用 `security_block_on_high: "true"`，当 droid-action 检测到高危安全发现时会阻止 PR 合并。shellcheck 与 actionlint 作为 CI 硬门禁（非 continue-on-error）运行。
+**CI 安全门禁：** `.github/workflows/droid-review.yml` 中 `security_block_on_high: "false"`（Advisory 模式），AI 安全审查仅留 Comment 不阻断合并。确定性工具（shellcheck、actionlint、pytest）作为 CI 硬门禁负责实际阻断。
 
 ## 版本与许可
 

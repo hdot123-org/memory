@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).parent.parent
 
 
 class TestAuditGate:
-    """VAL-GATE-* assertions: security_block_on_high configuration."""
+    """VAL-GATE-* assertions: security_block_on_high configuration (Advisory mode)."""
 
     @pytest.fixture
     def droid_review_data(self):
@@ -28,10 +28,10 @@ class TestAuditGate:
         return next(s for s in steps if "droid-action" in s.get("uses", ""))
 
     def test_val_gate_001_security_block_on_high_present(self, droid_review_data):
-        """VAL-GATE-001: droid-review.yml has security_block_on_high: "true" (string)."""
+        """VAL-GATE-001: droid-review.yml has security_block_on_high: "false" (Advisory mode, string)."""
         droid_step = self._get_droid_action_step(droid_review_data)
         assert "security_block_on_high" in droid_step["with"]
-        assert droid_step["with"]["security_block_on_high"] == "true"
+        assert droid_step["with"]["security_block_on_high"] == "false"
 
     def test_val_gate_002_security_block_on_critical_remains(self, droid_review_data):
         """VAL-GATE-002: security_block_on_critical remains enabled (not disabled)."""
@@ -150,10 +150,10 @@ class TestCrossAreaAuditGate:
         return next(s for s in steps if "droid-action" in s.get("uses", ""))
 
     def test_val_cross_029_high_severity_blocks(self, droid_review_data):
-        """VAL-CROSS-029: droid-review blocks on High severity findings."""
+        """VAL-CROSS-029: droid-review advisory on High severity findings (no block)."""
         droid_step = self._get_droid_action_step(droid_review_data)
-        # security_block_on_high must be present and "true"
-        assert droid_step["with"]["security_block_on_high"] == "true"
+        # security_block_on_high must be present and "false" (Advisory mode)
+        assert droid_step["with"]["security_block_on_high"] == "false"
         # security_block_on_critical must also be present/true (default or explicit)
         if "security_block_on_critical" in droid_step["with"]:
             assert droid_step["with"]["security_block_on_critical"] != "false"
@@ -195,12 +195,12 @@ class TestCrossAreaAuditGate:
         assert with_block.get("security_block_on_low") != "true"
 
     def test_val_cross_032_both_configs_coexist(self, droid_review_data):
-        """VAL-CROSS-032: Both block configs coexist (high + critical)."""
+        """VAL-CROSS-032: Both configs coexist (high advisory + critical block)."""
         droid_step = self._get_droid_action_step(droid_review_data)
         with_block = droid_step["with"]
 
-        # security_block_on_high must be "true"
-        assert with_block["security_block_on_high"] == "true"
+        # security_block_on_high must be "false" (Advisory mode)
+        assert with_block["security_block_on_high"] == "false"
 
         # security_block_on_critical must be "true" (explicit or default)
         # If present, must not be "false"
