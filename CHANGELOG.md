@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.23.0](https://github.com/hdot123/memory/compare/v0.22.2...v0.23.0) (2026-08-12)
+
+
+### Features
+
+* branch-cleanup 支持 PR 关闭即时触发 (INFRA-211) ([#517](https://github.com/hdot123/memory/issues/517)) ([462c251](https://github.com/hdot123/memory/commit/462c251c7c04021bd10a84860fc295a6aa0bc502))
+* **branch-cleanup:** 提取内联脚本 + 修复 IMMEDIATE_MODE 作用域 bug (M2) ([#531](https://github.com/hdot123/memory/issues/531)) ([ed59fb7](https://github.com/hdot123/memory/commit/ed59fb75856296aae9cf32dd514284b730558a20))
+* **ci:** 添加 shellcheck/actionlint pre-commit hooks + CI lint 门禁 (M2) ([#532](https://github.com/hdot123/memory/issues/532)) ([46f476f](https://github.com/hdot123/memory/commit/46f476f5083a8fd2709366512b9bce7ef623ae05))
+* **evolution:** 实现 Issue 重开机制 (M1 Trust Chain) ([#525](https://github.com/hdot123/memory/issues/525)) ([4ceee9a](https://github.com/hdot123/memory/commit/4ceee9a35267e2a5c8258d7e1dd913a74d8c59a6))
+* **evolution:** 实现 PR-Merged Verification (M1 Trust Chain) ([#524](https://github.com/hdot123/memory/issues/524)) ([7a9e6a4](https://github.com/hdot123/memory/commit/7a9e6a4b4b0cfec0078556bdb2de70bee4678cbe))
+
+
+### Bug Fixes
+
+* auto-merge 改用 workflow_run + schedule 触发，修复 CI 全绿后不自动合并 (INFRA-212) ([#519](https://github.com/hdot123/memory/issues/519)) ([15e93a9](https://github.com/hdot123/memory/commit/15e93a9a0dd7acc1a362821381f2e80fdbaae3e7))
+* branch-cleanup 增加独有 commit 安全检查，保护未合并分支 (INFRA-214) ([#523](https://github.com/hdot123/memory/issues/523)) ([155d507](https://github.com/hdot123/memory/commit/155d507688c45029b2bf7ac4d718e4d762719f30))
+* check_droid_review.sh 对 dependabot 的 skipped 结论放行 ([#544](https://github.com/hdot123/memory/issues/544)) ([f0772b6](https://github.com/hdot123/memory/commit/f0772b69e1dda918150de81363f9f7f93f80cd4d))
+* **ci:** check_droid_review.sh 允许 Dependabot PR 在 droid-review 跳过时合并 (INFRA-222) ([#545](https://github.com/hdot123/memory/issues/545)) ([fc7c6e6](https://github.com/hdot123/memory/commit/fc7c6e64d897a2a18e4f24d6b21bb86f5cb1f102))
+* **evolution:** PR-Merged Verification 支持跨仓库 PR，补全 --repo 参数 (INFRA-215) ([#526](https://github.com/hdot123/memory/issues/526)) ([8e01224](https://github.com/hdot123/memory/commit/8e01224a8265996bf80c784e5cf482e74191534e))
+* **evolution:** 修复 VAL-CROSS-025 测试 subprocess 使用错误 Python 版本 (INFRA-218) ([#530](https://github.com/hdot123/memory/issues/530)) ([cc7c220](https://github.com/hdot123/memory/commit/cc7c220cabd36d03b6b6e6b8af8295cde936255b))
+* **evolution:** 排除 self-audit 类别 finding 的自动关闭，修复 heartbeat 反复抖动循环 (INFRA-216) ([#529](https://github.com/hdot123/memory/issues/529)) ([41648de](https://github.com/hdot123/memory/commit/41648deaa4426faec84b3b5ac11e264f8187075c))
+* 为 evolution-heartbeat workflow 添加标签创建步骤 (INFRA-209) ([#514](https://github.com/hdot123/memory/issues/514)) ([4d05f73](https://github.com/hdot123/memory/commit/4d05f739ace17b8c8403e8ad04a13eb68700dab9))
+* 修复 branch_cleanup.sh 唯一 commit 计数使用对称差集导致已合并分支被误保护 (INFRA-220) ([#543](https://github.com/hdot123/memory/issues/543)) ([b8e7ed4](https://github.com/hdot123/memory/commit/b8e7ed469570bf883d49b914471aadcc61d0d154))
+
 ## [0.22.2](https://github.com/hdot123/memory/compare/v0.22.1...v0.22.2) (2026-08-11)
 
 
