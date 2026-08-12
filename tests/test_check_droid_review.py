@@ -106,6 +106,15 @@ def test_jq_extracts_conclusion():
     )
 
 
+def test_dependabot_skipped_exception():
+    """Verify Dependabot PRs are allowed when droid-review is skipped/neutral."""
+    content = SCRIPT_PATH.read_text()
+
+    # The skipped/neutral branch must check for Dependabot before blocking
+    assert 'is_dependabot_pr' in content
+    assert 'allowing merge' in content or 'Dependabot' in content
+
+
 def test_ci_yml_calls_script():
     """Verify ci.yml calls check_droid_review.sh."""
     content = CI_YML_PATH.read_text()
@@ -118,6 +127,10 @@ def test_skipped_branch_has_dependabot_check():
     The droid-review workflow explicitly skips Dependabot PRs via a job-level
     if condition, producing a 'skipped' conclusion. The check_droid_review.sh
     script must allow these through rather than blocking the merge.
+
+    After refactoring, both the skipped/neutral and failure branches call the
+    shared is_dependabot_pr() helper, so we verify the helper exists and the
+    branch invokes it before blocking.
     """
     content = SCRIPT_PATH.read_text()
 
@@ -125,8 +138,11 @@ def test_skipped_branch_has_dependabot_check():
     assert '"$STATUS" = "neutral"' in content
     assert '"$STATUS" = "skipped"' in content
 
-    # The skipped/neutral branch must contain a Dependabot author check
-    # that allows the PR through (exit 0)
+    # The shared helper must exist and contain the dependabot[bot] check
+    assert 'is_dependabot_pr()' in content
+    assert 'dependabot[bot]' in content
+
+    # Collect the skipped/neutral branch block and verify it calls the helper
     lines = content.splitlines()
     skipped_branch_start = None
     for i, line in enumerate(lines):
@@ -135,7 +151,6 @@ def test_skipped_branch_has_dependabot_check():
             break
     assert skipped_branch_start is not None, "skipped/neutral branch not found"
 
-    # Collect the block until the next elif
     block_lines = []
     for line in lines[skipped_branch_start:]:
         block_lines.append(line)
@@ -143,8 +158,8 @@ def test_skipped_branch_has_dependabot_check():
             break
     block = '\n'.join(block_lines)
 
-    assert 'dependabot[bot]' in block, (
-        "skipped/neutral branch must check for dependabot[bot] author"
+    assert 'is_dependabot_pr' in block, (
+        "skipped/neutral branch must call is_dependabot_pr helper"
     )
     assert 'exit 0' in block, (
         "skipped/neutral branch must exit 0 for Dependabot PRs"
@@ -152,7 +167,11 @@ def test_skipped_branch_has_dependabot_check():
 
 
 def test_failure_branch_has_dependabot_check():
-    """Verify the failure branch still has its Dependabot check (regression)."""
+    """Verify the failure branch still has its Dependabot check (regression).
+
+    After refactoring, the failure branch calls the shared is_dependabot_pr()
+    helper just like the skipped/neutral branch.
+    """
     content = SCRIPT_PATH.read_text()
 
     lines = content.splitlines()
@@ -172,19 +191,28 @@ def test_failure_branch_has_dependabot_check():
             break
     block = '\n'.join(block_lines)
 
-    assert 'dependabot[bot]' in block, (
-        "failure branch must still check for dependabot[bot] author"
+    assert 'is_dependabot_pr' in block, (
+        "failure branch must call is_dependabot_pr helper"
     )
     assert 'exit 0' in block
 
 
 def test_dependabot_check_uses_pr_api():
-    """Verify both Dependabot checks use the PR API to get the author."""
+    """Verify the Dependabot helper uses the PR API to get the author.
+
+    After refactoring, the PR API call lives in the shared is_dependabot_pr()
+    helper function instead of being duplicated in each branch.
+    """
     content = SCRIPT_PATH.read_text()
 
-    # Both Dependabot checks should query the commits/{sha}/pulls endpoint
-    pulls_api_count = content.count('commits/${COMMIT_SHA}/pulls')
-    assert pulls_api_count >= 2, (
-        f"Expected at least 2 PR API calls (failure + skipped branches), "
-        f"found {pulls_api_count}"
+    # The helper must query the commits/{sha}/pulls endpoint
+    assert 'commits/${COMMIT_SHA}/pulls' in content, (
+        "is_dependabot_pr helper must query the PR API endpoint"
+    )
+    # The helper must be called from at least 2 branches (skipped + failure)
+    call_count = content.count('is_dependabot_pr')
+    # 1 definition + at least 2 call sites = at least 3 occurrences
+    assert call_count >= 3, (
+        f"Expected at least 3 is_dependabot_pr references "
+        f"(1 definition + 2 call sites), found {call_count}"
     )
