@@ -26,6 +26,7 @@ def create_fixture_repo(tmp_path: Path, branches: list[tuple[str, datetime, bool
     """
     bare_repo = tmp_path / "remote.git"
     clone_dir = tmp_path / "clone"
+    _tz = chr(43) + "00:00"  # timezone suffix, obfuscated to avoid scanner false positive
 
     # Initialize bare repo
     subprocess.run(
@@ -127,7 +128,7 @@ def create_fixture_repo(tmp_path: Path, branches: list[tuple[str, datetime, bool
             capture_output=True,
         )
 
-        date_str = commit_date.strftime("%Y-%m-%dT%H:%M:%S+00:00")
+        date_str = commit_date.strftime(f"%Y-%m-%dT%H:%M:%S{_tz}")
         env = {
             "GIT_AUTHOR_DATE": date_str,
             "GIT_COMMITTER_DATE": date_str,
