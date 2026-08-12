@@ -28,6 +28,7 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # ANSI colors
 GREEN = "\033[32m"
@@ -74,7 +75,7 @@ class QAResult:
             return 2
         return 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "total": self.total,
             "passed": self.passed,
@@ -156,7 +157,7 @@ def layer1_smoke(qa: QAResult) -> None:
         # Check if command exists
         code, _, _ = run_cmd(["which", cmd_name])
         if code != 0:
-            qa.add(TestResult(f"{cmd_name}: command exists", 1, skipped=True, error="not in PATH"))
+            qa.add(TestResult(f"{cmd_name}: command exists", 1, passed=False, skipped=True, error="not in PATH"))
             print(f"  {color('SKIP', YELLOW)} {cmd_name} (not in PATH)")
             continue
 
@@ -191,7 +192,7 @@ def layer2_functional(qa: QAResult) -> None:
     # Check if memory-init exists
     code, _, _ = run_cmd(["which", "memory-init"])
     if code != 0:
-        qa.add(TestResult("Layer 2 functional", 2, skipped=True, error="CLI not installed"))
+        qa.add(TestResult("Layer 2 functional", 2, passed=False, skipped=True, error="CLI not installed"))
         print(f"  {color('SKIP', YELLOW)} CLI commands not installed (run pip install -e .)")
         return
 
@@ -282,7 +283,7 @@ def layer3_robustness(qa: QAResult) -> None:
 
     code, _, _ = run_cmd(["which", "memory-init"])
     if code != 0:
-        qa.add(TestResult("Layer 3 robustness", 3, skipped=True, error="CLI not installed"))
+        qa.add(TestResult("Layer 3 robustness", 3, passed=False, skipped=True, error="CLI not installed"))
         print(f"  {color('SKIP', YELLOW)} CLI commands not installed")
         return
 

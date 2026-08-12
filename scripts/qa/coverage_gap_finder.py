@@ -23,6 +23,7 @@ import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 GREEN = "\033[32m"
 RED = "\033[31m"
@@ -157,7 +158,7 @@ def parse_coverage_xml(xml_path: Path) -> list[ModuleCoverage]:
     return modules
 
 
-def analyze_gaps(modules: list[ModuleCoverage], target: float) -> dict:
+def analyze_gaps(modules: list[ModuleCoverage], target: float) -> dict[str, Any]:
     """Analyze coverage gaps and generate report data."""
     overall = sum(m.covered_lines for m in modules)
     total = sum(m.total_lines for m in modules)
@@ -217,7 +218,7 @@ def analyze_gaps(modules: list[ModuleCoverage], target: float) -> dict:
     }
 
 
-def print_report(data: dict) -> None:
+def print_report(data: dict[str, Any]) -> None:
     """Print human-readable coverage gap report."""
     pct = data["overall_pct"]
     target = data["target_pct"]

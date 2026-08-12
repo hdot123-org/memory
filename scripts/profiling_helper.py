@@ -21,11 +21,10 @@ from __future__ import annotations
 
 import argparse
 import cProfile
-import io
 import pstats
 import sys
 from contextlib import contextmanager
-from typing import Iterator
+from typing import IO, Iterator
 
 
 @contextmanager
@@ -35,7 +34,7 @@ def profile(
     output: str | None = None,
     sort_by: str = "cumulative",
     top_n: int = 20,
-    stream: io.IOBase | None = None,
+    stream: IO[str] | None = None,
 ) -> Iterator[cProfile.Profile]:
     """Profile a code block as a context manager.
 

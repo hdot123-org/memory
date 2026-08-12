@@ -123,7 +123,8 @@ def scan() -> list[tuple[FuncInfo, FuncInfo]]:
         for i in range(len(funcs)):
             for j in range(i + 1, len(funcs)):
                 a, b = funcs[i], funcs[j]
-                pair_key = tuple(sorted([(a.file, a.line_no), (b.file, b.line_no)]))
+                pairs = sorted([(a.file, a.line_no), (b.file, b.line_no)])
+                pair_key = (pairs[0][0], pairs[0][1], pairs[1][0], pairs[1][1])
                 if pair_key in seen_pairs:
                     continue
                 if _is_duplicate(a, b):

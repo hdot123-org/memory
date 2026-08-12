@@ -9,6 +9,7 @@ Checks:
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
@@ -18,7 +19,9 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 def get_pyproject_version() -> str:
     import tomllib
     with open(PYPROJECT, "rb") as f:
-        return tomllib.load(f)["project"]["version"]
+        data: dict[str, Any] = tomllib.load(f)
+        version: str = data["project"]["version"]
+        return version
 
 
 def check_file_references(content: str) -> list[str]:
