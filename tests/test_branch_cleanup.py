@@ -1066,15 +1066,18 @@ def test_cross_shellcheck_passes():
 # ============================================================================
 def test_cross_actionlint_passes():
     """actionlint .github/workflows/branch-cleanup.yml exits 0."""
+    import shutil
+
+    import pytest
+
+    if not shutil.which("actionlint"):
+        pytest.skip("actionlint not installed")
+
     workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "branch-cleanup.yml"
     result = subprocess.run(
         ["actionlint", str(workflow_path)],
         capture_output=True,
         text=True,
     )
-
-    if result.returncode != 0 and "not found" in result.stderr.lower():
-        import pytest
-        pytest.skip("actionlint not installed")
 
     assert result.returncode == 0, f"actionlint failed:\n{result.stdout}\n{result.stderr}"
