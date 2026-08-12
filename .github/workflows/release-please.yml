@@ -1,13 +1,19 @@
 name: Release Please
 
-# 批处理发版策略：每天定时 2 次（北京时间 12:00 / 20:00），
-# 将积攒的 conventional commits 打包为一个 Release。
-# 代码 PR 保持实时合入 main，发版与合入解耦。
-# workflow_dispatch 用于需要即时发版时手动触发。
+# 批处理发版策略：
+# - schedule: 每天定时 2 次（北京时间 12:00 / 20:00），批量打包积攒的 commits
+# - push(paths): release PR 合并时自动触发（仅 .release-please-manifest.json 变更）
+# - workflow_dispatch: 手动即时发版
+# 代码 PR 实时合入 main 不变，发版与合入解耦。
 on:
   schedule:
     - cron: '0 4 * * *'   # 北京时间 12:00
     - cron: '0 12 * * *'   # 北京时间 20:00
+  push:
+    branches:
+      - main
+    paths:
+      - '.release-please-manifest.json'
   workflow_dispatch:
 
 permissions:
