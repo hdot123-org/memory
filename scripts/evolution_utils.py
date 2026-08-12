@@ -9,6 +9,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from evolution_adapters import quarantine_corrupted_file, sanitize_structured_field
 
@@ -39,7 +40,7 @@ REQUIRED_CONFIG_KEYS = [
 ]
 
 
-def validate_config(config: dict) -> None:
+def validate_config(config: dict[str, Any]) -> None:
     """Validate that all required config keys are present.
 
     Args:
@@ -60,7 +61,7 @@ def validate_config(config: dict) -> None:
         sys.exit(1)
 
 
-def dedup_intra_tick(findings):
+def dedup_intra_tick(findings: list[Any]) -> list[Any]:
     """Remove duplicate findings within a single tick.
 
     Keeps the highest severity finding for each (rule_id, location) pair.
@@ -71,7 +72,7 @@ def dedup_intra_tick(findings):
     Returns:
         List of Finding objects with duplicates removed
     """
-    best = {}
+    best: dict[tuple[str, str], Any] = {}
     for f in findings:
         key = (f.rule_id, f.location)
         if key not in best or _SEV_RANK.get(f.severity, 0) > _SEV_RANK.get(best[key].severity, 0):
@@ -79,7 +80,7 @@ def dedup_intra_tick(findings):
     return list(best.values())
 
 
-def _parse_issue_fields(body: str):
+def _parse_issue_fields(body: str) -> tuple[str | None, str | None]:
     """Parse rule_id and location from issue body.
 
     Extracts structured fields from markdown-formatted issue body.
@@ -122,7 +123,7 @@ def _parse_issue_category(body: str) -> str | None:
     return None
 
 
-def load_history(history_path: Path):
+def load_history(history_path: Path) -> dict[str, Any] | None:
     """Load evolution history from JSON file with structural validation.
 
     Validates that the file contains a dict with 'snapshots' as a list.
@@ -483,7 +484,7 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
         return False
 
 
-def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set[str] | None = None,
+def auto_close_resolved(findings: list[Any], dedup_label: str, failed_categories: set[str] | None = None,
                        history_path: Path | None = None) -> None:
     """Close GitHub Issues whose findings are no longer present in current scan.
 
@@ -636,11 +637,11 @@ def _parse_iso_timestamp(ts: str) -> datetime | None:
 
 
 def detect_sync_orphans(
-    gh_issues: list[dict],
+    gh_issues: list[dict[str, Any]],
     linear_titles: set[str],
     threshold_minutes: int = GAP_A_THRESHOLD_MIN,
     now: datetime | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """检测 GitHub Issue 在 Linear 中没有对应的孤立 Issue（GAP-A / INFRA-174）。
 
     当 Linear native GitHub 集成同步失败（API 限流、集成故障）时，evolution
@@ -672,7 +673,7 @@ def detect_sync_orphans(
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
 
-    orphans: list[dict] = []
+    orphans: list[dict[str, Any]] = []
     for issue in gh_issues:
         # 条件 1：已存在 Linear linkback → 已同步，跳过
         if issue.get("has_linear_linkback", False):

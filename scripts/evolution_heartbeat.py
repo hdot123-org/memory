@@ -13,6 +13,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 # Heartbeat configuration
 HISTORY_PATH = Path(".evolution/findings_over_time.json")
@@ -29,7 +30,7 @@ SCANNER_LIVENESS_THRESHOLD_HOURS = 2  # Alert if scanner hasn't run in 2 hours
 def check_history_freshness(
     history_path: Path = HISTORY_PATH,
     max_age_hours: int = FRESHNESS_THRESHOLD_HOURS,
-) -> dict:
+) -> dict[str, Any]:
     """Check if findings_over_time.json has a recent snapshot.
 
     Returns a dict with:
@@ -37,7 +38,7 @@ def check_history_freshness(
       - age_hours (float): age in hours of the latest snapshot (inf if unknown)
       - message (str): human-readable status
     """
-    result: dict = {"stale": True, "age_hours": float("inf"), "message": ""}
+    result: dict[str, Any] = {"stale": True, "age_hours": float("inf"), "message": ""}
 
     if not history_path.exists():
         result["message"] = f"History file {history_path} does not exist"
@@ -83,7 +84,7 @@ def check_history_freshness(
     return result
 
 
-def check_pr_coverage(label: str = EVOLUTION_FOUND_LABEL) -> dict:
+def check_pr_coverage(label: str = EVOLUTION_FOUND_LABEL) -> dict[str, Any]:
     """Check whether recent evolution-found issues have associated PRs.
 
     Returns a dict with:
@@ -91,7 +92,7 @@ def check_pr_coverage(label: str = EVOLUTION_FOUND_LABEL) -> dict:
       - total_issues (int): total open issues inspected
       - missing (list[int]): issue numbers without a PR
     """
-    result: dict = {"issues_without_pr": 0, "total_issues": 0, "missing": []}
+    result: dict[str, Any] = {"issues_without_pr": 0, "total_issues": 0, "missing": []}
 
     list_result = subprocess.run(
         [
@@ -164,7 +165,7 @@ def alert_issue_exists(label: str = ALERT_LABEL) -> bool:
 
 def check_scanner_liveness(
     threshold_hours: int = SCANNER_LIVENESS_THRESHOLD_HOURS,
-) -> dict:
+) -> dict[str, Any]:
     """Check if the evolution scanner workflow has run recently.
 
     Uses the GitHub Actions API (gh run list) to verify the scanner is alive.
@@ -178,7 +179,7 @@ def check_scanner_liveness(
       - last_status (str): conclusion of the most recent run
       - message (str): human-readable status
     """
-    result: dict = {
+    result: dict[str, Any] = {
         "alive": True,
         "hours_since_last_run": float("inf"),
         "last_status": "unknown",
@@ -237,14 +238,14 @@ def check_scanner_liveness(
     return result
 
 
-def check_heartbeat_marker(max_age_hours: int = FRESHNESS_THRESHOLD_HOURS) -> dict:
+def check_heartbeat_marker(max_age_hours: int = FRESHNESS_THRESHOLD_HOURS) -> dict[str, Any]:
     """Check dedicated heartbeat.json marker freshness (INFRA-204).
 
     This is a more precise signal than findings_over_time.json: the
     heartbeat is written at the END of a successful tick, so staleness
     means the scanner either didn't run or failed mid-tick.
     """
-    result: dict = {"stale": True, "age_hours": float("inf"), "message": ""}
+    result: dict[str, Any] = {"stale": True, "age_hours": float("inf"), "message": ""}
 
     if not HEARTBEAT_MARKER_PATH.exists():
         result["message"] = f"Heartbeat marker {HEARTBEAT_MARKER_PATH} does not exist"

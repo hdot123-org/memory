@@ -1,6 +1,8 @@
 """Adapter functions for converting audit tool output to Finding-compatible dicts."""
 import hashlib
 import re
+from pathlib import Path
+from typing import Any
 
 
 def normalize_location(location: str) -> str:
@@ -124,7 +126,7 @@ def sanitize_structured_field(text: str, max_len: int = 100) -> str:
     return text
 
 
-def adapt_daily_audit(raw: dict) -> list[dict]:
+def adapt_daily_audit(raw: dict[str, Any]) -> list[dict[str, Any]]:
     """Convert nested daily audit output to flat Finding dicts.
 
     Input format: {projects: {name: {violations: [{type, severity, file, detail}]}},
@@ -162,7 +164,7 @@ def adapt_daily_audit(raw: dict) -> list[dict]:
     return findings
 
 
-def _consistency_key(error_str: str) -> tuple:
+def _consistency_key(error_str: str) -> tuple[str, str, str]:
     """Generate dedup key for consistency check findings.
 
     Includes content hash to prevent different errors with the same rule_id
@@ -175,7 +177,7 @@ def _consistency_key(error_str: str) -> tuple:
     return (rule_id, location, content_hash)
 
 
-def _consistency_finding(error_str: str, severity: str) -> dict:
+def _consistency_finding(error_str: str, severity: str) -> dict[str, str]:
     """Build a Finding dict from a consistency check error/warning string."""
     return {
         "rule_id": _extract_rule_id(error_str),
@@ -187,7 +189,7 @@ def _consistency_finding(error_str: str, severity: str) -> dict:
     }
 
 
-def adapt_consistency_check(raw: dict) -> list[dict]:
+def adapt_consistency_check(raw: dict[str, Any]) -> list[dict[str, str]]:
     """Convert consistency check output to Finding dicts.
 
     Input format: {errors: [str], warnings: [str], checks: [{name, errors, warnings, passed}]}
@@ -201,7 +203,7 @@ def adapt_consistency_check(raw: dict) -> list[dict]:
     findings = []
     seen = set()  # Track _consistency_key tuples to avoid duplicates
 
-    def _add(error_str: str, severity: str):
+    def _add(error_str: str, severity: str) -> None:
         key = _consistency_key(error_str)
         if key not in seen:
             seen.add(key)
@@ -242,7 +244,7 @@ def _extract_location(text: str) -> str:
     return ""
 
 
-def adapt_error_patterns(lines: list[dict]) -> list[dict]:
+def adapt_error_patterns(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Convert registry.jsonl entries to Finding dicts.
 
     Input: list of dicts from JSONL lines with fields:
@@ -271,7 +273,7 @@ def adapt_error_patterns(lines: list[dict]) -> list[dict]:
     return findings
 
 
-def adapt_audit_layout(raw: dict) -> list[dict]:
+def adapt_audit_layout(raw: dict[str, Any]) -> list[dict[str, str]]:
     """Convert audit layout output to Finding dicts.
 
     Input format: parsed JSON object {violations: [{type, severity, file, detail}]}
@@ -292,7 +294,7 @@ def adapt_audit_layout(raw: dict) -> list[dict]:
     return findings
 
 
-def adapt_validate_project(raw: dict) -> list[dict]:
+def adapt_validate_project(raw: dict[str, Any]) -> list[dict[str, str]]:
     """Convert validate project output to Finding dicts.
 
     Input format: parsed JSON object {violations: [{type, severity, file, detail}]}
@@ -313,7 +315,7 @@ def adapt_validate_project(raw: dict) -> list[dict]:
     return findings
 
 
-def adapt_evolution_self_audit(raw: dict | list) -> list[dict]:
+def adapt_evolution_self_audit(raw: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Convert evolution self-audit output to Finding dicts.
 
     Input format: parsed JSON (list of finding dicts or {findings: [...]})
@@ -366,7 +368,7 @@ TOOL_TO_CATEGORIES = {
 }
 
 
-def quarantine_corrupted_file(history_path) -> None:
+def quarantine_corrupted_file(history_path: Path) -> None:
     """Rename corrupted history file to quarantine path with timestamp."""
     from datetime import datetime, timezone
     if not history_path.exists():

@@ -8,6 +8,7 @@ import sys
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -37,9 +38,10 @@ class Finding:
     evidence: str
 
 
-def load_config(repo_root: Path) -> dict:
+def load_config(repo_root: Path) -> dict[str, Any]:
     with open(repo_root / ".evolution" / "config.yml") as f:
-        return yaml.safe_load(f)
+        config_data: dict[str, Any] = yaml.safe_load(f)
+        return config_data
 
 
 def check_kill_switch(repo_root: Path) -> bool:
@@ -67,7 +69,7 @@ def ensure_labels(dedup_label: str, failure_label: str) -> None:
             print(f"[evolution] Warning: ensure_labels failed for '{name}': {e}")
 
 
-def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict] | None:
+def run_audit_tool(tool: dict[str, Any], repo_root: Path | None = None) -> list[dict[str, Any]] | None:
     """Run an audit tool and return findings, or None on failure.
 
     Returns None on failure (exception, missing source file, empty stdout, JSON
@@ -94,8 +96,11 @@ def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict] | No
             if not lines:
                 print(f"[evolution] Warning: {tool['name']} all JSONL lines malformed, treating as tool failure")
                 return None
-            adapter = ADAPTER_MAP.get(tool["name"])
-            return adapter(lines) if adapter else lines
+            adapter: Any = ADAPTER_MAP.get(tool["name"])
+            if adapter:
+                jsonl_result_data: list[dict[str, Any]] = adapter(lines)
+                return jsonl_result_data
+            return lines
         # P2-B: Strip GitHub tokens from audit subprocess environment.
         # Audit tools do not need gh access; leaking DISPATCH_TOKEN expands trust boundary.
         safe_env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}
@@ -113,8 +118,11 @@ def run_audit_tool(tool: dict, repo_root: Path | None = None) -> list[dict] | No
         except json.JSONDecodeError as e:
             print(f"[evolution] Warning: {tool['name']} JSON decode failed: {e}")
             return None
-        adapter = ADAPTER_MAP.get(tool["name"])
-        return adapter(raw) if adapter else (raw if isinstance(raw, list) else [raw])
+        adapter2: Any = ADAPTER_MAP.get(tool["name"])
+        if adapter2:
+            raw_result_data: list[dict[str, Any]] = adapter2(raw)
+            return raw_result_data
+        return (raw if isinstance(raw, list) else [raw])
     except Exception as e:
         print(f"[evolution] Warning: {tool['name']} crashed: {e}")
         return None
@@ -125,7 +133,7 @@ def _valid_severity(sev: str) -> str:
     return sev if sev in ("critical", "warning", "info") else "info"
 
 
-def normalize_finding(raw: dict) -> Finding:
+def normalize_finding(raw: dict[str, Any]) -> Finding:
     """Convert raw audit output dict to a sanitized Finding. Null-safe."""
     sev = _valid_severity(str(raw.get("severity") or "info"))
     rule_id = sanitize_structured_field(str(raw.get("rule_id") or "UNKNOWN"))
@@ -148,7 +156,7 @@ def normalize_finding(raw: dict) -> Finding:
 ISOLATION_MIN_AGE_DAYS = 7
 
 
-def load_suppressions(repo_root: Path) -> list[dict]:
+def load_suppressions(repo_root: Path) -> list[dict[str, Any]]:
     """Load suppression list from .evolution/suppress.json.
 
     Returns empty list when file is missing or empty (non-blocking).
@@ -169,21 +177,21 @@ def load_suppressions(repo_root: Path) -> list[dict]:
         return []
 
 
-def _matches_suppression(finding: Finding, entry: dict) -> bool:
+def _matches_suppression(finding: Finding, entry: dict[str, Any]) -> bool:
     """Check if a finding matches a suppression entry. Supports '*' wildcard."""
     rule_match = entry.get("rule_id", "") in ("*", finding.rule_id)
     loc_match = entry.get("location", "") in ("*", finding.location)
     return rule_match and loc_match
 
 
-def apply_suppressions(findings: list[Finding], suppressions: list[dict]) -> list[Finding]:
+def apply_suppressions(findings: list[Finding], suppressions: list[dict[str, Any]]) -> list[Finding]:
     """Filter out findings that match any suppression entry."""
     if not suppressions:
         return findings
     return [f for f in findings if not any(_matches_suppression(f, s) for s in suppressions)]
 
 
-def _query_issues(search: str, state: str, limit: int) -> list[dict]:
+def _query_issues(search: str, state: str, limit: int) -> list[dict[str, Any]]:
     """Query GitHub issues with given state and limit. Returns parsed list or raises on failure."""
     result = subprocess.run(["gh", "issue", "list", "--search", search,
                               "--state", state, "--limit", str(limit), "--json", "title,body,number"],
@@ -199,7 +207,7 @@ def _query_issues(search: str, state: str, limit: int) -> list[dict]:
     return json.loads(result.stdout) if result.stdout.strip() else []
 
 
-def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated") -> list[dict]:
+def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated") -> list[dict[str, Any]]:
     # Build search query: match dedup_label AND failure_label (isolated issues count as open)
     search = f"label:{dedup_label},{failure_label}"
     # GAP-C2: Query BOTH open and closed issues to prevent re-creating recently closed issues
@@ -214,7 +222,7 @@ def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated")
         raise RuntimeError(f"Failed to fetch issues: {e}") from None
 
 
-def deduplicate(findings: list[Finding], open_issues: list[dict]) -> list[Finding]:
+def deduplicate(findings: list[Finding], open_issues: list[dict[str, Any]]) -> list[Finding]:
     issue_keys = {(i["rule_id"], i["location"]) for i in open_issues}
     return [f for f in findings if (f.rule_id, f.location) not in issue_keys]
 
