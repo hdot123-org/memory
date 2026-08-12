@@ -6,7 +6,7 @@ import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -24,6 +24,7 @@ from evolution_adapters import (
 )
 from evolution_scanner import (
     Finding,
+    _reopen_closed_issue,
     check_isolation,
     check_kill_switch,
     create_issue,
@@ -6231,3 +6232,561 @@ def test_check_reverse_closure_no_closed_issues():
         findings = evolution_self_audit.check_reverse_closure()
         assert findings == []
         mock_post.assert_not_called()  # No Linear API calls if no closed GitHub issues
+
+
+# ============================================================================
+# VAL-REOPEN: Reopen Mechanism Tests
+# ============================================================================
+
+
+def test_reopen_happy_path(tmp_path):
+    """VAL-REOPEN-001: Closed issue with matching (rule_id, location) is reopened."""
+    history_path = tmp_path / "history.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file.md",
+                "resolved_at": "2026-01-01T00:00:00Z",
+                "reopen_count": 0
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    closed_issues = [
+        {
+            "number": 42,
+            "title": "[evolution] RULE_001",
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+        }
+    ]
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
+            Mock(returncode=0, stdout="", stderr="")  # gh issue reopen
+        ]
+
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+
+        assert result is True, "Should successfully reopen matching closed issue"
+        assert mock_run.call_count == 2
+
+        # Verify gh issue list was called with --state closed
+        list_call = mock_run.call_args_list[0]
+        assert "gh" in list_call[0][0]
+        assert "issue" in list_call[0][0]
+        assert "list" in list_call[0][0]
+        assert "--state" in list_call[0][0]
+        state_idx = list_call[0][0].index("--state")
+        assert list_call[0][0][state_idx + 1] == "closed"
+
+        # Verify gh issue reopen was called
+        reopen_call = mock_run.call_args_list[1]
+        assert "gh" in reopen_call[0][0]
+        assert "issue" in reopen_call[0][0]
+        assert "reopen" in reopen_call[0][0]
+        assert "42" in reopen_call[0][0]
+
+    # Verify reopen_count was incremented
+    updated_data = json.loads(history_path.read_text())
+    assert updated_data["resolved_findings"][0]["reopen_count"] == 1
+
+
+def test_reopen_no_match(tmp_path):
+    """VAL-REOPEN-002: No closed issue match → returns False."""
+    history_path = tmp_path / "history.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file.md",
+                "resolved_at": "2026-01-01T00:00:00Z",
+                "reopen_count": 0
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    # No closed issues
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = Mock(returncode=0, stdout="[]", stderr="")
+
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+
+        assert result is False, "Should return False when no closed issue matches"
+        assert mock_run.call_count == 1  # Only gh issue list called
+
+
+def test_reopen_limit_reached(tmp_path):
+    """VAL-REOPEN-003: reopen_count >= 3 → returns False, does not reopen."""
+    history_path = tmp_path / "history.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file.md",
+                "resolved_at": "2026-01-01T00:00:00Z",
+                "reopen_count": 3  # Already at limit
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    closed_issues = [
+        {
+            "number": 42,
+            "title": "[evolution] RULE_001",
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+        }
+    ]
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = Mock(returncode=0, stdout=json.dumps(closed_issues), stderr="")
+
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+
+        assert result is False, "Should return False when reopen_count >= 3"
+        assert mock_run.call_count == 0, "Should not call gh when limit reached"
+
+    # Verify reopen_count was NOT incremented
+    updated_data = json.loads(history_path.read_text())
+    assert updated_data["resolved_findings"][0]["reopen_count"] == 3
+
+
+def test_reopen_counter_increments(tmp_path):
+    """VAL-REOPEN-004: reopen_count increments from 0 to 1, then 1 to 2, etc."""
+    history_path = tmp_path / "history.json"
+
+    # Start with reopen_count = 0
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file.md",
+                "resolved_at": "2026-01-01T00:00:00Z",
+                "reopen_count": 0
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    closed_issues = [
+        {
+            "number": 42,
+            "title": "[evolution] RULE_001",
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+        }
+    ]
+
+    # First reopen
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
+            Mock(returncode=0, stdout="", stderr="")
+        ]
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+        assert result is True
+
+    updated_data = json.loads(history_path.read_text())
+    assert updated_data["resolved_findings"][0]["reopen_count"] == 1
+
+    # Second reopen
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
+            Mock(returncode=0, stdout="", stderr="")
+        ]
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+        assert result is True
+
+    updated_data = json.loads(history_path.read_text())
+    assert updated_data["resolved_findings"][0]["reopen_count"] == 2
+
+
+def test_severity_upgrade_preserved(tmp_path):
+    """VAL-REOPEN-005: detect_regressions still upgrades severity to critical for resolved findings."""
+    history_path = tmp_path / "history.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file.md",
+                "resolved_at": "2026-01-01T00:00:00Z"
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    findings = [
+        Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")
+    ]
+
+    upgraded = detect_regressions(findings, history_path)
+
+    assert len(upgraded) == 1
+    assert upgraded[0].severity == "critical", "Severity should be upgraded to critical"
+    assert upgraded[0].rule_id == "RULE_001"
+
+
+def test_no_mutation_of_input_findings(tmp_path):
+    """VAL-REOPEN-006: detect_regressions does not mutate input findings."""
+    history_path = tmp_path / "history.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file.md",
+                "resolved_at": "2026-01-01T00:00:00Z"
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    original_findings = [
+        Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")
+    ]
+
+    # Keep reference to original
+    original_severity = original_findings[0].severity
+    assert original_severity == "warning"
+
+    upgraded = detect_regressions(original_findings, history_path)
+
+    # Original should not be mutated
+    assert original_findings[0].severity == "warning", "Original finding should not be mutated"
+    assert upgraded[0].severity == "critical", "Upgraded finding should be critical"
+    assert original_findings[0] is not upgraded[0], "Should be different objects"
+
+
+def test_multiple_findings_independent(tmp_path):
+    """VAL-REOPEN-007: Multiple resolved findings are handled independently."""
+    history_path = tmp_path / "history.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file1.md",
+                "resolved_at": "2026-01-01T00:00:00Z"
+            },
+            {
+                "rule_id": "RULE_002",
+                "location": "file2.md",
+                "resolved_at": "2026-01-01T00:00:00Z"
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    findings = [
+        Finding("RULE_001", "warning", "test", "Test 1", "file1.md", "evidence"),
+        Finding("RULE_002", "info", "test", "Test 2", "file2.md", "evidence"),
+        Finding("RULE_003", "warning", "test", "Test 3", "file3.md", "evidence")
+    ]
+
+    upgraded = detect_regressions(findings, history_path)
+
+    # RULE_001 and RULE_002 should be upgraded (both in resolved_findings)
+    rule_001 = next(f for f in upgraded if f.rule_id == "RULE_001")
+    rule_002 = next(f for f in upgraded if f.rule_id == "RULE_002")
+    rule_003 = next(f for f in upgraded if f.rule_id == "RULE_003")
+
+    assert rule_001.severity == "critical"
+    assert rule_002.severity == "critical"
+    assert rule_003.severity == "warning", "RULE_003 not in resolved_findings, should stay warning"
+
+
+def test_reopen_searches_closed_only(tmp_path):
+    """VAL-REOPEN-008: _reopen_closed_issue searches only closed issues."""
+    history_path = tmp_path / "history.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file.md",
+                "resolved_at": "2026-01-01T00:00:00Z",
+                "reopen_count": 0
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = Mock(returncode=0, stdout="[]", stderr="")
+
+        _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+
+        # Verify gh issue list was called
+        assert mock_run.call_count == 1
+        call_args = mock_run.call_args[0][0]
+
+        # Verify --state closed is in the command
+        assert "--state" in call_args
+        state_idx = call_args.index("--state")
+        assert call_args[state_idx + 1] == "closed", "Should search only closed issues"
+
+
+def test_reopen_comment_format(tmp_path):
+    """VAL-REOPEN-009: Reopen comment contains regression context."""
+    history_path = tmp_path / "history.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file.md",
+                "resolved_at": "2026-01-01T00:00:00Z",
+                "reopen_count": 1
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    closed_issues = [
+        {
+            "number": 42,
+            "title": "[evolution] RULE_001",
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+        }
+    ]
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
+            Mock(returncode=0, stdout="", stderr="")
+        ]
+
+        _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+
+        # Verify gh issue reopen was called with comment
+        assert mock_run.call_count == 2
+        reopen_call = mock_run.call_args_list[1]
+        args = reopen_call[0][0]
+
+        # Find --comment in args
+        assert "--comment" in args
+        comment_idx = args.index("--comment")
+        comment = args[comment_idx + 1]
+
+        # Verify comment contains regression context
+        assert "回归" in comment or "regression" in comment.lower()
+        assert "RULE_001" in comment
+        assert "file.md" in comment
+        assert "第 2 次" in comment  # reopen_count was 1, so this is the 2nd reopen
+
+
+def test_reopen_skips_create_issue(tmp_path):
+    """VAL-REOPEN-010: When reopen succeeds, create_issue is not called."""
+    history_path = tmp_path / "history.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file.md",
+                "resolved_at": "2026-01-01T00:00:00Z",
+                "reopen_count": 0
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    closed_issues = [
+        {
+            "number": 42,
+            "title": "[evolution] RULE_001",
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+        }
+    ]
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),  # gh issue list
+            Mock(returncode=0, stdout="", stderr="")  # gh issue reopen
+        ]
+
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+
+        assert result is True
+        assert mock_run.call_count == 2
+
+        # Verify only list and reopen were called, not create
+        for call in mock_run.call_args_list:
+            args = call[0][0]
+            assert "create" not in args, "create_issue should not be called when reopen succeeds"
+
+
+def test_reopen_malformed_body_skipped(tmp_path):
+    """VAL-REOPEN-011: Malformed issue body is skipped gracefully."""
+    history_path = tmp_path / "history.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file.md",
+                "resolved_at": "2026-01-01T00:00:00Z",
+                "reopen_count": 0
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    closed_issues = [
+        {
+            "number": 41,
+            "title": "[evolution] MALFORMED",
+            "body": "This is a malformed body without proper fields"
+        },
+        {
+            "number": 42,
+            "title": "[evolution] RULE_001",
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+        }
+    ]
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
+            Mock(returncode=0, stdout="", stderr="")
+        ]
+
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+
+        assert result is True, "Should skip malformed issue and find the valid one"
+        assert mock_run.call_count == 2
+
+        # Verify the correct issue was reopened (42, not 41)
+        reopen_call = mock_run.call_args_list[1]
+        assert "42" in reopen_call[0][0]
+
+
+def test_reopen_missing_count_defaults_to_zero(tmp_path):
+    """VAL-REOPEN-012: Missing reopen_count field defaults to 0 (backward compat)."""
+    history_path = tmp_path / "history.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file.md",
+                "resolved_at": "2026-01-01T00:00:00Z"
+                # Note: no reopen_count field
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    closed_issues = [
+        {
+            "number": 42,
+            "title": "[evolution] RULE_001",
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+        }
+    ]
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
+            Mock(returncode=0, stdout="", stderr="")
+        ]
+
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+
+        assert result is True, "Should handle missing reopen_count gracefully"
+
+    # Verify reopen_count was set to 1 (from default 0)
+    updated_data = json.loads(history_path.read_text())
+    assert updated_data["resolved_findings"][0]["reopen_count"] == 1
+
+
+def test_reopen_gh_list_failure(tmp_path):
+    """VAL-REOPEN-013: gh issue list failure returns False."""
+    history_path = tmp_path / "history.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file.md",
+                "resolved_at": "2026-01-01T00:00:00Z",
+                "reopen_count": 0
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        # gh issue list fails
+        mock_run.return_value = Mock(returncode=1, stdout="", stderr="rate limit exceeded")
+
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+
+        assert result is False, "Should return False when gh issue list fails"
+        assert mock_run.call_count == 1
+
+    # Verify reopen_count was NOT incremented
+    updated_data = json.loads(history_path.read_text())
+    assert updated_data["resolved_findings"][0]["reopen_count"] == 0
+
+
+def test_reopen_multiple_matches_deterministic(tmp_path):
+    """VAL-REOPEN-014: Multiple matching closed issues - first match is reopened."""
+    history_path = tmp_path / "history.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_001",
+                "location": "file.md",
+                "resolved_at": "2026-01-01T00:00:00Z",
+                "reopen_count": 0
+            }
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    # Multiple issues match the same (rule_id, location)
+    closed_issues = [
+        {
+            "number": 41,
+            "title": "[evolution] RULE_001",
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+        },
+        {
+            "number": 42,
+            "title": "[evolution] RULE_001",
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+        },
+        {
+            "number": 43,
+            "title": "[evolution] RULE_001",
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+        }
+    ]
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
+            Mock(returncode=0, stdout="", stderr="")
+        ]
+
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+
+        assert result is True
+        assert mock_run.call_count == 2
+
+        # Verify only the first matching issue (41) was reopened
+        reopen_call = mock_run.call_args_list[1]
+        assert "41" in reopen_call[0][0]
+        assert "42" not in reopen_call[0][0]
+        assert "43" not in reopen_call[0][0]
