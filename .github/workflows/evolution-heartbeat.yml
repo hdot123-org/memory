@@ -23,7 +23,7 @@ jobs:
       - name: Install package
         run: pip install -e .
       - name: Cache evolution history
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .evolution/findings_over_time.json
