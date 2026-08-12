@@ -66,6 +66,10 @@ jobs:
         run: python scripts/evolution_scanner.py
         env:
           GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+          # LINEAR_API_KEY enables Linear issue state verification in auto_close_resolved.
+          # Without it, the scanner cannot verify Linear terminal state and will
+          # fail-closed (block close) for Linear-linked issues to prevent churn.
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           # P1-A: Prevent module poisoning — blocks automatic insertion of scripts/ into sys.path.
           # The scanner explicitly re-adds its own directory via sys.path.insert.
           PYTHONSAFEPATH: '1'

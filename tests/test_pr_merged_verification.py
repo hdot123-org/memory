@@ -31,12 +31,18 @@ def _mock_urlopen(response_data: dict):
     return mock_resp
 
 
-def _linear_issue_response(linear_id: str, attachments: list[dict] = None) -> dict:
-    """Build a Linear API response with issue and attachments."""
+def _linear_issue_response(linear_id: str, attachments: list[dict] = None,
+                           state_type: str = "completed") -> dict:
+    """Build a Linear API response with issue, state, and attachments."""
     return {
         "data": {
             "issue": {
                 "id": linear_id,
+                "state": {
+                    "id": "state-1",
+                    "name": "Done",
+                    "type": state_type,
+                },
                 "attachments": {
                     "nodes": attachments or []
                 }
@@ -154,16 +160,12 @@ class TestVALCLOSE022:
         assert result is True  # backward compat
 
     def test_extra_whitespace_variations(self):
-        """VAL-CLOSE-022: Extra whitespace but valid INFRA-123 still extracted."""
-        # With extra spaces but still valid
+        """VAL-CLOSE-022: Extra whitespace but valid INFRA-42 still extracted."""
         issue_body = "<!--  linear-linkback  INFRA-42  -->"
-        result = _verify_fix_merged_via_linear(issue_body)
-        # This IS a valid match since regex allows flexible whitespace
-        # but the function will try to query Linear - mock it
+        # Without API key + linkback present -> fail-closed (returns False)
         with patch.dict(os.environ, {}, clear=True):
-            # No API key -> fail-open
             result = _verify_fix_merged_via_linear(issue_body)
-            assert result is True  # fail-open due to missing key
+            assert result is False  # fail-closed due to missing key
 
 
 # ---------------------------------------------------------------------------
@@ -237,18 +239,31 @@ class TestVALCLOSE005:
 
 
 # ---------------------------------------------------------------------------
-# VAL-CLOSE-020: LINEAR_API_KEY missing -> fail-open close
+# VAL-CLOSE-020: LINEAR_API_KEY missing -> fail-closed for Linear-linked issues
 # ---------------------------------------------------------------------------
 
 class TestVALCLOSE020:
-    """LINEAR_API_KEY missing -> fail-open close."""
+    """LINEAR_API_KEY missing -> fail-closed for linked issues (prevents churn).
+
+    When a Linear linkback IS present but the API key is missing, we must NOT
+    close — the Linear native GitHub integration would reopen the issue,
+    causing infinite close/reopen churn. This is the core fix for the
+    #454/#456/#457 churn loop.
+    """
 
     @patch.dict(os.environ, {}, clear=True)
-    def test_missing_api_key_returns_true(self):
-        """VAL-CLOSE-020: LINEAR_API_KEY not set -> returns True (fail-open)."""
+    def test_missing_api_key_with_linkback_returns_false(self):
+        """VAL-CLOSE-020: LINEAR_API_KEY not set + linkback present -> returns False (fail-closed)."""
         issue_body = "<!-- linear-linkback INFRA-123 -->"
         result = _verify_fix_merged_via_linear(issue_body)
-        assert result is True
+        assert result is False  # fail-closed — prevent Linear reopen churn
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_missing_api_key_without_linkback_returns_true(self):
+        """VAL-CLOSE-020: LINEAR_API_KEY not set + no linkback -> returns True (environmental)."""
+        issue_body = "**Rule ID**: RULE_001\n**Location**: file.py"
+        result = _verify_fix_merged_via_linear(issue_body)
+        assert result is True  # backward compat for environmental findings
 
 
 # ---------------------------------------------------------------------------
@@ -944,6 +959,7 @@ class TestVALCLOSE017:
                     ]
                 },
                 {"findings": []},
+                {"findings": []},
                 {"findings": []}
             ],
             "resolved_findings": []
@@ -956,6 +972,7 @@ class TestVALCLOSE017:
                 "data": {
                     "issue": {
                         "id": "test",
+                        "state": {"id": "s1", "name": "Done", "type": "completed"},
                         "attachments": {"nodes": [{"id": "att", "url": "https://github.com/o/r/pull/99", "attachmentType": "github", "metadata": {}}]}
                     }
                 }
@@ -968,17 +985,19 @@ class TestVALCLOSE017:
         mock_urlopen.side_effect = urlopen_side_effect
 
         # Setup subprocess mocks - order matters!
-        # The close call happens AFTER _verify_fix_merged_via_linear returns True
-        # So the actual order is:
+        # Issues #101 and #103 have linkback in body → comment fetch SKIPPED
+        # Issue #102 has no linkback → comment fetch happens
         # 1. gh issue list
         # 2. gh pr view 99 (for #101) - merged -> verify returns True
-        # 3. gh issue close 101 (immediately after verify returns True)
-        # 4. gh issue close 102 (no linkback, no verify call)
-        # 5. gh pr view 99 (for #103) - unmerged -> verify returns False
+        # 3. gh issue close 101
+        # 4. comment fetch for #102 (no linkback in body)
+        # 5. gh issue close 102
+        # 6. gh pr view 99 (for #103) - unmerged -> verify returns False
         mock_subprocess.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),  # gh issue list
             MagicMock(returncode=0, stdout=json.dumps({"mergedAt": "2024-01-01"}), stderr=""),  # gh pr view 99 for #101
             MagicMock(returncode=0, stdout="", stderr=""),  # gh issue close 101
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment fetch for #102
             MagicMock(returncode=0, stdout="", stderr=""),  # gh issue close 102
             MagicMock(returncode=0, stdout=json.dumps({"mergedAt": None}), stderr=""),  # gh pr view 99 for #103
         ]
@@ -1024,6 +1043,7 @@ class TestVALCLOSE019:
             "snapshots": [
                 {"findings": [{"rule_id": "RULE_001", "location": "test/file.py"}]},
                 {"findings": []},
+                {"findings": []},
                 {"findings": []}
             ],
             "resolved_findings": []
@@ -1039,6 +1059,10 @@ class TestVALCLOSE019:
         mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
 
         # Setup subprocess mocks
+        # Issue #101 has linkback in body → comment fetch SKIPPED
+        # 1. gh issue list
+        # 2. gh pr view (merged)
+        # 3. gh issue close
         mock_subprocess.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),  # gh issue list
             MagicMock(returncode=0, stdout=json.dumps({"mergedAt": "2024-01-01"}), stderr=""),  # gh pr view
@@ -1065,3 +1089,150 @@ class TestVALCLOSE019:
         assert "RULE_001" in comment_text
         assert "test/file.py" in comment_text
         assert "最近一次扫描" in comment_text
+
+
+# ---------------------------------------------------------------------------
+# VAL-CLOSE-026: Linkback found in comments (not body) — Linear integration writes it there
+# ---------------------------------------------------------------------------
+
+class TestVALCLOSE026:
+    """Linear linkback found in issue comments (not body)."""
+
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.subprocess.run")
+    @patch("evolution_utils.urllib.request.urlopen")
+    def test_linkback_in_comments_detected(self, mock_urlopen, mock_subprocess):
+        """VAL-CLOSE-026: Linkback in comments -> Linear API queried with correct ID."""
+        issue_body = "**Rule ID**: RULE_001\n**Location**: file.py"
+
+        # Mock gh issue view to return comments with linkback
+        def subprocess_side_effect(*args, **kwargs):
+            cmd = args[0]
+            if "view" in cmd and "comments" in cmd:
+                return MagicMock(returncode=0, stdout="Some comment\n<!-- linear-linkback INFRA-500 -->", stderr="")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        mock_subprocess.side_effect = subprocess_side_effect
+
+        response = _linear_issue_response("INFRA-500", [
+            _github_attachment(300)
+        ])
+        mock_urlopen.return_value.__enter__ = MagicMock(
+            return_value=_mock_urlopen(response)
+        )
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = _verify_fix_merged_via_linear(issue_body, issue_number=42)
+
+        # Should have queried Linear API (linkback found in comments)
+        assert mock_urlopen.called
+        req = mock_urlopen.call_args[0][0]
+        body = json.loads(req.data.decode())
+        assert body["variables"]["id"] == "INFRA-500"
+
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.subprocess.run")
+    @patch("evolution_utils.urllib.request.urlopen")
+    def test_no_issue_number_no_comment_search(self, mock_urlopen, mock_subprocess):
+        """VAL-CLOSE-026: Without issue_number, comments NOT searched (backward compat)."""
+        issue_body = "**Rule ID**: RULE_001\n**Location**: file.py"
+
+        # gh issue view should NOT be called for comments
+        result = _verify_fix_merged_via_linear(issue_body)  # no issue_number
+
+        assert result is True  # no linkback in body, no comment search
+        assert not mock_urlopen.called
+
+
+# ---------------------------------------------------------------------------
+# VAL-CLOSE-027: Linear issue NOT in terminal state -> block close
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.subprocess.run")
+    @patch("evolution_utils.urllib.request.urlopen")
+    def test_linkback_in_body_skips_comment_fetch(self, mock_urlopen, mock_subprocess):
+        """VAL-CLOSE-026: Linkback in body → comment fetch NOT called (optimization)."""
+        issue_body = "**Rule ID**: RULE_001\n<!-- linear-linkback INFRA-400 -->"
+
+        response = _linear_issue_response("INFRA-400", [])
+        mock_urlopen.return_value.__enter__ = MagicMock(
+            return_value=_mock_urlopen(response)
+        )
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = _verify_fix_merged_via_linear(issue_body, issue_number=42)
+
+        # No PR attachments → returns False, but the important check is:
+        # gh issue view (comment fetch) should NOT have been called at all
+        comment_fetch_calls = [
+            c for c in mock_subprocess.call_args_list
+            if c[0] and "view" in c[0][0] and "comments" in c[0][0]
+        ]
+        assert len(comment_fetch_calls) == 0
+
+
+# ---------------------------------------------------------------------------
+
+class TestVALCLOSE027:
+    """Linear issue in non-terminal state -> block close (churn prevention).
+
+    This is the core gate that prevents the close/reopen churn loop.
+    When Linear issue is "In Progress" or "In Review", closing the GitHub
+    issue causes the Linear native GitHub integration to reopen it.
+    """
+
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.urllib.request.urlopen")
+    @patch("evolution_utils.subprocess.run")
+    def test_non_terminal_state_blocks_close(self, mock_subprocess, mock_urlopen):
+        """VAL-CLOSE-027: Linear state 'started' (In Progress) -> returns False."""
+        response = _linear_issue_response("INFRA-123", [
+            _github_attachment(523)
+        ], state_type="started")  # Non-terminal!
+        mock_urlopen.return_value.__enter__ = MagicMock(
+            return_value=_mock_urlopen(response)
+        )
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_subprocess.return_value = _mock_gh_pr_merged(523)
+
+        issue_body = "<!-- linear-linkback INFRA-123 -->"
+        result = _verify_fix_merged_via_linear(issue_body)
+        assert result is False  # Non-terminal state blocks close
+
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.urllib.request.urlopen")
+    @patch("evolution_utils.subprocess.run")
+    def test_canceled_state_allows_close(self, mock_subprocess, mock_urlopen):
+        """VAL-CLOSE-027: Linear state 'canceled' -> returns True (terminal)."""
+        response = _linear_issue_response("INFRA-123", [
+            _github_attachment(523)
+        ], state_type="canceled")
+        mock_urlopen.return_value.__enter__ = MagicMock(
+            return_value=_mock_urlopen(response)
+        )
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_subprocess.return_value = _mock_gh_pr_merged(523)
+
+        issue_body = "<!-- linear-linkback INFRA-123 -->"
+        result = _verify_fix_merged_via_linear(issue_body)
+        assert result is True  # Canceled is terminal
+
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.urllib.request.urlopen")
+    @patch("evolution_utils.subprocess.run")
+    def test_non_terminal_no_pr_check(self, mock_subprocess, mock_urlopen):
+        """VAL-CLOSE-027: Non-terminal state -> PR merge NOT checked (short-circuit)."""
+        response = _linear_issue_response("INFRA-123", [
+            _github_attachment(523)
+        ], state_type="started")  # Non-terminal!
+        mock_urlopen.return_value.__enter__ = MagicMock(
+            return_value=_mock_urlopen(response)
+        )
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        issue_body = "<!-- linear-linkback INFRA-123 -->"
+        _verify_fix_merged_via_linear(issue_body)
+
+        # gh pr view should NOT be called (short-circuited by state check)
+        assert not mock_subprocess.called

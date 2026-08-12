@@ -17,7 +17,8 @@ _SEV_RANK = {"critical": 3, "warning": 2, "info": 1}
 # GAP-C3: Grace period for auto-close
 # A finding must be absent for this many consecutive ticks before its issue is closed.
 # Prevents false closures from transient adapter failures.
-GRACE_PERIOD_TICKS = 2
+# Increased from 2→3 (2026-08-13): 2 ticks is marginal for transient adapter failures.
+GRACE_PERIOD_TICKS = 3
 
 # Self-audit findings (e.g., heartbeat staleness) are transient health signals,
 # not code defects. They resolve when the scanner recovers, not when code is
@@ -250,37 +251,83 @@ def _count_consecutive_absences(rule_id: str, location: str, history_path: Path)
 logger = logging.getLogger(__name__)
 
 
-def _verify_fix_merged_via_linear(issue_body: str) -> bool:
+def _extract_linear_linkback(issue_body: str, issue_comments: str = "") -> str | None:
+    """Extract INFRA-xxx ID from linear-linkback in issue body or comments.
+
+    Linear native GitHub integration writes the linkback as an HTML comment,
+    but it appears in issue COMMENTS, not the body. This function searches
+    both sources.
+
+    Returns:
+        The INFRA-xxx identifier, or None if not found.
+    """
+    pattern = r'<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->'
+    body_match = re.search(pattern, issue_body)
+    if body_match:
+        return body_match.group(1)
+    comment_match = re.search(pattern, issue_comments)
+    if comment_match:
+        return comment_match.group(1)
+    return None
+
+
+def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = None) -> bool:
     """Verify that the fix for this issue has been merged via Linear API.
 
-    Extracts INFRA-xxx ID from linear-linkback HTML comment in issue body,
-    queries Linear GraphQL API for GitHub PR attachments, and checks if any
-    PR has been merged (mergedAt != null).
+    Extracts INFRA-xxx ID from linear-linkback HTML comment in issue body or
+    comments, queries Linear GraphQL API for issue state and GitHub PR
+    attachments, and checks if any PR has been merged (mergedAt != null).
 
     Args:
         issue_body: GitHub Issue body text
+        issue_number: Issue number. When provided, fetches issue comments to
+            search for linear-linkback (Linear integration writes it in
+            comments, not the body).
 
     Returns:
-        True if a merged PR is verified or on any error (fail-open behavior).
-        Returns False only when PR exists but is not merged.
-        On any error (API failure, missing key, malformed linkback), returns True
-        and logs a warning (fail-open behavior).
-    """
-    # Extract INFRA-xxx from linear-linkback comment
-    # Pattern: <!-- linear-linkback INFRA-123 -->
-    linkback_match = re.search(r'<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->', issue_body)
-    if not linkback_match:
-        # No linkback found - backward compat: caller should close without verification
-        logger.debug("No linear-linkback found in issue body")
-        return True  # Return True to allow close (backward compat)
+        True if a merged PR is verified or if no Linear linkback exists
+        (backward compat for environmental findings — allow close).
 
-    linear_id = linkback_match.group(1)
+        Returns False (block close) when:
+        - Linear linkback found but issue is NOT in a terminal state
+          (prevents churn from Linear native GitHub integration reopening)
+        - Linear linkback found but PR is not merged
+        - LINEAR_API_KEY missing (fail-closed: closing a Linear-linked issue
+          without verification triggers reopen churn)
+    """
+    # Fetch issue comments to search for linkback, but ONLY if the body
+    # doesn't already contain a linkback. Linear integration sometimes writes
+    # the linkback in comments instead of the body.
+    body_match = re.search(r'<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->', issue_body)
+    issue_comments = ""
+    if body_match is None and issue_number is not None:
+        try:
+            comment_result = subprocess.run(
+                ["gh", "issue", "view", str(issue_number),
+                 "--json", "comments", "--jq", ".comments[].body"],
+                capture_output=True, text=True, timeout=30
+            )
+            if comment_result.returncode == 0:
+                issue_comments = comment_result.stdout
+        except Exception as e:
+            logger.debug(f"Failed to fetch comments for issue #{issue_number}: {e}")
+
+    linear_id = _extract_linear_linkback(issue_body, issue_comments)
+    if not linear_id:
+        # No linkback found — environmental finding, allow close (backward compat)
+        logger.debug("No linear-linkback found in issue body or comments")
+        return True
 
     # Check if LINEAR_API_KEY is available
+    # Fail-CLOSED: if we can't verify Linear state, don't close — the Linear
+    # native GitHub integration will reopen it, causing infinite churn.
     api_key = os.environ.get("LINEAR_API_KEY")
     if not api_key:
-        logger.warning("LINEAR_API_KEY not set, fail-open: proceeding with close")
-        return True  # Fail-open
+        logger.warning(
+            f"LINEAR_API_KEY not set, fail-closed: blocking close for issue "
+            f"linked to {linear_id} to prevent Linear reopen churn"
+        )
+        return False
 
     # Query Linear GraphQL API for issue attachments
     try:
@@ -288,6 +335,11 @@ def _verify_fix_merged_via_linear(issue_body: str) -> bool:
         query($id: String!) {
           issue(id: $id) {
             id
+            state {
+              id
+              name
+              type
+            }
             attachments {
               nodes {
                 id
@@ -325,9 +377,20 @@ def _verify_fix_merged_via_linear(issue_body: str) -> bool:
         issue_data = response_data.get("data", {}).get("issue")
         if not issue_data:
             logger.warning(f"Linear issue {linear_id} not found")
-            return True  # Fail-open
+            return True  # Fail-open (Linear issue may have been deleted)
 
-        # Extract GitHub PR attachments
+        # Check Linear issue state FIRST — this is the key churn-prevention gate.
+        # If the Linear issue is NOT in a terminal state, closing the GitHub
+        # issue will cause the Linear native GitHub integration to reopen it.
+        state_type = issue_data.get("state", {}).get("type", "")
+        if state_type not in ("completed", "canceled"):
+            logger.info(
+                f"Linear issue {linear_id} state is '{state_type}' (not terminal), "
+                f"blocking close to prevent Linear reopen churn"
+            )
+            return False
+
+        # Linear issue is terminal — now verify a PR was actually merged
         attachments = issue_data.get("attachments", {}).get("nodes", [])
         github_prs = [
             att for att in attachments
@@ -482,7 +545,7 @@ def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set
 
             # VAL-CLOSE-001-024: Verify fix is merged via Linear before closing
             issue_body = issue.get("body", "")
-            if not _verify_fix_merged_via_linear(issue_body):
+            if not _verify_fix_merged_via_linear(issue_body, issue.get("number")):
                 logger.info(f"Skipping auto-close for issue #{issue['number']}: fix not verified as merged")
                 print(f"[evolution] Skip auto-close #{issue['number']}: fix not verified as merged via Linear")
                 continue
