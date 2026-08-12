@@ -23,9 +23,24 @@ if [ "$EVENT_NAME" != "pull_request" ]; then
 fi
 
 # Dependabot PRs cannot access FACTORY_API_KEY (GitHub secret restriction),
-# so droid-review always fails for them. Skip gracefully.
-# check_droid_review.sh doesn't have actor info, but droid-review workflow
-# will post a "skipped" conclusion which we handle below.
+# so droid-review cannot run for them. We check the PR author and allow
+# Dependabot PRs to merge when droid-review is skipped/neutral/failed.
+
+# Check if this commit belongs to a Dependabot PR.
+# Dependabot PRs cannot access FACTORY_API_KEY (GitHub secret restriction),
+# so droid-review cannot run for them.
+# Returns 0 (true) if Dependabot, 1 (false) otherwise.
+is_dependabot_pr() {
+  local pr_info pr_author
+  pr_info=$(curl -s -H "Authorization: token $GH_TOKEN" \
+    -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/${REPOSITORY}/commits/${COMMIT_SHA}/pulls")
+  pr_author=$(echo "$pr_info" | jq -r '.[0].user.login // ""')
+  if [ "$pr_author" = "dependabot[bot]" ]; then
+    return 0
+  fi
+  return 1
+}
 
 # Poll for droid-review completion
 for attempt in $(seq 1 $MAX_ATTEMPTS); do
@@ -39,9 +54,13 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
   # Extract the conclusion of the latest non-cancelled check run.
   # When dual triggers exist, two check runs are created and one is cancelled.
   # We must select the one that actually completed.
+  # Note: "skipped" is NOT excluded here — Dependabot PRs cause the droid-review
+  # job to be skipped (job-level if condition), and we need to see that conclusion
+  # to apply the Dependabot exception below. Only "cancelled" is excluded
+  # (dual-trigger race where one run is cancelled mid-flight).
   STATUS=$(echo "$CHECKS" | jq -r '
     .check_runs
-    | map(select(.conclusion != null and .conclusion != "cancelled" and .conclusion != "skipped"))
+    | map(select(.conclusion != null and .conclusion != "cancelled"))
     | sort_by(.started_at)
     | last
     | .conclusion // "pending"
@@ -54,15 +73,14 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
     echo "✓ droid-review passed"
     exit 0
   elif [ "$STATUS" = "neutral" ] || [ "$STATUS" = "skipped" ]; then
+    if is_dependabot_pr; then
+      echo "○ droid-review was $STATUS but PR is from Dependabot (FACTORY_API_KEY not accessible), allowing merge"
+      exit 0
+    fi
     echo "✗ BLOCK: droid-review was skipped/neutral — security audit did not run. Merge not allowed."
     exit 1
   elif [ "$STATUS" = "failure" ]; then
-    # Check if this is a Dependabot PR that failed due to missing FACTORY_API_KEY
-    PR_INFO=$(curl -s -H "Authorization: token $GH_TOKEN" \
-      -H "Accept: application/vnd.github+json" \
-      "https://api.github.com/repos/${REPOSITORY}/commits/${COMMIT_SHA}/pulls")
-    PR_AUTHOR=$(echo "$PR_INFO" | jq -r '.[0].user.login // ""')
-    if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
+    if is_dependabot_pr; then
       echo "○ droid-review failed but PR is from Dependabot (FACTORY_API_KEY not accessible), skipping"
       exit 0
     fi
