@@ -2,6 +2,7 @@
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -75,6 +76,9 @@ def test_shell_lint_contributes_to_ci_ok():
 
 def test_all_scripts_pass_shellcheck():
     """VAL-CI-006: All existing shell scripts pass shellcheck."""
+    import shutil
+    if not shutil.which("shellcheck"):
+        pytest.skip("shellcheck not installed")
     scripts = list((REPO_ROOT / "scripts").glob("*.sh"))
     assert len(scripts) > 0
     result = subprocess.run(
@@ -87,6 +91,9 @@ def test_all_scripts_pass_shellcheck():
 
 def test_all_workflows_pass_actionlint():
     """VAL-CI-007: All workflow files pass actionlint."""
+    import shutil
+    if not shutil.which("actionlint"):
+        pytest.skip("actionlint not installed")
     workflows = list((REPO_ROOT / ".github/workflows").glob("*.yml"))
     assert len(workflows) > 0
     result = subprocess.run(
