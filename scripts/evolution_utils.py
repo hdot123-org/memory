@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -260,9 +261,10 @@ def _verify_fix_merged_via_linear(issue_body: str) -> bool:
         issue_body: GitHub Issue body text
 
     Returns:
-        True if a merged PR is verified, False otherwise.
-        On any error (API failure, missing key, malformed linkback), returns False
-        but logs a warning (fail-open behavior).
+        True if a merged PR is verified or on any error (fail-open behavior).
+        Returns False only when PR exists but is not merged.
+        On any error (API failure, missing key, malformed linkback), returns True
+        and logs a warning (fail-open behavior).
     """
     # Extract INFRA-xxx from linear-linkback comment
     # Pattern: <!-- linear-linkback INFRA-123 -->
@@ -380,10 +382,10 @@ def _verify_fix_merged_via_linear(issue_body: str) -> bool:
         return False
 
     except urllib.error.URLError as e:
-        logger.warning(f"Linear API unreachable for {linear_id}: {e}")
+        logger.warning(f"Linear API unreachable for {linear_id}: {e} - fail-open: returning True")
         return True  # Fail-open
     except Exception as e:
-        logger.warning(f"Error verifying fix via Linear for {linear_id}: {e}")
+        logger.warning(f"Error verifying fix via Linear for {linear_id}: {e} - fail-open: returning True")
         return True  # Fail-open
 
 

@@ -21,7 +21,8 @@
 
 set -euo pipefail
 
-readonly PROG="$(basename "$0")"
+readonly PROG
+PROG="$(basename "$0")"
 
 usage() {
     cat >&2 <<EOF

@@ -41,3 +41,13 @@ repos:
     hooks:
       - id: vulture
         args: [--min-confidence, "80", memory_core/]
+
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.10.0
+    hooks:
+      - id: shellcheck
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint

@@ -114,8 +114,9 @@ for BRANCH in $BRANCHES; do
     continue
   fi
 
-  # Safety check: count unique commits not in main (symmetric difference)
-  UNIQUE_COUNT=$(git rev-list --count "origin/main...origin/$BRANCH" 2>/dev/null || echo "0")
+  # Safety check: count commits in branch but not in main (2-dot range).
+  # These are the commits that would be lost if the branch is deleted.
+  UNIQUE_COUNT=$(git rev-list --count "origin/main..origin/$BRANCH" 2>/dev/null || echo "0")
 
   # Protect branches with unmerged unique commits from CLOSED (not merged) PRs.
   # These branches contain code that was never merged and would be lost if deleted.
