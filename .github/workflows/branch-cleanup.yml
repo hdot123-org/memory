@@ -33,119 +33,32 @@ jobs:
       - name: Delete orphan branches
         env:
           GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+          TRIGGER_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          DELETED_BRANCHES=()
-          PROTECTED_BRANCHES=()
-          # Get cutoff as epoch seconds for reliable comparison
-          CUTOFF_EPOCH=$(date -u -d '24 hours ago' '+%s' 2>/dev/null || date -u -v-24H '+%s')
-
-          echo "Cutoff epoch: $CUTOFF_EPOCH ($(date -u -d @$CUTOFF_EPOCH '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -r $CUTOFF_EPOCH '+%Y-%m-%dT%H:%M:%SZ'))"
-          echo ""
-
-          # Determine cleanup mode based on trigger source
-          IMMEDIATE_MODE="false"
+          # Determine mode based on trigger event
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            IMMEDIATE_MODE="true"
-            echo "Triggered by pull_request:closed — immediate cleanup mode (24h threshold skipped)."
+            # PR-close trigger: immediate cleanup of the merged branch only
+            bash scripts/branch_cleanup.sh --immediate "$TRIGGER_BRANCH" | tee /tmp/branch_cleanup_output.txt
           else
-            echo "Triggered by ${{ github.event_name }} — scheduled cleanup mode (24h threshold enforced)."
-          fi
-          echo ""
-
-          # Get all remote branches except main
-          BRANCHES=$(git branch -r | grep -v 'origin/main' | grep -v 'HEAD' | sed 's|origin/||' | xargs)
-
-          if [ -z "$BRANCHES" ]; then
-            echo "No branches found (besides main). Nothing to clean."
-            echo "deleted_count=0" >> "$GITHUB_ENV"
-            echo "protected_count=0" >> "$GITHUB_ENV"
-            exit 0
+            # Scheduled trigger: sweep all orphan branches
+            bash scripts/branch_cleanup.sh --scheduled | tee /tmp/branch_cleanup_output.txt
           fi
 
-          echo "Checking branches: $BRANCHES"
-          echo ""
+          # Parse script output and set environment variables
+          DELETED_COUNT=$(grep '^deleted_count=' /tmp/branch_cleanup_output.txt | cut -d'=' -f2)
+          PROTECTED_COUNT=$(grep '^protected_count=' /tmp/branch_cleanup_output.txt | cut -d'=' -f2)
 
-          for BRANCH in $BRANCHES; do
-            echo "--- Checking branch: $BRANCH ---"
+          echo "deleted_count=${DELETED_COUNT:-0}" >> "$GITHUB_ENV"
+          echo "protected_count=${PROTECTED_COUNT:-0}" >> "$GITHUB_ENV"
 
-            # Fetch all PRs for this branch in one API call
-            ALL_PRS=$(gh pr list --head "$BRANCH" --state all --json number,state 2>/dev/null)
-            if [ $? -ne 0 ]; then
-              echo "  API error checking PRs for $BRANCH, skipping (fail-closed)."
-              continue
-            fi
-
-            # Count PRs by state: OPEN, CLOSED (not merged), MERGED
-            OPEN_PR_COUNT=$(echo "$ALL_PRS" | jq '[.[] | select(.state == "OPEN")] | length')
-            CLOSED_NOT_MERGED_COUNT=$(echo "$ALL_PRS" | jq '[.[] | select(.state == "CLOSED")] | length')
-
-            # Skip if has open PR
-            if [ "$OPEN_PR_COUNT" != "0" ]; then
-              echo "  Has open PR ($OPEN_PR_COUNT), skipping."
-              continue
-            fi
-
-            # Safety check: count unique commits not in main (symmetric difference)
-            UNIQUE_COUNT=$(git rev-list --count "origin/main...origin/$BRANCH" 2>/dev/null || echo "0")
-
-            # Protect branches with unmerged unique commits from CLOSED (not merged) PRs.
-            # These branches contain code that was never merged and would be lost if deleted.
-            if [ "$UNIQUE_COUNT" -gt 0 ] && [ "$CLOSED_NOT_MERGED_COUNT" -gt 0 ]; then
-              echo "  ⚠️  PROTECTED: branch has $UNIQUE_COUNT unique commit(s) and $CLOSED_NOT_MERGED_COUNT CLOSED (not merged) PR(s) — would lose unmerged code."
-              PROTECTED_BRANCHES+=("$BRANCH ($UNIQUE_COUNT unique commits)")
-              continue
-            fi
-
-            # Get last commit date for this branch as epoch seconds
-            LAST_COMMIT_EPOCH=$(git log -1 --format='%ct' "origin/$BRANCH" 2>/dev/null || echo "")
-
-            if [ -z "$LAST_COMMIT_EPOCH" ]; then
-              echo "  Could not get last commit date, skipping."
-              continue
-            fi
-
-            LAST_COMMIT_DATE=$(date -u -d "@$LAST_COMMIT_EPOCH" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -r "$LAST_COMMIT_EPOCH" '+%Y-%m-%dT%H:%M:%SZ')
-
-            # Determine if branch should be deleted
-            if [ "$IMMEDIATE_MODE" = "true" ] || [ "$LAST_COMMIT_EPOCH" -lt "$CUTOFF_EPOCH" ]; then
-              if [ "$IMMEDIATE_MODE" = "true" ]; then
-                echo "  Immediate mode: orphan branch with no open PR, deleting."
-              else
-                echo "  No open PR and last commit ($LAST_COMMIT_DATE) is older than 24h."
-              fi
-              echo "  Deleting branch: $BRANCH"
-
-              # Delete remote branch
-              if git push origin --delete "$BRANCH" 2>/dev/null; then
-                echo "  Branch deleted successfully."
-                DELETED_BRANCHES+=("$BRANCH")
-              else
-                echo "  Failed to delete branch (may already be deleted)."
-              fi
-            else
-              echo "  Last commit ($LAST_COMMIT_DATE) is within 24h, skipping."
-            fi
-
-            echo ""
-          done
-
-          # Store deleted branches in env for next step
-          DELETED_COUNT=${#DELETED_BRANCHES[@]}
-          PROTECTED_COUNT=${#PROTECTED_BRANCHES[@]}
-          echo "deleted_count=$DELETED_COUNT" >> "$GITHUB_ENV"
-          echo "protected_count=$PROTECTED_COUNT" >> "$GITHUB_ENV"
-
-          if [ "$DELETED_COUNT" -gt 0 ]; then
-            echo "Deleted $DELETED_COUNT branch(es):"
-            printf '%s\n' "${DELETED_BRANCHES[@]}" > /tmp/deleted_branches.txt
-          else
-            echo "No orphan branches to delete."
+          # Extract deleted branch names for issue notification
+          if [ "${DELETED_COUNT:-0}" -gt 0 ]; then
+            awk '/^Deleted .* branch\(es\):$/,/^$/' /tmp/branch_cleanup_output.txt | grep -v '^Deleted' | grep -v '^$' > /tmp/deleted_branches.txt || true
           fi
 
-          if [ "$PROTECTED_COUNT" -gt 0 ]; then
-            echo ""
-            echo "Protected $PROTECTED_COUNT branch(es) with unmerged unique commits:"
-            printf '%s\n' "${PROTECTED_BRANCHES[@]}" > /tmp/protected_branches.txt
+          # Extract protected branch names for issue notification
+          if [ "${PROTECTED_COUNT:-0}" -gt 0 ]; then
+            awk '/^Protected .* branch\(es\) with unmerged/,/^$/' /tmp/branch_cleanup_output.txt | grep -v '^Protected' | grep -v '^$' > /tmp/protected_branches.txt || true
           fi
 
       - name: Create issue notification
