@@ -6,7 +6,7 @@ import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch, Mock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -6361,7 +6361,7 @@ def test_reopen_limit_reached(tmp_path):
 def test_reopen_counter_increments(tmp_path):
     """VAL-REOPEN-004: reopen_count increments from 0 to 1, then 1 to 2, etc."""
     history_path = tmp_path / "history.json"
-    
+
     # Start with reopen_count = 0
     history_data = {
         "snapshots": [],

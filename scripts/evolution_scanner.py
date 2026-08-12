@@ -341,6 +341,24 @@ def _reopen_closed_issue(rule_id: str, location: str, dedup_label: str, history_
     return True
 
 
+def _process_findings_with_reopen(
+    findings: list[Finding], quota: int, resolved_keys: set[tuple[str, str]],
+    dedup_label: str, history_path: Path,
+) -> int:
+    """Process findings: try reopen for resolved regressions, else create new issue.
+
+    Returns the count of issues created (reopened issues are not counted).
+    """
+    created = 0
+    for f in findings[:quota]:
+        if f.severity == "critical" and (f.rule_id, f.location) in resolved_keys:
+            if _reopen_closed_issue(f.rule_id, f.location, dedup_label, history_path):
+                continue
+        if create_issue(f, dedup_label):
+            created += 1
+    return created
+
+
 def sort_by_severity(findings: list[Finding], severity_order: list[str]) -> list[Finding]:
     order = {s: i for i, s in enumerate(severity_order)}
     return sorted(findings, key=lambda f: order.get(f.severity, 99))
@@ -512,19 +530,14 @@ def main() -> None:
         self_audit = [f for f in deduped if f.category == "evolution_self_audit"]
         # VAL-REOPEN: For regression findings (upgraded to critical by detect_regressions),
         # try to reopen a matching closed issue before creating a new one.
-        issues_created = 0
-        for f in regular[:config["max_issues_per_tick"]]:
-            if f.severity == "critical" and (f.rule_id, f.location) in _resolved_keys:
-                if _reopen_closed_issue(f.rule_id, f.location, config["dedup_label"], history_path):
-                    continue  # Reopened successfully, skip create_issue
-            if create_issue(f, config["dedup_label"]):
-                issues_created += 1
-        for f in self_audit[:config["max_self_audit_issues_per_tick"]]:
-            if f.severity == "critical" and (f.rule_id, f.location) in _resolved_keys:
-                if _reopen_closed_issue(f.rule_id, f.location, config["dedup_label"], history_path):
-                    continue
-            if create_issue(f, config["dedup_label"]):
-                issues_created += 1
+        issues_created = _process_findings_with_reopen(
+            regular, config["max_issues_per_tick"], _resolved_keys,
+            config["dedup_label"], history_path,
+        )
+        issues_created += _process_findings_with_reopen(
+            self_audit, config["max_self_audit_issues_per_tick"], _resolved_keys,
+            config["dedup_label"], history_path,
+        )
     except RuntimeError as e:
         print(f"[evolution] Warning: {e}")
         issues_created = 0
