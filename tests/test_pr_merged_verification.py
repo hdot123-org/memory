@@ -693,17 +693,17 @@ class TestVALCLOSE009:
 
 
 # ---------------------------------------------------------------------------
-# VAL-CLOSE-018: gh pr view failure -> fail-open close
+# VAL-CLOSE-018: gh pr view failure -> fail-closed (block close)
 # ---------------------------------------------------------------------------
 
 class TestVALCLOSE018:
-    """gh pr view failure -> fail-open close."""
+    """gh pr view failure -> fail-closed (block close)."""
 
     @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
     @patch("evolution_utils.urllib.request.urlopen")
     @patch("evolution_utils.subprocess.run")
     def test_gh_pr_view_nonzero(self, mock_subprocess, mock_urlopen):
-        """VAL-CLOSE-018: gh pr view returns non-zero -> fail-open close."""
+        """VAL-CLOSE-018: gh pr view returns non-zero -> fail-closed (block close)."""
         response = _linear_issue_response("INFRA-123", [
             _github_attachment(100)
         ])
@@ -716,13 +716,13 @@ class TestVALCLOSE018:
 
         issue_body = "<!-- linear-linkback INFRA-123 -->"
         result = _verify_fix_merged_via_linear(issue_body)
-        assert result is True  # fail-open
+        assert result is False  # fail-closed
 
     @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
     @patch("evolution_utils.urllib.request.urlopen")
     @patch("evolution_utils.subprocess.run")
     def test_gh_pr_view_exception(self, mock_subprocess, mock_urlopen):
-        """VAL-CLOSE-018: gh pr view throws exception -> fail-open close."""
+        """VAL-CLOSE-018: gh pr view throws exception -> fail-closed (block close)."""
         response = _linear_issue_response("INFRA-123", [
             _github_attachment(100)
         ])
@@ -735,7 +735,7 @@ class TestVALCLOSE018:
 
         issue_body = "<!-- linear-linkback INFRA-123 -->"
         result = _verify_fix_merged_via_linear(issue_body)
-        assert result is True  # fail-open
+        assert result is False  # fail-closed
 
 
 # ---------------------------------------------------------------------------
