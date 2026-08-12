@@ -1,7 +1,11 @@
 """Utility functions for evolution scanner."""
 import json
+import logging
+import os
+import re
 import subprocess
 import sys
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -232,6 +236,143 @@ def _count_consecutive_absences(rule_id: str, location: str, history_path: Path)
     return absence_count
 
 
+# ============================================================================
+# PR-Merged Verification (M1 Trust Chain)
+# ============================================================================
+
+logger = logging.getLogger(__name__)
+
+
+def _verify_fix_merged_via_linear(issue_body: str) -> bool:
+    """Verify that the fix for this issue has been merged via Linear API.
+
+    Extracts INFRA-xxx ID from linear-linkback HTML comment in issue body,
+    queries Linear GraphQL API for GitHub PR attachments, and checks if any
+    PR has been merged (mergedAt != null).
+
+    Args:
+        issue_body: GitHub Issue body text
+
+    Returns:
+        True if a merged PR is verified, False otherwise.
+        On any error (API failure, missing key, malformed linkback), returns False
+        but logs a warning (fail-open behavior).
+    """
+    # Extract INFRA-xxx from linear-linkback comment
+    # Pattern: <!-- linear-linkback INFRA-123 -->
+    linkback_match = re.search(r'<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->', issue_body)
+    if not linkback_match:
+        # No linkback found - backward compat: caller should close without verification
+        logger.debug("No linear-linkback found in issue body")
+        return True  # Return True to allow close (backward compat)
+
+    linear_id = linkback_match.group(1)
+
+    # Check if LINEAR_API_KEY is available
+    api_key = os.environ.get("LINEAR_API_KEY")
+    if not api_key:
+        logger.warning("LINEAR_API_KEY not set, fail-open: proceeding with close")
+        return True  # Fail-open
+
+    # Query Linear GraphQL API for issue attachments
+    try:
+        query = """
+        query($id: String!) {
+          issue(id: $id) {
+            id
+            attachments {
+              nodes {
+                id
+                url
+                attachmentType
+                metadata
+              }
+            }
+          }
+        }
+        """
+        payload = json.dumps({
+            "query": query,
+            "variables": {"id": linear_id}
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            "https://api.linear.app/graphql",
+            data=payload,
+            headers={
+                "Authorization": api_key,
+                "Content-Type": "application/json"
+            },
+            method="POST"
+        )
+
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            response_data = json.loads(resp.read().decode("utf-8"))
+
+        # Check for GraphQL errors
+        if "errors" in response_data:
+            logger.warning(f"Linear API returned errors for {linear_id}: {response_data['errors']}")
+            return True  # Fail-open
+
+        issue_data = response_data.get("data", {}).get("issue")
+        if not issue_data:
+            logger.warning(f"Linear issue {linear_id} not found")
+            return True  # Fail-open
+
+        # Extract GitHub PR attachments
+        attachments = issue_data.get("attachments", {}).get("nodes", [])
+        github_prs = [
+            att for att in attachments
+            if att.get("attachmentType") == "github"
+        ]
+
+        if not github_prs:
+            # No PR attachments found - issue should NOT be closed
+            logger.info(f"No GitHub PR attachments found for {linear_id}")
+            return False
+
+        # Check if any PR is merged
+        for pr_attachment in github_prs:
+            # Extract PR number from URL and check via gh CLI
+            pr_url = pr_attachment.get("url", "")
+            pr_match = re.search(r'/pull/(\d+)', pr_url)
+            if pr_match:
+                pr_number = pr_match.group(1)
+                try:
+                    result = subprocess.run(
+                        ["gh", "pr", "view", pr_number, "--json", "mergedAt"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    if result.returncode == 0:
+                        pr_data = json.loads(result.stdout)
+                        if pr_data.get("mergedAt"):
+                            logger.info(f"PR #{pr_number} for {linear_id} is merged")
+                            return True
+                        else:
+                            logger.info(f"PR #{pr_number} for {linear_id} not yet merged")
+                    else:
+                        # gh pr view failed - fail-open
+                        logger.warning(f"gh pr view failed for PR #{pr_number}: {result.stderr}")
+                        return True  # Fail-open
+                except Exception as e:
+                    # gh pr view exception - fail-open
+                    logger.warning(f"Exception checking PR #{pr_number} via gh CLI: {e}")
+                    return True  # Fail-open
+
+        # All PRs checked successfully but none merged -> do NOT close
+        logger.info(f"No merged PR found for {linear_id} after checking all attachments")
+        return False
+
+    except urllib.error.URLError as e:
+        logger.warning(f"Linear API unreachable for {linear_id}: {e}")
+        return True  # Fail-open
+    except Exception as e:
+        logger.warning(f"Error verifying fix via Linear for {linear_id}: {e}")
+        return True  # Fail-open
+
+
 def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set[str] | None = None,
                        history_path: Path | None = None) -> None:
     """Close GitHub Issues whose findings are no longer present in current scan.
@@ -304,6 +445,13 @@ def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set
                     grace_deferred_count += 1
                     print(f"[evolution] Skip auto-close #{issue['number']}: absent {absence_count}/{GRACE_PERIOD_TICKS} ticks (grace period)")
                     continue
+
+            # VAL-CLOSE-001-024: Verify fix is merged via Linear before closing
+            issue_body = issue.get("body", "")
+            if not _verify_fix_merged_via_linear(issue_body):
+                logger.info(f"Skipping auto-close for issue #{issue['number']}: fix not verified as merged")
+                print(f"[evolution] Skip auto-close #{issue['number']}: fix not verified as merged via Linear")
+                continue
 
             # This finding is no longer present - close the issue
             close_msg = (
