@@ -64,13 +64,15 @@ print(CURRENT_MEMORY_VERSION)
 ")"
 
   # README.md: "- 当前文档版本：vX.Y.Z" (中文, 当前标准) or "- Current documented release: vX.Y.Z" (en)
+  # Use \u escapes for non-ASCII chars so the python3 -c source is pure ASCII,
+  # avoiding locale-dependent mangling of the regex pattern on CI runners.
   readme_ver="$(python3 -c "
 import re
 ver = 'NOT_FOUND'
 try:
     with open('README.md', encoding='utf-8') as f:
         for line in f:
-            m = re.search(r'(?:Current documented release|当前文档版本)[:：]\s*v?(\d+\.\d+\.\d+)', line)
+            m = re.search(r'(?:Current documented release|\u5f53\u524d\u6587\u6863\u7248\u672c)[:\uff1a]\s*v?(\d+\.\d+\.\d+)', line)
             if m:
                 ver = m.group(1)
                 break
