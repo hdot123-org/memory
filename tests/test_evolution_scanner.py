@@ -7437,7 +7437,7 @@ def test_val_cross_023_malformed_body_handling(tmp_path):
     ]
 
     with patch("evolution_utils.subprocess.run") as mock_run, \
-         patch("urllib.request.urlopen") as mock_urlopen:
+         patch("urllib.request.urlopen"):
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout="", stderr=""),  # close 103
@@ -7488,7 +7488,7 @@ def test_val_cross_025_full_suite_regression_check():
     # Parse output for failure count
     output = result.stdout + result.stderr
     lines = output.strip().split('\n')
-    summary_line = [l for l in lines if 'failed' in l or 'passed' in l][-1]
+    summary_line = [line for line in lines if 'failed' in line or 'passed' in line][-1]
 
     # Extract numbers: "X failed, Y passed" or "Y passed"
     import re
@@ -7510,6 +7510,7 @@ def test_val_cross_025_full_suite_regression_check():
 def test_val_cross_026_production_call_ordering():
     """VAL-CROSS-026: main() calls update_history() before auto_close_resolved()."""
     import inspect
+
     from evolution_scanner import main
 
     source = inspect.getsource(main)
@@ -7620,7 +7621,7 @@ def test_val_cross_034_reopen_not_for_new_findings(tmp_path):
     assert upgraded[0].severity == "warning"  # Stays warning, not upgraded
 
     # In main() flow, _reopen_closed_issue would return False (not in resolved_findings)
-    with patch("evolution_scanner.subprocess.run") as mock_run:
+    with patch("evolution_scanner.subprocess.run"):
         result = _reopen_closed_issue("RULE_NEW", "new.md", "evolution-found", history_path)
         assert result is False  # Not in resolved_findings
 
