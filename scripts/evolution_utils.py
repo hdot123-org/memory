@@ -18,6 +18,12 @@ _SEV_RANK = {"critical": 3, "warning": 2, "info": 1}
 # Prevents false closures from transient adapter failures.
 GRACE_PERIOD_TICKS = 2
 
+# Self-audit findings (e.g., heartbeat staleness) are transient health signals,
+# not code defects. They resolve when the scanner recovers, not when code is
+# fixed via PR. Auto-closing them triggers a flapping loop with the state gate
+# (Gate A). Exclude them from auto-close (INFRA-216).
+SELF_AUDIT_CATEGORY = "evolution_self_audit"
+
 # Required config keys for evolution scanner
 REQUIRED_CONFIG_KEYS = [
     "audit_tools",
@@ -398,6 +404,11 @@ def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set
     before closing. Uses history_path to count absences. When history_path
     is provided, only closes after the grace period is satisfied.
 
+    INFRA-216: Self-audit category findings (evolution_self_audit) are NEVER
+    auto-closed. These are transient health signals (e.g., heartbeat staleness)
+    that resolve when the scanner recovers, not when code is fixed. Auto-closing
+    them triggers a flapping loop with the state gate.
+
     Args:
         findings: List of Finding objects from current scan
         dedup_label: Label used to identify evolution scanner issues
@@ -429,6 +440,7 @@ def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set
     closed_count = 0
     protected_count = 0
     grace_deferred_count = 0
+    self_audit_skip_count = 0
     for issue in issues:
         rule_id, location = _parse_issue_fields(issue.get("body", ""))
         if rule_id is None or location is None:
@@ -445,6 +457,18 @@ def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set
                     protected_count += 1
                     print(f"[evolution] Skip auto-close #{issue['number']}: category '{category}' tool failed this tick ({rule_id} @ {location})")
                     continue
+
+            # INFRA-216: Exclude self-audit findings from auto-close.
+            # Self-audit findings (e.g., EVOLUTION_HEARTBEAT_STALE) are transient
+            # health signals. Auto-closing them triggers a flapping loop with the
+            # state gate (Gate A), which reverts any non-Droid closure. These
+            # issues should stay open until investigated by a human or Droid.
+            category = _parse_issue_category(issue.get("body", ""))
+            if category == SELF_AUDIT_CATEGORY:
+                self_audit_skip_count += 1
+                print(f"[evolution] Skip auto-close #{issue['number']}: self-audit finding "
+                      f"({rule_id} @ {location}) — transient health signal, requires manual/Droid resolution")
+                continue
 
             # GAP-C3: Check grace period using history
             if history_path is not None:
@@ -486,6 +510,8 @@ def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set
         print(f"[evolution] Protected {protected_count} issue(s) from auto-close due to failed audit categories")
     if grace_deferred_count > 0:
         print(f"[evolution] Deferred {grace_deferred_count} issue(s) auto-close due to grace period")
+    if self_audit_skip_count > 0:
+        print(f"[evolution] Skipped {self_audit_skip_count} self-audit issue(s) from auto-close (transient health signals)")
 
 
 # ============================================================================
