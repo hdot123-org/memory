@@ -114,3 +114,29 @@ def test_ci_installs_linters():
     run_content = install_step["run"]
     assert "shellcheck" in run_content.lower()
     assert "actionlint" in run_content.lower()
+
+
+def test_ci_tarball_extraction_isolated():
+    """VAL-CI-009: CI extracts tool tarballs to /tmp, not repo root.
+
+    actionlint release tarball contains README.md at root level.
+    Extracting to repo root overwrites the project's README.md,
+    causing version-consistency health check to return NOT_FOUND.
+    Regression test for PR #532 CI failure.
+    """
+    ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    test_job = ci["jobs"]["test"]
+    steps = test_job["steps"]
+    install_step = next(
+        s for s in steps if "Install shellcheck and actionlint" in s.get("name", "")
+    )
+    run_content = install_step["run"]
+
+    # Every tar extraction must target /tmp to avoid overwriting repo files
+    tar_lines = [line.strip() for line in run_content.splitlines() if "tar -" in line]
+    assert len(tar_lines) > 0, "Expected tar extraction commands in install step"
+    for line in tar_lines:
+        assert "-C /tmp" in line, (
+            f"tar extraction must target /tmp to avoid overwriting repo "
+            f"files (README.md, LICENSE): {line}"
+        )

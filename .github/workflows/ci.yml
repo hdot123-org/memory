@@ -45,12 +45,14 @@ jobs:
           ruff check .
       - name: Install shellcheck and actionlint
         run: |
+          # 解压到 /tmp 避免覆盖仓库文件（actionlint tarball 含根级 README.md）
           wget -q https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz
-          tar -xf shellcheck-v0.10.0.linux.x86_64.tar.xz
-          sudo mv shellcheck-v0.10.0/shellcheck /usr/local/bin/
+          tar -xf shellcheck-v0.10.0.linux.x86_64.tar.xz -C /tmp
+          sudo mv /tmp/shellcheck-v0.10.0/shellcheck /usr/local/bin/
           wget -q https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
-          tar -xzf actionlint_1.7.7_linux_amd64.tar.gz
-          sudo mv actionlint /usr/local/bin/
+          tar -xzf actionlint_1.7.7_linux_amd64.tar.gz -C /tmp
+          sudo mv /tmp/actionlint /usr/local/bin/
+          rm -f shellcheck-v0.10.0.linux.x86_64.tar.xz actionlint_1.7.7_linux_amd64.tar.gz
       - name: Shell lint
         run: |
           shellcheck scripts/*.sh
