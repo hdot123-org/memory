@@ -64,23 +64,15 @@ print(CURRENT_MEMORY_VERSION)
 ")"
 
   # README.md: extract version from the release-please marker line.
-  # Uses ASCII-only pattern (x-release-please-version) to avoid CJK encoding
-  # issues in CI's python3 -c inline execution.
-  readme_ver="$(python3 -c "
-import re
-ver = 'NOT_FOUND'
-try:
-    with open('README.md', encoding='utf-8') as f:
-        for line in f:
-            if line.startswith('- ') and 'x-release-please-version' in line:
-                m = re.search(r'v(\d+\.\d+\.\d+)', line)
-                if m:
-                    ver = m.group(1)
-                    break
-except FileNotFoundError:
-    pass
-print(ver)
-")"
+  # Uses grep+sed instead of python3 -c for CI reliability — python3 inline
+  # multi-line scripts had persistent encoding/parsing issues on ubuntu-latest.
+  set +o pipefail
+  readme_ver="$(grep 'x-release-please-version' README.md 2>/dev/null \
+      | grep '^- ' \
+      | sed -n 's/.*v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' \
+      | head -1)"
+  set -o pipefail
+  [[ -z "$readme_ver" ]] && readme_ver="NOT_FOUND"
 
   if [[ "$pyproject_ver" == "$constants_ver" && "$pyproject_ver" == "$readme_ver" ]]; then
     record "CHECK" "version-consistency" "PASS" "v${pyproject_ver}"
@@ -100,20 +92,10 @@ check_readme_install_versions() {
   # Find all @vX.Y.Z references in README (install commands)
   local mismatches=""
   local found_refs
-  found_refs="$(python3 -c "
-import re
-refs = set()
-try:
-    with open('README.md', encoding='utf-8') as f:
-        content = f.read()
-    # Match @vX.Y.Z patterns (install commands)
-    for m in re.finditer(r'@v(\d+\.\d+\.\d+)', content):
-        refs.add(m.group(1))
-except FileNotFoundError:
-    pass
-for r in sorted(refs):
-    print(r)
-")"
+  set +o pipefail
+  found_refs="$(grep -o '@v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*' README.md 2>/dev/null \
+      | sed 's/@v//' | sort -u)"
+  set -o pipefail
 
   local all_match=true
   while IFS= read -r ver; do
