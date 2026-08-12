@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/hdot123/memory/compare/v0.23.0...v0.23.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* heartbeat 改用 gh run list 替代缓存依赖，修复误报流水线异常 (INFRA-213) ([#521](https://github.com/hdot123/memory/issues/521)) ([ea7377a](https://github.com/hdot123/memory/commit/ea7377a496ede17163476d60df8d6fb5d0d6509b))
+
 ## [0.23.0](https://github.com/hdot123/memory/compare/v0.22.2...v0.23.0) (2026-08-12)
 
 

@@ -5610,7 +5610,7 @@ def test_heartbeat_creates_alert_on_anomaly():
         )
 
         result = create_alert_issue(
-            stale_history=True,
+            scanner_stale=True,
             issues_without_pr=2,
             dedup_label="evolution-found"
         )
@@ -5630,7 +5630,7 @@ def test_heartbeat_no_alert_when_clean():
 
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         result = create_alert_issue(
-            stale_history=False,
+            scanner_stale=False,
             issues_without_pr=0,
             dedup_label="evolution-found"
         )
@@ -5674,7 +5674,8 @@ def test_heartbeat_main_integration():
 
             # Run heartbeat
             with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path), \
-                 patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path):
+                 patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path), \
+                 patch("evolution_heartbeat.check_scanner_liveness", return_value={"alive": True, "message": "Scanner alive"}):
                 exit_code = main(history_path=history_path)
 
             # Should exit 0 (clean state)
@@ -5719,7 +5720,8 @@ def test_heartbeat_detects_stale_and_creates_alert():
 
             # Run heartbeat
             with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path), \
-                 patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path):
+                 patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path), \
+                 patch("evolution_heartbeat.check_scanner_liveness", return_value={"alive": False, "message": "Scanner stale"}):
                 exit_code = main(history_path=history_path)
 
             # Should exit 1 (anomaly detected)
@@ -6264,7 +6266,8 @@ def test_main_dedup_skips_duplicate_alert(tmp_path):
     with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path), \
          patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path), \
          patch("evolution_heartbeat.subprocess.run") as mock_run, \
-         patch("evolution_heartbeat.create_alert_issue") as mock_create:
+         patch("evolution_heartbeat.create_alert_issue") as mock_create, \
+         patch("evolution_heartbeat.check_scanner_liveness", return_value={"alive": False, "message": "Scanner stale"}):
 
         # check_pr_coverage list -> no issues; alert_issue_exists -> one open alert
         mock_run.side_effect = [
@@ -6293,7 +6296,8 @@ def test_main_writes_monitor_heartbeat(tmp_path):
 
     with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path), \
          patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path), \
-         patch("evolution_heartbeat.subprocess.run") as mock_run:
+         patch("evolution_heartbeat.subprocess.run") as mock_run, \
+         patch("evolution_heartbeat.check_scanner_liveness", return_value={"alive": True, "message": "Scanner alive"}):
         mock_run.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="[]", stderr=""
         )
