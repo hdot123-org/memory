@@ -1122,7 +1122,7 @@ class TestVALCLOSE026:
         )
         mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
 
-        result = _verify_fix_merged_via_linear(issue_body, issue_number=42)
+        _verify_fix_merged_via_linear(issue_body, issue_number=42)
 
         # Should have queried Linear API (linkback found in comments)
         assert mock_urlopen.called
@@ -1159,7 +1159,7 @@ class TestVALCLOSE026:
         )
         mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
 
-        result = _verify_fix_merged_via_linear(issue_body, issue_number=42)
+        _verify_fix_merged_via_linear(issue_body, issue_number=42)
 
         # No PR attachments → returns False, but the important check is:
         # gh issue view (comment fetch) should NOT have been called at all
