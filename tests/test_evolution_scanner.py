@@ -7573,7 +7573,7 @@ def test_val_cross_025_full_suite_regression_check():
     """VAL-CROSS-025: Full test suite has 0 failures, all tests pass."""
     import subprocess
     result = subprocess.run(
-        ["python3", "-m", "pytest", "tests/test_evolution_scanner.py", "-q", "--tb=no", "-k", "not test_val_cross_025"],
+        [sys.executable, "-m", "pytest", "tests/test_evolution_scanner.py", "-q", "--tb=no", "-k", "not test_val_cross_025"],
         capture_output=True, text=True, timeout=300,
         cwd=Path(__file__).parent.parent
     )
