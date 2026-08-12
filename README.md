@@ -348,8 +348,24 @@ scanner 每次运行末尾会调用 `auto_close_resolved()`（`scripts/evolution
 
 - **触发时机** — 在本次扫描创建新 Issue **之后**执行，避免误关闭刚创建的 Issue
 - **判定标准** — 以 `(rule_id, location)` 为键，构建当前扫描的 findings 集合；对所有 open 的 `evolution-found` Issue 解析 body 中的 `rule_id` 与 `location`，若该键**不在**当前 findings 集合中，则视为「已解决」
+- **PR 合并验证（信任链加固）** — 若 Issue body 中包含 `<!-- linear-linkback INFRA-xxx -->` 注释，调用 `_verify_fix_merged_via_linear()` 提取 Linear issue ID，通过 Linear GraphQL API 查询关联的 GitHub PR，再用 `gh pr view` 确认 PR 已合并（`mergedAt` 非空）。仅当 PR 已合并时才关闭 Issue。Linear API 不可用时 fail-open（返回 True，不阻塞关闭）。无 linkback 注释的 Issue 直接关闭（向后兼容）。
 - **执行动作** — 通过 `gh issue close` 关闭对应 Issue，并附带中文说明评论（`该 finding 在最近一次扫描中已不再出现，自动关闭此 Issue。`）
 - **保留对象** — 仍在当前 findings 中出现的 Issue 保持 open；无法解析出 `rule_id`/`location` 的 Issue 被跳过（不关闭）
+
+### Issue 重开机制
+
+scanner 每次运行时会调用 `_reopen_closed_issue()`（`scripts/evolution_scanner.py`），检查已关闭的 `evolution-found` Issue 是否重新出现：
+
+- **匹配逻辑** — 遍历 closed 状态的 Issue，按 `(rule_id, location)` 匹配当前 findings
+- **重开条件** — finding 重新出现且 `reopen_count < 3` 时重开 Issue，并在 history JSON 中递增计数器
+- **防抖保护** — `reopen_count >= 3` 的 Issue 不再重开，防止反复开/关（flapping）
+
+### 分支清理
+
+`scripts/branch_cleanup.sh` 从 `.github/workflows/branch-cleanup.yml` 中提取，提供两种模式：
+
+- `--scheduled` — 定时任务模式，扫描所有远程分支，删除无 open PR 且最后 commit 超过 24 小时的孤立分支
+- `--immediate <branch>` — 立即删除指定分支（用于 PR 合并后清理）
 
 完整的 GitHub↔Linear Issue 流转链路与职责约定见 [Issue 流转链路文档](docs/architecture/issue-flow.md)。
 
@@ -370,7 +386,11 @@ ruff check .
 deptry .
 python -m pytest tests/
 python3 scripts/check_boundary.py
+shellcheck scripts/*.sh
+actionlint .github/workflows/*.yml
 ```
+
+**CI 安全门禁：** `.github/workflows/droid-review.yml` 中 `security_block_on_high: "false"`（Advisory 模式），AI 安全审查仅留 Comment 不阻断合并。确定性工具（shellcheck、actionlint、pytest）作为 CI 硬门禁负责实际阻断。
 
 ## 版本与许可
 
