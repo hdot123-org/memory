@@ -2,7 +2,7 @@ name: Branch Cleanup
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # Daily at 06:00 UTC
+    - cron: '0 0,5,10,15,20 * * *'  # Every 5h at UTC 00/05/10/15/20 (Beijing 08/13/18/23/04) - avoids Beijing 14:00-18:00 peak hours
   pull_request:
     types: [closed]
   workflow_dispatch:
