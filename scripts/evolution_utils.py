@@ -451,13 +451,19 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
                         else:
                             logger.info(f"PR #{pr_number} for {linear_id} not yet merged")
                     else:
-                        # gh pr view failed - fail-open
-                        logger.warning(f"gh pr view failed for PR #{pr_number}: {result.stderr}")
-                        return True  # Fail-open
+                        # gh pr view failed - fail-closed: block close
+                        logger.warning(
+                            f"gh pr view failed for PR #{pr_number}: {result.stderr} — "
+                            f"fail-closed: blocking close to prevent unverified state"
+                        )
+                        return False
                 except Exception as e:
-                    # gh pr view exception - fail-open
-                    logger.warning(f"Exception checking PR #{pr_number} via gh CLI: {e}")
-                    return True  # Fail-open
+                    # gh pr view exception - fail-closed: block close
+                    logger.warning(
+                        f"Exception checking PR #{pr_number} via gh CLI: {e} — "
+                        f"fail-closed: blocking close to prevent unverified state"
+                    )
+                    return False
 
         # All PRs checked successfully but none merged -> do NOT close
         logger.info(f"No merged PR found for {linear_id} after checking all attachments")
