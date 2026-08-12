@@ -4,7 +4,7 @@
 #
 #    pip-compile --all-extras --no-annotate --no-emit-index-url --output-file=requirements-lock.txt pyproject.toml
 #
-ast-serialize==0.6.0
+ast-serialize==0.8.0
 backoff==2.2.1
 build==1.5.1
 certifi==2026.7.22
@@ -15,7 +15,7 @@ deptry==0.25.1
 distro==1.9.0
 idna==3.18
 iniconfig==2.3.0
-librt==0.13.0
+librt==0.15.0
 monotonic==1.6
 mypy==2.3.0
 mypy-extensions==1.1.0
