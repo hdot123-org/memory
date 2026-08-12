@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.1](https://github.com/hdot123/memory/compare/v0.24.0...v0.24.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* 统一 gh pr view 失败路径为 fail-closed 策略 ([#554](https://github.com/hdot123/memory/issues/554)) ([67c05d0](https://github.com/hdot123/memory/commit/67c05d0a14f9bf5ff4cb7715e9bf8ff3b8944072))
+* 统一 Linear API 错误路径为 fail-closed 策略 ([#553](https://github.com/hdot123/memory/issues/553)) ([1f152a6](https://github.com/hdot123/memory/commit/1f152a64f8c641c0c154fabd4294f74e3f40b1e7))
+
 ## [0.24.0](https://github.com/hdot123/memory/compare/v0.23.1...v0.24.0) (2026-08-12)
 
 
