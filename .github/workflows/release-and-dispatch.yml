@@ -64,10 +64,15 @@ jobs:
 
       - name: Extract version from tag
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          RELEASE_TAG_INPUT: ${{ inputs.release_tag }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             # Manual trigger: use input release_tag
-            INPUT_TAG="${{ inputs.release_tag }}"
+            INPUT_TAG="$RELEASE_TAG_INPUT"
             if [[ -z "$INPUT_TAG" ]]; then
               echo "Error: release_tag input is required for manual workflow dispatch" >&2
               exit 1
@@ -77,9 +82,9 @@ jobs:
               exit 1
             fi
             echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          elif [[ "$REF" == refs/tags/v* ]]; then
             # Tag push trigger: use ref
-            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
           else
             echo "Error: release must be triggered by a version tag or workflow_dispatch with release_tag" >&2
             exit 1
@@ -148,13 +153,16 @@ jobs:
           cd "$MEMORY_REPO_PATH"
           /opt/homebrew/bin/python3 -m pip install --break-system-packages -e .
       - name: Verify version matches release
+        env:
+          REF: ${{ github.ref }}
+          RELEASE_TAG_INPUT: ${{ inputs.release_tag }}
         run: |
           cd "$MEMORY_REPO_PATH"
           INSTALLED=$(/opt/homebrew/bin/python3 -c "from memory_core import __version__; print(__version__)")
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          if [[ "$REF" == refs/tags/* ]]; then
             TAG_VERSION="${GITHUB_REF_NAME#v}"
           else
-            TAG_VERSION="${{ inputs.release_tag }}"
+            TAG_VERSION="$RELEASE_TAG_INPUT"
             TAG_VERSION="${TAG_VERSION#v}"
           fi
           echo "Installed: $INSTALLED, Expected: $TAG_VERSION"

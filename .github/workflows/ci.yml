@@ -43,6 +43,20 @@ jobs:
         run: |
           pip install ruff
           ruff check .
+      - name: Install shellcheck and actionlint
+        run: |
+          # 解压到 /tmp 避免覆盖仓库文件（actionlint tarball 含根级 README.md）
+          wget -q https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz
+          tar -xf shellcheck-v0.10.0.linux.x86_64.tar.xz -C /tmp
+          sudo mv /tmp/shellcheck-v0.10.0/shellcheck /usr/local/bin/
+          wget -q https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
+          tar -xzf actionlint_1.7.7_linux_amd64.tar.gz -C /tmp
+          sudo mv /tmp/actionlint /usr/local/bin/
+          rm -f shellcheck-v0.10.0.linux.x86_64.tar.xz actionlint_1.7.7_linux_amd64.tar.gz
+      - name: Shell lint
+        run: |
+          shellcheck scripts/*.sh
+          actionlint .github/workflows/*.yml
       - name: BOUNDARY pollution guard
         run: python scripts/check_boundary.py
       - name: Document classification guard
@@ -199,11 +213,12 @@ jobs:
         env:
           WEBHOOK_URL: ${{ secrets.N8N_CI_WEBHOOK_URL }}
           N8N_CI_TOKEN: ${{ secrets.N8N_CI_TOKEN }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           PAYLOAD=$(jq -n \
             --arg repo "${{ github.repository }}" \
             --argjson pr_number "${{ github.event.pull_request.number || 0 }}" \
-            --arg branch "${{ github.head_ref || github.ref_name }}" \
+            --arg branch "$BRANCH" \
             --arg sha "${{ github.sha }}" \
             --arg status "${{ needs.ci-ok.result }}" \
             '{repo:$repo, pr_number:$pr_number, branch:$branch, sha:$sha, status:$status}')
