@@ -309,8 +309,21 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
             )
             if comment_result.returncode == 0:
                 issue_comments = comment_result.stdout
+            else:
+                # Fail-closed: cannot confirm linkback in comments
+                logger.warning(
+                    f"Failed to fetch comments for issue #{issue_number} "
+                    f"(exit code {comment_result.returncode}): {comment_result.stderr} "
+                    f"— fail-closed: blocking close to prevent unverified state"
+                )
+                return False
         except Exception as e:
-            logger.debug(f"Failed to fetch comments for issue #{issue_number}: {e}")
+            # Fail-closed: cannot confirm linkback in comments
+            logger.warning(
+                f"Exception fetching comments for issue #{issue_number}: {e} "
+                f"— fail-closed: blocking close to prevent unverified state"
+            )
+            return False
 
     linear_id = _extract_linear_linkback(issue_body, issue_comments)
     if not linear_id:
@@ -371,13 +384,19 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
 
         # Check for GraphQL errors
         if "errors" in response_data:
-            logger.warning(f"Linear API returned errors for {linear_id}: {response_data['errors']}")
-            return True  # Fail-open
+            logger.warning(
+                f"Linear API returned errors for {linear_id}: {response_data['errors']} "
+                f"— fail-closed: blocking close to prevent unverified state"
+            )
+            return False
 
         issue_data = response_data.get("data", {}).get("issue")
         if not issue_data:
-            logger.warning(f"Linear issue {linear_id} not found")
-            return True  # Fail-open (Linear issue may have been deleted)
+            logger.warning(
+                f"Linear issue {linear_id} not found — fail-closed: blocking close "
+                f"(issue may have been deleted)"
+            )
+            return False
 
         # Check Linear issue state FIRST — this is the key churn-prevention gate.
         # If the Linear issue is NOT in a terminal state, closing the GitHub
@@ -445,11 +464,17 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
         return False
 
     except urllib.error.URLError as e:
-        logger.warning(f"Linear API unreachable for {linear_id}: {e} - fail-open: returning True")
-        return True  # Fail-open
+        logger.warning(
+            f"Linear API unreachable for {linear_id}: {e} — fail-closed: "
+            f"blocking close to prevent unverified state"
+        )
+        return False
     except Exception as e:
-        logger.warning(f"Error verifying fix via Linear for {linear_id}: {e} - fail-open: returning True")
-        return True  # Fail-open
+        logger.warning(
+            f"Error verifying fix via Linear for {linear_id}: {e} — fail-closed: "
+            f"blocking close to prevent unverified state"
+        )
+        return False
 
 
 def auto_close_resolved(findings: list, dedup_label: str, failed_categories: set[str] | None = None,
