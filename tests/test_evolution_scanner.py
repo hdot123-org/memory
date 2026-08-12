@@ -4559,6 +4559,99 @@ def test_auto_close_resolved_no_category_field_still_closes():
 
 
 # ============================================================================
+# INFRA-216: auto_close_resolved self-audit category exclusion Tests
+# ============================================================================
+
+
+def test_auto_close_resolved_skips_self_audit_category():
+    """INFRA-216: self-audit category issues are NOT auto-closed.
+
+    Self-audit findings (e.g., EVOLUTION_HEARTBEAT_STALE) are transient health
+    signals. Auto-closing them triggers a flapping loop with the state gate.
+    """
+
+    # Current scan has nothing active
+    current_findings = []
+
+    # Issue 101 is self-audit (must be skipped), issue 102 is consistency
+    mock_issues = [
+        {"number": 101, "body": "**Rule ID**: EVOLUTION_HEARTBEAT_STALE\n**Category**: evolution_self_audit\n**Location**: system/heartbeat"},
+        {"number": 102, "body": "**Rule ID**: RULE_002\n**Category**: consistency\n**Location**: file2.py"},
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # close 102 (consistency, stale)
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found")
+
+        # List call + close call for issue 102 (consistency, stale - closed normally).
+        # Self-audit issue 101 is skipped, NOT closed.
+        assert mock_run.call_count == 2
+        close_call = mock_run.call_args_list[1]
+        assert close_call[0][0][3] == "102"
+
+
+def test_auto_close_resolved_closes_non_self_audit_category():
+    """INFRA-216: self-audit exclusion works alongside normal processing.
+
+    A self-audit issue is skipped while a non-self-audit stale issue is
+    processed normally. The self-audit issue must NOT be closed.
+    """
+
+    # Current scan has one active consistency finding matching issue 101
+    current_findings = [
+        Finding("RULE_001", "warning", "consistency", "active", "file1.py", "ev1"),
+    ]
+
+    # Issue 101 (consistency, active - NOT closed), issue 102 (self-audit, stale - skipped)
+    mock_issues = [
+        {"number": 101, "body": "**Rule ID**: RULE_001\n**Category**: consistency\n**Location**: file1.py"},
+        {"number": 102, "body": "**Rule ID**: EVOLUTION_HEARTBEAT_STALE\n**Category**: evolution_self_audit\n**Location**: system/heartbeat"},
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found")
+
+        # Only the list call; issue 101 is active (not stale), issue 102 is self-audit (skipped)
+        assert mock_run.call_count == 1
+        call_args = mock_run.call_args[0][0]
+        assert call_args[0:3] == ["gh", "issue", "list"]
+
+
+def test_auto_close_resolved_self_audit_not_affected_by_failed_categories():
+    """INFRA-216: self-audit exclusion works even when failed_categories is None.
+
+    The self-audit check is independent of the failed_categories guard.
+    """
+
+    # Current scan has nothing
+    current_findings = []
+
+    mock_issues = [
+        {"number": 101, "body": "**Rule ID**: EVOLUTION_HEARTBEAT_STALE\n**Category**: evolution_self_audit\n**Location**: system/heartbeat"},
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found", failed_categories=None)
+
+        # Only the list call; self-audit issue is NOT closed
+        assert mock_run.call_count == 1
+        call_args = mock_run.call_args[0][0]
+        assert call_args[0:3] == ["gh", "issue", "list"]
+
+
+# ============================================================================
 # GAP-C2: Dedup includes recently closed issues (Fixes #454)
 # ============================================================================
 
