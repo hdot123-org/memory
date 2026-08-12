@@ -66,3 +66,4 @@ jobs:
           security_review_model: "qwen3.7-plus"
           review_model: "qwen3.7-plus"
           allowed_bots: "dependabot[bot]"
+          security_block_on_high: "true"
