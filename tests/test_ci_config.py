@@ -7,8 +7,8 @@ Validates YAML structure of droid-review.yml, auto-merge.yml, and ci.yml.
 import subprocess
 from pathlib import Path
 
-import yaml
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).parent.parent
 
