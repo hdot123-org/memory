@@ -6790,3 +6790,907 @@ def test_reopen_multiple_matches_deterministic(tmp_path):
         assert "41" in reopen_call[0][0]
         assert "42" not in reopen_call[0][0]
         assert "43" not in reopen_call[0][0]
+
+
+# ============================================================================
+# VAL-CROSS: Cross-Area Integration Tests (M1 Trust Chain)
+# ============================================================================
+
+# Helper: build an issue body with Linear linkback
+def _make_issue_body(rule_id, location, category="test", linear_id=None):
+    """Build a realistic issue body with optional linear-linkback."""
+    body = f"**Rule ID**: {rule_id}\n**Severity**: warning\n"
+    body += f"**Category**: {category}\n**Location**: {location}\n"
+    if linear_id:
+        body += f"<!-- linear-linkback {linear_id} -->\n"
+    body += "**Description**: test\n**Evidence**: test\n"
+    return body
+
+
+# Helper: build a Linear API response with GitHub PR attachments
+def _make_linear_response(attachments):
+    """Build a Linear GraphQL response with the given attachments."""
+    return json.dumps({
+        "data": {
+            "issue": {
+                "id": "INFRA-123",
+                "attachments": {
+                    "nodes": attachments
+                }
+            }
+        }
+    })
+
+
+# Helper: build a GitHub PR attachment
+def _make_pr_attachment(pr_number, merged_at=None):
+    """Build a GitHub PR attachment node."""
+    return {
+        "id": f"pr-{pr_number}",
+        "url": f"https://github.com/owner/repo/pull/{pr_number}",
+        "attachmentType": "github",
+        "metadata": {}
+    }
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-001: Complete trust chain — finding resolved → PR merged → Issue closed
+# --------------------------------------------------------------------------
+def test_val_cross_001_complete_trust_chain(tmp_path):
+    """VAL-CROSS-001: All four gates pass, issue closed with PR-merged verification."""
+    # History: 2 absent snapshots (grace period satisfied)
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},  # tick -2
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},  # tick -1 (current)
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    # Current scan: RULE_001 absent
+    current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
+
+    # Open issue with linear linkback, category not failed
+    mock_issues = [{
+        "number": 101,
+        "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
+    }]
+
+    # Linear returns a merged PR
+    linear_response = _make_linear_response([
+        _make_pr_attachment(523, merged_at="2026-01-01T00:00:00Z")
+    ])
+
+    mock_urlopen = MagicMock()
+    mock_urlopen.__enter__ = MagicMock(return_value=MagicMock(
+        read=MagicMock(return_value=linear_response.encode("utf-8"))
+    ))
+    mock_urlopen.__exit__ = MagicMock(return_value=False)
+
+    with patch("evolution_utils.subprocess.run") as mock_run, \
+         patch("urllib.request.urlopen", return_value=mock_urlopen), \
+         patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
+        # Call sequence: list issues → gh pr view (merged) → close issue
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout=json.dumps({"mergedAt": "2026-01-01T00:00:00Z"}), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # close
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found",
+                           failed_categories=set(), history_path=history_path)
+
+        # Verify close was called (3 subprocess calls: list, pr view, close)
+        assert mock_run.call_count == 3
+        close_call = mock_run.call_args_list[2]
+        assert close_call[0][0][2] == "close"
+        assert close_call[0][0][3] == "101"
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-002: No double-counting current tick in grace period
+# --------------------------------------------------------------------------
+def test_val_cross_002_no_double_count_grace_period(tmp_path):
+    """VAL-CROSS-002: 2 absent snapshots → _count_consecutive_absences returns 2, not 3."""
+    from evolution_utils import _count_consecutive_absences
+
+    history_path = tmp_path / "findings_over_time.json"
+    # Both snapshots lack RULE_001 (current tick already written by update_history)
+    history_data = {
+        "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    result = _count_consecutive_absences("RULE_001", "file.md", history_path)
+    assert result == 2, f"Expected 2 absences, got {result}"
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-003: Trust chain broken — no merged PR → Issue stays open
+# --------------------------------------------------------------------------
+def test_val_cross_003_broken_chain_no_merged_pr(tmp_path):
+    """VAL-CROSS-003: PR exists but not merged → issue NOT closed."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
+    mock_issues = [{
+        "number": 101,
+        "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
+    }]
+
+    linear_response = _make_linear_response([
+        _make_pr_attachment(523)  # no mergedAt
+    ])
+
+    mock_urlopen = MagicMock()
+    mock_urlopen.__enter__ = MagicMock(return_value=MagicMock(
+        read=MagicMock(return_value=linear_response.encode("utf-8"))
+    ))
+    mock_urlopen.__exit__ = MagicMock(return_value=False)
+
+    with patch("evolution_utils.subprocess.run") as mock_run, \
+         patch("urllib.request.urlopen", return_value=mock_urlopen), \
+         patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout=json.dumps({"mergedAt": None}), stderr=""),
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found",
+                           failed_categories=set(), history_path=history_path)
+
+        # Only list + pr view, NO close call
+        assert mock_run.call_count == 2
+        assert mock_run.call_args_list[0][0][0][2] == "list"
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-004: Linear has no PR attachment → Issue stays open
+# --------------------------------------------------------------------------
+def test_val_cross_004_linear_no_pr_attachment(tmp_path):
+    """VAL-CROSS-004: Linear attachments list empty → issue NOT closed."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
+    mock_issues = [{
+        "number": 101,
+        "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
+    }]
+
+    # Linear returns empty attachments
+    linear_response = _make_linear_response([])
+
+    mock_urlopen = MagicMock()
+    mock_urlopen.__enter__ = MagicMock(return_value=MagicMock(
+        read=MagicMock(return_value=linear_response.encode("utf-8"))
+    ))
+    mock_urlopen.__exit__ = MagicMock(return_value=False)
+
+    with patch("evolution_utils.subprocess.run") as mock_run, \
+         patch("urllib.request.urlopen", return_value=mock_urlopen), \
+         patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr="")
+
+        auto_close_resolved(current_findings, "evolution-found",
+                           failed_categories=set(), history_path=history_path)
+
+        # Only list call, no pr view, no close
+        assert mock_run.call_count == 1
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-005: Linear API failure → fail-open close
+# --------------------------------------------------------------------------
+def test_val_cross_005_linear_api_failure_fail_open(tmp_path):
+    """VAL-CROSS-005: Linear API unreachable → issue still closes (fail-open)."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
+    mock_issues = [{
+        "number": 101,
+        "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
+    }]
+
+    import urllib.error
+    with patch("evolution_utils.subprocess.run") as mock_run, \
+         patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Connection refused")):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # close
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found",
+                           failed_categories=set(), history_path=history_path)
+
+        # Issue closed despite Linear failure (fail-open)
+        assert mock_run.call_count == 2
+        close_call = mock_run.call_args_list[1]
+        assert close_call[0][0][2] == "close"
+        assert close_call[0][0][3] == "101"
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-006: Legacy issue without linkback → closes without Linear verification
+# --------------------------------------------------------------------------
+def test_val_cross_006_legacy_issue_no_linkback(tmp_path):
+    """VAL-CROSS-006: No linear-linkback → urlopen never called, issue closed."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
+    # Issue body WITHOUT linear-linkback
+    mock_issues = [{
+        "number": 101,
+        "body": "**Rule ID**: RULE_001\n**Location**: file.md\n**Description**: test"
+    }]
+
+    with patch("evolution_utils.subprocess.run") as mock_run, \
+         patch("urllib.request.urlopen") as mock_urlopen:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # close
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found",
+                           failed_categories=set(), history_path=history_path)
+
+        # urlopen NOT called (no Linear verification for legacy issues)
+        assert mock_urlopen.call_count == 0
+        # Issue closed
+        assert mock_run.call_count == 2
+        close_call = mock_run.call_args_list[1]
+        assert close_call[0][0][2] == "close"
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-007: Reappeared finding reopens closed issue instead of creating duplicate
+# --------------------------------------------------------------------------
+def test_val_cross_007_reopen_instead_of_duplicate(tmp_path):
+    """VAL-CROSS-007: Resolved finding reappears → reopen, not create."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"findings": [{"rule_id": "RULE_001", "location": "file.md"}]},
+            {"findings": []},  # resolved
+        ],
+        "resolved_findings": [
+            {"rule_id": "RULE_001", "location": "file.md",
+             "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    # Finding reappears
+    findings = [Finding("RULE_001", "warning", "test", "reappeared", "file.md", "ev")]
+
+    # Severity upgraded to critical by detect_regressions
+    upgraded = detect_regressions(findings, history_path)
+    assert upgraded[0].severity == "critical"
+
+    # _reopen_closed_issue finds matching closed issue and reopens
+    closed_issues = [{
+        "number": 42,
+        "body": "**Rule ID**: RULE_001\n**Location**: file.md"
+    }]
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # reopen
+        ]
+
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+
+        assert result is True
+        assert mock_run.call_count == 2
+        # gh issue reopen called, NOT gh issue create
+        reopen_call = mock_run.call_args_list[1]
+        assert "reopen" in reopen_call[0][0]
+
+    # Verify reopen_count incremented
+    updated_data = json.loads(history_path.read_text())
+    assert updated_data["resolved_findings"][0]["reopen_count"] == 1
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-008: Reopened issue can be closed again after second resolution
+# --------------------------------------------------------------------------
+def test_val_cross_008_reopened_issue_closed_again(tmp_path):
+    """VAL-CROSS-008: After reopen + second resolution → issue closed again (same number)."""
+    # Simulate: issue #42 was closed, then reopened, then finding absent again
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+        ],
+        "resolved_findings": [
+            {"rule_id": "RULE_001", "location": "file.md",
+             "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 1}
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
+    mock_issues = [{
+        "number": 42,  # Same issue number that was reopened
+        "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
+    }]
+
+    linear_response = _make_linear_response([
+        _make_pr_attachment(999, merged_at="2026-02-01T00:00:00Z")
+    ])
+
+    mock_urlopen = MagicMock()
+    mock_urlopen.__enter__ = MagicMock(return_value=MagicMock(
+        read=MagicMock(return_value=linear_response.encode("utf-8"))
+    ))
+    mock_urlopen.__exit__ = MagicMock(return_value=False)
+
+    with patch("evolution_utils.subprocess.run") as mock_run, \
+         patch("urllib.request.urlopen", return_value=mock_urlopen), \
+         patch.dict(os.environ, {"LINEAR_API_KEY": "test-key-008"}):
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout=json.dumps({"mergedAt": "2026-02-01T00:00:00Z"}), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # close #42 again
+        ]
+
+        auto_close_resolved(current_findings, "evolution-found",
+                           failed_categories=set(), history_path=history_path)
+
+        # Issue #42 closed (same number, no new issue created)
+        assert mock_run.call_count == 3
+        close_call = mock_run.call_args_list[2]
+        assert close_call[0][0][2] == "close"
+        assert close_call[0][0][3] == "42"
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-009: detect_regressions only upgrades severity for resolved_findings matches
+# --------------------------------------------------------------------------
+def test_val_cross_009_selective_severity_upgrade(tmp_path):
+    """VAL-CROSS-009: Only resolved findings get critical; new findings keep original severity."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [{"findings": []}],
+        "resolved_findings": [
+            {"rule_id": "RULE_OLD", "location": "old.md", "resolved_at": "2026-01-01T00:00:00Z"}
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    findings = [
+        Finding("RULE_OLD", "warning", "test", "reappeared", "old.md", "ev"),
+        Finding("RULE_NEW", "warning", "test", "brand new", "new.md", "ev"),
+    ]
+
+    upgraded = detect_regressions(findings, history_path)
+
+    # RULE_OLD upgraded to critical (it's in resolved_findings)
+    old_finding = next(f for f in upgraded if f.rule_id == "RULE_OLD")
+    assert old_finding.severity == "critical"
+
+    # RULE_NEW stays warning (not in resolved_findings)
+    new_finding = next(f for f in upgraded if f.rule_id == "RULE_NEW")
+    assert new_finding.severity == "warning"
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-010: Reopen skipped after 3 reopens — new issue created instead
+# --------------------------------------------------------------------------
+def test_val_cross_010_reopen_limit_new_issue_created(tmp_path):
+    """VAL-CROSS-010: reopen_count >= 3 → _reopen_closed_issue returns False, create_issue called."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {"rule_id": "RULE_001", "location": "file.md",
+             "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 3}
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    # _reopen_closed_issue returns False (limit reached)
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+        assert result is False
+        # No gh calls made (limit check happens before gh issue list)
+        assert mock_run.call_count == 0
+
+    # In main() flow, create_issue would be called instead
+    # (This is tested by the reopen_limit_reached test above)
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-011: Reopen counter increments correctly across multiple cycles
+# --------------------------------------------------------------------------
+def test_val_cross_011_reopen_counter_multiple_cycles(tmp_path):
+    """VAL-CROSS-011: After 3 reopen cycles, reopen_count is exactly 3."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {"rule_id": "RULE_001", "location": "file.md",
+             "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    closed_issues = [{
+        "number": 42,
+        "body": "**Rule ID**: RULE_001\n**Location**: file.md"
+    }]
+
+    # Cycle 1: reopen_count 0 → 1
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+        assert result is True
+
+    data = json.loads(history_path.read_text())
+    assert data["resolved_findings"][0]["reopen_count"] == 1
+
+    # Cycle 2: reopen_count 1 → 2
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+        assert result is True
+
+    data = json.loads(history_path.read_text())
+    assert data["resolved_findings"][0]["reopen_count"] == 2
+
+    # Cycle 3: reopen_count 2 → 3
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+        assert result is True
+
+    data = json.loads(history_path.read_text())
+    assert data["resolved_findings"][0]["reopen_count"] == 3
+
+    # Cycle 4: reopen_count 3 → False (limit reached)
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+        assert result is False
+        assert mock_run.call_count == 0
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-012: No closed issue match → new issue created
+# --------------------------------------------------------------------------
+def test_val_cross_012_no_match_new_issue_created(tmp_path):
+    """VAL-CROSS-012: No closed issue match → _reopen_closed_issue returns False."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": [
+            {"rule_id": "RULE_001", "location": "file.md",
+             "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ]
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    # No closed issues match
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+        result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
+        assert result is False
+
+    # In main() flow, create_issue would be called (tested by reopen_no_match above)
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-020: Existing auto_close grace period tests still pass
+# --------------------------------------------------------------------------
+def test_val_cross_020_grace_period_backward_compat(tmp_path):
+    """VAL-CROSS-020: Grace period check still works with PR-merged verification."""
+    history_path = tmp_path / "findings_over_time.json"
+    # Only 1 absence (below grace period threshold of 2)
+    history_data = {
+        "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
+    mock_issues = [{
+        "number": 101,
+        "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
+    }]
+
+    with patch("evolution_utils.subprocess.run") as mock_run, \
+         patch("urllib.request.urlopen") as mock_urlopen:
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr="")
+
+        auto_close_resolved(current_findings, "evolution-found",
+                           failed_categories=set(), history_path=history_path)
+
+        # Grace period not met → no Linear API call, no close
+        assert mock_urlopen.call_count == 0
+        assert mock_run.call_count == 1  # Only list call
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-021: GAP-C1 category protection still works (no Linear API call)
+# --------------------------------------------------------------------------
+def test_val_cross_021_gap_c1_no_linear_call(tmp_path):
+    """VAL-CROSS-021: Category-protected issue → GAP-C1 short-circuits, urlopen NOT called."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
+    mock_issues = [{
+        "number": 101,
+        "body": _make_issue_body("RULE_001", "file.md", category="failed_tool", linear_id="INFRA-123")
+    }]
+
+    with patch("evolution_utils.subprocess.run") as mock_run, \
+         patch("urllib.request.urlopen") as mock_urlopen:
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr="")
+
+        # Issue category is in failed_categories → GAP-C1 protects it
+        auto_close_resolved(current_findings, "evolution-found",
+                           failed_categories={"failed_tool"}, history_path=history_path)
+
+        # GAP-C1 fires → no Linear API call, no close
+        assert mock_urlopen.call_count == 0
+        assert mock_run.call_count == 1  # Only list call
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-022: Empty findings list handling still works
+# --------------------------------------------------------------------------
+def test_val_cross_022_empty_findings_list(tmp_path):
+    """VAL-CROSS-022: auto_close_resolved([], ...) returns without error."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_path.write_text(json.dumps({"snapshots": [], "resolved_findings": []}))
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+
+        # Should not raise
+        auto_close_resolved([], "evolution-found", history_path=history_path)
+
+        # Only list call, no close calls
+        assert mock_run.call_count == 1
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-023: Malformed issue body handling still works
+# --------------------------------------------------------------------------
+def test_val_cross_023_malformed_body_handling(tmp_path):
+    """VAL-CROSS-023: Issue with unparseable body → skipped without crash."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
+    mock_issues = [
+        {"number": 101, "body": "completely malformed"},  # No Rule ID/Location
+        {"number": 102, "body": ""},  # Empty body
+        {
+            "number": 103,
+            "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
+        },
+    ]
+
+    with patch("evolution_utils.subprocess.run") as mock_run, \
+         patch("urllib.request.urlopen") as mock_urlopen:
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # close 103
+        ]
+
+        # Should not crash on malformed issues
+        auto_close_resolved(current_findings, "evolution-found",
+                           failed_categories=set(), history_path=history_path)
+
+        # Only valid issue (103) processed
+        assert mock_run.call_count == 2
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-024: detect_regressions no-mutation test still passes
+# --------------------------------------------------------------------------
+def test_val_cross_024_no_mutation_backward_compat(tmp_path):
+    """VAL-CROSS-024: Empty history → findings returned unchanged, input not mutated."""
+    history_path = tmp_path / "findings_over_time.json"
+    # No history file
+    findings = [
+        Finding("RULE_001", "warning", "test", "desc", "file.md", "ev"),
+        Finding("RULE_002", "info", "test", "desc", "file2.md", "ev"),
+    ]
+
+    original_severities = [f.severity for f in findings]
+    result = detect_regressions(findings, history_path)
+
+    # Input not mutated
+    assert [f.severity for f in findings] == original_severities
+    # Output unchanged (no history = no resolved findings)
+    assert [f.severity for f in result] == original_severities
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-025: Scanner test suite regression — 0 failures, all pass
+# --------------------------------------------------------------------------
+@pytest.mark.timeout(360)  # 需要运行整个测试套件，给 6 分钟
+def test_val_cross_025_full_suite_regression_check():
+    """VAL-CROSS-025: Full test suite has 0 failures, all tests pass."""
+    import subprocess
+    result = subprocess.run(
+        ["python3", "-m", "pytest", "tests/test_evolution_scanner.py", "-q", "--tb=no", "-k", "not test_val_cross_025"],
+        capture_output=True, text=True, timeout=300,
+        cwd=Path(__file__).parent.parent
+    )
+
+    # Parse output for failure count
+    output = result.stdout + result.stderr
+    lines = output.strip().split('\n')
+    summary_line = [l for l in lines if 'failed' in l or 'passed' in l][-1]
+
+    # Extract numbers: "X failed, Y passed" or "Y passed"
+    import re
+    failed_match = re.search(r'(\d+) failed', summary_line)
+    passed_match = re.search(r'(\d+) passed', summary_line)
+
+    failed_count = int(failed_match.group(1)) if failed_match else 0
+    passed_count = int(passed_match.group(1)) if passed_match else 0
+
+    # Should have 0 failures - all tests pass
+    assert failed_count == 0, f"Expected 0 failures, got {failed_count}. Summary: {summary_line}"
+    # Should have at least 270 passed tests
+    assert passed_count >= 270, f"Expected >= 270 passed, got {passed_count}"
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-026: Production call ordering — update_history before auto_close_resolved
+# --------------------------------------------------------------------------
+def test_val_cross_026_production_call_ordering():
+    """VAL-CROSS-026: main() calls update_history() before auto_close_resolved()."""
+    import inspect
+    from evolution_scanner import main
+
+    source = inspect.getsource(main)
+
+    # Find positions of update_history and auto_close_resolved calls
+    update_pos = source.find("update_history(")
+    auto_close_pos = source.find("auto_close_resolved(")
+
+    assert update_pos != -1, "update_history not found in main()"
+    assert auto_close_pos != -1, "auto_close_resolved not found in main()"
+    assert update_pos < auto_close_pos, "update_history must be called before auto_close_resolved"
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-027: 2-tick grace period with correct ordering
+# --------------------------------------------------------------------------
+def test_val_cross_027_two_tick_grace_period(tmp_path):
+    """VAL-CROSS-027: After 2 absent ticks, _count_consecutive_absences returns 2."""
+    from evolution_utils import _count_consecutive_absences
+
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    result = _count_consecutive_absences("RULE_001", "file.md", history_path)
+    assert result == 2, f"Expected 2 absences after 2 ticks, got {result}"
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-028: resolved_findings written before auto_close evaluates
+# --------------------------------------------------------------------------
+def test_val_cross_028_resolved_findings_written_first(tmp_path):
+    """VAL-CROSS-028: update_history writes resolved_findings before auto_close runs."""
+    history_path = tmp_path / "findings_over_time.json"
+
+    # Tick 1: RULE_001 present
+    findings_1 = [Finding("RULE_001", "warning", "test", "desc", "file.md", "ev")]
+    update_history(history_path, findings_1, 1, 100)
+
+    # Tick 2: RULE_001 absent → should be added to resolved_findings
+    findings_2 = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
+    update_history(history_path, findings_2, 1, 100)
+
+    # Verify resolved_findings contains RULE_001
+    data = json.loads(history_path.read_text())
+    assert len(data["resolved_findings"]) == 1
+    assert data["resolved_findings"][0]["rule_id"] == "RULE_001"
+    assert data["resolved_findings"][0]["location"] == "file.md"
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-033: GAP-C1 + PR verification non-interference
+# --------------------------------------------------------------------------
+def test_val_cross_033_gap_c1_pr_verification_non_interference(tmp_path):
+    """VAL-CROSS-033: Category-protected issue → GAP-C1 short-circuits, no Linear request."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
+    mock_issues = [{
+        "number": 101,
+        "body": _make_issue_body("RULE_001", "file.md", category="broken_tool", linear_id="INFRA-123")
+    }]
+
+    with patch("evolution_utils.subprocess.run") as mock_run, \
+         patch("urllib.request.urlopen") as mock_urlopen:
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr="")
+
+        # Issue category in failed_categories → GAP-C1 protects
+        auto_close_resolved(current_findings, "evolution-found",
+                           failed_categories={"broken_tool"}, history_path=history_path)
+
+        # GAP-C1 fires before PR verification → no Linear API call
+        assert mock_urlopen.call_count == 0
+        assert mock_run.call_count == 1  # Only list call
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-034: Reopen does NOT fire for findings never in resolved_findings
+# --------------------------------------------------------------------------
+def test_val_cross_034_reopen_not_for_new_findings(tmp_path):
+    """VAL-CROSS-034: New finding (not in resolved_findings) → no reopen, create_issue called."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_data = {
+        "snapshots": [],
+        "resolved_findings": []  # No resolved findings
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    # New finding (not in resolved_findings)
+    findings = [Finding("RULE_NEW", "warning", "test", "new", "new.md", "ev")]
+
+    # detect_regressions does NOT upgrade severity
+    upgraded = detect_regressions(findings, history_path)
+    assert upgraded[0].severity == "warning"  # Stays warning, not upgraded
+
+    # In main() flow, _reopen_closed_issue would return False (not in resolved_findings)
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        result = _reopen_closed_issue("RULE_NEW", "new.md", "evolution-found", history_path)
+        assert result is False  # Not in resolved_findings
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-035: auto_close handles gh issue list failure gracefully
+# --------------------------------------------------------------------------
+def test_val_cross_035_gh_list_failure_graceful(tmp_path):
+    """VAL-CROSS-035: gh issue list fails → function returns cleanly, no Linear calls."""
+    history_path = tmp_path / "findings_over_time.json"
+    history_path.write_text(json.dumps({"snapshots": [], "resolved_findings": []}))
+
+    current_findings = [Finding("RULE_001", "warning", "test", "desc", "file.md", "ev")]
+
+    with patch("evolution_utils.subprocess.run") as mock_run, \
+         patch("urllib.request.urlopen") as mock_urlopen:
+        # gh issue list fails
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="API error")
+
+        # Should not raise
+        auto_close_resolved(current_findings, "evolution-found", history_path=history_path)
+
+        # No close calls, no Linear API calls
+        assert mock_run.call_count == 1  # Only list call
+        assert mock_urlopen.call_count == 0
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-036: resolved_findings survives snapshot trimming
+# --------------------------------------------------------------------------
+def test_val_cross_036_resolved_findings_survives_trimming(tmp_path):
+    """VAL-CROSS-036: After snapshot trimming, resolved_findings preserved independently."""
+    history_path = tmp_path / "findings_over_time.json"
+
+    # Create many snapshots to trigger trimming (snapshot_limit=5)
+    for i in range(10):
+        findings = [Finding(f"RULE_{i}", "warning", "test", f"desc{i}", f"file{i}.md", "ev")]
+        update_history(history_path, findings, 1, snapshot_limit=5)
+
+    # Add a resolved finding
+    findings_resolved = [Finding("RULE_00", "warning", "test", "desc", "file0.md", "ev")]
+    findings_current = [Finding("RULE_NEW", "warning", "test", "new", "new.md", "ev")]
+    update_history(history_path, findings_resolved, 1, snapshot_limit=5)
+    update_history(history_path, findings_current, 1, snapshot_limit=5)
+
+    data = json.loads(history_path.read_text())
+
+    # Snapshots trimmed to limit
+    assert len(data["snapshots"]) <= 5
+
+    # resolved_findings preserved
+    assert len(data["resolved_findings"]) > 0
+    assert any(r["rule_id"] == "RULE_00" for r in data["resolved_findings"])
+
+
+# --------------------------------------------------------------------------
+# VAL-CROSS-037: Reopened issue recognized by deduplicate() — no duplicate on subsequent tick
+# --------------------------------------------------------------------------
+def test_val_cross_037_dedup_after_reopen(tmp_path):
+    """VAL-CROSS-037: After reopen (now OPEN), deduplicate() finds it, no duplicate created."""
+    # After reopen, issue #42 is OPEN with (RULE_001, file.md)
+    open_issues = [
+        {"rule_id": "RULE_001", "location": "file.md", "number": 42}
+    ]
+
+    # Same finding appears in current scan
+    findings = [Finding("RULE_001", "critical", "test", "reappeared", "file.md", "ev")]
+
+    # deduplicate should suppress it
+    deduped = deduplicate(findings, open_issues)
+
+    # Finding deduplicated (not created as new issue)
+    assert len(deduped) == 0, "Reopened issue should be found by deduplicate()"
