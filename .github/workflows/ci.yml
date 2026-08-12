@@ -61,6 +61,11 @@ jobs:
         run: python scripts/check_boundary.py
       - name: Document classification guard
         run: python scripts/check_doc_classification.py
+      - name: Fix-has-test guard
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/check_fix_has_test.py --pr ${{ github.event.pull_request.number }}
       - name: Run tests with coverage
         run: python -m pytest -q tests --cov=memory_core --cov-report=xml
       - name: Timestamp - after tests
