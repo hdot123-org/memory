@@ -35,6 +35,7 @@ jobs:
           GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
         run: |
           DELETED_BRANCHES=()
+          PROTECTED_BRANCHES=()
           # Get cutoff as epoch seconds for reliable comparison
           CUTOFF_EPOCH=$(date -u -d '24 hours ago' '+%s' 2>/dev/null || date -u -v-24H '+%s')
 
@@ -57,6 +58,7 @@ jobs:
           if [ -z "$BRANCHES" ]; then
             echo "No branches found (besides main). Nothing to clean."
             echo "deleted_count=0" >> "$GITHUB_ENV"
+            echo "protected_count=0" >> "$GITHUB_ENV"
             exit 0
           fi
 
@@ -66,15 +68,31 @@ jobs:
           for BRANCH in $BRANCHES; do
             echo "--- Checking branch: $BRANCH ---"
 
-            # Check if there's an open PR for this branch
-            PR_COUNT=$(gh pr list --head "$BRANCH" --state open --json number --jq 'length' 2>/dev/null)
+            # Fetch all PRs for this branch in one API call
+            ALL_PRS=$(gh pr list --head "$BRANCH" --state all --json number,state 2>/dev/null)
             if [ $? -ne 0 ]; then
               echo "  API error checking PRs for $BRANCH, skipping (fail-closed)."
               continue
             fi
 
-            if [ "$PR_COUNT" != "0" ]; then
-              echo "  Has open PR ($PR_COUNT), skipping."
+            # Count PRs by state: OPEN, CLOSED (not merged), MERGED
+            OPEN_PR_COUNT=$(echo "$ALL_PRS" | jq '[.[] | select(.state == "OPEN")] | length')
+            CLOSED_NOT_MERGED_COUNT=$(echo "$ALL_PRS" | jq '[.[] | select(.state == "CLOSED")] | length')
+
+            # Skip if has open PR
+            if [ "$OPEN_PR_COUNT" != "0" ]; then
+              echo "  Has open PR ($OPEN_PR_COUNT), skipping."
+              continue
+            fi
+
+            # Safety check: count unique commits not in main (symmetric difference)
+            UNIQUE_COUNT=$(git rev-list --count "origin/main...origin/$BRANCH" 2>/dev/null || echo "0")
+
+            # Protect branches with unmerged unique commits from CLOSED (not merged) PRs.
+            # These branches contain code that was never merged and would be lost if deleted.
+            if [ "$UNIQUE_COUNT" -gt 0 ] && [ "$CLOSED_NOT_MERGED_COUNT" -gt 0 ]; then
+              echo "  ⚠️  PROTECTED: branch has $UNIQUE_COUNT unique commit(s) and $CLOSED_NOT_MERGED_COUNT CLOSED (not merged) PR(s) — would lose unmerged code."
+              PROTECTED_BRANCHES+=("$BRANCH ($UNIQUE_COUNT unique commits)")
               continue
             fi
 
@@ -113,7 +131,9 @@ jobs:
 
           # Store deleted branches in env for next step
           DELETED_COUNT=${#DELETED_BRANCHES[@]}
+          PROTECTED_COUNT=${#PROTECTED_BRANCHES[@]}
           echo "deleted_count=$DELETED_COUNT" >> "$GITHUB_ENV"
+          echo "protected_count=$PROTECTED_COUNT" >> "$GITHUB_ENV"
 
           if [ "$DELETED_COUNT" -gt 0 ]; then
             echo "Deleted $DELETED_COUNT branch(es):"
@@ -122,12 +142,19 @@ jobs:
             echo "No orphan branches to delete."
           fi
 
+          if [ "$PROTECTED_COUNT" -gt 0 ]; then
+            echo ""
+            echo "Protected $PROTECTED_COUNT branch(es) with unmerged unique commits:"
+            printf '%s\n' "${PROTECTED_BRANCHES[@]}" > /tmp/protected_branches.txt
+          fi
+
       - name: Create issue notification
-        if: env.deleted_count != '0'
+        if: env.deleted_count != '0' || env.protected_count != '0'
         env:
           GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
         run: |
           DELETED_COUNT="${{ env.deleted_count }}"
+          PROTECTED_COUNT="${{ env.protected_count }}"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
 
@@ -137,14 +164,30 @@ jobs:
             echo ""
             echo "**Run date:** $RUN_DATE"
             echo "**Deleted branches:** $DELETED_COUNT"
+            echo "**Protected branches:** $PROTECTED_COUNT"
             echo "**Workflow run:** $RUN_URL"
             echo ""
-            echo "### Deleted branches"
-            echo ""
-            while IFS= read -r branch; do
-              echo "- \`$branch\`"
-            done < /tmp/deleted_branches.txt
-            echo ""
+
+            if [ "$DELETED_COUNT" -gt 0 ]; then
+              echo "### Deleted branches"
+              echo ""
+              while IFS= read -r branch; do
+                echo "- \`$branch\`"
+              done < /tmp/deleted_branches.txt
+              echo ""
+            fi
+
+            if [ "$PROTECTED_COUNT" -gt 0 ]; then
+              echo "### 🛡️ Protected branches (unmerged unique commits)"
+              echo ""
+              echo "These branches were protected from deletion because they contain unique commits not in main and their PR was closed without merging:"
+              echo ""
+              while IFS= read -r branch; do
+                echo "- \`$branch\`"
+              done < /tmp/protected_branches.txt
+              echo ""
+            fi
+
             echo "---"
             echo "*This issue was automatically created by the [Branch Cleanup]($RUN_URL) workflow.*"
           } > /tmp/issue_body.md
@@ -153,8 +196,18 @@ jobs:
           gh label create automation --force 2>/dev/null || true
           gh label create branch-cleanup --force 2>/dev/null || true
 
+          # Build dynamic title
+          TITLE_PARTS="Branch cleanup:"
+          if [ "$DELETED_COUNT" -gt 0 ]; then
+            TITLE_PARTS="$TITLE_PARTS $DELETED_COUNT deleted"
+          fi
+          if [ "$PROTECTED_COUNT" -gt 0 ]; then
+            TITLE_PARTS="$TITLE_PARTS $PROTECTED_COUNT protected"
+          fi
+          TITLE="$TITLE_PARTS ($RUN_DATE)"
+
           # Create issue
           gh issue create \
-            --title "Branch cleanup: $DELETED_COUNT orphan branch(es) deleted ($RUN_DATE)" \
+            --title "$TITLE" \
             --body-file /tmp/issue_body.md \
             --label "automation,branch-cleanup"
