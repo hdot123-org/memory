@@ -184,7 +184,7 @@ def apply_suppressions(findings: list[Finding], suppressions: list[dict]) -> lis
 
 
 def _query_issues(search: str, state: str, limit: int) -> list[dict]:
-    """Query GitHub issues with given state and limit. Returns parsed list or empty on failure."""
+    """Query GitHub issues with given state and limit. Returns parsed list or raises on failure."""
     result = subprocess.run(["gh", "issue", "list", "--search", search,
                               "--state", state, "--limit", str(limit), "--json", "title,body,number"],
                               capture_output=True, text=True, timeout=30)
@@ -192,9 +192,10 @@ def _query_issues(search: str, state: str, limit: int) -> list[dict]:
         stderr = result.stderr.strip()
         if stderr:
             print(f"[evolution] Warning: gh issue list stderr ({state}): {stderr}")
-        if state == "open":
-            raise RuntimeError(f"gh issue list failed: {result.stderr}")
-        return []
+        # Both open and closed query failures are fatal — silently returning []
+        # for closed issues means the scanner cannot detect recently closed
+        # issues, leading to duplicate re-creation (GAP-C2 regression).
+        raise RuntimeError(f"gh issue list failed ({state}): {result.stderr}")
     return json.loads(result.stdout) if result.stdout.strip() else []
 
 
@@ -347,13 +348,23 @@ def _process_findings_with_reopen(
 ) -> int:
     """Process findings: try reopen for resolved regressions, else create new issue.
 
-    Returns the count of issues created (reopened issues are not counted).
+    When a resolved regression's reopen limit is reached (3 reopens), the finding
+    is SUPPRESSED instead of creating a new issue. Creating a new issue would
+    duplicate the close/reopen churn cycle indefinitely.
+
+    Returns the count of issues created (reopened and suppressed issues are not counted).
     """
     created = 0
     for f in findings[:quota]:
         if f.severity == "critical" and (f.rule_id, f.location) in resolved_keys:
             if _reopen_closed_issue(f.rule_id, f.location, dedup_label, history_path):
                 continue
+            # Reopen limit reached — suppress instead of creating new issue.
+            # Creating a brand-new issue would restart the close/reopen churn
+            # cycle: scanner closes → Linear integration reopens → scanner closes → ...
+            print(f"[evolution] Reopen limit reached for {f.rule_id} @ {f.location}, "
+                  f"suppressing to avoid churn loop")
+            continue
         if create_issue(f, dedup_label):
             created += 1
     return created

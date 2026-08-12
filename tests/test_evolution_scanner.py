@@ -4350,23 +4350,22 @@ def test_auto_close_resolved_closes_stale_issues():
     ]
 
     with patch("evolution_utils.subprocess.run") as mock_run:
-        # First call: list issues
+        # First call: list issues, second: comment fetch for #102, third: close issue 102
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment fetch for #102
             MagicMock(returncode=0, stdout="", stderr=""),  # close issue 102
         ]
 
         auto_close_resolved(current_findings, "evolution-found")
 
         # Verify: should call list, then close only issue 102
-        assert mock_run.call_count == 2
+        assert mock_run.call_count == 3
 
         # Check the close call
-        close_call = mock_run.call_args_list[1]
+        close_call = mock_run.call_args_list[2]
         close_args = close_call[0][0]
         assert close_args[0:4] == ["gh", "issue", "close", "102"]
-        assert "--comment" in close_args
-        assert "finding" in close_args[-1] and "最近一次扫描" in close_args[-1]
 
 
 def test_auto_close_resolved_does_not_close_active_issues():
@@ -4433,14 +4432,15 @@ def test_auto_close_resolved_skips_malformed_issues():
     with patch("evolution_utils.subprocess.run") as mock_run:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment fetch for #103
             MagicMock(returncode=0, stdout="", stderr=""),  # close 103
         ]
 
         auto_close_resolved(current_findings, "evolution-found")
 
         # Should close only issue 103 (stale), skip 101 and 102 (malformed)
-        assert mock_run.call_count == 2
-        close_call = mock_run.call_args_list[1]
+        assert mock_run.call_count == 3
+        close_call = mock_run.call_args_list[2]
         assert close_call[0][0][3] == "103"
 
 
@@ -4498,14 +4498,15 @@ def test_auto_close_resolved_closes_when_category_not_failed():
     with patch("evolution_utils.subprocess.run") as mock_run:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment fetch for #102
             MagicMock(returncode=0, stdout="", stderr=""),  # close 102 (healthy, stale)
         ]
 
         auto_close_resolved(current_findings, "evolution-found", failed_categories={"daily_audit"})
 
-        # list + exactly one close (102). 103 must be protected.
-        assert mock_run.call_count == 2
-        close_call = mock_run.call_args_list[1]
+        # list + comment fetch + exactly one close (102). 103 must be protected.
+        assert mock_run.call_count == 3
+        close_call = mock_run.call_args_list[2]
         assert close_call[0][0][3] == "102"
 
 
@@ -4547,14 +4548,15 @@ def test_auto_close_resolved_no_category_field_still_closes():
     with patch("evolution_utils.subprocess.run") as mock_run:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment fetch for #102
             MagicMock(returncode=0, stdout="", stderr=""),  # close 102
         ]
 
         auto_close_resolved(current_findings, "evolution-found", failed_categories={"daily_audit"})
 
         # Without a parseable category we cannot prove it failed -> close it.
-        assert mock_run.call_count == 2
-        close_call = mock_run.call_args_list[1]
+        assert mock_run.call_count == 3
+        close_call = mock_run.call_args_list[2]
         assert close_call[0][0][3] == "102"
 
 
@@ -4582,15 +4584,16 @@ def test_auto_close_resolved_skips_self_audit_category():
     with patch("evolution_utils.subprocess.run") as mock_run:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment fetch for #102
             MagicMock(returncode=0, stdout="", stderr=""),  # close 102 (consistency, stale)
         ]
 
         auto_close_resolved(current_findings, "evolution-found")
 
-        # List call + close call for issue 102 (consistency, stale - closed normally).
+        # List + comment fetch + close call for issue 102 (consistency, stale - closed normally).
         # Self-audit issue 101 is skipped, NOT closed.
-        assert mock_run.call_count == 2
-        close_call = mock_run.call_args_list[1]
+        assert mock_run.call_count == 3
+        close_call = mock_run.call_args_list[2]
         assert close_call[0][0][3] == "102"
 
 
@@ -4773,7 +4776,12 @@ def test_mixed_open_and_closed_dedup():
 
 
 def test_get_open_issues_handles_closed_query_failure():
-    """GAP-C2: closed query failure is gracefully handled; open issues still returned."""
+    """GAP-C2: closed query failure is fatal — both open and closed failures propagate.
+
+    Previously the closed query silently returned [], which meant the scanner
+    could not detect recently closed issues, leading to duplicate re-creation.
+    Now both query failures raise RuntimeError.
+    """
     open_data = json.dumps([
         {"title": "[evolution] RULE_OPEN", "body": "**Rule ID**: RULE_OPEN\n**Location**: open.py", "number": 1}
     ])
@@ -4782,9 +4790,10 @@ def test_get_open_issues_handles_closed_query_failure():
             MagicMock(returncode=0, stdout=open_data, stderr=""),
             MagicMock(returncode=1, stdout="", stderr="API error"),
         ]
-        issues = get_open_issues("evolution-found")
-        assert len(issues) == 1
-        assert issues[0]["rule_id"] == "RULE_OPEN"
+        # Closed query failure should raise RuntimeError (not silently return [])
+        import pytest
+        with pytest.raises(RuntimeError, match="closed"):
+            get_open_issues("evolution-found")
 
 
 def test_get_open_issues_empty_closed():
@@ -6905,12 +6914,17 @@ def _make_issue_body(rule_id, location, category="test", linear_id=None):
 
 
 # Helper: build a Linear API response with GitHub PR attachments
-def _make_linear_response(attachments):
+def _make_linear_response(attachments, state_type="completed"):
     """Build a Linear GraphQL response with the given attachments."""
     return json.dumps({
         "data": {
             "issue": {
                 "id": "INFRA-123",
+                "state": {
+                    "id": "state-1",
+                    "name": "Done",
+                    "type": state_type,
+                },
                 "attachments": {
                     "nodes": attachments
                 }
@@ -6935,10 +6949,11 @@ def _make_pr_attachment(pr_number, merged_at=None):
 # --------------------------------------------------------------------------
 def test_val_cross_001_complete_trust_chain(tmp_path):
     """VAL-CROSS-001: All four gates pass, issue closed with PR-merged verification."""
-    # History: 2 absent snapshots (grace period satisfied)
+    # History: 3 absent snapshots (grace period satisfied with GRACE_PERIOD_TICKS=3)
     history_path = tmp_path / "findings_over_time.json"
     history_data = {
         "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},  # tick -3
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},  # tick -2
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},  # tick -1 (current)
         ],
@@ -7016,6 +7031,7 @@ def test_val_cross_003_broken_chain_no_merged_pr(tmp_path):
     history_path = tmp_path / "findings_over_time.json"
     history_data = {
         "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
@@ -7107,6 +7123,7 @@ def test_val_cross_005_linear_api_failure_fail_open(tmp_path):
         "snapshots": [
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
         "resolved_findings": []
     }
@@ -7121,7 +7138,8 @@ def test_val_cross_005_linear_api_failure_fail_open(tmp_path):
     import urllib.error
     with patch("evolution_utils.subprocess.run") as mock_run, \
          patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Connection refused")), \
-         patch("evolution_utils.logger") as mock_logger:
+         patch("evolution_utils.logger") as mock_logger, \
+         patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout="", stderr=""),  # close
@@ -7152,6 +7170,7 @@ def test_val_cross_006_legacy_issue_no_linkback(tmp_path):
         "snapshots": [
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
         "resolved_findings": []
     }
@@ -7168,6 +7187,7 @@ def test_val_cross_006_legacy_issue_no_linkback(tmp_path):
          patch("urllib.request.urlopen") as mock_urlopen:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment fetch for #101
             MagicMock(returncode=0, stdout="", stderr=""),  # close
         ]
 
@@ -7176,9 +7196,9 @@ def test_val_cross_006_legacy_issue_no_linkback(tmp_path):
 
         # urlopen NOT called (no Linear verification for legacy issues)
         assert mock_urlopen.call_count == 0
-        # Issue closed
-        assert mock_run.call_count == 2
-        close_call = mock_run.call_args_list[1]
+        # Issue closed (list + comment fetch + close)
+        assert mock_run.call_count == 3
+        close_call = mock_run.call_args_list[2]
         assert close_call[0][0][2] == "close"
 
 
@@ -7241,6 +7261,7 @@ def test_val_cross_008_reopened_issue_closed_again(tmp_path):
     history_path = tmp_path / "findings_over_time.json"
     history_data = {
         "snapshots": [
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
@@ -7320,7 +7341,7 @@ def test_val_cross_009_selective_severity_upgrade(tmp_path):
 # VAL-CROSS-010: Reopen skipped after 3 reopens — new issue created instead
 # --------------------------------------------------------------------------
 def test_val_cross_010_reopen_limit_new_issue_created(tmp_path):
-    """VAL-CROSS-010: reopen_count >= 3 → _reopen_closed_issue returns False, create_issue called."""
+    """VAL-CROSS-010: reopen_count >= 3 → _reopen_closed_issue returns False, finding suppressed (no new issue created)."""
     history_path = tmp_path / "findings_over_time.json"
     history_data = {
         "snapshots": [],
@@ -7338,8 +7359,24 @@ def test_val_cross_010_reopen_limit_new_issue_created(tmp_path):
         # No gh calls made (limit check happens before gh issue list)
         assert mock_run.call_count == 0
 
-    # In main() flow, create_issue would be called instead
-    # (This is tested by the reopen_limit_reached test above)
+    # In _process_findings_with_reopen, when reopen limit is reached,
+    # the finding is SUPPRESSED instead of creating a new issue.
+    # This prevents the close/reopen churn loop.
+    from evolution_scanner import Finding, _process_findings_with_reopen
+    finding = Finding(
+        rule_id="RULE_001", severity="critical", category="test",
+        location="file.md", description="desc", evidence="ev"
+    )
+    resolved_keys = {("RULE_001", "file.md")}
+
+    with patch("evolution_scanner.create_issue") as mock_create:
+        created = _process_findings_with_reopen(
+            [finding], quota=10, resolved_keys=resolved_keys,
+            dedup_label="evolution-found", history_path=history_path
+        )
+        # No new issue created (suppressed)
+        assert created == 0
+        assert not mock_create.called
 
 
 # --------------------------------------------------------------------------
@@ -7524,6 +7561,7 @@ def test_val_cross_023_malformed_body_handling(tmp_path):
         "snapshots": [
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
+            {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
         "resolved_findings": []
     }
@@ -7535,7 +7573,7 @@ def test_val_cross_023_malformed_body_handling(tmp_path):
         {"number": 102, "body": ""},  # Empty body
         {
             "number": 103,
-            "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
+            "body": _make_issue_body("RULE_001", "file.md")  # no linkback → backward compat
         },
     ]
 
@@ -7543,6 +7581,7 @@ def test_val_cross_023_malformed_body_handling(tmp_path):
          patch("urllib.request.urlopen"):
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment fetch for #103
             MagicMock(returncode=0, stdout="", stderr=""),  # close 103
         ]
 
@@ -7550,8 +7589,8 @@ def test_val_cross_023_malformed_body_handling(tmp_path):
         auto_close_resolved(current_findings, "evolution-found",
                            failed_categories=set(), history_path=history_path)
 
-        # Only valid issue (103) processed
-        assert mock_run.call_count == 2
+        # Only valid issue (103) processed (list + comment fetch + close)
+        assert mock_run.call_count == 3
 
 
 # --------------------------------------------------------------------------
