@@ -241,25 +241,41 @@ def check_repositories_yml() -> list[dict[str, Any]]:
             })
             return findings
 
-        repos = data.get("repositories", {})
-        if not isinstance(repos, dict):
+        # The actual schema is nested: teams.<team>.repos[*].repoKey
+        teams = data.get("teams", {})
+        if not isinstance(teams, dict):
             findings.append({
                 "rule_id": "EVOLUTION_ROUTING_MISCONFIG",
                 "severity": "critical",
-                "description": "repositories.yml missing repositories section",
+                "description": "repositories.yml missing teams section",
                 "location": str(REPOSITORIES_YML),
-                "evidence": "repositories key missing or invalid",
+                "evidence": "teams key missing or invalid",
                 "category": CATEGORY,
             })
             return findings
 
-        if "memory-core" not in repos:
+        # Traverse teams.*.repos[*] looking for repoKey == "memory-core"
+        found_memory_core = False
+        for _team_name, team_data in teams.items():
+            if not isinstance(team_data, dict):
+                continue
+            team_repos = team_data.get("repos", [])
+            if not isinstance(team_repos, list):
+                continue
+            for repo in team_repos:
+                if isinstance(repo, dict) and repo.get("repoKey") == "memory-core":
+                    found_memory_core = True
+                    break
+            if found_memory_core:
+                break
+
+        if not found_memory_core:
             findings.append({
                 "rule_id": "EVOLUTION_ROUTING_MISCONFIG",
                 "severity": "critical",
                 "description": "repositories.yml missing memory-core entry",
                 "location": str(REPOSITORIES_YML),
-                "evidence": "memory-core not found",
+                "evidence": "memory-core not found in teams.*.repos",
                 "category": CATEGORY,
             })
     except ImportError:
