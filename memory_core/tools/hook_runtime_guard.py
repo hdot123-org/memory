@@ -4,6 +4,7 @@ Installs SIGALRM + SIGINT handlers BEFORE heavy imports to ensure
 clean exit under Factory's 10s timeout. Console-script entry point
 only — pytest collection and in-process main() calls are unaffected.
 """
+import os
 import signal
 import sys
 
@@ -11,8 +12,13 @@ _BOOT_SECONDS = 8  # < Factory's 10s timeout
 
 
 def _exit0_handler(signum: int, frame: object) -> None:
-    """Clean exit handler for SIGINT/SIGALRM."""
-    sys.exit(0)
+    """Clean exit handler for SIGINT/SIGALRM.
+
+    Uses os._exit(0) to skip atexit callbacks (telemetry PostHog
+    Client.join) that would otherwise raise a Traceback on stderr
+    during interpreter shutdown.
+    """
+    os._exit(0)
 
 
 def install_guard(boot_seconds: int = _BOOT_SECONDS) -> None:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3.12
 
+import os
 import signal
 import sys
 
@@ -11,11 +12,15 @@ _BOOT_TIMEOUT = 8
 
 
 def _boot_timeout_handler(_signum: int, _frame: object) -> None:
-    sys.exit(0)
+    # os._exit 跳过 atexit 回调：telemetry import 创建的 PostHog 客户端
+    # 注册了 atexit (Client.join)，sys.exit 会触发它在部分销毁的解释器中报错。
+    os._exit(0)
 
 
 def _sigint_handler(_signum: int, _frame: object) -> None:
-    sys.exit(0)
+    # os._exit 跳过 atexit 回调，避免 telemetry PostHog Client.join 在
+    # 部分销毁的解释器中报错导致 stderr Traceback 污染。
+    os._exit(0)
 
 
 # 仅在作为脚本直接执行时安装信号处理器。
