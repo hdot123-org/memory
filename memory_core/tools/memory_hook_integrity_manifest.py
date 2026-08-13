@@ -352,8 +352,8 @@ def _discover_canonical_files(
             ownership = load_memory_ownership(project_root)
             found.extend(_walk_ownership_domains(resolved_root, ownership))
             found.extend(_walk_ownership_resources(resolved_root, ownership))
-        except Exception:
-            pass  # Fall through to canonical patterns only
+        except Exception as exc:
+            _logger.debug("memory_hook_integrity_manifest._discover_canonical_files: ownership loading failed: %s", exc)
 
     # Phase 5: Deduplicate and filter
     return _dedup_and_filter(found, resolved_root)

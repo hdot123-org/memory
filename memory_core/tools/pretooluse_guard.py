@@ -131,9 +131,8 @@ def _fail_closed_with_raw_check(raw_input: str, reason: str) -> tuple[int, dict[
         # Try to parse partial JSON for logging (result used by caller context)
         try:
             json.loads(raw_input[:2000]) if raw_input else None
-        except Exception:
-            # Could not parse, but we already checked markers
-            pass
+        except Exception as exc:
+            _logger.debug("pretooluse_guard._fail_closed_with_raw_check: JSON parse best-effort failed: %s", exc)
 
     if is_protected:
         decision = "block"

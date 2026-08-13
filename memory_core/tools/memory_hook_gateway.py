@@ -2075,8 +2075,8 @@ def _handle_pretooluse_guard(
             },
             error_msg=f"guard subprocess failed on {'protected' if is_protected else 'non-protected'} path (exception: {exc_type})",
         )
-    except Exception:
-        pass  # error logging must not block
+    except Exception as exc:
+        _logger.debug("memory_hook_gateway._handle_pretooluse_guard: error logging failed: %s", exc)
 
     if is_protected:
         # Fail-closed: deny protected paths
@@ -2387,8 +2387,8 @@ def _gateway_excepthook(exc_type: type[BaseException], exc_value: BaseException,
         }
         with metrics_file.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
+    except Exception as exc:
+        _logger.debug("memory_hook_gateway._gateway_excepthook: metrics write failed: %s", exc)
     # Call the default handler to preserve standard traceback behavior
     sys.__excepthook__(exc_type, exc_value, exc_tb)
 
