@@ -19,9 +19,8 @@ from memory_core.tools.error_logger import (
     MAX_MSG_LENGTH,
     VALID_ERROR_TYPES,
     _detect_calling_script,
-    _redact_context,
     _redact_api_keys,
-    _try_sign_file,
+    _redact_context,
     write_error_log,
 )
 
