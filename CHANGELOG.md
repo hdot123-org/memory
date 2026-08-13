@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.25.0](https://github.com/hdot123/memory/compare/v0.24.1...v0.25.0) (2026-08-13)
+
+
+### Features
+
+* 为 4 个 hook 工具添加 telemetry import，覆盖率提升至 100% ([#562](https://github.com/hdot123/memory/issues/562)) ([2e04126](https://github.com/hdot123/memory/commit/2e041261901ec8a7e75078f59c17f2cd4309ebc9))
+
+
+### Bug Fixes
+
+* 信号处理器改用 os._exit 避免 telemetry atexit Traceback 污染 ([#563](https://github.com/hdot123/memory/issues/563)) ([bfeb6d2](https://github.com/hdot123/memory/commit/bfeb6d2ac042ce34fdbfdb9f18d6660b38e79367))
+
+
+### Performance Improvements
+
+* 审计脚本排除 .venv 目录并优化目录遍历 ([#561](https://github.com/hdot123/memory/issues/561)) ([0348135](https://github.com/hdot123/memory/commit/034813551242a83e00d62bf56d0d1a260504e937))
+
 ## [0.24.1](https://github.com/hdot123/memory/compare/v0.24.0...v0.24.1) (2026-08-12)
 
 
