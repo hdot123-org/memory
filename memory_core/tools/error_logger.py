@@ -17,6 +17,7 @@ Usage:
 
 import inspect
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,8 @@ VALID_ERROR_TYPES = frozenset({
     "settings_read_failed",
 })
 
+logger = logging.getLogger(__name__)
+
 
 def _detect_calling_script() -> str:
     """通过调用栈自动检测调用方脚本名。"""
@@ -69,8 +72,8 @@ def _detect_calling_script() -> str:
             basename = Path(filename).stem
             if basename and not basename.startswith("<"):
                 return basename
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("_detect_calling_script: 调用栈检测失败，回退到 unknown: %s", exc)
     return "unknown"
 
 

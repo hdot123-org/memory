@@ -18,6 +18,7 @@ if str(repo_root) not in sys.path:
 from memory_core.tools.error_logger import (
     MAX_MSG_LENGTH,
     VALID_ERROR_TYPES,
+    _detect_calling_script,
     _redact_api_keys,
     _redact_context,
     write_error_log,
@@ -253,6 +254,44 @@ class TestWriteErrorLog:
             error_msg="bad path",
         )
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# _detect_calling_script graceful degradation (SILENT_SWALLOW regression)
+# ---------------------------------------------------------------------------
+
+
+class TestDetectCallingScript:
+    """Verify stack-detection failures degrade gracefully and are logged."""
+
+    def test_returns_unknown_when_stack_raises(self, monkeypatch):
+        """inspect.stack() raising must still yield "unknown" (no swallow crash)."""
+        def _boom(*args, **kwargs):
+            raise RuntimeError("simulated stack failure")
+
+        monkeypatch.setattr(
+            "memory_core.tools.error_logger.inspect.stack", _boom
+        )
+
+        assert _detect_calling_script() == "unknown"
+
+    def test_logs_debug_record_when_stack_raises(self, monkeypatch, caplog):
+        """The previously-swallowed exception must now emit a debug log record."""
+        def _boom(*args, **kwargs):
+            raise RuntimeError("simulated stack failure")
+
+        monkeypatch.setattr(
+            "memory_core.tools.error_logger.inspect.stack", _boom
+        )
+
+        with caplog.at_level("DEBUG", logger="memory_core.tools.error_logger"):
+            _detect_calling_script()
+
+        debug_records = [
+            r for r in caplog.records if r.levelname == "DEBUG"
+            and "_detect_calling_script" in r.message
+        ]
+        assert debug_records, "expected a DEBUG log record for the swallowed exception"
 
 
 # ---------------------------------------------------------------------------
