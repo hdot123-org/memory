@@ -524,7 +524,7 @@ class TestAuditProjectEdgeCases:
         assert any("不存在" in v["detail"] for v in result["violations"])
 
     def test_source_repo_skips_kb_checks(self, tmp_path, monkeypatch):
-        """Source repo skips KB-related checks."""
+        """Source repo skips all audit checks (manifest, KB, version)."""
         # Create minimal project structure
         (tmp_path / "manifest.json").write_text(
             json.dumps({"entries": []}), encoding="utf-8"
@@ -534,8 +534,9 @@ class TestAuditProjectEdgeCases:
             lambda p: True,
         )
         result = audit_project("test", tmp_path, {})
-        # Should have violations from c1 only, not c2-c5
+        # Source repo skips ALL checks, so zero violations expected
         assert result is not None
+        assert len(result["violations"]) == 0
 
     def test_check_function_exception(self, tmp_path, monkeypatch):
         """When a check function raises, exception is caught gracefully."""
