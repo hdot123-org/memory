@@ -6,6 +6,7 @@ vs not-owned, with support for domains, resources, and AGENTS.md block classific
 
 import fnmatch
 import json
+import logging
 import os
 import re
 import subprocess
@@ -20,6 +21,8 @@ from memory_core.constants import (
     SYSTEM_DIR,
     VALID_SOURCE_REPO_MODES,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ProtectionLevel(Enum):
@@ -615,7 +618,11 @@ def load_memory_ownership(project_root: Path) -> MemoryOwnership:
             data = tomllib.loads(content)
             return MemoryOwnership.from_dict(data)
         except Exception:
-            pass  # Fall through to defaults
+            logger.debug(
+                "load_memory_ownership: ownership.toml parse failed, "
+                "falling through to defaults",
+                exc_info=True,
+            )
 
     # Try JSON fallback
     json_file = project_root / SYSTEM_DIR / "ownership.json"
@@ -625,7 +632,11 @@ def load_memory_ownership(project_root: Path) -> MemoryOwnership:
             data = json.loads(content)
             return MemoryOwnership.from_dict(data)
         except Exception:
-            pass
+            logger.debug(
+                "load_memory_ownership: ownership.json parse failed, "
+                "falling through to defaults",
+                exc_info=True,
+            )
 
     # Return defaults
     return MemoryOwnership(
@@ -761,7 +772,7 @@ def is_memory_core_source_repo(path: Path, git_detector: Callable[[Path], Path |
             if any(marker.exists() for marker in git_markers):
                 return True
     except Exception:
-        pass
+        logger.debug("is_memory_core_source_repo: git root detection failed", exc_info=True)
 
     return False
 
