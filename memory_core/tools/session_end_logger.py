@@ -59,6 +59,13 @@ try:
 except ImportError:
     from _file_utils import now_iso  # type: ignore
 
+# Telemetry (optional — graceful degradation if unavailable)
+telemetry: Any
+try:
+    from memory_core.tools.telemetry_bridge import telemetry
+except Exception:
+    telemetry = None
+
 # C 层错误日志导入
 try:
     from memory_core.tools.error_logger import write_error_log
