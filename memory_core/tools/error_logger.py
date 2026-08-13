@@ -118,8 +118,16 @@ def _try_sign_file(project_root: Path, rel_path: str) -> None:
             return
         _integrity.sign_project_incremental(project_root, key, changed_paths=[rel_path])
     except Exception as exc:
-        # 签名失败不阻塞主流程，但记录 debug 日志便于排查
-        logger.debug("_try_sign_file: 增量签名失败，已跳过: %s", exc)
+        # 签名失败 warning 但不阻塞主流程
+        try:
+            logger.warning("error_logger: sign_project_incremental failed: %s", exc)
+        except Exception as log_exc:
+            import sys
+            print(
+                f"[error_logger] sign_project_incremental failed: {exc}; "
+                f"logging also failed: {log_exc}",
+                file=sys.stderr,
+            )
 
 
 def write_error_log(
