@@ -99,7 +99,8 @@ def _set_timeout(seconds: int) -> None:
     """设置整体超时，超时后静默退出。"""
     def _handler(_signum: int, _frame: Any) -> None:
         # 超时静默退出，不阻塞 hook 链
-        sys.exit(0)
+        # os._exit 跳过 atexit 回调，避免 telemetry SDK 的 Client.join 报错
+        os._exit(0)
 
     signal.signal(signal.SIGALRM, _handler)
     signal.alarm(seconds)
@@ -640,7 +641,7 @@ def _safe_run_session_end(
                 {"session_id": session_id, "timeout_seconds": TIMEOUT_SECONDS},
                 f"session_end_logger timed out after {TIMEOUT_SECONDS}s",
             )
-        sys.exit(0)
+        os._exit(0)
     except Exception as exc:
         # Any exception: log and return 0 (never block hook chain)
         if write_error_log is not None:
