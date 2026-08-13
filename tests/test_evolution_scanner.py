@@ -3998,6 +3998,21 @@ def test_evolution_self_audit_ci_mode(tmp_path, monkeypatch, capsys):
     assert "SKIP check_repositories_yml" in captured.err
 
 
+def test_check_trigger_droid_detects_missing_function(tmp_path, monkeypatch):
+    """check_trigger_droid flags EVOLUTION_TRIGGER_REGRESSION when resolve_pr_ref is missing."""
+    trigger_droid = tmp_path / "trigger-droid.sh"
+    trigger_droid.write_text(
+        "#!/bin/bash\n"
+        "resolve_issue_ref() { echo test; }\n"
+        "# resolve_pr_ref is intentionally missing\n"
+    )
+    monkeypatch.setattr("evolution_self_audit.TRIGGER_DROID", trigger_droid)
+    findings = check_trigger_droid()
+    assert len(findings) == 1
+    assert findings[0]["rule_id"] == "EVOLUTION_TRIGGER_REGRESSION"
+    assert findings[0]["evidence"] == "function=resolve_pr_ref"
+
+
 def test_check_trigger_droid_all_functions_present(monkeypatch):
     """INFRA-264: Both required functions present → no findings."""
     mock_path = MagicMock()
@@ -4010,7 +4025,6 @@ def test_check_trigger_droid_all_functions_present(monkeypatch):
     mock_path.__str__.return_value = "/fake/trigger-droid.sh"
     monkeypatch.setattr("evolution_self_audit.TRIGGER_DROID", mock_path)
     monkeypatch.setattr("evolution_self_audit.TRIGGER_STABILIZATION_DELAY_SEC", 0.0)
-
     findings = check_trigger_droid()
     assert findings == []
 
