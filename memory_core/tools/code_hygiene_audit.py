@@ -163,8 +163,12 @@ class SwallowVisitor(ast.NodeVisitor):
 
                 evidence_lines = lines[start_line : min(end_line, start_line + 5)]
                 return "\n".join(evidence_lines).strip()
-        except Exception:
-            pass
+        except Exception as e:
+            print(
+                f"[code_hygiene_audit] Warning: Failed to extract evidence from "
+                f"{self.filepath}: {e}",
+                file=sys.stderr,
+            )
 
         return "except clause with silent swallow"
 
