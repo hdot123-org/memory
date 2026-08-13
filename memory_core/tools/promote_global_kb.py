@@ -20,10 +20,13 @@ After promotion, INDEX.md is updated to reflect the new location.
 """
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
 from memory_core.constants import CURRENT_MEMORY_VERSION
+
+logger = logging.getLogger(__name__)
 
 try:
     from .global_kb_init import get_global_kb_root
@@ -140,8 +143,8 @@ def _interactive_mode(pending_dir: Path) -> int:
                     print(f"   {first_line}")
                 elif first_line:
                     print(f"   {first_line[:80]}")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("promote_global_kb._interactive_mode: reading candidate file failed: %s", exc)
         print()
 
     print("使用以下命令提升到指定域:")

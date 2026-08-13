@@ -14,9 +14,12 @@ Usage:
         python session_end_logger.py --session-dir ... --session-id ... --project-root ...
 """
 
+import logging
 import os
 import signal
 import sys
+
+logger = logging.getLogger(__name__)
 
 # Factory hook runner 在 10 秒后发 SIGINT 强杀进程。
 # 如果模块级 import 耗时较长（系统重启后高负载），SIGINT 会在 import 期间触发，
@@ -551,8 +554,8 @@ def _write_session_metrics(project_root: Path, info: dict[str, Any]) -> None:
             "timestamp": now_iso(),
         }
         append_metrics_record(metrics_path, metrics_record)
-    except Exception:
-        pass  # Metrics write must never break the hook
+    except Exception as exc:
+        logger.debug("session_end_logger._write_session_metrics: metrics write failed: %s", exc)
 
 
 def _resolve_jsonl_path(

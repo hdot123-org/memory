@@ -25,6 +25,7 @@ Exit codes:
 import argparse
 import importlib.metadata
 import json
+import logging
 import os
 import shutil
 import sys
@@ -33,6 +34,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 import tomllib
+
+logger = logging.getLogger(__name__)
 
 from memory_core.constants import (
     _BACKUP_FAILED,
@@ -1266,8 +1269,8 @@ def _check_evidence_refs(
                 result["warnings"].append(
                     f"evidence ref check: {err.kb_file} has {len(err.missing_refs)} missing refs"
                 )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("migrate_project_memory._check_evidence_refs: validation failed: %s", exc)
 
 
 def _handle_migration_exception(

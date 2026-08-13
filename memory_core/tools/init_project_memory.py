@@ -1081,8 +1081,8 @@ def _detect_from_pyproject(target: Path, project_info: Any) -> None:
                     project_info.project_type = "web/api"
                 elif "pytest" in pyproject_text or "pyproject" in pyproject_text:
                     project_info.project_type = "library"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("init_project_memory._detect_from_pyproject: pyproject parsing failed: %s", exc)
 
 
 def _detect_from_package_json(target: Path, project_info: Any) -> None:
@@ -1126,8 +1126,8 @@ def _detect_from_package_json(target: Path, project_info: Any) -> None:
                 project_info.primary_language = "TypeScript"
                 toolchain.append({"name": "TypeScript", "config": "tsconfig.json"})
             project_info.toolchain = toolchain
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("init_project_memory._detect_from_package_json: package.json parsing failed: %s", exc)
 
 
 def _detect_from_tsconfig(target: Path, project_info: Any) -> None:

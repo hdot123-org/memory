@@ -13,12 +13,15 @@ Usage:
 import argparse
 import hashlib
 import json
+import logging
 import re
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Import-guarded error_logger for self-failure logging
 try:
@@ -725,8 +728,8 @@ def run_pipeline(
                         context={"registry_path": str(registry_path)},
                         error_msg=error_msg,
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("error_pattern_detector.run_pipeline: write_error_log failed: %s", exc)
 
     # Verbose output
     if verbose:
@@ -874,8 +877,8 @@ def main(argv: list[str] | None = None) -> None:
                     context={"component": "error_pattern_detector"},
                     error_msg=f"Internal error in main: {e}",
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("error_pattern_detector.main: write_error_log failed: %s", exc)
         sys.exit(0)
 
 
