@@ -23,8 +23,8 @@ from evolution_adapters import (
     adapt_validate_project,
 )
 from evolution_scanner import (
-    Finding,
     ISSUE_EXCLUDED_CATEGORIES,
+    Finding,
     _reopen_closed_issue,
     check_isolation,
     check_kill_switch,
@@ -5562,7 +5562,7 @@ def test_config_has_max_self_audit_issues_per_tick():
 
 def test_daily_audit_finding_does_not_create_issue():
     """INFRA-265: daily_audit category findings must NOT create GitHub issues."""
-    from evolution_scanner import ISSUE_EXCLUDED_CATEGORIES, main
+    from evolution_scanner import main
 
     assert "daily_audit" in ISSUE_EXCLUDED_CATEGORIES
 
@@ -5603,7 +5603,7 @@ def test_daily_audit_finding_does_not_create_issue():
 
 def test_code_hygiene_finding_still_creates_issue():
     """INFRA-265: code_hygiene category findings must still create GitHub issues."""
-    from evolution_scanner import ISSUE_EXCLUDED_CATEGORIES, main
+    from evolution_scanner import main
 
     assert "code_hygiene" not in ISSUE_EXCLUDED_CATEGORIES
 
