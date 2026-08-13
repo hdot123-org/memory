@@ -117,9 +117,9 @@ def _try_sign_file(project_root: Path, rel_path: str) -> None:
         if key is None:
             return
         _integrity.sign_project_incremental(project_root, key, changed_paths=[rel_path])
-    except Exception:
-        # 签名失败静默跳过，不阻塞主流程
-        pass
+    except Exception as exc:
+        # 签名失败不阻塞主流程，但记录 debug 日志便于排查
+        logger.debug("_try_sign_file: 增量签名失败，已跳过: %s", exc)
 
 
 def write_error_log(

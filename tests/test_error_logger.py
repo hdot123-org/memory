@@ -295,6 +295,49 @@ class TestDetectCallingScript:
 
 
 # ---------------------------------------------------------------------------
+# _try_sign_file graceful degradation (SILENT_SWALLOW regression)
+# ---------------------------------------------------------------------------
+
+
+class TestTrySignFile:
+    """Verify incremental-signing failures degrade gracefully and are logged."""
+
+    def test_swallows_exception_without_re_raise(self, monkeypatch, tmp_path):
+        """sign_project_incremental raising must not propagate."""
+        from memory_core.tools import error_logger
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("simulated signing failure")
+
+        monkeypatch.setattr(
+            error_logger._integrity, "sign_project_incremental", _boom
+        )
+
+        # Should return None without raising.
+        error_logger._try_sign_file(tmp_path, "memory/log/test-errors.jsonl")
+
+    def test_logs_debug_record_when_signing_fails(self, monkeypatch, tmp_path, caplog):
+        """The previously-swallowed exception must now emit a debug log record."""
+        from memory_core.tools import error_logger
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("simulated signing failure")
+
+        monkeypatch.setattr(
+            error_logger._integrity, "sign_project_incremental", _boom
+        )
+
+        with caplog.at_level("DEBUG", logger="memory_core.tools.error_logger"):
+            error_logger._try_sign_file(tmp_path, "memory/log/test-errors.jsonl")
+
+        debug_records = [
+            r for r in caplog.records if r.levelname == "DEBUG"
+            and "_try_sign_file" in r.message
+        ]
+        assert debug_records, "expected a DEBUG log record for the swallowed exception"
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
