@@ -6,7 +6,6 @@ only — pytest collection and in-process main() calls are unaffected.
 """
 import os
 import signal
-import sys
 
 _BOOT_SECONDS = 8  # < Factory's 10s timeout
 
