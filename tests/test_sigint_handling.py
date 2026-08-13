@@ -227,6 +227,75 @@ class TestOsExitRegression:
         )
 
 
+class TestRemainingOsExitRegression:
+    """Regression tests for the two remaining sys.exit(0) sites (PR #565).
+
+    Bug: session_end_logger.py still had two sys.exit(0) calls outside the
+    signal handlers covered by PR #563. These reach interpreter shutdown
+    through the same atexit path: the telemetry import registers a PostHog
+    client whose Client.join atexit handler runs in a partially-destroyed
+    interpreter and emits a Traceback to stderr.
+    Fix: os._exit(0) skips all atexit callbacks, avoiding the Traceback.
+
+    Locations migrated by PR #565:
+      1. _set_timeout's inner _handler (SIGALRM timeout handler)
+      2. _safe_run_session_end's except SystemExit timeout-exit path
+
+    These code inspections guard against regression back to sys.exit(0).
+    """
+
+    def test_set_timeout_handler_uses_os_exit(self):
+        """Regression guard: _set_timeout's _handler uses os._exit(0) not sys.exit(0).
+
+        The inner _handler registered for SIGALRM fires when the overall
+        session-end timeout elapses. os._exit skips atexit callbacks
+        (telemetry PostHog Client.join), avoiding Traceback pollution on
+        stderr during the timeout-driven shutdown.
+        """
+        content = LOGGER_PATH.read_text()
+        assert "os._exit(0)" in content, (
+            "_set_timeout must use os._exit(0) to skip atexit callbacks"
+        )
+        func_idx = content.index("def _set_timeout")
+        func_body = content[func_idx:func_idx + 300]
+        assert "os._exit(0)" in func_body, (
+            "_set_timeout's _handler must call os._exit(0), not sys.exit(0) — "
+            "sys.exit would trigger telemetry atexit Traceback during shutdown"
+        )
+        assert "sys.exit(0)" not in func_body, (
+            "_set_timeout's _handler must NOT use sys.exit(0) — it triggers the "
+            "PostHog atexit handler in a partially-destroyed interpreter"
+        )
+
+    def test_safe_run_session_end_timeout_exit_uses_os_exit(self):
+        """Regression guard: _safe_run_session_end timeout exit uses os._exit(0).
+
+        The except SystemExit branch is reached when the SIGALRM timeout
+        fires (SystemExit is raised by the timeout path). os._exit skips
+        atexit callbacks registered by the telemetry PostHog client
+        (Client.join), avoiding Traceback pollution on stderr during the
+        timeout-driven shutdown.
+        """
+        content = LOGGER_PATH.read_text()
+        assert "os._exit(0)" in content, (
+            "_safe_run_session_end must use os._exit(0) to skip atexit callbacks"
+        )
+        func_idx = content.index("def _safe_run_session_end")
+        # Narrow the window to the timeout-exit path (the except SystemExit branch)
+        timeout_idx = content.index("except SystemExit", func_idx)
+        exit_window = content[timeout_idx:timeout_idx + 450]
+        assert "os._exit(0)" in exit_window, (
+            "_safe_run_session_end timeout-exit must call os._exit(0), not "
+            "sys.exit(0) — sys.exit would trigger telemetry atexit Traceback "
+            "during shutdown"
+        )
+        assert "sys.exit(0)" not in exit_window, (
+            "_safe_run_session_end timeout-exit must NOT use sys.exit(0) — it "
+            "triggers the PostHog atexit handler in a partially-destroyed "
+            "interpreter"
+        )
+
+
 class TestOsExitGatewayGuard:
     """Regression tests for telemetry atexit Traceback fix (INFRA-237).
 
