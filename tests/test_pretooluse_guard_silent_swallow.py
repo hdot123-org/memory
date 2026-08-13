@@ -21,7 +21,7 @@ class TestPretooluseGuardSilentSwallow:
         content = SOURCE_PATH.read_text()
         # Find the function
         func_marker = "def _fail_closed_with_raw_check"
-        assert func_marker in content, f"Function not found in source"
+        assert func_marker in content, "Function not found in source"
 
         func_start = content.index(func_marker)
         # Get a window of the function body (next 800 chars should cover it)
