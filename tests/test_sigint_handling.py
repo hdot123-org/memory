@@ -17,6 +17,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parent.parent
 LOGGER_PATH = REPO_ROOT / "memory_core" / "tools" / "session_end_logger.py"
 GATEWAY_PATH = REPO_ROOT / "memory_core" / "tools" / "memory_hook_gateway.py"
+GUARD_PATH = REPO_ROOT / "memory_core" / "tools" / "hook_runtime_guard.py"
 
 
 class TestSessionEndLoggerSigint:
@@ -222,5 +223,86 @@ class TestOsExitRegression:
         )
         assert "sys.exit(0)" not in handler_body, (
             "_boot_timeout_handler must NOT use sys.exit(0) — it triggers the "
+            "PostHog atexit handler in a partially-destroyed interpreter"
+        )
+
+
+class TestOsExitGatewayGuard:
+    """Regression tests for telemetry atexit Traceback fix (INFRA-237).
+
+    Bug: memory_hook_gateway.py and hook_runtime_guard.py signal handlers
+    used sys.exit(0). These modules import telemetry, which creates a
+    PostHog client that registers an atexit handler (Client.join). When
+    sys.exit(0) fires during interpreter shutdown, the atexit handler runs
+    in a partially-destroyed interpreter and emits a Traceback to stderr.
+    Fix: os._exit(0) skips all atexit callbacks, avoiding the Traceback.
+
+    These code inspections guard against regression back to sys.exit(0).
+    """
+
+    def test_gateway_sigint_handler_uses_os_exit(self):
+        """Regression guard: gateway _sigint_handler uses os._exit(0) not sys.exit(0).
+
+        Verifies os._exit is used to skip atexit callbacks (telemetry
+        PostHog Client.join) that would otherwise raise a Traceback on
+        stderr during interpreter shutdown.
+        """
+        content = GATEWAY_PATH.read_text()
+        assert "os._exit(0)" in content, (
+            "_sigint_handler must use os._exit(0) to skip atexit callbacks"
+        )
+        # The handler function definition must reference os._exit
+        sigint_handler_idx = content.index("def _sigint_handler")
+        handler_body = content[sigint_handler_idx:sigint_handler_idx + 200]
+        assert "os._exit(0)" in handler_body, (
+            "_sigint_handler body must call os._exit(0), not sys.exit(0) — "
+            "sys.exit would trigger telemetry atexit Traceback during shutdown"
+        )
+        assert "sys.exit(0)" not in handler_body, (
+            "_sigint_handler must NOT use sys.exit(0) — it triggers the "
+            "PostHog atexit handler in a partially-destroyed interpreter"
+        )
+
+    def test_gateway_boot_timeout_handler_uses_os_exit(self):
+        """Regression guard: gateway _boot_timeout_handler uses os._exit(0) not sys.exit(0).
+
+        Same rationale as _sigint_handler: os._exit skips atexit callbacks
+        registered by the telemetry PostHog client (Client.join), avoiding
+        Traceback pollution on stderr during SIGALRM-driven boot timeout.
+        """
+        content = GATEWAY_PATH.read_text()
+        assert "os._exit(0)" in content, (
+            "_boot_timeout_handler must use os._exit(0) to skip atexit callbacks"
+        )
+        handler_idx = content.index("def _boot_timeout_handler")
+        handler_body = content[handler_idx:handler_idx + 200]
+        assert "os._exit(0)" in handler_body, (
+            "_boot_timeout_handler body must call os._exit(0), not sys.exit(0) — "
+            "sys.exit would trigger telemetry atexit Traceback during shutdown"
+        )
+        assert "sys.exit(0)" not in handler_body, (
+            "_boot_timeout_handler must NOT use sys.exit(0) — it triggers the "
+            "PostHog atexit handler in a partially-destroyed interpreter"
+        )
+
+    def test_guard_exit0_handler_uses_os_exit(self):
+        """Regression guard: hook_runtime_guard _exit0_handler uses os._exit(0) not sys.exit(0).
+
+        os._exit skips atexit callbacks registered by the telemetry PostHog
+        client (Client.join), avoiding Traceback pollution on stderr during
+        SIGINT/SIGALRM-driven shutdown of the bootstrap guard.
+        """
+        content = GUARD_PATH.read_text()
+        assert "os._exit(0)" in content, (
+            "_exit0_handler must use os._exit(0) to skip atexit callbacks"
+        )
+        handler_idx = content.index("def _exit0_handler")
+        handler_body = content[handler_idx:handler_idx + 300]
+        assert "os._exit(0)" in handler_body, (
+            "_exit0_handler body must call os._exit(0), not sys.exit(0) — "
+            "sys.exit would trigger telemetry atexit Traceback during shutdown"
+        )
+        assert "sys.exit(0)" not in handler_body, (
+            "_exit0_handler must NOT use sys.exit(0) — it triggers the "
             "PostHog atexit handler in a partially-destroyed interpreter"
         )
