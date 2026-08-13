@@ -14,6 +14,7 @@ Usage:
         python session_end_logger.py --session-dir ... --session-id ... --project-root ...
 """
 
+import os
 import signal
 import sys
 
@@ -25,15 +26,20 @@ _BOOT_TIMEOUT = 8
 
 
 def _boot_timeout_handler(_signum: int, _frame: object) -> None:
-    sys.exit(0)
+    # os._exit 跳过 atexit 回调：telemetry import 创建的 PostHog 客户端
+    # 注册了 atexit (Client.join)，sys.exit 会触发它在部分销毁的解释器中报错。
+    os._exit(0)
 
 
 # Factory 10s 超时发 SIGINT → Python 转 KeyboardInterrupt (BaseException)
 # 现有 except 只抓 SystemExit + Exception，漏掉 KeyboardInterrupt → exit 1
-# 安装 SIGINT handler：SIGINT → sys.exit(0) → SystemExit(0)，
-# 被现有 except SystemExit 捕获，干净退出
+# 安装 SIGINT handler：SIGINT → os._exit(0)，立即退出。
+# 使用 os._exit 而非 sys.exit：telemetry import 会创建 PostHog 客户端，
+# 其 SDK 注册 atexit 回调 (Client.join)。sys.exit(0) 触发解释器关闭时，
+# atexit 回调在部分销毁的解释器中报错并输出 Traceback 到 stderr。
+# os._exit(0) 直接终止进程，跳过所有 atexit 回调，避免 Traceback 污染。
 def _sigint_handler(_signum: int, _frame: object) -> None:
-    sys.exit(0)
+    os._exit(0)
 
 
 # 仅在作为脚本直接执行时安装信号处理器。
