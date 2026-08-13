@@ -16,6 +16,7 @@ Covers:
 """
 
 import json
+import logging
 import signal
 import subprocess
 import sys
@@ -33,6 +34,8 @@ from memory_core.tools.session_end_logger import (
     _set_timeout,
     main,
 )
+
+logger = logging.getLogger(__name__)
 
 # ─── VAL-LOG-009: Budget constants defined and positive ───────────────────────
 
@@ -473,8 +476,8 @@ class TestLargeJsonlWithSigint:
         # Clean up stdin
         try:
             proc.stdin.close()  # type: ignore[union-attr]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("关闭子进程 stdin 失败: %s", exc)
 
 
 # ─── VAL-CROSS-009: Truncated output still valid ─────────────────────────────
