@@ -527,6 +527,47 @@ class TestTrySignFile:
             mod._integrity = orig_integrity
             mod._integrity_keys = orig_keys
 
+    def test_signing_and_logging_both_fail_writes_stderr(self, tmp_path, monkeypatch, capsys):
+        """When both signing and logging fail, error is printed to stderr — no silent swallow.
+
+        Regression test for INFRA-244: the inner except no longer uses bare `pass`.
+        """
+        import logging
+        from unittest.mock import MagicMock
+
+        import memory_core.tools.daily_summary_generator as dsg_mod
+
+        mock_integrity = MagicMock()
+        mock_integrity.sign_project_incremental = MagicMock(
+            side_effect=RuntimeError("Sign failed")
+        )
+        mock_keys = MagicMock()
+        mock_keys.load_key = MagicMock(return_value="test-key")
+
+        monkeypatch.setattr(
+            "memory_core.tools.daily_summary_generator._integrity",
+            mock_integrity,
+        )
+        monkeypatch.setattr(
+            "memory_core.tools.daily_summary_generator._integrity_keys",
+            mock_keys,
+        )
+
+        # Make the logger's warning() itself fail to trigger the inner except.
+        # Patch only this specific logger instance (NOT the global
+        # logging.getLogger) so pytest's own logging plugin keeps working.
+        target_logger = logging.getLogger(dsg_mod.__name__)
+        monkeypatch.setattr(
+            target_logger, "warning", MagicMock(side_effect=RuntimeError("Logging broken"))
+        )
+
+        # Should NOT raise — double failure is handled gracefully
+        _try_sign_file(tmp_path, "test.md")
+
+        # Verify error was printed to stderr (no silent swallow)
+        captured = capsys.readouterr()
+        assert "sign_project_incremental failed" in captured.err
+
 
 # ---------------------------------------------------------------------------
 # process_project tests

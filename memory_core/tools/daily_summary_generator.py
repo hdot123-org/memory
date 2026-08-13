@@ -341,8 +341,12 @@ def _try_sign_file(project_root: Path, rel_path: str) -> None:
             import logging
             _logger = logging.getLogger(__name__)
             _logger.warning("daily_summary_generator: sign_project_incremental failed: %s", exc)
-        except Exception:
-            pass
+        except Exception as log_exc:
+            print(
+                f"[daily_summary_generator] sign_project_incremental failed: {exc}; "
+                f"logging also failed: {log_exc}",
+                file=sys.stderr,
+            )
 
 def _generate_data_report(session_data_list: list[dict[str, Any]], target_date: str) -> str:
     """生成结构化数据报告，包含 A+B 层完整数据。
