@@ -33,7 +33,7 @@ def test_pre_commit_includes_actionlint():
 
 
 def test_ci_runs_shellcheck():
-    """VAL-CI-003: CI test job runs shellcheck on shell scripts."""
+    """VAL-CI-003: CI test job runs shellcheck on all shell scripts."""
     ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
     test_job = ci["jobs"]["test"]
     steps = test_job["steps"]
@@ -41,7 +41,10 @@ def test_ci_runs_shellcheck():
         (s for s in steps if s.get("name") == "Shell lint"), None
     )
     assert shell_lint_step is not None
-    assert "shellcheck scripts/*.sh" in shell_lint_step["run"]
+    # CI uses find to discover all .sh files (not just scripts/) with -x flag
+    assert "shellcheck" in shell_lint_step["run"]
+    assert "find" in shell_lint_step["run"]
+    assert "-x" in shell_lint_step["run"]
     assert shell_lint_step.get("continue-on-error") is not True
 
 
@@ -75,14 +78,19 @@ def test_shell_lint_contributes_to_ci_ok():
 
 
 def test_all_scripts_pass_shellcheck():
-    """VAL-CI-006: All existing shell scripts pass shellcheck."""
+    """VAL-CI-006: All shell scripts in the repo pass shellcheck."""
     import shutil
     if not shutil.which("shellcheck"):
         pytest.skip("shellcheck not installed")
-    scripts = list((REPO_ROOT / "scripts").glob("*.sh"))
-    assert len(scripts) > 0
+    # Discover all .sh files in the repo (matching CI's find-based approach)
+    sh_files = [
+        f for f in REPO_ROOT.rglob("*.sh")
+        if ".venv" not in f.parts and ".git" not in f.parts
+        and "node_modules" not in f.parts
+    ]
+    assert len(sh_files) > 0
     result = subprocess.run(
-        ["shellcheck"] + [str(s) for s in scripts],
+        ["shellcheck", "-x"] + [str(f) for f in sh_files],
         capture_output=True,
         text=True,
     )
