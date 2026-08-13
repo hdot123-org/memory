@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import socket
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -77,8 +78,9 @@ def _sanitize_value(value: Any) -> Any:
                 from pathlib import PureWindowsPath
                 return PureWindowsPath(value).name
             return as_path.name
-    except (OSError, ValueError):
-        pass
+    except (OSError, ValueError) as exc:
+        logger.warning("telemetry_bridge: path sanitization failed for value, passing raw: %s", exc)
+        print(f"Warning: telemetry path sanitization failed, raw value may leak: {exc}", file=sys.stderr)
     return value
 
 

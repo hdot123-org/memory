@@ -11,11 +11,14 @@ Usage:
 
 import argparse
 import json
+import logging
 import sys
 import traceback
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Telemetry (optional — graceful degradation if unavailable)
 telemetry: Any
@@ -530,8 +533,9 @@ def _resolve_projects(args: argparse.Namespace) -> list[Path]:
                 paths_dict = idx.get("paths", {})
                 # paths 是 dict，key 是路径
                 projects = [Path(p).resolve() for p in paths_dict.keys()]
-            except (json.JSONDecodeError, OSError):
-                pass
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning("daily_summary_generator: failed to read lifecycle index %s: %s", LIFECYCLE_INDEX, exc)
+                print(f"Warning: failed to read lifecycle index: {exc}", file=sys.stderr)
 
         # 兜底：扫描常见项目根
         if not projects:

@@ -616,8 +616,9 @@ def detect_project_from_cwd() -> Path | None:
         )
         if result.returncode == 0:
             return Path(result.stdout.strip())
-    except (subprocess.SubprocessError, FileNotFoundError):
-        pass
+    except (subprocess.SubprocessError, FileNotFoundError) as exc:
+        logger.warning("error_pattern_detector: git root detection failed: %s", exc)
+        print(f"Warning: git root detection failed: {exc}", file=sys.stderr)
     return None
 
 

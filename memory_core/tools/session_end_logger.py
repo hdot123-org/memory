@@ -126,8 +126,9 @@ def _read_stdin_payload() -> dict[str, Any]:
             if data:
                 result: dict[str, Any] = json.loads(data)
                 return result
-    except (json.JSONDecodeError, OSError):
-        pass
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Failed to read stdin payload: %s", exc)
+        print(f"Warning: failed to read stdin payload: {exc}", file=sys.stderr)
     return {}
 
 

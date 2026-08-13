@@ -1981,8 +1981,9 @@ def _write_sync_status(artifact_root: Path, success: bool, pending_count: int) -
 
     try:
         status_file.write_text(json.dumps(status, ensure_ascii=False), encoding="utf-8")
-    except OSError:
-        pass
+    except OSError as exc:
+        _logger.warning("Failed to write sync status to %s: %s", status_file, exc)
+        print(f"Warning: failed to write sync status to {status_file}: {exc}", file=sys.stderr)
 
 
 def _handle_source_repo_check(cwd: Path, host: str, event: str) -> int | None:
@@ -2050,8 +2051,9 @@ def _handle_pretooluse_guard(
     payload_dict: dict[str, Any] = {}
     try:
         payload_dict = json.loads(raw_payload) if raw_payload else {}
-    except (json.JSONDecodeError, ValueError):
-        pass
+    except (json.JSONDecodeError, ValueError) as exc:
+        _logger.warning("Failed to parse pre-tool-use payload for guard: %s", exc)
+        print(f"Warning: failed to parse pre-tool-use payload: {exc}", file=sys.stderr)
 
     # Guard against non-dict JSON payloads (e.g., JSON array or scalar)
     is_protected = False
