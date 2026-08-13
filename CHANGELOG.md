@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.26.0](https://github.com/hdot123/memory/compare/v0.25.0...v0.26.0) (2026-08-13)
+
+
+### Features
+
+* 实现 code_hygiene_audit CLI 工具检测静默异常吞没模式 ([#567](https://github.com/hdot123/memory/issues/567)) ([4aac985](https://github.com/hdot123/memory/commit/4aac9854cf05e2da5b5120cd5668207c28ab0b3e))
+
+
+### Bug Fixes
+
+* session_end_logger 剩余 sys.exit(0) 统一改为 os._exit(0) ([#565](https://github.com/hdot123/memory/issues/565)) ([8ceae04](https://github.com/hdot123/memory/commit/8ceae04abcd8d8e91be182118bdac1130bad3243))
+* 修复 apply_residue_plan.py 中 SILENT_SWALLOW 静默异常吞没 ([#571](https://github.com/hdot123/memory/issues/571)) ([6324073](https://github.com/hdot123/memory/commit/632407332dfd65f60642725990abeab48ccdb6a8))
+* 修复 error_logger.py 中 _detect_calling_script 静默异常吞没 (INFRA-245) ([#585](https://github.com/hdot123/memory/issues/585)) ([a44d28b](https://github.com/hdot123/memory/commit/a44d28b2d87f5d03808467b361076f99a18ba987))
+* 修复 telemetry_bridge.py 静默异常吞没 (INFRA-258) ([#593](https://github.com/hdot123/memory/issues/593)) ([5506f69](https://github.com/hdot123/memory/commit/5506f6917bda07d24b73c17167e2666ea5f83935))
+* 修复 test_logger_budget_scan.py 中 stdin 清理静默异常吞没 (INFRA-259) ([#592](https://github.com/hdot123/memory/issues/592)) ([842cad2](https://github.com/hdot123/memory/commit/842cad2ca2c6d30925c28b9c42304cdb68c51533))
+* 升级 error_logger.py SILENT_SWALLOW 修复至 warning 级别 + stderr fallback ([#599](https://github.com/hdot123/memory/issues/599)) ([df36c80](https://github.com/hdot123/memory/commit/df36c806681262f2f78b606da0a39846ead2c7e6))
+* 批量修复 11 处 SILENT_SWALLOW 静默异常吞没 (INFRA-261) ([#597](https://github.com/hdot123/memory/issues/597)) ([c2f2c7d](https://github.com/hdot123/memory/commit/c2f2c7da5c691efe26e44fd0e1f3ba473bfa9c75))
+
 ## [0.25.0](https://github.com/hdot123/memory/compare/v0.24.1...v0.25.0) (2026-08-13)
 
 
