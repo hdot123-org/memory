@@ -532,8 +532,9 @@ class TestTrySignFile:
 
         Regression test for INFRA-244: the inner except no longer uses bare `pass`.
         """
-        from unittest.mock import MagicMock
         import logging
+        from unittest.mock import MagicMock
+
         import memory_core.tools.daily_summary_generator as dsg_mod
 
         mock_integrity = MagicMock()
