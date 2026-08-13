@@ -15,6 +15,13 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+# Telemetry (optional — graceful degradation if unavailable)
+telemetry: Any
+try:
+    from memory_core.tools.telemetry_bridge import telemetry
+except Exception:
+    telemetry = None
+
 # ---------------------------------------------------------------------------
 # Data sources
 # ---------------------------------------------------------------------------
