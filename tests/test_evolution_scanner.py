@@ -3998,6 +3998,76 @@ def test_evolution_self_audit_ci_mode(tmp_path, monkeypatch, capsys):
     assert "SKIP check_repositories_yml" in captured.err
 
 
+def test_check_trigger_droid_all_functions_present(monkeypatch):
+    """INFRA-264: Both required functions present → no findings."""
+    mock_path = MagicMock()
+    mock_path.exists.return_value = True
+    mock_path.read_text.return_value = (
+        "#!/bin/bash\n"
+        "resolve_issue_ref() {\n  echo hi\n}\n"
+        "resolve_pr_ref() {\n  echo hi\n}\n"
+    )
+    mock_path.__str__.return_value = "/fake/trigger-droid.sh"
+    monkeypatch.setattr("evolution_self_audit.TRIGGER_DROID", mock_path)
+    monkeypatch.setattr("evolution_self_audit.TRIGGER_STABILIZATION_DELAY_SEC", 0.0)
+
+    findings = check_trigger_droid()
+    assert findings == []
+
+
+def test_check_trigger_droid_stabilization_retry_recovers(monkeypatch):
+    """INFRA-264: Function missing on first read but present on retry → no finding.
+
+    The stabilization retry prevents false positives from partial file writes
+    during non-atomic deployment of trigger-droid.sh.
+    """
+    full_content = (
+        "#!/bin/bash\n"
+        "resolve_issue_ref() {\n  echo hi\n}\n"
+        "resolve_pr_ref() {\n  echo hi\n}\n"
+    )
+    partial_content = (
+        "#!/bin/bash\n"
+        "resolve_issue_ref() {\n  echo hi\n}\n"
+    )
+
+    mock_path = MagicMock()
+    mock_path.exists.return_value = True
+    mock_path.read_text.side_effect = [partial_content, full_content]
+    mock_path.__str__.return_value = "/fake/trigger-droid.sh"
+    monkeypatch.setattr("evolution_self_audit.TRIGGER_DROID", mock_path)
+    monkeypatch.setattr("evolution_self_audit.TRIGGER_STABILIZATION_DELAY_SEC", 0.0)
+
+    findings = check_trigger_droid()
+    assert findings == [], f"Expected no findings after stabilization retry, got {findings}"
+    assert mock_path.read_text.call_count == 2, "read_text should be called twice (initial + retry)"
+
+
+def test_check_trigger_droid_missing_function_persists(monkeypatch):
+    """INFRA-264: Function missing on both reads → finding reported after retry.
+
+    The stabilization retry does NOT suppress real regressions — if the
+    function is genuinely absent on both reads, the finding is reported.
+    """
+    content_missing_pr_ref = (
+        "#!/bin/bash\n"
+        "resolve_issue_ref() {\n  echo hi\n}\n"
+    )
+
+    mock_path = MagicMock()
+    mock_path.exists.return_value = True
+    mock_path.read_text.return_value = content_missing_pr_ref
+    mock_path.__str__.return_value = "/fake/trigger-droid.sh"
+    monkeypatch.setattr("evolution_self_audit.TRIGGER_DROID", mock_path)
+    monkeypatch.setattr("evolution_self_audit.TRIGGER_STABILIZATION_DELAY_SEC", 0.0)
+
+    findings = check_trigger_droid()
+    assert len(findings) == 1
+    assert findings[0]["rule_id"] == "EVOLUTION_TRIGGER_REGRESSION"
+    assert "resolve_pr_ref" in findings[0]["evidence"]
+    assert mock_path.read_text.call_count == 2, "read_text should be called twice (initial + retry)"
+
+
 def test_check_repositories_yml_valid_with_memory_core(tmp_path, monkeypatch):
     """check_repositories_yml passes when teams.*.repos contains memory-core (INFRA-266)."""
     yml = tmp_path / "repositories.yml"
