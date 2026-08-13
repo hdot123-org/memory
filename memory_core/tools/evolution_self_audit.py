@@ -34,6 +34,11 @@ REPO_NAME = os.environ.get("EVOLUTION_AUDIT_REPO", "hdot123/memory")
 # GitHub Issue 创建后超过此分钟数仍无 linear-linkback 视为同步失败
 GAP_A_AUDIT_THRESHOLD_MIN = 30
 
+# INFRA-264: trigger-droid.sh 稳定性重试延迟（秒）
+# 当首次读取发现必需函数缺失时，等待此秒数后重新读取，
+# 避免部署过程中非原子写入导致的瞬时假阳性。
+TRIGGER_STABILIZATION_DELAY_SEC = 1.0
+
 CATEGORY = "evolution_self_audit"
 
 
@@ -175,7 +180,14 @@ def check_orphan_locks() -> list[dict[str, Any]]:
 
 
 def check_trigger_droid() -> list[dict[str, Any]]:
-    """Check 4: verify trigger-droid.sh exists and contains key functions."""
+    """Check 4: verify trigger-droid.sh exists and contains key functions.
+
+    Uses a stabilization retry (INFRA-264): when a required function is not
+    found on the first read, waits briefly and re-reads the file. This avoids
+    false positives from partial file writes during non-atomic deployments
+    (e.g., when the script is being rewritten and the scanner reads a
+    truncated version mid-write).
+    """
     findings: list[dict[str, Any]] = []
 
     if not TRIGGER_DROID.exists():
@@ -190,16 +202,33 @@ def check_trigger_droid() -> list[dict[str, Any]]:
     try:
         content = TRIGGER_DROID.read_text()
         required_functions = ["resolve_issue_ref", "resolve_pr_ref"]
-        for func in required_functions:
-            if f"function {func}" not in content and f"{func}()" not in content:
-                findings.append({
-                    "rule_id": "EVOLUTION_TRIGGER_REGRESSION",
-                    "severity": "critical",
-                    "description": "trigger-droid.sh missing required function",
-                    "location": str(TRIGGER_DROID),
-                    "evidence": f"function={func}",
-                    "category": CATEGORY,
-                })
+
+        # First pass: collect missing functions
+        missing_functions = [
+            func for func in required_functions
+            if f"function {func}" not in content and f"{func}()" not in content
+        ]
+
+        # INFRA-264: Stabilization retry — re-read if any functions missing
+        # to avoid false positives from partial file writes during deployment.
+        if missing_functions:
+            time.sleep(TRIGGER_STABILIZATION_DELAY_SEC)
+            content = TRIGGER_DROID.read_text()
+            # Only keep functions still missing after retry
+            missing_functions = [
+                func for func in missing_functions
+                if f"function {func}" not in content and f"{func}()" not in content
+            ]
+
+        for func in missing_functions:
+            findings.append({
+                "rule_id": "EVOLUTION_TRIGGER_REGRESSION",
+                "severity": "critical",
+                "description": "trigger-droid.sh missing required function",
+                "location": str(TRIGGER_DROID),
+                "evidence": f"function={func}",
+                "category": CATEGORY,
+            })
     except Exception as e:
         findings.append({
             "rule_id": "EVOLUTION_TRIGGER_READ_ERROR",
