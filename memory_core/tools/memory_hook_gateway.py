@@ -35,7 +35,6 @@ if __name__ == "__main__":
 import argparse
 import hashlib
 import json
-import os
 import re
 import subprocess
 from datetime import datetime
