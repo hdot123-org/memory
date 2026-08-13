@@ -2,11 +2,14 @@
 
 
 import json
+import logging
 import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 V1_VERSION = "context-package-v1"
 V2_VERSION = "wb-hook-v2"
@@ -128,8 +131,9 @@ def _write_audit_log(
         p.parent.mkdir(parents=True, exist_ok=True)
         with open(p, "a", encoding="utf-8") as f:
             f.write(line + "\n")
-    except OSError:
-        pass
+    except OSError as exc:
+        logger.warning("Failed to write audit log to %s: %s", log_path, exc)
+        print(f"Warning: failed to write audit log to {log_path}: {exc}", file=sys.stderr)
 
     # Always emit to stderr for backward compatibility
     print(line, file=sys.stderr)

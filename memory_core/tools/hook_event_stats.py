@@ -10,10 +10,13 @@ Usage:
 
 import argparse
 import json
+import logging
 import sys
 from datetime import date
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Telemetry (optional — graceful degradation if unavailable)
 telemetry: Any
@@ -252,8 +255,9 @@ def _resolve_all_projects() -> list[Path]:
         try:
             idx = json.loads(lifecycle_index.read_text())
             projects = [Path(p).resolve() for p in idx.get("paths", [])]
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("hook_event_stats: failed to read lifecycle index %s: %s", lifecycle_index, exc)
+            print(f"Warning: failed to read lifecycle index: {exc}", file=sys.stderr)
     if not projects:
         for p in Path.home().iterdir():
             if p.is_dir() and (p / "memory" / "system").exists():
