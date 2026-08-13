@@ -1,25 +1,19 @@
 """Tests for code_hygiene_audit tool."""
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from memory_core.tools.code_hygiene_audit import (
-    EXCLUDE_DIRS,
-    MAX_FILE_SIZE,
+    CATEGORY,
     RULE_ID,
     SEVERITY,
-    CATEGORY,
-    DESCRIPTION,
     SwallowVisitor,
     audit_file,
     main,
     scan_directory,
-    should_skip_file,
     should_skip_dir,
+    should_skip_file,
 )
 
 
@@ -327,7 +321,7 @@ def func():
         x = 1
     except:
         pass
-    
+
     try:
         y = 2
     except:
@@ -362,7 +356,7 @@ class TestRobustness:
         # Write invalid UTF-8 bytes
         test_file.write_bytes(b"# coding: utf-8\n\xff\xfe")
 
-        findings = audit_file(test_file, tmp_path)
+        audit_file(test_file, tmp_path)
         # Should not crash, might return empty or findings
 
     def test_utf8_bom_file(self, tmp_path: Path) -> None:
@@ -443,7 +437,7 @@ except:
             old_stdout = sys.stdout
             sys.stdout = io.StringIO()
 
-            result = main()
+            main()
 
             output = sys.stdout.getvalue()
             sys.stdout = old_stdout

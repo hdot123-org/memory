@@ -7,8 +7,6 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, NoReturn
-
 
 # Module-level constants for testability
 EXCLUDE_DIRS = frozenset(
