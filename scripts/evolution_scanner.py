@@ -38,6 +38,11 @@ class Finding:
     evidence: str
 
 
+# INFRA-265: Categories excluded from GitHub issue creation.
+# Infrastructure findings (daily_audit) should not enter the code repository's issue pipeline.
+ISSUE_EXCLUDED_CATEGORIES: set[str] = {"evolution_self_audit", "daily_audit"}
+
+
 def load_config(repo_root: Path) -> dict[str, Any]:
     with open(repo_root / ".evolution" / "config.yml") as f:
         config_data: dict[str, Any] = yaml.safe_load(f)
@@ -545,7 +550,8 @@ def main() -> None:
         open_issues = get_open_issues(config["dedup_label"], config["failure_label"])
         deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
         # INFRA-198: independent quotas so critical findings don't starve self_audit
-        regular = [f for f in deduped if f.category != "evolution_self_audit"]
+        # INFRA-265: exclude daily_audit from issue creation (infrastructure findings)
+        regular = [f for f in deduped if f.category not in ISSUE_EXCLUDED_CATEGORIES]
         self_audit = [f for f in deduped if f.category == "evolution_self_audit"]
         # VAL-REOPEN: For regression findings (upgraded to critical by detect_regressions),
         # try to reopen a matching closed issue before creating a new one.

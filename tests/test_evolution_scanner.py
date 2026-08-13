@@ -23,6 +23,7 @@ from evolution_adapters import (
     adapt_validate_project,
 )
 from evolution_scanner import (
+    ISSUE_EXCLUDED_CATEGORIES,
     Finding,
     _reopen_closed_issue,
     check_isolation,
@@ -5434,7 +5435,7 @@ def test_regular_quota_exhaustion_does_not_block_self_audit():
         'snapshot_limit': 100,
     }
 
-    critical = Finding("CRIT_001", "critical", "daily_audit", "Critical", "file1.md", "ev1")
+    critical = Finding("CRIT_001", "critical", "consistency", "Critical", "file1.md", "ev1")
     self_audit = Finding("SA_001", "warning", "evolution_self_audit", "Self audit", "file2.md", "ev2")
 
     with patch('evolution_scanner.check_kill_switch', return_value=False), \
@@ -5455,7 +5456,7 @@ def test_regular_quota_exhaustion_does_not_block_self_audit():
         created_findings = [call[0][0] for call in mock_create.call_args_list]
         categories = {f.category for f in created_findings}
         assert "evolution_self_audit" in categories, "Self-audit must NOT be blocked by regular quota"
-        assert "daily_audit" in categories
+        assert "consistency" in categories
 
 
 def test_self_audit_quota_is_capped():
@@ -5513,9 +5514,9 @@ def test_mixed_findings_sorted_correctly_within_each_pool():
     }
 
     findings = [
-        Finding("REG_CRIT", "critical", "daily_audit", "Critical", "f1.md", "ev"),
+        Finding("REG_CRIT", "critical", "code_hygiene", "Critical", "f1.md", "ev"),
         Finding("REG_INFO", "info", "consistency", "Info", "f2.md", "ev"),
-        Finding("REG_WARN", "warning", "daily_audit", "Warning", "f3.md", "ev"),
+        Finding("REG_WARN", "warning", "code_hygiene", "Warning", "f3.md", "ev"),
         Finding("SA_INFO", "info", "evolution_self_audit", "SA Info", "f4.md", "ev"),
         Finding("SA_WARN", "warning", "evolution_self_audit", "SA Warn", "f5.md", "ev"),
     ]
@@ -5555,6 +5556,132 @@ def test_config_has_max_self_audit_issues_per_tick():
     config = load_config(repo_root)
     assert "max_self_audit_issues_per_tick" in config, \
         "config.yml must have max_self_audit_issues_per_tick"
+
+
+# ==================== INFRA-265: daily_audit exclusion from issue creation ====================
+
+def test_daily_audit_finding_does_not_create_issue():
+    """INFRA-265: daily_audit category findings must NOT create GitHub issues."""
+    from evolution_scanner import main
+
+    assert "daily_audit" in ISSUE_EXCLUDED_CATEGORIES
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 5,
+        'max_self_audit_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    daily_audit_finding = Finding("DA_001", "critical", "daily_audit", "Container down", "infra.yml", "ev1")
+    regular_finding = Finding("CODE_001", "warning", "code_hygiene", "Unused import", "src/app.py", "ev2")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[daily_audit_finding, regular_finding]), \
+         patch('evolution_scanner.detect_regressions', return_value=[daily_audit_finding, regular_finding]), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'):
+        main()
+        created_findings = [call[0][0] for call in mock_create.call_args_list]
+        created_categories = [f.category for f in created_findings]
+        assert "daily_audit" not in created_categories, \
+            "daily_audit findings must NOT trigger create_issue"
+        assert "code_hygiene" in created_categories
+
+
+def test_code_hygiene_finding_still_creates_issue():
+    """INFRA-265: code_hygiene category findings must still create GitHub issues."""
+    from evolution_scanner import main
+
+    assert "code_hygiene" not in ISSUE_EXCLUDED_CATEGORIES
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 5,
+        'max_self_audit_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    code_hygiene_finding = Finding("CODE_002", "warning", "code_hygiene", "Unused variable", "src/util.py", "ev1")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[code_hygiene_finding]), \
+         patch('evolution_scanner.detect_regressions', return_value=[code_hygiene_finding]), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'):
+        main()
+        assert mock_create.call_count == 1
+        created_finding = mock_create.call_args[0][0]
+        assert created_finding.category == "code_hygiene"
+
+
+def test_daily_audit_finding_still_appears_in_scanner_output():
+    """INFRA-265: daily_audit findings must still be included in scanner output/history."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 5,
+        'max_self_audit_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    daily_audit_finding = Finding("DA_002", "critical", "daily_audit", "HASH_MISMATCH", "manifest.json", "ev1")
+    regular_finding = Finding("CODE_003", "warning", "code_hygiene", "Missing docstring", "src/mod.py", "ev2")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[daily_audit_finding, regular_finding]), \
+         patch('evolution_scanner.detect_regressions', return_value=[daily_audit_finding, regular_finding]), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history') as mock_update_history, \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'):
+        main()
+        # daily_audit finding should NOT create an issue
+        created_findings = [call[0][0] for call in mock_create.call_args_list]
+        created_categories = [f.category for f in created_findings]
+        assert "daily_audit" not in created_categories
+
+        # daily_audit finding should still appear in update_history (all_findings includes it)
+        assert mock_update_history.called
+        history_findings = mock_update_history.call_args[0][1]
+        history_categories = [f.category for f in history_findings]
+        assert "daily_audit" in history_categories, \
+            "daily_audit findings must still appear in scanner output/history"
 
 # ==================== Observer Heartbeat Tests ====================
 # Tests for VAL-HB-001 through VAL-HB-006
