@@ -351,6 +351,66 @@ class TestBatchCaptureHTTPErrorBodyCapture:
         assert "Bad Request" in error_msg
         assert "distinct_id" in error_msg  # Response body was captured
 
+    def test_http_error_body_read_failure_degrades_gracefully(self, bridge_with_client):
+        """Regression test (INFRA-258): when reading the HTTP error response body
+        raises an exception, batch_capture must degrade gracefully (empty
+        body_text) without crashing. Previously this was a silent swallow
+        (bare ``except Exception: pass``); it now logs at debug level."""
+        bridge, mock = bridge_with_client
+        import urllib.error
+
+        # Create an HTTPError whose .read() raises (broken/empty body stream)
+        broken_fp = MagicMock()
+        broken_fp.read.side_effect = OSError("stream closed")
+        http_err = urllib.error.HTTPError(
+            url="https://test/batch/",
+            code=502,
+            msg="Bad Gateway",
+            hdrs=None,
+            fp=broken_fp,
+        )
+
+        with patch("urllib.request.urlopen", side_effect=http_err), \
+             patch("time.sleep"):
+            result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
+
+        # Must not crash; degrades to body_text=""
+        assert result is False
+
+        # Error event still emitted via the outer HTTPError handler
+        error_calls = [
+            c for c in mock.capture.call_args_list
+            if c.kwargs.get("event_name") == "memory.error"
+        ]
+        assert len(error_calls) == 1
+
+    def test_http_error_body_read_failure_logs_debug(self, bridge_with_client, caplog):
+        """Regression test (INFRA-258): the body-read failure must be logged at
+        debug level instead of silently swallowed."""
+        bridge, mock = bridge_with_client
+        import logging
+        import urllib.error
+
+        broken_fp = MagicMock()
+        broken_fp.read.side_effect = OSError("stream closed")
+        http_err = urllib.error.HTTPError(
+            url="https://test/batch/",
+            code=502,
+            msg="Bad Gateway",
+            hdrs=None,
+            fp=broken_fp,
+        )
+
+        with patch("urllib.request.urlopen", side_effect=http_err), \
+             patch("time.sleep"), \
+             caplog.at_level(logging.DEBUG, logger="memory_core.tools.telemetry_bridge"):
+            bridge.batch_capture([{"event_name": "test", "properties": {}}])
+
+        # The debug log should mention the HTTP error body read failure
+        assert any(
+            "failed to read HTTP error body" in r.message for r in caplog.records
+        ), "body-read failure must be logged at debug level, not silently swallowed"
+
 
 class TestBatchCapturePayloadEnhancements:
     """VAL-PH-010: batch payload includes uuid and sentAt (matches SDK behavior)."""

@@ -320,8 +320,11 @@ class TelemetryBridge:
                     body_text = http_exc.read().decode(
                         "utf-8", errors="replace"
                     )[:300]
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(
+                        "telemetry_bridge.batch_capture: failed to read HTTP error body: %s",
+                        exc,
+                    )
 
                 # Retry on 429 (rate limit) and 5xx (server errors)
                 should_retry = http_exc.code == 429 or http_exc.code >= 500
