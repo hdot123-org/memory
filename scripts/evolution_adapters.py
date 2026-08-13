@@ -365,6 +365,7 @@ TOOL_TO_CATEGORIES = {
     "audit_layout": {"audit_layout"},
     "validate_project": {"validate_project"},
     "evolution_self_audit": {"evolution_self_audit"},
+    "code_hygiene_audit": {"code_hygiene"},
 }
 
 
