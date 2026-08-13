@@ -3998,6 +3998,59 @@ def test_evolution_self_audit_ci_mode(tmp_path, monkeypatch, capsys):
     assert "SKIP check_repositories_yml" in captured.err
 
 
+def test_check_repositories_yml_valid_with_memory_core(tmp_path, monkeypatch):
+    """check_repositories_yml passes when teams.*.repos contains memory-core (INFRA-266)."""
+    yml = tmp_path / "repositories.yml"
+    yml.write_text(
+        "version: 1\n"
+        "teams:\n"
+        "  infra:\n"
+        "    teamKey: INFRA\n"
+        "    repos:\n"
+        "      - repoKey: memory-core\n"
+        "        repoPath: ~/memory\n"
+        "        githubRepo: hdot123/memory\n"
+        "        defaultBranch: main\n"
+        "        default: true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("evolution_self_audit.REPOSITORIES_YML", yml)
+    assert check_repositories_yml() == []
+
+
+def test_check_repositories_yml_missing_memory_core(tmp_path, monkeypatch):
+    """check_repositories_yml flags when no team has a memory-core repo (INFRA-266)."""
+    yml = tmp_path / "repositories.yml"
+    yml.write_text(
+        "version: 1\n"
+        "teams:\n"
+        "  infra:\n"
+        "    teamKey: INFRA\n"
+        "    repos:\n"
+        "      - repoKey: other-repo\n"
+        "        repoPath: ~/other\n"
+        "        githubRepo: hdot123/other\n"
+        "        defaultBranch: main\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("evolution_self_audit.REPOSITORIES_YML", yml)
+    findings = check_repositories_yml()
+    assert len(findings) == 1
+    assert findings[0]["rule_id"] == "EVOLUTION_ROUTING_MISCONFIG"
+    assert "memory-core not found" in findings[0]["evidence"]
+
+
+def test_check_repositories_yml_teams_not_dict(tmp_path, monkeypatch):
+    """check_repositories_yml flags when teams section is not a mapping."""
+    yml = tmp_path / "repositories.yml"
+    yml.write_text("version: 1\nteams: [not-a-dict]\n", encoding="utf-8")
+    monkeypatch.setattr("evolution_self_audit.REPOSITORIES_YML", yml)
+    findings = check_repositories_yml()
+    assert len(findings) == 1
+    assert findings[0]["rule_id"] == "EVOLUTION_ROUTING_MISCONFIG"
+    assert "teams" in findings[0]["description"]
+
+
 def test_evolution_self_audit_suppress_empty_is_valid(tmp_path, monkeypatch):
     """check_suppress_json treats an empty suppressed list as valid (no warning)."""
     monkeypatch.setattr(
