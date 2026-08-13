@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -73,11 +74,13 @@ EXEMPT_PATH_FRAGMENTS: tuple[str, ...] = (
     "memory/log/",
     "memory/docs/runbooks/",
     "memory/kb/decisions/d-002-ci-pytest-strategy.md",
+    "memory/artifacts/",  # 65K+ context JSON files, not source code
     "RESIDUE_INVENTORY.md",
     "RESIDUE_DISPOSITION_PLAN.md",
     "/__pycache__/",
     ".pyc",
     "/.git/",
+    "/.venv/",
     ".pytest_cache",
     ".ruff_cache",
     "scripts/check_boundary.py",
@@ -89,6 +92,23 @@ EXEMPT_PATH_FRAGMENTS: tuple[str, ...] = (
 def _is_exempt(path: Path) -> bool:
     s = str(path)
     return any(frag in s for frag in EXEMPT_PATH_FRAGMENTS)
+
+
+def _is_dir_exempt(dir_path: Path) -> bool:
+    """Check if a directory should be skipped during traversal."""
+    name = dir_path.name
+    # Directory names that should be pruned early to avoid slow traversal
+    exempt_names = frozenset({
+        "__pycache__",
+        ".git",
+        ".venv",
+        ".pytest_cache",
+        ".ruff_cache",
+        "node_modules",
+        "artifacts",
+        "log",
+    })
+    return name in exempt_names
 
 
 def scan_business_kb_files() -> list[dict[str, str]]:
@@ -123,29 +143,41 @@ def scan_business_kb_files() -> list[dict[str, str]]:
 def scan_runtime_leaks() -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     compiled = [(name, re.compile(rx)) for name, rx in LEAK_PATTERNS]
+
     for root in LEAK_SCAN_ROOTS:
         if not root.is_dir():
             continue
-        for path in root.rglob("*"):
-            if not path.is_file():
-                continue
-            if _is_exempt(path):
-                continue
-            try:
-                text = path.read_text(encoding="utf-8")
-            except (UnicodeDecodeError, PermissionError, OSError):
-                continue
-            for name, regex in compiled:
-                m = regex.search(text)
-                if m:
-                    line_no = text[: m.start()].count("\n") + 1
-                    findings.append({
-                        "kind": "runtime-leak",
-                        "path": str(path.relative_to(REPO_ROOT)),
-                        "line": str(line_no),
-                        "matched": name,
-                        "rule": "BOUNDARY 4.3: business runtime details (SSH alias / IP / DSN / deploy host) must not leak into core paths",
-                    })
+
+        # Use os.walk for fast directory pruning
+        for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+            # Prune exempt directories in-place
+            dirnames[:] = [
+                d for d in dirnames
+                if not _is_dir_exempt(Path(dirpath) / d)
+            ]
+
+            for filename in filenames:
+                filepath = Path(dirpath) / filename
+                if _is_exempt(filepath):
+                    continue
+
+                try:
+                    text = filepath.read_text(encoding="utf-8")
+                except (UnicodeDecodeError, PermissionError, OSError):
+                    continue
+
+                for name, regex in compiled:
+                    m = regex.search(text)
+                    if m:
+                        line_no = text[: m.start()].count("\n") + 1
+                        findings.append({
+                            "kind": "runtime-leak",
+                            "path": str(filepath.relative_to(REPO_ROOT)),
+                            "line": str(line_no),
+                            "matched": name,
+                            "rule": "BOUNDARY 4.3: business runtime details (SSH alias / IP / DSN / deploy host) must not leak into core paths",
+                        })
+
     return findings
 
 

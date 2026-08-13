@@ -14,7 +14,7 @@ PATTERNS = [
     (re.compile(r"#\s*HACK", re.IGNORECASE), "HACK marker found"),
 ]
 
-EXCLUDE_DIRS = {"__pycache__", ".git", "node_modules", "dist", "build", ".pytest_cache", ".ruff_cache", "archive", "workspace"}
+EXCLUDE_DIRS = {"__pycache__", ".git", ".venv", "node_modules", "dist", "build", ".pytest_cache", ".ruff_cache", "archive", "workspace"}
 
 
 def scan(root: Path) -> list[tuple[Path, int, str, str]]:
