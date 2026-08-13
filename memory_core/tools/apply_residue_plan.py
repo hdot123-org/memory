@@ -162,7 +162,11 @@ def _is_forbidden_path(path: str, target: Path | None = None) -> bool:
             classification = classify_owned_path(path, ownership=ownership)
             return isinstance(classification, Owned)
         except Exception:
-            pass  # Fall through to legacy check
+            logger.debug(
+                "_is_forbidden_path: ownership classification failed, "
+                "falling through to legacy check",
+                exc_info=True,
+            )
 
     # Legacy fallback
     path_lower = path.lower()
@@ -227,7 +231,11 @@ def _validate_plan(plan: dict[str, Any], target: Path | None = None) -> tuple[bo
                         except (ValueError, OSError):
                             pass
         except Exception:
-            pass  # Fall back to legacy patterns
+            logger.debug(
+                "_validate_plan: dynamic forbidden-path scan failed, "
+                "falling back to legacy patterns",
+                exc_info=True,
+            )
 
     # Check actions
     actions = plan.get("actions", [])
