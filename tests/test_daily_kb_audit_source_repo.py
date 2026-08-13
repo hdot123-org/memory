@@ -1,6 +1,8 @@
 """Tests for daily_kb_audit.py source repo version check skip.
 
 VAL-HOOK-009: daily_kb_audit 对 memory-core 源仓库不再报 version_mismatch 违规。
+INFRA-263: daily_kb_audit 对 memory-core 源仓库不再报 HASH_MISMATCH 误报
+           （sign_project 设计上拒绝签名源仓库，manifest.json 不存在是预期行为）。
 """
 
 from pathlib import Path
@@ -97,3 +99,53 @@ class TestSourceRepoVersionCheckSkip:
 
         assert "note" in result
         assert "源仓库" in result["note"]
+
+
+class TestSourceRepoManifestCheckSkip:
+    """INFRA-263: Source repo should skip _c1 (check_manifest_integrity).
+
+    sign_project() deliberately refuses to sign the memory-core source repo
+    (anti-pollution guard). Therefore manifest.json will never exist for it,
+    and running check_manifest_integrity always produces a false-positive
+    HASH_MISMATCH finding.
+    """
+
+    def test_source_repo_skips_manifest_check(self, tmp_path: Path) -> None:
+        """When is_source_repo is True, check_manifest_integrity should NOT be called."""
+        memory_core_dir = tmp_path / "memory_core" / "tools"
+        memory_core_dir.mkdir(parents=True)
+        (memory_core_dir / "memory_hook_gateway.py").touch()
+        (memory_core_dir / "factory_global_hooks.py").touch()
+        (tmp_path / "memory_core" / "ownership.py").touch()
+
+        # Do NOT create manifest.json — it should not matter for source repo
+        with patch(
+            "memory_core.tools.daily_kb_audit.check_manifest_integrity"
+        ) as mock_c1:
+            mock_c1.return_value = [
+                {"type": "hash_mismatch", "severity": "critical",
+                 "file": "memory/system/manifest.json", "detail": "test"}
+            ]
+
+            result = audit_project("memory-core", tmp_path, {})
+
+            # check_manifest_integrity should NOT be called for source repo
+            mock_c1.assert_not_called()
+            # And there should be zero violations (no false positive)
+            assert len(result["violations"]) == 0
+
+    def test_non_source_repo_runs_manifest_check(self, tmp_path: Path) -> None:
+        """When is_source_repo is False, check_manifest_integrity SHOULD be called."""
+        # No memory_core markers → is_source_repo = False
+        manifest_dir = tmp_path / "memory" / "system"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "manifest.json").write_text('{"entries": []}')
+
+        with patch(
+            "memory_core.tools.daily_kb_audit.check_manifest_integrity"
+        ) as mock_c1:
+            mock_c1.return_value = []
+
+            audit_project("consumer-project", tmp_path, {})
+
+            mock_c1.assert_called_once_with(tmp_path)

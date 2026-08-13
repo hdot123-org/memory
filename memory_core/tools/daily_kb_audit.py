@@ -34,7 +34,7 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from memory_core.constants import CURRENT_MEMORY_VERSION, SYSTEM_DIR
 
@@ -1370,26 +1370,26 @@ def audit_project(
 
     # memory-core 自身是只读源仓库，不持有业务 KB，跳过 KB 相关检查和版本一致性检查
     # （源仓库的版本号由自身维护，跑版本检查会产生误报）
+    # 此外，源仓库的完整性签名在设计上被禁用（sign_project 拒绝签名源仓库），
+    # 因此 manifest.json 不存在是预期行为，跑完整性检查会产生 HASH_MISMATCH 误报。
     is_source_repo = (
         is_memory_core_source_repo is not None
         and is_memory_core_source_repo(project_root.resolve())
     )
 
-    checks: Iterable[tuple[str, "Any"]] = []
+    checks: list[tuple[str, "Any"]] = []
 
-    # 检查 1: 哈希完整性（所有项目都跑）
-    def _c1() -> list[dict[str, Any]]:
-        try:
-            return check_manifest_integrity(project_root)
-        except Exception as e:  # 单项目失败不影响其他项目
-            return [_make_violation("hash_mismatch", "warning",
-                                     MANIFEST_PATH_REL,
-                                     f"检查异常：{e}")]
-
-    checks = [("_c1", _c1)]
-
-    # KB 相关检查（源仓库跳过，它没有消费项目 KB 结构）
     if not is_source_repo:
+        # 检查 1: 哈希完整性（源仓库跳过：签名被禁用，manifest.json 不存在是预期行为）
+        def _c1() -> list[dict[str, Any]]:
+            try:
+                return check_manifest_integrity(project_root)
+            except Exception as e:  # 单项目失败不影响其他项目
+                return [_make_violation("hash_mismatch", "warning",
+                                         MANIFEST_PATH_REL,
+                                         f"检查异常：{e}")]
+
+        # KB 相关检查（源仓库跳过，它没有消费项目 KB 结构）
         def _c2() -> list[dict[str, Any]]:
             try:
                 return check_unsigned_files(project_root)
@@ -1423,7 +1423,7 @@ def audit_project(
                                          f"{SYSTEM_DIR}/",
                                          f"检查异常：{e}")]
 
-        checks = list(checks) + [("_c2", _c2), ("_c3", _c3), ("_c4", _c4), ("_c5", _c5)]
+        checks = [("_c1", _c1), ("_c2", _c2), ("_c3", _c3), ("_c4", _c4), ("_c5", _c5)]
 
     for _, fn in checks:
         try:
@@ -1437,7 +1437,7 @@ def audit_project(
             record["violations"].extend(violations)
 
     if is_source_repo:
-        record["note"] = "memory-core 源仓库：跳过 KB 未签名/残留/大文件检查"
+        record["note"] = "memory-core 源仓库：跳过完整性签名/KB未签名/残留/大文件检查"
 
     return record
 
