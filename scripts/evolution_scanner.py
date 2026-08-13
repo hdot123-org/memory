@@ -38,8 +38,9 @@ class Finding:
     evidence: str
 
 
-# INFRA-265: Categories excluded from GitHub issue creation.
-# Infrastructure findings (daily_audit) should not enter the code repository's issue pipeline.
+# INFRA-265 / INFRA-268: Categories excluded from GitHub issue creation.
+# Infrastructure findings (daily_audit) should not enter the code repository's issue pipeline;
+# they belong to the infrastructure ops repo, not the code repository's issue board.
 ISSUE_EXCLUDED_CATEGORIES: set[str] = {"evolution_self_audit", "daily_audit"}
 
 
@@ -576,8 +577,11 @@ def main() -> None:
     check_isolation(all_findings, history_path, config["isolation_threshold"], config["failure_label"], config["dedup_label"])
     print(f"[evolution] Tick complete: {len(all_findings)} findings, {issues_created} issues created")
 
-    # P1-2: Hard exit when findings exist but zero issues created
-    if deduped and issues_created == 0:
+    # P1-2: Hard exit when actionable findings exist but zero issues created.
+    # INFRA-268: daily_audit findings are intentionally excluded from issue creation;
+    # exclude them here so a tick with only infrastructure findings doesn't false-positive exit.
+    actionable_findings = [f for f in deduped if f.category != "daily_audit"]
+    if actionable_findings and issues_created == 0:
         print("::error::findings exist but zero issues created")
         sys.exit(1)
     # P2-A: Hard exit when GitHub API unavailable and findings exist (prevents silent loop death)

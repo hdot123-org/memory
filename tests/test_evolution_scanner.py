@@ -5683,6 +5683,105 @@ def test_daily_audit_finding_still_appears_in_scanner_output():
         assert "daily_audit" in history_categories, \
             "daily_audit findings must still appear in scanner output/history"
 
+
+# ==================== INFRA-268: daily_audit-only tick regression ====================
+
+def test_infra_268_all_daily_audit_findings_create_zero_issues():
+    """INFRA-268: When ALL findings in a tick are daily_audit, zero issues are created.
+
+    Existing INFRA-265 tests mix daily_audit with a regular finding. This test covers the
+    edge case where every finding is excluded — the regular and self_audit lists are both
+    empty, so neither _process_findings_with_reopen call should fire create_issue at all.
+    """
+    from evolution_scanner import main
+
+    assert "daily_audit" in ISSUE_EXCLUDED_CATEGORIES
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 5,
+        'max_self_audit_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    # Only daily_audit findings — no regular or self_audit findings at all
+    daily_audit_findings = [
+        Finding("DA_010", "critical", "daily_audit", "Container down", "infra.yml", "ev1"),
+        Finding("DA_011", "warning", "daily_audit", "HASH_MISMATCH", "manifest.json", "ev2"),
+        Finding("DA_012", "info", "daily_audit", "Disk usage high", "node-1", "ev3"),
+    ]
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=daily_audit_findings), \
+         patch('evolution_scanner.detect_regressions', return_value=daily_audit_findings), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history') as mock_update_history, \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'):
+        main()
+        # No issue should be created when all findings are daily_audit
+        assert mock_create.call_count == 0, \
+            "create_issue must never be called when all findings are daily_audit"
+        # All daily_audit findings must still be preserved in history
+        assert mock_update_history.called
+        history_findings = mock_update_history.call_args[0][1]
+        history_categories = [f.category for f in history_findings]
+        assert history_categories.count("daily_audit") == 3, \
+            "All three daily_audit findings must appear in scanner output/history"
+
+
+def test_infra_268_p1_2_still_fires_for_actionable_findings_mixed_with_daily_audit():
+    """INFRA-268: P1-2 hard-exit must still fire when actionable (non-daily_audit) findings
+    exist alongside daily_audit findings but zero issues are created.
+
+    This proves the fix is surgical: only daily_audit is exempted from the P1-2 check,
+    not all findings. If a regular finding fails to create an issue, the safety net fires.
+    """
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 5,
+        'max_self_audit_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    daily_audit_finding = Finding("DA_020", "critical", "daily_audit", "Container down", "infra.yml", "ev1")
+    # An actionable finding that will FAIL to create an issue (create_issue returns False)
+    stuck_finding = Finding("STUCK_001", "warning", "code_hygiene", "Unused import", "src/app.py", "ev2")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[daily_audit_finding, stuck_finding]), \
+         patch('evolution_scanner.detect_regressions', return_value=[daily_audit_finding, stuck_finding]), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=False), \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'):
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 1
+
+
 # ==================== Observer Heartbeat Tests ====================
 # Tests for VAL-HB-001 through VAL-HB-006
 
