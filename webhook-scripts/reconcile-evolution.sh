@@ -26,6 +26,7 @@ LOG_FILE="${LOG_DIR}/reconcile-${TIMESTAMP}.log"
 log() { echo "[$(date '+%Y-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
 # === 1. 解析 LINEAR_API_KEY（复用 trigger-droid.sh 的 op-mcp 机制）===
+# shellcheck source=/dev/null
 source "${SCRIPT_DIR}/lib/op-mcp.sh"
 
 LINEAR_API_KEY="${LINEAR_API_KEY:-}"

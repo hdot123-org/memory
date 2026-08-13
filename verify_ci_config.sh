@@ -26,7 +26,7 @@ fi
 
 # VAL-CI-003: .env.example documents real MEMORY_FEATURE_* vars
 echo "VAL-CI-003: .env.example documents MEMORY_FEATURE_* vars"
-if grep -q '功能开关' .env.example && grep 'MEMORY_FEATURE_' .env.example | wc -l | xargs test 2 -le; then
+if grep -q '功能开关' .env.example && [ "$(grep -c 'MEMORY_FEATURE_' .env.example)" -ge 2 ]; then
     echo "  ✓ PASS"
 else
     echo "  ✗ FAIL"

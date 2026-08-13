@@ -55,7 +55,7 @@ jobs:
           rm -f shellcheck-v0.10.0.linux.x86_64.tar.xz actionlint_1.7.7_linux_amd64.tar.gz
       - name: Shell lint
         run: |
-          shellcheck scripts/*.sh
+          find . -name '*.sh' -not -path './.venv/*' -not -path './.git/*' -not -path './node_modules/*' -print0 | xargs -0 shellcheck -x
           actionlint .github/workflows/*.yml
       - name: BOUNDARY pollution guard
         run: python scripts/check_boundary.py
