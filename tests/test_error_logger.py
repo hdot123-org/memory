@@ -316,8 +316,8 @@ class TestTrySignFile:
         # Should return None without raising.
         error_logger._try_sign_file(tmp_path, "memory/log/test-errors.jsonl")
 
-    def test_logs_debug_record_when_signing_fails(self, monkeypatch, tmp_path, caplog):
-        """The previously-swallowed exception must now emit a debug log record."""
+    def test_logs_warning_record_when_signing_fails(self, monkeypatch, tmp_path, caplog):
+        """The previously-swallowed exception must now emit a warning log record."""
         from memory_core.tools import error_logger
 
         def _boom(*args, **kwargs):
@@ -327,14 +327,14 @@ class TestTrySignFile:
             error_logger._integrity, "sign_project_incremental", _boom
         )
 
-        with caplog.at_level("DEBUG", logger="memory_core.tools.error_logger"):
+        with caplog.at_level("WARNING", logger="memory_core.tools.error_logger"):
             error_logger._try_sign_file(tmp_path, "memory/log/test-errors.jsonl")
 
-        debug_records = [
-            r for r in caplog.records if r.levelname == "DEBUG"
-            and "_try_sign_file" in r.message
+        warning_records = [
+            r for r in caplog.records if r.levelname == "WARNING"
+            and "sign_project_incremental failed" in r.message
         ]
-        assert debug_records, "expected a DEBUG log record for the swallowed exception"
+        assert warning_records, "expected a WARNING log record for the swallowed exception"
 
 
 # ---------------------------------------------------------------------------
