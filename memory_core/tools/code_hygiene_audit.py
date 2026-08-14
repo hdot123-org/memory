@@ -275,11 +275,13 @@ def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
             # Fallback: tokenization failed (e.g. syntax error). Scan every
             # line to avoid missing real TODOs in un-parseable files.
             for lineno, line in enumerate(source.splitlines(), start=1):
-                comment_lines.append((lineno, line))
+                hash_pos = line.find("#")
+                if hash_pos >= 0:
+                    comment_lines.append((lineno, line[hash_pos:]))
 
         for lineno, text in comment_lines:
             for pattern, label in TODO_PATTERNS:
-                if pattern.search(text):
+                if pattern.match(text):
                     # Build finding in 6-field schema
                     findings.append(
                         {
