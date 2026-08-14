@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.28.0](https://github.com/hdot123/memory/compare/v0.27.0...v0.28.0) (2026-08-14)
+
+
+### Features
+
+* evolution_scanner suppress.json 支持 expires 过期机制 ([#631](https://github.com/hdot123/memory/issues/631)) ([81e25f6](https://github.com/hdot123/memory/commit/81e25f66ecbb67b12d644c9132d7ae00a61fd7d5))
+
+
+### Bug Fixes
+
+* evolution scanner 支持按工具配置超时并修复 code_hygiene_audit 60s 超时 (INFRA-278) ([#636](https://github.com/hdot123/memory/issues/636)) ([5b991e7](https://github.com/hdot123/memory/commit/5b991e76c46c0a31030b77486d485788cf94901b))
+* evolution scanner 支持按工具配置超时并修复 code_hygiene_audit 60s 超时 (INFRA-278) ([#638](https://github.com/hdot123/memory/issues/638)) ([e2fee82](https://github.com/hdot123/memory/commit/e2fee828599bd64a40ed58c4be30e90e9143356b))
+* 修复 suppress 过期判断使用本地时区而非 UTC ([#632](https://github.com/hdot123/memory/issues/632)) ([8cd8d54](https://github.com/hdot123/memory/commit/8cd8d54e51ae14ea4d5bba361bd7ccb87829e12c))
+* 修复剩余 shellcheck 存在性检查的死代码 (INFRA-274) ([#626](https://github.com/hdot123/memory/issues/626)) ([7dd2fe6](https://github.com/hdot123/memory/commit/7dd2fe60ace2754a43e9ebf75f3ed62cd28e3097))
+
+
+### Performance Improvements
+
+* 删除 Phase 2 跨名检测解决 O(n²) 性能问题 ([#628](https://github.com/hdot123/memory/issues/628)) ([5afd502](https://github.com/hdot123/memory/commit/5afd50204e68e5bc0a14d3469cb89f2e52a03010))
+
 ## [0.27.0](https://github.com/hdot123/memory/compare/v0.26.0...v0.27.0) (2026-08-14)
 
 
