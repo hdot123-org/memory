@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
-
-import pytest
 
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "deploy-security-baseline.sh"
 REPO_ROOT = Path(__file__).parent.parent
@@ -134,13 +131,6 @@ def test_force_overwrites(tmp_path: Path):
 # ============================================================================
 def test_shellcheck_clean():
     """shellcheck scripts/deploy-security-baseline.sh exits 0."""
-    if not shutil.which("shellcheck"):
-        pytest.skip("shellcheck not installed")
+    from tests.shellcheck_helpers import assert_shellcheck_clean
 
-    result = subprocess.run(
-        ["shellcheck", str(SCRIPT_PATH)],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, \
-        f"shellcheck failed:\n{result.stdout}\n{result.stderr}"
+    assert_shellcheck_clean(SCRIPT_PATH)
