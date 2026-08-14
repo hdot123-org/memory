@@ -801,3 +801,298 @@ except:
 
         findings = check_todos(test_file, "test.py")
         assert len(findings) == 1
+
+
+from memory_core.tools.code_hygiene_audit import (
+    DUPLICATE_RULE_ID,
+    DUPLICATE_SEVERITY,
+)
+
+
+class TestDuplicateDetection:
+    """Tests for AST-based duplicate code detection."""
+
+    def test_duplicate_same_name_detected(self, tmp_path: Path) -> None:
+        """Two same-name functions with >=80% similarity and >=10 lines are detected."""
+        # Create two functions with same name and high similarity (>=10 lines)
+        code = """
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+"""
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = scan_directory(tmp_path, tmp_path)
+        duplicate_findings = [f for f in findings if f["rule_id"] == "CODE_HYGIENE_DUPLICATE_BLOCK"]
+        assert len(duplicate_findings) == 1
+        finding = duplicate_findings[0]
+        assert finding["rule_id"] == DUPLICATE_RULE_ID
+        assert finding["severity"] == DUPLICATE_SEVERITY
+        assert finding["severity"] == "info"
+        assert finding["category"] == "code_hygiene"
+
+    def test_duplicate_small_functions_not_flagged(self, tmp_path: Path) -> None:
+        """Functions with <10 lines AND <50 tokens are not flagged."""
+        # Two small functions (5 lines each, well under threshold)
+        code = """
+def small_func(x):
+    return x + 1
+
+def small_func(x):
+    return x + 1
+"""
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = scan_directory(tmp_path, tmp_path)
+        duplicate_findings = [f for f in findings if f["rule_id"] == "CODE_HYGIENE_DUPLICATE_BLOCK"]
+        assert len(duplicate_findings) == 0
+
+    def test_duplicate_different_names_not_flagged(self, tmp_path: Path) -> None:
+        """Two similar functions with different names are never compared."""
+        code = """
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+
+def handle_input(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+"""
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = scan_directory(tmp_path, tmp_path)
+        duplicate_findings = [f for f in findings if f["rule_id"] == "CODE_HYGIENE_DUPLICATE_BLOCK"]
+        assert len(duplicate_findings) == 0
+
+    def test_duplicate_cross_file_detection(self, tmp_path: Path) -> None:
+        """Same-name functions in different files are detected."""
+        # File 1
+        code1 = """
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+"""
+        (tmp_path / "file1.py").write_text(code1)
+
+        # File 2 - same function name, similar implementation
+        code2 = """
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+"""
+        (tmp_path / "file2.py").write_text(code2)
+
+        findings = scan_directory(tmp_path, tmp_path)
+        duplicate_findings = [f for f in findings if f["rule_id"] == "CODE_HYGIENE_DUPLICATE_BLOCK"]
+        assert len(duplicate_findings) == 1
+        finding = duplicate_findings[0]
+        # Location should reference both files
+        assert "file1.py" in finding["location"]
+        assert "file2.py" in finding["location"]
+
+    def test_duplicate_pair_deduplication(self, tmp_path: Path) -> None:
+        """Same pair is reported at most once."""
+        # Create three identical functions - should report 3 pairs (1-2, 1-3, 2-3)
+        code = """
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+"""
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = scan_directory(tmp_path, tmp_path)
+        duplicate_findings = [f for f in findings if f["rule_id"] == "CODE_HYGIENE_DUPLICATE_BLOCK"]
+        # Should have exactly 3 unique pairs
+        assert len(duplicate_findings) == 3
+
+    def test_duplicate_finding_has_correct_6_field_schema(self, tmp_path: Path) -> None:
+        """Duplicate finding has all 6 fields with correct types."""
+        code = """
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+"""
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = scan_directory(tmp_path, tmp_path)
+        duplicate_findings = [f for f in findings if f["rule_id"] == "CODE_HYGIENE_DUPLICATE_BLOCK"]
+        assert len(duplicate_findings) == 1
+        finding = duplicate_findings[0]
+        required_fields = {"rule_id", "severity", "category", "description", "location", "evidence"}
+        assert set(finding.keys()) == required_fields
+        assert all(isinstance(v, str) for v in finding.values())
+
+    def test_duplicate_location_references_both_files(self, tmp_path: Path) -> None:
+        """Location format references both file:line pairs."""
+        code = """
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+"""
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = scan_directory(tmp_path, tmp_path)
+        duplicate_findings = [f for f in findings if f["rule_id"] == "CODE_HYGIENE_DUPLICATE_BLOCK"]
+        assert len(duplicate_findings) == 1
+        finding = duplicate_findings[0]
+        # Location should contain line numbers
+        assert "L" in finding["location"]
+
+    def test_scan_directory_combines_all_three_rules(self, tmp_path: Path) -> None:
+        """scan_directory returns SILENT_SWALLOW + TODO + DUPLICATE findings together."""
+        # File with all three patterns
+        code = """
+# TODO fix this later
+
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+
+try:
+    x = 1
+except:
+    pass
+"""
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = scan_directory(tmp_path, tmp_path)
+        rule_ids = {f["rule_id"] for f in findings}
+        assert "SILENT_SWALLOW" in rule_ids
+        assert "CODE_HYGIENE_UNTRACKED_TODO" in rule_ids
+        assert "CODE_HYGIENE_DUPLICATE_BLOCK" in rule_ids
