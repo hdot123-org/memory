@@ -802,6 +802,60 @@ except:
         findings = check_todos(test_file, "test.py")
         assert len(findings) == 1
 
+    def test_todo_word_prefix_not_flagged(self, tmp_path: Path) -> None:
+        """'# TODOLIST' is not a TODO marker — word boundary prevents false positive (INFRA-273)."""
+        code = "# TODOLIST items here\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 0
+
+    def test_todos_plural_not_flagged(self, tmp_path: Path) -> None:
+        """'# TODOS' is not a TODO marker (INFRA-273)."""
+        code = "# TODOS need fixing\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 0
+
+    def test_todo_underscore_suffix_not_flagged(self, tmp_path: Path) -> None:
+        """'# TODO_LIST' is not a TODO marker (INFRA-273)."""
+        code = "# TODO_LIST items\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 0
+
+    def test_fixme_word_prefix_not_flagged(self, tmp_path: Path) -> None:
+        """'# FIXMELIST' is not a FIXME marker (INFRA-273)."""
+        code = "# FIXMELIST items\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 0
+
+    def test_hack_word_prefix_not_flagged(self, tmp_path: Path) -> None:
+        """'# HACKLIST' is not a HACK marker (INFRA-273)."""
+        code = "# HACKLIST items\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 0
+
+    def test_todo_bare_marker_still_detected_with_word_boundary(self, tmp_path: Path) -> None:
+        """Bare '# TODO' (nothing after) is still detected with word boundary fix (INFRA-273)."""
+        code = "# TODO\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 1
+
 
 from memory_core.tools.code_hygiene_audit import (
     DUPLICATE_RULE_ID,
@@ -867,8 +921,8 @@ def small_func(x):
         duplicate_findings = [f for f in findings if f["rule_id"] == "CODE_HYGIENE_DUPLICATE_BLOCK"]
         assert len(duplicate_findings) == 0
 
-    def test_duplicate_different_names_not_flagged(self, tmp_path: Path) -> None:
-        """Two similar functions with different names are never compared."""
+    def test_duplicate_different_names_now_detected(self, tmp_path: Path) -> None:
+        """Cross-name functions with identical structure are now detected (INFRA-273)."""
         code = """
 def process_data(data):
     result = []
@@ -891,6 +945,37 @@ def handle_input(data):
         else:
             result.append(0)
     return result
+"""
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = scan_directory(tmp_path, tmp_path)
+        duplicate_findings = [f for f in findings if f["rule_id"] == "CODE_HYGIENE_DUPLICATE_BLOCK"]
+        assert len(duplicate_findings) == 1
+        finding = duplicate_findings[0]
+        assert "Cross-name structural duplicate" in finding["evidence"]
+        assert "process_data" in finding["evidence"]
+        assert "handle_input" in finding["evidence"]
+
+    def test_cross_name_different_structure_not_flagged(self, tmp_path: Path) -> None:
+        """Functions with different names and genuinely different structures are not flagged."""
+        code = """
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+        elif item < 0:
+            result.append(item * -1)
+        else:
+            result.append(0)
+    return result
+
+def compute_total(values):
+    total = 0
+    for v in values:
+        total += v * v
+    return total
 """
         test_file = tmp_path / "test.py"
         test_file.write_text(code)
