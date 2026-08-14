@@ -1,9 +1,8 @@
 """Tests for suppress.json expires lifecycle mechanism (VAL-SUPPRESS-001/002/003)."""
 import json
 import sys
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
