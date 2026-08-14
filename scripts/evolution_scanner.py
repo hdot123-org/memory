@@ -6,7 +6,7 @@ import shlex
 import subprocess
 import sys
 from dataclasses import asdict, dataclass, replace
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -183,11 +183,49 @@ def load_suppressions(repo_root: Path) -> list[dict[str, Any]]:
         return []
 
 
+def _is_suppression_expired(entry: dict[str, Any]) -> bool:
+    """Check if a suppression entry has expired based on its expires field.
+
+    Returns:
+        True if the entry is expired (should not suppress)
+        False if the entry is valid (should suppress)
+    """
+    expires_str = entry.get("expires")
+
+    # No expires field = permanent suppression (backward compatibility)
+    if expires_str is None:
+        return False
+
+    # Try to parse ISO 8601 date
+    try:
+        expires_date = date.fromisoformat(str(expires_str))
+        today = date.today()
+        return expires_date < today
+    except (ValueError, TypeError):
+        # Malformed expires value = fail open (don't suppress + warn)
+        print(
+            f"[evolution] Warning: malformed expires value '{expires_str}' "
+            f"in suppression entry {entry.get('rule_id', 'UNKNOWN')} @ {entry.get('location', 'UNKNOWN')}, "
+            f"treating as expired",
+            file=sys.stderr
+        )
+        return True
+
+
 def _matches_suppression(finding: Finding, entry: dict[str, Any]) -> bool:
-    """Check if a finding matches a suppression entry. Supports '*' wildcard."""
+    """Check if a finding matches a suppression entry. Supports '*' wildcard and expires field."""
     rule_match = entry.get("rule_id", "") in ("*", finding.rule_id)
     loc_match = entry.get("location", "") in ("*", finding.location)
-    return rule_match and loc_match
+
+    # Check if rule_id and location match
+    if not (rule_match and loc_match):
+        return False
+
+    # Check if suppression has expired
+    if _is_suppression_expired(entry):
+        return False
+
+    return True
 
 
 def apply_suppressions(findings: list[Finding], suppressions: list[dict[str, Any]]) -> list[Finding]:
