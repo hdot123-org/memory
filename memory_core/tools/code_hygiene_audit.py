@@ -3,10 +3,12 @@
 import argparse
 import ast
 import codecs
+import io
 import json
 import os
 import re
 import sys
+import tokenize
 from pathlib import Path
 
 # Module-level constants for testability
@@ -216,8 +218,13 @@ def should_skip_dir(dirpath: Path) -> bool:
 def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
     """Check for TODO/FIXME/HACK comments without issue references.
 
-    Absorbed rules from scan_tech_debt.py: detects TODO/FIXME/HACK markers
-    that are NOT followed by issue references like (#NNN) or (GH-NNN).
+    Detects TODO/FIXME/HACK markers that are NOT followed by issue
+    references like (#NNN) or (GH-NNN).
+
+    Uses tokenization to inspect only real Python comments, correctly
+    ignoring string literals that contain '# TODO' style text (INFRA-272).
+    Falls back to a line-by-line scan if tokenization fails (e.g. on
+    files with syntax errors) so real TODOs are never silently missed.
 
     Args:
         filepath: Absolute path to the file
@@ -226,7 +233,7 @@ def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
     Returns:
         List of findings in 6-field JSON schema
     """
-    findings = []
+    findings: list[dict[str, str]] = []
 
     try:
         # Read file with BOM handling
@@ -234,21 +241,36 @@ def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
         if raw.startswith(codecs.BOM_UTF8):
             raw = raw[len(codecs.BOM_UTF8) :]
         source = raw.decode("utf-8", errors="replace")
-        lines = source.splitlines()
 
-        for lineno, line in enumerate(lines, start=1):
+        # Collect (lineno, comment_text) from real COMMENT tokens only.
+        # String literals containing "# TODO" are STRING tokens, not COMMENT
+        # tokens, so they are correctly excluded (INFRA-272).
+        comment_lines: list[tuple[int, str]] = []
+        try:
+            tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+            for tok in tokens:
+                if tok.type == tokenize.COMMENT:
+                    comment_lines.append((tok.start[0], tok.string))
+        except Exception:
+            # Fallback: tokenization failed (e.g. syntax error). Scan every
+            # line to avoid missing real TODOs in un-parseable files.
+            for lineno, line in enumerate(source.splitlines(), start=1):
+                comment_lines.append((lineno, line))
+
+        for lineno, text in comment_lines:
             for pattern, label in TODO_PATTERNS:
-                if pattern.search(line):
+                if pattern.search(text):
                     # Build finding in 6-field schema
-                    finding = {
-                        "rule_id": TODO_RULE_ID,
-                        "severity": TODO_SEVERITY,
-                        "category": CATEGORY,
-                        "description": label,
-                        "location": f"{relpath}::L{lineno}",
-                        "evidence": line.strip(),
-                    }
-                    findings.append(finding)
+                    findings.append(
+                        {
+                            "rule_id": TODO_RULE_ID,
+                            "severity": TODO_SEVERITY,
+                            "category": CATEGORY,
+                            "description": label,
+                            "location": f"{relpath}::L{lineno}",
+                            "evidence": text.strip(),
+                        }
+                    )
 
     except OSError as e:
         print(
