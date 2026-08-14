@@ -596,3 +596,182 @@ class TestScanDirectory:
 
 
 import ast
+
+from memory_core.tools.code_hygiene_audit import (
+    check_todos,
+    TODO_RULE_ID,
+    TODO_SEVERITY,
+    TODO_DESCRIPTION,
+)
+
+
+class TestTodoDetection:
+    """Tests for TODO/FIXME/HACK detection without issue references."""
+
+    def test_todo_without_issue_detected(self, tmp_path: Path) -> None:
+        """Bare TODO comment without issue reference is flagged."""
+        code = "# TODO fix this later\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding["rule_id"] == TODO_RULE_ID
+        assert finding["rule_id"] == "CODE_HYGIENE_UNTRACKED_TODO"
+        assert finding["severity"] == TODO_SEVERITY
+        assert finding["severity"] == "warning"
+        assert finding["category"] == "code_hygiene"
+
+    def test_fixme_without_issue_detected(self, tmp_path: Path) -> None:
+        """Bare FIXME comment without issue reference is flagged."""
+        code = "# FIXME this is broken\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding["rule_id"] == "CODE_HYGIENE_UNTRACKED_TODO"
+        assert finding["severity"] == "warning"
+
+    def test_hack_without_issue_detected(self, tmp_path: Path) -> None:
+        """Bare HACK comment is flagged."""
+        code = "# HACK workaround for bug\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding["rule_id"] == "CODE_HYGIENE_UNTRACKED_TODO"
+
+    def test_todo_with_issue_ref_parentheses_exempt(self, tmp_path: Path) -> None:
+        """TODO(#123) is not flagged."""
+        code = "# TODO(#123) fix this later\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 0
+
+    def test_fixme_with_gh_issue_ref_exempt(self, tmp_path: Path) -> None:
+        """FIXME(GH-456) is not flagged."""
+        code = "# FIXME(GH-456) broken\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 0
+
+    def test_todo_with_infra_issue_ref_exempt(self, tmp_path: Path) -> None:
+        """TODO(INFRA-789) is not flagged."""
+        code = "# TODO(INFRA-789) implement this\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 0
+
+    def test_finding_has_correct_6_field_schema(self, tmp_path: Path) -> None:
+        """Finding has all 6 fields with correct types."""
+        code = "# TODO fix this\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 1
+        finding = findings[0]
+        required_fields = {"rule_id", "severity", "category", "description", "location", "evidence"}
+        assert set(finding.keys()) == required_fields
+        assert all(isinstance(v, str) for v in finding.values())
+
+    def test_finding_location_format(self, tmp_path: Path) -> None:
+        """Location format is path/to/file.py::L<lineno>."""
+        code = "x = 1\n# TODO fix this\ny = 2\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding["location"] == "test.py::L2"
+
+    def test_finding_evidence_contains_comment(self, tmp_path: Path) -> None:
+        """Evidence contains the offending comment text."""
+        code = "# TODO fix this later\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 1
+        finding = findings[0]
+        assert "TODO" in finding["evidence"]
+        assert "fix this later" in finding["evidence"]
+
+    def test_todo_in_excluded_dir_not_scanned(self, tmp_path: Path) -> None:
+        """Files in excluded directories are not scanned."""
+        # Create .venv directory with TODO
+        venv_dir = tmp_path / ".venv"
+        venv_dir.mkdir()
+        (venv_dir / "test.py").write_text("# TODO fix this\nx = 1\n")
+
+        # Create build directory with TODO
+        build_dir = tmp_path / "build"
+        build_dir.mkdir()
+        (build_dir / "test.py").write_text("# TODO fix this\nx = 1\n")
+
+        # Create normal file with TODO
+        (tmp_path / "normal.py").write_text("# TODO fix this\nx = 1\n")
+
+        findings = scan_directory(tmp_path, tmp_path)
+        # Only the normal file should be scanned
+        todo_findings = [f for f in findings if f["rule_id"] == "CODE_HYGIENE_UNTRACKED_TODO"]
+        assert len(todo_findings) == 1
+        assert "normal.py" in todo_findings[0]["location"]
+
+    def test_scan_directory_combines_silent_swallow_and_todo(self, tmp_path: Path) -> None:
+        """scan_directory returns both SILENT_SWALLOW and CODE_HYGIENE_UNTRACKED_TODO findings."""
+        # File with both patterns
+        code = """
+# TODO fix this
+try:
+    x = 1
+except:
+    pass
+"""
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = scan_directory(tmp_path, tmp_path)
+        rule_ids = {f["rule_id"] for f in findings}
+        assert "SILENT_SWALLOW" in rule_ids
+        assert "CODE_HYGIENE_UNTRACKED_TODO" in rule_ids
+
+    def test_multiple_todos_in_same_file(self, tmp_path: Path) -> None:
+        """Multiple bare TODOs in same file are all detected."""
+        code = "# TODO first\n# TODO second\n# FIXME third\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 3
+
+    def test_mixed_tracked_and_untracked_todos(self, tmp_path: Path) -> None:
+        """Only untracked TODOs are flagged, tracked ones are exempt."""
+        code = "# TODO(#123) tracked\n# TODO untracked\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 1
+        assert "untracked" in findings[0]["evidence"]
+
+    def test_todo_case_insensitive(self, tmp_path: Path) -> None:
+        """TODO detection is case-insensitive."""
+        code = "# todo fix this\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 1
