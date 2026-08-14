@@ -5,23 +5,20 @@ Covers: detection logic (VAL-GUARD-001 to VAL-GUARD-010), exemptions
 and cross-cutting (VAL-CROSS-001).
 """
 
-import importlib.util
 import json
 import subprocess
 import sys
 from pathlib import Path
+
+from tests.script_module_helpers import load_script_module
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "check_fix_has_test.py"
 
 
 def _load_module():
-    """Dynamically load the script module."""
-    spec = importlib.util.spec_from_file_location("check_fix_has_test", SCRIPT_PATH)
-    assert spec is not None and spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    """加载 check_fix_has_test 脚本模块。"""
+    return load_script_module(SCRIPT_PATH, "check_fix_has_test")
 
 
 def _run_script(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:

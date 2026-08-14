@@ -5,21 +5,19 @@ violations injected via tmp_path fixtures.
 """
 
 
-import importlib.util
 import subprocess
 import sys
 from pathlib import Path
+
+from tests.script_module_helpers import load_script_module
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "check_boundary.py"
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location("check_boundary", SCRIPT_PATH)
-    assert spec is not None and spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    """加载 check_boundary 脚本模块。"""
+    return load_script_module(SCRIPT_PATH, "check_boundary")
 
 
 def test_script_exists_and_executable():
