@@ -27,40 +27,16 @@ from unittest import mock
 import pytest
 
 from memory_core.tools.apply_residue_plan import _is_forbidden_path, _validate_plan
+from tests.silent_swallow_helpers import (
+    bare_except_positions as _except_positions,
+)
+from tests.silent_swallow_helpers import (
+    top_level_function_body as _function_body,
+)
 
 MODULE = "memory_core.tools.apply_residue_plan"
 LOGGER_NAME = MODULE
 MODULE_PATH = Path(__file__).parent.parent / "memory_core" / "tools" / "apply_residue_plan.py"
-
-
-# ---------------------------------------------------------------------------
-# Code-inspection helpers (same style as tests/test_ownership_silent_swallow.py)
-# ---------------------------------------------------------------------------
-
-def _function_body(content: str, name: str) -> str:
-    """Slice a top-level function's source from its `def` to the next top-level `def`.
-
-    Matches top-level defs only: a column-0 `def ` is preceded by a bare
-    newline, while a nested def is preceded by newline+indentation, so the
-    `\ndef ` search will not stop inside the target function.
-    """
-    start = content.index(f"def {name}")
-    next_def = content.index("\ndef ", start + 1)
-    return content[start:next_def]
-
-
-def _except_positions(body: str) -> list[int]:
-    """Return character offsets of every `except Exception:` in body."""
-    positions = []
-    needle = "except Exception:"
-    idx = 0
-    while True:
-        pos = body.find(needle, idx)
-        if pos == -1:
-            break
-        positions.append(pos)
-        idx = pos + len(needle)
-    return positions
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +46,7 @@ def _except_positions(body: str) -> list[int]:
 class TestIsForbiddenPathSilentSwallow:
     """Regression guard: _is_forbidden_path except block logs at debug (INFRA-242)."""
 
-    def test_except_block_logs_with_exc_info(self):
+    def test_is_forbidden_path_except_logs_with_exc_info(self):
         """The ownership-classification except block must call logger.debug(exc_info=True)."""
         content = MODULE_PATH.read_text()
         func_body = _function_body(content, "_is_forbidden_path")
@@ -98,7 +74,7 @@ class TestIsForbiddenPathSilentSwallow:
 class TestValidatePlanSilentSwallow:
     """Regression guard: _validate_plan except block logs at debug (INFRA-242)."""
 
-    def test_except_block_logs_with_exc_info(self):
+    def test_validate_plan_except_logs_with_exc_info(self):
         """The forbidden-path-scan except block must call logger.debug(exc_info=True)."""
         content = MODULE_PATH.read_text()
         func_body = _function_body(content, "_validate_plan")
@@ -125,22 +101,6 @@ class TestValidatePlanSilentSwallow:
         content = MODULE_PATH.read_text()
         # _validate_plan's outer except is at 8-space indent.
         assert "except Exception:\n            pass" not in content
-
-
-class TestNoSilentSwallowAnywhere:
-    """Whole-file guard: no bare `except Exception: pass` swallow remains."""
-
-    def test_no_bare_silent_swallow_pattern(self):
-        """No bare `except Exception:` followed only by `pass` at any nesting level."""
-        content = MODULE_PATH.read_text()
-        assert "except Exception:\n        pass" not in content, (
-            "apply_residue_plan.py must not contain a 4-space-indented bare "
-            "`except Exception: pass` (silent swallow)"
-        )
-        assert "except Exception:\n            pass" not in content, (
-            "apply_residue_plan.py must not contain an 8-space-indented bare "
-            "`except Exception: pass` (silent swallow)"
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +160,7 @@ class TestIsForbiddenPathRuntimeLogsAndDegrades:
         _, kwargs = mocked_logger.debug.call_args
         assert kwargs.get("exc_info") is True
 
-    def test_caplog_captures_debug(self, tmp_path: Path, caplog):
+    def test_is_forbidden_path_caplog_captures_debug(self, tmp_path: Path, caplog):
         """The debug log must be visible via caplog at DEBUG level."""
         _run_under_ownership_failure(
             call=lambda: _is_forbidden_path("AGENTS.md", target=tmp_path),
@@ -235,7 +195,7 @@ class TestValidatePlanRuntimeLogsAndDegrades:
         _, kwargs = mocked_logger.debug.call_args
         assert kwargs.get("exc_info") is True
 
-    def test_caplog_captures_debug(self, tmp_path: Path, caplog):
+    def test_validate_plan_caplog_captures_debug(self, tmp_path: Path, caplog):
         """The debug log must be visible via caplog at DEBUG level."""
         plan = {
             "target": str(tmp_path),

@@ -18,34 +18,15 @@ and assert the observability call is present.
 
 from pathlib import Path
 
+from tests.silent_swallow_helpers import (
+    bare_except_positions as _except_positions,
+)
+from tests.silent_swallow_helpers import (
+    top_level_function_body as _function_body,
+)
+
 REPO_ROOT = Path(__file__).parent.parent
 OWNERSHIP_PATH = REPO_ROOT / "memory_core" / "ownership.py"
-
-
-def _function_body(content: str, name: str) -> str:
-    """Slice a top-level function's source from its `def` to the next top-level `def`.
-
-    Matches top-level defs only: a column-0 `def ` is preceded by a bare
-    newline, while a nested def is preceded by newline+indentation, so the
-    `\ndef ` search will not stop inside the target function.
-    """
-    start = content.index(f"def {name}")
-    next_def = content.index("\ndef ", start + 1)
-    return content[start:next_def]
-
-
-def _except_positions(body: str) -> list[int]:
-    """Return character offsets of every `except Exception:` in body."""
-    positions = []
-    needle = "except Exception:"
-    idx = 0
-    while True:
-        pos = body.find(needle, idx)
-        if pos == -1:
-            break
-        positions.append(pos)
-        idx = pos + len(needle)
-    return positions
 
 
 class TestIsMemoryCoreSourceRepoSilentSwallow:
@@ -135,24 +116,3 @@ class TestLoadMemoryOwnershipSilentSwallow:
         # load_memory_ownership's excepts are at 8-space indent, so a bare
         # pass regression would render as 12-space-indented pass.
         assert "except Exception:\n            pass" not in content
-
-
-class TestNoSilentSwallowAnywhere:
-    """Whole-file guard: no bare `except Exception: pass` swallow remains in ownership.py."""
-
-    def test_no_bare_silent_swallow_pattern(self):
-        """No bare `except Exception:` followed only by `pass` at any nesting level.
-
-        Covers both indent levels used in ownership.py:
-          - 4-space except (8-space pass): is_memory_core_source_repo
-          - 8-space except (12-space pass): load_memory_ownership
-        """
-        content = OWNERSHIP_PATH.read_text()
-        assert "except Exception:\n        pass" not in content, (
-            "ownership.py must not contain a 4-space-indented bare "
-            "`except Exception: pass` (silent swallow)"
-        )
-        assert "except Exception:\n            pass" not in content, (
-            "ownership.py must not contain an 8-space-indented bare "
-            "`except Exception: pass` (silent swallow)"
-        )

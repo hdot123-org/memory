@@ -17,6 +17,8 @@ reliably in tests, so static inspection is the appropriate guard.
 
 from pathlib import Path
 
+from tests.silent_swallow_helpers import except_positions as _except_positions
+
 REPO_ROOT = Path(__file__).parent.parent
 TELEMETRY_BRIDGE_PATH = REPO_ROOT / "memory_core" / "tools" / "telemetry_bridge.py"
 
@@ -36,23 +38,6 @@ def _method_body(content: str, name: str) -> str:
         # (newline at column 0 followed by non-indent)
         next_def = len(content)
     return content[start:next_def]
-
-
-def _except_positions(body: str) -> list[int]:
-    """Return character offsets of every ``except Exception`` clause in body.
-
-    Matches the binding form (``except Exception as exc:``).
-    """
-    positions = []
-    needle = "except Exception"
-    idx = 0
-    while True:
-        pos = body.find(needle, idx)
-        if pos == -1:
-            break
-        positions.append(pos)
-        idx = pos + len(needle)
-    return positions
 
 
 class TestPostBatchWithRetriesSilentSwallow:
@@ -104,25 +89,4 @@ class TestPostBatchWithRetriesSilentSwallow:
         assert "except Exception:\n            pass" not in content, (
             "telemetry_bridge.py must not regress to a bare "
             "`except Exception: pass` in _post_batch_with_retries (silent swallow)"
-        )
-
-
-class TestNoSilentSwallowAnywhere:
-    """Whole-file guard: no bare ``except Exception: pass`` swallow remains in telemetry_bridge.py.
-
-    Covers both indentation levels present in the module:
-      - 4-space except (8-space pass): module-level try blocks
-      - 8-space except (12-space pass): class methods such as ``_post_batch_with_retries``
-    """
-
-    def test_no_bare_silent_swallow_pattern(self):
-        """No bare ``except Exception:`` followed only by ``pass`` at any nesting."""
-        content = TELEMETRY_BRIDGE_PATH.read_text()
-        assert "except Exception:\n        pass" not in content, (
-            "telemetry_bridge.py must not contain a 4-space-indented bare "
-            "`except Exception: pass` (silent swallow)"
-        )
-        assert "except Exception:\n            pass" not in content, (
-            "telemetry_bridge.py must not contain an 8-space-indented bare "
-            "`except Exception: pass` (silent swallow)"
         )

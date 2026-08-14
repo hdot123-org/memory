@@ -13,19 +13,10 @@ Static code-inspection tests following the established pattern in
 
 from pathlib import Path
 
+from tests.silent_swallow_helpers import function_body as _func_body
+
 REPO_ROOT = Path(__file__).parent.parent
 SOURCE_PATH = REPO_ROOT / "memory_core" / "tools" / "error_pattern_detector.py"
-
-
-def _func_body(content: str, name: str) -> str:
-    """Slice a top-level function's source from its ``def`` to the next top-level def/class."""
-    start = content.index(f"def {name}")
-    # Find next top-level definition (def or class at column 0)
-    next_def = content.find("\ndef ", start + 1)
-    next_class = content.find("\nclass ", start + 1)
-    candidates = [p for p in (next_def, next_class) if p != -1]
-    end = min(candidates) if candidates else len(content)
-    return content[start:end]
 
 
 class TestRunPipelineSilentSwallow:
