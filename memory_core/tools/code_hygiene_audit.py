@@ -44,7 +44,7 @@ TODO_DESCRIPTION = "TODO/FIXME/HACK without issue reference"
 TODO_PATTERNS = [
     (re.compile(r"#\s*TODO(?!\s*[\(#])", re.IGNORECASE), "TODO without issue reference"),
     (re.compile(r"#\s*FIXME(?!\s*[\(#])", re.IGNORECASE), "FIXME without issue reference"),
-    (re.compile(r"#\s*HACK", re.IGNORECASE), "HACK marker found"),
+    (re.compile(r"#\s*HACK(?!\s*[\(#])", re.IGNORECASE), "HACK without issue reference"),
 ]
 
 
