@@ -4,6 +4,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "audit_telemetry_coverage.sh"
 
 
@@ -35,7 +37,6 @@ def test_has_set_euo_pipefail():
 def test_shellcheck_clean():
     """Test that script passes shellcheck with no warnings."""
     if not shutil.which("shellcheck"):
-        import pytest
         pytest.skip("shellcheck not installed")
 
     result = subprocess.run(
