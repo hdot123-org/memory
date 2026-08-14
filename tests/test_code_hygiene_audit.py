@@ -672,6 +672,15 @@ class TestTodoDetection:
         findings = check_todos(test_file, "test.py")
         assert len(findings) == 0
 
+    def test_hack_with_issue_ref_exempt(self, tmp_path: Path) -> None:
+        """HACK(#123) is not flagged."""
+        code = "# HACK(#123) workaround for upstream bug\nx = 1\n"
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 0
+
     def test_finding_has_correct_6_field_schema(self, tmp_path: Path) -> None:
         """Finding has all 6 fields with correct types."""
         code = "# TODO fix this\nx = 1\n"
