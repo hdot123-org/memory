@@ -5,6 +5,7 @@ import ast
 import codecs
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -33,6 +34,18 @@ CATEGORY = "code_hygiene"
 DESCRIPTION = (
     "Silent exception swallow: except clause uses bare pass with no logging or re-raise"
 )
+
+# Untracked comment detection constants (absorbed from scan_tech_debt.py)
+TODO_RULE_ID = "CODE_HYGIENE_UNTRACKED_TODO"
+TODO_SEVERITY = "warning"
+TODO_DESCRIPTION = "TODO/FIXME/HACK without issue reference"
+
+# Regex patterns: TODO/FIXME/HACK NOT followed by (#NNN) or (GH-NNN)
+TODO_PATTERNS = [
+    (re.compile(r"#\s*TODO(?!\s*[\(#])", re.IGNORECASE), "TODO without issue reference"),
+    (re.compile(r"#\s*FIXME(?!\s*[\(#])", re.IGNORECASE), "FIXME without issue reference"),
+    (re.compile(r"#\s*HACK", re.IGNORECASE), "HACK marker found"),
+]
 
 
 class SwallowVisitor(ast.NodeVisitor):
@@ -200,6 +213,57 @@ def should_skip_dir(dirpath: Path) -> bool:
     return dirpath.name in EXCLUDE_DIRS
 
 
+def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
+    """Check for TODO/FIXME/HACK comments without issue references.
+    
+    Absorbed rules from scan_tech_debt.py: detects TODO/FIXME/HACK markers
+    that are NOT followed by issue references like (#NNN) or (GH-NNN).
+    
+    Args:
+        filepath: Absolute path to the file
+        relpath: Relative path for reporting
+        
+    Returns:
+        List of findings in 6-field JSON schema
+    """
+    findings = []
+    
+    try:
+        # Read file with BOM handling
+        raw = filepath.read_bytes()
+        if raw.startswith(codecs.BOM_UTF8):
+            raw = raw[len(codecs.BOM_UTF8) :]
+        source = raw.decode("utf-8", errors="replace")
+        lines = source.splitlines()
+        
+        for lineno, line in enumerate(lines, start=1):
+            for pattern, label in TODO_PATTERNS:
+                if pattern.search(line):
+                    # Build finding in 6-field schema
+                    finding = {
+                        "rule_id": TODO_RULE_ID,
+                        "severity": TODO_SEVERITY,
+                        "category": CATEGORY,
+                        "description": label,
+                        "location": f"{relpath}::L{lineno}",
+                        "evidence": line.strip(),
+                    }
+                    findings.append(finding)
+                    
+    except OSError as e:
+        print(
+            f"[code_hygiene_audit] Warning: OSError reading {filepath}: {e}",
+            file=sys.stderr,
+        )
+    except Exception as e:
+        print(
+            f"[code_hygiene_audit] Warning: Error checking TODOs in {filepath}: {e}",
+            file=sys.stderr,
+        )
+    
+    return findings
+
+
 def audit_file(filepath: Path, repo_root: Path) -> list[dict[str, str]]:
     """Audit a single Python file for silent exception swallowing.
 
@@ -281,8 +345,19 @@ def scan_directory(target: Path, repo_root: Path) -> list[dict[str, str]]:
             if should_skip_file(filepath):
                 continue
 
+            # Compute relative path for reporting
+            try:
+                relpath = filepath.relative_to(repo_root).as_posix()
+            except ValueError:
+                relpath = filepath.name
+
+            # Get silent swallow findings
             findings = audit_file(filepath, repo_root)
             all_findings.extend(findings)
+
+            # Get TODO/FIXME/HACK findings
+            todo_findings = check_todos(filepath, relpath)
+            all_findings.extend(todo_findings)
 
     return all_findings
 
@@ -333,6 +408,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
         findings = audit_file(target_path, repo_root)
+        # Also check for TODOs in single-file mode
+        try:
+            relpath = target_path.relative_to(repo_root).as_posix()
+        except ValueError:
+            relpath = target_path.name
+        findings.extend(check_todos(target_path, relpath))
     else:
         # Directory mode
         findings = scan_directory(target_path, repo_root)
