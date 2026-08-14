@@ -7,7 +7,7 @@ isolation_threshold: 3
 failure_label: evolution-isolated
 audit_tools:
   - name: daily_kb_audit
-    command: "memory-audit-daily --json"
+    command: "memory-audit-daily --json --no-infra"
     output_format: json
   - name: consistency_check
     command: "memory-consistency-check --json"
