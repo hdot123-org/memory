@@ -334,14 +334,14 @@ def _count_body_lines(func_node: ast.FunctionDef | ast.AsyncFunctionDef, source_
 
 def extract_functions_for_duplicate_check(filepath: Path, repo_root: Path) -> list[FuncInfo]:
     """Extract function definitions from a Python file for duplicate detection.
-    
+
     Only includes functions that meet the size threshold:
     >= MIN_BODY_LINES body lines OR >= MIN_AST_TOKENS AST tokens.
-    
+
     Args:
         filepath: Absolute path to the file
         repo_root: Repository root for relative path computation
-        
+
     Returns:
         List of FuncInfo for qualifying functions
     """
@@ -390,43 +390,43 @@ def extract_functions_for_duplicate_check(filepath: Path, repo_root: Path) -> li
 
 def check_duplicates(funcs: list[FuncInfo]) -> list[dict[str, str]]:
     """Compare functions for duplicate code blocks.
-    
+
     Groups functions by name, then compares same-name pairs using
     SequenceMatcher.ratio() >= SIMILARITY_THRESHOLD.
     Deduplicates pairs by canonicalized (file_a, line_a, file_b, line_b) key.
-    
+
     Args:
         funcs: List of FuncInfo from all files
-        
+
     Returns:
         List of findings in 6-field JSON schema
     """
     findings: list[dict[str, str]] = []
-    
+
     # Group by name
     by_name: dict[str, list[FuncInfo]] = {}
     for func in funcs:
         by_name.setdefault(func.name, []).append(func)
-    
+
     seen_pairs: set[tuple[str, int, str, int]] = set()
-    
+
     for name, group in by_name.items():
         if len(group) < 2:
             continue
         for i in range(len(group)):
             for j in range(i + 1, len(group)):
                 a, b = group[i], group[j]
-                
+
                 # Skip self-comparison
                 if a.file == b.file and a.line_no == b.line_no:
                     continue
-                
+
                 # Canonicalize pair key for dedup
                 pair = sorted([(a.file, a.line_no), (b.file, b.line_no)])
                 pair_key = (pair[0][0], pair[0][1], pair[1][0], pair[1][1])
                 if pair_key in seen_pairs:
                     continue
-                
+
                 # Compare AST dumps
                 ratio = SequenceMatcher(None, a.ast_dump, b.ast_dump).ratio()
                 if ratio >= SIMILARITY_THRESHOLD:
@@ -448,7 +448,7 @@ def check_duplicates(funcs: list[FuncInfo]) -> list[dict[str, str]]:
                         "location": location,
                         "evidence": evidence,
                     })
-    
+
     return findings
 
 
