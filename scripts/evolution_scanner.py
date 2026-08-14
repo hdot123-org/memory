@@ -83,6 +83,8 @@ def run_audit_tool(tool: dict[str, Any], repo_root: Path | None = None) -> list[
     with valid JSON stdout are still parsed (audit tools exit non-zero on findings).
     """
     from evolution_adapters import ADAPTER_MAP
+    # INFRA-278: Per-tool configurable timeout (default 60s for backward compat)
+    timeout = tool.get("timeout", 60)
     try:
         if tool.get("output_format") == "registry_jsonl":
             source = tool.get("source_file", "")
@@ -110,7 +112,7 @@ def run_audit_tool(tool: dict[str, Any], repo_root: Path | None = None) -> list[
         # P2-B: Strip GitHub tokens from audit subprocess environment.
         # Audit tools do not need gh access; leaking DISPATCH_TOKEN expands trust boundary.
         safe_env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}
-        result = subprocess.run(shlex.split(tool["command"]), capture_output=True, text=True, timeout=60, env=safe_env)
+        result = subprocess.run(shlex.split(tool["command"]), capture_output=True, text=True, timeout=timeout, env=safe_env)
         # Log stderr as warning when exit code is non-zero (audit tools exit non-zero on findings)
         if result.returncode != 0:
             stderr = result.stderr.strip()
@@ -129,6 +131,9 @@ def run_audit_tool(tool: dict[str, Any], repo_root: Path | None = None) -> list[
             raw_result_data: list[dict[str, Any]] = adapter2(raw)
             return raw_result_data
         return (raw if isinstance(raw, list) else [raw])
+    except subprocess.TimeoutExpired:
+        print(f"[evolution] Warning: {tool['name']} timed out after {timeout}s")
+        return None
     except Exception as e:
         print(f"[evolution] Warning: {tool['name']} crashed: {e}")
         return None
