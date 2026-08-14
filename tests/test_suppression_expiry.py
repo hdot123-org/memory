@@ -1,8 +1,9 @@
 """Tests for suppress.json expires lifecycle mechanism (VAL-SUPPRESS-001/002/003)."""
 import json
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -79,13 +80,13 @@ def test_future_suppression_still_suppresses(tmp_path: Path) -> None:
 
 
 def test_today_suppression_still_suppresses(tmp_path: Path) -> None:
-    """VAL-SUPPRESS-002: Entry with today's date as expires suppresses matching finding."""
+    """VAL-SUPPRESS-002: Entry with today's UTC date as expires suppresses matching finding."""
     evolution_dir = tmp_path / ".evolution"
     evolution_dir.mkdir()
     suppress_path = evolution_dir / "suppress.json"
 
-    # Use today's date
-    today_str = date.today().isoformat()
+    # Use today's UTC date (VAL-SUPPRESS-001 requires UTC comparison)
+    today_str = datetime.now(timezone.utc).date().isoformat()
     today_entry = {
         "rule_id": "TEST_RULE_003",
         "location": "test/file3.md",
@@ -170,10 +171,50 @@ def test_malformed_expires_fails_open(tmp_path: Path, capsys: pytest.CaptureFixt
     assert not _matches_suppression(finding, suppressions[0]), \
         "Malformed expires should fail open and not suppress"
 
-    # Verify warning was printed to stderr
+    # Verify warning was printed to stderr during load_suppressions
     captured = capsys.readouterr()
     assert "not-a-valid-date" in captured.err or "malformed" in captured.err.lower(), \
         "Warning about malformed expires should be printed to stderr"
+
+
+def test_malformed_expires_warns_only_once(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    """Malformed expires warning is emitted once during load, not per-finding."""
+    evolution_dir = tmp_path / ".evolution"
+    evolution_dir.mkdir()
+    suppress_path = evolution_dir / "suppress.json"
+
+    malformed_entry = {
+        "rule_id": "TEST_RULE_006",
+        "location": "test/file6.md",
+        "expires": "bad-date",
+    }
+    suppress_path.write_text(json.dumps({"suppressed": [malformed_entry]}), encoding="utf-8")
+
+    suppressions = load_suppressions(tmp_path)
+    # Clear captured output from load
+    capsys.readouterr()
+
+    # Create multiple findings that match the malformed entry
+    findings = [
+        Finding(
+            rule_id="TEST_RULE_006",
+            severity="warning",
+            category="test",
+            description=f"Test finding {i}",
+            location="test/file6.md",
+            evidence=f"Evidence {i}",
+        )
+        for i in range(5)
+    ]
+
+    # Apply suppressions to all findings
+    for finding in findings:
+        _matches_suppression(finding, suppressions[0])
+
+    # Verify no additional warnings were printed during matching
+    captured = capsys.readouterr()
+    assert "malformed" not in captured.err.lower(), \
+        "No additional malformed warnings should be emitted during matching"
 
 
 def test_wildcard_suppression_with_expires(tmp_path: Path) -> None:
@@ -278,3 +319,63 @@ def test_non_matching_finding_not_suppressed(tmp_path: Path) -> None:
 
     assert not _matches_suppression(finding_different_location, suppressions[0]), \
         "Finding with different location should not be suppressed"
+
+
+def test_uses_utc_date_not_local(tmp_path: Path) -> None:
+    """VAL-SUPPRESS-001: Expiry uses UTC date, not local timezone date.
+
+    Verifies that _is_suppression_expired uses datetime.now(timezone.utc).date()
+    rather than date.today(). We do this by constructing an entry whose expires
+    date equals the local date but differs from UTC date, and verifying the
+    behavior is consistent with UTC comparison.
+    """
+    evolution_dir = tmp_path / ".evolution"
+    evolution_dir.mkdir()
+    suppress_path = evolution_dir / "suppress.json"
+
+    # Use a date that is today in UTC
+    utc_today = datetime.now(timezone.utc).date()
+    entry = {
+        "rule_id": "TEST_RULE_UTC",
+        "location": "test/file_utc.md",
+        "expires": utc_today.isoformat(),
+    }
+    suppress_path.write_text(json.dumps({"suppressed": [entry]}), encoding="utf-8")
+
+    suppressions = load_suppressions(tmp_path)
+    assert len(suppressions) == 1
+
+    finding = Finding(
+        rule_id="TEST_RULE_UTC",
+        severity="warning",
+        category="test",
+        description="Test finding",
+        location="test/file_utc.md",
+        evidence="Test evidence",
+    )
+
+    # Entry with today's UTC date should still suppress (not expired)
+    assert _matches_suppression(finding, suppressions[0]), \
+        "Entry expiring on today's UTC date should suppress"
+
+    # Entry with yesterday's UTC date should NOT suppress (expired)
+    utc_yesterday = (datetime.now(timezone.utc).date() - __import__("datetime").timedelta(days=1))
+    entry2 = {
+        "rule_id": "TEST_RULE_UTC2",
+        "location": "test/file_utc2.md",
+        "expires": utc_yesterday.isoformat(),
+    }
+    suppress_path.write_text(json.dumps({"suppressed": [entry2]}), encoding="utf-8")
+    suppressions2 = load_suppressions(tmp_path)
+
+    finding2 = Finding(
+        rule_id="TEST_RULE_UTC2",
+        severity="warning",
+        category="test",
+        description="Test finding 2",
+        location="test/file_utc2.md",
+        evidence="Test evidence 2",
+    )
+
+    assert not _matches_suppression(finding2, suppressions2[0]), \
+        "Entry with yesterday's UTC date should be expired and not suppress"

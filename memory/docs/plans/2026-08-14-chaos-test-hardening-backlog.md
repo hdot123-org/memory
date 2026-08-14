@@ -60,7 +60,7 @@
 - tests/test_p2_migrations_log_flock.py
 - tests/test_logger_budget_scan.py
 - tests/test_business_policy_smoke.py
-- tests/test_suppression_expiry.py（feat/suppress-expiry 分支新增，未提交）
+- tests/test_suppression_expiry.py（feat/suppress-expiry 分支，已随 commit 680ffdf 提交）
 
 ### Conflict Status
 
