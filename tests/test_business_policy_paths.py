@@ -95,6 +95,21 @@ def _make_config(tmp_path: Path, **overrides: Any) -> GatewayBusinessPolicyConfi
     return GatewayBusinessPolicyConfig(**defaults)
 
 
+def _make_sibling_pair(tmp_path: Path) -> tuple[Path, Path]:
+    """Build (root, sibling) where sibling lives entirely outside root.
+
+    INFRA-298 dedup: ``test_sibling_fails`` in TestPathIsUnder and
+    TestPathIsUnderLexical had 100% AST similarity (6 lines / 57 tokens),
+    differing only in the containment function under test.
+    """
+    root = tmp_path / "root"
+    root.mkdir()
+    sibling = tmp_path / "sibling" / "file.txt"
+    sibling.parent.mkdir()
+    sibling.touch()
+    return root, sibling
+
+
 # ---------------------------------------------------------------------------
 # 1. _path_is_under (symlink-resolving containment)
 # ---------------------------------------------------------------------------
@@ -119,11 +134,7 @@ class TestPathIsUnder:
         assert _path_is_under(deep, root) is True
 
     def test_sibling_fails(self, tmp_path: Path) -> None:
-        root = tmp_path / "root"
-        root.mkdir()
-        sibling = tmp_path / "sibling" / "file.txt"
-        sibling.parent.mkdir()
-        sibling.touch()
+        root, sibling = _make_sibling_pair(tmp_path)
         assert _path_is_under(sibling, root) is False
 
     def test_root_itself_passes(self, tmp_path: Path) -> None:
@@ -201,11 +212,7 @@ class TestPathIsUnderLexical:
         assert _path_is_under_lexical(link, root) is True
 
     def test_sibling_fails(self, tmp_path: Path) -> None:
-        root = tmp_path / "root"
-        root.mkdir()
-        sibling = tmp_path / "sibling" / "file.txt"
-        sibling.parent.mkdir()
-        sibling.touch()
+        root, sibling = _make_sibling_pair(tmp_path)
         assert _path_is_under_lexical(sibling, root) is False
 
     def test_home_expansion(self, tmp_path: Path) -> None:
