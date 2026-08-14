@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.27.0](https://github.com/hdot123/memory/compare/v0.26.0...v0.27.0) (2026-08-14)
+
+
+### Features
+
+* code_hygiene_audit 新增 AST 重复检测 + TODO 正则误报修复 ([#622](https://github.com/hdot123/memory/issues/622)) ([f207bb5](https://github.com/hdot123/memory/commit/f207bb5f58341a865ddc0334e5a6e780d5513acb))
+* code_hygiene_audit 新增 TODO 无引用检测 ([#616](https://github.com/hdot123/memory/issues/616)) ([481e5ac](https://github.com/hdot123/memory/commit/481e5ac1912587e12b1196ae4b2819fab8b23ce9))
+* code_hygiene_audit 新增跨名 AST 重复检测，修复 TODO 正则词边界误报 (INFRA-273) ([#623](https://github.com/hdot123/memory/issues/623)) ([3bb888f](https://github.com/hdot123/memory/commit/3bb888fc8bcdee3d45e91c3c94e4cbcbe76d16c5))
+
+
+### Bug Fixes
+
+* check_todos 使用 tokenize 识别真实注释，排除字符串字面量误报 (INFRA-272) ([#620](https://github.com/hdot123/memory/issues/620)) ([c4e5ed1](https://github.com/hdot123/memory/commit/c4e5ed12a8be8628d694e444f5373621771d127e))
+* evolution scanner check_trigger_droid 增加稳定性重试避免假阳性 (INFRA-264) ([#612](https://github.com/hdot123/memory/issues/612)) ([31a9363](https://github.com/hdot123/memory/commit/31a9363659242871c707f1fbb2adf3c19dab12ee))
+* HACK 标记补充 Issue 引用豁免与 TODO/FIXME 保持一致 (INFRA-270) ([#617](https://github.com/hdot123/memory/issues/617)) ([11efce5](https://github.com/hdot123/memory/commit/11efce581432f373eadc909561c708f05ff5ec12))
+* P1-2 硬退出排除 daily_audit 避免纯基础设施 tick 误报 (INFRA-268) ([#613](https://github.com/hdot123/memory/issues/613)) ([f12b3f5](https://github.com/hdot123/memory/commit/f12b3f54c94dc09b9cffc86798b56ba487d805c3))
+* scanner 排除 daily_audit 类 finding 避免基础设施误报 ([#611](https://github.com/hdot123/memory/issues/611)) ([58184f9](https://github.com/hdot123/memory/commit/58184f9b97b9ac061cb9d192519bb0f8e506c34a))
+* 修复 8 处类型化异常静默吞没 (INFRA-262) ([#601](https://github.com/hdot123/memory/issues/601)) ([fb4955f](https://github.com/hdot123/memory/commit/fb4955fc7f9003b3c102ac47c2861077a12e1fa6))
+* 修复 check_repositories_yml 误报 EVOLUTION_ROUTING_MISCONFIG (INFRA-266) ([#607](https://github.com/hdot123/memory/issues/607)) ([34d073e](https://github.com/hdot123/memory/commit/34d073efc9162b0d98989ef8dfb015a14fd73b72))
+* 源仓库跳过完整性清单检查，消除 HASH_MISMATCH 误报 (INFRA-263) ([#606](https://github.com/hdot123/memory/issues/606)) ([3a18c05](https://github.com/hdot123/memory/commit/3a18c05f6f9a896c0e0ca8f06e50458d8fd7df0d))
+* 补充 resolve_pr_ref 函数消除 heartbeat 异常 (INFRA-267) ([#610](https://github.com/hdot123/memory/issues/610)) ([644ab68](https://github.com/hdot123/memory/commit/644ab685c50624b26682e83532ec0716ffd674a5))
+
+
+### Documentation
+
+* 记录 infrastructure-inventory 下线同步教训 (INFRA-265) ([#609](https://github.com/hdot123/memory/issues/609)) ([ef5880a](https://github.com/hdot123/memory/commit/ef5880af2126dbaee17af157172a7a545ebf6574))
+
 ## [0.26.0](https://github.com/hdot123/memory/compare/v0.25.0...v0.26.0) (2026-08-13)
 
 
