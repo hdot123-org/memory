@@ -1,7 +1,7 @@
 """Tests for suppress.json expires lifecycle mechanism (VAL-SUPPRESS-001/002/003)."""
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -320,31 +320,54 @@ def test_non_matching_finding_not_suppressed(tmp_path: Path) -> None:
         "Finding with different location should not be suppressed"
 
 
-def test_uses_utc_date_not_local(tmp_path: Path) -> None:
+def test_uses_utc_date_not_local(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """VAL-SUPPRESS-001: Expiry uses UTC date, not local timezone date.
 
-    Verifies that _is_suppression_expired uses datetime.now(timezone.utc).date()
-    rather than date.today(). We do this by constructing an entry whose expires
-    date equals the local date but differs from UTC date, and verifying the
-    behavior is consistent with UTC comparison.
+    Deterministic: monkeypatch datetime to a scenario where local (UTC+8) date
+    differs from UTC date. Assert suppression follows UTC, not local.
+
+    Scenario: UTC is 2026-08-14 03:00 → UTC date is 2026-08-14.
+    Local (UTC+8) is 2026-08-14 11:00 → local date is also 2026-08-14.
+    But if UTC is 2026-08-14 03:00 and local is UTC+8, local date is 2026-08-14 11:00.
+
+    Better scenario: Freeze UTC to 2026-08-14 03:00.
+    - UTC date = 2026-08-14
+    - UTC+8 local date = 2026-08-14 (same day, 11:00)
+    - But if UTC is 2026-08-13 20:00, UTC+8 = 2026-08-14 04:00 → dates differ!
+
+    We use UTC = 2026-08-13 20:00 so UTC date = 2026-08-13, local (UTC+8) = 2026-08-14.
+    An entry with expires=2026-08-13 should NOT be expired (UTC today = 08-13, so equal).
+    An entry with expires=2026-08-12 SHOULD be expired (yesterday in UTC).
     """
+    # Freeze UTC time: 2026-08-13 20:00 UTC → UTC date = 2026-08-13
+    frozen_utc = datetime(2026, 8, 13, 20, 0, 0, tzinfo=timezone.utc)
+    frozen_utc_date = frozen_utc.date()  # 2026-08-13
+
+    # Monkeypatch datetime.now to always return frozen_utc
+    class FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            if tz is not None:
+                return frozen_utc.astimezone(tz)
+            return frozen_utc.replace(tzinfo=None)
+
+    monkeypatch.setattr("evolution_scanner.datetime", FakeDatetime)
+
     evolution_dir = tmp_path / ".evolution"
     evolution_dir.mkdir()
     suppress_path = evolution_dir / "suppress.json"
 
-    # Use a date that is today in UTC
-    utc_today = datetime.now(timezone.utc).date()
-    entry = {
+    # Entry with expires = UTC today (2026-08-13) → should suppress (not expired)
+    entry_today = {
         "rule_id": "TEST_RULE_UTC",
         "location": "test/file_utc.md",
-        "expires": utc_today.isoformat(),
+        "expires": frozen_utc_date.isoformat(),  # "2026-08-13"
     }
-    suppress_path.write_text(json.dumps({"suppressed": [entry]}), encoding="utf-8")
+    suppress_path.write_text(json.dumps({"suppressed": [entry_today]}), encoding="utf-8")
+    suppressions_today = load_suppressions(tmp_path)
+    assert len(suppressions_today) == 1
 
-    suppressions = load_suppressions(tmp_path)
-    assert len(suppressions) == 1
-
-    finding = Finding(
+    finding_today = Finding(
         rule_id="TEST_RULE_UTC",
         severity="warning",
         category="test",
@@ -352,22 +375,20 @@ def test_uses_utc_date_not_local(tmp_path: Path) -> None:
         location="test/file_utc.md",
         evidence="Test evidence",
     )
+    assert _matches_suppression(finding_today, suppressions_today[0]), \
+        "Entry with UTC-today expires should suppress (not expired)"
 
-    # Entry with today's UTC date should still suppress (not expired)
-    assert _matches_suppression(finding, suppressions[0]), \
-        "Entry expiring on today's UTC date should suppress"
-
-    # Entry with yesterday's UTC date should NOT suppress (expired)
-    utc_yesterday = (datetime.now(timezone.utc).date() - __import__("datetime").timedelta(days=1))
-    entry2 = {
+    # Entry with expires = UTC yesterday (2026-08-12) → should NOT suppress (expired)
+    utc_yesterday = frozen_utc_date - timedelta(days=1)  # 2026-08-12
+    entry_yesterday = {
         "rule_id": "TEST_RULE_UTC2",
         "location": "test/file_utc2.md",
-        "expires": utc_yesterday.isoformat(),
+        "expires": utc_yesterday.isoformat(),  # "2026-08-12"
     }
-    suppress_path.write_text(json.dumps({"suppressed": [entry2]}), encoding="utf-8")
-    suppressions2 = load_suppressions(tmp_path)
+    suppress_path.write_text(json.dumps({"suppressed": [entry_yesterday]}), encoding="utf-8")
+    suppressions_yesterday = load_suppressions(tmp_path)
 
-    finding2 = Finding(
+    finding_yesterday = Finding(
         rule_id="TEST_RULE_UTC2",
         severity="warning",
         category="test",
@@ -375,6 +396,27 @@ def test_uses_utc_date_not_local(tmp_path: Path) -> None:
         location="test/file_utc2.md",
         evidence="Test evidence 2",
     )
+    assert not _matches_suppression(finding_yesterday, suppressions_yesterday[0]), \
+        "Entry with UTC-yesterday expires should be expired and not suppress"
 
-    assert not _matches_suppression(finding2, suppressions2[0]), \
-        "Entry with yesterday's UTC date should be expired and not suppress"
+    # Key determinism check: even though local (UTC+8) date is 2026-08-14
+    # (which differs from UTC 2026-08-13), the expiry follows UTC.
+    # An entry with expires=2026-08-14 would be "future" in UTC → should suppress
+    entry_local_today = {
+        "rule_id": "TEST_RULE_UTC3",
+        "location": "test/file_utc3.md",
+        "expires": "2026-08-14",  # local (UTC+8) today, but UTC future
+    }
+    suppress_path.write_text(json.dumps({"suppressed": [entry_local_today]}), encoding="utf-8")
+    suppressions_local = load_suppressions(tmp_path)
+
+    finding_local = Finding(
+        rule_id="TEST_RULE_UTC3",
+        severity="warning",
+        category="test",
+        description="Test finding 3",
+        location="test/file_utc3.md",
+        evidence="Test evidence 3",
+    )
+    assert _matches_suppression(finding_local, suppressions_local[0]), \
+        "Entry with local-today but UTC-future date should suppress (UTC wins)"
