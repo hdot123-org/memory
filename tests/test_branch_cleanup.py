@@ -580,16 +580,9 @@ def test_deleted_branches_tracked_in_output(tmp_path: Path):
 # ============================================================================
 def test_shellcheck_clean():
     """shellcheck scripts/branch_cleanup.sh exits 0."""
-    if not shutil.which("shellcheck"):
-        pytest.skip("shellcheck not installed")
+    from tests.shellcheck_helpers import assert_shellcheck_clean
 
-    script_path = get_script_path()
-    result = subprocess.run(
-        ["shellcheck", str(script_path)],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, f"shellcheck failed:\n{result.stdout}\n{result.stderr}"
+    assert_shellcheck_clean(get_script_path())
 
 
 # ============================================================================

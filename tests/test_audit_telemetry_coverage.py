@@ -1,10 +1,7 @@
 """Tests for audit_telemetry_coverage.sh script."""
 
-import shutil
 import subprocess
 from pathlib import Path
-
-import pytest
 
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "audit_telemetry_coverage.sh"
 
@@ -36,15 +33,9 @@ def test_has_set_euo_pipefail():
 
 def test_shellcheck_clean():
     """Test that script passes shellcheck with no warnings."""
-    if not shutil.which("shellcheck"):
-        pytest.skip("shellcheck not installed")
+    from tests.shellcheck_helpers import assert_shellcheck_clean
 
-    result = subprocess.run(
-        ["shellcheck", str(SCRIPT_PATH)],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, f"shellcheck failed:\n{result.stdout}\n{result.stderr}"
+    assert_shellcheck_clean(SCRIPT_PATH)
 
 
 def test_always_exits_zero():
