@@ -7,7 +7,6 @@ import stat
 import subprocess
 from pathlib import Path
 
-
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "write-pending-ci.sh"
 REPO_ROOT = Path(__file__).parent.parent
 

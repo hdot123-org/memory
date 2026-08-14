@@ -6,7 +6,6 @@ import os
 import subprocess
 from pathlib import Path
 
-
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "deploy-security-baseline.sh"
 REPO_ROOT = Path(__file__).parent.parent
 
