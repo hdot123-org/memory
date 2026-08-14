@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 
 def get_script_path() -> Path:
@@ -254,16 +257,13 @@ def test_nonexistent_tag_rejected(tmp_path: Path):
 # ============================================================================
 def test_shellcheck_clean():
     """shellcheck scripts/release_rollback.sh exits 0."""
+    if not shutil.which("shellcheck"):
+        pytest.skip("shellcheck not installed")
+
     script_path = get_script_path()
     result = subprocess.run(
         ["shellcheck", str(script_path)],
         capture_output=True,
         text=True,
     )
-
-    # Skip if shellcheck not installed
-    if result.returncode != 0 and "not found" in result.stderr.lower():
-        import pytest
-        pytest.skip("shellcheck not installed")
-
     assert result.returncode == 0, f"shellcheck failed:\n{result.stdout}\n{result.stderr}"
