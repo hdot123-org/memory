@@ -804,7 +804,6 @@ except:
 
 
 from memory_core.tools.code_hygiene_audit import (
-    check_duplicates,
     DUPLICATE_RULE_ID,
     DUPLICATE_SEVERITY,
 )
