@@ -44,11 +44,13 @@ TODO_RULE_ID = "CODE_HYGIENE_UNTRACKED_TODO"
 TODO_SEVERITY = "warning"
 TODO_DESCRIPTION = "TODO/FIXME/HACK without issue reference"
 
-# Regex patterns: TODO/FIXME/HACK NOT followed by (#NNN) or (GH-NNN)
+# Regex patterns: TODO/FIXME/HACK NOT followed by (#NNN) or (GH-NNN).
+# \b word boundary ensures the marker is a standalone word, preventing false
+# positives on prefixes like "# TODOLIST", "# TODOS", "# TODO_LIST" (INFRA-273).
 TODO_PATTERNS = [
-    (re.compile(r"#\s*TODO(?!\s*[\(#])", re.IGNORECASE), "TODO without issue reference"),
-    (re.compile(r"#\s*FIXME(?!\s*[\(#])", re.IGNORECASE), "FIXME without issue reference"),
-    (re.compile(r"#\s*HACK(?!\s*[\(#])", re.IGNORECASE), "HACK without issue reference"),
+    (re.compile(r"#\s*TODO\b(?!\s*[\(#])", re.IGNORECASE), "TODO without issue reference"),
+    (re.compile(r"#\s*FIXME\b(?!\s*[\(#])", re.IGNORECASE), "FIXME without issue reference"),
+    (re.compile(r"#\s*HACK\b(?!\s*[\(#])", re.IGNORECASE), "HACK without issue reference"),
 ]
 
 # Duplicate detection constants (absorbed from v5_duplicate_scan.py)
@@ -58,6 +60,10 @@ DUPLICATE_DESCRIPTION = "Duplicate code block detected"
 SIMILARITY_THRESHOLD = 0.80
 MIN_BODY_LINES = 10
 MIN_AST_TOKENS = 50
+# Cross-name duplicate detection uses a higher threshold to reduce noise:
+# comparing functions with different names is more aggressive, so we require
+# stronger structural evidence (INFRA-273).
+CROSS_NAME_SIMILARITY_THRESHOLD = 0.90
 
 
 class FuncInfo(NamedTuple):
@@ -68,6 +74,7 @@ class FuncInfo(NamedTuple):
     body_lines: int
     ast_tokens: int
     ast_dump: str
+    ast_fingerprint: str
 
 
 class SwallowVisitor(ast.NodeVisitor):
@@ -327,6 +334,58 @@ def _count_body_lines(func_node: ast.FunctionDef | ast.AsyncFunctionDef, source_
     return count
 
 
+def _normalize_func_ast(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    """Create a normalized AST dump with identifiers replaced by placeholders.
+
+    Enables cross-name structural duplicate detection: two functions with
+    different names/variables but identical control-flow structure produce
+    the same fingerprint (INFRA-273).
+
+    Identifiers normalized to placeholders:
+    - Function/async-function names -> ``_fn_``
+    - Variable references (Name.id) -> ``_n_``
+    - Argument names (arg.arg) -> ``_arg_``
+    - Attribute accesses (.attr) -> ``_a_``
+    - Keyword argument names -> ``_kw_``
+    """
+    # Re-parse to obtain a clean, mutable copy.
+    node_copy = ast.parse(ast.unparse(func_node))
+
+    class _Normalizer(ast.NodeTransformer):
+        def visit_FunctionDef(self, n: ast.FunctionDef) -> ast.AST:
+            self.generic_visit(n)
+            n.name = "_fn_"
+            return n
+
+        def visit_AsyncFunctionDef(self, n: ast.AsyncFunctionDef) -> ast.AST:
+            self.generic_visit(n)
+            n.name = "_fn_"
+            return n
+
+        def visit_Name(self, n: ast.Name) -> ast.AST:
+            n.id = "_n_"
+            return n
+
+        def visit_arg(self, n: ast.arg) -> ast.AST:
+            n.arg = "_arg_"
+            self.generic_visit(n)
+            return n
+
+        def visit_Attribute(self, n: ast.Attribute) -> ast.AST:
+            self.generic_visit(n)
+            n.attr = "_a_"
+            return n
+
+        def visit_keyword(self, n: ast.keyword) -> ast.AST:
+            if n.arg is not None:
+                n.arg = "_kw_"
+            self.generic_visit(n)
+            return n
+
+    _Normalizer().visit(node_copy)
+    return ast.dump(node_copy, annotate_fields=False)
+
+
 def extract_functions_for_duplicate_check(filepath: Path, repo_root: Path) -> list[FuncInfo]:
     """Extract function definitions from a Python file for duplicate detection.
 
@@ -372,6 +431,7 @@ def extract_functions_for_duplicate_check(filepath: Path, repo_root: Path) -> li
                 # Get AST dump without annotation fields for comparison
                 node_copy = ast.parse(ast.unparse(node))
                 ast_dump_str = ast.dump(node_copy, annotate_fields=False)
+                ast_fingerprint_str = _normalize_func_ast(node)
                 funcs.append(FuncInfo(
                     file=relpath,
                     name=node.name,
@@ -379,6 +439,7 @@ def extract_functions_for_duplicate_check(filepath: Path, repo_root: Path) -> li
                     body_lines=body_lines,
                     ast_tokens=ast_tokens,
                     ast_dump=ast_dump_str,
+                    ast_fingerprint=ast_fingerprint_str,
                 ))
     return funcs
 
@@ -386,8 +447,14 @@ def extract_functions_for_duplicate_check(filepath: Path, repo_root: Path) -> li
 def check_duplicates(funcs: list[FuncInfo]) -> list[dict[str, str]]:
     """Compare functions for duplicate code blocks.
 
-    Groups functions by name, then compares same-name pairs using
-    SequenceMatcher.ratio() >= SIMILARITY_THRESHOLD.
+    Compares functions in two phases:
+
+    1. **Same-name** pairs using raw AST dumps
+       (``SequenceMatcher.ratio() >= SIMILARITY_THRESHOLD``).
+    2. **Cross-name** pairs using normalized structural fingerprints
+       (``>= CROSS_NAME_SIMILARITY_THRESHOLD``) to detect structurally
+       similar duplicates regardless of function/variable names (INFRA-273).
+
     Deduplicates pairs by canonicalized (file_a, line_a, file_b, line_b) key.
 
     Args:
@@ -443,6 +510,44 @@ def check_duplicates(funcs: list[FuncInfo]) -> list[dict[str, str]]:
                         "location": location,
                         "evidence": evidence,
                     })
+
+    # Phase 2: Cross-name comparison via normalized structural fingerprints.
+    # Compare functions with DIFFERENT names using identifier-stripped AST
+    # to detect structurally similar duplicates (INFRA-273).
+    for i in range(len(funcs)):
+        for j in range(i + 1, len(funcs)):
+            a, b = funcs[i], funcs[j]
+            # Skip same-name pairs (already handled in Phase 1)
+            if a.name == b.name:
+                continue
+            # Skip self
+            if a.file == b.file and a.line_no == b.line_no:
+                continue
+            # Canonicalize pair key for dedup (shared with Phase 1)
+            pair = sorted([(a.file, a.line_no), (b.file, b.line_no)])
+            pair_key = (pair[0][0], pair[0][1], pair[1][0], pair[1][1])
+            if pair_key in seen_pairs:
+                continue
+            # Compare normalized fingerprints
+            ratio = SequenceMatcher(
+                None, a.ast_fingerprint, b.ast_fingerprint
+            ).ratio()
+            if ratio >= CROSS_NAME_SIMILARITY_THRESHOLD:
+                seen_pairs.add(pair_key)
+                location = f"{a.file}::L{a.line_no} <-> {b.file}::L{b.line_no}"
+                evidence = (
+                    f"Cross-name structural duplicate: '{a.name}' vs "
+                    f"'{b.name}' has {ratio:.0%} normalized AST similarity "
+                    f"({a.body_lines} lines vs {b.body_lines} lines)"
+                )
+                findings.append({
+                    "rule_id": DUPLICATE_RULE_ID,
+                    "severity": DUPLICATE_SEVERITY,
+                    "category": CATEGORY,
+                    "description": DUPLICATE_DESCRIPTION,
+                    "location": location,
+                    "evidence": evidence,
+                })
 
     return findings
 
