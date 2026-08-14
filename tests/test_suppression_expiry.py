@@ -1,7 +1,7 @@
 """Tests for suppress.json expires lifecycle mechanism (VAL-SUPPRESS-001/002/003)."""
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 
 import pytest
@@ -140,7 +140,7 @@ def test_no_expires_field_permanent_suppression(tmp_path: Path) -> None:
         "Legacy suppression entry (no expires) should suppress matching finding"
 
 
-def test_malformed_expires_fails_open(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+def test_malformed_expires_fails_open(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """VAL-SUPPRESS-003: Malformed expires value fails open (no suppress + stderr warning)."""
     evolution_dir = tmp_path / ".evolution"
     evolution_dir.mkdir()
@@ -176,7 +176,7 @@ def test_malformed_expires_fails_open(tmp_path: Path, capsys: pytest.CaptureFixt
         "Warning about malformed expires should be printed to stderr"
 
 
-def test_malformed_expires_warns_only_once(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+def test_malformed_expires_warns_only_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Malformed expires warning is emitted once during load, not per-finding."""
     evolution_dir = tmp_path / ".evolution"
     evolution_dir.mkdir()
@@ -323,35 +323,30 @@ def test_non_matching_finding_not_suppressed(tmp_path: Path) -> None:
 def test_uses_utc_date_not_local(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """VAL-SUPPRESS-001: Expiry uses UTC date, not local timezone date.
 
-    Deterministic: monkeypatch datetime to a scenario where local (UTC+8) date
-    differs from UTC date. Assert suppression follows UTC, not local.
-
-    Scenario: UTC is 2026-08-14 03:00 → UTC date is 2026-08-14.
-    Local (UTC+8) is 2026-08-14 11:00 → local date is also 2026-08-14.
-    But if UTC is 2026-08-14 03:00 and local is UTC+8, local date is 2026-08-14 11:00.
-
-    Better scenario: Freeze UTC to 2026-08-14 03:00.
-    - UTC date = 2026-08-14
-    - UTC+8 local date = 2026-08-14 (same day, 11:00)
-    - But if UTC is 2026-08-13 20:00, UTC+8 = 2026-08-14 04:00 → dates differ!
-
-    We use UTC = 2026-08-13 20:00 so UTC date = 2026-08-13, local (UTC+8) = 2026-08-14.
-    An entry with expires=2026-08-13 should NOT be expired (UTC today = 08-13, so equal).
-    An entry with expires=2026-08-12 SHOULD be expired (yesterday in UTC).
+    Freeze UTC to 2026-08-13 20:00 (UTC date = 2026-08-13, local UTC+8 = 2026-08-14).
+    Verify that expiry comparison follows UTC date, not local date.
     """
+    from datetime import date as date_class
+
     # Freeze UTC time: 2026-08-13 20:00 UTC → UTC date = 2026-08-13
     frozen_utc = datetime(2026, 8, 13, 20, 0, 0, tzinfo=timezone.utc)
     frozen_utc_date = frozen_utc.date()  # 2026-08-13
 
-    # Monkeypatch datetime.now to always return frozen_utc
+    # Monkeypatch datetime and date to freeze time completely
     class FakeDatetime(datetime):
         @classmethod
-        def now(cls, tz=None):  # type: ignore[override]
+        def now(cls, tz: tzinfo | None = None) -> "FakeDatetime":
             if tz is not None:
-                return frozen_utc.astimezone(tz)
-            return frozen_utc.replace(tzinfo=None)
+                return frozen_utc.astimezone(tz)  # type: ignore[return-value]
+            return frozen_utc.replace(tzinfo=None)  # type: ignore[return-value]
+
+    class FakeDate(date_class):
+        @classmethod
+        def today(cls) -> "FakeDate":
+            return frozen_utc_date  # type: ignore[return-value]
 
     monkeypatch.setattr("evolution_scanner.datetime", FakeDatetime)
+    monkeypatch.setattr("evolution_scanner.date", FakeDate)
 
     evolution_dir = tmp_path / ".evolution"
     evolution_dir.mkdir()
