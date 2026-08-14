@@ -1,22 +1,15 @@
 """Tests for audit_telemetry_coverage.sh script."""
 
-import subprocess
 from pathlib import Path
+
+from tests.script_helpers import run_bash_script
 
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "audit_telemetry_coverage.sh"
 
 
 def run_script(cwd: Path | None = None, timeout: int = 30) -> tuple[int, str, str]:
     """Run audit_telemetry_coverage.sh and return (exit_code, stdout, stderr)."""
-    cmd = ["bash", str(SCRIPT_PATH)]
-    result = subprocess.run(
-        cmd,
-        cwd=cwd or Path(__file__).parent.parent,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    return result.returncode, result.stdout, result.stderr
+    return run_bash_script(SCRIPT_PATH, cwd=cwd, timeout=timeout)
 
 
 def test_script_exists_and_executable():
