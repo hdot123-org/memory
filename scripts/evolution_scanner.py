@@ -177,6 +177,21 @@ def load_suppressions(repo_root: Path) -> list[dict[str, Any]]:
         if not isinstance(entries, list):
             print("[evolution] Warning: suppress.json 'suppressed' is not a list, treating as empty")
             return []
+
+        # Validate expires fields once during load to avoid repeated warnings
+        for entry in entries:
+            expires_str = entry.get("expires")
+            if expires_str is not None:
+                try:
+                    date.fromisoformat(str(expires_str))
+                except (ValueError, TypeError):
+                    print(
+                        f"[evolution] Warning: malformed expires value '{expires_str}' "
+                        f"in suppression entry {entry.get('rule_id', 'UNKNOWN')} @ {entry.get('location', 'UNKNOWN')}, "
+                        f"treating as expired",
+                        file=sys.stderr
+                    )
+
         return entries
     except (json.JSONDecodeError, OSError) as e:
         print(f"[evolution] Warning: Failed to load suppress.json: {e}")
@@ -199,16 +214,11 @@ def _is_suppression_expired(entry: dict[str, Any]) -> bool:
     # Try to parse ISO 8601 date
     try:
         expires_date = date.fromisoformat(str(expires_str))
-        today = date.today()
+        today = datetime.now(timezone.utc).date()
         return expires_date < today
     except (ValueError, TypeError):
-        # Malformed expires value = fail open (don't suppress + warn)
-        print(
-            f"[evolution] Warning: malformed expires value '{expires_str}' "
-            f"in suppression entry {entry.get('rule_id', 'UNKNOWN')} @ {entry.get('location', 'UNKNOWN')}, "
-            f"treating as expired",
-            file=sys.stderr
-        )
+        # Malformed expires value = fail open (don't suppress)
+        # Warning is emitted during load_suppressions() to avoid repetition
         return True
 
 
