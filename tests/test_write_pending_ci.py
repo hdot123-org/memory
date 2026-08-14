@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import os
+import shutil
 import stat
 import subprocess
 from pathlib import Path
+
+import pytest
 
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "write-pending-ci.sh"
 REPO_ROOT = Path(__file__).parent.parent
@@ -36,17 +39,14 @@ def run_script(
 # ============================================================================
 def test_shellcheck_clean():
     """shellcheck scripts/write-pending-ci.sh exits 0."""
+    if not shutil.which("shellcheck"):
+        pytest.skip("shellcheck not installed")
+
     result = subprocess.run(
         ["shellcheck", str(SCRIPT_PATH)],
         capture_output=True,
         text=True,
     )
-
-    # Skip if shellcheck not installed
-    if result.returncode != 0 and "not found" in result.stderr.lower():
-        import pytest
-        pytest.skip("shellcheck not installed")
-
     assert result.returncode == 0, \
         f"shellcheck failed:\n{result.stdout}\n{result.stderr}"
 
