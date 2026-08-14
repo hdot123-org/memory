@@ -1,7 +1,6 @@
 """Tests for backward compatibility (VAL-COMPAT-01 through VAL-COMPAT-04) and cross-area flows (VAL-CROSS-01 through VAL-CROSS-03)."""
 
 import json
-import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -11,21 +10,7 @@ from memory_core.tools.project_lifecycle import (
     rebuild_path_index,
     record_project_lifecycle,
 )
-
-
-def _setup_git_repo(project_dir: Path) -> None:
-    """Initialize a minimal git repo for deterministic project_id generation."""
-    project_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init"], cwd=project_dir, check=True, capture_output=True, text=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"],
-        cwd=project_dir, check=True, capture_output=True, text=True
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "Test User"],
-        cwd=project_dir, check=True, capture_output=True, text=True
-    )
-
+from tests.git_helpers import setup_git_repo as _setup_git_repo
 
 # ── VAL-COMPAT-01: rebuild_path_index still works ─────────────────────────────────
 

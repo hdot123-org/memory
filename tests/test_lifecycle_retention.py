@@ -3,21 +3,7 @@
 from pathlib import Path
 
 from memory_core.tools.project_lifecycle import record_project_lifecycle
-
-
-def _setup_git_repo(project_dir: Path) -> None:
-    """Initialize a minimal git repo for deterministic project_id generation."""
-    import subprocess
-    project_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init"], cwd=project_dir, check=True, capture_output=True, text=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"],
-        cwd=project_dir, check=True, capture_output=True, text=True
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "Test User"],
-        cwd=project_dir, check=True, capture_output=True, text=True
-    )
+from tests.git_helpers import setup_git_repo as _setup_git_repo
 
 
 def _get_project_id(lifecycle_root: Path) -> str:
