@@ -9,7 +9,9 @@ import os
 import re
 import sys
 import tokenize
+from difflib import SequenceMatcher
 from pathlib import Path
+from typing import NamedTuple
 
 # Module-level constants for testability
 EXCLUDE_DIRS = frozenset(
@@ -48,6 +50,24 @@ TODO_PATTERNS = [
     (re.compile(r"#\s*FIXME(?!\s*[\(#])", re.IGNORECASE), "FIXME without issue reference"),
     (re.compile(r"#\s*HACK(?!\s*[\(#])", re.IGNORECASE), "HACK without issue reference"),
 ]
+
+# Duplicate detection constants (absorbed from v5_duplicate_scan.py)
+DUPLICATE_RULE_ID = "CODE_HYGIENE_DUPLICATE_BLOCK"
+DUPLICATE_SEVERITY = "info"
+DUPLICATE_DESCRIPTION = "Duplicate code block detected"
+SIMILARITY_THRESHOLD = 0.80
+MIN_BODY_LINES = 10
+MIN_AST_TOKENS = 50
+
+
+class FuncInfo(NamedTuple):
+    """Information about a function for duplicate detection."""
+    file: str
+    name: str
+    line_no: int
+    body_lines: int
+    ast_tokens: int
+    ast_dump: str
 
 
 class SwallowVisitor(ast.NodeVisitor):
@@ -286,6 +306,145 @@ def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
     return findings
 
 
+def _count_ast_tokens(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
+    """Count AST nodes (rough token proxy) in a function body."""
+    return sum(1 for _ in ast.walk(func_node))
+
+
+def _count_body_lines(func_node: ast.FunctionDef | ast.AsyncFunctionDef, source_lines: list[str]) -> int:
+    """Count non-empty, non-comment body lines."""
+    if not func_node.body:
+        return 0
+    start = func_node.body[0].lineno - 1
+    end = func_node.end_lineno or (start + 1)
+    count = 0
+    for line in source_lines[start:end]:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            count += 1
+    return count
+
+
+def extract_functions_for_duplicate_check(filepath: Path, repo_root: Path) -> list[FuncInfo]:
+    """Extract function definitions from a Python file for duplicate detection.
+    
+    Only includes functions that meet the size threshold:
+    >= MIN_BODY_LINES body lines OR >= MIN_AST_TOKENS AST tokens.
+    
+    Args:
+        filepath: Absolute path to the file
+        repo_root: Repository root for relative path computation
+        
+    Returns:
+        List of FuncInfo for qualifying functions
+    """
+    try:
+        raw = filepath.read_bytes()
+        if raw.startswith(codecs.BOM_UTF8):
+            raw = raw[len(codecs.BOM_UTF8):]
+        source = raw.decode("utf-8", errors="replace")
+        source_lines = source.splitlines()
+    except (OSError, UnicodeDecodeError) as e:
+        print(
+            f"[code_hygiene_audit] Warning: Error reading {filepath}: {e}",
+            file=sys.stderr,
+        )
+        return []
+
+    try:
+        tree = ast.parse(source, filename=str(filepath))
+    except SyntaxError:
+        return []
+
+    try:
+        relpath = filepath.relative_to(repo_root).as_posix()
+    except ValueError:
+        relpath = filepath.name
+
+    funcs: list[FuncInfo] = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            body_lines = _count_body_lines(node, source_lines)
+            ast_tokens = _count_ast_tokens(node)
+            if body_lines >= MIN_BODY_LINES or ast_tokens >= MIN_AST_TOKENS:
+                # Get AST dump without annotation fields for comparison
+                node_copy = ast.parse(ast.unparse(node))
+                ast_dump_str = ast.dump(node_copy, annotate_fields=False)
+                funcs.append(FuncInfo(
+                    file=relpath,
+                    name=node.name,
+                    line_no=node.lineno,
+                    body_lines=body_lines,
+                    ast_tokens=ast_tokens,
+                    ast_dump=ast_dump_str,
+                ))
+    return funcs
+
+
+def check_duplicates(funcs: list[FuncInfo]) -> list[dict[str, str]]:
+    """Compare functions for duplicate code blocks.
+    
+    Groups functions by name, then compares same-name pairs using
+    SequenceMatcher.ratio() >= SIMILARITY_THRESHOLD.
+    Deduplicates pairs by canonicalized (file_a, line_a, file_b, line_b) key.
+    
+    Args:
+        funcs: List of FuncInfo from all files
+        
+    Returns:
+        List of findings in 6-field JSON schema
+    """
+    findings: list[dict[str, str]] = []
+    
+    # Group by name
+    by_name: dict[str, list[FuncInfo]] = {}
+    for func in funcs:
+        by_name.setdefault(func.name, []).append(func)
+    
+    seen_pairs: set[tuple[str, int, str, int]] = set()
+    
+    for name, group in by_name.items():
+        if len(group) < 2:
+            continue
+        for i in range(len(group)):
+            for j in range(i + 1, len(group)):
+                a, b = group[i], group[j]
+                
+                # Skip self-comparison
+                if a.file == b.file and a.line_no == b.line_no:
+                    continue
+                
+                # Canonicalize pair key for dedup
+                pair = sorted([(a.file, a.line_no), (b.file, b.line_no)])
+                pair_key = (pair[0][0], pair[0][1], pair[1][0], pair[1][1])
+                if pair_key in seen_pairs:
+                    continue
+                
+                # Compare AST dumps
+                ratio = SequenceMatcher(None, a.ast_dump, b.ast_dump).ratio()
+                if ratio >= SIMILARITY_THRESHOLD:
+                    seen_pairs.add(pair_key)
+                    # Build finding
+                    location = (
+                        f"{a.file}::L{a.line_no} <-> {b.file}::L{b.line_no}"
+                    )
+                    evidence = (
+                        f"Function '{name}' has {ratio:.0%} AST similarity "
+                        f"({a.body_lines} lines / {a.ast_tokens} tokens vs "
+                        f"{b.body_lines} lines / {b.ast_tokens} tokens)"
+                    )
+                    findings.append({
+                        "rule_id": DUPLICATE_RULE_ID,
+                        "severity": DUPLICATE_SEVERITY,
+                        "category": CATEGORY,
+                        "description": DUPLICATE_DESCRIPTION,
+                        "location": location,
+                        "evidence": evidence,
+                    })
+    
+    return findings
+
+
 def audit_file(filepath: Path, repo_root: Path) -> list[dict[str, str]]:
     """Audit a single Python file for silent exception swallowing.
 
@@ -349,6 +508,7 @@ def scan_directory(target: Path, repo_root: Path) -> list[dict[str, str]]:
     Returns a list of all findings.
     """
     all_findings: list[dict[str, str]] = []
+    all_funcs: list[FuncInfo] = []
 
     for root, dirs, files in os.walk(target):
         root_path = Path(root)
@@ -380,6 +540,14 @@ def scan_directory(target: Path, repo_root: Path) -> list[dict[str, str]]:
             # Get TODO/FIXME/HACK findings
             todo_findings = check_todos(filepath, relpath)
             all_findings.extend(todo_findings)
+
+            # Extract functions for duplicate detection
+            funcs = extract_functions_for_duplicate_check(filepath, repo_root)
+            all_funcs.extend(funcs)
+
+    # Run duplicate detection across all collected functions
+    duplicate_findings = check_duplicates(all_funcs)
+    all_findings.extend(duplicate_findings)
 
     return all_findings
 
@@ -436,6 +604,9 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError:
             relpath = target_path.name
         findings.extend(check_todos(target_path, relpath))
+        # Also check for duplicates within the same file
+        funcs = extract_functions_for_duplicate_check(target_path, repo_root)
+        findings.extend(check_duplicates(funcs))
     else:
         # Directory mode
         findings = scan_directory(target_path, repo_root)
