@@ -622,6 +622,24 @@ class TestTodoDetection:
         assert finding["severity"] == "warning"
         assert finding["category"] == "code_hygiene"
 
+    def test_todo_in_string_literal_not_flagged(self, tmp_path: Path) -> None:
+        """String literals containing '# TODO' are not flagged (INFRA-272)."""
+        code = 'code = "# TODO fix this later\\nx = 1\\n"\nx = 1\n'
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 0
+
+    def test_todo_in_triple_quoted_string_not_flagged(self, tmp_path: Path) -> None:
+        """TODO inside a triple-quoted string is not flagged (INFRA-272)."""
+        code = 'code = """\n# TODO fix this\ntry:\n    x = 1\nexcept:\n    pass\n"""\n'
+        test_file = tmp_path / "test.py"
+        test_file.write_text(code)
+
+        findings = check_todos(test_file, "test.py")
+        assert len(findings) == 0
+
     def test_fixme_without_issue_detected(self, tmp_path: Path) -> None:
         """Bare FIXME comment without issue reference is flagged."""
         code = "# FIXME this is broken\nx = 1\n"
