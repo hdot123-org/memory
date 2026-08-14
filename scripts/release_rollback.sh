@@ -3,16 +3,22 @@
 # tagged commit and re-tagging the previous good release.
 #
 # Usage:
-#   ./scripts/release_rollback.sh <version-tag>
+#   ./scripts/release_rollback.sh [--dry-run] <version-tag>
+#   ./scripts/release_rollback.sh <version-tag> [--dry-run]
 #
 # Example:
 #   ./scripts/release_rollback.sh v0.9.0
+#   ./scripts/release_rollback.sh --dry-run v0.9.0
 #
 # The script performs:
 #   1. Validates the tag exists locally and on origin.
 #   2. Creates a revert commit that undoes the tagged commit's changes.
 #   3. Moves the tag to point at the pre-release commit (or deletes it).
 #   4. Pushes the revert commit and updated tags to origin.
+#
+# Options:
+#   --dry-run   Perform all pre-flight checks and print the rollback plan,
+#               but do NOT execute git revert, tag delete, tag recreate, or push.
 #
 # Safety:
 #   - Refuses to run on a dirty working tree.
@@ -21,14 +27,17 @@
 
 set -euo pipefail
 
-readonly PROG
 PROG="$(basename "$0")"
+readonly PROG
 
 usage() {
     cat >&2 <<EOF
-Usage: $PROG <version-tag>
+Usage: $PROG [--dry-run] <version-tag>
 
 Roll back a memory-core release by reverting its commit and re-tagging.
+
+Options:
+  --dry-run     Print the rollback plan without making any changes
 
 Arguments:
   version-tag   The tag to roll back, e.g. v0.9.0
@@ -48,10 +57,30 @@ if [[ $# -lt 1 ]]; then
     usage
 fi
 
-readonly TAG="$1"
+DRY_RUN=0
+TAG=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)
+            DRY_RUN=1
+            shift
+            ;;
+        -*)
+            die "unknown option: $1"
+            ;;
+        *)
+            if [[ -n "$TAG" ]]; then
+                die "unexpected argument: $1"
+            fi
+            TAG="$1"
+            shift
+            ;;
+    esac
+done
 
 if [[ -z "$TAG" ]]; then
-    die "version tag must not be empty"
+    die "version tag is required"
 fi
 
 # Sanity: must look like a tag.
@@ -84,8 +113,23 @@ fi
 
 # Must not roll back HEAD (that would be a no-op / ambiguous).
 HEAD_COMMIT="$(git rev-parse HEAD)"
-if [[ "$TAGGED_COMMIT" == "$HEAD_COMMIT" && "$#" -lt 2 ]]; then
+if [[ "$TAGGED_COMMIT" == "$HEAD_COMMIT" ]]; then
     log "note: tag '$TAG' points at HEAD; the revert will still apply"
+fi
+
+# --- Dry-run: print plan and exit -------------------------------------------
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY RUN — no changes will be made"
+    log "Would revert commit: $TAGGED_COMMIT"
+    PARENT_COMMIT_DRY="$(git rev-parse --verify --quiet "${TAGGED_COMMIT}^" || true)"
+    if [[ -n "${PARENT_COMMIT_DRY:-}" ]]; then
+        log "Would move tag '$TAG' to parent commit: ${PARENT_COMMIT_DRY}"
+    else
+        log "Would delete tag '$TAG' (no parent commit found)"
+    fi
+    log "Would push revert commit and tags to origin"
+    exit 0
 fi
 
 log "rolling back tag '$TAG' (commit $TAGGED_COMMIT)"
