@@ -28,4 +28,5 @@ audit_tools:
   - name: code_hygiene_audit
     command: "memory-code-hygiene-audit --target . --json"
     output_format: json
+    timeout: 300
 snapshot_limit: 100

@@ -8198,3 +8198,104 @@ def test_val_cross_037_dedup_after_reopen(tmp_path):
 
     # Finding deduplicated (not created as new issue)
     assert len(deduped) == 0, "Reopened issue should be found by deduplicate()"
+
+
+# ============================================================================
+# INFRA-278: Per-tool configurable timeout tests
+# ============================================================================
+
+
+def test_run_audit_tool_default_timeout_60():
+    """INFRA-278: Default timeout of 60s is used when tool config has no timeout."""
+    tool = {"name": "test_tool", "command": "echo '[]'"}
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+        run_audit_tool(tool)
+
+        # Verify subprocess.run was called with timeout=60 (default)
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs.get("timeout") == 60, f"Expected timeout=60, got {call_kwargs.get('timeout')}"
+
+
+def test_run_audit_tool_custom_timeout_from_config():
+    """INFRA-278: Per-tool timeout value from config is honored."""
+    tool = {"name": "test_tool", "command": "echo '[]'", "timeout": 300}
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+        run_audit_tool(tool)
+
+        # Verify subprocess.run was called with timeout=300 from config
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs.get("timeout") == 300, f"Expected timeout=300, got {call_kwargs.get('timeout')}"
+
+
+def test_run_audit_tool_timeout_expired_caught():
+    """INFRA-278: TimeoutExpired is caught and results in tool failure (None) without raising."""
+    tool = {"name": "slow_tool", "command": "sleep 10", "timeout": 1}
+
+    with patch("evolution_scanner.subprocess.run") as mock_run, \
+         patch("builtins.print") as mock_print:
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="sleep 10", timeout=1)
+        result = run_audit_tool(tool)
+
+        # Should return None (tool failure), not raise
+        assert result is None, f"Expected None on timeout, got {result}"
+
+        # Verify timeout warning was printed
+        warning_calls = [str(c) for c in mock_print.call_args_list]
+        assert any("timed out" in w and "slow_tool" in w for w in warning_calls), \
+            f"Expected timeout warning for slow_tool. Warnings: {warning_calls}"
+        assert any("1s" in w for w in warning_calls), \
+            f"Expected timeout duration in warning. Warnings: {warning_calls}"
+
+
+def test_run_audit_tool_timeout_does_not_affect_registry_jsonl():
+    """INFRA-278: Timeout config does not affect registry_jsonl tools (no command to timeout)."""
+    # Registry-style tools don't have a command, they read from source_file
+    # The timeout key should simply be ignored for these tools
+    source_file = "memory/kb/patterns/registry.jsonl"
+    tool = {
+        "name": "error_patterns",
+        "output_format": "registry_jsonl",
+        "source_file": source_file,
+        "timeout": 999,  # This should be irrelevant for registry_jsonl tools
+    }
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        full_path = tmp_path / source_file
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        full_path.write_text(
+            '{"fingerprint": "abc123", "type": "test_error", "script": "test_script", '
+            '"normalized_msg": "test error", "status": "detected", '
+            '"total_count": 5, "threshold_met": "both"}\n'
+        )
+
+        # Should work without calling subprocess.run at all (no timeout to apply)
+        result = run_audit_tool(tool, tmp_path)
+        assert result is not None
+        assert len(result) == 1
+
+
+def test_run_audit_tool_timeout_with_various_values():
+    """INFRA-278: Timeout values of different types are handled correctly."""
+    # Test with timeout as string (should still work via int conversion in subprocess)
+    tool_str_timeout = {"name": "test_tool", "command": "echo '[]'", "timeout": "120"}
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+        run_audit_tool(tool_str_timeout)
+        # subprocess.run should receive timeout as int or string
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs.get("timeout") == "120"
+
+    # Test with very large timeout
+    tool_large_timeout = {"name": "test_tool", "command": "echo '[]'", "timeout": 3600}
+
+    with patch("evolution_scanner.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
+        run_audit_tool(tool_large_timeout)
+        call_kwargs = mock_run.call_args[1]
+        assert call_kwargs.get("timeout") == 3600
