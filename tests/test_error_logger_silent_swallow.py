@@ -20,18 +20,10 @@ trigger reliably in tests, so static inspection is the appropriate guard.
 
 from pathlib import Path
 
+from tests.silent_swallow_helpers import function_body as _func_body
+
 REPO_ROOT = Path(__file__).parent.parent
 ERROR_LOGGER_PATH = REPO_ROOT / "memory_core" / "tools" / "error_logger.py"
-
-
-def _func_body(content: str, name: str) -> str:
-    """Slice a top-level function's source from its ``def`` to the next top-level def/class."""
-    start = content.index(f"def {name}")
-    next_def = content.find("\ndef ", start + 1)
-    next_class = content.find("\nclass ", start + 1)
-    candidates = [p for p in (next_def, next_class) if p != -1]
-    end = min(candidates) if candidates else len(content)
-    return content[start:end]
 
 
 class TestTrySignFileSilentSwallow:
@@ -88,19 +80,4 @@ class TestTrySignFileSilentSwallow:
         body = _func_body(content, "_try_sign_file")
         assert "raise" not in body, (
             "_try_sign_file must not re-raise — signing failure must not block main flow"
-        )
-
-
-class TestNoSilentSwallowAnywhere:
-    """Whole-file guard: no bare ``except Exception: pass`` swallow remains in error_logger.py.
-
-    Covers the indentation level present in the module's _try_sign_file function.
-    """
-
-    def test_no_bare_silent_swallow_pattern(self):
-        """No bare ``except Exception:`` followed only by ``pass`` at any nesting."""
-        content = ERROR_LOGGER_PATH.read_text()
-        assert "except Exception:\n        pass" not in content, (
-            "error_logger.py must not contain a bare "
-            "`except Exception: pass` (silent swallow)"
         )
