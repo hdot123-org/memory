@@ -338,12 +338,12 @@ def test_uses_utc_date_not_local(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         def now(cls, tz: tzinfo | None = None) -> "FakeDatetime":
             if tz is not None:
                 return frozen_utc.astimezone(tz)  # type: ignore[return-value]
-            return frozen_utc.replace(tzinfo=None)  # type: ignore[return-value]
+            return datetime(2026, 8, 14, 4, 0, 0)  # type: ignore[return-value]
 
     class FakeDate(date_class):
         @classmethod
         def today(cls) -> "FakeDate":
-            return frozen_utc_date  # type: ignore[return-value]
+            return date_class(2026, 8, 14)  # type: ignore[return-value]
 
     monkeypatch.setattr("evolution_scanner.datetime", FakeDatetime)
     monkeypatch.setattr("evolution_scanner.date", FakeDate)
