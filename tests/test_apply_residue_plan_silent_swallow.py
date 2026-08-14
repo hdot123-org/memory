@@ -20,8 +20,11 @@ The fix is covered two ways:
 """
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
+
+import pytest
 
 from memory_core.tools.apply_residue_plan import _is_forbidden_path, _validate_plan
 
@@ -144,6 +147,29 @@ class TestNoSilentSwallowAnywhere:
 # Runtime tests (patch load_memory_ownership to raise)
 # ---------------------------------------------------------------------------
 
+def _run_under_ownership_failure(
+    call: Callable[[], object],
+    expected_fragment: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Shared runtime helper: patch load_memory_ownership to raise, run ``call``
+    at DEBUG level, and assert the graceful-degradation debug log was captured.
+
+    Used by both runtime test classes so their caplog assertions stay identical
+    (INFRA-287: deduplicate the duplicated test_caplog_captures_debug blocks).
+    """
+    with mock.patch(f"{MODULE}.load_memory_ownership", side_effect=RuntimeError("boom")):
+        with caplog.at_level(logging.DEBUG, logger=LOGGER_NAME):
+            call()
+
+    assert any(
+        expected_fragment in record.message
+        and "legacy" in record.message
+        and record.levelno == logging.DEBUG
+        for record in caplog.records
+    ), [r.message for r in caplog.records]
+
+
 class TestIsForbiddenPathRuntimeLogsAndDegrades:
     """When ownership classification fails, _is_forbidden_path logs and degrades."""
 
@@ -176,16 +202,11 @@ class TestIsForbiddenPathRuntimeLogsAndDegrades:
 
     def test_caplog_captures_debug(self, tmp_path: Path, caplog):
         """The debug log must be visible via caplog at DEBUG level."""
-        with mock.patch(f"{MODULE}.load_memory_ownership", side_effect=RuntimeError("boom")):
-            with caplog.at_level(logging.DEBUG, logger=LOGGER_NAME):
-                _is_forbidden_path("AGENTS.md", target=tmp_path)
-
-        assert any(
-            "_is_forbidden_path" in record.message
-            and "legacy check" in record.message
-            and record.levelno == logging.DEBUG
-            for record in caplog.records
-        ), [r.message for r in caplog.records]
+        _run_under_ownership_failure(
+            call=lambda: _is_forbidden_path("AGENTS.md", target=tmp_path),
+            expected_fragment="_is_forbidden_path",
+            caplog=caplog,
+        )
 
 
 class TestValidatePlanRuntimeLogsAndDegrades:
@@ -224,13 +245,8 @@ class TestValidatePlanRuntimeLogsAndDegrades:
             "risk_level": "medium",
             "requires_human_confirmation": False,
         }
-        with mock.patch(f"{MODULE}.load_memory_ownership", side_effect=RuntimeError("boom")):
-            with caplog.at_level(logging.DEBUG, logger=LOGGER_NAME):
-                _validate_plan(plan, target=tmp_path)
-
-        assert any(
-            "_validate_plan" in record.message
-            and "legacy patterns" in record.message
-            and record.levelno == logging.DEBUG
-            for record in caplog.records
-        ), [r.message for r in caplog.records]
+        _run_under_ownership_failure(
+            call=lambda: _validate_plan(plan, target=tmp_path),
+            expected_fragment="_validate_plan",
+            caplog=caplog,
+        )
