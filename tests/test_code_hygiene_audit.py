@@ -921,8 +921,8 @@ def small_func(x):
         duplicate_findings = [f for f in findings if f["rule_id"] == "CODE_HYGIENE_DUPLICATE_BLOCK"]
         assert len(duplicate_findings) == 0
 
-    def test_duplicate_different_names_now_detected(self, tmp_path: Path) -> None:
-        """Cross-name functions with identical structure are now detected (INFRA-273)."""
+    def test_duplicate_different_names_not_detected(self, tmp_path: Path) -> None:
+        """Cross-name functions with identical structure are NOT detected (VAL-HYGIENE-007)."""
         code = """
 def process_data(data):
     result = []
@@ -951,11 +951,7 @@ def handle_input(data):
 
         findings = scan_directory(tmp_path, tmp_path)
         duplicate_findings = [f for f in findings if f["rule_id"] == "CODE_HYGIENE_DUPLICATE_BLOCK"]
-        assert len(duplicate_findings) == 1
-        finding = duplicate_findings[0]
-        assert "Cross-name structural duplicate" in finding["evidence"]
-        assert "process_data" in finding["evidence"]
-        assert "handle_input" in finding["evidence"]
+        assert len(duplicate_findings) == 0
 
     def test_cross_name_different_structure_not_flagged(self, tmp_path: Path) -> None:
         """Functions with different names and genuinely different structures are not flagged."""
