@@ -215,19 +215,19 @@ def should_skip_dir(dirpath: Path) -> bool:
 
 def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
     """Check for TODO/FIXME/HACK comments without issue references.
-    
+
     Absorbed rules from scan_tech_debt.py: detects TODO/FIXME/HACK markers
     that are NOT followed by issue references like (#NNN) or (GH-NNN).
-    
+
     Args:
         filepath: Absolute path to the file
         relpath: Relative path for reporting
-        
+
     Returns:
         List of findings in 6-field JSON schema
     """
     findings = []
-    
+
     try:
         # Read file with BOM handling
         raw = filepath.read_bytes()
@@ -235,7 +235,7 @@ def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
             raw = raw[len(codecs.BOM_UTF8) :]
         source = raw.decode("utf-8", errors="replace")
         lines = source.splitlines()
-        
+
         for lineno, line in enumerate(lines, start=1):
             for pattern, label in TODO_PATTERNS:
                 if pattern.search(line):
@@ -249,7 +249,7 @@ def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
                         "evidence": line.strip(),
                     }
                     findings.append(finding)
-                    
+
     except OSError as e:
         print(
             f"[code_hygiene_audit] Warning: OSError reading {filepath}: {e}",
@@ -260,7 +260,7 @@ def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
             f"[code_hygiene_audit] Warning: Error checking TODOs in {filepath}: {e}",
             file=sys.stderr,
         )
-    
+
     return findings
 
 

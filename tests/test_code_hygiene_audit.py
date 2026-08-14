@@ -598,10 +598,9 @@ class TestScanDirectory:
 import ast
 
 from memory_core.tools.code_hygiene_audit import (
-    check_todos,
     TODO_RULE_ID,
     TODO_SEVERITY,
-    TODO_DESCRIPTION,
+    check_todos,
 )
 
 
