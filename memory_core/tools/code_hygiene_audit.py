@@ -3,10 +3,12 @@
 import argparse
 import ast
 import codecs
+import io
 import json
 import os
 import re
 import sys
+import tokenize
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import NamedTuple
@@ -43,10 +45,11 @@ TODO_SEVERITY = "warning"
 TODO_DESCRIPTION = "TODO/FIXME/HACK without issue reference"
 
 # Regex patterns: TODO/FIXME/HACK NOT followed by (#NNN) or (GH-NNN)
+# Anchored with ^ to only match at comment-start position (INFRA-273)
 TODO_PATTERNS = [
-    (re.compile(r"#\s*TODO(?!\s*[\(#])", re.IGNORECASE), "TODO without issue reference"),
-    (re.compile(r"#\s*FIXME(?!\s*[\(#])", re.IGNORECASE), "FIXME without issue reference"),
-    (re.compile(r"#\s*HACK(?!\s*[\(#])", re.IGNORECASE), "HACK without issue reference"),
+    (re.compile(r"^#\s*TODO(?!\s*[\(#])", re.IGNORECASE), "TODO without issue reference"),
+    (re.compile(r"^#\s*FIXME(?!\s*[\(#])", re.IGNORECASE), "FIXME without issue reference"),
+    (re.compile(r"^#\s*HACK(?!\s*[\(#])", re.IGNORECASE), "HACK without issue reference"),
 ]
 
 # Duplicate detection constants (absorbed from v5_duplicate_scan.py)
@@ -239,6 +242,15 @@ def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
     Absorbed rules from scan_tech_debt.py: detects TODO/FIXME/HACK markers
     that are NOT followed by issue references like (#NNN) or (GH-NNN).
 
+    Uses tokenization to identify real Python comments only, which avoids
+    false positives on string literals containing "# TODO" text. Falls back
+    to line-by-line scanning (extracting the comment portion after the first
+    #) if tokenization fails (e.g. on files with syntax errors).
+
+    The regex is anchored with ^ to match only at comment-start position,
+    so patterns like "String containing # TODO" inside a real comment are
+    not falsely flagged (INFRA-273).
+
     Args:
         filepath: Absolute path to the file
         relpath: Relative path for reporting
@@ -246,7 +258,7 @@ def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
     Returns:
         List of findings in 6-field JSON schema
     """
-    findings = []
+    findings: list[dict[str, str]] = []
 
     try:
         # Read file with BOM handling
@@ -254,11 +266,28 @@ def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
         if raw.startswith(codecs.BOM_UTF8):
             raw = raw[len(codecs.BOM_UTF8) :]
         source = raw.decode("utf-8", errors="replace")
-        lines = source.splitlines()
 
-        for lineno, line in enumerate(lines, start=1):
+        # Collect (lineno, comment_text) from real COMMENT tokens only.
+        # String literals containing "# TODO" are STRING tokens, not COMMENT
+        # tokens, so they are correctly excluded.
+        comment_lines: list[tuple[int, str]] = []
+        try:
+            tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+            for tok in tokens:
+                if tok.type == tokenize.COMMENT:
+                    comment_lines.append((tok.start[0], tok.string))
+        except tokenize.TokenError:
+            # Fallback: tokenization failed (e.g. syntax error). Scan every
+            # line and extract the comment portion (text after first #) so
+            # the ^# anchor still works for inline comments.
+            for lineno, line in enumerate(source.splitlines(), start=1):
+                idx = line.find("#")
+                if idx >= 0:
+                    comment_lines.append((lineno, line[idx:]))
+
+        for lineno, text in comment_lines:
             for pattern, label in TODO_PATTERNS:
-                if pattern.search(line):
+                if pattern.search(text):
                     # Build finding in 6-field schema
                     finding = {
                         "rule_id": TODO_RULE_ID,
@@ -266,7 +295,7 @@ def check_todos(filepath: Path, relpath: str) -> list[dict[str, str]]:
                         "category": CATEGORY,
                         "description": label,
                         "location": f"{relpath}::L{lineno}",
-                        "evidence": line.strip(),
+                        "evidence": text.strip(),
                     }
                     findings.append(finding)
 
