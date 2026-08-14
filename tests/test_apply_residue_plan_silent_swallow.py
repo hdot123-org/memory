@@ -26,6 +26,8 @@ from unittest import mock
 from memory_core.tools.apply_residue_plan import _is_forbidden_path, _validate_plan
 from tests.silent_swallow_helpers import (
     bare_except_positions as _except_positions,
+)
+from tests.silent_swallow_helpers import (
     top_level_function_body as _function_body,
 )
 
