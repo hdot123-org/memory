@@ -198,6 +198,18 @@ PR body 中使用 `Fixes INFRA-xxx` 引用即可实现自动闭环，两条独�
 
 **此机制已验证有效。**
 
+### 铁律：派发会话关单规矩
+
+**自动派发的会话禁止直接关闭 GitHub issue，必须走 PR + Fixes 引用闭环。**
+
+2026-08-14 风暴期教训：INFRA-292 自动派发会话以 hdot123 OAuth 身份用 scanner 模板文案反复直接关单，导致 #648 经历 14+ 轮 close/reopen 振荡（51 events、26 comments）。
+
+**正确做法**：
+- GitHub issue 只能经以下方式关闭：
+  1. PR merge + `Fixes INFRA-xxx` 引用（自动闭环）
+  2. scanner 合法 `auto_close_resolved()`（经完整信任链：P0-A 骤降防护 + P0-1 linkback fail-closed）
+- 派发会话（包括 droid session、webhook 触发器等）不得直接调用 `gh issue close` 或等效操作
+
 ### 完整文档
 
 详细的流转链路、职责约定和故障排查指南，请参考：[`docs/architecture/issue-flow.md`](docs/architecture/issue-flow.md)

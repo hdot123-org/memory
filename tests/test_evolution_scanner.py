@@ -5583,6 +5583,23 @@ def test_config_has_max_self_audit_issues_per_tick():
         "config.yml must have max_self_audit_issues_per_tick"
 
 
+def test_config_has_max_code_hygiene_issues_per_tick():
+    """P3 polish: config.yml must contain max_code_hygiene_issues_per_tick (INFRA-198 pattern)."""
+    from pathlib import Path
+
+    from evolution_scanner import load_config
+
+    # Find repo root by looking for .evolution/config.yml
+    repo_root = Path(__file__).parent.parent
+    config = load_config(repo_root)
+    assert "max_code_hygiene_issues_per_tick" in config, \
+        "config.yml must have max_code_hygiene_issues_per_tick"
+    assert isinstance(config["max_code_hygiene_issues_per_tick"], int), \
+        "max_code_hygiene_issues_per_tick must be an integer"
+    assert config["max_code_hygiene_issues_per_tick"] > 0, \
+        "max_code_hygiene_issues_per_tick must be positive"
+
+
 # ==================== INFRA-265: daily_audit exclusion from issue creation ====================
 
 def test_daily_audit_finding_does_not_create_issue():
