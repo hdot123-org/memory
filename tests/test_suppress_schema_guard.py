@@ -7,7 +7,7 @@ Fulfills VAL-SUPPRESS-001/002/003:
 """
 import json
 import sys
-from datetime import datetime
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -249,10 +249,17 @@ def _validate_suppress_json_raw(suppress_path: Path) -> None:
         assert isinstance(entry, dict), (
             f"suppressed[{idx}] must be a dict, got {type(entry).__name__}: {entry!r}"
         )
+        # P3 polish: check required keys exist (rule_id, location)
+        assert "rule_id" in entry, (
+            f"suppressed[{idx}] must contain 'rule_id' key: {entry!r}"
+        )
+        assert "location" in entry, (
+            f"suppressed[{idx}] must contain 'location' key: {entry!r}"
+        )
         # If expires is present, it must be valid ISO date
         if "expires" in entry and entry["expires"] is not None:
             try:
-                datetime.fromisoformat(str(entry["expires"]))
+                date.fromisoformat(str(entry["expires"]))
             except ValueError:
                 pytest.fail(f"Entry has invalid expires format: {entry['expires']}")
 
@@ -267,8 +274,8 @@ def test_schema_guard_real_suppress_json_passes() -> None:
     repo_root = Path(__file__).parent.parent
     suppress_path = repo_root / ".evolution" / "suppress.json"
 
-    if not suppress_path.exists():
-        pytest.skip("suppress.json not found (not in repository root)")
+    # P3 polish: hard failure if file missing (prevents silent skip masking coverage)
+    assert suppress_path.exists(), ".evolution/suppress.json must exist in repository"
 
     # Raw structural validation (not through load_suppressions)
     _validate_suppress_json_raw(suppress_path)
