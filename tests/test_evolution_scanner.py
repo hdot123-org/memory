@@ -1638,6 +1638,7 @@ def test_main_handles_gh_failure_gracefully():
             "failure_label": "evolution-isolated",
             "max_issues_per_tick": 3,
             "max_self_audit_issues_per_tick": 1,
+            "max_code_hygiene_issues_per_tick": 1,
             "snapshot_limit": 100,
         }
 
@@ -2274,6 +2275,7 @@ def test_main_filters_none_results_no_false_resolved():
             "failure_label": "evolution-isolated",
             "max_issues_per_tick": 3,
             "max_self_audit_issues_per_tick": 1,
+            "max_code_hygiene_issues_per_tick": 1,
             "snapshot_limit": 100,
         }
         # tool_a fails (None), tool_b succeeds with 1 finding
@@ -2988,6 +2990,7 @@ def test_main_config_drift_protection_all_keys_present():
         "failure_label": "evolution-isolated",
         "max_issues_per_tick": 3,
         "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
         "snapshot_limit": 100,
     }
 
@@ -3293,6 +3296,7 @@ def test_main_exits_nonzero_when_zero_issues_from_label_failure():
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 3,
         'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
         'snapshot_limit': 100,
         'github': {'owner': 'test', 'repo': 'test'}
     }
@@ -3731,6 +3735,7 @@ def test_main_exits_nonzero_when_github_api_fails(tmp_path):
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 3,
         'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
         'snapshot_limit': 100,
         'github': {'owner': 'test', 'repo': 'test'}
     }
@@ -3764,6 +3769,7 @@ def test_main_no_exit_when_github_fails_but_no_findings():
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 3,
         'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
         'snapshot_limit': 100,
         'github': {'owner': 'test', 'repo': 'test'}
     }
@@ -3794,6 +3800,7 @@ def test_main_does_not_auto_close_when_p2a_exits(tmp_path):
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 3,
         'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
         'snapshot_limit': 100,
         'github': {'owner': 'test', 'repo': 'test'}
     }
@@ -5393,6 +5400,7 @@ def test_regular_and_self_audit_get_independent_quotas():
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 1,
         'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
         'snapshot_limit': 100,
     }
 
@@ -5432,6 +5440,7 @@ def test_regular_quota_exhaustion_does_not_block_self_audit():
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 1,
         'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
         'snapshot_limit': 100,
     }
 
@@ -5471,6 +5480,7 @@ def test_self_audit_quota_is_capped():
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 5,
         'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
         'snapshot_limit': 100,
     }
 
@@ -5510,6 +5520,7 @@ def test_mixed_findings_sorted_correctly_within_each_pool():
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 2,
         'max_self_audit_issues_per_tick': 2,
+        'max_code_hygiene_issues_per_tick': 2,
         'snapshot_limit': 100,
     }
 
@@ -5535,12 +5546,26 @@ def test_mixed_findings_sorted_correctly_within_each_pool():
          patch('evolution_scanner.auto_close_resolved'), \
          patch('evolution_scanner.reconcile_in_progress'):
         main()
-        assert mock_create.call_count == 4
+        # Three-pool design: code_hygiene (2), regular (1), self_audit (2) = 5 total
+        assert mock_create.call_count == 5
         created = [call[0][0] for call in mock_create.call_args_list]
-        regular_created = [f for f in created if f.category != "evolution_self_audit"]
+
+        # Check each pool separately
+        ch_created = [f for f in created if f.category == "code_hygiene"]
+        regular_created = [f for f in created if f.category == "consistency"]
         sa_created = [f for f in created if f.category == "evolution_self_audit"]
-        assert regular_created[0].severity == "critical"
-        assert regular_created[1].severity == "warning"
+
+        # code_hygiene pool: 2 findings (critical, warning)
+        assert len(ch_created) == 2
+        assert ch_created[0].severity == "critical"
+        assert ch_created[1].severity == "warning"
+
+        # regular pool: 1 finding (info)
+        assert len(regular_created) == 1
+        assert regular_created[0].severity == "info"
+
+        # self_audit pool: 2 findings (warning, info)
+        assert len(sa_created) == 2
         assert sa_created[0].severity == "warning"
         assert sa_created[1].severity == "info"
 
@@ -5574,6 +5599,7 @@ def test_daily_audit_finding_does_not_create_issue():
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 5,
         'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
         'snapshot_limit': 100,
     }
 
@@ -5615,6 +5641,7 @@ def test_code_hygiene_finding_still_creates_issue():
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 5,
         'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
         'snapshot_limit': 100,
     }
 
@@ -5651,6 +5678,7 @@ def test_daily_audit_finding_still_appears_in_scanner_output():
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 5,
         'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
         'snapshot_limit': 100,
     }
 
@@ -5705,6 +5733,7 @@ def test_infra_268_all_daily_audit_findings_create_zero_issues():
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 5,
         'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
         'snapshot_limit': 100,
     }
 
@@ -5757,6 +5786,7 @@ def test_infra_268_p1_2_still_fires_for_actionable_findings_mixed_with_daily_aud
         'failure_label': 'evolution-isolated',
         'max_issues_per_tick': 5,
         'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
         'snapshot_limit': 100,
     }
 
@@ -8299,3 +8329,210 @@ def test_run_audit_tool_timeout_with_various_values():
         run_audit_tool(tool_large_timeout)
         call_kwargs = mock_run.call_args[1]
         assert call_kwargs.get("timeout") == 3600
+
+
+# ============================================================================
+# INFRA-third-quota-pool: Independent third quota pool for code_hygiene
+# ============================================================================
+
+
+def test_code_hygiene_gets_independent_quota():
+    """VAL-QUOTA-002: code_hygiene findings get independent third quota pool."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 1,
+        'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    regular = Finding("REG_001", "warning", "consistency", "Regular", "file1.md", "ev1")
+    code_hygiene = Finding("CH_001", "warning", "code_hygiene", "Code hygiene", "file2.md", "ev2")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[regular, code_hygiene]), \
+         patch('evolution_scanner.detect_regressions', return_value=[regular, code_hygiene]), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'), \
+         patch('evolution_scanner.load_history', return_value={"resolved_findings": []}), \
+         patch('evolution_scanner.write_heartbeat'), \
+         patch('evolution_scanner.sort_by_severity', side_effect=lambda f, _: f), \
+         patch('evolution_scanner.deduplicate', side_effect=lambda f, _: f):
+        main()
+        assert mock_create.call_count == 2, "Both regular and code_hygiene should create issues"
+        created_findings = [call[0][0] for call in mock_create.call_args_list]
+        categories = {f.category for f in created_findings}
+        assert "consistency" in categories
+        assert "code_hygiene" in categories
+
+
+def test_regular_exhaustion_does_not_block_code_hygiene():
+    """VAL-QUOTA-003: Regular quota exhaustion does NOT block code_hygiene."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 1,
+        'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    critical = Finding("CRIT_001", "critical", "consistency", "Critical", "file1.md", "ev1")
+    code_hygiene = Finding("CH_001", "warning", "code_hygiene", "Code hygiene", "file2.md", "ev2")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[critical, code_hygiene]), \
+         patch('evolution_scanner.detect_regressions', return_value=[critical, code_hygiene]), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'), \
+         patch('evolution_scanner.load_history', return_value={"resolved_findings": []}), \
+         patch('evolution_scanner.write_heartbeat'), \
+         patch('evolution_scanner.sort_by_severity', side_effect=lambda f, _: f), \
+         patch('evolution_scanner.deduplicate', side_effect=lambda f, _: f):
+        main()
+        assert mock_create.call_count == 2, "Both should create issues despite regular quota exhaustion"
+        created_findings = [call[0][0] for call in mock_create.call_args_list]
+        categories = {f.category for f in created_findings}
+        assert "code_hygiene" in categories, "code_hygiene must NOT be blocked by regular quota"
+
+
+def test_code_hygiene_exhaustion_does_not_block_regular():
+    """VAL-QUOTA-003: code_hygiene quota exhaustion does NOT block regular findings."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 1,
+        'max_self_audit_issues_per_tick': 1,
+        'max_code_hygiene_issues_per_tick': 1,
+        'snapshot_limit': 100,
+    }
+
+    regular = Finding("REG_001", "warning", "consistency", "Regular", "file1.md", "ev1")
+    ch1 = Finding("CH_001", "warning", "code_hygiene", "CH 1", "file2.md", "ev2")
+    ch2 = Finding("CH_002", "warning", "code_hygiene", "CH 2", "file3.md", "ev3")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[regular, ch1, ch2]), \
+         patch('evolution_scanner.detect_regressions', return_value=[regular, ch1, ch2]), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'), \
+         patch('evolution_scanner.load_history', return_value={"resolved_findings": []}), \
+         patch('evolution_scanner.write_heartbeat'), \
+         patch('evolution_scanner.sort_by_severity', side_effect=lambda f, _: f), \
+         patch('evolution_scanner.deduplicate', side_effect=lambda f, _: f):
+        main()
+        created_findings = [call[0][0] for call in mock_create.call_args_list]
+        categories = [f.category for f in created_findings]
+        # Regular should create 1, code_hygiene should create 1 (quota=1), ch2 blocked
+        assert categories.count("consistency") == 1, "Regular should create 1 issue"
+        assert categories.count("code_hygiene") == 1, "code_hygiene quota should cap at 1"
+        assert mock_create.call_count == 2, "Total 2 issues: 1 regular + 1 code_hygiene"
+
+
+def test_no_duplicate_issue_across_pools():
+    """VAL-QUOTA-003: Same finding not created twice across pools."""
+    from evolution_scanner import main
+
+    config = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 5,
+        'max_self_audit_issues_per_tick': 5,
+        'max_code_hygiene_issues_per_tick': 5,
+        'snapshot_limit': 100,
+    }
+
+    # Single code_hygiene finding
+    code_hygiene = Finding("CH_001", "warning", "code_hygiene", "Code hygiene", "file1.md", "ev1")
+
+    with patch('evolution_scanner.check_kill_switch', return_value=False), \
+         patch('evolution_scanner.load_config', return_value=config), \
+         patch('evolution_scanner.validate_config'), \
+         patch('evolution_scanner.ensure_labels'), \
+         patch('evolution_scanner.run_audit_tool', return_value=[]), \
+         patch('evolution_scanner.dedup_intra_tick', return_value=[code_hygiene]), \
+         patch('evolution_scanner.detect_regressions', return_value=[code_hygiene]), \
+         patch('evolution_scanner.get_open_issues', return_value=[]), \
+         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
+         patch('evolution_scanner.update_history'), \
+         patch('evolution_scanner.check_isolation'), \
+         patch('evolution_scanner.auto_close_resolved'), \
+         patch('evolution_scanner.reconcile_in_progress'), \
+         patch('evolution_scanner.load_history', return_value={"resolved_findings": []}), \
+         patch('evolution_scanner.write_heartbeat'), \
+         patch('evolution_scanner.sort_by_severity', side_effect=lambda f, _: f), \
+         patch('evolution_scanner.deduplicate', side_effect=lambda f, _: f):
+        main()
+        assert mock_create.call_count == 1, "code_hygiene finding should create exactly 1 issue"
+        created_finding = mock_create.call_args[0][0]
+        assert created_finding.rule_id == "CH_001"
+        assert created_finding.category == "code_hygiene"
+
+
+def test_validate_config_requires_code_hygiene_key():
+    """VAL-QUOTA-001: validate_config requires max_code_hygiene_issues_per_tick."""
+    from evolution_utils import validate_config
+
+    config_without_key = {
+        'audit_tools': [],
+        'severity_order': ['critical', 'warning', 'info'],
+        'dedup_label': 'evolution-found',
+        'isolation_threshold': 3,
+        'failure_label': 'evolution-isolated',
+        'max_issues_per_tick': 1,
+        'max_self_audit_issues_per_tick': 1,
+        # max_code_hygiene_issues_per_tick intentionally omitted
+        'snapshot_limit': 100,
+    }
+
+    with pytest.raises(SystemExit) as exc_info:
+        validate_config(config_without_key)
+    assert exc_info.value.code == 1
+
+    # Config with the key should pass
+    config_with_key = config_without_key.copy()
+    config_with_key['max_code_hygiene_issues_per_tick'] = 1
+    validate_config(config_with_key)  # Should not raise

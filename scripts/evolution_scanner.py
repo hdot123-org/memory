@@ -605,7 +605,11 @@ def main() -> None:
         deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
         # INFRA-198: independent quotas so critical findings don't starve self_audit
         # INFRA-265: exclude daily_audit from issue creation (infrastructure findings)
-        regular = [f for f in deduped if f.category not in ISSUE_EXCLUDED_CATEGORIES]
+        # INFRA-third-quota-pool: code_hygiene gets independent third pool
+        code_hygiene = [f for f in deduped if f.category == "code_hygiene"]
+        regular = [f for f in deduped
+                   if f.category not in ISSUE_EXCLUDED_CATEGORIES
+                   and f.category != "code_hygiene"]
         self_audit = [f for f in deduped if f.category == "evolution_self_audit"]
         # VAL-REOPEN: For regression findings (upgraded to critical by detect_regressions),
         # try to reopen a matching closed issue before creating a new one.
@@ -615,6 +619,10 @@ def main() -> None:
         )
         issues_created += _process_findings_with_reopen(
             self_audit, config["max_self_audit_issues_per_tick"], _resolved_keys,
+            config["dedup_label"], history_path,
+        )
+        issues_created += _process_findings_with_reopen(
+            code_hygiene, config["max_code_hygiene_issues_per_tick"], _resolved_keys,
             config["dedup_label"], history_path,
         )
     except RuntimeError as e:
