@@ -12,9 +12,9 @@ Verifies:
 import os
 from pathlib import Path
 
-os.environ.setdefault("MEMORY_HOOK_ADAPTER", "default")
-
 from tests.context_package_helpers import _make_minimal_kwargs
+
+os.environ.setdefault("MEMORY_HOOK_ADAPTER", "default")
 
 
 class TestMissingCanonicalFilesSeverityFix:

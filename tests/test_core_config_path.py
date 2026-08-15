@@ -14,10 +14,10 @@ from typing import Any
 
 import pytest
 
+from tests.context_package_helpers import _make_minimal_kwargs
+
 # Use default adapter (workbot has been archived).
 os.environ.setdefault("MEMORY_HOOK_ADAPTER", "default")
-
-from tests.context_package_helpers import _make_minimal_kwargs
 
 
 # ---------------------------------------------------------------------------
