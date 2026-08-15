@@ -11,79 +11,10 @@ Verifies:
 
 import os
 from pathlib import Path
-from typing import Any
+
+from tests.context_package_helpers import _make_minimal_kwargs
 
 os.environ.setdefault("MEMORY_HOOK_ADAPTER", "default")
-
-
-def _make_minimal_kwargs(tmp_path: Path) -> dict[str, Any]:
-    """Build minimal kwargs for build_context_package_core."""
-    base = tmp_path / "memory_core"
-    base.mkdir(parents=True, exist_ok=True)
-
-    (base / "NOW.md").write_text("# NOW\n\n## Summary\n- test\n", encoding="utf-8")
-    (base / "INDEX.md").write_text("# Index\n", encoding="utf-8")
-    (base / "memory").mkdir(exist_ok=True)
-    (base / "memory" / "kb").mkdir(exist_ok=True)
-    (base / "memory" / "kb" / "INDEX.md").write_text("# KB Index\n", encoding="utf-8")
-    (base / "memory" / "docs").mkdir(exist_ok=True)
-    (base / "memory" / "docs" / "INDEX.md").write_text("# Docs Index\n", encoding="utf-8")
-    (base / "projects").mkdir(exist_ok=True)
-    (base / "projects" / "workbot").mkdir(exist_ok=True)
-
-    # Create project canonical file so it doesn't trigger degraded status
-    proj_file = base / "projects" / "workbot" / "PROJECT.md"
-    proj_file.write_text("# Project\n", encoding="utf-8")
-
-    return {
-        "host": "factory",
-        "event": "session-start",
-        "payload": {"session_id": "test-123"},
-        "cwd": base,
-        "project_scope": "workbot",
-        "workspace_root": base,
-        "repo_root": base,
-        "required_canonical": [],
-        "project_canonical": {"workbot": base / "projects" / "workbot" / "PROJECT.md"},
-        "project_runtime_root": {},
-        "global_canonical": [],
-        "project_map_governance": base / "governance.md",
-        "event_log": base / "events.jsonl",
-        "hook_contract_path": base / "contract.md",
-        "legality_source_policy": "map-only",
-        "registration_commit_policy": "atomic",
-        "registration_commit_phase": "declared-not-enforced",
-        "project_map_refs": [],
-        "surface_id": "surf-1",
-        "workspace_id": "ws-1",
-        "governance_blocker_scopes": None,
-        "event_contract_blocker_scopes": None,
-        "core_evidence_refs": None,
-        "extract_excerpt_fn": lambda p: ["test"] if p.exists() else [],
-        "now_iso_fn": lambda: "2025-01-01T00:00:00+08:00",
-        "write_targets_fn": lambda: {"fact": "test"},
-        "validate_project_map_fn": lambda: [],
-        "validate_unique_legal_system_contract_fn": lambda: [],
-        "policy_validate_fn": lambda ctx: [],
-        "get_policy_pack_fn": lambda s: {"policies": {}},
-        "governance_frozen_tuple_errors_fn": lambda: [],
-        "event_contract_blocker_errors_fn": lambda: [],
-        "git_registration_probe_fn": lambda e, p: {"status": "pending"},
-        "truth_basis_for_scope_fn": lambda s: {
-            "refs": [],
-            "errors": [],
-            "validation": "pass",
-            "project_ref": "",
-            "source_refs": [],
-            "authority_refs": [],
-            "evidence_refs": [],
-            "conflict_status": [],
-            "policy": "test",
-        },
-        "decision_refs_for_scope_fn": lambda s: [],
-        "lesson_refs_for_scope_fn": lambda s: [],
-        "docs_refs_for_scope_fn": lambda s: [],
-    }
 
 
 class TestMissingCanonicalFilesSeverityFix:
@@ -93,7 +24,7 @@ class TestMissingCanonicalFilesSeverityFix:
         """VAL-TEL-001: When only canonical files are missing, status should be ok."""
         from memory_core.tools.memory_hook_core import build_context_package_core
 
-        kwargs = _make_minimal_kwargs(tmp_path)
+        kwargs = _make_minimal_kwargs(tmp_path, create_project_file=True)
         # Create the project file so it doesn't trigger degraded
         proj_file = kwargs["project_canonical"]["workbot"]
         proj_file.parent.mkdir(parents=True, exist_ok=True)
@@ -118,7 +49,7 @@ class TestMissingCanonicalFilesSeverityFix:
         """VAL-TEL-002: Missing canonical files appear in warnings, not in error lists."""
         from memory_core.tools.memory_hook_core import build_context_package_core
 
-        kwargs = _make_minimal_kwargs(tmp_path)
+        kwargs = _make_minimal_kwargs(tmp_path, create_project_file=True)
         canonical_dir = tmp_path / "memory_core" / "memory" / "kb" / "global"
         kwargs["required_canonical"] = [
             canonical_dir / "truth-model.md",
@@ -149,7 +80,7 @@ class TestMissingCanonicalFilesSeverityFix:
         """VAL-TEL-003: Real errors still produce degraded status."""
         from memory_core.tools.memory_hook_core import build_context_package_core
 
-        kwargs = _make_minimal_kwargs(tmp_path)
+        kwargs = _make_minimal_kwargs(tmp_path, create_project_file=True)
         # Inject a real error via project_map validation
         kwargs["validate_project_map_fn"] = lambda: ["project map validation failed"]
 
@@ -164,7 +95,7 @@ class TestMissingCanonicalFilesSeverityFix:
         """Non-canonical missing paths should still trigger degraded status."""
         from memory_core.tools.memory_hook_core import build_context_package_core
 
-        kwargs = _make_minimal_kwargs(tmp_path)
+        kwargs = _make_minimal_kwargs(tmp_path, create_project_file=True)
         # Add a non-canonical missing file
         kwargs["required_canonical"] = [tmp_path / "some" / "other" / "file.md"]
 
@@ -179,7 +110,7 @@ class TestMissingCanonicalFilesSeverityFix:
         """VAL-CROSS-002: Payload schema retains all existing fields plus new ones."""
         from memory_core.tools.memory_hook_core import build_context_package_core
 
-        kwargs = _make_minimal_kwargs(tmp_path)
+        kwargs = _make_minimal_kwargs(tmp_path, create_project_file=True)
         result = build_context_package_core(**kwargs)
 
         # Verify all original fields are present (backward compatibility)
@@ -224,7 +155,7 @@ class TestMetricsIsolation:
         metrics_path = tmp_path / "test_artifacts" / "memory-hook" / "metrics.jsonl"
         assert not metrics_path.exists()
 
-        kwargs = _make_minimal_kwargs(tmp_path)
+        kwargs = _make_minimal_kwargs(tmp_path, create_project_file=True)
         build_context_package_core(**kwargs)
 
         # build_context_package_core should not create any metrics file
