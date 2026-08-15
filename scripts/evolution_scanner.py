@@ -551,8 +551,11 @@ def check_persistent_info_findings(
 
     关键约束：
     - 只打印提案到 stdout，绝不写入 .evolution/suppress.json
-    - 若 finding 已在 suppress.json 中，跳过（不重复提案）
-    - 仅处理 severity="info" 的 finding
+    - 若 finding 已在 suppress.json 中（且未过期），跳过（不重复提案）
+    - VAL-SUP-003: 已过期 suppress 条目不再抑制再提案
+    - 过滤口径：当前仅按 severity="info" 过滤，未限定为特定 rule_id
+      （规格 VAL-SUP-001 提及 CODE_HYGIENE_DUPLICATE_BLOCK，但为兼容性
+       与未来扩展性，保留 severity-only 口径；如需收窄可加 rule_id 过滤）
 
     Args:
         history_path: findings_over_time.json 路径
@@ -585,6 +588,11 @@ def check_persistent_info_findings(
                 finding_severity[key] = finding.get("severity", "")
 
     # 筛选：在所有 threshold 个快照中都出现，且 severity=info 的 finding
+    # 宽化决策：规格 VAL-SUP-001 只提及 CODE_HYGIENE_DUPLICATE_BLOCK，
+    # 但当前按 severity-only 过滤（不限制 rule_id），原因是：
+    # (a) info 级 finding 目前仅有 DUPLICATE_BLOCK，二者等价；
+    # (b) 未来新增 info 级规则时无需改 scanner，符合开闭原则。
+    # 若后续出现非预期的 info 规则误触发，可在此加 rule_id 白名单收窄。
     persistent_info_findings = [
         key for key, count in finding_counts.items()
         if count == threshold and finding_severity.get(key) == "info"
@@ -594,11 +602,14 @@ def check_persistent_info_findings(
         return []
 
     # 加载现有 suppressions，避免重复提案
+    # VAL-SUP-003: 过期条目不再永久静默同 finding 的再提案；
+    # 跳过已过期条目，使 finding 可重新获得提案机会。
     suppressions = load_suppressions(repo_root)
-    suppressed_keys = {
-        (s.get("rule_id", ""), s.get("location", ""))
-        for s in suppressions
-    }
+    suppressed_keys: set[tuple[str, str]] = set()
+    for s in suppressions:
+        if _is_suppression_expired(s):
+            continue
+        suppressed_keys.add((s.get("rule_id", ""), s.get("location", "")))
 
     # 生成提案（跳过已 suppress 的）
     proposals: list[dict[str, Any]] = []
@@ -741,7 +752,11 @@ def main() -> None:
     # Must come BEFORE P1-2/P2-A hard-exit checks so the marker is always written.
     write_heartbeat(repo_root, issues_created, len(all_findings))
     # P2 降噪：检测持续 info 级 finding，输出 suppress.json 提案（仅打印，不写盘）
-    check_persistent_info_findings(history_path, repo_root)
+    # 按 check_isolation 惯例加 try/except 守护，避免提案检查异常炸整个 tick
+    try:
+        check_persistent_info_findings(history_path, repo_root)
+    except Exception as e:
+        print(f"[evolution] Warning: check_persistent_info_findings failed: {e}", file=sys.stderr)
     check_isolation(all_findings, history_path, config["isolation_threshold"], config["failure_label"], config["dedup_label"])
     print(f"[evolution] Tick complete: {len(all_findings)} findings, {issues_created} issues created")
 

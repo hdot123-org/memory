@@ -318,3 +318,110 @@ def test_suppression_suggestion_empty_history(tmp_path):
         proposals = check_persistent_info_findings(history_path, repo_root)
 
     assert len(proposals) == 0
+
+
+def test_suppression_suggestion_003_intermittent_finding_no_proposal(tmp_path):
+    """VAL-SUP-002 补强：≥10 快照内间歇出现（非全连续）不触发提案。
+
+    即使总快照数 ≥10，若 finding 未在所有快照中出现（count < threshold），
+    则不应触发提案。
+    """
+    history_path = tmp_path / "findings_over_time.json"
+    repo_root = tmp_path
+
+    # 创建 15 个快照，但 finding 只在其中 8 个出现（间歇，非连续）
+    persistent_finding = {
+        "rule_id": "CODE_HYGIENE_DUPLICATE_BLOCK",
+        "severity": "info",
+        "category": "code_hygiene",
+        "description": "Duplicate block",
+        "location": "foo.py::L10-bar.py::L20",
+        "evidence": "similarity=0.95",
+    }
+
+    snapshots = []
+    for i in range(15):
+        # finding 出现在快照 0-7（共 8 个），不在 8-14
+        if i < 8:
+            snapshots.append({
+                "timestamp": f"2026-08-{15 + i:02d}T00:00:00+00:00",
+                "tick_id": f"2026081{i}-000000",
+                "findings": [persistent_finding],
+                "issues_created": 0,
+            })
+        else:
+            snapshots.append({
+                "timestamp": f"2026-08-{15 + i:02d}T00:00:00+00:00",
+                "tick_id": f"2026081{i}-000000",
+                "findings": [],
+                "issues_created": 0,
+            })
+
+    history_data = {"snapshots": snapshots, "resolved_findings": []}
+    history_path.write_text(json.dumps(history_data))
+
+    import io
+    captured = io.StringIO()
+    with patch("sys.stdout", captured):
+        proposals = check_persistent_info_findings(history_path, repo_root)
+
+    # 不应触发提案（只在 8/15 快照出现，未达 threshold=10）
+    assert len(proposals) == 0
+    stdout_text = captured.getvalue()
+    assert "suppress.json proposal" not in stdout_text
+
+
+def test_suppression_suggestion_004_expired_suppress_allows_reproposal(tmp_path):
+    """VAL-SUP-003：过期 suppress 条目不再永久静默同 finding 的再提案。
+
+    当 suppress.json 中的条目已过期（expires < today），即使 finding 曾匹配该条目，
+    仍应重新输出提案。
+    """
+    history_path = tmp_path / "findings_over_time.json"
+    repo_root = tmp_path
+
+    # 创建 .evolution/suppress.json，含一个已过期的条目
+    evolution_dir = tmp_path / ".evolution"
+    evolution_dir.mkdir()
+    suppress_path = evolution_dir / "suppress.json"
+
+    from datetime import timedelta
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    suppress_content = {
+        "suppressed": [
+            {
+                "rule_id": "CODE_HYGIENE_DUPLICATE_BLOCK",
+                "location": "foo.py::L10-bar.py::L20",
+                "expires": yesterday,  # 已过期
+            }
+        ]
+    }
+    suppress_path.write_text(json.dumps(suppress_content))
+
+    # 创建持续 info finding（在 10 个快照中全部出现）
+    persistent_finding = {
+        "rule_id": "CODE_HYGIENE_DUPLICATE_BLOCK",
+        "severity": "info",
+        "category": "code_hygiene",
+        "description": "Duplicate block",
+        "location": "foo.py::L10-bar.py::L20",
+        "evidence": "similarity=0.95",
+    }
+    history_data = _make_history(10, [[persistent_finding]])
+    history_path.write_text(json.dumps(history_data))
+
+    import io
+    captured = io.StringIO()
+    with patch("sys.stdout", captured):
+        proposals = check_persistent_info_findings(history_path, repo_root)
+
+    # 应触发提案（suppress 已过期，不再抑制）
+    assert len(proposals) == 1
+    proposal = proposals[0]
+    assert proposal["rule_id"] == "CODE_HYGIENE_DUPLICATE_BLOCK"
+    assert proposal["location"] == "foo.py::L10-bar.py::L20"
+    assert "expires" in proposal
+
+    stdout_text = captured.getvalue()
+    assert "suppress.json proposal" in stdout_text
+    assert "CODE_HYGIENE_DUPLICATE_BLOCK" in stdout_text
