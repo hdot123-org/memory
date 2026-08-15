@@ -21,9 +21,10 @@ from memory_core.tools.migrate_project_memory import (
 )
 from tests.migrate_helpers import (
     count_log_lines as _count_log_lines,
+)
+from tests.migrate_helpers import (
     create_memory_skeleton as _create_memory_skeleton,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. Idempotent: already at target → noop
