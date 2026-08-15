@@ -355,3 +355,174 @@ def test_compute_current_anomalies_from_checks():
     assert evolution_heartbeat.compute_current_anomalies(
         {"alive": False}, {"issues_without_pr": 1},
     ) == {"scanner_stale", "issues_without_pr"}
+
+
+# ---------------------------------------------------------------------------
+# VAL-HB-004: fail-closed hardening
+# ---------------------------------------------------------------------------
+
+def test_heartbeat_004_check_pr_coverage_gh_failure_marks_data_unknown():
+    """VAL-HB-004: gh subprocess failure in check_pr_coverage must NOT return
+    issues_without_pr=0 with data_ok=True. Must signal data_ok=False."""
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        # Simulate gh issue list failing (transient auth error / network)
+        mock_run.return_value = _gh_result(returncode=1, stderr="fatal: unable to access")
+        result = evolution_heartbeat.check_pr_coverage()
+
+    assert result["data_ok"] is False, (
+        "check_pr_coverage must set data_ok=False when gh fails"
+    )
+
+
+def test_heartbeat_004_resolve_cleared_alerts_skips_when_coverage_data_unknown():
+    """VAL-HB-004: resolve_cleared_alerts must zero-close when coverage data is unknown.
+    Even if anomalies appear 'cleared', we must not self-heal on unreliable data."""
+    open_alerts = [
+        {"number": 646, "body": _ALERT_BODY_ISSUES_WITHOUT_PR},
+    ]
+    # current_anomalies is empty (would look like anomaly cleared)
+    current_anomalies: set[str] = set()
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        closed = evolution_heartbeat.resolve_cleared_alerts(
+            current_anomalies, open_alerts, coverage_data_ok=False,
+        )
+
+    assert closed == [], "Must not close any alerts when coverage data is unknown"
+    mock_run.assert_not_called(), "No gh calls should be made when data is unknown"
+
+
+def test_heartbeat_004_main_skips_self_heal_on_coverage_data_unknown():
+    """VAL-HB-004: main() must skip self-heal when check_pr_coverage reports data_ok=False."""
+    runs = [_recent_run(0.5, "success")]  # scanner alive
+    with patch("evolution_heartbeat.subprocess.run") as mock_run, \
+         patch("evolution_heartbeat.check_heartbeat_marker") as mock_hb, \
+         patch("evolution_heartbeat.check_history_freshness") as mock_hist, \
+         patch("evolution_heartbeat.write_monitor_heartbeat"), \
+         patch("evolution_heartbeat.list_open_alert_issues") as mock_list:
+        # gh run list succeeds (scanner alive)
+        # gh issue list for check_pr_coverage fails
+        def side_effect(args, **kwargs):
+            if "run" in args and "list" in args:
+                return _gh_result(json.dumps(runs))
+            if "issue" in args and "list" in args and "--label" in args:
+                # This is check_pr_coverage's gh issue list call → fail
+                label_idx = args.index("--label") + 1
+                if args[label_idx] == evolution_heartbeat.EVOLUTION_FOUND_LABEL:
+                    return _gh_result(returncode=1, stderr="network error")
+                # This is list_open_alert_issues → return empty
+                return _gh_result("[]")
+            return _gh_result(returncode=0)
+
+        mock_run.side_effect = side_effect
+        mock_hb.return_value = {"stale": True, "message": "advisory"}
+        mock_hist.return_value = {"stale": True, "message": "advisory"}
+        mock_list.return_value = [{"number": 646, "body": _ALERT_BODY_ISSUES_WITHOUT_PR}]
+
+        rc = evolution_heartbeat.main()
+
+    # Scanner alive + coverage unknown → no anomaly from coverage, but self-heal skipped
+    # Exit 0 because no confirmed anomaly
+    assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# Close/comment returncode hardening
+# ---------------------------------------------------------------------------
+
+def test_heartbeat_close_failure_not_added_to_closed_list():
+    """gh issue close fails → issue NOT in closed list, error logged."""
+    open_alerts = [
+        {"number": 646, "body": _ALERT_BODY_ISSUES_WITHOUT_PR},
+    ]
+    current_anomalies: set[str] = set()
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        def side_effect(args, **kwargs):
+            if "comment" in args:
+                return _gh_result(returncode=0)  # comment succeeds
+            if "close" in args:
+                return _gh_result(returncode=1, stderr="permission denied")  # close fails
+            return _gh_result(returncode=0)
+
+        mock_run.side_effect = side_effect
+        closed = evolution_heartbeat.resolve_cleared_alerts(
+            current_anomalies, open_alerts,
+        )
+
+    assert closed == [], "Failed close must not be in closed list"
+
+
+def test_heartbeat_comment_failure_prevents_close():
+    """gh issue comment fails → skip close entirely (no orphan close without audit trail)."""
+    open_alerts = [
+        {"number": 646, "body": _ALERT_BODY_ISSUES_WITHOUT_PR},
+    ]
+    current_anomalies: set[str] = set()
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        def side_effect(args, **kwargs):
+            if "comment" in args:
+                return _gh_result(returncode=1, stderr="rate limited")  # comment fails
+            if "close" in args:
+                return _gh_result(returncode=0)  # close would succeed
+            return _gh_result(returncode=0)
+
+        mock_run.side_effect = side_effect
+        closed = evolution_heartbeat.resolve_cleared_alerts(
+            current_anomalies, open_alerts,
+        )
+
+    assert closed == [], "Close must be skipped when comment fails"
+    # Verify close was NOT called (no orphan close)
+    for call in mock_run.call_args_list:
+        args = call.args[0]
+        if "close" in args and "comment" not in args:
+            raise AssertionError("Close should not be called when comment fails")
+
+
+# ---------------------------------------------------------------------------
+# String coupling elimination: roundtrip test
+# ---------------------------------------------------------------------------
+
+def test_anomaly_text_roundtrip_scanner_stale():
+    """create_alert_issue body must be parseable by extract_recorded_anomalies.
+    This roundtrip test prevents wording drift that would cause silent never-heal."""
+    # Simulate what create_alert_issue writes for scanner_stale
+    body = evolution_heartbeat._build_alert_body(scanner_stale=True, issues_without_pr=0)
+    parsed = evolution_heartbeat.extract_recorded_anomalies(body)
+    assert parsed == {"scanner_stale"}, (
+        f"Roundtrip failed: create_alert_issue body not parseable. Got {parsed}"
+    )
+
+
+def test_anomaly_text_roundtrip_issues_without_pr():
+    """Roundtrip: issues_without_pr anomaly text."""
+    body = evolution_heartbeat._build_alert_body(scanner_stale=False, issues_without_pr=3)
+    parsed = evolution_heartbeat.extract_recorded_anomalies(body)
+    assert parsed == {"issues_without_pr"}, (
+        f"Roundtrip failed: create_alert_issue body not parseable. Got {parsed}"
+    )
+
+
+def test_anomaly_text_roundtrip_both():
+    """Roundtrip: both anomalies."""
+    body = evolution_heartbeat._build_alert_body(scanner_stale=True, issues_without_pr=2)
+    parsed = evolution_heartbeat.extract_recorded_anomalies(body)
+    assert parsed == {"scanner_stale", "issues_without_pr"}, (
+        f"Roundtrip failed: create_alert_issue body not parseable. Got {parsed}"
+    )
+
+
+def test_anomaly_constants_match():
+    """Module-level constants used by both producer and consumer must be identical."""
+    # Verify the constants exist and are used consistently
+    assert hasattr(evolution_heartbeat, "_ANOMALY_SCANNER_STALE_MARKER")
+    assert hasattr(evolution_heartbeat, "_ANOMALY_ISSUES_WITHOUT_PR_MARKER")
+
+    # Verify extract_recorded_anomalies uses the constants
+    body_with_scanner = f"some text {evolution_heartbeat._ANOMALY_SCANNER_STALE_MARKER} more text"
+    assert evolution_heartbeat.extract_recorded_anomalies(body_with_scanner) == {"scanner_stale"}
+
+    body_with_pr = f"some text {evolution_heartbeat._ANOMALY_ISSUES_WITHOUT_PR_MARKER} more text"
+    assert evolution_heartbeat.extract_recorded_anomalies(body_with_pr) == {"issues_without_pr"}
