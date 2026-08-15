@@ -21,116 +21,78 @@ GUARD_PATH = REPO_ROOT / "memory_core" / "tools" / "hook_runtime_guard.py"
 
 
 class _SigintRunnerMixin:
-    """Shared subprocess-SIGINT runner (INFRA-323 dedup).
+    """Shared subprocess-SIGINT runner and tests (#697, #699 dedup).
 
-    TestSessionEndLoggerSigint.test_no_traceback_on_sigint and
-    TestGatewaySigint.test_no_traceback_on_sigint carried a byte-for-byte
-    identical spawn/sleep/SIGINT/communicate body (92% AST similarity per
-    evolution scanner, 24-25 lines / 100 tokens each). Consolidated into
-    this mixin; each subclass still supplies its own subprocess args/cwd
-    and both public test names/assertions are unchanged.
+    Subclasses set SIGINT_ARGS and SIGINT_CWD. The mixin provides
+    test_sigint_exits_zero and test_no_traceback_on_sigint, eliminating
+    the duplicate test methods that had 86-87% AST similarity.
+    Test names and assertion semantics are preserved.
     """
 
-    def _spawn_and_sigint(
-        self, args: list, cwd: str | None = None
-    ) -> tuple:
-        """Spawn args with MEMORY_HOOK_FORCE=1, SIGINT after boot, return (returncode, stdout, stderr)."""
+    SIGINT_ARGS: list = []
+    SIGINT_CWD: str | None = None
+
+    def _spawn_and_sigint(self) -> tuple:
+        """Spawn SIGINT_ARGS with MEMORY_HOOK_FORCE=1, SIGINT after boot, return (returncode, stdout, stderr)."""
         proc = subprocess.Popen(
-            args,
+            self.SIGINT_ARGS,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
-            cwd=cwd,
+            cwd=self.SIGINT_CWD,
         )
         time.sleep(1)  # Wait for process to start and enter main()
         proc.send_signal(signal.SIGINT)
         stdout, stderr = proc.communicate(timeout=5)
         return proc.returncode, stdout, stderr
 
-
-class TestSessionEndLoggerSigint(_SigintRunnerMixin):
-    """VAL-SIGINT-001: session_end_logger catches SIGINT during work phase."""
-
     def test_sigint_exits_zero(self):
-        """Send SIGINT to running session_end_logger, assert exit code 0."""
-        returncode, _stdout, stderr = self._spawn_and_sigint(
-            [
-                sys.executable,
-                "-m",
-                "memory_core.tools.session_end_logger",
-                "--session-id",
-                "test-sigint-001",
-                "--session-dir",
-                "/tmp/nonexistent-session-dir-sigint",
-                "--project-root",
-                "/tmp",
-            ]
-        )
+        """Send SIGINT to running process, assert exit code 0."""
+        returncode, _stdout, stderr = self._spawn_and_sigint()
         assert returncode == 0, (
             f"Expected exit 0, got {returncode}\nstderr: {stderr.decode()}"
         )
 
     def test_no_traceback_on_sigint(self):
-        """VAL-SIGINT-004: No traceback in stderr on SIGINT."""
-        _returncode, _stdout, stderr = self._spawn_and_sigint(
-            [
-                sys.executable,
-                "-m",
-                "memory_core.tools.session_end_logger",
-                "--session-id",
-                "test-sigint-004",
-                "--session-dir",
-                "/tmp/nonexistent-session-dir-sigint",
-                "--project-root",
-                "/tmp",
-            ]
-        )
+        """No traceback in stderr on SIGINT."""
+        _returncode, _stdout, stderr = self._spawn_and_sigint()
         stderr_text = stderr.decode()
         assert "Traceback" not in stderr_text, (
             f"Traceback found in stderr:\n{stderr_text}"
         )
+
+
+class TestSessionEndLoggerSigint(_SigintRunnerMixin):
+    """VAL-SIGINT-001: session_end_logger catches SIGINT during work phase."""
+
+    SIGINT_ARGS = [
+        sys.executable,
+        "-m",
+        "memory_core.tools.session_end_logger",
+        "--session-id",
+        "test-sigint-001",
+        "--session-dir",
+        "/tmp/nonexistent-session-dir-sigint",
+        "--project-root",
+        "/tmp",
+    ]
+    SIGINT_CWD = None
 
 
 class TestGatewaySigint(_SigintRunnerMixin):
     """VAL-SIGINT-002: memory_hook_gateway catches SIGINT during work phase."""
 
-    def test_sigint_exits_zero(self):
-        """Send SIGINT to running gateway, assert exit code 0."""
-        returncode, _stdout, stderr = self._spawn_and_sigint(
-            [
-                sys.executable,
-                "-m",
-                "memory_core.tools.memory_hook_gateway",
-                "--host",
-                "factory",
-                "--event",
-                "session-end",
-            ],
-            cwd="/tmp",
-        )
-        assert returncode == 0, (
-            f"Expected exit 0, got {returncode}\nstderr: {stderr.decode()}"
-        )
-
-    def test_no_traceback_on_sigint(self):
-        """VAL-SIGINT-004: No traceback in stderr on SIGINT for gateway."""
-        _returncode, _stdout, stderr = self._spawn_and_sigint(
-            [
-                sys.executable,
-                "-m",
-                "memory_core.tools.memory_hook_gateway",
-                "--host",
-                "factory",
-                "--event",
-                "session-end",
-            ],
-            cwd="/tmp",
-        )
-        stderr_text = stderr.decode()
-        assert "Traceback" not in stderr_text, (
-            f"Traceback found in stderr:\n{stderr_text}"
-        )
+    SIGINT_ARGS = [
+        sys.executable,
+        "-m",
+        "memory_core.tools.memory_hook_gateway",
+        "--host",
+        "factory",
+        "--event",
+        "session-end",
+    ]
+    SIGINT_CWD = "/tmp"
 
 
 class TestSignalHandlerPlacement:
