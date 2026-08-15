@@ -425,6 +425,18 @@ def test_heartbeat_004_main_skips_self_heal_on_coverage_data_unknown():
     # Exit 0 because no confirmed anomaly
     assert rc == 0
 
+    # Strengthened assertion: verify zero gh issue close/comment subprocess calls
+    # (not just "skip self-heal" but actively prove no gh close/comment was invoked)
+    close_or_comment_calls = [
+        c for c in mock_run.call_args_list
+        if ("comment" in c.args[0] or "close" in c.args[0])
+        and "run" not in c.args[0]  # exclude "gh run list"
+    ]
+    assert len(close_or_comment_calls) == 0, (
+        f"Zero gh close/comment calls expected when coverage data unknown, "
+        f"but found {len(close_or_comment_calls)}: {[c.args[0] for c in close_or_comment_calls]}"
+    )
+
 
 # ---------------------------------------------------------------------------
 # Close/comment returncode hardening
@@ -519,6 +531,7 @@ def test_anomaly_constants_match():
     # Verify the constants exist and are used consistently
     assert hasattr(evolution_heartbeat, "_ANOMALY_SCANNER_STALE_MARKER")
     assert hasattr(evolution_heartbeat, "_ANOMALY_ISSUES_WITHOUT_PR_MARKER")
+    assert hasattr(evolution_heartbeat, "_SELF_HEAL_MARKER")
 
     # Verify extract_recorded_anomalies uses the constants
     body_with_scanner = f"some text {evolution_heartbeat._ANOMALY_SCANNER_STALE_MARKER} more text"
@@ -526,3 +539,108 @@ def test_anomaly_constants_match():
 
     body_with_pr = f"some text {evolution_heartbeat._ANOMALY_ISSUES_WITHOUT_PR_MARKER} more text"
     assert evolution_heartbeat.extract_recorded_anomalies(body_with_pr) == {"issues_without_pr"}
+
+
+# ---------------------------------------------------------------------------
+# Repeat comment protection (duplicate prevention)
+# ---------------------------------------------------------------------------
+
+def test_issue_has_self_heal_comment_detects_existing():
+    """_issue_has_self_heal_comment: detects existing self-heal comment."""
+    comments_json = json.dumps({
+        "comments": [
+            {"body": "Some regular comment"},
+            {"body": "🩹 **自愈**：以下异常已消失，自动关闭此告警：\n\n- test"},
+        ]
+    })
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(stdout=comments_json)
+        result = evolution_heartbeat._issue_has_self_heal_comment(646)
+
+    assert result is True
+    # Verify gh was called correctly
+    mock_run.assert_called_once()
+    args = mock_run.call_args[0][0]
+    assert args[:3] == ["gh", "issue", "view"]
+    assert "646" in args
+
+
+def test_issue_has_self_heal_comment_no_match():
+    """_issue_has_self_heal_comment: no self-heal marker → False."""
+    comments_json = json.dumps({
+        "comments": [
+            {"body": "Some regular comment"},
+            {"body": "Another comment without the marker"},
+        ]
+    })
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(stdout=comments_json)
+        result = evolution_heartbeat._issue_has_self_heal_comment(646)
+
+    assert result is False
+
+
+def test_issue_has_self_heal_comment_gh_failure_fail_open():
+    """_issue_has_self_heal_comment: gh failure → fail-open (return False)."""
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(returncode=1, stderr="error")
+        result = evolution_heartbeat._issue_has_self_heal_comment(646)
+
+    assert result is False
+
+
+def test_resolve_cleared_alerts_skips_duplicate_comment():
+    """resolve_cleared_alerts: existing self-heal comment → skip duplicate, still try close."""
+    open_alerts = [
+        {"number": 646, "body": _ALERT_BODY_ISSUES_WITHOUT_PR},
+    ]
+    current_anomalies: set[str] = set()
+
+    # Simulate: gh issue view returns existing self-heal comment, close succeeds
+    def side_effect(args, **kwargs):
+        if "view" in args:  # gh issue view for checking comments
+            return _gh_result(stdout=json.dumps({
+                "comments": [{"body": "🩹 **自愈**：previous attempt"}]
+            }))
+        if "close" in args:
+            return _gh_result(returncode=0)  # close succeeds this time
+        return _gh_result(returncode=0)
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.side_effect = side_effect
+        closed = evolution_heartbeat.resolve_cleared_alerts(
+            current_anomalies, open_alerts,
+        )
+
+    assert closed == [646], "Should close after detecting existing comment"
+    # Verify no duplicate comment was posted
+    comment_calls = [c for c in mock_run.call_args_list if "comment" in c.args[0]]
+    assert len(comment_calls) == 0, "Should not post duplicate self-heal comment"
+
+
+def test_resolve_cleared_alerts_skips_duplicate_comment_close_fails():
+    """resolve_cleared_alerts: existing self-heal comment + close fails → not in closed list."""
+    open_alerts = [
+        {"number": 646, "body": _ALERT_BODY_ISSUES_WITHOUT_PR},
+    ]
+    current_anomalies: set[str] = set()
+
+    def side_effect(args, **kwargs):
+        if "view" in args:  # gh issue view for checking comments
+            return _gh_result(stdout=json.dumps({
+                "comments": [{"body": "🩹 **自愈**：previous attempt"}]
+            }))
+        if "close" in args:
+            return _gh_result(returncode=1, stderr="still failing")  # close fails again
+        return _gh_result(returncode=0)
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.side_effect = side_effect
+        closed = evolution_heartbeat.resolve_cleared_alerts(
+            current_anomalies, open_alerts,
+        )
+
+    assert closed == [], "Should not add to closed list when close fails"
+    # Verify no duplicate comment was posted
+    comment_calls = [c for c in mock_run.call_args_list if "comment" in c.args[0]]
+    assert len(comment_calls) == 0, "Should not post duplicate self-heal comment"

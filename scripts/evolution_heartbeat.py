@@ -32,6 +32,7 @@ SCANNER_LIVENESS_THRESHOLD_HOURS = 2  # Alert if scanner hasn't run in 2 hours
 # wording drift that would cause silent never-heal.
 _ANOMALY_SCANNER_STALE_MARKER = "evolution-scan workflow has not run recently"
 _ANOMALY_ISSUES_WITHOUT_PR_MARKER = "evolution-found issue(s) without associated PR"
+_SELF_HEAL_MARKER = "自愈"  # Marker in self-heal comments to detect duplicates
 
 
 def check_history_freshness(
@@ -370,6 +371,35 @@ def list_open_alert_issues() -> list[dict[str, Any]]:
         return []
 
 
+def _issue_has_self_heal_comment(issue_num: int) -> bool:
+    """Check if an issue already has a self-heal comment (duplicate prevention).
+
+    Queries existing comments via `gh issue view --json comments` and checks
+    if any comment body contains the self-heal marker. Used to avoid posting
+    duplicate self-heal comments when close keeps failing across ticks.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "gh", "issue", "view", str(issue_num),
+                "--json", "comments",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            # Fail-open: if we can't query comments, proceed with posting
+            # (better to post duplicate than miss a legitimate self-heal)
+            return False
+        data = json.loads(result.stdout) if result.stdout.strip() else {}
+        comments = data.get("comments", [])
+        return any(_SELF_HEAL_MARKER in c.get("body", "") for c in comments)
+    except (json.JSONDecodeError, OSError, subprocess.TimeoutExpired):
+        # Fail-open on any error
+        return False
+
+
 def resolve_cleared_alerts(
     current_anomalies: set[str],
     open_alerts: list[dict[str, Any]] | None = None,
@@ -427,6 +457,25 @@ def resolve_cleared_alerts(
                 "🩹 **自愈**：以下异常已消失，自动关闭此告警：\n\n"
                 + "\n".join(f"- {desc}" for desc in cleared_desc)
             )
+
+            # Check if a self-heal comment already exists (duplicate prevention)
+            # This handles the case where close failed in a previous tick but
+            # comment succeeded — avoid posting duplicate self-heal comments
+            if _issue_has_self_heal_comment(issue_num):
+                print(f"[heartbeat] Self-heal comment already exists on #{issue_num}, skipping duplicate comment")
+                # Still try to close in case previous close failed
+                close_result = subprocess.run(
+                    ["gh", "issue", "close", str(issue_num)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if close_result.returncode == 0:
+                    print(f"[heartbeat] Self-heal: closed alert #{issue_num} (cleared: {cleared_names})")
+                    closed.append(issue_num)
+                else:
+                    print(f"[heartbeat] Failed to close #{issue_num}: {close_result.stderr.strip()}")
+                continue
 
             # Add self-heal comment and check return code
             comment_result = subprocess.run(
