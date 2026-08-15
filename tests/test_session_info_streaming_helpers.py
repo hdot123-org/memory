@@ -14,6 +14,22 @@ from collections import Counter
 from datetime import datetime
 
 
+def assert_long_text_truncated(extract_fn, *, limit, input_len):
+    """Assert extract_fn truncates long text to `limit` chars plus '...'.
+
+    INFRA-317: extracted from 2 near-identical test_long_text_truncated
+    bodies (96% AST similarity, 7 lines / 51 tokens) in
+    TestExtractFirstUserPreview and TestExtractAssistantSummaryPreview.
+    Each caller keeps its own extraction target and truncation limit,
+    so behavior coverage is unchanged.
+    """
+    long_text = "A" * input_len
+    msg = {"content": [{"type": "text", "text": long_text}]}
+    result = extract_fn(msg)
+    assert len(result) == limit + 3  # limit + "..."
+    assert result.endswith("...")
+
+
 class TestParseJsonlTimestamp:
     """Tests for _parse_jsonl_timestamp helper."""
 
@@ -79,11 +95,9 @@ class TestExtractFirstUserPreview:
         """Should truncate long text to 200 chars + '...'."""
         from memory_core.tools.session_end_logger import _extract_first_user_preview
 
-        long_text = "A" * 250
-        msg = {"content": [{"type": "text", "text": long_text}]}
-        result = _extract_first_user_preview(msg)
-        assert len(result) == 203  # 200 + "..."
-        assert result.endswith("...")
+        assert_long_text_truncated(
+            _extract_first_user_preview, limit=200, input_len=250
+        )
 
     def test_system_reminder_stripped(self):
         """Should strip system-reminder from text."""
@@ -144,11 +158,9 @@ class TestExtractAssistantSummaryPreview:
         """Should truncate long text to 300 chars + '...'."""
         from memory_core.tools.session_end_logger import _extract_assistant_summary_preview
 
-        long_text = "B" * 350
-        msg = {"content": [{"type": "text", "text": long_text}]}
-        result = _extract_assistant_summary_preview(msg)
-        assert len(result) == 303  # 300 + "..."
-        assert result.endswith("...")
+        assert_long_text_truncated(
+            _extract_assistant_summary_preview, limit=300, input_len=350
+        )
 
     def test_empty_content(self):
         """Should return empty string for empty content."""

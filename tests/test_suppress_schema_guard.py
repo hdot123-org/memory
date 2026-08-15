@@ -313,6 +313,54 @@ def test_schema_guard_negative_entry_not_dict(tmp_path: Path) -> None:
         _validate_suppress_json_raw(suppress_path)
 
 
+@pytest.mark.parametrize(
+    "bad_entry, match_pattern",
+    [
+        pytest.param(
+            {"location": "file.py", "expires": "2030-01-01"},
+            "must contain 'rule_id' key",
+            id="missing-rule_id",
+        ),
+        pytest.param(
+            {"rule_id": "R001", "expires": "2030-01-01"},
+            "must contain 'location' key",
+            id="missing-location",
+        ),
+    ],
+)
+def test_schema_guard_negative_entry_missing_required_keys(
+    tmp_path: Path, bad_entry: dict, match_pattern: str
+) -> None:
+    """Negative proof: _validate_suppress_json_raw rejects entries missing rule_id or location.
+
+    Proves the key-existence assertions (PR #688) are not vacuous —
+    each missing-key case triggers a hard AssertionError.
+    """
+    suppress_path = tmp_path / "suppress.json"
+    suppress_path.write_text(
+        json.dumps({"suppressed": [bad_entry]}), encoding="utf-8"
+    )
+
+    with pytest.raises(AssertionError, match=match_pattern):
+        _validate_suppress_json_raw(suppress_path)
+
+
+def test_schema_guard_negative_entry_non_iso_expires(tmp_path: Path) -> None:
+    """Negative proof: _validate_suppress_json_raw rejects entries with non-ISO expires.
+
+    The expires check uses pytest.fail (not AssertionError), so this is a
+    separate test to keep the parametrize above clean and type-consistent.
+    """
+    bad_entry = {"rule_id": "R001", "location": "file.py", "expires": "not-a-date"}
+    suppress_path = tmp_path / "suppress.json"
+    suppress_path.write_text(
+        json.dumps({"suppressed": [bad_entry]}), encoding="utf-8"
+    )
+
+    with pytest.raises(pytest.fail.Exception, match="invalid expires format"):
+        _validate_suppress_json_raw(suppress_path)
+
+
 # ---------------------------------------------------------------------------
 # Integration test: apply_suppressions with mixed entries
 # ---------------------------------------------------------------------------
