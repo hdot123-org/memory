@@ -148,16 +148,16 @@ class TestVALCLOSE022:
     """Malformed linkback treated as no valid ID -> backward compat close."""
 
     def test_no_number_part(self):
-        """VAL-CLOSE-022: <!-- linear-linkback INFRA- --> treated as no valid ID."""
+        """VAL-CLOSE-022: <!-- linear-linkback INFRA- --> has marker, no extractable ID -> fail-closed."""
         issue_body = "Some text\n<!-- linear-linkback INFRA- -->\nMore text"
         result = _verify_fix_merged_via_linear(issue_body)
-        assert result is True  # backward compat
+        assert result is False  # P0-1: marker present but no ID -> fail-closed
 
     def test_non_numeric_id(self):
-        """VAL-CLOSE-022: <!-- linear-linkback INFRA-abc --> treated as no valid ID."""
+        """VAL-CLOSE-022: <!-- linear-linkback INFRA-abc --> has marker, no extractable ID -> fail-closed."""
         issue_body = "<!-- linear-linkback INFRA-abc -->"
         result = _verify_fix_merged_via_linear(issue_body)
-        assert result is True  # backward compat
+        assert result is False  # P0-1: marker present but no ID -> fail-closed
 
     def test_extra_whitespace_variations(self):
         """VAL-CLOSE-022: Extra whitespace but valid INFRA-42 still extracted."""
@@ -209,10 +209,10 @@ class TestVALCLOSE024:
     """Truncated HTML comment treated as no valid ID."""
 
     def test_truncated_without_closing(self):
-        """VAL-CLOSE-024: <!-- linear-linkback INFRA-123 (no closing -->) treated as no valid ID."""
+        """VAL-CLOSE-024: <!-- linear-linkback INFRA-123 (no closing -->) has marker, no extractable ID -> fail-closed."""
         issue_body = "text\n<!-- linear-linkback INFRA-123\nmore text"
         result = _verify_fix_merged_via_linear(issue_body)
-        assert result is True  # backward compat - no valid linkback found
+        assert result is False  # P0-1: marker present but no ID -> fail-closed
 
 
 # ---------------------------------------------------------------------------
@@ -1376,3 +1376,173 @@ class TestVALFAILOPEN007:
 
         assert any("fail-closed" in record.message for record in caplog.records)
         assert any(record.levelname == "WARNING" for record in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# VAL-CROSS-022/023/024/026: Two-tier linkback extraction + fail-closed narrowing
+# Regression fixtures from the #648 oscillation (25 false closures).
+# ---------------------------------------------------------------------------
+
+# Real accident text written by linear-code for #648 (anchor + href format).
+# This is the exact format that caused 25 false closures because the old regex
+# only matched the ID inside the HTML comment, but linear-code writes a bare
+# marker plus an external anchor.
+_REAL_ACCIDENT_LINKBACK_COMMENT = (
+    "<!-- linear-linkback -->\n"
+    '<p><a href="https://linear.app/jtoom/issue/INFRA-292">INFRA-292</a></p>'
+)
+
+
+class TestVALCROSS022:
+    """VAL-CROSS-022: Anchor-format linkback extracted + Linear started -> block close."""
+
+    @patch("evolution_utils.subprocess.run")
+    def test_anchor_format_started_state_blocks_close(self, mock_subprocess):
+        """Real accident format in comments + Linear started -> no gh issue close."""
+        # Issue body has no linkback; comments have the real accident format
+        issue_body = "**Rule ID**: RULE_001\n**Location**: file.py"
+
+        # Mock gh issue view comments -> real accident linkback
+        def subprocess_side_effect(*args, **kwargs):
+            cmd = args[0]
+            if cmd[0] == "gh" and "view" in cmd and "comments" in " ".join(cmd):
+                return MagicMock(
+                    returncode=0,
+                    stdout=_REAL_ACCIDENT_LINKBACK_COMMENT,
+                    stderr=""
+                )
+            # gh issue list
+            return MagicMock(returncode=0, stdout="[]", stderr="")
+
+        mock_subprocess.side_effect = subprocess_side_effect
+
+        # Linear API returns "started" state (non-terminal)
+        response = _linear_issue_response("INFRA-292", [
+            _github_attachment(523)
+        ], state_type="started")
+        with patch("evolution_utils.urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__ = MagicMock(
+                return_value=_mock_urlopen(response)
+            )
+            mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+            result = _verify_fix_merged_via_linear(issue_body, issue_number=42)
+
+        # Non-terminal state must block close (core churn-prevention gate)
+        assert result is False
+
+    @patch("evolution_utils.subprocess.run")
+    def test_anchor_format_id_extracted(self, mock_subprocess):
+        """Two-tier extraction: anchor text format correctly extracts INFRA-292."""
+        from evolution_utils import _extract_linear_linkback
+
+        result = _extract_linear_linkback("", _REAL_ACCIDENT_LINKBACK_COMMENT)
+        assert result == "INFRA-292"
+
+    @patch("evolution_utils.subprocess.run")
+    def test_href_format_id_extracted(self, mock_subprocess):
+        """Two-tier extraction: href format correctly extracts INFRA-292."""
+        from evolution_utils import _extract_linear_linkback
+
+        # Must have linear-linkback marker to trigger tier 2
+        href_with_marker = (
+            "<!-- linear-linkback -->\n"
+            '<a href="https://linear.app/jtoom/issue/INFRA-292">link</a>'
+        )
+        result = _extract_linear_linkback("", href_with_marker)
+        assert result == "INFRA-292"
+
+
+class TestVALCROSS023:
+    """VAL-CROSS-023: Anchor-format linkback + completed state + merged PR -> allow close."""
+
+    @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
+    @patch("evolution_utils.subprocess.run")
+    @patch("evolution_utils.urllib.request.urlopen")
+    def test_anchor_format_completed_merged_allows_close(self, mock_urlopen, mock_subprocess):
+        """Real accident format + completed + merged PR -> returns True (allow close)."""
+        issue_body = "**Rule ID**: RULE_001\n**Location**: file.py"
+
+        # Mock comment fetch returns real accident linkback
+        def subprocess_side_effect(*args, **kwargs):
+            cmd = args[0]
+            # gh issue view (comment fetch) — has "issue" subcommand
+            if cmd[0] == "gh" and "issue" in cmd and "view" in cmd:
+                return MagicMock(
+                    returncode=0,
+                    stdout=_REAL_ACCIDENT_LINKBACK_COMMENT,
+                    stderr=""
+                )
+            # gh pr view (merged PR check) — has "pr" subcommand
+            if cmd[0] == "gh" and "pr" in cmd:
+                return _mock_gh_pr_merged(523)
+            return MagicMock(returncode=0, stdout="[]", stderr="")
+
+        mock_subprocess.side_effect = subprocess_side_effect
+
+        # Linear API returns completed state with merged PR
+        response = _linear_issue_response("INFRA-292", [
+            _github_attachment(523)
+        ], state_type="completed")
+        mock_urlopen.return_value.__enter__ = MagicMock(
+            return_value=_mock_urlopen(response)
+        )
+        mock_urlopen.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = _verify_fix_merged_via_linear(issue_body, issue_number=42)
+        assert result is True  # Terminal state + merged PR -> allow close
+
+
+class TestVALCROSS024:
+    """VAL-CROSS-024: No linear traces at all -> backward-compat allow close."""
+
+    def test_no_linear_traces_allows_close(self):
+        """Completely no linear-linkback marker or traces -> returns True (backward compat)."""
+        issue_body = "**Rule ID**: RULE_001\n**Location**: file.py\n**Category**: code_hygiene"
+        result = _verify_fix_merged_via_linear(issue_body)
+        assert result is True  # Environmental finding, no Linear association
+
+    def test_no_linear_traces_no_api_call(self):
+        """No linear traces -> Linear API NOT called."""
+        issue_body = "Just a regular issue body with no Linear references"
+        with patch("evolution_utils.urllib.request.urlopen") as mock_urlopen:
+            result = _verify_fix_merged_via_linear(issue_body)
+            assert result is True
+            assert not mock_urlopen.called
+
+
+class TestVALCROSS026:
+    """VAL-CROSS-026: Marker present but ID not extractable -> fail-closed (block close)."""
+
+    def test_marker_without_id_fail_closed(self):
+        """linear-linkback marker present but no extractable ID -> fail-closed."""
+        # Bare marker with no ID anywhere (malformed linkback)
+        issue_body = (
+            "**Rule ID**: RULE_001\n"
+            "<!-- linear-linkback -->\n"
+            "Some text with no INFRA-xxx ID"
+        )
+        result = _verify_fix_merged_via_linear(issue_body)
+        assert result is False  # P0-1: marker present -> fail-closed
+
+    def test_marker_in_comments_without_id_fail_closed(self):
+        """Marker in comments but no extractable ID -> fail-closed."""
+        issue_body = "**Rule ID**: RULE_001\n**Location**: file.py"
+        # Comments have marker but no extractable ID
+        comments_text = "<!-- linear-linkback -->\nSome unrelated text"
+
+        with patch("evolution_utils.subprocess.run") as mock_subprocess:
+            mock_subprocess.return_value = MagicMock(
+                returncode=0, stdout=comments_text, stderr=""
+            )
+            result = _verify_fix_merged_via_linear(issue_body, issue_number=42)
+            assert result is False  # P0-1: marker in comments but no ID -> fail-closed
+
+    def test_marker_with_broken_href_fail_closed(self):
+        """Marker present + broken href (no valid INFRA-xxx) -> fail-closed."""
+        issue_body = (
+            "<!-- linear-linkback -->\n"
+            '<a href="https://linear.app/jtoom/issue/invalid">broken</a>'
+        )
+        result = _verify_fix_merged_via_linear(issue_body)
+        assert result is False  # Marker present, tier 2 fails -> fail-closed

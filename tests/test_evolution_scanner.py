@@ -8299,3 +8299,140 @@ def test_run_audit_tool_timeout_with_various_values():
         run_audit_tool(tool_large_timeout)
         call_kwargs = mock_run.call_args[1]
         assert call_kwargs.get("timeout") == 3600
+
+
+# ============================================================================
+# VAL-CLOSE-027: Partial-output protection (P0-A)
+# ============================================================================
+
+
+def test_val_close_027_findings_drop_skips_auto_close(tmp_path):
+    """VAL-CLOSE-027: Findings count < 80% of baseline median -> skip auto-close.
+
+    When audit tools succeed but emit significantly fewer findings than recent
+    history, the current tick may be a "shrunk output". Closing issues based on
+    it would be premature (root cause of #648 oscillation).
+    """
+    history_path = tmp_path / "findings_over_time.json"
+
+    # Create history with 5 snapshots at ~104 findings + current tick at 78
+    # (current tick is already in history as the last snapshot per CRITICAL INVARIANT)
+    history_data = {
+        "snapshots": [
+            {
+                "timestamp": f"2026-01-0{i}T00:00:00Z",
+                "tick_id": f"t{i}",
+                "findings": [{"rule_id": f"R{j}", "location": "f.md"} for j in range(104)],
+                "issues_created": 0,
+            }
+            for i in range(1, 6)
+        ] + [
+            {
+                "timestamp": "2026-01-06T00:00:00Z",
+                "tick_id": "t6",
+                "findings": [{"rule_id": f"R{j}", "location": "f.md"} for j in range(78)],
+                "issues_created": 0,
+            }
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    # Current findings: 78 (matches the last snapshot)
+    findings = [MagicMock(rule_id=f"R{i}", location="f.md") for i in range(78)]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_issues = [{"number": 101, "body": "**Rule ID**: R999\n**Location**: absent.md"}]
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues))
+
+        auto_close_resolved(findings, "evolution-found", history_path=history_path)
+
+        # No gh issue list or close should have been called (entire tick skipped)
+        assert mock_run.call_count == 0, "Partial-output protection must skip all subprocess calls"
+
+
+def test_val_close_027_normal_findings_count_proceeds(tmp_path):
+    """VAL-CLOSE-027: Findings count >= 80% of baseline -> normal auto-close logic.
+
+    When findings count is stable (within 20% of baseline), auto-close proceeds normally.
+    """
+    history_path = tmp_path / "findings_over_time.json"
+
+    # Create history with 5 snapshots at ~104 findings + current tick at 100
+    history_data = {
+        "snapshots": [
+            {
+                "timestamp": f"2026-01-0{i}T00:00:00Z",
+                "tick_id": f"t{i}",
+                "findings": [{"rule_id": f"R{j}", "location": "f.md"} for j in range(104)],
+                "issues_created": 0,
+            }
+            for i in range(1, 6)
+        ] + [
+            {
+                "timestamp": "2026-01-06T00:00:00Z",
+                "tick_id": "t6",
+                "findings": [{"rule_id": f"R{j}", "location": "f.md"} for j in range(100)],
+                "issues_created": 0,
+            }
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    # Current findings: 100 (within 80% of baseline 104)
+    findings = [MagicMock(rule_id=f"R{i}", location="f.md") for i in range(100)]
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        # Mock gh issue list returning one open issue that's absent from current findings
+        mock_issues = [{"number": 101, "body": "**Rule ID**: R999\n**Location**: absent.md"}]
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues))
+
+        # Mock _verify_fix_merged_via_linear to allow close (no linkback = backward compat)
+        with patch("evolution_utils._verify_fix_merged_via_linear", return_value=True):
+            auto_close_resolved(findings, "evolution-found", history_path=history_path)
+
+        # gh issue list should have been called (partial-output check passed)
+        assert mock_run.call_count > 0, "Normal findings count must proceed to gh issue list"
+
+        # Verify gh issue list was called
+        list_calls = [
+            c for c in mock_run.call_args_list
+            if len(c[0][0]) > 2 and c[0][0][1] == "issue" and c[0][0][2] == "list"
+        ]
+        assert len(list_calls) > 0, "gh issue list must be called when findings count is normal"
+
+
+def test_val_close_027_insufficient_history_no_protection(tmp_path):
+    """VAL-CLOSE-027: < 2 snapshots -> partial-output protection disabled (backward compat).
+
+    With insufficient history, protection is not enabled to avoid blocking the first tick.
+    """
+    history_path = tmp_path / "findings_over_time.json"
+
+    # Only 1 snapshot (insufficient for protection)
+    history_data = {
+        "snapshots": [
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "tick_id": "t1",
+                "findings": [{"rule_id": "R1", "location": "f.md"}],
+                "issues_created": 0,
+            }
+        ],
+        "resolved_findings": []
+    }
+    history_path.write_text(json.dumps(history_data))
+
+    # Current findings: 0 (would trigger protection if enabled)
+    findings = []
+
+    with patch("evolution_utils.subprocess.run") as mock_run:
+        mock_issues = [{"number": 101, "body": "**Rule ID**: R1\n**Location**: f.md"}]
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues))
+
+        with patch("evolution_utils._verify_fix_merged_via_linear", return_value=True):
+            auto_close_resolved(findings, "evolution-found", history_path=history_path)
+
+        # gh issue list should be called (protection disabled due to insufficient history)
+        assert mock_run.call_count > 0, "Insufficient history must not enable protection"

@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import statistics
 import subprocess
 import sys
 import urllib.error
@@ -252,23 +253,58 @@ def _count_consecutive_absences(rule_id: str, location: str, history_path: Path)
 logger = logging.getLogger(__name__)
 
 
+def _has_linear_linkback_marker(issue_body: str, issue_comments: str = "") -> bool:
+    """Check if text contains a linear-linkback marker (any format).
+
+    Used to distinguish "no Linear association at all" (environmental finding,
+    backward-compat allow close) from "marker present but ID unextractable"
+    (fail-closed to prevent unverified close).
+    """
+    return "linear-linkback" in issue_body or "linear-linkback" in issue_comments
+
+
 def _extract_linear_linkback(issue_body: str, issue_comments: str = "") -> str | None:
     """Extract INFRA-xxx ID from linear-linkback in issue body or comments.
 
-    Linear native GitHub integration writes the linkback as an HTML comment,
-    but it appears in issue COMMENTS, not the body. This function searches
-    both sources.
+    Two-tier extraction:
+    - Tier 1: inline HTML comment format ``<!-- linear-linkback INFRA-xxx -->``
+      (backward compat with existing issues).
+    - Tier 2: only when ``linear-linkback`` marker string is present in text:
+      - href format: ``linear.app/.../issue/INFRA-xxx``
+      - anchor text format: ``<a ...>INFRA-xxx</a>``
+      This handles the format written by linear-code (bare marker + external
+      anchor), which caused 25 false closures in the #648 oscillation.
 
     Returns:
-        The INFRA-xxx identifier, or None if not found.
+        The INFRA-xxx identifier, or None if not found.  Callers must check
+        ``_has_linear_linkback_marker`` to distinguish "no Linear association"
+        (allow close) from "marker present but extraction failed" (fail-closed).
     """
+    combined = issue_body + "\n" + issue_comments
+
+    # Tier 1: inline HTML comment format (backward compat)
     pattern = r'<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->'
-    body_match = re.search(pattern, issue_body)
-    if body_match:
-        return body_match.group(1)
-    comment_match = re.search(pattern, issue_comments)
-    if comment_match:
-        return comment_match.group(1)
+    match = re.search(pattern, combined)
+    if match:
+        return match.group(1)
+
+    # Tier 2: only attempt when marker is present (avoids false positives
+    # on environmental findings with no Linear association)
+    if "linear-linkback" not in combined:
+        return None
+
+    # Tier 2a: extract from href (linear.app/OWNER/issue/INFRA-xxx)
+    href_pattern = r'linear\.app/[^/\s"]+/issue/([A-Z]+-\d+)'
+    match = re.search(href_pattern, combined)
+    if match:
+        return match.group(1)
+
+    # Tier 2b: extract from anchor text (<a ...>INFRA-xxx</a>)
+    anchor_pattern = r'<a[^>]*>\s*([A-Z]+-\d+)\s*</a>'
+    match = re.search(anchor_pattern, combined)
+    if match:
+        return match.group(1)
+
     return None
 
 
@@ -328,7 +364,17 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
 
     linear_id = _extract_linear_linkback(issue_body, issue_comments)
     if not linear_id:
-        # No linkback found — environmental finding, allow close (backward compat)
+        # P0-1 fail-closed narrowing: if marker is present but extraction
+        # failed, the issue IS Linear-linked — closing without verification
+        # would risk the reopen churn observed in #648.
+        if _has_linear_linkback_marker(issue_body, issue_comments):
+            logger.warning(
+                "linear-linkback marker found but ID could not be extracted — "
+                "fail-closed: blocking close to prevent unverified state"
+            )
+            return False
+        # No linkback marker at all — environmental finding, allow close
+        # (backward compat for findings with no Linear association)
         logger.debug("No linear-linkback found in issue body or comments")
         return True
 
@@ -516,6 +562,25 @@ def auto_close_resolved(findings: list[Any], dedup_label: str, failed_categories
     """
     # Build set of current finding keys
     current_keys = {(f.rule_id, f.location) for f in findings}
+
+    # P0-A: Partial-output protection — when audit tools succeed but emit
+    # significantly fewer findings than recent history, the current tick may
+    # be a "shrunk output".  Closing issues based on it would be premature.
+    # Skip the entire auto-close tick if the drop exceeds 20%.
+    if history_path is not None:
+        _po_data = load_history(history_path)
+        if _po_data is not None:
+            _po_snapshots = _po_data.get("snapshots", [])
+            if len(_po_snapshots) >= 2:
+                _po_counts = [len(s.get("findings", [])) for s in _po_snapshots[-5:]]
+                _po_baseline = statistics.median(_po_counts)
+                if _po_baseline > 0 and len(findings) < _po_baseline * 0.8:
+                    print(
+                        f"[evolution] Skip auto-close: findings count ({len(findings)}) "
+                        f"is below 80% of recent baseline median ({_po_baseline:.0f}). "
+                        f"Possible partial-output from audit tools."
+                    )
+                    return
 
     # Fetch all open evolution-found issues
     try:
