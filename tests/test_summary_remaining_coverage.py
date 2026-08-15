@@ -741,6 +741,22 @@ class TestExtractTranscriptSummaryLargeFile:
 # ---------------------------------------------------------------------------
 
 
+def _write_jsonl_with_invalid_line(tmp_path: Path) -> Path:
+    """Write a JSONL file whose middle line is invalid JSON.
+
+    Shared factory for the ``test_json_decode_error_skipped`` pair
+    (CODE_HYGIENE_DUPLICATE_BLOCK fix, INFRA-331).
+    """
+    jsonl_file = tmp_path / "test.jsonl"
+    jsonl_file.write_text(
+        '{"line": 1}\n'
+        'invalid json\n'
+        '{"line": 2}\n',
+        encoding="utf-8"
+    )
+    return jsonl_file
+
+
 class TestReadPartialJsonl:
     def test_dedup_when_overlap(self, tmp_path):
         """Deduplicate when first_n and last_n overlap."""
@@ -754,13 +770,7 @@ class TestReadPartialJsonl:
 
     def test_json_decode_error_skipped(self, tmp_path):
         """Invalid JSON lines are skipped."""
-        jsonl_file = tmp_path / "test.jsonl"
-        jsonl_file.write_text(
-            '{"line": 1}\n'
-            'invalid json\n'
-            '{"line": 2}\n',
-            encoding="utf-8"
-        )
+        jsonl_file = _write_jsonl_with_invalid_line(tmp_path)
         result = _read_partial_jsonl(jsonl_file, first_n=2, last_n=2)
         assert len(result) == 2
 
@@ -773,13 +783,7 @@ class TestReadPartialJsonl:
 class TestReadFullJsonl:
     def test_json_decode_error_skipped(self, tmp_path):
         """Invalid JSON lines are skipped in full read."""
-        jsonl_file = tmp_path / "test.jsonl"
-        jsonl_file.write_text(
-            '{"data": 1}\n'
-            'bad json\n'
-            '{"data": 2}\n',
-            encoding="utf-8"
-        )
+        jsonl_file = _write_jsonl_with_invalid_line(tmp_path)
         result = _read_full_jsonl(jsonl_file)
         assert len(result) == 2
 
