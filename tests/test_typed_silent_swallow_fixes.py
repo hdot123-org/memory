@@ -60,6 +60,21 @@ def _assert_binds_exception(
     )
 
 
+class _WarnsAndStderrMixin:
+    """参数化 mixin：except 分支应记录 warning 且写 stderr。
+
+    消除 7 处结构相同的 test_has_warning_and_stderr 方法定义
+    (CODE_HYGIENE_DUPLICATE_BLOCK, INFRA-335)。
+    """
+
+    PATH: str
+    WARN_NEEDLE: str
+    WARN_WINDOW: int = 400
+
+    def test_has_warning_and_stderr(self) -> None:
+        _assert_warning_and_stderr(self.PATH, self.WARN_NEEDLE, self.WARN_WINDOW)
+
+
 # ---------------------------------------------------------------------------
 # memory_hook_schema.py — audit log write OSError
 # ---------------------------------------------------------------------------
@@ -103,10 +118,11 @@ class TestMemoryHookSchemaAuditLog:
 # ---------------------------------------------------------------------------
 
 
-class TestGatewaySyncStatusWrite:
+class TestGatewaySyncStatusWrite(_WarnsAndStderrMixin):
     """memory_hook_gateway.py: sync status write OSError now warns."""
 
     PATH = "memory_core/tools/memory_hook_gateway.py"
+    WARN_NEEDLE = 'status_file.write_text(json.dumps(status'
 
     def test_binds_exception(self):
         _assert_binds_exception(
@@ -115,19 +131,17 @@ class TestGatewaySyncStatusWrite:
             "except OSError as exc",
         )
 
-    def test_has_warning_and_stderr(self):
-        _assert_warning_and_stderr(self.PATH, 'status_file.write_text(json.dumps(status', 400)
-
 
 # ---------------------------------------------------------------------------
 # memory_hook_gateway.py — payload parse (JSONDecodeError, ValueError)
 # ---------------------------------------------------------------------------
 
 
-class TestGatewayPayloadParse:
+class TestGatewayPayloadParse(_WarnsAndStderrMixin):
     """memory_hook_gateway.py: payload parse except now warns."""
 
     PATH = "memory_core/tools/memory_hook_gateway.py"
+    WARN_NEEDLE = "payload_dict = json.loads(raw_payload)"
 
     def test_binds_exception(self):
         _assert_binds_exception(
@@ -136,26 +150,22 @@ class TestGatewayPayloadParse:
             "except (json.JSONDecodeError, ValueError) as exc",
         )
 
-    def test_has_warning_and_stderr(self):
-        _assert_warning_and_stderr(self.PATH, "payload_dict = json.loads(raw_payload)", 400)
-
 
 # ---------------------------------------------------------------------------
 # session_end_logger.py — stdin payload read (JSONDecodeError, OSError)
 # ---------------------------------------------------------------------------
 
 
-class TestSessionEndLoggerStdinPayload:
+class TestSessionEndLoggerStdinPayload(_WarnsAndStderrMixin):
     """session_end_logger.py: stdin payload read except now warns."""
 
     PATH = "memory_core/tools/session_end_logger.py"
+    WARN_NEEDLE = "except (json.JSONDecodeError, OSError) as exc"
+    WARN_WINDOW = 200
 
     def test_binds_exception(self):
         content = _read_source(self.PATH)
         assert "except (json.JSONDecodeError, OSError) as exc" in content
-
-    def test_has_warning_and_stderr(self):
-        _assert_warning_and_stderr(self.PATH, "except (json.JSONDecodeError, OSError) as exc", 200)
 
 
 # ---------------------------------------------------------------------------
@@ -163,17 +173,16 @@ class TestSessionEndLoggerStdinPayload:
 # ---------------------------------------------------------------------------
 
 
-class TestTelemetryPathSanitization:
+class TestTelemetryPathSanitization(_WarnsAndStderrMixin):
     """telemetry_bridge.py: path sanitization except now warns (privacy)."""
 
     PATH = "memory_core/tools/telemetry_bridge.py"
+    WARN_NEEDLE = "except (OSError, ValueError) as exc"
+    WARN_WINDOW = 250
 
     def test_binds_exception(self):
         content = _read_source(self.PATH)
         assert "except (OSError, ValueError) as exc" in content
-
-    def test_has_warning_and_stderr(self):
-        _assert_warning_and_stderr(self.PATH, "except (OSError, ValueError) as exc", 250)
 
     def test_mentions_sanitization(self):
         """Warning should mention path sanitization (privacy concern)."""
@@ -190,17 +199,15 @@ class TestTelemetryPathSanitization:
 # ---------------------------------------------------------------------------
 
 
-class TestHookEventStatsLifecycleIndex:
+class TestHookEventStatsLifecycleIndex(_WarnsAndStderrMixin):
     """hook_event_stats.py: lifecycle index read except now warns."""
 
     PATH = "memory_core/tools/hook_event_stats.py"
+    WARN_NEEDLE = "except (json.JSONDecodeError, OSError) as exc"
 
     def test_binds_exception(self):
         content = _read_source(self.PATH)
         assert "except (json.JSONDecodeError, OSError) as exc" in content
-
-    def test_has_warning_and_stderr(self):
-        _assert_warning_and_stderr(self.PATH, "except (json.JSONDecodeError, OSError) as exc", 400)
 
 
 # ---------------------------------------------------------------------------
@@ -208,17 +215,15 @@ class TestHookEventStatsLifecycleIndex:
 # ---------------------------------------------------------------------------
 
 
-class TestDailySummaryLifecycleIndex:
+class TestDailySummaryLifecycleIndex(_WarnsAndStderrMixin):
     """daily_summary_generator.py: lifecycle index read except now warns."""
 
     PATH = "memory_core/tools/daily_summary_generator.py"
+    WARN_NEEDLE = "except (json.JSONDecodeError, OSError) as exc"
 
     def test_binds_exception(self):
         content = _read_source(self.PATH)
         assert "except (json.JSONDecodeError, OSError) as exc" in content
-
-    def test_has_warning_and_stderr(self):
-        _assert_warning_and_stderr(self.PATH, "except (json.JSONDecodeError, OSError) as exc", 400)
 
 
 # ---------------------------------------------------------------------------
@@ -226,17 +231,15 @@ class TestDailySummaryLifecycleIndex:
 # ---------------------------------------------------------------------------
 
 
-class TestErrorPatternDetectorGitRoot:
+class TestErrorPatternDetectorGitRoot(_WarnsAndStderrMixin):
     """error_pattern_detector.py: git root detection except now warns."""
 
     PATH = "memory_core/tools/error_pattern_detector.py"
+    WARN_NEEDLE = "except (subprocess.SubprocessError, FileNotFoundError) as exc"
 
     def test_binds_exception(self):
         content = _read_source(self.PATH)
         assert "except (subprocess.SubprocessError, FileNotFoundError) as exc" in content
-
-    def test_has_warning_and_stderr(self):
-        _assert_warning_and_stderr(self.PATH, "except (subprocess.SubprocessError, FileNotFoundError) as exc", 400)
 
 
 # ---------------------------------------------------------------------------
