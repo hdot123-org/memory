@@ -209,6 +209,42 @@ class TestCrossAreaAuditGate:
         # If absent, default is "true" per droid-action documentation
 
 
+class TestAutoMergeDispatchTokenGuard:
+    """回归防护：auto-merge.yml 的合并步骤禁止回退到 GITHUB_TOKEN。
+
+    根因（2026-08-15 两次事故，v0.29.0 / v0.30.0）：GitHub 的递归防护机制会
+    抑制由 GITHUB_TOKEN 触发的 push 事件，导致 release-please 监听的
+    push(paths: .release-please-manifest.json) 触发器失效，release PR
+    合并后 tag/Release 不创建，发版链路断裂，只能靠手动 workflow_dispatch
+    补救。修复方式是把 auto-merge 步骤的 GITHUB_TOKEN env 换成
+    DISPATCH_TOKEN（PAT，不受该抑制机制影响）。本测试防止该改动被静默回退。
+    """
+
+    @pytest.fixture
+    def auto_merge_step(self):
+        """Load auto-merge.yml and return the shared-workflows/auto-merge step."""
+        workflow_path = REPO_ROOT / ".github/workflows/auto-merge.yml"
+        data = yaml.safe_load(workflow_path.read_text())
+        steps = data["jobs"]["auto-merge"]["steps"]
+        step = next(
+            (s for s in steps if "shared-workflows/auto-merge" in s.get("uses", "")),
+            None,
+        )
+        assert step is not None, "shared-workflows/auto-merge step not found"
+        return step
+
+    def test_auto_merge_uses_dispatch_token(self, auto_merge_step):
+        """合并步骤的 GITHUB_TOKEN env 必须是 secrets.DISPATCH_TOKEN。"""
+        env = auto_merge_step.get("env", {})
+        assert "GITHUB_TOKEN" in env
+        assert env["GITHUB_TOKEN"] == "${{ secrets.DISPATCH_TOKEN }}"
+
+    def test_auto_merge_does_not_use_github_token_secret(self, auto_merge_step):
+        """明确防止回退：GITHUB_TOKEN env 的值不能等于 secrets.GITHUB_TOKEN。"""
+        env = auto_merge_step.get("env", {})
+        assert env.get("GITHUB_TOKEN") != "${{ secrets.GITHUB_TOKEN }}"
+
+
 class TestYAMLValidity:
     """Ensure all modified YAML files are valid."""
 
