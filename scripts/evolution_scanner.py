@@ -6,7 +6,7 @@ import shlex
 import subprocess
 import sys
 from dataclasses import asdict, dataclass, replace
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -535,6 +535,88 @@ def write_heartbeat(repo_root: Path, issues_created: int, findings_count: int) -
     os.replace(tmp_path, heartbeat_path)
 
 
+def check_persistent_info_findings(
+    history_path: Path,
+    repo_root: Path,
+    threshold: int = 10,
+) -> list[dict[str, Any]]:
+    """P2 降噪：检测持续 info 级 finding，输出 suppress.json 提案（仅打印，不写盘）。
+
+    VAL-SUP-001/002：扫描最近 threshold 个快照，若某个 info 级 finding 在所有
+    快照中均出现，则输出可粘贴的 suppress.json 条目到 stdout，expires 为当前
+    UTC 日期 +90 天。
+
+    关键约束：
+    - 只打印提案到 stdout，绝不写入 .evolution/suppress.json
+    - 若 finding 已在 suppress.json 中，跳过（不重复提案）
+    - 仅处理 severity="info" 的 finding
+
+    Args:
+        history_path: findings_over_time.json 路径
+        repo_root: 仓库根目录（用于加载现有 suppressions）
+        threshold: 连续出现阈值，默认 10
+
+    Returns:
+        生成的提案列表（用于测试验证）
+    """
+    data = load_history(history_path)
+    if data is None:
+        return []
+    snapshots = data.get("snapshots", [])
+    if len(snapshots) < threshold:
+        return []
+
+    # 取最近 threshold 个快照
+    recent = snapshots[-threshold:]
+
+    # 统计每个 (rule_id, location) 在最近 threshold 个快照中的出现次数
+    finding_counts: dict[tuple[str, str], int] = {}
+    finding_severity: dict[tuple[str, str], str] = {}
+    for snapshot in recent:
+        seen_in_snapshot: set[tuple[str, str]] = set()
+        for finding in snapshot.get("findings", []):
+            key = (finding.get("rule_id", ""), finding.get("location", ""))
+            if key not in seen_in_snapshot:
+                seen_in_snapshot.add(key)
+                finding_counts[key] = finding_counts.get(key, 0) + 1
+                finding_severity[key] = finding.get("severity", "")
+
+    # 筛选：在所有 threshold 个快照中都出现，且 severity=info 的 finding
+    persistent_info_findings = [
+        key for key, count in finding_counts.items()
+        if count == threshold and finding_severity.get(key) == "info"
+    ]
+
+    if not persistent_info_findings:
+        return []
+
+    # 加载现有 suppressions，避免重复提案
+    suppressions = load_suppressions(repo_root)
+    suppressed_keys = {
+        (s.get("rule_id", ""), s.get("location", ""))
+        for s in suppressions
+    }
+
+    # 生成提案（跳过已 suppress 的）
+    proposals: list[dict[str, Any]] = []
+    expires_date = (datetime.now(timezone.utc) + timedelta(days=90)).strftime("%Y-%m-%d")
+
+    for rule_id, location in persistent_info_findings:
+        if (rule_id, location) in suppressed_keys:
+            continue
+        proposal = {
+            "rule_id": rule_id,
+            "location": location,
+            "expires": expires_date,
+        }
+        proposals.append(proposal)
+        # 输出可粘贴的 JSON 提案到 stdout
+        print(f"[evolution] suppress.json proposal (persistent info finding, {threshold}+ snapshots):")
+        print(json.dumps(proposal, indent=2))
+
+    return proposals
+
+
 def check_isolation(findings: list[Finding], history_path: Path, threshold: int, failure_label: str, dedup_label: str) -> None:
     data = load_history(history_path)
     if data is None:
@@ -655,6 +737,8 @@ def main() -> None:
     # INFRA-204: Write heartbeat marker after a successful tick (after history saved).
     # Must come BEFORE P1-2/P2-A hard-exit checks so the marker is always written.
     write_heartbeat(repo_root, issues_created, len(all_findings))
+    # P2 降噪：检测持续 info 级 finding，输出 suppress.json 提案（仅打印，不写盘）
+    check_persistent_info_findings(history_path, repo_root)
     check_isolation(all_findings, history_path, config["isolation_threshold"], config["failure_label"], config["dedup_label"])
     print(f"[evolution] Tick complete: {len(all_findings)} findings, {issues_created} issues created")
 
