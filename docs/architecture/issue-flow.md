@@ -325,3 +325,59 @@ EVOLUTION_TEAM_ID=$TEAM_ID EVOLUTION_REPO=$REPO LINEAR_API_KEY=$LINEAR_API_KEY \
 | 跳过条件 | GitHub Issue 已关闭 | Linear Issue 已终态（completed/canceled） |
 | 定位机制 | GitHub `Fixes` 关联 | `<!-- linear-linkback -->` 评论 |
 | 依赖 | `gh` CLI | Linear GraphQL API + `LINEAR_API_KEY` |
+
+
+---
+
+## 10. 演化管道收尾治理（Phase-2 Pipeline Closure）
+
+### 10.1 Heartbeat 告警自愈链
+
+`scripts/evolution_heartbeat.py` 的 `resolve_cleared_alerts()` 实现告警自愈闭环：
+
+- **触发条件** — 当某个告警 issue 记录的异常类型（`scanner_stale` / `issues_without_pr`）在本轮 tick 中全部消失时，该告警自动关闭
+- **语义粒度** — 类型级判定：任一类型仍有活跃成员时保持告警 OPEN；仅当该类型全部清除后才触发自愈
+- **执行动作** — 通过 `gh issue close` 关闭告警，附带中文自愈评论（🩺/🩹 标记区分诊断/治愈）
+- **Fail-safe** — 当 `check_pr_coverage` 数据获取失败（`data_ok=False`）时，零关闭跳过自愈；同时包含重复评论防护，避免同一告警被重复关闭
+
+### 10.2 Info 级 Suppress 提案链
+
+`scripts/evolution_scanner.py` 的 `check_persistent_info_findings()` 对 info 级 finding 进行持续存在检测：
+
+- **触发条件** — 同一 info 级 finding 连续 ≥10 次快照出现时，输出可粘贴的 `suppress.json` 条目提案
+- **过期时间** — 提案中的 `expires` 设为当前 UTC 时间 +90 天
+- **只读输出** — 提案仅打印到标准输出，不写盘；用户需手动决定是否将其加入 `suppress.json`
+- **过期清理** — 已过期的 suppress 条目不再永久静默对应 finding，确保提案窗口合理收束
+
+### 10.3 GATE A 三条放行路径
+
+`~/.factory/webhook/scripts/trigger-droid.sh` 的 GATE A（Done 转换守卫）在原有两条放行路径基础上新增第三条：
+
+| 放行路径 | 条件 | 说明 |
+|----------|------|------|
+| ① 有效 sessionId | Linear issue 携带有效 sessionId 标记 | 自动化流水线产物 |
+| ② merged-PR override | 关联 PR 已合并 | 代码变更已生效 |
+| ③ 同步型关闭（新增） | GitHub issue 已 closed 且 `closed_at ≤ 10 分钟` | GitHub close→Linear 同步的下游证据，证明关闭来自平台同步而非人工操作 |
+
+**拦截不变** — 人工 Done（对应 GitHub issue 仍 open）仍被 GATE A 拦截并 revert，防止状态漂移。
+
+### 10.4 单向同步决策
+
+Linear GitHub Issues Sync 已调整为 **单向同步（GitHub→Linear）**，消灭以下死锁拓扑：
+
+```
+GitHub close → Linear 同步 close → GATE A revert → Done→reopen → GitHub reopen → 循环
+```
+
+单向同步后，GitHub 是状态源头，Linear 仅接收同步，不再反向驱动 GitHub 状态变更。这消除了双向同步导致的 revert-reopen 振荡。
+
+### 10.5 派发会话关单规矩
+
+自动派发的会话（droid session、webhook 触发器等）**禁止直接关闭 GitHub issue**，必须走 PR + `Fixes` 引用闭环。此规矩已写入仓库 `AGENTS.md` 铁律。
+
+**合规路径**：
+
+1. PR merge + `Fixes INFRA-xxx` 引用 → scanner `auto_close_resolved()` 自动关闭
+2. scanner `auto_close_resolved()` 独立检测 finding 已解决 → 自动关闭
+
+此规矩防止派发会话以自动身份反复直接关单，导致 issue 经历多轮 close/reopen 振荡。
