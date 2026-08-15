@@ -9,7 +9,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -18,6 +17,7 @@ from memory_core.tools._guard_patterns import (
     PROTECTED_PATH_MARKERS,
     is_protected_path_target,
 )
+from tests.guard_helpers import run_guard as _run_guard
 
 
 class TestProtectedPathDetection:
@@ -84,29 +84,6 @@ class TestProtectedPathDetection:
 
 class TestInternalGuardFailClosed:
     """VAL-GUARD-001, 003, 005, 007: Test internal guard fail-closed behavior."""
-
-    def _run_guard(self, payload: dict[str, Any], cwd: Path | None = None) -> tuple[int, dict[str, Any]]:
-        """Run the guard with given payload and return (exit_code, result)."""
-        env = os.environ.copy()
-        if cwd:
-            env["FACTORY_PROJECT_DIR"] = str(cwd)
-            env["MEMORY_HOOK_ORIGINAL_CWD"] = str(cwd)
-
-        result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
-            input=json.dumps(payload) if payload else payload,
-            capture_output=True,
-            text=True,
-            cwd=str(cwd) if cwd else None,
-            env=env,
-        )
-
-        try:
-            output = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            output = {"raw_stdout": result.stdout, "stderr": result.stderr}
-
-        return result.returncode, output
 
     def test_json_parse_error_protected_path_blocks(self, tmp_path: Path) -> None:
         """VAL-GUARD-001: JSON parse error on protected path should block."""
@@ -322,29 +299,6 @@ class TestGatewayFailClosed:
 class TestNormalPathsUnaffected:
     """VAL-GUARD-008, 009, 010: Test that normal paths are unaffected by fail-closed logic."""
 
-    def _run_guard(self, payload: dict[str, Any], cwd: Path | None = None) -> tuple[int, dict[str, Any]]:
-        """Run the guard with given payload and return (exit_code, result)."""
-        env = os.environ.copy()
-        if cwd:
-            env["FACTORY_PROJECT_DIR"] = str(cwd)
-            env["MEMORY_HOOK_ORIGINAL_CWD"] = str(cwd)
-
-        result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            cwd=str(cwd) if cwd else None,
-            env=env,
-        )
-
-        try:
-            output = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            output = {"raw_stdout": result.stdout, "stderr": result.stderr}
-
-        return result.returncode, output
-
     def test_normal_allow_path_unaffected(self, tmp_path: Path) -> None:
         """VAL-GUARD-008: Normal allow path should still work."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
@@ -355,7 +309,7 @@ class TestNormalPathsUnaffected:
             "content": "test content",
         }
 
-        exit_code, result = self._run_guard(payload, tmp_path)
+        exit_code, result = _run_guard(payload, tmp_path)
 
         assert exit_code == 0
         assert result["decision"] == "allow"
@@ -372,7 +326,7 @@ class TestNormalPathsUnaffected:
             "content": "test content",
         }
 
-        exit_code, result = self._run_guard(payload, tmp_path)
+        exit_code, result = _run_guard(payload, tmp_path)
 
         assert exit_code == 2
         assert result["decision"] == "block"
@@ -389,7 +343,7 @@ class TestNormalPathsUnaffected:
             "content": "test content",
         }
 
-        exit_code, result = self._run_guard(payload, tmp_path)
+        exit_code, result = _run_guard(payload, tmp_path)
 
         assert exit_code == 0
         assert result["decision"] == "allow"
@@ -399,35 +353,12 @@ class TestNormalPathsUnaffected:
 class TestExitCodes:
     """VAL-GUARD-011: Test exit code semantics."""
 
-    def _run_guard(self, payload: dict[str, Any], cwd: Path | None = None) -> tuple[int, dict[str, Any]]:
-        """Run the guard with given payload and return (exit_code, result)."""
-        env = os.environ.copy()
-        if cwd:
-            env["FACTORY_PROJECT_DIR"] = str(cwd)
-            env["MEMORY_HOOK_ORIGINAL_CWD"] = str(cwd)
-
-        result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            cwd=str(cwd) if cwd else None,
-            env=env,
-        )
-
-        try:
-            output = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            output = {"raw_stdout": result.stdout, "stderr": result.stderr}
-
-        return result.returncode, output
-
     def test_allow_returns_exit_0(self, tmp_path: Path) -> None:
         """VAL-GUARD-011: Allow decision returns exit 0."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {"tool_name": "Write", "file_path": "src/file.txt"}
-        exit_code, result = self._run_guard(payload, tmp_path)
+        exit_code, result = _run_guard(payload, tmp_path)
 
         assert exit_code == 0
         assert result["decision"] == "allow"
@@ -437,7 +368,7 @@ class TestExitCodes:
         (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {"tool_name": "Write", "file_path": "memory/kb/file.txt"}
-        exit_code, result = self._run_guard(payload, tmp_path)
+        exit_code, result = _run_guard(payload, tmp_path)
 
         assert exit_code == 2
         assert result["decision"] == "block"
