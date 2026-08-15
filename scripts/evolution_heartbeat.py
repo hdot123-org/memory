@@ -300,6 +300,129 @@ def write_monitor_heartbeat(anomalies: int) -> None:
     os.replace(tmp, MONITOR_HEARTBEAT_PATH)
 
 
+def extract_recorded_anomalies(issue_body: str) -> set[str]:
+    """Parse anomaly types from an alert issue body.
+
+    Returns a set of anomaly type strings: {"scanner_stale", "issues_without_pr"}.
+    """
+    anomalies = set()
+    if "evolution-scan workflow has not run recently" in issue_body:
+        anomalies.add("scanner_stale")
+    if "evolution-found issue(s) without associated PR" in issue_body:
+        anomalies.add("issues_without_pr")
+    return anomalies
+
+
+def compute_current_anomalies(
+    liveness: dict[str, Any], coverage: dict[str, Any]
+) -> set[str]:
+    """Compute the current set of anomaly types from check results.
+
+    Returns a set of anomaly type strings: {"scanner_stale", "issues_without_pr"}.
+    """
+    anomalies: set[str] = set()
+    if not liveness.get("alive", True):
+        anomalies.add("scanner_stale")
+    if coverage.get("issues_without_pr", 0) > 0:
+        anomalies.add("issues_without_pr")
+    return anomalies
+
+
+def list_open_alert_issues() -> list[dict[str, Any]]:
+    """List open heartbeat alert issues with their numbers and bodies."""
+    result = subprocess.run(
+        [
+            "gh", "issue", "list",
+            "--label", ALERT_LABEL,
+            "--state", "open",
+            "--json", "number,body",
+            "--limit", "50",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        print(f"[heartbeat] Failed to list open alert issues: {result.stderr.strip()}")
+        return []
+    try:
+        return json.loads(result.stdout) if result.stdout.strip() else []
+    except json.JSONDecodeError:
+        print("[heartbeat] Cannot parse open alert issues JSON")
+        return []
+
+
+def resolve_cleared_alerts(
+    current_anomalies: set[str],
+    open_alerts: list[dict[str, Any]] | None = None,
+) -> list[int]:
+    """Close alert issues whose recorded anomalies have all cleared.
+
+    For each open alert issue, compares its recorded anomalies with the current
+    anomaly set. If ALL recorded anomalies have disappeared (none remain in current),
+    closes the issue and adds a Chinese self-heal comment listing which anomalies cleared.
+
+    Returns list of closed issue numbers.
+    """
+    if open_alerts is None:
+        open_alerts = list_open_alert_issues()
+
+    if not open_alerts:
+        return []
+
+    closed: list[int] = []
+    for issue in open_alerts:
+        issue_num = issue.get("number")
+        if not issue_num:
+            continue
+
+        recorded = extract_recorded_anomalies(issue.get("body", ""))
+        if not recorded:
+            continue
+
+        # Check if all recorded anomalies have cleared
+        cleared = recorded - current_anomalies
+        if cleared and not (recorded & current_anomalies):
+            # All anomalies cleared → close the issue
+            cleared_names = sorted(cleared)  # deterministic order
+
+            # Build Chinese self-heal comment
+            anomaly_descriptions = {
+                "scanner_stale": "扫描器心跳异常（scanner stale）",
+                "issues_without_pr": "evolution-found issue 缺少关联 PR",
+            }
+            cleared_desc = [anomaly_descriptions.get(a, a) for a in cleared_names]
+
+            comment = (
+                "🩹 **自愈**：以下异常已消失，自动关闭此告警：\n\n"
+                + "\n".join(f"- {desc}" for desc in cleared_desc)
+            )
+
+            # Add self-heal comment
+            subprocess.run(
+                [
+                    "gh", "issue", "comment", str(issue_num),
+                    "--body", comment,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            # Close the issue
+            subprocess.run(
+                ["gh", "issue", "close", str(issue_num)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            print(f"[heartbeat] Self-heal: closed alert #{issue_num} (cleared: {cleared_names})")
+            closed.append(issue_num)
+
+    return closed
+
+
 def create_alert_issue(
     scanner_stale: bool,
     issues_without_pr: int,
@@ -379,6 +502,12 @@ def main(history_path: Path = HISTORY_PATH) -> int:
         )
     else:
         print("[heartbeat] PR coverage: OK")
+
+    # P1 self-heal: close alert issues whose anomalies have cleared
+    current_anomalies = compute_current_anomalies(liveness, coverage)
+    closed = resolve_cleared_alerts(current_anomalies)
+    if closed:
+        print(f"[heartbeat] Self-heal: closed {len(closed)} alert(s): {closed}")
 
     # INFRA-204: Write monitor heartbeat for meta-monitoring
     anomaly_count = sum([not liveness["alive"], bool(coverage["issues_without_pr"] > 0)])
