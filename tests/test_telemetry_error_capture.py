@@ -31,6 +31,19 @@ def bridge_with_mock():
     return bridge, mock_analytics
 
 
+@pytest.fixture
+def bridge_with_client():
+    """Return a TelemetryBridge with mock analytics + client for batch_capture."""
+    bridge = TelemetryBridge()
+    mock_analytics = MagicMock()
+    mock_analytics._enabled = True
+    mock_client = MagicMock()
+    mock_client.api_key = "phc_test_key"
+    mock_analytics._client = mock_client
+    bridge._analytics = mock_analytics
+    return bridge, mock_analytics
+
+
 class TestErrorCaptureEmission:
     """VAL-PH-001: except blocks emit memory.error events."""
 
@@ -178,18 +191,6 @@ class TestErrorCaptureSanitization:
 class TestBatchCaptureRetryLogic:
     """VAL-PH-008: batch_capture retries transient failures (429, 5xx, URLError)."""
 
-    @pytest.fixture
-    def bridge_with_client(self):
-        """Return a TelemetryBridge with mock analytics + client for batch_capture."""
-        bridge = TelemetryBridge()
-        mock_analytics = MagicMock()
-        mock_analytics._enabled = True
-        mock_client = MagicMock()
-        mock_client.api_key = "phc_test_key"
-        mock_analytics._client = mock_client
-        bridge._analytics = mock_analytics
-        return bridge, mock_analytics
-
     def test_http_400_not_retried(self, bridge_with_client):
         """HTTP 400 is non-retryable - should fail immediately without retry."""
         bridge, mock = bridge_with_client
@@ -310,17 +311,6 @@ class TestBatchCaptureRetryLogic:
 class TestBatchCaptureHTTPErrorBodyCapture:
     """VAL-PH-009: HTTPError response body is captured in error event."""
 
-    @pytest.fixture
-    def bridge_with_client(self):
-        bridge = TelemetryBridge()
-        mock_analytics = MagicMock()
-        mock_analytics._enabled = True
-        mock_client = MagicMock()
-        mock_client.api_key = "phc_test_key"
-        mock_analytics._client = mock_client
-        bridge._analytics = mock_analytics
-        return bridge, mock_analytics
-
     def test_http_error_body_included_in_error_message(self, bridge_with_client):
         """When HTTP 400 occurs, the response body should be captured for diagnostics."""
         bridge, mock = bridge_with_client
@@ -415,17 +405,6 @@ class TestBatchCaptureHTTPErrorBodyCapture:
 class TestBatchCapturePayloadEnhancements:
     """VAL-PH-010: batch payload includes uuid and sentAt (matches SDK behavior)."""
 
-    @pytest.fixture
-    def bridge_with_client(self):
-        bridge = TelemetryBridge()
-        mock_analytics = MagicMock()
-        mock_analytics._enabled = True
-        mock_client = MagicMock()
-        mock_client.api_key = "phc_test_key"
-        mock_analytics._client = mock_client
-        bridge._analytics = mock_analytics
-        return bridge, mock_analytics
-
     def test_payload_includes_uuid_and_sentat(self, bridge_with_client):
         """Batch payload should include uuid per event and sentAt timestamp."""
         bridge, mock = bridge_with_client
@@ -469,17 +448,6 @@ class TestBatchCaptureSDKCompliance:
     Python SDK's _enqueue always adds. This test class verifies our manual
     batch_capture includes those same fields.
     """
-
-    @pytest.fixture
-    def bridge_with_client(self):
-        bridge = TelemetryBridge()
-        mock_analytics = MagicMock()
-        mock_analytics._enabled = True
-        mock_client = MagicMock()
-        mock_client.api_key = "phc_test_key"
-        mock_analytics._client = mock_client
-        bridge._analytics = mock_analytics
-        return bridge, mock_analytics
 
     def test_batch_item_has_top_level_timestamp(self, bridge_with_client):
         """Each batch item must include a top-level ISO timestamp (SDK requirement)."""
