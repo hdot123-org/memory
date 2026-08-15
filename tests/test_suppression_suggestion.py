@@ -4,9 +4,7 @@ Tests that persistent info-level findings in the history trigger suppress.json
 proposal output to stdout, and that non-persistent findings do not.
 """
 import json
-import os
 import sys
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -81,7 +79,7 @@ def test_suppression_suggestion_001_persistent_info_finding_emits_snippet(tmp_pa
     assert "expires" in proposal
 
     # Verify expires is exactly 90 days from today (UTC)
-    from datetime import date, timedelta
+    from datetime import timedelta
     expected_expires = (datetime.now(timezone.utc).date() + timedelta(days=90)).isoformat()
     assert proposal["expires"] == expected_expires
 
@@ -288,7 +286,7 @@ def test_suppression_suggestion_multiple_persistent_findings(tmp_path):
     assert "baz.py::L30-qux.py::L40" in locations
 
     # All should have the same expires
-    from datetime import date, timedelta
+    from datetime import timedelta
     expected_expires = (datetime.now(timezone.utc).date() + timedelta(days=90)).isoformat()
     assert all(p["expires"] == expected_expires for p in proposals)
 
