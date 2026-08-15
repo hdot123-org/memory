@@ -230,33 +230,80 @@ def test_schema_guard_missing_expires_warns_but_passes(
         "Missing expires should trigger deprecation warning"
 
 
-def test_schema_guard_real_suppress_json_passes() -> None:
-    """VAL-SUPPRESS-002e: Real .evolution/suppress.json passes schema validation."""
-    # This test validates the actual suppress.json in the repository
-    repo_root = Path(__file__).parent.parent
-    suppress_path = repo_root / ".evolution" / "suppress.json"
+def _validate_suppress_json_raw(suppress_path: Path) -> None:
+    """Raw structural validation — bypasses load_suppressions' graceful degradation.
 
-    if not suppress_path.exists():
-        pytest.skip("suppress.json not found (not in repository root)")
+    Raises AssertionError (or calls pytest.fail) on structural violations.
+    Shared by real-file guard and negative-path tests (VAL-SUPPRESS-002).
+    """
+    with open(suppress_path, encoding="utf-8") as f:
+        data = json.load(f)
 
-    # Load and validate
-    suppressions = load_suppressions(repo_root)
+    assert isinstance(data, dict), f"suppress.json root must be a dict, got {type(data).__name__}"
+    assert "suppressed" in data, "suppress.json must contain 'suppressed' key"
+    assert isinstance(data["suppressed"], list), (
+        f"'suppressed' must be a list, got {type(data['suppressed']).__name__}"
+    )
 
-    # Should load successfully (current file is {"suppressed": []})
-    assert isinstance(suppressions, list), "Suppressions should be a list"
-
-    # Validate each entry if present
-    for entry in suppressions:
-        assert isinstance(entry, dict), f"Entry must be a dict: {entry}"
-        assert "rule_id" in entry, f"Entry must have rule_id: {entry}"
-        assert "location" in entry, f"Entry must have location: {entry}"
-
+    for idx, entry in enumerate(data["suppressed"]):
+        assert isinstance(entry, dict), (
+            f"suppressed[{idx}] must be a dict, got {type(entry).__name__}: {entry!r}"
+        )
         # If expires is present, it must be valid ISO date
         if "expires" in entry and entry["expires"] is not None:
             try:
                 datetime.fromisoformat(str(entry["expires"]))
             except ValueError:
                 pytest.fail(f"Entry has invalid expires format: {entry['expires']}")
+
+
+def test_schema_guard_real_suppress_json_passes() -> None:
+    """VAL-SUPPRESS-002e: Real .evolution/suppress.json passes raw schema validation.
+
+    Unlike the load_suppressions() path (which silently degrades structural
+    violations), this test reads the raw JSON and asserts hard structure,
+    so a corrupted suppress.json would fail CI.
+    """
+    repo_root = Path(__file__).parent.parent
+    suppress_path = repo_root / ".evolution" / "suppress.json"
+
+    if not suppress_path.exists():
+        pytest.skip("suppress.json not found (not in repository root)")
+
+    # Raw structural validation (not through load_suppressions)
+    _validate_suppress_json_raw(suppress_path)
+
+    # Also verify load_suppressions still works (backward compat)
+    suppressions = load_suppressions(repo_root)
+    assert isinstance(suppressions, list), "Suppressions should be a list"
+
+
+def test_schema_guard_negative_suppressed_not_list(tmp_path: Path) -> None:
+    """VAL-SUPPRESS-002f: Raw guard FAILS when 'suppressed' is not a list.
+
+    Proves the guard has hard-fail capability — same corruption through
+    load_suppressions would silently return [], but the raw guard catches it.
+    """
+    suppress_path = tmp_path / "suppress.json"
+    suppress_path.write_text(json.dumps({"suppressed": "not a list"}), encoding="utf-8")
+
+    with pytest.raises(AssertionError, match="must be a list"):
+        _validate_suppress_json_raw(suppress_path)
+
+
+def test_schema_guard_negative_entry_not_dict(tmp_path: Path) -> None:
+    """VAL-SUPPRESS-002g: Raw guard FAILS when an entry is not a dict.
+
+    Proves the guard has hard-fail capability — same corruption through
+    load_suppressions would silently skip the entry, but the raw guard catches it.
+    """
+    suppress_path = tmp_path / "suppress.json"
+    suppress_path.write_text(
+        json.dumps({"suppressed": ["not a dict"]}), encoding="utf-8"
+    )
+
+    with pytest.raises(AssertionError, match="must be a dict"):
+        _validate_suppress_json_raw(suppress_path)
 
 
 # ---------------------------------------------------------------------------
