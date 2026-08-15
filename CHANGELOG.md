@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.29.0](https://github.com/hdot123/memory/compare/v0.28.0...v0.29.0) (2026-08-15)
+
+
+### Features
+
+* suppress.json expires 字段治理 (VAL-SUPPRESS-001..003) ([#674](https://github.com/hdot123/memory/issues/674)) ([e1a8604](https://github.com/hdot123/memory/commit/e1a8604e3055a358e5a5f1c4addb0c0c4cf5026e))
+
+
+### Bug Fixes
+
+* 为 code_hygiene 类别新增独立第三配额池 ([#672](https://github.com/hdot123/memory/issues/672)) ([bb42ea2](https://github.com/hdot123/memory/commit/bb42ea241742c846fc0298d3c0633e1e51dcd0c7))
+* 新增 tests/__init__.py 防止 site-packages 野生 tests 包遮蔽 ([#651](https://github.com/hdot123/memory/issues/651)) ([3a10086](https://github.com/hdot123/memory/commit/3a1008684bae30dff988e448ea7312577d0e006f))
+
 ## [0.28.0](https://github.com/hdot123/memory/compare/v0.27.0...v0.28.0) (2026-08-14)
 
 
