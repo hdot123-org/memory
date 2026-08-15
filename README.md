@@ -367,6 +367,8 @@ scanner 每次运行时会调用 `_reopen_closed_issue()`（`scripts/evolution_s
 - `--scheduled` — 定时任务模式，扫描所有远程分支，删除无 open PR 且最后 commit 超过 24 小时的孤立分支
 - `--immediate <branch>` — 立即删除指定分支（用于 PR 合并后清理）
 
+heartbeat 告警自愈（`resolve_cleared_alerts()`）在本轮 tick 中异常类型全部消失时自动关闭告警 issue 并附中文自愈评论；info 级持续 finding 经 `check_persistent_info_findings()` 连续 ≥10 次快照出现后输出 `suppress.json` 条目提案（只打印不写盘，过期自动解除）。管道全链路（含 GATE A 三条放行路径与单向同步决策）见 [Issue 流转链路文档 §10](docs/architecture/issue-flow.md)。
+
 完整的 GitHub↔Linear Issue 流转链路与职责约定见 [Issue 流转链路文档](docs/architecture/issue-flow.md)。
 
 ## 文档
