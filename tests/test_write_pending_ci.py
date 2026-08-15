@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import os
 import stat
-import subprocess
 from pathlib import Path
 
+from tests.script_helpers import run_bash_script
+
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "write-pending-ci.sh"
-REPO_ROOT = Path(__file__).parent.parent
 
 
 def run_script(
@@ -17,18 +16,7 @@ def run_script(
     cwd: Path | None = None,
 ) -> tuple[int, str, str]:
     """Run write-pending-ci.sh and return (exit_code, stdout, stderr)."""
-    cmd = ["bash", str(SCRIPT_PATH), *args]
-    full_env = os.environ.copy()
-    if env:
-        full_env.update(env)
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        env=full_env,
-        cwd=cwd or REPO_ROOT,
-    )
-    return result.returncode, result.stdout, result.stderr
+    return run_bash_script(SCRIPT_PATH, *args, env=env, cwd=cwd)
 
 
 # ============================================================================
