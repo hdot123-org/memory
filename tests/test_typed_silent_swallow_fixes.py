@@ -30,6 +30,21 @@ def _except_block(content: str, needle: str, window: int = 400) -> str:
     return content[pos : pos + window]
 
 
+def _assert_warning_and_stderr(rel_path: str, needle: str, window: int = 400) -> None:
+    """Assert the except block at *needle* warns and falls back to stderr.
+
+    Shared checker for the ``test_has_warning_and_stderr`` family
+    (CODE_HYGIENE_DUPLICATE_BLOCK fix, INFRA-333).
+    """
+    block = _except_block(_read_source(rel_path), needle, window)
+    assert "warning" in block.lower(), (
+        f"{rel_path}: except block at {needle!r} must emit a logger.warning"
+    )
+    assert "sys.stderr" in block, (
+        f"{rel_path}: except block at {needle!r} must have a stderr fallback"
+    )
+
+
 # ---------------------------------------------------------------------------
 # memory_hook_schema.py — audit log write OSError
 # ---------------------------------------------------------------------------
@@ -87,11 +102,7 @@ class TestGatewaySyncStatusWrite:
         assert "except OSError as exc" in block
 
     def test_has_warning_and_stderr(self):
-        content = _read_source(self.PATH)
-        pos = content.find('status_file.write_text(json.dumps(status')
-        block = content[pos : pos + 400]
-        assert "warning" in block.lower()
-        assert "sys.stderr" in block
+        _assert_warning_and_stderr(self.PATH, 'status_file.write_text(json.dumps(status', 400)
 
 
 # ---------------------------------------------------------------------------
@@ -112,11 +123,7 @@ class TestGatewayPayloadParse:
         assert "except (json.JSONDecodeError, ValueError) as exc" in block
 
     def test_has_warning_and_stderr(self):
-        content = _read_source(self.PATH)
-        pos = content.find("payload_dict = json.loads(raw_payload)")
-        block = content[pos : pos + 400]
-        assert "warning" in block.lower()
-        assert "sys.stderr" in block
+        _assert_warning_and_stderr(self.PATH, "payload_dict = json.loads(raw_payload)", 400)
 
 
 # ---------------------------------------------------------------------------
@@ -134,11 +141,7 @@ class TestSessionEndLoggerStdinPayload:
         assert "except (json.JSONDecodeError, OSError) as exc" in content
 
     def test_has_warning_and_stderr(self):
-        content = _read_source(self.PATH)
-        pos = content.find("except (json.JSONDecodeError, OSError) as exc")
-        block = content[pos : pos + 200]
-        assert "warning" in block.lower()
-        assert "sys.stderr" in block
+        _assert_warning_and_stderr(self.PATH, "except (json.JSONDecodeError, OSError) as exc", 200)
 
 
 # ---------------------------------------------------------------------------
@@ -156,11 +159,7 @@ class TestTelemetryPathSanitization:
         assert "except (OSError, ValueError) as exc" in content
 
     def test_has_warning_and_stderr(self):
-        content = _read_source(self.PATH)
-        pos = content.find("except (OSError, ValueError) as exc")
-        block = content[pos : pos + 250]
-        assert "warning" in block.lower()
-        assert "sys.stderr" in block
+        _assert_warning_and_stderr(self.PATH, "except (OSError, ValueError) as exc", 250)
 
     def test_mentions_sanitization(self):
         """Warning should mention path sanitization (privacy concern)."""
@@ -187,11 +186,7 @@ class TestHookEventStatsLifecycleIndex:
         assert "except (json.JSONDecodeError, OSError) as exc" in content
 
     def test_has_warning_and_stderr(self):
-        content = _read_source(self.PATH)
-        pos = content.find("except (json.JSONDecodeError, OSError) as exc")
-        block = content[pos : pos + 400]
-        assert "warning" in block.lower()
-        assert "sys.stderr" in block
+        _assert_warning_and_stderr(self.PATH, "except (json.JSONDecodeError, OSError) as exc", 400)
 
 
 # ---------------------------------------------------------------------------
@@ -209,11 +204,7 @@ class TestDailySummaryLifecycleIndex:
         assert "except (json.JSONDecodeError, OSError) as exc" in content
 
     def test_has_warning_and_stderr(self):
-        content = _read_source(self.PATH)
-        pos = content.find("except (json.JSONDecodeError, OSError) as exc")
-        block = content[pos : pos + 400]
-        assert "warning" in block.lower()
-        assert "sys.stderr" in block
+        _assert_warning_and_stderr(self.PATH, "except (json.JSONDecodeError, OSError) as exc", 400)
 
 
 # ---------------------------------------------------------------------------
@@ -231,11 +222,7 @@ class TestErrorPatternDetectorGitRoot:
         assert "except (subprocess.SubprocessError, FileNotFoundError) as exc" in content
 
     def test_has_warning_and_stderr(self):
-        content = _read_source(self.PATH)
-        pos = content.find("except (subprocess.SubprocessError, FileNotFoundError) as exc")
-        block = content[pos : pos + 400]
-        assert "warning" in block.lower()
-        assert "sys.stderr" in block
+        _assert_warning_and_stderr(self.PATH, "except (subprocess.SubprocessError, FileNotFoundError) as exc", 400)
 
 
 # ---------------------------------------------------------------------------
