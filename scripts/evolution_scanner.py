@@ -184,9 +184,29 @@ def load_suppressions(repo_root: Path) -> list[dict[str, Any]]:
             return []
 
         # Validate expires fields once during load to avoid repeated warnings
+        valid_entries: list[dict[str, Any]] = []
         for entry in entries:
+            # Schema guard: skip non-dict entries (structural error)
+            if not isinstance(entry, dict):
+                print(
+                    f"[evolution] Warning: suppression entry is not a dict, skipping: {entry!r}",
+                    file=sys.stderr
+                )
+                continue
+
+            valid_entries.append(entry)
             expires_str = entry.get("expires")
-            if expires_str is not None:
+
+            if expires_str is None:
+                # VAL-SUPPRESS-001: Missing expires field → deprecation warning (backward compat, entry still works)
+                print(
+                    f"[evolution] DeprecationWarning: suppression entry "
+                    f"{entry.get('rule_id', 'UNKNOWN')} @ {entry.get('location', 'UNKNOWN')} "
+                    f"is missing 'expires' field; treating as permanent suppression. "
+                    f"Add 'expires: YYYY-MM-DD' to suppress.json.",
+                    file=sys.stderr
+                )
+            else:
                 try:
                     date.fromisoformat(str(expires_str))
                 except (ValueError, TypeError):
@@ -197,7 +217,7 @@ def load_suppressions(repo_root: Path) -> list[dict[str, Any]]:
                         file=sys.stderr
                     )
 
-        return entries
+        return valid_entries
     except (json.JSONDecodeError, OSError) as e:
         print(f"[evolution] Warning: Failed to load suppress.json: {e}")
         return []
