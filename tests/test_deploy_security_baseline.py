@@ -3,29 +3,17 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
 
+from tests.script_helpers import run_bash_script
 from tests.shellcheck_helpers import assert_shellcheck_clean
 
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "deploy-security-baseline.sh"
-REPO_ROOT = Path(__file__).parent.parent
 
 
 def run_script(*args: str, env: dict | None = None) -> tuple[int, str, str]:
     """Run deploy-security-baseline.sh and return (exit_code, stdout, stderr)."""
-    cmd = ["bash", str(SCRIPT_PATH), *args]
-    full_env = os.environ.copy()
-    if env:
-        full_env.update(env)
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        env=full_env,
-        cwd=REPO_ROOT,
-    )
-    return result.returncode, result.stdout, result.stderr
+    return run_bash_script(SCRIPT_PATH, *args, env=env)
 
 
 # ============================================================================
