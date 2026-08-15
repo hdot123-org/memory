@@ -530,6 +530,37 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
         return False
 
 
+def _should_skip_partial_output(findings: list[Any], history_path: Path) -> bool:
+    """Check if auto-close should be skipped due to partial output.
+
+    Returns True if the current findings count is significantly below the
+    recent baseline median, indicating a potential partial audit tool output.
+    """
+    if history_path is None:
+        return False
+
+    _po_data = load_history(history_path)
+    if _po_data is None:
+        return False
+
+    _po_snapshots = _po_data.get("snapshots", [])
+    if len(_po_snapshots) < 2:
+        return False
+
+    _po_counts = [len(s.get("findings", [])) for s in _po_snapshots[-5:]]
+    _po_baseline = statistics.median(_po_counts)
+
+    if _po_baseline > 0 and len(findings) < _po_baseline * 0.8:
+        print(
+            f"[evolution] Skip auto-close: findings count ({len(findings)}) "
+            f"is below 80% of recent baseline median ({_po_baseline:.0f}). "
+            f"Possible partial-output from audit tools."
+        )
+        return True
+
+    return False
+
+
 def auto_close_resolved(findings: list[Any], dedup_label: str, failed_categories: set[str] | None = None,
                        history_path: Path | None = None) -> None:
     """Close GitHub Issues whose findings are no longer present in current scan.
@@ -563,24 +594,9 @@ def auto_close_resolved(findings: list[Any], dedup_label: str, failed_categories
     # Build set of current finding keys
     current_keys = {(f.rule_id, f.location) for f in findings}
 
-    # P0-A: Partial-output protection — when audit tools succeed but emit
-    # significantly fewer findings than recent history, the current tick may
-    # be a "shrunk output".  Closing issues based on it would be premature.
-    # Skip the entire auto-close tick if the drop exceeds 20%.
-    if history_path is not None:
-        _po_data = load_history(history_path)
-        if _po_data is not None:
-            _po_snapshots = _po_data.get("snapshots", [])
-            if len(_po_snapshots) >= 2:
-                _po_counts = [len(s.get("findings", [])) for s in _po_snapshots[-5:]]
-                _po_baseline = statistics.median(_po_counts)
-                if _po_baseline > 0 and len(findings) < _po_baseline * 0.8:
-                    print(
-                        f"[evolution] Skip auto-close: findings count ({len(findings)}) "
-                        f"is below 80% of recent baseline median ({_po_baseline:.0f}). "
-                        f"Possible partial-output from audit tools."
-                    )
-                    return
+    # P0-A: Partial-output protection — skip tick if findings drop significantly
+    if history_path is not None and _should_skip_partial_output(findings, history_path):
+        return
 
     # Fetch all open evolution-found issues
     try:
