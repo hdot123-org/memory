@@ -20,35 +20,11 @@ if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 from memory_core.tools import memory_hook_gateway as gw
+from tests.sync_artifacts_helpers import setup_sync_artifacts as _setup_sync_artifacts
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _setup_sync_artifacts(tmp_path: Path, *, metrics_lines: list[str] | None = None,
-                          offset: int = 0, last_sync_success: float = 0.0,
-                          last_sync_attempt: float = 0.0) -> Path:
-    """Create artifact root with metrics.jsonl and sidecar files for sync tests."""
-    artifact_root = tmp_path / "artifacts"
-    artifact_root.mkdir()
-
-    metrics_file = artifact_root / "metrics.jsonl"
-    if metrics_lines is not None:
-        metrics_file.write_text("".join(metrics_lines), encoding="utf-8")
-    else:
-        metrics_file.write_text("", encoding="utf-8")
-
-    offset_file = artifact_root / ".offset"
-    offset_file.write_text(str(offset), encoding="utf-8")
-
-    last_sync_success_file = artifact_root / ".last_sync_success"
-    last_sync_success_file.write_text(str(last_sync_success), encoding="utf-8")
-
-    last_sync_attempt_file = artifact_root / ".last_sync_attempt"
-    last_sync_attempt_file.write_text(str(last_sync_attempt), encoding="utf-8")
-
-    return artifact_root
-
 
 def _make_capture_build(captured_packages: list[dict]):
     """Build a ``build_context_package`` stub that records into ``captured_packages``.
