@@ -16,11 +16,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "check_fix_has_test.py"
 
 
-def _load_module():
-    """加载 check_fix_has_test 脚本模块。"""
-    return load_script_module(SCRIPT_PATH, "check_fix_has_test")
-
-
 def _run_script(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
     """Run the guard script with given args."""
     return subprocess.run(
@@ -203,7 +198,7 @@ def test_fix_breaking_change_detected(tmp_path):
 # ============================================================================
 def test_dependabot_exempted(monkeypatch):
     """Dependabot author → exit 0."""
-    mod = _load_module()
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
     assert mod.is_dependabot("dependabot[bot]")
     assert mod.is_dependabot("dependabot")
     assert mod.is_dependabot("Dependabot[bot]")
@@ -215,7 +210,7 @@ def test_dependabot_exempted(monkeypatch):
 # ============================================================================
 def test_release_please_exempted():
     """Release-please commit → exit 0."""
-    mod = _load_module()
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
     commits = ["chore(main): release 1.2.3"]
     assert mod.is_release_please(commits)
     commits = ["fix: something", "chore(main): release 2.0.0"]
@@ -229,7 +224,7 @@ def test_release_please_exempted():
 # ============================================================================
 def test_docs_only_exempted():
     """All .md files → exit 0."""
-    mod = _load_module()
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
     files = ["docs/guide.md", "README.md"]
     assert mod.is_docs_only(files)
     files = ["docs/guide.md", "src/foo.py"]
@@ -325,7 +320,7 @@ def test_base_flag_works(tmp_path):
 def test_script_exists_and_testable():
     """Script exists and is importable."""
     assert SCRIPT_PATH.is_file(), "scripts/check_fix_has_test.py must exist"
-    mod = _load_module()
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
     assert hasattr(mod, "main")
     assert hasattr(mod, "FIX_PATTERN")
     assert hasattr(mod, "has_fix_commit")
@@ -337,7 +332,7 @@ def test_script_exists_and_testable():
 
 def test_fix_pattern_matches_conventional_formats():
     """FIX_PATTERN matches all conventional fix commit formats."""
-    mod = _load_module()
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
     assert mod.FIX_PATTERN.match("fix: something")
     assert mod.FIX_PATTERN.match("fix!: breaking change")
     assert mod.FIX_PATTERN.match("fix(scope): something")

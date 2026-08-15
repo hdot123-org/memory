@@ -6,6 +6,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from tests.shellcheck_helpers import assert_shellcheck_clean
+
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "deploy-security-baseline.sh"
 REPO_ROOT = Path(__file__).parent.parent
 
@@ -131,6 +133,4 @@ def test_force_overwrites(tmp_path: Path):
 # ============================================================================
 def test_shellcheck_clean():
     """shellcheck scripts/deploy-security-baseline.sh exits 0."""
-    from tests.shellcheck_helpers import assert_shellcheck_clean
-
     assert_shellcheck_clean(SCRIPT_PATH)

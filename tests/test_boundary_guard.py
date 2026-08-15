@@ -15,11 +15,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "check_boundary.py"
 
 
-def _load_module():
-    """加载 check_boundary 脚本模块。"""
-    return load_script_module(SCRIPT_PATH, "check_boundary")
-
-
 def test_script_exists_and_executable():
     assert SCRIPT_PATH.is_file(), "scripts/check_boundary.py must exist"
 
@@ -39,7 +34,7 @@ def test_live_repo_is_clean():
 
 
 def test_detects_business_kb_prefix(tmp_path, monkeypatch):
-    mod = _load_module()
+    mod = load_script_module(SCRIPT_PATH, "check_boundary")
     fake_repo = tmp_path
     fake_global = fake_repo / "memory_core" / "memory" / "kb" / "global"
     fake_global.mkdir(parents=True)
@@ -55,7 +50,7 @@ def test_detects_business_kb_prefix(tmp_path, monkeypatch):
 
 
 def test_detects_business_project_file(tmp_path, monkeypatch):
-    mod = _load_module()
+    mod = load_script_module(SCRIPT_PATH, "check_boundary")
     fake_repo = tmp_path
     fake_projects = fake_repo / "memory_core" / "memory" / "kb" / "projects"
     fake_projects.mkdir(parents=True)
@@ -70,7 +65,7 @@ def test_detects_business_project_file(tmp_path, monkeypatch):
 
 
 def test_detects_runtime_ip_leak(tmp_path, monkeypatch):
-    mod = _load_module()
+    mod = load_script_module(SCRIPT_PATH, "check_boundary")
     fake_repo = tmp_path
     fake_root = fake_repo / "memory_core"
     fake_root.mkdir(parents=True)
@@ -89,7 +84,7 @@ def test_detects_runtime_ip_leak(tmp_path, monkeypatch):
 
 
 def test_archive_is_exempt(tmp_path, monkeypatch):
-    mod = _load_module()
+    mod = load_script_module(SCRIPT_PATH, "check_boundary")
     fake_repo = tmp_path
     archive_dir = fake_repo / "memory_core" / "archive" / "legacy-workbot"
     archive_dir.mkdir(parents=True)
