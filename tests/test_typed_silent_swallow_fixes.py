@@ -45,6 +45,20 @@ def _assert_warning_and_stderr(rel_path: str, needle: str, window: int = 400) ->
     )
 
 
+def _assert_binds_exception(
+    rel_path: str, needle: str, exception_sig: str, window: int = 300
+) -> None:
+    """Assert the except block located at *needle* binds *exception_sig*.
+
+    Shared checker for the ``test_binds_exception`` family
+    (CODE_HYGIENE_DUPLICATE_BLOCK fix, INFRA-345).
+    """
+    block = _except_block(_read_source(rel_path), needle, window)
+    assert exception_sig in block, (
+        f"{rel_path}: except block at {needle!r} must bind {exception_sig!r}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # memory_hook_schema.py — audit log write OSError
 # ---------------------------------------------------------------------------
@@ -94,12 +108,12 @@ class TestGatewaySyncStatusWrite:
     PATH = "memory_core/tools/memory_hook_gateway.py"
 
     def test_binds_exception(self):
-        content = _read_source(self.PATH)
         # The sync status write is identified by its context: write_text + OSError
-        pos = content.find('status_file.write_text(json.dumps(status')
-        assert pos != -1
-        block = content[pos : pos + 300]
-        assert "except OSError as exc" in block
+        _assert_binds_exception(
+            self.PATH,
+            'status_file.write_text(json.dumps(status',
+            "except OSError as exc",
+        )
 
     def test_has_warning_and_stderr(self):
         _assert_warning_and_stderr(self.PATH, 'status_file.write_text(json.dumps(status', 400)
@@ -116,11 +130,11 @@ class TestGatewayPayloadParse:
     PATH = "memory_core/tools/memory_hook_gateway.py"
 
     def test_binds_exception(self):
-        content = _read_source(self.PATH)
-        pos = content.find("payload_dict = json.loads(raw_payload)")
-        assert pos != -1
-        block = content[pos : pos + 300]
-        assert "except (json.JSONDecodeError, ValueError) as exc" in block
+        _assert_binds_exception(
+            self.PATH,
+            "payload_dict = json.loads(raw_payload)",
+            "except (json.JSONDecodeError, ValueError) as exc",
+        )
 
     def test_has_warning_and_stderr(self):
         _assert_warning_and_stderr(self.PATH, "payload_dict = json.loads(raw_payload)", 400)
