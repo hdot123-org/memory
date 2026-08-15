@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from tests.script_helpers import run_bash_script
+from tests.shellcheck_helpers import assert_shellcheck_clean
 
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "audit_telemetry_coverage.sh"
 
@@ -26,8 +27,6 @@ def test_has_set_euo_pipefail():
 
 def test_shellcheck_clean():
     """Test that script passes shellcheck with no warnings."""
-    from tests.shellcheck_helpers import assert_shellcheck_clean
-
     assert_shellcheck_clean(SCRIPT_PATH)
 
 
