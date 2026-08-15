@@ -6114,6 +6114,8 @@ def test_heartbeat_detects_stale_and_creates_alert():
             mock_run.side_effect = [
                 # check_pr_coverage: list issues (none)
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
+                # resolve_cleared_alerts → list_open_alert_issues: no open alerts
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
                 # alert_issue_exists: list alert issues (none, so create proceeds)
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
                 # create_alert_issue: create
@@ -6128,8 +6130,8 @@ def test_heartbeat_detects_stale_and_creates_alert():
 
             # Should exit 1 (anomaly detected)
             assert exit_code == 1, "Should exit 1 when anomaly detected"
-            # Verify alert was created (pr list + alert dedup check + create)
-            assert mock_run.call_count == 3, "Should call gh 3 times (pr list + alert check + create)"
+            # Verify alert was created (pr list + open alert list + alert dedup check + create)
+            assert mock_run.call_count == 4, "Should call gh 4 times (pr list + open alert list + alert check + create)"
 
 
 # ============================================================================
@@ -6671,8 +6673,9 @@ def test_main_dedup_skips_duplicate_alert(tmp_path):
          patch("evolution_heartbeat.create_alert_issue") as mock_create, \
          patch("evolution_heartbeat.check_scanner_liveness", return_value={"alive": False, "message": "Scanner stale"}):
 
-        # check_pr_coverage list -> no issues; alert_issue_exists -> one open alert
+        # check_pr_coverage list -> no issues; resolve_cleared_alerts → list_open_alert_issues -> no open alerts; alert_issue_exists -> one open alert
         mock_run.side_effect = [
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
             subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
             subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps([{"number": 7}]), stderr=""),
         ]

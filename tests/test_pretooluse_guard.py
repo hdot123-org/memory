@@ -46,8 +46,15 @@ def _expand_invisible_ranges():
 
 
 
-class TestPreToolUseGuard:
-    """Tests for PreToolUse guard behavior."""
+class _GuardRunnerMixin:
+    """Shared subprocess runner for the pretooluse guard (INFRA-314 dedup).
+
+    Six test classes previously carried byte-identical ``_run_guard`` copies
+    (100% AST similarity, 18 lines / 158 tokens each, evolution scanner
+    finding INFRA-314): TestPreToolUseGuard, TestTaskPayloadInjection,
+    TestCwdFixed, TestExecuteP1, TestAgentsMdDiffAware, TestMultiEditPerItem.
+    Consolidated into this mixin; public test names and assertions unchanged.
+    """
 
     def _run_guard(self, payload: dict[str, Any], cwd: Path | None = None) -> tuple[int, dict[str, Any]]:
         """Run the guard with given payload and return (exit_code, result)."""
@@ -71,6 +78,11 @@ class TestPreToolUseGuard:
             output = {"raw_stdout": result.stdout, "stderr": result.stderr}
 
         return result.returncode, output
+
+
+
+class TestPreToolUseGuard(_GuardRunnerMixin):
+    """Tests for PreToolUse guard behavior."""
 
     def _run_guard_raw(self, raw_input: str, cwd: Path | None = None) -> tuple[int, dict[str, Any]]:
         """Run the guard with raw stdin string and return (exit_code, result).
@@ -1450,31 +1462,8 @@ class TestPreToolUseGuardDirect:
 # ---------------------------------------------------------------------------
 
 
-class TestTaskPayloadInjection:
+class TestTaskPayloadInjection(_GuardRunnerMixin):
     """5b.1: Task tool ownership policy injection tests."""
-
-    def _run_guard(self, payload: dict[str, Any], cwd: Path | None = None) -> tuple[int, dict[str, Any]]:
-        """Run the guard with given payload and return (exit_code, result)."""
-        env = os.environ.copy()
-        if cwd:
-            env["FACTORY_PROJECT_DIR"] = str(cwd)
-            env["MEMORY_HOOK_ORIGINAL_CWD"] = str(cwd)
-
-        result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            cwd=str(cwd) if cwd else None,
-            env=env,
-        )
-
-        try:
-            output = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            output = {"raw_stdout": result.stdout, "stderr": result.stderr}
-
-        return result.returncode, output
 
     def test_task_injects_ownership_policy_block(self, tmp_path: Path) -> None:
         """Test that Task tool result contains injected_prompt with policy block."""
@@ -1567,31 +1556,8 @@ class TestTaskPayloadInjection:
         assert "Do not bypass" in injected
 
 
-class TestCwdFixed:
+class TestCwdFixed(_GuardRunnerMixin):
     """5b.2: Task tool cwd fixed to project_root tests."""
-
-    def _run_guard(self, payload: dict[str, Any], cwd: Path | None = None) -> tuple[int, dict[str, Any]]:
-        """Run the guard with given payload and return (exit_code, result)."""
-        env = os.environ.copy()
-        if cwd:
-            env["FACTORY_PROJECT_DIR"] = str(cwd)
-            env["MEMORY_HOOK_ORIGINAL_CWD"] = str(cwd)
-
-        result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            cwd=str(cwd) if cwd else None,
-            env=env,
-        )
-
-        try:
-            output = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            output = {"raw_stdout": result.stdout, "stderr": result.stderr}
-
-        return result.returncode, output
 
     def test_task_uses_factory_project_dir_not_pwd(self, tmp_path: Path) -> None:
         """Test that Task tool uses FACTORY_PROJECT_DIR, not PWD."""
@@ -1644,31 +1610,8 @@ class TestCwdFixed:
         assert result == tmp_path.resolve()
 
 
-class TestExecuteP1:
+class TestExecuteP1(_GuardRunnerMixin):
     """5b.3: Execute P1 coverage tests — rsync, node -e, shell glob, relative paths."""
-
-    def _run_guard(self, payload: dict[str, Any], cwd: Path | None = None) -> tuple[int, dict[str, Any]]:
-        """Run the guard with given payload and return (exit_code, result)."""
-        env = os.environ.copy()
-        if cwd:
-            env["FACTORY_PROJECT_DIR"] = str(cwd)
-            env["MEMORY_HOOK_ORIGINAL_CWD"] = str(cwd)
-
-        result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            cwd=str(cwd) if cwd else None,
-            env=env,
-        )
-
-        try:
-            output = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            output = {"raw_stdout": result.stdout, "stderr": result.stderr}
-
-        return result.returncode, output
 
     def test_execute_rsync_to_owned_path_blocked(self, tmp_path: Path) -> None:
         """Test that rsync to owned path is blocked."""
@@ -1829,31 +1772,8 @@ class TestExecuteP1:
         assert result["decision"] == "block"
 
 
-class TestAgentsMdDiffAware:
+class TestAgentsMdDiffAware(_GuardRunnerMixin):
     """5b.4: AGENTS.md diff-aware tests for Edit and MultiEdit."""
-
-    def _run_guard(self, payload: dict[str, Any], cwd: Path | None = None) -> tuple[int, dict[str, Any]]:
-        """Run the guard with given payload and return (exit_code, result)."""
-        env = os.environ.copy()
-        if cwd:
-            env["FACTORY_PROJECT_DIR"] = str(cwd)
-            env["MEMORY_HOOK_ORIGINAL_CWD"] = str(cwd)
-
-        result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            cwd=str(cwd) if cwd else None,
-            env=env,
-        )
-
-        try:
-            output = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            output = {"raw_stdout": result.stdout, "stderr": result.stderr}
-
-        return result.returncode, output
 
     def test_edit_uses_old_str_as_content_before(self, tmp_path: Path) -> None:
         """Test that Edit tool uses old_str as content_before fallback."""
@@ -1944,31 +1864,8 @@ class TestAgentsMdDiffAware:
         assert result["decision"] == "block"
 
 
-class TestMultiEditPerItem:
+class TestMultiEditPerItem(_GuardRunnerMixin):
     """5b.5: MultiEdit per-item classification tests."""
-
-    def _run_guard(self, payload: dict[str, Any], cwd: Path | None = None) -> tuple[int, dict[str, Any]]:
-        """Run the guard with given payload and return (exit_code, result)."""
-        env = os.environ.copy()
-        if cwd:
-            env["FACTORY_PROJECT_DIR"] = str(cwd)
-            env["MEMORY_HOOK_ORIGINAL_CWD"] = str(cwd)
-
-        result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.pretooluse_guard"],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            cwd=str(cwd) if cwd else None,
-            env=env,
-        )
-
-        try:
-            output = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            output = {"raw_stdout": result.stdout, "stderr": result.stderr}
-
-        return result.returncode, output
 
     def test_multiedit_per_item_classification_results(self, tmp_path: Path) -> None:
         """Test that MultiEdit returns per-item classification results."""

@@ -185,3 +185,173 @@ def test_main_advisory_checks_do_not_trigger_alert():
             rc = evolution_heartbeat.main()
 
     assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# VAL-HB: heartbeat self-heal (P1)
+# ---------------------------------------------------------------------------
+
+_ALERT_BODY_ISSUES_WITHOUT_PR = (
+    "## Evolution Heartbeat Alert\n\n"
+    "**Detected**: 2026-08-14T16:48:41.340399+00:00\n"
+    "**Scope**: evolution-found\n\n"
+    "### Anomalies\n\n"
+    "- 1 evolution-found issue(s) without associated PR\n"
+)
+
+_ALERT_BODY_SCANNER_STALE = (
+    "## Evolution Heartbeat Alert\n\n"
+    "**Detected**: 2026-08-14T16:48:41.340399+00:00\n"
+    "**Scope**: evolution-found\n\n"
+    "### Anomalies\n\n"
+    "- evolution-scan workflow has not run recently (scanner may have stopped)\n"
+)
+
+_ALERT_BODY_BOTH = (
+    "## Evolution Heartbeat Alert\n\n"
+    "**Detected**: 2026-08-14T16:48:41.340399+00:00\n"
+    "**Scope**: evolution-found\n\n"
+    "### Anomalies\n\n"
+    "- evolution-scan workflow has not run recently (scanner may have stopped)\n"
+    "- 1 evolution-found issue(s) without associated PR\n"
+)
+
+
+def test_heartbeat_001_anomaly_resolved_auto_closes_alert():
+    """VAL-HB-001: anomaly disappeared → alert issue auto-closed + Chinese self-heal comment."""
+    open_alerts = [
+        {"number": 646, "body": _ALERT_BODY_ISSUES_WITHOUT_PR},
+    ]
+    # Current anomaly set: no anomalies (scanner alive, no issues without PR)
+    current_anomalies: set[str] = set()
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(returncode=0)
+        closed = evolution_heartbeat.resolve_cleared_alerts(
+            current_anomalies, open_alerts,
+        )
+
+    assert closed == [646]
+
+    # Verify gh was called: first to comment, then to close
+    gh_calls = [call.args[0] for call in mock_run.call_args_list]
+    # Should have a comment call and a close call
+    comment_calls = [c for c in gh_calls if "comment" in c]
+    close_calls = [c for c in gh_calls if "close" in c]
+    assert len(comment_calls) == 1
+    assert len(close_calls) == 1
+    # The comment body should contain Chinese self-heal text
+    # Find the comment call and check its --body argument
+    for call in mock_run.call_args_list:
+        args = call.args[0]
+        if "comment" in args:
+            body_idx = args.index("--body") + 1
+            body = args[body_idx]
+            assert "自愈" in body
+            assert "646" in body or "evolution-found" in body.lower() or "已消失" in body
+
+
+def test_heartbeat_001b_both_anomalies_cleared():
+    """VAL-HB-001 variant: issue with both anomalies, both cleared → close."""
+    open_alerts = [
+        {"number": 700, "body": _ALERT_BODY_BOTH},
+    ]
+    current_anomalies: set[str] = set()
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(returncode=0)
+        closed = evolution_heartbeat.resolve_cleared_alerts(
+            current_anomalies, open_alerts,
+        )
+
+    assert closed == [700]
+
+
+def test_heartbeat_002_anomaly_persists_no_close():
+    """VAL-HB-002: anomaly still present → alert stays OPEN, zero close actions."""
+    open_alerts = [
+        {"number": 646, "body": _ALERT_BODY_ISSUES_WITHOUT_PR},
+    ]
+    # Current anomaly set: issues_without_pr still present
+    current_anomalies: set[str] = {"issues_without_pr"}
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(returncode=0)
+        closed = evolution_heartbeat.resolve_cleared_alerts(
+            current_anomalies, open_alerts,
+        )
+
+    assert closed == []
+    # No gh calls should have been made for close or comment
+    for call in mock_run.call_args_list:
+        args = call.args[0]
+        assert "close" not in args, "Should not close when anomaly persists"
+
+
+def test_heartbeat_002b_partial_clear_no_close():
+    """VAL-HB-002 variant: one anomaly cleared but other persists → no close."""
+    open_alerts = [
+        {"number": 700, "body": _ALERT_BODY_BOTH},
+    ]
+    # Only scanner_stale persists; issues_without_pr cleared
+    current_anomalies: set[str] = {"scanner_stale"}
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(returncode=0)
+        closed = evolution_heartbeat.resolve_cleared_alerts(
+            current_anomalies, open_alerts,
+        )
+
+    assert closed == []
+
+
+def test_heartbeat_003_no_anomaly_no_action():
+    """VAL-HB-003: no current anomalies, no open alerts → zero close, zero create."""
+    current_anomalies: set[str] = set()
+    open_alerts: list[dict] = []
+
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(returncode=0)
+        closed = evolution_heartbeat.resolve_cleared_alerts(
+            current_anomalies, open_alerts,
+        )
+
+    assert closed == []
+    mock_run.assert_not_called()
+
+
+def test_extract_recorded_anomalies_from_body():
+    """Unit: parse anomaly types from alert issue body."""
+    assert evolution_heartbeat.extract_recorded_anomalies(
+        _ALERT_BODY_ISSUES_WITHOUT_PR
+    ) == {"issues_without_pr"}
+    assert evolution_heartbeat.extract_recorded_anomalies(
+        _ALERT_BODY_SCANNER_STALE
+    ) == {"scanner_stale"}
+    assert evolution_heartbeat.extract_recorded_anomalies(
+        _ALERT_BODY_BOTH
+    ) == {"scanner_stale", "issues_without_pr"}
+    assert evolution_heartbeat.extract_recorded_anomalies("") == set()
+
+
+def test_compute_current_anomalies_from_checks():
+    """Unit: compute current anomaly set from liveness + coverage results."""
+    # Scanner alive, no issues without PR → empty
+    assert evolution_heartbeat.compute_current_anomalies(
+        {"alive": True}, {"issues_without_pr": 0},
+    ) == set()
+
+    # Scanner stale → scanner_stale
+    assert evolution_heartbeat.compute_current_anomalies(
+        {"alive": False}, {"issues_without_pr": 0},
+    ) == {"scanner_stale"}
+
+    # Issues without PR → issues_without_pr
+    assert evolution_heartbeat.compute_current_anomalies(
+        {"alive": True}, {"issues_without_pr": 3},
+    ) == {"issues_without_pr"}
+
+    # Both
+    assert evolution_heartbeat.compute_current_anomalies(
+        {"alive": False}, {"issues_without_pr": 1},
+    ) == {"scanner_stale", "issues_without_pr"}
