@@ -50,6 +50,29 @@ def _setup_sync_artifacts(tmp_path: Path, *, metrics_lines: list[str] | None = N
     return artifact_root
 
 
+def _make_capture_build(captured_packages: list[dict]):
+    """Build a ``build_context_package`` stub that records into ``captured_packages``.
+
+    INFRA-303 dedup: ``capture_build`` was defined identically in 5
+    TestHealthReportInjection tests (100% AST similarity, 10 lines / 33
+    tokens), each closing over the test's own ``captured_packages`` list.
+    """
+
+    def capture_build(*args, **kwargs):
+        pkg = {
+            "status": "ok",
+            "missing_paths": [],
+            "validation_errors": [],
+            "host": "factory",
+            "event": "session-start",
+            "package_kind": "context-package-v1",
+        }
+        captured_packages.append(pkg)
+        return pkg
+
+    return capture_build
+
+
 # ===========================================================================
 # VAL-GW-003: Telemetry error handling paths
 # ===========================================================================
@@ -233,17 +256,7 @@ class TestHealthReportInjection:
 
         captured_packages = []
 
-        def capture_build(*args, **kwargs):
-            pkg = {
-                "status": "ok",
-                "missing_paths": [],
-                "validation_errors": [],
-                "host": "factory",
-                "event": "session-start",
-                "package_kind": "context-package-v1",
-            }
-            captured_packages.append(pkg)
-            return pkg
+        capture_build = _make_capture_build(captured_packages)
 
         original_stdin = sys.stdin
         original_argv = sys.argv
@@ -312,17 +325,7 @@ class TestHealthReportInjection:
 
         captured_packages = []
 
-        def capture_build(*args, **kwargs):
-            pkg = {
-                "status": "ok",
-                "missing_paths": [],
-                "validation_errors": [],
-                "host": "factory",
-                "event": "session-start",
-                "package_kind": "context-package-v1",
-            }
-            captured_packages.append(pkg)
-            return pkg
+        capture_build = _make_capture_build(captured_packages)
 
         original_stdin = sys.stdin
         original_argv = sys.argv
@@ -378,17 +381,7 @@ class TestHealthReportInjection:
 
         captured_packages = []
 
-        def capture_build(*args, **kwargs):
-            pkg = {
-                "status": "ok",
-                "missing_paths": [],
-                "validation_errors": [],
-                "host": "factory",
-                "event": "session-start",
-                "package_kind": "context-package-v1",
-            }
-            captured_packages.append(pkg)
-            return pkg
+        capture_build = _make_capture_build(captured_packages)
 
         original_stdin = sys.stdin
         original_argv = sys.argv
@@ -450,17 +443,7 @@ class TestHealthReportInjection:
 
         captured_packages = []
 
-        def capture_build(*args, **kwargs):
-            pkg = {
-                "status": "ok",
-                "missing_paths": [],
-                "validation_errors": [],
-                "host": "factory",
-                "event": "session-start",
-                "package_kind": "context-package-v1",
-            }
-            captured_packages.append(pkg)
-            return pkg
+        capture_build = _make_capture_build(captured_packages)
 
         original_stdin = sys.stdin
         original_argv = sys.argv
@@ -526,17 +509,7 @@ class TestHealthReportInjection:
 
         captured_packages = []
 
-        def capture_build(*args, **kwargs):
-            pkg = {
-                "status": "ok",
-                "missing_paths": [],
-                "validation_errors": [],
-                "host": "factory",
-                "event": "session-start",
-                "package_kind": "context-package-v1",
-            }
-            captured_packages.append(pkg)
-            return pkg
+        capture_build = _make_capture_build(captured_packages)
 
         original_stdin = sys.stdin
         original_argv = sys.argv
