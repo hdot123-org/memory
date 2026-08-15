@@ -6,13 +6,15 @@ Tests call memory_core.tools.migrate_project_memory.main() directly
 
 import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from memory_core.constants import CURRENT_MEMORY_VERSION
-from tests.migrate_helpers import count_log_lines as _count_log_lines
+from tests.migrate_helpers import (
+    count_log_lines as _count_log_lines,
+    create_memory_skeleton as _create_memory_skeleton,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -27,35 +29,6 @@ def _call_main(argv: list[str]) -> int:
         return main()
     finally:
         sys.argv = old_argv
-
-
-def _create_memory_skeleton(
-    tmp_path: Path,
-    *,
-    version: str = CURRENT_MEMORY_VERSION,
-    adapter_version: str = "0.1.0",
-) -> Path:
-    """Create a minimal .memory/ skeleton suitable for migration testing."""
-    memory_root = tmp_path / ".memory"
-    memory_root.mkdir(parents=True)
-    (memory_root / "kb" / "projects").mkdir(parents=True)
-    (memory_root / "kb" / "decisions").mkdir(parents=True)
-    (memory_root / "kb" / "lessons").mkdir(parents=True)
-    (memory_root / "kb" / "global").mkdir(parents=True)
-
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    (memory_root / "memory.lock").write_text(
-        f'# memory.lock\n[memory]\nmemory_version = "{version}"\n'
-        f'schema_version = "context-package-v1"\nadapter_version = "builtin"\n'
-        f'locked_at = "{now}"\nlock_reason = "initial"\n',
-        encoding="utf-8",
-    )
-    (memory_root / "adapter.toml").write_text(
-        f'[core]\nversion = "{adapter_version}"\nadapter = "default"\n',
-        encoding="utf-8",
-    )
-    (memory_root / "migrations.log").write_text("# Migrations Log\n", encoding="utf-8")
-    return tmp_path
 
 
 # ---------------------------------------------------------------------------
