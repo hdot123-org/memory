@@ -19,6 +19,7 @@ from memory_core.tools.migrate_project_memory import (
     migrate_project_memory,
     plan_rollback,
 )
+from tests.migrate_helpers import count_log_lines as _count_log_lines
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -50,17 +51,6 @@ def _create_memory_skeleton(tmp_path: Path, *, version: str = CURRENT_MEMORY_VER
         encoding="utf-8",
     )
     return tmp_path
-
-
-def _count_log_lines(log_path: Path) -> int:
-    """Count non-comment, non-empty lines in migrations.log."""
-    if not log_path.is_file():
-        return 0
-    text = log_path.read_text(encoding="utf-8")
-    return sum(
-        1 for line in text.splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    )
 
 
 # ---------------------------------------------------------------------------

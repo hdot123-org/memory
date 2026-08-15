@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from memory_core.constants import CURRENT_MEMORY_VERSION
+from tests.migrate_helpers import count_log_lines as _count_log_lines
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -55,17 +56,6 @@ def _create_memory_skeleton(
     )
     (memory_root / "migrations.log").write_text("# Migrations Log\n", encoding="utf-8")
     return tmp_path
-
-
-def _count_log_lines(log_path: Path) -> int:
-    """Count non-comment, non-empty lines in migrations.log."""
-    if not log_path.is_file():
-        return 0
-    text = log_path.read_text(encoding="utf-8")
-    return sum(
-        1 for line in text.splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    )
 
 
 # ---------------------------------------------------------------------------
