@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.30.0](https://github.com/hdot123/memory/compare/v0.29.0...v0.30.0) (2026-08-15)
+
+
+### Features
+
+* heartbeat 自愈机制（P1）- 异常消失自动关闭告警 ([#680](https://github.com/hdot123/memory/issues/680)) ([dbf9e3a](https://github.com/hdot123/memory/commit/dbf9e3a5cd875dfb3f3d805f46f98604eaedaa48))
+* **heartbeat:** 加固 VAL-HB-004 信任链 fail-safe 机制 ([#696](https://github.com/hdot123/memory/issues/696)) ([f3a5031](https://github.com/hdot123/memory/commit/f3a50312175f7e04130d3848b467a02b61f2affe))
+* P2 降噪 - info 级持续 finding 输出 suppress.json 提案 ([#684](https://github.com/hdot123/memory/issues/684)) ([6bbab1b](https://github.com/hdot123/memory/commit/6bbab1b4f625a4b3a6f077cb5d8e0db80e4f7847))
+
+
+### Bug Fixes
+
+* P2 提案链健壮性收尾——过期 suppress 尊重 expires + main 守护 ([#698](https://github.com/hdot123/memory/issues/698)) ([fb514d8](https://github.com/hdot123/memory/commit/fb514d8e4af6d965f419a4af83066d750876114d))
+* 扫描器关单信任链加固(linkback 两级提取 fail-closed + 输出骤降防护) ([#670](https://github.com/hdot123/memory/issues/670)) ([12ac994](https://github.com/hdot123/memory/commit/12ac994db53069bed9c65444a7a26bc8027d276d))
+
+
+### Documentation
+
+* 补录 08-14 振荡复发教训与派发会话关单规矩 ([#689](https://github.com/hdot123/memory/issues/689)) ([86b57c9](https://github.com/hdot123/memory/commit/86b57c98e4f2793bc6b1cbd5240676824d96d509))
+* 补录演化管道收尾——心跳自愈/suppress 提案/GATE A 同步型放行链路 ([#709](https://github.com/hdot123/memory/issues/709)) ([f0a5aa7](https://github.com/hdot123/memory/commit/f0a5aa798383b8fa1baccbc93d0e34dd3da4b3e3))
+
 ## [0.29.0](https://github.com/hdot123/memory/compare/v0.28.0...v0.29.0) (2026-08-15)
 
 

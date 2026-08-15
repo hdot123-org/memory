@@ -2,7 +2,7 @@
 
 memory-core 提供可复用的 `memory/` 协议、模板、Schema 和 CLI 工具，用于项目级记忆管理。它是一个开源库，负责初始化、校验、迁移和审计记忆布局；本仓库不存储任何业务项目状态。
 
-## 架构 (v0.29.0) <!-- x-release-please-version -->
+## 架构 (v0.30.0) <!-- x-release-please-version -->
 
 memory-core 采用**三层架构**：
 
@@ -31,7 +31,7 @@ memory-core 采用**三层架构**：
 
 项目级配置位于 `memory/system/`（而非 `.memory/`）。隐藏目录 `.memory/` 在 v0.5.0 中已移除。
 
-## 遥测架构 (v0.29.0) <!-- x-release-please-version -->
+## 遥测架构 (v0.30.0) <!-- x-release-please-version -->
 
 memory-core 采用**本地优先遥测**设计，最大限度降低 hook 开销，同时确保数据可靠送达：
 
@@ -101,20 +101,20 @@ memory-core 内置 **PreToolUse 守卫**，位于 Factory 与文件系统之间�
 从 GitHub 安装（非可编辑模式，生产用途）：
 
 ```bash
-pip install git+https://github.com/hdot123/memory.git@v0.29.0 <!-- x-release-please-version -->
+pip install git+https://github.com/hdot123/memory.git@v0.30.0 <!-- x-release-please-version -->
 ```
 
 升级到新版本：
 
 ```bash
-pip install --upgrade git+https://github.com/hdot123/memory.git@v0.29.0 <!-- x-release-please-version -->
+pip install --upgrade git+https://github.com/hdot123/memory.git@v0.30.0 <!-- x-release-please-version -->
 ```
 
 从 release wheel 安装：
 
 ```bash
-gh release download v0.29.0 --repo hdot123/memory --pattern "*.whl" <!-- x-release-please-version -->
-pip install memory_core-0.29.0 <!-- x-release-please-version -->
+gh release download v0.30.0 --repo hdot123/memory --pattern "*.whl" <!-- x-release-please-version -->
+pip install memory_core-0.30.0 <!-- x-release-please-version -->
 ```
 
 仅用于本地开发：
@@ -367,6 +367,8 @@ scanner 每次运行时会调用 `_reopen_closed_issue()`（`scripts/evolution_s
 - `--scheduled` — 定时任务模式，扫描所有远程分支，删除无 open PR 且最后 commit 超过 24 小时的孤立分支
 - `--immediate <branch>` — 立即删除指定分支（用于 PR 合并后清理）
 
+heartbeat 告警自愈（`resolve_cleared_alerts()`）在本轮 tick 中异常类型全部消失时自动关闭告警 issue 并附中文自愈评论；info 级持续 finding 经 `check_persistent_info_findings()` 连续 ≥10 次快照出现后输出 `suppress.json` 条目提案（只打印不写盘，过期自动解除）。管道全链路（含 GATE A 三条放行路径与单向同步决策）见 [Issue 流转链路文档 §10](docs/architecture/issue-flow.md)。
+
 完整的 GitHub↔Linear Issue 流转链路与职责约定见 [Issue 流转链路文档](docs/architecture/issue-flow.md)。
 
 ## 文档
@@ -396,6 +398,6 @@ actionlint .github/workflows/*.yml
 
 ## 版本与许可
 
-- 当前文档版本：v0.29.0 <!-- x-release-please-version -->
+- 当前文档版本：v0.30.0 <!-- x-release-please-version -->
 - Python: >= 3.9
 - 许可证：MIT，详见 [LICENSE](LICENSE)。

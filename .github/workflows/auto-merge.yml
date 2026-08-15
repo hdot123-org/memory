@@ -100,4 +100,9 @@ jobs:
         with:
           pr-number: ${{ matrix.pr_number }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 铁律：合并必须用 DISPATCH_TOKEN，不能用 GITHUB_TOKEN。
+          # GitHub 递归防护会抑制 GITHUB_TOKEN 操作产生的 push 事件，
+          # 导致 release-please 的 push(paths: .release-please-manifest.json)
+          # 触发器失效 → release PR 合并后 tag/Release 不创建、Release Pipeline 断链。
+          # 2026-08-15 两次事故（v0.29.0 / v0.30.0 均靠手动 dispatch 补救）。
+          GITHUB_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
