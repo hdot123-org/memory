@@ -37,6 +37,7 @@ REQUIRED_CONFIG_KEYS = [
     "failure_label",
     "max_issues_per_tick",
     "max_self_audit_issues_per_tick",
+    "max_code_hygiene_issues_per_tick",
     "snapshot_limit",
 ]
 
