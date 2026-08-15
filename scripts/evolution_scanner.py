@@ -180,7 +180,10 @@ def load_suppressions(repo_root: Path) -> list[dict[str, Any]]:
             data = json.load(f)
         entries = data.get("suppressed", [])
         if not isinstance(entries, list):
-            print("[evolution] Warning: suppress.json 'suppressed' is not a list, treating as empty")
+            print(
+                "[evolution] Warning: suppress.json 'suppressed' is not a list, treating as empty",
+                file=sys.stderr,
+            )
             return []
 
         # Validate expires fields once during load to avoid repeated warnings
@@ -219,7 +222,7 @@ def load_suppressions(repo_root: Path) -> list[dict[str, Any]]:
 
         return valid_entries
     except (json.JSONDecodeError, OSError) as e:
-        print(f"[evolution] Warning: Failed to load suppress.json: {e}")
+        print(f"[evolution] Warning: Failed to load suppress.json: {e}", file=sys.stderr)
         return []
 
 

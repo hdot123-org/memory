@@ -20,12 +20,41 @@ GATEWAY_PATH = REPO_ROOT / "memory_core" / "tools" / "memory_hook_gateway.py"
 GUARD_PATH = REPO_ROOT / "memory_core" / "tools" / "hook_runtime_guard.py"
 
 
-class TestSessionEndLoggerSigint:
+class _SigintRunnerMixin:
+    """Shared subprocess-SIGINT runner (INFRA-323 dedup).
+
+    TestSessionEndLoggerSigint.test_no_traceback_on_sigint and
+    TestGatewaySigint.test_no_traceback_on_sigint carried a byte-for-byte
+    identical spawn/sleep/SIGINT/communicate body (92% AST similarity per
+    evolution scanner, 24-25 lines / 100 tokens each). Consolidated into
+    this mixin; each subclass still supplies its own subprocess args/cwd
+    and both public test names/assertions are unchanged.
+    """
+
+    def _spawn_and_sigint(
+        self, args: list, cwd: str | None = None
+    ) -> tuple:
+        """Spawn args with MEMORY_HOOK_FORCE=1, SIGINT after boot, return (returncode, stdout, stderr)."""
+        proc = subprocess.Popen(
+            args,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
+            cwd=cwd,
+        )
+        time.sleep(1)  # Wait for process to start and enter main()
+        proc.send_signal(signal.SIGINT)
+        stdout, stderr = proc.communicate(timeout=5)
+        return proc.returncode, stdout, stderr
+
+
+class TestSessionEndLoggerSigint(_SigintRunnerMixin):
     """VAL-SIGINT-001: session_end_logger catches SIGINT during work phase."""
 
     def test_sigint_exits_zero(self):
         """Send SIGINT to running session_end_logger, assert exit code 0."""
-        proc = subprocess.Popen(
+        returncode, _stdout, stderr = self._spawn_and_sigint(
             [
                 sys.executable,
                 "-m",
@@ -36,22 +65,15 @@ class TestSessionEndLoggerSigint:
                 "/tmp/nonexistent-session-dir-sigint",
                 "--project-root",
                 "/tmp",
-            ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
+            ]
         )
-        time.sleep(1)  # Wait for process to start and enter main()
-        proc.send_signal(signal.SIGINT)
-        stdout, stderr = proc.communicate(timeout=5)
-        assert proc.returncode == 0, (
-            f"Expected exit 0, got {proc.returncode}\nstderr: {stderr.decode()}"
+        assert returncode == 0, (
+            f"Expected exit 0, got {returncode}\nstderr: {stderr.decode()}"
         )
 
     def test_no_traceback_on_sigint(self):
         """VAL-SIGINT-004: No traceback in stderr on SIGINT."""
-        proc = subprocess.Popen(
+        _returncode, _stdout, stderr = self._spawn_and_sigint(
             [
                 sys.executable,
                 "-m",
@@ -62,27 +84,20 @@ class TestSessionEndLoggerSigint:
                 "/tmp/nonexistent-session-dir-sigint",
                 "--project-root",
                 "/tmp",
-            ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
+            ]
         )
-        time.sleep(1)
-        proc.send_signal(signal.SIGINT)
-        stdout, stderr = proc.communicate(timeout=5)
         stderr_text = stderr.decode()
         assert "Traceback" not in stderr_text, (
             f"Traceback found in stderr:\n{stderr_text}"
         )
 
 
-class TestGatewaySigint:
+class TestGatewaySigint(_SigintRunnerMixin):
     """VAL-SIGINT-002: memory_hook_gateway catches SIGINT during work phase."""
 
     def test_sigint_exits_zero(self):
         """Send SIGINT to running gateway, assert exit code 0."""
-        proc = subprocess.Popen(
+        returncode, _stdout, stderr = self._spawn_and_sigint(
             [
                 sys.executable,
                 "-m",
@@ -92,23 +107,15 @@ class TestGatewaySigint:
                 "--event",
                 "session-end",
             ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
             cwd="/tmp",
         )
-        # Don't close stdin yet — let the process start
-        time.sleep(1)
-        proc.send_signal(signal.SIGINT)
-        stdout, stderr = proc.communicate(timeout=5)
-        assert proc.returncode == 0, (
-            f"Expected exit 0, got {proc.returncode}\nstderr: {stderr.decode()}"
+        assert returncode == 0, (
+            f"Expected exit 0, got {returncode}\nstderr: {stderr.decode()}"
         )
 
     def test_no_traceback_on_sigint(self):
         """VAL-SIGINT-004: No traceback in stderr on SIGINT for gateway."""
-        proc = subprocess.Popen(
+        _returncode, _stdout, stderr = self._spawn_and_sigint(
             [
                 sys.executable,
                 "-m",
@@ -118,15 +125,8 @@ class TestGatewaySigint:
                 "--event",
                 "session-end",
             ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
             cwd="/tmp",
         )
-        time.sleep(1)
-        proc.send_signal(signal.SIGINT)
-        stdout, stderr = proc.communicate(timeout=5)
         stderr_text = stderr.decode()
         assert "Traceback" not in stderr_text, (
             f"Traceback found in stderr:\n{stderr_text}"
