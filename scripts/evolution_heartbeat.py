@@ -26,6 +26,13 @@ MONITOR_HEARTBEAT_PATH = Path(".evolution/monitor_heartbeat.json")
 SCANNER_WORKFLOW = "evolution-scan.yml"
 SCANNER_LIVENESS_THRESHOLD_HOURS = 2  # Alert if scanner hasn't run in 2 hours
 
+# --- Shared anomaly markers (producer ↔ consumer coupling) ---
+# These strings are written by create_alert_issue/_build_alert_body and parsed by
+# extract_recorded_anomalies.  Both sides MUST use the same constants to prevent
+# wording drift that would cause silent never-heal.
+_ANOMALY_SCANNER_STALE_MARKER = "evolution-scan workflow has not run recently"
+_ANOMALY_ISSUES_WITHOUT_PR_MARKER = "evolution-found issue(s) without associated PR"
+
 
 def check_history_freshness(
     history_path: Path = HISTORY_PATH,
@@ -91,8 +98,15 @@ def check_pr_coverage(label: str = EVOLUTION_FOUND_LABEL) -> dict[str, Any]:
       - issues_without_pr (int): open issues lacking an associated PR
       - total_issues (int): total open issues inspected
       - missing (list[int]): issue numbers without a PR
+      - data_ok (bool): False if gh subprocess failed; callers must NOT treat
+        issues_without_pr=0 as "anomaly cleared" when data_ok is False.
     """
-    result: dict[str, Any] = {"issues_without_pr": 0, "total_issues": 0, "missing": []}
+    result: dict[str, Any] = {
+        "issues_without_pr": 0,
+        "total_issues": 0,
+        "missing": [],
+        "data_ok": True,
+    }
 
     list_result = subprocess.run(
         [
@@ -109,12 +123,14 @@ def check_pr_coverage(label: str = EVOLUTION_FOUND_LABEL) -> dict[str, Any]:
 
     if list_result.returncode != 0:
         print(f"[heartbeat] Failed to query issues: {list_result.stderr.strip()}")
+        result["data_ok"] = False
         return result
 
     try:
         issues = json.loads(list_result.stdout) if list_result.stdout.strip() else []
     except json.JSONDecodeError:
         print("[heartbeat] Cannot parse issue list JSON")
+        result["data_ok"] = False
         return result
 
     result["total_issues"] = len(issues)
@@ -304,11 +320,13 @@ def extract_recorded_anomalies(issue_body: str) -> set[str]:
     """Parse anomaly types from an alert issue body.
 
     Returns a set of anomaly type strings: {"scanner_stale", "issues_without_pr"}.
+
+    Uses shared constants to ensure producer/consumer consistency.
     """
     anomalies = set()
-    if "evolution-scan workflow has not run recently" in issue_body:
+    if _ANOMALY_SCANNER_STALE_MARKER in issue_body:
         anomalies.add("scanner_stale")
-    if "evolution-found issue(s) without associated PR" in issue_body:
+    if _ANOMALY_ISSUES_WITHOUT_PR_MARKER in issue_body:
         anomalies.add("issues_without_pr")
     return anomalies
 
@@ -355,6 +373,7 @@ def list_open_alert_issues() -> list[dict[str, Any]]:
 def resolve_cleared_alerts(
     current_anomalies: set[str],
     open_alerts: list[dict[str, Any]] | None = None,
+    coverage_data_ok: bool = True,
 ) -> list[int]:
     """Close alert issues whose recorded anomalies have all cleared.
 
@@ -362,8 +381,19 @@ def resolve_cleared_alerts(
     anomaly set. If ALL recorded anomalies have disappeared (none remain in current),
     closes the issue and adds a Chinese self-heal comment listing which anomalies cleared.
 
+    Args:
+        current_anomalies: Set of currently active anomaly types
+        open_alerts: List of open alert issues (fetched if None)
+        coverage_data_ok: If False, skip self-heal entirely (fail-closed).
+            This prevents false closes when check_pr_coverage couldn't verify data.
+
     Returns list of closed issue numbers.
     """
+    # Fail-closed: if coverage data is unreliable, don't attempt self-heal
+    if not coverage_data_ok:
+        print("[heartbeat] Coverage data unavailable, skipping self-heal (fail-closed)")
+        return []
+
     if open_alerts is None:
         open_alerts = list_open_alert_issues()
 
@@ -398,8 +428,8 @@ def resolve_cleared_alerts(
                 + "\n".join(f"- {desc}" for desc in cleared_desc)
             )
 
-            # Add self-heal comment
-            subprocess.run(
+            # Add self-heal comment and check return code
+            comment_result = subprocess.run(
                 [
                     "gh", "issue", "comment", str(issue_num),
                     "--body", comment,
@@ -409,18 +439,55 @@ def resolve_cleared_alerts(
                 timeout=30,
             )
 
-            # Close the issue
-            subprocess.run(
+            if comment_result.returncode != 0:
+                print(f"[heartbeat] Failed to comment on #{issue_num}: {comment_result.stderr.strip()}")
+                # Don't proceed to close if comment failed (avoid orphan close)
+                continue
+
+            # Close the issue and check return code
+            close_result = subprocess.run(
                 ["gh", "issue", "close", str(issue_num)],
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
 
+            if close_result.returncode != 0:
+                print(f"[heartbeat] Failed to close #{issue_num}: {close_result.stderr.strip()}")
+                # Don't add to closed list if close failed
+                continue
+
             print(f"[heartbeat] Self-heal: closed alert #{issue_num} (cleared: {cleared_names})")
             closed.append(issue_num)
 
     return closed
+
+
+def _build_alert_body(scanner_stale: bool, issues_without_pr: int) -> str:
+    """Build alert issue body using shared constants.
+
+    This function is the single source of truth for anomaly text format.
+    The text MUST be parseable by extract_recorded_anomalies() using the same
+    shared constants to prevent wording drift that would cause silent never-heal.
+    """
+    anomalies = []
+    if scanner_stale:
+        anomalies.append(f"{_ANOMALY_SCANNER_STALE_MARKER} (scanner may have stopped)")
+    if issues_without_pr > 0:
+        anomalies.append(f"{issues_without_pr} {_ANOMALY_ISSUES_WITHOUT_PR_MARKER}")
+
+    body_lines = [
+        "## Evolution Heartbeat Alert",
+        "",
+        f"**Detected**: {datetime.now(timezone.utc).isoformat()}",
+        "",
+        "### Anomalies",
+        "",
+    ]
+    for anomaly in anomalies:
+        body_lines.append(f"- {anomaly}")
+
+    return "\n".join(body_lines)
 
 
 def create_alert_issue(
@@ -435,33 +502,14 @@ def create_alert_issue(
     if not scanner_stale and issues_without_pr == 0:
         return False
 
-    anomalies = []
-    if scanner_stale:
-        anomalies.append("evolution-scan workflow has not run recently (scanner may have stopped)")
-    if issues_without_pr > 0:
-        anomalies.append(
-            f"{issues_without_pr} evolution-found issue(s) without associated PR"
-        )
-
-    body_lines = [
-        "## Evolution Heartbeat Alert",
-        "",
-        f"**Detected**: {datetime.now(timezone.utc).isoformat()}",
-        f"**Scope**: {dedup_label}",
-        "",
-        "### Anomalies",
-        "",
-    ]
-    for anomaly in anomalies:
-        body_lines.append(f"- {anomaly}")
-
+    body = _build_alert_body(scanner_stale, issues_without_pr)
     title = "[heartbeat] Pipeline anomaly detected"
 
     create_result = subprocess.run(
         [
             "gh", "issue", "create",
             "--title", title,
-            "--body", "\n".join(body_lines),
+            "--body", body,
             "--label", ALERT_LABEL,
         ],
         capture_output=True,
@@ -495,7 +543,9 @@ def main(history_path: Path = HISTORY_PATH) -> int:
 
     # Check 2: PR coverage
     coverage = check_pr_coverage()
-    if coverage["issues_without_pr"] > 0:
+    if not coverage.get("data_ok", True):
+        print("[heartbeat] WARNING: PR coverage check failed, data unreliable")
+    elif coverage["issues_without_pr"] > 0:
         print(
             f"[heartbeat] ALERT: {coverage['issues_without_pr']} issue(s) "
             f"without PR: {coverage['missing']}"
@@ -505,7 +555,10 @@ def main(history_path: Path = HISTORY_PATH) -> int:
 
     # P1 self-heal: close alert issues whose anomalies have cleared
     current_anomalies = compute_current_anomalies(liveness, coverage)
-    closed = resolve_cleared_alerts(current_anomalies)
+    closed = resolve_cleared_alerts(
+        current_anomalies,
+        coverage_data_ok=coverage.get("data_ok", True),
+    )
     if closed:
         print(f"[heartbeat] Self-heal: closed {len(closed)} alert(s): {closed}")
 
