@@ -9,11 +9,12 @@ Verifies:
 """
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+from tests.source_repo_helpers import make_source_repo
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -23,15 +24,7 @@ if str(REPO_ROOT) not in sys.path:
 @pytest.fixture()
 def source_repo(tmp_path: Path) -> Path:
     """Create a fake memory-core source repo with marker files."""
-    memory_repo = tmp_path / "source-repo"
-    nested = memory_repo / "memory_core" / "tools"
-    nested.mkdir(parents=True)
-    (nested / "memory_hook_gateway.py").write_text("# marker\n", encoding="utf-8")
-    (nested / "factory_global_hooks.py").write_text("# marker\n", encoding="utf-8")
-    (nested / "codex_global_hooks.py").write_text("# marker\n", encoding="utf-8")
-    (nested / "ownership.py").write_text("# marker\n", encoding="utf-8")
-    subprocess.run(["git", "init"], cwd=memory_repo, check=True, capture_output=True, text=True)
-    return memory_repo
+    return make_source_repo(tmp_path, extra_marker_files=("ownership.py",))
 
 
 @pytest.fixture()
