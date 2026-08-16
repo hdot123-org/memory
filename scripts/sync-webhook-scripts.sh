@@ -98,22 +98,9 @@ if [[ ! -d "$PROD_ROOT" ]]; then
     exit 1
 fi
 
-# === 清扫遗留 .sync-tmp-* 临时目录（kill -9 残留防御）===
-# 在开始新的同步前，先清理任何遗留的临时目录
-if [[ -d "$PROD_ROOT" ]]; then
-    orphan_count=0
-    for orphan_dir in "$PROD_ROOT"/.sync-tmp-*; do
-        if [[ -d "$orphan_dir" ]]; then
-            rm -rf "$orphan_dir"
-            ((orphan_count++))
-        fi
-    done
-    if [[ $orphan_count -gt 0 ]]; then
-        log "Cleaned up $orphan_count orphan .sync-tmp-* director(y/ies)"
-    fi
-fi
-
 # === 加载 manifest ===
+# 预定义可选数组，防止 MANIFEST 未声明时 set -u 报 unbound variable
+CROSS_DIR_MAPPINGS=()
 # shellcheck source=/dev/null disable=SC1091
 source "$MANIFEST"
 
@@ -160,6 +147,7 @@ if [[ "$CHECK_MODE" -eq 1 ]]; then
     log "CHECK MODE: comparing repo vs production (read-only)"
     drift_found=0
 
+    # Check MANAGED_FILES
     for file in "${MANAGED_FILES[@]}"; do
         repo_file="${REPO_WEBHOOK}/${file}"
         prod_file="${PROD_ROOT}/${file}"
@@ -220,6 +208,21 @@ if [[ "$CHECK_MODE" -eq 1 ]]; then
     else
         log "CHECK RESULT: all managed files in sync"
         exit 0
+    fi
+fi
+
+# === 清扫遗留 .sync-tmp-* 临时目录（kill -9 残留防御）===
+# 在开始新的同步前，先清理任何遗留的临时目录
+if [[ -d "$PROD_ROOT" ]]; then
+    orphan_count=0
+    for orphan_dir in "$PROD_ROOT"/.sync-tmp-*; do
+        if [[ -d "$orphan_dir" ]]; then
+            rm -rf "$orphan_dir"
+            ((orphan_count++))
+        fi
+    done
+    if [[ $orphan_count -gt 0 ]]; then
+        log "Cleaned up $orphan_count orphan .sync-tmp-* director(y/ies)"
     fi
 fi
 

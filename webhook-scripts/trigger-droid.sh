@@ -567,6 +567,40 @@ except Exception:
         fi
     fi
 
+    # 4.7. Session-completed override (architecture §3.2): session 已完成但 Linear 未同步终态
+    # 条件：status file 显示 status=completed + sessionId 非空 + exitCode=0
+    # 说明：session 已成功执行，但 Linear 状态未自动同步（可能是 webhook 丢失或状态转换延迟）
+    # 锚点化：status file 中的 sessionId 必须非空，证明 session 确实完成
+    # 失败处理：status file 不存在或条件不满足 → fall through 到 BLOCK（fail-closed）
+    if [ -f "$status_file" ]; then
+        local _session_completed_check
+        _session_completed_check=$(/opt/homebrew/bin/python3 -c "
+import json, sys
+try:
+    with open('$status_file') as f:
+        d = json.load(f)
+    status = d.get('status', '')
+    session_id = d.get('sessionId')
+    exit_code = d.get('exitCode')
+    # 条件：status=completed + sessionId 非空 + exitCode=0
+    if (status == 'completed' and
+        session_id and str(session_id).lower() not in ('none', 'null', '') and
+        exit_code == 0):
+        print('PASS')
+    else:
+        sys.exit(0)  # fall through to BLOCK
+except Exception:
+    sys.exit(0)  # any error, fall through to BLOCK
+" 2>/dev/null)
+
+        if [ "$_session_completed_check" = "PASS" ]; then
+            log "GATE A PASS (session-completed): $ISSUE_REF — session completed with exitCode=0, Linear state lagging behind"
+            exit 0
+        else
+            log "GATE A BLOCK (session-completed): $ISSUE_REF — status file exists but session not completed or exitCode≠0"
+        fi
+    fi
+
     # 5. 无有效 session → 打回：回退到 In Progress + 评论
     log "GATE A BLOCK: $ISSUE_REF moved to Done WITHOUT Droid session record — reverting to In Progress"
 

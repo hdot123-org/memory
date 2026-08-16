@@ -7397,7 +7397,8 @@ def test_val_cross_001_complete_trust_chain(tmp_path):
     with patch("evolution_utils.subprocess.run") as mock_run, \
          patch("urllib.request.urlopen", return_value=mock_urlopen), \
          patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
-        # Call sequence: list issues → gh pr view (merged) → close issue
+        # Call sequence per architecture.md §3.2 + VAL-CLOSE-026 optimization:
+        # list issues → (skip comment fetch: body has linkback) → gh pr view (merged) → close issue
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout=json.dumps({"mergedAt": "2026-01-01T00:00:00Z"}), stderr=""),
@@ -7408,6 +7409,7 @@ def test_val_cross_001_complete_trust_chain(tmp_path):
                            failed_categories=set(), history_path=history_path)
 
         # Verify close was called (3 subprocess calls: list, pr view, close)
+        # Comment fetch skipped per VAL-CLOSE-026 (body has linkback)
         assert mock_run.call_count == 3
         close_call = mock_run.call_args_list[2]
         assert close_call[0][0][2] == "close"
@@ -7471,16 +7473,18 @@ def test_val_cross_003_broken_chain_no_merged_pr(tmp_path):
     with patch("evolution_utils.subprocess.run") as mock_run, \
          patch("urllib.request.urlopen", return_value=mock_urlopen), \
          patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
+        # Call sequence per architecture.md §3.2: list → pr view (not merged) → comment fetch for sentinel
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout=json.dumps({"mergedAt": None}), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment fetch for sentinel check (no sentinel found)
         ]
 
         auto_close_resolved(current_findings, "evolution-found",
                            failed_categories=set(), history_path=history_path)
 
-        # Only list + pr view, NO close call
-        assert mock_run.call_count == 2
+        # List + pr view + comment fetch for sentinel, NO close call
+        assert mock_run.call_count == 3
         assert mock_run.call_args_list[0][0][0][2] == "list"
 
 
@@ -7553,6 +7557,8 @@ def test_val_cross_005_linear_api_failure_fail_closed(tmp_path):
          patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Connection refused")), \
          patch("evolution_utils.logger") as mock_logger, \
          patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
+        # Per VAL-CLOSE-026: body has linkback → skip comment fetch
+        # Only list call, then Linear API fails (fail-closed)
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
         ]
@@ -7561,9 +7567,10 @@ def test_val_cross_005_linear_api_failure_fail_closed(tmp_path):
                            failed_categories=set(), history_path=history_path)
 
         # Issue NOT closed due to Linear failure (fail-closed)
-        # Only 1 call: get open issues. No close call because Linear API failed.
+        # 1 call: get open issues. No comment fetch (body has linkback per VAL-CLOSE-026).
+        # No close call because Linear API failed.
         assert mock_run.call_count == 1, \
-            "Should only call gh issue list, not gh issue close (fail-closed blocks close)"
+            "Should only call gh issue list, not gh issue view comments (VAL-CLOSE-026) or gh issue close (fail-closed)"
 
         # Verify fail-closed warning logged
         warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
@@ -7702,6 +7709,8 @@ def test_val_cross_008_reopened_issue_closed_again(tmp_path):
     with patch("evolution_utils.subprocess.run") as mock_run, \
          patch("urllib.request.urlopen", return_value=mock_urlopen), \
          patch.dict(os.environ, {"LINEAR_API_KEY": "test-key-008"}):
+        # Call sequence per architecture.md §3.2 + VAL-CLOSE-026:
+        # list → (skip comment fetch: body has linkback) → pr view (merged) → close
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout=json.dumps({"mergedAt": "2026-02-01T00:00:00Z"}), stderr=""),
@@ -7712,6 +7721,7 @@ def test_val_cross_008_reopened_issue_closed_again(tmp_path):
                            failed_categories=set(), history_path=history_path)
 
         # Issue #42 closed (same number, no new issue created)
+        # 3 calls: list, pr view, close (no comment fetch per VAL-CLOSE-026)
         assert mock_run.call_count == 3
         close_call = mock_run.call_args_list[2]
         assert close_call[0][0][2] == "close"
