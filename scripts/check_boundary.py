@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -111,6 +112,31 @@ def _is_dir_exempt(dir_path: Path) -> bool:
     return name in exempt_names
 
 
+def _get_git_tracked_files(repo_root: Path) -> set[Path] | None:
+    """Return set of git-tracked file paths relative to *repo_root*.
+
+    Returns ``None`` when git is unavailable (not a git repo or git binary
+    missing) — callers fall back to scanning everything in that case.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    tracked = {repo_root / p for p in result.stdout.split("\0") if p}
+    return tracked
+
+
 def scan_business_kb_files() -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     if KB_GLOBAL_DIR.is_dir():
@@ -144,6 +170,9 @@ def scan_runtime_leaks() -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     compiled = [(name, re.compile(rx)) for name, rx in LEAK_PATTERNS]
 
+    # Only scan git-tracked files (untracked files won't be pushed/published)
+    tracked_files = _get_git_tracked_files(REPO_ROOT)
+
     for root in LEAK_SCAN_ROOTS:
         if not root.is_dir():
             continue
@@ -159,6 +188,10 @@ def scan_runtime_leaks() -> list[dict[str, str]]:
             for filename in filenames:
                 filepath = Path(dirpath) / filename
                 if _is_exempt(filepath):
+                    continue
+
+                # Skip untracked files
+                if tracked_files is not None and filepath not in tracked_files:
                     continue
 
                 try:
