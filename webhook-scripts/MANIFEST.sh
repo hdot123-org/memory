@@ -17,6 +17,25 @@ MANAGED_FILES=(
 )
 
 # ============================================================================
+# 跨目录同步映射 (Cross-Directory Sync Mappings)
+# ============================================================================
+# webhook-scripts/ 之外、但生产部署需要的仓库文件（锚点助手依赖链）。
+# sync-webhook-scripts.sh 会将这些文件从仓库相对路径同步到生产目录。
+# 背景 (INFRA-357): 生产 extract_anchor.py 缺少 evolution_utils.py /
+# evolution_adapters.py 依赖导致 ModuleNotFoundError —— 依赖链必须与调用方
+# 一同受管部署，堵住部署漂移。anchor_gate.py 为补偿层关闭路径的锚点守卫
+# （trigger-droid.sh L1166，与 extract_anchor.py 同链部署）。
+#
+# 格式: "<仓库相对路径>:<部署目标文件名>"
+
+CROSS_DIR_MAPPINGS=(
+    "scripts/extract_anchor.py:extract_anchor.py"
+    "scripts/evolution_utils.py:evolution_utils.py"
+    "scripts/evolution_adapters.py:evolution_adapters.py"
+    "scripts/anchor_gate.py:anchor_gate.py"
+)
+
+# ============================================================================
 # 环境差异声明 (Environment-Specific Differences)
 # ============================================================================
 # 声明仓库副本与生产副本之间的已知环境特定差异
@@ -53,6 +72,13 @@ ENV_DIFF_LINES=(
 get_managed_files() {
     for file in "${MANAGED_FILES[@]}"; do
         echo "$file"
+    done
+}
+
+# 获取跨目录同步映射列表（INFRA-357 锚点依赖链）
+get_cross_dir_mappings() {
+    for mapping in "${CROSS_DIR_MAPPINGS[@]}"; do
+        echo "$mapping"
     done
 }
 

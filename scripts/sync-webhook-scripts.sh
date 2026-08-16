@@ -118,7 +118,7 @@ fi
 source "$MANIFEST"
 
 # === 校验函数 ===
-# 校验指定路径的脚本文件（shellcheck + bash -n）
+# 校验指定路径的脚本文件（.sh: shellcheck + bash -n；.py: py_compile）
 validate_file() {
     local filepath="$1"
 
@@ -126,17 +126,31 @@ validate_file() {
         return 0
     fi
 
-    # Run shellcheck validation
-    if command -v shellcheck >/dev/null 2>&1; then
-        if ! shellcheck "$filepath" >/dev/null 2>&1; then
-            return 1
-        fi
-    fi
+    case "$filepath" in
+        *.py)
+            # Python 文件：语法编译校验
+            if ! command -v python3 >/dev/null 2>&1; then
+                return 1
+            fi
+            if ! python3 -m py_compile "$filepath" >/dev/null 2>&1; then
+                return 1
+            fi
+            ;;
+        *)
+            # Shell 文件：shellcheck + bash -n
+            # Run shellcheck validation
+            if command -v shellcheck >/dev/null 2>&1; then
+                if ! shellcheck "$filepath" >/dev/null 2>&1; then
+                    return 1
+                fi
+            fi
 
-    # bash -n 语法校验
-    if ! bash -n "$filepath" 2>/dev/null; then
-        return 1
-    fi
+            # bash -n 语法校验
+            if ! bash -n "$filepath" 2>/dev/null; then
+                return 1
+            fi
+            ;;
+    esac
 
     return 0
 }
@@ -167,6 +181,36 @@ if [[ "$CHECK_MODE" -eq 1 ]]; then
             drift_found=1
         else
             log "OK: ${file} in sync"
+        fi
+    done
+
+    # 跨目录映射：sha256 对比（INFRA-357 锚点依赖链托管）
+    for mapping in "${CROSS_DIR_MAPPINGS[@]:-}"; do
+        [[ -z "$mapping" ]] && continue
+        repo_rel="${mapping%%:*}"
+        target_name="${mapping##*:}"
+        repo_file="${REPO_ROOT}/${repo_rel}"
+        prod_file="${PROD_ROOT}/${target_name}"
+
+        if [[ ! -f "$repo_file" ]]; then
+            log "ERROR: ${repo_rel} listed in CROSS_DIR_MAPPINGS but missing from repo"
+            drift_found=1
+            continue
+        fi
+
+        if [[ ! -f "$prod_file" ]]; then
+            log "DRIFT: ${repo_rel} -> ${target_name} exists in repo but not in production"
+            drift_found=1
+            continue
+        fi
+
+        repo_sha="$(shasum -a 256 "$repo_file" 2>/dev/null | awk '{print $1}')"
+        prod_sha="$(shasum -a 256 "$prod_file" 2>/dev/null | awk '{print $1}')"
+        if [[ "$repo_sha" != "$prod_sha" ]]; then
+            log "DRIFT: ${repo_rel} -> ${target_name} differs between repo and production (sha256)"
+            drift_found=1
+        else
+            log "OK: ${repo_rel} -> ${target_name} in sync"
         fi
     done
 
@@ -201,6 +245,22 @@ for file in "${MANAGED_FILES[@]}"; do
     fi
 done
 
+# 跨目录映射目标备份（INFRA-357）
+for mapping in "${CROSS_DIR_MAPPINGS[@]:-}"; do
+    [[ -z "$mapping" ]] && continue
+    target_name="${mapping##*:}"
+    prod_file="${PROD_ROOT}/${target_name}"
+    if [[ -f "$prod_file" ]]; then
+        backup_file="${BACKUP_ROOT}/${target_name}.bak.${TIMESTAMP}"
+        if [[ -f "$backup_file" ]]; then
+            log "  Backup exists: ${target_name}.bak.${TIMESTAMP}, skipping"
+        else
+            cp -p "$prod_file" "$backup_file"
+            log "  Backed up: ${target_name} -> ${target_name}.bak.${TIMESTAMP}"
+        fi
+    fi
+done
+
 # Phase 2: 同步
 log "Phase 2: Syncing repo -> production"
 
@@ -218,22 +278,45 @@ for file in "${MANAGED_FILES[@]}"; do
     log "  Staged: ${file}"
 done
 
+# 跨目录映射同步（INFRA-357 锚点依赖链）
+for mapping in "${CROSS_DIR_MAPPINGS[@]:-}"; do
+    [[ -z "$mapping" ]] && continue
+    repo_rel="${mapping%%:*}"
+    target_name="${mapping##*:}"
+    repo_file="${REPO_ROOT}/${repo_rel}"
+    if [[ ! -f "$repo_file" ]]; then
+        log "WARN: ${repo_rel} listed in CROSS_DIR_MAPPINGS but missing from repo, skipping"
+        continue
+    fi
+    cp -p "$repo_file" "${sync_tmp}/${target_name}"
+    log "  Staged: ${repo_rel} -> ${target_name}"
+done
+
 # Phase 3: 校验
 log "Phase 3: Validating synced files"
 validation_ok=1
 
-for file in "${MANAGED_FILES[@]}"; do
-    sync_file="${sync_tmp}/${file}"
+validate_staged_file() {
+    local name="$1"
+    local sync_file="${sync_tmp}/${name}"
     if [[ ! -f "$sync_file" ]]; then
-        continue
+        return 0
     fi
-
     if ! validate_file "$sync_file"; then
-        log "FAIL: Validation failed for ${file}"
+        log "FAIL: Validation failed for ${name}"
         validation_ok=0
     else
-        log "  PASS: ${file}"
+        log "  PASS: ${name}"
     fi
+}
+
+for file in "${MANAGED_FILES[@]}"; do
+    validate_staged_file "$file"
+done
+
+for mapping in "${CROSS_DIR_MAPPINGS[@]:-}"; do
+    [[ -z "$mapping" ]] && continue
+    validate_staged_file "${mapping##*:}"
 done
 
 # fail-closed: 校验失败 → 清理临时文件，保留备份，退出非零
@@ -246,13 +329,23 @@ fi
 
 # 校验通过：原子替换
 log "Phase 4: Committing sync (atomic replace)"
-for file in "${MANAGED_FILES[@]}"; do
-    sync_file="${sync_tmp}/${file}"
-    prod_file="${PROD_ROOT}/${file}"
+commit_staged_file() {
+    local name="$1"
+    local sync_file="${sync_tmp}/${name}"
+    local prod_file="${PROD_ROOT}/${name}"
     if [[ -f "$sync_file" ]]; then
         mv "$sync_file" "$prod_file"
-        log "  Committed: ${file}"
+        log "  Committed: ${name}"
     fi
+}
+
+for file in "${MANAGED_FILES[@]}"; do
+    commit_staged_file "$file"
+done
+
+for mapping in "${CROSS_DIR_MAPPINGS[@]:-}"; do
+    [[ -z "$mapping" ]] && continue
+    commit_staged_file "${mapping##*:}"
 done
 
 # 清理临时目录

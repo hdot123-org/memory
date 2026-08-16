@@ -3,9 +3,14 @@
 Tests the extract_linkback_anchor() function from evolution_utils.py
 and the extract_anchor.py CLI wrapper.
 
-Architecture reference: §3.1 镜像锚点
+Window semantics (INFRA-357): extraction is scoped to the FIRST
+comment BLOCK (blank-line separated) containing the linear-linkback
+marker, not the marker line alone.
+
+Architecture reference: docs/architecture/issue-flow.md §9.4/§10.3（镜像定位锚点）
 """
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -51,19 +56,32 @@ class TestExtractLinkbackAnchor:
         assert extract_linkback_anchor(comments) is None
 
     def test_multiple_comments_first_wins(self):
-        """Multiple linkback comments → first one wins"""
+        """Multiple linkback comment blocks → first block wins.
+
+        Intent change (INFRA-357): comments are now comment BLOCKS
+        (blank-line separated), not single lines; each marker-bearing
+        block is its own window.
+        """
         comments = """<!-- linear-linkback INFRA-111 -->
+
 Some other text
+
 <!-- linear-linkback INFRA-222 -->"""
         assert extract_linkback_anchor(comments) == "INFRA-111"
 
     def test_first_match_in_first_linkback_comment(self):
-        """First INFRA-xxx in first linkback comment (architecture §3.1)"""
-        # Simulate gh --jq output: each comment on separate line
+        """First INFRA-xxx in first linkback comment block (issue-flow.md §9.4).
+
+        Intent change (INFRA-357): the window is the marker-bearing
+        comment BLOCK; ids mentioned in other blocks are never harvested.
+        """
+        # Simulate gh --jq output: comment blocks separated by blank lines
         comments = """Regular comment mentioning INFRA-999
+
 <!-- linear-linkback INFRA-333 -->
+
 Another comment with INFRA-456"""
-        # Should extract INFRA-333 from the linkback comment, not INFRA-999
+        # Should extract INFRA-333 from the linkback comment block, not INFRA-999
         assert extract_linkback_anchor(comments) == "INFRA-333"
 
     def test_empty_input(self):
@@ -94,7 +112,7 @@ class TestExtractAnchorCLI:
 
             # Copy extract_anchor.py and evolution_utils.py
             src_scripts = Path(__file__).parent.parent / "scripts"
-            for script_name in ["extract_anchor.py", "evolution_utils.py", "evolution_adapters.py"]:
+            for script_name in ["extract_anchor.py", "evolution_utils.py", "evolution_adapters.py", "anchor_gate.py"]:
                 src = src_scripts / script_name
                 dst = scripts_dir / script_name
                 dst.write_text(src.read_text())
@@ -118,7 +136,7 @@ exit 0
         env["PATH"] = f"{temp_repo}:{env.get('PATH', '')}"
 
         result = subprocess.run(
-            ["python3", "scripts/extract_anchor.py", "issue", "123", "test/repo"],
+            [sys.executable, "scripts/extract_anchor.py", "issue", "123", "test/repo"],
             cwd=temp_repo,
             env=env,
             capture_output=True,
@@ -142,7 +160,7 @@ exit 0
         env["PATH"] = f"{temp_repo}:{env.get('PATH', '')}"
 
         result = subprocess.run(
-            ["python3", "scripts/extract_anchor.py", "issue", "456", "test/repo"],
+            [sys.executable, "scripts/extract_anchor.py", "issue", "456", "test/repo"],
             cwd=temp_repo,
             env=env,
             capture_output=True,
@@ -166,7 +184,7 @@ exit 0
         env["PATH"] = f"{temp_repo}:{env.get('PATH', '')}"
 
         result = subprocess.run(
-            ["python3", "scripts/extract_anchor.py", "pr", "789", "test/repo"],
+            [sys.executable, "scripts/extract_anchor.py", "pr", "789", "test/repo"],
             cwd=temp_repo,
             env=env,
             capture_output=True,
@@ -180,7 +198,7 @@ exit 0
     def test_cli_invalid_args(self, temp_repo):
         """CLI: invalid arguments → exit 1"""
         result = subprocess.run(
-            ["python3", "scripts/extract_anchor.py", "invalid"],
+            [sys.executable, "scripts/extract_anchor.py", "invalid"],
             cwd=temp_repo,
             capture_output=True,
             text=True,
@@ -190,6 +208,286 @@ exit 0
         assert result.returncode == 1
         assert "Usage" in result.stderr
 
+    def test_cli_ci_gateway_multiline_format(self, temp_repo):
+        """CLI: ci-gateway multi-line comment body → extracts INFRA-357."""
+        stub_gh = temp_repo / "gh"
+        stub_gh.write_text(
+            "#!/bin/bash\n"
+            "echo '_此 comment 由 ci-gateway skill 自动生成。_'\n"
+            "echo '<!-- linear-linkback -->'\n"
+            'echo \'<p><a href="https://linear.app/jtoom/issue/INFRA-357">INFRA-357</a></p>\'\n'
+            "exit 0\n"
+        )
+        stub_gh.chmod(0o755)
+
+        env = os.environ.copy()
+        env["PATH"] = f"{temp_repo}:{env.get('PATH', '')}"
+
+        result = subprocess.run(
+            [sys.executable, "scripts/extract_anchor.py", "issue", "357", "test/repo"],
+            cwd=temp_repo,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        assert result.returncode == 0
+        assert result.stdout.strip() == "INFRA-357"
+
+
+# ============================================================================
+# INFRA-357: comment-block window semantics (ci-gateway multi-line format)
+# ============================================================================
+
+class TestCommentBlockWindow:
+    """INFRA-357: extraction window = marker-bearing comment BLOCK.
+
+    Production linkback comments (verified across 25 live objects, 100%)
+    use the ci-gateway multi-line format: bare marker line with the href
+    on the NEXT line. Line-scoped extraction returned None for all of them.
+    """
+
+    def test_ci_gateway_multiline_format(self):
+        """Real ci-gateway multi-line linkback → extracts INFRA-357.
+
+        The bare marker line carries no id; the href lives on the next
+        line of the SAME comment block.
+        """
+        comments = (
+            "_此 comment 由 ci-gateway skill 自动生成。_\n"
+            "<!-- linear-linkback -->\n"
+            '<p><a href="https://linear.app/jtoom/issue/INFRA-357">INFRA-357</a></p>'
+        )
+        assert extract_linkback_anchor(comments) == "INFRA-357"
+
+    def test_later_comment_href_ignored_when_marker_block_has_id(self):
+        """First-marker-block rule: later comment's unrelated href ignored.
+
+        The marker block carries its own id; a later block mentioning an
+        unrelated Linear href must not win or interfere.
+        """
+        comments = (
+            "<!-- linear-linkback -->\n"
+            '<p><a href="https://linear.app/jtoom/issue/INFRA-357">INFRA-357</a></p>\n'
+            "\n"
+            "Related discussion: see https://linear.app/jtoom/issue/INFRA-999 for context"
+        )
+        assert extract_linkback_anchor(comments) == "INFRA-357"
+
+    def test_later_comment_href_ignored_when_marker_block_has_no_id(self):
+        """Fail-closed: bare marker block + later href-only block → None.
+
+        The later comment's href belongs to a DIFFERENT comment block and
+        must not be harvested into the marker block's window (#724 safety).
+        """
+        comments = (
+            "_此 comment 由 ci-gateway skill 自动生成。_\n"
+            "<!-- linear-linkback -->\n"
+            "\n"
+            "Related discussion: https://linear.app/jtoom/issue/INFRA-999"
+        )
+        assert extract_linkback_anchor(comments) is None
+
+    def test_724_notification_without_marker_is_none(self):
+        """#724 protection: notification content WITHOUT marker → None.
+
+        Even notification text that contains a Linear-looking href yields
+        None when no linear-linkback marker exists anywhere.
+        """
+        comments = (
+            "Branch cleanup notification\n"
+            "Deleted branches: refactor/INFRA-333-dedup-test-block\n"
+            "Tracking: https://linear.app/jtoom/issue/INFRA-333"
+        )
+        assert extract_linkback_anchor(comments) is None
+
+    def test_marker_block_multiline_no_id_anywhere(self):
+        """Marker present, no id anywhere in the block → None (fail-closed)."""
+        comments = (
+            "_此 comment 由 ci-gateway skill 自动生成。_\n"
+            "<!-- linear-linkback -->\n"
+            "（无链接）"
+        )
+        assert extract_linkback_anchor(comments) is None
+
+
+# ============================================================================
+# INFRA-357: anchor gate for compensation-layer close (trigger-droid.sh L1166)
+# ============================================================================
+
+class TestAnchorGate:
+    """INFRA-357: compensation-layer close guard (scripts/anchor_gate.py).
+
+    The guard enforces label + anchor dual gating for the last remaining
+    full-text-located close path in trigger-droid.sh: a candidate issue is
+    closed ONLY when its linear-linkback anchor == the tracked Linear ref.
+    Everything else is fail-closed (skip close + drift record).
+    """
+
+    @pytest.fixture
+    def gate_repo(self):
+        """Temp scripts dir (extract_anchor + deps + anchor_gate) with stub gh."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_path = Path(tmpdir)
+            scripts_dir = repo_path / "scripts"
+            scripts_dir.mkdir()
+            logs_dir = repo_path / "logs"
+            logs_dir.mkdir()
+
+            src_scripts = Path(__file__).parent.parent / "scripts"
+            for script_name in [
+                "extract_anchor.py",
+                "evolution_utils.py",
+                "evolution_adapters.py",
+                "anchor_gate.py",
+            ]:
+                dst = scripts_dir / script_name
+                dst.write_text((src_scripts / script_name).read_text())
+                dst.chmod(0o755)
+
+            yield repo_path, logs_dir
+
+    def _write_stub_gh(self, repo_path: Path, cases: dict) -> None:
+        """Stub gh: `gh issue view <N> ...` returns per-issue comment body.
+
+        cases: {issue_number: (body, exit_code)}; multi-line bodies are
+        echoed line by line to mimic raw gh --jq output.
+        """
+        lines = ["#!/bin/bash", "# args: issue view <N> --repo ..."]
+        for num, (body, rc) in sorted(cases.items()):
+            lines.append("if [ \"$3\" = \"%s\" ]; then" % num)
+            for line in body.split("\n"):
+                lines.append("  printf '%%s\\n' %s" % shlex.quote(line))
+            if rc != 0:
+                lines.append("  echo 'gh error' >&2")
+            lines.append("  exit %d" % rc)
+            lines.append("fi")
+        lines.append("echo 'unexpected gh call: $*' >&2")
+        lines.append("exit 1")
+        stub = repo_path / "gh"
+        stub.write_text("\n".join(lines) + "\n")
+        stub.chmod(0o755)
+
+    def _run_gate(self, repo_path: Path, logs_dir: Path, candidates_json: str,
+                  target_ref: str = "INFRA-357"):
+        env = os.environ.copy()
+        env["PATH"] = f"{repo_path}:{env.get('PATH', '')}"
+        return subprocess.run(
+            [sys.executable, "scripts/anchor_gate.py", target_ref, "test/repo", str(logs_dir)],
+            cwd=repo_path,
+            env=env,
+            input=candidates_json,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    @staticmethod
+    def _read_log(logs_dir: Path, name: str) -> str:
+        log_file = logs_dir / name
+        return log_file.read_text() if log_file.exists() else ""
+
+    def test_gate_anchor_match_returns_number(self, gate_repo):
+        """Anchor == target_ref → prints issue number (close allowed)."""
+        repo_path, logs_dir = gate_repo
+        self._write_stub_gh(repo_path, {
+            101: ("<!-- linear-linkback INFRA-357 -->", 0),
+        })
+        result = self._run_gate(repo_path, logs_dir, '[{"number": 101}]')
+        assert result.returncode == 0
+        assert result.stdout.strip() == "101"
+        assert self._read_log(logs_dir, "anchor-drift.log") == ""
+
+    def test_gate_missing_anchor_skips_close_with_drift(self, gate_repo):
+        """No anchor in candidate → empty output + drift record (fail-closed)."""
+        repo_path, logs_dir = gate_repo
+        self._write_stub_gh(repo_path, {
+            102: ("Branch cleanup notification, mentions INFRA-357 only in text", 0),
+        })
+        result = self._run_gate(repo_path, logs_dir, '[{"number": 102}]')
+        assert result.returncode == 0
+        assert result.stdout.strip() == ""
+        drift = self._read_log(logs_dir, "anchor-drift.log")
+        assert "DRIFT: INFRA-357 GitHub Issue #102 missing anchor" in drift
+
+    def test_gate_anchor_mismatch_skips_close_with_drift(self, gate_repo):
+        """Anchor != target_ref → empty output + mismatch drift (fail-closed)."""
+        repo_path, logs_dir = gate_repo
+        self._write_stub_gh(repo_path, {
+            103: ("<!-- linear-linkback INFRA-999 -->", 0),
+        })
+        result = self._run_gate(repo_path, logs_dir, '[{"number": 103}]')
+        assert result.returncode == 0
+        assert result.stdout.strip() == ""
+        drift = self._read_log(logs_dir, "anchor-drift.log")
+        assert "DRIFT: INFRA-357 GitHub Issue #103 anchor mismatch (got INFRA-999)" in drift
+
+    def test_gate_extract_failure_skips_close_with_trails(self, gate_repo):
+        """gh failure (extract_anchor exit 1) → skip + drift + anchor-extract.log."""
+        repo_path, logs_dir = gate_repo
+        self._write_stub_gh(repo_path, {
+            104: ("unused", 1),
+        })
+        result = self._run_gate(repo_path, logs_dir, '[{"number": 104}]')
+        assert result.returncode == 0
+        assert result.stdout.strip() == ""
+        drift = self._read_log(logs_dir, "anchor-drift.log")
+        assert "DRIFT: INFRA-357 GitHub Issue #104 anchor extract failed (rc=1)" in drift
+        extract_log = self._read_log(logs_dir, "anchor-extract.log")
+        assert "anchor-extract issue#104 rc=1" in extract_log
+
+    def test_gate_multiple_candidates_first_match_wins(self, gate_repo):
+        """Mismatched candidate drift-recorded; matched candidate returned."""
+        repo_path, logs_dir = gate_repo
+        self._write_stub_gh(repo_path, {
+            105: ("<!-- linear-linkback INFRA-999 -->", 0),
+            106: ("<!-- linear-linkback INFRA-357 -->", 0),
+        })
+        result = self._run_gate(
+            repo_path, logs_dir, '[{"number": 105}, {"number": 106}]'
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "106"
+        drift = self._read_log(logs_dir, "anchor-drift.log")
+        assert "DRIFT: INFRA-357 GitHub Issue #105 anchor mismatch (got INFRA-999)" in drift
+        assert "#106" not in drift
+
+    def test_gate_ci_gateway_multiline_candidate_matches(self, gate_repo):
+        """Full chain: real ci-gateway multi-line comment → gate opens."""
+        repo_path, logs_dir = gate_repo
+        self._write_stub_gh(repo_path, {
+            357: (
+                "_此 comment 由 ci-gateway skill 自动生成。_\n"
+                "<!-- linear-linkback -->\n"
+                '<p><a href="https://linear.app/jtoom/issue/INFRA-357">INFRA-357</a></p>'
+            , 0),
+        })
+        result = self._run_gate(repo_path, logs_dir, '[{"number": 357}]')
+        assert result.returncode == 0
+        assert result.stdout.strip() == "357"
+        assert self._read_log(logs_dir, "anchor-drift.log") == ""
+
+    def test_gate_empty_and_invalid_candidates_json(self, gate_repo):
+        """Empty list / invalid JSON → empty output, exit 0 (fail-closed)."""
+        repo_path, logs_dir = gate_repo
+        for payload in ("", "[]", "not-json", "null"):
+            result = self._run_gate(repo_path, logs_dir, payload)
+            assert result.returncode == 0, f"payload={payload!r} rc={result.returncode}"
+            assert result.stdout.strip() == "", f"payload={payload!r} stdout={result.stdout!r}"
+
+    def test_gate_invalid_usage_exits_2(self, gate_repo):
+        """Wrong argc → exit 2 with usage on stderr."""
+        repo_path, logs_dir = gate_repo
+        result = subprocess.run(
+            [sys.executable, "scripts/anchor_gate.py", "INFRA-357"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 2
+        assert "Usage" in result.stderr
 
 # ============================================================================
 # VAL-ANC assertions (validation-contract.md)

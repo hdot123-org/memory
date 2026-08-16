@@ -25,6 +25,17 @@ LOG_FILE="${LOG_DIR}/reconcile-${TIMESTAMP}.log"
 
 log() { echo "[$(date '+%Y-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
+# 锚点提取失败留痕（INFRA-357）：stderr 带时间戳写入 anchor-extract.log，
+# 供事后 grep 退化痕迹；不影响调用方的 fail-closed 语义（空锚点照常 skip/block）
+log_anchor_extract_err() {
+    local target="$1" err_text="$2"
+    [ -z "$err_text" ] && return 0
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] anchor-extract ${target}: ${line}" >> "${LOG_DIR}/anchor-extract.log"
+    done <<< "$err_text"
+}
+
 # === 1. 解析 LINEAR_API_KEY（复用 trigger-droid.sh 的 op-mcp 机制）===
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/lib/op-mcp.sh"
@@ -188,8 +199,12 @@ if [ "$TERMINAL_COUNT" -gt 0 ]; then
         GH_NUMBER=$(echo "$GH_ISSUE_JSON" | /opt/homebrew/bin/python3 -c "import json,sys; data=json.load(sys.stdin); print(data[0]['number'] if data else '')" 2>/dev/null || echo "")
 
         if [ -n "$GH_NUMBER" ]; then
-            # 锚点一致性校验（architecture §3.1）：提取评论中的 linear-linkback，必须 == T_REF
-            ANCHOR=$(/opt/homebrew/bin/python3 "${SCRIPT_DIR%/*}/scripts/extract_anchor.py" issue "$GH_NUMBER" "$REPO" 2>/dev/null || echo "")
+            # 锚点一致性校验（issue-flow.md §9.4）：提取评论中的 linear-linkback，必须 == T_REF
+            # 失败留痕 anchor-extract.log（INFRA-357），fail-closed 语义不变
+            ANCHOR_ERR="$(mktemp)"
+            ANCHOR=$(/opt/homebrew/bin/python3 "${SCRIPT_DIR%/*}/scripts/extract_anchor.py" issue "$GH_NUMBER" "$REPO" 2>"$ANCHOR_ERR" || echo "")
+            log_anchor_extract_err "issue#${GH_NUMBER}" "$(cat "$ANCHOR_ERR")"
+            rm -f "$ANCHOR_ERR"
             if [ "$ANCHOR" = "$T_REF" ]; then
                 log "  ${T_REF}: anchor consistent, closing GitHub Issue #${GH_NUMBER} (Linear state: ${T_STATE})"
                 gh issue close "$GH_NUMBER" --repo "$REPO" \
@@ -197,7 +212,7 @@ if [ "$TERMINAL_COUNT" -gt 0 ]; then
                     2>>"$LOG_FILE" || log "  WARNING: failed to close GitHub Issue #${GH_NUMBER}"
             elif [ -z "$ANCHOR" ]; then
                 log "  ${T_REF}: WARNING no anchor in GitHub Issue #${GH_NUMBER} — skip close (fail-closed, drift record)"
-                # 漂移守望记录（architecture §3.1）
+                # 漂移守望记录（issue-flow.md §9.4）
                 echo "[$(date '+%Y-%d %H:%M:%S')] DRIFT: ${T_REF} GitHub Issue #${GH_NUMBER} missing anchor" >> "${LOG_DIR}/anchor-drift.log"
             else
                 log "  ${T_REF}: WARNING anchor mismatch (expected ${T_REF}, got ${ANCHOR}) in GitHub Issue #${GH_NUMBER} — skip close (fail-closed)"
