@@ -23,6 +23,7 @@ jobs:
   droid-review:
     if: github.event.pull_request.draft == false && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       NVIDIA_KONG_PROXY_KEY: ${{ secrets.NVIDIA_KONG_PROXY_KEY }}
     permissions:
@@ -57,13 +58,39 @@ jobs:
           SETTINGS_EOF
           echo "BYOM settings written to ~/.factory/settings.json"
           python3 -c "import json; json.load(open('$HOME/.factory/settings.json')); print('JSON validation passed')"
+      - name: Pre-check credentials
+        env:
+          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+        run: |
+          echo "Verifying Factory API credentials before review..."
+          if [ -z "$FACTORY_API_KEY" ]; then
+            echo "::error::FACTORY_API_KEY secret is empty or not configured."
+            echo "::error::This is the root cause of the 2026-08-16 multi-hour hang."
+            echo "::error::Please update the GitHub secret with a valid key."
+            exit 1
+          fi
+          echo "Secret is present (length: ${#FACTORY_API_KEY} chars). Validating against Factory API..."
+          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $FACTORY_API_KEY" \
+            "https://api.factory.ai/v1/auth/check" || echo "000")
+          if [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
+            echo "::error::Factory API rejected credentials (HTTP $HTTP_CODE)."
+            echo "::error::The FACTORY_API_KEY secret is present but invalid/expired."
+            echo "::error::This is the exact root cause of the 2026-08-16 multi-hour hang."
+            echo "::error::Update the GitHub secret with a valid key from Factory dashboard."
+            exit 1
+          fi
+          if [ "$HTTP_CODE" = "000" ]; then
+            echo "::error::Could not reach Factory API (network error). Failing fast to avoid infinite retry."
+            exit 1
+          fi
+          echo "Credential validation passed (HTTP $HTTP_CODE)"
       - name: Run Droid Auto Review
         uses: Factory-AI/droid-action@e5ae50268211d2e9ac85edb57c28bf253b6627f7
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
-          security_review_model: "qwen3.7-plus"
           review_model: "qwen3.7-plus"
           allowed_bots: "dependabot[bot]"
           security_block_on_high: "false"
