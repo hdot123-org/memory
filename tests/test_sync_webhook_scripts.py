@@ -12,13 +12,12 @@ Testing approach: sandbox stub method (library/script-testing.md)
 - Stub shellcheck and any external dependencies
 - Verify behavior through file checksums, directory listings, exit codes
 """
-import pytest
-import subprocess
-import tempfile
 import shutil
-from pathlib import Path
+import subprocess
 import time
+from pathlib import Path
 
+import pytest
 
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "sync-webhook-scripts.sh"
 
