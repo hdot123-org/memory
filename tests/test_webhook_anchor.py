@@ -5,16 +5,14 @@ and the extract_anchor.py CLI wrapper.
 
 Architecture reference: §3.1 镜像锚点
 """
-import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
-# Import the function under test
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from evolution_utils import extract_linkback_anchor
 

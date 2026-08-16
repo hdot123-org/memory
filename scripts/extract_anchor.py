@@ -15,7 +15,6 @@ Returns:
 
 Architecture reference: §3.1 镜像锚点
 """
-import json
 import os
 import subprocess
 import sys
