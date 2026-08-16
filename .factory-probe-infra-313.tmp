@@ -1,5 +1,0 @@
-此文件为 INFRA-313 处理 session 的临时探针遗留物（无实际用途），可安全删除：
-  rm /Users/busiji/memory/.factory-probe-infra-313.tmp
-同批遗留（无敏感信息，可整目录删除）：
-  rm -rf /Users/busiji/.factory-relay-tmp-313
-关联：https://github.com/hdot123/memory/pull/685
