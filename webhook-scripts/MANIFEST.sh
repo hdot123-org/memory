@@ -1,0 +1,76 @@
+#!/bin/bash
+# MANIFEST.sh - 受管文件清单与环境差异声明
+# 本文件定义 webhook-scripts/ 中受版本控制的脚本及其与生产环境的已知差异
+
+set -euo pipefail
+
+# ============================================================================
+# 受管文件清单 (Managed Files)
+# ============================================================================
+# 列出 webhook-scripts/ 中受版本控制的所有脚本
+# sync-webhook-scripts.sh 会同步这些文件到生产环境
+
+MANAGED_FILES=(
+    "trigger-droid.sh"
+    "reconcile-evolution.sh"
+)
+
+# ============================================================================
+# 环境差异声明 (Environment-Specific Differences)
+# ============================================================================
+# 声明仓库副本与生产副本之间的已知环境特定差异
+# 这些差异是预期的，不会导致同步失败
+#
+# 格式: "文件名:行号或模式:说明"
+# 示例: "trigger-droid.sh:42:生产环境使用 /opt/homebrew/bin/python3"
+
+ENV_DIFF_LINES=(
+    # trigger-droid.sh 中的硬编码路径（macOS 特定）
+    "trigger-droid.sh:硬编码路径:/Users/busiji/.factory/webhook - 生产环境基础路径"
+    "trigger-droid.sh:硬编码路径:/opt/homebrew/bin/python3 - macOS Python 路径"
+    "trigger-droid.sh:硬编码路径:/opt/homebrew/bin/flock - macOS flock 路径"
+    "trigger-droid.sh:硬编码路径:/Users/busiji/.local/bin/droid - droid 二进制路径"
+    "trigger-droid.sh:硬编码路径:/Users/busiji/.factory/config/repositories.yml - 仓库配置路径"
+
+    # reconcile-evolution.sh 中的硬编码路径
+    "reconcile-evolution.sh:硬编码路径:/Users/busiji/.factory/webhook - 生产环境基础路径"
+    "reconcile-evolution.sh:硬编码路径:/opt/homebrew/bin/python3 - macOS Python 路径"
+
+    # 权限差异（生产脚本可能需要特定权限位）
+    "trigger-droid.sh:权限:生产环境可能需要可执行权限"
+    "reconcile-evolution.sh:权限:生产环境可能需要可执行权限"
+)
+
+# ============================================================================
+# 辅助函数
+# ============================================================================
+
+# 获取受管文件列表
+get_managed_files() {
+    for file in "${MANAGED_FILES[@]}"; do
+        echo "$file"
+    done
+}
+
+# 检查文件是否在受管清单中
+is_managed_file() {
+    local file="$1"
+    for managed in "${MANAGED_FILES[@]}"; do
+        if [[ "$managed" == "$file" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# 获取文件的声明差异数量
+get_declared_diff_count() {
+    local file="$1"
+    local count=0
+    for diff_line in "${ENV_DIFF_LINES[@]}"; do
+        if [[ "$diff_line" == "$file:"* ]]; then
+            ((count++))
+        fi
+    done
+    echo "$count"
+}
