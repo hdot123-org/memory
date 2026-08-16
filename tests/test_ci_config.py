@@ -50,7 +50,7 @@ class TestAuditGate:
         assert "security_block_on_high" not in droid_step.get("env", {})
 
     def test_val_gate_004_existing_inputs_preserved(self, droid_review_data):
-        """VAL-GATE-004: Existing droid-action inputs unchanged."""
+        """VAL-GATE-004: Existing droid-action inputs unchanged (except intentionally removed invalid inputs)."""
         droid_step = self._get_droid_action_step(droid_review_data)
         with_block = droid_step["with"]
 
@@ -58,7 +58,10 @@ class TestAuditGate:
         assert "factory_api_key" in with_block
         assert "automatic_review" in with_block
         assert "automatic_security_review" in with_block
-        assert "security_review_model" in with_block
+        # security_review_model was intentionally removed (2026-08-16):
+        # This input is not recognized by the pinned droid-action version (e5ae502),
+        # causing warnings or errors. See feature: droid-review-timeout-hardening.
+        assert "security_review_model" not in with_block
         assert "review_model" in with_block
         assert "allowed_bots" in with_block
 
@@ -66,7 +69,6 @@ class TestAuditGate:
         assert with_block["factory_api_key"] == "${{ secrets.FACTORY_API_KEY }}"
         assert with_block["automatic_review"] is True
         assert with_block["automatic_security_review"] is True
-        assert with_block["security_review_model"] == "qwen3.7-plus"
         assert with_block["review_model"] == "qwen3.7-plus"
         assert with_block["allowed_bots"] == "dependabot[bot]"
 
