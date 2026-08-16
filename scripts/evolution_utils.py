@@ -309,6 +309,65 @@ def _extract_linear_linkback(issue_body: str, issue_comments: str = "") -> str |
     return None
 
 
+def extract_linkback_anchor(comments_text: str) -> str | None:
+    """Extract anchor (INFRA-xxx) ONLY from linkback comments (architecture §3.1).
+
+    Per architecture §3.1: Tier2b anchor regex limited to first occurrence
+    inside linkback comment. This prevents comment body references from
+    causing false matches.
+
+    Algorithm:
+    1. Split comments into individual comment blocks
+    2. Filter to only comments containing "linear-linkback" marker
+    3. Apply extraction regex to the FIRST such comment only
+    4. Return INFRA-xxx or None
+
+    Args:
+        comments_text: Combined comment bodies (one per line, as returned by
+            gh issue view --json comments --jq '.comments[].body')
+
+    Returns:
+        INFRA-xxx identifier from first linkback comment, or None
+    """
+    if not comments_text or "linear-linkback" not in comments_text:
+        return None
+
+    # Split into individual comments (each comment is a separate line/block)
+    # gh --jq '.comments[].body' outputs each comment on separate lines
+    lines = comments_text.strip().split('\n')
+
+    # Find first comment containing "linear-linkback" marker
+    linkback_comment = None
+    for line in lines:
+        if "linear-linkback" in line:
+            linkback_comment = line
+            break
+
+    if not linkback_comment:
+        return None
+
+    # Apply Tier1 extraction: <!-- linear-linkback INFRA-xxx -->
+    pattern = r'<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->'
+    match = re.search(pattern, linkback_comment)
+    if match:
+        return match.group(1)
+
+    # Apply Tier2a: href format (linear.app/OWNER/issue/INFRA-xxx)
+    href_pattern = r'linear\.app/[^/\s"]+/issue/([A-Z]+-\d+)'
+    match = re.search(href_pattern, linkback_comment)
+    if match:
+        return match.group(1)
+
+    # Apply Tier2b: anchor text (<a ...>INFRA-xxx</a>) - FIRST occurrence only
+    anchor_pattern = r'<a[^>]*>\s*([A-Z]+-\d+)\s*</a>'
+    match = re.search(anchor_pattern, linkback_comment)
+    if match:
+        return match.group(1)
+
+    # Marker present but extraction failed - return None (caller decides fail-closed)
+    return None
+
+
 def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = None) -> bool:
     """Verify that the fix for this issue has been merged via Linear API.
 

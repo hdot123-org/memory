@@ -433,12 +433,13 @@ except Exception:
         exit 0
     fi
 
-    # 4.5. PR-merged override: 即使 Droid session 崩溃 (sessionId=null)，只要 PR 已合并就放行
+    # 4.5. PR-merged override: 即使 Droid session 崩溃 (sessionId=null)，只要 PR 已合并就放行（锚点化）
     # 背景 (INFRA-243): Droid session 崩溃 (exitCode=1) 但 PR 仍成功创建并 merge 时，
     # GATE A 会无限阻塞 Done 转换（重复回退 Done→In Progress），造成死锁：
     #   - scanner 无法关闭 GitHub Issue（Linear 非终态）
     #   - Linear 原生 GitHub 集成重开 GitHub Issue（Linear 未 Done）
     # 检测到已合并 PR → 放行，打破死锁。
+    # 锚点化：提取 PR 评论中的 linear-linkback，一致性校验通过才放行（architecture §3.1）
     # 失败处理：route_repo / git / gh 任一失败 → fall through 到 BLOCK（fail-closed）。
     local _override_repo_path
     _override_repo_path=$(route_repo "$TEAM_KEY" "$ISSUE_UUID" 2>>"$LOG_FILE")
@@ -446,21 +447,46 @@ except Exception:
         local _override_gh_repo
         _override_gh_repo=$(git -C "$_override_repo_path" remote get-url origin 2>/dev/null | sed 's/.*github.com[:/]//' | sed 's/.git$//')
         if [ -n "$_override_gh_repo" ]; then
+            # 查找已合并 PR（带 evolution-found label 搜索）
             local _merged_pr_json
-            _merged_pr_json=$(gh pr list --repo "$_override_gh_repo" --state merged --search "$ISSUE_REF" --limit 1 --json number 2>/dev/null)
+            _merged_pr_json=$(gh pr list --repo "$_override_gh_repo" --label evolution-found --state merged --limit 10 --json number 2>/dev/null)
             if [ -n "$_merged_pr_json" ] && [ "$_merged_pr_json" != "[]" ]; then
-                local _merged_pr_num
-                _merged_pr_num=$(echo "$_merged_pr_json" | /opt/homebrew/bin/python3 -c "import json,sys; print(json.load(sys.stdin)[0]['number'])" 2>/dev/null)
-                log "GATE A PASS (override): $ISSUE_REF moved to Done WITHOUT Droid session, but PR #${_merged_pr_num:-?} was merged in $_override_gh_repo — allowing transition"
-                exit 0
+                # 遍历候选 PR，提取锚点并校验
+                local _matched_pr_num
+                _matched_pr_num=$(/opt/homebrew/bin/python3 -c "
+import sys, json, subprocess
+candidates = json.loads('''$_merged_pr_json''')
+target_ref = '$ISSUE_REF'
+for pr in candidates:
+    pr_num = pr.get('number')
+    if not pr_num:
+        continue
+    # 提取锚点
+    result = subprocess.run(
+        ['/opt/homebrew/bin/python3', '$SCRIPT_DIR/../scripts/extract_anchor.py', 'pr', str(pr_num), '$_override_gh_repo'],
+        capture_output=True, text=True
+    )
+    anchor = result.stdout.strip()
+    if anchor == target_ref:
+        print(pr_num)
+        break
+" 2>/dev/null)
+
+                if [ -n "$_matched_pr_num" ]; then
+                    log "GATE A PASS (override): $ISSUE_REF moved to Done WITHOUT Droid session, but PR #${_matched_pr_num} was merged in $_override_gh_repo — allowing transition (anchor consistent)"
+                    exit 0
+                else
+                    log "GATE A BLOCK (override): $ISSUE_REF — no anchor-consistent merged PR found"
+                fi
             fi
         fi
     fi
 
-    # 4.6. Sync-origin override (P0-3): GitHub close → Linear Done 同步
+    # 4.6. Sync-origin override (P0-3): GitHub close → Linear Done 同步（锚点化）
     # 场景：GitHub issue 被 PR 合并后自动关闭，Linear 同步触发 Done 转换
     # 检测：gh issue 已 closed 且 closed_at ≤ 10 分钟
     # 逻辑：证明 Done 是 GitHub close 的下游同步，非人工 Done → PASS
+    # 锚点化：提取 issue 评论中的 linear-linkback，一致性校验通过才放行（architecture §3.1）
     # 失败处理：gh 查询失败 → fall through 到 BLOCK（fail-closed）
     local _sync_repo_path
     _sync_repo_path=$(route_repo "$TEAM_KEY" "$ISSUE_UUID" 2>>"$LOG_FILE")
@@ -469,43 +495,56 @@ except Exception:
         _sync_gh_repo=$(git -C "$_sync_repo_path" remote get-url origin 2>/dev/null | sed 's/.*github.com[:/]//' | sed 's/.git$//')
         if [ -n "$_sync_gh_repo" ]; then
             local _sync_check_result
-            _sync_check_result=$(gh issue list --repo "$_sync_gh_repo" --search "$ISSUE_REF" --state all --limit 1 --json number,state,closedAt 2>/dev/null | /opt/homebrew/bin/python3 -c "
-import json, sys
-from datetime import datetime, timezone, timedelta
+            _sync_check_result=$(gh issue list --repo "$_sync_gh_repo" --label evolution-found --state all --limit 10 --json number,state,closedAt 2>/dev/null | /opt/homebrew/bin/python3 -c "
+import json, sys, subprocess
+from datetime import datetime, timezone
 
 try:
     data = json.load(sys.stdin)
     if not data:
         sys.exit(0)  # no issue found, fall through to BLOCK
-    
-    issue = data[0]
-    state = issue.get('state', '')
-    closed_at_str = issue.get('closedAt', '')
-    
-    if state != 'CLOSED':
-        sys.exit(0)  # issue still open, fall through to BLOCK
-    
-    if not closed_at_str:
-        sys.exit(0)  # no closedAt timestamp, fall through to BLOCK
-    
-    # Parse GitHub ISO 8601 timestamp
-    closed_at = datetime.fromisoformat(closed_at_str.replace('Z', '+00:00'))
-    now = datetime.now(timezone.utc)
-    diff_minutes = (now - closed_at).total_seconds() / 60
-    
-    # PASS if closed within 10 minutes
-    if diff_minutes <= 10:
-        print('PASS')
-        sys.exit(0)
-    else:
-        sys.exit(0)  # closed too long ago, fall through to BLOCK
+
+    target_ref = '$ISSUE_REF'
+
+    for issue in data:
+        state = issue.get('state', '')
+        closed_at_str = issue.get('closedAt', '')
+        issue_num = issue.get('number')
+
+        if state != 'CLOSED' or not closed_at_str or not issue_num:
+            continue  # skip non-closed or invalid
+
+        # Parse timestamp
+        closed_at = datetime.fromisoformat(closed_at_str.replace('Z', '+00:00'))
+        now = datetime.now(timezone.utc)
+        diff_minutes = (now - closed_at).total_seconds() / 60
+
+        if diff_minutes > 10:
+            continue  # closed too long ago
+
+        # Extract anchor
+        result = subprocess.run(
+            ['/opt/homebrew/bin/python3', '$SCRIPT_DIR/../scripts/extract_anchor.py', 'issue', str(issue_num), '$_sync_gh_repo'],
+            capture_output=True, text=True
+        )
+        anchor = result.stdout.strip()
+
+        if anchor == target_ref:
+            print('PASS')
+            sys.exit(0)
+        else:
+            continue  # anchor mismatch, try next issue
+
+    sys.exit(0)  # no matching issue, fall through to BLOCK
 except Exception:
     sys.exit(0)  # any error, fall through to BLOCK
 " 2>/dev/null)
-            
+
             if [ "$_sync_check_result" = "PASS" ]; then
-                log "GATE A PASS (sync-origin): $ISSUE_REF — GitHub issue closed ≤10min, Done is downstream sync"
+                log "GATE A PASS (sync-origin): $ISSUE_REF — GitHub issue closed ≤10min with consistent anchor, Done is downstream sync"
                 exit 0
+            else
+                log "GATE A BLOCK (sync-origin): $ISSUE_REF — no anchor-consistent closed issue found within 10min"
             fi
         fi
     fi

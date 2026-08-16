@@ -183,15 +183,27 @@ if [ "$TERMINAL_COUNT" -gt 0 ]; then
         [ -z "$T_REF" ] && continue
         log "Checking terminal ${T_REF}: ${T_TITLE} (state: ${T_STATE})"
 
-        # 查找对应的 open GitHub Issue
-        GH_ISSUE_JSON=$(gh issue list --repo "$REPO" --search "${T_REF}" --state open --json number --limit 1 2>/dev/null || echo "[]")
+        # 查找对应的 open GitHub Issue（带 label 双闸）
+        GH_ISSUE_JSON=$(gh issue list --repo "$REPO" --label evolution-found --state open --search "${T_REF}" --json number --limit 1 2>/dev/null || echo "[]")
         GH_NUMBER=$(echo "$GH_ISSUE_JSON" | /opt/homebrew/bin/python3 -c "import json,sys; data=json.load(sys.stdin); print(data[0]['number'] if data else '')" 2>/dev/null || echo "")
 
         if [ -n "$GH_NUMBER" ]; then
-            log "  ${T_REF}: closing GitHub Issue #${GH_NUMBER} (Linear state: ${T_STATE})"
-            gh issue close "$GH_NUMBER" --repo "$REPO" \
-                --comment "对应的 Linear Issue ${T_REF} 已处于终态（${T_STATE}），本 GitHub Issue 由 compensation-layer 清理关闭。" \
-                2>>"$LOG_FILE" || log "  WARNING: failed to close GitHub Issue #${GH_NUMBER}"
+            # 锚点一致性校验（architecture §3.1）：提取评论中的 linear-linkback，必须 == T_REF
+            ANCHOR=$(/opt/homebrew/bin/python3 "${SCRIPT_DIR%/*}/scripts/extract_anchor.py" issue "$GH_NUMBER" "$REPO" 2>/dev/null || echo "")
+            if [ "$ANCHOR" = "$T_REF" ]; then
+                log "  ${T_REF}: anchor consistent, closing GitHub Issue #${GH_NUMBER} (Linear state: ${T_STATE})"
+                gh issue close "$GH_NUMBER" --repo "$REPO" \
+                    --comment "对应的 Linear Issue ${T_REF} 已处于终态（${T_STATE}），本 GitHub Issue 由 compensation-layer 清理关闭。" \
+                    2>>"$LOG_FILE" || log "  WARNING: failed to close GitHub Issue #${GH_NUMBER}"
+            elif [ -z "$ANCHOR" ]; then
+                log "  ${T_REF}: WARNING no anchor in GitHub Issue #${GH_NUMBER} — skip close (fail-closed, drift record)"
+                # 漂移守望记录（architecture §3.1）
+                echo "[$(date '+%Y-%d %H:%M:%S')] DRIFT: ${T_REF} GitHub Issue #${GH_NUMBER} missing anchor" >> "${LOG_DIR}/anchor-drift.log"
+            else
+                log "  ${T_REF}: WARNING anchor mismatch (expected ${T_REF}, got ${ANCHOR}) in GitHub Issue #${GH_NUMBER} — skip close (fail-closed)"
+                # 漂移守望记录
+                echo "[$(date '+%Y-%d %H:%M:%S')] DRIFT: ${T_REF} GitHub Issue #${GH_NUMBER} anchor mismatch (got ${ANCHOR})" >> "${LOG_DIR}/anchor-drift.log"
+            fi
         else
             log "  ${T_REF}: no open GitHub Issue found, skip"
         fi
