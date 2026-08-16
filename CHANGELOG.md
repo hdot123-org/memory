@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.31.0](https://github.com/hdot123/memory/compare/v0.30.0...v0.31.0) (2026-08-16)
+
+
+### Features
+
+* webhook 脚本版本化与同步基础设施 (m1 地基) ([#731](https://github.com/hdot123/memory/issues/731)) ([e7e5f85](https://github.com/hdot123/memory/commit/e7e5f85df4da85a9ccc32ac85fcc72018de2ef7a))
+
+
+### Bug Fixes
+
+* auto-merge 合并改用 DISPATCH_TOKEN，修复 push 事件被抑制导致发版链路断裂 ([#712](https://github.com/hdot123/memory/issues/712)) ([8b0a91f](https://github.com/hdot123/memory/commit/8b0a91f46dd3fa5e84e85505ce9fb8e23020238d))
+
 ## [0.30.0](https://github.com/hdot123/memory/compare/v0.29.0...v0.30.0) (2026-08-15)
 
 
