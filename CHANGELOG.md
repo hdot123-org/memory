@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.32.0](https://github.com/hdot123/memory/compare/v0.31.0...v0.32.0) (2026-08-16)
+
+
+### Features
+
+* **webhook:** 镜像定位锚点化——§4b 与 GATE A 4.5/4.6 改用 linear-linkback 锚点+label 双闸+一致性校验 ([#737](https://github.com/hdot123/memory/issues/737)) ([2950659](https://github.com/hdot123/memory/commit/29506597f08af266743b7dfd4042178954865e0e))
+
+
+### Bug Fixes
+
+* droid-review CI 防挂死加固（timeout + 凭证预检 + 清理无效输入） ([#733](https://github.com/hdot123/memory/issues/733)) ([6a7d21e](https://github.com/hdot123/memory/commit/6a7d21ec82717b878238b844c3bfc71c4c92d848))
+* 修复 m1 scrutiny 4 项非 blocking 发现 ([#736](https://github.com/hdot123/memory/issues/736)) ([ce696e3](https://github.com/hdot123/memory/commit/ce696e33858408e77484c11afff4414279ad2e8c))
+
+
+### Documentation
+
+* 修正 issue-flow.md 中对已删除 GAP-B 脚本的过时引用 ([#735](https://github.com/hdot123/memory/issues/735)) ([b0360c0](https://github.com/hdot123/memory/commit/b0360c0bb27134c831bec1348bd1ea7a29498d1c))
+
 ## [0.31.0](https://github.com/hdot123/memory/compare/v0.30.0...v0.31.0) (2026-08-16)
 
 

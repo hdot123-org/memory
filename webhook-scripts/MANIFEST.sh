@@ -13,22 +13,27 @@
 
 MANAGED_FILES=(
     "trigger-droid.sh"
+    "trigger-ci-droid.sh"
     "reconcile-evolution.sh"
 )
 
 # ============================================================================
-# 跨目录映射 (Cross-Directory Mappings)
+# 跨目录同步映射 (Cross-Directory Sync Mappings)
 # ============================================================================
-# 列出仓库中非 webhook-scripts/ 目录下的依赖文件及其生产目标路径
-# 格式： "仓库相对路径:生产相对路径"
-# sync-webhook-scripts.sh 会同步这些文件到生产环境
+# webhook-scripts/ 之外、但生产部署需要的仓库文件（锚点助手依赖链）。
+# sync-webhook-scripts.sh 会将这些文件从仓库相对路径同步到生产目录。
+# 背景 (INFRA-357): 生产 extract_anchor.py 缺少 evolution_utils.py /
+# evolution_adapters.py 依赖导致 ModuleNotFoundError —— 依赖链必须与调用方
+# 一同受管部署，堵住部署漂移。anchor_gate.py 为补偿层关闭路径的锚点守卫
+# （trigger-droid.sh L1166，与 extract_anchor.py 同链部署）。
+#
+# 格式: "<仓库相对路径>:<部署目标文件名>"
 
-# shellcheck disable=SC2034  # Used by sync-webhook-scripts.sh when sourced
 CROSS_DIR_MAPPINGS=(
-    # extract_anchor.py 被 reconcile-evolution.sh 和 trigger-droid.sh 引用
-    # 仓库路径：scripts/extract_anchor.py
-    # 生产路径：~/.factory/webhook/scripts/extract_anchor.py
     "scripts/extract_anchor.py:extract_anchor.py"
+    "scripts/evolution_utils.py:evolution_utils.py"
+    "scripts/evolution_adapters.py:evolution_adapters.py"
+    "scripts/anchor_gate.py:anchor_gate.py"
 )
 
 # ============================================================================
@@ -68,6 +73,13 @@ ENV_DIFF_LINES=(
 get_managed_files() {
     for file in "${MANAGED_FILES[@]}"; do
         echo "$file"
+    done
+}
+
+# 获取跨目录同步映射列表（INFRA-357 锚点依赖链）
+get_cross_dir_mappings() {
+    for mapping in "${CROSS_DIR_MAPPINGS[@]}"; do
+        echo "$mapping"
     done
 }
 

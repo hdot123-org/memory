@@ -439,8 +439,9 @@ except Exception:
     #   - scanner 无法关闭 GitHub Issue（Linear 非终态）
     #   - Linear 原生 GitHub 集成重开 GitHub Issue（Linear 未 Done）
     # 检测到已合并 PR → 放行，打破死锁。
-    # 锚点化：提取 PR 评论中的 linear-linkback，一致性校验通过才放行（architecture §3.1）
+    # 锚点化：提取 PR 评论中的 linear-linkback，一致性校验通过才放行（issue-flow.md §10.3）
     # 失败处理：route_repo / git / gh 任一失败 → fall through 到 BLOCK（fail-closed）。
+    # 提取失败留痕 anchor-extract.log（INFRA-357），fail-closed 语义不变。
     local _override_repo_path
     _override_repo_path=$(route_repo "$TEAM_KEY" "$ISSUE_UUID" 2>>"$LOG_FILE")
     if [ -n "$_override_repo_path" ] && [ -d "$_override_repo_path/.git" ]; then
@@ -461,16 +462,24 @@ for pr in candidates:
     pr_num = pr.get('number')
     if not pr_num:
         continue
-    # 提取锚点
+    # 提取锚点；失败留痕 anchor-extract.log（INFRA-357，fail-closed 不变）
     result = subprocess.run(
         ['/opt/homebrew/bin/python3', '$SCRIPT_DIR/../scripts/extract_anchor.py', 'pr', str(pr_num), '$_override_gh_repo'],
         capture_output=True, text=True
     )
+    if result.returncode != 0 or result.stderr.strip():
+        try:
+            with open('$LOG_DIR/anchor-extract.log', 'a') as f:
+                ts = __import__('time').strftime('%Y-%m-%d %H:%M:%S')
+                err = (result.stderr or '').strip().replace('\n', ' | ')[:500]
+                f.write('[%s] anchor-extract pr#%s rc=%s: %s\n' % (ts, pr_num, result.returncode, err))
+        except Exception:
+            pass
     anchor = result.stdout.strip()
     if anchor == target_ref:
         print(pr_num)
         break
-" 2>/dev/null)
+" 2>>"$LOG_FILE")
 
                 if [ -n "$_matched_pr_num" ]; then
                     log "GATE A PASS (override): $ISSUE_REF moved to Done WITHOUT Droid session, but PR #${_matched_pr_num} was merged in $_override_gh_repo — allowing transition (anchor consistent)"
@@ -486,8 +495,9 @@ for pr in candidates:
     # 场景：GitHub issue 被 PR 合并后自动关闭，Linear 同步触发 Done 转换
     # 检测：gh issue 已 closed 且 closed_at ≤ 10 分钟
     # 逻辑：证明 Done 是 GitHub close 的下游同步，非人工 Done → PASS
-    # 锚点化：提取 issue 评论中的 linear-linkback，一致性校验通过才放行（architecture §3.1）
+    # 锚点化：提取 issue 评论中的 linear-linkback，一致性校验通过才放行（issue-flow.md §10.3）
     # 失败处理：gh 查询失败 → fall through 到 BLOCK（fail-closed）
+    # 提取失败留痕 anchor-extract.log（INFRA-357），fail-closed 语义不变
     local _sync_repo_path
     _sync_repo_path=$(route_repo "$TEAM_KEY" "$ISSUE_UUID" 2>>"$LOG_FILE")
     if [ -n "$_sync_repo_path" ] && [ -d "$_sync_repo_path/.git" ]; then
@@ -522,11 +532,19 @@ try:
         if diff_minutes > 10:
             continue  # closed too long ago
 
-        # Extract anchor
+        # Extract anchor；失败留痕 anchor-extract.log（INFRA-357，fail-closed 不变）
         result = subprocess.run(
             ['/opt/homebrew/bin/python3', '$SCRIPT_DIR/../scripts/extract_anchor.py', 'issue', str(issue_num), '$_sync_gh_repo'],
             capture_output=True, text=True
         )
+        if result.returncode != 0 or result.stderr.strip():
+            try:
+                with open('$LOG_DIR/anchor-extract.log', 'a') as f:
+                    ts = __import__('time').strftime('%Y-%m-%d %H:%M:%S')
+                    err = (result.stderr or '').strip().replace('\n', ' | ')[:500]
+                    f.write('[%s] anchor-extract issue#%s rc=%s: %s\n' % (ts, issue_num, result.returncode, err))
+            except Exception:
+                pass
         anchor = result.stdout.strip()
 
         if anchor == target_ref:
@@ -538,7 +556,7 @@ try:
     sys.exit(0)  # no matching issue, fall through to BLOCK
 except Exception:
     sys.exit(0)  # any error, fall through to BLOCK
-" 2>/dev/null)
+" 2>>"$LOG_FILE")
 
             if [ "$_sync_check_result" = "PASS" ]; then
                 log "GATE A PASS (sync-origin): $ISSUE_REF — GitHub issue closed ≤10min with consistent anchor, Done is downstream sync"
@@ -1067,12 +1085,11 @@ exit(0 if d.get('state')=='planning' and d.get('workingDirectory')==sys.argv[2] 
         else
             # Start/default branch
             if [ "${ECHO_DROID:-0}" = "1" ]; then
-                echo "[ECHO_DROID] Would run: droid exec --mission --auto high ... for $p_ref (team=$p_team)" >> "$LOG_FILE"
+                echo "[ECHO_DROID] Would run: droid exec --auto high ... for $p_ref (team=$p_team)" >> "$LOG_FILE"
                 p_droid_output='{"type":"result","session_id":"dry-run-session","result":"dry-run ok (start)"}'
             else
                 # C6: droid exec wrapped with 3600s timeout
                 p_droid_output=$(with_timeout 3600 /Users/busiji/.local/bin/droid exec \
-                    --mission \
                     --auto high \
                     --output-format json \
                     --tag "{\"name\":\"linear-gateway\",\"metadata\":{\"issueRef\":\"${p_ref}\",\"teamKey\":\"${p_team}\",\"triggerSource\":\"issue\",\"eventType\":\"Issue.${ACTION}\"}}" \
@@ -1111,7 +1128,6 @@ except: pass
             fi
             p_droid_exit=0
             p_droid_output=$(with_timeout 3600 /Users/busiji/.local/bin/droid exec \
-                --mission \
                 --auto high \
                 --output-format json \
                 --tag "{\"name\":\"linear-gateway\",\"metadata\":{\"issueRef\":\"${p_ref}\",\"teamKey\":\"${p_team}\",\"triggerSource\":\"issue\",\"eventType\":\"Issue.${ACTION}\"}}" \
@@ -1162,24 +1178,28 @@ except Exception as e:
                 p_github_repo=$(git -C "$p_repo_path" remote get-url origin 2>/dev/null | sed 's/.*github.com[:\/]//' | sed 's/.git$//')
 
                 if [ -n "$p_github_repo" ]; then
-                    local p_gh_issue_number
-                    p_gh_issue_number=$(gh issue list --repo "$p_github_repo" --search "$p_ref" --state open --json number --limit 1 2>/dev/null | /opt/homebrew/bin/python3 -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    if data and len(data) > 0:
-        print(data[0].get('number', ''))
-except: pass
-" 2>/dev/null)
+                    # 候选查询带 label 双闸（issue-flow.md §9.4.1，与 reconcile §4b / GATE A 一致）
+                    local p_candidates_json
+                    p_candidates_json=$(gh issue list --repo "$p_github_repo" --search "$p_ref" --state open --label evolution-found --json number --limit 5 2>>"$LOG_FILE" || echo "")
 
-                    if [ -n "$p_gh_issue_number" ]; then
-                        local p_close_comment="对应的 Linear Issue ${p_ref} 已处于终态 (${p_linear_state_type})，自动关闭 GitHub Issue。"
-                        log "Closing GitHub Issue #$p_gh_issue_number for $p_ref (state: $p_linear_state_type)"
-                        gh issue close "$p_gh_issue_number" --repo "$p_github_repo" --comment "$p_close_comment" >> "$LOG_FILE" 2>&1 || {
-                            log "WARN: Failed to close GitHub Issue #$p_gh_issue_number for $p_ref"
-                        }
+                    if [ -n "$p_candidates_json" ] && [ "$p_candidates_json" != "[]" ]; then
+                        # 锚点一致性校验（INFRA-357）：每个候选提取 linear-linkback 锚点，
+                        # 仅当锚点 == $p_ref 才关闭；无锚点/不匹配/提取失败 → skip 关闭
+                        # （fail-closed：宁可漏关留给 reconcile 兜底，不可误关）
+                        local p_gh_issue_number
+                        p_gh_issue_number=$(echo "$p_candidates_json" | /opt/homebrew/bin/python3 "$SCRIPT_DIR/../scripts/anchor_gate.py" "$p_ref" "$p_github_repo" "$LOG_DIR" 2>>"$LOG_FILE")
+
+                        if [ -n "$p_gh_issue_number" ]; then
+                            local p_close_comment="对应的 Linear Issue ${p_ref} 已处于终态 (${p_linear_state_type})，自动关闭 GitHub Issue。"
+                            log "Closing GitHub Issue #$p_gh_issue_number for $p_ref (anchor consistent, state: $p_linear_state_type)"
+                            gh issue close "$p_gh_issue_number" --repo "$p_github_repo" --comment "$p_close_comment" >> "$LOG_FILE" 2>&1 || {
+                                log "WARN: Failed to close GitHub Issue #$p_gh_issue_number for $p_ref"
+                            }
+                        else
+                            log "No evolution-found GitHub Issue with anchor == $p_ref — skip close (fail-closed, drift recorded, left to reconcile)"
+                        fi
                     else
-                        log "No open GitHub Issue found for $p_ref (or already closed)"
+                        log "No open GitHub Issue found for $p_ref (label: evolution-found)"
                     fi
                 else
                     log "WARN: Could not determine GitHub repo from $p_repo_path"

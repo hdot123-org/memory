@@ -292,6 +292,14 @@ Linear Issue。两条平台原生路径任一失败时，都会产生状态漂�
 | 定位机制 | GitHub `Fixes` 关联 | `<!-- linear-linkback -->` 评论（从 GitHub Issue 提取 INFRA 号） |
 | 依赖 | `gh` CLI | `gh` CLI + Linear GraphQL API + `LINEAR_API_KEY` |
 
+#### 9.4.1 镜像定位锚点机制（INFRA-357）
+
+- **提取窗口** — `evolution_utils.extract_linkback_anchor()` 以评论块（空行分隔）为窗口：取**首个**含 `linear-linkback` 标记的评论块，块内按 Tier1 内联标记 `<!-- linear-linkback INFRA-xxx -->` → Tier2a `linear.app/.../issue/INFRA-xxx` href → Tier2b `<a ...>INFRA-xxx</a>` 顺序提取。生产 ci-gateway 多行回链（裸标记行 + 下一行 `<p><a href>`）即在此窗口内命中；标记在但块内无 id → 返回 None（fail-closed）。
+- **#724 安全属性** — 提取仅限标记所在评论块：正文/评论 merely 提及 INFRA 号的通知类 issue 永远返回 None，防止全文匹配误关单。
+- **生产部署集** — 锚点助手依赖链 4 文件（`scripts/extract_anchor.py` / `evolution_utils.py` / `evolution_adapters.py` / `anchor_gate.py`，纯 stdlib）经 `webhook-scripts/MANIFEST.sh` 的 `CROSS_DIR_MAPPINGS` 由 `scripts/sync-webhook-scripts.sh` 托管同步到 `~/.factory/webhook/scripts/`，`--check` 以 sha256 报告漂移。
+- **失败留痕** — 3 处调用点（reconcile §4b、GATE A 4.5/4.6）提取失败不再吞 stderr，带时间戳写入 `logs/anchor-extract.log`；调用方 fail-closed 语义不变（空锚点照常 skip/block）。
+- **补偿层关闭守卫（INFRA-357）** — `trigger-droid.sh` 补偿层关闭路径（被追踪 session 的 p_ref 在 Linear 终态后关 GitHub Issue）同样执行 label + 锚点双闸：候选查询带 `--label evolution-found`，每个候选经 `scripts/anchor_gate.py`（内部委托 `extract_anchor.py`，与 §4b/GATE A 同一提取实现）校验锚点 == p_ref 才关闭；无锚点/不匹配/提取失败 → skip 关闭并按 §4b 格式追加 `logs/anchor-drift.log`，留 reconcile 兜底。方向为 fail-closed：宁可漏关，不可误关。
+
 
 ---
 

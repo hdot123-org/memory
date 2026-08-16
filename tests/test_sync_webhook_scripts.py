@@ -524,3 +524,198 @@ def test_sync_cleanup_orphan_sync_tmp_directories(sandbox_env):
     # Output should mention cleanup (optional, but good for observability)
     # output = stdout + stderr
     # assert "cleanup" in output.lower() or "orphan" in output.lower()
+
+
+# ============================================================================
+# INFRA-357: CROSS_DIR_MAPPINGS — anchor helper dependency chain deploy
+# ============================================================================
+
+CROSS_DIR_TEST_FILES = ["extract_anchor.py", "evolution_utils.py", "evolution_adapters.py"]
+
+
+@pytest.fixture
+def cross_dir_env(tmp_path):
+    """
+    Sandbox with CROSS_DIR_MAPPINGS in MANIFEST.sh (INFRA-357 anchor chain).
+
+    Layout mirrors sandbox_env but the manifest additionally maps
+    scripts/<name>.py -> <name>.py for the 3-file anchor dependency chain.
+    Production initially LACKS the dependency files (the 2026-08-16
+    ModuleNotFoundError incident scenario).
+    """
+    repo_dir = tmp_path / "repo"
+    prod_dir = tmp_path / "production"
+    backup_dir = tmp_path / "backups"
+
+    repo_dir.mkdir()
+    prod_dir.mkdir()
+    backup_dir.mkdir()
+
+    webhook_scripts = repo_dir / "webhook-scripts"
+    webhook_scripts.mkdir()
+    (webhook_scripts / "test-script.sh").write_text("#!/bin/bash\necho 'test'\n")
+
+    repo_scripts = repo_dir / "scripts"
+    repo_scripts.mkdir()
+    for name in CROSS_DIR_TEST_FILES:
+        (repo_scripts / name).write_text(f"# anchor chain stub: {name}\nX = 1\n")
+
+    manifest_lines = ["#!/bin/bash", "MANAGED_FILES=(", '    "test-script.sh"', ")"]
+    manifest_lines += [
+        "CROSS_DIR_MAPPINGS=(",
+        '    "scripts/extract_anchor.py:extract_anchor.py"',
+        '    "scripts/evolution_utils.py:evolution_utils.py"',
+        '    "scripts/evolution_adapters.py:evolution_adapters.py"',
+        ")",
+        "ENV_DIFF_LINES=()",
+    ]
+    (webhook_scripts / "MANIFEST.sh").write_text("\n".join(manifest_lines) + "\n")
+
+    (prod_dir / "test-script.sh").write_text("#!/bin/bash\necho 'old'\n")
+    # Production has ONLY the entrypoint; dependencies missing (incident state)
+    (prod_dir / "extract_anchor.py").write_text("# prod stale entrypoint\nX = 0\n")
+
+    env = {
+        "REPO_ROOT": str(repo_dir),
+        "PROD_ROOT": str(prod_dir),
+        "BACKUP_ROOT": str(backup_dir),
+        "PATH": "/usr/bin:/bin",
+    }
+
+    return {
+        "env": env,
+        "repo_dir": repo_dir,
+        "repo_scripts": repo_scripts,
+        "prod_dir": prod_dir,
+        "backup_dir": backup_dir,
+    }
+
+
+def test_cross_dir_deploy_copies_all_three(cross_dir_env):
+    """
+    INFRA-357: deploy mode copies the full anchor dependency chain.
+
+    Expected:
+    - All 3 mapped .py files deployed to production
+    - Content matches repo (sha256)
+    - Existing prod entrypoint backed up before overwrite
+    - Exit code 0
+    """
+    env = cross_dir_env["env"]
+
+    rc, stdout, stderr = run_sync_script(env=env)
+    assert rc == 0, f"Sync failed:\nstdout: {stdout}\nstderr: {stderr}"
+
+    for name in CROSS_DIR_TEST_FILES:
+        prod_file = cross_dir_env["prod_dir"] / name
+        repo_file = cross_dir_env["repo_scripts"] / name
+        assert prod_file.exists(), f"{name} not deployed to production"
+        assert compute_file_checksum(prod_file) == compute_file_checksum(repo_file), (
+            f"{name} deployed content differs from repo"
+        )
+
+    # Pre-existing prod entrypoint was backed up
+    backups = list(cross_dir_env["backup_dir"].iterdir())
+    assert any(b.name.startswith("extract_anchor.py.bak.") for b in backups), (
+        f"extract_anchor.py backup missing: {[b.name for b in backups]}"
+    )
+
+
+def test_cross_dir_check_detects_missing_dependency_as_drift(cross_dir_env):
+    """
+    INFRA-357 (the incident): --check flags missing prod dependency as DRIFT.
+
+    Production lacks evolution_utils.py / evolution_adapters.py (the exact
+    state that caused ModuleNotFoundError at 2026-08-16 19:19).
+    Expected: --check exits non-zero and reports drift for both missing
+    files plus the stale entrypoint.
+    """
+    env = cross_dir_env["env"]
+
+    rc, stdout, stderr = run_sync_script("--check", env=env)
+    output = stdout + stderr
+
+    assert rc != 0, "--check should exit non-zero when anchor deps missing"
+    assert "evolution_utils.py" in output, f"missing dep not reported:\n{output}"
+    assert "evolution_adapters.py" in output, f"missing dep not reported:\n{output}"
+    assert "DRIFT" in output, f"DRIFT signature missing:\n{output}"
+
+
+def test_cross_dir_check_green_after_deploy(cross_dir_env):
+    """
+    INFRA-357: after a successful deploy, --check is green (sha256 match).
+    """
+    env = cross_dir_env["env"]
+
+    rc, _, stderr = run_sync_script(env=env)
+    assert rc == 0, f"Deploy failed: {stderr}"
+
+    rc, stdout, stderr = run_sync_script("--check", env=env)
+    assert rc == 0, f"--check should be green after deploy:\n{stdout}\n{stderr}"
+    assert "in sync" in stdout
+
+
+def test_cross_dir_empty_mapping_backward_compat(tmp_path):
+    """
+    INFRA-357: manifest WITHOUT CROSS_DIR_MAPPINGS keeps old behavior.
+
+    Both an absent array and an explicitly empty array must behave like
+    the pre-INFRA-357 script (no cross-dir action, exit 0).
+    """
+    for manifest_extra in (None, "CROSS_DIR_MAPPINGS=()\n"):
+        repo_dir = tmp_path / f"repo-{manifest_extra is not None}"
+        prod_dir = tmp_path / f"prod-{manifest_extra is not None}"
+        backup_dir = tmp_path / f"bak-{manifest_extra is not None}"
+        for d in (repo_dir, prod_dir, backup_dir):
+            d.mkdir()
+
+        webhook_scripts = repo_dir / "webhook-scripts"
+        webhook_scripts.mkdir()
+        (webhook_scripts / "test-script.sh").write_text("#!/bin/bash\necho 'test'\n")
+        manifest = "#!/bin/bash\nMANAGED_FILES=(\n    \"test-script.sh\"\n)\n"
+        if manifest_extra:
+            manifest += manifest_extra
+        manifest += "ENV_DIFF_LINES=()\n"
+        (webhook_scripts / "MANIFEST.sh").write_text(manifest)
+        (prod_dir / "test-script.sh").write_text("#!/bin/bash\necho 'old'\n")
+
+        env = {
+            "REPO_ROOT": str(repo_dir),
+            "PROD_ROOT": str(prod_dir),
+            "BACKUP_ROOT": str(backup_dir),
+            "PATH": "/usr/bin:/bin",
+        }
+
+        rc, stdout, stderr = run_sync_script(env=env)
+        assert rc == 0, f"Sync failed (extra={manifest_extra!r}):\n{stderr}"
+        assert (prod_dir / "test-script.sh").read_text() == "#!/bin/bash\necho 'test'\n"
+
+
+def test_cross_dir_validation_failure_rolls_back(cross_dir_env):
+    """
+    INFRA-357: broken .py source fails py_compile validation → rollback.
+
+    Expected:
+    - Exit non-zero
+    - Production unchanged (stale entrypoint kept, deps still missing)
+    """
+    env = cross_dir_env["env"]
+
+    # Break one dependency in the repo (python syntax error)
+    (cross_dir_env["repo_scripts"] / "evolution_utils.py").write_text("def broken(:\n")
+
+    prod_before = {
+        name: compute_file_checksum(cross_dir_env["prod_dir"] / name)
+        for name in CROSS_DIR_TEST_FILES
+        if (cross_dir_env["prod_dir"] / name).exists()
+    }
+
+    rc, stdout, stderr = run_sync_script(env=env)
+    assert rc != 0, "Sync should fail on py_compile validation error"
+
+    prod_after = {
+        name: compute_file_checksum(cross_dir_env["prod_dir"] / name)
+        for name in CROSS_DIR_TEST_FILES
+        if (cross_dir_env["prod_dir"] / name).exists()
+    }
+    assert prod_after == prod_before, "Production modified despite validation failure"
