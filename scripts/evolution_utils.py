@@ -309,58 +309,94 @@ def _extract_linear_linkback(issue_body: str, issue_comments: str = "") -> str |
     return None
 
 
-def extract_linkback_anchor(comments_text: str) -> str | None:
-    """Extract anchor (INFRA-xxx) ONLY from linkback comments (architecture §3.1).
+def _split_comment_blocks(comments_text: str) -> list[str]:
+    """Split combined comment text into comment blocks (blank-line separated).
 
-    Per architecture §3.1: Tier2b anchor regex limited to first occurrence
-    inside linkback comment. This prevents comment body references from
-    causing false matches.
+    ``gh issue view --json comments --jq '.comments[].body'`` emits each
+    comment body in raw form, so a multi-line comment body arrives as a
+    contiguous run of lines with no per-comment delimiter. Comment blocks
+    are therefore delimited by blank lines: consecutive non-empty lines
+    belong to the same block (see docs/architecture/issue-flow.md §9.4).
+    """
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in comments_text.split("\n"):
+        if line.strip() == "":
+            if current:
+                blocks.append("\n".join(current))
+                current = []
+        else:
+            current.append(line)
+    if current:
+        blocks.append("\n".join(current))
+    return blocks
+
+
+def extract_linkback_anchor(comments_text: str) -> str | None:
+    """Extract anchor (INFRA-xxx) from the marker-bearing COMMENT BLOCK.
+
+    Window semantics (INFRA-357): the extraction window is the ENTIRE
+    comment block containing the ``linear-linkback`` marker, not just the
+    marker line. Production linkback comments (ci-gateway multi-line
+    format) carry a bare marker line with the href on a following line::
+
+        _此 comment 由 ci-gateway skill 自动生成。_
+        <!-- linear-linkback -->
+        <p><a href="https://linear.app/jtoom/issue/INFRA-357">INFRA-357</a></p>
+
+    Line-scoped extraction returned None for every such comment (the marker
+    line itself carries no id). Contract: docs/architecture/issue-flow.md
+    §9.4 / §10.3.
+
+    #724 safety rationale: extraction stays scoped to the FIRST
+    marker-bearing block only. Notification issues whose bodies/comments
+    merely MENTION an INFRA id (no marker) still yield None, and ids in
+    later comment blocks are never harvested — this prevents full-text
+    false matches like the #724 mis-closures.
 
     Algorithm:
-    1. Split comments into individual comment blocks
-    2. Filter to only comments containing "linear-linkback" marker
-    3. Apply extraction regex to the FIRST such comment only
+    1. Split comments into comment blocks (blank-line separated)
+    2. Pick the FIRST block containing the "linear-linkback" marker
+    3. Apply tiers in order within that block: Tier1 inline marker,
+       Tier2a href, Tier2b anchor text
     4. Return INFRA-xxx or None
 
     Args:
-        comments_text: Combined comment bodies (one per line, as returned by
-            gh issue view --json comments --jq '.comments[].body')
+        comments_text: Combined comment bodies, as returned by
+            gh issue view --json comments --jq '.comments[].body'
 
     Returns:
-        INFRA-xxx identifier from first linkback comment, or None
+        INFRA-xxx identifier from the first linkback comment block, or None
+        (marker present but no id extractable -> None, fail-closed).
     """
     if not comments_text or "linear-linkback" not in comments_text:
         return None
 
-    # Split into individual comments (each comment is a separate line/block)
-    # gh --jq '.comments[].body' outputs each comment on separate lines
-    lines = comments_text.strip().split('\n')
-
-    # Find first comment containing "linear-linkback" marker
-    linkback_comment = None
-    for line in lines:
-        if "linear-linkback" in line:
-            linkback_comment = line
+    # Find first comment BLOCK containing "linear-linkback" marker
+    linkback_block = None
+    for block in _split_comment_blocks(comments_text):
+        if "linear-linkback" in block:
+            linkback_block = block
             break
 
-    if not linkback_comment:
+    if not linkback_block:
         return None
 
     # Apply Tier1 extraction: <!-- linear-linkback INFRA-xxx -->
     pattern = r'<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->'
-    match = re.search(pattern, linkback_comment)
+    match = re.search(pattern, linkback_block)
     if match:
         return match.group(1)
 
     # Apply Tier2a: href format (linear.app/OWNER/issue/INFRA-xxx)
     href_pattern = r'linear\.app/[^/\s"]+/issue/([A-Z]+-\d+)'
-    match = re.search(href_pattern, linkback_comment)
+    match = re.search(href_pattern, linkback_block)
     if match:
         return match.group(1)
 
     # Apply Tier2b: anchor text (<a ...>INFRA-xxx</a>) - FIRST occurrence only
     anchor_pattern = r'<a[^>]*>\s*([A-Z]+-\d+)\s*</a>'
-    match = re.search(anchor_pattern, linkback_comment)
+    match = re.search(anchor_pattern, linkback_block)
     if match:
         return match.group(1)
 

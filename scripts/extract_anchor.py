@@ -13,7 +13,7 @@ Returns:
     Exit code 0 always (empty output = no anchor).
     Exit code 1 on gh CLI failure (fail-closed signal).
 
-Architecture reference: §3.1 镜像锚点
+Architecture reference: docs/architecture/issue-flow.md §9.4/§10.3（镜像定位锚点）
 """
 import os
 import subprocess
