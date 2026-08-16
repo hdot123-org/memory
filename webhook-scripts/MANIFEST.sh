@@ -1,8 +1,9 @@
 #!/bin/bash
 # MANIFEST.sh - 受管文件清单与环境差异声明
 # 本文件定义 webhook-scripts/ 中受版本控制的脚本及其与生产环境的已知差异
-
-set -euo pipefail
+#
+# 注意：本文件被 source 时不应改变调用方的 shell 选项（如 errexit/nounset）
+# 因此故意不使用 set -euo pipefail
 
 # ============================================================================
 # 受管文件清单 (Managed Files)
