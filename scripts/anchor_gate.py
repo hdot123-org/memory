@@ -49,7 +49,7 @@ def _ts_drift() -> str:
     return time.strftime("%Y-%d %H:%M:%S")
 
 
-def log_extract_err(target: str, number, result) -> None:
+def log_extract_err(target: str, number: int, result: subprocess.CompletedProcess[str]) -> None:
     """Record extractor failure to anchor-extract.log (best effort)."""
     if result.returncode == 0 and not (result.stderr or "").strip():
         return
@@ -64,7 +64,7 @@ def log_extract_err(target: str, number, result) -> None:
         pass  # logging must never break the gate decision
 
 
-def log_drift(target_ref: str, number, reason: str) -> None:
+def log_drift(target_ref: str, number: int, reason: str) -> None:
     """Record a skipped close to anchor-drift.log, §4b format (best effort)."""
     try:
         with open(_drift_log_path, "a") as f:
@@ -76,7 +76,7 @@ def log_drift(target_ref: str, number, reason: str) -> None:
         pass
 
 
-def extract_anchor(target: str, number, repo: str):
+def extract_anchor(target: str, number: int, repo: str) -> tuple[int, str]:
     """Run extract_anchor.py for one candidate. Returns (rc, anchor)."""
     try:
         result = subprocess.run(
