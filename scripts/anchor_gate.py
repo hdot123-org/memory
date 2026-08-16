@@ -60,8 +60,14 @@ def log_extract_err(target: str, number: int, result: subprocess.CompletedProces
                 "[%s] anchor-extract %s#%s rc=%s: %s\n"
                 % (_ts_extract(), target, number, result.returncode, err)
             )
-    except Exception:
-        pass  # logging must never break the gate decision
+    except Exception as exc:
+        # INFRA-359: never silently swallow the log failure -- warn on
+        # stderr, but keep it best effort so the gate decision is unchanged.
+        print(
+            "anchor_gate: extract log write failed (%s#%s rc=%s): %s"
+            % (target, number, result.returncode, exc),
+            file=sys.stderr,
+        )
 
 
 def log_drift(target_ref: str, number: int, reason: str) -> None:
@@ -72,8 +78,14 @@ def log_drift(target_ref: str, number: int, reason: str) -> None:
                 "[%s] DRIFT: %s GitHub Issue #%s %s\n"
                 % (_ts_drift(), target_ref, number, reason)
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        # INFRA-359: never silently swallow the log failure -- warn on
+        # stderr, but keep it best effort so the gate decision is unchanged.
+        print(
+            "anchor_gate: drift log write failed (%s GitHub Issue #%s %s): %s"
+            % (target_ref, number, reason, exc),
+            file=sys.stderr,
+        )
 
 
 def extract_anchor(target: str, number: int, repo: str) -> tuple[int, str]:

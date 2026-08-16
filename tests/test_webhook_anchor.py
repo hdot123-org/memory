@@ -437,6 +437,42 @@ class TestAnchorGate:
         extract_log = self._read_log(logs_dir, "anchor-extract.log")
         assert "anchor-extract issue#104 rc=1" in extract_log
 
+    def test_gate_drift_log_unwritable_warns_on_stderr(self, gate_repo):
+        """INFRA-359: drift log write failure must not be swallowed silently.
+
+        anchor-drift.log path occupied by a directory -> open("a") raises.
+        Gate must stay fail-closed (rc 0, empty stdout) AND warn on stderr.
+        """
+        repo_path, logs_dir = gate_repo
+        (logs_dir / "anchor-drift.log").mkdir()  # unwritable target
+        self._write_stub_gh(repo_path, {
+            107: ("Branch cleanup notification, no anchor here", 0),
+        })
+        result = self._run_gate(repo_path, logs_dir, '[{"number": 107}]')
+        assert result.returncode == 0
+        assert result.stdout.strip() == ""
+        assert "drift log write failed" in result.stderr
+        assert "#107" in result.stderr
+
+    def test_gate_extract_log_unwritable_warns_on_stderr(self, gate_repo):
+        """INFRA-359: extract log write failure must not be swallowed silently.
+
+        anchor-extract.log path occupied by a directory -> open("a") raises.
+        Gate must stay fail-closed (rc 0, empty stdout) AND warn on stderr.
+        """
+        repo_path, logs_dir = gate_repo
+        (logs_dir / "anchor-extract.log").mkdir()  # unwritable target
+        self._write_stub_gh(repo_path, {
+            108: ("unused", 1),
+        })
+        result = self._run_gate(repo_path, logs_dir, '[{"number": 108}]')
+        assert result.returncode == 0
+        assert result.stdout.strip() == ""
+        assert "extract log write failed" in result.stderr
+        # drift log itself remains writable and still records the skip
+        drift = self._read_log(logs_dir, "anchor-drift.log")
+        assert "DRIFT: INFRA-357 GitHub Issue #108 anchor extract failed (rc=1)" in drift
+
     def test_gate_multiple_candidates_first_match_wins(self, gate_repo):
         """Mismatched candidate drift-recorded; matched candidate returned."""
         repo_path, logs_dir = gate_repo
