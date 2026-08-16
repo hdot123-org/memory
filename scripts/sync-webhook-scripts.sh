@@ -77,6 +77,11 @@ fi
 REPO_WEBHOOK="${REPO_ROOT}/webhook-scripts"
 MANIFEST="${REPO_WEBHOOK}/MANIFEST.sh"
 
+# === 日志 ===
+log() {
+    echo "[sync-webhook] $*"
+}
+
 # === 校验前置条件 ===
 if [[ ! -d "$REPO_WEBHOOK" ]]; then
     echo "ERROR: Repo webhook-scripts/ not found at ${REPO_WEBHOOK}" >&2
@@ -93,14 +98,24 @@ if [[ ! -d "$PROD_ROOT" ]]; then
     exit 1
 fi
 
+# === 清扫遗留 .sync-tmp-* 临时目录（kill -9 残留防御）===
+# 在开始新的同步前，先清理任何遗留的临时目录
+if [[ -d "$PROD_ROOT" ]]; then
+    orphan_count=0
+    for orphan_dir in "$PROD_ROOT"/.sync-tmp-*; do
+        if [[ -d "$orphan_dir" ]]; then
+            rm -rf "$orphan_dir"
+            ((orphan_count++))
+        fi
+    done
+    if [[ $orphan_count -gt 0 ]]; then
+        log "Cleaned up $orphan_count orphan .sync-tmp-* director(y/ies)"
+    fi
+fi
+
 # === 加载 manifest ===
 # shellcheck source=/dev/null disable=SC1091
 source "$MANIFEST"
-
-# === 日志 ===
-log() {
-    echo "[sync-webhook] $*"
-}
 
 # === 校验函数 ===
 # 校验指定路径的脚本文件（shellcheck + bash -n）
@@ -113,7 +128,7 @@ validate_file() {
 
     # Run shellcheck validation
     if command -v shellcheck >/dev/null 2>&1; then
-        if ! shellcheck "$filepath" 2>/dev/null; then
+        if ! shellcheck "$filepath" >/dev/null 2>&1; then
             return 1
         fi
     fi
@@ -136,7 +151,8 @@ if [[ "$CHECK_MODE" -eq 1 ]]; then
         prod_file="${PROD_ROOT}/${file}"
 
         if [[ ! -f "$repo_file" ]]; then
-            log "WARN: ${file} listed in MANIFEST but missing from repo"
+            log "ERROR: ${file} listed in MANIFEST but missing from repo"
+            drift_found=1
             continue
         fi
 

@@ -360,3 +360,167 @@ ENV_DIFF_LINES=(
 
     # Should succeed despite difference (declared in manifest)
     assert rc == 0, f"Sync failed with declared env diff:\n{stderr}"
+
+
+# ============================================================================
+# m1-followup-hardening: Scrutiny findings fixes
+# ============================================================================
+
+
+def test_check_mode_exit_nonzero_when_repo_file_missing(sandbox_env):
+    """
+    m1 scrutiny finding #1: --check fail-open when repo-managed file missing.
+
+    Expected:
+    - MANIFEST lists a file that exists in production but NOT in repo
+    - --check mode exits non-zero (not fail-open)
+    - Output reports the missing file as drift
+    """
+    env = sandbox_env["env"]
+
+    # Remove the file from repo side (but keep in manifest)
+    sandbox_env["test_script"].unlink()
+
+    # Production still has the file
+    assert sandbox_env["prod_script"].exists()
+
+    # Run --check mode
+    rc, stdout, stderr = run_sync_script("--check", env=env)
+
+    # Should exit non-zero (fail-closed, not fail-open)
+    assert rc != 0, "--check should exit non-zero when repo-managed file missing"
+
+    # Output should mention the missing file
+    output = stdout + stderr
+    assert "missing from repo" in output.lower() or "drift" in output.lower(), (
+        f"Output should report missing file as drift:\n{output}"
+    )
+
+
+def test_manifest_source_does_not_leak_shell_options(sandbox_env):
+    """
+    m1 scrutiny finding #2: MANIFEST.sh set -euo pipefail leaks to caller.
+
+    Expected:
+    - Script sources MANIFEST.sh
+    - Caller's shell options (errexit, nounset) remain unchanged after source
+    - Specifically: if caller has errexit OFF, it stays OFF after sourcing MANIFEST
+    """
+    env = sandbox_env["env"]
+
+    # Run a wrapper that checks errexit state before and after sourcing
+    wrapper_script = sandbox_env["repo_dir"] / "test-wrapper.sh"
+    wrapper_script.write_text(
+        """#!/bin/bash
+# Check errexit state before sourcing MANIFEST
+if [[ $- == *e* ]]; then
+    echo "ERREXIT_BEFORE=on"
+else
+    echo "ERREXIT_BEFORE=off"
+fi
+
+# Source MANIFEST (this is what sync-webhook-scripts.sh does)
+source "${REPO_ROOT}/webhook-scripts/MANIFEST.sh"
+
+# Check errexit state after sourcing
+if [[ $- == *e* ]]; then
+    echo "ERREXIT_AFTER=on"
+else
+    echo "ERREXIT_AFTER=off"
+fi
+"""
+    )
+    wrapper_script.chmod(0o755)
+
+    # Run wrapper WITHOUT errexit initially
+    result = subprocess.run(
+        ["bash", str(wrapper_script)],
+        capture_output=True,
+        text=True,
+        env={**env, "REPO_ROOT": env["REPO_ROOT"]},
+        timeout=10,
+    )
+
+    # Parse output
+    before = None
+    after = None
+    for line in result.stdout.split("\n"):
+        if line.startswith("ERREXIT_BEFORE="):
+            before = line.split("=")[1]
+        elif line.startswith("ERREXIT_AFTER="):
+            after = line.split("=")[1]
+
+    assert before == "off", f"Test setup error: errexit should be off initially, got {before}"
+    assert after == "off", (
+        f"MANIFEST.sh leaked errexit to caller: before={before}, after={after}. "
+        f"MANIFEST should isolate shell options.\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+
+
+def test_validate_file_suppresses_shellcheck_stdout(sandbox_env):
+    """
+    m1 scrutiny finding #3 (bonus): validate_file stdout SC annotations leak.
+
+    Expected:
+    - validate_file suppresses shellcheck stdout (SC annotations)
+    - Only stderr is suppressed (current behavior), stdout must also be suppressed
+    - Cosmetic fix: no shellcheck annotations in sync logs
+    """
+    env = sandbox_env["env"]
+
+    # Create a script with shellcheck warnings (but valid syntax)
+    test_script = sandbox_env["test_script"]
+    test_script.write_text(
+        """#!/bin/bash
+# Script with shellcheck warning: unused variable
+unused_var="test"
+echo "hello"
+"""
+    )
+
+    # Run sync (which calls validate_file)
+    rc, stdout, stderr = run_sync_script(env=env)
+
+    # Should succeed (shellcheck warnings don't fail validation in current impl)
+    # But stdout should not contain shellcheck annotations
+    output = stdout + stderr
+    assert "SC" not in output or "shellcheck" not in output.lower(), (
+        f"validate_file leaked shellcheck annotations to output:\n{output}"
+    )
+
+
+def test_sync_cleanup_orphan_sync_tmp_directories(sandbox_env):
+    """
+    m1 scrutiny finding #4 (bonus): Clean up orphan .sync-tmp-* on startup.
+
+    Expected:
+    - sync script cleans up any existing .sync-tmp-* directories in PROD_ROOT
+    - Defense against kill -9 residue
+    - Cleanup happens at script start, before new sync
+    """
+    env = sandbox_env["env"]
+    prod_dir = sandbox_env["prod_dir"]
+
+    # Create orphan .sync-tmp-* directories (simulate kill -9 residue)
+    orphan1 = prod_dir / ".sync-tmp-20260816-120000"
+    orphan2 = prod_dir / ".sync-tmp-20260816-130000"
+    orphan1.mkdir()
+    orphan2.mkdir()
+    (orphan1 / "leftover.txt").write_text("orphan")
+    (orphan2 / "leftover.txt").write_text("orphan")
+
+    # Verify orphans exist
+    assert orphan1.exists()
+    assert orphan2.exists()
+
+    # Run sync
+    rc, stdout, stderr = run_sync_script(env=env)
+    assert rc == 0, f"Sync failed:\n{stderr}"
+
+    # Verify orphans cleaned up
+    assert not orphan1.exists(), f"Orphan directory not cleaned: {orphan1}"
+    assert not orphan2.exists(), f"Orphan directory not cleaned: {orphan2}"
+
+    # Output should mention cleanup (optional, but good for observability)
+    # output = stdout + stderr
+    # assert "cleanup" in output.lower() or "orphan" in output.lower()
