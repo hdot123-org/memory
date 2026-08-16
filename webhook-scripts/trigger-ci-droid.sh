@@ -68,7 +68,7 @@ with_timeout() {
     cat "$tmp_output"; rm -f "$tmp_output"; return "$rc"
 }
 
-# === Fallback: spawn droid exec --mission ===
+# === Fallback: spawn droid exec (previously --mission; dropped 2026-08-16, PR #741) ===
 # Used when Sessions API injection fails (4xx) or pending-ci file is missing.
 # Derives repo path from pending-ci cwd field (if available) or script's CWD.
 SCRIPT_CWD="$(pwd)"
