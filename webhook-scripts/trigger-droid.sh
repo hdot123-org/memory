@@ -1067,12 +1067,11 @@ exit(0 if d.get('state')=='planning' and d.get('workingDirectory')==sys.argv[2] 
         else
             # Start/default branch
             if [ "${ECHO_DROID:-0}" = "1" ]; then
-                echo "[ECHO_DROID] Would run: droid exec --mission --auto high ... for $p_ref (team=$p_team)" >> "$LOG_FILE"
+                echo "[ECHO_DROID] Would run: droid exec --auto high ... for $p_ref (team=$p_team)" >> "$LOG_FILE"
                 p_droid_output='{"type":"result","session_id":"dry-run-session","result":"dry-run ok (start)"}'
             else
                 # C6: droid exec wrapped with 3600s timeout
                 p_droid_output=$(with_timeout 3600 /Users/busiji/.local/bin/droid exec \
-                    --mission \
                     --auto high \
                     --output-format json \
                     --tag "{\"name\":\"linear-gateway\",\"metadata\":{\"issueRef\":\"${p_ref}\",\"teamKey\":\"${p_team}\",\"triggerSource\":\"issue\",\"eventType\":\"Issue.${ACTION}\"}}" \
@@ -1111,7 +1110,6 @@ except: pass
             fi
             p_droid_exit=0
             p_droid_output=$(with_timeout 3600 /Users/busiji/.local/bin/droid exec \
-                --mission \
                 --auto high \
                 --output-format json \
                 --tag "{\"name\":\"linear-gateway\",\"metadata\":{\"issueRef\":\"${p_ref}\",\"teamKey\":\"${p_team}\",\"triggerSource\":\"issue\",\"eventType\":\"Issue.${ACTION}\"}}" \

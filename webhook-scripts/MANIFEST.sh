@@ -13,6 +13,7 @@
 
 MANAGED_FILES=(
     "trigger-droid.sh"
+    "trigger-ci-droid.sh"
     "reconcile-evolution.sh"
 )
 
