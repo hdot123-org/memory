@@ -39,6 +39,9 @@ ENV_DIFF_LINES=(
     # 权限差异（生产脚本可能需要特定权限位）
     "trigger-droid.sh:权限:生产环境可能需要可执行权限"
     "reconcile-evolution.sh:权限:生产环境可能需要可执行权限"
+
+    # Shellcheck 指令差异（仓库侧添加以通过 CI 门禁）
+    "trigger-droid.sh:shellcheck指令:仓库侧添加 disable=SC1091,SC2317,SC2054,SC2155 指令以通过 CI 静态分析"
 )
 
 # ============================================================================
