@@ -136,3 +136,59 @@ def test_cli_json_output(tmp_path):
     payload = _json.loads(result.stdout)
     assert "findings" in payload and "count" in payload
     assert payload["count"] == 0
+
+
+def _init_git_repo(path: Path) -> None:
+    """Initialize a minimal git repo at *path* with one initial commit."""
+    subprocess.run(["git", "init"], cwd=path, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "test@test"], cwd=path, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.name", "test"], cwd=path, capture_output=True, check=True)
+    placeholder = path / ".gitkeep"
+    placeholder.write_text("", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=path, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=path, capture_output=True, check=True)
+
+
+def test_untracked_file_with_private_ip_not_scanned(tmp_path, monkeypatch):
+    """boundary_guard 只扫 git-tracked 文件；含私网 IP 的 untracked 文件不触发 finding。"""
+    fake_repo = tmp_path / "repo"
+    fake_repo.mkdir()
+    _init_git_repo(fake_repo)
+
+    # Create a memory/ dir with an untracked file containing a private IP
+    mem_dir = fake_repo / "memory" / "docs" / "plans"
+    mem_dir.mkdir(parents=True)
+    untracked_file = mem_dir / "disaster-recovery.md"
+    untracked_file.write_text("Server at 192.168.88.42 for recovery", encoding="utf-8")
+    # Explicitly NOT git-adding it → stays untracked
+
+    mod = load_script_module(SCRIPT_PATH, "check_boundary_untracked")
+    monkeypatch.setattr(mod, "REPO_ROOT", fake_repo)
+    monkeypatch.setattr(mod, "LEAK_SCAN_ROOTS", (fake_repo / "memory",))
+
+    findings = mod.scan_runtime_leaks()
+    assert findings == [], f"untracked file must not trigger finding; got: {findings}"
+
+
+def test_tracked_file_with_private_ip_still_scanned(tmp_path, monkeypatch):
+    """同内容 tracked 文件仍触发 finding——guard 语义不变。"""
+    fake_repo = tmp_path / "repo"
+    fake_repo.mkdir()
+    _init_git_repo(fake_repo)
+
+    mem_dir = fake_repo / "memory" / "docs"
+    mem_dir.mkdir(parents=True)
+    tracked_file = mem_dir / "tracked-leak.md"
+    tracked_file.write_text("Deploy target: 192.168.88.99", encoding="utf-8")
+
+    # git add + commit to make it tracked
+    subprocess.run(["git", "add", str(tracked_file)], cwd=fake_repo, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "add leak"], cwd=fake_repo, capture_output=True, check=True)
+
+    mod = load_script_module(SCRIPT_PATH, "check_boundary_tracked")
+    monkeypatch.setattr(mod, "REPO_ROOT", fake_repo)
+    monkeypatch.setattr(mod, "LEAK_SCAN_ROOTS", (fake_repo / "memory",))
+
+    findings = mod.scan_runtime_leaks()
+    matched = {f["matched"] for f in findings}
+    assert "private-ip-192.168.88" in matched, f"tracked file must still trigger; got: {findings}"
