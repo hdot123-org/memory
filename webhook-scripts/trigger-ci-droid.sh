@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC1091,SC2317,SC2054,SC2155,SC2329
 # trigger-ci-droid.sh — CI complete webhook → Sessions API 注入当前 session
 # 由 adnanh/webhook 调用，立即返回 200，通过 Sessions API 注入消息到运行中的 session
 #
