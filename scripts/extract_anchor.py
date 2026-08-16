@@ -67,7 +67,8 @@ def fetch_comments(target_type: str, number: str, repo: str) -> tuple[int, str]:
         return 1, ""
 
 
-def main():
+def main() -> None:
+    """CLI entry point."""
     if len(sys.argv) != 4:
         print(f"Usage: {sys.argv[0]} <issue|pr> <number> <repo>", file=sys.stderr)
         sys.exit(1)
