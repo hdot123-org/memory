@@ -383,19 +383,16 @@ def _check_merged_pr(github_prs: list[dict[str, Any]], linear_id: str) -> bool |
         linear_id: Linear issue identifier (e.g., INFRA-123)
 
     Returns:
-        True if any PR is merged, False if all PRs checked but none merged
-        (or fail-closed on gh error), None if no PRs had extractable numbers
-        (caller should fall through to next verification path).
+        True if any PR is merged, False on gh error (caller should fail-closed),
+        None if PRs exist but none merged OR no PRs had extractable numbers
+        (caller should fall through to next verification path — deadlock sentinel).
     """
-    found_extractable_pr = False
-
     for pr_attachment in github_prs:
         pr_url = pr_attachment.get("url", "")
         pr_match = re.search(r'/pull/(\d+)', pr_url)
         if not pr_match:
             continue
 
-        found_extractable_pr = True
         pr_number = pr_match.group(1)
         # Extract owner/repo so cross-repo PRs are verified against the
         # correct repository. Without --repo, gh pr view only checks the
@@ -421,14 +418,14 @@ def _check_merged_pr(github_prs: list[dict[str, Any]], linear_id: str) -> bool |
                 else:
                     logger.info(f"PR #{pr_number} for {linear_id} not yet merged")
             else:
-                # gh pr view failed - fail-closed: block close
+                # gh pr view failed - fail-closed: block close immediately
                 logger.warning(
                     f"gh pr view failed for PR #{pr_number}: {result.stderr} — "
                     f"fail-closed: blocking close to prevent unverified state"
                 )
                 return False
         except Exception as e:
-            # gh pr view exception - fail-closed: block close
+            # gh pr view exception - fail-closed: block close immediately
             logger.warning(
                 f"Exception checking PR #{pr_number} via gh CLI: {e} — "
                 f"fail-closed: blocking close to prevent unverified state"
@@ -436,7 +433,31 @@ def _check_merged_pr(github_prs: list[dict[str, Any]], linear_id: str) -> bool |
             return False
 
     # All PRs checked but none merged, or no extractable PRs
-    return False if found_extractable_pr else None
+    # → fall through to Path B sentinel check (architecture §3.2)
+    return None
+def _fetch_issue_comments(issue_number: int) -> str | None:
+    """Fetch issue comments for linkback/sentinel search.
+
+    Returns:
+        Comment text if successful, None if fetch fails (fail-closed signal)
+    """
+    try:
+        comment_result = subprocess.run(
+            ["gh", "issue", "view", str(issue_number),
+             "--json", "comments", "--jq", ".comments[].body"],
+            capture_output=True, text=True, timeout=30
+        )
+        if comment_result.returncode == 0:
+            return comment_result.stdout
+        else:
+            logger.warning(
+                f"Failed to fetch comments for issue #{issue_number} "
+                f"(exit code {comment_result.returncode}): {comment_result.stderr}"
+            )
+            return None
+    except Exception as e:
+        logger.warning(f"Exception fetching comments for issue #{issue_number}: {e}")
+        return None
 
 
 def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = None) -> bool:
@@ -463,49 +484,47 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
         - LINEAR_API_KEY missing (fail-closed: closing a Linear-linked issue
           without verification triggers reopen churn)
     """
-    # Fetch issue comments — always when issue_number is provided, because:
-    # 1. Linear integration sometimes writes linkback in comments (not body)
-    # 2. Deadlock exit sentinel (architecture §3.2) is written as a Linear
-    #    comment by reconcile and checked as alternative trust chain path
+    # Step 1: Try to extract linkback from body ONLY (no comment fetch yet)
+    # Optimization (VAL-CLOSE-026): skip comment fetch if body already has linkback
+    linear_id = _extract_linear_linkback(issue_body, "")
+
+    # Step 2: If body doesn't have linkback, check if marker exists but extraction failed
+    if not linear_id and _has_linear_linkback_marker(issue_body, ""):
+        # P0-1 fail-closed: marker present but ID extraction failed
+        logger.warning(
+            "linear-linkback marker found but ID could not be extracted — "
+            "fail-closed: blocking close to prevent unverified state"
+        )
+        return False
+
+    # Step 3: If body has no linkback marker at all, fetch comments to search there
+    # VAL-FAILOPEN-005/006/007: comment fetch failure → fail-closed (return False)
+    # because the linkback may exist in comments and we can't verify without them.
     issue_comments = ""
-    if issue_number is not None:
-        try:
-            comment_result = subprocess.run(
-                ["gh", "issue", "view", str(issue_number),
-                 "--json", "comments", "--jq", ".comments[].body"],
-                capture_output=True, text=True, timeout=30
-            )
-            if comment_result.returncode == 0:
-                issue_comments = comment_result.stdout
-            else:
-                # Fail-closed: cannot confirm linkback in comments
-                logger.warning(
-                    f"Failed to fetch comments for issue #{issue_number} "
-                    f"(exit code {comment_result.returncode}): {comment_result.stderr} "
-                    f"— fail-closed: blocking close to prevent unverified state"
-                )
-                return False
-        except Exception as e:
-            # Fail-closed: cannot confirm linkback in comments
+    if not linear_id and issue_number is not None:
+        # No linkback in body, check comments
+        fetched_comments = _fetch_issue_comments(issue_number)
+        if fetched_comments is None:
+            # Fail-closed: can't verify linkback in comments
             logger.warning(
-                f"Exception fetching comments for issue #{issue_number}: {e} "
-                f"— fail-closed: blocking close to prevent unverified state"
+                f"Failed to fetch comments for issue #{issue_number} — "
+                f"fail-closed: blocking close to prevent unverified state"
             )
             return False
+        issue_comments = fetched_comments
+        # Try to extract linkback from comments
+        linear_id = _extract_linear_linkback(issue_body, issue_comments)
 
-    linear_id = _extract_linear_linkback(issue_body, issue_comments)
-    if not linear_id:
-        # P0-1 fail-closed narrowing: if marker is present but extraction
-        # failed, the issue IS Linear-linked — closing without verification
-        # would risk the reopen churn observed in #648.
-        if _has_linear_linkback_marker(issue_body, issue_comments):
+        # Check if marker exists in comments but extraction failed
+        if not linear_id and _has_linear_linkback_marker(issue_body, issue_comments):
             logger.warning(
-                "linear-linkback marker found but ID could not be extracted — "
+                "linear-linkback marker found in comments but ID could not be extracted — "
                 "fail-closed: blocking close to prevent unverified state"
             )
             return False
-        # No linkback marker at all — environmental finding, allow close
-        # (backward compat for findings with no Linear association)
+
+    # Step 4: No linkback found anywhere - backward compat for environmental findings
+    if not linear_id:
         logger.debug("No linear-linkback found in issue body or comments")
         return True
 
@@ -600,17 +619,37 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
 
         if github_prs:
             pr_result = _check_merged_pr(github_prs, linear_id)
-            if pr_result is not None:
-                return pr_result
-            # pr_result is None → no PRs had extractable numbers, fall through to Path B
+            if pr_result is True:
+                return True
+            if pr_result is False:
+                # gh pr view error → fail-closed immediately
+                return False
+            # pr_result is None → PRs exist but none merged, or no extractable PRs
+            # → fall through to Path B sentinel check (architecture §3.2)
 
         # Path B: Deadlock exit sentinel (architecture §3.2)
         # Reconcile deadlock exit writes a sentinel comment to Linear after verifying
         # session-completed + sessionId + exitCode=0. This proves the session completed
         # successfully even without a merged PR attachment.
-        if issue_comments and f"<!-- deadlock-exit {linear_id}" in issue_comments:
-            logger.info(f"Deadlock exit sentinel found for {linear_id} — trust chain passes (session-completed)")
-            return True
+        #
+        # Conditional fetch (VAL-CLOSE-026): only fetch comments for sentinel check
+        # when PR attachments exist but can't prove merge. If no PRs, skip sentinel check.
+        if github_prs:
+            # PRs exist but none merged → check for deadlock sentinel in comments
+            # If comments were already fetched (body had no linkback), reuse them
+            # Otherwise, fetch now for sentinel check
+            path_b_comments = issue_comments
+            if not path_b_comments and issue_number is not None:
+                fetched = _fetch_issue_comments(issue_number)
+                if fetched is not None:
+                    path_b_comments = fetched
+                # Fetch failure here is NOT fail-closed — we already have linkback from
+                # body; sentinel absence just means Path B can't confirm, so we fall
+                # through to the final "return False" below.
+
+            if path_b_comments and f"<!-- deadlock-exit {linear_id}" in path_b_comments:
+                logger.info(f"Deadlock exit sentinel found for {linear_id} — trust chain passes (session-completed)")
+                return True
 
         # Neither path succeeded — do NOT close
         if not github_prs:

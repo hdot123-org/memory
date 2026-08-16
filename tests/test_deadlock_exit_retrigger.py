@@ -39,46 +39,53 @@ class TestTrustChainDeadlockExitSentinel:
     def test_dlk_trust_chain_sentinel_pass(self, tmp_path):
         """Path B: deadlock exit sentinel in comments → trust chain passes → mirror can close.
 
-        redEvidence: Without `if issue_comments and f"<!-- deadlock-exit {linear_id}" in issue_comments:`
-        check, this test returns False (BLOCK) instead of True (PASS).
+        redEvidence: Without Path B sentinel check, this test returns False (BLOCK)
+        because no PR is merged. With Path B, sentinel in comments passes trust chain.
         """
         from evolution_utils import _verify_fix_merged_via_linear
 
-        issue_body = "Some issue body"
+        # Body has linkback → function proceeds to Linear API query
+        issue_body = "<!-- linear-linkback INFRA-999 -->\nSome issue body"
         issue_number = 999
         linear_id = "INFRA-999"
 
-        # Mock Linear API: terminal state
-        mock_urlopen = MagicMock()
+        # Mock Linear API response: terminal state, non-merged PR attachment
         mock_response = MagicMock()
         mock_response.read.return_value = json.dumps({
             "data": {
                 "issue": {
                     "id": "uuid-999",
                     "state": {"type": "completed"},
-                    "attachments": {"nodes": []}  # No PR attachments
+                    "attachments": {"nodes": [
+                        {
+                            "id": "pr-1",
+                            "url": "https://github.com/owner/repo/pull/100",
+                            "attachmentType": "github",
+                            "metadata": {}
+                        }
+                    ]}
                 }
             }
         }).encode()
         mock_response.__enter__ = lambda self: self
         mock_response.__exit__ = MagicMock()
-        mock_urlopen.return_value = mock_response
 
-        # Mock gh: return sentinel in comments
+        # Mock gh: PR view returns not merged, then comment fetch returns sentinel
         sentinel_comment = f"<!-- deadlock-exit {linear_id} sessionId=abc123 exitCode=0 -->\n死锁出口执行"
 
         with patch("evolution_utils.subprocess.run") as mock_run, \
-             patch("urllib.request.urlopen", return_value=mock_urlopen), \
+             patch("urllib.request.urlopen", return_value=mock_response), \
              patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
-            # Call sequence: gh issue view comments → (sentinel found, return True)
+            # Call sequence: gh pr view (not merged) → gh issue view comments (sentinel found)
             mock_run.side_effect = [
+                MagicMock(returncode=0, stdout=json.dumps({"mergedAt": None}), stderr=""),
                 MagicMock(returncode=0, stdout=sentinel_comment, stderr=""),
             ]
 
             result = _verify_fix_merged_via_linear(issue_body, issue_number)
 
             assert result is True, "Sentinel in comments should pass trust chain (Path B)"
-            assert mock_run.call_count == 1, "Should fetch comments once"
+            assert mock_run.call_count == 2, "Should call pr view + comment fetch"
 
     def test_dlk_trust_chain_no_sentinel_no_pr_block(self, tmp_path):
         """No sentinel AND no PR → BLOCK (fail-closed).
@@ -94,8 +101,7 @@ class TestTrustChainDeadlockExitSentinel:
         issue_body = "<!-- linear-linkback INFRA-888 -->\nSome issue body"
         issue_number = 888
 
-        # Mock Linear API: terminal state, no PR attachments
-        mock_urlopen = MagicMock()
+        # Mock Linear API response: terminal state, no PR attachments
         mock_response = MagicMock()
         mock_response.read.return_value = json.dumps({
             "data": {
@@ -108,22 +114,16 @@ class TestTrustChainDeadlockExitSentinel:
         }).encode()
         mock_response.__enter__ = lambda self: self
         mock_response.__exit__ = MagicMock()
-        mock_urlopen.return_value = mock_response
-
-        # Mock gh: return comments without sentinel
-        comments_text = "Regular comment without sentinel"
 
         with patch("evolution_utils.subprocess.run") as mock_run, \
-             patch("urllib.request.urlopen", return_value=mock_urlopen), \
+             patch("urllib.request.urlopen", return_value=mock_response), \
              patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
-            mock_run.side_effect = [
-                MagicMock(returncode=0, stdout=comments_text, stderr=""),
-            ]
-
+            # No PRs → no sentinel check (Path B conditional per architecture.md §3.2)
+            # Result: BLOCK (fail-closed)
             result = _verify_fix_merged_via_linear(issue_body, issue_number)
 
             assert result is False, "No sentinel and no PR → BLOCK"
-            assert mock_run.call_count == 1, "Should fetch comments once"
+            assert mock_run.call_count == 0, "No subprocess calls (body has linkback, no PRs → skip comment fetch)"
 
 
 # ============================================================================
