@@ -28,6 +28,13 @@ GRACE_PERIOD_TICKS = 3
 # (Gate A). Exclude them from auto-close (INFRA-216).
 SELF_AUDIT_CATEGORY = "evolution_self_audit"
 
+# Deadlock exit sentinel prefix (architecture §3.2).
+# Written by reconcile-evolution.sh when pushing a stale non-terminal Linear
+# issue to terminal after verifying session-completed+exitCode=0.
+# The trust chain (_verify_fix_merged_via_linear) checks for this sentinel
+# as an alternative verification path alongside merged PR attachments.
+DEADLOCK_EXIT_SENTINEL_PREFIX = "<!-- deadlock-exit "
+
 # Required config keys for evolution scanner
 REQUIRED_CONFIG_KEYS = [
     "audit_tools",
@@ -368,6 +375,70 @@ def extract_linkback_anchor(comments_text: str) -> str | None:
     return None
 
 
+def _check_merged_pr(github_prs: list[dict[str, Any]], linear_id: str) -> bool | None:
+    """Check if any GitHub PR attachment is merged.
+
+    Args:
+        github_prs: List of GitHub PR attachment dicts from Linear API
+        linear_id: Linear issue identifier (e.g., INFRA-123)
+
+    Returns:
+        True if any PR is merged, False if all PRs checked but none merged
+        (or fail-closed on gh error), None if no PRs had extractable numbers
+        (caller should fall through to next verification path).
+    """
+    found_extractable_pr = False
+
+    for pr_attachment in github_prs:
+        pr_url = pr_attachment.get("url", "")
+        pr_match = re.search(r'/pull/(\d+)', pr_url)
+        if not pr_match:
+            continue
+
+        found_extractable_pr = True
+        pr_number = pr_match.group(1)
+        # Extract owner/repo so cross-repo PRs are verified against the
+        # correct repository. Without --repo, gh pr view only checks the
+        # current repo context and silently fails (fail-open) for PRs in
+        # other repos — the merge state is never actually confirmed.
+        repo_match = re.search(r'github\.com/([^/]+/[^/]+)/pull/', pr_url)
+        gh_cmd = ["gh", "pr", "view", pr_number, "--json", "mergedAt"]
+        if repo_match:
+            gh_cmd.extend(["--repo", repo_match.group(1)])
+
+        try:
+            result = subprocess.run(
+                gh_cmd,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                pr_data = json.loads(result.stdout)
+                if pr_data.get("mergedAt"):
+                    logger.info(f"PR #{pr_number} for {linear_id} is merged")
+                    return True
+                else:
+                    logger.info(f"PR #{pr_number} for {linear_id} not yet merged")
+            else:
+                # gh pr view failed - fail-closed: block close
+                logger.warning(
+                    f"gh pr view failed for PR #{pr_number}: {result.stderr} — "
+                    f"fail-closed: blocking close to prevent unverified state"
+                )
+                return False
+        except Exception as e:
+            # gh pr view exception - fail-closed: block close
+            logger.warning(
+                f"Exception checking PR #{pr_number} via gh CLI: {e} — "
+                f"fail-closed: blocking close to prevent unverified state"
+            )
+            return False
+
+    # All PRs checked but none merged, or no extractable PRs
+    return False if found_extractable_pr else None
+
+
 def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = None) -> bool:
     """Verify that the fix for this issue has been merged via Linear API.
 
@@ -392,12 +463,12 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
         - LINEAR_API_KEY missing (fail-closed: closing a Linear-linked issue
           without verification triggers reopen churn)
     """
-    # Fetch issue comments to search for linkback, but ONLY if the body
-    # doesn't already contain a linkback. Linear integration sometimes writes
-    # the linkback in comments instead of the body.
-    body_match = re.search(r'<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->', issue_body)
+    # Fetch issue comments — always when issue_number is provided, because:
+    # 1. Linear integration sometimes writes linkback in comments (not body)
+    # 2. Deadlock exit sentinel (architecture §3.2) is written as a Linear
+    #    comment by reconcile and checked as alternative trust chain path
     issue_comments = ""
-    if body_match is None and issue_number is not None:
+    if issue_number is not None:
         try:
             comment_result = subprocess.run(
                 ["gh", "issue", "view", str(issue_number),
@@ -516,64 +587,36 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
             )
             return False
 
-        # Linear issue is terminal — now verify a PR was actually merged
+        # Linear issue is terminal — now verify via one of two paths:
+        # Path A: merged PR attachment (existing)
+        # Path B: deadlock exit sentinel in Linear comments (architecture §3.2)
+
+        # Path A: Check if any PR is merged
         attachments = issue_data.get("attachments", {}).get("nodes", [])
         github_prs = [
             att for att in attachments
             if att.get("attachmentType") == "github"
         ]
 
+        if github_prs:
+            pr_result = _check_merged_pr(github_prs, linear_id)
+            if pr_result is not None:
+                return pr_result
+            # pr_result is None → no PRs had extractable numbers, fall through to Path B
+
+        # Path B: Deadlock exit sentinel (architecture §3.2)
+        # Reconcile deadlock exit writes a sentinel comment to Linear after verifying
+        # session-completed + sessionId + exitCode=0. This proves the session completed
+        # successfully even without a merged PR attachment.
+        if issue_comments and f"<!-- deadlock-exit {linear_id}" in issue_comments:
+            logger.info(f"Deadlock exit sentinel found for {linear_id} — trust chain passes (session-completed)")
+            return True
+
+        # Neither path succeeded — do NOT close
         if not github_prs:
-            # No PR attachments found - issue should NOT be closed
-            logger.info(f"No GitHub PR attachments found for {linear_id}")
-            return False
-
-        # Check if any PR is merged
-        for pr_attachment in github_prs:
-            # Extract PR number and repo from URL, check via gh CLI
-            pr_url = pr_attachment.get("url", "")
-            pr_match = re.search(r'/pull/(\d+)', pr_url)
-            if pr_match:
-                pr_number = pr_match.group(1)
-                # Extract owner/repo so cross-repo PRs are verified against the
-                # correct repository. Without --repo, gh pr view only checks the
-                # current repo context and silently fails (fail-open) for PRs in
-                # other repos — the merge state is never actually confirmed.
-                repo_match = re.search(r'github\.com/([^/]+/[^/]+)/pull/', pr_url)
-                gh_cmd = ["gh", "pr", "view", pr_number, "--json", "mergedAt"]
-                if repo_match:
-                    gh_cmd.extend(["--repo", repo_match.group(1)])
-                try:
-                    result = subprocess.run(
-                        gh_cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=10
-                    )
-                    if result.returncode == 0:
-                        pr_data = json.loads(result.stdout)
-                        if pr_data.get("mergedAt"):
-                            logger.info(f"PR #{pr_number} for {linear_id} is merged")
-                            return True
-                        else:
-                            logger.info(f"PR #{pr_number} for {linear_id} not yet merged")
-                    else:
-                        # gh pr view failed - fail-closed: block close
-                        logger.warning(
-                            f"gh pr view failed for PR #{pr_number}: {result.stderr} — "
-                            f"fail-closed: blocking close to prevent unverified state"
-                        )
-                        return False
-                except Exception as e:
-                    # gh pr view exception - fail-closed: block close
-                    logger.warning(
-                        f"Exception checking PR #{pr_number} via gh CLI: {e} — "
-                        f"fail-closed: blocking close to prevent unverified state"
-                    )
-                    return False
-
-        # All PRs checked successfully but none merged -> do NOT close
-        logger.info(f"No merged PR found for {linear_id} after checking all attachments")
+            logger.info(f"No GitHub PR attachments and no deadlock exit sentinel found for {linear_id}")
+        else:
+            logger.info(f"No merged PR and no deadlock exit sentinel found for {linear_id} after checking all attachments")
         return False
 
     except urllib.error.URLError as e:

@@ -7397,9 +7397,10 @@ def test_val_cross_001_complete_trust_chain(tmp_path):
     with patch("evolution_utils.subprocess.run") as mock_run, \
          patch("urllib.request.urlopen", return_value=mock_urlopen), \
          patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
-        # Call sequence: list issues → gh pr view (merged) → close issue
+        # Call sequence: list issues → view comments (trust chain §3.2) → gh pr view (merged) → close issue
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # gh issue view comments for #101
             MagicMock(returncode=0, stdout=json.dumps({"mergedAt": "2026-01-01T00:00:00Z"}), stderr=""),
             MagicMock(returncode=0, stdout="", stderr=""),  # close
         ]
@@ -7407,9 +7408,9 @@ def test_val_cross_001_complete_trust_chain(tmp_path):
         auto_close_resolved(current_findings, "evolution-found",
                            failed_categories=set(), history_path=history_path)
 
-        # Verify close was called (3 subprocess calls: list, pr view, close)
-        assert mock_run.call_count == 3
-        close_call = mock_run.call_args_list[2]
+        # Verify close was called (4 subprocess calls: list, view comments, pr view, close)
+        assert mock_run.call_count == 4
+        close_call = mock_run.call_args_list[3]
         assert close_call[0][0][2] == "close"
         assert close_call[0][0][3] == "101"
 
@@ -7473,14 +7474,15 @@ def test_val_cross_003_broken_chain_no_merged_pr(tmp_path):
          patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),  # gh issue view comments for #101
             MagicMock(returncode=0, stdout=json.dumps({"mergedAt": None}), stderr=""),
         ]
 
         auto_close_resolved(current_findings, "evolution-found",
                            failed_categories=set(), history_path=history_path)
 
-        # Only list + pr view, NO close call
-        assert mock_run.call_count == 2
+        # List + view comments + pr view, NO close call
+        assert mock_run.call_count == 3
         assert mock_run.call_args_list[0][0][0][2] == "list"
 
 
@@ -7555,15 +7557,16 @@ def test_val_cross_005_linear_api_failure_fail_closed(tmp_path):
          patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout=json.dumps({"comments": []}), stderr=""),
         ]
 
         auto_close_resolved(current_findings, "evolution-found",
                            failed_categories=set(), history_path=history_path)
 
         # Issue NOT closed due to Linear failure (fail-closed)
-        # Only 1 call: get open issues. No close call because Linear API failed.
-        assert mock_run.call_count == 1, \
-            "Should only call gh issue list, not gh issue close (fail-closed blocks close)"
+        # 2 calls: get open issues + fetch comments. No close call because Linear API failed.
+        assert mock_run.call_count == 2, \
+            "Should only call gh issue list and view comments, not gh issue close (fail-closed blocks close)"
 
         # Verify fail-closed warning logged
         warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
@@ -7704,6 +7707,7 @@ def test_val_cross_008_reopened_issue_closed_again(tmp_path):
          patch.dict(os.environ, {"LINEAR_API_KEY": "test-key-008"}):
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
+            MagicMock(returncode=0, stdout=json.dumps({"comments": []}), stderr=""),
             MagicMock(returncode=0, stdout=json.dumps({"mergedAt": "2026-02-01T00:00:00Z"}), stderr=""),
             MagicMock(returncode=0, stdout="", stderr=""),  # close #42 again
         ]
@@ -7712,8 +7716,8 @@ def test_val_cross_008_reopened_issue_closed_again(tmp_path):
                            failed_categories=set(), history_path=history_path)
 
         # Issue #42 closed (same number, no new issue created)
-        assert mock_run.call_count == 3
-        close_call = mock_run.call_args_list[2]
+        assert mock_run.call_count == 4
+        close_call = mock_run.call_args_list[3]
         assert close_call[0][0][2] == "close"
         assert close_call[0][0][3] == "42"
 

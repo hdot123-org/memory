@@ -18,6 +18,14 @@ STATUS_DIR="${WEBHOOK_BASE}/status"
 REPO="hdot123/memory"
 TEAM_KEY="INFRA"
 
+# 死锁出口 stale 阈值（architecture §3.2）：
+# status=completed + sessionId 非空 + exitCode=0 而 Linear 停留非终态超过此阈值 → 推进终态
+# 对齐 45 分钟量级（与现行 5t 超时保护一致）
+DEADLOCK_STALE_THRESHOLD_MIN=45
+
+# 死锁出口幂等 sentinel（HTML 隐藏评论，UI 不可见）
+DEADLOCK_EXIT_SENTINEL_PREFIX="<!-- deadlock-exit "
+
 mkdir -p "$LOG_DIR" 2>/dev/null
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
@@ -484,12 +492,207 @@ except:
                 log "  ${LINEAR_REF}: stale running status (PID dead), marking for retrigger"
             fi
         elif [ "$STATUS" = "completed" ]; then
-            log "  ${LINEAR_REF}: already completed, skip"
-            continue
+            # === 死锁出口（architecture §3.2，VAL-DLK-001/002/004/005）===
+            # 条件：status=completed + sessionId 非空 + exitCode=0 + Linear 非终态超 stale 阈值
+            # 动作：推进 Linear 终态 + 三要素证据评论 + 幂等 sentinel
+            DEADLOCK_EXIT_DONE=$(/opt/homebrew/bin/python3 -c "
+import json
+try:
+    d = json.load(open('$STATUS_FILE'))
+    sid = d.get('sessionId')
+    ec = d.get('exitCode')
+    if sid and str(sid).lower() not in ('none', 'null', '') and ec == 0:
+        print('yes')
+    else:
+        print('no')
+except:
+    print('no')
+" 2>/dev/null || echo "no")
+
+            if [ "$DEADLOCK_EXIT_DONE" = "yes" ]; then
+                # 检查 Linear updatedAt 是否超过 stale 阈值
+                LINEAR_AGE_MIN=$(/opt/homebrew/bin/python3 -c "
+from datetime import datetime, timezone
+try:
+    updated = datetime.fromisoformat('${ISSUE_UPDATED}'.replace('Z', '+00:00'))
+    now = datetime.now(timezone.utc)
+    age_min = int((now - updated).total_seconds() / 60)
+    print(age_min)
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+
+                if [ "$LINEAR_AGE_MIN" -ge "$DEADLOCK_STALE_THRESHOLD_MIN" ]; then
+                    # 检查幂等 sentinel（是否已执行过出口）
+                    # LINEAR_API_KEY 已在脚本顶部 export，子进程自动继承
+                    SENTINEL_EXISTS=$(/opt/homebrew/bin/python3 -c "
+import json, urllib.request, os, sys, socket
+socket.setdefaulttimeout(15)
+api_key = os.environ['LINEAR_API_KEY']
+issue_uuid = '$ISSUE_UUID'
+sentinel_prefix = '$DEADLOCK_EXIT_SENTINEL_PREFIX'
+if not api_key or not issue_uuid:
+    print('no')
+    sys.exit(0)
+query = '{ issue(id: \"' + issue_uuid + '\") { comments { nodes { body } } } }'
+req = urllib.request.Request(
+    'https://api.linear.app/graphql',
+    data=json.dumps({'query': query}).encode(),
+    headers={'Authorization': api_key, 'Content-Type': 'application/json'},
+    method='POST'
+)
+try:
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        d = json.loads(resp.read().decode())
+        nodes = d.get('data', {}).get('issue', {}).get('comments', {}).get('nodes', [])
+        for n in nodes:
+            body = n.get('body', '')
+            if sentinel_prefix in body:
+                print('yes')
+                sys.exit(0)
+        print('no')
+except Exception:
+    print('no')
+" 2>>"$LOG_FILE" || echo "no")
+
+                    if [ "$SENTINEL_EXISTS" = "yes" ]; then
+                        log "  ${LINEAR_REF}: deadlock exit already executed (sentinel found), skip (VAL-DLK-005 idempotent)"
+                        continue
+                    fi
+
+                    # 执行死锁出口：推进 Linear 终态 + 三要素证据评论
+                    # LINEAR_API_KEY 已在脚本顶部 export，子进程自动继承
+                    DEADLOCK_RESULT=$(ISSUE_UUID="$ISSUE_UUID" \
+                        LINEAR_REF="$LINEAR_REF" STATUS_FILE="$STATUS_FILE" \
+                        DEADLOCK_EXIT_SENTINEL_PREFIX="$DEADLOCK_EXIT_SENTINEL_PREFIX" \
+                        /opt/homebrew/bin/python3 -c "
+import json, urllib.request, os, sys, socket
+socket.setdefaulttimeout(15)
+api_key = os.environ['LINEAR_API_KEY']
+issue_uuid = os.environ['ISSUE_UUID']
+linear_ref = os.environ['LINEAR_REF']
+status_file = os.environ['STATUS_FILE']
+sentinel_prefix = os.environ['DEADLOCK_EXIT_SENTINEL_PREFIX']
+
+# 1. 查询 In Progress state ID for this team
+def gql(query, variables=None):
+    payload = {'query': query}
+    if variables:
+        payload['variables'] = variables
+    req = urllib.request.Request(
+        'https://api.linear.app/graphql',
+        data=json.dumps(payload).encode(),
+        headers={'Authorization': api_key, 'Content-Type': 'application/json'},
+        method='POST'
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode())
+
+# 查询 team 的 completed state
+team_query = '''query {
+    teams(first: 1) {
+        nodes {
+            id
+            states {
+                nodes { id name type }
+            }
+        }
+    }
+}'''
+team_data = gql(team_query)
+completed_state_id = None
+for team in team_data.get('data', {}).get('teams', {}).get('nodes', []):
+    for state in team.get('states', {}).get('nodes', []):
+        if state.get('type') == 'completed':
+            completed_state_id = state['id']
+            break
+    if completed_state_id:
+        break
+
+if not completed_state_id:
+    print('ERROR: no completed state found')
+    sys.exit(1)
+
+# 2. 读取 status 文件证据
+with open(status_file) as f:
+    status_data = json.load(f)
+session_id = status_data.get('sessionId', '')
+exit_code = status_data.get('exitCode', '')
+
+# 3. 推进 Linear 到 completed
+move_mut = '''mutation (\$issueId: String!, \$stateId: String!) {
+    issueUpdate(id: \$issueId, input: { stateId: \$stateId }) {
+        success
+    }
+}'''
+move_result = gql(move_mut, {'issueId': issue_uuid, 'stateId': completed_state_id})
+if not move_result.get('data', {}).get('issueUpdate', {}).get('success'):
+    print('ERROR: failed to move to completed')
+    sys.exit(1)
+
+# 4. 写三要素证据评论（含幂等 sentinel）
+comment_body = f'''{sentinel_prefix}{linear_ref} sessionId={session_id} exitCode=0 -->
+死锁出口：session 已完成（sessionId={session_id}，exitCode={exit_code}），Linear 停留非终态超 stale 阈值，由 reconcile 推进终态。
+- **INFRA ref**: {linear_ref}
+- **Status 依据**: status=completed, sessionId={session_id}, exitCode={exit_code}
+- **动作**: Linear state → completed（reconcile deadlock exit）'''
+
+comment_mut = '''mutation (\$issueId: String!, \$body: String!) {
+    commentCreate(input: { issueId: \$issueId, body: \$body }) {
+        comment { id }
+    }
+}'''
+gql(comment_mut, {'issueId': issue_uuid, 'body': comment_body})
+
+print('OK')
+" 2>>"$LOG_FILE" || echo "FAIL")
+
+                    if [ "$DEADLOCK_RESULT" = "OK" ]; then
+                        log "  ${LINEAR_REF}: DEADLOCK EXIT executed — Linear pushed to completed (session=${SESSION_ID_FOR_LOG:-unknown}, exitCode=0, stale=${LINEAR_AGE_MIN}min)"
+                        # 记录到 drift log 供取证
+                        echo "[$(date '+%Y-%d %H:%M:%S')] DEADLOCK_EXIT: ${LINEAR_REF} uuid=${ISSUE_UUID} stale=${LINEAR_AGE_MIN}min" >> "${LOG_DIR}/anchor-drift.log"
+                    else
+                        log "  ${LINEAR_REF}: WARNING deadlock exit failed (${DEADLOCK_RESULT}), will retry next tick"
+                    fi
+                    continue
+                else
+                    log "  ${LINEAR_REF}: completed but Linear not yet stale (${LINEAR_AGE_MIN}min < ${DEADLOCK_STALE_THRESHOLD_MIN}min threshold), skip"
+                    continue
+                fi
+            else
+                log "  ${LINEAR_REF}: already completed (no valid session/exitCode), skip"
+                continue
+            fi
         fi
     fi
 
-    # 5d. 补触发
+    # 5d. 补触发前置双验证（architecture §3.3，VAL-DRF-005）
+    # 前提：镜像 issue 仍 OPEN 且 finding 仍存在（status 文件存在）
+    # 不满足 → 不派发，转关闭评估或记录
+    RETRIGGER_OK=1
+
+    # 验证 1：镜像 issue 仍 OPEN
+    RETRIGGER_GH_CHECK=$(gh issue list --repo "$REPO" --label evolution-found --state open \
+        --search "${LINEAR_REF}" --json number --limit 1 2>/dev/null || echo "[]")
+    RETRIGGER_GH_COUNT=$(echo "$RETRIGGER_GH_CHECK" | /opt/homebrew/bin/python3 -c \
+        "import json,sys; data=json.load(sys.stdin); print(len(data))" 2>/dev/null || echo "0")
+    if [ "$RETRIGGER_GH_COUNT" -eq 0 ]; then
+        log "  ${LINEAR_REF}: retrigger BLOCKED — no open GitHub mirror issue (VAL-DRF-005)"
+        RETRIGGER_OK=0
+    fi
+
+    # 验证 2：status 文件存在（finding 仍被追踪）
+    if [ "$RETRIGGER_OK" -eq 1 ] && [ ! -f "${STATUS_DIR}/${LINEAR_REF}.json" ]; then
+        log "  ${LINEAR_REF}: retrigger BLOCKED — no status file (E4 形态，VAL-DRF-005)"
+        # 转关闭评估：issue open + finding 消失（无 status 文件）→ 记录漂移
+        echo "[$(date '+%Y-%d %H:%M:%S')] DRIFT: ${LINEAR_REF} retrigger blocked — status file missing (E4)" >> "${LOG_DIR}/anchor-drift.log"
+        RETRIGGER_OK=0
+    fi
+
+    if [ "$RETRIGGER_OK" -eq 0 ]; then
+        continue
+    fi
+
     log "  ${LINEAR_REF}: orphaned, triggering reconciliation"
     bash "${SCRIPT_DIR}/trigger-droid.sh" \
         "create" "Issue" "$LINEAR_REF" "$ISSUE_UUID" "$TEAM_KEY" "$ISSUE_TITLE" \

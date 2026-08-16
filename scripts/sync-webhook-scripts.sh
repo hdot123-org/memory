@@ -146,6 +146,7 @@ if [[ "$CHECK_MODE" -eq 1 ]]; then
     log "CHECK MODE: comparing repo vs production (read-only)"
     drift_found=0
 
+    # Check MANAGED_FILES
     for file in "${MANAGED_FILES[@]}"; do
         repo_file="${REPO_WEBHOOK}/${file}"
         prod_file="${PROD_ROOT}/${file}"
@@ -169,6 +170,35 @@ if [[ "$CHECK_MODE" -eq 1 ]]; then
             log "OK: ${file} in sync"
         fi
     done
+
+    # Check CROSS_DIR_MAPPINGS
+    if [[ ${#CROSS_DIR_MAPPINGS[@]} -gt 0 ]]; then
+        for mapping in "${CROSS_DIR_MAPPINGS[@]}"; do
+            source_path="${mapping%%:*}"
+            target_file="${mapping##*:}"
+            repo_file="${REPO_ROOT}/${source_path}"
+            prod_file="${PROD_ROOT}/${target_file}"
+
+            if [[ ! -f "$repo_file" ]]; then
+                log "ERROR: ${source_path} listed in CROSS_DIR_MAPPINGS but missing from repo"
+                drift_found=1
+                continue
+            fi
+
+            if [[ ! -f "$prod_file" ]]; then
+                log "DRIFT: ${source_path} exists in repo but not in production as ${target_file}"
+                drift_found=1
+                continue
+            fi
+
+            if ! diff -q "$repo_file" "$prod_file" >/dev/null 2>&1; then
+                log "DRIFT: ${source_path} -> ${target_file} differs between repo and production"
+                drift_found=1
+            else
+                log "OK: ${source_path} -> ${target_file} in sync"
+            fi
+        done
+    fi
 
     if [[ "$drift_found" -eq 1 ]]; then
         log "CHECK RESULT: drift detected (run without --check to sync)"
@@ -201,6 +231,23 @@ for file in "${MANAGED_FILES[@]}"; do
     fi
 done
 
+# 为跨目录映射文件创建备份
+if [[ ${#CROSS_DIR_MAPPINGS[@]} -gt 0 ]]; then
+    for mapping in "${CROSS_DIR_MAPPINGS[@]}"; do
+        target_file="${mapping##*:}"
+        prod_file="${PROD_ROOT}/${target_file}"
+        if [[ -f "$prod_file" ]]; then
+            backup_file="${BACKUP_ROOT}/${target_file}.bak.${TIMESTAMP}"
+            if [[ -f "$backup_file" ]]; then
+                log "  Backup exists: ${target_file}.bak.${TIMESTAMP}, skipping"
+            else
+                cp -p "$prod_file" "$backup_file"
+                log "  Backed up: ${target_file} -> ${target_file}.bak.${TIMESTAMP}"
+            fi
+        fi
+    done
+fi
+
 # Phase 2: 同步
 log "Phase 2: Syncing repo -> production"
 
@@ -217,6 +264,21 @@ for file in "${MANAGED_FILES[@]}"; do
     cp -p "$repo_file" "${sync_tmp}/${file}"
     log "  Staged: ${file}"
 done
+
+# 同步跨目录映射文件
+if [[ ${#CROSS_DIR_MAPPINGS[@]} -gt 0 ]]; then
+    for mapping in "${CROSS_DIR_MAPPINGS[@]}"; do
+        source_path="${mapping%%:*}"
+        target_file="${mapping##*:}"
+        repo_file="${REPO_ROOT}/${source_path}"
+        if [[ ! -f "$repo_file" ]]; then
+            log "WARN: ${source_path} listed in CROSS_DIR_MAPPINGS but missing from repo, skipping"
+            continue
+        fi
+        cp -p "$repo_file" "${sync_tmp}/${target_file}"
+        log "  Staged: ${source_path} -> ${target_file}"
+    done
+fi
 
 # Phase 3: 校验
 log "Phase 3: Validating synced files"
@@ -236,6 +298,24 @@ for file in "${MANAGED_FILES[@]}"; do
     fi
 done
 
+# 校验跨目录映射文件
+if [[ ${#CROSS_DIR_MAPPINGS[@]} -gt 0 ]]; then
+    for mapping in "${CROSS_DIR_MAPPINGS[@]}"; do
+        target_file="${mapping##*:}"
+        sync_file="${sync_tmp}/${target_file}"
+        if [[ ! -f "$sync_file" ]]; then
+            continue
+        fi
+
+        if ! validate_file "$sync_file"; then
+            log "FAIL: Validation failed for ${target_file}"
+            validation_ok=0
+        else
+            log "  PASS: ${target_file}"
+        fi
+    done
+fi
+
 # fail-closed: 校验失败 → 清理临时文件，保留备份，退出非零
 if [[ "$validation_ok" -eq 0 ]]; then
     log "FAIL: Validation failed — rolling back (production unchanged)"
@@ -254,6 +334,19 @@ for file in "${MANAGED_FILES[@]}"; do
         log "  Committed: ${file}"
     fi
 done
+
+# 提交跨目录映射文件
+if [[ ${#CROSS_DIR_MAPPINGS[@]} -gt 0 ]]; then
+    for mapping in "${CROSS_DIR_MAPPINGS[@]}"; do
+        target_file="${mapping##*:}"
+        sync_file="${sync_tmp}/${target_file}"
+        prod_file="${PROD_ROOT}/${target_file}"
+        if [[ -f "$sync_file" ]]; then
+            mv "$sync_file" "$prod_file"
+            log "  Committed: ${target_file}"
+        fi
+    done
+fi
 
 # 清理临时目录
 rm -rf "$sync_tmp"

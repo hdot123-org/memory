@@ -17,6 +17,21 @@ MANAGED_FILES=(
 )
 
 # ============================================================================
+# 跨目录映射 (Cross-Directory Mappings)
+# ============================================================================
+# 列出仓库中非 webhook-scripts/ 目录下的依赖文件及其生产目标路径
+# 格式： "仓库相对路径:生产相对路径"
+# sync-webhook-scripts.sh 会同步这些文件到生产环境
+
+# shellcheck disable=SC2034  # Used by sync-webhook-scripts.sh when sourced
+CROSS_DIR_MAPPINGS=(
+    # extract_anchor.py 被 reconcile-evolution.sh 和 trigger-droid.sh 引用
+    # 仓库路径：scripts/extract_anchor.py
+    # 生产路径：~/.factory/webhook/scripts/extract_anchor.py
+    "scripts/extract_anchor.py:extract_anchor.py"
+)
+
+# ============================================================================
 # 环境差异声明 (Environment-Specific Differences)
 # ============================================================================
 # 声明仓库副本与生产副本之间的已知环境特定差异
