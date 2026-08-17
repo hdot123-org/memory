@@ -16,6 +16,12 @@ on:
   pull_request:
     branches: [main]
 
+# 同一 PR 的新 push 取消仍在跑的旧 CI run（消除 runner 堆叠与排队），
+# main 分支不取消（保证发布链路 CI 完整跑完，不被 push 竞态截断）
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
