@@ -579,6 +579,7 @@ except Exception:
                     # LINEAR_API_KEY 已在脚本顶部 export，子进程自动继承
                     DEADLOCK_RESULT=$(ISSUE_UUID="$ISSUE_UUID" \
                         LINEAR_REF="$LINEAR_REF" STATUS_FILE="$STATUS_FILE" \
+                        TEAM_ID="$TEAM_ID" \
                         DEADLOCK_EXIT_SENTINEL_PREFIX="$DEADLOCK_EXIT_SENTINEL_PREFIX" \
                         /opt/homebrew/bin/python3 -c "
 import json, urllib.request, os, sys, socket
@@ -587,9 +588,9 @@ api_key = os.environ['LINEAR_API_KEY']
 issue_uuid = os.environ['ISSUE_UUID']
 linear_ref = os.environ['LINEAR_REF']
 status_file = os.environ['STATUS_FILE']
+team_id = os.environ['TEAM_ID']
 sentinel_prefix = os.environ['DEADLOCK_EXIT_SENTINEL_PREFIX']
 
-# 1. 查询 In Progress state ID for this team
 def gql(query, variables=None):
     payload = {'query': query}
     if variables:
@@ -603,36 +604,41 @@ def gql(query, variables=None):
     with urllib.request.urlopen(req, timeout=15) as resp:
         return json.loads(resp.read().decode())
 
-# 查询 team 的 completed state
-team_query = '''query {
-    teams(first: 1) {
-        nodes {
-            id
-            states {
-                nodes { id name type }
-            }
+# 1. 查询指定 team 的 completed state（关键：必须用 TEAM_ID，不能 teams(first:1)）
+team_query = '''query(\$teamId: String!) {
+    team(id: \$teamId) {
+        states {
+            nodes { id name type }
         }
     }
 }'''
-team_data = gql(team_query)
+team_data = gql(team_query, {'teamId': team_id})
+team_node = team_data.get('data', {}).get('team')
+if not team_node:
+    print(f'ERROR: team not found: {team_id}')
+    sys.exit(1)
+
 completed_state_id = None
-for team in team_data.get('data', {}).get('teams', {}).get('nodes', []):
-    for state in team.get('states', {}).get('nodes', []):
-        if state.get('type') == 'completed':
-            completed_state_id = state['id']
-            break
-    if completed_state_id:
+for state in team_node.get('states', {}).get('nodes', []):
+    if state.get('type') == 'completed':
+        completed_state_id = state['id']
         break
 
 if not completed_state_id:
-    print('ERROR: no completed state found')
+    print(f'ERROR: no completed state found for team {team_id}')
     sys.exit(1)
 
-# 2. 读取 status 文件证据
-with open(status_file) as f:
-    status_data = json.load(f)
-session_id = status_data.get('sessionId', '')
-exit_code = status_data.get('exitCode', '')
+# 2. 读取 status 文件证据（防御性处理：文件可能损坏/为空/为 null）
+try:
+    with open(status_file) as f:
+        status_data = json.load(f)
+    if status_data is None:
+        status_data = {}
+    session_id = status_data.get('sessionId', '')
+    exit_code = status_data.get('exitCode', '')
+except Exception as e:
+    print(f'ERROR: failed to read status file: {e}')
+    sys.exit(1)
 
 # 3. 推进 Linear 到 completed
 move_mut = '''mutation (\$issueId: String!, \$stateId: String!) {
@@ -641,8 +647,22 @@ move_mut = '''mutation (\$issueId: String!, \$stateId: String!) {
     }
 }'''
 move_result = gql(move_mut, {'issueId': issue_uuid, 'stateId': completed_state_id})
-if not move_result.get('data', {}).get('issueUpdate', {}).get('success'):
-    print('ERROR: failed to move to completed')
+
+# 防御性 null 检查（fail-closed：证据不全=不推进）
+data = move_result.get('data') if move_result else None
+if data is None:
+    errors = move_result.get('errors', []) if move_result else []
+    print(f'ERROR: GraphQL returned no data, errors: {errors}')
+    sys.exit(1)
+
+issue_update = data.get('issueUpdate')
+if issue_update is None:
+    errors = move_result.get('errors', [])
+    print(f'ERROR: issueUpdate returned null, GraphQL errors: {errors}')
+    sys.exit(1)
+
+if not issue_update.get('success'):
+    print('ERROR: issueUpdate.success is false')
     sys.exit(1)
 
 # 4. 写三要素证据评论（含幂等 sentinel）
