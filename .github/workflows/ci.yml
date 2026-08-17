@@ -182,10 +182,30 @@ jobs:
       - name: Run mypy --strict on scripts/
         run: python -m mypy --strict scripts/
 
+  # PR 引用一致性检查（VAL-GATE-201/202/203/204）
+  # 校验 PR 引用的 GitHub 镜像 issue 的 linkback INFRA 号 ⊆ PR body 的 Fixes INFRA 集合
+  # 严格只读：仅使用 gh pr view 和 gh issue view，不写入任何 GitHub/Linear 状态
+  pr-ref-consistency-check:
+    name: PR 引用一致性检查
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Run PR reference consistency check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/check_pr_ref_consistency.py ${{ github.event.pull_request.number }}
+
   ci-ok:
     name: ci-ok
     runs-on: ubuntu-latest
-    needs: [test, advisory-security, advisory-telemetry-audit, mypy-strict-scripts]
+    needs: [test, advisory-security, advisory-telemetry-audit, mypy-strict-scripts, pr-ref-consistency-check]
     if: always()
     steps:
       - name: Verify all required jobs succeeded
@@ -194,6 +214,7 @@ jobs:
           echo "advisory-security: ${{ needs.advisory-security.result }}"
           echo "advisory-telemetry-audit: ${{ needs.advisory-telemetry-audit.result }}"
           echo "mypy-strict-scripts: ${{ needs.mypy-strict-scripts.result }}"
+          echo "pr-ref-consistency-check: ${{ needs.pr-ref-consistency-check.result }}"
           if [ "${{ needs.test.result }}" != "success" ]; then
             echo "FAIL: test did not succeed"; exit 1
           fi
@@ -205,6 +226,9 @@ jobs:
           fi
           if [ "${{ needs.mypy-strict-scripts.result }}" != "success" ]; then
             echo "FAIL: mypy --strict scripts/ did not succeed"; exit 1
+          fi
+          if [ "${{ needs.pr-ref-consistency-check.result }}" != "success" ]; then
+            echo "FAIL: PR 引用一致性检查未通过"; exit 1
           fi
           echo "All required jobs succeeded."
 
