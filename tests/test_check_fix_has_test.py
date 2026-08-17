@@ -99,7 +99,11 @@ def test_get_pr_data_retries_on_503(monkeypatch):
 
 
 def test_get_pr_data_gives_up_after_3_transient_failures(monkeypatch):
-    """VAL-GUARD-020: 持续 503 重试 3 次后仍失败 → exit 2（fail-closed）。"""
+    """VAL-GUARD-020: 持续 503 重试 3 次后仍失败 → exit 2（fail-closed）。
+
+    最后一轮的非重试分支直接 SystemExit(2)（2026-08-18 清理了循环后不可达的
+    兜底错误处理，行为不变：仍 fail-closed）。
+    """
     mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
     calls = []
 
