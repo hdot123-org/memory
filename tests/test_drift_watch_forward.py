@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from evolution_scanner import Finding  # noqa: E402
 
-# Import the forward drift watch functions (will fail until implemented — RED EVIDENCE)
+# Import the forward drift watch functions
 from evolution_utils import (
     ForwardDriftRecord,
     forward_drift_watch,
