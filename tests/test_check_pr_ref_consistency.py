@@ -9,6 +9,7 @@ stored as JSON fixtures in the test module.
 import json
 import sys
 from pathlib import Path
+from typing import Optional
 from unittest.mock import MagicMock, patch
 
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "check_pr_ref_consistency.py"
@@ -95,6 +96,44 @@ def _mock_gh_issue_comments(comments_text: str) -> MagicMock:
     return result
 
 
+def _mock_ok(stdout: str = "") -> MagicMock:
+    """Create a mock subprocess.CompletedProcess for any unmatched gh call."""
+    result = MagicMock()
+    result.returncode = 0
+    result.stdout = stdout
+    result.stderr = ""
+    return result
+
+
+def _make_side_effect(
+    pr_number: int,
+    pr_body: str,
+    closing_refs: list[int],
+    issue_comments: Optional[dict] = None,
+):
+    """Build a subprocess.run side_effect mocking gh pr view + gh issue view.
+
+    Args:
+        pr_number: PR number the script is checking
+        pr_body: PR body text to return for gh pr view
+        closing_refs: closing issue numbers for gh pr view
+        issue_comments: mapping of issue number → comments text;
+            unmatched issue view calls return an empty success
+    """
+    issue_comments = issue_comments or {}
+
+    def side_effect(args, **kwargs):
+        cmd = " ".join(args)
+        if "pr view" in cmd:
+            return _mock_gh_pr_view(pr_number, pr_body, closing_refs)
+        for issue_num, comments_text in issue_comments.items():
+            if f"issue view {issue_num}" in cmd:
+                return _mock_gh_issue_comments(comments_text)
+        return _mock_ok()
+
+    return side_effect
+
+
 def _run_check(pr_number: int, side_effect_fn=None):
     """Run the check script with mocked gh calls.
 
@@ -121,46 +160,26 @@ def _run_check(pr_number: int, side_effect_fn=None):
 class TestMismatchCaught:
     """#729 form: linkback {337,342,345} vs Fixes {335} → exit non-zero + diff output."""
 
+    def _side_effect(self):
+        return _make_side_effect(
+            729,
+            PR_729_BODY,
+            PR_729_CLOSING_REFS,
+            {
+                711: ISSUE_711_COMMENTS,
+                718: ISSUE_718_COMMENTS,
+                722: ISSUE_722_COMMENTS,
+            },
+        )
+
     def test_exit_nonzero_on_mismatch(self):
         """When linkback set is NOT subset of Fixes set, exit code must be non-zero."""
-        def side_effect(args, **kwargs):
-            cmd = " ".join(args)
-            if "pr view" in cmd and "729" in cmd:
-                return _mock_gh_pr_view(729, PR_729_BODY, PR_729_CLOSING_REFS)
-            elif "issue view 711" in cmd:
-                return _mock_gh_issue_comments(ISSUE_711_COMMENTS)
-            elif "issue view 718" in cmd:
-                return _mock_gh_issue_comments(ISSUE_718_COMMENTS)
-            elif "issue view 722" in cmd:
-                return _mock_gh_issue_comments(ISSUE_722_COMMENTS)
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = ""
-            result.stderr = ""
-            return result
-
-        exit_code, mock_run = _run_check(729, side_effect)
+        exit_code, mock_run = _run_check(729, self._side_effect())
         assert exit_code != 0, "Expected non-zero exit for #729 mismatch form"
 
     def test_outputs_comparison_diff(self, capsys):
         """Output must contain a readable diff: linkback set vs Fixes set."""
-        def side_effect(args, **kwargs):
-            cmd = " ".join(args)
-            if "pr view" in cmd and "729" in cmd:
-                return _mock_gh_pr_view(729, PR_729_BODY, PR_729_CLOSING_REFS)
-            elif "issue view 711" in cmd:
-                return _mock_gh_issue_comments(ISSUE_711_COMMENTS)
-            elif "issue view 718" in cmd:
-                return _mock_gh_issue_comments(ISSUE_718_COMMENTS)
-            elif "issue view 722" in cmd:
-                return _mock_gh_issue_comments(ISSUE_722_COMMENTS)
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = ""
-            result.stderr = ""
-            return result
-
-        exit_code, _ = _run_check(729, side_effect)
+        exit_code, _ = _run_check(729, self._side_effect())
         captured = capsys.readouterr()
         output = captured.out + captured.err
         # Must contain the mismatch details
@@ -177,21 +196,16 @@ class TestCompliantPasses:
 
     def test_exit_zero_when_linkback_subset_of_fixes(self):
         """When all linkback IDs are in Fixes set, exit 0."""
-        def side_effect(args, **kwargs):
-            cmd = " ".join(args)
-            if "pr view" in cmd:
-                return _mock_gh_pr_view(999, PR_COMPLIANT_BODY, PR_COMPLIANT_CLOSING_REFS)
-            elif "issue view 711" in cmd:
-                return _mock_gh_issue_comments(ISSUE_711_COMMENTS)
-            elif "issue view 718" in cmd:
-                return _mock_gh_issue_comments(ISSUE_718_COMMENTS)
-            elif "issue view 722" in cmd:
-                return _mock_gh_issue_comments(ISSUE_722_COMMENTS)
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = ""
-            result.stderr = ""
-            return result
+        side_effect = _make_side_effect(
+            999,
+            PR_COMPLIANT_BODY,
+            PR_COMPLIANT_CLOSING_REFS,
+            {
+                711: ISSUE_711_COMMENTS,
+                718: ISSUE_718_COMMENTS,
+                722: ISSUE_722_COMMENTS,
+            },
+        )
 
         exit_code, _ = _run_check(999, side_effect)
         assert exit_code == 0, "Expected exit 0 for compliant PR"
@@ -206,19 +220,15 @@ class TestNoLinkbackPasses:
 
     def test_exit_zero_when_no_linkback(self):
         """When referenced issues have no Linear linkback, exit 0."""
-        def side_effect(args, **kwargs):
-            cmd = " ".join(args)
-            if "pr view" in cmd:
-                return _mock_gh_pr_view(888, PR_NO_LINKBACK_BODY, PR_NO_LINKBACK_CLOSING_REFS)
-            elif "issue view 800" in cmd:
-                return _mock_gh_issue_comments(ISSUE_800_COMMENTS)
-            elif "issue view 801" in cmd:
-                return _mock_gh_issue_comments(ISSUE_801_COMMENTS)
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = ""
-            result.stderr = ""
-            return result
+        side_effect = _make_side_effect(
+            888,
+            PR_NO_LINKBACK_BODY,
+            PR_NO_LINKBACK_CLOSING_REFS,
+            {
+                800: ISSUE_800_COMMENTS,
+                801: ISSUE_801_COMMENTS,
+            },
+        )
 
         exit_code, _ = _run_check(888, side_effect)
         assert exit_code == 0, "Expected exit 0 when no linkback exists"
@@ -233,17 +243,12 @@ class TestReadOnly:
 
     def test_no_write_operations(self):
         """Verify that all gh commands issued are read-only (view/list, not create/close/comment)."""
-        def side_effect(args, **kwargs):
-            cmd = " ".join(args)
-            if "pr view" in cmd:
-                return _mock_gh_pr_view(729, PR_729_BODY, PR_729_CLOSING_REFS)
-            elif "issue view" in cmd:
-                return _mock_gh_issue_comments(ISSUE_711_COMMENTS)
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = ""
-            result.stderr = ""
-            return result
+        side_effect = _make_side_effect(
+            729,
+            PR_729_BODY,
+            PR_729_CLOSING_REFS,
+            {711: ISSUE_711_COMMENTS},
+        )
 
         _, mock_run = _run_check(729, side_effect)
         # Verify no write operations were called
@@ -274,36 +279,23 @@ class TestSubsetDirection:
         """Fixes = {335, 337, 342, 345}, linkback = {337, 342, 345} → passes."""
         body = "Some fix\n\nFixes INFRA-335\nFixes INFRA-337\nFixes INFRA-342\nFixes INFRA-345"
 
-        def side_effect(args, **kwargs):
-            cmd = " ".join(args)
-            if "pr view" in cmd:
-                return _mock_gh_pr_view(555, body, [711, 718, 722])
-            elif "issue view 711" in cmd:
-                return _mock_gh_issue_comments(ISSUE_711_COMMENTS)
-            elif "issue view 718" in cmd:
-                return _mock_gh_issue_comments(ISSUE_718_COMMENTS)
-            elif "issue view 722" in cmd:
-                return _mock_gh_issue_comments(ISSUE_722_COMMENTS)
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = ""
-            result.stderr = ""
-            return result
+        side_effect = _make_side_effect(
+            555,
+            body,
+            [711, 718, 722],
+            {
+                711: ISSUE_711_COMMENTS,
+                718: ISSUE_718_COMMENTS,
+                722: ISSUE_722_COMMENTS,
+            },
+        )
 
         exit_code, _ = _run_check(555, side_effect)
         assert exit_code == 0, "Fixes superset of linkback should pass"
 
     def test_no_closing_refs_passes(self):
         """PR with no referenced issues → exit 0 (nothing to check)."""
-        def side_effect(args, **kwargs):
-            cmd = " ".join(args)
-            if "pr view" in cmd:
-                return _mock_gh_pr_view(111, "Just a fix\n\nFixes INFRA-100", [])
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = ""
-            result.stderr = ""
-            return result
+        side_effect = _make_side_effect(111, "Just a fix\n\nFixes INFRA-100", [])
 
         exit_code, _ = _run_check(111, side_effect)
         assert exit_code == 0, "No closing refs should pass"
