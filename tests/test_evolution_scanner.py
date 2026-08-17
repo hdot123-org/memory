@@ -14,6 +14,7 @@ import pytest
 scripts_dir = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(scripts_dir))
 
+import evolution_scanner
 from evolution_adapters import (
     adapt_audit_layout,
     adapt_consistency_check,
@@ -25,6 +26,7 @@ from evolution_adapters import (
 from evolution_scanner import (
     ISSUE_EXCLUDED_CATEGORIES,
     Finding,
+    _process_findings_with_reopen,
     _reopen_closed_issue,
     check_isolation,
     check_kill_switch,
@@ -4834,12 +4836,15 @@ def test_get_open_issues_closed_uses_limit_100():
 
 
 def test_get_open_issues_dedup_set_includes_closed():
-    """VAL-DEDUP-002: dedup set includes keys from both open and closed issues."""
+    """VAL-DUP-001: dedup set includes keys from closed issues within 7-day window."""
+    from datetime import datetime, timedelta, timezone
     open_data = json.dumps([
         {"title": "[evolution] RULE_A", "body": "**Rule ID**: RULE_A\n**Location**: file_a.py", "number": 10}
     ])
+    # Closed issue within 7-day window (closed 3 days ago)
+    closed_3d_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
     closed_data = json.dumps([
-        {"title": "[evolution] RULE_B", "body": "**Rule ID**: RULE_B\n**Location**: file_b.py", "number": 20}
+        {"title": "[evolution] RULE_B", "body": "**Rule ID**: RULE_B\n**Location**: file_b.py", "number": 20, "closedAt": closed_3d_ago}
     ])
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
@@ -4847,6 +4852,7 @@ def test_get_open_issues_dedup_set_includes_closed():
             MagicMock(returncode=0, stdout=closed_data, stderr=""),
         ]
         issues = get_open_issues("evolution-found")
+        # Both open and recent closed should be included
         assert len(issues) == 2
         keys = {(i["rule_id"], i["location"]) for i in issues}
         assert ("RULE_A", "file_a.py") in keys
@@ -4854,9 +4860,12 @@ def test_get_open_issues_dedup_set_includes_closed():
 
 
 def test_recently_closed_issue_prevents_recreation():
-    """VAL-DEDUP-003: finding matching a recently closed issue is NOT re-created."""
+    """VAL-DUP-001: finding matching a recently closed issue (within 7 days) is NOT re-created."""
+    from datetime import datetime, timedelta, timezone
+    # Closed issue within 7-day window (closed 3 days ago)
+    closed_3d_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
     closed_data = json.dumps([
-        {"title": "[evolution] RULE_X", "body": "**Rule ID**: RULE_X\n**Location**: stale.py", "number": 99}
+        {"title": "[evolution] RULE_X", "body": "**Rule ID**: RULE_X\n**Location**: stale.py", "number": 99, "closedAt": closed_3d_ago}
     ])
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
@@ -4864,7 +4873,7 @@ def test_recently_closed_issue_prevents_recreation():
             MagicMock(returncode=0, stdout=closed_data, stderr=""),
         ]
         issues = get_open_issues("evolution-found")
-        # Dedup set should contain RULE_X
+        # Dedup set should contain RULE_X (within window)
         assert len(issues) == 1
         assert issues[0]["rule_id"] == "RULE_X"
         assert issues[0]["location"] == "stale.py"
@@ -4872,7 +4881,7 @@ def test_recently_closed_issue_prevents_recreation():
         from evolution_scanner import Finding, deduplicate
         findings = [Finding("RULE_X", "warning", "test", "desc", "stale.py", "ev")]
         deduped = deduplicate(findings, issues)
-        assert len(deduped) == 0, "RULE_X should be suppressed by closed issue dedup"
+        assert len(deduped) == 0, "RULE_X should be suppressed by recent closed issue dedup"
 
 
 def test_open_issue_still_blocks_creation():
@@ -4895,12 +4904,15 @@ def test_open_issue_still_blocks_creation():
 
 
 def test_mixed_open_and_closed_dedup():
-    """VAL-DEDUP-005: both open and closed issues contribute to dedup set."""
+    """VAL-DUP-001: both open and recent closed issues contribute to dedup set."""
+    from datetime import datetime, timedelta, timezone
     open_data = json.dumps([
         {"title": "[evolution] RULE_OPEN", "body": "**Rule ID**: RULE_OPEN\n**Location**: open.py", "number": 1}
     ])
+    # Closed issue within 7-day window (closed 3 days ago)
+    closed_3d_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
     closed_data = json.dumps([
-        {"title": "[evolution] RULE_CLOSED", "body": "**Rule ID**: RULE_CLOSED\n**Location**: closed.py", "number": 2}
+        {"title": "[evolution] RULE_CLOSED", "body": "**Rule ID**: RULE_CLOSED\n**Location**: closed.py", "number": 2, "closedAt": closed_3d_ago}
     ])
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
@@ -8700,3 +8712,369 @@ def test_validate_config_requires_code_hygiene_key():
     config_with_key = config_without_key.copy()
     config_with_key['max_code_hygiene_issues_per_tick'] = 1
     validate_config(config_with_key)  # Should not raise
+
+
+# ============================================================================
+# TDD: Dedup Blackhole Fix Tests (m3-blackhole-gate)
+# Reference: run 31915486263, issues #635/#645/#647/#661/#663
+# ============================================================================
+
+def test_ghost_findings_run_31915486263_scenario(tmp_path):
+    """TDD-RED: 5 ghost findings colliding with 5 closed issues (#635/#645/#647/#661/#663).
+
+    Scenario:
+    - 5 findings exist: RULE_A/B/C/D/E
+    - 5 closed issues exist with same keys, all closed 10 days ago (> 7 day window)
+    - Expected: All 5 findings should create new issues (not deduped by old closed issues)
+
+    Red evidence: Before fix, get_open_issues() would return all 5 closed issues in dedup set,
+    causing deduplicate() to drop all 5 findings → 0 issues created.
+    """
+    # Setup: 5 findings
+    findings = [
+        Finding(f"RULE_{chr(65+i)}", "warning", "test", f"desc{i}", f"file{i}.py", "ev")
+        for i in range(5)
+    ]
+
+    # Mock: 5 closed issues, all closed 10 days ago (outside 7-day window)
+    closed_10d_ago = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    closed_issues_data = [
+        {
+            "number": 635 + i * 10,
+            "title": f"[evolution] RULE_{chr(65+i)}",
+            "body": f"**Rule ID**: RULE_{chr(65+i)}\n**Location**: file{i}.py",
+            "closedAt": closed_10d_ago
+        }
+        for i in range(5)
+    ]
+
+    with patch('evolution_scanner.subprocess.run') as mock_run:
+        # Open query returns empty list, closed query returns 5 old issues
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+            MagicMock(returncode=0, stdout=json.dumps(closed_issues_data), stderr=""),
+        ]
+
+        with patch('evolution_scanner.create_issue') as mock_create:
+            mock_create.return_value = True
+
+            # Step 1: get_open_issues (should filter out old closed issues)
+            open_issues = get_open_issues("evolution-found")
+
+            # Step 2: deduplicate (should not filter out any findings)
+            deduped = deduplicate(findings, open_issues)
+
+            # Step 3: create issues for all deduped findings
+            # Use evolution_scanner.create_issue to ensure patch is applied
+            created = 0
+            for f in deduped:
+                if evolution_scanner.create_issue(f, "evolution-found"):
+                    created += 1
+
+            # Verify: 0 open issues in dedup set (closed issues filtered out)
+            assert len(open_issues) == 0, "No open issues should be in dedup set"
+
+            # Verify: All 5 findings survive dedup
+            assert len(deduped) == 5, "All 5 ghost findings should survive dedup"
+
+            # Verify: All 5 issues created
+            assert created == 5, "All 5 ghost findings should create new issues"
+            assert mock_create.call_count == 5
+
+
+def test_dedup_window_matrix_3_days_included():
+    """TDD: Closed issue closed 3 days ago should be included in dedup set."""
+    closed_3d_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+
+    with patch('evolution_scanner.subprocess.run') as mock_run:
+        # Open query returns empty list, closed query returns the test issue
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+            MagicMock(
+                returncode=0,
+                stdout=json.dumps([
+                    {
+                        "number": 100,
+                        "title": "[evolution] RULE_X",
+                        "body": "**Rule ID**: RULE_X\n**Location**: file.py",
+                        "closedAt": closed_3d_ago
+                    }
+                ])
+            )
+        ]
+
+        issues = get_open_issues("evolution-found")
+
+        # Should include the 3-day-old closed issue
+        assert len(issues) == 1
+        assert issues[0]["rule_id"] == "RULE_X"
+
+
+def test_dedup_window_matrix_7_days_boundary():
+    """TDD: Closed issue closed just inside 7-day window should be included (boundary)."""
+    # Use 6 days 23 hours ago to avoid timing race between test setup and implementation
+    closed_just_inside = (datetime.now(timezone.utc) - timedelta(days=6, hours=23)).isoformat()
+
+    with patch('evolution_scanner.subprocess.run') as mock_run:
+        # Open query returns empty list, closed query returns the test issue
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+            MagicMock(
+                returncode=0,
+                stdout=json.dumps([
+                    {
+                        "number": 200,
+                        "title": "[evolution] RULE_Y",
+                        "body": "**Rule ID**: RULE_Y\n**Location**: file.py",
+                        "closedAt": closed_just_inside
+                    }
+                ])
+            )
+        ]
+
+        issues = get_open_issues("evolution-found")
+
+        # Should include the just-inside-7-day closed issue (boundary condition)
+        assert len(issues) == 1
+        assert issues[0]["rule_id"] == "RULE_Y"
+
+
+def test_dedup_window_matrix_10_days_excluded():
+    """TDD: Closed issue closed 10 days ago should be EXCLUDED from dedup set."""
+    closed_10d_ago = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+
+    with patch('evolution_scanner.subprocess.run') as mock_run:
+        # Open query returns empty list, closed query returns the test issue
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="[]", stderr=""),
+            MagicMock(
+                returncode=0,
+                stdout=json.dumps([
+                    {
+                        "number": 300,
+                        "title": "[evolution] RULE_Z",
+                        "body": "**Rule ID**: RULE_Z\n**Location**: file.py",
+                        "closedAt": closed_10d_ago
+                    }
+                ])
+            )
+        ]
+
+        issues = get_open_issues("evolution-found")
+
+        # Should NOT include the 10-day-old closed issue
+        assert len(issues) == 0
+
+
+def test_reopen_failure_gh_error_fallback_create(tmp_path):
+    """TDD: Reopen fails due to gh error → fallback to create new issue.
+
+    Scenario:
+    - Finding is critical regression (in resolved_keys)
+    - _reopen_closed_issue fails (gh returns non-zero)
+    - Expected: create_issue should be called as fallback
+
+    Red evidence: Before fix, reopen failure would silently continue without creating issue.
+    """
+    # Setup: 1 critical regression finding
+    finding = Finding("RULE_CRITICAL", "critical", "test", "critical desc", "critical.py", "ev")
+    history_path = tmp_path / "findings_over_time.json"
+    history_path.write_text(json.dumps({
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_CRITICAL",
+                "location": "critical.py",
+                "resolved_at": "2026-01-01T00:00:00",
+                "reopen_count": 0
+            }
+        ]
+    }))
+
+    resolved_keys = {("RULE_CRITICAL", "critical.py")}
+
+    with patch('evolution_scanner._reopen_closed_issue') as mock_reopen, \
+         patch('evolution_scanner.create_issue') as mock_create:
+        # Reopen fails (gh error)
+        mock_reopen.return_value = False
+        mock_create.return_value = True
+
+        # Process findings
+        created = _process_findings_with_reopen([finding], 10, resolved_keys, "evolution-found", history_path)
+
+        # Verify: reopen was attempted
+        assert mock_reopen.call_count == 1
+
+        # Verify: create_issue was called as fallback
+        assert mock_create.call_count == 1, "Reopen failure should fallback to create_issue"
+
+        # Verify: 1 issue created
+        assert created == 1
+
+
+def test_reopen_failure_no_matching_issue_fallback_create(tmp_path):
+    """TDD: Reopen fails due to no matching closed issue → fallback to create new issue.
+
+    Scenario:
+    - Finding is critical regression (in resolved_keys)
+    - _reopen_closed_issue returns False (no matching closed issue found)
+    - Expected: create_issue should be called as fallback
+
+    Red evidence: Before fix, would silently continue without creating issue.
+    """
+    # Setup: 1 critical regression finding
+    finding = Finding("RULE_NO_MATCH", "critical", "test", "desc", "nomatch.py", "ev")
+    history_path = tmp_path / "findings_over_time.json"
+    history_path.write_text(json.dumps({
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_NO_MATCH",
+                "location": "nomatch.py",
+                "resolved_at": "2026-01-01T00:00:00",
+                "reopen_count": 0
+            }
+        ]
+    }))
+
+    resolved_keys = {("RULE_NO_MATCH", "nomatch.py")}
+
+    with patch('evolution_scanner._reopen_closed_issue') as mock_reopen, \
+         patch('evolution_scanner.create_issue') as mock_create:
+        # Reopen returns False (no matching issue)
+        mock_reopen.return_value = False
+        mock_create.return_value = True
+
+        # Process findings
+        created = _process_findings_with_reopen([finding], 10, resolved_keys, "evolution-found", history_path)
+
+        # Verify: reopen was attempted
+        assert mock_reopen.call_count == 1
+
+        # Verify: create_issue was called as fallback
+        assert mock_create.call_count == 1, "No match should fallback to create_issue"
+
+        # Verify: 1 issue created
+        assert created == 1
+
+
+def test_reopen_limit_reached_no_fallback(tmp_path):
+    """TDD: Reopen limit reached (3 times) → NO fallback to create, suppress with log.
+
+    Scenario:
+    - Finding is critical regression with reopen_count >= 3
+    - _reopen_closed_issue returns False (limit reached)
+    - Expected: Should NOT fallback to create_issue, should suppress with log
+
+    This test verifies the suppress-with-log behavior (no infinite churn loop).
+    """
+    # Setup: 1 critical regression finding with reopen_count = 3
+    finding = Finding("RULE_LIMIT", "critical", "test", "desc", "limit.py", "ev")
+    history_path = tmp_path / "findings_over_time.json"
+    history_path.write_text(json.dumps({
+        "snapshots": [],
+        "resolved_findings": [
+            {
+                "rule_id": "RULE_LIMIT",
+                "location": "limit.py",
+                "resolved_at": "2026-01-01T00:00:00",
+                "reopen_count": 3  # Limit reached
+            }
+        ]
+    }))
+
+    resolved_keys = {("RULE_LIMIT", "limit.py")}
+
+    with patch('evolution_scanner._reopen_closed_issue') as mock_reopen, \
+         patch('evolution_scanner.create_issue') as mock_create:
+        # Reopen returns False (limit reached, not error)
+        mock_reopen.return_value = False
+        mock_create.return_value = True
+
+        # Process findings
+        created = _process_findings_with_reopen([finding], 10, resolved_keys, "evolution-found", history_path)
+
+        # Verify: reopen was attempted
+        assert mock_reopen.call_count == 1
+
+        # Verify: create_issue was NOT called (suppressed due to limit)
+        assert mock_create.call_count == 0, "Reopen limit should suppress, not create"
+
+        # Verify: 0 issues created
+        assert created == 0
+
+
+# ============================================================================
+# TDD: VAL-DUP-005 - Ghost Finding Scenario (Run 31915486263)
+# ============================================================================
+
+def test_ghost_finding_scenario_run_31915486263():
+    """VAL-DUP-005: 5 ghost findings should create 5 new issues when closed issues are > 7 days old.
+
+    Historical context (Run 31915486263):
+    - 5 findings existed (RULE_A through RULE_E)
+    - 5 closed issues existed with same rule_id/location pairs
+    - All closed issues were closed > 7 days ago
+    - OLD BEHAVIOR: 0 issues created (all findings deduped by closed issues)
+    - NEW BEHAVIOR: 5 issues created (closed issues outside window ignored)
+
+    This test validates the complete flow: get_open_issues filters closed > 7 days,
+    deduplicate sees only open issues, and all 5 findings survive to create issues.
+    """
+    # Setup: 5 findings (matching the ghost scenario)
+    findings = [
+        Finding(f"RULE_{chr(65+i)}", "warning", "test", f"desc{i}", f"file{i}.py", "ev")
+        for i in range(5)
+    ]
+
+    # Mock: 5 closed issues, all closed 10 days ago (> 7 day window)
+    closed_10d_ago = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    closed_issues_data = [
+        {
+            "number": 635 + i * 10,
+            "title": f"[evolution] RULE_{chr(65+i)}",
+            "body": f"**Rule ID**: RULE_{chr(65+i)}\n**Location**: file{i}.py",
+            "closedAt": closed_10d_ago
+        }
+        for i in range(5)
+    ]
+
+    # Mock subprocess.run to return empty open issues and 5 old closed issues
+    def mock_subprocess_run(cmd, *args, **kwargs):
+        if "gh" in cmd and "issue" in cmd and "list" in cmd:
+            if "--state" in cmd:
+                state_idx = cmd.index("--state")
+                state = cmd[state_idx + 1]
+                if state == "open":
+                    return Mock(returncode=0, stdout="[]", stderr="")
+                elif state == "closed":
+                    return Mock(returncode=0, stdout=json.dumps(closed_issues_data), stderr="")
+        return Mock(returncode=0, stdout="{}", stderr="")
+
+    with patch('evolution_scanner.subprocess.run', side_effect=mock_subprocess_run), \
+         patch('evolution_scanner.create_issue') as mock_create:
+        mock_create.return_value = True
+
+        # Step 1: get_open_issues (should filter out old closed issues)
+        open_issues = get_open_issues("evolution-found")
+
+        # Step 2: deduplicate (should not filter out any findings)
+        deduped = deduplicate(findings, open_issues)
+
+        # Step 3: create issues for all deduped findings
+        # Use evolution_scanner.create_issue to ensure patch is applied
+        created = 0
+        for f in deduped:
+            if evolution_scanner.create_issue(f, "evolution-found"):
+                created += 1
+
+        # Verify: 0 open issues in dedup set (closed issues filtered out)
+        assert len(open_issues) == 0, "No open issues should be in dedup set"
+
+        # Verify: All 5 findings survive dedup
+        assert len(deduped) == 5, "All 5 ghost findings should survive dedup"
+
+        # Verify: All 5 issues created
+        assert created == 5, "All 5 ghost findings should create new issues"
+        assert mock_create.call_count == 5
+
