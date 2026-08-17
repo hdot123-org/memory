@@ -20,6 +20,7 @@ import json
 import re
 import subprocess
 import sys
+from typing import Any, cast
 
 
 def extract_fixes_infra_ids(pr_body: str) -> set[str]:
@@ -55,7 +56,7 @@ def extract_linkback_from_comments(comments_text: str) -> str | None:
 
     # Split into blocks (blank-line separated)
     blocks = []
-    current = []
+    current: list[str] = []
     for line in comments_text.split("\n"):
         if line.strip() == "":
             if current:
@@ -97,7 +98,7 @@ def extract_linkback_from_comments(comments_text: str) -> str | None:
     return None
 
 
-def fetch_pr_data(pr_number: int) -> dict:
+def fetch_pr_data(pr_number: int) -> dict[str, Any]:
     """Fetch PR body and closing issue references via gh CLI.
 
     Args:
@@ -115,7 +116,7 @@ def fetch_pr_data(pr_number: int) -> dict:
         text=True,
         check=True
     )
-    return json.loads(result.stdout)
+    return cast(dict[str, Any], json.loads(result.stdout))
 
 
 def fetch_issue_comments(issue_number: int) -> str:
