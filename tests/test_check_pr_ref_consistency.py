@@ -118,49 +118,39 @@ def _run_check(pr_number: int, side_effect_fn=None):
 # VAL-GATE-201: #729 mismatch form must be caught
 # ===========================================================================
 
+def _side_effect_729_mismatch(args, **kwargs):
+    """Route mocked gh calls for the #729 mismatch scenario.
+
+    `gh pr view 729` → mismatch fixtures; each `gh issue view` → its
+    linkback fixture; unmatched calls → empty success result.
+    """
+    cmd = " ".join(args)
+    if "pr view" in cmd and "729" in cmd:
+        return _mock_gh_pr_view(729, PR_729_BODY, PR_729_CLOSING_REFS)
+    elif "issue view 711" in cmd:
+        return _mock_gh_issue_comments(ISSUE_711_COMMENTS)
+    elif "issue view 718" in cmd:
+        return _mock_gh_issue_comments(ISSUE_718_COMMENTS)
+    elif "issue view 722" in cmd:
+        return _mock_gh_issue_comments(ISSUE_722_COMMENTS)
+    result = MagicMock()
+    result.returncode = 0
+    result.stdout = ""
+    result.stderr = ""
+    return result
+
+
 class TestMismatchCaught:
     """#729 form: linkback {337,342,345} vs Fixes {335} → exit non-zero + diff output."""
 
     def test_exit_nonzero_on_mismatch(self):
         """When linkback set is NOT subset of Fixes set, exit code must be non-zero."""
-        def side_effect(args, **kwargs):
-            cmd = " ".join(args)
-            if "pr view" in cmd and "729" in cmd:
-                return _mock_gh_pr_view(729, PR_729_BODY, PR_729_CLOSING_REFS)
-            elif "issue view 711" in cmd:
-                return _mock_gh_issue_comments(ISSUE_711_COMMENTS)
-            elif "issue view 718" in cmd:
-                return _mock_gh_issue_comments(ISSUE_718_COMMENTS)
-            elif "issue view 722" in cmd:
-                return _mock_gh_issue_comments(ISSUE_722_COMMENTS)
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = ""
-            result.stderr = ""
-            return result
-
-        exit_code, mock_run = _run_check(729, side_effect)
+        exit_code, _ = _run_check(729, _side_effect_729_mismatch)
         assert exit_code != 0, "Expected non-zero exit for #729 mismatch form"
 
     def test_outputs_comparison_diff(self, capsys):
         """Output must contain a readable diff: linkback set vs Fixes set."""
-        def side_effect(args, **kwargs):
-            cmd = " ".join(args)
-            if "pr view" in cmd and "729" in cmd:
-                return _mock_gh_pr_view(729, PR_729_BODY, PR_729_CLOSING_REFS)
-            elif "issue view 711" in cmd:
-                return _mock_gh_issue_comments(ISSUE_711_COMMENTS)
-            elif "issue view 718" in cmd:
-                return _mock_gh_issue_comments(ISSUE_718_COMMENTS)
-            elif "issue view 722" in cmd:
-                return _mock_gh_issue_comments(ISSUE_722_COMMENTS)
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = ""
-            result.stderr = ""
-            return result
-
-        exit_code, _ = _run_check(729, side_effect)
+        exit_code, _ = _run_check(729, _side_effect_729_mismatch)
         captured = capsys.readouterr()
         output = captured.out + captured.err
         # Must contain the mismatch details
