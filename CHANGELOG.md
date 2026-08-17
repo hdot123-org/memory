@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.33.1](https://github.com/hdot123/memory/compare/v0.33.0...v0.33.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* **evolution_scanner:** 去重黑洞修复——closed issue 仅 7 天内参与去重 ([#759](https://github.com/hdot123/memory/issues/759)) ([504d621](https://github.com/hdot123/memory/commit/504d621d73cf1d5a98d16025879edaea6c265962))
+* **evolution:** Linear 移除 attachmentType 字段致 GraphQL 400，信任链永久 fail-closed，改用 sourceType (INFRA-372) ([#760](https://github.com/hdot123/memory/issues/760)) ([3023687](https://github.com/hdot123/memory/commit/30236878b5048d54a9e6bb7258ae46838a43b418))
+
 ## [0.33.0](https://github.com/hdot123/memory/compare/v0.32.0...v0.33.0) (2026-08-17)
 
 
