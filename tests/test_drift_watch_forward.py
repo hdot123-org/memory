@@ -11,11 +11,8 @@ Four forward sample categories:
 4. Quota pending → legitimate reason recorded
 """
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 # Ensure scripts/ is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
