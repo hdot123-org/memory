@@ -7352,7 +7352,7 @@ def _make_pr_attachment(pr_number, merged_at=None):
     return {
         "id": f"pr-{pr_number}",
         "url": f"https://github.com/owner/repo/pull/{pr_number}",
-        "attachmentType": "github",
+        "sourceType": "github",
         "metadata": {}
     }
 

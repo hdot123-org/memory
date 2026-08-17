@@ -56,7 +56,7 @@ def _github_attachment(pr_number: int, attachment_type: str = "github") -> dict:
     return {
         "id": f"att-{pr_number}",
         "url": f"https://github.com/owner/repo/pull/{pr_number}",
-        "attachmentType": attachment_type,
+        "sourceType": attachment_type,
         "metadata": {}
     }
 
@@ -427,7 +427,7 @@ class TestVALCLOSE016:
             {
                 "id": "att-1",
                 "url": "https://example.com/doc.pdf",
-                "attachmentType": "url",
+                "sourceType": "url",
                 "metadata": {}
             }
         ])
@@ -486,7 +486,7 @@ class TestVALCLOSE015:
             {
                 "id": "att-523",
                 "url": "https://github.com/hdot123/memory/pull/523",
-                "attachmentType": "github",
+                "sourceType": "github",
                 "metadata": {}
             }
         ])
@@ -523,7 +523,7 @@ class TestVALCLOSE025:
             {
                 "id": "att-42",
                 "url": "https://github.com/hdot123/shared-workflows/pull/42",
-                "attachmentType": "github",
+                "sourceType": "github",
                 "metadata": {}
             }
         ])
@@ -555,7 +555,7 @@ class TestVALCLOSE025:
             {
                 "id": "att-42",
                 "url": "https://github.com/hdot123/shared-workflows/pull/42",
-                "attachmentType": "github",
+                "sourceType": "github",
                 "metadata": {}
             }
         ])
@@ -579,7 +579,7 @@ class TestVALCLOSE025:
             {
                 "id": "att-523",
                 "url": "https://github.com/hdot123/memory/pull/523",
-                "attachmentType": "github",
+                "sourceType": "github",
                 "metadata": {}
             }
         ])
@@ -625,6 +625,14 @@ class TestVALCLOSE001:
         issue_body = "<!-- linear-linkback INFRA-123 -->"
         result = _verify_fix_merged_via_linear(issue_body)
         assert result is True
+
+        # INFRA-372: query must not reference removed `attachmentType` field
+        # (Linear GraphQL validation 400 permanently fail-closes the trust
+        # chain). The discriminator is `sourceType`.
+        req = mock_urlopen.call_args[0][0]
+        sent_query = json.loads(req.data.decode())["query"]
+        assert "attachmentType" not in sent_query
+        assert "sourceType" in sent_query
 
 
 # ---------------------------------------------------------------------------
@@ -973,7 +981,7 @@ class TestVALCLOSE017:
                     "issue": {
                         "id": "test",
                         "state": {"id": "s1", "name": "Done", "type": "completed"},
-                        "attachments": {"nodes": [{"id": "att", "url": "https://github.com/o/r/pull/99", "attachmentType": "github", "metadata": {}}]}
+                        "attachments": {"nodes": [{"id": "att", "url": "https://github.com/o/r/pull/99", "sourceType": "github", "metadata": {}}]}
                     }
                 }
             }).encode()

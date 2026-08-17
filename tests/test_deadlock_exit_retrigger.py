@@ -60,7 +60,7 @@ class TestTrustChainDeadlockExitSentinel:
                         {
                             "id": "pr-1",
                             "url": "https://github.com/owner/repo/pull/100",
-                            "attachmentType": "github",
+                            "sourceType": "github",
                             "metadata": {}
                         }
                     ]}
