@@ -118,9 +118,28 @@ for BRANCH in $BRANCHES; do
   # These are the commits that would be lost if the branch is deleted.
   UNIQUE_COUNT=$(git rev-list --count "origin/main..origin/$BRANCH" 2>/dev/null || echo "0")
 
+  # Content-containment check (INFRA-383): after a squash merge the branch's
+  # original commit SHAs never appear in main, so UNIQUE_COUNT stays > 0 forever
+  # even though the content is fully merged. Detect this by merging the branch
+  # into main in-memory: if the merge result tree equals main's tree, the branch
+  # adds nothing and deleting it loses no content.
+  CONTENT_MERGED="unknown"
+  if [[ "$UNIQUE_COUNT" -gt 0 ]]; then
+    MAIN_TREE=$(git rev-parse "origin/main^{tree}" 2>/dev/null || echo "")
+    MERGE_TREE=$(git merge-tree --write-tree "origin/main" "origin/$BRANCH" 2>/dev/null | head -n 1 || echo "")
+    if [[ -n "$MAIN_TREE" && -n "$MERGE_TREE" && "$MAIN_TREE" == "$MERGE_TREE" ]]; then
+      CONTENT_MERGED="yes"
+      echo "  Content fully contained in main (squash-merge equivalent), no code would be lost."
+    else
+      CONTENT_MERGED="no"
+    fi
+  fi
+
   # Protect branches with unmerged unique commits from CLOSED (not merged) PRs.
   # These branches contain code that was never merged and would be lost if deleted.
-  if [[ "$UNIQUE_COUNT" -gt 0 ]] && [[ "$CLOSED_NOT_MERGED_COUNT" -gt 0 ]]; then
+  # Exception (INFRA-383): if the content check proves the branch tree adds
+  # nothing to main (squash-merged elsewhere), it is NOT protected.
+  if [[ "$UNIQUE_COUNT" -gt 0 ]] && [[ "$CLOSED_NOT_MERGED_COUNT" -gt 0 ]] && [[ "$CONTENT_MERGED" != "yes" ]]; then
     echo "  ⚠️  PROTECTED: branch has $UNIQUE_COUNT unique commit(s) and $CLOSED_NOT_MERGED_COUNT CLOSED (not merged) PR(s) — would lose unmerged code."
     PROTECTED_BRANCHES+=("$BRANCH ($UNIQUE_COUNT unique commits)")
     continue

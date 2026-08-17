@@ -72,6 +72,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/check_fix_has_test.py --pr ${{ github.event.pull_request.number }}
+      - name: PR reference consistency guard
+        # VAL-GATE-201/202/204：PR 引用的镜像 issue linkback INFRA 号
+        # 必须 ⊆ PR body 的 Fixes INFRA 集合；严格只读（仅 gh pr view / gh issue view）
+        # step 级 if 而非 job 级——push main 时跳过本 step，不影响 test job 聚合进 ci-ok
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/check_pr_ref_consistency.py ${{ github.event.pull_request.number }}
       - name: Run tests with coverage
         run: python -m pytest -q tests --cov=memory_core --cov-report=xml
       - name: Timestamp - after tests
