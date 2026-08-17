@@ -73,3 +73,9 @@ mission 开发任务被 CI/CE 流程串行阻塞：会话创建 PR 后惯例性�
 ### Conflict Status
 
 - resolved
+
+## PR / Issue
+
+- PR: #766（内容交付：AGENTS.md 章节 + 本决策记录；其 body 缺少 `Fixes INFRA-377` 引用，Linear 未自动闭环）
+- 追溯闭环 PR：本 PR（body 含 `Fixes INFRA-377`，补全 Linear 自动流转链）
+- Linear: INFRA-377
