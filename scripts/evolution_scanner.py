@@ -166,6 +166,11 @@ def normalize_finding(raw: dict[str, Any]) -> Finding:
 # Prevents signal dilution: only label issues that are truly stuck, not just persistent.
 ISOLATION_MIN_AGE_DAYS = 7
 
+# VAL-DUP-001: Closed issues participate in dedup only when closedAt ≤ this many days ago.
+# Prevents the "black hole" where very old closed issues silently swallow active findings
+# (run 31915486263: 5 ghost findings swallowed by closed #635/#645/#647/#661/#663).
+DEDUP_CLOSED_WINDOW_DAYS = 7
+
 
 def load_suppressions(repo_root: Path) -> list[dict[str, Any]]:
     """Load suppression list from .evolution/suppress.json.
@@ -275,8 +280,12 @@ def apply_suppressions(findings: list[Finding], suppressions: list[dict[str, Any
 
 def _query_issues(search: str, state: str, limit: int) -> list[dict[str, Any]]:
     """Query GitHub issues with given state and limit. Returns parsed list or raises on failure."""
+    # For closed issues, add closedAt field for time-window filtering
+    json_fields = "title,body,number"
+    if state == "closed":
+        json_fields = "title,body,number,closedAt"
     result = subprocess.run(["gh", "issue", "list", "--search", search,
-                              "--state", state, "--limit", str(limit), "--json", "title,body,number"],
+                              "--state", state, "--limit", str(limit), "--json", json_fields],
                               capture_output=True, text=True, timeout=30)
     if result.returncode != 0:
         stderr = result.stderr.strip()
@@ -295,7 +304,20 @@ def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated")
     # GAP-C2: Query BOTH open and closed issues to prevent re-creating recently closed issues
     try:
         all_issues = _query_issues(search, "open", 200)
-        all_issues.extend(_query_issues(search, "closed", 100))
+        closed_issues = _query_issues(search, "closed", 100)
+        # VAL-DUP-001: Filter closed issues by time window (only include those closed within DEDUP_CLOSED_WINDOW_DAYS)
+        now = datetime.now(timezone.utc)
+        window_cutoff = now - timedelta(days=DEDUP_CLOSED_WINDOW_DAYS)
+        for i in closed_issues:
+            closed_at_str = i.get("closedAt")
+            if closed_at_str:
+                try:
+                    closed_at = datetime.fromisoformat(closed_at_str.replace("Z", "+00:00"))
+                    if closed_at >= window_cutoff:
+                        all_issues.append(i)
+                except (ValueError, TypeError):
+                    # If closedAt parsing fails, exclude the issue (fail-safe)
+                    pass
         return [{"rule_id": rid, "location": loc, "number": i["number"]}
                 for i in all_issues
                 for rid, loc in [_parse_issue_fields(i.get("body", ""))]
@@ -310,6 +332,11 @@ def deduplicate(findings: list[Finding], open_issues: list[dict[str, Any]]) -> l
 
 
 def detect_regressions(findings: list[Finding], history_path: Path) -> list[Finding]:
+    """VAL-DUP-004: Detect regression findings that were previously resolved.
+
+    Critical regressions must be processed BEFORE closed-issue dedup filtering
+    to prevent the black hole effect (run 31915486263).
+    """
     data = load_history(history_path)
     if data is None:
         return findings
@@ -438,9 +465,9 @@ def _process_findings_with_reopen(
 ) -> int:
     """Process findings: try reopen for resolved regressions, else create new issue.
 
-    When a resolved regression's reopen limit is reached (3 reopens), the finding
-    is SUPPRESSED instead of creating a new issue. Creating a new issue would
-    duplicate the close/reopen churn cycle indefinitely.
+    VAL-DUP-003: Reopen failure (gh error/no match) falls back to create_issue.
+    Only reopen limit (3 times) is suppressed (must log).
+    Never silently continue on failure.
 
     Returns the count of issues created (reopened and suppressed issues are not counted).
     """
@@ -449,15 +476,35 @@ def _process_findings_with_reopen(
         if f.severity == "critical" and (f.rule_id, f.location) in resolved_keys:
             if _reopen_closed_issue(f.rule_id, f.location, dedup_label, history_path):
                 continue
-            # Reopen limit reached — suppress instead of creating new issue.
-            # Creating a brand-new issue would restart the close/reopen churn
-            # cycle: scanner closes → Linear integration reopens → scanner closes → ...
-            print(f"[evolution] Reopen limit reached for {f.rule_id} @ {f.location}, "
-                  f"suppressing to avoid churn loop")
+            # Reopen failed. Check if limit reached (suppress) or genuine failure (fallback to create).
+            if _reopen_limit_reached(f.rule_id, f.location, history_path):
+                print(f"[evolution] Reopen limit reached (3 times) for {f.rule_id} @ {f.location}, "
+                      f"suppressing to avoid churn loop")
+                continue
+            # Genuine failure → fallback to create new issue
+            print(f"[evolution] Reopen failed for {f.rule_id} @ {f.location}, "
+                  f"falling back to create new issue")
+            if create_issue(f, dedup_label):
+                created += 1
             continue
         if create_issue(f, dedup_label):
             created += 1
     return created
+
+
+def _reopen_limit_reached(rule_id: str, location: str, history_path: Path) -> bool:
+    """Check if reopen limit (3) has been reached for a finding.
+
+    Returns True if the finding's reopen_count >= 3 (suppress), False otherwise.
+    Returns False if history cannot be loaded (caller should treat as failure → create).
+    """
+    data = load_history(history_path)
+    if data is None:
+        return False
+    for r in data.get("resolved_findings", []):
+        if isinstance(r, dict) and r.get("rule_id") == rule_id and r.get("location") == location:
+            return r.get("reopen_count", 0) >= 3
+    return False
 
 
 def sort_by_severity(findings: list[Finding], severity_order: list[str]) -> list[Finding]:
