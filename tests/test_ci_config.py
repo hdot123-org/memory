@@ -381,3 +381,78 @@ class TestCiConcurrencyGuard:
         assert "!= 'refs/heads/main'" in str(cancel), (
             "cancel-in-progress 必须排除 main，否则 push 竞态会截断发布链路 CI"
         )
+
+
+class TestDroidReview503SelfHeal:
+    """VAL-503-*：droid-review infra 瞬时失败（503）自动 rerun 回归防护。
+
+    TD-503-01（2026-08-18）：GitHub API 持续 503 使 droid-action 在 prep 阶段
+    （权限检查）exit 1，review 本体未开始，每个 PR 需人工 rerun。修复：
+    失败后检测日志特征，命中 infra 瞬时特征则自动调 rerun-failed-jobs API。
+    关键约束：本轮仍以 failure 结算（fail-closed 不变）；真审查发现不匹配
+    特征、不触发 rerun（门禁语义不变）。
+    """
+
+    @pytest.fixture
+    def droid_review_steps(self):
+        """Load droid-review.yml steps."""
+        workflow_path = REPO_ROOT / ".github/workflows/droid-review.yml"
+        data = yaml.safe_load(workflow_path.read_text())
+        return data["jobs"]["droid-review"]["steps"]
+
+    def test_selfheal_step_exists(self, droid_review_steps):
+        """VAL-503-001: Self-heal rerun step 存在且挂在 failure() 条件上。"""
+        heal_step = next(
+            (s for s in droid_review_steps
+             if s.get("name") == "Self-heal rerun on infra-transient failure"),
+            None,
+        )
+        assert heal_step is not None, "Self-heal step not found"
+        cond = str(heal_step.get("if", ""))
+        assert "failure()" in cond, "self-heal must only run on failure"
+        assert "docs_only.outputs.skip" in cond, "self-heal must respect docs-only skip"
+
+    def test_selfheal_matches_503_patterns_only(self, droid_review_steps):
+        """VAL-503-002: 特征表只含 infra 瞬时错误，且 rerun 失败不阻塞结算。"""
+        heal_step = next(
+            (s for s in droid_review_steps
+             if s.get("name") == "Self-heal rerun on infra-transient failure"),
+            None,
+        )
+        assert heal_step is not None
+        run = heal_step["run"]
+        # 503 权限检查特征必须在列（2026-08-17/18 实测根因）
+        assert "permission - 503" in run
+        assert "Failed to check permissions" in run
+        # fail-closed：rerun 请求失败只 warning，不绕过门禁
+        assert "::warning::" in run
+        assert "rerun-failed-jobs" in run
+
+    def test_selfheal_no_gate_bypass(self, droid_review_steps):
+        """VAL-503-003: 自愈路径不含任何门禁绕过（--admin/skip/continue-on-error）。"""
+        heal_step = next(
+            (s for s in droid_review_steps
+             if s.get("name") == "Self-heal rerun on infra-transient failure"),
+            None,
+        )
+        assert heal_step is not None
+        assert heal_step.get("continue-on-error") is not True, (
+            "self-heal step must not be continue-on-error at step level abuse; "
+            "failure semantics of the job stay intact"
+        )
+        run = heal_step["run"]
+        for forbidden in ("--admin", "--force", "merge"):
+            assert forbidden not in run, f"forbidden token in self-heal: {forbidden}"
+
+    def test_droid_action_step_unchanged(self, droid_review_steps):
+        """VAL-503-004: droid-action 本体未被替换（仍是 pinned 原版 uses）。"""
+        action_step = next(
+            (s for s in droid_review_steps if "droid-action" in s.get("uses", "")),
+            None,
+        )
+        assert action_step is not None
+        assert action_step["uses"].startswith("Factory-AI/droid-action@e5ae502")
+        # 重试不改变 action 输入
+        with_block = action_step["with"]
+        assert with_block["security_block_on_high"] == "false"
+        assert with_block["review_model"] == "qwen3.7-plus"
