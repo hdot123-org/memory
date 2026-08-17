@@ -275,3 +275,77 @@ class TestYAMLValidity:
         assert data is not None
         assert "jobs" in data
         assert "ci-ok" in data["jobs"]
+
+
+class TestDroidReviewDocsOnlySkip:
+    """VAL-DRSKIP-*：droid-review docs-only 快速通过回归防护。
+
+    2026-08-17 CI 异步化配套：纯文档 PR（全部变更文件为 *.md）跳过模型 review，
+    全程从 ~17 min 降到 ~4 min。关键约束：必须 step 级跳过（job 结论为 success），
+    绝不能 job 级 skip——check_droid_review.sh 把 skipped 判 BLOCK 会卡死 ci-ok。
+    检测必须 fail-closed：文件列表为空/API 失败一律走完整 review。
+    """
+
+    @pytest.fixture
+    def droid_review_steps(self):
+        """Load droid-review.yml steps."""
+        workflow_path = REPO_ROOT / ".github/workflows/droid-review.yml"
+        data = yaml.safe_load(workflow_path.read_text())
+        return data["jobs"]["droid-review"]["steps"]
+
+    def test_docs_only_detect_step_exists(self, droid_review_steps):
+        """VAL-DRSKIP-001: Detect docs-only PR step 存在且输出 skip。"""
+        detect_step = next(
+            (s for s in droid_review_steps if s.get("name") == "Detect docs-only PR"),
+            None,
+        )
+        assert detect_step is not None, "Detect docs-only PR step not found"
+        assert "skip=true" in detect_step["run"]
+        assert "skip=false" in detect_step["run"]
+
+    def test_docs_only_detect_fail_closed(self, droid_review_steps):
+        """VAL-DRSKIP-002: 空文件列表/API 失败时 fail-closed（skip=false）。"""
+        detect_step = next(
+            (s for s in droid_review_steps if s.get("name") == "Detect docs-only PR"),
+            None,
+        )
+        assert detect_step is not None
+        # 空列表分支必须输出 skip=false（走完整 review），绝不能 skip=true
+        empty_branch = detect_step["run"]
+        assert "fail-closed" in empty_branch
+        # 解析 run 块：空文件分支的 skip 值
+        import re
+        m = re.search(
+            r'if \[ -z "\$FILES" \]; then.*?echo "(skip=\w+)"',
+            empty_branch, re.DOTALL,
+        )
+        assert m is not None, "empty file list branch not found"
+        assert m.group(1) == "skip=false", "empty file list must fail-closed to full review"
+
+    def test_docs_only_detect_md_suffix_rule(self, droid_review_steps):
+        """VAL-DRSKIP-003: 判定规则为 *.md 后缀（非 md 文件即全量 review）。"""
+        detect_step = next(
+            (s for s in droid_review_steps if s.get("name") == "Detect docs-only PR"),
+            None,
+        )
+        assert detect_step is not None
+        assert "grep -v '\\.md$'" in detect_step["run"]
+
+    def test_review_steps_gated_on_skip(self, droid_review_steps):
+        """VAL-DRSKIP-004: review 相关 steps 均有 skip 门控（step 级，非 job 级）。"""
+        gated_names = {"Write BYOM settings file", "Pre-check credentials", "Run Droid Auto Review"}
+        for name in gated_names:
+            step = next(s for s in droid_review_steps if s.get("name") == name)
+            cond = str(step.get("if", ""))
+            assert "steps.docs_only.outputs.skip != 'true'" in cond, (
+                f"step '{name}' must be gated on docs_only skip output"
+            )
+
+    def test_docs_only_job_not_skipped(self, droid_review_steps):
+        """VAL-DRSKIP-005: job 级 if 不含 docs 跳过（保证 check run 结论为 success）。"""
+        workflow_path = REPO_ROOT / ".github/workflows/droid-review.yml"
+        data = yaml.safe_load(workflow_path.read_text())
+        job_if = str(data["jobs"]["droid-review"].get("if", ""))
+        assert "docs" not in job_if.lower(), (
+            "job-level if must not skip docs PRs (check_droid_review.sh BLOCKs skipped)"
+        )
