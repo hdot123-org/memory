@@ -1110,8 +1110,8 @@ class OrphanIssueClassification:
 
 
 def classify_orphan_issues(
-    current_findings: list,
-    open_issues: list[dict],
+    current_findings: list[Any],
+    open_issues: list[dict[str, Any]],
 ) -> list[OrphanIssueClassification]:
     """Classify orphan issues (open issues not in current findings).
     
@@ -1148,6 +1148,10 @@ def classify_orphan_issues(
         
         issue_key = (rule_id, location)
         issue_number = issue.get("number")
+        if issue_number is None:
+            # Invalid issue data
+            continue
+        assert isinstance(issue_number, int)  # Type assertion for mypy
         
         # Check if this is an orphan (not in current findings)
         if issue_key in current_keys:
@@ -1217,7 +1221,7 @@ def classify_orphan_issues(
 
 def execute_orphan_classifications(
     classifications: list[OrphanIssueClassification],
-    history_path: str | None = None,
+    history_path: Path | None = None,
 ) -> dict[str, int]:
     """Execute actions based on orphan issue classifications.
     

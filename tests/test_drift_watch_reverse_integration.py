@@ -7,9 +7,7 @@ These tests verify the action-taking requirement of VAL-DRF-003.
 """
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 # Add scripts directory to path for imports
 scripts_dir = Path(__file__).parent.parent / "scripts"
@@ -17,14 +15,13 @@ sys.path.insert(0, str(scripts_dir))
 
 from evolution_scanner import Finding
 from evolution_utils import (
-    classify_orphan_issues,
+    OrphanIssueClassification,
     execute_orphan_classifications,
     reverse_drift_watch,
-    OrphanIssueClassification,
 )
 
 
-def _make_issue(number: int, rule_id: str, location: str, 
+def _make_issue(number: int, rule_id: str, location: str,
                 linear_linkback: str = "", deadlock_sentinel: str = "") -> dict:
     """Create a test issue with optional Linear linkback and deadlock sentinel."""
     body = f"**Rule ID**: {rule_id}\n**Location**: {location}"
@@ -50,15 +47,15 @@ def test_execute_close_ready_actually_closes():
         timestamp="2026-01-01T00:00:00Z",
         action_taken="close_attempt"
     )
-    
+
     with patch('evolution_utils.subprocess.run') as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-        
+
         result = execute_orphan_classifications([classification])
-        
+
         # Verify close was called
         assert result["closed"] == 1, f"Expected 1 closed, got {result['closed']}"
-        
+
         # Verify subprocess.run was called with gh issue close
         close_calls = [
             c for c in mock_run.call_args_list
@@ -82,15 +79,15 @@ def test_execute_blocked_records_reason():
         timestamp="2026-01-01T00:00:00Z",
         action_taken="retained_with_reason"
     )
-    
+
     with patch('evolution_utils.subprocess.run') as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-        
+
         result = execute_orphan_classifications([classification])
-        
+
         # Verify retained
         assert result["retained"] == 1, f"Expected 1 retained, got {result['retained']}"
-        
+
         # Verify comment was posted (audit trail)
         comment_calls = [
             c for c in mock_run.call_args_list
@@ -118,21 +115,21 @@ def test_execute_respects_grace_period():
         timestamp="2026-01-01T00:00:00Z",
         action_taken="close_attempt"
     )
-    
+
     with patch('evolution_utils._count_consecutive_absences', return_value=1), \
          patch('evolution_utils.subprocess.run') as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-        
+
         # history_path provided, but absence count < GRACE_PERIOD_TICKS (3)
         result = execute_orphan_classifications(
             [classification],
             history_path=Path("/tmp/test_history.json")
         )
-        
+
         # Should defer, not close
         assert result["deferred"] == 1, f"Expected 1 deferred, got {result['deferred']}"
         assert result["closed"] == 0, "Should not close before grace period"
-        
+
         # Verify no close call
         close_calls = [
             c for c in mock_run.call_args_list
@@ -151,21 +148,21 @@ def test_reverse_drift_watch_end_to_end():
         _make_issue(201, "RULE_201", "file201.py", linear_linkback="INFRA-201"),
         _make_issue(202, "RULE_202", "file202.py", linear_linkback="INFRA-202"),
     ]
-    
+
     with patch('evolution_utils._verify_fix_merged_via_linear', side_effect=[True, False]), \
          patch('evolution_utils.subprocess.run') as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-        
+
         result = reverse_drift_watch(current_findings, open_issues)
-        
+
         # Should have 1 closed (201 with merge evidence) and 1 retained (202 no evidence)
         assert result["closed"] == 1, f"Expected 1 closed, got {result['closed']}"
         assert result["retained"] == 1, f"Expected 1 retained, got {result['retained']}"
-        
+
         # Verify both actions occurred
         close_calls = [c for c in mock_run.call_args_list if c[0][0][2] == "close"]
         comment_calls = [c for c in mock_run.call_args_list if c[0][0][2] == "comment"]
-        
+
         assert len(close_calls) == 1, "Should close issue 201"
         assert len(comment_calls) == 1, "Should comment on issue 202"
 
@@ -179,12 +176,12 @@ def test_reverse_drift_watch_incremental_proof():
     open_issues = [
         _make_issue(301, "RULE_301", "file301.py"),
     ]
-    
+
     with patch('evolution_utils.subprocess.run') as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-        
+
         reverse_drift_watch(current_findings, open_issues)
-        
+
         # Verify no issue list fetch
         fetch_calls = [
             c for c in mock_run.call_args_list
@@ -207,17 +204,17 @@ def test_b2_fixture_integration():
         _make_issue(402, "RULE_B", "file1.py"),
         _make_issue(403, "RULE_C", "file2.py"),
     ]
-    
+
     with patch('evolution_utils._verify_fix_merged_via_linear', return_value=False), \
          patch('evolution_utils.subprocess.run') as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-        
+
         result = reverse_drift_watch(current_findings, open_issues)
-        
+
         # All should be retained (no evidence)
         assert result["retained"] == 3, f"Expected 3 retained, got {result['retained']}"
         assert result["closed"] == 0, "Should not close without evidence"
-        
+
         # Verify comments posted for all
         comment_calls = [c for c in mock_run.call_args_list if c[0][0][2] == "comment"]
         assert len(comment_calls) == 3, "Should post comment for each retained issue"
