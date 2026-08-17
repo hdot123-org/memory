@@ -38,7 +38,31 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
+      - name: Detect docs-only PR
+        id: docs_only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -eu
+          echo "Detecting whether PR #$PR_NUMBER changes only docs files (*.md)..."
+          FILES=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --paginate --jq '.[].filename')
+          if [ -z "$FILES" ]; then
+            echo "File list empty or API failure — fail-closed, run full review"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          NON_MD=$(echo "$FILES" | grep -v '\.md$' || true)
+          if [ -z "$NON_MD" ]; then
+            echo "docs-only=true — all changed files are *.md, skipping model review"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs-only=false — non-md files present:"
+            echo "$NON_MD"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Write BYOM settings file
+        if: steps.docs_only.outputs.skip != 'true'
         run: |
           mkdir -p ~/.factory
           cat > ~/.factory/settings.json << 'SETTINGS_EOF'
@@ -59,6 +83,7 @@ jobs:
           echo "BYOM settings written to ~/.factory/settings.json"
           python3 -c "import json; json.load(open('$HOME/.factory/settings.json')); print('JSON validation passed')"
       - name: Pre-check credentials
+        if: steps.docs_only.outputs.skip != 'true'
         env:
           FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
         run: |
@@ -73,6 +98,7 @@ jobs:
           echo "Note: HTTP endpoint validation removed - /v1/auth/check returns 404 (endpoint does not exist)."
           echo "droid-action will fail fast if credentials are invalid (45-minute timeout prevents hangs)."
       - name: Run Droid Auto Review
+        if: steps.docs_only.outputs.skip != 'true'
         uses: Factory-AI/droid-action@e5ae50268211d2e9ac85edb57c28bf253b6627f7
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
