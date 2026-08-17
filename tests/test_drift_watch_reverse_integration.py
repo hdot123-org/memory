@@ -34,7 +34,7 @@ def _make_issue(number: int, rule_id: str, location: str,
 
 def test_execute_close_ready_actually_closes():
     """VAL-DRF-003: CLOSE_READY classification triggers gh issue close.
-    
+
     Red evidence: execute_orphan_classifications doesn't exist yet.
     """
     # Create a CLOSE_READY classification
@@ -67,7 +67,7 @@ def test_execute_close_ready_actually_closes():
 
 def test_execute_blocked_records_reason():
     """VAL-DRF-003: BLOCKED_NO_EVIDENCE classification records blocking reason.
-    
+
     Red evidence: execute_orphan_classifications doesn't exist yet.
     """
     classification = OrphanIssueClassification(
@@ -103,7 +103,7 @@ def test_execute_blocked_records_reason():
 
 def test_execute_respects_grace_period():
     """VAL-DRF-003: CLOSE_READY respects grace period before closing.
-    
+
     Red evidence: No grace period check in execute layer yet.
     """
     classification = OrphanIssueClassification(
@@ -140,7 +140,7 @@ def test_execute_respects_grace_period():
 
 def test_reverse_drift_watch_end_to_end():
     """VAL-DRF-002/003: Full pipeline classifies and executes.
-    
+
     Red evidence: reverse_drift_watch doesn't exist yet.
     """
     current_findings = [Finding("RULE_001", "warning", "test", "desc", "file1.py", "ev")]
@@ -169,7 +169,7 @@ def test_reverse_drift_watch_end_to_end():
 
 def test_reverse_drift_watch_incremental_proof():
     """VAL-DRF-004: reverse_drift_watch doesn't fetch issues (incremental).
-    
+
     Red evidence: Current implementation fetches issues internally.
     """
     current_findings = [Finding("RULE_001", "warning", "test", "desc", "file1.py", "ev")]
@@ -192,10 +192,10 @@ def test_reverse_drift_watch_incremental_proof():
 
 def test_b2_fixture_integration():
     """B2 fixture exit classification integration test.
-    
+
     Fixture-like issues (RULE_A-E, file0-4.py) without evidence should be
     retained with blocking reason recorded.
-    
+
     Red evidence: No integration between B2 fixtures and D1 reverse watch.
     """
     current_findings = []  # No current findings

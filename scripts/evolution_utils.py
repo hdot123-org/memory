@@ -1093,11 +1093,11 @@ from dataclasses import dataclass
 @dataclass
 class OrphanIssueClassification:
     """Structured classification of an orphan issue (open issue not in findings).
-    
+
     VAL-DRF-002: Each orphan issue must be classified into one of:
     - CLOSE_READY: Has merge/session evidence, can be closed after grace period
     - BLOCKED_NO_EVIDENCE: No evidence, retained with blocking reason recorded
-    
+
     VAL-DRF-003: Every classification must have audit trail (reason + timestamp).
     """
     issue_number: int
@@ -1114,69 +1114,69 @@ def classify_orphan_issues(
     open_issues: list[dict[str, Any]],
 ) -> list[OrphanIssueClassification]:
     """Classify orphan issues (open issues not in current findings).
-    
+
     VAL-DRF-002: For each open evolution-found issue whose key is NOT in current
     findings, classify into:
     - CLOSE_READY: Has merge/session evidence → grace then close
     - BLOCKED_NO_EVIDENCE: No evidence → retain with blocking reason recorded
-    
+
     VAL-DRF-003: Every classification must leave audit trail (reason + timestamp + action).
     Must take action (close or record), not just alert.
-    
+
     VAL-DRF-004: Incremental implementation - accepts open_issues as parameter,
     does not fetch them (no new full scan).
-    
+
     Args:
         current_findings: List of Finding objects from current scan
         open_issues: List of open GitHub issues (from current tick, not newly fetched)
-    
+
     Returns:
         List of OrphanIssueClassification with audit trail for each orphan issue
     """
     # Build set of current finding keys for O(1) lookup
     current_keys = {(f.rule_id, f.location) for f in current_findings}
-    
+
     classifications = []
     now_iso = datetime.now(timezone.utc).isoformat()
-    
+
     for issue in open_issues:
         # Parse issue fields
         rule_id, location = _parse_issue_fields(issue.get("body", ""))
         if rule_id is None or location is None:
             # Malformed issue body - skip
             continue
-        
+
         issue_key = (rule_id, location)
         issue_number = issue.get("number")
         if issue_number is None:
             # Invalid issue data
             continue
         assert isinstance(issue_number, int)  # Type assertion for mypy
-        
+
         # Check if this is an orphan (not in current findings)
         if issue_key in current_keys:
             # Not an orphan - in current findings
             continue
-        
+
         # This is an orphan issue - classify it
         issue_body = issue.get("body", "")
-        
+
         # Try to verify fix via Linear (checks for merge/session evidence)
         verified = _verify_fix_merged_via_linear(issue_body, issue_number)
-        
+
         if verified:
             # Has merge or session evidence
             # Determine specific reason
             has_linear_linkback = _has_linear_linkback_marker(issue_body)
             has_session_evidence = DEADLOCK_EXIT_SENTINEL_PREFIX in issue_body
-            
+
             if has_session_evidence:
                 reason = "session_completed_verified"
             elif has_linear_linkback:
                 reason = "merged_pr_verified"
             else:
                 reason = "fix_verified_no_linkback"
-            
+
             classifications.append(OrphanIssueClassification(
                 issue_number=issue_number,
                 rule_id=rule_id,
@@ -1186,24 +1186,24 @@ def classify_orphan_issues(
                 timestamp=now_iso,
                 action_taken="close_attempt"
             ))
-            
+
             logger.info(f"Orphan #{issue_number} classified as CLOSE_READY: {reason}")
-            
+
         else:
             # No evidence - retain with blocking reason
             has_linear_linkback = _has_linear_linkback_marker(issue_body)
             has_marker_but_no_id = (
-                has_linear_linkback and 
+                has_linear_linkback and
                 not _extract_linear_linkback(issue_body)
             )
-            
+
             if has_marker_but_no_id:
                 reason = "linkback_marker_present_but_id_extraction_failed"
             elif has_linear_linkback:
                 reason = "linkback_found_but_fix_not_verified"
             else:
                 reason = "no_evidence_of_resolution"
-            
+
             classifications.append(OrphanIssueClassification(
                 issue_number=issue_number,
                 rule_id=rule_id,
@@ -1213,9 +1213,9 @@ def classify_orphan_issues(
                 timestamp=now_iso,
                 action_taken="retained_with_reason"
             ))
-            
+
             logger.info(f"Orphan #{issue_number} classified as BLOCKED_NO_EVIDENCE: {reason}")
-    
+
     return classifications
 
 
@@ -1224,25 +1224,25 @@ def execute_orphan_classifications(
     history_path: Path | None = None,
 ) -> dict[str, int]:
     """Execute actions based on orphan issue classifications.
-    
+
     VAL-DRF-003: Must take action (not just alert). This function:
     - CLOSE_READY: Attempts to close issue after grace period check
     - BLOCKED_NO_EVIDENCE: Records blocking reason in issue comment
-    
+
     Args:
         classifications: List of OrphanIssueClassification from classify_orphan_issues
         history_path: Path to findings_over_time.json for grace period check
-    
+
     Returns:
         Dict with counts: {closed: int, retained: int, deferred: int}
     """
     closed_count = 0
     retained_count = 0
     deferred_count = 0
-    
+
     for classification in classifications:
         issue_number = classification.issue_number
-        
+
         if classification.classification == "CLOSE_READY":
             # Check grace period before closing
             if history_path is not None:
@@ -1257,14 +1257,14 @@ def execute_orphan_classifications(
                         f"Orphan #{issue_number} deferred: absent {absence_count}/{GRACE_PERIOD_TICKS} ticks"
                     )
                     continue
-            
+
             # Close the issue with classification reason in comment
             close_msg = (
                 f"该 finding 在最近一次扫描中已不再出现，自动关闭此 Issue。\n"
                 f"分类依据：{classification.reason}\n"
                 f"（Rule: {classification.rule_id}, Location: {classification.location}）"
             )
-            
+
             try:
                 close_result = subprocess.run(
                     ["gh", "issue", "close", str(issue_number), "--comment", close_msg],
@@ -1279,7 +1279,7 @@ def execute_orphan_classifications(
                     logger.warning(f"Failed to close orphan #{issue_number}: {close_result.stderr}")
             except Exception as e:
                 logger.error(f"Failed to close orphan #{issue_number}: {e}")
-                
+
         elif classification.classification == "BLOCKED_NO_EVIDENCE":
             # Record blocking reason in issue comment (audit trail)
             comment_msg = (
@@ -1288,7 +1288,7 @@ def execute_orphan_classifications(
                 f"时间：{classification.timestamp}\n"
                 f"动作：保留 Issue，等待进一步证据"
             )
-            
+
             try:
                 comment_result = subprocess.run(
                     ["gh", "issue", "comment", str(issue_number), "--body", comment_msg],
@@ -1303,7 +1303,7 @@ def execute_orphan_classifications(
                     logger.warning(f"Failed to comment on orphan #{issue_number}: {comment_result.stderr}")
             except Exception as e:
                 logger.error(f"Failed to comment on orphan #{issue_number}: {e}")
-    
+
     return {
         "closed": closed_count,
         "retained": retained_count,
@@ -1317,33 +1317,33 @@ def reverse_drift_watch(
     history_path: Path | None = None,
 ) -> dict[str, int]:
     """VAL-DRF-002/003: Reverse drift watch with automatic remediation.
-    
+
     For each open evolution-found issue whose key is NOT in current findings:
     - Classify based on evidence (merge/session evidence → CLOSE_READY, no evidence → BLOCKED)
     - Execute action (close after grace period, or retain with blocking reason recorded)
-    
+
     This function must take action (not just alert), fulfilling VAL-DRF-003.
     Every action leaves audit trail (reason + timestamp + action), fulfilling VAL-DRF-002.
-    
+
     Args:
         findings: Current tick's findings (for comparison)
         open_issues: List of open GitHub issues (already fetched, incremental)
         history_path: Path to findings_over_time.json for grace period check
-    
+
     Returns:
         Dict with counts: {closed: int, retained: int, deferred: int}
     """
     # Step 1: Classify all orphan issues
     classifications = classify_orphan_issues(findings, open_issues)
-    
+
     # Step 2: Execute actions based on classifications
     result = execute_orphan_classifications(classifications, history_path)
-    
+
     # Log summary
     if result["closed"] > 0 or result["retained"] > 0 or result["deferred"] > 0:
         logger.info(
             f"Reverse drift watch complete: {result['closed']} closed, "
             f"{result['retained']} retained, {result['deferred']} deferred"
         )
-    
+
     return result

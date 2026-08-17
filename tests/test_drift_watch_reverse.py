@@ -31,7 +31,7 @@ def _make_issue(number: int, rule_id: str, location: str,
 
 def test_val_drf_002_orphan_with_merge_evidence_closes():
     """VAL-DRF-002: Orphan issue with merged PR evidence → grace then close.
-    
+
     Red evidence: This test will fail because the current implementation doesn't
     explicitly classify and record the decision to close.
     """
@@ -61,7 +61,7 @@ def test_val_drf_002_orphan_with_merge_evidence_closes():
 
 def test_val_drf_002_orphan_with_session_evidence_closes():
     """VAL-DRF-002: Orphan issue with session-completed evidence → grace then close.
-    
+
     Red evidence: This test will fail because deadlock sentinel path isn't
     explicitly classified.
     """
@@ -88,7 +88,7 @@ def test_val_drf_002_orphan_with_session_evidence_closes():
 
 def test_val_drf_002_orphan_no_evidence_retains_with_reason():
     """VAL-DRF-002: Orphan issue without evidence → retain with blocking reason.
-    
+
     Red evidence: This test will fail because current implementation only logs
     but doesn't structure the "retain" decision.
     """
@@ -117,7 +117,7 @@ def test_val_drf_002_orphan_no_evidence_retains_with_reason():
 
 def test_val_drf_003_audit_trail_required():
     """VAL-DRF-003: Every orphan issue decision must leave audit trail.
-    
+
     Red evidence: Current implementation only prints log lines, doesn't
     return structured report.
     """
@@ -148,11 +148,11 @@ def test_val_drf_003_audit_trail_required():
 
 def test_val_drf_002_three_reverse_sample_types():
     """Test matrix for three reverse sample types.
-    
+
     Type 1: Orphan with merge evidence → CLOSE_READY
-    Type 2: Orphan with session evidence → CLOSE_READY  
+    Type 2: Orphan with session evidence → CLOSE_READY
     Type 3: Orphan without evidence → BLOCKED_NO_EVIDENCE
-    
+
     Red evidence: classify_orphan_issues doesn't exist yet.
     """
     current_findings = [Finding("RULE_001", "warning", "test", "desc", "file1.py", "ev")]
@@ -188,10 +188,10 @@ def test_val_drf_002_three_reverse_sample_types():
 
 def test_val_drf_003_action_occurs_not_just_alert():
     """VAL-DRF-003: Drift watch must take action, not just alert.
-    
+
     When orphan issue has evidence, must attempt close (action).
     When orphan issue has no evidence, must record blocking reason (action).
-    
+
     Red evidence: Current implementation doesn't distinguish between
     "action taken" and "just logged".
     """
@@ -220,10 +220,10 @@ def test_val_drf_003_action_occurs_not_just_alert():
 
 def test_val_drf_002_incremental_no_new_full_scan():
     """VAL-DRF-004: Drift watch uses current tick data, no new full scan.
-    
+
     The function must accept open_issues as parameter (not fetch them),
     proving incremental implementation.
-    
+
     Red evidence: Current auto_close_resolved fetches issues internally.
     """
     current_findings = [Finding("RULE_001", "warning", "test", "desc", "file1.py", "ev")]
@@ -247,10 +247,10 @@ def test_val_drf_002_incremental_no_new_full_scan():
 
 def test_b2_fixture_exit_classification():
     """B2 fixture exit classification regression test.
-    
+
     Issues with fixture-like characteristics (RULE_A-E, file0-4.py, category=test)
     should be classified appropriately by the drift watch.
-    
+
     Red evidence: No explicit fixture classification exists.
     """
     current_findings = []  # No current findings

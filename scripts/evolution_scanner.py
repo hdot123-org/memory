@@ -821,7 +821,7 @@ def main() -> None:
 
     # GAP-G: auto_close runs AFTER P1-2/P2-A hard exits so failed ticks don't close issues.
     auto_close_resolved(all_findings, config["dedup_label"], failed_categories, history_path)
-    
+
     # VAL-DRF-002/003: Reverse drift watch - classify and remediate orphan issues
     # D1: For open issues not in current findings, classify based on evidence and take action
     try:
