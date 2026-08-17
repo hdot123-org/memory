@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.33.0](https://github.com/hdot123/memory/compare/v0.32.0...v0.33.0) (2026-08-17)
+
+
+### Features
+
+* **webhook:** 死锁出口/retrigger 双验证/security-gate 密钥正则规避 ([#738](https://github.com/hdot123/memory/issues/738)) ([0d061c9](https://github.com/hdot123/memory/commit/0d061c9bb6f3ff088972e33b7e1f57770721415f))
+
+
+### Bug Fixes
+
+* anchor_gate 日志写入失败不再静默吞掉，改为 stderr 告警 (INFRA-359) ([#743](https://github.com/hdot123/memory/issues/743)) ([ae2660d](https://github.com/hdot123/memory/commit/ae2660dd195fea153378ccabfdfb2f2e2dfbfe25))
+* boundary_guard 只扫描 git-tracked 文件，排除 untracked 误报 ([#744](https://github.com/hdot123/memory/issues/744)) ([727db8a](https://github.com/hdot123/memory/commit/727db8a60bda0468066e0fc3cccc6b83448e9992))
+* **webhook:** stale 孤儿 issue 连续 5 tick E4 阻挡后执行 Linear canceled fallback 出口 (INFRA-310) ([#747](https://github.com/hdot123/memory/issues/747)) ([2bfaedf](https://github.com/hdot123/memory/commit/2bfaedf579347e858e24f3f2b9287f405bb2068a))
+* **webhook:** 死锁出口 teams(first:1) 根因修复——改 team(id:$teamId) 精确查询 + 防御性判空 ([#746](https://github.com/hdot123/memory/issues/746)) ([fb1573d](https://github.com/hdot123/memory/commit/fb1573d1569e853b9bb75037ca58a5d9837e3e62))
+* **webhook:** 降级派发命令移除 --mission 防止 SIGTERM 僵尸累积 ([#741](https://github.com/hdot123/memory/issues/741)) ([1cdad06](https://github.com/hdot123/memory/commit/1cdad06f168271072041580f0cdf77f5e90e5c13))
+
+
+### Documentation
+
+* **lessons:** webhook mission 超时绞杀教训入库 (PR [#741](https://github.com/hdot123/memory/issues/741) 收尾) ([#745](https://github.com/hdot123/memory/issues/745)) ([0bf73a5](https://github.com/hdot123/memory/commit/0bf73a59360c47787c400080b683000235726d3a))
+
 ## [0.32.0](https://github.com/hdot123/memory/compare/v0.31.0...v0.32.0) (2026-08-16)
 
 
