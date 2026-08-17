@@ -1,0 +1,64 @@
+# Droid Review Watchdog — infra 瞬时失败（503）自动 rerun（TD-503-01 v2）
+#
+# 背景：droid-action 的 prep 阶段会调 GitHub API 做权限检查，2026-08-17/18 的
+# 持续 503 使 review 在本体开始前就 exit 1，每个 PR 都要人工 rerun。
+#
+# 为什么用 workflow_run 而非 job 内自愈 step（第一版方案的 P0 教训）：
+#   1. rerun-failed-jobs API 要求目标 run 已处于终态。job 内 step 执行时本 run
+#      仍是 in_progress，API 必然拒绝（时序竞争，架构性不可行）。
+#   2. job 内自愈需要 pull_request_target 工作流持有 actions: write，扩大了
+#      可被 PR 事件触发的写权限面。workflow_run 只从默认分支取工作流定义，
+#      恶意 PR 无法篡改本文件，权限面最小化。
+#   3. workflow_run 在上游 run completed 后触发（本仓库 auto-merge.yml 的
+#      INFRA-212 模式），此时 run 已终态，rerun API 可用。
+#
+# 门禁语义：watchdog 只请求 rerun，不改变任何 check 结论。失败轮保持 failure
+# 结算（fail-closed），rerun 的那轮才是有效 review。真代码审查发现（P1/P2）
+# 不含 infra 瞬时日志特征，不会触发 rerun。
+name: Droid Review Watchdog
+
+on:
+  workflow_run:
+    workflows: ["Droid Auto Review"]
+    types: [completed]
+
+permissions:
+  actions: write
+
+concurrency:
+  group: droid-review-watchdog-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  self-heal-rerun:
+    # 仅处理失败的上游 run；run_attempt 限界防止 rerun 风暴（最多自动重试 2 次）
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.run_attempt < 3
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Rerun droid-review on infra-transient failure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          set -eu
+          echo "Droid Auto Review run $RUN_ID (attempt $RUN_ATTEMPT) failed; checking logs..."
+          # 失败特征匹配：prep 阶段的 GitHub API 503/网络瞬时错误（2026-08-17/18 实测日志）
+          PATTERNS='permission - 503|Failed to check permissions|HttpError: No server is currently available|unexpected EOF|TLS handshake timeout'
+          JOB_LOGS=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --jq '.jobs[].id' | while read -r JOB_ID; do
+            gh api "repos/$REPO/actions/jobs/$JOB_ID/logs" 2>/dev/null || true
+          done)
+          if echo "$JOB_LOGS" | grep -qE "$PATTERNS"; then
+            echo "Infra-transient failure detected. Requesting rerun of failed jobs..."
+            if gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/rerun-failed-jobs"; then
+              echo "Rerun requested (upstream run is terminal; API accepts). The rerun carries the effective review."
+            else
+              echo "::warning::Rerun request failed (503 storm?). Manual rerun still possible; not bypassing gate."
+            fi
+          else
+            echo "Failure does not match infra-transient patterns — likely a real review finding or credential issue. No auto-rerun."
+          fi

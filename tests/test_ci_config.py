@@ -381,3 +381,110 @@ class TestCiConcurrencyGuard:
         assert "!= 'refs/heads/main'" in str(cancel), (
             "cancel-in-progress 必须排除 main，否则 push 竞态会截断发布链路 CI"
         )
+
+
+class TestDroidReview503SelfHeal:
+    """VAL-503-*：droid-review infra 瞬时失败（503）自动 rerun 回归防护。
+
+    TD-503-01 v2（2026-08-18）：GitHub API 持续 503 使 droid-action 在 prep 阶段
+    （权限检查）exit 1，review 本体未开始，每个 PR 需人工 rerun。
+
+    第一版把自愈放在 droid-review job 内，有两个 P0 架构缺陷（已废弃）：
+      1. rerun-failed-jobs API 要求 run 处于终态，job 内 step 执行时本 run 仍为
+         in_progress，API 必然拒绝（时序竞争）。
+      2. pull_request_target 工作流需要 actions: write 才能调 rerun API，
+         扩大 PR 事件可触发的写权限面。
+    v2 改为独立 watchdog 工作流（workflow_run 在上游 run 终态后触发），
+    权限独立授予、从默认分支取定义。本测试守护 v2 架构不被静默回退。
+
+    关键约束：watchdog 只请求 rerun、不改变任何 check 结论；真审查发现
+    不匹配特征、不触发 rerun（门禁语义不变）。
+    """
+
+    @pytest.fixture
+    def droid_review_data(self):
+        """Load droid-review.yml workflow."""
+        workflow_path = REPO_ROOT / ".github/workflows/droid-review.yml"
+        return yaml.safe_load(workflow_path.read_text())
+
+    @pytest.fixture
+    def watchdog_data(self):
+        """Load droid-review-watchdog.yml workflow."""
+        workflow_path = REPO_ROOT / ".github/workflows/droid-review-watchdog.yml"
+        data = yaml.safe_load(workflow_path.read_text())
+        assert data is not None, "droid-review-watchdog.yml missing or empty"
+        return data
+
+    def test_watchdog_uses_workflow_run_trigger(self, watchdog_data):
+        """VAL-503-001: watchdog 用 workflow_run 触发（上游 run 已终态）。"""
+        triggers = watchdog_data[True]  # YAML parses 'on:' as True key
+        assert "workflow_run" in triggers
+        wr = triggers["workflow_run"]
+        assert wr["workflows"] == ["Droid Auto Review"]
+        assert "completed" in wr["types"]
+
+    def test_watchdog_has_actions_write_permission(self, watchdog_data):
+        """VAL-503-002: watchdog 独立持有 actions: write（rerun API 必需）。"""
+        perms = watchdog_data.get("permissions", {})
+        assert perms.get("actions") == "write", (
+            "watchdog must hold actions:write to call rerun-failed-jobs"
+        )
+        # 权限最小化：只授予 rerun 所需的 actions，不携带其他写权限
+        assert "contents" not in perms or perms["contents"] == "read"
+
+    def test_watchdog_bounded_run_attempt(self, watchdog_data):
+        """VAL-503-003: run_attempt 限界防止 rerun 死循环（最多自动重试 2 次）。"""
+        job = watchdog_data["jobs"]["self-heal-rerun"]
+        cond = str(job.get("if", ""))
+        assert "run_attempt" in cond, "watchdog job must bound run_attempt"
+        assert "conclusion == 'failure'" in cond, "watchdog must only fire on failure"
+
+    def test_watchdog_matches_503_patterns_only(self, watchdog_data):
+        """VAL-503-004: 特征表只含 infra 瞬时错误，且 rerun 失败不阻塞结算。"""
+        steps = watchdog_data["jobs"]["self-heal-rerun"]["steps"]
+        run_block = next(s["run"] for s in steps if "rerun" in s.get("name", "").lower())
+        # 503 权限检查特征必须在列（2026-08-17/18 实测根因）
+        assert "permission - 503" in run_block
+        assert "Failed to check permissions" in run_block
+        # fail-closed：rerun 请求失败只 warning，不绕过门禁
+        assert "::warning::" in run_block
+        assert "rerun-failed-jobs" in run_block
+
+    def test_watchdog_no_gate_bypass(self, watchdog_data):
+        """VAL-503-005: 自愈路径不含任何门禁绕过（--admin/--force/merge）。"""
+        steps = watchdog_data["jobs"]["self-heal-rerun"]["steps"]
+        run_block = next(s["run"] for s in steps if "rerun" in s.get("name", "").lower())
+        for forbidden in ("--admin", "--force", "merge"):
+            assert forbidden not in run_block, f"forbidden token in watchdog: {forbidden}"
+
+    def test_droid_review_job_has_no_inline_selfheal(self, droid_review_data):
+        """VAL-503-006: 防回退——droid-review job 内不得再出现自愈 step。
+
+        job 内自愈存在时序 P0（run 仍 in_progress 时调 rerun API 必然被拒），
+        且会迫使 pull_request_target 工作流持有 actions: write。
+        """
+        steps = droid_review_data["jobs"]["droid-review"]["steps"]
+        names = [s.get("name", "") for s in steps]
+        for name in names:
+            assert "Self-heal" not in str(name), (
+                "in-job self-heal step must not return; use droid-review-watchdog.yml"
+            )
+        run_blocks = [s.get("run", "") for s in steps if s.get("run")]
+        for rb in run_blocks:
+            assert "rerun-failed-jobs" not in rb, (
+                "in-job rerun-failed-jobs is architecturally broken (in_progress race)"
+            )
+
+    def test_droid_action_step_unchanged(self, droid_review_data):
+        """VAL-503-007: droid-action 本体未被替换（仍是 pinned 原版 uses）。"""
+        steps = droid_review_data["jobs"]["droid-review"]["steps"]
+        action_step = next(
+            (s for s in steps if "droid-action" in s.get("uses", "")),
+            None,
+        )
+        assert action_step is not None
+        assert action_step["uses"].startswith("Factory-AI/droid-action@e5ae502")
+        # 重试不改变 action 输入
+        with_block = action_step["with"]
+        assert with_block["security_block_on_high"] == "false"
+        assert with_block["review_model"] == "qwen3.7-plus"
