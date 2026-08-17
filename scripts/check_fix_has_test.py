@@ -49,6 +49,7 @@ def _run(
 def get_pr_data(pr_number: int) -> dict[str, Any]:
     """Fetch PR data via gh CLI with bounded retry on transient 5xx (TD-503-02)."""
     max_attempts = 3
+    last_err = ""
     for attempt in range(1, max_attempts + 1):
         try:
             result = _run(
@@ -67,6 +68,7 @@ def get_pr_data(pr_number: int) -> dict[str, Any]:
             raise SystemExit(2)
         except subprocess.CalledProcessError as exc:
             stderr = exc.stderr.strip()
+            last_err = stderr
             # 仅对 GitHub API 瞬时故障（5xx/EOF/TLS）重试；非瞬时错误（如 404）直接失败
             transient = any(
                 marker in stderr
@@ -84,6 +86,13 @@ def get_pr_data(pr_number: int) -> dict[str, Any]:
                 continue
             print(f"Error: gh pr view failed: {stderr}", file=sys.stderr)
             raise SystemExit(2)
+    # 不可达兜底（mypy --strict 要求显式返回/退出路径）
+    print(
+        f"Error: gh pr view failed after {max_attempts} attempts: "
+        f"{last_err}",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
 
 
 def get_local_data(base_ref: str, cwd: Path | None = None) -> dict[str, Any]:
