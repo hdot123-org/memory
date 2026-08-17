@@ -76,6 +76,19 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 - **禁止直接推送 main** — main 分支受保护，必须走 feature 分支 + PR
 - **PR 是默认流程** — 推送 feature 分支后创建 PR，合并后自动删除源分支
 
+## mission 异步合并纪律（2026-08-17）
+
+**创建 PR 并执行 `write-pending-ci.sh <PR_NUMBER>` 后，mission 会话不得阻塞等待 CI/droid-review 完成。** 合并由 auto-merge workflow（workflow_run + schedule 双触发，DISPATCH_TOKEN）在全部 check 转绿后自动 squash 完成，会话在关键路径之外。
+
+| 步骤 | 动作 |
+|------|------|
+| 1. 创建 PR 后 | 执行 `scripts/write-pending-ci.sh <PR_NUMBER>` 注册 CI 完成路由 |
+| 2. 立即 | 切换下一任务（worktree / 新分支），不等注入消息 |
+| 3. 收到注入消息（"CI 全绿"/"状态更新"） | 按 ci-gateway skill 处理：PR 已合并则直接执行合并后三件事；CI 失败则回到该 PR 修复 |
+
+- CI 失败时 auto-merge 自动保持待命，修复 push 后重跑，无需人工干预合并
+- 禁止在会话内 `gh pr merge --watch` 或轮询等待 checks；门禁由 branch protection + ci-ok（含 droid-review）+ auto-merge 三层保证，会话无需在场
+
 ## 铁律：GitHub 为主仓库
 
 **GitHub 已成为主仓库，所有开发流程迁移到 GitHub。**

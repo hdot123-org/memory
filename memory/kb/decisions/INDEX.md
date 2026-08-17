@@ -7,6 +7,7 @@
 
 | File | Summary |
 |------|---------|
+| `2026-08-17-mission-async-merge-decoupling.md` | mission 会话与 CI/合并流程解耦（异步合并纪律，门禁零削弱） |
 | `D-002-gateway-adapter-overengineering.md` | gateway adapter 注入模式属于过度工程 |
 | `d-002-ci-pytest-strategy.md` | pytest 版本策略与 CI 缓存治理 |
 | `D-003-audit-verification-refactor-basis.md` | 基于三核交叉核查的重构决策基线 |
