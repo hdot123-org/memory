@@ -1142,6 +1142,16 @@ def forward_drift_watch(
     Returns:
         List of ForwardDriftRecord, one per actionable finding, with status and audit trail
     """
+    from evolution_scanner import get_tick_tracker
+
+    tracker = get_tick_tracker()
+
+    # VAL-DRF-004: Check budget before running drift watch
+    if tracker.is_any_budget_exceeded():
+        print(f"[evolution] Budget exhausted (duration={tracker.is_duration_exceeded()}, api={tracker.is_api_exceeded()})")
+        print("[evolution] Skipping forward drift watch to stay within tick budget")
+        return []
+
     records = []
     now_iso = datetime.now(timezone.utc).isoformat()
 

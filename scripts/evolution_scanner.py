@@ -5,6 +5,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -26,6 +27,61 @@ from evolution_utils import (
     reconcile_in_progress,
     validate_config,
 )
+
+# VAL-DRF-004: Tick budget constants
+# Based on baseline median from CI runs (before drift watch)
+TICK_DURATION_BUDGET = 120  # seconds (baseline median ~60-90s, allow 120s for drift watch overhead)
+API_CALL_BUDGET = 100  # max gh/Linear API calls per tick (baseline ~40-60 calls)
+
+
+class TickBudgetTracker:
+    """VAL-DRF-004: Track tick budget usage (duration and API calls).
+
+    Budget exhaustion: skip drift watch operations, log warning, don't fail tick.
+    """
+
+    def __init__(self) -> None:
+        self.start_time: float | None = None
+        self.api_calls: int = 0
+
+    @property
+    def elapsed_seconds(self) -> float:
+        """Get elapsed time in seconds since start."""
+        if self.start_time is None:
+            return 0.0
+        return float(time.time() - self.start_time)
+
+    def start(self) -> None:
+        """Start the tick timer."""
+        self.start_time = time.time()
+        self.api_calls = 0
+
+    def record_api_call(self) -> None:
+        """Record one API call."""
+        self.api_calls += 1
+
+    def is_duration_exceeded(self) -> bool:
+        """Check if duration budget is exceeded."""
+        if self.start_time is None:
+            return False
+        return self.elapsed_seconds > TICK_DURATION_BUDGET
+
+    def is_api_exceeded(self) -> bool:
+        """Check if API call budget is exceeded."""
+        return self.api_calls > API_CALL_BUDGET
+
+    def is_any_budget_exceeded(self) -> bool:
+        """Check if ANY budget is exceeded."""
+        return self.is_duration_exceeded() or self.is_api_exceeded()
+
+
+# Global tick tracker instance
+_tick_tracker = TickBudgetTracker()
+
+
+def get_tick_tracker() -> TickBudgetTracker:
+    """Get the global tick budget tracker."""
+    return _tick_tracker
 
 
 @dataclass
@@ -781,9 +837,15 @@ def main() -> None:
     repo_root = Path(__file__).parent.parent
     if check_kill_switch(repo_root):
         sys.exit(0)
+
+    # VAL-DRF-004: Start tick budget tracker
+    tracker = get_tick_tracker()
+    tracker.start()
+
     config = load_config(repo_root)
     validate_config(config)
     ensure_labels(config["dedup_label"], config["failure_label"])
+    tracker.record_api_call()  # ensure_labels makes gh calls
 
     history_path = repo_root / ".evolution" / "findings_over_time.json"
     # Track tool failures to prevent false "resolved" cascade
