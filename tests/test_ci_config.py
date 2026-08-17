@@ -275,3 +275,35 @@ class TestYAMLValidity:
         assert data is not None
         assert "jobs" in data
         assert "ci-ok" in data["jobs"]
+
+
+class TestCiConcurrencyGuard:
+    """VAL-CI-CONC-*：ci.yml concurrency 取消守卫回归防护。
+
+    2026-08-17 审计发现：ci.yml 无 concurrency 配置，快速修复迭代的连续 push
+    会堆叠多个完整 CI run（实测单 run 5 个并行 job，曾造成 8 分钟 runner 排队）。
+    修复：按 PR 分组 + 非 main 分支 cancel-in-progress。本测试防止配置被静默移除，
+    并防止误将 main 纳入取消范围（会截断发布链路 CI）。
+    """
+
+    @pytest.fixture
+    def ci_concurrency(self):
+        """Load ci.yml concurrency block."""
+        workflow_path = REPO_ROOT / ".github/workflows/ci.yml"
+        data = yaml.safe_load(workflow_path.read_text())
+        assert "concurrency" in data, "ci.yml missing concurrency block"
+        return data["concurrency"]
+
+    def test_ci_concurrency_group_uses_pr_number(self, ci_concurrency):
+        """VAL-CI-CONC-001: group 按 PR 号分组（同 PR 连续 push 复用同组）。"""
+        group = ci_concurrency["group"]
+        assert "github.event.pull_request.number" in str(group)
+        # fallback 到 github.ref 覆盖 push 事件（main 无 PR 号）
+        assert "github.ref" in str(group)
+
+    def test_ci_concurrency_main_not_cancelled(self, ci_concurrency):
+        """VAL-CI-CONC-002: main 分支禁止取消（发布链路 CI 必须完整跑完）。"""
+        cancel = ci_concurrency["cancel-in-progress"]
+        assert "!= 'refs/heads/main'" in str(cancel), (
+            "cancel-in-progress 必须排除 main，否则 push 竞态会截断发布链路 CI"
+        )
