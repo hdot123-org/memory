@@ -704,6 +704,148 @@ print('OK')
                 log "  ${LINEAR_REF}: already completed (no valid session/exitCode), skip"
                 continue
             fi
+        elif [ "$STATUS" = "failed" ]; then
+            # === status=failed 出口（INFRA-371 死锁止血，E4 复发防护）===
+            # 条件：status=failed（session 执行失败，exitCode!=0）
+            # 问题：status 文件存在 → stale-orphan 路径（需文件缺失）不触发
+            #       镜像 OPEN + status 存在 → retrigger 双验证通过 → 无限循环
+            # 解决：将 RETRIGGER_OK 置 0，复用 stale-orphan counter 机制
+            #       连续 N tick 后执行 Linear canceled + 证据评论（幂等）
+            log "  ${LINEAR_REF}: status=failed (session failed, exitCode!=0), blocking retrigger (E4 fix)"
+            RETRIGGER_OK=0
+
+            # 复用 stale-orphan counter 机制（与 status 文件缺失路径同构）
+            STALE_ORPHAN_COUNT_FILE="${LOCK_DIR}/stale-orphan-${LINEAR_REF}.count"
+            if [ -f "$STALE_ORPHAN_COUNT_FILE" ]; then
+                STALE_ORPHAN_COUNT=$(cat "$STALE_ORPHAN_COUNT_FILE" 2>/dev/null || echo "0")
+                STALE_ORPHAN_COUNT=$((STALE_ORPHAN_COUNT + 1))
+            else
+                STALE_ORPHAN_COUNT=1
+            fi
+            echo "$STALE_ORPHAN_COUNT" > "$STALE_ORPHAN_COUNT_FILE"
+            log "  ${LINEAR_REF}: failed-session counter=${STALE_ORPHAN_COUNT}/${STALE_ORPHAN_FALLBACK_TICKS}"
+
+            if [ "$STALE_ORPHAN_COUNT" -ge "$STALE_ORPHAN_FALLBACK_TICKS" ]; then
+                log "  ${LINEAR_REF}: FAILED SESSION FALLBACK — threshold reached, executing Linear canceled"
+
+                # 幂等检查：是否已执行过 canceled
+                STALE_ORPHAN_SENTINEL_FILE="${LOCK_DIR}/stale-orphan-${LINEAR_REF}.canceled"
+                if [ -f "$STALE_ORPHAN_SENTINEL_FILE" ]; then
+                    log "  ${LINEAR_REF}: failed session fallback already executed (sentinel found), skip (idempotent)"
+                    continue
+                fi
+
+                # 执行 Linear canceled + 证据评论（复用 stale-orphan fallback 逻辑）
+                STALE_ORPHAN_RESULT=$(ISSUE_UUID="$ISSUE_UUID" \
+                    LINEAR_REF="$LINEAR_REF" \
+                    STALE_ORPHAN_COUNT="$STALE_ORPHAN_COUNT" \
+                    STALE_ORPHAN_FALLBACK_TICKS="$STALE_ORPHAN_FALLBACK_TICKS" \
+                    TEAM_ID="$TEAM_ID" \
+                    /opt/homebrew/bin/python3 -c "
+import json, urllib.request, os, sys, socket
+socket.setdefaulttimeout(15)
+api_key = os.environ['LINEAR_API_KEY']
+issue_uuid = os.environ['ISSUE_UUID']
+linear_ref = os.environ['LINEAR_REF']
+stale_count = os.environ['STALE_ORPHAN_COUNT']
+fallback_ticks = os.environ['STALE_ORPHAN_FALLBACK_TICKS']
+
+def gql(query, variables=None):
+    payload = {'query': query}
+    if variables:
+        payload['variables'] = variables
+    req = urllib.request.Request(
+        'https://api.linear.app/graphql',
+        data=json.dumps(payload).encode(),
+        headers={'Authorization': api_key, 'Content-Type': 'application/json'},
+        method='POST'
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode())
+
+# 1. 查询 team 的 canceled state
+team_id = os.environ['TEAM_ID']
+team_query = '''query(\$teamId: String!) {
+    team(id: \$teamId) {
+        states {
+            nodes { id name type }
+        }
+    }
+}'''
+team_data = gql(team_query, {'teamId': team_id})
+team_node = team_data.get('data', {}).get('team')
+if not team_node:
+    print(f'ERROR: team not found: {team_id}')
+    sys.exit(1)
+
+canceled_state_id = None
+for state in team_node.get('states', {}).get('nodes', []):
+    if state.get('type') == 'canceled':
+        canceled_state_id = state['id']
+        break
+
+if not canceled_state_id:
+    print(f'ERROR: no canceled state found for team {team_id}')
+    sys.exit(1)
+
+# 2. 推进 Linear 到 canceled
+move_mut = '''mutation (\$issueId: String!, \$stateId: String!) {
+    issueUpdate(id: \$issueId, input: { stateId: \$stateId }) {
+        success
+    }
+}'''
+move_result = gql(move_mut, {'issueId': issue_uuid, 'stateId': canceled_state_id})
+
+# 防御性 null 检查
+data = move_result.get('data') if move_result else None
+if data is None:
+    errors = move_result.get('errors', []) if move_result else []
+    print(f'ERROR: GraphQL returned no data, errors: {errors}')
+    sys.exit(1)
+
+issue_update = data.get('issueUpdate')
+if issue_update is None:
+    errors = move_result.get('errors', [])
+    print(f'ERROR: issueUpdate returned null, GraphQL errors: {errors}')
+    sys.exit(1)
+
+if not issue_update.get('success'):
+    print('ERROR: issueUpdate.success is false')
+    sys.exit(1)
+
+# 3. 写证据评论
+comment_body = f'''<!-- stale-orphan-fallback {linear_ref} count={stale_count} -->
+Stale orphan fallback：status=failed（session 执行失败），连续 {stale_count} tick 被 E4 阻挡，判定为无法自愈的遗留 issue。
+- **INFRA ref**: {linear_ref}
+- **E4 阻挡次数**: {stale_count}（阈值={fallback_ticks}）
+- **Status 文件**: status=failed, exitCode!=0（session 失败）
+- **动作**: Linear state → canceled（failed session fallback）
+- **GitHub 镜像**: 由 scanner auto_close_resolved() 下一轮关闭（Linear→GitHub 自动同步）'''
+
+comment_mut = '''mutation (\$issueId: String!, \$body: String!) {
+    commentCreate(input: { issueId: \$issueId, body: \$body }) {
+        comment { id }
+    }
+}'''
+gql(comment_mut, {'issueId': issue_uuid, 'body': comment_body})
+
+print('OK')
+" 2>>"$LOG_FILE" || echo "FAIL")
+
+                if [ "$STALE_ORPHAN_RESULT" = "OK" ]; then
+                    log "  ${LINEAR_REF}: FAILED SESSION FALLBACK executed — Linear canceled (count=${STALE_ORPHAN_COUNT})"
+                    # 写幂等 sentinel
+                    touch "$STALE_ORPHAN_SENTINEL_FILE"
+                    # 记录到 drift log
+                    echo "[$(date '+%Y-%d %H:%M:%S')] FAILED_SESSION_CANCELED: ${LINEAR_REF} uuid=${ISSUE_UUID} count=${STALE_ORPHAN_COUNT}" >> "${LOG_DIR}/anchor-drift.log"
+                    # 清理计数器
+                    rm -f "$STALE_ORPHAN_COUNT_FILE"
+                else
+                    log "  ${LINEAR_REF}: WARNING failed session fallback failed (${STALE_ORPHAN_RESULT}), will retry next tick"
+                fi
+                continue
+            fi
+            continue  # status=failed: always skip section 5d (do not retrigger)
         fi
     fi
 

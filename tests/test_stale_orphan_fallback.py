@@ -94,19 +94,29 @@ class TestStaleOrphanSemanticPreservation:
             "E4 BLOCK must still check for missing status file"
 
     def test_fallback_only_for_no_status_file(self):
-        """Fallback must only trigger when status file is missing, not when it exists."""
+        """Fallback must also exist in the no-status-file branch (after E4 BLOCK).
+
+        Note: since INFRA-371, the status=failed branch legitimately reuses the
+        same counter/threshold mechanism as its deadlock exit. Both branches
+        have their own threshold check; this test verifies the no-status-file
+        branch keeps its own fallback after the E4 BLOCK log message.
+        """
         content = REPO_SCRIPT.read_text()
         # The fallback logic must be in the "no status file" branch
         # Find the position of "no status file" check
         no_status_pos = content.find("no status file")
         assert no_status_pos > 0, "Must have 'no status file' check"
-        # The fallback threshold check must come after the no-status check
-        # (i.e., inside the no-status-file branch)
-        # Search for the bash-level comparison pattern, not the constant definition
+        # The no-status-file branch must have its own threshold check
+        # after the E4 BLOCK log message (i.e., inside that branch).
+        # Use rfind: the status=failed branch (earlier in the script) has its
+        # own copy of the same pattern, which is expected.
         fallback_pattern = '"$STALE_ORPHAN_COUNT" -ge "$STALE_ORPHAN_FALLBACK_TICKS"'
-        fallback_pos = content.find(fallback_pattern)
+        fallback_pos = content.rfind(fallback_pattern)
         assert fallback_pos > no_status_pos, \
             "Fallback threshold check must be in the no-status-file branch (after E4 BLOCK)"
+        # Both branches must have their own threshold check
+        assert content.count(fallback_pattern) == 2, \
+            "Expected exactly two threshold checks (no-status-file branch + status=failed branch)"
 
     def test_e4_block_with_status_file_not_affected(self):
         """When status file EXISTS, the script must NOT enter fallback path."""
