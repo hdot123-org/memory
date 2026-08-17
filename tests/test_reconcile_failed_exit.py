@@ -94,7 +94,7 @@ def test_status_failed_code_path_exists():
     Before fix: No elif branch for status=failed → test fails
     After fix: elif branch exists → test passes
     """
-    script_path = Path("/Users/busiji/memory/webhook-scripts/reconcile-evolution.sh")
+    script_path = Path(__file__).parent.parent / "webhook-scripts" / "reconcile-evolution.sh"
     script_content = script_path.read_text()
 
     # Look for the status check logic in section 5c
