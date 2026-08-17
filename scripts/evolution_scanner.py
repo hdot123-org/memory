@@ -503,7 +503,7 @@ def _reopen_limit_reached(rule_id: str, location: str, history_path: Path) -> bo
         return False
     for r in data.get("resolved_findings", []):
         if isinstance(r, dict) and r.get("rule_id") == rule_id and r.get("location") == location:
-            return r.get("reopen_count", 0) >= 3
+            return int(r.get("reopen_count", 0)) >= 3
     return False
 
 
