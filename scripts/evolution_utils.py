@@ -590,7 +590,7 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
               nodes {
                 id
                 url
-                attachmentType
+                sourceType
                 metadata
               }
             }
@@ -647,10 +647,15 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
         # Path B: deadlock exit sentinel in Linear comments (architecture §3.2)
 
         # Path A: Check if any PR is merged
+        # INFRA-372: Linear removed the `attachmentType` field from the
+        # Attachment type (GraphQL validation 400 → trust chain permanently
+        # fail-closed). The replacement discriminator is `sourceType`
+        # ("github" | "url" | ...), verified against live schema
+        # (__type name: "Attachment") and production attachment data.
         attachments = issue_data.get("attachments", {}).get("nodes", [])
         github_prs = [
             att for att in attachments
-            if att.get("attachmentType") == "github"
+            if att.get("sourceType") == "github"
         ]
 
         if github_prs:
