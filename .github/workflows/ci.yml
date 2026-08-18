@@ -81,7 +81,10 @@ jobs:
       - name: Shell lint
         run: |
           find . -name '*.sh' -not -path './.venv/*' -not -path './.git/*' -not -path './node_modules/*' -print0 | xargs -0 shellcheck -x
-          actionlint .github/workflows/*.yml
+          # actionlint 的 runner-label 告警过滤：自建 label（pve-linux）不在其内置清单，
+          # 属已知误报（config 文件声明在此版本不生效），降级为警告不阻断。
+          actionlint .github/workflows/*.yml 2>&1 | grep -vE 'label "pve-linux" is unknown' | tee /dev/stderr | grep -qE "error|^\." && exit 1 || true
+          echo "actionlint done (self-hosted label warnings suppressed)"
       - name: BOUNDARY pollution guard
         run: python scripts/check_boundary.py
       - name: Document classification guard
