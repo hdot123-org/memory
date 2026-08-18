@@ -1115,6 +1115,7 @@ class OrphanIssueClassification:
 def classify_orphan_issues(
     current_findings: list[Any],
     open_issues: list[dict[str, Any]],
+    failed_categories: set[str] | None = None,
 ) -> list[OrphanIssueClassification]:
     """Classify orphan issues (open issues not in current findings).
 
@@ -1129,9 +1130,19 @@ def classify_orphan_issues(
     VAL-DRF-004: Incremental implementation - accepts open_issues as parameter,
     does not fetch them (no new full scan).
 
+    P1 Safety Guards (ported from auto_close_resolved):
+    1. Self-audit category exemption: evolution_self_audit issues are transient health
+       signals that resolve when scanner recovers, not when code is fixed. Auto-closing
+       them triggers flapping loop with state gate.
+    2. Failed categories skip: Issues whose category tool failed this tick are protected.
+       A failed tool emits no findings, so its issues vanish from scan even though the
+       underlying problem may still exist.
+
     Args:
         current_findings: List of Finding objects from current scan
         open_issues: List of open GitHub issues (from current tick, not newly fetched)
+        failed_categories: Set of audit categories whose tool failed this tick.
+            Issues whose category is in this set are protected from classification.
 
     Returns:
         List of OrphanIssueClassification with audit trail for each orphan issue
@@ -1163,6 +1174,28 @@ def classify_orphan_issues(
 
         # This is an orphan issue - classify it
         issue_body = issue.get("body", "")
+
+        # P1 Safety Guard 1: Self-audit category exemption
+        # evolution_self_audit issues are transient health signals that resolve when
+        # scanner recovers, not when code is fixed. Auto-closing them triggers flapping
+        # loop with state gate (Gate A).
+        category = _parse_issue_category(issue_body)
+        if category == SELF_AUDIT_CATEGORY:
+            logger.info(
+                f"Orphan #{issue_number} skipped: evolution_self_audit category "
+                f"(transient health signal, requires manual/Droid resolution)"
+            )
+            continue  # Skip classification entirely
+
+        # P1 Safety Guard 2: Failed categories skip
+        # Issues whose category tool failed this tick are protected. A failed tool emits
+        # no findings, so its issues vanish from scan even though the underlying problem
+        # may still exist.
+        if failed_categories and category and category in failed_categories:
+            logger.info(
+                f"Orphan #{issue_number} skipped: category '{category}' tool failed this tick"
+            )
+            continue  # Skip classification entirely
 
         # Try to verify fix via Linear (checks for merge/session evidence)
         verified = _verify_fix_merged_via_linear(issue_body, issue_number)
@@ -1318,6 +1351,7 @@ def reverse_drift_watch(
     findings: list[Any],
     open_issues: list[dict[str, Any]],
     history_path: Path | None = None,
+    failed_categories: set[str] | None = None,
 ) -> dict[str, int]:
     """VAL-DRF-002/003: Reverse drift watch with automatic remediation.
 
@@ -1328,16 +1362,34 @@ def reverse_drift_watch(
     This function must take action (not just alert), fulfilling VAL-DRF-003.
     Every action leaves audit trail (reason + timestamp + action), fulfilling VAL-DRF-002.
 
+    P1 Safety Guards (ported from auto_close_resolved):
+    1. Self-audit category exemption: evolution_self_audit issues skipped (in classify layer)
+    2. Failed categories skip: Issues from failed tools skipped (in classify layer)
+    3. Partial output fail-closed: When findings count is anomalously low (<80% of baseline
+       median), skip ALL closing to avoid premature closure based on incomplete data
+
     Args:
         findings: Current tick's findings (for comparison)
         open_issues: List of open GitHub issues (already fetched, incremental)
         history_path: Path to findings_over_time.json for grace period check
+        failed_categories: Set of audit categories whose tool failed this tick.
+            Issues whose category is in this set are protected from closing.
 
     Returns:
         Dict with counts: {closed: int, retained: int, deferred: int}
     """
-    # Step 1: Classify all orphan issues
-    classifications = classify_orphan_issues(findings, open_issues)
+    # P1 Safety Guard 3: Partial output fail-closed
+    # When findings count is anomalously low (<80% of baseline median), skip ALL closing
+    # to avoid premature closure based on incomplete data from crashed/timed-out tools
+    if history_path is not None and _should_skip_partial_output(findings, history_path):
+        logger.info(
+            "Reverse drift watch skipped: partial output detected "
+            "(findings count below 80% of baseline median)"
+        )
+        return {"closed": 0, "retained": 0, "deferred": 0}
+
+    # Step 1: Classify all orphan issues (with safety guards 1 & 2)
+    classifications = classify_orphan_issues(findings, open_issues, failed_categories)
 
     # Step 2: Execute actions based on classifications
     result = execute_orphan_classifications(classifications, history_path)
