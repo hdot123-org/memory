@@ -1,0 +1,14 @@
+[2026-08-18T22:42:35+08:00] [ERROR] component=pretooluse-guard guard execution failed | error="guard crashed"
+[2026-08-18T22:42:35+08:00] [ERROR] component=pretooluse-guard guard timed out after 5s | cwd=/private/var/folders/yl/qz0xdxvs36s_jr46sp_l9skh0000gn/T/pytest-of-busiji/pytest-1162/test_gateway_fail_closed_write1
+[2026-08-18T22:42:35+08:00] [ERROR] component=pretooluse-guard guard timed out after 5s | cwd=/private/var/folders/yl/qz0xdxvs36s_jr46sp_l9skh0000gn/T/pytest-of-busiji/pytest-1162/test_gateway_fail_closed_redac0
+[2026-08-18T22:42:35+08:00] [ERROR] component=pretooluse-guard guard timed out after 5s | cwd=/private/var/folders/yl/qz0xdxvs36s_jr46sp_l9skh0000gn/T/pytest-of-busiji/pytest-1162/test_gateway_handles_json_arra0
+[2026-08-18T22:42:35+08:00] [ERROR] component=pretooluse-guard guard execution failed | error="guard crashed"
+[2026-08-18T22:42:35+08:00] [ERROR] component=pretooluse-guard guard timed out after 5s | cwd=/private/var/folders/yl/qz0xdxvs36s_jr46sp_l9skh0000gn/T/pytest-of-busiji/pytest-1162/test_gateway_timeout_non_prote0
+[2026-08-18T22:42:35+08:00] [ERROR] component=pretooluse-guard guard timed out after 5s | cwd=/private/var/folders/yl/qz0xdxvs36s_jr46sp_l9skh0000gn/T/pytest-of-busiji/pytest-1162/test_gateway_timeout_protected0
+[2026-08-18T22:42:49+08:00] [ERROR] component=memory-hook-gateway delegate preflight failed | cwd=/private/var/folders/yl/qz0xdxvs36s_jr46sp_l9skh0000gn/T/pytest-of-busiji/pytest-1162/test_degraded_package_on_prefl0 error="preflight failed" event=session-start host=codex
+[2026-08-18T22:44:34+08:00] [ERROR] component=health-check Project health degraded (from previous check) | status=degraded validation_errors="[\"error1\", \"error2\", \"error3\"]"
+[2026-08-18T22:44:34+08:00] [ERROR] component=health-check Project health degraded (from previous check) | status=degraded validation_errors="[\"error_0\", \"error_1\", \"error_2\", \"error_3\", \"error_4\", \"error_5\", \"error_6\", \"error_7\", \"error_8\", \"error_9\"]"
+[2026-08-18T22:44:36+08:00] [ERROR] component=pretooluse-guard guard execution failed | error="Guard crashed"
+[2026-08-18T22:44:36+08:00] [ERROR] component=pretooluse-guard guard timed out after 5s | cwd=/private/var/folders/yl/qz0xdxvs36s_jr46sp_l9skh0000gn/T/pytest-of-busiji/pytest-1162/test_gateway_timeout_non_prote1
+[2026-08-18T22:44:36+08:00] [ERROR] component=pretooluse-guard guard execution failed | error="Guard crashed"
+[2026-08-18T22:44:36+08:00] [ERROR] component=pretooluse-guard guard timed out after 5s | cwd=/private/var/folders/yl/qz0xdxvs36s_jr46sp_l9skh0000gn/T/pytest-of-busiji/pytest-1162/test_gateway_timeout_protected1

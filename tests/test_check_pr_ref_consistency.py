@@ -18,9 +18,9 @@ import json
 import sys
 from pathlib import Path
 from typing import Optional
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import MagicMock, patch
 
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "check_pr_ref_consistency.py"
 
@@ -317,12 +317,12 @@ class TestSubsetDirection:
 
 class TestGitHubKeywordVariants:
     """GitHub 支持 9 个等价的关闭关键词变体。
-    
+
     完整的关键词列表（大小写不敏感）：
     - close, closes, closed
     - fix, fixes, fixed
     - resolve, resolves, resolved
-    
+
     所有变体都必须被正确识别和提取。
     """
 
@@ -333,25 +333,25 @@ class TestGitHubKeywordVariants:
     ])
     def test_all_keyword_variants_recognized(self, keyword):
         """所有 9 个关键词变体都应该被正确识别（red→green）。
-        
+
         这是 scrutiny 发现的关键缺失：PR #802 只实现了 fixes/closes/resolves，
         但 GitHub 实际支持所有 9 个变体（包括单数和过去式）。
         """
         body = f"Some changes\n\n{keyword.capitalize()} INFRA-337"
-        
+
         side_effect = _make_side_effect(
             600,
             body,
             [711],
             {711: ISSUE_711_COMMENTS},
         )
-        
+
         exit_code, _ = _run_check(600, side_effect)
         assert exit_code == 0, f"Keyword variant '{keyword}' should be recognized"
-    
+
     def test_mixed_keyword_variants_in_single_pr(self):
         """单个 PR body 中可以混合使用不同的关键词变体（red→green）。
-        
+
         例如：第一个 issue 用 'close'，第二个用 'fixed'，第三个用 'resolves'。
         """
         body = """## Changes
@@ -359,7 +359,7 @@ class TestGitHubKeywordVariants:
 close INFRA-337
 fixed INFRA-342
 resolves INFRA-345"""
-        
+
         side_effect = _make_side_effect(
             601,
             body,
@@ -370,13 +370,13 @@ resolves INFRA-345"""
                 722: ISSUE_722_COMMENTS,
             },
         )
-        
+
         exit_code, _ = _run_check(601, side_effect)
         assert exit_code == 0, "Mixed keyword variants should all be extracted"
-    
+
     def test_past_tense_singular_forms(self):
         """过去式单数形式必须被识别（closed/fixed/resolved）（red→green）。
-        
+
         这是 PR #802 的盲区：只实现了复数现在式（fixes/closes/resolves），
         但实际使用中过去式单数形式同样常见。
         """
@@ -385,7 +385,7 @@ resolves INFRA-345"""
 closed INFRA-337
 fixed INFRA-342
 resolved INFRA-345"""
-        
+
         side_effect = _make_side_effect(
             602,
             body,
@@ -396,13 +396,13 @@ resolved INFRA-345"""
                 722: ISSUE_722_COMMENTS,
             },
         )
-        
+
         exit_code, _ = _run_check(602, side_effect)
         assert exit_code == 0, "Past tense singular forms must be recognized"
-    
+
     def test_singular_imperative_forms(self):
         """单数祈使句形式必须被识别（close/fix/resolve）（red→green）。
-        
+
         例如：用户写 "close INFRA-100" 而非 "closes INFRA-100"。
         """
         body = """## 修复
@@ -410,7 +410,7 @@ resolved INFRA-345"""
 close INFRA-337
 fix INFRA-342
 resolve INFRA-345"""
-        
+
         side_effect = _make_side_effect(
             603,
             body,
@@ -421,6 +421,6 @@ resolve INFRA-345"""
                 722: ISSUE_722_COMMENTS,
             },
         )
-        
+
         exit_code, _ = _run_check(603, side_effect)
         assert exit_code == 0, "Singular imperative forms must be recognized"
