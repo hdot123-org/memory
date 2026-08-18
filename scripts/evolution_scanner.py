@@ -876,8 +876,8 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
 
 
 def _compute_quota_exhausted(
-    deduped: list,
-    config: dict,
+    deduped: list[Finding],
+    config: dict[str, Any],
     gh_failed: bool,
 ) -> dict[str, bool]:
     """P1 修复: 预计算 quota_exhausted（与创建路径同源：每类别配额 + 去重后计数）。
