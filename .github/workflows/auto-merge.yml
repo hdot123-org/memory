@@ -96,7 +96,7 @@ jobs:
         pr_number: ${{ fromJSON(needs.resolve.outputs.pr_numbers) }}
     steps:
       - name: Run auto-merge
-        uses: hdot123/shared-workflows/auto-merge@5a0fc1b8946a170a12687d8614d56189e1f8dab5
+        uses: hdot123-org/shared-workflows/auto-merge@5a0fc1b8946a170a12687d8614d56189e1f8dab5
         with:
           pr-number: ${{ matrix.pr_number }}
         env:

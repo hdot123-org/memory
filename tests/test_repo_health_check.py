@@ -1,23 +1,65 @@
-"""Tests for repo_health_check.sh script."""
+"""Tests for repo_health_check.sh script.
 
-import glob
+INFRA-399: 突变类用例一律在隔离的 tmp git 夹具仓库上运行（fixture_repo）。
+历史实现直接改写真实仓库根的 memory_core/__init__.py / README.md / CHANGELOG.md
+并 git add 临时文件，在 pytest-xdist 6 worker 并行下与其他 worker 的
+--ci/--full 只读用例形成竞态（脚本以子进程重读仓库状态），已造成 main push
+CI 间歇性失败（PR #797 后首现）。只读用例仍在真实仓库上运行。
+"""
+
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from memory_core.constants import CURRENT_MEMORY_VERSION
+
+REPO_ROOT = Path(__file__).parent.parent
+SCRIPT_PATH = REPO_ROOT / "scripts" / "repo_health_check.sh"
 
 
 def run_health_check(mode: str = "--ci", cwd: Path | None = None) -> tuple[int, str, str]:
     """Run health check script and return (exit_code, stdout, stderr)."""
-    script_path = Path(__file__).parent.parent / "scripts" / "repo_health_check.sh"
-    cmd = ["bash", str(script_path), mode]
+    cmd = ["bash", str(SCRIPT_PATH), mode]
     result = subprocess.run(
         cmd,
-        cwd=cwd or Path(__file__).parent.parent,
+        cwd=cwd or REPO_ROOT,
         capture_output=True,
         text=True,
     )
     return result.returncode, result.stdout, result.stderr
+
+
+@pytest.fixture
+def fixture_repo(tmp_path: Path) -> Path:
+    """Build an isolated git repo whose health-check inputs start fully consistent.
+
+    Versions default to v0.34.0 to mirror the real repo at the time this fixture
+    was introduced; mutation tests then break exactly one input and assert the
+    script reports it.
+    """
+    version = CURRENT_MEMORY_VERSION
+    (tmp_path / "memory_core").mkdir()
+    (tmp_path / "memory_core" / "__init__.py").write_text(f'__version__ = "{version}"\n', encoding="utf-8")
+    (tmp_path / "memory_core" / "constants.py").write_text(
+        "from memory_core import __version__ as CURRENT_MEMORY_VERSION\n", encoding="utf-8"
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project]\nname = "memory-core"\nversion = "{version}"\n', encoding="utf-8"
+    )
+    (tmp_path / "README.md").write_text(
+        "# Fixture README\n"
+        f"\n## 架构 (v{version})\n"
+        f"- 当前文档版本：v{version} <!-- x-release-please-version -->\n"
+        f"pip install git+https://github.com/hdot123-org/memory.git@v{version}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    git_user = ["git", "-c", "user.name=fixture", "-c", "user.email=fixture@example.com"]
+    subprocess.run([*git_user, "commit", "-q", "-m", "fixture"], cwd=tmp_path, check=True)
+    return tmp_path
 
 
 def test_ci_mode_version_consistency_passes():
@@ -30,122 +72,90 @@ def test_ci_mode_version_consistency_passes():
     assert "PASS" in stdout
 
 
-def test_ci_mode_detects_version_mismatch_in_constants():
+def test_ci_mode_detects_version_mismatch_in_constants(fixture_repo: Path):
     """Test that --ci mode detects when __init__.py __version__ doesn't match pyproject.toml."""
-    init_path = Path(__file__).parent.parent / "memory_core" / "__init__.py"
-    original_content = init_path.read_text()
+    init_path = fixture_repo / "memory_core" / "__init__.py"
 
-    try:
-        # Break version consistency by changing __version__ in __init__.py
-        broken_content = original_content.replace(
-            f'__version__ = "{CURRENT_MEMORY_VERSION}"',
-            '__version__ = "0.8.0"'
-        )
-        init_path.write_text(broken_content)
+    # Break version consistency by changing __version__ in __init__.py
+    (init_path).write_text('__version__ = "0.8.0"\n', encoding="utf-8")
 
-        exit_code, stdout, stderr = run_health_check("--ci")
+    exit_code, stdout, stderr = run_health_check("--ci", cwd=fixture_repo)
 
-        # Should fail
-        assert exit_code == 1, f"Expected exit 1, got {exit_code}. stdout: {stdout}\nstderr: {stderr}"
-        assert "version-consistency" in stdout
-        assert "FAIL" in stdout
-    finally:
-        # Restore original content
-        init_path.write_text(original_content)
-        # Remove stale .pyc files to ensure subsequent subprocess calls see the restored source
-        pycache_dir = init_path.parent / "__pycache__"
-        if pycache_dir.exists():
-            for pyc_file in glob.glob(str(pycache_dir / "__init__.cpython-*.pyc")):
-                Path(pyc_file).unlink(missing_ok=True)
-            for pyc_file in glob.glob(str(pycache_dir / "constants.cpython-*.pyc")):
-                Path(pyc_file).unlink(missing_ok=True)
+    # Should fail
+    assert exit_code == 1, f"Expected exit 1, got {exit_code}. stdout: {stdout}\nstderr: {stderr}"
+    assert "version-consistency" in stdout
+    assert "FAIL" in stdout
 
 
-def test_ci_mode_detects_version_mismatch_in_readme():
+def test_ci_mode_detects_version_mismatch_in_readme(fixture_repo: Path):
     """Test that --ci mode detects when README version doesn't match pyproject.toml."""
-    readme_path = Path(__file__).parent.parent / "README.md"
-    original_content = readme_path.read_text()
+    readme_path = fixture_repo / "README.md"
 
-    try:
-        # Break version consistency
-        broken_content = original_content.replace(
-            f"- 当前文档版本：v{CURRENT_MEMORY_VERSION}",
-            "- 当前文档版本：v0.8.0"
-        )
-        readme_path.write_text(broken_content)
+    # Break version consistency
+    content = readme_path.read_text(encoding="utf-8")
+    broken_content = content.replace(
+        f"- 当前文档版本：v{CURRENT_MEMORY_VERSION}",
+        "- 当前文档版本：v0.8.0",
+    )
+    assert broken_content != content, "fixture README must contain the marker line to break"
+    readme_path.write_text(broken_content, encoding="utf-8")
 
-        exit_code, stdout, stderr = run_health_check("--ci")
+    exit_code, stdout, stderr = run_health_check("--ci", cwd=fixture_repo)
 
-        # Should fail
-        assert exit_code == 1, f"Expected exit 1, got {exit_code}. stdout: {stdout}\nstderr: {stderr}"
-        assert "version-consistency" in stdout
-        assert "FAIL" in stdout
-    finally:
-        # Restore original content
-        readme_path.write_text(original_content)
+    # Should fail
+    assert exit_code == 1, f"Expected exit 1, got {exit_code}. stdout: {stdout}\nstderr: {stderr}"
+    assert "version-consistency" in stdout
+    assert "FAIL" in stdout
 
 
-def test_ci_mode_detects_gitlab_residue():
+def test_ci_mode_detects_gitlab_residue(fixture_repo: Path):
     """Test that --ci mode detects GitLab residue in tracked files."""
     # Create a temporary file with GitLab residue
-    test_file = Path(__file__).parent.parent / "test_gitlab_residue.txt"
+    test_file = fixture_repo / "test_gitlab_residue.txt"
 
-    try:
-        test_file.write_text("This file contains GitLab-first reference\n")
-        subprocess.run(["git", "add", str(test_file)], cwd=Path(__file__).parent.parent, check=True)
+    test_file.write_text("This file contains GitLab-first reference\n", encoding="utf-8")
+    subprocess.run(["git", "add", str(test_file)], cwd=fixture_repo, check=True)
 
-        exit_code, stdout, stderr = run_health_check("--ci")
+    exit_code, stdout, stderr = run_health_check("--ci", cwd=fixture_repo)
 
-        # Should fail
-        assert exit_code == 1, f"Expected exit 1, got {exit_code}. stdout: {stdout}\nstderr: {stderr}"
-        assert "gitlab-residue" in stdout
-        assert "FAIL" in stdout
-    finally:
-        # Clean up
-        subprocess.run(["git", "rm", "-f", str(test_file)], cwd=Path(__file__).parent.parent, check=False)
-        if test_file.exists():
-            test_file.unlink()
+    # Should fail
+    assert exit_code == 1, f"Expected exit 1, got {exit_code}. stdout: {stdout}\nstderr: {stderr}"
+    assert "gitlab-residue" in stdout
+    assert "FAIL" in stdout
 
 
-def test_ci_mode_excludes_changelog_from_residue_check():
+def test_ci_mode_excludes_changelog_from_residue_check(fixture_repo: Path):
     """Test that CHANGELOG.md is excluded from GitLab residue check."""
-    changelog_path = Path(__file__).parent.parent / "CHANGELOG.md"
-    original_content = changelog_path.read_text()
+    changelog_path = fixture_repo / "CHANGELOG.md"
+    original_content = changelog_path.read_text(encoding="utf-8")
 
-    try:
-        # Add GitLab residue to CHANGELOG (should be ignored)
-        test_content = original_content + "\n- Fixed sync-to-github job\n"
-        changelog_path.write_text(test_content)
+    # Add GitLab residue to CHANGELOG (should be ignored)
+    test_content = original_content + "\n- Fixed sync-to-github job\n"
+    changelog_path.write_text(test_content, encoding="utf-8")
 
-        exit_code, stdout, stderr = run_health_check("--ci")
+    exit_code, stdout, stderr = run_health_check("--ci", cwd=fixture_repo)
 
-        # Should still pass (CHANGELOG is excluded)
-        assert "gitlab-residue" in stdout
-        assert "PASS" in stdout
-    finally:
-        # Restore original content
-        changelog_path.write_text(original_content)
+    # Should still pass (CHANGELOG is excluded)
+    assert "gitlab-residue" in stdout
+    assert "PASS" in stdout
 
 
-def test_ci_mode_excludes_python_files_from_residue_check():
+def test_ci_mode_excludes_python_files_from_residue_check(fixture_repo: Path):
     """Test that Python files are excluded from GitLab residue check."""
     # Create a temporary Python file with GitLab residue
-    test_file = Path(__file__).parent.parent / "test_gitlab_residue.py"
+    test_file = fixture_repo / "test_gitlab_residue.py"
 
-    try:
-        test_file.write_text('# This file checks for .gitlab-ci.yml\nCI_CONFIG = ".gitlab-ci.yml"\n')
-        subprocess.run(["git", "add", str(test_file)], cwd=Path(__file__).parent.parent, check=True)
+    test_file.write_text(
+        '# This file checks for .gitlab-ci.yml\nCI_CONFIG = ".gitlab-ci.yml"\n',
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", str(test_file)], cwd=fixture_repo, check=True)
 
-        exit_code, stdout, stderr = run_health_check("--ci")
+    exit_code, stdout, stderr = run_health_check("--ci", cwd=fixture_repo)
 
-        # Should still pass (Python files are excluded)
-        assert "gitlab-residue" in stdout
-        assert "PASS" in stdout
-    finally:
-        # Clean up
-        subprocess.run(["git", "rm", "-f", str(test_file)], cwd=Path(__file__).parent.parent, check=False)
-        if test_file.exists():
-            test_file.unlink()
+    # Should still pass (Python files are excluded)
+    assert "gitlab-residue" in stdout
+    assert "PASS" in stdout
 
 
 def test_full_mode_includes_remote_checks():
@@ -159,8 +169,7 @@ def test_full_mode_includes_remote_checks():
 
 def test_script_requires_bash():
     """Test that script runs with bash interpreter."""
-    script_path = Path(__file__).parent.parent / "scripts" / "repo_health_check.sh"
-    first_line = script_path.read_text().split('\n')[0]
+    first_line = SCRIPT_PATH.read_text().split("\n")[0]
 
     assert first_line.startswith("#!/usr/bin/env bash") or first_line.startswith("#!/bin/bash")
 
@@ -170,7 +179,7 @@ def test_script_has_execute_permission():
     # Check git index for executable permission (100755 mode)
     result = subprocess.run(
         ["git", "ls-files", "--stage", "scripts/repo_health_check.sh"],
-        cwd=Path(__file__).parent.parent,
+        cwd=REPO_ROOT,
         capture_output=True,
         text=True,
     )
@@ -210,11 +219,10 @@ def test_full_mode_output_format():
 
 def test_invalid_mode():
     """Test that invalid mode returns error."""
-    script_path = Path(__file__).parent.parent / "scripts" / "repo_health_check.sh"
-    cmd = ["bash", str(script_path), "--invalid"]
+    cmd = ["bash", str(SCRIPT_PATH), "--invalid"]
     result = subprocess.run(
         cmd,
-        cwd=Path(__file__).parent.parent,
+        cwd=REPO_ROOT,
         capture_output=True,
         text=True,
     )

@@ -357,3 +357,85 @@ class TestForwardDriftRecordDataclass:
         assert rec.status == "GHOST"
         assert rec.reason == "no_issue_no_reason"
         assert rec.timestamp == "2026-08-18T12:00:00+00:00"
+
+
+class TestForwardDriftWatchStatusCountLog:
+    """Scanner tick must log a five-category status count summary line.
+
+    D8b 实测：功能等价但显式日志缺失——每 tick 应输出
+    forward-drift: ISSUE_EXISTS=n CLOSED_IN_WINDOW=n SUPPRESSED=n
+    QUOTA_PENDING=n GHOST=n 格式摘要行，使幽灵 finding 的合法归宿
+    在 scan 日志显式可见。
+    """
+
+    def test_status_count_line_all_categories(self, capsys):
+        """五类状态各有计数时，日志含完整摘要行（ISSUE_EXISTS=CLOSED_IN_WINDOW=...）。"""
+        findings = [
+            _make_finding("R1", "a.py::L1", category="code_hygiene"),  # ISSUE_EXISTS
+            _make_finding("R2", "b.py::L2", category="code_hygiene"),  # SUPPRESSED
+            _make_finding("R3", "c.py::L3", category="code_quality"),  # QUOTA_PENDING
+            _make_finding("R4", "d.py::L4", category="code_hygiene"),  # GHOST
+        ]
+        suppressed_keys = {("R2", "b.py::L2")}
+        quota_exhausted = {"code_quality": True}
+        closed_window_keys: set[tuple[str, str]] = set()
+
+        # closed_window_key 需通过 _integrate_forward_drift_watch 无法透传——
+        # 我们改为直接调 forward_drift_watch 并验证 print 格式
+        # （实际摘要行由 _integrate_forward_drift_watch 打印，此处 stub）
+        from evolution_utils import forward_drift_watch
+        records = forward_drift_watch(
+            findings=findings,
+            open_issue_keys={("R1", "a.py::L1")},
+            suppressed_keys=suppressed_keys,
+            closed_window_keys=closed_window_keys,
+            quota_exhausted=quota_exhausted,
+            issue_excluded_categories=set(),
+        )
+        # 直接断言：4 个 record 覆盖 ISSUE_EXISTS/SUPPRESSED/QUOTA_PENDING/GHOST
+        statuses = [r.status for r in records]
+        assert statuses.count("ISSUE_EXISTS") == 1
+        assert statuses.count("SUPPRESSED") == 1
+        assert statuses.count("QUOTA_PENDING") == 1
+        assert statuses.count("GHOST") == 1
+
+    def test_integrate_logs_summary_line(self, capsys):
+        """_integrate_forward_drift_watch must print a five-category summary line."""
+        from evolution_scanner import _integrate_forward_drift_watch
+
+        findings = [
+            _make_finding("R1", "a.py::L1", category="code_hygiene"),  # ISSUE_EXISTS
+            _make_finding("R2", "b.py::L2", category="code_hygiene"),  # GHOST (no reason)
+        ]
+        open_issues = [{"rule_id": "R1", "location": "a.py::L1"}]
+
+        _integrate_forward_drift_watch(
+            deduped=findings,
+            open_issues=open_issues,
+            suppressed_keys=set(),
+            issue_excluded_categories=set(),
+        )
+        captured = capsys.readouterr()
+        # 摘要行必须含五类状态名，即使计数为 0
+        assert "ISSUE_EXISTS=" in captured.out
+        assert "CLOSED_IN_WINDOW=" in captured.out
+        assert "SUPPRESSED=" in captured.out
+        assert "QUOTA_PENDING=" in captured.out
+        assert "GHOST=" in captured.out
+
+    def test_integrate_summary_line_zeros_when_all_have_issues(self, capsys):
+        """全部 finding 都有 issue 时，摘要行仍输出但 ISSUE_EXISTS=n 其余 =0。"""
+        from evolution_scanner import _integrate_forward_drift_watch
+
+        findings = [_make_finding("R1", "a.py::L1")]
+        open_issues = [{"rule_id": "R1", "location": "a.py::L1"}]
+
+        _integrate_forward_drift_watch(
+            deduped=findings,
+            open_issues=open_issues,
+            suppressed_keys=set(),
+            issue_excluded_categories=set(),
+        )
+        captured = capsys.readouterr()
+        assert "ISSUE_EXISTS=1" in captured.out
+        assert "GHOST=0" in captured.out

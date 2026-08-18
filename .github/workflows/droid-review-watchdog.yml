@@ -1,0 +1,109 @@
+# Droid Review Watchdog — 503 自愈 rerun（TD-503-01 v2）+ CI 失败取消 review
+#
+# 职责 1（self-heal-rerun）：droid-action 的 prep 阶段会调 GitHub API 做权限
+# 检查，2026-08-17/18 的持续 503 使 review 在本体开始前就 exit 1，每个 PR
+# 都要人工 rerun。
+#
+# 为什么用 workflow_run 而非 job 内自愈 step（第一版方案的 P0 教训）：
+#   1. rerun-failed-jobs API 要求目标 run 已处于终态。job 内 step 执行时本 run
+#      仍是 in_progress，API 必然拒绝（时序竞争，架构性不可行）。
+#   2. job 内自愈需要 pull_request_target 工作流持有 actions: write，扩大了
+#      可被 PR 事件触发的写权限面。workflow_run 只从默认分支取工作流定义，
+#      恶意 PR 无法篡改本文件，权限面最小化。
+#   3. workflow_run 在上游 run completed 后触发（本仓库 auto-merge.yml 的
+#      INFRA-212 模式），此时 run 已终态，rerun API 可用。
+#
+# 门禁语义：watchdog 只请求 rerun，不改变任何 check 结论。失败轮保持 failure
+# 结算（fail-closed），rerun 的那轮才是有效 review。真代码审查发现（P1/P2）
+# 不含 infra 瞬时日志特征，不会触发 rerun。
+#
+# 职责 2（cancel-on-ci-fail）：CI 失败时取消同 head SHA 上仍在跑的
+# droid-review（2026-08-19 PR #810 实证：并行设计下 CI 变红 review 不自停，
+# Qwen token 空烧）。官方模式：workflow_run conclusion 条件分支（文档
+# events-that-trigger-workflows#running-a-workflow-based-on-the-conclusion-…）。
+name: Droid Review Watchdog
+
+# 双触发源（workflow_run 的 workflows 列表是 OR 语义，官方文档
+# events-that-trigger-workflows#workflow_run）：
+# - "Droid Auto Review" completed → self-heal-rerun（503 自愈，见下）
+# - "CI" completed + conclusion=failure → cancel-on-ci-fail（取消烧钱的 review）
+on:
+  workflow_run:
+    workflows: ["Droid Auto Review", "CI"]
+    types: [completed]
+
+permissions:
+  actions: write
+
+concurrency:
+  group: droid-review-watchdog-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  self-heal-rerun:
+    # 仅处理 Droid Auto Review 的失败 run；run_attempt 限界防止 rerun 风暴（最多自动重试 2 次）
+    if: >
+      github.event.workflow_run.name == 'Droid Auto Review' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.run_attempt < 3
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Rerun droid-review on infra-transient failure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          set -eu
+          echo "Droid Auto Review run $RUN_ID (attempt $RUN_ATTEMPT) failed; checking logs..."
+          # 失败特征匹配：prep 阶段的 GitHub API 503/网络瞬时错误（2026-08-17/18 实测日志）
+          PATTERNS='permission - 503|Failed to check permissions|HttpError: No server is currently available|unexpected EOF|TLS handshake timeout'
+          JOB_LOGS=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --jq '.jobs[].id' | while read -r JOB_ID; do
+            gh api "repos/$REPO/actions/jobs/$JOB_ID/logs" 2>/dev/null || true
+          done)
+          if echo "$JOB_LOGS" | grep -qE "$PATTERNS"; then
+            echo "Infra-transient failure detected. Requesting rerun of failed jobs..."
+            if gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/rerun-failed-jobs"; then
+              echo "Rerun requested (upstream run is terminal; API accepts). The rerun carries the effective review."
+            else
+              echo "::warning::Rerun request failed (503 storm?). Manual rerun still possible; not bypassing gate."
+            fi
+          else
+            echo "Failure does not match infra-transient patterns — likely a real review finding or credential issue. No auto-rerun."
+          fi
+
+  cancel-on-ci-fail:
+    # CI（test/qa 门禁）失败 → 取消同 head SHA 上仍在跑的 droid-review。
+    # 背景（2026-08-19 PR #810 实证）：review 与 CI 并行设计下，CI 变红后
+    # review 不会自停，Qwen token 持续烧（单次上界 45min timeout）。本 job
+    # 补上状态机缺失的边：CI 红 → review 终止。合并门禁语义不变（ci-ok 仍
+    # 阻止合并；修复 push 后 droid-review 由 pull_request_target 重新触发）。
+    if: >
+      github.event.workflow_run.name == 'CI' &&
+      github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel in-progress droid-review on CI failure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -eu
+          echo "CI failed for $HEAD_SHA; cancelling in-progress Droid Auto Review runs..."
+          # 列出该 head SHA 上 in_progress/queued 的 Droid Auto Review run 并取消
+          RUNS=$(gh api "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&status=in_progress" --paginate --jq '.workflow_runs[] | select(.name == "Droid Auto Review") | .id')
+          QUEUED=$(gh api "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&status=queued" --paginate --jq '.workflow_runs[] | select(.name == "Droid Auto Review") | .id')
+          CANCELLED=0
+          for RUN_ID in $RUNS $QUEUED; do
+            if gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/cancel"; then
+              echo "Cancelled Droid Auto Review run $RUN_ID"
+              CANCELLED=$((CANCELLED + 1))
+            else
+              echo "::warning::Failed to cancel run $RUN_ID (may have just finished; harmless)."
+            fi
+          done
+          echo "Done. Cancelled $CANCELLED review run(s)."

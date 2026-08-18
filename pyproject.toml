@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "memory-core"
-version = "0.33.1"
+version = "0.34.0"
 description = "Independent memory hook core and gateway runtime."
 readme = "README.md"
 requires-python = "==3.12.*"
@@ -30,9 +30,9 @@ classifiers = [
 keywords = ["memory", "hooks", "project-management", "schema"]
 
 [project.urls]
-Homepage = "https://github.com/hdot123/memory"
-Repository = "https://github.com/hdot123/memory"
-"Bug Tracker" = "https://github.com/hdot123/memory/issues"
+Homepage = "https://github.com/hdot123-org/memory"
+Repository = "https://github.com/hdot123-org/memory"
+"Bug Tracker" = "https://github.com/hdot123-org/memory/issues"
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.0,<2.0"]

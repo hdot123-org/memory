@@ -1,10 +1,18 @@
 """Tests for scripts/check_pr_ref_consistency.py (VAL-GATE-201/202/204).
 
-TDD: all three test classes written BEFORE the script implementation.
+TDD: test classes written BEFORE the script implementation.
 Each test case maps to a validation contract assertion.
 
-Fixtures use real historical data fetched via `gh` read-only queries,
-stored as JSON fixtures in the test module.
+⚠️ FIXTURE DISCLOSURE (scrutiny 2026-08-18):
+All fixture data below is **synthetic** — constructed to replicate the
+structure of historical PR/issue data, NOT literal API response dumps.
+Reason: PR #729's actual `closingIssuesReferences` is structurally `[]`
+on the API level (GitHub's closing reference detection depends on branch
+head commit message at merge time, not PR body text). The PR-side
+interception logic can therefore only be replayed via fixture-form
+mocking. This is **disclosure, not fabrication** — the fixtures exercise
+the same regex/subset logic that would run against real API data; they
+just cannot be populated from a live `gh pr view` snapshot of #729.
 """
 import json
 import sys
@@ -12,12 +20,16 @@ from pathlib import Path
 from typing import Optional
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "check_pr_ref_consistency.py"
 
 
 # ---------------------------------------------------------------------------
-# Fixture data (real historical PRs/issues fetched via gh read-only)
+# Fixture data (synthetic samples replicating historical structure)
 # ---------------------------------------------------------------------------
+# Note: these are synthetic samples designed to replicate the structure of
+# historical PR/issue data, not literal API response dumps (see disclosure above).
 
 # PR #729 body: "Fixes INFRA-335" (the root cause mismatch)
 PR_729_BODY = """\
@@ -75,12 +87,25 @@ ISSUE_801_COMMENTS = "Another comment without any INFRA reference"
 
 
 def _mock_gh_pr_view(pr_number: int, body: str, closing_refs: list[int]) -> MagicMock:
-    """Create a mock subprocess.CompletedProcess for gh pr view."""
+    """Create a mock subprocess.CompletedProcess for gh api graphql.
+
+    Mirrors the GraphQL response shape of fetch_pr_data(): data > repository >
+    pullRequest > closingIssuesReferences { nodes: [...] }. The guard must
+    flatten this to the flat node list expected by main().
+    """
     result = MagicMock()
     result.returncode = 0
     data = {
-        "body": body,
-        "closingIssuesReferences": [{"number": n} for n in closing_refs],
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "body": body,
+                    "closingIssuesReferences": {
+                        "nodes": [{"number": n} for n in closing_refs]
+                    },
+                }
+            }
+        }
     }
     result.stdout = json.dumps(data)
     result.stderr = ""
@@ -124,7 +149,9 @@ def _make_side_effect(
 
     def side_effect(args, **kwargs):
         cmd = " ".join(args)
-        if "pr view" in cmd:
+        if "remote get-url" in cmd:
+            return _mock_ok("https://github.com/hdot123-org/memory.git")
+        if "pr view" in cmd or "graphql" in cmd:
             return _mock_gh_pr_view(pr_number, pr_body, closing_refs)
         for issue_num, comments_text in issue_comments.items():
             if f"issue view {issue_num}" in cmd:
@@ -299,3 +326,160 @@ class TestSubsetDirection:
 
         exit_code, _ = _run_check(111, side_effect)
         assert exit_code == 0, "No closing refs should pass"
+
+
+# ===========================================================================
+# GitHub 关键词变体扩展（scrutiny 2026-08-18）
+# ===========================================================================
+
+class TestGitHubKeywordVariants:
+    """GitHub 支持 9 个等价的关闭关键词变体。
+
+    完整的关键词列表（大小写不敏感）：
+    - close, closes, closed
+    - fix, fixes, fixed
+    - resolve, resolves, resolved
+
+    所有变体都必须被正确识别和提取。
+    """
+
+    @pytest.mark.parametrize("keyword", [
+        "close", "closes", "closed",
+        "fix", "fixes", "fixed",
+        "resolve", "resolves", "resolved",
+    ])
+    def test_all_keyword_variants_recognized(self, keyword):
+        """所有 9 个关键词变体都应该被正确识别（red→green）。
+
+        这是 scrutiny 发现的关键缺失：PR #802 只实现了 fixes/closes/resolves，
+        但 GitHub 实际支持所有 9 个变体（包括单数和过去式）。
+        """
+        body = f"Some changes\n\n{keyword.capitalize()} INFRA-337"
+
+        side_effect = _make_side_effect(
+            600,
+            body,
+            [711],
+            {711: ISSUE_711_COMMENTS},
+        )
+
+        exit_code, _ = _run_check(600, side_effect)
+        assert exit_code == 0, f"Keyword variant '{keyword}' should be recognized"
+
+    def test_mixed_keyword_variants_in_single_pr(self):
+        """单个 PR body 中可以混合使用不同的关键词变体（red→green）。
+
+        例如：第一个 issue 用 'close'，第二个用 'fixed'，第三个用 'resolves'。
+        """
+        body = """## Changes
+
+close INFRA-337
+fixed INFRA-342
+resolves INFRA-345"""
+
+        side_effect = _make_side_effect(
+            601,
+            body,
+            [711, 718, 722],
+            {
+                711: ISSUE_711_COMMENTS,
+                718: ISSUE_718_COMMENTS,
+                722: ISSUE_722_COMMENTS,
+            },
+        )
+
+        exit_code, _ = _run_check(601, side_effect)
+        assert exit_code == 0, "Mixed keyword variants should all be extracted"
+
+    def test_past_tense_singular_forms(self):
+        """过去式单数形式必须被识别（closed/fixed/resolved）（red→green）。
+
+        这是 PR #802 的盲区：只实现了复数现在式（fixes/closes/resolves），
+        但实际使用中过去式单数形式同样常见。
+        """
+        body = """## 修复记录
+
+closed INFRA-337
+fixed INFRA-342
+resolved INFRA-345"""
+
+        side_effect = _make_side_effect(
+            602,
+            body,
+            [711, 718, 722],
+            {
+                711: ISSUE_711_COMMENTS,
+                718: ISSUE_718_COMMENTS,
+                722: ISSUE_722_COMMENTS,
+            },
+        )
+
+        exit_code, _ = _run_check(602, side_effect)
+        assert exit_code == 0, "Past tense singular forms must be recognized"
+
+    def test_singular_imperative_forms(self):
+        """单数祈使句形式必须被识别（close/fix/resolve）（red→green）。
+
+        例如：用户写 "close INFRA-100" 而非 "closes INFRA-100"。
+        """
+        body = """## 修复
+
+close INFRA-337
+fix INFRA-342
+resolve INFRA-345"""
+
+        side_effect = _make_side_effect(
+            603,
+            body,
+            [711, 718, 722],
+            {
+                711: ISSUE_711_COMMENTS,
+                718: ISSUE_718_COMMENTS,
+                722: ISSUE_722_COMMENTS,
+            },
+        )
+
+        exit_code, _ = _run_check(603, side_effect)
+        assert exit_code == 0, "Singular imperative forms must be recognized"
+
+
+# ===========================================================================
+# gh-version independence (PR #797 regression)
+# ===========================================================================
+
+class TestGhVersionIndependence:
+    """PR #797 regression: self-hosted runner gh < 2.67 rejects
+    `gh pr view --json closingIssuesReferences` with "Unknown JSON field".
+    The guard must fetch closing refs via `gh api graphql` instead
+    (server-side field resolution, gh-version independent).
+    """
+
+    def test_does_not_use_gh_pr_view_field(self):
+        """Must not call `gh pr view --json ...closingIssuesReferences...`."""
+        side_effect = _make_side_effect(
+            729, PR_729_BODY, PR_729_CLOSING_REFS, {711: ISSUE_711_COMMENTS},
+        )
+        _, mock_run = _run_check(729, side_effect)
+        for call in mock_run.call_args_list:
+            args = call[0][0] if call[0] else call[1].get("args", [])
+            cmd_str = " ".join(args) if isinstance(args, list) else str(args)
+            if "pr view" in cmd_str:
+                assert "closingIssuesReferences" not in cmd_str, (
+                    f"gh pr view must not request closingIssuesReferences "
+                    f"(unsupported on gh < 2.67): {cmd_str}"
+                )
+
+    def test_fetches_via_graphql(self):
+        """PR data must be fetched via `gh api graphql`."""
+        side_effect = _make_side_effect(
+            729, PR_729_BODY, PR_729_CLOSING_REFS, {711: ISSUE_711_COMMENTS},
+        )
+        _, mock_run = _run_check(729, side_effect)
+        graphql_calls = [
+            " ".join(call[0][0]) for call in mock_run.call_args_list
+            if "graphql" in " ".join(call[0][0])
+        ]
+        assert graphql_calls, "Expected gh api graphql call for PR data"
+        assert any("repository" in c and "pullRequest" in c for c in graphql_calls), (
+            "GraphQL query must target repository.pullRequest"
+        )
