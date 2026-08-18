@@ -9519,7 +9519,7 @@ def test_dup_004_main_ordering_peel_before_dedup():
     with patch("evolution_scanner.subprocess.run", side_effect=mock_subprocess_run), \
          patch("evolution_scanner.load_history", return_value=history_data), \
          patch("evolution_scanner.load_config", return_value={
-             "audit_tools": [],  # No audit tools needed for this test
+             "audit_tools": [{"name": "dummy_tool"}],  # Need at least one tool so run_audit_tool gets called in main()
              "severity_order": ["critical", "warning", "info"],
              "dedup_label": "evolution-found",
              "isolation_threshold": 5,
@@ -9547,16 +9547,37 @@ def test_dup_004_main_ordering_peel_before_dedup():
          patch("evolution_scanner.dedup_intra_tick", side_effect=lambda x: x):
         scanner_main()
 
-    # Verify that the reopen search (closed issue list) was called
-    # If peel were removed, the finding would be deduped and no closed-list search for reopen would happen
-    closed_search_calls = [
+    # VAL-DUP-004 mutation sensitivity: must check for actual reopen/create calls
+    # that only happen when peel is working. Without peel, the finding gets deduped
+    # and never reaches _process_findings_with_reopen.
+    #
+    # Check for reopen-specific calls: 'gh issue list --search label:evolution-found --state closed --limit 200'
+    # This query is ONLY issued by _reopen_closed_issue() during the reopen attempt,
+    # NOT by the normal get_open_issues() flow.
+    reopen_specific_calls = [
         cmd for cmd in call_log
         if isinstance(cmd, list) and "gh" in cmd[0]
-        and "list" in cmd and "--state" in cmd and "closed" in cmd
+        and "issue" in cmd and "list" in cmd and "--search" in cmd
+        and "label:evolution-found" in cmd and "--state" in cmd and "closed" in cmd
+        and "--limit" in cmd and "200" in cmd
     ]
-    assert len(closed_search_calls) > 0, (
+
+    # Alternatively, check for create calls which happen in the fallback path
+    create_calls = [
+        cmd for cmd in call_log
+        if isinstance(cmd, list) and "gh" in cmd[0]
+        and "issue" in cmd and "create" in cmd
+    ]
+
+    # At least one of these must happen for peel to be working:
+    # - reopen-specific search (label:evolution-found --state closed --limit 200)
+    # - create call (fallback when reopen fails or no match)
+    assert len(reopen_specific_calls) > 0 or len(create_calls) > 0, (
         "main() must call _peel_critical_regressions before deduplicate() so that "
-        "critical regressions reach _process_findings_with_reopen and trigger reopen attempt. "
-        "If this test fails, peel was likely removed from main()."
+        "critical regressions reach _process_findings_with_reopen. "
+        "Mutation test: if peel were removed from main(), the finding would be deduped "
+        "and neither reopen-specific search nor create would occur. "
+        f"Found {len(reopen_specific_calls)} reopen-specific calls and {len(create_calls)} create calls. "
+        "If this assertion fails, peel was likely removed from main()."
     )
 
