@@ -1093,9 +1093,6 @@ def reconcile_in_progress(dedup_label: str) -> int:
 # VAL-DRF-002/003: Reverse Drift Watch - Orphan Issue Classification
 # ============================================================================
 
-from dataclasses import dataclass
-
-
 @dataclass
 class OrphanIssueClassification:
     """Structured classification of an orphan issue (open issue not in findings).
