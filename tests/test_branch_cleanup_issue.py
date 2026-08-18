@@ -520,7 +520,7 @@ def test_double_run_idempotent(tmp_path: Path):
     # Second run with same deletion - should update (not create new issue)
     rc2, out2, _ = harness.run_script(deleted=["old-branch"])
     assert rc2 == 0 and "issue_action=updated" in out2
-    
+
     # Check that only ONE issue was created total (from the first run)
     calls = harness.read_calls()
     create_calls = calls_matching(calls, ["issue", "create"])
