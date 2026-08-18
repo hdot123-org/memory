@@ -67,7 +67,7 @@ jobs:
           python scripts/qa/coverage_gap_finder.py --target 80 --json qa-coverage-results.json || true
       - name: Run pytest with coverage (gated at current threshold)
         run: |
-          python -m pytest tests/ -n 8 --cov=memory_core --cov-report=xml --cov-branch --cov-fail-under=15
+          python -m pytest tests/ -n 6 --cov=memory_core --cov-report=xml --cov-branch --cov-fail-under=15
       - name: Upload coverage XML
         if: always()
         uses: actions/upload-artifact@v7
