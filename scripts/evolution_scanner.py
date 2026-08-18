@@ -875,6 +875,46 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
         print(f"[evolution] Warning: check_isolation failed: {e}")
 
 
+def _compute_quota_exhausted(
+    deduped: list,
+    config: dict,
+    gh_failed: bool,
+) -> dict[str, bool]:
+    """P1 修复: 预计算 quota_exhausted（与创建路径同源：每类别配额 + 去重后计数）。
+
+    Args:
+        deduped: Post-dedup findings list (from deduplicate())
+        config: Scanner config dict with quota keys
+        gh_failed: True if GitHub API was unavailable
+
+    Returns:
+        Dict mapping category -> True when that category exceeded its quota.
+    """
+    quota_exhausted: dict[str, bool] = {}
+    if gh_failed or not deduped:
+        return quota_exhausted
+
+    category_counts: dict[str, int] = {}
+    for f in deduped:
+        if f.category not in ISSUE_EXCLUDED_CATEGORIES:
+            category_counts[f.category] = category_counts.get(f.category, 0) + 1
+
+    for cat, count in category_counts.items():
+        # P1-1: 使用每类别配额（与创建路径 _process_findings_with_reopen 同源）
+        if cat == "evolution_self_audit":
+            quota = config.get("max_self_audit_issues_per_tick")
+        elif cat == "code_hygiene":
+            quota = config.get("max_code_hygiene_issues_per_tick")
+        else:
+            quota = config.get("max_issues_per_tick")
+
+        # P1-2: 使用去重后的 count（不是 all_findings）
+        if quota is not None and quota > 0 and count > quota:
+            quota_exhausted[cat] = True
+
+    return quota_exhausted
+
+
 def _integrate_forward_drift_watch(
     deduped: list[Finding],
     open_issues: list[dict[str, Any]],
@@ -1120,29 +1160,10 @@ def main() -> None:
     # P1 修复: quota_exhausted 从去重后的 deduped 列表 + 每类别配额计算（与创建路径同源）
     # Suppress-suppressed findings are excluded via suppressed_keys param;
     # issue_excluded_categories filters daily_audit etc.
-    
+
     # P1: 预计算 quota_exhausted（使用去重后的 deduped 列表 + 每类别配额）
-    # 只有当 deduped 非空（即 try 块成功执行）时才计算
-    quota_exhausted: dict[str, bool] = {}
-    if not gh_failed and deduped:
-        category_counts: dict[str, int] = {}
-        for f in deduped:
-            if f.category not in ISSUE_EXCLUDED_CATEGORIES:
-                category_counts[f.category] = category_counts.get(f.category, 0) + 1
-        
-        for cat, count in category_counts.items():
-            # P1-1: 使用每类别配额（与创建路径 _process_findings_with_reopen 同源）
-            if cat == "evolution_self_audit":
-                quota = config.get("max_self_audit_issues_per_tick")
-            elif cat == "code_hygiene":
-                quota = config.get("max_code_hygiene_issues_per_tick")
-            else:
-                quota = config.get("max_issues_per_tick")
-            
-            # P1-2: 使用去重后的 count（不是 all_findings）
-            if quota is not None and quota > 0 and count > quota:
-                quota_exhausted[cat] = True
-    
+    quota_exhausted = _compute_quota_exhausted(deduped, config, gh_failed)
+
     _integrate_forward_drift_watch(
         deduped=all_findings,
         open_issues=open_issues,
