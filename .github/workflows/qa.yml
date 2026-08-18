@@ -38,7 +38,14 @@ jobs:
     runs-on: [self-hosted, pve-linux]
     steps:
       - uses: actions/checkout@v4
+      # 自建 runner：系统已预装 Python 3.12 + pytest 全家桶，跳过 setup-python 下载。
+      - name: Use system Python (self-hosted)
+        if: runner.os == 'Linux' && runner.name == 'pve-runner-01'
+        run: |
+          python3 --version
+          echo "/usr/bin" >> "$GITHUB_PATH"
       - uses: actions/setup-python@v7
+        if: runner.os != 'Linux' || runner.name != 'pve-runner-01'
         with:
           python-version: "3.12"
           cache: 'pip'

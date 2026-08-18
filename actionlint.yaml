@@ -1,0 +1,6 @@
+# actionlint 配置：声明自建 runner 的自定义 label
+# https://github.com/rhysd/actionlint/blob/main/docs/configs.md
+labels:
+  pve-linux:
+    # org hdot123-org 的自建 runner（ce-01）
+    - self-hosted
