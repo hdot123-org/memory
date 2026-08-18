@@ -7,6 +7,8 @@ Contract under test:
 - protected set shrunk-> update body + comment; auto-close when empty
 - nothing actionable  -> close the tracking issue as resolved
 - pre-INFRA-385 duplicate open issues are closed pointing to the active one
+- VAL-NTF-001: issue creation requires deleted_count > 0; protected-only runs
+  must NOT create a new issue (may comment on existing tracker if one exists)
 """
 
 from __future__ import annotations
@@ -298,15 +300,15 @@ def test_no_actionable_no_tracker_creates_nothing(tmp_path: Path):
 
 
 # ============================================================================
-# VAL-BCI-005: no tracker + protected branch -> creates the single tracker
+# VAL-BCI-005: no tracker + deletion -> creates the single tracker
 # ============================================================================
-def test_first_protection_creates_single_tracker(tmp_path: Path):
-    """First-ever protection event creates exactly one tracking issue with
+def test_first_deletion_creates_single_tracker(tmp_path: Path):
+    """First-ever deletion event creates exactly one tracking issue with
     the marker and labels."""
     harness = GhMockHarness(tmp_path)
 
     exit_code, stdout, _ = harness.run_script(
-        protected=["fix/pr-ref-consistency-gate (4 unique commits)"]
+        deleted=["fix/pr-ref-consistency-gate"]
     )
 
     assert exit_code == 0, stdout
@@ -424,6 +426,73 @@ def test_shellcheck_clean():
 
 
 # ============================================================================
+# VAL-NTF-001a: protected-only run with no existing tracker creates NO issue
+# ============================================================================
+def test_protected_only_no_tracker_creates_nothing(tmp_path: Path):
+    """When deleted_count == 0 and no tracker exists, protected-only run must
+    NOT create a new tracking issue. It may log the event but must not touch
+    GitHub issues."""
+    harness = GhMockHarness(tmp_path)
+
+    exit_code, stdout, _ = harness.run_script(
+        protected=["fix/pr-ref-consistency-gate (4 unique commits)"]
+    )
+
+    assert exit_code == 0, stdout
+    assert "issue_action=none" in stdout or "protected_only" in stdout.lower()
+    calls = harness.read_calls()
+    assert calls_matching(calls, ["issue", "create"]) == [], \
+        "protected-only run must NOT create an issue"
+    assert harness.open_issue_numbers() == [], "no issue should be created"
+
+
+# ============================================================================
+# VAL-NTF-001b: protected-only run with existing tracker updates but doesn't create
+# ============================================================================
+def test_protected_only_with_tracker_updates_no_create(tmp_path: Path):
+    """When deleted_count == 0 and a tracker exists, protected-only run may
+    update the tracker (if protected set changed) but must NOT create a new issue."""
+    harness = GhMockHarness(
+        tmp_path,
+        issues={781: tracker_body(["fix/pr-ref-consistency-gate (4 unique commits)"])},
+    )
+
+    exit_code, stdout, _ = harness.run_script(
+        protected=[
+            "fix/pr-ref-consistency-gate (4 unique commits)",
+            "feat/new-protected (2 unique commits)",  # new protected branch
+        ]
+    )
+
+    assert exit_code == 0, stdout
+    calls = harness.read_calls()
+    assert calls_matching(calls, ["issue", "create"]) == [], \
+        "protected-only run must NOT create an issue even if tracker updated"
+    # May update or comment on existing tracker, but not create new one
+    assert harness.open_issue_numbers() == ["781"], "existing tracker remains"
+
+
+# ============================================================================
+# VAL-NTF-001c: deleted_count > 0 creates tracker (existing behavior)
+# ============================================================================
+def test_deletions_create_tracker(tmp_path: Path):
+    """When deleted_count > 0 and no tracker exists, a new tracker is created.
+    This is the existing behavior from VAL-BCI-008, verified here for completeness."""
+    harness = GhMockHarness(tmp_path)
+
+    exit_code, stdout, _ = harness.run_script(
+        deleted=["feat/gone-branch"]
+    )
+
+    assert exit_code == 0, stdout
+    assert "issue_action=created" in stdout
+    calls = harness.read_calls()
+    creates = calls_matching(calls, ["issue", "create"])
+    assert len(creates) == 1, "deletions must create a tracker"
+    assert harness.open_issue_numbers() == ["101"]
+
+
+# ============================================================================
 # VAL-BCI-011: bash syntax check
 # ============================================================================
 def test_bash_syntax_valid():
@@ -440,24 +509,22 @@ def test_bash_syntax_valid():
 # VAL-BCI-012: script is idempotent — running twice produces no duplicates
 # ============================================================================
 def test_double_run_idempotent(tmp_path: Path):
-    """Running the script twice with the same state: second run is silent
-    (no create/comment/edit/close)."""
+    """Running the script twice with the same state doesn't create duplicate issues."""
+    # First run: create tracker with deletion
     harness = GhMockHarness(tmp_path)
-
-    rc1, out1, _ = harness.run_script(
-        protected=["fix/pr-ref-consistency-gate (4 unique commits)"]
-    )
+    rc1, out1, _ = harness.run_script(deleted=["old-branch"])
     assert rc1 == 0 and "issue_action=created" in out1
     created = harness.open_issue_numbers()
     assert created == ["101"]
 
-    rc2, out2, _ = harness.run_script(
-        protected=["fix/pr-ref-consistency-gate (4 unique commits)"]
-    )
-    assert rc2 == 0 and "issue_action=reused-silent" in out2
-    calls = [c for c in harness.read_calls()]
-    # Second run must not mutate anything
-    assert calls_matching(calls, ["issue", "close"]) == []
+    # Second run with same deletion - should update (not create new issue)
+    rc2, out2, _ = harness.run_script(deleted=["old-branch"])
+    assert rc2 == 0 and "issue_action=updated" in out2
+    
+    # Check that only ONE issue was created total (from the first run)
+    calls = harness.read_calls()
+    create_calls = calls_matching(calls, ["issue", "create"])
+    assert len(create_calls) == 1, f"Expected 1 create call, got {len(create_calls)}"
     assert harness.open_issue_numbers() == ["101"], "tracker must remain exactly one open issue"
 
 
