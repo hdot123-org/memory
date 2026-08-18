@@ -1105,6 +1105,15 @@ def main() -> None:
     # GAP-G: auto_close runs AFTER P1-2/P2-A hard exits so failed ticks don't close issues.
     auto_close_resolved(all_findings, config["dedup_label"], failed_categories, history_path)
 
+    # VAL-DRF-002/003: Reverse drift watch - classify and remediate orphan issues
+    # D1: For open issues not in current findings, classify based on evidence and take action
+    try:
+        from evolution_utils import reverse_drift_watch
+        # Reuse already-fetched open_issues from earlier in main() (incremental)
+        reverse_drift_watch(all_findings, open_issues, history_path)
+    except Exception as e:
+        print(f"[evolution] Warning: reverse_drift_watch failed: {e}", file=sys.stderr)
+
     # GAP-E: Reconciliation - check for stuck issues (advisory only)
     reconcile_in_progress(config["dedup_label"])
 
