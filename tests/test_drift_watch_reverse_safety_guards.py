@@ -17,8 +17,6 @@ from unittest.mock import MagicMock, patch
 scripts_dir = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(scripts_dir))
 
-from evolution_scanner import Finding
-
 
 def _make_issue(number: int, rule_id: str, location: str,
                 linear_linkback: str = "", deadlock_sentinel: str = "",
