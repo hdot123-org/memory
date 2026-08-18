@@ -21,6 +21,7 @@ from evolution_adapters import TOOL_TO_CATEGORIES, sanitize_structured_field, sa
 from evolution_utils import (
     _parse_issue_fields,
     auto_close_resolved,
+    close_expired_notifications,
     dedup_intra_tick,
     load_history,
     reconcile_in_progress,
@@ -896,6 +897,14 @@ def main() -> None:
         suppressed_keys=suppressed_keys,
         issue_excluded_categories=ISSUE_EXCLUDED_CATEGORIES,
     )
+
+    # VAL-NTF-002: Close notification issues that exceeded TTL
+    try:
+        closed_count = close_expired_notifications()
+        if closed_count > 0:
+            print(f"[evolution] Closed {closed_count} expired notification issues")
+    except Exception as e:
+        print(f"[evolution] Warning: close_expired_notifications failed: {e}")
 
 
 if __name__ == "__main__":
