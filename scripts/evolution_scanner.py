@@ -339,6 +339,7 @@ def _peel_critical_regressions(
 
     Separate findings into two groups:
     1. peeled: critical severity + key in resolved_keys (regression findings)
+       + category NOT in ISSUE_EXCLUDED_CATEGORIES (INFRA-265/268: daily_audit etc.)
     2. remaining: everything else (will go through normal dedup)
 
     This prevents critical regressions from being swallowed by deduplicate()
@@ -353,11 +354,17 @@ def _peel_critical_regressions(
     """
     peeled = [
         f for f in findings
-        if f.severity == "critical" and (f.rule_id, f.location) in resolved_keys
+        if f.severity == "critical"
+        and (f.rule_id, f.location) in resolved_keys
+        and f.category not in ISSUE_EXCLUDED_CATEGORIES
     ]
     remaining = [
         f for f in findings
-        if not (f.severity == "critical" and (f.rule_id, f.location) in resolved_keys)
+        if not (
+            f.severity == "critical"
+            and (f.rule_id, f.location) in resolved_keys
+            and f.category not in ISSUE_EXCLUDED_CATEGORIES
+        )
     ]
     return peeled, remaining
 
@@ -492,7 +499,7 @@ def _reopen_closed_issue(rule_id: str, location: str, dedup_label: str, history_
 
 def _process_findings_with_reopen(
     findings: list[Finding], quota: int, resolved_keys: set[tuple[str, str]],
-    dedup_label: str, history_path: Path,
+    dedup_label: str, history_path: Path, open_issues: list[dict[str, Any]] | None = None,
 ) -> int:
     """Process findings: try reopen for resolved regressions, else create new issue.
 
@@ -500,9 +507,28 @@ def _process_findings_with_reopen(
     Only reopen limit (3 times) is suppressed (must log).
     Never silently continue on failure.
 
+    VAL-DUP-004 FIX: Before creating a new issue in the fallback path, check if
+    an OPEN issue with the same (rule_id, location) key already exists in open_issues.
+    If so, skip create to prevent duplicate issue creation loops.
+
+    Args:
+        findings: List of findings to process
+        quota: Maximum number of issues to create
+        resolved_keys: Set of (rule_id, location) tuples that were previously resolved
+        dedup_label: Label for deduplication
+        history_path: Path to history JSON file
+        open_issues: List of currently open issues (optional, for duplicate guard)
+
     Returns the count of issues created (reopened and suppressed issues are not counted).
     """
     created = 0
+    # Build a set of open issue keys for fast lookup
+    open_issue_keys = set()
+    if open_issues:
+        for issue in open_issues:
+            if isinstance(issue, dict) and "rule_id" in issue and "location" in issue:
+                open_issue_keys.add((issue["rule_id"], issue["location"]))
+
     for f in findings[:quota]:
         if f.severity == "critical" and (f.rule_id, f.location) in resolved_keys:
             if _reopen_closed_issue(f.rule_id, f.location, dedup_label, history_path):
@@ -511,6 +537,11 @@ def _process_findings_with_reopen(
             if _reopen_limit_reached(f.rule_id, f.location, history_path):
                 print(f"[evolution] Reopen limit reached (3 times) for {f.rule_id} @ {f.location}, "
                       f"suppressing to avoid churn loop")
+                continue
+            # VAL-DUP-004 FIX: Check if an OPEN issue already exists before creating
+            if (f.rule_id, f.location) in open_issue_keys:
+                print(f"[evolution] Open issue already exists for {f.rule_id} @ {f.location}, "
+                      f"skipping duplicate create")
                 continue
             # Genuine failure → fallback to create new issue
             print(f"[evolution] Reopen failed for {f.rule_id} @ {f.location}, "
@@ -887,7 +918,7 @@ def main() -> None:
         if critical_regressions:
             issues_created += _process_findings_with_reopen(
                 critical_regressions, config["max_issues_per_tick"], _resolved_keys,
-                config["dedup_label"], history_path,
+                config["dedup_label"], history_path, open_issues,
             )
 
         # Then deduplicate and process remaining findings
