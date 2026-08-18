@@ -6743,12 +6743,16 @@ def test_write_monitor_heartbeat_unique_tmp_no_concurrent_race(tmp_path):
 
     monitor_path = tmp_path / "monitor_heartbeat.json"
 
-    def _write(_: int) -> None:
-        with patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path):
+    # patch 必须在线程池外只打一次：mock.patch 的 enter/exit 非线程安全，
+    # 多线程各自进出 with patch(...) 会互相恢复模块属性，导致部分线程
+    # 读到未打补丁的默认 MONITOR_HEARTBEAT_PATH（相对路径）而误报失败。
+    # 线程内只调用被测函数，才能专测并发原子写（pid+uuid4 临时名）本身。
+    with patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path):
+        def _write(_: int) -> None:
             write_monitor_heartbeat(anomalies=0)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
-        list(pool.map(_write, range(32)))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(_write, range(32)))
 
     data = json.loads(monitor_path.read_text())
     assert data["status"] == "ok"
