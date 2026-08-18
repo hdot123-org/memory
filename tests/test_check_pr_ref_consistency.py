@@ -483,3 +483,133 @@ class TestGhVersionIndependence:
         assert any("repository" in c and "pullRequest" in c for c in graphql_calls), (
             "GraphQL query must target repository.pullRequest"
         )
+
+
+# ===========================================================================
+# VAL-GATE-205 (INFRA-401): comma-separated INFRA lists
+# Ported from the closed-unmerged PR #806 (INFRA-398); the script-side fix
+# (comma-list extraction in the keyword regex) landed on main via PR #807.
+# ===========================================================================
+
+class TestCommaSeparatedLists:
+    """逗号分隔的 INFRA 列表必须全部提取（源自被弃置的 PR #802/#806）。
+
+    GitHub 对 "Fixes INFRA-100, INFRA-200" 的处理与分行写法等价，
+    检查脚本的提取逻辑也必须一致，否则合法 PR 会被误判为 FAIL。
+    """
+
+    def test_comma_separated_fixes(self):
+        """'Fixes INFRA-337, INFRA-342, INFRA-345' 一行覆盖全部 linkback → 通过。"""
+        body = "## 修复\n\n一次修复三个 finding。\n\nFixes INFRA-337, INFRA-342, INFRA-345"
+
+        side_effect = _make_side_effect(
+            604,
+            body,
+            [711, 718, 722],
+            {
+                711: ISSUE_711_COMMENTS,
+                718: ISSUE_718_COMMENTS,
+                722: ISSUE_722_COMMENTS,
+            },
+        )
+
+        exit_code, _ = _run_check(604, side_effect)
+        assert exit_code == 0, "Comma-separated Fixes list must extract every ID"
+
+    def test_comma_separated_with_keyword_variants(self):
+        """任意关键词变体后的逗号列表同样生效（如 'resolves INFRA-337, INFRA-342'）。"""
+        body = "## 修复\n\nresolves INFRA-337, INFRA-342, INFRA-345"
+
+        side_effect = _make_side_effect(
+            605,
+            body,
+            [711, 718, 722],
+            {
+                711: ISSUE_711_COMMENTS,
+                718: ISSUE_718_COMMENTS,
+                722: ISSUE_722_COMMENTS,
+            },
+        )
+
+        exit_code, _ = _run_check(605, side_effect)
+        assert exit_code == 0, "Comma-separated list after any keyword variant must work"
+
+    def test_partial_comma_list_still_fails(self):
+        """逗号列表只覆盖部分 linkback 时仍必须 FAIL（提取不能偷懒丢号）。"""
+        body = "## 修复\n\nFixes INFRA-337, INFRA-342"  # 缺 INFRA-345
+
+        side_effect = _make_side_effect(
+            606,
+            body,
+            [711, 718, 722],
+            {
+                711: ISSUE_711_COMMENTS,
+                718: ISSUE_718_COMMENTS,
+                722: ISSUE_722_COMMENTS,
+            },
+        )
+
+        exit_code, _ = _run_check(606, side_effect)
+        assert exit_code == 1, "Partial comma list missing a linkback ID must fail"
+
+
+# ===========================================================================
+# VAL-GATE-206 (INFRA-401): None PR body defense
+# Ported from the closed-unmerged PR #806 (INFRA-398); the script-side fix
+# (`pr_data.get("body") or ""`) landed on main via PR #807.
+# ===========================================================================
+
+class TestNoneBodyDefense:
+    """PR body 为 null（GitHub API 对空 body 返回 null）不得触发 TypeError。
+
+    INFRA-398/INFRA-401：源自被弃置的 PR #802/#806 的 None body 防御。
+    Mock 形状适配 main 的 `gh api graphql` 取数路径（PR #797）。
+    """
+
+    def _none_body_pr_view(self, closing_refs: list[int]) -> MagicMock:
+        """GraphQL 响应中 body 为 null 的 mock（空 body 的真实 API 形状）。"""
+        result = MagicMock()
+        result.returncode = 0
+        data = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "body": None,
+                        "closingIssuesReferences": {
+                            "nodes": [{"number": n} for n in closing_refs]
+                        },
+                    }
+                }
+            }
+        }
+        result.stdout = json.dumps(data)
+        result.stderr = ""
+        return result
+
+    def test_none_body_with_closing_refs(self):
+        """body=null 且有 closing refs（无 linkback）→ 退出 0 而非崩溃。"""
+        def side_effect(args, **kwargs):
+            cmd = " ".join(args)
+            if "remote get-url" in cmd:
+                return _mock_ok("https://github.com/hdot123-org/memory.git")
+            if "graphql" in cmd:
+                return self._none_body_pr_view([711])
+            return _mock_ok()
+
+        exit_code, _ = _run_check(607, side_effect)
+        assert exit_code == 0, "None body with closing refs (no linkback) must exit 0, not crash"
+
+    def test_none_body_with_linkback_fails_correctly(self):
+        """body=null 且引用 issue 带 linkback → 正常 FAIL（exit 1），而非 TypeError。"""
+        def side_effect(args, **kwargs):
+            cmd = " ".join(args)
+            if "remote get-url" in cmd:
+                return _mock_ok("https://github.com/hdot123-org/memory.git")
+            if "graphql" in cmd:
+                return self._none_body_pr_view([711])
+            if "issue view 711" in cmd:
+                return _mock_gh_issue_comments(ISSUE_711_COMMENTS)
+            return _mock_ok()
+
+        exit_code, _ = _run_check(608, side_effect)
+        assert exit_code == 1, "None body with linkback must fail cleanly (empty Fixes set)"

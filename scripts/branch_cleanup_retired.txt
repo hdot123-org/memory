@@ -18,3 +18,5 @@
 
 factory/infra-382-dedup-side-effect | INFRA-388 | PR #775 closed unmerged; dedup superseded by the _make_side_effect factory from PR #778 (INFRA-384), Linear INFRA-382 已完成
 feat/pr-ref-gate-ci-wiring | INFRA-391 | PR #773 closed unmerged; job-level pr-ref-consistency-check wiring superseded by the step-level wiring from PR #771 (INFRA-380, merged 2026-08-17), hygiene test enforces step-level only; branch tip already merged into main content-wise via 96e083a merge-base
+fix/pr-ref-regex-robustness | INFRA-401 | PR #802 closed unmerged (superseded by #803's 9-variant regex); remaining fixes (comma-separated INFRA list, None body defense) landed on main via PR #807 (debc617, INFRA-399), regression tests re-landed via the INFRA-401 PR — INFRA-398's PR #806 conflicted with #807 and was closed
+fix/infra-398-branch-cleanup-tracking | INFRA-401 | PR #806 closed unmerged; its comma-list/None-body fixes + retirement entry were superseded by PR #807 (fixes) and this PR (retirement entry + regression tests), merge-tree containment check cannot see cross-implementation equivalence
