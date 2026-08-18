@@ -17,16 +17,8 @@ sys.path.insert(0, str(scripts_dir))
 
 from evolution_scanner import Finding
 
-
-def _make_issue(number: int, rule_id: str, location: str,
-                linear_linkback: str = "", deadlock_sentinel: str = "") -> dict:
-    """Create a test issue with optional Linear linkback and deadlock sentinel."""
-    body = f"**Rule ID**: {rule_id}\n**Location**: {location}"
-    if linear_linkback:
-        body += f"\n<!-- linear-linkback {linear_linkback} -->"
-    if deadlock_sentinel:
-        body += f"\n{deadlock_sentinel}"
-    return {"number": number, "body": body}
+# INFRA-407: 共享 helper 去重（原本地 _make_issue，89% AST 相似度）
+from tests.drift_watch_helpers import make_issue as _make_issue
 
 
 def test_val_drf_002_orphan_with_merge_evidence_closes():
