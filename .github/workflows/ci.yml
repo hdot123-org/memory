@@ -31,6 +31,7 @@ jobs:
         python-version: ["3.12"]
     env:
       PIP_BREAK_SYSTEM_PACKAGES: 1
+      PATH: ${{ env.PATH }}:/home/runner/.local/bin
     steps:
       - uses: actions/checkout@v4
       # 自建 runner：系统已预装 Python 3.12 + 全套工具链（pytest/ruff/mypy/shellcheck/actionlint），
