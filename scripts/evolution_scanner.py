@@ -44,6 +44,14 @@ class Finding:
 # they belong to the infrastructure ops repo, not the code repository's issue board.
 ISSUE_EXCLUDED_CATEGORIES: set[str] = {"evolution_self_audit", "daily_audit"}
 
+# INFRA-396 / VAL-DUP-004: Categories never peeled as critical regressions.
+# Only daily_audit is truly barred from the code repo's issue pipeline.
+# evolution_self_audit DOES get issues (independent INFRA-198 quota pool), so its
+# critical regressions must bypass dedup to reach the reopen flow — excluding it
+# here would let a closed-in-window issue swallow them (the exact black hole
+# VAL-DUP-004 exists to prevent).
+PEEL_EXCLUDED_CATEGORIES: set[str] = {"daily_audit"}
+
 
 def load_config(repo_root: Path) -> dict[str, Any]:
     with open(repo_root / ".evolution" / "config.yml") as f:
@@ -315,11 +323,15 @@ def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated")
                 try:
                     closed_at = datetime.fromisoformat(closed_at_str.replace("Z", "+00:00"))
                     if closed_at >= window_cutoff:
+                        i["_closed_in_window"] = True
                         all_issues.append(i)
                 except (ValueError, TypeError):
                     # If closedAt parsing fails, exclude the issue (fail-safe)
                     pass
-        return [{"rule_id": rid, "location": loc, "number": i["number"]}
+        # INFRA-396: tag issue state so downstream guards can distinguish
+        # genuinely OPEN issues from closed-in-window dedup entries.
+        return [{"rule_id": rid, "location": loc, "number": i["number"],
+                 "state": "closed" if i.get("_closed_in_window") else "open"}
                 for i in all_issues
                 for rid, loc in [_parse_issue_fields(i.get("body", ""))]
                 if rid is not None and loc is not None]
@@ -339,7 +351,8 @@ def _peel_critical_regressions(
 
     Separate findings into two groups:
     1. peeled: critical severity + key in resolved_keys (regression findings)
-       + category NOT in ISSUE_EXCLUDED_CATEGORIES (INFRA-265/268: daily_audit etc.)
+       + category NOT in PEEL_EXCLUDED_CATEGORIES (INFRA-396: only daily_audit;
+       evolution_self_audit HAS its own INFRA-198 quota pool and must be peeled)
     2. remaining: everything else (will go through normal dedup)
 
     This prevents critical regressions from being swallowed by deduplicate()
@@ -356,14 +369,14 @@ def _peel_critical_regressions(
         f for f in findings
         if f.severity == "critical"
         and (f.rule_id, f.location) in resolved_keys
-        and f.category not in ISSUE_EXCLUDED_CATEGORIES
+        and f.category not in PEEL_EXCLUDED_CATEGORIES
     ]
     remaining = [
         f for f in findings
         if not (
             f.severity == "critical"
             and (f.rule_id, f.location) in resolved_keys
-            and f.category not in ISSUE_EXCLUDED_CATEGORIES
+            and f.category not in PEEL_EXCLUDED_CATEGORIES
         )
     ]
     return peeled, remaining
@@ -511,6 +524,12 @@ def _process_findings_with_reopen(
     an OPEN issue with the same (rule_id, location) key already exists in open_issues.
     If so, skip create to prevent duplicate issue creation loops.
 
+    INFRA-396 FIX: the guard only counts issues whose state is genuinely "open".
+    open_issues also contains closed-in-window dedup entries (state="closed",
+    see get_open_issues); treating those as "already open" silently swallowed
+    the fallback create after a failed reopen — the exact regression VAL-DUP-003
+    guards against.
+
     Args:
         findings: List of findings to process
         quota: Maximum number of issues to create
@@ -523,11 +542,14 @@ def _process_findings_with_reopen(
     """
     created = 0
     # Build a set of open issue keys for fast lookup
+    # INFRA-396: only issues verified as OPEN block the fallback create;
+    # closed-in-window entries exist in this list for dedup purposes only.
     open_issue_keys = set()
     if open_issues:
         for issue in open_issues:
             if isinstance(issue, dict) and "rule_id" in issue and "location" in issue:
-                open_issue_keys.add((issue["rule_id"], issue["location"]))
+                if issue.get("state", "open") == "open":
+                    open_issue_keys.add((issue["rule_id"], issue["location"]))
 
     for f in findings[:quota]:
         if f.severity == "critical" and (f.rule_id, f.location) in resolved_keys:
@@ -933,17 +955,19 @@ def main() -> None:
         self_audit = [f for f in deduped if f.category == "evolution_self_audit"]
         # VAL-REOPEN: For regression findings (upgraded to critical by detect_regressions),
         # try to reopen a matching closed issue before creating a new one.
+        # INFRA-396: open_issues passed to every pool so the fallback-create guard
+        # cannot be bypassed by pool routing.
         issues_created += _process_findings_with_reopen(
             regular, config["max_issues_per_tick"], _resolved_keys,
-            config["dedup_label"], history_path,
+            config["dedup_label"], history_path, open_issues,
         )
         issues_created += _process_findings_with_reopen(
             self_audit, config["max_self_audit_issues_per_tick"], _resolved_keys,
-            config["dedup_label"], history_path,
+            config["dedup_label"], history_path, open_issues,
         )
         issues_created += _process_findings_with_reopen(
             code_hygiene, config["max_code_hygiene_issues_per_tick"], _resolved_keys,
-            config["dedup_label"], history_path,
+            config["dedup_label"], history_path, open_issues,
         )
     except RuntimeError as e:
         print(f"[evolution] Warning: {e}")
