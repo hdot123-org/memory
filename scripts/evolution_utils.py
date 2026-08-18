@@ -36,6 +36,11 @@ SELF_AUDIT_CATEGORY = "evolution_self_audit"
 # as an alternative verification path alongside merged PR attachments.
 DEADLOCK_EXIT_SENTINEL_PREFIX = "<!-- deadlock-exit "
 
+# Notification TTL (VAL-NTF-002): notification issues (branch-cleanup tracking)
+# are auto-closed after this many days. 7 days gives humans time to review
+# but prevents indefinite accumulation.
+NOTIFICATION_TTL_DAYS = 7
+
 # Required config keys for evolution scanner
 REQUIRED_CONFIG_KEYS = [
     "audit_tools",
@@ -1178,3 +1183,82 @@ def forward_drift_watch(
 
     return records
 
+
+def close_expired_notifications() -> int:
+    """Close notification issues that have exceeded TTL (VAL-NTF-002).
+
+    Notification issues (branch-cleanup tracking) are auto-closed after
+    NOTIFICATION_TTL_DAYS (7 days) to prevent indefinite accumulation.
+
+    Returns:
+        Number of issues closed
+    """
+    # Query for open notification issues
+    # Use multiple --label flags for AND logic (issues must have BOTH labels)
+    result = subprocess.run(
+        ["gh", "issue", "list", "--state", "open",
+         "--label", "automation", "--label", "branch-cleanup",
+         "--json", "number,createdAt,body"],
+        capture_output=True, text=True
+    )
+
+    if result.returncode != 0:
+        print(f"[notification-ttl] Warning: failed to list notification issues: {result.stderr}")
+        return 0
+
+    try:
+        issues = json.loads(result.stdout) if result.stdout.strip() else []
+    except json.JSONDecodeError:
+        print("[notification-ttl] Warning: failed to parse issues JSON")
+        return 0
+
+    now = datetime.now(timezone.utc)
+    ttl_seconds = NOTIFICATION_TTL_DAYS * 86400  # Convert days to seconds
+    closed_count = 0
+
+    for issue in issues:
+        number = issue.get("number")
+        created_at_str = issue.get("createdAt", "")
+
+        # Parse timestamp
+        try:
+            created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+            age_seconds = (now - created_at).total_seconds()
+        except (ValueError, TypeError):
+            print(f"[notification-ttl] Warning: invalid createdAt for #{number}")
+            continue
+
+        # Check if TTL exceeded
+        if age_seconds > ttl_seconds:
+            # Close with TTL marker comment
+            comment_msg = (
+                f"<!-- ttl-close {NOTIFICATION_TTL_DAYS}d -->\n"
+                f"🤖 自动关闭：通知 Issue 已超过 TTL（{NOTIFICATION_TTL_DAYS} 天）。\n\n"
+                f"如需重新启用，请手动 re-open。"
+            )
+
+            # Comment first, then close
+            comment_result = subprocess.run(
+                ["gh", "issue", "comment", str(number), "--body", comment_msg],
+                capture_output=True, text=True
+            )
+
+            if comment_result.returncode == 0:
+                close_result = subprocess.run(
+                    ["gh", "issue", "close", str(number)],
+                    capture_output=True, text=True
+                )
+
+                if close_result.returncode == 0:
+                    closed_count += 1
+                    age_days = age_seconds / 86400
+                    print(f"[notification-ttl] Closed #{number} (age: {age_days:.1f}d > TTL {NOTIFICATION_TTL_DAYS}d)")
+                else:
+                    print(f"[notification-ttl] Warning: failed to close #{number}: {close_result.stderr}")
+            else:
+                print(f"[notification-ttl] Warning: failed to comment on #{number}: {comment_result.stderr}")
+
+    if closed_count > 0:
+        print(f"[notification-ttl] Closed {closed_count} expired notification issue(s)")
+
+    return closed_count
