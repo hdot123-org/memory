@@ -24,7 +24,12 @@ from typing import Any, cast
 
 
 def extract_fixes_infra_ids(pr_body: str) -> set[str]:
-    """Extract INFRA-xxx IDs from 'Fixes INFRA-xxx' lines in PR body.
+    """Extract INFRA-xxx IDs from GitHub closing keyword lines in PR body.
+
+    Supports all 9 GitHub closing keyword variants (case-insensitive):
+    - close, closes, closed
+    - fix, fixes, fixed
+    - resolve, resolves, resolved
 
     Args:
         pr_body: The PR body text
@@ -32,8 +37,9 @@ def extract_fixes_infra_ids(pr_body: str) -> set[str]:
     Returns:
         Set of INFRA IDs (e.g., {"INFRA-335", "INFRA-337"})
     """
-    # Match "Fixes INFRA-xxx" pattern (case-insensitive)
-    pattern = r"Fixes\s+(INFRA-\d+)"
+    # Match all 9 GitHub closing keyword variants (case-insensitive)
+    # Pattern: (close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s+INFRA-\d+
+    pattern = r"(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s+(INFRA-\d+)"
     matches = re.findall(pattern, pr_body, re.IGNORECASE)
     return set(matches)
 
