@@ -770,7 +770,24 @@ def _integrate_forward_drift_watch(
 
     # Log summary
     if drift_records:
-        ghost_count = sum(1 for r in drift_records if r.status == "GHOST")
+        # Count records by status (all 5 categories, even if 0)
+        status_counts = {
+            "ISSUE_EXISTS": 0,
+            "CLOSED_IN_WINDOW": 0,
+            "SUPPRESSED": 0,
+            "QUOTA_PENDING": 0,
+            "GHOST": 0,
+        }
+        for record in drift_records:
+            if record.status in status_counts:
+                status_counts[record.status] += 1
+
+        # Print summary line with all 5 categories
+        summary = " ".join(f"{k}={v}" for k, v in status_counts.items())
+        print(f"[evolution] Forward drift watch: {summary}")
+
+        # Log ghost details if any
+        ghost_count = status_counts.get("GHOST", 0)
         if ghost_count > 0:
             print(f"[evolution] Forward drift watch: {ghost_count} GHOST findings detected (no issue, no reason)")
             for record in drift_records:
