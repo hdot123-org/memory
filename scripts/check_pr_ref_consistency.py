@@ -45,7 +45,10 @@ def extract_fixes_infra_ids(pr_body: str) -> set[str]:
     # Match all 9 GitHub closing keyword variants (case-insensitive) with
     # \b word boundary to avoid partial matches (e.g., "def" shouldn't match "fix")
     # Supports comma-separated lists: "Fixes INFRA-100, INFRA-200"
-    keyword_pattern = r"\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s+((?:INFRA-\d+)(?:\s*,\s*INFRA-\d+)*)"
+    # Also supports Oxford comma variant with 'and' connector:
+    #   - "Fixes INFRA-1, INFRA-2, and INFRA-3" (Oxford comma)
+    #   - "Fixes INFRA-1, INFRA-2 and INFRA-3" (no comma before 'and')
+    keyword_pattern = r"\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s+((?:INFRA-\d+)(?:\s*(?:,\s*(?:and\s+)?|and\s+)INFRA-\d+)*)"
     matches = re.findall(keyword_pattern, pr_body, re.IGNORECASE)
 
     # Extract all INFRA-xxx IDs from each match (handles comma-separated lists)
