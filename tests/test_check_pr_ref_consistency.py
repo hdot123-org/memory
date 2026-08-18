@@ -1,18 +1,18 @@
 """Tests for scripts/check_pr_ref_consistency.py (VAL-GATE-201/202/204).
 
-TDD: all three test classes written BEFORE the script implementation.
+TDD: test classes written BEFORE the script implementation.
 Each test case maps to a validation contract assertion.
 
 ⚠️ FIXTURE DISCLOSURE (scrutiny 2026-08-18):
-All fixture data below is synthetic — constructed to replicate the
+All fixture data below is **synthetic** — constructed to replicate the
 structure of historical PR/issue data, NOT literal API response dumps.
-PR #729's closingIssuesReferences is structurally [] at the API level
-because GitHub's closing reference detection depends on the merge commit
-message, not PR body text. The PR-side interception logic can only be
-replayed via fixture-form mocking. This is disclosure, not fabrication:
-the fixtures exercise the same regex/subset logic that runs against real
-API data; they just cannot be populated from a live gh pr view snapshot
-of #729.
+Reason: PR #729's actual `closingIssuesReferences` is structurally `[]`
+on the API level (GitHub's closing reference detection depends on branch
+head commit message at merge time, not PR body text). The PR-side
+interception logic can therefore only be replayed via fixture-form
+mocking. This is **disclosure, not fabrication** — the fixtures exercise
+the same regex/subset logic that would run against real API data; they
+just cannot be populated from a live `gh pr view` snapshot of #729.
 """
 import json
 import sys
@@ -28,6 +28,8 @@ SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "check_pr_ref_consisten
 # ---------------------------------------------------------------------------
 # Fixture data (synthetic samples replicating historical structure)
 # ---------------------------------------------------------------------------
+# Note: these are synthetic samples designed to replicate the structure of
+# historical PR/issue data, not literal API response dumps (see disclosure above).
 
 # PR #729 body: "Fixes INFRA-335" (the root cause mismatch)
 PR_729_BODY = """\
