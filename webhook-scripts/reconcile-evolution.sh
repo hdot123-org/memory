@@ -824,6 +824,9 @@ gql(comment_mut, {'issueId': issue_uuid, 'body': comment_body})
 print('OK')
 " 2>>"$LOG_FILE" || echo "FAIL")
 
+                    # Extract sessionId for logging (Issue #4 fix)
+                    SESSION_ID_FOR_LOG=$(python3 -c "import json; print(json.load(open('$STATUS_FILE')).get('sessionId', 'unknown'))" 2>/dev/null || echo "unknown")
+
                     if [ "$DEADLOCK_RESULT" = "OK" ]; then
                         log "  ${LINEAR_REF}: DEADLOCK EXIT executed — Linear pushed to completed (session=${SESSION_ID_FOR_LOG:-unknown}, exitCode=0, stale=${LINEAR_AGE_MIN}min)"
                         # 记录到 drift log 供取证

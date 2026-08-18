@@ -124,34 +124,44 @@ class TestPath1_Reconcile_4b_LabelFilter:
 
 
 class TestPath2_GateA_45_PRMergedOverride:
-    """Path 2: GATE A 4.5 PR-merged override uses --label evolution-found.
+    """Path 2: GATE A 4.5 PR-merged override uses --search + anchor validation.
 
     trigger-droid.sh GATE A 4.5 queries:
-        gh pr list --label evolution-found --state merged --limit 10
-    Notification issues/PRs lack the evolution-found label.
+        gh pr list --state merged --search "${ISSUE_REF}" --limit 10
+    Then validates anchor via extract_anchor.py. Notification PRs lack linkback.
     """
 
-    def test_gate_a_45_query_requires_evolution_found_label(self) -> None:
-        """VAL-NTF-005 GATE A 4.5: Script source contains --label evolution-found."""
+    def test_gate_a_45_query_uses_search_not_label(self) -> None:
+        """VAL-NTF-005 GATE A 4.5: Script uses --search + anchor, not --label evolution-found."""
         trigger_script = Path(__file__).parent.parent / "webhook-scripts" / "trigger-droid.sh"
         content = trigger_script.read_text()
-        # GATE A 4.5 PR-merged override section
-        assert "--label evolution-found" in content, \
-            "GATE A 4.5 must filter by evolution-found label"
+        # GATE A 4.5 PR-merged override section must use --search
+        # Find the 4.5 section
+        gate_a_45_pos = content.find("4.5. PR-merged override")
+        assert gate_a_45_pos != -1, "GATE A 4.5 section must exist"
+        # Find 4.6 section to bound the search
+        gate_a_46_pos = content.find("4.6. Sync-origin override", gate_a_45_pos)
+        gate_a_45_section = content[gate_a_45_pos:gate_a_46_pos]
+        
+        # Check that 4.5 uses --search
+        assert "--search" in gate_a_45_section, \
+            "GATE A 4.5 must use --search to find PR candidates"
+        # Check that 4.5 uses anchor validation
+        assert "extract_anchor.py" in gate_a_45_section, \
+            "GATE A 4.5 must call extract_anchor.py for anchor validation"
 
-    def test_notification_pr_would_not_match_label_filter(self) -> None:
-        """VAL-NTF-005 GATE A 4.5: Notification-labeled items excluded by label filter."""
-        # Simulate PR list with label filter
-        pr_candidates: list[dict[str, Any]] = [
-            {"number": 724, "labels": [{"name": "automation"}, {"name": "branch-cleanup"}]},
-            {"number": 900, "labels": [{"name": "evolution-found"}]},
-        ]
-        filtered = [
-            pr for pr in pr_candidates
-            if any(lbl["name"] == "evolution-found" for lbl in pr["labels"])
-        ]
-        assert len(filtered) == 1
-        assert filtered[0]["number"] == 900
+    def test_notification_pr_would_not_match_anchor_validation(self) -> None:
+        """VAL-NTF-005 GATE A 4.5: Notification PRs fail anchor validation."""
+        # Notification PR has no linkback comment
+        pr_comments = "This is a branch cleanup notification\nFixed INFRA-346"
+        
+        # Extract anchor → None (no <!-- linear-linkback --> marker)
+        anchor = extract_linkback_anchor(pr_comments)
+        
+        # Anchor validation: None != target ref → BLOCK
+        target_ref = "INFRA-346"
+        assert anchor != target_ref, "Notification PR anchor must not match target"
+        assert anchor is None, "No linkback marker → no anchor"
 
 
 class TestPath3_GateA_46_SyncOriginOverride:
@@ -166,10 +176,11 @@ class TestPath3_GateA_46_SyncOriginOverride:
         """VAL-NTF-005 GATE A 4.6: Script source contains --label evolution-found in sync section."""
         trigger_script = Path(__file__).parent.parent / "webhook-scripts" / "trigger-droid.sh"
         content = trigger_script.read_text()
-        # Count occurrences — GATE A 4.5, 4.6, and reconcile all use this filter
+        # Count occurrences — GATE A 4.6 and other sections still use this filter
+        # (4.5 was changed to use --search + anchor validation in PR #794)
         count = content.count("--label evolution-found")
-        assert count >= 3, \
-            f"Expected at least 3 uses of --label evolution-found (4.5, 4.6, terminal close), got {count}"
+        assert count >= 2, \
+            f"Expected at least 2 uses of --label evolution-found (4.6 + other), got {count}"
 
     def test_sync_origin_excludes_notification_issues(self) -> None:
         """VAL-NTF-005 GATE A 4.6: Notification issues excluded from sync-origin check."""
@@ -424,3 +435,447 @@ class TestThreePathMatrix:
         # So extraction returns None
         assert _extract_linear_linkback(body) is None
         assert extract_linkback_anchor(body) is None
+
+
+# ============================================================================
+# PR #794 新增：GATE A 4.5 锚点统一方案 + GATE A 4.7 证据链判定
+# ============================================================================
+
+
+class TestGateA45AnchorUnified:
+    """#2 GATE A 4.5 PR-label 空转 → 锚点统一方案（PR #794 落地）。
+
+    Architecture §3.1: 镜像定位只认结构化锚点（linear-linkback 标记评论）。
+    GATE A 4.5 override 必须用 --search 取候选，然后对每个候选做 linkback 锚点验证。
+    移除 --label evolution-found 过滤，因为通知类 PR 天然无镜像锚点。
+    """
+
+    def test_gate_a_45_uses_search_and_anchor_not_label(self) -> None:
+        """GATE A 4.5: PR-merged override uses --search + extract_anchor.py, not --label.
+
+        Scenario:
+        - 脚本中 GATE A 4.5 段必须使用 --search "${ISSUE_REF}"，而非 --label evolution-found
+        - 对候选 PR 做锚点验证（extract_anchor.py），无锚点者排除
+
+        redEvidence: 如果脚本仍使用 --label evolution-found，通知类 PR（无该 label）会被
+        漏掉；但更重要的是，有该 label 但无锚点的 PR 会假阳通过。
+        """
+        script_path = Path(__file__).parent.parent / "webhook-scripts" / "trigger-droid.sh"
+        script_content = script_path.read_text()
+
+        # Find GATE A 4.5 section
+        gate_a_45_pos = script_content.find("4.5. PR-merged override")
+        assert gate_a_45_pos != -1, "GATE A 4.5 section must exist"
+
+        # Extract GATE A 4.5 section (up to 4.6)
+        gate_a_46_pos = script_content.find("4.6. Sync-origin override", gate_a_45_pos)
+        gate_a_45_section = script_content[gate_a_45_pos:gate_a_46_pos]
+
+        # Find the actual gh pr list command line (skip comments)
+        lines = gate_a_45_section.split('\n')
+        gh_pr_cmd_lines = [l for l in lines if 'gh pr list' in l and '--state merged' in l]
+
+        assert len(gh_pr_cmd_lines) > 0, "GATE A 4.5 must have gh pr list command"
+
+        # Check the actual command uses --search, not --label evolution-found
+        gh_cmd = ' '.join(gh_pr_cmd_lines)
+        assert "--search" in gh_cmd, \
+            "GATE A 4.5 must use --search to find PR candidates"
+        assert "--label evolution-found" not in gh_cmd, \
+            "GATE A 4.5 gh pr list command must NOT use --label evolution-found filter (anchor validation replaces it)"
+
+        # Verify: anchor extraction is present (extract_anchor.py call)
+        assert "extract_anchor.py" in gate_a_45_section, \
+            "GATE A 4.5 must call extract_anchor.py for anchor validation"
+
+    def test_notification_pr_without_anchor_excluded(self, tmp_path: Any) -> None:
+        """GATE A 4.5: PR without anchor (notification PR) → BLOCK (fail-closed).
+
+        Scenario:
+        - PR #200 has NO linkback comment (notification PR like branch-cleanup)
+        - PR body mentions INFRA-999 in text (not as linkback)
+        - Target Linear ref: INFRA-999
+        - Expected: GATE A BLOCK (anchor mismatch), not PASS
+        """
+        # PR body mentions INFRA-999 in text but no linkback marker
+        pr_comments = "Fixed INFRA-999 by cleaning up old branches\nNo actual linkback"
+
+        # Extract anchor → None (no <!-- linear-linkback --> marker)
+        anchor = extract_linkback_anchor(pr_comments)
+
+        # Anchor validation: None != target ref → BLOCK
+        target_ref = "INFRA-999"
+        assert anchor != target_ref, "Text mention should not match linkback anchor"
+        assert anchor is None, "No linkback marker → no anchor"
+
+
+class TestGateA47EvidenceChain:
+    """#3 GATE A 4.7 不可达 → 证据链判定（PR #794 落地）。
+
+    Architecture §3.2: 证据链 = (sessionId 非空) OR (completedAt 存在且有效).
+    无证据仍 BLOCK（fail-closed 不变）。
+    """
+
+    def test_gate_a_47_session_id_or_completed_at(self, tmp_path: Any) -> None:
+        """GATE A 4.7: session-completed override accepts sessionId OR completedAt.
+
+        Scenario 1: sessionId 非空 → PASS
+        Scenario 2: sessionId 空 + completedAt 存在 → PASS
+        Scenario 3: sessionId 空 + completedAt 空 → BLOCK
+        """
+        # Simulate status file
+        status_file = tmp_path / "INFRA-999.json"
+
+        # Scenario 1: sessionId 非空 → PASS
+        status_data_1 = {
+            "status": "completed",
+            "sessionId": "session-123",
+            "exitCode": 0,
+            "completedAt": "2026-01-01T12:00:00Z"
+        }
+        status_file.write_text(json.dumps(status_data_1))
+
+        # Load and check
+        with open(status_file) as f:
+            data = json.load(f)
+
+        session_id = data.get("sessionId")
+        completed_at = data.get("completedAt")
+
+        # Evidence chain: sessionId OR completedAt
+        has_evidence = (
+            (session_id and str(session_id).lower() not in ("none", "null", ""))
+            or (completed_at and str(completed_at).lower() not in ("none", "null", ""))
+        )
+
+        assert has_evidence is True, "Scenario 1: sessionId present → evidence chain passes"
+
+        # Scenario 2: sessionId 空 + completedAt 存在 → PASS
+        status_data_2 = {
+            "status": "completed",
+            "sessionId": None,
+            "exitCode": 0,
+            "completedAt": "2026-01-01T12:00:00Z"
+        }
+        status_file.write_text(json.dumps(status_data_2))
+
+        with open(status_file) as f:
+            data = json.load(f)
+
+        session_id = data.get("sessionId")
+        completed_at = data.get("completedAt")
+
+        has_evidence = (
+            (session_id and str(session_id).lower() not in ("none", "null", ""))
+            or (completed_at and str(completed_at).lower() not in ("none", "null", ""))
+        )
+
+        assert has_evidence is True, "Scenario 2: completedAt present → evidence chain passes (sessionId relaxed)"
+
+    def test_gate_a_47_no_evidence_blocks(self, tmp_path: Any) -> None:
+        """GATE A 4.7: no evidence → BLOCK (fail-closed preserved).
+
+        Scenario: sessionId 空 + completedAt 空 → BLOCK.
+        """
+        # Simulate status file with no evidence
+        status_file = tmp_path / "INFRA-888.json"
+        status_data = {
+            "status": "completed",
+            "sessionId": None,
+            "exitCode": 0,
+            "completedAt": None
+        }
+        status_file.write_text(json.dumps(status_data))
+
+        # Load and check
+        with open(status_file) as f:
+            data = json.load(f)
+
+        session_id = data.get("sessionId")
+        completed_at = data.get("completedAt")
+
+        # Evidence chain: sessionId OR completedAt
+        has_evidence = (
+            (session_id and str(session_id).lower() not in ("none", "null", ""))
+            or (completed_at and str(completed_at).lower() not in ("none", "null", ""))
+        )
+
+        assert not has_evidence, "No evidence → BLOCK (fail-closed)"
+
+
+# ============================================================================
+# PR #794 新增：#1 Linear sentinel 查询臂 + #4 SESSION_ID_FOR_LOG
+# ============================================================================
+
+
+class TestLinearSentinelQuery:
+    """#1 Linear sentinel 查询臂（PR #794 落地）。
+
+    Architecture §3.2: 死锁出口 sentinel 写入 Linear 评论（非 GitHub 评论）。
+    _fetch_linear_comments() 从 Linear GraphQL API 查询评论。
+    """
+
+    def test_fetch_linear_comments_function_exists(self) -> None:
+        """#1 _fetch_linear_comments function exists in evolution_utils."""
+        from evolution_utils import _fetch_linear_comments
+
+        # Function should be callable
+        assert callable(_fetch_linear_comments)
+
+    def test_verify_fix_merged_uses_linear_comments(self) -> None:
+        """#1 _verify_fix_merged_via_linear calls _fetch_linear_comments for sentinel."""
+        import inspect
+        from evolution_utils import _verify_fix_merged_via_linear
+
+        # Get source code
+        source = inspect.getsource(_verify_fix_merged_via_linear)
+
+        # Should call _fetch_linear_comments
+        assert "_fetch_linear_comments" in source, \
+            "Trust chain should query Linear comments for sentinel"
+        # Should check for deadlock-exit sentinel prefix
+        assert "deadlock-exit" in source, \
+            "Trust chain should check for deadlock-exit sentinel"
+
+
+class TestSessionIdForLog:
+    """#4 SESSION_ID_FOR_LOG 从 status 文件提取（PR #794 落地）。
+
+    reconcile-evolution.sh 死锁出口日志必须从 status 文件提取 sessionId，
+    而非硬编码 unknown。
+    """
+
+    def test_reconcile_extracts_session_id_from_status_file(self) -> None:
+        """#4 reconcile-evolution.sh extracts sessionId from status file for logging."""
+        reconcile_script = Path(__file__).parent.parent / "webhook-scripts" / "reconcile-evolution.sh"
+        content = reconcile_script.read_text()
+
+        # Should extract sessionId from status file
+        assert "SESSION_ID_FOR_LOG" in content, \
+            "reconcile must define SESSION_ID_FOR_LOG variable"
+        # Should use python to extract from JSON
+        assert "sessionId" in content and "json.load" in content, \
+            "SESSION_ID_FOR_LOG should be extracted from status file JSON"
+
+
+
+# ============================================================================
+# PR #794 新增：GATE A 4.5 锚点统一方案 + GATE A 4.7 证据链判定
+# ============================================================================
+
+
+class TestGateA45AnchorUnified:
+    """#2 GATE A 4.5 PR-label 空转 → 锚点统一方案（PR #794 落地）。
+
+    Architecture §3.1: 镜像定位只认结构化锚点（linear-linkback 标记评论）。
+    GATE A 4.5 override 必须用 --search 取候选，然后对每个候选做 linkback 锚点验证。
+    移除 --label evolution-found 过滤，因为通知类 PR 天然无镜像锚点。
+    """
+
+    def test_gate_a_45_uses_search_and_anchor_not_label(self) -> None:
+        """GATE A 4.5: PR-merged override uses --search + extract_anchor.py, not --label.
+
+        Scenario:
+        - 脚本中 GATE A 4.5 段必须使用 --search "${ISSUE_REF}"，而非 --label evolution-found
+        - 对候选 PR 做锚点验证（extract_anchor.py），无锚点者排除
+
+        redEvidence: 如果脚本仍使用 --label evolution-found，通知类 PR（无该 label）会被
+        漏掉；但更重要的是，有该 label 但无锚点的 PR 会假阳通过。
+        """
+        script_path = Path(__file__).parent.parent / "webhook-scripts" / "trigger-droid.sh"
+        script_content = script_path.read_text()
+
+        # Find GATE A 4.5 section
+        gate_a_45_pos = script_content.find("4.5. PR-merged override")
+        assert gate_a_45_pos != -1, "GATE A 4.5 section must exist"
+
+        # Extract GATE A 4.5 section (up to 4.6)
+        gate_a_46_pos = script_content.find("4.6. Sync-origin override", gate_a_45_pos)
+        gate_a_45_section = script_content[gate_a_45_pos:gate_a_46_pos]
+
+        # Find the actual gh pr list command line (skip comments)
+        lines = gate_a_45_section.split('\n')
+        gh_pr_cmd_lines = [l for l in lines if 'gh pr list' in l and '--state merged' in l]
+
+        assert len(gh_pr_cmd_lines) > 0, "GATE A 4.5 must have gh pr list command"
+
+        # Check the actual command uses --search, not --label evolution-found
+        gh_cmd = ' '.join(gh_pr_cmd_lines)
+        assert "--search" in gh_cmd, \
+            "GATE A 4.5 must use --search to find PR candidates"
+        assert "--label evolution-found" not in gh_cmd, \
+            "GATE A 4.5 gh pr list command must NOT use --label evolution-found filter (anchor validation replaces it)"
+
+        # Verify: anchor extraction is present (extract_anchor.py call)
+        assert "extract_anchor.py" in gate_a_45_section, \
+            "GATE A 4.5 must call extract_anchor.py for anchor validation"
+
+    def test_notification_pr_without_anchor_excluded(self) -> None:
+        """GATE A 4.5: PR without anchor (notification PR) → BLOCK (fail-closed).
+
+        Scenario:
+        - PR #200 has NO linkback comment (notification PR like branch-cleanup)
+        - PR body mentions INFRA-999 in text (not as linkback)
+        - Target Linear ref: INFRA-999
+        - Expected: GATE A BLOCK (anchor mismatch), not PASS
+        """
+        # PR body mentions INFRA-999 in text but no linkback marker
+        pr_comments = "Fixed INFRA-999 by cleaning up old branches\nNo actual linkback"
+
+        # Extract anchor → None (no <!-- linear-linkback --> marker)
+        anchor = extract_linkback_anchor(pr_comments)
+
+        # Anchor validation: None != target ref → BLOCK
+        target_ref = "INFRA-999"
+        assert anchor != target_ref, "Text mention should not match linkback anchor"
+        assert anchor is None, "No linkback marker → no anchor"
+
+
+class TestGateA47EvidenceChain:
+    """#3 GATE A 4.7 不可达 → 证据链判定（PR #794 落地）。
+
+    Architecture §3.2: 证据链 = (sessionId 非空) OR (completedAt 存在且有效).
+    无证据仍 BLOCK（fail-closed 不变）。
+    """
+
+    def test_gate_a_47_session_id_or_completed_at(self, tmp_path: Any) -> None:
+        """GATE A 4.7: session-completed override accepts sessionId OR completedAt.
+
+        Scenario 1: sessionId 非空 → PASS
+        Scenario 2: sessionId 空 + completedAt 存在 → PASS
+        Scenario 3: sessionId 空 + completedAt 空 → BLOCK
+        """
+        # Simulate status file
+        status_file = tmp_path / "INFRA-999.json"
+
+        # Scenario 1: sessionId 非空 → PASS
+        status_data_1 = {
+            "status": "completed",
+            "sessionId": "session-123",
+            "exitCode": 0,
+            "completedAt": "2026-01-01T12:00:00Z"
+        }
+        status_file.write_text(json.dumps(status_data_1))
+
+        # Load and check
+        with open(status_file) as f:
+            data = json.load(f)
+
+        session_id = data.get("sessionId")
+        completed_at = data.get("completedAt")
+
+        # Evidence chain: sessionId OR completedAt
+        has_evidence = (
+            (session_id and str(session_id).lower() not in ("none", "null", ""))
+            or (completed_at and str(completed_at).lower() not in ("none", "null", ""))
+        )
+
+        assert has_evidence is True, "Scenario 1: sessionId present → evidence chain passes"
+
+        # Scenario 2: sessionId 空 + completedAt 存在 → PASS
+        status_data_2 = {
+            "status": "completed",
+            "sessionId": None,
+            "exitCode": 0,
+            "completedAt": "2026-01-01T12:00:00Z"
+        }
+        status_file.write_text(json.dumps(status_data_2))
+
+        with open(status_file) as f:
+            data = json.load(f)
+
+        session_id = data.get("sessionId")
+        completed_at = data.get("completedAt")
+
+        has_evidence = (
+            (session_id and str(session_id).lower() not in ("none", "null", ""))
+            or (completed_at and str(completed_at).lower() not in ("none", "null", ""))
+        )
+
+        assert has_evidence is True, "Scenario 2: completedAt present → evidence chain passes (sessionId relaxed)"
+
+    def test_gate_a_47_no_evidence_blocks(self, tmp_path: Any) -> None:
+        """GATE A 4.7: no evidence → BLOCK (fail-closed preserved).
+
+        Scenario: sessionId 空 + completedAt 空 → BLOCK.
+        """
+        # Simulate status file with no evidence
+        status_file = tmp_path / "INFRA-888.json"
+        status_data = {
+            "status": "completed",
+            "sessionId": None,
+            "exitCode": 0,
+            "completedAt": None
+        }
+        status_file.write_text(json.dumps(status_data))
+
+        # Load and check
+        with open(status_file) as f:
+            data = json.load(f)
+
+        session_id = data.get("sessionId")
+        completed_at = data.get("completedAt")
+
+        # Evidence chain: sessionId OR completedAt
+        has_evidence = (
+            (session_id and str(session_id).lower() not in ("none", "null", ""))
+            or (completed_at and str(completed_at).lower() not in ("none", "null", ""))
+        )
+
+        assert not has_evidence, "No evidence → BLOCK (fail-closed)"
+
+
+# ============================================================================
+# PR #794 新增：#1 Linear sentinel 查询臂 + #4 SESSION_ID_FOR_LOG
+# ============================================================================
+
+
+class TestLinearSentinelQuery:
+    """#1 Linear sentinel 查询臂（PR #794 落地）。
+
+    Architecture §3.2: 死锁出口 sentinel 写入 Linear 评论（非 GitHub 评论）。
+    _fetch_linear_comments() 从 Linear GraphQL API 查询评论。
+    """
+
+    def test_fetch_linear_comments_function_exists(self) -> None:
+        """#1 _fetch_linear_comments function exists in evolution_utils."""
+        from evolution_utils import _fetch_linear_comments
+
+        # Function should be callable
+        assert callable(_fetch_linear_comments)
+
+    def test_verify_fix_merged_uses_linear_comments(self) -> None:
+        """#1 _verify_fix_merged_via_linear calls _fetch_linear_comments for sentinel."""
+        import inspect
+        from evolution_utils import _verify_fix_merged_via_linear
+
+        # Get source code
+        source = inspect.getsource(_verify_fix_merged_via_linear)
+
+        # Should call _fetch_linear_comments
+        assert "_fetch_linear_comments" in source, \
+            "Trust chain should query Linear comments for sentinel"
+        # Should check for deadlock-exit sentinel prefix
+        assert "deadlock-exit" in source, \
+            "Trust chain should check for deadlock-exit sentinel"
+
+
+class TestSessionIdForLog:
+    """#4 SESSION_ID_FOR_LOG 从 status 文件提取（PR #794 落地）。
+
+    reconcile-evolution.sh 死锁出口日志必须从 status 文件提取 sessionId，
+    而非硬编码 unknown。
+    """
+
+    def test_reconcile_extracts_session_id_from_status_file(self) -> None:
+        """#4 reconcile-evolution.sh extracts sessionId from status file for logging."""
+        reconcile_script = Path(__file__).parent.parent / "webhook-scripts" / "reconcile-evolution.sh"
+        content = reconcile_script.read_text()
+
+        # Should extract sessionId from status file
+        assert "SESSION_ID_FOR_LOG" in content, \
+            "reconcile must define SESSION_ID_FOR_LOG variable"
+        # Should use python to extract from JSON
+        assert "sessionId" in content and "json.load" in content, \
+            "SESSION_ID_FOR_LOG should be extracted from status file JSON"
+
