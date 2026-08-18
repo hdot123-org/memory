@@ -24,7 +24,10 @@ from typing import Any, cast
 
 
 def extract_fixes_infra_ids(pr_body: str) -> set[str]:
-    """Extract INFRA-xxx IDs from 'Fixes INFRA-xxx' lines in PR body.
+    """Extract INFRA-xxx IDs from 'Fixes/Closes/Resolves INFRA-xxx' lines in PR body.
+
+    Supports GitHub's three equivalent keywords: Fixes, Closes, Resolves.
+    Also supports comma-separated lists (e.g., "Fixes INFRA-100, INFRA-200").
 
     Args:
         pr_body: The PR body text
@@ -32,10 +35,24 @@ def extract_fixes_infra_ids(pr_body: str) -> set[str]:
     Returns:
         Set of INFRA IDs (e.g., {"INFRA-335", "INFRA-337"})
     """
-    # Match "Fixes INFRA-xxx" pattern (case-insensitive)
-    pattern = r"Fixes\s+(INFRA-\d+)"
-    matches = re.findall(pattern, pr_body, re.IGNORECASE)
-    return set(matches)
+    if not pr_body:
+        return set()
+
+    # Find all keyword mentions and extract IDs after them
+    # Supports: Fixes INFRA-100, Closes INFRA-200, Resolves INFRA-300
+    # Also supports comma-separated: "Fixes INFRA-100, INFRA-200"
+    keyword_pattern = r"(?:Fixes|Closes|Resolves)\s+((?:INFRA-\d+)(?:\s*,\s*INFRA-\d+)*)"
+    matches = re.findall(keyword_pattern, pr_body, re.IGNORECASE)
+
+    # Extract all INFRA-xxx IDs from each match
+    ids = set()
+    for match in matches:
+        # Split comma-separated list and extract individual IDs
+        id_pattern = r"INFRA-\d+"
+        for infra_id in re.findall(id_pattern, match):
+            ids.add(infra_id)
+
+    return ids
 
 
 def extract_linkback_from_comments(comments_text: str) -> str | None:
@@ -170,7 +187,7 @@ def main(args: list[str] | None = None) -> int:
         print(f"Error: Failed to fetch PR #{pr_number}: {e.stderr}", file=sys.stderr)
         return 2
 
-    pr_body = pr_data.get("body", "")
+    pr_body = pr_data.get("body") or ""  # None body defense: convert None → ""
     closing_refs = pr_data.get("closingIssuesReferences", [])
 
     # No closing references → nothing to check
