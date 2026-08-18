@@ -92,9 +92,15 @@ def color(text: str, c: str) -> str:
 
 
 def _pytest_xdist_args() -> list[str]:
-    """Return -n auto args if pytest-xdist is importable, else [] (single-threaded fallback)."""
+    """Return -n auto args if pytest-xdist is importable, else [] (single-threaded fallback).
+
+    用 find_spec 字符串探测而非 import xdist：xdist 仅是 pytest-xdist 的传递依赖，
+    直接 import 会触发 deptry DEP003（CI 门禁）。
+    """
     try:
-        import xdist  # noqa: F401
+        import importlib.util
+        if importlib.util.find_spec("xdist") is None:
+            return []
     except ImportError:
         return []
     return ["-n", "auto"]
