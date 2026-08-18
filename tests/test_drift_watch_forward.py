@@ -370,15 +370,12 @@ class TestForwardDriftWatchStatusCountLog:
 
     def test_status_count_line_all_categories(self, capsys):
         """五类状态各有计数时，日志含完整摘要行（ISSUE_EXISTS=CLOSED_IN_WINDOW=...）。"""
-        from evolution_scanner import _integrate_forward_drift_watch
-
         findings = [
             _make_finding("R1", "a.py::L1", category="code_hygiene"),  # ISSUE_EXISTS
             _make_finding("R2", "b.py::L2", category="code_hygiene"),  # SUPPRESSED
             _make_finding("R3", "c.py::L3", category="code_quality"),  # QUOTA_PENDING
             _make_finding("R4", "d.py::L4", category="code_hygiene"),  # GHOST
         ]
-        open_issues = [{"rule_id": "R1", "location": "a.py::L1"}]
         suppressed_keys = {("R2", "b.py::L2")}
         quota_exhausted = {"code_quality": True}
         closed_window_keys: set[tuple[str, str]] = set()
