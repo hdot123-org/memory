@@ -24,7 +24,14 @@ from typing import Any, cast
 
 
 def extract_fixes_infra_ids(pr_body: str) -> set[str]:
-    """Extract INFRA-xxx IDs from 'Fixes INFRA-xxx' lines in PR body.
+    """Extract INFRA-xxx IDs from GitHub closing keyword lines in PR body.
+
+    Supports all 9 GitHub closing keyword variants (case-insensitive):
+    - close, closes, closed
+    - fix, fixes, fixed
+    - resolve, resolves, resolved
+
+    Also supports comma-separated lists (e.g., "Fixes INFRA-100, INFRA-200").
 
     Args:
         pr_body: The PR body text
@@ -32,10 +39,23 @@ def extract_fixes_infra_ids(pr_body: str) -> set[str]:
     Returns:
         Set of INFRA IDs (e.g., {"INFRA-335", "INFRA-337"})
     """
-    # Match "Fixes INFRA-xxx" pattern (case-insensitive)
-    pattern = r"Fixes\s+(INFRA-\d+)"
-    matches = re.findall(pattern, pr_body, re.IGNORECASE)
-    return set(matches)
+    if not pr_body:
+        return set()
+
+    # Match all 9 GitHub closing keyword variants (case-insensitive) with
+    # \b word boundary to avoid partial matches (e.g., "def" shouldn't match "fix")
+    # Supports comma-separated lists: "Fixes INFRA-100, INFRA-200"
+    keyword_pattern = r"\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s+((?:INFRA-\d+)(?:\s*,\s*INFRA-\d+)*)"
+    matches = re.findall(keyword_pattern, pr_body, re.IGNORECASE)
+
+    # Extract all INFRA-xxx IDs from each match (handles comma-separated lists)
+    ids = set()
+    for match in matches:
+        id_pattern = r"INFRA-\d+"
+        for infra_id in re.findall(id_pattern, match):
+            ids.add(infra_id)
+
+    return ids
 
 
 def extract_linkback_from_comments(comments_text: str) -> str | None:
@@ -98,8 +118,42 @@ def extract_linkback_from_comments(comments_text: str) -> str | None:
     return None
 
 
+def _resolve_repo_owner_name() -> tuple[str, str]:
+    """Resolve (owner, name) from the origin remote URL.
+
+    Supports both HTTPS (https://github.com/OWNER/REPO.git) and SSH
+    (git@github.com:OWNER/REPO.git) forms. Read-only (git config query).
+
+    Returns:
+        Tuple of (owner, repo_name)
+
+    Raises:
+        RuntimeError: if origin URL is missing or unparseable
+    """
+    result = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        capture_output=True,
+        text=True,
+        check=True
+    )
+    url = result.stdout.strip()
+    # SSH form: git@github.com:OWNER/REPO.git
+    # HTTPS form: https://github.com/OWNER/REPO.git
+    m = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?/?$", url)
+    if not m:
+        raise RuntimeError(f"Cannot parse owner/repo from origin URL: {url}")
+    owner, _, name = m.group(1).partition("/")
+    return owner, name
+
+
 def fetch_pr_data(pr_number: int) -> dict[str, Any]:
     """Fetch PR body and closing issue references via gh CLI.
+
+    Uses `gh api graphql` instead of `gh pr view --json closingIssuesReferences`:
+    the latter's field registry only recognizes closingIssuesReferences on
+    gh >= 2.67.0; older gh on self-hosted runners rejects it with
+    "Unknown JSON field" (PR #797). `gh api graphql` resolves fields
+    server-side and is gh-version independent.
 
     Args:
         pr_number: GitHub PR number
@@ -107,16 +161,37 @@ def fetch_pr_data(pr_number: int) -> dict[str, Any]:
     Returns:
         Dict with 'body' (str) and 'closingIssuesReferences' (list of dicts)
     """
+    owner, repo = _resolve_repo_owner_name()
+    query = (
+        "query($owner:String!,$repo:String!,$num:Int!){"
+        "repository(owner:$owner,name:$repo){"
+        "pullRequest(number:$num){"
+        "body "
+        "closingIssuesReferences(first:50){nodes{number title url}}"
+        "}}}"
+    )
     result = subprocess.run(
         [
-            "gh", "pr", "view", str(pr_number),
-            "--json", "body,closingIssuesReferences"
+            "gh", "api", "graphql",
+            "-f", f"query={query}",
+            "-f", f"owner={owner}",
+            "-f", f"repo={repo}",
+            "-F", f"num={pr_number}",
         ],
         capture_output=True,
         text=True,
         check=True
     )
-    return cast(dict[str, Any], json.loads(result.stdout))
+    payload = cast(dict[str, Any], json.loads(result.stdout))
+    pr = payload.get("data", {}).get("repository", {}).get("pullRequest")
+    if pr is None:
+        errors = payload.get("errors")
+        raise RuntimeError(f"GraphQL query returned no pullRequest: {errors}")
+    # Flatten {nodes: [...]} to a flat list, matching the historical
+    # `gh pr view --json` shape consumed by main() and test fixtures.
+    refs = cast(dict[str, Any], pr.get("closingIssuesReferences")) or {}
+    pr["closingIssuesReferences"] = refs.get("nodes", [])
+    return cast(dict[str, Any], pr)
 
 
 def fetch_issue_comments(issue_number: int) -> str:
@@ -170,7 +245,7 @@ def main(args: list[str] | None = None) -> int:
         print(f"Error: Failed to fetch PR #{pr_number}: {e.stderr}", file=sys.stderr)
         return 2
 
-    pr_body = pr_data.get("body", "")
+    pr_body = pr_data.get("body") or ""  # None body defense: convert None → ""
     closing_refs = pr_data.get("closingIssuesReferences", [])
 
     # No closing references → nothing to check

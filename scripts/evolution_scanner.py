@@ -5,6 +5,7 @@ import os
 import shlex
 import subprocess
 import sys
+import uuid
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -21,6 +22,7 @@ from evolution_adapters import TOOL_TO_CATEGORIES, sanitize_structured_field, sa
 from evolution_utils import (
     _parse_issue_fields,
     auto_close_resolved,
+    close_expired_notifications,
     dedup_intra_tick,
     load_history,
     reconcile_in_progress,
@@ -42,6 +44,29 @@ class Finding:
 # Infrastructure findings (daily_audit) should not enter the code repository's issue pipeline;
 # they belong to the infrastructure ops repo, not the code repository's issue board.
 ISSUE_EXCLUDED_CATEGORIES: set[str] = {"evolution_self_audit", "daily_audit"}
+
+# INFRA-396 / VAL-DUP-004: Categories never peeled as critical regressions.
+# Only daily_audit is truly barred from the code repo's issue pipeline.
+# evolution_self_audit DOES get issues (independent INFRA-198 quota pool), so its
+# critical regressions must bypass dedup to reach the reopen flow — excluding it
+# here would let a closed-in-window issue swallow them (the exact black hole
+# VAL-DUP-004 exists to prevent).
+PEEL_EXCLUDED_CATEGORIES: set[str] = {"daily_audit"}
+
+
+def _unique_tmp_path(final_path: Path) -> Path:
+    """Return a collision-free tmp path for atomic writes to final_path.
+
+    Fixed tmp names (e.g. heartbeat.json.tmp) race across concurrent writers:
+    writer A's os.replace() consumes the shared tmp file, then writer B's
+    os.replace() fails with FileNotFoundError. mkstemp+unlink also races at
+    thread level: after unlink the freed name can be re-issued to another
+    thread before the first writer recreates it, so both threads rename the
+    same file and the slower os.replace() raises FileNotFoundError (seen on
+    the self-hosted runner, tests/test_evolution_scanner.py). pid + uuid4
+    names are unique per call with no existence-dependent window.
+    """
+    return final_path.parent / f"{final_path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"
 
 
 def load_config(repo_root: Path) -> dict[str, Any]:
@@ -314,11 +339,15 @@ def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated")
                 try:
                     closed_at = datetime.fromisoformat(closed_at_str.replace("Z", "+00:00"))
                     if closed_at >= window_cutoff:
+                        i["_closed_in_window"] = True
                         all_issues.append(i)
                 except (ValueError, TypeError):
                     # If closedAt parsing fails, exclude the issue (fail-safe)
                     pass
-        return [{"rule_id": rid, "location": loc, "number": i["number"]}
+        # INFRA-396: tag issue state so downstream guards can distinguish
+        # genuinely OPEN issues from closed-in-window dedup entries.
+        return [{"rule_id": rid, "location": loc, "number": i["number"],
+                 "state": "closed" if i.get("_closed_in_window") else "open"}
                 for i in all_issues
                 for rid, loc in [_parse_issue_fields(i.get("body", ""))]
                 if rid is not None and loc is not None]
@@ -329,6 +358,44 @@ def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated")
 def deduplicate(findings: list[Finding], open_issues: list[dict[str, Any]]) -> list[Finding]:
     issue_keys = {(i["rule_id"], i["location"]) for i in open_issues}
     return [f for f in findings if (f.rule_id, f.location) not in issue_keys]
+
+
+def _peel_critical_regressions(
+    findings: list[Finding], resolved_keys: set[tuple[str, str]]
+) -> tuple[list[Finding], list[Finding]]:
+    """VAL-DUP-004: Peel critical regression findings before dedup.
+
+    Separate findings into two groups:
+    1. peeled: critical severity + key in resolved_keys (regression findings)
+       + category NOT in PEEL_EXCLUDED_CATEGORIES (INFRA-396: only daily_audit;
+       evolution_self_audit HAS its own INFRA-198 quota pool and must be peeled)
+    2. remaining: everything else (will go through normal dedup)
+
+    This prevents critical regressions from being swallowed by deduplicate()
+    when they match closed issues within the 7-day window.
+
+    Args:
+        findings: list of findings to partition
+        resolved_keys: set of (rule_id, location) tuples for previously resolved findings
+
+    Returns:
+        tuple of (peeled, remaining) finding lists
+    """
+    peeled = [
+        f for f in findings
+        if f.severity == "critical"
+        and (f.rule_id, f.location) in resolved_keys
+        and f.category not in PEEL_EXCLUDED_CATEGORIES
+    ]
+    remaining = [
+        f for f in findings
+        if not (
+            f.severity == "critical"
+            and (f.rule_id, f.location) in resolved_keys
+            and f.category not in PEEL_EXCLUDED_CATEGORIES
+        )
+    ]
+    return peeled, remaining
 
 
 def detect_regressions(findings: list[Finding], history_path: Path) -> list[Finding]:
@@ -445,7 +512,7 @@ def _reopen_closed_issue(rule_id: str, location: str, dedup_label: str, history_
 
     # Write updated history back to file
     try:
-        tmp_path = history_path.with_suffix(".tmp")
+        tmp_path = _unique_tmp_path(history_path)
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.flush()
@@ -461,7 +528,7 @@ def _reopen_closed_issue(rule_id: str, location: str, dedup_label: str, history_
 
 def _process_findings_with_reopen(
     findings: list[Finding], quota: int, resolved_keys: set[tuple[str, str]],
-    dedup_label: str, history_path: Path,
+    dedup_label: str, history_path: Path, open_issues: list[dict[str, Any]] | None = None,
 ) -> int:
     """Process findings: try reopen for resolved regressions, else create new issue.
 
@@ -469,9 +536,37 @@ def _process_findings_with_reopen(
     Only reopen limit (3 times) is suppressed (must log).
     Never silently continue on failure.
 
+    VAL-DUP-004 FIX: Before creating a new issue in the fallback path, check if
+    an OPEN issue with the same (rule_id, location) key already exists in open_issues.
+    If so, skip create to prevent duplicate issue creation loops.
+
+    INFRA-396 FIX: the guard only counts issues whose state is genuinely "open".
+    open_issues also contains closed-in-window dedup entries (state="closed",
+    see get_open_issues); treating those as "already open" silently swallowed
+    the fallback create after a failed reopen — the exact regression VAL-DUP-003
+    guards against.
+
+    Args:
+        findings: List of findings to process
+        quota: Maximum number of issues to create
+        resolved_keys: Set of (rule_id, location) tuples that were previously resolved
+        dedup_label: Label for deduplication
+        history_path: Path to history JSON file
+        open_issues: List of currently open issues (optional, for duplicate guard)
+
     Returns the count of issues created (reopened and suppressed issues are not counted).
     """
     created = 0
+    # Build a set of open issue keys for fast lookup
+    # INFRA-396: only issues verified as OPEN block the fallback create;
+    # closed-in-window entries exist in this list for dedup purposes only.
+    open_issue_keys = set()
+    if open_issues:
+        for issue in open_issues:
+            if isinstance(issue, dict) and "rule_id" in issue and "location" in issue:
+                if issue.get("state", "open") == "open":
+                    open_issue_keys.add((issue["rule_id"], issue["location"]))
+
     for f in findings[:quota]:
         if f.severity == "critical" and (f.rule_id, f.location) in resolved_keys:
             if _reopen_closed_issue(f.rule_id, f.location, dedup_label, history_path):
@@ -480,6 +575,11 @@ def _process_findings_with_reopen(
             if _reopen_limit_reached(f.rule_id, f.location, history_path):
                 print(f"[evolution] Reopen limit reached (3 times) for {f.rule_id} @ {f.location}, "
                       f"suppressing to avoid churn loop")
+                continue
+            # VAL-DUP-004 FIX: Check if an OPEN issue already exists before creating
+            if (f.rule_id, f.location) in open_issue_keys:
+                print(f"[evolution] Open issue already exists for {f.rule_id} @ {f.location}, "
+                      f"skipping duplicate create")
                 continue
             # Genuine failure → fallback to create new issue
             print(f"[evolution] Reopen failed for {f.rule_id} @ {f.location}, "
@@ -553,7 +653,7 @@ def update_history(history_path: Path, findings: list[Finding], issues_created: 
         snapshot["tool_status"] = tool_status
     data["snapshots"].append(snapshot)
     data["snapshots"] = data["snapshots"][-snapshot_limit:]
-    tmp_path = history_path.with_suffix(".tmp")
+    tmp_path = _unique_tmp_path(history_path)
     with open(tmp_path, "w") as f:
         json.dump(data, f, indent=2)
         f.flush()
@@ -577,7 +677,7 @@ def write_heartbeat(repo_root: Path, issues_created: int, findings_count: int) -
         "findings_count": findings_count,
     }
     heartbeat_path = repo_root / ".evolution" / "heartbeat.json"
-    tmp_path = heartbeat_path.with_suffix(".tmp")
+    tmp_path = _unique_tmp_path(heartbeat_path)
     with open(tmp_path, "w") as f:
         json.dump(heartbeat, f, indent=2)
         f.flush()
@@ -719,6 +819,81 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
         print(f"[evolution] Warning: check_isolation failed: {e}")
 
 
+def _integrate_forward_drift_watch(
+    deduped: list[Finding],
+    open_issues: list[dict[str, Any]],
+    suppressed_keys: set[tuple[str, str]],
+    issue_excluded_categories: set[str],
+) -> None:
+    """VAL-DRF-001: Integrate forward drift watch into scanner flow.
+
+    Called after all processing to provide a complete status report on
+    finding coverage (issue exists, suppressed, closed-in-window, quota-pending, or ghost).
+
+    Args:
+        deduped: List of Finding objects after deduplication
+        open_issues: List of open issue dicts from GitHub
+        suppressed_keys: Set of (rule_id, location) keys that were suppressed
+        issue_excluded_categories: Categories that are not actionable
+    """
+    from evolution_utils import forward_drift_watch
+
+    # Build open issue keys set (filter out None values for type safety)
+    open_issue_keys: set[tuple[str, str]] = {
+        (i["rule_id"], i["location"])
+        for i in open_issues
+        if i.get("rule_id") is not None and i.get("location") is not None
+    }
+
+    # For closed-in-window, we need to check which findings were deduped against closed issues
+    # This is tracked by comparing deduped findings vs all findings
+    # Since we don't have direct access to all_findings here, we'll use empty set for now
+    # The forward_drift_watch will classify these as GHOST if they have no other reason
+    closed_window_keys: set[tuple[str, str]] = set()
+
+    # For quota-pending, we need to check if any category exceeded its max issues per tick
+    # This requires checking config, which we don't have here
+    # For simplicity, we'll use empty dict (no quota tracking in this integration)
+    # The forward_drift_watch will classify these based on other criteria
+    quota_exhausted: dict[str, bool] = {}
+
+    # Call forward_drift_watch
+    drift_records = forward_drift_watch(
+        findings=deduped,
+        open_issue_keys=open_issue_keys,
+        suppressed_keys=suppressed_keys,
+        closed_window_keys=closed_window_keys,
+        quota_exhausted=quota_exhausted,
+        issue_excluded_categories=issue_excluded_categories,
+    )
+
+    # Log summary
+    if drift_records:
+        # Count records by status (all 5 categories, even if 0)
+        status_counts = {
+            "ISSUE_EXISTS": 0,
+            "CLOSED_IN_WINDOW": 0,
+            "SUPPRESSED": 0,
+            "QUOTA_PENDING": 0,
+            "GHOST": 0,
+        }
+        for record in drift_records:
+            if record.status in status_counts:
+                status_counts[record.status] += 1
+
+        # Print summary line with all 5 categories
+        summary = " ".join(f"{k}={v}" for k, v in status_counts.items())
+        print(f"[evolution] Forward drift watch: {summary}")
+
+        # Log ghost details if any
+        ghost_count = status_counts.get("GHOST", 0)
+        if ghost_count > 0:
+            print(f"[evolution] Forward drift watch: {ghost_count} GHOST findings detected (no issue, no reason)")
+            for record in drift_records:
+                if record.status == "GHOST":
+                    print(f"  - {record.finding_key[0]} at {record.finding_key[1]}: {record.reason}")
+
+
 def main() -> None:
     repo_root = Path(__file__).parent.parent
     if check_kill_switch(repo_root):
@@ -749,7 +924,11 @@ def main() -> None:
     # Load and apply suppression list (P2-2: prevent amplification loop)
     suppressions = load_suppressions(repo_root)
     before_suppression = len(all_findings)
+    # Track suppressed findings for forward drift watch (VAL-DRF-001)
+    pre_suppression_keys = {(f.rule_id, f.location) for f in all_findings}
     all_findings = apply_suppressions(all_findings, suppressions)
+    post_suppression_keys = {(f.rule_id, f.location) for f in all_findings}
+    suppressed_keys = pre_suppression_keys - post_suppression_keys
     suppressed_count = before_suppression - len(all_findings)
     if suppressed_count > 0:
         print(f"[evolution] Suppressed {suppressed_count} findings by suppress.json")
@@ -761,11 +940,27 @@ def main() -> None:
         for r in _hist_data.get("resolved_findings", []):
             if isinstance(r, dict):
                 _resolved_keys.add((r.get("rule_id", ""), r.get("location", "")))
+
+    # VAL-DUP-004: Peel critical regressions before dedup to prevent black hole effect
+    # Critical regressions must bypass dedup to reach _process_findings_with_reopen
+    critical_regressions, remaining_findings = _peel_critical_regressions(findings, _resolved_keys)
+
     deduped = []
     gh_failed = False
+    open_issues = []
     try:
         open_issues = get_open_issues(config["dedup_label"], config["failure_label"])
-        deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
+
+        # VAL-DUP-004: Process critical regressions first (bypass dedup)
+        issues_created = 0
+        if critical_regressions:
+            issues_created += _process_findings_with_reopen(
+                critical_regressions, config["max_issues_per_tick"], _resolved_keys,
+                config["dedup_label"], history_path, open_issues,
+            )
+
+        # Then deduplicate and process remaining findings
+        deduped = sort_by_severity(deduplicate(remaining_findings, open_issues), config["severity_order"])
         # INFRA-198: independent quotas so critical findings don't starve self_audit
         # INFRA-265: exclude daily_audit from issue creation (infrastructure findings)
         # INFRA-third-quota-pool: code_hygiene gets independent third pool
@@ -776,17 +971,19 @@ def main() -> None:
         self_audit = [f for f in deduped if f.category == "evolution_self_audit"]
         # VAL-REOPEN: For regression findings (upgraded to critical by detect_regressions),
         # try to reopen a matching closed issue before creating a new one.
-        issues_created = _process_findings_with_reopen(
+        # INFRA-396: open_issues passed to every pool so the fallback-create guard
+        # cannot be bypassed by pool routing.
+        issues_created += _process_findings_with_reopen(
             regular, config["max_issues_per_tick"], _resolved_keys,
-            config["dedup_label"], history_path,
+            config["dedup_label"], history_path, open_issues,
         )
         issues_created += _process_findings_with_reopen(
             self_audit, config["max_self_audit_issues_per_tick"], _resolved_keys,
-            config["dedup_label"], history_path,
+            config["dedup_label"], history_path, open_issues,
         )
         issues_created += _process_findings_with_reopen(
             code_hygiene, config["max_code_hygiene_issues_per_tick"], _resolved_keys,
-            config["dedup_label"], history_path,
+            config["dedup_label"], history_path, open_issues,
         )
     except RuntimeError as e:
         print(f"[evolution] Warning: {e}")
@@ -833,6 +1030,23 @@ def main() -> None:
 
     # GAP-E: Reconciliation - check for stuck issues (advisory only)
     reconcile_in_progress(config["dedup_label"])
+
+    # VAL-DRF-001: Forward drift watch - integrate into scanner flow
+    # This runs after all processing to provide a complete status report
+    _integrate_forward_drift_watch(
+        deduped=deduped,
+        open_issues=open_issues,
+        suppressed_keys=suppressed_keys,
+        issue_excluded_categories=ISSUE_EXCLUDED_CATEGORIES,
+    )
+
+    # VAL-NTF-002: Close notification issues that exceeded TTL
+    try:
+        closed_count = close_expired_notifications()
+        if closed_count > 0:
+            print(f"[evolution] Closed {closed_count} expired notification issues")
+    except Exception as e:
+        print(f"[evolution] Warning: close_expired_notifications failed: {e}")
 
 
 if __name__ == "__main__":

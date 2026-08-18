@@ -150,13 +150,13 @@ def test_ci_tarball_extraction_isolated():
     )
     run_content = install_step["run"]
 
-    # Every tar extraction must target /tmp to avoid overwriting repo files
+    # Every tar extraction must target a temp directory to avoid overwriting repo files
     tar_lines = [line.strip() for line in run_content.splitlines() if "tar -" in line]
     assert len(tar_lines) > 0, "Expected tar extraction commands in install step"
     for line in tar_lines:
-        assert "-C /tmp" in line, (
-            f"tar extraction must target /tmp to avoid overwriting repo "
-            f"files (README.md, LICENSE): {line}"
+        assert "-C /tmp" in line or "-C \"$RUNNER_TEMP\"" in line, (
+            f"tar extraction must target a temp directory (/tmp or $RUNNER_TEMP) "
+            f"to avoid overwriting repo files (README.md, LICENSE): {line}"
         )
 
 
@@ -224,5 +224,76 @@ def test_fix_has_test_guard_uses_gh_token():
     assert "GH_TOKEN" in env or "GITHUB_TOKEN" in env, \
         "Fix-has-test guard step must set GH_TOKEN or GITHUB_TOKEN"
     token_value = env.get("GH_TOKEN") or env.get("GITHUB_TOKEN")
+    assert "secrets.GITHUB_TOKEN" in str(token_value), \
+        f"Token must reference secrets.GITHUB_TOKEN, got: {token_value}"
+
+
+# ============================================================================
+# PR reference consistency guard structure assertions (VAL-GATE-201/202/204 wiring)
+# ============================================================================
+
+def _get_pr_ref_guard_step(ci):
+    """Locate the PR reference consistency guard step in the test job."""
+    test_job = ci["jobs"]["test"]
+    steps = test_job["steps"]
+    return next(
+        (s for s in steps
+         if "check_pr_ref_consistency" in s.get("run", "")),
+        None
+    )
+
+
+def test_ci_has_pr_ref_consistency_guard():
+    """VAL-GATE wiring: ci.yml test job contains PR reference consistency step."""
+    ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    guard_step = _get_pr_ref_guard_step(ci)
+    assert guard_step is not None, \
+        "PR reference consistency guard step not found in test job"
+    assert "check_pr_ref_consistency.py" in guard_step.get("run", "")
+
+
+def test_pr_ref_consistency_guard_not_advisory():
+    """Guard is blocking, not continue-on-error (contributes to ci-ok)."""
+    ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    guard_step = _get_pr_ref_guard_step(ci)
+    assert guard_step is not None
+    assert guard_step.get("continue-on-error") is not True, \
+        "PR reference consistency guard must not be continue-on-error"
+
+
+def test_pr_ref_consistency_guard_step_level_if_not_job_level():
+    """Guard must use step-level if (not a standalone skipped job).
+
+    Job-level `if: pull_request` on a standalone job would be skipped on
+    push-to-main runs; ci-ok's strict `!= success` check would then fail
+    and break main's CI. Step-level skip inside the test job is the
+    established pattern (same as fix-has-test guard).
+    """
+    ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    guard_step = _get_pr_ref_guard_step(ci)
+    assert guard_step is not None
+    if_condition = str(guard_step.get("if", ""))
+    assert "pull_request" in if_condition, \
+        f"Guard must be gated on pull_request at step level, got: {if_condition}"
+    # Must live in the test job, not a standalone job
+    assert "test" in ci["jobs"]
+    job_names = [
+        name for name, job in ci["jobs"].items()
+        if any("check_pr_ref_consistency" in s.get("run", "")
+               for s in job.get("steps", []))
+    ]
+    assert job_names == ["test"], \
+        f"Guard must only exist in test job, found in: {job_names}"
+
+
+def test_pr_ref_consistency_guard_uses_gh_token():
+    """Guard uses GH_TOKEN (secrets.GITHUB_TOKEN) for read-only gh API calls."""
+    ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
+    guard_step = _get_pr_ref_guard_step(ci)
+    assert guard_step is not None
+    env = guard_step.get("env", {})
+    token_value = env.get("GH_TOKEN") or env.get("GITHUB_TOKEN")
+    assert token_value is not None, \
+        "PR reference consistency guard must set GH_TOKEN"
     assert "secrets.GITHUB_TOKEN" in str(token_value), \
         f"Token must reference secrets.GITHUB_TOKEN, got: {token_value}"

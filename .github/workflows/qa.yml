@@ -34,18 +34,28 @@ jobs:
 
   coverage-audit:
     name: Coverage Audit (target 80%)
-    runs-on: ubuntu-latest
+    # pytest 全量 + 覆盖率统计是 CI 最重 job，切自建 runner（ce-01）
+    runs-on: [self-hosted, pve-linux]
+    env:
+      PIP_BREAK_SYSTEM_PACKAGES: 1
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
-          cache: 'pip'
+          fetch-depth: 1  # 浅克隆，加速 checkout（自建 runner 走代理隧道，全量历史拉取慢）
+      # 自建 runner：扩展 PATH 包含 ~/.local/bin（pip 安装 console scripts 的位置）
+      - name: Extend PATH for self-hosted runner
+        run: echo "/home/runner/.local/bin" >> "$GITHUB_PATH"
+      # 自建 runner：系统已预装 Python 3.12 + pytest 全家桶，直接用系统解释器。
+      # 不能保留 if 恒假的 setup-python 引用：runner 启动阶段预下载所有 action，慢网络下超时杀死 job。
+      - name: Use system Python (self-hosted)
+        run: |
+          python3 --version
+          echo "/usr/bin" >> "$GITHUB_PATH"
       - name: Install package and test deps
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
-          python -m pip install pytest pytest-cov pytest-rerunfailures
+          python -m pip install pytest pytest-cov pytest-rerunfailures pytest-xdist
       - name: Run coverage gap analysis
         # Note: target 80% is aspirational; CI reports gap but does not fail
         # until coverage is progressively raised from 15% baseline.
@@ -54,7 +64,7 @@ jobs:
           python scripts/qa/coverage_gap_finder.py --target 80 --json qa-coverage-results.json || true
       - name: Run pytest with coverage (gated at current threshold)
         run: |
-          python -m pytest tests/ --cov=memory_core --cov-report=xml --cov-branch --cov-fail-under=15
+          python -m pytest tests/ -n 6 --cov=memory_core --cov-report=xml --cov-branch --cov-fail-under=15
       - name: Upload coverage XML
         if: always()
         uses: actions/upload-artifact@v7

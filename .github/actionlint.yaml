@@ -1,0 +1,7 @@
+self-hosted-runner:
+  # 自建 runner label，actionlint 内置清单不认识，需显式声明：
+  # - pve-linux: org 级 Linux runner（PVE VM ce-01 / pve-runner-01，重计算 CI job）
+  # - memory-core-upgrade: repo 级 Mac runner（memory-core-mac，发版 upgrade-consumer 专属）
+  labels:
+    - pve-linux
+    - memory-core-upgrade
