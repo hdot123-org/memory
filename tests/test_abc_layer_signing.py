@@ -24,15 +24,23 @@ _original_load_key = _key_module.load_key
 
 
 @pytest.fixture(autouse=True)
-def _mock_load_key():
+def _mock_load_key(monkeypatch):
     """Mock load_key for CI environments, restored after each test.
 
-    This prevents the mock from leaking into other test modules
-    (e.g., test_l2_integrity.py expects load_key to return None for missing keys).
+    Uses monkeypatch.setattr for guaranteed restoration even if the test
+    raises an exception. Direct module attribute assignment
+    (_key_module.load_key = ...) was previously used here but is fragile:
+    if teardown is interrupted the patched function leaks across test
+    boundaries (e.g., test_integrity_resign.py::test_resign_no_key_fails
+    would find a key and falsely fail).
     """
-    _key_module.load_key = lambda path=None: b"test_key_32_bytes_long_padding!" if _original_load_key(path) is None else _original_load_key(path)
-    yield
-    _key_module.load_key = _original_load_key
+    def _fake_load_key(path=None):
+        real = _original_load_key(path)
+        if real is None:
+            return b"test_key_32_bytes_long_padding!"
+        return real
+
+    monkeypatch.setattr(_key_module, "load_key", _fake_load_key)
 
 
 # ── 辅助函数 ──────────────────────────────────────────────────────
