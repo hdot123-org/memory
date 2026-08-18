@@ -9253,7 +9253,7 @@ def test_dup_004_peel_excludes_issue_excluded_categories():
     and reach create_issue. After fix: excluded categories stay in remaining (go
     through normal dedup path where they are correctly filtered out).
     """
-    from evolution_scanner import _peel_critical_regressions, ISSUE_EXCLUDED_CATEGORIES
+    from evolution_scanner import _peel_critical_regressions
 
     # daily_audit finding upgraded to critical by detect_regressions
     daily_audit_finding = Finding(
@@ -9299,8 +9299,9 @@ def test_dup_004_open_issue_guard_skips_duplicate_create():
     to create_issue every tick, creating duplicates. After fix: open_issues list
     is checked and create is skipped when same-key OPEN exists.
     """
-    from evolution_scanner import Finding, _process_findings_with_reopen
     from unittest.mock import patch
+
+    from evolution_scanner import Finding, _process_findings_with_reopen
 
     critical_finding = Finding(
         "RULE_001", "critical", "test", "Regression", "file.py", "evidence"
@@ -9334,9 +9335,10 @@ def test_dup_004_main_ordering_peel_before_dedup():
     window) and no reopen attempt would occur. This test would fail with zero
     gh calls for reopen/search.
     """
-    from unittest.mock import patch, MagicMock
-    from evolution_scanner import main as scanner_main
     import json
+    from unittest.mock import MagicMock, patch
+
+    from evolution_scanner import main as scanner_main
 
     # Prepare history with resolved finding (makes detect_regressions upgrade to critical)
     history_data = {
