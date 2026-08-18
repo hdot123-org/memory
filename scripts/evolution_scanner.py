@@ -1144,10 +1144,11 @@ def main() -> None:
 
     # VAL-DRF-002/003: Reverse drift watch - classify and remediate orphan issues
     # D1: For open issues not in current findings, classify based on evidence and take action
+    # P1 Safety Guards: self-audit exemption, failed categories skip, partial output fail-closed
     try:
         from evolution_utils import reverse_drift_watch
         # Reuse already-fetched open_issues from earlier in main() (incremental)
-        reverse_drift_watch(all_findings, open_issues, history_path)
+        reverse_drift_watch(all_findings, open_issues, history_path, failed_categories)
     except Exception as e:
         print(f"[evolution] Warning: reverse_drift_watch failed: {e}", file=sys.stderr)
 
