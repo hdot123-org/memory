@@ -1571,6 +1571,41 @@ def test_retirement_list_tracks_infra_391() -> None:
 
 
 # ============================================================================
+# VAL-BRANCH-032 (INFRA-401): retirement list ships with infra-401 entries
+# ============================================================================
+def test_retirement_list_tracks_infra_401() -> None:
+    """The checked-in retirement list also lists the superseded
+    fix/pr-ref-regex-robustness and fix/infra-398-branch-cleanup-tracking
+    branches so tracking issue INFRA-401 (mirror #813) can drain once the
+    scheduled cleanup deletes them.
+
+    Evidence chain:
+    - fix/pr-ref-regex-robustness: PR #802 closed unmerged; its 9-keyword
+      regex + comma-list + None-body fixes all landed on main via PR #803
+      and PR #807 (debc617) — cross-implementation equivalence that the
+      INFRA-383 merge-tree containment check cannot see.
+    - fix/infra-398-branch-cleanup-tracking: PR #806 (INFRA-398) closed
+      unmerged after conflicting with PR #807; its retirement entry and
+      regression tests are re-landed by the INFRA-401 PR.
+
+    Mirrors VAL-BRANCH-029/031: the list is the audit artifact, and adding
+    or removing entries requires PR review.
+    """
+    retired = repo_root() / "scripts" / "branch_cleanup_retired.txt"
+    assert retired.is_file(), "scripts/branch_cleanup_retired.txt must exist"
+    content = retired.read_text()
+    assert "fix/pr-ref-regex-robustness" in content, (
+        "infra-401 superseded branch must be listed for retirement"
+    )
+    assert "fix/infra-398-branch-cleanup-tracking" in content, (
+        "infra-398's superseded branch (closed PR #806) must be listed for retirement"
+    )
+    assert "INFRA-401" in content, (
+        "the infra-401 entries must carry their INFRA reference"
+    )
+
+
+# ============================================================================
 # VAL-BRANCH-030 (INFRA-388): script documents the retirement mechanism
 # ============================================================================
 def test_script_documents_retirement_list() -> None:
