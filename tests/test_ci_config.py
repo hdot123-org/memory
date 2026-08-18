@@ -420,7 +420,9 @@ class TestDroidReview503SelfHeal:
         triggers = watchdog_data[True]  # YAML parses 'on:' as True key
         assert "workflow_run" in triggers
         wr = triggers["workflow_run"]
-        assert wr["workflows"] == ["Droid Auto Review"]
+        # 双触发源（2026-08-19）：Droid Auto Review → 503 自愈；CI → 失败取消 review
+        assert "Droid Auto Review" in wr["workflows"]
+        assert "CI" in wr["workflows"]
         assert "completed" in wr["types"]
 
     def test_watchdog_has_actions_write_permission(self, watchdog_data):
@@ -456,6 +458,38 @@ class TestDroidReview503SelfHeal:
         run_block = next(s["run"] for s in steps if "rerun" in s.get("name", "").lower())
         for forbidden in ("--admin", "--force", "merge"):
             assert forbidden not in run_block, f"forbidden token in watchdog: {forbidden}"
+
+    def test_cancel_on_ci_fail_job_exists_and_gated(self, watchdog_data):
+        """VAL-CIF-001: cancel-on-ci-fail job 存在且仅在 CI 失败时触发。
+
+        2026-08-19 PR #810 实证：review 与 CI 并行设计下 CI 变红后 review
+        不自停（Qwen token 空烧，单次上界 45min）。本 job 补状态机缺失边。
+        """
+        jobs = watchdog_data["jobs"]
+        assert "cancel-on-ci-fail" in jobs, "cancel-on-ci-fail job missing"
+        cond = str(jobs["cancel-on-ci-fail"].get("if", ""))
+        assert "workflow_run.name == 'CI'" in cond, "must fire only on CI workflow"
+        assert "conclusion == 'failure'" in cond, "must fire only on CI failure"
+
+    def test_self_heal_rerun_scoped_to_review_workflow(self, watchdog_data):
+        """VAL-CIF-002: self-heal-rerun 限定 Droid Auto Review（双触发源防误伤）。"""
+        cond = str(watchdog_data["jobs"]["self-heal-rerun"].get("if", ""))
+        assert "workflow_run.name == 'Droid Auto Review'" in cond, (
+            "self-heal-rerun must not fire for CI workflow events"
+        )
+
+    def test_cancel_on_ci_fail_cancels_only_review_runs(self, watchdog_data):
+        """VAL-CIF-003: 取消目标按 name == Droid Auto Review 过滤 + 用 head_sha 定位。"""
+        steps = watchdog_data["jobs"]["cancel-on-ci-fail"]["steps"]
+        run_block = next(s["run"] for s in steps if "cancel" in s.get("name", "").lower())
+        assert "Droid Auto Review" in run_block, "must filter by review workflow name"
+        assert "head_sha" in run_block, "must scope cancellation to the failed SHA"
+        assert "/cancel" in run_block, "must call the cancel API"
+        # 取消失败只 warning，不阻塞（run 可能刚好自然结束；竞态无害）
+        assert "::warning::" in run_block
+        # 门禁语义不变：不含 merge/admin 类操作
+        for forbidden in ("--admin", "--force", " merge"):
+            assert forbidden not in run_block, f"forbidden token in cancel job: {forbidden}"
 
     def test_droid_review_job_has_no_inline_selfheal(self, droid_review_data):
         """VAL-503-006: 防回退——droid-review job 内不得再出现自愈 step。
