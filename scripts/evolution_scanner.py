@@ -5,6 +5,7 @@ import os
 import shlex
 import subprocess
 import sys
+import uuid
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -51,6 +52,21 @@ ISSUE_EXCLUDED_CATEGORIES: set[str] = {"evolution_self_audit", "daily_audit"}
 # here would let a closed-in-window issue swallow them (the exact black hole
 # VAL-DUP-004 exists to prevent).
 PEEL_EXCLUDED_CATEGORIES: set[str] = {"daily_audit"}
+
+
+def _unique_tmp_path(final_path: Path) -> Path:
+    """Return a collision-free tmp path for atomic writes to final_path.
+
+    Fixed tmp names (e.g. heartbeat.json.tmp) race across concurrent writers:
+    writer A's os.replace() consumes the shared tmp file, then writer B's
+    os.replace() fails with FileNotFoundError. mkstemp+unlink also races at
+    thread level: after unlink the freed name can be re-issued to another
+    thread before the first writer recreates it, so both threads rename the
+    same file and the slower os.replace() raises FileNotFoundError (seen on
+    the self-hosted runner, tests/test_evolution_scanner.py). pid + uuid4
+    names are unique per call with no existence-dependent window.
+    """
+    return final_path.parent / f"{final_path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"
 
 
 def load_config(repo_root: Path) -> dict[str, Any]:
@@ -496,7 +512,7 @@ def _reopen_closed_issue(rule_id: str, location: str, dedup_label: str, history_
 
     # Write updated history back to file
     try:
-        tmp_path = history_path.with_suffix(".tmp")
+        tmp_path = _unique_tmp_path(history_path)
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.flush()
@@ -637,7 +653,7 @@ def update_history(history_path: Path, findings: list[Finding], issues_created: 
         snapshot["tool_status"] = tool_status
     data["snapshots"].append(snapshot)
     data["snapshots"] = data["snapshots"][-snapshot_limit:]
-    tmp_path = history_path.with_suffix(".tmp")
+    tmp_path = _unique_tmp_path(history_path)
     with open(tmp_path, "w") as f:
         json.dump(data, f, indent=2)
         f.flush()
@@ -661,7 +677,7 @@ def write_heartbeat(repo_root: Path, issues_created: int, findings_count: int) -
         "findings_count": findings_count,
     }
     heartbeat_path = repo_root / ".evolution" / "heartbeat.json"
-    tmp_path = heartbeat_path.with_suffix(".tmp")
+    tmp_path = _unique_tmp_path(heartbeat_path)
     with open(tmp_path, "w") as f:
         json.dump(heartbeat, f, indent=2)
         f.flush()

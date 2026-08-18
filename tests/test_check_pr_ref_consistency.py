@@ -87,12 +87,25 @@ ISSUE_801_COMMENTS = "Another comment without any INFRA reference"
 
 
 def _mock_gh_pr_view(pr_number: int, body: str, closing_refs: list[int]) -> MagicMock:
-    """Create a mock subprocess.CompletedProcess for gh pr view."""
+    """Create a mock subprocess.CompletedProcess for gh api graphql.
+
+    Mirrors the GraphQL response shape of fetch_pr_data(): data > repository >
+    pullRequest > closingIssuesReferences { nodes: [...] }. The guard must
+    flatten this to the flat node list expected by main().
+    """
     result = MagicMock()
     result.returncode = 0
     data = {
-        "body": body,
-        "closingIssuesReferences": [{"number": n} for n in closing_refs],
+        "data": {
+            "repository": {
+                "pullRequest": {
+                    "body": body,
+                    "closingIssuesReferences": {
+                        "nodes": [{"number": n} for n in closing_refs]
+                    },
+                }
+            }
+        }
     }
     result.stdout = json.dumps(data)
     result.stderr = ""
@@ -136,7 +149,9 @@ def _make_side_effect(
 
     def side_effect(args, **kwargs):
         cmd = " ".join(args)
-        if "pr view" in cmd:
+        if "remote get-url" in cmd:
+            return _mock_ok("https://github.com/hdot123-org/memory.git")
+        if "pr view" in cmd or "graphql" in cmd:
             return _mock_gh_pr_view(pr_number, pr_body, closing_refs)
         for issue_num, comments_text in issue_comments.items():
             if f"issue view {issue_num}" in cmd:
@@ -426,3 +441,45 @@ resolve INFRA-345"""
 
         exit_code, _ = _run_check(603, side_effect)
         assert exit_code == 0, "Singular imperative forms must be recognized"
+
+
+# ===========================================================================
+# gh-version independence (PR #797 regression)
+# ===========================================================================
+
+class TestGhVersionIndependence:
+    """PR #797 regression: self-hosted runner gh < 2.67 rejects
+    `gh pr view --json closingIssuesReferences` with "Unknown JSON field".
+    The guard must fetch closing refs via `gh api graphql` instead
+    (server-side field resolution, gh-version independent).
+    """
+
+    def test_does_not_use_gh_pr_view_field(self):
+        """Must not call `gh pr view --json ...closingIssuesReferences...`."""
+        side_effect = _make_side_effect(
+            729, PR_729_BODY, PR_729_CLOSING_REFS, {711: ISSUE_711_COMMENTS},
+        )
+        _, mock_run = _run_check(729, side_effect)
+        for call in mock_run.call_args_list:
+            args = call[0][0] if call[0] else call[1].get("args", [])
+            cmd_str = " ".join(args) if isinstance(args, list) else str(args)
+            if "pr view" in cmd_str:
+                assert "closingIssuesReferences" not in cmd_str, (
+                    f"gh pr view must not request closingIssuesReferences "
+                    f"(unsupported on gh < 2.67): {cmd_str}"
+                )
+
+    def test_fetches_via_graphql(self):
+        """PR data must be fetched via `gh api graphql`."""
+        side_effect = _make_side_effect(
+            729, PR_729_BODY, PR_729_CLOSING_REFS, {711: ISSUE_711_COMMENTS},
+        )
+        _, mock_run = _run_check(729, side_effect)
+        graphql_calls = [
+            " ".join(call[0][0]) for call in mock_run.call_args_list
+            if "graphql" in " ".join(call[0][0])
+        ]
+        assert graphql_calls, "Expected gh api graphql call for PR data"
+        assert any("repository" in c and "pullRequest" in c for c in graphql_calls), (
+            "GraphQL query must target repository.pullRequest"
+        )

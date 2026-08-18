@@ -150,13 +150,13 @@ def test_ci_tarball_extraction_isolated():
     )
     run_content = install_step["run"]
 
-    # Every tar extraction must target /tmp to avoid overwriting repo files
+    # Every tar extraction must target a temp directory to avoid overwriting repo files
     tar_lines = [line.strip() for line in run_content.splitlines() if "tar -" in line]
     assert len(tar_lines) > 0, "Expected tar extraction commands in install step"
     for line in tar_lines:
-        assert "-C /tmp" in line, (
-            f"tar extraction must target /tmp to avoid overwriting repo "
-            f"files (README.md, LICENSE): {line}"
+        assert "-C /tmp" in line or "-C \"$RUNNER_TEMP\"" in line, (
+            f"tar extraction must target a temp directory (/tmp or $RUNNER_TEMP) "
+            f"to avoid overwriting repo files (README.md, LICENSE): {line}"
         )
 
 
