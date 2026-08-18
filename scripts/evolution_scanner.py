@@ -332,6 +332,36 @@ def deduplicate(findings: list[Finding], open_issues: list[dict[str, Any]]) -> l
     return [f for f in findings if (f.rule_id, f.location) not in issue_keys]
 
 
+def _peel_critical_regressions(
+    findings: list[Finding], resolved_keys: set[tuple[str, str]]
+) -> tuple[list[Finding], list[Finding]]:
+    """VAL-DUP-004: Peel critical regression findings before dedup.
+
+    Separate findings into two groups:
+    1. peeled: critical severity + key in resolved_keys (regression findings)
+    2. remaining: everything else (will go through normal dedup)
+
+    This prevents critical regressions from being swallowed by deduplicate()
+    when they match closed issues within the 7-day window.
+
+    Args:
+        findings: list of findings to partition
+        resolved_keys: set of (rule_id, location) tuples for previously resolved findings
+
+    Returns:
+        tuple of (peeled, remaining) finding lists
+    """
+    peeled = [
+        f for f in findings
+        if f.severity == "critical" and (f.rule_id, f.location) in resolved_keys
+    ]
+    remaining = [
+        f for f in findings
+        if not (f.severity == "critical" and (f.rule_id, f.location) in resolved_keys)
+    ]
+    return peeled, remaining
+
+
 def detect_regressions(findings: list[Finding], history_path: Path) -> list[Finding]:
     """VAL-DUP-004: Detect regression findings that were previously resolved.
 
@@ -841,12 +871,27 @@ def main() -> None:
         for r in _hist_data.get("resolved_findings", []):
             if isinstance(r, dict):
                 _resolved_keys.add((r.get("rule_id", ""), r.get("location", "")))
+
+    # VAL-DUP-004: Peel critical regressions before dedup to prevent black hole effect
+    # Critical regressions must bypass dedup to reach _process_findings_with_reopen
+    critical_regressions, remaining_findings = _peel_critical_regressions(findings, _resolved_keys)
+
     deduped = []
     gh_failed = False
     open_issues = []
     try:
         open_issues = get_open_issues(config["dedup_label"], config["failure_label"])
-        deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
+
+        # VAL-DUP-004: Process critical regressions first (bypass dedup)
+        issues_created = 0
+        if critical_regressions:
+            issues_created += _process_findings_with_reopen(
+                critical_regressions, config["max_issues_per_tick"], _resolved_keys,
+                config["dedup_label"], history_path,
+            )
+
+        # Then deduplicate and process remaining findings
+        deduped = sort_by_severity(deduplicate(remaining_findings, open_issues), config["severity_order"])
         # INFRA-198: independent quotas so critical findings don't starve self_audit
         # INFRA-265: exclude daily_audit from issue creation (infrastructure findings)
         # INFRA-third-quota-pool: code_hygiene gets independent third pool
@@ -857,7 +902,7 @@ def main() -> None:
         self_audit = [f for f in deduped if f.category == "evolution_self_audit"]
         # VAL-REOPEN: For regression findings (upgraded to critical by detect_regressions),
         # try to reopen a matching closed issue before creating a new one.
-        issues_created = _process_findings_with_reopen(
+        issues_created += _process_findings_with_reopen(
             regular, config["max_issues_per_tick"], _resolved_keys,
             config["dedup_label"], history_path,
         )

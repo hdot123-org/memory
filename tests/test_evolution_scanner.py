@@ -9078,3 +9078,166 @@ def test_ghost_finding_scenario_run_31915486263():
         assert created == 5, "All 5 ghost findings should create new issues"
         assert mock_create.call_count == 5
 
+
+# ============================================================================
+# VAL-DUP-004: Critical regression before dedup ordering fix
+# ============================================================================
+
+def test_dup_004_current_dedup_swallows_critical_regression():
+    """Red evidence (documents the bug): Current deduplicate() removes critical regression
+    findings that match closed issues within the dedup window.
+
+    After fix: critical regressions are peeled BEFORE dedup and sent to
+    _process_findings_with_reopen for reopen attempt. This test documents the
+    problematic behavior of the raw deduplicate() function — the fix belongs in main().
+    """
+    critical_finding = Finding(
+        "RULE_001", "critical", "test", "Regression", "file.md", "evidence"
+    )
+    # Simulate get_open_issues returning a closed issue matching the critical finding
+    # (this happens when the closed issue is within the 7-day window)
+    closed_issue = {"rule_id": "RULE_001", "location": "file.md", "number": 100}
+
+    # deduplicate() doesn't distinguish critical regressions — it swallows them
+    deduped = deduplicate([critical_finding], [closed_issue])
+    # BUG: critical finding is removed by dedup
+    assert len(deduped) == 0, "Current deduplicate() swallows critical regressions (the bug)"
+
+
+def test_dup_004_peel_critical_regressions():
+    """VAL-DUP-004: New helper _peel_critical_regressions separates critical+resolved
+    findings from the rest before dedup.
+
+    Red evidence (before fix): _peel_critical_regressions doesn't exist → ImportError.
+    After fix: correctly separates critical+resolved findings from the rest.
+    """
+    from evolution_scanner import _peel_critical_regressions
+
+    critical_regression = Finding(
+        "RULE_X", "critical", "test", "Regression", "file.py", "evidence"
+    )
+    non_critical = Finding(
+        "RULE_Y", "warning", "test", "Regular", "file2.py", "evidence"
+    )
+    critical_not_resolved = Finding(
+        "RULE_Z", "critical", "test", "First-time critical", "file3.py", "evidence"
+    )
+    resolved_keys = {("RULE_X", "file.py")}
+
+    peeled, remaining = _peel_critical_regressions(
+        [critical_regression, non_critical, critical_not_resolved],
+        resolved_keys,
+    )
+
+    # Only the critical finding that's also in resolved_keys should be peeled
+    assert len(peeled) == 1, "Only critical+resolved findings should be peeled"
+    assert peeled[0].rule_id == "RULE_X"
+    assert peeled[0].severity == "critical"
+
+    # Everything else remains
+    assert len(remaining) == 2
+    remaining_keys = {(f.rule_id, f.location) for f in remaining}
+    assert ("RULE_Y", "file2.py") in remaining_keys
+    assert ("RULE_Z", "file3.py") in remaining_keys
+
+
+def test_dup_004_critical_regression_not_swallowed_integration():
+    """VAL-DUP-004: Full dedup flow with critical regression after fix.
+
+    Red evidence: Before fix, the main() flow calls deduplicate() which swallows
+    critical regressions matching closed issues in window. After fix: critical
+    regressions are peeled first and reach _process_findings_with_reopen.
+    """
+    from evolution_scanner import _peel_critical_regressions
+
+    critical_finding = Finding(
+        "RULE_X", "critical", "test", "Regression", "file.py", "evidence"
+    )
+    resolved_keys = {("RULE_X", "file.py")}
+    # Simulate get_open_issues returning a closed issue matching the critical finding
+    # (this happens when the closed issue is within the 7-day window)
+    open_issues = [{"rule_id": "RULE_X", "location": "file.py", "number": 100}]
+    findings = [critical_finding]
+
+    # Simulate fixed main() flow: peel critical first, then dedup remaining
+    peeled, remaining = _peel_critical_regressions(findings, resolved_keys)
+    deduped_remaining = deduplicate(remaining, open_issues)
+
+    # Critical finding is peeled before dedup, not swallowed
+    assert len(peeled) == 1, "Critical regression should be peeled before dedup"
+    assert peeled[0].severity == "critical"
+    assert peeled[0].rule_id == "RULE_X"
+    # Remaining after dedup is empty (no non-critical findings in this scenario)
+    assert len(deduped_remaining) == 0
+
+
+def test_dup_004_non_critical_still_deduped():
+    """Control test for VAL-DUP-001..003: Non-critical findings matching closed issues
+    within 7-day window must still be deduplicated (swallowed) after the fix.
+
+    This ensures the fix for VAL-DUP-004 doesn't break the dedup logic for
+    non-critical findings.
+    """
+    from evolution_scanner import _peel_critical_regressions
+
+    non_critical_finding = Finding(
+        "RULE_Y", "warning", "test", "Regular", "file2.py", "evidence"
+    )
+    resolved_keys = {("RULE_X", "file.py")}  # Doesn't contain RULE_Y
+    open_issues = [{"rule_id": "RULE_Y", "location": "file2.py", "number": 200}]
+    findings = [non_critical_finding]
+
+    peeled, remaining = _peel_critical_regressions(findings, resolved_keys)
+    deduped_remaining = deduplicate(remaining, open_issues)
+
+    # Nothing peeled (non-critical)
+    assert len(peeled) == 0, "Non-critical findings should not be peeled"
+    # Non-critical finding matching closed issue is still deduped (swallowed)
+    assert len(deduped_remaining) == 0, "Non-critical finding should still be deduped"
+
+
+def test_dup_004_mixed_critical_and_non_critical():
+    """VAL-DUP-004: Mixed scenario with both critical regression and non-critical findings.
+
+    Verifies that:
+    - Critical regression (in resolved_keys) is peeled and bypasses dedup
+    - Non-critical finding matching closed issue is still deduped (swallowed)
+    - Critical finding NOT in resolved_keys is not peeled (first-time critical)
+    """
+    from evolution_scanner import _peel_critical_regressions
+
+    critical_regression = Finding(
+        "RULE_001", "critical", "test", "Regression", "file.md", "evidence"
+    )
+    non_critical_matching = Finding(
+        "RULE_002", "warning", "test", "Regular", "file2.md", "evidence"
+    )
+    critical_first_time = Finding(
+        "RULE_003", "critical", "test", "First-time critical", "file3.md", "evidence"
+    )
+    non_critical_no_match = Finding(
+        "RULE_004", "warning", "test", "Clean", "file4.md", "evidence"
+    )
+
+    resolved_keys = {("RULE_001", "file.md")}
+    # Closed issues matching RULE_001 and RULE_002 (within 7-day window)
+    open_issues = [
+        {"rule_id": "RULE_001", "location": "file.md", "number": 100},
+        {"rule_id": "RULE_002", "location": "file2.md", "number": 200},
+    ]
+    findings = [critical_regression, non_critical_matching, critical_first_time, non_critical_no_match]
+
+    peeled, remaining = _peel_critical_regressions(findings, resolved_keys)
+    deduped_remaining = deduplicate(remaining, open_issues)
+
+    # Only RULE_001 (critical + in resolved_keys) is peeled
+    assert len(peeled) == 1
+    assert peeled[0].rule_id == "RULE_001"
+
+    # Remaining after peel: RULE_002 (non-critical), RULE_003 (critical not resolved), RULE_004 (clean)
+    # After dedup: RULE_002 is swallowed (matches closed issue), RULE_003 and RULE_004 survive
+    assert len(deduped_remaining) == 2
+    remaining_keys = {(f.rule_id, f.location) for f in deduped_remaining}
+    assert ("RULE_003", "file3.md") in remaining_keys
+    assert ("RULE_004", "file4.md") in remaining_keys
+
