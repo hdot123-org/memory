@@ -52,13 +52,22 @@ jobs:
           ruff check .
       - name: Install shellcheck and actionlint
         run: |
-          # 解压到 /tmp 避免覆盖仓库文件（actionlint tarball 含根级 README.md）
-          wget -q https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz
-          tar -xf shellcheck-v0.10.0.linux.x86_64.tar.xz -C /tmp
-          sudo mv /tmp/shellcheck-v0.10.0/shellcheck /usr/local/bin/
-          wget -q https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
-          tar -xzf actionlint_1.7.7_linux_amd64.tar.gz -C /tmp
-          sudo mv /tmp/actionlint /usr/local/bin/
+          # 优先用 PATH 里已存在的（自建 runner 已预装）；否则下载到 job 本地目录。
+          # 不用 sudo：自建 runner 刻意无 NOPASSWD，工具装进 workspace 即可。
+          if ! command -v shellcheck >/dev/null; then
+            wget -q https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz
+            tar -xf shellcheck-v0.10.0.linux.x86_64.tar.xz -C "$RUNNER_TEMP"
+            export PATH="$RUNNER_TEMP/shellcheck-v0.10.0:$PATH"
+            echo "$RUNNER_TEMP/shellcheck-v0.10.0" >> "$GITHUB_PATH"
+            rm -f shellcheck-v0.10.0.linux.x86_64.tar.xz
+          fi
+          if ! command -v actionlint >/dev/null; then
+            wget -q https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
+            tar -xzf actionlint_1.7.7_linux_amd64.tar.gz -C "$RUNNER_TEMP"
+            echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+            rm -f actionlint_1.7.7_linux_amd64.tar.gz
+          fi
+          shellcheck --version | head -2; actionlint --version | head -1
           rm -f shellcheck-v0.10.0.linux.x86_64.tar.xz actionlint_1.7.7_linux_amd64.tar.gz
       - name: Shell lint
         run: |
