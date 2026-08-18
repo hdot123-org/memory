@@ -34,7 +34,8 @@ jobs:
 
   coverage-audit:
     name: Coverage Audit (target 80%)
-    runs-on: ubuntu-latest
+    # pytest 全量 + 覆盖率统计是 CI 最重 job，切自建 runner（ce-01）
+    runs-on: [self-hosted, pve-linux]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v7

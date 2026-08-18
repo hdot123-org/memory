@@ -24,7 +24,8 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # 重计算 job 走自建 runner（ce-01, 8C/19G）：测试全量跑 + 缓存复用，速度与额度双收益
+    runs-on: [self-hosted, pve-linux]
     strategy:
       matrix:
         python-version: ["3.12"]
