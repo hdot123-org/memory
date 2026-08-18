@@ -880,7 +880,7 @@ def _integrate_forward_drift_watch(
     open_issues: list[dict[str, Any]],
     suppressed_keys: set[tuple[str, str]],
     issue_excluded_categories: set[str],
-    max_issues_per_tick: int | None = None,
+    quota_exhausted: dict[str, bool] | None = None,
 ) -> None:
     """VAL-DRF-001: Integrate forward drift watch into scanner flow.
 
@@ -890,16 +890,19 @@ def _integrate_forward_drift_watch(
     D2 空壳实化: closed_window_keys derives from state='closed' entries in open_issues
     (INFRA-396: get_open_issues returns closed-in-window issues with state='closed').
     open_issue_keys only includes state='open' entries (real open issues).
-    quota_exhausted derives from per-category finding count vs max_issues_per_tick.
+
+    P1 修复 (2026-08-19): quota_exhausted 由 main() 预计算（与创建路径同源：
+    每类别配额 + 去重后计数），直接传入。函数内部不再自行推算配额。
 
     Args:
-        deduped: List of Finding objects after deduplication
+        deduped: List of Finding objects for drift classification (pre-dedup from main).
         open_issues: List of open issue dicts from GitHub (includes state='closed' entries
             for closed-in-window dedup per INFRA-396)
         suppressed_keys: Set of (rule_id, location) keys that were suppressed
         issue_excluded_categories: Categories that are not actionable
-        max_issues_per_tick: Per-category quota limit (from config). When provided,
-            categories with findings > quota are classified as QUOTA_PENDING.
+        quota_exhausted: Pre-computed dict of {category: True} from main() using
+            deduped (post-dedup) counts and per-category quotas. This ensures
+            quota semantics match the issue creation path exactly.
     """
     from evolution_utils import forward_drift_watch
 
@@ -924,18 +927,12 @@ def _integrate_forward_drift_watch(
         and i.get("state") == "closed"
     }
 
-    # D2 fix: quota_exhausted from per-category finding count vs max_issues_per_tick.
-    # When max_issues_per_tick is provided, count findings per category;
-    # if count > quota, mark that category as exhausted.
-    quota_exhausted: dict[str, bool] = {}
-    if max_issues_per_tick is not None and max_issues_per_tick > 0:
-        category_counts: dict[str, int] = {}
-        for f in deduped:
-            if f.category not in issue_excluded_categories:
-                category_counts[f.category] = category_counts.get(f.category, 0) + 1
-        for cat, count in category_counts.items():
-            if count > max_issues_per_tick:
-                quota_exhausted[cat] = True
+    # P1 修复 (2026-08-19): quota_exhausted 由 main() 预计算并传入。
+    # main() 使用去重后计数（deduped）和每类别配额（max_issues_per_tick /
+    # max_self_audit_issues_per_tick / max_code_hygiene_issues_per_tick），
+    # 保证与创建路径完全同源。函数内部不再自行推算配额。
+    if quota_exhausted is None:
+        quota_exhausted = {}
 
     # Call forward_drift_watch
     drift_records = forward_drift_watch(
@@ -1119,20 +1116,39 @@ def main() -> None:
 
     # VAL-DRF-001: Forward drift watch - integrate into scanner flow
     # This runs after all processing to provide a complete status report
-    # D2 fix: pass all_findings (pre-dedup) so classification sees ALL actionable
-    # findings, not just those that survived dedup. This fixes:
-    #   - ISSUE_EXISTS was ~0 because dedup already removed open-issue matches
-    #   - CLOSED_IN_WINDOW was dead because dedup removed closed-in-window matches
-    #   - quota_exhausted now computed from full actionable set vs per-category quota
-    # Also pass max_issues_per_tick so quota tracking works.
+    # D2 修复: 传入 all_findings（去重前）用于分类判定（ISSUE_EXISTS / CLOSED_IN_WINDOW 需要看到所有 finding）
+    # P1 修复: quota_exhausted 从去重后的 deduped 列表 + 每类别配额计算（与创建路径同源）
     # Suppress-suppressed findings are excluded via suppressed_keys param;
     # issue_excluded_categories filters daily_audit etc.
+    
+    # P1: 预计算 quota_exhausted（使用去重后的 deduped 列表 + 每类别配额）
+    # 只有当 deduped 非空（即 try 块成功执行）时才计算
+    quota_exhausted: dict[str, bool] = {}
+    if not gh_failed and deduped:
+        category_counts: dict[str, int] = {}
+        for f in deduped:
+            if f.category not in ISSUE_EXCLUDED_CATEGORIES:
+                category_counts[f.category] = category_counts.get(f.category, 0) + 1
+        
+        for cat, count in category_counts.items():
+            # P1-1: 使用每类别配额（与创建路径 _process_findings_with_reopen 同源）
+            if cat == "evolution_self_audit":
+                quota = config.get("max_self_audit_issues_per_tick")
+            elif cat == "code_hygiene":
+                quota = config.get("max_code_hygiene_issues_per_tick")
+            else:
+                quota = config.get("max_issues_per_tick")
+            
+            # P1-2: 使用去重后的 count（不是 all_findings）
+            if quota is not None and quota > 0 and count > quota:
+                quota_exhausted[cat] = True
+    
     _integrate_forward_drift_watch(
         deduped=all_findings,
         open_issues=open_issues,
         suppressed_keys=suppressed_keys,
         issue_excluded_categories=ISSUE_EXCLUDED_CATEGORIES,
-        max_issues_per_tick=config.get("max_issues_per_tick"),
+        quota_exhausted=quota_exhausted,
     )
 
     # VAL-NTF-002: Close notification issues that exceeded TTL
