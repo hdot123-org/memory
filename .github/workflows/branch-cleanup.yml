@@ -61,66 +61,23 @@ jobs:
             awk '/^Protected .* branch\(es\) with unmerged/,/^$/' /tmp/branch_cleanup_output.txt | grep -v '^Protected' | grep -v '^$' > /tmp/protected_branches.txt || true
           fi
 
-      - name: Create issue notification
-        if: env.deleted_count != '0' || env.protected_count != '0'
+      - name: Manage tracking issue (INFRA-385 dedup)
+        # Always run this step: when nothing was deleted/protected it closes
+        # the now-resolved tracking issue; otherwise it creates/updates the
+        # single tracking issue instead of opening one issue per run.
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+          GH_REPO_KEY: ${{ github.repository }}
         run: |
-          DELETED_COUNT="${{ env.deleted_count }}"
-          PROTECTED_COUNT="${{ env.protected_count }}"
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
 
-          # Build issue body
-          {
-            echo "## Automated Branch Cleanup"
-            echo ""
-            echo "**Run date:** $RUN_DATE"
-            echo "**Deleted branches:** $DELETED_COUNT"
-            echo "**Protected branches:** $PROTECTED_COUNT"
-            echo "**Workflow run:** $RUN_URL"
-            echo ""
+          # Ensure list files exist (empty lists are valid)
+          touch /tmp/deleted_branches.txt /tmp/protected_branches.txt
 
-            if [ "$DELETED_COUNT" -gt 0 ]; then
-              echo "### Deleted branches"
-              echo ""
-              while IFS= read -r branch; do
-                echo "- \`$branch\`"
-              done < /tmp/deleted_branches.txt
-              echo ""
-            fi
-
-            if [ "$PROTECTED_COUNT" -gt 0 ]; then
-              echo "### 🛡️ Protected branches (unmerged unique commits)"
-              echo ""
-              echo "These branches were protected from deletion because they contain unique commits not in main and their PR was closed without merging:"
-              echo ""
-              while IFS= read -r branch; do
-                echo "- \`$branch\`"
-              done < /tmp/protected_branches.txt
-              echo ""
-            fi
-
-            echo "---"
-            echo "*This issue was automatically created by the [Branch Cleanup]($RUN_URL) workflow.*"
-          } > /tmp/issue_body.md
-
-          # Ensure labels exist (idempotent)
-          gh label create automation --force 2>/dev/null || true
-          gh label create branch-cleanup --force 2>/dev/null || true
-
-          # Build dynamic title
-          TITLE_PARTS="Branch cleanup:"
-          if [ "$DELETED_COUNT" -gt 0 ]; then
-            TITLE_PARTS="$TITLE_PARTS $DELETED_COUNT deleted"
-          fi
-          if [ "$PROTECTED_COUNT" -gt 0 ]; then
-            TITLE_PARTS="$TITLE_PARTS $PROTECTED_COUNT protected"
-          fi
-          TITLE="$TITLE_PARTS ($RUN_DATE)"
-
-          # Create issue
-          gh issue create \
-            --title "$TITLE" \
-            --body-file /tmp/issue_body.md \
-            --label "automation,branch-cleanup"
+          bash scripts/branch_cleanup_issue.sh \
+            --deleted /tmp/deleted_branches.txt \
+            --protected /tmp/protected_branches.txt \
+            --run-url "$RUN_URL" \
+            --run-date "$RUN_DATE"

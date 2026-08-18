@@ -3,6 +3,7 @@ from __future__ import annotations
 """Tests for branch_cleanup.sh script."""
 
 import json
+import os
 import shutil
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -1230,6 +1231,162 @@ def test_scheduled_mode_protects_closed_not_merged_with_unique_commits(tmp_path:
     remaining_branches = get_remote_branches(bare_repo)
     assert "closed-unmerged" in remaining_branches, (
         "Branch with CLOSED-not-merged PR and unique commits should be PROTECTED"
+    )
+    assert "PROTECTED" in stdout.upper(), (
+        f"Output should contain 'PROTECTED' for protected branch. stdout: {stdout}"
+    )
+
+
+# ============================================================================
+# VAL-BRANCH-024 (INFRA-383): Squash-merged branch is NOT falsely protected
+# ============================================================================
+def test_squash_merged_branch_not_falsely_protected(tmp_path: Path) -> None:
+    """
+    A branch whose PR was closed after its content was squash-merged into main
+    (via a different PR) must NOT be protected.
+
+    Regression test for INFRA-383: after a squash merge, the branch's original
+    commit SHAs never appear in main, so the 2-dot `origin/main..origin/$BRANCH`
+    count is permanently > 0, and the branch is falsely "protected" forever even
+    though its content is fully contained in main.
+
+    The fix adds a content-containment check: if merging the branch into main
+    is a no-op (merge result tree == main tree), the branch content is fully
+    merged and deletion loses nothing.
+
+    Fixture:
+    - main: README.md + feature.txt (content of branch, squash-merged)
+    - branch: branched from initial main, adds feature.txt (same content)
+    - PR state: CLOSED (not merged)
+    Expected: branch deleted (not protected).
+    """
+    now = datetime.now(timezone.utc)
+    old_date = now - timedelta(days=2)
+
+    # Build the fixture manually: the standard helper cannot express
+    # "branch content squash-merged into main with identical blob".
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, [])
+
+    # Create feature branch from initial main, add feature.txt, push.
+    subprocess.run(
+        ["git", "checkout", "-b", "squashed-feature"],
+        cwd=clone_dir, check=True, capture_output=True,
+    )
+    (clone_dir / "feature.txt").write_text("feature content\n")
+    subprocess.run(["git", "add", "."], cwd=clone_dir, check=True, capture_output=True)
+    date_str = old_date.strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    env = {
+        "GIT_AUTHOR_DATE": date_str,
+        "GIT_COMMITTER_DATE": date_str,
+        "PATH": os.environ["PATH"],
+        "HOME": os.environ["HOME"],
+    }
+    subprocess.run(
+        ["git", "commit", "-m", "Add feature"],
+        cwd=clone_dir, check=True, capture_output=True, env=env,
+    )
+    subprocess.run(
+        ["git", "push", "-u", "origin", "squashed-feature"],
+        cwd=clone_dir, check=True, capture_output=True,
+    )
+
+    # Squash-merge equivalent: on main, create a NEW commit with the same content.
+    subprocess.run(["git", "checkout", "main"], cwd=clone_dir, check=True, capture_output=True)
+    (clone_dir / "feature.txt").write_text("feature content\n")
+    subprocess.run(["git", "add", "."], cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Squash merge of feature (content only)"],
+        cwd=clone_dir, check=True, capture_output=True,
+    )
+    subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
+
+    # Sanity: branch has commits not in main by SHA (squash ⇒ 2-dot > 0) ...
+    check = subprocess.run(
+        ["git", "rev-list", "--count", "origin/main..origin/squashed-feature"],
+        cwd=clone_dir, capture_output=True, text=True,
+    )
+    assert check.stdout.strip() != "0", (
+        "Fixture setup wrong: branch should have SHA-unique commits after squash merge"
+    )
+    # ... but merging the branch into main is a content no-op.
+    main_tree = subprocess.run(
+        ["git", "rev-parse", "origin/main^{tree}"],
+        cwd=clone_dir, capture_output=True, text=True,
+    ).stdout.strip()
+    merge_tree = subprocess.run(
+        ["git", "merge-tree", "--write-tree", "origin/main", "origin/squashed-feature"],
+        cwd=clone_dir, capture_output=True, text=True,
+    ).stdout.strip().split("\n")[0]
+    assert main_tree == merge_tree, (
+        "Fixture setup wrong: branch content should be fully contained in main"
+    )
+
+    # Mock gh: branch has a CLOSED (not merged) PR — the protection trigger.
+    mock_gh = create_gh_mock(tmp_path, {
+        "squashed-feature": [{"number": 400, "state": "CLOSED"}],
+    })
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{os.environ['PATH']}",
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "squashed-feature" not in remaining_branches, (
+        "Squash-merged branch (content fully in main) must NOT be protected — "
+        "it should be deleted. stdout:\n" + stdout
+    )
+    # The branch must not be listed as protected (check only the protected-list
+    # section at the end, not the "Checking branches:" enumeration).
+    protected_section = stdout.split("Protected", 1)[-1] if "Protected" in stdout else ""
+    protected_entries = [
+        line for line in protected_section.split("\n") if line.strip().startswith("-") or " unique commits" in line
+    ]
+    assert not any("squashed-feature" in line for line in protected_entries), (
+        f"Branch must not appear in protected list. stdout:\n{stdout}"
+    )
+
+
+# ============================================================================
+# VAL-BRANCH-025 (INFRA-383): Branch with genuinely unique content stays protected
+# ============================================================================
+def test_closed_branch_with_unique_content_still_protected(tmp_path: Path) -> None:
+    """A CLOSED-not-merged branch whose content is NOT fully in main is still
+    protected, so the INFRA-383 content-containment fix does not over-delete.
+
+    Fixture:
+    - branch adds unique-file.txt with content that main never receives.
+    Expected: branch protected (not deleted), PROTECTED marker in output.
+    """
+    now = datetime.now(timezone.utc)
+    old_date = now - timedelta(days=2)
+
+    branches = [("unique-content", old_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Mock gh: branch has a CLOSED (not merged) PR — protection trigger.
+    mock_gh = create_gh_mock(tmp_path, {
+        "unique-content": [{"number": 401, "state": "CLOSED"}],
+    })
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{os.environ['PATH']}",
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "unique-content" in remaining_branches, (
+        "Branch with genuinely unique content must stay protected. stdout:\n" + stdout
     )
     assert "PROTECTED" in stdout.upper(), (
         f"Output should contain 'PROTECTED' for protected branch. stdout: {stdout}"
