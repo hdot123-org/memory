@@ -3,6 +3,13 @@
 # Usage:
 #   bash scripts/branch_cleanup.sh --scheduled     # Daily sweep (24h threshold)
 #   bash scripts/branch_cleanup.sh --immediate <branch-name>  # PR-close trigger (only this branch)
+#
+# Retirement list (INFRA-388): branches listed in
+# scripts/branch_cleanup_retired.txt (same directory as this script, one
+# branch name per non-comment line, editable via $BRANCH_RETIREMENT_FILE)
+# are exempt from the unmerged-unique-commits protection when their work was
+# superseded by an equivalent implementation on main. Retirement never
+# bypasses the open-PR protection or the 24h age threshold.
 set -euo pipefail
 
 # Parse arguments
@@ -38,6 +45,24 @@ esac
 # Initialize tracking arrays
 DELETED_BRANCHES=()
 PROTECTED_BRANCHES=()
+
+# Retirement list (INFRA-388): resolve path relative to this script so the
+# mechanism works from any working directory. Override via env for testing.
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+RETIREMENT_FILE="${BRANCH_RETIREMENT_FILE:-$SCRIPT_DIR/branch_cleanup_retired.txt}"
+
+# is_retired <branch-name>: exit 0 when the branch is on the retirement list.
+# Reads only the branch-name column (before '|'), ignoring comments/blanks.
+is_retired() {
+  [[ -f "$RETIREMENT_FILE" ]] || return 1
+  local target="$1" entry_name
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    entry_name=$(echo "$line" | cut -d'|' -f1 | xargs)
+    [[ "$entry_name" == "$target" ]] && return 0
+  done < "$RETIREMENT_FILE"
+  return 1
+}
 
 # Get cutoff as epoch seconds for reliable comparison (24 hours ago)
 CUTOFF_EPOCH=$(date -u -d '24 hours ago' '+%s' 2>/dev/null || date -u -v-24H '+%s')
@@ -139,10 +164,17 @@ for BRANCH in $BRANCHES; do
   # These branches contain code that was never merged and would be lost if deleted.
   # Exception (INFRA-383): if the content check proves the branch tree adds
   # nothing to main (squash-merged elsewhere), it is NOT protected.
+  # Exception (INFRA-388): branches on the checked-in retirement list are NOT
+  # protected — their work was superseded by an equivalent implementation on
+  # main and a PR review approved the deletion (retirement list merge).
   if [[ "$UNIQUE_COUNT" -gt 0 ]] && [[ "$CLOSED_NOT_MERGED_COUNT" -gt 0 ]] && [[ "$CONTENT_MERGED" != "yes" ]]; then
-    echo "  ⚠️  PROTECTED: branch has $UNIQUE_COUNT unique commit(s) and $CLOSED_NOT_MERGED_COUNT CLOSED (not merged) PR(s) — would lose unmerged code."
-    PROTECTED_BRANCHES+=("$BRANCH ($UNIQUE_COUNT unique commits)")
-    continue
+    if is_retired "$BRANCH"; then
+      echo "  Retired (INFRA-388): work superseded per $RETIREMENT_FILE, protection waived."
+    else
+      echo "  ⚠️  PROTECTED: branch has $UNIQUE_COUNT unique commit(s) and $CLOSED_NOT_MERGED_COUNT CLOSED (not merged) PR(s) — would lose unmerged code."
+      PROTECTED_BRANCHES+=("$BRANCH ($UNIQUE_COUNT unique commits)")
+      continue
+    fi
   fi
 
   # Get last commit date for this branch as epoch seconds
