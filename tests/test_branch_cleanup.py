@@ -1548,6 +1548,29 @@ def test_retirement_list_tracks_infra_382() -> None:
 
 
 # ============================================================================
+# VAL-BRANCH-031 (INFRA-391): retirement list ships with infra-391 entry
+# ============================================================================
+def test_retirement_list_tracks_infra_391() -> None:
+    """The checked-in retirement list also lists the superseded
+    feat/pr-ref-gate-ci-wiring branch (PR #773 closed unmerged, superseded
+    by PR #771's step-level wiring) so tracking issue #793 / INFRA-391 can
+    drain once the scheduled cleanup deletes the branch.
+
+    Mirrors VAL-BRANCH-029: the list is the audit artifact, and adding or
+    removing entries requires PR review.
+    """
+    retired = repo_root() / "scripts" / "branch_cleanup_retired.txt"
+    assert retired.is_file(), "scripts/branch_cleanup_retired.txt must exist"
+    content = retired.read_text()
+    assert "feat/pr-ref-gate-ci-wiring" in content, (
+        "infra-391 superseded branch must be listed for retirement"
+    )
+    assert "INFRA-391" in content, (
+        "the infra-391 entry must carry its INFRA reference"
+    )
+
+
+# ============================================================================
 # VAL-BRANCH-030 (INFRA-388): script documents the retirement mechanism
 # ============================================================================
 def test_script_documents_retirement_list() -> None:
