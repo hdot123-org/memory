@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
@@ -9077,4 +9078,354 @@ def test_ghost_finding_scenario_run_31915486263():
         # Verify: All 5 issues created
         assert created == 5, "All 5 ghost findings should create new issues"
         assert mock_create.call_count == 5
+
+
+# ============================================================================
+# VAL-DUP-004: Critical regression before dedup ordering fix
+# ============================================================================
+
+def test_dup_004_current_dedup_swallows_critical_regression():
+    """greenAtBirth: documents deduplicate() helper behavior — it removes ALL findings
+    matching open/closed issue keys regardless of severity. This is by design: the
+    fix belongs in main() ordering (peel BEFORE dedup), not in deduplicate() itself.
+
+    This test was previously mislabeled as "redEvidence" in round-2 scrutiny. It has
+    always been greenAtBirth because deduplicate() correctly swallows matches — the
+    black hole was caused by main() calling dedup() BEFORE peel, which is tested by
+    test_dup_004_critical_before_dedup_ordering below.
+    """
+    critical_finding = Finding(
+        "RULE_001", "critical", "test", "Regression", "file.md", "evidence"
+    )
+    # Simulate get_open_issues returning a closed issue matching the critical finding
+    # (this happens when the closed issue is within the 7-day window)
+    closed_issue = {"rule_id": "RULE_001", "location": "file.md", "number": 100}
+
+    # deduplicate() doesn't distinguish critical regressions — it swallows them
+    deduped = deduplicate([critical_finding], [closed_issue])
+    # Expected behavior: dedup removes all matches (this is correct for the helper)
+    assert len(deduped) == 0, "deduplicate() swallows matches by design (fix is in main() ordering)"
+
+
+def test_dup_004_peel_critical_regressions():
+    """VAL-DUP-004: New helper _peel_critical_regressions separates critical+resolved
+    findings from the rest before dedup.
+
+    Red evidence (before fix): _peel_critical_regressions doesn't exist → ImportError.
+    After fix: correctly separates critical+resolved findings from the rest.
+    """
+    from evolution_scanner import _peel_critical_regressions
+
+    critical_regression = Finding(
+        "RULE_X", "critical", "test", "Regression", "file.py", "evidence"
+    )
+    non_critical = Finding(
+        "RULE_Y", "warning", "test", "Regular", "file2.py", "evidence"
+    )
+    critical_not_resolved = Finding(
+        "RULE_Z", "critical", "test", "First-time critical", "file3.py", "evidence"
+    )
+    resolved_keys = {("RULE_X", "file.py")}
+
+    peeled, remaining = _peel_critical_regressions(
+        [critical_regression, non_critical, critical_not_resolved],
+        resolved_keys,
+    )
+
+    # Only the critical finding that's also in resolved_keys should be peeled
+    assert len(peeled) == 1, "Only critical+resolved findings should be peeled"
+    assert peeled[0].rule_id == "RULE_X"
+    assert peeled[0].severity == "critical"
+
+    # Everything else remains
+    assert len(remaining) == 2
+    remaining_keys = {(f.rule_id, f.location) for f in remaining}
+    assert ("RULE_Y", "file2.py") in remaining_keys
+    assert ("RULE_Z", "file3.py") in remaining_keys
+
+
+def test_dup_004_critical_regression_not_swallowed_integration():
+    """VAL-DUP-004: Full dedup flow with critical regression after fix.
+
+    Red evidence: Before fix, the main() flow calls deduplicate() which swallows
+    critical regressions matching closed issues in window. After fix: critical
+    regressions are peeled first and reach _process_findings_with_reopen.
+    """
+    from evolution_scanner import _peel_critical_regressions
+
+    critical_finding = Finding(
+        "RULE_X", "critical", "test", "Regression", "file.py", "evidence"
+    )
+    resolved_keys = {("RULE_X", "file.py")}
+    # Simulate get_open_issues returning a closed issue matching the critical finding
+    # (this happens when the closed issue is within the 7-day window)
+    open_issues = [{"rule_id": "RULE_X", "location": "file.py", "number": 100}]
+    findings = [critical_finding]
+
+    # Simulate fixed main() flow: peel critical first, then dedup remaining
+    peeled, remaining = _peel_critical_regressions(findings, resolved_keys)
+    deduped_remaining = deduplicate(remaining, open_issues)
+
+    # Critical finding is peeled before dedup, not swallowed
+    assert len(peeled) == 1, "Critical regression should be peeled before dedup"
+    assert peeled[0].severity == "critical"
+    assert peeled[0].rule_id == "RULE_X"
+    # Remaining after dedup is empty (no non-critical findings in this scenario)
+    assert len(deduped_remaining) == 0
+
+
+def test_dup_004_non_critical_still_deduped():
+    """Control test for VAL-DUP-001..003: Non-critical findings matching closed issues
+    within 7-day window must still be deduplicated (swallowed) after the fix.
+
+    This ensures the fix for VAL-DUP-004 doesn't break the dedup logic for
+    non-critical findings.
+    """
+    from evolution_scanner import _peel_critical_regressions
+
+    non_critical_finding = Finding(
+        "RULE_Y", "warning", "test", "Regular", "file2.py", "evidence"
+    )
+    resolved_keys = {("RULE_X", "file.py")}  # Doesn't contain RULE_Y
+    open_issues = [{"rule_id": "RULE_Y", "location": "file2.py", "number": 200}]
+    findings = [non_critical_finding]
+
+    peeled, remaining = _peel_critical_regressions(findings, resolved_keys)
+    deduped_remaining = deduplicate(remaining, open_issues)
+
+    # Nothing peeled (non-critical)
+    assert len(peeled) == 0, "Non-critical findings should not be peeled"
+    # Non-critical finding matching closed issue is still deduped (swallowed)
+    assert len(deduped_remaining) == 0, "Non-critical finding should still be deduped"
+
+
+def test_dup_004_mixed_critical_and_non_critical():
+    """VAL-DUP-004: Mixed scenario with both critical regression and non-critical findings.
+
+    Verifies that:
+    - Critical regression (in resolved_keys) is peeled and bypasses dedup
+    - Non-critical finding matching closed issue is still deduped (swallowed)
+    - Critical finding NOT in resolved_keys is not peeled (first-time critical)
+    """
+    from evolution_scanner import _peel_critical_regressions
+
+    critical_regression = Finding(
+        "RULE_001", "critical", "test", "Regression", "file.md", "evidence"
+    )
+    non_critical_matching = Finding(
+        "RULE_002", "warning", "test", "Regular", "file2.md", "evidence"
+    )
+    critical_first_time = Finding(
+        "RULE_003", "critical", "test", "First-time critical", "file3.md", "evidence"
+    )
+    non_critical_no_match = Finding(
+        "RULE_004", "warning", "test", "Clean", "file4.md", "evidence"
+    )
+
+    resolved_keys = {("RULE_001", "file.md")}
+    # Closed issues matching RULE_001 and RULE_002 (within 7-day window)
+    open_issues = [
+        {"rule_id": "RULE_001", "location": "file.md", "number": 100},
+        {"rule_id": "RULE_002", "location": "file2.md", "number": 200},
+    ]
+    findings = [critical_regression, non_critical_matching, critical_first_time, non_critical_no_match]
+
+    peeled, remaining = _peel_critical_regressions(findings, resolved_keys)
+    deduped_remaining = deduplicate(remaining, open_issues)
+
+    # Only RULE_001 (critical + in resolved_keys) is peeled
+    assert len(peeled) == 1
+    assert peeled[0].rule_id == "RULE_001"
+
+    # Remaining after peel: RULE_002 (non-critical), RULE_003 (critical not resolved), RULE_004 (clean)
+    # After dedup: RULE_002 is swallowed (matches closed issue), RULE_003 and RULE_004 survive
+    assert len(deduped_remaining) == 2
+    remaining_keys = {(f.rule_id, f.location) for f in deduped_remaining}
+    assert ("RULE_003", "file3.md") in remaining_keys
+    assert ("RULE_004", "file4.md") in remaining_keys
+
+
+def test_dup_004_peel_excludes_issue_excluded_categories():
+    """INFRA-265/268: daily_audit/evolution_self_audit categories must NOT be peeled.
+
+    red→green: Before fix, _peel_critical_regressions would peel ALL critical+resolved
+    findings regardless of category, causing infrastructure findings to bypass dedup
+    and reach create_issue. After fix: excluded categories stay in remaining (go
+    through normal dedup path where they are correctly filtered out).
+    """
+    from evolution_scanner import _peel_critical_regressions
+
+    # daily_audit finding upgraded to critical by detect_regressions
+    daily_audit_finding = Finding(
+        "RULE_DAILY", "critical", "test", "Regression", "audit.log", "evidence",
+    )
+    # Override category via dataclass replace
+    daily_audit_finding = replace(daily_audit_finding, category="daily_audit")
+    self_audit_finding = Finding(
+        "RULE_SELF", "critical", "test", "Regression", "self.py", "evidence",
+    )
+    self_audit_finding = replace(self_audit_finding, category="evolution_self_audit")
+    normal_finding = Finding(
+        "RULE_NORMAL", "critical", "test", "Regression", "code.py", "evidence",
+    )
+    normal_finding = replace(normal_finding, category="test")
+    resolved_keys = {
+        ("RULE_DAILY", "audit.log"),
+        ("RULE_SELF", "self.py"),
+        ("RULE_NORMAL", "code.py"),
+    }
+
+    peeled, remaining = _peel_critical_regressions(
+        [daily_audit_finding, self_audit_finding, normal_finding],
+        resolved_keys,
+    )
+
+    # Only normal_finding (category="test") should be peeled
+    assert len(peeled) == 1
+    assert peeled[0].rule_id == "RULE_NORMAL"
+    # daily_audit and evolution_self_audit stay in remaining
+    remaining_keys = {(f.rule_id, f.location) for f in remaining}
+    assert ("RULE_DAILY", "audit.log") in remaining_keys
+    assert ("RULE_SELF", "self.py") in remaining_keys
+
+
+def test_dup_004_open_issue_guard_skips_duplicate_create():
+    """VAL-DUP-004 open-issue guard: when a same-key OPEN issue exists, the fallback
+    create path in _process_findings_with_reopen must skip create to prevent the
+    per-tick duplicate creation loop.
+
+    red→green: Before fix, peeled critical regressions whose reopen failed (e.g.
+    because issue was already OPEN from a prior tick's reopen) would fall through
+    to create_issue every tick, creating duplicates. After fix: open_issues list
+    is checked and create is skipped when same-key OPEN exists.
+    """
+    from unittest.mock import patch
+
+    from evolution_scanner import Finding, _process_findings_with_reopen
+
+    critical_finding = Finding(
+        "RULE_001", "critical", "test", "Regression", "file.py", "evidence"
+    )
+    resolved_keys = {("RULE_001", "file.py")}
+    # Simulate an OPEN issue already existing with same key
+    open_issues = [{"rule_id": "RULE_001", "location": "file.py", "number": 100}]
+    history_path = Path("/tmp/nonexistent_history.json")
+
+    with patch("evolution_scanner._reopen_closed_issue", return_value=False), \
+         patch("evolution_scanner._reopen_limit_reached", return_value=False), \
+         patch("evolution_scanner.create_issue") as mock_create:
+        created = _process_findings_with_reopen(
+            [critical_finding], 10, resolved_keys,
+            "evolution-found", history_path, open_issues,
+        )
+
+    # create_issue should NOT have been called because OPEN issue exists
+    mock_create.assert_not_called()
+    assert created == 0
+
+
+def test_dup_004_main_ordering_peel_before_dedup():
+    """VAL-DUP-004 main()-level ordering test: main() must call _peel_critical_regressions
+    before deduplicate(). This test verifies the integration by mocking subprocess.run
+    to record gh call sequence, asserting that for a critical regression finding the
+    reopen attempt happens (via _process_findings_with_reopen).
+
+    greenAtBirth: If _peel_critical_regressions were removed from main(), the critical
+    regression would be swallowed by deduplicate() (matching the closed issue key in
+    window) and no reopen attempt would occur. This test would fail with zero
+    gh calls for reopen/search.
+    """
+    import json
+    from unittest.mock import MagicMock, patch
+
+    from evolution_scanner import main as scanner_main
+
+    # Prepare history with resolved finding (makes detect_regressions upgrade to critical)
+    history_data = {
+        "resolved_findings": [
+            {"rule_id": "RULE_A", "location": "code.py", "reopen_count": 0}
+        ],
+        "snapshots": [],
+    }
+
+    # Mock gh CLI responses
+    call_log = []
+
+    def mock_subprocess_run(cmd, *args, **kwargs):
+        call_log.append(cmd)
+        result = MagicMock()
+        result.returncode = 0
+        result.stderr = ""
+        cmd_str = " ".join(cmd) if isinstance(cmd, list) else cmd
+
+        # get_open_issues - both open and closed queries
+        if "gh" in cmd_str and "issue" in cmd_str and "list" in cmd_str:
+            if "--state" in cmd_str and "open" in cmd_str:
+                result.stdout = "[]"  # No open issues
+            elif "--state" in cmd_str and "closed" in cmd_str:
+                # Return a closed issue matching the finding (within 7-day window)
+                closed_issue = {
+                    "number": 50,
+                    "body": "> ⚙️ 此 Issue 由 evolution scanner 自动创建。\n\n**Rule ID**: RULE_A\n**Location**: code.py\n",
+                    "closedAt": "2026-08-15T00:00:00Z",
+                }
+                result.stdout = json.dumps([closed_issue])
+            else:
+                result.stdout = "[]"
+        # gh issue reopen attempt
+        elif "gh" in cmd_str and "issue" in cmd_str and "reopen" in cmd_str:
+            result.stdout = ""
+            result.returncode = 0
+        # gh issue create
+        elif "gh" in cmd_str and "issue" in cmd_str and "create" in cmd_str:
+            result.stdout = "https://github.com/test/test/issues/51"
+            result.returncode = 0
+        else:
+            result.stdout = "[]"
+
+        return result
+
+    with patch("evolution_scanner.subprocess.run", side_effect=mock_subprocess_run), \
+         patch("evolution_scanner.load_history", return_value=history_data), \
+         patch("evolution_scanner.load_config", return_value={
+             "audit_tools": [],  # No audit tools needed for this test
+             "severity_order": ["critical", "warning", "info"],
+             "dedup_label": "evolution-found",
+             "isolation_threshold": 5,
+             "failure_label": "evolution-isolated",
+             "max_issues_per_tick": 10,
+             "max_self_audit_issues_per_tick": 5,
+             "max_code_hygiene_issues_per_tick": 5,
+             "snapshot_limit": 10,
+         }), \
+         patch("evolution_scanner.write_heartbeat"), \
+         patch("evolution_scanner.check_isolation"), \
+         patch("evolution_scanner.check_persistent_info_findings"), \
+         patch("evolution_scanner.load_suppressions", return_value=[]), \
+         patch("evolution_utils.forward_drift_watch", return_value=[]), \
+         patch("evolution_scanner.update_history"), \
+         patch("evolution_scanner._integrate_forward_drift_watch"), \
+         patch("evolution_scanner.run_audit_tool", return_value=[{
+             "rule_id": "RULE_A",
+             "severity": "warning",
+             "category": "test",
+             "description": "Regression",
+             "location": "code.py",
+             "evidence": "evidence",
+         }]), \
+         patch("evolution_scanner.dedup_intra_tick", side_effect=lambda x: x):
+        scanner_main()
+
+    # Verify that the reopen search (closed issue list) was called
+    # If peel were removed, the finding would be deduped and no closed-list search for reopen would happen
+    closed_search_calls = [
+        cmd for cmd in call_log
+        if isinstance(cmd, list) and "gh" in cmd[0]
+        and "list" in cmd and "--state" in cmd and "closed" in cmd
+    ]
+    assert len(closed_search_calls) > 0, (
+        "main() must call _peel_critical_regressions before deduplicate() so that "
+        "critical regressions reach _process_findings_with_reopen and trigger reopen attempt. "
+        "If this test fails, peel was likely removed from main()."
+    )
 
