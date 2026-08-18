@@ -8,6 +8,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,11 @@ SELF_AUDIT_CATEGORY = "evolution_self_audit"
 # The trust chain (_verify_fix_merged_via_linear) checks for this sentinel
 # as an alternative verification path alongside merged PR attachments.
 DEADLOCK_EXIT_SENTINEL_PREFIX = "<!-- deadlock-exit "
+
+# Notification TTL (VAL-NTF-002): notification issues (branch-cleanup tracking)
+# are auto-closed after this many days. 7 days gives humans time to review
+# but prevents indefinite accumulation.
+NOTIFICATION_TTL_DAYS = 7
 
 # Required config keys for evolution scanner
 REQUIRED_CONFIG_KEYS = [
@@ -1081,3 +1087,178 @@ def reconcile_in_progress(dedup_label: str) -> int:
         print(f"[evolution] Reconciliation: {stuck_count} stuck issue(s) flagged with advisory comments")
 
     return stuck_count
+
+
+# ============================================================================
+# VAL-DRF-001: Forward Drift Watch — positive consistency check
+# ============================================================================
+
+@dataclass
+class ForwardDriftRecord:
+    """Record of a finding's status in the forward drift watch.
+
+    VAL-DRF-001: Each actionable finding must have one of these statuses:
+    - ISSUE_EXISTS: Has a matching open GitHub issue (no drift)
+    - SUPPRESSED: Removed by suppress.json (legitimate reason)
+    - CLOSED_IN_WINDOW: Deduped against a closed issue within DEDUP_CLOSED_WINDOW_DAYS (legitimate)
+    - QUOTA_PENDING: Category quota exhausted, deferred to next tick (legitimate)
+    - GHOST: No issue and no legitimate reason (drift detected, FAIL)
+
+    Every record must have an audit trail (finding_key, status, reason, timestamp).
+    """
+    finding_key: tuple[str, str]  # (rule_id, location)
+    status: str  # ISSUE_EXISTS | SUPPRESSED | CLOSED_IN_WINDOW | QUOTA_PENDING | GHOST
+    reason: str  # Why this status
+    timestamp: str  # ISO 8601 UTC timestamp
+
+
+def forward_drift_watch(
+    findings: list[Any],
+    open_issue_keys: set[tuple[str, str]],
+    suppressed_keys: set[tuple[str, str]],
+    closed_window_keys: set[tuple[str, str]],
+    quota_exhausted: dict[str, bool],
+    issue_excluded_categories: set[str],
+) -> list[ForwardDriftRecord]:
+    """VAL-DRF-001: Forward drift watch -- check each actionable finding.
+
+    For each actionable finding (not in excluded category), determine its status:
+    - If it has an open issue -> ISSUE_EXISTS (no drift)
+    - If it was suppressed -> SUPPRESSED (legitimate)
+    - If it was closed within time window -> CLOSED_IN_WINDOW (legitimate)
+    - If its category quota was exhausted -> QUOTA_PENDING (legitimate)
+    - Otherwise -> GHOST (drift detected, no issue and no reason)
+
+    Priority order (most specific wins):
+    1. ISSUE_EXISTS (highest priority -- if issue exists, that's the status)
+    2. SUPPRESSED
+    3. CLOSED_IN_WINDOW
+    4. QUOTA_PENDING
+    5. GHOST (lowest priority -- no reason found)
+
+    Args:
+        findings: List of Finding objects from current tick
+        open_issue_keys: Set of (rule_id, location) keys that have open issues
+        suppressed_keys: Set of (rule_id, location) keys that were suppressed
+        closed_window_keys: Set of (rule_id, location) keys that were closed within DEDUP_CLOSED_WINDOW_DAYS
+        quota_exhausted: Dict mapping category -> True if quota was exhausted for that category
+        issue_excluded_categories: Set of categories that are not actionable (e.g., daily_audit)
+
+    Returns:
+        List of ForwardDriftRecord, one per actionable finding, with status and audit trail
+    """
+    records = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for finding in findings:
+        # Skip non-actionable findings (excluded categories)
+        if finding.category in issue_excluded_categories:
+            continue
+
+        key = (finding.rule_id, finding.location)
+
+        # Determine status by priority
+        if key in open_issue_keys:
+            status = "ISSUE_EXISTS"
+            reason = "has_open_issue"
+        elif key in suppressed_keys:
+            status = "SUPPRESSED"
+            reason = "suppressed_by_whitelist"
+        elif key in closed_window_keys:
+            status = "CLOSED_IN_WINDOW"
+            reason = "closed_within_dedup_window"
+        elif quota_exhausted.get(finding.category, False):
+            status = "QUOTA_PENDING"
+            reason = f"category_quota_exhausted:{finding.category}"
+        else:
+            status = "GHOST"
+            reason = "no_issue_no_reason"
+
+        records.append(ForwardDriftRecord(
+            finding_key=key,
+            status=status,
+            reason=reason,
+            timestamp=now_iso,
+        ))
+
+    return records
+
+
+def close_expired_notifications() -> int:
+    """Close notification issues that have exceeded TTL (VAL-NTF-002).
+
+    Notification issues (branch-cleanup tracking) are auto-closed after
+    NOTIFICATION_TTL_DAYS (7 days) to prevent indefinite accumulation.
+
+    Returns:
+        Number of issues closed
+    """
+    # Query for open notification issues
+    # Use multiple --label flags for AND logic (issues must have BOTH labels)
+    result = subprocess.run(
+        ["gh", "issue", "list", "--state", "open",
+         "--label", "automation", "--label", "branch-cleanup",
+         "--json", "number,createdAt,body"],
+        capture_output=True, text=True
+    )
+
+    if result.returncode != 0:
+        print(f"[notification-ttl] Warning: failed to list notification issues: {result.stderr}")
+        return 0
+
+    try:
+        issues = json.loads(result.stdout) if result.stdout.strip() else []
+    except json.JSONDecodeError:
+        print("[notification-ttl] Warning: failed to parse issues JSON")
+        return 0
+
+    now = datetime.now(timezone.utc)
+    ttl_seconds = NOTIFICATION_TTL_DAYS * 86400  # Convert days to seconds
+    closed_count = 0
+
+    for issue in issues:
+        number = issue.get("number")
+        created_at_str = issue.get("createdAt", "")
+
+        # Parse timestamp
+        try:
+            created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+            age_seconds = (now - created_at).total_seconds()
+        except (ValueError, TypeError):
+            print(f"[notification-ttl] Warning: invalid createdAt for #{number}")
+            continue
+
+        # Check if TTL exceeded
+        if age_seconds > ttl_seconds:
+            # Close with TTL marker comment
+            comment_msg = (
+                f"<!-- ttl-close {NOTIFICATION_TTL_DAYS}d -->\n"
+                f"🤖 自动关闭：通知 Issue 已超过 TTL（{NOTIFICATION_TTL_DAYS} 天）。\n\n"
+                f"如需重新启用，请手动 re-open。"
+            )
+
+            # Comment first, then close
+            comment_result = subprocess.run(
+                ["gh", "issue", "comment", str(number), "--body", comment_msg],
+                capture_output=True, text=True
+            )
+
+            if comment_result.returncode == 0:
+                close_result = subprocess.run(
+                    ["gh", "issue", "close", str(number)],
+                    capture_output=True, text=True
+                )
+
+                if close_result.returncode == 0:
+                    closed_count += 1
+                    age_days = age_seconds / 86400
+                    print(f"[notification-ttl] Closed #{number} (age: {age_days:.1f}d > TTL {NOTIFICATION_TTL_DAYS}d)")
+                else:
+                    print(f"[notification-ttl] Warning: failed to close #{number}: {close_result.stderr}")
+            else:
+                print(f"[notification-ttl] Warning: failed to comment on #{number}: {comment_result.stderr}")
+
+    if closed_count > 0:
+        print(f"[notification-ttl] Closed {closed_count} expired notification issue(s)")
+
+    return closed_count

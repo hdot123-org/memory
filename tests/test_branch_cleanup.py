@@ -3,6 +3,7 @@ from __future__ import annotations
 """Tests for branch_cleanup.sh script."""
 
 import json
+import os
 import shutil
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -14,6 +15,11 @@ import pytest
 def get_script_path() -> Path:
     """Get path to branch_cleanup.sh script."""
     return Path(__file__).parent.parent / "scripts" / "branch_cleanup.sh"
+
+
+def repo_root() -> Path:
+    """Repository root (where checked-in config files live)."""
+    return Path(__file__).parent.parent
 
 
 def create_fixture_repo(tmp_path: Path, branches: list[tuple[str, datetime, bool]]) -> tuple[Path, Path]:
@@ -261,7 +267,7 @@ def run_branch_cleanup(
 
     result = subprocess.run(
         cmd,
-        cwd=cwd or Path(__file__).parent.parent,
+        cwd=cwd or repo_root(),
         capture_output=True,
         text=True,
         env=env,
@@ -1233,4 +1239,324 @@ def test_scheduled_mode_protects_closed_not_merged_with_unique_commits(tmp_path:
     )
     assert "PROTECTED" in stdout.upper(), (
         f"Output should contain 'PROTECTED' for protected branch. stdout: {stdout}"
+    )
+
+
+# ============================================================================
+# VAL-BRANCH-024 (INFRA-383): Squash-merged branch is NOT falsely protected
+# ============================================================================
+def test_squash_merged_branch_not_falsely_protected(tmp_path: Path) -> None:
+    """
+    A branch whose PR was closed after its content was squash-merged into main
+    (via a different PR) must NOT be protected.
+
+    Regression test for INFRA-383: after a squash merge, the branch's original
+    commit SHAs never appear in main, so the 2-dot `origin/main..origin/$BRANCH`
+    count is permanently > 0, and the branch is falsely "protected" forever even
+    though its content is fully contained in main.
+
+    The fix adds a content-containment check: if merging the branch into main
+    is a no-op (merge result tree == main tree), the branch content is fully
+    merged and deletion loses nothing.
+
+    Fixture:
+    - main: README.md + feature.txt (content of branch, squash-merged)
+    - branch: branched from initial main, adds feature.txt (same content)
+    - PR state: CLOSED (not merged)
+    Expected: branch deleted (not protected).
+    """
+    now = datetime.now(timezone.utc)
+    old_date = now - timedelta(days=2)
+
+    # Build the fixture manually: the standard helper cannot express
+    # "branch content squash-merged into main with identical blob".
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, [])
+
+    # Create feature branch from initial main, add feature.txt, push.
+    subprocess.run(
+        ["git", "checkout", "-b", "squashed-feature"],
+        cwd=clone_dir, check=True, capture_output=True,
+    )
+    (clone_dir / "feature.txt").write_text("feature content\n")
+    subprocess.run(["git", "add", "."], cwd=clone_dir, check=True, capture_output=True)
+    date_str = old_date.strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    env = {
+        "GIT_AUTHOR_DATE": date_str,
+        "GIT_COMMITTER_DATE": date_str,
+        "PATH": os.environ["PATH"],
+        "HOME": os.environ["HOME"],
+    }
+    subprocess.run(
+        ["git", "commit", "-m", "Add feature"],
+        cwd=clone_dir, check=True, capture_output=True, env=env,
+    )
+    subprocess.run(
+        ["git", "push", "-u", "origin", "squashed-feature"],
+        cwd=clone_dir, check=True, capture_output=True,
+    )
+
+    # Squash-merge equivalent: on main, create a NEW commit with the same content.
+    subprocess.run(["git", "checkout", "main"], cwd=clone_dir, check=True, capture_output=True)
+    (clone_dir / "feature.txt").write_text("feature content\n")
+    subprocess.run(["git", "add", "."], cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Squash merge of feature (content only)"],
+        cwd=clone_dir, check=True, capture_output=True,
+    )
+    subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
+
+    # Sanity: branch has commits not in main by SHA (squash ⇒ 2-dot > 0) ...
+    check = subprocess.run(
+        ["git", "rev-list", "--count", "origin/main..origin/squashed-feature"],
+        cwd=clone_dir, capture_output=True, text=True,
+    )
+    assert check.stdout.strip() != "0", (
+        "Fixture setup wrong: branch should have SHA-unique commits after squash merge"
+    )
+    # ... but merging the branch into main is a content no-op.
+    main_tree = subprocess.run(
+        ["git", "rev-parse", "origin/main^{tree}"],
+        cwd=clone_dir, capture_output=True, text=True,
+    ).stdout.strip()
+    merge_tree = subprocess.run(
+        ["git", "merge-tree", "--write-tree", "origin/main", "origin/squashed-feature"],
+        cwd=clone_dir, capture_output=True, text=True,
+    ).stdout.strip().split("\n")[0]
+    assert main_tree == merge_tree, (
+        "Fixture setup wrong: branch content should be fully contained in main"
+    )
+
+    # Mock gh: branch has a CLOSED (not merged) PR — the protection trigger.
+    mock_gh = create_gh_mock(tmp_path, {
+        "squashed-feature": [{"number": 400, "state": "CLOSED"}],
+    })
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{os.environ['PATH']}",
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "squashed-feature" not in remaining_branches, (
+        "Squash-merged branch (content fully in main) must NOT be protected — "
+        "it should be deleted. stdout:\n" + stdout
+    )
+    # The branch must not be listed as protected (check only the protected-list
+    # section at the end, not the "Checking branches:" enumeration).
+    protected_section = stdout.split("Protected", 1)[-1] if "Protected" in stdout else ""
+    protected_entries = [
+        line for line in protected_section.split("\n") if line.strip().startswith("-") or " unique commits" in line
+    ]
+    assert not any("squashed-feature" in line for line in protected_entries), (
+        f"Branch must not appear in protected list. stdout:\n{stdout}"
+    )
+
+
+# ============================================================================
+# VAL-BRANCH-025 (INFRA-383): Branch with genuinely unique content stays protected
+# ============================================================================
+def test_closed_branch_with_unique_content_still_protected(tmp_path: Path) -> None:
+    """A CLOSED-not-merged branch whose content is NOT fully in main is still
+    protected, so the INFRA-383 content-containment fix does not over-delete.
+
+    Fixture:
+    - branch adds unique-file.txt with content that main never receives.
+    Expected: branch protected (not deleted), PROTECTED marker in output.
+    """
+    now = datetime.now(timezone.utc)
+    old_date = now - timedelta(days=2)
+
+    branches = [("unique-content", old_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Mock gh: branch has a CLOSED (not merged) PR — protection trigger.
+    mock_gh = create_gh_mock(tmp_path, {
+        "unique-content": [{"number": 401, "state": "CLOSED"}],
+    })
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{os.environ['PATH']}",
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "unique-content" in remaining_branches, (
+        "Branch with genuinely unique content must stay protected. stdout:\n" + stdout
+    )
+    assert "PROTECTED" in stdout.upper(), (
+        f"Output should contain 'PROTECTED' for protected branch. stdout: {stdout}"
+    )
+
+
+# ============================================================================
+# VAL-BRANCH-026 (INFRA-388): checked-in retirement list exempts superseded
+# branches from unmerged-commit protection
+# ============================================================================
+def test_retired_branch_not_falsely_protected(tmp_path: Path) -> None:
+    """
+    A branch whose CLOSED-not-merged PR was superseded by an equivalent
+    implementation on main (different tree, same or better outcome) must NOT
+    be protected when it is listed in the checked-in retirement list.
+
+    Regression test for INFRA-388: the INFRA-383 content-containment check
+    only recognizes "branch tree already contained in main". When the work
+    lands via a different-but-equivalent change (PR #778's _make_side_effect
+    factory superseding the factory/infra-382-dedup-side-effect branch), the
+    merge-tree check sees a tree difference and the branch is protected
+    forever, so the branch-cleanup tracking issue never drains.
+
+    The fix adds an auditable retirement list (scripts/branch_cleanup_retired.txt,
+    merged via PR review): listed branches are exempt from the
+    unmerged-unique-commits protection. Open-PR protection and the 24h age
+    threshold still apply.
+    """
+    now = datetime.now(timezone.utc)
+    old_date = now - timedelta(days=2)
+
+    branches = [("superseded-feature", old_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Mock gh: branch has a CLOSED (not merged) PR — protection trigger.
+    mock_gh = create_gh_mock(tmp_path, {
+        "superseded-feature": [{"number": 500, "state": "CLOSED"}],
+    })
+
+    # Use a dedicated retirement file instead of the checked-in one so the
+    # test does not depend on (or mutate) repository state.
+    retired_file = tmp_path / "branch_cleanup_retired.txt"
+    retired_file.write_text("superseded-feature\n")
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{os.environ['PATH']}",
+        "BRANCH_RETIREMENT_FILE": str(retired_file),
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "superseded-feature" not in remaining_branches, (
+        "Retired branch (superseded work, closed PR) must NOT be protected — "
+        "it should be deleted. stdout:\n" + stdout
+    )
+    assert exit_code == 0, f"Expected exit 0, got {exit_code}. stderr: {stderr}"
+
+
+# ============================================================================
+# VAL-BRANCH-027 (INFRA-388): retirement does NOT bypass open-PR protection
+# ============================================================================
+def test_retired_branch_with_open_pr_still_skipped(tmp_path: Path) -> None:
+    """A retired branch with an OPEN PR is still skipped: retirement only
+    exempts the unmerged-unique-commits protection, never the open-PR rule."""
+    now = datetime.now(timezone.utc)
+    fresh_date = now - timedelta(hours=1)  # within 24h (irrelevant here)
+
+    branches = [("retired-open-pr", fresh_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    mock_gh = create_gh_mock(tmp_path, {
+        "retired-open-pr": [{"number": 501, "state": "OPEN"}],
+    })
+
+    retired_file = tmp_path / "branch_cleanup_retired.txt"
+    retired_file.write_text("retired-open-pr\n")
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{os.environ['PATH']}",
+        "BRANCH_RETIREMENT_FILE": str(retired_file),
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "retired-open-pr" in remaining_branches, (
+        "Retired branch with an OPEN PR must still be skipped. stdout:\n" + stdout
+    )
+    assert exit_code == 0, f"Expected exit 0, got {exit_code}. stderr: {stderr}"
+
+
+# ============================================================================
+# VAL-BRANCH-028 (INFRA-388): retired branch younger than 24h is age-gated
+# ============================================================================
+def test_retired_branch_within_24h_threshold_skipped(tmp_path: Path) -> None:
+    """A retired branch whose last commit is within the 24h threshold is
+    skipped by the age gate: retirement is not an immediate-delete order."""
+    now = datetime.now(timezone.utc)
+    fresh_date = now - timedelta(hours=1)
+
+    branches = [("retired-fresh", fresh_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # No PRs at all — only the retirement entry and the age gate matter.
+    mock_gh = create_gh_mock(tmp_path, {})
+
+    retired_file = tmp_path / "branch_cleanup_retired.txt"
+    retired_file.write_text("retired-fresh\n")
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{os.environ['PATH']}",
+        "BRANCH_RETIREMENT_FILE": str(retired_file),
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "retired-fresh" in remaining_branches, (
+        "Retired branch with a fresh (<24h) tip must be age-gated, not deleted. "
+        f"stdout:\n{stdout}"
+    )
+    assert exit_code == 0, f"Expected exit 0, got {exit_code}. stderr: {stderr}"
+
+
+# ============================================================================
+# VAL-BRANCH-029 (INFRA-388): retirement list ships with infra-382 entry
+# ============================================================================
+def test_retirement_list_tracks_infra_382() -> None:
+    """The checked-in retirement list exists and lists the superseded
+    infra-382 branch so the tracking issue can drain after this PR merges.
+
+    The list is the audit artifact: adding/removing entries requires a PR
+    review, which is the human approval for deleting "protected" branches.
+    """
+    retired = repo_root() / "scripts" / "branch_cleanup_retired.txt"
+    assert retired.is_file(), "scripts/branch_cleanup_retired.txt must exist"
+    content = retired.read_text()
+    assert "factory/infra-382-dedup-side-effect" in content, (
+        "infra-382 superseded branch must be listed for retirement"
+    )
+
+
+# ============================================================================
+# VAL-BRANCH-030 (INFRA-388): script documents the retirement mechanism
+# ============================================================================
+def test_script_documents_retirement_list() -> None:
+    """branch_cleanup.sh references the retirement list and its env override
+    so the mechanism is discoverable from the script itself."""
+    content = get_script_path().read_text()
+    assert "branch_cleanup_retired.txt" in content, (
+        "branch_cleanup.sh must document the checked-in retirement list"
+    )
+    assert "BRANCH_RETIREMENT_FILE" in content, (
+        "branch_cleanup.sh must support the BRANCH_RETIREMENT_FILE override"
     )

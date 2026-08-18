@@ -10,6 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.script_module_helpers import load_script_module
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +63,76 @@ def test_fix_with_tests_passes(tmp_path):
     })
     result = _run_script(["--base", "base"], cwd=repo)
     assert result.returncode == 0, f"Expected exit 0, got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
+
+
+# ============================================================================
+# VAL-GUARD-019~021: gh pr view 瞬时故障重试（TD-503-02，2026-08-18）
+# ============================================================================
+def _make_called_process_error(stderr: str) -> subprocess.CalledProcessError:
+    exc = subprocess.CalledProcessError(1, ["gh"])
+    exc.stderr = stderr
+    exc.stdout = ""
+    return exc
+
+
+def test_get_pr_data_retries_on_503(monkeypatch):
+    """VAL-GUARD-019: gh pr view 遇 503 瞬时错误重试后成功 → 正常返回数据。"""
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
+    calls = []
+
+    def fake_run_503_then_ok(cmd, **kwargs):
+        calls.append(cmd)
+        if len(calls) == 1:
+            raise _make_called_process_error(
+                "gh pr view failed: HTTP 503: No server is currently available"
+            )
+        class R:
+            stdout = json.dumps({"commits": [], "files": [], "author": "x"})
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(mod, "_run", fake_run_503_then_ok)
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    data = mod.get_pr_data(42)
+    assert data == {"commits": [], "files": [], "author": "x"}
+    assert len(calls) == 2
+
+
+def test_get_pr_data_gives_up_after_3_transient_failures(monkeypatch):
+    """VAL-GUARD-020: 持续 503 重试 3 次后仍失败 → exit 2（fail-closed）。
+
+    最后一轮的非重试分支直接 SystemExit(2)（2026-08-18 清理了循环后不可达的
+    兜底错误处理，行为不变：仍 fail-closed）。
+    """
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
+    calls = []
+
+    def fake_run_always_503(cmd, **kwargs):
+        calls.append(cmd)
+        raise _make_called_process_error("HTTP 503: server unavailable")
+
+    monkeypatch.setattr(mod, "_run", fake_run_always_503)
+    monkeypatch.setattr(mod.time, "sleep", lambda s: None)
+    with pytest.raises(SystemExit) as exc_info:
+        mod.get_pr_data(42)
+    assert exc_info.value.code == 2
+    assert len(calls) == 3
+
+
+def test_get_pr_data_no_retry_on_404(monkeypatch):
+    """VAL-GUARD-021: 非瞬时错误（404）不重试 → 立即 exit 2。"""
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
+    calls = []
+
+    def fake_run_404(cmd, **kwargs):
+        calls.append(cmd)
+        raise _make_called_process_error("HTTP 404: Not Found")
+
+    monkeypatch.setattr(mod, "_run", fake_run_404)
+    with pytest.raises(SystemExit) as exc_info:
+        mod.get_pr_data(999)
+    assert exc_info.value.code == 2
+    assert len(calls) == 1
 
 
 # ============================================================================

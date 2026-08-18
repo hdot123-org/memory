@@ -101,19 +101,19 @@ memory-core 内置 **PreToolUse 守卫**，位于 Factory 与文件系统之间�
 从 GitHub 安装（非可编辑模式，生产用途）：
 
 ```bash
-pip install git+https://github.com/hdot123/memory.git@v0.33.1 <!-- x-release-please-version -->
+pip install git+https://github.com/hdot123-org/memory.git@v0.33.1 <!-- x-release-please-version -->
 ```
 
 升级到新版本：
 
 ```bash
-pip install --upgrade git+https://github.com/hdot123/memory.git@v0.33.1 <!-- x-release-please-version -->
+pip install --upgrade git+https://github.com/hdot123-org/memory.git@v0.33.1 <!-- x-release-please-version -->
 ```
 
 从 release wheel 安装：
 
 ```bash
-gh release download v0.33.1 --repo hdot123/memory --pattern "*.whl" <!-- x-release-please-version -->
+gh release download v0.33.1 --repo hdot123-org/memory --pattern "*.whl" <!-- x-release-please-version -->
 pip install memory_core-0.33.1 <!-- x-release-please-version -->
 ```
 
