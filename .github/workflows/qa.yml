@@ -56,15 +56,17 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
           python -m pip install pytest pytest-cov pytest-rerunfailures pytest-xdist
+      # 顺序优化（2026-08-19）：pytest 先跑产出 coverage.xml，gap finder 用 --xml-path 复用解析。
+      # 改前 gap finder 内部单线程再跑一遍全量 pytest（pve 上 268s），同一套测试跑两遍。
+      - name: Run pytest with coverage (gated at current threshold)
+        run: |
+          python -m pytest tests/ -n 6 --cov=memory_core --cov-report=xml --cov-branch --cov-fail-under=15
       - name: Run coverage gap analysis
         # Note: target 80% is aspirational; CI reports gap but does not fail
         # until coverage is progressively raised from 15% baseline.
         # Change --target to match current pyproject.toml cov-fail-under when ready to gate.
         run: |
-          python scripts/qa/coverage_gap_finder.py --target 80 --json qa-coverage-results.json || true
-      - name: Run pytest with coverage (gated at current threshold)
-        run: |
-          python -m pytest tests/ -n 6 --cov=memory_core --cov-report=xml --cov-branch --cov-fail-under=15
+          python scripts/qa/coverage_gap_finder.py --target 80 --xml-path coverage.xml --json qa-coverage-results.json || true
       - name: Upload coverage XML
         if: always()
         uses: actions/upload-artifact@v7

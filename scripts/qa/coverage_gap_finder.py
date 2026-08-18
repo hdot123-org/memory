@@ -8,6 +8,7 @@ Usage:
     python scripts/qa/coverage_gap_finder.py
     python scripts/qa/coverage_gap_finder.py --target 80
     python scripts/qa/coverage_gap_finder.py --json output.json
+    python scripts/qa/coverage_gap_finder.py --xml-path coverage.xml  # reuse existing XML, skip pytest
 
 Prerequisites:
     Run pytest with coverage first:
@@ -90,13 +91,23 @@ def color(text: str, c: str) -> str:
     return f"{c}{text}{RESET}"
 
 
+def _pytest_xdist_args() -> list[str]:
+    """Return -n auto args if pytest-xdist is importable, else [] (single-threaded fallback)."""
+    try:
+        import xdist  # noqa: F401
+    except ImportError:
+        return []
+    return ["-n", "auto"]
+
+
 def run_coverage() -> Path:
-    """Run pytest with coverage XML output."""
+    """Run pytest with coverage XML output (parallel via xdist when available)."""
     xml_path = Path("coverage_gap.xml")
     print(color("Running pytest with coverage...", CYAN))
     subprocess.run(
         [
             sys.executable, "-m", "pytest", "tests/",
+            *_pytest_xdist_args(),
             "--cov=memory_core",
             "--cov-report=xml:coverage_gap.xml",
             "--cov-branch",
@@ -263,12 +274,23 @@ def main() -> int:
     parser.add_argument("--target", type=float, default=80.0, help="Coverage target percentage (default: 80)")
     parser.add_argument("--json", type=str, help="Write JSON results to file")
     parser.add_argument("--reuse-xml", action="store_true", help="Reuse existing coverage_gap.xml")
+    parser.add_argument(
+        "--xml-path", type=str,
+        help="Parse an existing coverage XML (e.g. coverage.xml from a prior pytest run) "
+             "instead of running pytest again. External files are never deleted.",
+    )
     args = parser.parse_args()
 
     # Run or reuse coverage
-    xml_path = Path("coverage_gap.xml")
-    if not args.reuse_xml or not xml_path.exists():
-        xml_path = run_coverage()
+    if args.xml_path:
+        xml_path = Path(args.xml_path)
+        if not xml_path.exists():
+            print(color(f"ERROR: coverage XML not found at {xml_path}.", RED))
+            return 1
+    else:
+        xml_path = Path("coverage_gap.xml")
+        if not args.reuse_xml or not xml_path.exists():
+            xml_path = run_coverage()
 
     if not xml_path.exists():
         print(color("ERROR: coverage XML not found. Run pytest with --cov-report=xml first.", RED))
@@ -288,8 +310,8 @@ def main() -> int:
         output_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
         print(f"\nJSON results written to {output_path}")
 
-    # Cleanup temp XML
-    if xml_path.exists() and not args.reuse_xml:
+    # Cleanup temp XML (only the one we generated; --xml-path inputs are owned by the caller)
+    if not args.xml_path and xml_path.exists() and not args.reuse_xml:
         xml_path.unlink()
 
     return 0 if data["overall_pct"] >= args.target else 1
