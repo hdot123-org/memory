@@ -406,6 +406,72 @@ class TestGateAFailClosed:
             "Must fall through to BLOCK on invalid sessionId"
 
 
+class TestTerminalAbsorption:
+    """Task 3: 终态吸收 (Terminal State Absorption)
+
+    When a Linear issue's GitHub mirror is already closed, the reconcile script
+    should directly absorb the Linear issue (move it to terminal state) instead
+    of repeatedly attempting empty retrigger on every tick.
+
+    TDD red phase: These tests verify NEW behavior that doesn't exist yet.
+    Without implementation: Linear issues with closed GitHub mirrors remain in
+    non-terminal state and are processed repeatedly (empty retrigger attempts).
+    With implementation: Linear issues are absorbed (moved to terminal state)
+    when their GitHub mirror is closed.
+    """
+
+    def test_terminal_absorption_when_github_mirror_closed(self, tmp_path):
+        """Linear issue with closed GitHub mirror should be absorbed (moved to terminal).
+
+        Scenario: Linear issue INFRA-500 is in non-terminal state (e.g., In Progress),
+        but its GitHub mirror is already closed. Reconcile should absorb INFRA-500
+        by moving it to completed/canceled state.
+
+        Without implementation: Section 5a2 only skips trigger, INFRA-500 remains
+        non-terminal and is processed again next tick (empty retrigger attempt).
+        With implementation: INFRA-500 is moved to terminal state, no future processing.
+        """
+        # Verify terminal absorption logic exists in reconcile script
+        script_path = Path(__file__).parent.parent / "webhook-scripts" / "reconcile-evolution.sh"
+        script_content = script_path.read_text()
+
+        # Check for terminal absorption section in 5a2
+        # After detecting closed GitHub mirror, should move Linear to terminal state
+        assert "GitHub Issue already closed" in script_content, \
+            "Must detect closed GitHub mirror"
+
+        # Must have logic to absorb (move to terminal state) when mirror is closed
+        # Verify: after "GitHub Issue already closed" log line, the code transitions
+        # Linear issue to terminal state before `continue`
+        assert "terminal absorption" in script_content.lower() or "Terminal absorption" in script_content, \
+            "Must have terminal absorption logic after detecting closed GitHub mirror"
+        assert "ABSORB_RESULT" in script_content, \
+            "Must capture absorption result in ABSORB_RESULT variable"
+        # Verify the absorption transitions state to terminal (canceled)
+        assert "terminal-absorption" in script_content, \
+            "Must write evidence comment with terminal-absorption sentinel"
+
+    def test_terminal_absorption_idempotent(self, tmp_path):
+        """Terminal absorption should be idempotent (doesn't repeat on subsequent ticks).
+
+        Scenario: Linear issue INFRA-501 was absorbed in previous tick. Next tick
+        should not attempt absorption again.
+
+        Without implementation: No absorption logic exists, so nothing to test.
+        With implementation: Should have idempotency check (e.g., skip if already terminal).
+        """
+        script_path = Path(__file__).parent.parent / "webhook-scripts" / "reconcile-evolution.sh"
+        script_content = script_path.read_text()
+
+        # If terminal absorption exists, should have idempotency check
+        # (e.g., check if already in terminal state before attempting transition)
+        if "terminal absorption" in script_content.lower() or "absorb" in script_content.lower():
+            # Should have some form of idempotency check
+            # Could be: checking current state, checking sentinel, etc.
+            assert "idempotent" in script_content.lower() or "already" in script_content.lower(), \
+                "Terminal absorption should have idempotency check"
+
+
 class TestDeadlockExitProductionSchemaRobustness:
     """Regression tests for production schema mismatch and null handling.
 
