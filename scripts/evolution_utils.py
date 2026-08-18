@@ -8,6 +8,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -1086,6 +1087,101 @@ def reconcile_in_progress(dedup_label: str) -> int:
         print(f"[evolution] Reconciliation: {stuck_count} stuck issue(s) flagged with advisory comments")
 
     return stuck_count
+
+
+# ============================================================================
+# VAL-DRF-001: Forward Drift Watch — positive consistency check
+# ============================================================================
+
+@dataclass
+class ForwardDriftRecord:
+    """Record of a finding's status in the forward drift watch.
+
+    VAL-DRF-001: Each actionable finding must have one of these statuses:
+    - ISSUE_EXISTS: Has a matching open GitHub issue (no drift)
+    - SUPPRESSED: Removed by suppress.json (legitimate reason)
+    - CLOSED_IN_WINDOW: Deduped against a closed issue within DEDUP_CLOSED_WINDOW_DAYS (legitimate)
+    - QUOTA_PENDING: Category quota exhausted, deferred to next tick (legitimate)
+    - GHOST: No issue and no legitimate reason (drift detected, FAIL)
+
+    Every record must have an audit trail (finding_key, status, reason, timestamp).
+    """
+    finding_key: tuple[str, str]  # (rule_id, location)
+    status: str  # ISSUE_EXISTS | SUPPRESSED | CLOSED_IN_WINDOW | QUOTA_PENDING | GHOST
+    reason: str  # Why this status
+    timestamp: str  # ISO 8601 UTC timestamp
+
+
+def forward_drift_watch(
+    findings: list[Any],
+    open_issue_keys: set[tuple[str, str]],
+    suppressed_keys: set[tuple[str, str]],
+    closed_window_keys: set[tuple[str, str]],
+    quota_exhausted: dict[str, bool],
+    issue_excluded_categories: set[str],
+) -> list[ForwardDriftRecord]:
+    """VAL-DRF-001: Forward drift watch -- check each actionable finding.
+
+    For each actionable finding (not in excluded category), determine its status:
+    - If it has an open issue -> ISSUE_EXISTS (no drift)
+    - If it was suppressed -> SUPPRESSED (legitimate)
+    - If it was closed within time window -> CLOSED_IN_WINDOW (legitimate)
+    - If its category quota was exhausted -> QUOTA_PENDING (legitimate)
+    - Otherwise -> GHOST (drift detected, no issue and no reason)
+
+    Priority order (most specific wins):
+    1. ISSUE_EXISTS (highest priority -- if issue exists, that's the status)
+    2. SUPPRESSED
+    3. CLOSED_IN_WINDOW
+    4. QUOTA_PENDING
+    5. GHOST (lowest priority -- no reason found)
+
+    Args:
+        findings: List of Finding objects from current tick
+        open_issue_keys: Set of (rule_id, location) keys that have open issues
+        suppressed_keys: Set of (rule_id, location) keys that were suppressed
+        closed_window_keys: Set of (rule_id, location) keys that were closed within DEDUP_CLOSED_WINDOW_DAYS
+        quota_exhausted: Dict mapping category -> True if quota was exhausted for that category
+        issue_excluded_categories: Set of categories that are not actionable (e.g., daily_audit)
+
+    Returns:
+        List of ForwardDriftRecord, one per actionable finding, with status and audit trail
+    """
+    records = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for finding in findings:
+        # Skip non-actionable findings (excluded categories)
+        if finding.category in issue_excluded_categories:
+            continue
+
+        key = (finding.rule_id, finding.location)
+
+        # Determine status by priority
+        if key in open_issue_keys:
+            status = "ISSUE_EXISTS"
+            reason = "has_open_issue"
+        elif key in suppressed_keys:
+            status = "SUPPRESSED"
+            reason = "suppressed_by_whitelist"
+        elif key in closed_window_keys:
+            status = "CLOSED_IN_WINDOW"
+            reason = "closed_within_dedup_window"
+        elif quota_exhausted.get(finding.category, False):
+            status = "QUOTA_PENDING"
+            reason = f"category_quota_exhausted:{finding.category}"
+        else:
+            status = "GHOST"
+            reason = "no_issue_no_reason"
+
+        records.append(ForwardDriftRecord(
+            finding_key=key,
+            status=status,
+            reason=reason,
+            timestamp=now_iso,
+        ))
+
+    return records
 
 
 def close_expired_notifications() -> int:
