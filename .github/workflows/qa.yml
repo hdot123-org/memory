@@ -45,17 +45,12 @@ jobs:
       # 自建 runner：扩展 PATH 包含 ~/.local/bin（pip 安装 console scripts 的位置）
       - name: Extend PATH for self-hosted runner
         run: echo "/home/runner/.local/bin" >> "$GITHUB_PATH"
-      # 自建 runner：系统已预装 Python 3.12 + pytest 全家桶，跳过 setup-python 下载。
+      # 自建 runner：系统已预装 Python 3.12 + pytest 全家桶，直接用系统解释器。
+      # 不能保留 if 恒假的 setup-python 引用：runner 启动阶段预下载所有 action，慢网络下超时杀死 job。
       - name: Use system Python (self-hosted)
-        if: runner.os == 'Linux' && runner.name == 'pve-runner-01'
         run: |
           python3 --version
           echo "/usr/bin" >> "$GITHUB_PATH"
-      - uses: actions/setup-python@v7
-        if: runner.os != 'Linux' || runner.name != 'pve-runner-01'
-        with:
-          python-version: "3.12"
-          cache: 'pip'
       - name: Install package and test deps
         run: |
           python -m pip install --upgrade pip
