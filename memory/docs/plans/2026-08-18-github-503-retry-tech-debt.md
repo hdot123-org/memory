@@ -20,16 +20,18 @@
 
 ## 技术债清单
 
-### TD-503-01: droid-review 无瞬时故障自动重试 — 🔓 开放（优先级高）
+### TD-503-01: droid-review 无瞬时故障自动重试 — ✅ 已闭环（PR #777，INFRA-386）
 
-- **现状**：droid-action 权限检查/prep 阶段遇 GitHub 503 直接 fail，check run 结论 failure，阻塞 ci-ok 与 auto-merge
-- **影响**：503 窗口期所有 PR 首轮 review 大概率挂；依赖人工 rerun，与异步化目标（无人值守合并）冲突
-- **候选方案**（实施时评估选型）：
-  - A. droid-review.yml 的 droid-action step 加 `retry`（如 nick-fields/retry 或 workflow 级 re-run job），仅对 prep 阶段瞬时错误（HTTP 5xx）重试 2-3 次，指数退避
-  - B. ci.yml `check_droid_review.sh` 侧：检测到 failure 且日志含 503/HttpError 特征时输出明确的「等待人工/agent rerun」提示（改进可观测性，不自动重试）
-  - C. 新增 watchdog workflow：cron 扫描「droid-review failure 但 failure 原因为基础设施瞬时错误」的 PR，自动 `gh run rerun --failed`（幂等，防重入需锁）
-- **验证要求**：修复需带结构测试（test_ci_config.py 风格）；方案 C 需防无限重试循环（重试计数上限）
-- **注意**：不得为绕过 503 降低门禁（禁止 skip droid-review 或 --admin）
+- **现状（修复前）**：droid-action 权限检查/prep 阶段遇 GitHub 503 直接 fail，check run 结论 failure，阻塞 ci-ok 与 auto-merge
+- **影响（修复前）**：503 窗口期所有 PR 首轮 review 大概率挂；依赖人工 rerun，与异步化目标（无人值守合并）冲突
+- **选型落地**：方案 C 变体（watchdog workflow）——`.github/workflows/droid-review-watchdog.yml`（PR #777，2026-08-18 合并 main，commit 4c7410e）：
+  - 触发：`workflow_run`（"Droid Auto Review" completed）——上游 run 已终态才可调 rerun-failed-jobs API（job 内自愈存在时序竞争，架构性不可行）
+  - 特征匹配：`permission - 503|Failed to check permissions|HttpError: No server is currently available|unexpected EOF|TLS handshake timeout`，仅 infra 瞬时错误命中
+  - 防重试风暴：`run_attempt < 3` 限界（最多自动重试 2 次）
+  - 门禁零削弱：失败轮保持 failure 结算（fail-closed），rerun 的那轮才是有效 review；真代码审查发现不匹配特征不触发 rerun
+  - 结构测试：VAL-503-001~004（tests/test_ci_config.py::TestDroidReview503SelfHeal）
+- **PR/Issue 回链**：实现由 PR #777 交付（body 未含 Fixes 引用，Linear 无法自动闭环）→ 本文档状态闭环（INFRA-386 与 PR #777 为同一诉求：watchdog 检测 503 瞬时模式并 rerun-failed-jobs，droid review 自愈且不绕过门禁）
+- **注意**：不得为绕过 503 降低门禁（禁止 skip droid-review 或 --admin）——已遵守
 
 ### TD-503-02: gh CLI 调用无统一重试封装 — 🔓 开放（优先级中）
 
@@ -37,6 +39,7 @@
 - **影响**：503 窗口期会话操作反复失败，浪费轮次
 - **候选方案**：约定层面——AGENTS.md 或 ci-gateway skill 加「gh 调用遇 503/EOF 统一 sleep+重试」惯例；或提供 `~/.factory/bin/gh-retry` 包装脚本
 - **范围界定**：只包装幂等读操作与创建类操作的重试；写操作重试需防重复副作用（PR 创建重试需先查是否已建）
+- **部分进展**：scripts/check_fix_has_test.py 的 gh 调用已带瞬时 5xx 有界重试（PR #777 顺带交付）
 
 ### TD-503-03: PR 创建 GraphQL→REST 降级路径未固化 — 🔓 开放（优先级低）
 
