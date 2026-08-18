@@ -1147,10 +1147,20 @@ def classify_orphan_issues(
     - Issue fields prefer the pre-parsed rule_id/location keys and fall back to
       parsing the body, so compact get_open_issues() dicts work in production.
 
+    P1 Safety Guards (ported from auto_close_resolved, superseded by the
+    BLOCKED classification above with audit trail):
+    1. Self-audit category exemption: evolution_self_audit issues are transient health
+       signals that resolve when scanner recovers, not when code is fixed. Auto-closing
+       them triggers flapping loop with state gate.
+    2. Failed categories skip: Issues whose category tool failed this tick are protected.
+       A failed tool emits no findings, so its issues vanish from scan even though the
+       underlying problem may still exist.
+
     Args:
         current_findings: List of Finding objects from current scan
         open_issues: List of open GitHub issues (from current tick, not newly fetched)
-        failed_categories: Set of audit categories whose tool failed this tick
+        failed_categories: Set of audit categories whose tool failed this tick.
+            Issues whose category is in this set are protected from classification.
 
     Returns:
         List of OrphanIssueClassification with audit trail for each orphan issue
@@ -1192,6 +1202,9 @@ def classify_orphan_issues(
 
         # Protection gates first (mirror auto_close_resolved ordering):
         # a failed tool / self-audit absence is not evidence of resolution.
+        # Note: protected issues are classified BLOCKED_NO_EVIDENCE (with audit
+        # trail) rather than silently skipped — INFRA-403 supersedes the PR #817
+        # silent-skip semantics while preserving its safety properties.
         category = issue.get("category") or _parse_issue_category(issue_body)
         if failed_categories and category and category in failed_categories:
             classifications.append(OrphanIssueClassification(
@@ -1454,11 +1467,18 @@ def reverse_drift_watch(
       the recent baseline (a crashed adapter), absence is not resolution — skip.
     - VAL-DRF-004 budget guard: skip when tick duration/API budget exhausted.
 
+    P1 Safety Guards (ported from auto_close_resolved):
+    1. Self-audit category exemption: evolution_self_audit issues skipped (in classify layer)
+    2. Failed categories skip: Issues from failed tools skipped (in classify layer)
+    3. Partial output fail-closed: When findings count is anomalously low (<80% of baseline
+       median), skip ALL closing to avoid premature closure based on incomplete data
+
     Args:
         findings: Current tick's findings (for comparison)
         open_issues: List of open GitHub issues (already fetched, incremental)
         history_path: Path to findings_over_time.json for grace period check
-        failed_categories: Set of audit categories whose tool failed this tick
+        failed_categories: Set of audit categories whose tool failed this tick.
+            Issues whose category is in this set are protected from closing.
 
     Returns:
         Dict with counts: {closed: int, retained: int, deferred: int}
@@ -1486,7 +1506,7 @@ def reverse_drift_watch(
         # Budget tracker unavailable (e.g. direct invocation) — proceed
         pass
 
-    # Step 1: Classify all orphan issues
+    # Step 1: Classify all orphan issues (with safety guards 1 & 2)
     classifications = classify_orphan_issues(findings, open_issues, failed_categories)
 
     # Step 2: Execute actions based on classifications

@@ -1088,6 +1088,7 @@ def main() -> None:
     # VAL-DRF-002/003: Reverse drift watch - classify and remediate orphan issues
     # D1: For open issues not in current findings, classify based on evidence and take action
     # INFRA-403: failed_categories passed so GAP-C1 protection mirrors auto_close_resolved
+    # P1 Safety Guards: self-audit exemption, failed categories skip, partial output fail-closed
     try:
         from evolution_utils import reverse_drift_watch
         # Reuse already-fetched open_issues from earlier in main() (incremental)
