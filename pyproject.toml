@@ -209,6 +209,7 @@ DEP001 = [
     "tomllib",
     "evolution_adapters",
     "evolution_utils",
+    "evolution_scanner",
 ]
 DEP002 = [
     "pytest-cov",
