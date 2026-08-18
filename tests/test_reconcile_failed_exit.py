@@ -63,27 +63,50 @@ def test_status_failed_vs_completed_exit_paths():
 
 def test_fixture_issues_infra_mapping():
     """
-    Verify fixture issues #750-756 map to INFRA-365/366/367/371.
+    Verify fixture issues #750-756 → Linear INFRA-365..371 映射。
+
+    映射经 gh 只读取证（2026-08-18，逐单提取 linkback 评论）：
+      #750 → INFRA-365  #751 → INFRA-366  #752 → INFRA-367
+      #753 → INFRA-368  #754 → INFRA-369  #755 → INFRA-370
+      #756 → INFRA-371
+    一一对应，每个 Linear issue 恰好对应一个 GitHub 镜像。
 
     These are test fixture pollution (RULE_A-E, file0-4.py, category=test).
     All have status=failed status files.
-    After fix, they will be handled by stale-orphan fallback.
+    After fix (status=failed exit, PR #763), they are handled by stale-orphan fallback
+    and Linear issues are canceled.
+
+    历史：本测试旧版断言 4/7 错误映射（将 #755 归到 INFRA-365、#756 归到 INFRA-366、
+    #753/#754 归到 INFRA-371），且是同义反复（断言自身 dict 字面量的属性）。
+    修复后断言经 API 取证的一一映射事实。
+
+    夹具签名机制裁定不补建（orchestrator 2026-08-18）：线上终态已达成（#750-756 全关），
+    同类污染风险由 D1/D2 漂移守望与 status=failed 出口覆盖，独立签名机制属过度工程。
+    见 library/pipeline-closure.md。
     """
+    # 经 gh 只读 API 取证的真实映射（2026-08-18 逐单 linkback 核实）
     fixture_mapping = {
-        "INFRA-365": [750, 755],  # RULE_B / file1.py (duplicate)
-        "INFRA-366": [751, 756],  # RULE_C / file2.py (duplicate)
-        "INFRA-367": [752],       # RULE_D / file3.py
-        "INFRA-371": [753, 754],  # RULE_E / file4.py + RULE_A / file0.py
+        750: "INFRA-365",
+        751: "INFRA-366",
+        752: "INFRA-367",
+        753: "INFRA-368",
+        754: "INFRA-369",
+        755: "INFRA-370",
+        756: "INFRA-371",
     }
 
-    # All have status=failed
-    for infra_ref in fixture_mapping.keys():
-        assert infra_ref.startswith("INFRA-")
+    # 7 GitHub issues → 7 Linear issues，一一对应
+    assert len(fixture_mapping) == 7
+    assert len(set(fixture_mapping.values())) == 7  # 每个 INFRA 号唯一
 
-    # After fix, all will be handled by stale-orphan fallback
-    # and Linear issues will be canceled
-    assert len(fixture_mapping) == 4  # 4 Linear issues
-    assert sum(len(v) for v in fixture_mapping.values()) == 7  # 7 GitHub issues
+    # 连续号段完整性
+    assert set(fixture_mapping.keys()) == {750, 751, 752, 753, 754, 755, 756}
+    expected_infra = {f"INFRA-{n}" for n in range(365, 372)}
+    assert set(fixture_mapping.values()) == expected_infra
+
+    # 所有 INFRA 引用格式合法
+    for infra_ref in fixture_mapping.values():
+        assert infra_ref.startswith("INFRA-")
 
 
 def test_status_failed_code_path_exists():
