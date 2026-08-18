@@ -11,7 +11,7 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -37,18 +37,14 @@ _SELF_HEAL_MARKER = "自愈"  # Marker in self-heal comments to detect duplicate
 
 
 def _unique_tmp_path(final_path: Path) -> Path:
-    """Return a process-unique temp path for atomic writes to final_path.
+    """Return a collision-free tmp path for atomic writes to final_path.
 
     Fixed tmp names race across concurrent writers (see evolution_scanner):
-    unique-per-process tmp names keep atomic replace semantics while
-    eliminating the FileNotFoundError race under pytest-xdist.
+    mkstemp+unlink still races at thread level because the unlinked name can
+    be re-issued to another thread before the first writer recreates it.
+    pid + uuid4 names are unique per call with no existence-dependent window.
     """
-    fd, tmp_name = tempfile.mkstemp(
-        dir=final_path.parent, prefix=final_path.name + ".", suffix=".tmp"
-    )
-    os.close(fd)
-    os.unlink(tmp_name)
-    return Path(tmp_name)
+    return final_path.parent / f"{final_path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"
 
 
 def check_history_freshness(

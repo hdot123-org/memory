@@ -5,7 +5,7 @@ import os
 import shlex
 import subprocess
 import sys
-import tempfile
+import uuid
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -47,20 +47,18 @@ ISSUE_EXCLUDED_CATEGORIES: set[str] = {"evolution_self_audit", "daily_audit"}
 
 
 def _unique_tmp_path(final_path: Path) -> Path:
-    """Return a process-unique temp path for atomic writes to final_path.
+    """Return a collision-free tmp path for atomic writes to final_path.
 
     Fixed tmp names (e.g. heartbeat.json.tmp) race across concurrent writers:
     writer A's os.replace() consumes the shared tmp file, then writer B's
-    os.replace() fails with FileNotFoundError. Unique-per-process tmp names
-    keep the atomic replace semantics while eliminating the race (pytest-xdist
-    runs tests that invoke main() concurrently against the same repo root).
+    os.replace() fails with FileNotFoundError. mkstemp+unlink also races at
+    thread level: after unlink the freed name can be re-issued to another
+    thread before the first writer recreates it, so both threads rename the
+    same file and the slower os.replace() raises FileNotFoundError (seen on
+    the self-hosted runner, tests/test_evolution_scanner.py). pid + uuid4
+    names are unique per call with no existence-dependent window.
     """
-    fd, tmp_name = tempfile.mkstemp(
-        dir=final_path.parent, prefix=final_path.name + ".", suffix=".tmp"
-    )
-    os.close(fd)
-    os.unlink(tmp_name)
-    return Path(tmp_name)
+    return final_path.parent / f"{final_path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"
 
 
 def load_config(repo_root: Path) -> dict[str, Any]:
