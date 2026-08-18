@@ -34,3 +34,29 @@ def neutralize_tmpdir_for_tests(monkeypatch, tmp_path):
     """
     # Enable denylist bypass for all tests
     monkeypatch.setenv("MEMORY_CORE_BYPASS_DENYLIST", "1")
+
+
+@pytest.fixture(autouse=True)
+def _guard_load_key_not_patched():
+    """Guard against cross-test patch leakage of load_key.
+
+    Some tests (notably test_abc_layer_signing.py) need to mock
+    memory_hook_integrity_keys.load_key for CI environments. If teardown
+    fails to restore the original, subsequent tests that depend on the
+    real load_key (e.g., test_integrity_resign.py::test_resign_no_key_fails)
+    will see a patched function and fail spuriously.
+
+    This fixture asserts that load_key is the original function after each
+    test teardown. If a leak is detected, the assertion fails immediately
+    with a clear message identifying the culprit test.
+    """
+    yield
+    import memory_core.tools.memory_hook_integrity_keys as _key_module
+    # Check if load_key has been patched (lambdas or closures have different __name__)
+    if hasattr(_key_module.load_key, "__name__"):
+        assert _key_module.load_key.__name__ == "load_key", (
+            f"load_key was patched and not restored! "
+            f"Current: {_key_module.load_key.__name__}. "
+            f"This indicates a test in the previous run failed to restore load_key. "
+            f"Use monkeypatch.setattr() instead of direct module attribute assignment."
+        )
