@@ -40,6 +40,8 @@ jobs:
       PIP_BREAK_SYSTEM_PACKAGES: 1
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # 浅克隆，加速 checkout（自建 runner 走代理隧道，全量历史拉取慢）
       # 自建 runner：扩展 PATH 包含 ~/.local/bin（pip 安装 console scripts 的位置）
       - name: Extend PATH for self-hosted runner
         run: echo "/home/runner/.local/bin" >> "$GITHUB_PATH"
