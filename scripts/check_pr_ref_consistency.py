@@ -241,12 +241,16 @@ def main(args: list[str] | None = None) -> int:
         print(f"Error: PR number must be an integer, got '{args[0]}'", file=sys.stderr)
         return 2
 
-    # Fetch PR data
+    # Fetch PR data — fail-closed: any exception (subprocess error, JSON
+    # decode failure, runtime error from null payload) must exit 1 to prevent
+    # CI gate from silently passing on transient API failures.
+    # Empirical evidence: 2026-08-19 04:25Z PR #827 "Post api.github.com/graphql EOF"
+    # previously exited 0; this fix hardens all fetch/parse paths to exit 1.
     try:
         pr_data = fetch_pr_data(pr_number)
-    except subprocess.CalledProcessError as e:
-        print(f"Error: Failed to fetch PR #{pr_number}: {e.stderr}", file=sys.stderr)
-        return 2
+    except Exception as e:
+        print(f"Error: Failed to fetch PR #{pr_number}: {e}", file=sys.stderr)
+        return 1
 
     pr_body = pr_data.get("body") or ""  # None body defense: convert None → ""
     closing_refs = pr_data.get("closingIssuesReferences", [])
@@ -275,9 +279,9 @@ def main(args: list[str] | None = None) -> int:
                 print(f"  Issue #{issue_num}: linkback = {linkback}")
             else:
                 print(f"  Issue #{issue_num}: no linkback (backward compat)")
-        except subprocess.CalledProcessError as e:
-            print(f"Error: Failed to fetch comments for issue #{issue_num}: {e.stderr}", file=sys.stderr)
-            return 2
+        except Exception as e:
+            print(f"Error: Failed to fetch comments for issue #{issue_num}: {e}", file=sys.stderr)
+            return 1
 
     # Check subset condition: linkback ⊆ Fixes
     print(f"PR #{pr_number}: Linkback set = {sorted(linkback_ids) if linkback_ids else '{}'}")
