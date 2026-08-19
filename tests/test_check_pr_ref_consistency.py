@@ -15,6 +15,7 @@ the same regex/subset logic that would run against real API data; they
 just cannot be populated from a live `gh pr view` snapshot of #729.
 """
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
@@ -704,3 +705,222 @@ class TestNoneBodyDefense:
 
         exit_code, _ = _run_check(608, side_effect)
         assert exit_code == 1, "None body with linkback must fail cleanly (empty Fixes set)"
+
+
+# ===========================================================================
+# Fail-closed gate hardening (编排器 2026-08-19 04:30Z 立项)
+# ===========================================================================
+# Bug: GitHub API transient errors (EOF/503/timeout) caused the script to
+# either print an error but exit 0 (fail-open) or crash with uncaught
+# traceback. CI judges pass/fail by exit code, so any non-explicit-exit
+# path risks silent gate bypass.
+#
+# Fix: ALL fetch/parse exception paths must print error to stderr and
+# return exit 1 (fail-closed). Normal path semantics unchanged (exit 0).
+# Empirical evidence: 2026-08-19 04:25Z PR #827 first run:
+#   'Error: Failed to fetch PR #827: Post api.github.com/graphql EOF' exit=0
+#   (retry with same script PASS → pure transient path)
+
+
+def _make_error_side_effect(
+    error: Exception,
+    fail_at: str = "graphql",
+    closing_refs: list[int] | None = None,
+):
+    """Build a side_effect that raises `error` at the specified call.
+
+    Args:
+        error: Exception to raise
+        fail_at: "graphql" for fetch_pr_data, "issue_view" for fetch_issue_comments
+        closing_refs: closing refs for the PR mock (needed when fail_at="issue_view")
+    """
+    def side_effect(args, **kwargs):
+        cmd = " ".join(args)
+        if "remote get-url" in cmd:
+            return _mock_ok("https://github.com/hdot123-org/memory.git")
+        if "graphql" in cmd:
+            if fail_at == "graphql":
+                raise error
+            return _mock_gh_pr_view(827, "Fixes INFRA-100", closing_refs or [711])
+        if "issue view" in cmd:
+            if fail_at == "issue_view":
+                raise error
+            return _mock_gh_issue_comments("")
+        return _mock_ok()
+
+    return side_effect
+
+
+def _make_raw_stdout_side_effect(graphql_stdout: str):
+    """Build a side_effect whose graphql call returns `graphql_stdout` raw.
+
+    INFRA-419: extracted from the 85%-AST-similar inline ``side_effect``
+    bodies in test_json_decode_error_during_pr_fetch_exits_1 /
+    test_runtime_error_null_pr_in_payload_exits_1 (10 lines / 61 tokens vs
+    11 lines / 83 tokens, CODE_HYGIENE_DUPLICATE_BLOCK).
+
+    Args:
+        graphql_stdout: raw stdout the graphql mock returns (valid JSON,
+            truncated JSON, or any other payload shape under test)
+    """
+    def side_effect(args, **kwargs):
+        cmd = " ".join(args)
+        if "remote get-url" in cmd:
+            return _mock_ok("https://github.com/hdot123-org/memory.git")
+        if "graphql" in cmd:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = graphql_stdout
+            result.stderr = ""
+            return result
+        return _mock_ok()
+
+    return side_effect
+
+
+class TestFetchPrFailClosed:
+    """fetch_pr_data 异常路径必须 exit 1（fail-closed），禁止 exit 0 或崩溃。
+
+    实证：2026-08-19 04:25Z PR #827 首跑 'Post api.github.com/graphql EOF' exit=0。
+    """
+
+    def test_eof_during_pr_fetch_exits_1(self, capsys):
+        """EOF during gh api graphql (PR fetch) → exit 1, not 0 or crash."""
+        error = subprocess.CalledProcessError(
+            1, "gh api graphql", stderr="Post api.github.com/graphql EOF"
+        )
+        exit_code, _ = _run_check(827, _make_error_side_effect(error, "graphql"))
+        assert exit_code == 1, "EOF during PR fetch must exit 1 (fail-closed)"
+        captured = capsys.readouterr()
+        assert "827" in captured.err
+
+    def test_503_during_pr_fetch_exits_1(self, capsys):
+        """503 during gh api graphql (PR fetch) → exit 1."""
+        error = subprocess.CalledProcessError(
+            1, "gh api graphql", stderr="HTTP 503"
+        )
+        exit_code, _ = _run_check(827, _make_error_side_effect(error, "graphql"))
+        assert exit_code == 1, "503 during PR fetch must exit 1 (fail-closed)"
+        captured = capsys.readouterr()
+        assert "827" in captured.err
+
+    def test_timeout_during_pr_fetch_exits_1(self, capsys):
+        """Timeout during gh api graphql (PR fetch) → exit 1."""
+        error = subprocess.TimeoutExpired(
+            cmd=["gh", "api", "graphql"], timeout=30
+        )
+        exit_code, _ = _run_check(827, _make_error_side_effect(error, "graphql"))
+        assert exit_code == 1, "Timeout during PR fetch must exit 1 (fail-closed)"
+        captured = capsys.readouterr()
+        assert "827" in captured.err
+
+    def test_json_decode_error_during_pr_fetch_exits_1(self, capsys):
+        """Truncated JSON response during PR fetch → exit 1, not uncaught crash."""
+        side_effect = _make_raw_stdout_side_effect("{truncated json")  # invalid JSON
+
+        exit_code, _ = _run_check(827, side_effect)
+        assert exit_code == 1, "JSON decode error during PR fetch must exit 1 (fail-closed)"
+
+    def test_runtime_error_null_pr_in_payload_exits_1(self, capsys):
+        """GraphQL returns no pullRequest (null in payload) → exit 1."""
+        data = {"data": {"repository": {"pullRequest": None}}, "errors": [{"message": "not found"}]}
+        side_effect = _make_raw_stdout_side_effect(json.dumps(data))
+
+        exit_code, _ = _run_check(827, side_effect)
+        assert exit_code == 1, "Null PR in GraphQL payload must exit 1 (fail-closed)"
+
+
+class TestFetchCommentsFailClosed:
+    """fetch_issue_comments 异常路径必须 exit 1（fail-closed）。"""
+
+    def test_eof_during_comment_fetch_exits_1(self, capsys):
+        """EOF during gh issue view (comment fetch) → exit 1."""
+        error = subprocess.CalledProcessError(
+            1, "gh issue view", stderr="Post api.github.com/graphql EOF"
+        )
+        exit_code, _ = _run_check(
+            827,
+            _make_error_side_effect(error, "issue_view", closing_refs=[711]),
+        )
+        assert exit_code == 1, "EOF during comment fetch must exit 1 (fail-closed)"
+        captured = capsys.readouterr()
+        assert "711" in captured.err
+
+    def test_503_during_comment_fetch_exits_1(self, capsys):
+        """503 during gh issue view (comment fetch) → exit 1."""
+        error = subprocess.CalledProcessError(
+            1, "gh issue view", stderr="HTTP 503"
+        )
+        exit_code, _ = _run_check(
+            827,
+            _make_error_side_effect(error, "issue_view", closing_refs=[711]),
+        )
+        assert exit_code == 1, "503 during comment fetch must exit 1 (fail-closed)"
+
+    def test_timeout_during_comment_fetch_exits_1(self, capsys):
+        """Timeout during gh issue view (comment fetch) → exit 1."""
+        error = subprocess.TimeoutExpired(
+            cmd=["gh", "issue", "view", "711"], timeout=30
+        )
+        exit_code, _ = _run_check(
+            827,
+            _make_error_side_effect(error, "issue_view", closing_refs=[711]),
+        )
+        assert exit_code == 1, "Timeout during comment fetch must exit 1 (fail-closed)"
+
+
+class TestNormalPathNoRegression:
+    """正常路径 exit 0 语义不变（fail-closed 修复不能误伤正常路径）。
+
+    对照测试：确保 fail-closed 修复不回归正常路径。
+    """
+
+    def test_compliant_pr_still_exits_0(self):
+        """Compliant PR (linkback ⊆ Fixes) still exits 0 after fail-closed fix."""
+        side_effect = _make_side_effect(
+            999,
+            PR_COMPLIANT_BODY,
+            PR_COMPLIANT_CLOSING_REFS,
+            {
+                711: ISSUE_711_COMMENTS,
+                718: ISSUE_718_COMMENTS,
+                722: ISSUE_722_COMMENTS,
+            },
+        )
+        exit_code, _ = _run_check(999, side_effect)
+        assert exit_code == 0, "Compliant PR must still exit 0"
+
+    def test_no_closing_refs_still_exits_0(self):
+        """PR with no closing refs still exits 0 after fail-closed fix."""
+        side_effect = _make_side_effect(111, "Just a fix\n\nFixes INFRA-100", [])
+        exit_code, _ = _run_check(111, side_effect)
+        assert exit_code == 0, "No closing refs must still exit 0"
+
+    def test_no_linkback_still_exits_0(self):
+        """PR with issues but no linkback still exits 0 after fail-closed fix."""
+        side_effect = _make_side_effect(
+            888,
+            PR_NO_LINKBACK_BODY,
+            PR_NO_LINKBACK_CLOSING_REFS,
+            {
+                800: ISSUE_800_COMMENTS,
+                801: ISSUE_801_COMMENTS,
+            },
+        )
+        exit_code, _ = _run_check(888, side_effect)
+        assert exit_code == 0, "No linkback must still exit 0"
+
+    def test_mismatch_still_exits_1(self):
+        """Mismatch (linkback ⊄ Fixes) still exits 1 after fail-closed fix."""
+        side_effect = _make_side_effect(
+            729,
+            PR_729_BODY,
+            PR_729_CLOSING_REFS,
+            {
+                711: ISSUE_711_COMMENTS,
+                718: ISSUE_718_COMMENTS,
+                722: ISSUE_722_COMMENTS,
+            },
+        )
+        exit_code, _ = _run_check(729, side_effect)
+        assert exit_code == 1, "Mismatch must still exit 1"
