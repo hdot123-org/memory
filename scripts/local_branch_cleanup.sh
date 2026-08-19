@@ -104,7 +104,8 @@ cleanup_gone_branches() {
   # Step 2: Find gone branches
   log "Scanning for gone branches..."
   local gone_branches
-  gone_branches=$(git branch -vv | grep '\[origin/.*: gone\]' | awk '{print $1}' | sed 's/^\*//' || true)
+  # Parse branch name from git branch -vv output, handling both * (current) and + (worktree) prefixes
+  gone_branches=$(git branch -vv | grep '\[origin/.*: gone\]' | sed -E 's/^[*+ ]+//' | awk '{print $1}' || true)
   
   if [[ -z "$gone_branches" ]]; then
     log "No gone branches found"
