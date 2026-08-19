@@ -1598,15 +1598,17 @@ def reverse_drift_watch(
     # VAL-DRF-004: budget guard (mirror forward_drift_watch)
     try:
         tracker = get_tick_tracker()
+    except Exception as e:
+        # Budget tracker unavailable (e.g. direct invocation) — proceed
+        # INFRA-425: degraded guard must leave an audit trail, not bare pass
+        logger.debug(f"reverse_drift_watch: tick tracker unavailable, proceeding without budget guard: {e}")
+    else:
         if tracker.is_any_budget_exceeded():
             logger.info(
                 "Reverse drift watch skipped: tick budget exhausted "
                 f"(duration={tracker.is_duration_exceeded()}, api={tracker.is_api_exceeded()})"
             )
             return empty
-    except Exception:
-        # Budget tracker unavailable (e.g. direct invocation) — proceed
-        pass
 
     # Step 1: Classify all orphan issues (with safety guards 1 & 2)
     classifications = classify_orphan_issues(findings, open_issues, failed_categories)
