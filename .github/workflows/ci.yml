@@ -110,6 +110,10 @@ jobs:
         if: always()
         uses: codecov/codecov-action@v7
         with:
+          # 自建 runner 已预装 codecov CLI 到 /usr/local/bin（见 runbook 2026-08-18-pve-runner-sop），
+          # 指定 binary 后 wrapper 跳过每次 9.9MB 下载 + GPG 校验（慢隧道下单次 ~3 分钟）。
+          # 若 job 迁回 GitHub 托管 runner，删除本行即可恢复自动下载。
+          binary: /usr/local/bin/codecov
           files: ./coverage.xml
           flags: unittests
           fail_ci_if_error: false
