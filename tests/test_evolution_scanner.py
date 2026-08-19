@@ -7569,18 +7569,17 @@ def test_val_cross_003_broken_chain_no_merged_pr(tmp_path):
     with patch("evolution_utils.subprocess.run") as mock_run, \
          patch("urllib.request.urlopen", return_value=mock_urlopen), \
          patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
-        # Call sequence per architecture.md §3.2: list → pr view (not merged) → comment fetch for sentinel
+        # Call sequence per architecture.md §3.2: list → pr view (not merged) → sentinel via Linear comments (urllib, not subprocess)
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout=json.dumps({"mergedAt": None}), stderr=""),
-            MagicMock(returncode=0, stdout="", stderr=""),  # comment fetch for sentinel check (no sentinel found)
         ]
 
         auto_close_resolved(current_findings, "evolution-found",
                            failed_categories=set(), history_path=history_path)
 
-        # List + pr view + comment fetch for sentinel, NO close call
-        assert mock_run.call_count == 3
+        # List + pr view only; sentinel check now via _fetch_linear_comments (urllib), NO close call
+        assert mock_run.call_count == 2
         assert mock_run.call_args_list[0][0][0][2] == "list"
 
 
