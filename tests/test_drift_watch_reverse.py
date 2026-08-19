@@ -16,6 +16,7 @@ scripts_dir = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(scripts_dir))
 
 from evolution_scanner import Finding
+
 from tests.drift_watch_helpers import make_issue as _make_issue
 
 

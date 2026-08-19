@@ -22,7 +22,6 @@ sys.path.insert(0, str(scripts_dir))
 
 from tests.drift_watch_helpers import make_issue as _make_issue
 
-
 # ============================================================================
 # Test 1: Self-audit category exemption
 # ============================================================================
