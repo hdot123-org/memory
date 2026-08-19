@@ -417,6 +417,68 @@ def extract_linkback_anchor(comments_text: str) -> str | None:
     return None
 
 
+def _fetch_linear_comments(linear_id: str) -> str | None:
+    """Fetch comments from Linear issue for sentinel search.
+
+    Architecture §3.2: Deadlock exit sentinel is written to Linear comments,
+    not GitHub issue comments. This function queries Linear GraphQL API to
+    retrieve all comments for a given Linear issue.
+
+    Returns:
+        Comment text if successful, None if fetch fails (fail-closed signal)
+    """
+    api_key = os.environ.get("LINEAR_API_KEY")
+    if not api_key:
+        return None
+
+    try:
+        query = """
+        query($id: String!) {
+          issue(id: $id) {
+            comments {
+              nodes {
+                body
+              }
+            }
+          }
+        }
+        """
+        payload = json.dumps({
+            "query": query,
+            "variables": {"id": linear_id}
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            "https://api.linear.app/graphql",
+            data=payload,
+            headers={
+                "Authorization": api_key,
+                "Content-Type": "application/json"
+            },
+            method="POST"
+        )
+
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            response_data = json.loads(resp.read().decode("utf-8"))
+
+        if "errors" in response_data:
+            logger.warning(
+                f"Linear API returned errors fetching comments for {linear_id}: {response_data['errors']}"
+            )
+            return None
+
+        issue_data = response_data.get("data", {}).get("issue")
+        if not issue_data:
+            return None
+
+        comments = issue_data.get("comments", {}).get("nodes", [])
+        return "\n".join(c.get("body", "") for c in comments)
+
+    except Exception as e:
+        logger.warning(f"Error fetching Linear comments for {linear_id}: {e}")
+        return None
+
+
 def _check_merged_pr(github_prs: list[dict[str, Any]], linear_id: str) -> bool | None:
     """Check if any GitHub PR attachment is merged.
 
@@ -679,24 +741,13 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
         # session-completed + sessionId + exitCode=0. This proves the session completed
         # successfully even without a merged PR attachment.
         #
-        # Conditional fetch (VAL-CLOSE-026): only fetch comments for sentinel check
-        # when PR attachments exist but can't prove merge. If no PRs, skip sentinel check.
-        if github_prs:
-            # PRs exist but none merged → check for deadlock sentinel in comments
-            # If comments were already fetched (body had no linkback), reuse them
-            # Otherwise, fetch now for sentinel check
-            path_b_comments = issue_comments
-            if not path_b_comments and issue_number is not None:
-                fetched = _fetch_issue_comments(issue_number)
-                if fetched is not None:
-                    path_b_comments = fetched
-                # Fetch failure here is NOT fail-closed — we already have linkback from
-                # body; sentinel absence just means Path B can't confirm, so we fall
-                # through to the final "return False" below.
-
-            if path_b_comments and f"<!-- deadlock-exit {linear_id}" in path_b_comments:
-                logger.info(f"Deadlock exit sentinel found for {linear_id} — trust chain passes (session-completed)")
-                return True
+        # Architecture §3.2: Sentinel is written to Linear comments, not GitHub comments.
+        # Query Linear API for comments (not GitHub issue comments).
+        # Check sentinel regardless of whether github_prs exist (architecture §3.2).
+        linear_comments = _fetch_linear_comments(linear_id)
+        if linear_comments and f"<!-- deadlock-exit {linear_id}" in linear_comments:
+            logger.info(f"Deadlock exit sentinel found in Linear comments for {linear_id} — trust chain passes (session-completed)")
+            return True
 
         # Neither path succeeded — do NOT close
         if not github_prs:
