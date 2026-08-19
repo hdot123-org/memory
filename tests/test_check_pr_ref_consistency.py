@@ -352,11 +352,13 @@ class TestCommaSeparatedList:
         assert extract_fixes_infra_ids(body) == {"INFRA-1", "INFRA-2"}
 
 
-class TestNoneBodyDefense:
+class TestExtractNoneBodyDefense:
     """extract_fixes_infra_ids(None) must not raise — returns empty set.
 
-    This is a defense against PR bodies that are None (e.g. empty PRs,
-    GraphQL responses with null body fields).
+    Unit-level None body defense (direct function test). The integration-level
+    None body defense (full script run against a null-body GraphQL mock) lives
+    in TestNoneBodyDefense below, ported via PR #814 (INFRA-401); this class
+    keeps the unit-level cases so both layers never regress.
     """
 
     def test_extract_none_returns_empty_set(self):
