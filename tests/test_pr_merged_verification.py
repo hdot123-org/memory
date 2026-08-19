@@ -485,7 +485,7 @@ class TestVALCLOSE015:
         response = _linear_issue_response("INFRA-123", [
             {
                 "id": "att-523",
-                "url": "https://github.com/hdot123/memory/pull/523",
+                "url": "https://github.com/hdot123-org/memory/pull/523",
                 "sourceType": "github",
                 "metadata": {}
             }
@@ -504,7 +504,7 @@ class TestVALCLOSE015:
         assert mock_subprocess.called
         call_args = mock_subprocess.call_args[0][0]
         assert "523" in call_args
-        assert "https://github.com/hdot123/memory/pull/523" not in call_args
+        assert "https://github.com/hdot123-org/memory/pull/523" not in call_args
 
 
 # ---------------------------------------------------------------------------
@@ -522,7 +522,7 @@ class TestVALCLOSE025:
         response = _linear_issue_response("INFRA-123", [
             {
                 "id": "att-42",
-                "url": "https://github.com/hdot123/shared-workflows/pull/42",
+                "url": "https://github.com/hdot123-org/shared-workflows/pull/42",
                 "sourceType": "github",
                 "metadata": {}
             }
@@ -543,7 +543,7 @@ class TestVALCLOSE025:
         assert "42" in call_args
         assert "--repo" in call_args
         repo_idx = call_args.index("--repo")
-        assert call_args[repo_idx + 1] == "hdot123/shared-workflows"
+        assert call_args[repo_idx + 1] == "hdot123-org/shared-workflows"
         assert result is True
 
     @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
@@ -554,7 +554,7 @@ class TestVALCLOSE025:
         response = _linear_issue_response("INFRA-123", [
             {
                 "id": "att-42",
-                "url": "https://github.com/hdot123/shared-workflows/pull/42",
+                "url": "https://github.com/hdot123-org/shared-workflows/pull/42",
                 "sourceType": "github",
                 "metadata": {}
             }
@@ -578,7 +578,7 @@ class TestVALCLOSE025:
         response = _linear_issue_response("INFRA-123", [
             {
                 "id": "att-523",
-                "url": "https://github.com/hdot123/memory/pull/523",
+                "url": "https://github.com/hdot123-org/memory/pull/523",
                 "sourceType": "github",
                 "metadata": {}
             }
@@ -597,7 +597,7 @@ class TestVALCLOSE025:
         call_args = mock_subprocess.call_args[0][0]
         assert "--repo" in call_args
         repo_idx = call_args.index("--repo")
-        assert call_args[repo_idx + 1] == "hdot123/memory"
+        assert call_args[repo_idx + 1] == "hdot123-org/memory"
 
 
 # ---------------------------------------------------------------------------

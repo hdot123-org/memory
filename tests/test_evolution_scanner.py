@@ -4104,7 +4104,7 @@ def test_check_repositories_yml_valid_with_memory_core(tmp_path, monkeypatch):
         "    repos:\n"
         "      - repoKey: memory-core\n"
         "        repoPath: ~/memory\n"
-        "        githubRepo: hdot123/memory\n"
+        "        githubRepo: hdot123-org/memory\n"
         "        defaultBranch: main\n"
         "        default: true\n",
         encoding="utf-8",
