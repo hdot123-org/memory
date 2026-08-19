@@ -18,6 +18,7 @@ fixes:
 8. P2 VAL-DRF-004: budget exhaustion skips the whole watch.
 """
 import json
+import logging
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -393,6 +394,39 @@ def test_budget_tracker_unavailable_proceeds(tmp_path):
         result = reverse_drift_watch(findings, open_issues, history)
 
     assert result["retained"] == 1
+
+
+def test_budget_tracker_unavailable_logs_swallow(tmp_path, caplog):
+    """INFRA-413 (SILENT_SWALLOW): the tracker-unavailable fallback must be logged.
+
+    Red evidence: the except clause previously used a bare ``pass`` with no
+    logging — the exact pattern the code_hygiene_audit SILENT_SWALLOW rule
+    flags. Graceful degradation must stay observable (DEBUG log), matching
+    the error_logger pattern.
+    """
+    history = tmp_path / "history.json"  # no history file → no partial-output skip
+
+    findings = [Finding("R1", "warning", "cat", "d", "present.py", "e")]
+    open_issues = [_compact_issue(120, "RS", "gone.py", category="code_quality")]
+
+    with patch('evolution_utils._verify_fix_merged_via_linear', return_value=False), \
+         patch('evolution_utils.subprocess.run') as mock_run, \
+         patch.dict(sys.modules, {"evolution_scanner": None}), \
+         caplog.at_level(logging.DEBUG, logger="evolution_utils"):
+        mock_run.side_effect = [
+            _gh_ok(json.dumps({"state": "OPEN"})),
+            _gh_ok(""),
+            _gh_ok(),
+        ]
+        result = reverse_drift_watch(findings, open_issues, history)
+
+    assert result["retained"] == 1, "proceed-unguarded behavior unchanged"
+    debug_records = [
+        r for r in caplog.records
+        if r.levelname == "DEBUG" and "Budget tracker unavailable" in r.message
+    ]
+    assert debug_records, \
+        "expected a DEBUG log record for the swallowed tracker exception (INFRA-413)"
 
 
 # ---------------------------------------------------------------------------

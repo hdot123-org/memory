@@ -1553,9 +1553,9 @@ def reverse_drift_watch(
                 f"(duration={tracker.is_duration_exceeded()}, api={tracker.is_api_exceeded()})"
             )
             return empty
-    except Exception:
+    except Exception as e:
         # Budget tracker unavailable (e.g. direct invocation) — proceed
-        pass
+        logger.debug(f"Budget tracker unavailable, proceeding unguarded: {e}")
 
     # Step 1: Classify all orphan issues (with safety guards 1 & 2)
     classifications = classify_orphan_issues(findings, open_issues, failed_categories)
