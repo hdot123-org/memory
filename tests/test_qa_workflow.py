@@ -6,8 +6,8 @@ PR 时段与 ci.yml test 串行跑两份全量 pytest 导致自建 runner 排队
 coverage-audit 加 schedule/dispatch-only 事件门，PR 时段跳过、夜间全量保留。
 qa-ok 聚合必须正确处理 skipped 状态（job 级 if 跳过时 needs.result == 'skipped'）。
 """
-import subprocess
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
