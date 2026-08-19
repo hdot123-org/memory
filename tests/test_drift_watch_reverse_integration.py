@@ -4,7 +4,12 @@ Tests that classify_orphan_issues + execute_orphan_classifications work together
 to actually close issues (CLOSE_READY) and record blocking reasons (BLOCKED_NO_EVIDENCE).
 
 These tests verify the action-taking requirement of VAL-DRF-003.
+
+INFRA-403: execute_orphan_classifications now checks each issue's live state
+before acting (skip already-closed issues, fail-closed on unknown state), so
+the subprocess mocks must serve `gh issue view --json state` responses first.
 """
+import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -19,6 +24,14 @@ from evolution_utils import (
     execute_orphan_classifications,
     reverse_drift_watch,
 )
+
+
+def _gh_ok(stdout: str = "") -> MagicMock:
+    return MagicMock(returncode=0, stdout=stdout, stderr="")
+
+
+def _state_open() -> MagicMock:
+    return _gh_ok(json.dumps({"state": "OPEN"}))
 
 
 def _make_issue(number: int, rule_id: str, location: str,
@@ -49,7 +62,10 @@ def test_execute_close_ready_actually_closes():
     )
 
     with patch('evolution_utils.subprocess.run') as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run.side_effect = [
+            _state_open(),  # INFRA-403: live state check
+            _gh_ok(),       # close
+        ]
 
         result = execute_orphan_classifications([classification])
 
@@ -81,7 +97,11 @@ def test_execute_blocked_records_reason():
     )
 
     with patch('evolution_utils.subprocess.run') as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run.side_effect = [
+            _state_open(),  # INFRA-403: live state check
+            _gh_ok(""),     # INFRA-403: comment scan (no sentinel yet)
+            _gh_ok(),       # comment posted
+        ]
 
         result = execute_orphan_classifications([classification])
 
@@ -118,7 +138,9 @@ def test_execute_respects_grace_period():
 
     with patch('evolution_utils._count_consecutive_absences', return_value=1), \
          patch('evolution_utils.subprocess.run') as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run.side_effect = [
+            _state_open(),  # INFRA-403: live state check
+        ]
 
         # history_path provided, but absence count < GRACE_PERIOD_TICKS (3)
         result = execute_orphan_classifications(
@@ -151,7 +173,13 @@ def test_reverse_drift_watch_end_to_end():
 
     with patch('evolution_utils._verify_fix_merged_via_linear', side_effect=[True, False]), \
          patch('evolution_utils.subprocess.run') as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run.side_effect = [
+            _state_open(),  # INFRA-403: state check 201
+            _gh_ok(),       # close 201
+            _state_open(),  # INFRA-403: state check 202
+            _gh_ok(""),     # INFRA-403: comment scan 202 (no sentinel yet)
+            _gh_ok(),       # comment 202
+        ]
 
         result = reverse_drift_watch(current_findings, open_issues)
 
@@ -178,7 +206,7 @@ def test_reverse_drift_watch_incremental_proof():
     ]
 
     with patch('evolution_utils.subprocess.run') as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run.return_value = _gh_ok()
 
         reverse_drift_watch(current_findings, open_issues)
 
@@ -207,7 +235,12 @@ def test_b2_fixture_integration():
 
     with patch('evolution_utils._verify_fix_merged_via_linear', return_value=False), \
          patch('evolution_utils.subprocess.run') as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        # Per blocked issue: state check, comment scan (empty), comment post
+        mock_run.side_effect = [
+            _state_open(), _gh_ok(""), _gh_ok(),
+            _state_open(), _gh_ok(""), _gh_ok(),
+            _state_open(), _gh_ok(""), _gh_ok(),
+        ]
 
         result = reverse_drift_watch(current_findings, open_issues)
 
