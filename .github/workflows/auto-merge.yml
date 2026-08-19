@@ -89,6 +89,10 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.pr_numbers != '' && needs.resolve.outputs.pr_numbers != '[]'
     runs-on: ubuntu-latest
+    # INFRA-416：限定单腿时长。triage 各分支都是有界 API 调用，10 分钟
+    # 足够；防止 gh/网络挂死导致 matrix 腿永久占位（schedule 每 10 分钟
+    # 一轮，旧腿不退出会与新腿堆叠）。
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       max-parallel: 5
@@ -110,22 +114,43 @@ jobs:
           PR_NUMBER: ${{ matrix.pr_number }}
         run: |
           set -eu
-          # 获取 PR 的 mergeable 状态
-          PR_DATA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json number,mergeable,mergeStateStatus)
+          # 获取 PR 的 mergeable 状态。
+          # mergeable 由 GitHub 异步计算：push 后短暂为 UNKNOWN 属正常。
+          # INFRA-416 竞态守卫：resolve 与本步之间 PR 可能已被并行腿合并
+          # （matrix max-parallel=5），gh pr view 失败（NotFound）时降级为
+          # skip 而非红腿；仅凭状态取不到（非 NotFound 的 API 故障）才 fail。
+          PR_DATA=""
+          for attempt in 1 2 3; do
+            if PR_DATA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json number,mergeable,mergeStateStatus 2>&1); then
+              break
+            fi
+            if echo "$PR_DATA" | grep -q "not found\|Could not resolve"; then
+              echo "PR #$PR_NUMBER no longer accessible (merged/closed by a parallel leg). Skipping."
+              echo "action=skip" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "gh pr view attempt $attempt failed: $PR_DATA"
+            PR_DATA=""
+            sleep 5
+          done
+          if [ -z "$PR_DATA" ]; then
+            echo "::error::Could not fetch PR #$PR_NUMBER state after 3 attempts"
+            exit 1
+          fi
           echo "PR data: $PR_DATA"
 
-          # 分类 PR 状态
-          TRIAGE_RESULT=$(echo "[$PR_DATA]" | bash scripts/auto_merge_triage.sh)
-          echo "Triage result: $TRIAGE_RESULT"
+          # mergeable=UNKNOWN：GitHub 尚未算完。等待后重取一次（通常几秒
+          # 内出结果）；仍 UNKNOWN 则 skip，交给 schedule 兜底收敛，
+          # 绝不在未知状态猜测动作。
+          MERGEABLE=$(echo "$PR_DATA" | jq -r '.mergeable')
+          if [ "$MERGEABLE" = "UNKNOWN" ]; then
+            sleep 10
+            PR_DATA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json number,mergeable,mergeStateStatus)
+            echo "PR data after UNKNOWN retry: $PR_DATA"
+          fi
 
-          # 提取 action
-          ACTION=$(echo "$TRIAGE_RESULT" | jq -r '
-            if (.behind | length) > 0 then .behind[0].action
-            elif (.conflicting | length) > 0 then .conflicting[0].action
-            elif (.mergeable | length) > 0 then .mergeable[0].action
-            else "skip"
-            end
-          ')
+          # 分类并提取该 PR 的动作（单 PR 输入，--get-action 即其 action）
+          ACTION=$(echo "$PR_DATA" | jq -s '.[0:1]' | bash scripts/auto_merge_triage.sh --get-action "$PR_NUMBER")
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"
           echo "Action: $ACTION"
 
@@ -154,6 +179,16 @@ jobs:
         run: |
           set -eu
           echo "::error::PR #$PR_NUMBER has merge conflicts (CONFLICTING state)"
+          # 幂等通知（INFRA-416）：按 head SHA 粒度去重——同一 head SHA 只发
+          # 一次冲突评论，避免 schedule 每 10 分钟重复刷屏（INFRA-292 教训）。
+          # sentinel 随冲突解决后的新 push 自然轮换，无需人工清理。
+          HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')
+          SENTINEL="<!-- auto-merge-conflict-${HEAD_SHA} -->"
+          EXISTING=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json comments --jq '[.comments[].body | select(contains("'"$SENTINEL"'"))] | length')
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "Conflict comment already posted for $HEAD_SHA (count: $EXISTING). Skipping duplicate notification."
+            exit 1
+          fi
           # 添加评论通知 PR 作者（用 heredoc 避免多行中文字符串破坏 YAML）
           read -r -d '' COMMENT_BODY <<'COMMENT_EOF' || true
           ⚠️ **Auto-merge: PR 存在合并冲突（CONFLICTING 状态）**
@@ -162,7 +197,9 @@ jobs:
           1. 拉取最新 main 并合并
           2. 解决冲突并推送
           3. 推送后 auto-merge 会自动重试
+
           COMMENT_EOF
+          COMMENT_BODY="${COMMENT_BODY}${SENTINEL}"
           gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$COMMENT_BODY"
           # 失败退出，让 workflow 显示红色告警
           exit 1
