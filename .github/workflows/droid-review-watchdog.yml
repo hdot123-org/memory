@@ -53,11 +53,11 @@ concurrency:
 
 jobs:
   self-heal-rerun:
-    # 仅处理 Droid Auto Review 的失败 run；run_attempt 限界防止 rerun 风暴（最多自动重试 2 次）
+    # 仅处理 Droid Auto Review 的失败 run；run_attempt 限界防止 rerun 风暴
+    # WATCHDOG_MAX_ATTEMPT repo variable（缺失时回退默认值 3，日志记录）
     if: >
       github.event.workflow_run.name == 'Droid Auto Review' &&
-      github.event.workflow_run.conclusion == 'failure' &&
-      github.event.workflow_run.run_attempt < 3
+      github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -67,9 +67,17 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          MAX_ATTEMPT: ${{ vars.WATCHDOG_MAX_ATTEMPT }}
         run: |
           set -eu
-          echo "Droid Auto Review run $RUN_ID (attempt $RUN_ATTEMPT) failed; checking logs..."
+          # repo variable fallback（变量缺失时使用默认值并打日志）
+          MAX_ATTEMPT="${MAX_ATTEMPT:-3}"
+          if [ -z "${MAX_ATTEMPT:-}" ] || [ "$MAX_ATTEMPT" = "" ]; then MAX_ATTEMPT=3; echo "变量 WATCHDOG_MAX_ATTEMPT 未设置、使用默认值 3"; fi
+          if [ "$RUN_ATTEMPT" -ge "$MAX_ATTEMPT" ]; then
+            echo "Run $RUN_ID already at attempt $RUN_ATTEMPT (>=$MAX_ATTEMPT). Skipping; needs manual attention."
+            exit 0
+          fi
+          echo "Droid Auto Review run $RUN_ID (attempt $RUN_ATTEMPT/$MAX_ATTEMPT) failed; checking logs..."
           # 失败特征匹配：prep 阶段的 GitHub API 503/网络瞬时错误（2026-08-17/18 实测日志）
           PATTERNS='permission - 503|Failed to check permissions|HttpError: No server is currently available|unexpected EOF|TLS handshake timeout'
           JOB_LOGS=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --jq '.jobs[].id' | while read -r JOB_ID; do
@@ -132,11 +140,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          QUOTA_SCAN_WINDOW_HOURS: ${{ vars.QUOTA_SCAN_WINDOW_HOURS }}
+          QUOTA_RECOVERY_WINDOW_SECONDS: ${{ vars.QUOTA_RECOVERY_WINDOW_SECONDS }}
+          WATCHDOG_MAX_ATTEMPT: ${{ vars.WATCHDOG_MAX_ATTEMPT }}
         run: |
           set -eu
+          # repo variable fallback（变量缺失时使用默认值并打日志）
+          QUOTA_SCAN_WINDOW_HOURS="${QUOTA_SCAN_WINDOW_HOURS:-6}"
+          if [ -z "${QUOTA_SCAN_WINDOW_HOURS}" ] || [ "$QUOTA_SCAN_WINDOW_HOURS" = "" ]; then QUOTA_SCAN_WINDOW_HOURS=6; echo "变量 QUOTA_SCAN_WINDOW_HOURS 未设置、使用默认值 6"; fi
+          QUOTA_RECOVERY_WINDOW_SECONDS="${QUOTA_RECOVERY_WINDOW_SECONDS:-1800}"
+          if [ -z "${QUOTA_RECOVERY_WINDOW_SECONDS}" ] || [ "$QUOTA_RECOVERY_WINDOW_SECONDS" = "" ]; then QUOTA_RECOVERY_WINDOW_SECONDS=1800; echo "变量 QUOTA_RECOVERY_WINDOW_SECONDS 未设置、使用默认值 1800"; fi
+          WATCHDOG_MAX_ATTEMPT="${WATCHDOG_MAX_ATTEMPT:-3}"
+          if [ -z "${WATCHDOG_MAX_ATTEMPT}" ] || [ "$WATCHDOG_MAX_ATTEMPT" = "" ]; then WATCHDOG_MAX_ATTEMPT=3; echo "变量 WATCHDOG_MAX_ATTEMPT 未设置、使用默认值 3"; fi
           echo "Scanning recent failed 'Droid Auto Review' runs for BYOK quota exhaustion..."
-          # 扫最近 6 小时失败的 review run（配额周期上界量级），逐个检测
-          CUTOFF=$(date -u -d '6 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          # 扫最近 ${QUOTA_SCAN_WINDOW_HOURS} 小时失败的 review run（配额周期上界量级），逐个检测
+          CUTOFF=$(date -u -d "${QUOTA_SCAN_WINDOW_HOURS} hours ago" +%Y-%m-%dT%H:%M:%SZ)
           FAILED_RUNS=$(gh api "repos/$REPO/actions/runs?status=failure&per_page=50" --paginate --jq ".workflow_runs[] | select(.name == \"Droid Auto Review\" and .updated_at > \"$CUTOFF\") | .id")
           if [ -z "$FAILED_RUNS" ]; then
             echo "No failed Droid Auto Review runs in window. Nothing to do."
@@ -144,17 +162,17 @@ jobs:
           fi
           RERUNNED=0
           for RUN_ID in $FAILED_RUNS; do
-            # run_attempt 限界防 rerun 风暴（与 self-heal-rerun 一致：最多自动重试 2 次）
+            # run_attempt 限界防 rerun 风暴（与 self-heal-rerun 一致）
             ATTEMPT=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '.run_attempt')
-            if [ "$ATTEMPT" -ge 3 ]; then
-              echo "Run $RUN_ID already at attempt $ATTEMPT (>=3). Skipping; needs manual attention."
+            if [ "$ATTEMPT" -ge "$WATCHDOG_MAX_ATTEMPT" ]; then
+              echo "Run $RUN_ID already at attempt $ATTEMPT (>=$WATCHDOG_MAX_ATTEMPT). Skipping; needs manual attention."
               continue
             fi
-            # 恢复窗口：run 结束超过 30 分钟才重试（配额未恢复时 rerun 会快速再死）
+            # 恢复窗口：run 结束超过 ${QUOTA_RECOVERY_WINDOW_SECONDS}s 才重试（配额未恢复时 rerun 会快速再死）
             UPDATED_AT=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '.updated_at')
             AGE_SEC=$(( $(date -u +%s) - $(date -u -d "$UPDATED_AT" +%s) ))
-            if [ "$AGE_SEC" -lt 1800 ]; then
-              echo "Run $RUN_ID failed ${AGE_SEC}s ago (<1800s recovery window). Skipping this sweep."
+            if [ "$AGE_SEC" -lt "$QUOTA_RECOVERY_WINDOW_SECONDS" ]; then
+              echo "Run $RUN_ID failed ${AGE_SEC}s ago (<${QUOTA_RECOVERY_WINDOW_SECONDS}s recovery window). Skipping this sweep."
               continue
             fi
             # 已 rerun 过一次且仍失败的 run，等待更长（下个 sweep 周期）

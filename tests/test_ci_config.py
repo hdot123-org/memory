@@ -435,11 +435,14 @@ class TestDroidReview503SelfHeal:
         assert "contents" not in perms or perms["contents"] == "read"
 
     def test_watchdog_bounded_run_attempt(self, watchdog_data):
-        """VAL-503-003: run_attempt 限界防止 rerun 死循环（最多自动重试 2 次）。"""
+        """VAL-503-003: run_attempt 限界防止 rerun 死循环（通过 WATCHDOG_MAX_ATTEMPT repo variable 配置）。"""
         job = watchdog_data["jobs"]["self-heal-rerun"]
-        cond = str(job.get("if", ""))
-        assert "run_attempt" in cond, "watchdog job must bound run_attempt"
-        assert "conclusion == 'failure'" in cond, "watchdog must only fire on failure"
+        # run_attempt 限界已从 if: 移到 shell run block（通过 WATCHDOG_MAX_ATTEMPT 变量）
+        steps = job["steps"]
+        run_block = next(s["run"] for s in steps if "rerun" in s.get("name", "").lower())
+        assert "WATCHDOG_MAX_ATTEMPT" in run_block, "watchdog job must reference WATCHDOG_MAX_ATTEMPT repo variable"
+        assert "MAX_ATTEMPT" in run_block, "watchdog job must use MAX_ATTEMPT for attempt limiting"
+        assert "conclusion == 'failure'" in str(job.get("if", "")), "watchdog must only fire on failure"
 
     def test_watchdog_matches_503_patterns_only(self, watchdog_data):
         """VAL-503-004: 特征表只含 infra 瞬时错误，且 rerun 失败不阻塞结算。"""
@@ -522,3 +525,80 @@ class TestDroidReview503SelfHeal:
         with_block = action_step["with"]
         assert with_block["security_block_on_high"] == "false"
         assert with_block["review_model"] == "qwen3.7-plus"
+
+
+class TestRepoVarsReferences:
+    """VAL-VARS-002/005：workflow 参数以 ${{ vars.* }} 形式引用，结构测试锁定。
+
+    TD-DR-02 参数外置：11 个 repo variables 替代硬编码字面量。
+    结构测试逐一断言每个变量在对应 workflow 文件中被 vars.* 引用，
+    防止回退到硬编码（删掉任一 vars 引用后 pytest 变红）。
+    """
+
+    @pytest.fixture
+    def droid_review_raw(self):
+        """droid-review.yml 原始文本（非 YAML 解析，保留 vars.* 引用）。"""
+        path = REPO_ROOT / ".github/workflows/droid-review.yml"
+        return path.read_text()
+
+    @pytest.fixture
+    def watchdog_raw(self):
+        """droid-review-watchdog.yml 原始文本。"""
+        path = REPO_ROOT / ".github/workflows/droid-review-watchdog.yml"
+        return path.read_text()
+
+    # droid-review.yml 中的 vars 引用
+    def test_droid_review_timeout_minutes_uses_vars(self, droid_review_raw):
+        """DROID_REVIEW_TIMEOUT_MINUTES 以 vars.* 引用（非硬编码 90）。"""
+        assert "vars.DROID_REVIEW_TIMEOUT_MINUTES" in droid_review_raw
+
+    # droid-review-watchdog.yml 中的 vars 引用
+    def test_watchdog_max_attempt_uses_vars(self, watchdog_raw):
+        """WATCHDOG_MAX_ATTEMPT 以 vars.* 引用（非硬编码 3）。"""
+        assert "vars.WATCHDOG_MAX_ATTEMPT" in watchdog_raw
+
+    def test_quota_recovery_window_uses_vars(self, watchdog_raw):
+        """QUOTA_RECOVERY_WINDOW_SECONDS 以 vars.* 引用（非硬编码 1800）。"""
+        assert "vars.QUOTA_RECOVERY_WINDOW_SECONDS" in watchdog_raw
+
+    def test_quota_scan_window_uses_vars(self, watchdog_raw):
+        """QUOTA_SCAN_WINDOW_HOURS 以 vars.* 引用（非硬编码 6）。"""
+        assert "vars.QUOTA_SCAN_WINDOW_HOURS" in watchdog_raw
+
+    # 默认值回退机制（变量缺失时不崩溃）
+    def test_droid_review_timeout_has_fallback(self, droid_review_raw):
+        """DROID_REVIEW_TIMEOUT_MINUTES 有默认值回退（${{ fromJSON(vars.X || '90') }}）。"""
+        # fromJSON 包装使 actionlint 类型正确（string → number）
+        assert "fromJSON(vars.DROID_REVIEW_TIMEOUT_MINUTES || '90')" in droid_review_raw
+
+    def test_watchdog_max_attempt_has_fallback(self, watchdog_raw):
+        """WATCHDOG_MAX_ATTEMPT shell 变量有 :- 回退默认值。"""
+        assert "MAX_ATTEMPT:-3" in watchdog_raw or "MAX_ATTEMPT:- 3" in watchdog_raw
+
+    def test_quota_recovery_window_has_fallback(self, watchdog_raw):
+        """QUOTA_RECOVERY_WINDOW_SECONDS shell 变量有 :- 回退默认值。"""
+        assert "QUOTA_RECOVERY_WINDOW_SECONDS:-1800" in watchdog_raw or \
+               "QUOTA_RECOVERY_WINDOW_SECONDS:- 1800" in watchdog_raw
+
+    def test_quota_scan_window_has_fallback(self, watchdog_raw):
+        """QUOTA_SCAN_WINDOW_HOURS shell 变量有 :- 回退默认值。"""
+        assert "QUOTA_SCAN_WINDOW_HOURS:-6" in watchdog_raw or \
+               "QUOTA_SCAN_WINDOW_HOURS:- 6" in watchdog_raw
+
+    # 硬编码残留检查（防回退）
+    def test_watchdog_no_hardcoded_1800(self, watchdog_raw):
+        """quota-sweep 不含硬编码 1800（已通过 vars 引用替代）。"""
+        # 排除注释和日志字符串中的 1800
+        import re
+        # 找到 shell run block 中的 -lt 1800 模式（硬编码残留）
+        assert not re.search(r'-lt\s+1800\b', watchdog_raw), \
+            "watchdog quota-sweep 仍有硬编码 '-lt 1800'，应改用 $QUOTA_RECOVERY_WINDOW_SECONDS"
+
+    def test_watchdog_no_hardcoded_6_hours(self, watchdog_raw):
+        """quota-sweep 不含硬编码 '6 hours ago'（已通过 vars 引用替代）。"""
+        import re
+        assert not re.search(r"'\d+\s+hours\s+ago'", watchdog_raw), \
+            "watchdog quota-sweep 仍有硬编码 'N hours ago'，应改用 $QUOTA_SCAN_WINDOW_HOURS"
+
+    # branch-cleanup.yml 中将来 F4 会添加的 vars 引用
+    # （本测试只验证已外置的变量，BRANCH_AGE_* 由 F4 处理）
