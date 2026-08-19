@@ -16,7 +16,7 @@ project, the tools that produce them, and how to access the results.
 - **Where to view:**
   - Pull-request coverage diff on GitHub.
   - Project dashboard on **Codecov** at
-    `https://app.codecov.io/gh/hdot123/memory` (requires read access).
+    `https://app.codecov.io/gh/hdot123-org/memory` (requires read access).
 
 ### Duplicate Code
 
@@ -62,10 +62,11 @@ project, the tools that produce them, and how to access the results.
 
 ### Codecov
 
-Coverage reports are uploaded from CI via `codecov-action`. The project
-dashboard lives at:
+Coverage reports are uploaded from CI via `codecov-action` (preferring
+the runner-preinstalled Codecov CLI; see the "Upload coverage to Codecov"
+step in `.github/workflows/ci.yml`). The project dashboard lives at:
 
-    https://app.codecov.io/gh/hdot123/memory
+    https://app.codecov.io/gh/hdot123-org/memory
 
 Use the dashboard to inspect per-file coverage, diff coverage on PRs,
 and historical trends. The `CODECOV_TOKEN` secret is configured on the
