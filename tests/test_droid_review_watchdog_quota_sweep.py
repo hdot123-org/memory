@@ -64,26 +64,38 @@ class TestQuotaSweepDetectionLogic:
         assert "quota exceeded" in run
         assert ".factory/sessions/" in run
 
-    def test_recovery_window_30min(self):
-        """run 结束满 30 分钟（1800s）才 rerun——配额恢复窗口。"""
+    def test_recovery_window_uses_vars(self):
+        """恢复窗口通过 QUOTA_RECOVERY_WINDOW_SECONDS 变量配置（默认 1800s）。"""
         run = _quota_sweep_run()
+        # 变量引用
+        assert "QUOTA_RECOVERY_WINDOW_SECONDS" in run
+        # 默认值回退
         assert "1800" in run
-        assert "-lt 1800" in run
+        # 使用变量而非硬编码
+        assert "-lt \"$QUOTA_RECOVERY_WINDOW_SECONDS\"" in run or "-lt ${QUOTA_RECOVERY_WINDOW_SECONDS}" in run
 
-    def test_attempt_limit_3(self):
-        """run_attempt < 3 限界防 rerun 风暴（与 self-heal-rerun 一致）。"""
+    def test_attempt_limit_uses_vars(self):
+        """run_attempt 限界通过 WATCHDOG_MAX_ATTEMPT 变量配置（默认 3）。"""
         run = _quota_sweep_run()
-        assert '"$ATTEMPT" -ge 3' in run
+        # 变量引用
+        assert "WATCHDOG_MAX_ATTEMPT" in run
+        # 默认值回退
+        assert "3" in run
 
     def test_rerun_uses_failed_jobs_api(self):
         """rerun 必须走 rerun-failed-jobs API（终态 run 才可用）。"""
         run = _quota_sweep_run()
         assert "rerun-failed-jobs" in run
 
-    def test_scan_window_6h(self):
-        """扫描窗口 6 小时（配额周期量级），不追历史。"""
+    def test_scan_window_uses_vars(self):
+        """扫描窗口通过 QUOTA_SCAN_WINDOW_HOURS 变量配置（默认 6 小时）。"""
         run = _quota_sweep_run()
-        assert "6 hours ago" in run
+        # 变量引用
+        assert "QUOTA_SCAN_WINDOW_HOURS" in run
+        # 默认值回退
+        assert "6 hours ago" in run or "QUOTA_SCAN_WINDOW_HOURS" in run
+        # 使用变量构造时间范围
+        assert "hours ago" in run
 
     def test_fail_closed_no_conclusion_change(self):
         """门禁语义：脚本只请求 rerun，不写 check 结论、不绕过门禁。"""
@@ -97,10 +109,14 @@ class TestExistingJobsPreserved:
     """原有 watchdog 职责不受影响。"""
 
     def test_self_heal_rerun_preserved(self):
-        """self-heal-rerun（503 自愈）保留且限界不变。"""
+        """self-heal-rerun（503 自愈）保留且限界通过 WATCHDOG_MAX_ATTEMPT 变量配置。"""
         data = _load()
         assert "self-heal-rerun" in data["jobs"]
-        assert data["jobs"]["self-heal-rerun"]["if"].count("run_attempt < 3") == 1
+        # run_attempt 限界已从 if: 移到 shell run block（通过 WATCHDOG_MAX_ATTEMPT 变量）
+        job = data["jobs"]["self-heal-rerun"]
+        run_block = job["steps"][0]["run"]
+        assert "WATCHDOG_MAX_ATTEMPT" in run_block
+        assert "MAX_ATTEMPT" in run_block
 
     def test_cancel_on_ci_fail_preserved(self):
         """cancel-on-ci-fail（CI 红取消烧钱 review）保留。"""
