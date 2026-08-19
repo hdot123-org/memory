@@ -417,6 +417,68 @@ def extract_linkback_anchor(comments_text: str) -> str | None:
     return None
 
 
+def _fetch_linear_comments(linear_id: str) -> str | None:
+    """Fetch comments from Linear issue for sentinel search.
+
+    Architecture §3.2: Deadlock exit sentinel is written to Linear comments,
+    not GitHub issue comments. This function queries Linear GraphQL API to
+    retrieve all comments for a given Linear issue.
+
+    Returns:
+        Comment text if successful, None if fetch fails (fail-closed signal)
+    """
+    api_key = os.environ.get("LINEAR_API_KEY")
+    if not api_key:
+        return None
+
+    try:
+        query = """
+        query($id: String!) {
+          issue(id: $id) {
+            comments {
+              nodes {
+                body
+              }
+            }
+          }
+        }
+        """
+        payload = json.dumps({
+            "query": query,
+            "variables": {"id": linear_id}
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            "https://api.linear.app/graphql",
+            data=payload,
+            headers={
+                "Authorization": api_key,
+                "Content-Type": "application/json"
+            },
+            method="POST"
+        )
+
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            response_data = json.loads(resp.read().decode("utf-8"))
+
+        if "errors" in response_data:
+            logger.warning(
+                f"Linear API returned errors fetching comments for {linear_id}: {response_data['errors']}"
+            )
+            return None
+
+        issue_data = response_data.get("data", {}).get("issue")
+        if not issue_data:
+            return None
+
+        comments = issue_data.get("comments", {}).get("nodes", [])
+        return "\n".join(c.get("body", "") for c in comments)
+
+    except Exception as e:
+        logger.warning(f"Error fetching Linear comments for {linear_id}: {e}")
+        return None
+
+
 def _check_merged_pr(github_prs: list[dict[str, Any]], linear_id: str) -> bool | None:
     """Check if any GitHub PR attachment is merged.
 
@@ -679,24 +741,13 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
         # session-completed + sessionId + exitCode=0. This proves the session completed
         # successfully even without a merged PR attachment.
         #
-        # Conditional fetch (VAL-CLOSE-026): only fetch comments for sentinel check
-        # when PR attachments exist but can't prove merge. If no PRs, skip sentinel check.
-        if github_prs:
-            # PRs exist but none merged → check for deadlock sentinel in comments
-            # If comments were already fetched (body had no linkback), reuse them
-            # Otherwise, fetch now for sentinel check
-            path_b_comments = issue_comments
-            if not path_b_comments and issue_number is not None:
-                fetched = _fetch_issue_comments(issue_number)
-                if fetched is not None:
-                    path_b_comments = fetched
-                # Fetch failure here is NOT fail-closed — we already have linkback from
-                # body; sentinel absence just means Path B can't confirm, so we fall
-                # through to the final "return False" below.
-
-            if path_b_comments and f"<!-- deadlock-exit {linear_id}" in path_b_comments:
-                logger.info(f"Deadlock exit sentinel found for {linear_id} — trust chain passes (session-completed)")
-                return True
+        # Architecture §3.2: Sentinel is written to Linear comments, not GitHub comments.
+        # Query Linear API for comments (not GitHub issue comments).
+        # Check sentinel regardless of whether github_prs exist (architecture §3.2).
+        linear_comments = _fetch_linear_comments(linear_id)
+        if linear_comments and f"<!-- deadlock-exit {linear_id}" in linear_comments:
+            logger.info(f"Deadlock exit sentinel found in Linear comments for {linear_id} — trust chain passes (session-completed)")
+            return True
 
         # Neither path succeeded — do NOT close
         if not github_prs:
@@ -1090,6 +1141,320 @@ def reconcile_in_progress(dedup_label: str) -> int:
 
 
 # ============================================================================
+# VAL-DRF-002/003: Reverse Drift Watch - Orphan Issue Classification
+# ============================================================================
+
+@dataclass
+class OrphanIssueClassification:
+    """Structured classification of an orphan issue (open issue not in findings).
+
+    VAL-DRF-002: Each orphan issue must be classified into one of:
+    - CLOSE_READY: Has merge/session evidence, can be closed after grace period
+    - BLOCKED_NO_EVIDENCE: No evidence, retained with blocking reason recorded
+
+    VAL-DRF-003: Every classification must have audit trail (reason + timestamp).
+    """
+    issue_number: int
+    rule_id: str
+    location: str
+    classification: str  # "CLOSE_READY" or "BLOCKED_NO_EVIDENCE"
+    reason: str  # Audit trail: why this classification
+    timestamp: str  # ISO 8601 timestamp
+    action_taken: str = ""  # What action was taken (close attempt or retain)
+
+
+def classify_orphan_issues(
+    current_findings: list[Any],
+    open_issues: list[dict[str, Any]],
+    failed_categories: set[str] | None = None,
+) -> list[OrphanIssueClassification]:
+    """Classify orphan issues (open issues not in current findings).
+
+    VAL-DRF-002: For each open evolution-found issue whose key is NOT in current
+    findings, classify into:
+    - CLOSE_READY: Has merge/session evidence → grace then close
+    - BLOCKED_NO_EVIDENCE: No evidence → retain with blocking reason recorded
+
+    VAL-DRF-003: Every classification must leave audit trail (reason + timestamp + action).
+    Must take action (close or record), not just alert.
+
+    VAL-DRF-004: Incremental implementation - accepts open_issues as parameter,
+    does not fetch them (no new full scan).
+
+    P1 Safety Guards (ported from auto_close_resolved):
+    1. Self-audit category exemption: evolution_self_audit issues are transient health
+       signals that resolve when scanner recovers, not when code is fixed. Auto-closing
+       them triggers flapping loop with state gate.
+    2. Failed categories skip: Issues whose category tool failed this tick are protected.
+       A failed tool emits no findings, so its issues vanish from scan even though the
+       underlying problem may still exist.
+
+    Args:
+        current_findings: List of Finding objects from current scan
+        open_issues: List of open GitHub issues (from current tick, not newly fetched)
+        failed_categories: Set of audit categories whose tool failed this tick.
+            Issues whose category is in this set are protected from classification.
+
+    Returns:
+        List of OrphanIssueClassification with audit trail for each orphan issue
+    """
+    # Build set of current finding keys for O(1) lookup
+    current_keys = {(f.rule_id, f.location) for f in current_findings}
+
+    classifications = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for issue in open_issues:
+        # Parse issue fields
+        rule_id, location = _parse_issue_fields(issue.get("body", ""))
+        if rule_id is None or location is None:
+            # Malformed issue body - skip
+            continue
+
+        issue_key = (rule_id, location)
+        issue_number = issue.get("number")
+        if issue_number is None:
+            # Invalid issue data
+            continue
+        assert isinstance(issue_number, int)  # Type assertion for mypy
+
+        # Check if this is an orphan (not in current findings)
+        if issue_key in current_keys:
+            # Not an orphan - in current findings
+            continue
+
+        # This is an orphan issue - classify it
+        issue_body = issue.get("body", "")
+
+        # P1 Safety Guard 1: Self-audit category exemption
+        # evolution_self_audit issues are transient health signals that resolve when
+        # scanner recovers, not when code is fixed. Auto-closing them triggers flapping
+        # loop with state gate (Gate A).
+        category = _parse_issue_category(issue_body)
+        if category == SELF_AUDIT_CATEGORY:
+            logger.info(
+                f"Orphan #{issue_number} skipped: evolution_self_audit category "
+                f"(transient health signal, requires manual/Droid resolution)"
+            )
+            continue  # Skip classification entirely
+
+        # P1 Safety Guard 2: Failed categories skip
+        # Issues whose category tool failed this tick are protected. A failed tool emits
+        # no findings, so its issues vanish from scan even though the underlying problem
+        # may still exist.
+        if failed_categories and category and category in failed_categories:
+            logger.info(
+                f"Orphan #{issue_number} skipped: category '{category}' tool failed this tick"
+            )
+            continue  # Skip classification entirely
+
+        # Try to verify fix via Linear (checks for merge/session evidence)
+        verified = _verify_fix_merged_via_linear(issue_body, issue_number)
+
+        if verified:
+            # Has merge or session evidence
+            # Determine specific reason
+            has_linear_linkback = _has_linear_linkback_marker(issue_body)
+            has_session_evidence = DEADLOCK_EXIT_SENTINEL_PREFIX in issue_body
+
+            if has_session_evidence:
+                reason = "session_completed_verified"
+            elif has_linear_linkback:
+                reason = "merged_pr_verified"
+            else:
+                reason = "fix_verified_no_linkback"
+
+            classifications.append(OrphanIssueClassification(
+                issue_number=issue_number,
+                rule_id=rule_id,
+                location=location,
+                classification="CLOSE_READY",
+                reason=reason,
+                timestamp=now_iso,
+                action_taken="close_attempt"
+            ))
+
+            logger.info(f"Orphan #{issue_number} classified as CLOSE_READY: {reason}")
+
+        else:
+            # No evidence - retain with blocking reason
+            has_linear_linkback = _has_linear_linkback_marker(issue_body)
+            has_marker_but_no_id = (
+                has_linear_linkback and
+                not _extract_linear_linkback(issue_body)
+            )
+
+            if has_marker_but_no_id:
+                reason = "linkback_marker_present_but_id_extraction_failed"
+            elif has_linear_linkback:
+                reason = "linkback_found_but_fix_not_verified"
+            else:
+                reason = "no_evidence_of_resolution"
+
+            classifications.append(OrphanIssueClassification(
+                issue_number=issue_number,
+                rule_id=rule_id,
+                location=location,
+                classification="BLOCKED_NO_EVIDENCE",
+                reason=reason,
+                timestamp=now_iso,
+                action_taken="retained_with_reason"
+            ))
+
+            logger.info(f"Orphan #{issue_number} classified as BLOCKED_NO_EVIDENCE: {reason}")
+
+    return classifications
+
+
+def execute_orphan_classifications(
+    classifications: list[OrphanIssueClassification],
+    history_path: Path | None = None,
+) -> dict[str, int]:
+    """Execute actions based on orphan issue classifications.
+
+    VAL-DRF-003: Must take action (not just alert). This function:
+    - CLOSE_READY: Attempts to close issue after grace period check
+    - BLOCKED_NO_EVIDENCE: Records blocking reason in issue comment
+
+    Args:
+        classifications: List of OrphanIssueClassification from classify_orphan_issues
+        history_path: Path to findings_over_time.json for grace period check
+
+    Returns:
+        Dict with counts: {closed: int, retained: int, deferred: int}
+    """
+    closed_count = 0
+    retained_count = 0
+    deferred_count = 0
+
+    for classification in classifications:
+        issue_number = classification.issue_number
+
+        if classification.classification == "CLOSE_READY":
+            # Check grace period before closing
+            if history_path is not None:
+                absence_count = _count_consecutive_absences(
+                    classification.rule_id,
+                    classification.location,
+                    history_path
+                )
+                if absence_count < GRACE_PERIOD_TICKS:
+                    deferred_count += 1
+                    logger.info(
+                        f"Orphan #{issue_number} deferred: absent {absence_count}/{GRACE_PERIOD_TICKS} ticks"
+                    )
+                    continue
+
+            # Close the issue with classification reason in comment
+            close_msg = (
+                f"该 finding 在最近一次扫描中已不再出现，自动关闭此 Issue。\n"
+                f"分类依据：{classification.reason}\n"
+                f"（Rule: {classification.rule_id}, Location: {classification.location}）"
+            )
+
+            try:
+                close_result = subprocess.run(
+                    ["gh", "issue", "close", str(issue_number), "--comment", close_msg],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                if close_result.returncode == 0:
+                    closed_count += 1
+                    logger.info(f"Closed orphan #{issue_number}: {classification.reason}")
+                else:
+                    logger.warning(f"Failed to close orphan #{issue_number}: {close_result.stderr}")
+            except Exception as e:
+                logger.error(f"Failed to close orphan #{issue_number}: {e}")
+
+        elif classification.classification == "BLOCKED_NO_EVIDENCE":
+            # Record blocking reason in issue comment (audit trail)
+            comment_msg = (
+                f"🔒 反向漂移守望：此 Issue 当前分类为 BLOCKED_NO_EVIDENCE\n"
+                f"原因：{classification.reason}\n"
+                f"时间：{classification.timestamp}\n"
+                f"动作：保留 Issue，等待进一步证据"
+            )
+
+            try:
+                comment_result = subprocess.run(
+                    ["gh", "issue", "comment", str(issue_number), "--body", comment_msg],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                if comment_result.returncode == 0:
+                    retained_count += 1
+                    logger.info(f"Recorded blocking reason for orphan #{issue_number}: {classification.reason}")
+                else:
+                    logger.warning(f"Failed to comment on orphan #{issue_number}: {comment_result.stderr}")
+            except Exception as e:
+                logger.error(f"Failed to comment on orphan #{issue_number}: {e}")
+
+    return {
+        "closed": closed_count,
+        "retained": retained_count,
+        "deferred": deferred_count
+    }
+
+
+def reverse_drift_watch(
+    findings: list[Any],
+    open_issues: list[dict[str, Any]],
+    history_path: Path | None = None,
+    failed_categories: set[str] | None = None,
+) -> dict[str, int]:
+    """VAL-DRF-002/003: Reverse drift watch with automatic remediation.
+
+    For each open evolution-found issue whose key is NOT in current findings:
+    - Classify based on evidence (merge/session evidence → CLOSE_READY, no evidence → BLOCKED)
+    - Execute action (close after grace period, or retain with blocking reason recorded)
+
+    This function must take action (not just alert), fulfilling VAL-DRF-003.
+    Every action leaves audit trail (reason + timestamp + action), fulfilling VAL-DRF-002.
+
+    P1 Safety Guards (ported from auto_close_resolved):
+    1. Self-audit category exemption: evolution_self_audit issues skipped (in classify layer)
+    2. Failed categories skip: Issues from failed tools skipped (in classify layer)
+    3. Partial output fail-closed: When findings count is anomalously low (<80% of baseline
+       median), skip ALL closing to avoid premature closure based on incomplete data
+
+    Args:
+        findings: Current tick's findings (for comparison)
+        open_issues: List of open GitHub issues (already fetched, incremental)
+        history_path: Path to findings_over_time.json for grace period check
+        failed_categories: Set of audit categories whose tool failed this tick.
+            Issues whose category is in this set are protected from closing.
+
+    Returns:
+        Dict with counts: {closed: int, retained: int, deferred: int}
+    """
+    # P1 Safety Guard 3: Partial output fail-closed
+    # When findings count is anomalously low (<80% of baseline median), skip ALL closing
+    # to avoid premature closure based on incomplete data from crashed/timed-out tools
+    if history_path is not None and _should_skip_partial_output(findings, history_path):
+        logger.info(
+            "Reverse drift watch skipped: partial output detected "
+            "(findings count below 80% of baseline median)"
+        )
+        return {"closed": 0, "retained": 0, "deferred": 0}
+
+    # Step 1: Classify all orphan issues (with safety guards 1 & 2)
+    classifications = classify_orphan_issues(findings, open_issues, failed_categories)
+
+    # Step 2: Execute actions based on classifications
+    result = execute_orphan_classifications(classifications, history_path)
+
+    # Log summary
+    if result["closed"] > 0 or result["retained"] > 0 or result["deferred"] > 0:
+        logger.info(
+            f"Reverse drift watch complete: {result['closed']} closed, "
+            f"{result['retained']} retained, {result['deferred']} deferred"
+        )
+
+    return result
+
+# ============================================================================
 # VAL-DRF-001: Forward Drift Watch — positive consistency check
 # ============================================================================
 
@@ -1147,6 +1512,16 @@ def forward_drift_watch(
     Returns:
         List of ForwardDriftRecord, one per actionable finding, with status and audit trail
     """
+    from evolution_scanner import get_tick_tracker
+
+    tracker = get_tick_tracker()
+
+    # VAL-DRF-004: Check budget before running drift watch
+    if tracker.is_any_budget_exceeded():
+        print(f"[evolution] Budget exhausted (duration={tracker.is_duration_exceeded()}, api={tracker.is_api_exceeded()})")
+        print("[evolution] Skipping forward drift watch to stay within tick budget")
+        return []
+
     records = []
     now_iso = datetime.now(timezone.utc).isoformat()
 

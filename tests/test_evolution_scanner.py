@@ -6210,6 +6210,64 @@ def test_write_heartbeat_atomic_write(tmp_path):
     assert not tmp_path_check.exists(), "No .tmp file should remain after atomic write"
 
 
+def test_write_heartbeat_unique_tmp_no_concurrent_race(tmp_path):
+    """PR #797 regression: concurrent write_heartbeat calls must not race on the tmp file.
+
+    pytest-xdist workers (and any concurrent scanner ticks) writing the same
+    repo root previously shared a fixed `heartbeat.tmp`: writer A's
+    os.replace() consumed it, writer B's os.replace() then raised
+    FileNotFoundError. Unique-per-process tmp names eliminate the race.
+    """
+    import concurrent.futures
+
+    from evolution_scanner import write_heartbeat
+
+    repo_root = tmp_path
+    (repo_root / ".evolution").mkdir()
+
+    def _write(_: int) -> None:
+        write_heartbeat(repo_root, issues_created=0, findings_count=0)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(_write, range(64)))
+
+    heartbeat_path = repo_root / ".evolution" / "heartbeat.json"
+    assert heartbeat_path.exists()
+    # heartbeat.json must be valid JSON (never truncated by a racing writer)
+    data = json.loads(heartbeat_path.read_text())
+    assert data["status"] == "ok"
+    # no leftover tmp files from any writer
+    leftovers = list((repo_root / ".evolution").glob("heartbeat.json.*.tmp"))
+    assert leftovers == [], f"Leftover tmp files: {leftovers}"
+
+
+def test_update_history_unique_tmp_no_concurrent_race(tmp_path):
+    """PR #797 regression: concurrent update_history calls must not race on the tmp file.
+
+    Same fixed-tmp-name race as write_heartbeat; update_history writes
+    findings_over_time.json through a unique temp path now.
+    """
+    import concurrent.futures
+
+    finding = Finding("R1", "warning", "test", "d", "f.md", "e")
+    history_path = tmp_path / "findings_over_time.json"
+
+    def _write(i: int) -> None:
+        update_history(history_path, [finding], 0, 100)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(_write, range(32)))
+
+    # Concurrent read-modify-write may merge snapshots (last-writer-wins
+    # between load and replace); the race fix guarantees no crash and no
+    # partial/truncated file, not snapshot completeness.
+    data = json.loads(history_path.read_text())
+    assert 1 <= len(data["snapshots"]) <= 32
+    assert all(s["findings"] for s in data["snapshots"])
+    leftovers = list(tmp_path.glob("findings_over_time.json.*.tmp"))
+    assert leftovers == [], f"Leftover tmp files: {leftovers}"
+
+
 # ============================================================================
 # INFRA-204: Self-audit Check 8 (check_heartbeat_channel) Tests
 # ============================================================================
@@ -6675,6 +6733,31 @@ def test_write_monitor_heartbeat_creates_file(tmp_path):
 
     # No .tmp file should remain
     assert not monitor_path.with_suffix(".tmp").exists()
+
+
+def test_write_monitor_heartbeat_unique_tmp_no_concurrent_race(tmp_path):
+    """PR #797 regression: concurrent write_monitor_heartbeat must not race on tmp file."""
+    import concurrent.futures
+
+    from evolution_heartbeat import write_monitor_heartbeat
+
+    monitor_path = tmp_path / "monitor_heartbeat.json"
+
+    # patch 必须在线程池外只打一次：mock.patch 的 enter/exit 非线程安全，
+    # 多线程各自进出 with patch(...) 会互相恢复模块属性，导致部分线程
+    # 读到未打补丁的默认 MONITOR_HEARTBEAT_PATH（相对路径）而误报失败。
+    # 线程内只调用被测函数，才能专测并发原子写（pid+uuid4 临时名）本身。
+    with patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path):
+        def _write(_: int) -> None:
+            write_monitor_heartbeat(anomalies=0)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(_write, range(32)))
+
+    data = json.loads(monitor_path.read_text())
+    assert data["status"] == "ok"
+    leftovers = list(tmp_path.glob("monitor_heartbeat.json.*.tmp"))
+    assert leftovers == [], f"Leftover tmp files: {leftovers}"
 
 
 def test_main_dedup_skips_duplicate_alert(tmp_path):
@@ -7486,18 +7569,17 @@ def test_val_cross_003_broken_chain_no_merged_pr(tmp_path):
     with patch("evolution_utils.subprocess.run") as mock_run, \
          patch("urllib.request.urlopen", return_value=mock_urlopen), \
          patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
-        # Call sequence per architecture.md §3.2: list → pr view (not merged) → comment fetch for sentinel
+        # Call sequence per architecture.md §3.2: list → pr view (not merged) → sentinel via Linear comments (urllib, not subprocess)
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout=json.dumps({"mergedAt": None}), stderr=""),
-            MagicMock(returncode=0, stdout="", stderr=""),  # comment fetch for sentinel check (no sentinel found)
         ]
 
         auto_close_resolved(current_findings, "evolution-found",
                            failed_categories=set(), history_path=history_path)
 
-        # List + pr view + comment fetch for sentinel, NO close call
-        assert mock_run.call_count == 3
+        # List + pr view only; sentinel check now via _fetch_linear_comments (urllib), NO close call
+        assert mock_run.call_count == 2
         assert mock_run.call_args_list[0][0][0][2] == "list"
 
 

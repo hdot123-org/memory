@@ -5,6 +5,8 @@ import os
 import shlex
 import subprocess
 import sys
+import time
+import uuid
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -27,6 +29,61 @@ from evolution_utils import (
     reconcile_in_progress,
     validate_config,
 )
+
+# VAL-DRF-004: Tick budget constants
+# Based on baseline median from CI runs (before drift watch)
+TICK_DURATION_BUDGET = 120  # seconds (baseline median ~60-90s, allow 120s for drift watch overhead)
+API_CALL_BUDGET = 100  # max gh/Linear API calls per tick (baseline ~40-60 calls)
+
+
+class TickBudgetTracker:
+    """VAL-DRF-004: Track tick budget usage (duration and API calls).
+
+    Budget exhaustion: skip drift watch operations, log warning, don't fail tick.
+    """
+
+    def __init__(self) -> None:
+        self.start_time: float | None = None
+        self.api_calls: int = 0
+
+    @property
+    def elapsed_seconds(self) -> float:
+        """Get elapsed time in seconds since start."""
+        if self.start_time is None:
+            return 0.0
+        return float(time.time() - self.start_time)
+
+    def start(self) -> None:
+        """Start the tick timer."""
+        self.start_time = time.time()
+        self.api_calls = 0
+
+    def record_api_call(self) -> None:
+        """Record one API call."""
+        self.api_calls += 1
+
+    def is_duration_exceeded(self) -> bool:
+        """Check if duration budget is exceeded."""
+        if self.start_time is None:
+            return False
+        return self.elapsed_seconds > TICK_DURATION_BUDGET
+
+    def is_api_exceeded(self) -> bool:
+        """Check if API call budget is exceeded."""
+        return self.api_calls > API_CALL_BUDGET
+
+    def is_any_budget_exceeded(self) -> bool:
+        """Check if ANY budget is exceeded."""
+        return self.is_duration_exceeded() or self.is_api_exceeded()
+
+
+# Global tick tracker instance
+_tick_tracker = TickBudgetTracker()
+
+
+def get_tick_tracker() -> TickBudgetTracker:
+    """Get the global tick budget tracker."""
+    return _tick_tracker
 
 
 @dataclass
@@ -51,6 +108,21 @@ ISSUE_EXCLUDED_CATEGORIES: set[str] = {"evolution_self_audit", "daily_audit"}
 # here would let a closed-in-window issue swallow them (the exact black hole
 # VAL-DUP-004 exists to prevent).
 PEEL_EXCLUDED_CATEGORIES: set[str] = {"daily_audit"}
+
+
+def _unique_tmp_path(final_path: Path) -> Path:
+    """Return a collision-free tmp path for atomic writes to final_path.
+
+    Fixed tmp names (e.g. heartbeat.json.tmp) race across concurrent writers:
+    writer A's os.replace() consumes the shared tmp file, then writer B's
+    os.replace() fails with FileNotFoundError. mkstemp+unlink also races at
+    thread level: after unlink the freed name can be re-issued to another
+    thread before the first writer recreates it, so both threads rename the
+    same file and the slower os.replace() raises FileNotFoundError (seen on
+    the self-hosted runner, tests/test_evolution_scanner.py). pid + uuid4
+    names are unique per call with no existence-dependent window.
+    """
+    return final_path.parent / f"{final_path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"
 
 
 def load_config(repo_root: Path) -> dict[str, Any]:
@@ -496,7 +568,7 @@ def _reopen_closed_issue(rule_id: str, location: str, dedup_label: str, history_
 
     # Write updated history back to file
     try:
-        tmp_path = history_path.with_suffix(".tmp")
+        tmp_path = _unique_tmp_path(history_path)
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.flush()
@@ -637,7 +709,7 @@ def update_history(history_path: Path, findings: list[Finding], issues_created: 
         snapshot["tool_status"] = tool_status
     data["snapshots"].append(snapshot)
     data["snapshots"] = data["snapshots"][-snapshot_limit:]
-    tmp_path = history_path.with_suffix(".tmp")
+    tmp_path = _unique_tmp_path(history_path)
     with open(tmp_path, "w") as f:
         json.dump(data, f, indent=2)
         f.flush()
@@ -661,7 +733,7 @@ def write_heartbeat(repo_root: Path, issues_created: int, findings_count: int) -
         "findings_count": findings_count,
     }
     heartbeat_path = repo_root / ".evolution" / "heartbeat.json"
-    tmp_path = heartbeat_path.with_suffix(".tmp")
+    tmp_path = _unique_tmp_path(heartbeat_path)
     with open(tmp_path, "w") as f:
         json.dump(heartbeat, f, indent=2)
         f.flush()
@@ -803,43 +875,104 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
         print(f"[evolution] Warning: check_isolation failed: {e}")
 
 
+def _compute_quota_exhausted(
+    deduped: list[Finding],
+    config: dict[str, Any],
+    gh_failed: bool,
+) -> dict[str, bool]:
+    """P1 修复: 预计算 quota_exhausted（与创建路径同源：每类别配额 + 去重后计数）。
+
+    Args:
+        deduped: Post-dedup findings list (from deduplicate())
+        config: Scanner config dict with quota keys
+        gh_failed: True if GitHub API was unavailable
+
+    Returns:
+        Dict mapping category -> True when that category exceeded its quota.
+    """
+    quota_exhausted: dict[str, bool] = {}
+    if gh_failed or not deduped:
+        return quota_exhausted
+
+    category_counts: dict[str, int] = {}
+    for f in deduped:
+        if f.category not in ISSUE_EXCLUDED_CATEGORIES:
+            category_counts[f.category] = category_counts.get(f.category, 0) + 1
+
+    for cat, count in category_counts.items():
+        # P1-1: 使用每类别配额（与创建路径 _process_findings_with_reopen 同源）
+        if cat == "evolution_self_audit":
+            quota = config.get("max_self_audit_issues_per_tick")
+        elif cat == "code_hygiene":
+            quota = config.get("max_code_hygiene_issues_per_tick")
+        else:
+            quota = config.get("max_issues_per_tick")
+
+        # P1-2: 使用去重后的 count（不是 all_findings）
+        if quota is not None and quota > 0 and count > quota:
+            quota_exhausted[cat] = True
+
+    return quota_exhausted
+
+
 def _integrate_forward_drift_watch(
     deduped: list[Finding],
     open_issues: list[dict[str, Any]],
     suppressed_keys: set[tuple[str, str]],
     issue_excluded_categories: set[str],
+    quota_exhausted: dict[str, bool] | None = None,
 ) -> None:
     """VAL-DRF-001: Integrate forward drift watch into scanner flow.
 
     Called after all processing to provide a complete status report on
     finding coverage (issue exists, suppressed, closed-in-window, quota-pending, or ghost).
 
+    D2 空壳实化: closed_window_keys derives from state='closed' entries in open_issues
+    (INFRA-396: get_open_issues returns closed-in-window issues with state='closed').
+    open_issue_keys only includes state='open' entries (real open issues).
+
+    P1 修复 (2026-08-19): quota_exhausted 由 main() 预计算（与创建路径同源：
+    每类别配额 + 去重后计数），直接传入。函数内部不再自行推算配额。
+
     Args:
-        deduped: List of Finding objects after deduplication
-        open_issues: List of open issue dicts from GitHub
+        deduped: List of Finding objects for drift classification (pre-dedup from main).
+        open_issues: List of open issue dicts from GitHub (includes state='closed' entries
+            for closed-in-window dedup per INFRA-396)
         suppressed_keys: Set of (rule_id, location) keys that were suppressed
         issue_excluded_categories: Categories that are not actionable
+        quota_exhausted: Pre-computed dict of {category: True} from main() using
+            deduped (post-dedup) counts and per-category quotas. This ensures
+            quota semantics match the issue creation path exactly.
     """
     from evolution_utils import forward_drift_watch
 
-    # Build open issue keys set (filter out None values for type safety)
+    # D2 fix: Separate open_issue_keys (state='open') from closed_window_keys (state='closed').
+    # get_open_issues() returns both: genuinely open issues (state='open') and closed-in-window
+    # dedup entries (state='closed', see INFRA-396 get_open_issues return dict).
+    # ISSUE_EXISTS check must only use genuinely open issues; CLOSED_IN_WINDOW uses closed entries.
     open_issue_keys: set[tuple[str, str]] = {
         (i["rule_id"], i["location"])
         for i in open_issues
-        if i.get("rule_id") is not None and i.get("location") is not None
+        if i.get("rule_id") is not None
+        and i.get("location") is not None
+        and i.get("state", "open") == "open"
     }
 
-    # For closed-in-window, we need to check which findings were deduped against closed issues
-    # This is tracked by comparing deduped findings vs all findings
-    # Since we don't have direct access to all_findings here, we'll use empty set for now
-    # The forward_drift_watch will classify these as GHOST if they have no other reason
-    closed_window_keys: set[tuple[str, str]] = set()
+    # D2 fix: closed_window_keys from state='closed' entries (closed-in-window dedup).
+    closed_window_keys: set[tuple[str, str]] = {
+        (i["rule_id"], i["location"])
+        for i in open_issues
+        if i.get("rule_id") is not None
+        and i.get("location") is not None
+        and i.get("state") == "closed"
+    }
 
-    # For quota-pending, we need to check if any category exceeded its max issues per tick
-    # This requires checking config, which we don't have here
-    # For simplicity, we'll use empty dict (no quota tracking in this integration)
-    # The forward_drift_watch will classify these based on other criteria
-    quota_exhausted: dict[str, bool] = {}
+    # P1 修复 (2026-08-19): quota_exhausted 由 main() 预计算并传入。
+    # main() 使用去重后计数（deduped）和每类别配额（max_issues_per_tick /
+    # max_self_audit_issues_per_tick / max_code_hygiene_issues_per_tick），
+    # 保证与创建路径完全同源。函数内部不再自行推算配额。
+    if quota_exhausted is None:
+        quota_exhausted = {}
 
     # Call forward_drift_watch
     drift_records = forward_drift_watch(
@@ -882,9 +1015,15 @@ def main() -> None:
     repo_root = Path(__file__).parent.parent
     if check_kill_switch(repo_root):
         sys.exit(0)
+
+    # VAL-DRF-004: Start tick budget tracker
+    tracker = get_tick_tracker()
+    tracker.start()
+
     config = load_config(repo_root)
     validate_config(config)
     ensure_labels(config["dedup_label"], config["failure_label"])
+    tracker.record_api_call()  # ensure_labels makes gh calls
 
     history_path = repo_root / ".evolution" / "findings_over_time.json"
     # Track tool failures to prevent false "resolved" cascade
@@ -1003,16 +1142,35 @@ def main() -> None:
     # GAP-G: auto_close runs AFTER P1-2/P2-A hard exits so failed ticks don't close issues.
     auto_close_resolved(all_findings, config["dedup_label"], failed_categories, history_path)
 
+    # VAL-DRF-002/003: Reverse drift watch - classify and remediate orphan issues
+    # D1: For open issues not in current findings, classify based on evidence and take action
+    # P1 Safety Guards: self-audit exemption, failed categories skip, partial output fail-closed
+    try:
+        from evolution_utils import reverse_drift_watch
+        # Reuse already-fetched open_issues from earlier in main() (incremental)
+        reverse_drift_watch(all_findings, open_issues, history_path, failed_categories)
+    except Exception as e:
+        print(f"[evolution] Warning: reverse_drift_watch failed: {e}", file=sys.stderr)
+
     # GAP-E: Reconciliation - check for stuck issues (advisory only)
     reconcile_in_progress(config["dedup_label"])
 
     # VAL-DRF-001: Forward drift watch - integrate into scanner flow
     # This runs after all processing to provide a complete status report
+    # D2 修复: 传入 all_findings（去重前）用于分类判定（ISSUE_EXISTS / CLOSED_IN_WINDOW 需要看到所有 finding）
+    # P1 修复: quota_exhausted 从去重后的 deduped 列表 + 每类别配额计算（与创建路径同源）
+    # Suppress-suppressed findings are excluded via suppressed_keys param;
+    # issue_excluded_categories filters daily_audit etc.
+
+    # P1: 预计算 quota_exhausted（使用去重后的 deduped 列表 + 每类别配额）
+    quota_exhausted = _compute_quota_exhausted(deduped, config, gh_failed)
+
     _integrate_forward_drift_watch(
-        deduped=deduped,
+        deduped=all_findings,
         open_issues=open_issues,
         suppressed_keys=suppressed_keys,
         issue_excluded_categories=ISSUE_EXCLUDED_CATEGORIES,
+        quota_exhausted=quota_exhausted,
     )
 
     # VAL-NTF-002: Close notification issues that exceeded TTL
@@ -1022,7 +1180,6 @@ def main() -> None:
             print(f"[evolution] Closed {closed_count} expired notification issues")
     except Exception as e:
         print(f"[evolution] Warning: close_expired_notifications failed: {e}")
-
 
 if __name__ == "__main__":
     main()

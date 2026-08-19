@@ -439,4 +439,3 @@ class TestForwardDriftWatchStatusCountLog:
         captured = capsys.readouterr()
         assert "ISSUE_EXISTS=1" in captured.out
         assert "GHOST=0" in captured.out
-

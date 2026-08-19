@@ -448,9 +448,11 @@ except Exception:
         local _override_gh_repo
         _override_gh_repo=$(git -C "$_override_repo_path" remote get-url origin 2>/dev/null | sed 's/.*github.com[:/]//' | sed 's/.git$//')
         if [ -n "$_override_gh_repo" ]; then
-            # 查找已合并 PR（带 evolution-found label 搜索）
+            # 查找已合并 PR（锚点统一方案：移除 --label evolution-found 过滤，改用 --search 取候选）
+            # 对每个候选做 linkback 锚点验证（与 C1 门禁 check_pr_ref_consistency 同一规则）
+            # 无锚点者（通知类 PR 天然无镜像锚点）排除
             local _merged_pr_json
-            _merged_pr_json=$(gh pr list --repo "$_override_gh_repo" --label evolution-found --state merged --limit 10 --json number 2>/dev/null)
+            _merged_pr_json=$(gh pr list --repo "$_override_gh_repo" --state merged --search "${ISSUE_REF}" --limit 10 --json number 2>/dev/null)
             if [ -n "$_merged_pr_json" ] && [ "$_merged_pr_json" != "[]" ]; then
                 # 遍历候选 PR，提取锚点并校验
                 local _matched_pr_num
@@ -568,9 +570,9 @@ except Exception:
     fi
 
     # 4.7. Session-completed override (architecture §3.2): session 已完成但 Linear 未同步终态
-    # 条件：status file 显示 status=completed + sessionId 非空 + exitCode=0
+    # 证据链判定（orchestrator 裁决）：status=completed 且（sessionId 非空 或 completedAt 存在且有效）→ PASS
+    # 无证据仍 BLOCK（fail-closed 不变）
     # 说明：session 已成功执行，但 Linear 状态未自动同步（可能是 webhook 丢失或状态转换延迟）
-    # 锚点化：status file 中的 sessionId 必须非空，证明 session 确实完成
     # 失败处理：status file 不存在或条件不满足 → fall through 到 BLOCK（fail-closed）
     if [ -f "$status_file" ]; then
         local _session_completed_check
@@ -582,10 +584,13 @@ try:
     status = d.get('status', '')
     session_id = d.get('sessionId')
     exit_code = d.get('exitCode')
-    # 条件：status=completed + sessionId 非空 + exitCode=0
+    completed_at = d.get('completedAt')
+    # 证据链判定：status=completed + exitCode=0 + (sessionId 非空 OR completedAt 存在)
+    has_session_id = session_id and str(session_id).lower() not in ('none', 'null', '')
+    has_completed_at = completed_at and str(completed_at).lower() not in ('none', 'null', '')
     if (status == 'completed' and
-        session_id and str(session_id).lower() not in ('none', 'null', '') and
-        exit_code == 0):
+        exit_code == 0 and
+        (has_session_id or has_completed_at)):
         print('PASS')
     else:
         sys.exit(0)  # fall through to BLOCK
@@ -594,10 +599,10 @@ except Exception:
 " 2>/dev/null)
 
         if [ "$_session_completed_check" = "PASS" ]; then
-            log "GATE A PASS (session-completed): $ISSUE_REF — session completed with exitCode=0, Linear state lagging behind"
+            log "GATE A PASS (session-completed): $ISSUE_REF — session completed with exitCode=0, evidence chain valid (sessionId or completedAt present), Linear state lagging behind"
             exit 0
         else
-            log "GATE A BLOCK (session-completed): $ISSUE_REF — status file exists but session not completed or exitCode≠0"
+            log "GATE A BLOCK (session-completed): $ISSUE_REF — status file exists but no valid evidence chain (need sessionId or completedAt)"
         fi
     fi
 

@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,17 @@ SCANNER_LIVENESS_THRESHOLD_HOURS = 2  # Alert if scanner hasn't run in 2 hours
 _ANOMALY_SCANNER_STALE_MARKER = "evolution-scan workflow has not run recently"
 _ANOMALY_ISSUES_WITHOUT_PR_MARKER = "evolution-found issue(s) without associated PR"
 _SELF_HEAL_MARKER = "自愈"  # Marker in self-heal comments to detect duplicates
+
+
+def _unique_tmp_path(final_path: Path) -> Path:
+    """Return a collision-free tmp path for atomic writes to final_path.
+
+    Fixed tmp names race across concurrent writers (see evolution_scanner):
+    mkstemp+unlink still races at thread level because the unlinked name can
+    be re-issued to another thread before the first writer recreates it.
+    pid + uuid4 names are unique per call with no existence-dependent window.
+    """
+    return final_path.parent / f"{final_path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"
 
 
 def check_history_freshness(
@@ -310,8 +322,8 @@ def write_monitor_heartbeat(anomalies: int) -> None:
         "status": "ok" if anomalies == 0 else "anomaly",
         "anomalies_detected": anomalies,
     }
-    tmp = MONITOR_HEARTBEAT_PATH.with_suffix(".tmp")
-    tmp.parent.mkdir(parents=True, exist_ok=True)
+    MONITOR_HEARTBEAT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _unique_tmp_path(MONITOR_HEARTBEAT_PATH)
     with open(tmp, "w") as f:
         json.dump(data, f, indent=2)
     os.replace(tmp, MONITOR_HEARTBEAT_PATH)
