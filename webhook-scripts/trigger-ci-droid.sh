@@ -15,10 +15,12 @@ SHA="${3:-}"
 STATUS="${4:-}"
 
 # === 配置 ===
-WEBHOOK_BASE="/Users/busiji/.factory/webhook"
+WEBHOOK_BASE="${WEBHOOK_BASE:-/Users/busiji/.factory/webhook}"
 LOG_DIR="${WEBHOOK_BASE}/logs"
-LOCK_DIR="${WEBHOOK_BASE}/locks"
+LOCK_DIR="${LOCK_DIR:-${WEBHOOK_BASE}/locks}"
 PENDING_CI_FILE="${LOCK_DIR}/pending-ci-${PR_NUMBER}.json"
+PYTHON_BIN="${PYTHON_BIN:-/opt/homebrew/bin/python3}"
+FLOCK_BIN="${FLOCK_BIN:-/opt/homebrew/bin/flock}"
 
 # === PostHog 事件上报 ===
 send_posthog_event() {
@@ -100,7 +102,7 @@ OP_ITEM_ID="d2da72sb27xfvekt6sbqag36zq"
 OP_FIELD_LABEL="api"
 
 # Factory Sessions API 配置
-FACTORY_API_BASE="https://api.factory.ai/api/v0"
+FACTORY_API_BASE="${FACTORY_API_BASE:-https://api.factory.ai/api/v0}"
 COMPUTER_ID="d6cf2cd1-a7b8-4aad-a71f-ca89c90d2c33"
 
 # === 日志 ===
@@ -158,7 +160,7 @@ fi
 log "Reading pending-ci-${PR_NUMBER}.json..."
 
 # 读取 session_id、pr_number、created_at 和 cwd（从 pending-ci-{PR_NUMBER}.json）
-read -r SESSION_ID PENDING_PR CREATED_AT PENDING_CWD < <(/opt/homebrew/bin/python3 -c "
+read -r SESSION_ID PENDING_PR CREATED_AT PENDING_CWD < <($PYTHON_BIN -c "
 import json, sys
 try:
     with open('$PENDING_CI_FILE') as f:
@@ -191,7 +193,7 @@ fi
 
 # Check if pending-ci-{PR_NUMBER}.json is expired (older than 2 hours)
 if [ -n "$CREATED_AT" ]; then
-    EXPIRED=$(/opt/homebrew/bin/python3 -c "
+    EXPIRED=$($PYTHON_BIN -c "
 from datetime import datetime, timezone, timedelta
 import sys
 try:
@@ -276,7 +278,7 @@ fi
 
 # Atomic lock acquisition via flock (M1)
 exec 200>"$LOCK_FILE"
-/opt/homebrew/bin/flock -n 200 || {
+$FLOCK_BIN -n 200 || {
     log "SKIP: Lock held by another process for fingerprint '$FINGERPRINT'"
     send_posthog_event "ci_lock_held" "$PR_NUMBER" "dedup" "flock rejected"
     exit 0
@@ -291,10 +293,18 @@ fi
 log "Created lock file: $LOCK_FILE"
 
 # === 从 1Password MCP 读取 Factory token ===
-log "Reading Factory token from 1Password MCP..."
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/lib/op-mcp.sh"
-FACTORY_TOKEN=$(op_get_field "$OP_VAULT_SEVER" "$OP_ITEM_ID" "$OP_FIELD_LABEL" || true)
+if [ -z "${FACTORY_TOKEN:-}" ]; then
+    log "Reading Factory token from 1Password MCP..."
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "${SCRIPT_DIR}/lib/op-mcp.sh" ]; then
+        source "${SCRIPT_DIR}/lib/op-mcp.sh"
+        FACTORY_TOKEN=$(op_get_field "$OP_VAULT_SEVER" "$OP_ITEM_ID" "$OP_FIELD_LABEL" || true)
+    else
+        log "WARNING: op-mcp.sh not found, FACTORY_TOKEN must be set in environment"
+    fi
+else
+    log "Using FACTORY_TOKEN from environment"
+fi
 
 if [ -z "$FACTORY_TOKEN" ]; then
     log "ERROR: Failed to read Factory token from 1Password"
@@ -313,6 +323,79 @@ fi
 
 log "Factory token retrieved successfully (prefix: ${FACTORY_TOKEN:0:10}...)"
 
+# === 探活：GET /api/v0/sessions/{id} 检查会话是否活跃 ===
+# 实测结论（2026-08-20）：
+# - GET /api/v0/sessions/{id} 端点存在，返回 JSON 格式错误（非 HTML 404 页面）
+# - 不存在的会话返回 {"detail":"Session does not exist","status":404,...}
+# - 不存在的路由返回 HTML 404 页面（Next.js 默认）
+# - 结论：端点可用，可用于注入前探活，避免向挂起的 daemon 烧重试
+PROBE_URL="${FACTORY_API_BASE}/sessions/${SESSION_ID}"
+log "Probing session liveness: GET $PROBE_URL"
+
+PROBE_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "$PROBE_URL" \
+    -H "Authorization: Bearer $FACTORY_TOKEN" \
+    --connect-timeout 10 --max-time 15 2>>"$LOG_FILE") || PROBE_RESPONSE=$'\n000'
+
+PROBE_BODY=$(echo "$PROBE_RESPONSE" | sed '$ d')
+PROBE_CODE=$(echo "$PROBE_RESPONSE" | tail -n1)
+
+log "Probe HTTP Response Code: $PROBE_CODE"
+
+# 探活失败判定：
+# - 404 JSON 响应（Session does not exist）→ 会话不存在，直接走 fallback
+# - 5xx 或 000（连接失败）→ 探活不可用，仍尝试 POST（不阻塞注入）
+# - 200 或其他 → 会话存在，继续 POST 注入
+if [ "$PROBE_CODE" = "404" ]; then
+    # 检查是否为 API 级别的 404（JSON 响应含 "Session does not exist"）
+    echo "$PROBE_BODY" | $PYTHON_BIN -c "
+import json, sys
+try:
+    input_data = sys.stdin.read()
+    data = json.loads(input_data)
+    detail = data.get('detail', '')
+    if 'Session does not exist' in detail:
+        sys.exit(0)
+    sys.exit(1)
+except Exception as e:
+    sys.exit(1)
+" 2>>"$LOG_FILE"
+    PROBE_CHECK_EXIT=$?
+    if [ "$PROBE_CHECK_EXIT" = "0" ]; then
+        log "PROBE FAILED: Session does not exist (404 JSON), skipping POST retries and going directly to fallback"
+        send_posthog_event "ci_probe_failed_session_not_found" "$PR_NUMBER" "probe" "session_id=$SESSION_ID"
+        # 直接走 fallback，不烧 POST 重试
+        rm -f "$LOCK_FILE"
+        exec 200>&-
+        FALLBACK_LOCK="${LOCK_DIR}/ci-fallback-${PR_NUMBER}.lock"
+        if [ -f "$FALLBACK_LOCK" ]; then
+            FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(stat -f %m "$FALLBACK_LOCK" 2>/dev/null || echo 0) ))
+            if [ "$FALLBACK_LOCK_AGE_SEC" -lt 0 ]; then FALLBACK_LOCK_AGE_SEC=0; fi
+            FALLBACK_LOCK_AGE=$(( FALLBACK_LOCK_AGE_SEC / 60 ))
+            if [ "$FALLBACK_LOCK_AGE" -gt 1440 ]; then FALLBACK_LOCK_AGE=1440; fi
+            if [ "$FALLBACK_LOCK_AGE" -lt 60 ]; then
+                log "SKIP: Fallback already triggered for PR #${PR_NUMBER} (probe dedup, lock age: ${FALLBACK_LOCK_AGE}min < 60min)"
+                exit 0
+            else
+                log "WARN: Stale fallback lock (${FALLBACK_LOCK_AGE}min > 60min), removing and proceeding"
+                rm -f "$FALLBACK_LOCK"
+            fi
+        fi
+        echo "$TIMESTAMP" > "$FALLBACK_LOCK" || {
+            log "ERROR: Failed to write fallback lock $FALLBACK_LOCK"
+            send_posthog_event "ci_fallback_lock_write_failed" "$PR_NUMBER" "fallback_lock" "probe path"
+        }
+        log "Created fallback lock: $FALLBACK_LOCK"
+        FALLBACK_REPO="${PENDING_CWD:-$SCRIPT_CWD}"
+        spawn_fallback "$PR_NUMBER" "${STATUS:-probe_failed}" "$FALLBACK_REPO"
+        exit 0
+    fi
+fi
+
+# 探活失败（5xx/000/其他）不阻塞 POST，仍尝试注入
+if [[ "$PROBE_CODE" =~ ^5 ]] || [ "$PROBE_CODE" = "000" ]; then
+    log "WARN: Probe unavailable (HTTP $PROBE_CODE), proceeding with POST injection anyway"
+fi
+
 # === 构造注入消息 ===
 # 消息内容需要包含 pr_number 和 CI 通过指示
 if [ "$STATUS" = "passed" ] || [ "$STATUS" = "success" ]; then
@@ -328,9 +411,9 @@ API_URL="${FACTORY_API_BASE}/sessions/${SESSION_ID}/messages"
 
 log "POSTing to $API_URL with computerId=$COMPUTER_ID"
 
-# 重试参数
-MAX_RETRIES=3
-RETRY_DELAY=10
+# 重试参数（可通过环境变量覆盖以加速测试）
+MAX_RETRIES="${MAX_RETRIES:-3}"
+RETRY_DELAY="${RETRY_DELAY:-10}"
 
 # 使用 curl POST，捕获 HTTP 响应码和 body（5xx 自动重试）
 ATTEMPT=0
@@ -374,7 +457,7 @@ done
 # === 检查 API 响应 ===
 if [ "$HTTP_CODE" = "200" ]; then
     # 验证响应包含 messageId
-    MESSAGE_ID=$(echo "$HTTP_BODY" | /opt/homebrew/bin/python3 -c "
+    MESSAGE_ID=$(echo "$HTTP_BODY" | $PYTHON_BIN -c "
 import json, sys
 try:
     data = json.load(sys.stdin)
@@ -390,7 +473,7 @@ except:
         # 修复 daemon-hung session 问题：消息已发送但目标 session 空闲无法消费
         # ci-timeout-watchdog.sh 会在 45 分钟后检查 injected_at，若 PR 仍未合并则触发清理
         INJECTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        /opt/homebrew/bin/python3 << PYEOF 2>>"$LOG_FILE"
+        $PYTHON_BIN << PYEOF 2>>"$LOG_FILE"
 import json
 with open('$PENDING_CI_FILE', 'r') as f:
     data = json.load(f)
@@ -443,6 +526,35 @@ else
         spawn_fallback "$PR_NUMBER" "$STATUS" "$FALLBACK_REPO"
     else
         log "Server error (5xx), keeping lock for potential retry"
+        # TD-DR-03: 5xx 重试耗尽后同步降级，不再只留锁等 watchdog 30min
+        if [ "$ATTEMPT" -ge "$MAX_RETRIES" ]; then
+            log "WARN: All $MAX_RETRIES retries exhausted (last HTTP $HTTP_CODE), triggering synchronous fallback"
+            send_posthog_event "injection_daemon_504" "$PR_NUMBER" "factory_api" "HTTP $HTTP_CODE after $MAX_RETRIES retries"
+            # 标记锁文件为已走 fallback 路径（防 watchdog 重复补救）
+            echo "$TIMESTAMP:fallback" >&200
+            # 复用 4xx 的去重逻辑（60min TTL 防风暴）
+            FALLBACK_LOCK="${LOCK_DIR}/ci-fallback-${PR_NUMBER}.lock"
+            if [ -f "$FALLBACK_LOCK" ]; then
+                FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(stat -f %m "$FALLBACK_LOCK" 2>/dev/null || echo 0) ))
+                if [ "$FALLBACK_LOCK_AGE_SEC" -lt 0 ]; then FALLBACK_LOCK_AGE_SEC=0; fi
+                FALLBACK_LOCK_AGE=$(( FALLBACK_LOCK_AGE_SEC / 60 ))
+                if [ "$FALLBACK_LOCK_AGE" -gt 1440 ]; then FALLBACK_LOCK_AGE=1440; fi
+                if [ "$FALLBACK_LOCK_AGE" -lt 60 ]; then
+                    log "SKIP: Fallback already triggered for PR #${PR_NUMBER} (5xx dedup, lock age: ${FALLBACK_LOCK_AGE}min < 60min)"
+                    exit 0
+                else
+                    log "WARN: Stale fallback lock (${FALLBACK_LOCK_AGE}min > 60min), removing and proceeding"
+                    rm -f "$FALLBACK_LOCK"
+                fi
+            fi
+            echo "$TIMESTAMP" > "$FALLBACK_LOCK" || {
+                log "ERROR: Failed to write fallback lock $FALLBACK_LOCK"
+                send_posthog_event "ci_fallback_lock_write_failed" "$PR_NUMBER" "fallback_lock" "5xx path"
+            }
+            log "Created fallback lock: $FALLBACK_LOCK"
+            FALLBACK_REPO="${PENDING_CWD:-$SCRIPT_CWD}"
+            spawn_fallback "$PR_NUMBER" "$STATUS" "$FALLBACK_REPO"
+        fi
     fi
     exit 0
 fi
