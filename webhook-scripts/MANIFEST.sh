@@ -35,6 +35,7 @@ CROSS_DIR_MAPPINGS=(
     "scripts/evolution_utils.py:evolution_utils.py"
     "scripts/evolution_adapters.py:evolution_adapters.py"
     "scripts/anchor_gate.py:anchor_gate.py"
+    "scripts/local_branch_cleanup.sh:local_branch_cleanup.sh"
 )
 
 # ============================================================================
@@ -58,9 +59,14 @@ ENV_DIFF_LINES=(
     "reconcile-evolution.sh:硬编码路径:/Users/busiji/.factory/webhook - 生产环境基础路径"
     "reconcile-evolution.sh:硬编码路径:/opt/homebrew/bin/python3 - macOS Python 路径"
 
+    # local_branch_cleanup.sh 中的硬编码路径（TD-BR-01）
+    "local_branch_cleanup.sh:硬编码路径:$HOME/.factory/webhook/locks/branch_cleanup_backup - 备份目录"
+    "local_branch_cleanup.sh:硬编码路径:PostHog API endpoint - 事件上报端点"
+
     # 权限差异（生产脚本可能需要特定权限位）
     "trigger-droid.sh:权限:生产环境可能需要可执行权限"
     "reconcile-evolution.sh:权限:生产环境可能需要可执行权限"
+    "local_branch_cleanup.sh:权限:生产环境可能需要可执行权限"
 
     # Shellcheck 指令差异（仓库侧添加以通过 CI 门禁）
     "trigger-droid.sh:shellcheck指令:仓库侧添加 disable=SC1091,SC2317,SC2054,SC2155 指令以通过 CI 静态分析"
