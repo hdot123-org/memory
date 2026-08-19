@@ -18,7 +18,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from evolution_scanner import Finding  # noqa: E402
-from evolution_utils import TICK_DURATION_BUDGET, API_CALL_BUDGET, TickBudgetTracker  # noqa: E402
+from evolution_utils import API_CALL_BUDGET, TICK_DURATION_BUDGET, TickBudgetTracker  # noqa: E402
 
 
 def _make_finding(rule_id="RULE_A", location="src/a.py::L10",
@@ -38,7 +38,6 @@ class TestTickBudgetConstants:
 
     def test_drf_004_duration_budget_exists(self):
         """TICK_DURATION_BUDGET constant must be defined in seconds."""
-        from evolution_utils import TICK_DURATION_BUDGET
         assert isinstance(TICK_DURATION_BUDGET, (int, float))
         assert TICK_DURATION_BUDGET > 0
         # Should be at least 30 seconds, less than 10 minutes
@@ -46,7 +45,6 @@ class TestTickBudgetConstants:
 
     def test_drf_004_api_call_budget_exists(self):
         """API_CALL_BUDGET constant must be defined."""
-        from evolution_utils import API_CALL_BUDGET
         assert isinstance(API_CALL_BUDGET, int)
         assert API_CALL_BUDGET > 0
         # Should be reasonable: at least 10 calls, less than 1000
@@ -58,27 +56,23 @@ class TestTickBudgetTracking:
 
     def test_drf_004_tick_tracker_class_exists(self):
         """TickBudgetTracker class must exist for tracking budget usage."""
-        from evolution_utils import TickBudgetTracker
         tracker = TickBudgetTracker()
         assert tracker is not None
 
     def test_drf_004_tracker_has_duration_budget(self):
         """Tracker must track duration budget."""
-        from evolution_utils import TickBudgetTracker
         tracker = TickBudgetTracker()
         assert hasattr(tracker, 'start_time')
         assert hasattr(tracker, 'elapsed_seconds')
 
     def test_drf_004_tracker_has_api_budget(self):
         """Tracker must track API call budget."""
-        from evolution_utils import TickBudgetTracker
         tracker = TickBudgetTracker()
         assert hasattr(tracker, 'api_calls')
         assert tracker.api_calls == 0
 
     def test_drf_004_tracker_record_api_call(self):
         """Tracker must increment API call counter."""
-        from evolution_utils import TickBudgetTracker
         tracker = TickBudgetTracker()
         tracker.record_api_call()
         assert tracker.api_calls == 1
@@ -87,7 +81,6 @@ class TestTickBudgetTracking:
 
     def test_drf_004_tracker_check_duration_budget(self):
         """Tracker must check if duration budget is exceeded."""
-        from evolution_utils import TICK_DURATION_BUDGET, TickBudgetTracker
         tracker = TickBudgetTracker()
         tracker.start()
 
@@ -100,7 +93,6 @@ class TestTickBudgetTracking:
 
     def test_drf_004_tracker_check_api_budget(self):
         """Tracker must check if API budget is exceeded."""
-        from evolution_utils import API_CALL_BUDGET, TickBudgetTracker
         tracker = TickBudgetTracker()
 
         # Initially should not be exceeded
@@ -117,7 +109,6 @@ class TestTickBudgetTracking:
 
     def test_drf_004_tracker_check_any_budget_exceeded(self):
         """Tracker must check if ANY budget is exceeded."""
-        from evolution_utils import API_CALL_BUDGET, TickBudgetTracker
         tracker = TickBudgetTracker()
         tracker.start()
 
@@ -135,7 +126,6 @@ class TestTickBudgetIntegration:
 
     def test_drf_004_forward_drift_watch_respects_budget(self):
         """Forward drift watch must skip when budget exceeded."""
-        from evolution_utils import API_CALL_BUDGET, TickBudgetTracker
         from evolution_utils import forward_drift_watch
 
         tracker = TickBudgetTracker()
@@ -164,7 +154,6 @@ class TestTickBudgetIntegration:
 
     def test_drf_004_budget_exhaustion_logged_not_failed(self):
         """Budget exhaustion must log warning but not raise exception."""
-        from evolution_utils import API_CALL_BUDGET, TickBudgetTracker
         from evolution_utils import forward_drift_watch
 
         tracker = TickBudgetTracker()
@@ -189,7 +178,6 @@ class TestTickBudgetIntegration:
 
     def test_drf_004_normal_operation_within_budget(self):
         """Normal drift watch operation should work when within budget."""
-        from evolution_utils import TickBudgetTracker
         from evolution_utils import forward_drift_watch
 
         tracker = TickBudgetTracker()
@@ -214,7 +202,6 @@ class TestTickBudgetBaseline:
 
     def test_drf_004_duration_budget_reasonable(self):
         """Duration budget should be based on baseline tick duration."""
-        from evolution_utils import TICK_DURATION_BUDGET
         # Baseline tick duration is ~30-60 seconds
         # Budget should allow some headroom but not be excessive
         # At least 30s for actual work, but not more than 10min
@@ -222,7 +209,6 @@ class TestTickBudgetBaseline:
 
     def test_drf_004_api_budget_reasonable(self):
         """API budget should be based on baseline API calls."""
-        from evolution_utils import API_CALL_BUDGET
         # Baseline tick makes ~20-50 API calls
         # Budget should allow for drift watch overhead but not be excessive
         assert 20 <= API_CALL_BUDGET <= 200

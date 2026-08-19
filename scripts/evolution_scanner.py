@@ -20,9 +20,6 @@ if _SCRIPT_DIR not in sys.path:
 
 from evolution_adapters import TOOL_TO_CATEGORIES, sanitize_structured_field, sanitize_text
 from evolution_utils import (
-    TICK_DURATION_BUDGET,
-    API_CALL_BUDGET,
-    TickBudgetTracker,
     _parse_issue_category,
     _parse_issue_fields,
     auto_close_resolved,
