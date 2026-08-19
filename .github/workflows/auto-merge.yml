@@ -33,6 +33,14 @@ permissions:
   pull-requests: write
   checks: read
 
+# INFRA-428：收敛并发扫。schedule 每 10 分钟 + workflow_run 事件可能让
+# 同一 PR 被两条腿同时处理（update-branch 双发、冲突评论 TOCTOU 双发）。
+# 组级排队不取消进行中的腿（cancel 会打断正在合并的腿），只保证同一时刻
+# 至多一条 Auto Merge 流水在处理，竞态窗口自然消失。
+concurrency:
+  group: auto-merge-pipeline
+  cancel-in-progress: false
+
 jobs:
   resolve:
     name: Resolve candidate PRs
@@ -121,7 +129,7 @@ jobs:
           # skip 而非红腿；仅凭状态取不到（非 NotFound 的 API 故障）才 fail。
           PR_DATA=""
           for attempt in 1 2 3; do
-            if PR_DATA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json number,mergeable,mergeStateStatus 2>&1); then
+            if PR_DATA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json number,mergeable,mergeStateStatus,isDraft,statusCheckRollup 2>&1); then
               break
             fi
             if echo "$PR_DATA" | grep -q "not found\|Could not resolve"; then
@@ -145,14 +153,31 @@ jobs:
           MERGEABLE=$(echo "$PR_DATA" | jq -r '.mergeable')
           if [ "$MERGEABLE" = "UNKNOWN" ]; then
             sleep 10
-            PR_DATA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json number,mergeable,mergeStateStatus)
+            PR_DATA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json number,mergeable,mergeStateStatus,isDraft,statusCheckRollup)
             echo "PR data after UNKNOWN retry: $PR_DATA"
           fi
 
-          # 分类并提取该 PR 的动作（单 PR 输入，--get-action 即其 action）
-          ACTION=$(echo "$PR_DATA" | jq -s '.[0:1]' | bash scripts/auto_merge_triage.sh --get-action "$PR_NUMBER")
-          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
-          echo "Action: $ACTION"
+          # 分类并提取该 PR 的类别与动作（单 PR 输入，--get-category 即其
+          # 类别，workflow 内再映射为 action）。
+          # INFRA-428：取数扩展 isDraft + statusCheckRollup，分类新增
+          # pending（draft/blocked/checks 未报齐）与 stalled（有 check 失败），
+          # action=merge 仅在 rollup 全绿时发出，杜绝 early-fire 盲合并。
+          CATEGORY=$(echo "$PR_DATA" | jq -s '.[0:1]' | bash scripts/auto_merge_triage.sh --get-category "$PR_NUMBER")
+          case "$CATEGORY" in
+            behind) ACTION="update-branch" ;;
+            conflicting) ACTION="notify" ;;
+            pending|stalled) ACTION="wait" ;;
+            mergeable) ACTION="merge" ;;
+            *) ACTION="skip" ;;
+          esac
+          STALLED="false"
+          if [ "$CATEGORY" = "stalled" ]; then STALLED="true"; fi
+          {
+            echo "action=$ACTION"
+            echo "category=$CATEGORY"
+            echo "stalled=$STALLED"
+          } >> "$GITHUB_OUTPUT"
+          echo "Action: $ACTION (category: $CATEGORY)"
 
       - name: Handle BEHIND PR (update-branch self-heal)
         if: steps.triage.outputs.action == 'update-branch'
@@ -164,10 +189,14 @@ jobs:
           set -eu
           echo "::warning::PR #$PR_NUMBER is BEHIND main, attempting update-branch self-heal"
           # 幂等操作：更新 PR 分支以包含最新 main
-          gh pr update-branch "$PR_NUMBER" --repo "$REPO" || {
-            echo "::error::update-branch failed for PR #$PR_NUMBER"
-            exit 1
-          }
+          # INFRA-428 竞态守卫：并发腿可能刚完成 update-branch（或 main 又
+          # 前进使分支重新 BEHIND）。本腿观察到 BEHIND 但 GitHub 侧已变化
+          # 时，gh pr update-branch 会以错误退出（如 "not behind"）——这是
+          # 竞态的正常收敛而非故障，降级为绿腿 skip，交给下一轮 sweep。
+          if ! gh pr update-branch "$PR_NUMBER" --repo "$REPO"; then
+            echo "::warning::update-branch failed for PR #$PR_NUMBER (likely raced with a parallel leg or main moved again). Skipping; next sweep will retry."
+            exit 0
+          fi
           echo "PR #$PR_NUMBER branch updated, CI will re-run and trigger new workflow_run event"
 
       - name: Handle CONFLICTING PR (notify)
@@ -182,12 +211,16 @@ jobs:
           # 幂等通知（INFRA-416）：按 head SHA 粒度去重——同一 head SHA 只发
           # 一次冲突评论，避免 schedule 每 10 分钟重复刷屏（INFRA-292 教训）。
           # sentinel 随冲突解决后的新 push 自然轮换，无需人工清理。
+          # INFRA-428：去重命中后 exit 0——通知已送达即本腿职责完成；此前
+          # 的 exit 1 会让未解决冲突的 PR 每 10 分钟产生一条永久红腿
+          # （失败 run + 注解噪音，且失败 check 落在 head SHA 上持续毒化
+          # shared action 的全绿判定）。首次评论失败仍保持 exit 1 红色告警。
           HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')
           SENTINEL="<!-- auto-merge-conflict-${HEAD_SHA} -->"
           EXISTING=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json comments --jq '[.comments[].body | select(contains("'"$SENTINEL"'"))] | length')
           if [ "$EXISTING" -gt 0 ]; then
-            echo "Conflict comment already posted for $HEAD_SHA (count: $EXISTING). Skipping duplicate notification."
-            exit 1
+            echo "::warning::Conflict comment already posted for $HEAD_SHA (count: $EXISTING). Skipping duplicate notification."
+            exit 0
           fi
           # 添加评论通知 PR 作者（用 heredoc 避免多行中文字符串破坏 YAML）
           read -r -d '' COMMENT_BODY <<'COMMENT_EOF' || true
@@ -201,8 +234,42 @@ jobs:
           COMMENT_EOF
           COMMENT_BODY="${COMMENT_BODY}${SENTINEL}"
           gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$COMMENT_BODY"
-          # 失败退出，让 workflow 显示红色告警
+          # 评论送达后仍以非零退出，让 workflow 显示一次红色告警（仅首次；
+          # 后续 sweep 由上方去重分支短路为绿腿）
           exit 1
+
+      - name: Handle stalled PR (checks reported non-success)
+        if: steps.triage.outputs.action == 'wait' && steps.triage.outputs.stalled == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ matrix.pr_number }}
+        run: |
+          set -eu
+          # INFRA-428：rollup 已报齐但存在非 SUCCESS 结论（典型：某个 check
+          # 失败/取消，或 shared action 自身毒化的 check 卡住 head SHA）。
+          # 首次发现时以 head SHA sentinel 幂等留一条评论（可见、可追溯、
+          # 天然随新 push 轮换），绿腿退出——修复由 PR 作者/droid-review
+          # 流程负责，auto-merge 不反复重试也不产生红腿噪音。
+          echo "::warning::PR #$PR_NUMBER checks are not all successful (stalled). Not attempting merge."
+          HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')
+          SENTINEL="<!-- auto-merge-stalled-${HEAD_SHA} -->"
+          EXISTING=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json comments --jq '[.comments[].body | select(contains("'"$SENTINEL"'"))] | length')
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "Stalled comment already posted for $HEAD_SHA (count: $EXISTING). Skipping duplicate notification."
+            exit 0
+          fi
+          read -r -d '' COMMENT_BODY <<'COMMENT_EOF' || true
+          ⏸️ **Auto-merge: PR 的检查未全部通过（stalled）**
+
+          此 PR 的 check rollup 存在非 SUCCESS 结论，auto-merge 暂停合并并等待：
+          - 若 CI/droid-review 失败：请修复后推送，auto-merge 会自动重试
+          - 若你认为是残留的失败 check 卡住（如历史毒化）：推送新 commit 或重跑失败 check 即可解除
+
+          COMMENT_EOF
+          COMMENT_BODY="${COMMENT_BODY}${SENTINEL}"
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$COMMENT_BODY"
+          exit 0
 
       - name: Run auto-merge
         if: steps.triage.outputs.action == 'merge'

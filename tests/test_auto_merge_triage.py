@@ -1,12 +1,14 @@
 """Tests for scripts/auto_merge_triage.sh (auto-merge blind-spot triage).
 
-Three blind-spot forms (scrutiny r1/r2 + 编排器增补 2026-08-19):
+Blind-spot forms (PR #829 / INFRA-416 / INFRA-428):
 1. CONFLICTING: PR silently skipped, no notification (#794 停滞 11h+)
 2. BEHIND + all green: needs update-branch self-heal (#814/#819/#825/#827/#828)
 3. Early-fire + no re-trigger: schedule sweep should catch BEHIND PRs
+4. BLOCKED/DRAFT misclassified as mergeable → blind merge attempts
+5. Checks incomplete/failed at triage time → premature or poisoned merges
 
 Contract:
-- Input: gh pr list --json number,mergeable,mergeStateStatus,statusCheckRollup JSON
+- Input: gh pr view/list --json number,mergeable,mergeStateStatus,isDraft,statusCheckRollup JSON
 - Output: JSON triage result with classified PRs + actions
 - Exit 0 always (triage never fails the workflow)
 - No side effects (pure classification + command generation)
@@ -44,11 +46,18 @@ class TestAutoMergeTriage:
         )
         assert result.returncode == 0
         output = json.loads(result.stdout)
-        assert output == {"mergeable": [], "behind": [], "conflicting": [], "unknown": []}
+        assert output == {
+            "mergeable": [], "behind": [], "conflicting": [],
+            "pending": [], "stalled": [], "unknown": [],
+        }
 
     def test_mergeable_pr_classified(self):
-        """PR with mergeable=MERGEABLE → mergeable list."""
-        prs = [{"number": 123, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN"}]
+        """PR with mergeable=MERGEABLE + green rollup → mergeable list."""
+        prs = [{
+            "number": 123, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+        }]
         result = subprocess.run(
             ["bash", str(get_script_path())],
             input=json.dumps(prs),
@@ -110,10 +119,15 @@ class TestAutoMergeTriage:
     def test_mixed_prs_classified(self):
         """Mixed PRs → correct classification into all categories."""
         prs = [
-            {"number": 1, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN"},
+            {"number": 1, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+             "isDraft": False, "statusCheckRollup": [{"conclusion": "SUCCESS"}]},
             {"number": 2, "mergeable": "MERGEABLE", "mergeStateStatus": "BEHIND"},
             {"number": 3, "mergeable": "CONFLICTING", "mergeStateStatus": "DIRTY"},
             {"number": 4, "mergeable": "UNKNOWN", "mergeStateStatus": "UNKNOWN"},
+            {"number": 5, "mergeable": "MERGEABLE", "mergeStateStatus": "BLOCKED",
+             "isDraft": False, "statusCheckRollup": [{"conclusion": "SUCCESS"}]},
+            {"number": 6, "mergeable": "MERGEABLE", "mergeStateStatus": "DRAFT",
+             "isDraft": True, "statusCheckRollup": [{"conclusion": "SUCCESS"}]},
         ]
         result = subprocess.run(
             ["bash", str(get_script_path())],
@@ -127,6 +141,7 @@ class TestAutoMergeTriage:
         assert [p["number"] for p in output["behind"]] == [2]
         assert [p["number"] for p in output["conflicting"]] == [3]
         assert [p["number"] for p in output["unknown"]] == [4]
+        assert [p["number"] for p in output["pending"]] == [5, 6]
 
     def test_invalid_json_exits_zero(self):
         """Invalid JSON input → exit 0 with empty result (triage never fails workflow)."""
@@ -138,7 +153,10 @@ class TestAutoMergeTriage:
         )
         assert result.returncode == 0
         output = json.loads(result.stdout)
-        assert output == {"mergeable": [], "behind": [], "conflicting": [], "unknown": []}
+        assert output == {
+            "mergeable": [], "behind": [], "conflicting": [],
+            "pending": [], "stalled": [], "unknown": [],
+        }
 
 
 class TestAutoMergeTriageActions:
@@ -176,9 +194,12 @@ class TestAutoMergeTriageActions:
         assert "action" in pr
         assert pr["action"] == "notify"
 
-    def test_mergeable_pr_has_no_action(self):
-        """MERGEABLE PR → no special action (workflow proceeds to merge)."""
-        prs = [{"number": 123, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN"}]
+    def test_mergeable_pr_has_merge_action(self):
+        """MERGEABLE + green rollup PR → action=merge."""
+        prs = [{
+            "number": 123, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False, "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+        }]
         result = subprocess.run(
             ["bash", str(get_script_path())],
             input=json.dumps(prs),
@@ -189,8 +210,7 @@ class TestAutoMergeTriageActions:
         output = json.loads(result.stdout)
         assert len(output["mergeable"]) == 1
         pr = output["mergeable"][0]
-        # mergeable PRs don't need special actions
-        assert pr.get("action") is None or pr.get("action") == "merge"
+        assert pr["action"] == "merge"
 
 
 class TestAutoMergeTriageWorkflow:
@@ -294,7 +314,7 @@ class TestAutoMergeTriageHardeningInfra416:
         )
 
     def test_notify_skip_branch_does_not_comment(self):
-        """VAL-T416-002：已有同 SHA sentinel 时跳过评论（仍 exit 1 保持红色告警）。"""
+        """VAL-T416-002：已有同 SHA sentinel 时跳过评论（INFRA-428 起命中分支 exit 0，见 VAL-428-003）。"""
         data = self._load_workflow()
         run_block = self._notify_step(data)["run"]
         assert "Skipping duplicate notification" in run_block, (
@@ -389,3 +409,321 @@ class TestAutoMergeTriageHardeningInfra416:
         """VAL-T416-006：auto-merge job 限时 10 分钟，防 gh/网络挂死堆叠。"""
         data = self._load_workflow()
         assert data["jobs"]["auto-merge"].get("timeout-minutes") == 10
+
+
+class TestAutoMergeTriageHardeningInfra428:
+    """INFRA-428：triage 第二轮硬化——盲区分类补全 + 红腿治理 + 竞态收敛。
+
+    2026-08-19 审计发现的残留盲区与对应硬化：
+    - BLOCKED/DRAFT 掉进 mergeable → 每 10 分钟盲合并尝试 → 红腿 +
+      shared action 自身失败 check 毒化 head SHA（2026-08-18 自毒死锁）
+      → 新增 pending 类别，action=wait（VAL-428-001）
+    - early-fire：pull_request_target(opened)/workflow_run 单工作流完成即
+      触发，mergeStateStatus 异步缓存可短暂 stale-CLEAN → cross-check
+      statusCheckRollup，merge 仅在 rollup 全绿时发出；空 rollup =
+      check 未报齐 = fail-closed wait（VAL-428-002）
+    - CONFLICTING 去重命中仍 exit 1 → 未解决冲突每 10 分钟永久红腿 →
+      去重命中 exit 0，仅首次通知失败保持红色（VAL-428-003）
+    - update-branch 无竞态守卫：并行腿刚更新完，本腿再调用报错红腿 →
+      失败降级绿腿 skip（VAL-428-004）
+    - rollup 报齐但非全绿（check 失败/残留毒化）无任何信号 → stalled
+      类别 + head SHA sentinel 幂等评论（VAL-428-005）
+    - 无 workflow 级并发控制：schedule + workflow_run 腿竞态（评论
+      TOCTOU / update-branch 双发）→ concurrency 组排队（VAL-428-006）
+    """
+
+    def _load_workflow(self) -> dict:
+        import yaml
+
+        workflow_path = Path(__file__).parent.parent / ".github/workflows/auto-merge.yml"
+        return yaml.safe_load(workflow_path.read_text())
+
+    def _run_triage(self, prs: list, *extra_args: str) -> dict:
+        result = subprocess.run(
+            ["bash", str(get_script_path()), *extra_args],
+            input=json.dumps(prs),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        return json.loads(result.stdout)
+
+    GREEN = [{"conclusion": "SUCCESS"}]
+
+    # ----- VAL-428-001：BLOCKED/DRAFT → pending，绝不 merge -----
+
+    def test_blocked_pr_waits_not_merges(self):
+        """VAL-428-001a：mergeStateStatus=BLOCKED → pending/wait，不再盲合并。"""
+        prs = [{
+            "number": 5, "mergeable": "MERGEABLE", "mergeStateStatus": "BLOCKED",
+            "isDraft": False, "statusCheckRollup": self.GREEN,
+        }]
+        output = self._run_triage(prs)
+        assert output["pending"][0]["number"] == 5
+        assert output["pending"][0]["action"] == "wait"
+        assert output["mergeable"] == [], "BLOCKED PR 不得进入 mergeable（盲合并 + 毒化 head SHA）"
+
+    def test_draft_pr_by_flag_waits(self):
+        """VAL-428-001b：isDraft=true → pending/wait（即使 rollup 全绿）。"""
+        prs = [{
+            "number": 6, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": True, "statusCheckRollup": self.GREEN,
+        }]
+        output = self._run_triage(prs)
+        assert output["pending"][0]["number"] == 6
+        assert output["pending"][0]["action"] == "wait"
+        assert output["mergeable"] == []
+
+    def test_draft_pr_by_state_waits(self):
+        """VAL-428-001c：mergeStateStatus=DRAFT → pending/wait。"""
+        prs = [{
+            "number": 7, "mergeable": "MERGEABLE", "mergeStateStatus": "DRAFT",
+            "isDraft": True,
+        }]
+        output = self._run_triage(prs)
+        assert output["pending"][0]["number"] == 7
+        assert output["mergeable"] == []
+
+    # ----- VAL-428-002：early-fire 防护（rollup cross-check） -----
+
+    def test_early_fire_no_rollup_waits(self):
+        """VAL-428-002a：rollup 为空（check 未报）→ pending/wait，fail-closed。"""
+        prs = [{
+            "number": 8, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+        }]
+        output = self._run_triage(prs)
+        assert output["pending"][0]["number"] == 8
+        assert output["mergeable"] == [], "check 未报齐时不得 merge（early-fire 盲合并）"
+
+    def test_early_fire_pending_check_waits(self):
+        """VAL-428-002b：rollup 有 in_progress check → pending/wait。"""
+        prs = [{
+            "number": 9, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"status": "in_progress", "conclusion": None},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["pending"][0]["number"] == 9
+        assert output["mergeable"] == []
+
+    def test_green_rollup_merges(self):
+        """VAL-428-002c：MERGEABLE + rollup 全绿 → mergeable/merge（正向路径保持）。"""
+        prs = [{
+            "number": 10, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"}, {"conclusion": "SUCCESS"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["mergeable"][0]["number"] == 10
+        assert output["mergeable"][0]["action"] == "merge"
+
+    def test_conflicting_wins_over_rollup(self):
+        """VAL-428-002d：CONFLICTING 优先级最高，rollup 全绿也不掩盖冲突。"""
+        prs = [{
+            "number": 11, "mergeable": "CONFLICTING", "mergeStateStatus": "BEHIND",
+            "isDraft": False, "statusCheckRollup": self.GREEN,
+        }]
+        output = self._run_triage(prs)
+        assert output["conflicting"][0]["number"] == 11
+        assert output["behind"] == [], "冲突 PR 不得 update-branch 盲合并"
+        assert output["mergeable"] == []
+
+    def test_behind_wins_over_pending_states(self):
+        """VAL-428-002e：BEHIND 优先于 draft/blocked/rollup（先追平再谈其他）。"""
+        prs = [{
+            "number": 12, "mergeable": "MERGEABLE", "mergeStateStatus": "BEHIND",
+            "isDraft": True,
+        }]
+        output = self._run_triage(prs)
+        assert output["behind"][0]["number"] == 12
+        assert output["pending"] == []
+
+    def test_unknown_mergeable_skips_even_with_rollup(self):
+        """VAL-428-002f：mergeable=UNKNOWN → skip（GitHub 未算完，不猜测）。"""
+        prs = [{
+            "number": 13, "mergeable": "UNKNOWN", "mergeStateStatus": "UNKNOWN",
+            "statusCheckRollup": self.GREEN,
+        }]
+        output = self._run_triage(prs)
+        assert output["unknown"][0]["number"] == 13
+
+    def test_workflow_triage_fetches_rollup_and_draft(self):
+        """VAL-428-002g：workflow 取数必须包含 isDraft + statusCheckRollup。"""
+        data = self._load_workflow()
+        steps = data["jobs"]["auto-merge"]["steps"]
+        triage_step = next(s for s in steps if s.get("name") == "Triage PR mergeable state")
+        fetch_line = next(
+            (ln for ln in triage_step["run"].splitlines() if "--json" in ln and "gh pr view" in ln),
+            None,
+        )
+        assert fetch_line is not None, "triage 步骤未找到 gh pr view --json 取数行"
+        assert "statusCheckRollup" in fetch_line, "取数缺少 statusCheckRollup（early-fire 防护失效）"
+        assert "isDraft" in fetch_line, "取数缺少 isDraft（draft 盲合并防护失效）"
+
+    # ----- VAL-428-003：notify 去重命中 exit 0（红腿治理） -----
+
+    def test_notify_dedup_hit_exits_zero(self):
+        """VAL-428-003：去重命中分支必须 exit 0（通知已送达=职责完成）。"""
+        data = self._load_workflow()
+        steps = data["jobs"]["auto-merge"]["steps"]
+        notify_step = next(s for s in steps if s.get("name") == "Handle CONFLICTING PR (notify)")
+        run_block = notify_step["run"]
+        assert "Skipping duplicate notification" in run_block
+        segment = run_block.split("Skipping duplicate notification", 1)[1]
+        segment_before_comment = segment.split("gh pr comment", 1)[0]
+        assert "exit 0" in segment_before_comment, (
+            "去重命中必须 exit 0，否则未解决冲突每 10 分钟产生永久红腿"
+        )
+        assert "exit 1" not in segment_before_comment
+
+    # ----- VAL-428-004：update-branch 竞态守卫 -----
+
+    def test_update_branch_race_guard(self):
+        """VAL-428-004：update-branch 失败降级绿腿（并行腿竞态正常收敛）。"""
+        data = self._load_workflow()
+        steps = data["jobs"]["auto-merge"]["steps"]
+        behind_step = next(s for s in steps if s.get("name") == "Handle BEHIND PR (update-branch self-heal)")
+        run_block = behind_step["run"]
+        assert "if ! gh pr update-branch" in run_block or \
+            ("gh pr update-branch" in run_block and "exit 0" in run_block), (
+            "update-branch 必须有失败降级分支（竞态守卫），不允许裸 exit 1"
+        )
+
+    # ----- VAL-428-005：stalled 类别 -----
+
+    def test_stalled_check_reported_not_success(self):
+        """VAL-428-005a：rollup 报齐但含 FAILURE → stalled/wait。"""
+        prs = [{
+            "number": 14, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"}, {"conclusion": "FAILURE"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["stalled"][0]["number"] == 14
+        assert output["stalled"][0]["action"] == "wait"
+        assert output["mergeable"] == [], "存在失败 check 时不得 merge"
+
+    def test_workflow_has_stalled_step_with_sentinel(self):
+        """VAL-428-005b：workflow 必须有 stalled 处理步骤且幂等（sentinel 去重）。"""
+        data = self._load_workflow()
+        steps = data["jobs"]["auto-merge"]["steps"]
+        stalled_step = next(
+            (s for s in steps if s.get("name") and "stalled" in s.get("name", "").lower()),
+            None,
+        )
+        assert stalled_step is not None, "缺少 stalled 处理步骤"
+        run_block = stalled_step["run"]
+        assert "auto-merge-stalled-" in run_block, "stalled 步骤必须按 head SHA sentinel 幂等"
+        assert "gh pr comment" in run_block
+
+    def test_workflow_triage_outputs_stalled_flag(self):
+        """VAL-428-005c：triage 步骤输出 stalled 标志供 stalled 步骤门控。"""
+        data = self._load_workflow()
+        steps = data["jobs"]["auto-merge"]["steps"]
+        triage_step = next(s for s in steps if s.get("name") == "Triage PR mergeable state")
+        assert "stalled=" in triage_step["run"], "triage 步骤未输出 stalled 标志"
+        stalled_step = next(
+            s for s in steps if s.get("name") and "stalled" in s.get("name", "").lower()
+        )
+        assert "steps.triage.outputs.stalled" in stalled_step.get("if", ""), (
+            "stalled 步骤的 if 条件未消费 stalled 标志"
+        )
+
+    # ----- VAL-428-006：workflow 级并发控制 -----
+
+    def test_workflow_has_concurrency_group(self):
+        """VAL-428-006：workflow 必须有 concurrency 组（消除跨 run 竞态窗口）。"""
+        data = self._load_workflow()
+        concurrency = data.get("concurrency")
+        assert concurrency is not None, "缺少 workflow 级 concurrency（评论 TOCTOU/update-branch 双发）"
+        assert "group" in concurrency
+
+    # ----- --get-category 模式 -----
+
+    def test_get_category_mode(self):
+        """--get-category 返回类别名（stalled 辅助输出的事实源）。"""
+        prs = [{
+            "number": 14, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [{"conclusion": "FAILURE"}],
+        }]
+        result = subprocess.run(
+            ["bash", str(get_script_path()), "--get-category", "14"],
+            input=json.dumps(prs),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "stalled"
+
+    def test_get_category_missing_pr_unknown(self):
+        """--get-category 对不在输入中的 PR 返回 unknown（容错）。"""
+        prs = [{"number": 1, "mergeable": "MERGEABLE", "mergeStateStatus": "BEHIND"}]
+        result = subprocess.run(
+            ["bash", str(get_script_path()), "--get-category", "999"],
+            input=json.dumps(prs),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "unknown"
+
+    def test_get_category_invalid_input_unknown(self):
+        """--get-category 对非法 JSON 输入返回 unknown（never fails workflow）。"""
+        result = subprocess.run(
+            ["bash", str(get_script_path()), "--get-category", "5"],
+            input="not json",
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "unknown"
+
+    # ----- 防退化：分类完备性 -----
+
+    def test_categories_are_exhaustive_and_exclusive(self):
+        """全状态矩阵每个 PR 恰好落一个类别（分类完备性 + 互斥性）。"""
+        matrix = [
+            # (mergeable, mergeStateStatus, isDraft, rollup) -> 期望类别
+            ("MERGEABLE", "CLEAN", False, [{"conclusion": "SUCCESS"}]),   # mergeable
+            ("MERGEABLE", "CLEAN", False, []),                             # pending (early-fire)
+            ("MERGEABLE", "CLEAN", False, [{"conclusion": "FAILURE"}]),    # stalled
+            ("MERGEABLE", "CLEAN", False, [{"status": "in_progress"}]),    # pending
+            ("MERGEABLE", "BEHIND", False, [{"conclusion": "SUCCESS"}]),   # behind
+            ("MERGEABLE", "BEHIND", True, []),                             # behind (BEHIND 优先)
+            ("MERGEABLE", "BLOCKED", False, [{"conclusion": "SUCCESS"}]),  # pending
+            ("MERGEABLE", "DRAFT", True, []),                              # pending
+            ("CONFLICTING", "BEHIND", False, [{"conclusion": "SUCCESS"}]), # conflicting
+            ("CONFLICTING", "CLEAN", False, [{"conclusion": "SUCCESS"}]),  # conflicting
+            ("UNKNOWN", "UNKNOWN", False, []),                             # unknown
+            ("UNKNOWN", "BLOCKED", False, [{"conclusion": "SUCCESS"}]),    # unknown (UNKNOWN 优先)
+        ]
+        expected = [
+            "mergeable", "pending", "stalled", "pending", "behind", "behind",
+            "pending", "pending", "conflicting", "conflicting", "unknown", "unknown",
+        ]
+        prs = [
+            {
+                "number": i + 1, "mergeable": m, "mergeStateStatus": s,
+                "isDraft": d, "statusCheckRollup": r,
+            }
+            for i, (m, s, d, r) in enumerate(matrix)
+        ]
+        output = self._run_triage(prs)
+        category_numbers: dict[str, list[int]] = {
+            cat: [p["number"] for p in prs_] for cat, prs_ in output.items()
+        }
+        for idx, exp in enumerate(expected):
+            found = [cat for cat, nums in category_numbers.items() if (idx + 1) in nums]
+            assert found == [exp], (
+                f"PR #{idx + 1} (mergeable={matrix[idx][0]}, state={matrix[idx][1]}, "
+                f"draft={matrix[idx][2]}, rollup={matrix[idx][3]}) 应为 {exp}，实际 {found}"
+            )

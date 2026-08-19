@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.36.0](https://github.com/hdot123-org/memory/compare/v0.35.0...v0.36.0) (2026-08-19)
+
+
+### Features
+
+* **auto-merge:** triage 生产化硬化——幂等通知/竞态守卫/UNKNOWN 重试/分类互斥 (INFRA-416) ([#838](https://github.com/hdot123-org/memory/issues/838)) ([74e4eb7](https://github.com/hdot123-org/memory/commit/74e4eb7f8433bbfb9efdd67fa12ffe951837cf94))
+* **auto-merge:** 添加三盲区 triage 与自愈（CONFLICTING/BEHIND/early-fire） ([#829](https://github.com/hdot123-org/memory/issues/829)) ([fa71299](https://github.com/hdot123-org/memory/commit/fa7129983a7c588f0eed6fb49a137a291b9bd749))
+
+
+### Bug Fixes
+
+* check_pr_ref_consistency fail-closed 硬化——异常路径 exit 1 而非 exit 0 ([#834](https://github.com/hdot123-org/memory/issues/834)) ([e649d8e](https://github.com/hdot123-org/memory/commit/e649d8e5594a8168a953a345238c2234b9d0e853))
+* 修复 org 迁移后残留的旧仓库地址引用 ([#848](https://github.com/hdot123-org/memory/issues/848)) ([eae6c64](https://github.com/hdot123-org/memory/commit/eae6c641345a00986bcaf8fef7e7728cf769db76))
+* 消除 reverse_drift_watch 预算守卫的静默异常吞没 (INFRA-425) ([#849](https://github.com/hdot123-org/memory/issues/849)) ([e560c29](https://github.com/hdot123-org/memory/commit/e560c2943f1e4f589c40036342c509408f9bd62f))
+
+
+### Documentation
+
+* **decisions:** 补录 mission 异步合并决策 PR/Issue 回链，闭环 INFRA-377 ([#769](https://github.com/hdot123-org/memory/issues/769)) ([2d9ad3d](https://github.com/hdot123-org/memory/commit/2d9ad3d2809f7ea517b6e023a8ac8fc722bc4ab9))
+
 ## [0.35.0](https://github.com/hdot123-org/memory/compare/v0.34.0...v0.35.0) (2026-08-19)
 
 
