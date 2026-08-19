@@ -28,8 +28,7 @@ SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "check_pr_ref_consisten
 # ---------------------------------------------------------------------------
 # Fixture data (synthetic samples replicating historical structure)
 # ---------------------------------------------------------------------------
-# Note: these are synthetic samples designed to replicate the structure of
-# historical PR/issue data, not literal API response dumps (see disclosure above).
+# All fixture data below is synthetic — see FIXTURE DISCLOSURE above.
 
 # PR #729 body: "Fixes INFRA-335" (the root cause mismatch)
 PR_729_BODY = """\
@@ -289,6 +288,98 @@ class TestReadOnly:
             assert "issue edit" not in cmd_str, f"Write operation detected: {cmd_str}"
             assert "pr create" not in cmd_str, f"Write operation detected: {cmd_str}"
             assert "pr edit" not in cmd_str, f"Write operation detected: {cmd_str}"
+
+
+# ---------------------------------------------------------------------------
+# Comma handling and None body defense (scrutiny 2026-08-19 round-4 port)
+# ---------------------------------------------------------------------------
+# Ported from branch fix/pr-ref-regex-robustness after two supersede rounds
+# lost these regression classes. Ensures comma-separated extraction and None
+# body defense never regress.
+
+class TestCommaSeparatedList:
+    """Comma-separated INFRA IDs must all be extracted.
+
+    Covers: single pair, triple, Oxford comma with 'and' connector,
+    and \\b word boundary rejection (e.g. 'disclose' must not match 'fix').
+    """
+
+    def test_comma_separated_two_ids(self):
+        """Comma-separated pair: 'Fixes INFRA-100, INFRA-200' → {INFRA-100, INFRA-200}."""
+        from check_pr_ref_consistency import extract_fixes_infra_ids
+        body = "Some changes\n\nFixes INFRA-100, INFRA-200"
+        assert extract_fixes_infra_ids(body) == {"INFRA-100", "INFRA-200"}
+
+    def test_comma_separated_three_ids(self):
+        """Comma-separated triple: 'Fixes INFRA-1, INFRA-2, INFRA-3' → all three."""
+        from check_pr_ref_consistency import extract_fixes_infra_ids
+        body = "Fixes INFRA-1, INFRA-2, INFRA-3"
+        assert extract_fixes_infra_ids(body) == {"INFRA-1", "INFRA-2", "INFRA-3"}
+
+    def test_oxford_comma_with_and(self):
+        """Oxford comma variant: 'Fixes INFRA-1, INFRA-2, and INFRA-3' → all three (red→green)."""
+        from check_pr_ref_consistency import extract_fixes_infra_ids
+        body = "Fixes INFRA-1, INFRA-2, and INFRA-3"
+        assert extract_fixes_infra_ids(body) == {"INFRA-1", "INFRA-2", "INFRA-3"}
+
+    def test_oxford_comma_and_connector_no_trailing_comma(self):
+        """'Fixes INFRA-1, INFRA-2 and INFRA-3' (no trailing comma before 'and') → all three."""
+        from check_pr_ref_consistency import extract_fixes_infra_ids
+        body = "Fixes INFRA-1, INFRA-2 and INFRA-3"
+        assert extract_fixes_infra_ids(body) == {"INFRA-1", "INFRA-2", "INFRA-3"}
+
+    def test_word_boundary_rejects_disclose(self):
+        """\\b word boundary: 'disclose INFRA-999' must NOT match (not a closing keyword)."""
+        from check_pr_ref_consistency import extract_fixes_infra_ids
+        body = "This change will disclose INFRA-999 later"
+        assert extract_fixes_infra_ids(body) == set()
+    def test_word_boundary_rejects_prefix_fix(self):
+        """\\b word boundary: 'refix INFRA-100' must NOT match."""
+        from check_pr_ref_consistency import extract_fixes_infra_ids
+        body = "We refix INFRA-100 in this PR"
+        assert extract_fixes_infra_ids(body) == set()
+
+    def test_single_fix_keyword_still_works(self):
+        """Single ID: 'Fixes INFRA-335' → {INFRA-335}."""
+        from check_pr_ref_consistency import extract_fixes_infra_ids
+        body = "Fixes INFRA-335"
+        assert extract_fixes_infra_ids(body) == {"INFRA-335"}
+
+    def test_multiple_fixes_lines(self):
+        """Multiple lines: 'Fixes INFRA-1\\nFixes INFRA-2' → both extracted."""
+        from check_pr_ref_consistency import extract_fixes_infra_ids
+        body = "Fixes INFRA-1\nFixes INFRA-2"
+        assert extract_fixes_infra_ids(body) == {"INFRA-1", "INFRA-2"}
+
+
+class TestExtractNoneBodyDefense:
+    """extract_fixes_infra_ids(None) must not raise — returns empty set.
+
+    Unit-level None body defense (direct function test). The integration-level
+    None body defense (full script run against a null-body GraphQL mock) lives
+    in TestNoneBodyDefense below, ported via PR #814 (INFRA-401); this class
+    keeps the unit-level cases so both layers never regress.
+    """
+
+    def test_extract_none_returns_empty_set(self):
+        """extract_fixes_infra_ids(None) returns empty set without raising."""
+        from check_pr_ref_consistency import extract_fixes_infra_ids
+        assert extract_fixes_infra_ids(None) == set()
+
+    def test_extract_empty_string_returns_empty_set(self):
+        """extract_fixes_infra_ids('') returns empty set."""
+        from check_pr_ref_consistency import extract_fixes_infra_ids
+        assert extract_fixes_infra_ids("") == set()
+
+    def test_extract_whitespace_returns_empty_set(self):
+        """extract_fixes_infra_ids('   ') returns empty set."""
+        from check_pr_ref_consistency import extract_fixes_infra_ids
+        assert extract_fixes_infra_ids("   ") == set()
+
+    def test_extract_no_keyword_returns_empty_set(self):
+        """Body with no closing keyword returns empty set."""
+        from check_pr_ref_consistency import extract_fixes_infra_ids
+        assert extract_fixes_infra_ids("Just a description with INFRA-100 mentioned") == set()
 
 
 # ===========================================================================
