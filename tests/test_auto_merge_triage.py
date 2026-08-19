@@ -249,3 +249,143 @@ class TestAutoMergeTriageWorkflow:
         assert has_triage_job or has_triage_steps, (
             "auto-merge.yml schedule path lacks triage/self-heal logic"
         )
+
+
+class TestAutoMergeTriageHardeningInfra416:
+    """INFRA-416：triage 第一版（PR #829）落地后的生产化硬化回归防护。
+
+    审查发现的第一版缺陷与对应硬化：
+    - CONFLICTING 评论刷屏：notify 每 10 分钟重复评论 → 按 head SHA
+      sentinel 幂等（VAL-T416-001/002）
+    - resolve/triage 竞态红腿：并行 matrix 腿合并后 gh pr view NotFound
+      → 降级 skip 而非 fail（VAL-T416-003）
+    - UNKNOWN 一次性放弃：push 后 GitHub 异步计算 mergeable → 重取一次
+      后交 schedule 兜底（VAL-T416-004）
+    - 分类缺陷：CONFLICTING+BEHIND 同时出现时 jq 分支互斥导致 PR 掉进
+      两个 category → DIRTY 优先，绝不盲合并冲突 PR（VAL-T416-005+脚本测试）
+    - job 无超时 → timeout-minutes: 10（VAL-T416-006）
+    """
+
+    def _load_workflow(self) -> dict:
+        import yaml
+
+        workflow_path = Path(__file__).parent.parent / ".github/workflows/auto-merge.yml"
+        return yaml.safe_load(workflow_path.read_text())
+
+    def _triage_step(self, data: dict) -> dict:
+        steps = data["jobs"]["auto-merge"]["steps"]
+        return next(s for s in steps if s.get("name") == "Triage PR mergeable state")
+
+    def _notify_step(self, data: dict) -> dict:
+        steps = data["jobs"]["auto-merge"]["steps"]
+        return next(s for s in steps if s.get("name") == "Handle CONFLICTING PR (notify)")
+
+    # ----- VAL-T416-001/002：CONFLICTING 通知幂等 -----
+
+    def test_notify_step_has_sentinel_dedup(self):
+        """VAL-T416-001：notify 步骤按 head SHA sentinel 去重评论。"""
+        data = self._load_workflow()
+        run_block = self._notify_step(data)["run"]
+        assert "auto-merge-conflict-" in run_block, (
+            "notify 步骤必须包含 head SHA sentinel（幂等去重）"
+        )
+        assert "--json comments" in run_block or "--json headRefOid" in run_block, (
+            "notify 步骤必须查询既有评论/head SHA"
+        )
+
+    def test_notify_skip_branch_does_not_comment(self):
+        """VAL-T416-002：已有同 SHA sentinel 时跳过评论（仍 exit 1 保持红色告警）。"""
+        data = self._load_workflow()
+        run_block = self._notify_step(data)["run"]
+        assert "Skipping duplicate notification" in run_block, (
+            "去重命中分支必须显式跳过且不调 gh pr comment"
+        )
+        # 去重分支在 gh pr comment 之前短路
+        assert run_block.index("Skipping duplicate notification") < run_block.index("gh pr comment")
+
+    # ----- VAL-T416-003：resolve/triage 竞态守卫 -----
+
+    def test_triage_step_handles_pr_not_found(self):
+        """VAL-T416-003：PR 被并行腿合并后 gh pr view NotFound → skip 而非红腿。"""
+        data = self._load_workflow()
+        run_block = self._triage_step(data)["run"]
+        assert "not found" in run_block or "Could not resolve" in run_block, (
+            "triage 步骤必须识别 NotFound 并降级 skip（竞态守卫）"
+        )
+        assert "action=skip" in run_block
+
+    # ----- VAL-T416-004：UNKNOWN 重试 -----
+
+    def test_triage_step_retries_unknown_state(self):
+        """VAL-T416-004：mergeable=UNKNOWN 时等待重取一次，仍未知交 schedule 兜底。"""
+        data = self._load_workflow()
+        run_block = self._triage_step(data)["run"]
+        assert '"$MERGEABLE" = "UNKNOWN"' in run_block, (
+            "triage 步骤必须对 UNKNOWN 状态做一次重取"
+        )
+        # UNKNOWN 路径最终动作只能是 skip（脚本分类保证），workflow 不猜测
+        assert "UNKNOWN retry" in run_block
+
+    # ----- VAL-T416-005：分类互斥（DIRTY 优先于 BEHIND） -----
+
+    def test_conflicting_behind_goes_to_conflicting_only(self):
+        """VAL-T416-005a：CONFLICTING+BEHIND 只进 conflicting（notify），不进 behind。
+
+        第一版 jq 的各 category select 条件互不感知，同一 PR 可同时命中
+        conflicting 与 behind 两个数组。本硬化版 behind 排除 CONFLICTING，
+        保证绝不 blind-merge 一个有冲突的 PR。
+        """
+        prs = [{"number": 7, "mergeable": "CONFLICTING", "mergeStateStatus": "BEHIND"}]
+        result = subprocess.run(
+            ["bash", str(get_script_path())],
+            input=json.dumps(prs),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        output = json.loads(result.stdout)
+        assert [p["number"] for p in output["conflicting"]] == [7]
+        assert output["behind"] == [], "CONFLICTING PR 不得进入 behind（会触发 update-branch 掩盖冲突）"
+        assert output["mergeable"] == []
+
+    def test_get_action_mode_single_action(self):
+        """VAL-T416-005b：--get-action 返回单一 action，workflow 不再重复 jq。"""
+        prs = [{"number": 9, "mergeable": "MERGEABLE", "mergeStateStatus": "BEHIND"}]
+        result = subprocess.run(
+            ["bash", str(get_script_path()), "--get-action", "9"],
+            input=json.dumps(prs),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "update-branch"
+
+    def test_get_action_mode_unknown_pr_skips(self):
+        """--get-action 对不在输入中的 PR 返回 skip（容错）。"""
+        prs = [{"number": 11, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN"}]
+        result = subprocess.run(
+            ["bash", str(get_script_path()), "--get-action", "999"],
+            input=json.dumps(prs),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "skip"
+
+    def test_get_action_mode_invalid_input_skips(self):
+        """--get-action 对非法 JSON 输入返回 skip（triage never fails workflow）。"""
+        result = subprocess.run(
+            ["bash", str(get_script_path()), "--get-action", "5"],
+            input="not json",
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "skip"
+
+    # ----- VAL-T416-006：job 超时 -----
+
+    def test_auto_merge_job_has_timeout(self):
+        """VAL-T416-006：auto-merge job 限时 10 分钟，防 gh/网络挂死堆叠。"""
+        data = self._load_workflow()
+        assert data["jobs"]["auto-merge"].get("timeout-minutes") == 10
