@@ -7,6 +7,9 @@
 
 set -uo pipefail
 
+# Dynamic Python binary detection (macOS: /opt/homebrew/bin/python3, Linux: python3)
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 2>/dev/null || echo /opt/homebrew/bin/python3)}"
+
 # === Configuration ===
 LOCKS_DIR="${LOCKS_DIR:-$HOME/.factory/webhook/locks}"
 TTL_SECONDS=1800          # 30 minutes (Phase A)
@@ -87,7 +90,7 @@ for pending_file in "$LOCKS_DIR"/pending-ci-*.json; do
   [ -f "$pending_file" ] || continue
   
   # Parse JSON to extract fields
-  PR_NUMBER=$(/opt/homebrew/bin/python3 -c "
+  PR_NUMBER=$($PYTHON_BIN -c "
 import json
 try:
     with open('$pending_file') as f:
@@ -96,7 +99,7 @@ except:
     print('')
 " 2>/dev/null)
   
-  CREATED_AT=$(/opt/homebrew/bin/python3 -c "
+  CREATED_AT=$($PYTHON_BIN -c "
 import json
 try:
     with open('$pending_file') as f:
@@ -105,7 +108,7 @@ except:
     print('')
 " 2>/dev/null)
   
-  INJECTED_AT=$(/opt/homebrew/bin/python3 -c "
+  INJECTED_AT=$($PYTHON_BIN -c "
 import json
 try:
     with open('$pending_file') as f:
@@ -114,7 +117,7 @@ except:
     print('')
 " 2>/dev/null)
   
-  CWD=$(/opt/homebrew/bin/python3 -c "
+  CWD=$($PYTHON_BIN -c "
 import json
 try:
     with open('$pending_file') as f:
@@ -129,7 +132,7 @@ except:
   fi
   
   # Calculate created_at age in seconds
-  CREATED_EPOCH=$(/opt/homebrew/bin/python3 -c "
+  CREATED_EPOCH=$($PYTHON_BIN -c "
 from datetime import datetime, timezone
 import sys
 try:
@@ -153,7 +156,7 @@ except Exception as e:
   
   # === Phase B: Check if injected but not consumed ===
   if [ -n "$INJECTED_AT" ]; then
-    INJECTED_EPOCH=$(/opt/homebrew/bin/python3 -c "
+    INJECTED_EPOCH=$($PYTHON_BIN -c "
 from datetime import datetime, timezone
 import sys
 try:
@@ -181,7 +184,7 @@ except Exception as e:
       echo "Phase B: PR #$PR_NUMBER injected $INJECTED_AGE_MINUTES minutes ago but not consumed"
       
       # Check if PR is already merged
-      PR_MERGED=$(/opt/homebrew/bin/python3 -c "
+      PR_MERGED=$($PYTHON_BIN -c "
 import subprocess, sys
 try:
     result = subprocess.run(['gh', 'pr', 'view', '$PR_NUMBER', '--json', 'state'], 
