@@ -355,3 +355,21 @@ GitHub close → Linear 同步 close → GATE A revert → Done→reopen → Git
 2. scanner `auto_close_resolved()` 独立检测 finding 已解决 → 自动关闭
 
 此规矩防止派发会话以自动身份反复直接关单，导致 issue 经历多轮 close/reopen 振荡。
+
+### 10.6 通知 Issue TTL 自愈（VAL-NTF-002 / INFRA-389）
+
+通知类 Issue（branch-cleanup 每日跟踪 Issue 等）只需在短期内可见，长期堆积会稀释
+scanner 产出的可操作信号。`scripts/evolution_utils.py::close_expired_notifications()`
+为这类 Issue 提供基于 TTL 的自动关闭：
+
+- **候选范围** — 仅处理同时携带 `automation` + `branch-cleanup` 双标签的 **open** Issue
+  （`gh issue list` 多 `--label` 为 AND 语义），finding 型 Issue 不受影响
+- **TTL 判定** — 以 `createdAt` 计算年龄，超过 `NOTIFICATION_TTL_DAYS = 7` 天视为过期
+- **关闭动作** — 先添加 TTL marker 评论（`<!-- ttl-close 7d -->` 前缀 + 中文说明），评论
+  成功后才执行关闭；关闭评论可作为事后审计锚点，人工可随时 re-open
+- **接线位置** — `evolution_scanner.main()` 在 `reconcile_in_progress()` 之后调用，
+  try/except 包裹，单次失败仅告警、不中断扫描 tick
+- **幂等性** — 每轮只处理 open 且过期的 Issue；关闭后不再进入候选，重复运行无副作用
+
+实现与测试随 PR #786 合入（`tests/test_notification_ttl.py`，11 个用例覆盖到期/未到期/
+边界/非通知类不受影响等场景）。

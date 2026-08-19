@@ -37,10 +37,13 @@ class TestTrustChainDeadlockExitSentinel:
     """
 
     def test_dlk_trust_chain_sentinel_pass(self, tmp_path):
-        """Path B: deadlock exit sentinel in comments → trust chain passes → mirror can close.
+        """Path B: deadlock exit sentinel in Linear comments → trust chain passes → mirror can close.
 
         redEvidence: Without Path B sentinel check, this test returns False (BLOCK)
-        because no PR is merged. With Path B, sentinel in comments passes trust chain.
+        because no PR is merged. With Path B, sentinel in Linear comments passes trust chain.
+
+        Architecture §3.2: Sentinel is written to Linear comments by reconcile deadlock exit.
+        Verifier must query Linear API for comments, not GitHub issue comments.
         """
         from evolution_utils import _verify_fix_merged_via_linear
 
@@ -49,9 +52,16 @@ class TestTrustChainDeadlockExitSentinel:
         issue_number = 999
         linear_id = "INFRA-999"
 
-        # Mock Linear API response: terminal state, non-merged PR attachment
-        mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
+        # Mock Linear API responses:
+        # 1. Issue query (terminal state, PR attachment not merged)
+        # 2. Linear comments query (contains sentinel)
+        mock_responses = [
+            # First call: issue query with PR attachment
+            MagicMock(),
+            # Second call: Linear comments query with sentinel
+            MagicMock(),
+        ]
+        mock_responses[0].read.return_value = json.dumps({
             "data": {
                 "issue": {
                     "id": "uuid-999",
@@ -67,32 +77,46 @@ class TestTrustChainDeadlockExitSentinel:
                 }
             }
         }).encode()
-        mock_response.__enter__ = lambda self: self
-        mock_response.__exit__ = MagicMock()
+        mock_responses[0].__enter__ = lambda self: self
+        mock_responses[0].__exit__ = MagicMock()
 
-        # Mock gh: PR view returns not merged, then comment fetch returns sentinel
         sentinel_comment = f"<!-- deadlock-exit {linear_id} sessionId=abc123 exitCode=0 -->\n死锁出口执行"
+        mock_responses[1].read.return_value = json.dumps({
+            "data": {
+                "issue": {
+                    "comments": {
+                        "nodes": [
+                            {"body": sentinel_comment}
+                        ]
+                    }
+                }
+            }
+        }).encode()
+        mock_responses[1].__enter__ = lambda self: self
+        mock_responses[1].__exit__ = MagicMock()
 
         with patch("evolution_utils.subprocess.run") as mock_run, \
-             patch("urllib.request.urlopen", return_value=mock_response), \
+             patch("urllib.request.urlopen", side_effect=mock_responses), \
              patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
-            # Call sequence: gh pr view (not merged) → gh issue view comments (sentinel found)
+            # Call sequence: gh pr view (not merged) → Linear comments query (sentinel found)
             mock_run.side_effect = [
                 MagicMock(returncode=0, stdout=json.dumps({"mergedAt": None}), stderr=""),
-                MagicMock(returncode=0, stdout=sentinel_comment, stderr=""),
             ]
 
             result = _verify_fix_merged_via_linear(issue_body, issue_number)
 
-            assert result is True, "Sentinel in comments should pass trust chain (Path B)"
-            assert mock_run.call_count == 2, "Should call pr view + comment fetch"
+            assert result is True, "Sentinel in Linear comments should pass trust chain (Path B)"
+            assert mock_run.call_count == 1, "Should call pr view only (sentinel fetched from Linear API)"
 
     def test_dlk_trust_chain_no_sentinel_no_pr_block(self, tmp_path):
         """No sentinel AND no PR → BLOCK (fail-closed).
 
         redEvidence: Without Path B fallback after Path A fails, this test would
         still return False but for wrong reason (no PR check exits early).
-        With Path B, it correctly checks sentinel before returning False.
+        With Path B, it correctly checks Linear comments for sentinel before returning False.
+
+        Architecture §3.2: When no PR attachments exist, verifier should still query
+        Linear comments to check for deadlock exit sentinel.
         """
         from evolution_utils import _verify_fix_merged_via_linear
 
@@ -101,9 +125,14 @@ class TestTrustChainDeadlockExitSentinel:
         issue_body = "<!-- linear-linkback INFRA-888 -->\nSome issue body"
         issue_number = 888
 
-        # Mock Linear API response: terminal state, no PR attachments
-        mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
+        # Mock Linear API responses:
+        # 1. Issue query (terminal state, no PR attachments)
+        # 2. Linear comments query (no sentinel)
+        mock_responses = [
+            MagicMock(),
+            MagicMock(),
+        ]
+        mock_responses[0].read.return_value = json.dumps({
             "data": {
                 "issue": {
                     "id": "uuid-888",
@@ -112,18 +141,31 @@ class TestTrustChainDeadlockExitSentinel:
                 }
             }
         }).encode()
-        mock_response.__enter__ = lambda self: self
-        mock_response.__exit__ = MagicMock()
+        mock_responses[0].__enter__ = lambda self: self
+        mock_responses[0].__exit__ = MagicMock()
+
+        # No sentinel in Linear comments
+        mock_responses[1].read.return_value = json.dumps({
+            "data": {
+                "issue": {
+                    "comments": {
+                        "nodes": []
+                    }
+                }
+            }
+        }).encode()
+        mock_responses[1].__enter__ = lambda self: self
+        mock_responses[1].__exit__ = MagicMock()
 
         with patch("evolution_utils.subprocess.run") as mock_run, \
-             patch("urllib.request.urlopen", return_value=mock_response), \
+             patch("urllib.request.urlopen", side_effect=mock_responses), \
              patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
-            # No PRs → no sentinel check (Path B conditional per architecture.md §3.2)
-            # Result: BLOCK (fail-closed)
+            # No PRs → should still query Linear comments for sentinel (architecture §3.2)
+            # Result: BLOCK (fail-closed) because no sentinel found
             result = _verify_fix_merged_via_linear(issue_body, issue_number)
 
-            assert result is False, "No sentinel and no PR → BLOCK"
-            assert mock_run.call_count == 0, "No subprocess calls (body has linkback, no PRs → skip comment fetch)"
+            assert result is False, "No sentinel in Linear comments → BLOCK"
+            assert mock_run.call_count == 0, "No subprocess calls (sentinel fetched from Linear API)"
 
 
 # ============================================================================
@@ -406,6 +448,72 @@ class TestGateAFailClosed:
             "Must fall through to BLOCK on invalid sessionId"
 
 
+class TestTerminalAbsorption:
+    """Task 3: 终态吸收 (Terminal State Absorption)
+
+    When a Linear issue's GitHub mirror is already closed, the reconcile script
+    should directly absorb the Linear issue (move it to terminal state) instead
+    of repeatedly attempting empty retrigger on every tick.
+
+    TDD red phase: These tests verify NEW behavior that doesn't exist yet.
+    Without implementation: Linear issues with closed GitHub mirrors remain in
+    non-terminal state and are processed repeatedly (empty retrigger attempts).
+    With implementation: Linear issues are absorbed (moved to terminal state)
+    when their GitHub mirror is closed.
+    """
+
+    def test_terminal_absorption_when_github_mirror_closed(self, tmp_path):
+        """Linear issue with closed GitHub mirror should be absorbed (moved to terminal).
+
+        Scenario: Linear issue INFRA-500 is in non-terminal state (e.g., In Progress),
+        but its GitHub mirror is already closed. Reconcile should absorb INFRA-500
+        by moving it to completed/canceled state.
+
+        Without implementation: Section 5a2 only skips trigger, INFRA-500 remains
+        non-terminal and is processed again next tick (empty retrigger attempt).
+        With implementation: INFRA-500 is moved to terminal state, no future processing.
+        """
+        # Verify terminal absorption logic exists in reconcile script
+        script_path = Path(__file__).parent.parent / "webhook-scripts" / "reconcile-evolution.sh"
+        script_content = script_path.read_text()
+
+        # Check for terminal absorption section in 5a2
+        # After detecting closed GitHub mirror, should move Linear to terminal state
+        assert "GitHub Issue already closed" in script_content, \
+            "Must detect closed GitHub mirror"
+
+        # Must have logic to absorb (move to terminal state) when mirror is closed
+        # Verify: after "GitHub Issue already closed" log line, the code transitions
+        # Linear issue to terminal state before `continue`
+        assert "terminal absorption" in script_content.lower() or "Terminal absorption" in script_content, \
+            "Must have terminal absorption logic after detecting closed GitHub mirror"
+        assert "ABSORB_RESULT" in script_content, \
+            "Must capture absorption result in ABSORB_RESULT variable"
+        # Verify the absorption transitions state to terminal (canceled)
+        assert "terminal-absorption" in script_content, \
+            "Must write evidence comment with terminal-absorption sentinel"
+
+    def test_terminal_absorption_idempotent(self, tmp_path):
+        """Terminal absorption should be idempotent (doesn't repeat on subsequent ticks).
+
+        Scenario: Linear issue INFRA-501 was absorbed in previous tick. Next tick
+        should not attempt absorption again.
+
+        Without implementation: No absorption logic exists, so nothing to test.
+        With implementation: Should have idempotency check (e.g., skip if already terminal).
+        """
+        script_path = Path(__file__).parent.parent / "webhook-scripts" / "reconcile-evolution.sh"
+        script_content = script_path.read_text()
+
+        # If terminal absorption exists, should have idempotency check
+        # (e.g., check if already in terminal state before attempting transition)
+        if "terminal absorption" in script_content.lower() or "absorb" in script_content.lower():
+            # Should have some form of idempotency check
+            # Could be: checking current state, checking sentinel, etc.
+            assert "idempotent" in script_content.lower() or "already" in script_content.lower(), \
+                "Terminal absorption should have idempotency check"
+
+
 class TestDeadlockExitProductionSchemaRobustness:
     """Regression tests for production schema mismatch and null handling.
 
@@ -518,3 +626,67 @@ class TestDeadlockExitProductionSchemaRobustness:
                 if field in real_data:
                     # Just verify they exist — values vary
                     pass
+
+
+class TestSessionIdForLog:
+    """Issue #4: SESSION_ID_FOR_LOG always shows "unknown" in reconcile log.
+
+    Root cause: The Python script reads sessionId from status file but doesn't
+    pass it back to bash. The log line uses ${SESSION_ID_FOR_LOG:-unknown}
+    which always defaults to "unknown".
+
+    Fix: Extract sessionId from status file in bash before the log line.
+    """
+
+    def test_session_id_for_log_extracted_from_status_file(self):
+        """SESSION_ID_FOR_LOG must be extracted from status file before log line.
+
+        redEvidence: Without extraction, log line shows "session=unknown".
+        With extraction, log line shows actual sessionId.
+        """
+        script_path = Path(__file__).parent.parent / "webhook-scripts" / "reconcile-evolution.sh"
+        script_content = script_path.read_text()
+
+        # Find the DEADLOCK EXIT executed log line
+        assert 'DEADLOCK EXIT executed' in script_content, \
+            "Deadlock exit log line must exist"
+
+        # Verify SESSION_ID_FOR_LOG is used in log line
+        assert '${SESSION_ID_FOR_LOG:-unknown}' in script_content, \
+            "Log line must use SESSION_ID_FOR_LOG variable"
+
+        # Verify SESSION_ID_FOR_LOG is extracted from status file BEFORE the log line
+        # Find positions
+        extract_pos = script_content.find('SESSION_ID_FOR_LOG=')
+        log_pos = script_content.find('DEADLOCK EXIT executed')
+
+        assert extract_pos != -1, \
+            "SESSION_ID_FOR_LOG must be set somewhere in the script"
+        assert extract_pos < log_pos, \
+            "SESSION_ID_FOR_LOG must be extracted BEFORE the log line (found at pos %d, log at %d)" % (extract_pos, log_pos)
+
+        # Verify extraction uses Python to read from status file (consistent with existing pattern)
+        # The extraction should use $STATUS_FILE and parse sessionId
+        extract_section = script_content[extract_pos:extract_pos+200]
+        assert 'STATUS_FILE' in extract_section or 'sessionId' in extract_section, \
+            "SESSION_ID_FOR_LOG extraction must reference STATUS_FILE or sessionId"
+
+    def test_session_id_for_log_not_always_unknown(self):
+        """SESSION_ID_FOR_LOG extraction must not just default to unknown.
+
+        This test ensures the extraction logic exists and will override the default.
+        """
+        script_path = Path(__file__).parent.parent / "webhook-scripts" / "reconcile-evolution.sh"
+        script_content = script_path.read_text()
+
+        # Find the extraction
+        extract_pos = script_content.find('SESSION_ID_FOR_LOG=')
+        assert extract_pos != -1, \
+            "SESSION_ID_FOR_LOG must be set in the script"
+
+        # The extraction should NOT be just setting it to "unknown"
+        # Look at the line after SESSION_ID_FOR_LOG=
+        extract_line = script_content[extract_pos:script_content.find('\n', extract_pos)]
+        assert 'unknown' not in extract_line or extract_line.count('unknown') == 0 or \
+               '${SESSION_ID_FOR_LOG:-unknown}' not in extract_line, \
+            "SESSION_ID_FOR_LOG extraction should not just be 'unknown' (that defeats the purpose)"

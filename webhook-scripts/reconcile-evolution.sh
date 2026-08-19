@@ -465,7 +465,143 @@ except:
     GH_OPEN_COUNT=$(echo "$GH_OPEN_JSON" | /opt/homebrew/bin/python3 -c "import json,sys; data=json.load(sys.stdin); print(len(data))" 2>/dev/null || echo "0")
 
     if [ "$GH_OPEN_COUNT" -eq 0 ]; then
-        log "  ${LINEAR_REF}: GitHub Issue already closed (droid already processed), skip trigger"
+        log "  ${LINEAR_REF}: GitHub Issue already closed (droid already processed)"
+
+        # Terminal absorption: move Linear issue to terminal state
+        # When GitHub mirror is closed, Linear issue should also be in terminal state
+        # to prevent repeated empty retrigger attempts on subsequent ticks
+
+        # Idempotency check: skip if already in terminal state
+        CURRENT_STATE=$(/opt/homebrew/bin/python3 -c "
+import json, urllib.request, os, sys, socket
+socket.setdefaulttimeout(15)
+api_key = os.environ['LINEAR_API_KEY']
+issue_uuid = '$ISSUE_UUID'
+
+if not api_key or not issue_uuid:
+    print('unknown')
+    sys.exit(0)
+
+query = '{ issue(id: \"' + issue_uuid + '\") { state { type } } }'
+req = urllib.request.Request(
+    'https://api.linear.app/graphql',
+    data=json.dumps({'query': query}).encode(),
+    headers={'Authorization': api_key, 'Content-Type': 'application/json'},
+    method='POST'
+)
+try:
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        d = json.loads(resp.read().decode())
+        state_type = d.get('data', {}).get('issue', {}).get('state', {}).get('type', 'unknown')
+        print(state_type)
+except Exception:
+    print('unknown')
+" 2>>"$LOG_FILE" || echo "unknown")
+
+        if [ "$CURRENT_STATE" = "completed" ] || [ "$CURRENT_STATE" = "canceled" ]; then
+            log "  ${LINEAR_REF}: already in terminal state (${CURRENT_STATE}), skip absorption"
+            continue
+        fi
+
+        # Move to terminal state (reuse deadlock exit pattern)
+        # Use "canceled" state since no actual work was done (GitHub mirror already closed)
+        ABSORB_RESULT=$(ISSUE_UUID="$ISSUE_UUID" \
+            LINEAR_REF="$LINEAR_REF" \
+            TEAM_ID="$TEAM_ID" \
+            /opt/homebrew/bin/python3 -c "
+import json, urllib.request, os, sys, socket
+socket.setdefaulttimeout(15)
+api_key = os.environ['LINEAR_API_KEY']
+issue_uuid = os.environ['ISSUE_UUID']
+linear_ref = os.environ['LINEAR_REF']
+team_id = os.environ['TEAM_ID']
+
+def gql(query, variables=None):
+    payload = {'query': query}
+    if variables:
+        payload['variables'] = variables
+    req = urllib.request.Request(
+        'https://api.linear.app/graphql',
+        data=json.dumps(payload).encode(),
+        headers={'Authorization': api_key, 'Content-Type': 'application/json'},
+        method='POST'
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode())
+
+# 1. Query team states to find canceled state ID
+team_query = '''query(\$teamId: String!) {
+    team(id: \$teamId) {
+        states {
+            nodes { id name type }
+        }
+    }
+}'''
+team_data = gql(team_query, {'teamId': team_id})
+team_node = team_data.get('data', {}).get('team')
+if not team_node:
+    print(f'ERROR: team not found: {team_id}')
+    sys.exit(1)
+
+canceled_state_id = None
+for state in team_node.get('states', {}).get('nodes', []):
+    if state.get('type') == 'canceled':
+        canceled_state_id = state['id']
+        break
+
+if not canceled_state_id:
+    print(f'ERROR: no canceled state found for team {team_id}')
+    sys.exit(1)
+
+# 2. Move issue to canceled state
+move_mut = '''mutation (\$issueId: String!, \$stateId: String!) {
+    issueUpdate(id: \$issueId, input: { stateId: \$stateId }) {
+        success
+    }
+}'''
+move_result = gql(move_mut, {'issueId': issue_uuid, 'stateId': canceled_state_id})
+
+# Defensive null checks (fail-closed)
+data = move_result.get('data') if move_result else None
+if data is None:
+    errors = move_result.get('errors', []) if move_result else []
+    print(f'ERROR: GraphQL returned no data, errors: {errors}')
+    sys.exit(1)
+
+issue_update = data.get('issueUpdate')
+if issue_update is None:
+    errors = move_result.get('errors', [])
+    print(f'ERROR: issueUpdate returned null, GraphQL errors: {errors}')
+    sys.exit(1)
+
+if not issue_update.get('success'):
+    print('ERROR: issueUpdate.success is false')
+    sys.exit(1)
+
+# 3. Add evidence comment
+comment_body = f'''<!-- terminal-absorption {linear_ref} -->
+终态吸收：GitHub 镜像已关闭（由 droid 或其他路径完成），Linear issue 直接吸收至终态。
+- **INFRA ref**: {linear_ref}
+- **依据**: GitHub mirror closed (no open issue found)
+- **动作**: Linear state → canceled（terminal absorption）
+- **幂等**: 后续 tick 不再重复处理'''
+
+comment_mut = '''mutation (\$issueId: String!, \$body: String!) {
+    commentCreate(input: { issueId: \$issueId, body: \$body }) {
+        comment { id }
+    }
+}'''
+gql(comment_mut, {'issueId': issue_uuid, 'body': comment_body})
+
+print('OK')
+" 2>>"$LOG_FILE" || echo "FAIL")
+
+        if [ "$ABSORB_RESULT" = "OK" ]; then
+            log "  ${LINEAR_REF}: terminal absorption completed (GitHub mirror closed, moved to canceled)"
+        else
+            log "  ${LINEAR_REF}: terminal absorption failed (${ABSORB_RESULT}), will retry next tick"
+        fi
+
         continue
     fi
 
@@ -687,6 +823,9 @@ gql(comment_mut, {'issueId': issue_uuid, 'body': comment_body})
 
 print('OK')
 " 2>>"$LOG_FILE" || echo "FAIL")
+
+                    # Extract sessionId for logging (Issue #4 fix)
+                    SESSION_ID_FOR_LOG=$(python3 -c "import json; print(json.load(open('$STATUS_FILE')).get('sessionId', 'unknown'))" 2>/dev/null || echo "unknown")
 
                     if [ "$DEADLOCK_RESULT" = "OK" ]; then
                         log "  ${LINEAR_REF}: DEADLOCK EXIT executed — Linear pushed to completed (session=${SESSION_ID_FOR_LOG:-unknown}, exitCode=0, stale=${LINEAR_AGE_MIN}min)"

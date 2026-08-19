@@ -5,6 +5,8 @@ import os
 import shlex
 import subprocess
 import sys
+import time
+import uuid
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -19,13 +21,70 @@ if _SCRIPT_DIR not in sys.path:
 
 from evolution_adapters import TOOL_TO_CATEGORIES, sanitize_structured_field, sanitize_text
 from evolution_utils import (
+    _parse_issue_category,
     _parse_issue_fields,
     auto_close_resolved,
+    close_expired_notifications,
     dedup_intra_tick,
     load_history,
     reconcile_in_progress,
     validate_config,
 )
+
+# VAL-DRF-004: Tick budget constants
+# Based on baseline median from CI runs (before drift watch)
+TICK_DURATION_BUDGET = 120  # seconds (baseline median ~60-90s, allow 120s for drift watch overhead)
+API_CALL_BUDGET = 100  # max gh/Linear API calls per tick (baseline ~40-60 calls)
+
+
+class TickBudgetTracker:
+    """VAL-DRF-004: Track tick budget usage (duration and API calls).
+
+    Budget exhaustion: skip drift watch operations, log warning, don't fail tick.
+    """
+
+    def __init__(self) -> None:
+        self.start_time: float | None = None
+        self.api_calls: int = 0
+
+    @property
+    def elapsed_seconds(self) -> float:
+        """Get elapsed time in seconds since start."""
+        if self.start_time is None:
+            return 0.0
+        return float(time.time() - self.start_time)
+
+    def start(self) -> None:
+        """Start the tick timer."""
+        self.start_time = time.time()
+        self.api_calls = 0
+
+    def record_api_call(self) -> None:
+        """Record one API call."""
+        self.api_calls += 1
+
+    def is_duration_exceeded(self) -> bool:
+        """Check if duration budget is exceeded."""
+        if self.start_time is None:
+            return False
+        return self.elapsed_seconds > TICK_DURATION_BUDGET
+
+    def is_api_exceeded(self) -> bool:
+        """Check if API call budget is exceeded."""
+        return self.api_calls > API_CALL_BUDGET
+
+    def is_any_budget_exceeded(self) -> bool:
+        """Check if ANY budget is exceeded."""
+        return self.is_duration_exceeded() or self.is_api_exceeded()
+
+
+# Global tick tracker instance
+_tick_tracker = TickBudgetTracker()
+
+
+def get_tick_tracker() -> TickBudgetTracker:
+    """Get the global tick budget tracker."""
+    return _tick_tracker
 
 
 @dataclass
@@ -42,6 +101,29 @@ class Finding:
 # Infrastructure findings (daily_audit) should not enter the code repository's issue pipeline;
 # they belong to the infrastructure ops repo, not the code repository's issue board.
 ISSUE_EXCLUDED_CATEGORIES: set[str] = {"evolution_self_audit", "daily_audit"}
+
+# INFRA-396 / VAL-DUP-004: Categories never peeled as critical regressions.
+# Only daily_audit is truly barred from the code repo's issue pipeline.
+# evolution_self_audit DOES get issues (independent INFRA-198 quota pool), so its
+# critical regressions must bypass dedup to reach the reopen flow — excluding it
+# here would let a closed-in-window issue swallow them (the exact black hole
+# VAL-DUP-004 exists to prevent).
+PEEL_EXCLUDED_CATEGORIES: set[str] = {"daily_audit"}
+
+
+def _unique_tmp_path(final_path: Path) -> Path:
+    """Return a collision-free tmp path for atomic writes to final_path.
+
+    Fixed tmp names (e.g. heartbeat.json.tmp) race across concurrent writers:
+    writer A's os.replace() consumes the shared tmp file, then writer B's
+    os.replace() fails with FileNotFoundError. mkstemp+unlink also races at
+    thread level: after unlink the freed name can be re-issued to another
+    thread before the first writer recreates it, so both threads rename the
+    same file and the slower os.replace() raises FileNotFoundError (seen on
+    the self-hosted runner, tests/test_evolution_scanner.py). pid + uuid4
+    names are unique per call with no existence-dependent window.
+    """
+    return final_path.parent / f"{final_path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"
 
 
 def load_config(repo_root: Path) -> dict[str, Any]:
@@ -314,11 +396,18 @@ def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated")
                 try:
                     closed_at = datetime.fromisoformat(closed_at_str.replace("Z", "+00:00"))
                     if closed_at >= window_cutoff:
+                        i["_closed_in_window"] = True
                         all_issues.append(i)
                 except (ValueError, TypeError):
                     # If closedAt parsing fails, exclude the issue (fail-safe)
                     pass
-        return [{"rule_id": rid, "location": loc, "number": i["number"]}
+        # INFRA-396: tag issue state so downstream guards can distinguish
+        # genuinely OPEN issues from closed-in-window dedup entries.
+        # INFRA-403: pass through body/category so the reverse drift watch can
+        # classify orphans without re-fetching (incremental requirement).
+        return [{"rule_id": rid, "location": loc, "number": i["number"],
+                 "state": "closed" if i.get("_closed_in_window") else "open",
+                 "body": i.get("body", ""), "category": _parse_issue_category(i.get("body", ""))}
                 for i in all_issues
                 for rid, loc in [_parse_issue_fields(i.get("body", ""))]
                 if rid is not None and loc is not None]
@@ -329,6 +418,44 @@ def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated")
 def deduplicate(findings: list[Finding], open_issues: list[dict[str, Any]]) -> list[Finding]:
     issue_keys = {(i["rule_id"], i["location"]) for i in open_issues}
     return [f for f in findings if (f.rule_id, f.location) not in issue_keys]
+
+
+def _peel_critical_regressions(
+    findings: list[Finding], resolved_keys: set[tuple[str, str]]
+) -> tuple[list[Finding], list[Finding]]:
+    """VAL-DUP-004: Peel critical regression findings before dedup.
+
+    Separate findings into two groups:
+    1. peeled: critical severity + key in resolved_keys (regression findings)
+       + category NOT in PEEL_EXCLUDED_CATEGORIES (INFRA-396: only daily_audit;
+       evolution_self_audit HAS its own INFRA-198 quota pool and must be peeled)
+    2. remaining: everything else (will go through normal dedup)
+
+    This prevents critical regressions from being swallowed by deduplicate()
+    when they match closed issues within the 7-day window.
+
+    Args:
+        findings: list of findings to partition
+        resolved_keys: set of (rule_id, location) tuples for previously resolved findings
+
+    Returns:
+        tuple of (peeled, remaining) finding lists
+    """
+    peeled = [
+        f for f in findings
+        if f.severity == "critical"
+        and (f.rule_id, f.location) in resolved_keys
+        and f.category not in PEEL_EXCLUDED_CATEGORIES
+    ]
+    remaining = [
+        f for f in findings
+        if not (
+            f.severity == "critical"
+            and (f.rule_id, f.location) in resolved_keys
+            and f.category not in PEEL_EXCLUDED_CATEGORIES
+        )
+    ]
+    return peeled, remaining
 
 
 def detect_regressions(findings: list[Finding], history_path: Path) -> list[Finding]:
@@ -445,7 +572,7 @@ def _reopen_closed_issue(rule_id: str, location: str, dedup_label: str, history_
 
     # Write updated history back to file
     try:
-        tmp_path = history_path.with_suffix(".tmp")
+        tmp_path = _unique_tmp_path(history_path)
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.flush()
@@ -461,7 +588,9 @@ def _reopen_closed_issue(rule_id: str, location: str, dedup_label: str, history_
 
 def _process_findings_with_reopen(
     findings: list[Finding], quota: int, resolved_keys: set[tuple[str, str]],
-    dedup_label: str, history_path: Path,
+    dedup_label: str, history_path: Path, open_issues: list[dict[str, Any]] | None = None,
+    issued_keys: set[tuple[str, str]] | None = None,
+    suppressed_reopen_keys: set[tuple[str, str]] | None = None,
 ) -> int:
     """Process findings: try reopen for resolved regressions, else create new issue.
 
@@ -469,26 +598,75 @@ def _process_findings_with_reopen(
     Only reopen limit (3 times) is suppressed (must log).
     Never silently continue on failure.
 
+    VAL-DUP-004 FIX: Before creating a new issue in the fallback path, check if
+    an OPEN issue with the same (rule_id, location) key already exists in open_issues.
+    If so, skip create to prevent duplicate issue creation loops.
+
+    INFRA-396 FIX: the guard only counts issues whose state is genuinely "open".
+    open_issues also contains closed-in-window dedup entries (state="closed",
+    see get_open_issues); treating those as "already open" silently swallowed
+    the fallback create after a failed reopen — the exact regression VAL-DUP-003
+    guards against.
+
+    INFRA-410 FIX: optional out-params record per-finding outcomes so the forward
+    drift watch classifies from real creation-path results instead of the stale
+    pre-creation open_issues snapshot:
+    - issued_keys: findings that received an issue this tick (create or reopen)
+    - suppressed_reopen_keys: findings suppressed by the reopen limit (churn guard)
+
+    Args:
+        findings: List of findings to process
+        quota: Maximum number of issues to create
+        resolved_keys: Set of (rule_id, location) tuples that were previously resolved
+        dedup_label: Label for deduplication
+        history_path: Path to history JSON file
+        open_issues: List of currently open issues (optional, for duplicate guard)
+        issued_keys: Optional out-set collecting keys that received an issue this tick
+        suppressed_reopen_keys: Optional out-set collecting keys suppressed by the reopen limit
+
     Returns the count of issues created (reopened and suppressed issues are not counted).
     """
     created = 0
+    # Build a set of open issue keys for fast lookup
+    # INFRA-396: only issues verified as OPEN block the fallback create;
+    # closed-in-window entries exist in this list for dedup purposes only.
+    open_issue_keys = set()
+    if open_issues:
+        for issue in open_issues:
+            if isinstance(issue, dict) and "rule_id" in issue and "location" in issue:
+                if issue.get("state", "open") == "open":
+                    open_issue_keys.add((issue["rule_id"], issue["location"]))
+
     for f in findings[:quota]:
         if f.severity == "critical" and (f.rule_id, f.location) in resolved_keys:
             if _reopen_closed_issue(f.rule_id, f.location, dedup_label, history_path):
+                if issued_keys is not None:
+                    issued_keys.add((f.rule_id, f.location))
                 continue
             # Reopen failed. Check if limit reached (suppress) or genuine failure (fallback to create).
             if _reopen_limit_reached(f.rule_id, f.location, history_path):
                 print(f"[evolution] Reopen limit reached (3 times) for {f.rule_id} @ {f.location}, "
                       f"suppressing to avoid churn loop")
+                if suppressed_reopen_keys is not None:
+                    suppressed_reopen_keys.add((f.rule_id, f.location))
+                continue
+            # VAL-DUP-004 FIX: Check if an OPEN issue already exists before creating
+            if (f.rule_id, f.location) in open_issue_keys:
+                print(f"[evolution] Open issue already exists for {f.rule_id} @ {f.location}, "
+                      f"skipping duplicate create")
                 continue
             # Genuine failure → fallback to create new issue
             print(f"[evolution] Reopen failed for {f.rule_id} @ {f.location}, "
                   f"falling back to create new issue")
             if create_issue(f, dedup_label):
                 created += 1
+                if issued_keys is not None:
+                    issued_keys.add((f.rule_id, f.location))
             continue
         if create_issue(f, dedup_label):
             created += 1
+            if issued_keys is not None:
+                issued_keys.add((f.rule_id, f.location))
     return created
 
 
@@ -553,7 +731,7 @@ def update_history(history_path: Path, findings: list[Finding], issues_created: 
         snapshot["tool_status"] = tool_status
     data["snapshots"].append(snapshot)
     data["snapshots"] = data["snapshots"][-snapshot_limit:]
-    tmp_path = history_path.with_suffix(".tmp")
+    tmp_path = _unique_tmp_path(history_path)
     with open(tmp_path, "w") as f:
         json.dump(data, f, indent=2)
         f.flush()
@@ -577,7 +755,7 @@ def write_heartbeat(repo_root: Path, issues_created: int, findings_count: int) -
         "findings_count": findings_count,
     }
     heartbeat_path = repo_root / ".evolution" / "heartbeat.json"
-    tmp_path = heartbeat_path.with_suffix(".tmp")
+    tmp_path = _unique_tmp_path(heartbeat_path)
     with open(tmp_path, "w") as f:
         json.dump(heartbeat, f, indent=2)
         f.flush()
@@ -719,13 +897,193 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
         print(f"[evolution] Warning: check_isolation failed: {e}")
 
 
+def _compute_quota_deferred_keys(
+    deduped: list[Finding],
+    critical_regressions: list[Finding],
+    config: dict[str, Any],
+    gh_failed: bool,
+) -> set[tuple[str, str]]:
+    """INFRA-410: 按真实池语义计算被配额 defer 的 finding keys。
+
+    与创建路径完全同源（main() 的池划分 + sort_by_severity 排序 + [:quota] 切片）：
+    1. critical_regressions 独立切片（max_issues_per_tick，bypass dedup）
+    2. regular 池：多类别共享 max_issues_per_tick
+    3. self_audit 池：max_self_audit_issues_per_tick
+    4. code_hygiene 池：max_code_hygiene_issues_per_tick
+    溢出的是 severity 排序后切片的尾部，而非"某类别计数超限"。
+
+    Args:
+        deduped: Post-dedup findings list (from deduplicate(), severity-sorted)
+        critical_regressions: Peeled critical regressions (bypass dedup)
+        config: Scanner config dict with quota keys
+        gh_failed: True if GitHub API was unavailable (skip — no deferrals happened)
+
+    Returns:
+        Set of (rule_id, location) keys deferred by quota this tick.
+    """
+    if gh_failed or (not deduped and not critical_regressions):
+        return set()
+
+    deferred: set[tuple[str, str]] = set()
+
+    # Pool 0: critical regressions slice (same slice main() processes first)
+    critical_quota = config.get("max_issues_per_tick")
+    if critical_regressions and isinstance(critical_quota, int) and critical_quota >= 0:
+        deferred.update(
+            (f.rule_id, f.location) for f in critical_regressions[critical_quota:]
+        )
+
+    # Pools from deduped (same partition as main())
+    code_hygiene = [f for f in deduped if f.category == "code_hygiene"]
+    regular = [f for f in deduped
+               if f.category not in ISSUE_EXCLUDED_CATEGORIES
+               and f.category != "code_hygiene"]
+    self_audit = [f for f in deduped if f.category == "evolution_self_audit"]
+
+    # NOTE: main() sorts BEFORE partitioning; slicing a re-sorted copy is
+    # order-identical to slicing the partition itself (stable sort).
+    severity_order = config.get("severity_order", ["critical", "warning", "info"])
+    for pool, quota_key in (
+        (regular, "max_issues_per_tick"),
+        (self_audit, "max_self_audit_issues_per_tick"),
+        (code_hygiene, "max_code_hygiene_issues_per_tick"),
+    ):
+        quota = config.get(quota_key)
+        if pool and isinstance(quota, int) and quota >= 0:
+            sorted_pool = sort_by_severity(pool, severity_order)
+            deferred.update(
+                (f.rule_id, f.location) for f in sorted_pool[quota:]
+            )
+
+    return deferred
+
+
+def _integrate_forward_drift_watch(
+    deduped: list[Finding],
+    open_issues: list[dict[str, Any]],
+    suppressed_keys: set[tuple[str, str]],
+    issue_excluded_categories: set[str],
+    quota_exhausted: dict[str, bool] | None = None,
+    issued_keys: set[tuple[str, str]] | None = None,
+    quota_deferred_keys: set[tuple[str, str]] | None = None,
+    suppressed_reopen_keys: set[tuple[str, str]] | None = None,
+) -> None:
+    """VAL-DRF-001: Integrate forward drift watch into scanner flow.
+
+    Called after all processing to provide a complete status report on
+    finding coverage (issue exists, suppressed, closed-in-window, quota-pending, or ghost).
+
+    D2 空壳实化: closed_window_keys derives from state='closed' entries in open_issues
+    (INFRA-396: get_open_issues returns closed-in-window issues with state='closed').
+    open_issue_keys only includes state='open' entries (real open issues).
+
+    INFRA-410 修复: 分类使用创建路径的真实输入，消除三类误判：
+    - issued_keys: 本 tick 实际获得 issue（create/reopen）的 finding keys。
+      open_issues 快照抓取于 issue 创建之前，不含这些条目——不补则误判 GHOST。
+    - quota_deferred_keys: 按真实池语义（排序后 [:quota] 切片尾部溢出）被 defer
+      的 finding keys。类别计数比对在多类别共享 regular 池时会漏标（6+6>10 而各 ≤10）。
+    - suppressed_reopen_keys: reopen 上限抑制的 finding keys（防 churn 的合法抑制）。
+      归入 SUPPRESSED，不再误判 GHOST。
+
+    Args:
+        deduped: List of Finding objects for drift classification (pre-dedup from main).
+        open_issues: List of open issue dicts from GitHub (includes state='closed' entries
+            for closed-in-window dedup per INFRA-396)
+        suppressed_keys: Set of (rule_id, location) keys that were suppressed
+        issue_excluded_categories: Categories that are not actionable
+        quota_exhausted: Pre-computed dict of {category: True} (kept for
+            backward compatibility with existing callers/tests)
+        issued_keys: Keys that received an issue this tick (INFRA-410)
+        quota_deferred_keys: Keys deferred by real pool-quota semantics (INFRA-410)
+        suppressed_reopen_keys: Keys suppressed by the reopen limit (INFRA-410)
+    """
+    from evolution_utils import forward_drift_watch
+
+    # D2 fix: Separate open_issue_keys (state='open') from closed_window_keys (state='closed').
+    # get_open_issues() returns both: genuinely open issues (state='open') and closed-in-window
+    # dedup entries (state='closed', see INFRA-396 get_open_issues return dict).
+    # ISSUE_EXISTS check must only use genuinely open issues; CLOSED_IN_WINDOW uses closed entries.
+    open_issue_keys: set[tuple[str, str]] = {
+        (i["rule_id"], i["location"])
+        for i in open_issues
+        if i.get("rule_id") is not None
+        and i.get("location") is not None
+        and i.get("state", "open") == "open"
+    }
+
+    # D2 fix: closed_window_keys from state='closed' entries (closed-in-window dedup).
+    closed_window_keys: set[tuple[str, str]] = {
+        (i["rule_id"], i["location"])
+        for i in open_issues
+        if i.get("rule_id") is not None
+        and i.get("location") is not None
+        and i.get("state") == "closed"
+    }
+
+    # INFRA-410: issues created/reopened this tick — the open_issues snapshot was
+    # fetched BEFORE creation, so merge real creation-path results to prevent
+    # same-tick findings from being falsely classified as GHOST.
+    if issued_keys:
+        open_issue_keys |= issued_keys
+
+    # INFRA-410: reopen-limit suppression is a legitimate recorded reason (churn
+    # guard, same family as suppress.json) — merge into suppressed_keys.
+    if suppressed_reopen_keys:
+        suppressed_keys = suppressed_keys | suppressed_reopen_keys
+
+    # Call forward_drift_watch
+    # INFRA-410: quota_deferred_keys (per-finding pool semantics) takes precedence
+    # over the coarse quota_exhausted category approximation when provided.
+    drift_records = forward_drift_watch(
+        findings=deduped,
+        open_issue_keys=open_issue_keys,
+        suppressed_keys=suppressed_keys,
+        closed_window_keys=closed_window_keys,
+        quota_exhausted=quota_exhausted or {},
+        issue_excluded_categories=issue_excluded_categories,
+        quota_deferred_keys=quota_deferred_keys,
+    )
+
+    # Log summary
+    if drift_records:
+        # Count records by status (all 5 categories, even if 0)
+        status_counts = {
+            "ISSUE_EXISTS": 0,
+            "CLOSED_IN_WINDOW": 0,
+            "SUPPRESSED": 0,
+            "QUOTA_PENDING": 0,
+            "GHOST": 0,
+        }
+        for record in drift_records:
+            if record.status in status_counts:
+                status_counts[record.status] += 1
+
+        # Print summary line with all 5 categories
+        summary = " ".join(f"{k}={v}" for k, v in status_counts.items())
+        print(f"[evolution] Forward drift watch: {summary}")
+
+        # Log ghost details if any
+        ghost_count = status_counts.get("GHOST", 0)
+        if ghost_count > 0:
+            print(f"[evolution] Forward drift watch: {ghost_count} GHOST findings detected (no issue, no reason)")
+            for record in drift_records:
+                if record.status == "GHOST":
+                    print(f"  - {record.finding_key[0]} at {record.finding_key[1]}: {record.reason}")
+
+
 def main() -> None:
     repo_root = Path(__file__).parent.parent
     if check_kill_switch(repo_root):
         sys.exit(0)
+
+    # VAL-DRF-004: Start tick budget tracker
+    tracker = get_tick_tracker()
+    tracker.start()
+
     config = load_config(repo_root)
     validate_config(config)
     ensure_labels(config["dedup_label"], config["failure_label"])
+    tracker.record_api_call()  # ensure_labels makes gh calls
 
     history_path = repo_root / ".evolution" / "findings_over_time.json"
     # Track tool failures to prevent false "resolved" cascade
@@ -749,7 +1107,11 @@ def main() -> None:
     # Load and apply suppression list (P2-2: prevent amplification loop)
     suppressions = load_suppressions(repo_root)
     before_suppression = len(all_findings)
+    # Track suppressed findings for forward drift watch (VAL-DRF-001)
+    pre_suppression_keys = {(f.rule_id, f.location) for f in all_findings}
     all_findings = apply_suppressions(all_findings, suppressions)
+    post_suppression_keys = {(f.rule_id, f.location) for f in all_findings}
+    suppressed_keys = pre_suppression_keys - post_suppression_keys
     suppressed_count = before_suppression - len(all_findings)
     if suppressed_count > 0:
         print(f"[evolution] Suppressed {suppressed_count} findings by suppress.json")
@@ -761,11 +1123,31 @@ def main() -> None:
         for r in _hist_data.get("resolved_findings", []):
             if isinstance(r, dict):
                 _resolved_keys.add((r.get("rule_id", ""), r.get("location", "")))
+
+    # VAL-DUP-004: Peel critical regressions before dedup to prevent black hole effect
+    # Critical regressions must bypass dedup to reach _process_findings_with_reopen
+    critical_regressions, remaining_findings = _peel_critical_regressions(findings, _resolved_keys)
+
     deduped = []
     gh_failed = False
+    open_issues = []
+    # INFRA-410: real creation-path outcomes for forward drift watch classification
+    issued_keys: set[tuple[str, str]] = set()
+    suppressed_reopen_keys: set[tuple[str, str]] = set()
     try:
         open_issues = get_open_issues(config["dedup_label"], config["failure_label"])
-        deduped = sort_by_severity(deduplicate(findings, open_issues), config["severity_order"])
+
+        # VAL-DUP-004: Process critical regressions first (bypass dedup)
+        issues_created = 0
+        if critical_regressions:
+            issues_created += _process_findings_with_reopen(
+                critical_regressions, config["max_issues_per_tick"], _resolved_keys,
+                config["dedup_label"], history_path, open_issues,
+                issued_keys=issued_keys, suppressed_reopen_keys=suppressed_reopen_keys,
+            )
+
+        # Then deduplicate and process remaining findings
+        deduped = sort_by_severity(deduplicate(remaining_findings, open_issues), config["severity_order"])
         # INFRA-198: independent quotas so critical findings don't starve self_audit
         # INFRA-265: exclude daily_audit from issue creation (infrastructure findings)
         # INFRA-third-quota-pool: code_hygiene gets independent third pool
@@ -776,17 +1158,22 @@ def main() -> None:
         self_audit = [f for f in deduped if f.category == "evolution_self_audit"]
         # VAL-REOPEN: For regression findings (upgraded to critical by detect_regressions),
         # try to reopen a matching closed issue before creating a new one.
-        issues_created = _process_findings_with_reopen(
+        # INFRA-396: open_issues passed to every pool so the fallback-create guard
+        # cannot be bypassed by pool routing.
+        issues_created += _process_findings_with_reopen(
             regular, config["max_issues_per_tick"], _resolved_keys,
-            config["dedup_label"], history_path,
+            config["dedup_label"], history_path, open_issues,
+            issued_keys=issued_keys, suppressed_reopen_keys=suppressed_reopen_keys,
         )
         issues_created += _process_findings_with_reopen(
             self_audit, config["max_self_audit_issues_per_tick"], _resolved_keys,
-            config["dedup_label"], history_path,
+            config["dedup_label"], history_path, open_issues,
+            issued_keys=issued_keys, suppressed_reopen_keys=suppressed_reopen_keys,
         )
         issues_created += _process_findings_with_reopen(
             code_hygiene, config["max_code_hygiene_issues_per_tick"], _resolved_keys,
-            config["dedup_label"], history_path,
+            config["dedup_label"], history_path, open_issues,
+            issued_keys=issued_keys, suppressed_reopen_keys=suppressed_reopen_keys,
         )
     except RuntimeError as e:
         print(f"[evolution] Warning: {e}")
@@ -822,9 +1209,51 @@ def main() -> None:
     # GAP-G: auto_close runs AFTER P1-2/P2-A hard exits so failed ticks don't close issues.
     auto_close_resolved(all_findings, config["dedup_label"], failed_categories, history_path)
 
+    # VAL-DRF-002/003: Reverse drift watch - classify and remediate orphan issues
+    # D1: For open issues not in current findings, classify based on evidence and take action
+    # INFRA-403: failed_categories passed so GAP-C1 protection mirrors auto_close_resolved
+    # P1 Safety Guards: self-audit exemption, failed categories skip, partial output fail-closed
+    try:
+        from evolution_utils import reverse_drift_watch
+        # Reuse already-fetched open_issues from earlier in main() (incremental)
+        reverse_drift_watch(all_findings, open_issues, history_path, failed_categories)
+    except Exception as e:
+        print(f"[evolution] Warning: reverse_drift_watch failed: {e}", file=sys.stderr)
+
     # GAP-E: Reconciliation - check for stuck issues (advisory only)
     reconcile_in_progress(config["dedup_label"])
 
+    # VAL-DRF-001: Forward drift watch - integrate into scanner flow
+    # This runs after all processing to provide a complete status report
+    # D2 修复: 传入 all_findings（去重前）用于分类判定（ISSUE_EXISTS / CLOSED_IN_WINDOW 需要看到所有 finding）
+    # INFRA-410 修复: 分类输入全部来自创建路径真实结果：
+    # - issued_keys: 本 tick 实际 create/reopen 的 finding（快照不含 → 补入 ISSUE_EXISTS）
+    # - quota_deferred_keys: 真实池语义（排序切片尾部）的配额 defer（类别计数近似会漏标）
+    # - suppressed_reopen_keys: reopen 上限抑制（合法归宿 SUPPRESSED）
+
+    # INFRA-410: 按真实池语义计算配额 defer（critical 切片 + regular/self_audit/code_hygiene 三池）
+    quota_deferred_keys = _compute_quota_deferred_keys(
+        deduped, critical_regressions, config, gh_failed,
+    )
+
+    _integrate_forward_drift_watch(
+        deduped=all_findings,
+        open_issues=open_issues,
+        suppressed_keys=suppressed_keys,
+        issue_excluded_categories=ISSUE_EXCLUDED_CATEGORIES,
+        quota_exhausted=None,
+        issued_keys=issued_keys,
+        quota_deferred_keys=quota_deferred_keys,
+        suppressed_reopen_keys=suppressed_reopen_keys,
+    )
+
+    # VAL-NTF-002: Close notification issues that exceeded TTL
+    try:
+        closed_count = close_expired_notifications()
+        if closed_count > 0:
+            print(f"[evolution] Closed {closed_count} expired notification issues")
+    except Exception as e:
+        print(f"[evolution] Warning: close_expired_notifications failed: {e}")
 
 if __name__ == "__main__":
     main()

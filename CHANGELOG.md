@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.35.0](https://github.com/hdot123-org/memory/compare/v0.34.0...v0.35.0) (2026-08-19)
+
+
+### Features
+
+* **ci:** watchdog 新增 CI 失败自动取消进行中的 droid-review ([#811](https://github.com/hdot123-org/memory/issues/811)) ([f008c7a](https://github.com/hdot123-org/memory/commit/f008c7aabf518be435d1bc08b091fe4255ee52d3))
+* D3 tick 预算守卫（VAL-DRF-004） ([#784](https://github.com/hdot123-org/memory/issues/784)) ([b839b70](https://github.com/hdot123-org/memory/commit/b839b7089fa7650ae02510caa67f710b2c04ec4a))
+* **evolution:** D1 反向漂移守望——孤儿 issue 分类与自动补救 ([#780](https://github.com/hdot123-org/memory/issues/780)) ([054cf34](https://github.com/hdot123-org/memory/commit/054cf3483cb09164a72b5d8b8ddd0a8b239afffa))
+* 死锁出口信任链改用 Linear 评论 + GATE A 4.5/4.7 裁决落地 ([#794](https://github.com/hdot123-org/memory/issues/794)) ([680f14b](https://github.com/hdot123-org/memory/commit/680f14bea9a169f56a9d6ed4bd18c0e2e9b63cd5))
+
+
+### Bug Fixes
+
+* **branch-cleanup:** 通知守卫——deleted_count=0 不建单（VAL-NTF-001） ([#816](https://github.com/hdot123-org/memory/issues/816)) ([d56f3c8](https://github.com/hdot123-org/memory/commit/d56f3c8c1880f7149dc538818eff6f03314abafd))
+* coverage gap finder 兼容 editable install 的 XML 路径，CI 复用门禁 pytest 产物 ([#825](https://github.com/hdot123-org/memory/issues/825)) ([4749f1b](https://github.com/hdot123-org/memory/commit/4749f1b4263e6cd2548be693e15164fd33f0581e))
+* **evolution:** 反向漂移守望生产级修复——孤儿分类从 no-op 变为可用并补齐防护门禁 (INFRA-403) ([#819](https://github.com/hdot123-org/memory/issues/819)) ([b2756da](https://github.com/hdot123-org/memory/commit/b2756da85269b87705967885015950d15743a413))
+* **evolution:** 正向漂移守望改用真实输入与配额分类（INFRA-410） ([#826](https://github.com/hdot123-org/memory/issues/826)) ([d0718c9](https://github.com/hdot123-org/memory/commit/d0718c92daf655804a0ef359c6d35565a43b548a))
+* **gate:** PR 引用检查支持逗号列表+None body 防御+test_dup_004 突变敏感化 ([#807](https://github.com/hdot123-org/memory/issues/807)) ([debc617](https://github.com/hdot123-org/memory/commit/debc617b489082a5ba38282795031ee7fcf8bbe1))
+* PR 引用正则扩展支持全部 9 种 GitHub closing keyword 变体 ([#803](https://github.com/hdot123-org/memory/issues/803)) ([94e6175](https://github.com/hdot123-org/memory/commit/94e6175537e526c59d9c7bd6deffbc1ff8ea7aee))
+* repo health check 突变用例夹具化，消除 xdist 并行竞态 ([#809](https://github.com/hdot123-org/memory/issues/809)) ([62ac3af](https://github.com/hdot123-org/memory/commit/62ac3af82cc148abb12dec6f53ccfffbbe242ce1))
+* **scanner:** VAL-DUP-004 critical 回归先于去重丢弃修复 ([#799](https://github.com/hdot123-org/memory/issues/799)) ([fbbe083](https://github.com/hdot123-org/memory/commit/fbbe08390ebdf6919bf51aef85fd8ed47b6a52e0))
+* **scanner:** 修复 critical 回归被 dedup 残留吞没的两条路径 (INFRA-396) ([#804](https://github.com/hdot123-org/memory/issues/804)) ([c875e39](https://github.com/hdot123-org/memory/commit/c875e395729d86cac16ed3a64f6be3df40cae2e0))
+* 为反向漂移守望添加三重安全防护（PR [#780](https://github.com/hdot123-org/memory/issues/780) droid-review P1 修复） ([#817](https://github.com/hdot123-org/memory/issues/817)) ([ddf17e0](https://github.com/hdot123-org/memory/commit/ddf17e0d872301d20f3af4f96f2e1a5c6f6ddf22))
+* 修正夹具映射测试断言 4/7 错误 ([#800](https://github.com/hdot123-org/memory/issues/800)) ([0b26c26](https://github.com/hdot123-org/memory/commit/0b26c26547b0a43bcceab3baa5ebdef2a5166edd))
+* 退休被取代分支，补齐 PR 引用检查逗号列表与 None body 回归测试 (INFRA-401) ([#814](https://github.com/hdot123-org/memory/issues/814)) ([5a6d057](https://github.com/hdot123-org/memory/commit/5a6d05715b6390d866fb6a4a45a1dab07d4fcc0a))
+
+## [0.34.0](https://github.com/hdot123-org/memory/compare/v0.33.1...v0.34.0) (2026-08-18)
+
+
+### Features
+
+* **notifications:** 通知 issue TTL 自动关闭 (VAL-NTF-002) ([#786](https://github.com/hdot123-org/memory/issues/786)) ([8f08be2](https://github.com/hdot123-org/memory/commit/8f08be2bdc24035af797b5f0f41f2d9121e3834e))
+* 实现 D2 正向漂移守望（VAL-DRF-001） ([#783](https://github.com/hdot123-org/memory/issues/783)) ([af06493](https://github.com/hdot123-org/memory/commit/af0649302b7c8f7192643ef7d3b25579e4c11194))
+* 添加 PR 引用一致性检查器 (C1) ([#765](https://github.com/hdot123-org/memory/issues/765)) ([a91bf9f](https://github.com/hdot123-org/memory/commit/a91bf9fd44d53b24bb52a551e6968f8c75fabf18))
+* 添加通知 Linear 隔离测试 (VAL-NTF-003/004/005) ([#792](https://github.com/hdot123-org/memory/issues/792)) ([5beffeb](https://github.com/hdot123-org/memory/commit/5beffeb2ff9884d9c916de8693925829b9c0e082))
+
+
+### Bug Fixes
+
+* **branch-cleanup:** squash 合并分支误保护修复——内容包含检查 (INFRA-383) ([#779](https://github.com/hdot123-org/memory/issues/779)) ([2e97ed8](https://github.com/hdot123-org/memory/commit/2e97ed8230532216d20a8339a25cacfe2094f672))
+* **branch-cleanup:** 分支退役清单——被等价实现取代的孤儿分支可审计清理 (INFRA-388) ([#788](https://github.com/hdot123-org/memory/issues/788)) ([6565ac6](https://github.com/hdot123-org/memory/commit/6565ac696a132c84acb063b8a84e77d07e5d4437))
+* **branch-cleanup:** 跟踪 issue 去重——单一 tracking issue 取代每次运行新建 (INFRA-385) ([#782](https://github.com/hdot123-org/memory/issues/782)) ([66d0c2c](https://github.com/hdot123-org/memory/commit/66d0c2c52008e5166d66085f989e48a48b9124cf))
+* **branch-cleanup:** 退役 feat/pr-ref-gate-ci-wiring——job 级接线已被 step 级实现取代 (INFRA-391) ([#795](https://github.com/hdot123-org/memory/issues/795)) ([1c14acf](https://github.com/hdot123-org/memory/commit/1c14acf322ca67bff65bab6e6c1cbc58d753896e))
+* **evolution:** 漂移守望日志显式化 + 终态吸收卫生优化 ([#798](https://github.com/hdot123-org/memory/issues/798)) ([e65ea7c](https://github.com/hdot123-org/memory/commit/e65ea7cc1548e1b5c9974c68c1645a5c133761e3))
+* **test:** 修复 load_key mock 泄漏导致 test_resign_no_key_fails 随机顺序依赖 ([#796](https://github.com/hdot123-org/memory/issues/796)) ([8edc3df](https://github.com/hdot123-org/memory/commit/8edc3df098c615fba632b834c603a9b9a5ae3b10))
+* **webhook:** status=failed 死锁出口——复用 stale-orphan counter 阻断无限 retrigger (INFRA-371) ([#763](https://github.com/hdot123-org/memory/issues/763)) ([7ba13b3](https://github.com/hdot123-org/memory/commit/7ba13b343272be83917f67d1212e00deae39f0c2))
+
+
+### Documentation
+
+* **agents:** mission 异步合并纪律——会话退出合并关键路径 ([#766](https://github.com/hdot123-org/memory/issues/766)) ([01012c7](https://github.com/hdot123-org/memory/commit/01012c7a59e50baac0823df02af60fbfbe768ae2))
+* **issue-flow:** 补记通知 Issue TTL 自愈机制（VAL-NTF-002/INFRA-389） ([#789](https://github.com/hdot123-org/memory/issues/789)) ([43ee403](https://github.com/hdot123-org/memory/commit/43ee403f10c0dbce80379b11acdd1c3bf4d67a88))
+* **plans:** GitHub API 503 自动重试技术债登记（TD-503-01/02/03） ([#770](https://github.com/hdot123-org/memory/issues/770)) ([96e083a](https://github.com/hdot123-org/memory/commit/96e083ace7115228366eb36653e260223144b31b))
+* **plans:** TD-503-01 状态闭环——watchdog 已由 PR [#777](https://github.com/hdot123-org/memory/issues/777) 交付（INFRA-386） ([#785](https://github.com/hdot123-org/memory/issues/785)) ([81bf230](https://github.com/hdot123-org/memory/commit/81bf23009c19239f3ad7c22afbd3aead8f0fff87))
+
 ## [0.33.1](https://github.com/hdot123/memory/compare/v0.33.0...v0.33.1) (2026-08-17)
 
 

@@ -16,18 +16,35 @@ on:
   pull_request:
     branches: [main]
 
+# 同一 PR 的新 push 取消仍在跑的旧 CI run（消除 runner 堆叠与排队），
+# main 分支不取消（保证发布链路 CI 完整跑完，不被 push 竞态截断）
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # 重计算 job 走自建 runner（ce-01, 8C/19G）：测试全量跑 + 缓存复用，速度与额度双收益
+    runs-on: [self-hosted, pve-linux]
     strategy:
       matrix:
         python-version: ["3.12"]
+    env:
+      PIP_BREAK_SYSTEM_PACKAGES: 1
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
+          fetch-depth: 1  # 浅克隆，加速 checkout（自建 runner 走代理隧道，全量历史拉取慢）
+      # 自建 runner：扩展 PATH 包含 ~/.local/bin（pip 安装 console scripts 的位置）
+      - name: Extend PATH for self-hosted runner
+        run: echo "/home/runner/.local/bin" >> "$GITHUB_PATH"
+      # 自建 runner：系统已预装 Python 3.12 + 全套工具链（pytest/ruff/mypy/shellcheck/actionlint），
+      # 直接用系统解释器。注意：不能保留 if 恒假的 setup-python 引用——runner 在 job 启动阶段
+      # 会预下载 workflow 引用的所有 action（不管 if 条件），慢网络下 tarball 下载超时直接杀死 job。
+      - name: Use system Python (self-hosted)
+        run: |
+          python3 --version
+          echo "/usr/bin" >> "$GITHUB_PATH"
       - name: Timestamp - build start
         run: |
           echo "Build started at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -35,7 +52,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
-          python -m pip install pytest pytest-cov pytest-rerunfailures
+          python -m pip install pytest pytest-cov pytest-rerunfailures pytest-xdist
       - name: Timestamp - after install
         run: |
           echo "Install completed at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -45,17 +62,27 @@ jobs:
           ruff check .
       - name: Install shellcheck and actionlint
         run: |
-          # 解压到 /tmp 避免覆盖仓库文件（actionlint tarball 含根级 README.md）
-          wget -q https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz
-          tar -xf shellcheck-v0.10.0.linux.x86_64.tar.xz -C /tmp
-          sudo mv /tmp/shellcheck-v0.10.0/shellcheck /usr/local/bin/
-          wget -q https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
-          tar -xzf actionlint_1.7.7_linux_amd64.tar.gz -C /tmp
-          sudo mv /tmp/actionlint /usr/local/bin/
+          # 优先用 PATH 里已存在的（自建 runner 已预装）；否则下载到 job 本地目录。
+          # 不用 sudo：自建 runner 刻意无 NOPASSWD，工具装进 workspace 即可。
+          if ! command -v shellcheck >/dev/null; then
+            wget -q https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz
+            tar -xf shellcheck-v0.10.0.linux.x86_64.tar.xz -C "$RUNNER_TEMP"
+            export PATH="$RUNNER_TEMP/shellcheck-v0.10.0:$PATH"
+            echo "$RUNNER_TEMP/shellcheck-v0.10.0" >> "$GITHUB_PATH"
+            rm -f shellcheck-v0.10.0.linux.x86_64.tar.xz
+          fi
+          if ! command -v actionlint >/dev/null; then
+            wget -q https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
+            tar -xzf actionlint_1.7.7_linux_amd64.tar.gz -C "$RUNNER_TEMP"
+            echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+            rm -f actionlint_1.7.7_linux_amd64.tar.gz
+          fi
+          shellcheck --version | head -2; actionlint --version | head -1
           rm -f shellcheck-v0.10.0.linux.x86_64.tar.xz actionlint_1.7.7_linux_amd64.tar.gz
       - name: Shell lint
         run: |
           find . -name '*.sh' -not -path './.venv/*' -not -path './.git/*' -not -path './node_modules/*' -print0 | xargs -0 shellcheck -x
+          # 自建 label（pve-linux）已通过 .github/actionlint.yaml 声明，无需过滤
           actionlint .github/workflows/*.yml
       - name: BOUNDARY pollution guard
         run: python scripts/check_boundary.py
@@ -66,8 +93,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/check_fix_has_test.py --pr ${{ github.event.pull_request.number }}
+      - name: PR reference consistency guard
+        # VAL-GATE-201/202/204：PR 引用的镜像 issue linkback INFRA 号
+        # 必须 ⊆ PR body 的 Fixes INFRA 集合；严格只读（仅 gh pr view / gh issue view）
+        # step 级 if 而非 job 级——push main 时跳过本 step，不影响 test job 聚合进 ci-ok
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/check_pr_ref_consistency.py ${{ github.event.pull_request.number }}
       - name: Run tests with coverage
-        run: python -m pytest -q tests --cov=memory_core --cov-report=xml
+        run: python -m pytest -q tests -n 6 --cov=memory_core --cov-report=xml
       - name: Timestamp - after tests
         run: |
           echo "Tests completed at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"

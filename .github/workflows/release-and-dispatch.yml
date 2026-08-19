@@ -137,7 +137,12 @@ jobs:
 
   upgrade-consumer:
     needs: release
-    runs-on: self-hosted
+    # 钉住 Mac 消费者 runner 的专属 label（memory-core-upgrade），禁止裸 self-hosted。
+    # 2026-08-18 org 迁移后 org 级新增 Linux runner（pve-runner-01），裸 self-hosted
+    # 会被 Linux 抢走，而本 job 硬编码 Mac 路径（/Users/busiji/memory、Homebrew Python），
+    # 在 Linux 上必然 cd 失败（v0.34.0 发版事故，INFRA-394）。
+    # 约定与 PR #797 一致：公开仓库不裸用 self-hosted，一律 label 显式点名。
+    runs-on: [self-hosted, memory-core-upgrade]
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     env:
       MEMORY_REPO_PATH: /Users/busiji/memory
