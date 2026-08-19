@@ -16,7 +16,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -79,7 +78,7 @@ class StubSessionsAPIHandler(BaseHTTPRequestHandler):
         """处理 POST 请求（注入）"""
         if "/api/v0/sessions/" in self.path and self.path.endswith("/messages"):
             content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
+            self.rfile.read(content_length)
 
             # 测试控制：通过 session_id 控制响应
             session_id = self.path.split("/")[-2]
@@ -324,9 +323,8 @@ class TestVAL_INJECT_004_4xx_No_Regression:
         assert fallback_lock.exists(), "Fallback dedup lock should be created for 4xx"
 
         # 验证：主锁文件被删除（4xx 路径特征）
-        fingerprint = f"{session_id}:{pr_number}".replace(":", "-")
-        main_lock = locks_dir / f"ci-complete-{fingerprint}.lock"
         # 注意：主锁文件可能仍存在（flock 机制），但 4xx 路径应该尝试删除
+        # （删除动作在脚本内完成，此处不再引用具体锁文件路径）
 
 
 class TestVAL_INJECT_005_200_No_Regression:
