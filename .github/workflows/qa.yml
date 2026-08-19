@@ -34,6 +34,14 @@ jobs:
 
   coverage-audit:
     name: Coverage Audit (target 80%)
+    # CI 容量工程（2026-08-19）：coverage-audit 是全量 pytest + 覆盖率统计的最重 job，
+    # PR 时段与 ci.yml test 串行跑两份全量 pytest 导致自建 runner（memory-runnerz 组，
+    # 仅 1 台 Linux runner）排队 ~7min。事件门：仅 schedule/workflow_dispatch 运行，
+    # PR 时段跳过、夜间全量保留——pve 每 PR 负载立减一半（7min→3.5min）。
+    # 扩容指针：第二台 Linux runner 属 PVE 侧 runbook 2026-08-18-pve-runner-sop，
+    # 不进本 mission。qa-ok 聚合已处理 skipped 状态（不误报失败）。
+    # 对齐 full-regression 的既有先例。
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     # pytest 全量 + 覆盖率统计是 CI 最重 job，切自建 runner（ce-01）
     runs-on: [self-hosted, pve-linux]
     env:
@@ -243,8 +251,9 @@ jobs:
           if [ "${{ needs.cli-e2e.result }}" != "success" ]; then
             echo "FAIL: cli-e2e did not succeed"; exit 1
           fi
-          if [ "${{ needs.coverage-audit.result }}" != "success" ]; then
-            echo "FAIL: coverage-audit did not succeed"; exit 1
+          # coverage-audit 被 schedule 事件门跳过时结果为 'skipped'，接受 success 或 skipped
+          if [ "${{ needs.coverage-audit.result }}" != "success" ] && [ "${{ needs.coverage-audit.result }}" != "skipped" ]; then
+            echo "FAIL: coverage-audit did not succeed or skip"; exit 1
           fi
           if [ "${{ needs.hook-lifecycle.result }}" != "success" ]; then
             echo "FAIL: hook-lifecycle did not succeed"; exit 1
