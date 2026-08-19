@@ -64,6 +64,7 @@ class TestPhaseAReconciliation:
 
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
+        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
@@ -83,6 +84,7 @@ class TestPhaseAReconciliation:
 
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
+        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
 
         subprocess.run(
             ["bash", str(watchdog_script)],
@@ -104,6 +106,7 @@ class TestPhaseAReconciliation:
 
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
+        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
 
         subprocess.run(
             ["bash", str(watchdog_script)],
@@ -129,6 +132,7 @@ class TestPhaseBReconciliation:
 
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
+        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
@@ -151,6 +155,7 @@ class TestPhaseBReconciliation:
 
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
+        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
 
         subprocess.run(
             ["bash", str(watchdog_script)],
@@ -170,6 +175,7 @@ class TestWatchdogIdempotency:
         """watchdog 应该能处理空的 locks 目录"""
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
+        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
@@ -188,6 +194,7 @@ class TestWatchdogIdempotency:
 
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
+        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
