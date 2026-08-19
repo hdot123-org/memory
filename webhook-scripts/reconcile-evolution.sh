@@ -15,7 +15,7 @@ WEBHOOK_BASE="${HOME}/.factory/webhook"
 LOG_DIR="${WEBHOOK_BASE}/logs"
 LOCK_DIR="${WEBHOOK_BASE}/locks"
 STATUS_DIR="${WEBHOOK_BASE}/status"
-REPO="hdot123/memory"
+REPO="hdot123-org/memory"
 TEAM_KEY="INFRA"
 
 # 死锁出口 stale 阈值（architecture §3.2）：

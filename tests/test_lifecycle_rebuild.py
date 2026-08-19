@@ -320,7 +320,7 @@ def test_rebuild_real_environment(tmp_path: Path) -> None:
         local_path="/Users/testuser/memory",
         project_id="memory-ea40a30ce4d8",
         project_name="memory",
-        git_remote="https://github.com/hdot123/memory.git",
+        git_remote="https://github.com/hdot123-org/memory.git",
     )
     _write_project_file(projects_dir, "memory-ea40a30ce4d8", mc_record)
 

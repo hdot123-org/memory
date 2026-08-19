@@ -30,7 +30,8 @@ REPOSITORIES_YML = FACTORY_HOME / "config" / "repositories.yml"
 
 # GAP-A (INFRA-174): Linear 同步失败检测配置
 # 被审计的 GitHub 仓库（evolution-found 标签所在仓库）
-REPO_NAME = os.environ.get("EVOLUTION_AUDIT_REPO", "hdot123/memory")
+# 2026-08-19 org 迁移：hdot123/memory → hdot123-org/memory
+REPO_NAME = os.environ.get("EVOLUTION_AUDIT_REPO", "hdot123-org/memory")
 # GitHub Issue 创建后超过此分钟数仍无 linear-linkback 视为同步失败
 GAP_A_AUDIT_THRESHOLD_MIN = 30
 
