@@ -13,7 +13,9 @@
 """
 import json
 import os
+import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -129,18 +131,30 @@ def stub_api_server():
 
 @pytest.fixture
 def temp_env(stub_api_server, tmp_path):
-    """创建测试环境变量"""
+    """创建测试环境变量
+
+    关键隔离：设置 WEBHOOK_BASE 为临时目录，确保测试不写生产路径
+    （~/.factory/webhook）。脚本的 LOG_DIR 从 WEBHOOK_BASE 派生（非环境变量），
+    因此必须设置 WEBHOOK_BASE 而非单独的 LOG_DIR。
+    """
     env = os.environ.copy()
 
     # 覆盖 API 基础 URL 指向 stub（需要包含 /api/v0 路径）
     env["FACTORY_API_BASE"] = f"{stub_api_server}/api/v0"
 
-    # 创建临时 locks 目录
+    # 创建临时 WEBHOOK_BASE（隔离生产路径，跨平台兼容）
+    # 脚本的 LOG_DIR 和 LOCK_DIR 默认从 WEBHOOK_BASE 派生
+    webhook_base = tmp_path / "webhook"
+    webhook_base.mkdir()
+    env["WEBHOOK_BASE"] = str(webhook_base)
+
+    # 显式设置 LOCK_DIR 和 LOG_DIR（虽然脚本会从 WEBHOOK_BASE 派生，但明确设置更安全）
     locks_dir = tmp_path / "locks"
     locks_dir.mkdir()
     env["LOCK_DIR"] = str(locks_dir)
-    env["LOG_DIR"] = str(tmp_path / "logs")
-    (tmp_path / "logs").mkdir()
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    env["LOG_DIR"] = str(log_dir)
 
     # 测试用 Factory token（动态拼接假值，仅满足脚本 ^fk- 前缀校验；stub 不验证真实性）
     # 禁止在源码中出现完整 token 字面量（触发 Droid-Shield 密钥检测）
@@ -152,6 +166,13 @@ def temp_env(stub_api_server, tmp_path):
     # 缩短重试参数避免测试超时
     env["MAX_RETRIES"] = "2"
     env["RETRY_DELAY"] = "1"
+
+    # 跨平台 Python 和 flock 路径（避免硬编码 macOS 路径）
+    env["PYTHON_BIN"] = sys.executable
+    flock_path = shutil.which("flock")
+    if flock_path:
+        env["FLOCK_BIN"] = flock_path
+    # 如果 flock 不存在，脚本会用 flock 命令失败，但测试环境通常有 flock
 
     return env
 
