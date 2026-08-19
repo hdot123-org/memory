@@ -71,8 +71,7 @@ jobs:
         run: |
           set -eu
           # repo variable fallback（变量缺失时使用默认值并打日志）
-          MAX_ATTEMPT="${MAX_ATTEMPT:-3}"
-          if [ -z "${MAX_ATTEMPT:-}" ] || [ "$MAX_ATTEMPT" = "" ]; then MAX_ATTEMPT=3; echo "变量 WATCHDOG_MAX_ATTEMPT 未设置、使用默认值 3"; fi
+          if [ -z "${MAX_ATTEMPT:-}" ]; then MAX_ATTEMPT=3; echo "变量 WATCHDOG_MAX_ATTEMPT 未设置、使用默认值 3"; fi
           if [ "$RUN_ATTEMPT" -ge "$MAX_ATTEMPT" ]; then
             echo "Run $RUN_ID already at attempt $RUN_ATTEMPT (>=$MAX_ATTEMPT). Skipping; needs manual attention."
             exit 0
@@ -146,12 +145,9 @@ jobs:
         run: |
           set -eu
           # repo variable fallback（变量缺失时使用默认值并打日志）
-          QUOTA_SCAN_WINDOW_HOURS="${QUOTA_SCAN_WINDOW_HOURS:-6}"
-          if [ -z "${QUOTA_SCAN_WINDOW_HOURS}" ] || [ "$QUOTA_SCAN_WINDOW_HOURS" = "" ]; then QUOTA_SCAN_WINDOW_HOURS=6; echo "变量 QUOTA_SCAN_WINDOW_HOURS 未设置、使用默认值 6"; fi
-          QUOTA_RECOVERY_WINDOW_SECONDS="${QUOTA_RECOVERY_WINDOW_SECONDS:-1800}"
-          if [ -z "${QUOTA_RECOVERY_WINDOW_SECONDS}" ] || [ "$QUOTA_RECOVERY_WINDOW_SECONDS" = "" ]; then QUOTA_RECOVERY_WINDOW_SECONDS=1800; echo "变量 QUOTA_RECOVERY_WINDOW_SECONDS 未设置、使用默认值 1800"; fi
-          WATCHDOG_MAX_ATTEMPT="${WATCHDOG_MAX_ATTEMPT:-3}"
-          if [ -z "${WATCHDOG_MAX_ATTEMPT}" ] || [ "$WATCHDOG_MAX_ATTEMPT" = "" ]; then WATCHDOG_MAX_ATTEMPT=3; echo "变量 WATCHDOG_MAX_ATTEMPT 未设置、使用默认值 3"; fi
+          if [ -z "${QUOTA_SCAN_WINDOW_HOURS:-}" ]; then QUOTA_SCAN_WINDOW_HOURS=6; echo "变量 QUOTA_SCAN_WINDOW_HOURS 未设置、使用默认值 6"; fi
+          if [ -z "${QUOTA_RECOVERY_WINDOW_SECONDS:-}" ]; then QUOTA_RECOVERY_WINDOW_SECONDS=1800; echo "变量 QUOTA_RECOVERY_WINDOW_SECONDS 未设置、使用默认值 1800"; fi
+          if [ -z "${WATCHDOG_MAX_ATTEMPT:-}" ]; then WATCHDOG_MAX_ATTEMPT=3; echo "变量 WATCHDOG_MAX_ATTEMPT 未设置、使用默认值 3"; fi
           echo "Scanning recent failed 'Droid Auto Review' runs for BYOK quota exhaustion..."
           # 扫最近 ${QUOTA_SCAN_WINDOW_HOURS} 小时失败的 review run（配额周期上界量级），逐个检测
           CUTOFF=$(date -u -d "${QUOTA_SCAN_WINDOW_HOURS} hours ago" +%Y-%m-%dT%H:%M:%SZ)
