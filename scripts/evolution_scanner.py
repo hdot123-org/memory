@@ -879,43 +879,104 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
         print(f"[evolution] Warning: check_isolation failed: {e}")
 
 
+def _compute_quota_exhausted(
+    deduped: list[Finding],
+    config: dict[str, Any],
+    gh_failed: bool,
+) -> dict[str, bool]:
+    """P1 修复: 预计算 quota_exhausted（与创建路径同源：每类别配额 + 去重后计数）。
+
+    Args:
+        deduped: Post-dedup findings list (from deduplicate())
+        config: Scanner config dict with quota keys
+        gh_failed: True if GitHub API was unavailable
+
+    Returns:
+        Dict mapping category -> True when that category exceeded its quota.
+    """
+    quota_exhausted: dict[str, bool] = {}
+    if gh_failed or not deduped:
+        return quota_exhausted
+
+    category_counts: dict[str, int] = {}
+    for f in deduped:
+        if f.category not in ISSUE_EXCLUDED_CATEGORIES:
+            category_counts[f.category] = category_counts.get(f.category, 0) + 1
+
+    for cat, count in category_counts.items():
+        # P1-1: 使用每类别配额（与创建路径 _process_findings_with_reopen 同源）
+        if cat == "evolution_self_audit":
+            quota = config.get("max_self_audit_issues_per_tick")
+        elif cat == "code_hygiene":
+            quota = config.get("max_code_hygiene_issues_per_tick")
+        else:
+            quota = config.get("max_issues_per_tick")
+
+        # P1-2: 使用去重后的 count（不是 all_findings）
+        if quota is not None and quota > 0 and count > quota:
+            quota_exhausted[cat] = True
+
+    return quota_exhausted
+
+
 def _integrate_forward_drift_watch(
     deduped: list[Finding],
     open_issues: list[dict[str, Any]],
     suppressed_keys: set[tuple[str, str]],
     issue_excluded_categories: set[str],
+    quota_exhausted: dict[str, bool] | None = None,
 ) -> None:
     """VAL-DRF-001: Integrate forward drift watch into scanner flow.
 
     Called after all processing to provide a complete status report on
     finding coverage (issue exists, suppressed, closed-in-window, quota-pending, or ghost).
 
+    D2 空壳实化: closed_window_keys derives from state='closed' entries in open_issues
+    (INFRA-396: get_open_issues returns closed-in-window issues with state='closed').
+    open_issue_keys only includes state='open' entries (real open issues).
+
+    P1 修复 (2026-08-19): quota_exhausted 由 main() 预计算（与创建路径同源：
+    每类别配额 + 去重后计数），直接传入。函数内部不再自行推算配额。
+
     Args:
-        deduped: List of Finding objects after deduplication
-        open_issues: List of open issue dicts from GitHub
+        deduped: List of Finding objects for drift classification (pre-dedup from main).
+        open_issues: List of open issue dicts from GitHub (includes state='closed' entries
+            for closed-in-window dedup per INFRA-396)
         suppressed_keys: Set of (rule_id, location) keys that were suppressed
         issue_excluded_categories: Categories that are not actionable
+        quota_exhausted: Pre-computed dict of {category: True} from main() using
+            deduped (post-dedup) counts and per-category quotas. This ensures
+            quota semantics match the issue creation path exactly.
     """
     from evolution_utils import forward_drift_watch
 
-    # Build open issue keys set (filter out None values for type safety)
+    # D2 fix: Separate open_issue_keys (state='open') from closed_window_keys (state='closed').
+    # get_open_issues() returns both: genuinely open issues (state='open') and closed-in-window
+    # dedup entries (state='closed', see INFRA-396 get_open_issues return dict).
+    # ISSUE_EXISTS check must only use genuinely open issues; CLOSED_IN_WINDOW uses closed entries.
     open_issue_keys: set[tuple[str, str]] = {
         (i["rule_id"], i["location"])
         for i in open_issues
-        if i.get("rule_id") is not None and i.get("location") is not None
+        if i.get("rule_id") is not None
+        and i.get("location") is not None
+        and i.get("state", "open") == "open"
     }
 
-    # For closed-in-window, we need to check which findings were deduped against closed issues
-    # This is tracked by comparing deduped findings vs all findings
-    # Since we don't have direct access to all_findings here, we'll use empty set for now
-    # The forward_drift_watch will classify these as GHOST if they have no other reason
-    closed_window_keys: set[tuple[str, str]] = set()
+    # D2 fix: closed_window_keys from state='closed' entries (closed-in-window dedup).
+    closed_window_keys: set[tuple[str, str]] = {
+        (i["rule_id"], i["location"])
+        for i in open_issues
+        if i.get("rule_id") is not None
+        and i.get("location") is not None
+        and i.get("state") == "closed"
+    }
 
-    # For quota-pending, we need to check if any category exceeded its max issues per tick
-    # This requires checking config, which we don't have here
-    # For simplicity, we'll use empty dict (no quota tracking in this integration)
-    # The forward_drift_watch will classify these based on other criteria
-    quota_exhausted: dict[str, bool] = {}
+    # P1 修复 (2026-08-19): quota_exhausted 由 main() 预计算并传入。
+    # main() 使用去重后计数（deduped）和每类别配额（max_issues_per_tick /
+    # max_self_audit_issues_per_tick / max_code_hygiene_issues_per_tick），
+    # 保证与创建路径完全同源。函数内部不再自行推算配额。
+    if quota_exhausted is None:
+        quota_exhausted = {}
 
     # Call forward_drift_watch
     drift_records = forward_drift_watch(
@@ -1101,11 +1162,20 @@ def main() -> None:
 
     # VAL-DRF-001: Forward drift watch - integrate into scanner flow
     # This runs after all processing to provide a complete status report
+    # D2 修复: 传入 all_findings（去重前）用于分类判定（ISSUE_EXISTS / CLOSED_IN_WINDOW 需要看到所有 finding）
+    # P1 修复: quota_exhausted 从去重后的 deduped 列表 + 每类别配额计算（与创建路径同源）
+    # Suppress-suppressed findings are excluded via suppressed_keys param;
+    # issue_excluded_categories filters daily_audit etc.
+
+    # P1: 预计算 quota_exhausted（使用去重后的 deduped 列表 + 每类别配额）
+    quota_exhausted = _compute_quota_exhausted(deduped, config, gh_failed)
+
     _integrate_forward_drift_watch(
-        deduped=deduped,
+        deduped=all_findings,
         open_issues=open_issues,
         suppressed_keys=suppressed_keys,
         issue_excluded_categories=ISSUE_EXCLUDED_CATEGORIES,
+        quota_exhausted=quota_exhausted,
     )
 
     # VAL-NTF-002: Close notification issues that exceeded TTL
