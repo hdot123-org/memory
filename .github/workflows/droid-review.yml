@@ -23,7 +23,7 @@ jobs:
   droid-review:
     if: github.event.pull_request.draft == false && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       NVIDIA_KONG_PROXY_KEY: ${{ secrets.NVIDIA_KONG_PROXY_KEY }}
     permissions:
@@ -96,7 +96,7 @@ jobs:
           fi
           echo "Secret is present (length: ${#FACTORY_API_KEY} chars)."
           echo "Note: HTTP endpoint validation removed - /v1/auth/check returns 404 (endpoint does not exist)."
-          echo "droid-action will fail fast if credentials are invalid (45-minute timeout prevents hangs)."
+          echo "droid-action will fail fast if credentials are invalid (90-minute timeout prevents hangs)."
       - name: Run Droid Auto Review
         if: steps.docs_only.outputs.skip != 'true'
         uses: Factory-AI/droid-action@e5ae50268211d2e9ac85edb57c28bf253b6627f7
