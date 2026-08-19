@@ -18,7 +18,8 @@ send_posthog_event() {
   local pr_number="$2"
   local stage="$3"
   local detail="$4"
-  local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local timestamp
+  timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   curl -s -X POST "https://us.posthog.com/batch/" \
     -H "Content-Type: application/json" \
     -d "{
@@ -42,7 +43,6 @@ spawn_fallback() {
   local pr_num="$1"
   local ci_status="$2"
   local repo_path="$3"
-  local repo_name="${repo_path##*/}"
   local lock_file="$LOCKS_DIR/ci-fallback-${pr_num}.lock"
 
   # Create fallback lock to prevent duplicate spawns (idempotent)
@@ -56,7 +56,7 @@ spawn_fallback() {
     echo "Stale fallback lock ($lock_age seconds old), removing"
     rm -f "$lock_file"
   fi
-  echo "$(date +%Y%m%d-%H%M%S)" > "$lock_file"
+  date +%Y%m%d-%H%M%S > "$lock_file"
   echo "Created fallback lock: $lock_file"
 
   echo "Spawning fallback session for PR #$pr_num (CI status: $ci_status)"
