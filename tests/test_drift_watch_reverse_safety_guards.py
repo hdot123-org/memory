@@ -1,13 +1,15 @@
-"""RED tests for D1 reverse drift watch safety guards (PR #780 droid-review P1).
+"""Safety guard tests for D1 reverse drift watch (PR #780 droid-review P1, PR #817).
 
-These tests demonstrate the three safety guards missing from classify_orphan_issues
-and execute_orphan_classifications that exist in auto_close_resolved:
+These tests cover the three safety guards aligned with auto_close_resolved:
 
 1. Self-audit category exemption - evolution_self_audit issues should not be closed
 2. Failed categories skip - issues from failed tools should not be closed
 3. Partial output fail-closed - when findings count is anomalously low, skip all closing
 
-RED state: These tests FAIL against current code because the safety guards are missing.
+INFRA-403 (PR #819) superseded the PR #817 silent-skip semantics: protected issues
+are now classified BLOCKED_NO_EVIDENCE with an audit trail (visible in the report)
+instead of being silently dropped. The safety property is unchanged — neither guard
+path ever closes the protected issue. Tests 1/2 below assert the BLOCKED semantics.
 """
 import sys
 from pathlib import Path
@@ -33,17 +35,18 @@ def _make_issue(number: int, rule_id: str, location: str,
 
 
 # ============================================================================
-# RED Test 1: Self-audit category exemption
+# Test 1: Self-audit category exemption
 # ============================================================================
 
 def test_p1_safety_self_audit_not_closed():
     """P1 Safety Guard 1: Self-audit issues must NOT be closed by reverse drift watch.
 
-    RED evidence: Without this guard, evolution_self_audit issues get closed prematurely.
-    These are transient health signals that resolve when scanner recovers, not when code
-    is fixed. Closing them triggers flapping loop with state gate (Gate A).
+    evolution_self_audit issues are transient health signals that resolve when
+    scanner recovers, not when code is fixed. Closing them triggers flapping loop
+    with state gate (Gate A).
 
-    This test FAILS against current code (classify_orphan_issues lacks the guard).
+    INFRA-403 semantics: the issue is classified BLOCKED_NO_EVIDENCE (visible in
+    the report with an audit trail), never CLOSE_READY — so it is never closed.
     """
     current_findings = []  # No current findings (scanner in bad state)
     open_issues = [
@@ -53,37 +56,38 @@ def test_p1_safety_self_audit_not_closed():
     ]
 
     # Mock: _verify_fix_merged_via_linear returns True (would normally close)
-    with patch('evolution_utils._verify_fix_merged_via_linear', return_value=True), \
+    with patch('evolution_utils._verify_fix_merged_via_linear', return_value=True) as mock_verify, \
          patch('evolution_utils.subprocess.run') as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
         from evolution_utils import classify_orphan_issues
         report = classify_orphan_issues(current_findings, open_issues)
 
-        # RED: Without safety guard, issue 601 would be classified as CLOSE_READY
-        # and would be closed. With the guard, it should NOT be in the report
-        # (skipped entirely, like auto_close_resolved does).
+        # Self-audit issue must never be CLOSE_READY (would be closed).
+        # INFRA-403: it is classified BLOCKED_NO_EVIDENCE with audit trail.
         self_audit_issues = [r for r in report if r.issue_number == 601]
 
-        # FAIL: Current code classifies it as CLOSE_READY
-        # PASS: After fix, it should be skipped (not in report)
-        assert len(self_audit_issues) == 0, \
-            f"RED FAIL: Self-audit issue 601 should be skipped, but got {len(self_audit_issues)} classifications. " \
-            "Without this guard, evolution_self_audit issues get closed prematurely (flapping loop)."
+        assert len(self_audit_issues) == 1, \
+            "Self-audit issue 601 should be classified BLOCKED_NO_EVIDENCE with audit trail"
+        assert self_audit_issues[0].classification == "BLOCKED_NO_EVIDENCE", \
+            f"Self-audit issue 601 classified {self_audit_issues[0].classification}; " \
+            "closing it triggers the Gate A flapping loop. Must be BLOCKED_NO_EVIDENCE."
+        # Verification must not even run — protection is decided before evidence check
+        mock_verify.assert_not_called()
 
 
 # ============================================================================
-# RED Test 2: Failed categories skip
+# Test 2: Failed categories skip
 # ============================================================================
 
 def test_p1_safety_failed_category_not_closed():
     """P1 Safety Guard 2: Issues from failed audit categories must NOT be closed.
 
-    RED evidence: Without this guard, issues whose category tool failed get closed.
-    A failed tool emits no findings, so its issues vanish from current scan even though
-    the underlying problem still exists. This causes premature closure.
+    A failed tool emits no findings, so its issues vanish from current scan even
+    though the underlying problem may still exist. Closing them is premature.
 
-    This test FAILS against current code (classify_orphan_issues lacks failed_categories param).
+    INFRA-403 semantics: the issue is classified BLOCKED_NO_EVIDENCE (visible in
+    the report with an audit trail), never CLOSE_READY — so it is never closed.
     """
     current_findings = []  # No current findings (tool failed, emitted nothing)
     open_issues = [
@@ -95,46 +99,39 @@ def test_p1_safety_failed_category_not_closed():
     failed_categories = {"code_hygiene"}  # Tool failed this tick
 
     # Mock: _verify_fix_merged_via_linear returns True (would normally close)
-    with patch('evolution_utils._verify_fix_merged_via_linear', return_value=True), \
+    with patch('evolution_utils._verify_fix_merged_via_linear', return_value=True) as mock_verify, \
          patch('evolution_utils.subprocess.run') as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
         from evolution_utils import classify_orphan_issues
+        report = classify_orphan_issues(
+            current_findings, open_issues,
+            failed_categories=failed_categories
+        )
 
-        # RED: Current classify_orphan_issues doesn't accept failed_categories parameter
-        # FAIL: TypeError - unexpected keyword argument 'failed_categories'
-        # PASS: After fix, it accepts failed_categories and skips issues from failed tools
-        try:
-            report = classify_orphan_issues(
-                current_findings, open_issues,
-                failed_categories=failed_categories
-            )
+        # Failed-category issue must never be CLOSE_READY (would be closed).
+        # INFRA-403: it is classified BLOCKED_NO_EVIDENCE with audit trail.
+        failed_cat_issues = [r for r in report if r.issue_number == 602]
 
-            # Should skip issue 602 (category in failed_categories)
-            failed_cat_issues = [r for r in report if r.issue_number == 602]
-            assert len(failed_cat_issues) == 0, \
-                f"RED FAIL: Issue 602 from failed category should be skipped, but got {len(failed_cat_issues)} classifications. " \
-                "Without this guard, issues from failed tools get closed prematurely."
-        except TypeError as e:
-            # RED: Expected failure - function doesn't accept failed_categories yet
-            raise AssertionError(
-                f"RED FAIL: classify_orphan_issues doesn't accept failed_categories parameter. "
-                f"Error: {e}. Without this guard, issues from failed tools get closed prematurely."
-            )
+        assert len(failed_cat_issues) == 1, \
+            "Issue 602 from failed category should be classified BLOCKED_NO_EVIDENCE with audit trail"
+        assert failed_cat_issues[0].classification == "BLOCKED_NO_EVIDENCE", \
+            f"Issue 602 classified {failed_cat_issues[0].classification}; " \
+            "a failed tool emits no findings, absence is not resolution. Must be BLOCKED_NO_EVIDENCE."
+        # Verification must not even run — protection is decided before evidence check
+        mock_verify.assert_not_called()
 
 
 # ============================================================================
-# RED Test 3: Partial output fail-closed
+# Test 3: Partial output fail-closed
 # ============================================================================
 
 def test_p1_safety_partial_output_skip_all_closing():
     """P1 Safety Guard 3: When findings count is anomalously low, skip all closing.
 
-    RED evidence: Without this guard, when audit tools emit partial output (anomalously
-    few findings), the reverse drift watch closes issues based on incomplete data.
-    This causes premature closure of issues that still exist.
-
-    This test FAILS against current code (reverse_drift_watch lacks partial output check).
+    When audit tools emit partial output (anomalously few findings), the reverse
+    drift watch must not close issues based on incomplete data — that would cause
+    premature closure of issues that still exist.
     """
     current_findings = []  # Anomalously low (tool crashed, emitted nothing)
     open_issues = [
@@ -180,12 +177,10 @@ def test_p1_safety_partial_output_skip_all_closing():
 def test_p1_safety_all_three_guards_combined():
     """P1 Combined: All three safety guards work together.
 
-    RED evidence: Without the guards, reverse drift watch would close:
+    Without the guards, reverse drift watch would close:
     - Self-audit issues (transient health signals)
     - Issues from failed tools (problem still exists)
     - Issues when findings are anomalously low (partial output)
-
-    This test FAILS against current code (all three guards missing).
     """
     current_findings = []  # Anomalously low
     open_issues = [
@@ -214,30 +209,18 @@ def test_p1_safety_all_three_guards_combined():
 
         from evolution_utils import reverse_drift_watch
 
-        # RED: Without guards, would close all 3 issues
-        # FAIL: Should close 0 (partial output protection)
-        try:
-            result = reverse_drift_watch(
-                current_findings, open_issues,
-                history_path=Path("/tmp/test_history.json"),
-                failed_categories=failed_categories
-            )
+        result = reverse_drift_watch(
+            current_findings, open_issues,
+            history_path=Path("/tmp/test_history.json"),
+            failed_categories=failed_categories
+        )
 
-            # With all three guards:
-            # - 701: Skipped (self-audit)
-            # - 702: Skipped (failed category)
-            # - 703: Skipped (partial output)
-            assert result["closed"] == 0, \
-                f"RED FAIL: Should close 0 issues with all guards. Closed {result['closed']}."
-        except TypeError as e:
-            # RED: Expected failure - reverse_drift_watch doesn't accept failed_categories
-            raise AssertionError(
-                f"RED FAIL: reverse_drift_watch doesn't accept failed_categories. Error: {e}. "
-                "Without all three guards, premature closure occurs."
-            )
+        # With all three guards active (partial output short-circuits first):
+        # - 701/702/703: none closed
+        assert result["closed"] == 0, \
+            f"Should close 0 issues with all guards. Closed {result['closed']}."
 
 
 if __name__ == "__main__":
-    # Run tests to demonstrate RED state
     import pytest
     pytest.main([__file__, "-v"])

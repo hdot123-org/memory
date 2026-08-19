@@ -21,6 +21,7 @@ if _SCRIPT_DIR not in sys.path:
 
 from evolution_adapters import TOOL_TO_CATEGORIES, sanitize_structured_field, sanitize_text
 from evolution_utils import (
+    _parse_issue_category,
     _parse_issue_fields,
     auto_close_resolved,
     close_expired_notifications,
@@ -402,8 +403,11 @@ def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated")
                     pass
         # INFRA-396: tag issue state so downstream guards can distinguish
         # genuinely OPEN issues from closed-in-window dedup entries.
+        # INFRA-403: pass through body/category so the reverse drift watch can
+        # classify orphans without re-fetching (incremental requirement).
         return [{"rule_id": rid, "location": loc, "number": i["number"],
-                 "state": "closed" if i.get("_closed_in_window") else "open"}
+                 "state": "closed" if i.get("_closed_in_window") else "open",
+                 "body": i.get("body", ""), "category": _parse_issue_category(i.get("body", ""))}
                 for i in all_issues
                 for rid, loc in [_parse_issue_fields(i.get("body", ""))]
                 if rid is not None and loc is not None]
@@ -1207,6 +1211,7 @@ def main() -> None:
 
     # VAL-DRF-002/003: Reverse drift watch - classify and remediate orphan issues
     # D1: For open issues not in current findings, classify based on evidence and take action
+    # INFRA-403: failed_categories passed so GAP-C1 protection mirrors auto_close_resolved
     # P1 Safety Guards: self-audit exemption, failed categories skip, partial output fail-closed
     try:
         from evolution_utils import reverse_drift_watch

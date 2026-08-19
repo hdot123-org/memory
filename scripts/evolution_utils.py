@@ -1144,13 +1144,19 @@ def reconcile_in_progress(dedup_label: str) -> int:
 # VAL-DRF-002/003: Reverse Drift Watch - Orphan Issue Classification
 # ============================================================================
 
+# INFRA-403: audit sentinel embedded in BLOCKED_NO_EVIDENCE comments so
+# repeated ticks don't re-comment the same issue (idempotency, same pattern
+# as RECON_ADVISORY_SENTINEL).
+REVERSE_DRIFT_SENTINEL = "<!-- reverse-drift-blocked -->"
+
+
 @dataclass
 class OrphanIssueClassification:
     """Structured classification of an orphan issue (open issue not in findings).
 
     VAL-DRF-002: Each orphan issue must be classified into one of:
     - CLOSE_READY: Has merge/session evidence, can be closed after grace period
-    - BLOCKED_NO_EVIDENCE: No evidence, retained with blocking reason recorded
+    - BLOCKED_NO_EVIDENCE: No evidence (or close blocked by protection), retained with reason
 
     VAL-DRF-003: Every classification must have audit trail (reason + timestamp).
     """
@@ -1173,7 +1179,8 @@ def classify_orphan_issues(
     VAL-DRF-002: For each open evolution-found issue whose key is NOT in current
     findings, classify into:
     - CLOSE_READY: Has merge/session evidence → grace then close
-    - BLOCKED_NO_EVIDENCE: No evidence → retain with blocking reason recorded
+    - BLOCKED_NO_EVIDENCE: No evidence (or close blocked by protection) → retain
+      with blocking reason recorded
 
     VAL-DRF-003: Every classification must leave audit trail (reason + timestamp + action).
     Must take action (close or record), not just alert.
@@ -1181,7 +1188,18 @@ def classify_orphan_issues(
     VAL-DRF-004: Incremental implementation - accepts open_issues as parameter,
     does not fetch them (no new full scan).
 
-    P1 Safety Guards (ported from auto_close_resolved):
+    INFRA-403 hardening (aligned with auto_close_resolved gates):
+    - Entries with state != "open" (closed-in-window dedup entries) are skipped;
+      they are dedup bookkeeping, not live orphans.
+    - Categories whose audit tool failed this tick are classified BLOCKED
+      (GAP-C1: a failed tool emits no findings, absence is not resolution).
+    - Self-audit category is classified BLOCKED (INFRA-216: transient health
+      signals must not be auto-closed — flapping loop protection).
+    - Issue fields prefer the pre-parsed rule_id/location keys and fall back to
+      parsing the body, so compact get_open_issues() dicts work in production.
+
+    P1 Safety Guards (ported from auto_close_resolved, superseded by the
+    BLOCKED classification above with audit trail):
     1. Self-audit category exemption: evolution_self_audit issues are transient health
        signals that resolve when scanner recovers, not when code is fixed. Auto-closing
        them triggers flapping loop with state gate.
@@ -1205,8 +1223,16 @@ def classify_orphan_issues(
     now_iso = datetime.now(timezone.utc).isoformat()
 
     for issue in open_issues:
-        # Parse issue fields
-        rule_id, location = _parse_issue_fields(issue.get("body", ""))
+        # INFRA-403: closed-in-window dedup entries are not live orphans
+        if issue.get("state", "open") != "open":
+            continue
+
+        # Resolve fields: prefer pre-parsed keys, fall back to body parsing
+        rule_id = issue.get("rule_id")
+        location = issue.get("location")
+        issue_body = issue.get("body", "")
+        if rule_id is None or location is None:
+            rule_id, location = _parse_issue_fields(issue_body)
         if rule_id is None or location is None:
             # Malformed issue body - skip
             continue
@@ -1224,29 +1250,44 @@ def classify_orphan_issues(
             continue
 
         # This is an orphan issue - classify it
-        issue_body = issue.get("body", "")
 
-        # P1 Safety Guard 1: Self-audit category exemption
-        # evolution_self_audit issues are transient health signals that resolve when
-        # scanner recovers, not when code is fixed. Auto-closing them triggers flapping
-        # loop with state gate (Gate A).
-        category = _parse_issue_category(issue_body)
-        if category == SELF_AUDIT_CATEGORY:
-            logger.info(
-                f"Orphan #{issue_number} skipped: evolution_self_audit category "
-                f"(transient health signal, requires manual/Droid resolution)"
-            )
-            continue  # Skip classification entirely
-
-        # P1 Safety Guard 2: Failed categories skip
-        # Issues whose category tool failed this tick are protected. A failed tool emits
-        # no findings, so its issues vanish from scan even though the underlying problem
-        # may still exist.
+        # Protection gates first (mirror auto_close_resolved ordering):
+        # a failed tool / self-audit absence is not evidence of resolution.
+        # Note: protected issues are classified BLOCKED_NO_EVIDENCE (with audit
+        # trail) rather than silently skipped — INFRA-403 supersedes the PR #817
+        # silent-skip semantics while preserving its safety properties.
+        category = issue.get("category") or _parse_issue_category(issue_body)
         if failed_categories and category and category in failed_categories:
+            classifications.append(OrphanIssueClassification(
+                issue_number=issue_number,
+                rule_id=rule_id,
+                location=location,
+                classification="BLOCKED_NO_EVIDENCE",
+                reason=f"category_tool_failed:{category}",
+                timestamp=now_iso,
+                action_taken="retained_with_reason"
+            ))
             logger.info(
-                f"Orphan #{issue_number} skipped: category '{category}' tool failed this tick"
+                f"Orphan #{issue_number} classified as BLOCKED_NO_EVIDENCE: "
+                f"category '{category}' tool failed this tick (GAP-C1)"
             )
-            continue  # Skip classification entirely
+            continue
+
+        if category == SELF_AUDIT_CATEGORY:
+            classifications.append(OrphanIssueClassification(
+                issue_number=issue_number,
+                rule_id=rule_id,
+                location=location,
+                classification="BLOCKED_NO_EVIDENCE",
+                reason="self_audit_protected",
+                timestamp=now_iso,
+                action_taken="retained_with_reason"
+            ))
+            logger.info(
+                f"Orphan #{issue_number} classified as BLOCKED_NO_EVIDENCE: "
+                f"self-audit finding protected from auto-close (INFRA-216)"
+            )
+            continue
 
         # Try to verify fix via Linear (checks for merge/session evidence)
         verified = _verify_fix_merged_via_linear(issue_body, issue_number)
@@ -1306,6 +1347,33 @@ def classify_orphan_issues(
     return classifications
 
 
+def _issue_still_open(issue_number: int) -> bool | None:
+    """Check whether a GitHub issue is still OPEN.
+
+    INFRA-403: the reverse watch runs right after auto_close_resolved, which may
+    have already closed the very same orphan in this tick. Re-closing (or
+    commenting on) an already-closed issue double-processes it. Returns:
+        True  — issue is open
+        False — issue is closed
+        None  — state could not be determined (caller should skip, fail-closed)
+    """
+    try:
+        result = subprocess.run(
+            ["gh", "issue", "view", str(issue_number), "--json", "state"],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode != 0:
+            logger.warning(
+                f"Failed to view issue #{issue_number} state: {result.stderr}"
+            )
+            return None
+        data = json.loads(result.stdout) if result.stdout.strip() else {}
+        return data.get("state") == "OPEN"
+    except Exception as e:
+        logger.warning(f"Exception viewing issue #{issue_number} state: {e}")
+        return None
+
+
 def execute_orphan_classifications(
     classifications: list[OrphanIssueClassification],
     history_path: Path | None = None,
@@ -1314,7 +1382,12 @@ def execute_orphan_classifications(
 
     VAL-DRF-003: Must take action (not just alert). This function:
     - CLOSE_READY: Attempts to close issue after grace period check
-    - BLOCKED_NO_EVIDENCE: Records blocking reason in issue comment
+    - BLOCKED_NO_EVIDENCE: Records blocking reason in issue comment (idempotent
+      via REVERSE_DRIFT_SENTINEL — one audit comment per issue, not per tick)
+
+    INFRA-403: before acting, the issue's live state is checked. auto_close_resolved
+    runs first in the same tick and may already have closed the orphan; closed
+    issues are skipped (no double close, no comment on closed issues).
 
     Args:
         classifications: List of OrphanIssueClassification from classify_orphan_issues
@@ -1329,6 +1402,15 @@ def execute_orphan_classifications(
 
     for classification in classifications:
         issue_number = classification.issue_number
+
+        # INFRA-403: skip issues already closed (e.g. by auto_close_resolved
+        # earlier in this same tick); unknown state → skip (fail-closed)
+        still_open = _issue_still_open(issue_number)
+        if still_open is not True:
+            logger.info(
+                f"Orphan #{issue_number} not open anymore (state check: {still_open}), skipping"
+            )
+            continue
 
         if classification.classification == "CLOSE_READY":
             # Check grace period before closing
@@ -1368,8 +1450,26 @@ def execute_orphan_classifications(
                 logger.error(f"Failed to close orphan #{issue_number}: {e}")
 
         elif classification.classification == "BLOCKED_NO_EVIDENCE":
-            # Record blocking reason in issue comment (audit trail)
+            # Record blocking reason in issue comment (audit trail).
+            # INFRA-403: idempotency — check for existing sentinel before
+            # commenting, so repeated ticks don't spam the same issue.
+            try:
+                existing = subprocess.run(
+                    ["gh", "issue", "view", str(issue_number),
+                     "--json", "comments", "--jq", ".comments[].body"],
+                    capture_output=True, text=True, timeout=30
+                )
+                if existing.returncode == 0 and REVERSE_DRIFT_SENTINEL in existing.stdout:
+                    logger.info(
+                        f"Orphan #{issue_number} already has blocked-audit comment, skipping (idempotency)"
+                    )
+                    continue
+            except Exception as e:
+                logger.warning(f"Failed to check comments on #{issue_number}: {e}")
+                # fail-open: proceed to comment (better one duplicate than no audit trail)
+
             comment_msg = (
+                f"{REVERSE_DRIFT_SENTINEL}\n"
                 f"🔒 反向漂移守望：此 Issue 当前分类为 BLOCKED_NO_EVIDENCE\n"
                 f"原因：{classification.reason}\n"
                 f"时间：{classification.timestamp}\n"
@@ -1413,6 +1513,11 @@ def reverse_drift_watch(
     This function must take action (not just alert), fulfilling VAL-DRF-003.
     Every action leaves audit trail (reason + timestamp + action), fulfilling VAL-DRF-002.
 
+    INFRA-403 hardening:
+    - P0-A partial-output protection: when current findings count is far below
+      the recent baseline (a crashed adapter), absence is not resolution — skip.
+    - VAL-DRF-004 budget guard: skip when tick duration/API budget exhausted.
+
     P1 Safety Guards (ported from auto_close_resolved):
     1. Self-audit category exemption: evolution_self_audit issues skipped (in classify layer)
     2. Failed categories skip: Issues from failed tools skipped (in classify layer)
@@ -1429,15 +1534,28 @@ def reverse_drift_watch(
     Returns:
         Dict with counts: {closed: int, retained: int, deferred: int}
     """
-    # P1 Safety Guard 3: Partial output fail-closed
-    # When findings count is anomalously low (<80% of baseline median), skip ALL closing
-    # to avoid premature closure based on incomplete data from crashed/timed-out tools
+    empty = {"closed": 0, "retained": 0, "deferred": 0}
+
+    # P0-A partial-output protection (same gate as auto_close_resolved):
+    # a tick with a crashed adapter has artificially few findings; orphan
+    # classification on such data would flag every missing finding as resolved.
     if history_path is not None and _should_skip_partial_output(findings, history_path):
-        logger.info(
-            "Reverse drift watch skipped: partial output detected "
-            "(findings count below 80% of baseline median)"
-        )
-        return {"closed": 0, "retained": 0, "deferred": 0}
+        logger.info("Reverse drift watch skipped: partial-output protection active")
+        return empty
+
+    # VAL-DRF-004: budget guard (mirror forward_drift_watch)
+    try:
+        from evolution_scanner import get_tick_tracker
+        tracker = get_tick_tracker()
+        if tracker.is_any_budget_exceeded():
+            logger.info(
+                "Reverse drift watch skipped: tick budget exhausted "
+                f"(duration={tracker.is_duration_exceeded()}, api={tracker.is_api_exceeded()})"
+            )
+            return empty
+    except Exception:
+        # Budget tracker unavailable (e.g. direct invocation) — proceed
+        pass
 
     # Step 1: Classify all orphan issues (with safety guards 1 & 2)
     classifications = classify_orphan_issues(findings, open_issues, failed_categories)
