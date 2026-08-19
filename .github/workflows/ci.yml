@@ -106,14 +106,30 @@ jobs:
       - name: Timestamp - after tests
         run: |
           echo "Tests completed at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+      - name: Detect preinstalled Codecov CLI
+        # INFRA-422：优先用 runner 预装 CLI（ce-01 /usr/local/bin/codecov，见 runbook
+        # 2026-08-18-pve-runner-sop），跳过 wrapper 每次 9.9MB 下载 + GPG 校验（实测
+        # 419s → 5.9s）。注意：PVE 回滚快照 base-runner-ready-20260818-v2 早于 CLI
+        # 预装时间（2026-08-19 01:23），回滚后 CLI 不存在——wrapper 对「binary 指向
+        # 不存在文件」不下载而是空命令静默失败（fail_ci_if_error=false 掩盖）。
+        # 故运行时探测：预装在则传路径，缺失则传空串回退 wrapper 自动下载。
+        id: codecov-cli
+        if: always()
+        run: |
+          if [ -x /usr/local/bin/codecov ]; then
+            echo "path=/usr/local/bin/codecov" >> "$GITHUB_OUTPUT"
+            echo "Codecov CLI: preinstalled /usr/local/bin/codecov ($(/usr/local/bin/codecov --version 2>/dev/null || echo unknown))"
+          else
+            echo "path=" >> "$GITHUB_OUTPUT"
+            echo "::warning::Preinstalled Codecov CLI not found (runner rolled back?), falling back to wrapper download (~3-4 min over slow tunnel)"
+          fi
       - name: Upload coverage to Codecov
         if: always()
         uses: codecov/codecov-action@v7
         with:
-          # 自建 runner 已预装 codecov CLI 到 /usr/local/bin（见 runbook 2026-08-18-pve-runner-sop），
-          # 指定 binary 后 wrapper 跳过每次 9.9MB 下载 + GPG 校验（慢隧道下单次 ~3 分钟）。
-          # 若 job 迁回 GitHub 托管 runner，删除本行即可恢复自动下载。
-          binary: /usr/local/bin/codecov
+          # 预装 CLI 路径（存在）或空串（缺失时 wrapper 自动下载），
+          # 由上方探测 step 决定，避免硬编码路径在 runner 回滚后静默失败
+          binary: ${{ steps.codecov-cli.outputs.path }}
           files: ./coverage.xml
           flags: unittests
           fail_ci_if_error: false
