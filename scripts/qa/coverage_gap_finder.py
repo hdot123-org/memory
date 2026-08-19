@@ -120,7 +120,16 @@ def parse_coverage_xml(xml_path: Path) -> list[ModuleCoverage]:
 
     for cls in root.iter("class"):
         filename = cls.attrib.get("filename", "")
-        if not filename.startswith("memory_core/"):
+        # 兼容两种 filename 形式：
+        # - "memory_core/xxx.py"：非 editable 安装 / CI 源码目录跑 coverage
+        # - "xxx.py"、"tools/xxx.py"：editable install（pip install -e .）下
+        #   coverage 以包根为基准输出相对路径，无 memory_core/ 前缀。
+        #   此场景需排除 tests/ 等非包内文件（前缀匹配会误吞 tests/test_x.py）。
+        in_package = filename.startswith("memory_core/") or (
+            not filename.startswith(("tests/", "scripts/", "/", "~"))
+            and not Path(filename).is_absolute()
+        )
+        if not in_package:
             continue
         if "/__pycache__/" in filename:
             continue
