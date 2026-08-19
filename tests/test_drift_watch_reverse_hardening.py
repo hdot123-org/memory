@@ -365,7 +365,7 @@ def test_budget_exhausted_skips_reverse_watch(tmp_path):
     open_issues = [_compact_issue(116, "RY", "gone.py")]
 
     with patch('evolution_utils.classify_orphan_issues') as mock_classify, \
-         patch('evolution_scanner.get_tick_tracker', return_value=fake_tracker), \
+         patch('evolution_utils.get_tick_tracker', return_value=fake_tracker), \
          patch('evolution_utils.subprocess.run') as mock_run:
         mock_run.return_value = _gh_ok()
         result = reverse_drift_watch(findings, open_issues, history)
