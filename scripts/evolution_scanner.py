@@ -585,6 +585,8 @@ def _reopen_closed_issue(rule_id: str, location: str, dedup_label: str, history_
 def _process_findings_with_reopen(
     findings: list[Finding], quota: int, resolved_keys: set[tuple[str, str]],
     dedup_label: str, history_path: Path, open_issues: list[dict[str, Any]] | None = None,
+    issued_keys: set[tuple[str, str]] | None = None,
+    suppressed_reopen_keys: set[tuple[str, str]] | None = None,
 ) -> int:
     """Process findings: try reopen for resolved regressions, else create new issue.
 
@@ -602,6 +604,12 @@ def _process_findings_with_reopen(
     the fallback create after a failed reopen — the exact regression VAL-DUP-003
     guards against.
 
+    INFRA-410 FIX: optional out-params record per-finding outcomes so the forward
+    drift watch classifies from real creation-path results instead of the stale
+    pre-creation open_issues snapshot:
+    - issued_keys: findings that received an issue this tick (create or reopen)
+    - suppressed_reopen_keys: findings suppressed by the reopen limit (churn guard)
+
     Args:
         findings: List of findings to process
         quota: Maximum number of issues to create
@@ -609,6 +617,8 @@ def _process_findings_with_reopen(
         dedup_label: Label for deduplication
         history_path: Path to history JSON file
         open_issues: List of currently open issues (optional, for duplicate guard)
+        issued_keys: Optional out-set collecting keys that received an issue this tick
+        suppressed_reopen_keys: Optional out-set collecting keys suppressed by the reopen limit
 
     Returns the count of issues created (reopened and suppressed issues are not counted).
     """
@@ -626,11 +636,15 @@ def _process_findings_with_reopen(
     for f in findings[:quota]:
         if f.severity == "critical" and (f.rule_id, f.location) in resolved_keys:
             if _reopen_closed_issue(f.rule_id, f.location, dedup_label, history_path):
+                if issued_keys is not None:
+                    issued_keys.add((f.rule_id, f.location))
                 continue
             # Reopen failed. Check if limit reached (suppress) or genuine failure (fallback to create).
             if _reopen_limit_reached(f.rule_id, f.location, history_path):
                 print(f"[evolution] Reopen limit reached (3 times) for {f.rule_id} @ {f.location}, "
                       f"suppressing to avoid churn loop")
+                if suppressed_reopen_keys is not None:
+                    suppressed_reopen_keys.add((f.rule_id, f.location))
                 continue
             # VAL-DUP-004 FIX: Check if an OPEN issue already exists before creating
             if (f.rule_id, f.location) in open_issue_keys:
@@ -642,9 +656,13 @@ def _process_findings_with_reopen(
                   f"falling back to create new issue")
             if create_issue(f, dedup_label):
                 created += 1
+                if issued_keys is not None:
+                    issued_keys.add((f.rule_id, f.location))
             continue
         if create_issue(f, dedup_label):
             created += 1
+            if issued_keys is not None:
+                issued_keys.add((f.rule_id, f.location))
     return created
 
 
@@ -875,44 +893,65 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
         print(f"[evolution] Warning: check_isolation failed: {e}")
 
 
-def _compute_quota_exhausted(
+def _compute_quota_deferred_keys(
     deduped: list[Finding],
+    critical_regressions: list[Finding],
     config: dict[str, Any],
     gh_failed: bool,
-) -> dict[str, bool]:
-    """P1 修复: 预计算 quota_exhausted（与创建路径同源：每类别配额 + 去重后计数）。
+) -> set[tuple[str, str]]:
+    """INFRA-410: 按真实池语义计算被配额 defer 的 finding keys。
+
+    与创建路径完全同源（main() 的池划分 + sort_by_severity 排序 + [:quota] 切片）：
+    1. critical_regressions 独立切片（max_issues_per_tick，bypass dedup）
+    2. regular 池：多类别共享 max_issues_per_tick
+    3. self_audit 池：max_self_audit_issues_per_tick
+    4. code_hygiene 池：max_code_hygiene_issues_per_tick
+    溢出的是 severity 排序后切片的尾部，而非"某类别计数超限"。
 
     Args:
-        deduped: Post-dedup findings list (from deduplicate())
+        deduped: Post-dedup findings list (from deduplicate(), severity-sorted)
+        critical_regressions: Peeled critical regressions (bypass dedup)
         config: Scanner config dict with quota keys
-        gh_failed: True if GitHub API was unavailable
+        gh_failed: True if GitHub API was unavailable (skip — no deferrals happened)
 
     Returns:
-        Dict mapping category -> True when that category exceeded its quota.
+        Set of (rule_id, location) keys deferred by quota this tick.
     """
-    quota_exhausted: dict[str, bool] = {}
-    if gh_failed or not deduped:
-        return quota_exhausted
+    if gh_failed or (not deduped and not critical_regressions):
+        return set()
 
-    category_counts: dict[str, int] = {}
-    for f in deduped:
-        if f.category not in ISSUE_EXCLUDED_CATEGORIES:
-            category_counts[f.category] = category_counts.get(f.category, 0) + 1
+    deferred: set[tuple[str, str]] = set()
 
-    for cat, count in category_counts.items():
-        # P1-1: 使用每类别配额（与创建路径 _process_findings_with_reopen 同源）
-        if cat == "evolution_self_audit":
-            quota = config.get("max_self_audit_issues_per_tick")
-        elif cat == "code_hygiene":
-            quota = config.get("max_code_hygiene_issues_per_tick")
-        else:
-            quota = config.get("max_issues_per_tick")
+    # Pool 0: critical regressions slice (same slice main() processes first)
+    critical_quota = config.get("max_issues_per_tick")
+    if critical_regressions and isinstance(critical_quota, int) and critical_quota >= 0:
+        deferred.update(
+            (f.rule_id, f.location) for f in critical_regressions[critical_quota:]
+        )
 
-        # P1-2: 使用去重后的 count（不是 all_findings）
-        if quota is not None and quota > 0 and count > quota:
-            quota_exhausted[cat] = True
+    # Pools from deduped (same partition as main())
+    code_hygiene = [f for f in deduped if f.category == "code_hygiene"]
+    regular = [f for f in deduped
+               if f.category not in ISSUE_EXCLUDED_CATEGORIES
+               and f.category != "code_hygiene"]
+    self_audit = [f for f in deduped if f.category == "evolution_self_audit"]
 
-    return quota_exhausted
+    # NOTE: main() sorts BEFORE partitioning; slicing a re-sorted copy is
+    # order-identical to slicing the partition itself (stable sort).
+    severity_order = config.get("severity_order", ["critical", "warning", "info"])
+    for pool, quota_key in (
+        (regular, "max_issues_per_tick"),
+        (self_audit, "max_self_audit_issues_per_tick"),
+        (code_hygiene, "max_code_hygiene_issues_per_tick"),
+    ):
+        quota = config.get(quota_key)
+        if pool and isinstance(quota, int) and quota >= 0:
+            sorted_pool = sort_by_severity(pool, severity_order)
+            deferred.update(
+                (f.rule_id, f.location) for f in sorted_pool[quota:]
+            )
+
+    return deferred
 
 
 def _integrate_forward_drift_watch(
@@ -921,6 +960,9 @@ def _integrate_forward_drift_watch(
     suppressed_keys: set[tuple[str, str]],
     issue_excluded_categories: set[str],
     quota_exhausted: dict[str, bool] | None = None,
+    issued_keys: set[tuple[str, str]] | None = None,
+    quota_deferred_keys: set[tuple[str, str]] | None = None,
+    suppressed_reopen_keys: set[tuple[str, str]] | None = None,
 ) -> None:
     """VAL-DRF-001: Integrate forward drift watch into scanner flow.
 
@@ -931,8 +973,13 @@ def _integrate_forward_drift_watch(
     (INFRA-396: get_open_issues returns closed-in-window issues with state='closed').
     open_issue_keys only includes state='open' entries (real open issues).
 
-    P1 修复 (2026-08-19): quota_exhausted 由 main() 预计算（与创建路径同源：
-    每类别配额 + 去重后计数），直接传入。函数内部不再自行推算配额。
+    INFRA-410 修复: 分类使用创建路径的真实输入，消除三类误判：
+    - issued_keys: 本 tick 实际获得 issue（create/reopen）的 finding keys。
+      open_issues 快照抓取于 issue 创建之前，不含这些条目——不补则误判 GHOST。
+    - quota_deferred_keys: 按真实池语义（排序后 [:quota] 切片尾部溢出）被 defer
+      的 finding keys。类别计数比对在多类别共享 regular 池时会漏标（6+6>10 而各 ≤10）。
+    - suppressed_reopen_keys: reopen 上限抑制的 finding keys（防 churn 的合法抑制）。
+      归入 SUPPRESSED，不再误判 GHOST。
 
     Args:
         deduped: List of Finding objects for drift classification (pre-dedup from main).
@@ -940,9 +987,11 @@ def _integrate_forward_drift_watch(
             for closed-in-window dedup per INFRA-396)
         suppressed_keys: Set of (rule_id, location) keys that were suppressed
         issue_excluded_categories: Categories that are not actionable
-        quota_exhausted: Pre-computed dict of {category: True} from main() using
-            deduped (post-dedup) counts and per-category quotas. This ensures
-            quota semantics match the issue creation path exactly.
+        quota_exhausted: Pre-computed dict of {category: True} (kept for
+            backward compatibility with existing callers/tests)
+        issued_keys: Keys that received an issue this tick (INFRA-410)
+        quota_deferred_keys: Keys deferred by real pool-quota semantics (INFRA-410)
+        suppressed_reopen_keys: Keys suppressed by the reopen limit (INFRA-410)
     """
     from evolution_utils import forward_drift_watch
 
@@ -967,21 +1016,28 @@ def _integrate_forward_drift_watch(
         and i.get("state") == "closed"
     }
 
-    # P1 修复 (2026-08-19): quota_exhausted 由 main() 预计算并传入。
-    # main() 使用去重后计数（deduped）和每类别配额（max_issues_per_tick /
-    # max_self_audit_issues_per_tick / max_code_hygiene_issues_per_tick），
-    # 保证与创建路径完全同源。函数内部不再自行推算配额。
-    if quota_exhausted is None:
-        quota_exhausted = {}
+    # INFRA-410: issues created/reopened this tick — the open_issues snapshot was
+    # fetched BEFORE creation, so merge real creation-path results to prevent
+    # same-tick findings from being falsely classified as GHOST.
+    if issued_keys:
+        open_issue_keys |= issued_keys
+
+    # INFRA-410: reopen-limit suppression is a legitimate recorded reason (churn
+    # guard, same family as suppress.json) — merge into suppressed_keys.
+    if suppressed_reopen_keys:
+        suppressed_keys = suppressed_keys | suppressed_reopen_keys
 
     # Call forward_drift_watch
+    # INFRA-410: quota_deferred_keys (per-finding pool semantics) takes precedence
+    # over the coarse quota_exhausted category approximation when provided.
     drift_records = forward_drift_watch(
         findings=deduped,
         open_issue_keys=open_issue_keys,
         suppressed_keys=suppressed_keys,
         closed_window_keys=closed_window_keys,
-        quota_exhausted=quota_exhausted,
+        quota_exhausted=quota_exhausted or {},
         issue_excluded_categories=issue_excluded_categories,
+        quota_deferred_keys=quota_deferred_keys,
     )
 
     # Log summary
@@ -1071,6 +1127,9 @@ def main() -> None:
     deduped = []
     gh_failed = False
     open_issues = []
+    # INFRA-410: real creation-path outcomes for forward drift watch classification
+    issued_keys: set[tuple[str, str]] = set()
+    suppressed_reopen_keys: set[tuple[str, str]] = set()
     try:
         open_issues = get_open_issues(config["dedup_label"], config["failure_label"])
 
@@ -1080,6 +1139,7 @@ def main() -> None:
             issues_created += _process_findings_with_reopen(
                 critical_regressions, config["max_issues_per_tick"], _resolved_keys,
                 config["dedup_label"], history_path, open_issues,
+                issued_keys=issued_keys, suppressed_reopen_keys=suppressed_reopen_keys,
             )
 
         # Then deduplicate and process remaining findings
@@ -1099,14 +1159,17 @@ def main() -> None:
         issues_created += _process_findings_with_reopen(
             regular, config["max_issues_per_tick"], _resolved_keys,
             config["dedup_label"], history_path, open_issues,
+            issued_keys=issued_keys, suppressed_reopen_keys=suppressed_reopen_keys,
         )
         issues_created += _process_findings_with_reopen(
             self_audit, config["max_self_audit_issues_per_tick"], _resolved_keys,
             config["dedup_label"], history_path, open_issues,
+            issued_keys=issued_keys, suppressed_reopen_keys=suppressed_reopen_keys,
         )
         issues_created += _process_findings_with_reopen(
             code_hygiene, config["max_code_hygiene_issues_per_tick"], _resolved_keys,
             config["dedup_label"], history_path, open_issues,
+            issued_keys=issued_keys, suppressed_reopen_keys=suppressed_reopen_keys,
         )
     except RuntimeError as e:
         print(f"[evolution] Warning: {e}")
@@ -1158,19 +1221,25 @@ def main() -> None:
     # VAL-DRF-001: Forward drift watch - integrate into scanner flow
     # This runs after all processing to provide a complete status report
     # D2 修复: 传入 all_findings（去重前）用于分类判定（ISSUE_EXISTS / CLOSED_IN_WINDOW 需要看到所有 finding）
-    # P1 修复: quota_exhausted 从去重后的 deduped 列表 + 每类别配额计算（与创建路径同源）
-    # Suppress-suppressed findings are excluded via suppressed_keys param;
-    # issue_excluded_categories filters daily_audit etc.
+    # INFRA-410 修复: 分类输入全部来自创建路径真实结果：
+    # - issued_keys: 本 tick 实际 create/reopen 的 finding（快照不含 → 补入 ISSUE_EXISTS）
+    # - quota_deferred_keys: 真实池语义（排序切片尾部）的配额 defer（类别计数近似会漏标）
+    # - suppressed_reopen_keys: reopen 上限抑制（合法归宿 SUPPRESSED）
 
-    # P1: 预计算 quota_exhausted（使用去重后的 deduped 列表 + 每类别配额）
-    quota_exhausted = _compute_quota_exhausted(deduped, config, gh_failed)
+    # INFRA-410: 按真实池语义计算配额 defer（critical 切片 + regular/self_audit/code_hygiene 三池）
+    quota_deferred_keys = _compute_quota_deferred_keys(
+        deduped, critical_regressions, config, gh_failed,
+    )
 
     _integrate_forward_drift_watch(
         deduped=all_findings,
         open_issues=open_issues,
         suppressed_keys=suppressed_keys,
         issue_excluded_categories=ISSUE_EXCLUDED_CATEGORIES,
-        quota_exhausted=quota_exhausted,
+        quota_exhausted=None,
+        issued_keys=issued_keys,
+        quota_deferred_keys=quota_deferred_keys,
+        suppressed_reopen_keys=suppressed_reopen_keys,
     )
 
     # VAL-NTF-002: Close notification issues that exceeded TTL
