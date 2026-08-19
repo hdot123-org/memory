@@ -1,4 +1,4 @@
-# Droid Review Watchdog — 503 自愈 rerun（TD-503-01 v2）+ CI 失败取消 review
+# Droid Review Watchdog — 503 自愈 rerun（TD-503-01 v2）+ CI 失败取消 review + BYOK 配额自愈
 #
 # 职责 1（self-heal-rerun）：droid-action 的 prep 阶段会调 GitHub API 做权限
 # 检查，2026-08-17/18 的持续 503 使 review 在本体开始前就 exit 1，每个 PR
@@ -21,16 +21,28 @@
 # droid-review（2026-08-19 PR #810 实证：并行设计下 CI 变红 review 不自停，
 # Qwen token 空烧）。官方模式：workflow_run conclusion 条件分支（文档
 # events-that-trigger-workflows#running-a-workflow-based-on-the-conclusion-…）。
+#
+# 职责 3（quota-sweep）：BYOK 429 配额耗尽自愈（2026-08-19 PR #850 实证）。
+# Bailian 配额打穿时 review exit 1，但 job log 只有 "Droid Exec exited with
+# code 1"，真实报错（"BYOK Error: 429 usage allocated quota exceeded"）只在
+# debug artifact 的 session transcript 里 — 职责 1 的日志 grep 匹配不到。
+# 且配额耗尽时立即 rerun 无意义（配额未恢复，2-7 分钟内再死），需要延迟
+# 重试。设计：schedule 每 30 分钟扫描失败的 "Droid Auto Review" run →
+# 下载其 droid-review-debug-* artifact → grep transcript 找 429 特征 →
+# 命中且距 run 结束超过 30 分钟（等配额恢复）→ rerun-failed-jobs。
+# run_attempt < 3 限界防 rerun 风暴；配额周期通常按小时/天重置，30 分钟
+# 间隔最多 4 次探测窗口后由人工介入。
 name: Droid Review Watchdog
 
-# 双触发源（workflow_run 的 workflows 列表是 OR 语义，官方文档
-# events-that-trigger-workflows#workflow_run）：
-# - "Droid Auto Review" completed → self-heal-rerun（503 自愈，见下）
-# - "CI" completed + conclusion=failure → cancel-on-ci-fail（取消烧钱的 review）
+# 触发源：
+# - workflow_run "Droid Auto Review"/"CI" completed → 职责 1/2（见各 job）
+# - schedule 每 30 分钟 → 职责 3 quota-sweep（配额自愈）
 on:
   workflow_run:
     workflows: ["Droid Auto Review", "CI"]
     types: [completed]
+  schedule:
+    - cron: '*/30 * * * *'
 
 permissions:
   actions: write
@@ -107,3 +119,70 @@ jobs:
             fi
           done
           echo "Done. Cancelled $CANCELLED review run(s)."
+
+  quota-sweep:
+    # 职责 3：BYOK 429 配额耗尽自愈（2026-08-19 PR #850 实证，见文件头注释）。
+    # 只在 schedule 触发时运行，避免 workflow_run 事件误入（quota 耗尽时立即
+    # rerun 无意义，必须等配额恢复窗口）。
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Rerun quota-exhausted droid-review after recovery window
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          echo "Scanning recent failed 'Droid Auto Review' runs for BYOK quota exhaustion..."
+          # 扫最近 6 小时失败的 review run（配额周期上界量级），逐个检测
+          CUTOFF=$(date -u -d '6 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          FAILED_RUNS=$(gh api "repos/$REPO/actions/runs?status=failure&per_page=50" --paginate --jq ".workflow_runs[] | select(.name == \"Droid Auto Review\" and .updated_at > \"$CUTOFF\") | .id")
+          if [ -z "$FAILED_RUNS" ]; then
+            echo "No failed Droid Auto Review runs in window. Nothing to do."
+            exit 0
+          fi
+          RERUNNED=0
+          for RUN_ID in $FAILED_RUNS; do
+            # run_attempt 限界防 rerun 风暴（与 self-heal-rerun 一致：最多自动重试 2 次）
+            ATTEMPT=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '.run_attempt')
+            if [ "$ATTEMPT" -ge 3 ]; then
+              echo "Run $RUN_ID already at attempt $ATTEMPT (>=3). Skipping; needs manual attention."
+              continue
+            fi
+            # 恢复窗口：run 结束超过 30 分钟才重试（配额未恢复时 rerun 会快速再死）
+            UPDATED_AT=$(gh api "repos/$REPO/actions/runs/$RUN_ID" --jq '.updated_at')
+            AGE_SEC=$(( $(date -u +%s) - $(date -u -d "$UPDATED_AT" +%s) ))
+            if [ "$AGE_SEC" -lt 1800 ]; then
+              echo "Run $RUN_ID failed ${AGE_SEC}s ago (<1800s recovery window). Skipping this sweep."
+              continue
+            fi
+            # 已 rerun 过一次且仍失败的 run，等待更长（下个 sweep 周期）
+            # 429 特征检测：真实报错只在 debug artifact 的 session transcript 里，
+            # job log 只有无差别的 "exited with code 1"
+            ARTIFACT_NAME=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" --jq '.artifacts[] | select(.name | startswith("droid-review-debug-")) | .name' | head -1)
+            if [ -z "$ARTIFACT_NAME" ]; then
+              echo "Run $RUN_ID has no debug artifact. Cannot classify; skipping."
+              continue
+            fi
+            rm -rf /tmp/quota-check && mkdir -p /tmp/quota-check
+            if ! gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" --jq ".artifacts[] | select(.name == \"$ARTIFACT_NAME\") | .archive_download_url" | head -1 | xargs -I{} gh api {} > /tmp/quota-check/artifact.zip; then
+              echo "::warning::Failed to download artifact for run $RUN_ID. Skipping."
+              continue
+            fi
+            cd /tmp/quota-check && unzip -q artifact.zip
+            # grep transcript：BYOK Error: 429 usage allocated quota exceeded
+            if grep -rIl "quota exceeded" .factory/sessions/ >/dev/null 2>&1; then
+              echo "Run $RUN_ID: BYOK quota exhaustion confirmed (429 in transcript). Requesting rerun..."
+              if gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/rerun-failed-jobs"; then
+                echo "Rerun requested. The rerun carries the effective review."
+                RERUNNED=$((RERUNNED + 1))
+              else
+                echo "::warning::Rerun request failed for run $RUN_ID."
+              fi
+            else
+              echo "Run $RUN_ID: no quota signature in transcript. Not quota-related; no auto-rerun."
+            fi
+            cd - >/dev/null
+          done
+          echo "Done. Rerun requested for $RERUNNED run(s)."
