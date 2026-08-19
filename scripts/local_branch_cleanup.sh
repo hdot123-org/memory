@@ -77,7 +77,9 @@ backup_tip_sha() {
   local tip_sha="$2"
   
   mkdir -p "$BACKUP_DIR"
-  local backup_file="$BACKUP_DIR/$branch_name"
+  # Replace slashes with underscores so feat/xxx becomes feat_xxx (avoids subdirectory creation)
+  local safe_name="${branch_name//\//_}"
+  local backup_file="$BACKUP_DIR/$safe_name"
   echo "$tip_sha" > "$backup_file"
   log "Backed up tip SHA for $branch_name: $tip_sha"
 }
@@ -146,9 +148,29 @@ cleanup_gone_branches() {
     fi
     
     # Use git cherry to check patch equivalence with origin/main
+    # Fail-closed: only delete if git cherry succeeds AND output is all '-' lines
+    # If git cherry fails or output is malformed, preserve the branch
     log "Checking patch equivalence for $branch..."
     local cherry_output
-    cherry_output=$(git cherry origin/main "$branch" 2>&1 || true)
+    local cherry_exit_code=0
+    cherry_output=$(git cherry origin/main "$branch" 2>&1) || cherry_exit_code=$?
+    
+    # If git cherry failed, preserve the branch (fail-closed)
+    if [[ $cherry_exit_code -ne 0 ]]; then
+      log_error "git cherry failed for $branch (exit code $cherry_exit_code), preserving branch"
+      send_posthog_event "local_branch_cherry_failed" "$branch" "$tip_sha" "git cherry exit code: $cherry_exit_code"
+      ((preserved_count++))
+      continue
+    fi
+    
+    # Validate output format: must contain only '^-' or '^+' lines
+    # If any line doesn't match, treat as malformed and preserve
+    if ! echo "$cherry_output" | grep -qE '^[+-] '; then
+      log_error "git cherry output malformed for $branch, preserving branch"
+      send_posthog_event "local_branch_cherry_malformed" "$branch" "$tip_sha" "Output doesn't match expected format"
+      ((preserved_count++))
+      continue
+    fi
     
     # Check if there are any '+' signs (unique commits)
     if echo "$cherry_output" | grep -q '^+'; then

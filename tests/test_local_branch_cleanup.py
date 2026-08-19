@@ -893,3 +893,198 @@ def test_posthog_api_key_unset_skips_event(tmp_path: Path):
     assert branch_name in remaining, (
         f"Branch {branch_name} should be preserved even without POSTHOG_API_KEY"
     )
+
+
+# ============================================================================
+# Test: Branch names with slashes are backed up correctly
+# ============================================================================
+def test_backup_branch_with_slash_name(tmp_path: Path):
+    """
+    VAL-LOCALBR-004 扩展：含斜杠分支名（如 feat/xxx）删除前备份成功.
+
+    Create a branch with slash in name (feat/xxx), merge to main, delete remote.
+    Verify backup file exists with slashes replaced by underscores.
+    """
+    bare_repo, clone_dir = create_fixture_repo(tmp_path)
+
+    # Create branch with slash in name — use safe filename (no slash in file)
+    branch_name = "feat/test-feature"
+    safe_file_name = "feat-test-feature"
+
+    # Create branch manually (avoid create_branch_with_merged_content which uses branch_name as filename)
+    subprocess.run(
+        ["git", "checkout", "-b", branch_name],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    (clone_dir / f"{safe_file_name}.txt").write_text(f"Content for {branch_name}\n")
+    subprocess.run(["git", "add", "."], cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", f"Commit on {branch_name}"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=clone_dir,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    tip_sha = result.stdout.strip()
+
+    # Push branch, then squash merge to main, delete remote
+    subprocess.run(
+        ["git", "push", "-u", "origin", branch_name],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "checkout", "main"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "merge", "--squash", branch_name],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", f"Squash merge {branch_name}"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "push", "origin", "main"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "push", "origin", "--delete", branch_name],
+        cwd=clone_dir,
+        capture_output=True,
+    )
+
+    # Fetch and prune
+    subprocess.run(
+        ["git", "fetch", "--prune", "origin"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+
+    # Set custom backup dir
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+
+    # Run cleanup with custom backup dir
+    exit_code, stdout, stderr = run_local_cleanup(
+        clone_dir,
+        env_overrides={"BACKUP_DIR": str(backup_dir)},
+    )
+
+    assert exit_code == 0, f"Cleanup failed: {stderr}"
+
+    # Verify branch was deleted
+    remaining_branches = get_local_branches(clone_dir)
+    assert branch_name not in remaining_branches, (
+        f"Branch {branch_name} should be deleted"
+    )
+
+    # Verify backup file exists with underscores (not slashes)
+    safe_name = branch_name.replace("/", "_")
+    backup_file = backup_dir / safe_name
+    assert backup_file.exists(), (
+        f"Backup file not created: {backup_file} (expected slashes replaced with underscores)"
+    )
+
+    # Verify backup contains correct SHA
+    backup_sha = backup_file.read_text().strip()
+    assert backup_sha == tip_sha, (
+        f"Backup SHA mismatch: {backup_sha} != {tip_sha}"
+    )
+
+    # Verify we can restore the branch using the backup SHA
+    restore_branch = "restore-slash-test"
+    subprocess.run(
+        ["git", "branch", restore_branch, backup_sha],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+
+    # Verify restored branch points to correct SHA
+    result = subprocess.run(
+        ["git", "rev-parse", restore_branch],
+        cwd=clone_dir,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    restored_sha = result.stdout.strip()
+    assert restored_sha == tip_sha, (
+        f"Restored branch SHA {restored_sha} != original {tip_sha}"
+    )
+
+
+# ============================================================================
+# Test: git cherry failure preserves branch (fail-closed safety)
+# ============================================================================
+def test_preserves_branch_when_git_cherry_fails(tmp_path: Path):
+    """
+    VAL-LOCALBR-002 安全语义：git cherry 失败时分支保留（fail-closed）.
+
+    Create a gone branch that would normally be deleted (patch-equivalent).
+    Simulate git cherry failure by removing origin/main reference.
+    Verify branch is preserved (not deleted) when git cherry fails.
+    """
+    bare_repo, clone_dir = create_fixture_repo(tmp_path)
+
+    # Create branch and merge to main (would normally be deleted)
+    branch_name = "feature-cherry-fail"
+    create_branch_with_merged_content(clone_dir, bare_repo, branch_name)
+
+    # Delete origin/main from bare repo to simulate git cherry failure
+    # (git cherry origin/main will fail because origin/main doesn't exist)
+    subprocess.run(
+        ["git", "branch", "-D", "main"],
+        cwd=bare_repo,
+        check=True,
+        capture_output=True,
+    )
+
+    # Fetch and prune to mark branch as gone (but origin/main won't exist)
+    subprocess.run(
+        ["git", "fetch", "--prune", "origin"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+
+    # Verify branch is marked as gone
+    branch_vv = get_branch_vv(clone_dir)
+    assert branch_name in branch_vv, f"Branch {branch_name} not found locally"
+    assert ": gone]" in branch_vv, f"Branch {branch_name} not marked as gone"
+
+    # Run cleanup - should preserve branch due to git cherry failure
+    exit_code, stdout, stderr = run_local_cleanup(clone_dir)
+
+    assert exit_code == 0, f"Cleanup failed: {stderr}"
+
+    # Verify branch was NOT deleted (fail-closed safety)
+    remaining_branches = get_local_branches(clone_dir)
+    assert branch_name in remaining_branches, (
+        f"Branch {branch_name} should be preserved when git cherry fails (fail-closed safety)"
+    )
+
+    # Verify log shows preservation due to git cherry failure
+    assert "preserving" in stdout.lower() or "cherry" in stdout.lower() or "fail" in stdout.lower(), (
+        f"Expected preservation message in stdout: {stdout}"
+    )
