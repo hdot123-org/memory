@@ -9088,11 +9088,11 @@ def test_reopen_limit_reached_no_fallback(tmp_path):
 
 
 # ============================================================================
-# TDD: VAL-DUP-005 - Ghost Finding Scenario (Run 31915486263)
+# TDD: VAL-DUP-002 - Ghost Finding Scenario (Run 31915486263)
 # ============================================================================
 
 def test_ghost_finding_scenario_run_31915486263():
-    """VAL-DUP-005: 5 ghost findings should create 5 new issues when closed issues are > 7 days old.
+    """VAL-DUP-002: 5 ghost findings should create 5 new issues when closed issues are > 7 days old.
 
     Historical context (Run 31915486263):
     - 5 findings existed (RULE_A through RULE_E)
