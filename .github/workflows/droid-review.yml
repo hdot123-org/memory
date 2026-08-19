@@ -23,7 +23,7 @@ jobs:
   droid-review:
     if: github.event.pull_request.draft == false && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: ${{ fromJSON(vars.DROID_REVIEW_TIMEOUT_MINUTES || '90') }}
     env:
       NVIDIA_KONG_PROXY_KEY: ${{ secrets.NVIDIA_KONG_PROXY_KEY }}
     permissions:
