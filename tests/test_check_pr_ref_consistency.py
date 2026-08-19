@@ -751,6 +751,33 @@ def _make_error_side_effect(
     return side_effect
 
 
+def _make_raw_stdout_side_effect(graphql_stdout: str):
+    """Build a side_effect whose graphql call returns `graphql_stdout` raw.
+
+    INFRA-419: extracted from the 85%-AST-similar inline ``side_effect``
+    bodies in test_json_decode_error_during_pr_fetch_exits_1 /
+    test_runtime_error_null_pr_in_payload_exits_1 (10 lines / 61 tokens vs
+    11 lines / 83 tokens, CODE_HYGIENE_DUPLICATE_BLOCK).
+
+    Args:
+        graphql_stdout: raw stdout the graphql mock returns (valid JSON,
+            truncated JSON, or any other payload shape under test)
+    """
+    def side_effect(args, **kwargs):
+        cmd = " ".join(args)
+        if "remote get-url" in cmd:
+            return _mock_ok("https://github.com/hdot123-org/memory.git")
+        if "graphql" in cmd:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = graphql_stdout
+            result.stderr = ""
+            return result
+        return _mock_ok()
+
+    return side_effect
+
+
 class TestFetchPrFailClosed:
     """fetch_pr_data 异常路径必须 exit 1（fail-closed），禁止 exit 0 或崩溃。
 
@@ -789,35 +816,15 @@ class TestFetchPrFailClosed:
 
     def test_json_decode_error_during_pr_fetch_exits_1(self, capsys):
         """Truncated JSON response during PR fetch → exit 1, not uncaught crash."""
-        def side_effect(args, **kwargs):
-            cmd = " ".join(args)
-            if "remote get-url" in cmd:
-                return _mock_ok("https://github.com/hdot123-org/memory.git")
-            if "graphql" in cmd:
-                result = MagicMock()
-                result.returncode = 0
-                result.stdout = "{truncated json"  # invalid JSON
-                result.stderr = ""
-                return result
-            return _mock_ok()
+        side_effect = _make_raw_stdout_side_effect("{truncated json")  # invalid JSON
 
         exit_code, _ = _run_check(827, side_effect)
         assert exit_code == 1, "JSON decode error during PR fetch must exit 1 (fail-closed)"
 
     def test_runtime_error_null_pr_in_payload_exits_1(self, capsys):
         """GraphQL returns no pullRequest (null in payload) → exit 1."""
-        def side_effect(args, **kwargs):
-            cmd = " ".join(args)
-            if "remote get-url" in cmd:
-                return _mock_ok("https://github.com/hdot123-org/memory.git")
-            if "graphql" in cmd:
-                result = MagicMock()
-                result.returncode = 0
-                data = {"data": {"repository": {"pullRequest": None}}, "errors": [{"message": "not found"}]}
-                result.stdout = json.dumps(data)
-                result.stderr = ""
-                return result
-            return _mock_ok()
+        data = {"data": {"repository": {"pullRequest": None}}, "errors": [{"message": "not found"}]}
+        side_effect = _make_raw_stdout_side_effect(json.dumps(data))
 
         exit_code, _ = _run_check(827, side_effect)
         assert exit_code == 1, "Null PR in GraphQL payload must exit 1 (fail-closed)"
