@@ -386,9 +386,20 @@ except:
     if [ -n "$MESSAGE_ID" ]; then
         log "SUCCESS: Message injected with messageId=$MESSAGE_ID"
         
-        # 删除 pending-ci-{PR_NUMBER}.json
-        rm -f "$PENDING_CI_FILE"
-        log "Deleted pending-ci-${PR_NUMBER}.json"
+        # 不删除 pending-ci-{PR_NUMBER}.json，改为标记 injected_at 用于对账
+        # 修复 daemon-hung session 问题：消息已发送但目标 session 空闲无法消费
+        # ci-timeout-watchdog.sh 会在 45 分钟后检查 injected_at，若 PR 仍未合并则触发清理
+        INJECTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        /opt/homebrew/bin/python3 << PYEOF 2>>"$LOG_FILE"
+import json
+with open('$PENDING_CI_FILE', 'r') as f:
+    data = json.load(f)
+data['injected_at'] = '$INJECTED_AT'
+data['message_id'] = '$MESSAGE_ID'
+with open('$PENDING_CI_FILE', 'w') as f:
+    json.dump(data, f)
+PYEOF
+        log "Marked pending-ci-${PR_NUMBER}.json with injected_at=$INJECTED_AT (will be cleaned up by watchdog if PR not merged in 45min)"
     else
         log "WARN: HTTP 200 but no messageId in response"
         send_posthog_event "ci_no_message_id" "$PR_NUMBER" "factory_api" "HTTP 200 without messageId"
