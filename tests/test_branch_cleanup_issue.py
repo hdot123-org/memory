@@ -72,10 +72,10 @@ class GhMockHarness:
             "if args[:2] == ['search', 'issues']:\n"
             "    query = ' '.join(a for a in args if not a.startswith('-'))\n"
             "    if 'branch-cleanup-tracker' in query:\n"
-            "        marker_hits = [{'repository': 'hdot123/memory', 'url': f'https://github.com/hdot123/memory/issues/{n}'} for n, b in state['issues'].items() if 'branch-cleanup-tracker' in b]\n"
+            "        marker_hits = [{'repository': 'example-org/memory', 'url': f'https://github.com/example-org/memory/issues/{n}'} for n, b in state['issues'].items() if 'branch-cleanup-tracker' in b]\n"
             "        print(json.dumps(marker_hits))\n"
             "    else:\n"
-            "        print(json.dumps([{'url': f'https://github.com/hdot123/memory/issues/{n}'} for n in sorted(state['issues'], reverse=True)]))\n"
+            "        print(json.dumps([{'url': f'https://github.com/hdot123-org/memory/issues/{n}'} for n in sorted(state['issues'], reverse=True)]))\n"
             "    sys.exit(0)\n"
             "if args[:2] == ['issue', 'view']:\n"
             "    n = args[2]\n"
@@ -100,7 +100,7 @@ class GhMockHarness:
             "    body_idx = args.index('--body') + 1\n"
             "    state['issues'][str(n)] = args[body_idx]\n"
             "    json.dump(state, open(state_file, 'w'))\n"
-            "    print(f'https://github.com/hdot123/memory/issues/{n}')\n"
+            "    print(f'https://github.com/hdot123-org/memory/issues/{n}')\n"
             "    sys.exit(0)\n"
             "if args[:2] == ['issue', 'edit']:\n"
             "    n = args[2]\n"
@@ -136,7 +136,7 @@ class GhMockHarness:
         self,
         deleted: list[str] | None = None,
         protected: list[str] | None = None,
-        run_url: str = "https://github.com/hdot123/memory/actions/runs/1",
+        run_url: str = "https://github.com/hdot123-org/memory/actions/runs/1",
         run_date: str = "2026-08-18 00:00 UTC",
     ) -> tuple[int, str, str]:
         deleted_file = self.tmp_path / "deleted_branches.txt"
@@ -148,7 +148,7 @@ class GhMockHarness:
 
         env = os.environ.copy()
         env["PATH"] = f"{self.mock_bin}:{env['PATH']}"
-        env["GH_REPO_KEY"] = "hdot123/memory"
+        env["GH_REPO_KEY"] = "example-org/memory"
 
         result = subprocess.run(
             [
@@ -578,7 +578,7 @@ def test_close_comment_contains_context(tmp_path: Path):
     )
 
     exit_code, stdout, _ = harness.run_script(
-        run_url="https://github.com/hdot123/memory/actions/runs/999",
+        run_url="https://github.com/hdot123-org/memory/actions/runs/999",
         run_date="2026-08-18 08:00 UTC",
     )
 
