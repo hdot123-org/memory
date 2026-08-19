@@ -395,6 +395,50 @@ def test_budget_tracker_unavailable_proceeds(tmp_path):
     assert result["retained"] == 1
 
 
+def test_budget_tracker_unavailable_logs_debug(tmp_path, caplog):
+    """INFRA-425 (SILENT_SWALLOW): degraded budget guard must leave an audit trail.
+
+    Red evidence: the except clause used a bare `pass`, so the tracker-
+    unavailable fallback was invisible to logs (evolution finding #847 /
+    INFRA-425). It must now emit a DEBUG record while still proceeding.
+
+    Note: since #845 moved get_tick_tracker() into evolution_utils, the
+    legacy sys.modules patching cannot reach the except branch anymore —
+    we patch the accessor directly to simulate tracker unavailability.
+    """
+    import logging
+
+    history = tmp_path / "history.json"  # no history file → no partial-output skip
+
+    findings = [Finding("R1", "warning", "cat", "d", "present.py", "e")]
+    open_issues = [_compact_issue(118, "RY2", "gone2.py", category="code_quality")]
+
+    with patch('evolution_utils.get_tick_tracker',
+               side_effect=RuntimeError("tracker unavailable")), \
+         patch('evolution_utils._verify_fix_merged_via_linear', return_value=False), \
+         patch('evolution_utils.subprocess.run') as mock_run, \
+         caplog.at_level(logging.DEBUG, logger="evolution_utils"):
+        mock_run.side_effect = [
+            _gh_ok(json.dumps({"state": "OPEN"})),
+            _gh_ok(""),
+            _gh_ok(),
+        ]
+        result = reverse_drift_watch(findings, open_issues, history)
+
+    # Behavior unchanged: guard degrades gracefully and processing proceeds
+    assert result["retained"] == 1
+    # Audit trail: a DEBUG record mentions the degraded guard
+    debug_records = [
+        r for r in caplog.records
+        if r.levelno == logging.DEBUG
+        and "reverse_drift_watch" in r.getMessage()
+        and "tracker unavailable" in r.getMessage()
+    ]
+    assert debug_records, (
+        "expected a DEBUG record for the degraded budget guard (INFRA-425)"
+    )
+
+
 # ---------------------------------------------------------------------------
 # get_open_issues() passes body/category through (P0 shape fix, producer side)
 # ---------------------------------------------------------------------------
