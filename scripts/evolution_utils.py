@@ -1602,6 +1602,7 @@ def forward_drift_watch(
     closed_window_keys: set[tuple[str, str]],
     quota_exhausted: dict[str, bool],
     issue_excluded_categories: set[str],
+    quota_deferred_keys: set[tuple[str, str]] | None = None,
 ) -> list[ForwardDriftRecord]:
     """VAL-DRF-001: Forward drift watch -- check each actionable finding.
 
@@ -1619,6 +1620,12 @@ def forward_drift_watch(
     4. QUOTA_PENDING
     5. GHOST (lowest priority -- no reason found)
 
+    INFRA-410: quota_deferred_keys provides per-finding precision — the exact
+    keys deferred by pool slicing (sorted pool[quota:] tail). It takes
+    precedence over the category-level quota_exhausted approximation, which
+    misses deferrals when multiple categories share one pool (e.g. 6+6 > 10
+    while each category count is <= 10).
+
     Args:
         findings: List of Finding objects from current tick
         open_issue_keys: Set of (rule_id, location) keys that have open issues
@@ -1626,6 +1633,8 @@ def forward_drift_watch(
         closed_window_keys: Set of (rule_id, location) keys that were closed within DEDUP_CLOSED_WINDOW_DAYS
         quota_exhausted: Dict mapping category -> True if quota was exhausted for that category
         issue_excluded_categories: Set of categories that are not actionable (e.g., daily_audit)
+        quota_deferred_keys: Optional per-finding set of keys deferred by real
+            pool-quota semantics (INFRA-410); takes precedence over quota_exhausted
 
     Returns:
         List of ForwardDriftRecord, one per actionable finding, with status and audit trail
@@ -1660,6 +1669,9 @@ def forward_drift_watch(
         elif key in closed_window_keys:
             status = "CLOSED_IN_WINDOW"
             reason = "closed_within_dedup_window"
+        elif quota_deferred_keys is not None and key in quota_deferred_keys:
+            status = "QUOTA_PENDING"
+            reason = "pool_quota_deferred"
         elif quota_exhausted.get(finding.category, False):
             status = "QUOTA_PENDING"
             reason = f"category_quota_exhausted:{finding.category}"
