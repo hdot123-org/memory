@@ -125,13 +125,18 @@ jobs:
           python -m pytest -q tests -n 6 --cov=memory_core --cov-report=xml
       - name: Debug - inspect coverage shard files
         if: always()
+        env:
+          COVERAGE_FILE: ${{ runner.temp }}/cov-${{ github.run_id }}-${{ github.run_attempt }}/.coverage
         run: |
-          echo "=== Coverage shard files (.coverage.*) ==="
-          ls -la .coverage* 2>/dev/null || echo "No .coverage files found"
+          echo "=== Coverage shard files in COVERAGE_FILE directory ==="
+          COV_DIR="$(dirname "$COVERAGE_FILE")"
+          ls -la "$COV_DIR"/ 2>/dev/null || echo "Directory does not exist: $COV_DIR"
           echo "=== Shard file count ==="
-          find . -maxdepth 1 -name '.coverage.*' -type f | wc -l || echo "0"
-          echo "=== Manual combine + report (diagnostic, no fail-under) ==="
-          python -m coverage combine --keep || true
+          find "$COV_DIR" -maxdepth 1 -name '.coverage.*' -type f 2>/dev/null | wc -l || echo "0"
+          echo "=== Coverage shard files in workspace (.coverage.*) ==="
+          ls -la .coverage* 2>/dev/null || echo "No .coverage files in workspace"
+          echo "=== Manual combine from isolated dir + report (diagnostic, no fail-under) ==="
+          python -m coverage combine --keep "$COV_DIR"/.coverage || true
           python -m coverage report | tail -3 || true
       - name: Timestamp - after tests
         run: |
