@@ -17,7 +17,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-
 REQUIRED_FINDING_FIELDS = {"severity", "file", "line", "message"}
 VALID_SEVERITIES = {"P0", "P1", "P2", "P3"}
 
