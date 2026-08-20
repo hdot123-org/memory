@@ -104,14 +104,13 @@ def append_metrics_record(path: Path, record: dict[str, Any]) -> bool:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
-        with path.open("a", encoding="utf-8") as handle:
-            with try_exclusive_lock(handle) as acquired:
-                if not acquired:
-                    # Contended — drop this record to avoid blocking the hook.
-                    return False
-                handle.write(line)
-                handle.flush()
-                os.fsync(handle.fileno())
+        with path.open("a", encoding="utf-8") as handle, try_exclusive_lock(handle) as acquired:
+            if not acquired:
+                # Contended — drop this record to avoid blocking the hook.
+                return False
+            handle.write(line)
+            handle.flush()
+            os.fsync(handle.fileno())
         return True
     except OSError as exc:
         _logger.debug("append_metrics_record failed: %s", exc)

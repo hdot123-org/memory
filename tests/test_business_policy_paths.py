@@ -588,7 +588,7 @@ class TestPathEdgeCases:
         """Empty string path resolves to cwd; should fail containment."""
         root = tmp_path / "root"
         root.mkdir()
-        empty = Path("")
+        empty = Path()
         assert _path_is_under(empty, root) is False
 
     def test_path_is_under_dot_vs_root(self, tmp_path: Path) -> None:
@@ -596,7 +596,7 @@ class TestPathEdgeCases:
         root = tmp_path / "root"
         root.mkdir()
         os.chdir(str(root))
-        dot = Path(".")
+        dot = Path()
         assert _path_is_under(dot, root) is True
 
     def test_path_is_under_dotdot_outside(self, tmp_path: Path) -> None:

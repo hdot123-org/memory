@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Golden end-to-end tests for Phase 0 — Host Single-Host Tightening + No Project Hooks.
 
 Each test asserts one VAL-P0-* validation contract requirement.

@@ -134,7 +134,7 @@ def _search_memory(query: str, cwd: str) -> list[dict[str, Any]]:
                 file_path = os.path.join(dirpath, filename)
                 relative_path = os.path.relpath(file_path, base_for_rel)
                 try:
-                    with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
+                    with open(file_path, encoding="utf-8", errors="replace") as fh:
                         for line_number, line in enumerate(fh, start=1):
                             if query_lower in line.lower():
                                 results.append(
@@ -329,7 +329,7 @@ def _get_health(cwd: str) -> dict[str, Any]:
             ),
         }
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             loaded: dict[str, Any] = json.load(fh)
         return loaded
     except (json.JSONDecodeError, OSError) as exc:
@@ -348,7 +348,7 @@ def _list_projects() -> list[dict[str, Any]]:
     if not os.path.isfile(index_path):
         return []
     try:
-        with open(index_path, "r", encoding="utf-8") as fh:
+        with open(index_path, encoding="utf-8") as fh:
             index = json.load(fh)
     except (json.JSONDecodeError, OSError):
         return []
@@ -367,7 +367,7 @@ def _list_projects() -> list[dict[str, Any]]:
         project_file = os.path.join(projects_dir, f"{project_id}.json")
         if os.path.isfile(project_file):
             try:
-                with open(project_file, "r", encoding="utf-8") as fh:
+                with open(project_file, encoding="utf-8") as fh:
                     loaded = json.load(fh)
                     if isinstance(loaded, dict):
                         record = loaded
@@ -409,7 +409,7 @@ def _get_daily_summary(date: str, cwd: str) -> dict[str, Any]:
             "message": "No session log for this date",
         }
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        with open(path, encoding="utf-8", errors="replace") as fh:
             content = fh.read()
     except OSError as exc:
         return {

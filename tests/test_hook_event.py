@@ -277,7 +277,7 @@ class TestToContextPackageInput:
             source="claude",
             event_type="notification",
             payload=payload,
-            cwd=Path("."),
+            cwd=Path(),
             timestamp="now",
         )
         result = to_context_package_input(event)

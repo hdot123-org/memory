@@ -59,4 +59,4 @@ def test_constants_derives_from_init():
     from memory_core.constants import CURRENT_MEMORY_VERSION
 
     # They must be equal in value
-    assert CURRENT_MEMORY_VERSION == __version__
+    assert __version__ == CURRENT_MEMORY_VERSION

@@ -747,11 +747,10 @@ def _append_migrations_log(log_path: Path, line: str) -> None:
 
     Uses exclusive_lock for cross-platform file locking.
     """
-    with open(log_path, "a", encoding="utf-8") as f:
-        with exclusive_lock(f):
-            f.write(line + "\n")
-            f.flush()
-            os.fsync(f.fileno())
+    with open(log_path, "a", encoding="utf-8") as f, exclusive_lock(f):
+        f.write(line + "\n")
+        f.flush()
+        os.fsync(f.fileno())
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unit tests for _rule_types.py rule evaluation types."""
 
 from dataclasses import dataclass

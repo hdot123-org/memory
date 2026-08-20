@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Unified exception hierarchy for memory-core domain errors.
 
