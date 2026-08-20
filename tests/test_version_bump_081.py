@@ -6,11 +6,8 @@ Validates:
 - Compat fallback works for versions not explicitly in _COMPAT_MATRIX
 """
 
-import subprocess
-import sys
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 from memory_core.constants import CURRENT_MEMORY_VERSION
 
@@ -105,7 +102,7 @@ class TestCLIVersionFlag:
         """memory-init --version logic uses CURRENT_MEMORY_VERSION."""
         # Test the version logic directly without subprocess to avoid environment dependency
         from memory_core.constants import CURRENT_MEMORY_VERSION
-        
+
         # The --version flag now uses CURRENT_MEMORY_VERSION directly
         # Verify the constant is accessible and non-empty
         assert CURRENT_MEMORY_VERSION, "CURRENT_MEMORY_VERSION must be set"
@@ -115,7 +112,7 @@ class TestCLIVersionFlag:
         """memory-migrate --version logic uses CURRENT_MEMORY_VERSION."""
         # Test the version logic directly without subprocess to avoid environment dependency
         from memory_core.constants import CURRENT_MEMORY_VERSION
-        
+
         # The --version flag now uses CURRENT_MEMORY_VERSION directly
         # Verify the constant is accessible and non-empty
         assert CURRENT_MEMORY_VERSION, "CURRENT_MEMORY_VERSION must be set"
