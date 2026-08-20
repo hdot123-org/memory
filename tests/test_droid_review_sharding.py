@@ -677,8 +677,8 @@ rm -rf "$BASE_DIR" "$HEAD_DIR"
                     )
                     # 确保不是相对路径
                     assert not cwd_value.startswith('head-src'), (
-                        f"--cwd must not use relative path 'head-src', "
-                        f"it causes droid CLI 0.200.0 to silently crash"
+                        "--cwd must not use relative path 'head-src', "
+                        "it causes droid CLI 0.200.0 to silently crash"
                     )
 
 
