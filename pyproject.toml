@@ -211,6 +211,9 @@ DEP001 = [
     "evolution_utils",
     "evolution_scanner",
 ]
+DEP003 = [
+    "coverage",  # transitive via pytest-cov; used in conftest.py pytest_sessionfinish hook
+]
 DEP002 = [
     "pytest-cov",
     "mypy",
