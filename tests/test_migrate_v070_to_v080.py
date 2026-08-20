@@ -4,10 +4,9 @@ Covers VAL-MIGRATE-001 through VAL-MIGRATE-005 and VAL-CROSS-002.
 """
 
 import sys
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
-
-import tomllib
 
 from memory_core.tools.adapter_toml_schema import load_adapter_toml
 
