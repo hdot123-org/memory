@@ -292,87 +292,80 @@ def _build_session_info_dict(
     }
 
 
-def _extract_session_info_streaming(
-    jsonl_path: Path, settings: dict[str, Any], session_id: str
-) -> dict[str, Any] | None:
-    """从 JSONL 文件单遍流式提取 session 摘要信息（确定性预算扫描）。
+class _StreamingState:
+    """Mutable state container for streaming JSONL parsing."""
 
-    使用 chunk-based 读取而非 readline，每 chunk 后检查时间和字节预算。
-    超预算时返回已采集 info + truncated=True 标记。
-    单行 > MAX_LINE 的行被跳过，防止巨型行卡住 readline。
-    所有 13 个 session info 字段在截断时仍然填充（部分可能为空/默认值）。
+    def __init__(self) -> None:
+        self.session_start: dict[str, Any] | None = None
+        self.first_user_message: dict[str, Any] | None = None
+        self.last_assistant_deque: deque[dict[str, Any]] = deque(maxlen=1)
+        self.start_time: datetime | None = None
+        self.end_time: datetime | None = None
+        self.tool_calls: Counter[str] = Counter()
+        self.total_tool_calls = 0
 
-    不构建 lines 列表，内存占用恒定为 O(1)。
+
+def _process_jsonl_line(raw_line: str, state: _StreamingState) -> None:
+    """Process a single JSONL line, updating streaming state."""
+    raw_line = raw_line.strip()
+    if not raw_line:
+        return
+
+    # Skip oversized lines (VAL-LOG-004)
+    if len(raw_line.encode("utf-8")) > MAX_LINE:
+        return
+
+    try:
+        line = json.loads(raw_line)
+    except (json.JSONDecodeError, ValueError):
+        return
+
+    event_type = line.get("type")
+
+    # session_start
+    if event_type == "session_start":
+        state.session_start = line
+        ts = line.get("timestamp", "")
+        parsed = _parse_jsonl_timestamp(ts)
+        if parsed:
+            state.start_time = parsed
+
+    # message 事件
+    elif event_type == "message":
+        msg = line.get("message", {})
+        role = msg.get("role", "")
+        content = msg.get("content", [])
+        ts = line.get("timestamp", "")
+
+        parsed_ts = _parse_jsonl_timestamp(ts)
+        if parsed_ts:
+            if state.end_time is None or parsed_ts > state.end_time:
+                state.end_time = parsed_ts
+
+        # 第一条 user message
+        if role == "user" and state.first_user_message is None:
+            state.first_user_message = msg
+
+        # 最后一条 assistant message (deque maxlen=1)
+        if role == "assistant":
+            state.last_assistant_deque.append(msg)
+
+            # 统计 tool_use (Counter 累加)
+            tc, count = _collect_tool_uses(content)
+            state.tool_calls.update(tc)
+            state.total_tool_calls += count
+
+
+def _read_jsonl_chunks(
+    jsonl_path: Path, state: _StreamingState, start_monotonic: float
+) -> bool:
+    """Read and process JSONL file in chunks, respecting time/byte budgets.
+
+    Returns True if truncated due to budget limits, False otherwise.
     """
-    if not jsonl_path.exists():
-        return None
-
-    session_start: dict[str, Any] | None = None
-    first_user_message: dict[str, Any] | None = None
-    last_assistant_deque: deque[dict[str, Any]] = deque(maxlen=1)
-    start_time: datetime | None = None
-    end_time: datetime | None = None
-    tool_calls: Counter[str] = Counter()
-    total_tool_calls = 0
-    truncated = False
-
-    start_monotonic = time.monotonic()
     bytes_read = 0
-    # Buffer for incomplete lines across chunk boundaries
     line_buffer = ""
-
-    def _process_line(raw_line: str) -> None:
-        """Process a single JSONL line, updating session state."""
-        nonlocal session_start, first_user_message, start_time, end_time
-        nonlocal total_tool_calls
-
-        raw_line = raw_line.strip()
-        if not raw_line:
-            return
-
-        # Skip oversized lines (VAL-LOG-004)
-        if len(raw_line.encode("utf-8")) > MAX_LINE:
-            return
-
-        try:
-            line = json.loads(raw_line)
-        except (json.JSONDecodeError, ValueError):
-            return
-
-        event_type = line.get("type")
-
-        # session_start
-        if event_type == "session_start":
-            session_start = line
-            ts = line.get("timestamp", "")
-            parsed = _parse_jsonl_timestamp(ts)
-            if parsed:
-                start_time = parsed
-
-        # message 事件
-        elif event_type == "message":
-            msg = line.get("message", {})
-            role = msg.get("role", "")
-            content = msg.get("content", [])
-            ts = line.get("timestamp", "")
-
-            parsed_ts = _parse_jsonl_timestamp(ts)
-            if parsed_ts:
-                if end_time is None or parsed_ts > end_time:
-                    end_time = parsed_ts
-
-            # 第一条 user message
-            if role == "user" and first_user_message is None:
-                first_user_message = msg
-
-            # 最后一条 assistant message (deque maxlen=1)
-            if role == "assistant":
-                last_assistant_deque.append(msg)
-
-                # 统计 tool_use (Counter 累加)
-                tc, count = _collect_tool_uses(content)
-                tool_calls.update(tc)
-                total_tool_calls += count
+    truncated = False
 
     try:
         with jsonl_path.open("rb") as f:
@@ -406,26 +399,49 @@ def _extract_session_info_streaming(
                 line_buffer = lines.pop()
 
                 for line_text in lines:
-                    _process_line(line_text)
+                    _process_jsonl_line(line_text, state)
 
         # Process any remaining buffer after EOF
         if line_buffer.strip():
-            _process_line(line_buffer)
+            _process_jsonl_line(line_buffer, state)
 
     except OSError:
+        return True  # Treat read errors as truncation
+
+    return truncated
+
+
+def _extract_session_info_streaming(
+    jsonl_path: Path, settings: dict[str, Any], session_id: str
+) -> dict[str, Any] | None:
+    """从 JSONL 文件单遍流式提取 session 摘要信息（确定性预算扫描）。
+
+    使用 chunk-based 读取而非 readline，每 chunk 后检查时间和字节预算。
+    超预算时返回已采集 info + truncated=True 标记。
+    单行 > MAX_LINE 的行被跳过，防止巨型行卡住 readline。
+    所有 13 个 session info 字段在截断时仍然填充（部分可能为空/默认值）。
+
+    不构建 lines 列表，内存占用恒定为 O(1)。
+    """
+    if not jsonl_path.exists():
         return None
 
+    state = _StreamingState()
+    start_monotonic = time.monotonic()
+
+    truncated = _read_jsonl_chunks(jsonl_path, state, start_monotonic)
+
     # 从 deque 取出 last_assistant_message
-    last_assistant_message = last_assistant_deque[0] if last_assistant_deque else None
+    last_assistant_message = state.last_assistant_deque[0] if state.last_assistant_deque else None
 
     # Extract previews
-    user_prompt_preview = _extract_first_user_preview(first_user_message)
+    user_prompt_preview = _extract_first_user_preview(state.first_user_message)
     assistant_summary_preview = _extract_assistant_summary_preview(last_assistant_message)
 
     # Get title and model from session_start and settings
     title = ""
-    if session_start:
-        title = session_start.get("title", "") or session_start.get("sessionTitle", "")
+    if state.session_start:
+        title = state.session_start.get("title", "") or state.session_start.get("sessionTitle", "")
     model = settings.get("model", "unknown")
 
     # Build and return the final dict
@@ -433,12 +449,12 @@ def _extract_session_info_streaming(
         session_id=session_id,
         title=title,
         model=model,
-        start_time=start_time,
-        end_time=end_time,
+        start_time=state.start_time,
+        end_time=state.end_time,
         user_prompt_preview=user_prompt_preview,
         assistant_summary_preview=assistant_summary_preview,
-        tool_calls=tool_calls,
-        total_tool_calls=total_tool_calls,
+        tool_calls=state.tool_calls,
+        total_tool_calls=state.total_tool_calls,
         settings=settings,
     )
 

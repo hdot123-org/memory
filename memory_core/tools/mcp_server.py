@@ -682,6 +682,108 @@ async def list_tools() -> list[Tool]:
     return [t for t in all_tools if t.name in _ALLOWED_TOOLS]
 
 
+# ---------------------------------------------------------------------------
+# Table-driven tool dispatch handlers
+# ---------------------------------------------------------------------------
+def _handle_load_context(arguments: dict[str, Any]) -> Any:
+    """Handle the load_context tool call."""
+    cwd = arguments.get("cwd") or os.getcwd()
+    return _load_context(cwd)
+
+
+def _handle_search_memory(arguments: dict[str, Any]) -> Any:
+    """Handle the search_memory tool call."""
+    query = arguments.get("query")
+    if not query or not isinstance(query, str):
+        return {"status": "error", "message": "'query' is required and must be a non-empty string"}
+    cwd = arguments.get("cwd") or os.getcwd()
+    return _search_memory(query, cwd)
+
+
+def _handle_resolve_doc_path(arguments: dict[str, Any]) -> Any:
+    """Handle the resolve_doc_path tool call."""
+    category = arguments.get("category")
+    filename = arguments.get("filename")
+    if not category or not isinstance(category, str):
+        return {"status": "error", "message": "'category' is required"}
+    if not filename or not isinstance(filename, str):
+        return {"status": "error", "message": "'filename' is required"}
+    cwd = arguments.get("cwd") or os.getcwd()
+    return _resolve_doc_path(category, filename, cwd)
+
+
+def _handle_save_memory(arguments: dict[str, Any]) -> Any:
+    """Handle the save_memory tool call."""
+    category = arguments.get("category")
+    filename = arguments.get("filename")
+    content = arguments.get("content")
+    if not category or not isinstance(category, str):
+        return {"status": "error", "message": "'category' is required"}
+    if not filename or not isinstance(filename, str):
+        return {"status": "error", "message": "'filename' is required"}
+    if content is None or not isinstance(content, str):
+        return {"status": "error", "message": "'content' is required"}
+    cwd = arguments.get("cwd") or os.getcwd()
+    return _save_memory(category, filename, content, cwd)
+
+
+def _handle_validate_write(arguments: dict[str, Any]) -> Any:
+    """Handle the validate_write tool call."""
+    path = arguments.get("path")
+    if not path or not isinstance(path, str):
+        return {"status": "error", "message": "'path' is required"}
+    tool_name = arguments.get("tool_name") or "Write"
+    cwd = arguments.get("cwd") or os.getcwd()
+    return _validate_write(path, tool_name, cwd)
+
+
+def _handle_record_event(arguments: dict[str, Any]) -> Any:
+    """Handle the record_event tool call."""
+    event = arguments.get("event")
+    cwd = arguments.get("cwd")
+    if not event or not isinstance(event, str):
+        return {"status": "error", "message": "'event' is required"}
+    if not cwd or not isinstance(cwd, str):
+        return {"status": "error", "message": "'cwd' is required"}
+    host = arguments.get("host") or "mcp"
+    try:
+        return _record_event(event, cwd, host)
+    except Exception as exc:  # noqa: BLE001 — never crash the server
+        return {"status": "error", "message": str(exc), "event": event, "cwd": cwd}
+
+
+def _handle_get_health(arguments: dict[str, Any]) -> Any:
+    """Handle the get_health tool call."""
+    cwd = arguments.get("cwd") or os.getcwd()
+    return _get_health(cwd)
+
+
+def _handle_list_projects(arguments: dict[str, Any]) -> Any:
+    """Handle the list_projects tool call."""
+    return _list_projects()
+
+
+def _handle_get_daily_summary(arguments: dict[str, Any]) -> Any:
+    """Handle the get_daily_summary tool call."""
+    date = arguments.get("date") or datetime.now().strftime("%Y-%m-%d")
+    cwd = arguments.get("cwd") or os.getcwd()
+    return _get_daily_summary(date, cwd)
+
+
+# Dispatch table mapping tool names to their handler functions.
+_TOOL_HANDLERS: dict[str, Any] = {
+    "load_context": _handle_load_context,
+    "search_memory": _handle_search_memory,
+    "resolve_doc_path": _handle_resolve_doc_path,
+    "save_memory": _handle_save_memory,
+    "validate_write": _handle_validate_write,
+    "record_event": _handle_record_event,
+    "get_health": _handle_get_health,
+    "list_projects": _handle_list_projects,
+    "get_daily_summary": _handle_get_daily_summary,
+}
+
+
 @app.call_tool()  # type: ignore[untyped-decorator]
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """Dispatch an incoming tool call to the correct implementation.
@@ -706,152 +808,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 )
             ]
 
-        if name == "load_context":
-            cwd = arguments.get("cwd") or os.getcwd()
-            result = _load_context(cwd)
-            return [TextContent(type="text", text=json.dumps(result, default=str))]
+        handler = _TOOL_HANDLERS.get(name)
+        if handler is None:
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps({"status": "error", "message": f"Unknown tool: {name}"}),
+                )
+            ]
 
-        if name == "search_memory":
-            query = arguments.get("query")
-            if not query or not isinstance(query, str):
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(
-                            {"status": "error", "message": "'query' is required and must be a non-empty string"}
-                        ),
-                    )
-                ]
-            cwd = arguments.get("cwd") or os.getcwd()
-            results = _search_memory(query, cwd)
-            return [TextContent(type="text", text=json.dumps(results, default=str))]
-
-        if name == "resolve_doc_path":
-            category = arguments.get("category")
-            filename = arguments.get("filename")
-            if not category or not isinstance(category, str):
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(
-                            {"status": "error", "message": "'category' is required"}
-                        ),
-                    )
-                ]
-            if not filename or not isinstance(filename, str):
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(
-                            {"status": "error", "message": "'filename' is required"}
-                        ),
-                    )
-                ]
-            cwd = arguments.get("cwd") or os.getcwd()
-            result = _resolve_doc_path(category, filename, cwd)
-            return [TextContent(type="text", text=json.dumps(result, default=str))]
-
-        if name == "save_memory":
-            category = arguments.get("category")
-            filename = arguments.get("filename")
-            content = arguments.get("content")
-            if not category or not isinstance(category, str):
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(
-                            {"status": "error", "message": "'category' is required"}
-                        ),
-                    )
-                ]
-            if not filename or not isinstance(filename, str):
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(
-                            {"status": "error", "message": "'filename' is required"}
-                        ),
-                    )
-                ]
-            if content is None or not isinstance(content, str):
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(
-                            {"status": "error", "message": "'content' is required"}
-                        ),
-                    )
-                ]
-            cwd = arguments.get("cwd") or os.getcwd()
-            result = _save_memory(category, filename, content, cwd)
-            return [TextContent(type="text", text=json.dumps(result, default=str))]
-
-        if name == "validate_write":
-            path = arguments.get("path")
-            if not path or not isinstance(path, str):
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(
-                            {"status": "error", "message": "'path' is required"}
-                        ),
-                    )
-                ]
-            tool_name = arguments.get("tool_name") or "Write"
-            cwd = arguments.get("cwd") or os.getcwd()
-            result = _validate_write(path, tool_name, cwd)
-            return [TextContent(type="text", text=json.dumps(result, default=str))]
-
-        if name == "record_event":
-            event = arguments.get("event")
-            cwd = arguments.get("cwd")
-            if not event or not isinstance(event, str):
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(
-                            {"status": "error", "message": "'event' is required"}
-                        ),
-                    )
-                ]
-            if not cwd or not isinstance(cwd, str):
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(
-                            {"status": "error", "message": "'cwd' is required"}
-                        ),
-                    )
-                ]
-            host = arguments.get("host") or "mcp"
-            try:
-                result = _record_event(event, cwd, host)
-            except Exception as exc:  # noqa: BLE001 — never crash the server
-                result = {"status": "error", "message": str(exc), "event": event, "cwd": cwd}
-            return [TextContent(type="text", text=json.dumps(result, default=str))]
-
-        if name == "get_health":
-            cwd = arguments.get("cwd") or os.getcwd()
-            result = _get_health(cwd)
-            return [TextContent(type="text", text=json.dumps(result, default=str))]
-
-        if name == "list_projects":
-            projects = _list_projects()
-            return [TextContent(type="text", text=json.dumps(projects, default=str))]
-
-        if name == "get_daily_summary":
-            date = arguments.get("date") or datetime.now().strftime("%Y-%m-%d")
-            cwd = arguments.get("cwd") or os.getcwd()
-            result = _get_daily_summary(date, cwd)
-            return [TextContent(type="text", text=json.dumps(result, default=str))]
-
-        # Unknown tool name.
-        return [
-            TextContent(
-                type="text",
-                text=json.dumps({"status": "error", "message": f"Unknown tool: {name}"}),
-            )
-        ]
+        result = handler(arguments)
+        return [TextContent(type="text", text=json.dumps(result, default=str))]
     except Exception as exc:  # noqa: BLE001 — never crash the server
         return [
             TextContent(
