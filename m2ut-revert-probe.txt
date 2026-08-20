@@ -1,1 +1,0 @@
-temporary content for revert-scenario validation
