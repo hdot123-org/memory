@@ -204,8 +204,8 @@ jobs:
         env:
           SHARD_FILE_JSON: ${{ toJson(matrix.shard.files) }}
           SHARD_ID_VAL: ${{ matrix.shard.shard_id }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ needs.setup.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.setup.outputs.head_sha }}
         run: |
           set -eu
 
@@ -327,10 +327,10 @@ jobs:
         env:
           PR_NUMBER: ${{ needs.setup.outputs.pr_number }}
           HEAD_SHA: ${{ needs.setup.outputs.head_sha }}
+          DOCS_ONLY: ${{ needs.plan-shards.outputs.docs_only }}
+          SHARDS: ${{ needs.plan-shards.outputs.shards }}
         run: |
           set -eu
-          DOCS_ONLY="${{ needs.plan-shards.outputs.docs_only }}"
-          SHARDS="${{ needs.plan-shards.outputs.shards }}"
 
           if [ "$DOCS_ONLY" = "true" ]; then
             echo "docs-only PR — skipping aggregation"

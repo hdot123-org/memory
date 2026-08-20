@@ -111,6 +111,70 @@ class TestWorkflowStructure:
         """VAL-SHARD-011: shard 级 timeout 读自 vars。"""
         assert "vars.DROID_REVIEW_TIMEOUT_MINUTES" in workflow_raw
 
+    def test_10b_no_needs_outputs_in_run_blocks(self, workflow_data):
+        """Security: run: 块内禁止 needs.*.outputs 插值（防 bash 注入，scrutiny round-4）。
+
+        攻击面：pull_request_target + 公共仓库 + 文件名里嵌 $(…)。Runner 在
+        bash 解析前展开 ${{ needs.plan-shards.outputs.shards }}，若值出现在
+        run: 字符串里，赋值时文件名中的命令替换会直接执行。修复：把这类值放
+        在 step 的 env: 映射里（env: 走 runner 的值传递，不经过 bash 解析）。
+
+        结构测试：遍历所有 job 的所有 step，凡有 run: 字段者不得出现
+        ${{ needs.<job>.outputs.<name> }} 形式的表达式。
+        """
+        import re
+        pattern = re.compile(r'\$\{\{\s*needs\.\S+\.outputs\.\S+\s*\}\}')
+        violations = []
+        for job_name, job in workflow_data.get("jobs", {}).items():
+            for idx, step in enumerate(job.get("steps", [])):
+                run_text = step.get("run", "")
+                if not run_text:
+                    continue
+                matches = pattern.findall(run_text)
+                if matches:
+                    violations.append(
+                        f"job={job_name!r} step[{idx}] ({step.get('name', '?')}): "
+                        f"{matches}"
+                    )
+        assert not violations, (
+            "run: blocks must NOT interpolate needs.*.outputs (injection risk). "
+            "Move such values to the step's env: mapping. Violations:\n"
+            + "\n".join(violations)
+        )
+
+    def test_10c_shard_env_uses_setup_outputs_for_workflow_dispatch(self, workflow_data):
+        """workflow_dispatch 路径能进 review-shard：shard_env 必须从 setup outputs 读 sha。
+
+        若用 github.event.pull_request.base/head.sha，workflow_dispatch 触发时
+        这两者都为空，shard 永远进不了 review-shard。修复：从 needs.setup.outputs
+        读（:193-198 的 checkout 已这样做，自测也走同一通道）。
+        """
+        jobs = workflow_data.get("jobs", {})
+        shard_job = jobs.get("review-shard", {})
+        steps = shard_job.get("steps", [])
+        shard_env_step = None
+        for step in steps:
+            if step.get("id") == "shard_env":
+                shard_env_step = step
+                break
+        assert shard_env_step is not None, "review-shard must have a shard_env step"
+        env = shard_env_step.get("env", {})
+        base_sha_src = str(env.get("BASE_SHA", ""))
+        head_sha_src = str(env.get("HEAD_SHA", ""))
+        assert "needs.setup.outputs" in base_sha_src, (
+            f"shard_env BASE_SHA must read from needs.setup.outputs, got: {base_sha_src!r}"
+        )
+        assert "needs.setup.outputs" in head_sha_src, (
+            f"shard_env HEAD_SHA must read from needs.setup.outputs, got: {head_sha_src!r}"
+        )
+        # Specifically must NOT use github.event.pull_request.*.sha
+        assert "github.event.pull_request" not in base_sha_src, (
+            f"shard_env BASE_SHA must not use github.event.pull_request: {base_sha_src!r}"
+        )
+        assert "github.event.pull_request" not in head_sha_src, (
+            f"shard_env HEAD_SHA must not use github.event.pull_request: {head_sha_src!r}"
+        )
+
 
 # ══════════════════════════════════════════════════════════════════════
 # Part B: Planner invariants (16 tests)
