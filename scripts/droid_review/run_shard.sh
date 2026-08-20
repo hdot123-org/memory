@@ -279,3 +279,5 @@ print(f'Findings schema valid ({finding_count} findings)')
 }
 
 echo "Shard $SHARD_ID completed successfully"
+
+# PR-INJECTED-MARKER-20260821: this line exists only in PR HEAD, not BASE
