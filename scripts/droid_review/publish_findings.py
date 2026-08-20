@@ -125,7 +125,7 @@ def load_findings_files(pattern: str) -> list[dict[str, Any]]:
     return all_findings
 
 
-def main():
+def main() -> None:
     """CLI entry: load findings-*.json, validate, dedup, output summary."""
     if len(sys.argv) < 2:
         print("Usage: publish_findings.py <findings-pattern>", file=sys.stderr)

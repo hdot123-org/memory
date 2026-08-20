@@ -103,7 +103,7 @@ def plan_shards(
     }
 
 
-def main():
+def main() -> None:
     """CLI entry: read files from stdin (one per line), output JSON."""
     if len(sys.argv) > 1:
         # Allow passing max_files/max_count as args for testing
