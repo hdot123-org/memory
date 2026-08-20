@@ -17,6 +17,11 @@ INJECTION_TTL_SECONDS=2700 # 45 minutes (Phase B)
 
 # === PostHog event reporting ===
 send_posthog_event() {
+  # POSTHOG_DRY_RUN=1: print only, do not send (test isolation guard)
+  if [[ "${POSTHOG_DRY_RUN:-0}" == "1" ]]; then
+    echo "[POSTHOG_DRY_RUN] Would send: event=$1 pr=$2 stage=$3 detail=$4"
+    return 0
+  fi
   local event_type="$1"
   local pr_number="$2"
   local stage="$3"
@@ -41,6 +46,17 @@ send_posthog_event() {
     }" || true
 }
 
+# Cross-platform mtime (macOS stat -f %m / GNU stat -c %Y)
+# Conditional assignment avoids GNU stdout leak into $() capture
+# (GNU stat treats -f as --file-system, leaking fs-listing stdout)
+_portable_mtime() {
+  local _f="$1" _ts
+  if ! _ts=$(stat -f %m "$_f" 2>/dev/null); then
+    _ts=$(stat -c %Y "$_f" 2>/dev/null || echo 0)
+  fi
+  printf '%s' "$_ts"
+}
+
 # === Spawn fallback for lost messages ===
 spawn_fallback() {
   local pr_num="$1"
@@ -51,7 +67,7 @@ spawn_fallback() {
   # Create fallback lock to prevent duplicate spawns (idempotent)
   # Only spawn if lock doesn't exist or is older than 1 hour
   if [ -f "$lock_file" ]; then
-    local lock_age=$(( $(date +%s) - $(stat -f '%m' "$lock_file" 2>/dev/null || stat -c '%Y' "$lock_file" 2>/dev/null || echo 0) ))
+    local lock_age=$(( $(date +%s) - $(_portable_mtime "$lock_file") ))
     if [ "$lock_age" -lt 3600 ]; then
       echo "Fallback lock exists and is $lock_age seconds old, skipping duplicate spawn"
       return 0
