@@ -199,7 +199,7 @@ class TestWorkflowStructure:
         """VAL-SHARD-012: debug artifact 必须包含 session transcripts 和执行错误日志。
 
         upload-artifact 不展开 ~，且拒绝工作区外路径。必须先用 step 把 $HOME/.factory/sessions/
-        复制到工作区内的 debug-sessions/，然后上传 debug-sessions/**。
+        复制到工作区内的 .factory/sessions/，然后上传 .factory/sessions/**。
         同时必须包含 shard-exec-error.log 和 droid-exec-stdout.json 用于诊断 droid exec 失败。
         """
         jobs = workflow_data.get("jobs", {})
@@ -214,13 +214,13 @@ class TestWorkflowStructure:
                 break
         assert collect_step is not None, "review-shard must have 'Collect debug transcripts' step"
 
-        # Verify the step copies from $HOME/.factory/sessions to debug-sessions
+        # Verify the step copies from $HOME/.factory/sessions to .factory/sessions
         run_script = collect_step.get("run", "")
         assert "$HOME/.factory/sessions" in run_script or "${HOME}/.factory/sessions" in run_script, (
             "Collect step must reference $HOME/.factory/sessions"
         )
-        assert "debug-sessions" in run_script, (
-            "Collect step must copy transcripts to debug-sessions/ in workspace"
+        assert ".factory/sessions" in run_script and "mkdir -p .factory" in run_script, (
+            "Collect step must create .factory/sessions/ in workspace"
         )
 
         # Find the upload artifact step
@@ -232,11 +232,11 @@ class TestWorkflowStructure:
                 break
         assert upload_step is not None, "review-shard must have upload-artifact step"
 
-        # Verify the artifact path includes debug-sessions/** and error logs
+        # Verify the artifact path includes .factory/sessions/** and error logs
         upload_with = upload_step.get("with", {})
         upload_path = upload_with.get("path", "")
-        assert "debug-sessions/**" in upload_path, (
-            f"Artifact must include debug-sessions/** (transcripts copied into workspace), got: {upload_path!r}"
+        assert ".factory/sessions/**" in upload_path, (
+            f"Artifact must include .factory/sessions/** (transcripts copied into workspace), got: {upload_path!r}"
         )
         assert "shard-exec-error.log" in upload_path, (
             f"Artifact must include shard-exec-error.log for diagnosing droid exec failures, got: {upload_path!r}"
@@ -642,6 +642,44 @@ rm -rf "$BASE_DIR" "$HEAD_DIR"
         )
         # Should find file in BASE (deleted in HEAD)
         assert "EXISTS_IN_BASE_DELETED" in result.stdout
+
+    def test_31_run_shard_uses_absolute_cwd(self):
+        """run_shard.sh 必须使用绝对路径 --cwd（droid CLI 0.200.0 相对路径静默崩溃）。
+
+        验证 run_shard.sh 中的 droid exec 调用使用了 ${GITHUB_WORKSPACE:-$PWD}/head-src
+        这样的绝对路径，而不是相对路径 head-src。这是 round-2 根因确诊的缺陷 A。
+        """
+        import re
+
+        script_path = REPO_ROOT / "scripts" / "droid_review" / "run_shard.sh"
+        assert script_path.exists(), "run_shard.sh must exist"
+
+        content = script_path.read_text()
+
+        # 查找 droid exec 调用及其 --cwd 参数
+        # 匹配模式：droid exec ... --cwd <path>
+        droid_exec_pattern = r'droid\s+exec\s+([^|]*?)(?=\||$)'
+        matches = re.findall(droid_exec_pattern, content, re.DOTALL)
+
+        assert len(matches) > 0, "run_shard.sh must contain at least one droid exec call"
+
+        for match in matches:
+            # 检查是否包含 --cwd 参数
+            cwd_pattern = r'--cwd\s+(\S+)'
+            cwd_matches = re.findall(cwd_pattern, match)
+
+            if cwd_matches:
+                for cwd_value in cwd_matches:
+                    # 验证 --cwd 值是绝对路径（包含 ${GITHUB_WORKSPACE} 或 ${PWD}）
+                    assert '${GITHUB_WORKSPACE' in cwd_value or '${PWD' in cwd_value, (
+                        f"--cwd must use absolute path with ${{GITHUB_WORKSPACE}} or ${{PWD}}, "
+                        f"but got: {cwd_value}"
+                    )
+                    # 确保不是相对路径
+                    assert not cwd_value.startswith('head-src'), (
+                        f"--cwd must not use relative path 'head-src', "
+                        f"it causes droid CLI 0.200.0 to silently crash"
+                    )
 
 
 # ══════════════════════════════════════════════════════════════════════

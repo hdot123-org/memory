@@ -157,7 +157,7 @@ set +e
 droid exec \
   --auto low \
   -m qwen3.7-plus \
-  --cwd head-src \
+  --cwd "${GITHUB_WORKSPACE:-$PWD}/head-src" \
   --tag "shard-${SHARD_ID}" \
   -f prompt.md \
   -o json 2>shard-exec-error.log | tee "$DROID_OUTPUT_FILE"

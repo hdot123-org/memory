@@ -299,17 +299,21 @@ jobs:
         if: always()
         run: |
           set -eu
-          # upload-artifact does not expand '~' and rejects paths outside the
-          # workspace. Copy Factory session transcripts into the workspace so
-          # the watchdog's 429-fingerprint grep can find them. Also collect
-          # run_shard.sh execution logs for diagnosing droid exec failures.
-          mkdir -p debug-sessions
+          # upload-artifact v4 rejects hidden directories (.factory/).
+          # Copy Factory session transcripts into the workspace as .factory/sessions/
+          # so the watchdog's quota-sweep grep can find them in the artifact.
+          # Also collect run_shard.sh execution logs for diagnosing droid exec failures.
+          mkdir -p .factory/sessions
           if [ -d "$HOME/.factory/sessions" ]; then
             echo "Copying session transcripts from $HOME/.factory/sessions/"
-            cp -r "$HOME/.factory/sessions/"* debug-sessions/ 2>/dev/null || \
-              echo "No session files to copy (or copy failed, continuing)"
+            if [ -n "$(ls -A "$HOME/.factory/sessions" 2>/dev/null)" ]; then
+              cp -r "$HOME/.factory/sessions/"* .factory/sessions/ 2>/dev/null || \
+                echo "Warning: Failed to copy some session files"
+            else
+              echo "Warning: $HOME/.factory/sessions is empty, no transcripts to upload"
+            fi
           else
-            echo "::warning::$HOME/.factory/sessions does not exist — no transcripts to upload"
+            echo "Warning: $HOME/.factory/sessions does not exist, no transcripts to upload"
           fi
           # shard-exec-error.log and droid-exec-stdout.json are written by
           # run_shard.sh in the workspace root — upload-artifact will pick them
@@ -327,7 +331,7 @@ jobs:
             droid-exec-stdout.json
             prompt.md
             shard-env.log
-            debug-sessions/**
+            .factory/sessions/**
           retention-days: 7
 
   # ── Job 3: Aggregate and publish findings ──
