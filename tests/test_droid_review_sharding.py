@@ -3,9 +3,6 @@ TD-DR-01 单路径 Shard Pipeline 测试套件（26 用例）。
 
 三契约防线 + planner 不变量。先于 workflow 改造编写（TDD）。
 """
-import json
-import os
-import subprocess
 import sys
 from pathlib import Path
 

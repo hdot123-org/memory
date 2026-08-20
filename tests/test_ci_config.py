@@ -182,7 +182,7 @@ class TestCrossAreaAuditGate:
             if step.get("uses", "").startswith("actions/upload-artifact"):
                 upload_step = step
                 break
-        
+
         assert upload_step is not None
         artifact_name = upload_step.get("with", {}).get("name", "")
         assert artifact_name.startswith("droid-review-debug-")
