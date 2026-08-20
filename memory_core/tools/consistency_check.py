@@ -13,10 +13,9 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 from typing import Any
-
-import tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONSTANTS_PATH = REPO_ROOT / "memory_core" / "constants.py"

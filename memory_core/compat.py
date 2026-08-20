@@ -15,7 +15,6 @@ Usage:
             print(f"ERROR: {err}")
 """
 
-import importlib.metadata
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -200,10 +199,7 @@ def _parse_version_tuple(ver: str) -> tuple[int, ...]:
 
 def _get_installed_version() -> str:
     """Get the installed memory-core version."""
-    try:
-        return importlib.metadata.version("memory-core")
-    except importlib.metadata.PackageNotFoundError:
-        return CURRENT_MEMORY_VERSION
+    return CURRENT_MEMORY_VERSION
 
 
 def _build_default_compat_entry() -> dict[str, str]:

@@ -4,6 +4,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 from memory_core.tools._rule_types import RuleContext, RuleResult
 
 
@@ -21,7 +23,7 @@ def test_rule_result_frozen():
     result = RuleResult(matched=True)
     try:
         result.matched = False
-        assert False, "Should not be able to modify frozen dataclass"
+        pytest.fail("Should not be able to modify frozen dataclass")
     except AttributeError:
         pass
 
