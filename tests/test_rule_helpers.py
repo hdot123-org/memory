@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unit tests for _rule_helpers.py extracted functions."""
 
 import tempfile

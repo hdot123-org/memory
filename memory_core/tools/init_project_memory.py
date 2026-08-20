@@ -1100,9 +1100,7 @@ def _detect_from_package_json(target: Path, project_info: Any) -> None:
             deps = {**pkg_data.get("dependencies", {}), **pkg_data.get("devDependencies", {})}
             dep_keys = list(deps.keys())
 
-            if any(d in dep_keys for d in ["next", "gatsby", "remix"]):
-                project_info.project_type = "frontend"
-            elif any(d in dep_keys for d in ["react", "vue", "svelte", "angular"]):
+            if any(d in dep_keys for d in ["next", "gatsby", "remix"]) or any(d in dep_keys for d in ["react", "vue", "svelte", "angular"]):
                 project_info.project_type = "frontend"
             elif any(d in dep_keys for d in ["express", "koa", "fastify", "hapi"]):
                 project_info.project_type = "web/api"

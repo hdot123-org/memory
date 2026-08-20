@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Unified rule evaluation types and protocols.
 

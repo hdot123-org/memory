@@ -878,11 +878,7 @@ def _generate_backup_plan(findings: list[Finding], target: Path) -> dict[str, An
     files_to_backup: list[str] = []
 
     for finding in findings:
-        if finding.kind in ("dot_memory", "legacy_memory", "project_map"):
-            files_to_backup.append(finding.path)
-        elif finding.kind in ("agents_md_marked", "agents_md_unmarked"):
-            files_to_backup.append(finding.path)
-        elif finding.kind == "index_md_business":
+        if finding.kind in ("dot_memory", "legacy_memory", "project_map") or finding.kind in ("agents_md_marked", "agents_md_unmarked") or finding.kind == "index_md_business":
             files_to_backup.append(finding.path)
 
     return {
@@ -943,9 +939,7 @@ def _generate_must_commit_together(findings: list[Finding]) -> list[list[str]]:
     # AGENTS.md and INDEX.md should be committed together if both exist
     critical_docs: list[str] = []
     for finding in findings:
-        if finding.kind in ("agents_md_marked", "agents_md_unmarked"):
-            critical_docs.append(finding.path)
-        elif finding.kind == "index_md_business":
+        if finding.kind in ("agents_md_marked", "agents_md_unmarked") or finding.kind == "index_md_business":
             critical_docs.append(finding.path)
 
     if len(critical_docs) > 1:

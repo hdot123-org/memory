@@ -29,7 +29,7 @@ class TestVersionConsistency:
         with pyproject_path.open("rb") as f:
             config = tomllib.load(f)
         pyproject_version = config["project"]["version"]
-        assert CURRENT_MEMORY_VERSION == pyproject_version, (
+        assert pyproject_version == CURRENT_MEMORY_VERSION, (
             f"constants.CURRENT_MEMORY_VERSION='{CURRENT_MEMORY_VERSION}' "
             f"does not match pyproject.toml version='{pyproject_version}'"
         )

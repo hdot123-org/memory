@@ -412,7 +412,7 @@ def _extract_session_info_streaming(
         if line_buffer.strip():
             _process_line(line_buffer)
 
-    except (OSError, IOError):
+    except OSError:
         return None
 
     # 从 deque 取出 last_assistant_message

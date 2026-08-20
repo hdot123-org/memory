@@ -208,7 +208,7 @@ def load_history(history_path: Path) -> dict[str, Any] | None:
         return None
 
     try:
-        with open(history_path, 'r', encoding='utf-8') as f:
+        with open(history_path, encoding='utf-8') as f:
             data = json.load(f)
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         print(f"[evolution] Warning: Failed to load {history_path}: {e}")

@@ -27,7 +27,6 @@ _integrity_sign, _integrity_verify, _load_adapter_profile, reload_adapter.
 
 import json
 import signal
-import socket
 import sys
 import time
 from pathlib import Path
@@ -417,7 +416,7 @@ class TestMaybeSyncTelemetry:
     def test_skips_when_network_unreachable(self, gateway_module, artifact_dir):
         (artifact_dir / ".last_sync_success").write_text(str(time.time() - 4000))
         # No .last_sync_attempt -> will try to probe
-        with patch("socket.create_connection", side_effect=socket.error("no network")):
+        with patch("socket.create_connection", side_effect=OSError("no network")):
             gateway_module._maybe_sync_telemetry(artifact_dir)
         # Should write attempt file and sync status with failure
         assert (artifact_dir / ".last_sync_attempt").exists()
@@ -512,7 +511,7 @@ class TestMaybeSyncTelemetry:
         (artifact_dir / ".last_sync_success").write_text("not_a_float")
         (artifact_dir / ".last_sync_attempt").write_text("also_not_a_float")
         # Should not crash
-        with patch("socket.create_connection", side_effect=socket.error("no net")):
+        with patch("socket.create_connection", side_effect=OSError("no net")):
             gateway_module._maybe_sync_telemetry(artifact_dir)
 
 

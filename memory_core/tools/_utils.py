@@ -27,5 +27,5 @@ def sha256_file(path: Path) -> str | None:
             while chunk := f.read(8192):
                 hasher.update(chunk)
         return hasher.hexdigest()
-    except (OSError, IOError):
+    except OSError:
         return None
