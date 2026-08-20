@@ -338,59 +338,105 @@ class TestSeamIntegration:
         return env_file
 
     def test_27_shard_files_json_parsing_from_env(self):
-        """接缝集成：SHARD_FILES 从 GITHUB_ENV 真实 source 后，run_shard.sh 解析路径正确。"""
+        """接缝集成：SHARD_FILES 从 GITHUB_ENV 多行定界符格式正确解析（runner 语义）。"""
         import json
         import os
-        import subprocess
         import tempfile
 
         # Simulate workflow's toJson() output
         shard_files = ["file1.py", "file2.py"]
         shard_files_json = json.dumps(shard_files)
 
-        # Write GITHUB_ENV file (with proper quoting for bash)
+        # Write GITHUB_ENV file with multi-line delimiter (runner reads literally)
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.env') as f:
             f.write("SHARD_ID=0\n")
-            f.write(f"SHARD_FILES='{shard_files_json}'\n")  # Quote the JSON
+            f.write(f"SHARD_FILES<<EOF_SHARD\n{shard_files_json}\nEOF_SHARD\n")
             f.write("BASE_REF=abc123\n")
             f.write("HEAD_REF=def456\n")
             env_file = f.name
 
         try:
-            # Source the env file in a subprocess and validate JSON
-            # This simulates run_shard.sh's parsing logic
+            # Parse GITHUB_ENV file using runner semantics (literal read between delimiters)
+            # This is what the GitHub Actions runner actually does
+            env_vars = {}
+            with open(env_file) as f:
+                lines = f.readlines()
+
+            i = 0
+            while i < len(lines):
+                line = lines[i].rstrip('\n')
+                if '<<' in line:
+                    key, delimiter = line.split('<<', 1)
+                    value_lines = []
+                    i += 1
+                    while i < len(lines) and lines[i].rstrip('\n') != delimiter:
+                        value_lines.append(lines[i].rstrip('\n'))
+                        i += 1
+                    env_vars[key] = '\n'.join(value_lines)
+                elif '=' in line:
+                    key, value = line.split('=', 1)
+                    env_vars[key] = value
+                i += 1
+
+            # Validate that SHARD_FILES contains valid JSON (literal value, no quote stripping)
+            shard_files_value = env_vars.get('SHARD_FILES', '')
+            parsed = json.loads(shard_files_value)
+            assert parsed == shard_files, f"Parsed {parsed} != expected {shard_files}"
+
+            # Verify jq can parse it (simulating run_shard.sh validation)
+            import subprocess
             result = subprocess.run(
-                ["bash", "-c", f"source {env_file} && echo \"$SHARD_FILES\" | jq -c '.'"],
+                ["jq", "-c", "."],
+                input=shard_files_value,
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
-
-            # Validate that jq successfully parsed the JSON
             assert result.returncode == 0, f"jq failed: {result.stderr}"
-            parsed = json.loads(result.stdout.strip())
-            assert parsed == shard_files, f"Parsed {parsed} != expected {shard_files}"
         finally:
             os.unlink(env_file)
 
     def test_28_fail_closed_on_invalid_shard_files_json(self):
-        """接缝集成：SHARD_FILES 非法 JSON 时 run_shard.sh fail-closed。"""
+        """接缝集成：SHARD_FILES 非法 JSON 时 run_shard.sh fail-closed（runner 语义）。"""
         import os
         import subprocess
         import tempfile
 
-        # Write invalid JSON to GITHUB_ENV
+        # Write invalid JSON to GITHUB_ENV with multi-line delimiter
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.env') as f:
             f.write("SHARD_ID=0\n")
-            f.write('SHARD_FILES=\'{invalid json\'\n')
+            f.write("SHARD_FILES<<EOF_SHARD\n{invalid json\nEOF_SHARD\n")
             f.write("BASE_REF=abc\n")
             f.write("HEAD_REF=def\n")
             env_file = f.name
 
         try:
-            # Source the env file and validate JSON (should fail)
+            # Parse using runner semantics (literal read)
+            env_vars = {}
+            with open(env_file) as f:
+                lines = f.readlines()
+
+            i = 0
+            while i < len(lines):
+                line = lines[i].rstrip('\n')
+                if '<<' in line:
+                    key, delimiter = line.split('<<', 1)
+                    value_lines = []
+                    i += 1
+                    while i < len(lines) and lines[i].rstrip('\n') != delimiter:
+                        value_lines.append(lines[i].rstrip('\n'))
+                        i += 1
+                    env_vars[key] = '\n'.join(value_lines)
+                elif '=' in line:
+                    key, value = line.split('=', 1)
+                    env_vars[key] = value
+                i += 1
+
+            # Validate that jq fails on invalid JSON
+            shard_files_value = env_vars.get('SHARD_FILES', '')
             result = subprocess.run(
-                ["bash", "-c", f"source {env_file} && echo $SHARD_FILES | jq empty 2>/dev/null"],
+                ["jq", "empty"],
+                input=shard_files_value,
                 capture_output=True,
                 text=True,
                 timeout=5,

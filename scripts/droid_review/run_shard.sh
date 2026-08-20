@@ -207,10 +207,20 @@ fi
 if [ "$FINDINGS_PARSED" = "false" ]; then
   if jq -e '.result' "$DROID_OUTPUT_FILE" >/dev/null 2>&1; then
     RESULT=$(jq -r '.result' "$DROID_OUTPUT_FILE")
+    
+    # Try direct parse first
     if echo "$RESULT" | jq -e '.shard_id != null and .findings != null' >/dev/null 2>&1; then
       echo "$RESULT" | jq '.' > "findings-shard-${SHARD_ID}.json"
       FINDINGS_PARSED="true"
       echo "Envelope .result parse succeeded"
+    else
+      # Extract JSON from markdown code blocks
+      JSON_BLOCK=$(echo "$RESULT" | sed -n '/```json/,/```/p' | sed '1d;$d' | sed '/^$/d')
+      if [ -n "$JSON_BLOCK" ] && echo "$JSON_BLOCK" | jq -e '.shard_id != null and .findings != null' >/dev/null 2>&1; then
+        echo "$JSON_BLOCK" | jq '.' > "findings-shard-${SHARD_ID}.json"
+        FINDINGS_PARSED="true"
+        echo "Markdown code block extraction succeeded"
+      fi
     fi
   fi
 fi

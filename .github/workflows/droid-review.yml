@@ -19,16 +19,78 @@ name: Droid Auto Review
 on:
   pull_request_target:
     types: [opened, ready_for_review, reopened, synchronize]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: true
+        type: number
+      head_sha:
+        description: 'Head commit SHA (optional, defaults to PR head)'
+        required: false
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # ── Job 0: Setup - resolve PR context for both trigger types ──
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.resolve.outputs.pr_number }}
+      base_sha: ${{ steps.resolve.outputs.base_sha }}
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+      draft: ${{ steps.resolve.outputs.draft }}
+      user_login: ${{ steps.resolve.outputs.user_login }}
+    steps:
+      - name: Resolve PR context
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+
+          if [ "${{ github.event_name }}" = "pull_request_target" ]; then
+            # pull_request_target trigger: use event context
+            echo "pr_number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "base_sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+            echo "head_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+            echo "draft=${{ github.event.pull_request.draft }}" >> "$GITHUB_OUTPUT"
+            echo "user_login=${{ github.event.pull_request.user.login }}" >> "$GITHUB_OUTPUT"
+            echo "Resolved PR context from pull_request_target event"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # workflow_dispatch trigger: fetch PR data via API
+            PR_NUMBER="${{ inputs.pr_number }}"
+            echo "Fetching PR #$PR_NUMBER data via API..."
+
+            PR_DATA=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")
+            BASE_SHA=$(echo "$PR_DATA" | jq -r '.base.sha')
+            HEAD_SHA="${{ inputs.head_sha }}"
+            if [ -z "$HEAD_SHA" ] || [ "$HEAD_SHA" = "null" ]; then
+              HEAD_SHA=$(echo "$PR_DATA" | jq -r '.head.sha')
+            fi
+            DRAFT=$(echo "$PR_DATA" | jq -r '.draft')
+            USER_LOGIN=$(echo "$PR_DATA" | jq -r '.user.login')
+
+            echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+            echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+            echo "draft=$DRAFT" >> "$GITHUB_OUTPUT"
+            echo "user_login=$USER_LOGIN" >> "$GITHUB_OUTPUT"
+            echo "Resolved PR context from workflow_dispatch (PR #$PR_NUMBER, head=$HEAD_SHA)"
+          else
+            echo "::error::Unsupported event name: ${{ github.event_name }}"
+            exit 1
+          fi
+
   # ── Job 1: Plan shards (no model call, ~1min) ──
   plan-shards:
-    if: github.event.pull_request.draft == false && github.event.pull_request.user.login != 'dependabot[bot]'
+    needs: setup
+    if: needs.setup.outputs.draft == 'false' && needs.setup.outputs.user_login != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
       docs_only: ${{ steps.docs_only.outputs.skip }}
@@ -36,14 +98,14 @@ jobs:
       - name: Checkout repository (BASE)
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ needs.setup.outputs.base_sha }}
           fetch-depth: 1
 
       - name: Detect docs-only PR
         id: docs_only
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ needs.setup.outputs.pr_number }}
         run: |
           set -eu
           echo "Detecting whether PR #$PR_NUMBER changes only docs files (*.md)..."
@@ -68,7 +130,7 @@ jobs:
         if: steps.docs_only.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ needs.setup.outputs.pr_number }}
           MAX_FILES: ${{ vars.SHARD_MAX_FILES || '25' }}
           MAX_COUNT: ${{ vars.SHARD_MAX_COUNT || '6' }}
         run: |
@@ -101,7 +163,7 @@ jobs:
 
   # ── Job 2: Review shard matrix (parallel, model call) ──
   review-shard:
-    needs: plan-shards
+    needs: [setup, plan-shards]
     if: >-
       needs.plan-shards.outputs.docs_only != 'true' &&
       needs.plan-shards.outputs.shards != '[]' &&
@@ -123,45 +185,47 @@ jobs:
       - name: Checkout repository (BASE)
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ needs.setup.outputs.base_sha }}
           fetch-depth: 0
 
       - name: Checkout PR head (HEAD → head-src/)
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ needs.setup.outputs.head_sha }}
           fetch-depth: 0
           path: head-src
 
       - name: Set shard environment
         id: shard_env
         env:
-          SHARD_FILES_JSON: ${{ toJson(matrix.shard.files) }}
+          SHARD_FILE_JSON: ${{ toJson(matrix.shard.files) }}
           SHARD_ID_VAL: ${{ matrix.shard.shard_id }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -eu
 
-          # Fix #1: Write SHARD_FILES without literal quote wrapping
-          # Use jq -cn --argjson to produce clean JSON into GITHUB_ENV
-          # (Previous version wrapped in literal single quotes that broke jq parsing)
+          # (A) Fix: Use GITHUB_ENV multi-line delimiter for SHARD_FILES.
+          # The runner reads the literal value between delimiters — no quote
+          # stripping. Previous version used echo "SHARD_FILES='$JSON'" which
+          # embedded literal single quotes into the env var, breaking jq.
           {
             echo "SHARD_ID=$SHARD_ID_VAL"
             echo "BASE_REF=$BASE_SHA"
             echo "HEAD_REF=$HEAD_SHA"
             echo "RUN_ID=${{ github.run_id }}"
-            echo "SHARD_FILES='$SHARD_FILES_JSON'"
+            printf 'SHARD_FILES<<EOF_SHARD\n%s\nEOF_SHARD\n' "$SHARD_FILE_JSON"
           } >> "$GITHUB_ENV"
 
-          # Fix #2: Compute merge-base within head-src after fetching base SHA
-          # (Previous version computed merge-base against origin/base.ref which
-          # may not be fetched in head-src clone, and || true swallowed errors)
+          # Compute merge-base within head-src after fetching base SHA
           cd head-src
           git config --global --add safe.directory "$GITHUB_WORKSPACE/head-src"
 
           # Fetch the base SHA explicitly so merge-base can resolve it
-          git fetch origin "$BASE_SHA" --depth=1 2>/dev/null || true
+          git fetch origin "$BASE_SHA" --depth=1 || {
+            echo "::error::Failed to fetch base SHA $BASE_SHA"
+            exit 1
+          }
 
           # Compute merge-base — fail-closed (no || true)
           MERGE_BASE=$(git merge-base HEAD "$BASE_SHA")
@@ -172,6 +236,15 @@ jobs:
           echo "MERGE_BASE=$MERGE_BASE" >> "$GITHUB_ENV"
           echo "Merge base: $MERGE_BASE"
           cd "$GITHUB_WORKSPACE"
+
+      - name: Install Droid CLI
+        run: |
+          set -eu
+          # (B) Fix: Install droid CLI binary (runner doesn't have it by default).
+          # Copied from droid-action@e5ae502's install step.
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/droid" --version
 
       - name: Write BYOM settings file
         run: |
@@ -229,7 +302,7 @@ jobs:
 
   # ── Job 3: Aggregate and publish findings ──
   droid-review:
-    needs: [plan-shards, review-shard]
+    needs: [setup, plan-shards, review-shard]
     if: always() && needs.plan-shards.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ fromJSON(vars.DROID_REVIEW_TIMEOUT_MINUTES || '90') }}
@@ -242,11 +315,14 @@ jobs:
       - name: Checkout repository (BASE)
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ needs.setup.outputs.base_sha }}
           fetch-depth: 1
 
       - name: Check shard results
         id: check_results
+        env:
+          PR_NUMBER: ${{ needs.setup.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.setup.outputs.head_sha }}
         run: |
           set -eu
           DOCS_ONLY="${{ needs.plan-shards.outputs.docs_only }}"
@@ -283,11 +359,13 @@ jobs:
         if: steps.check_results.outputs.should_publish == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ needs.setup.outputs.pr_number }}
           REPOSITORY: ${{ github.repository }}
+          COMMIT_ID: ${{ needs.setup.outputs.head_sha }}
         run: |
           set -eu
           python3 scripts/droid_review/publish_findings.py \
             --pattern "findings/*/findings-shard-*.json" \
             --pr-number "$PR_NUMBER" \
-            --repository "$REPOSITORY"
+            --repository "$REPOSITORY" \
+            --commit-id "$COMMIT_ID"
