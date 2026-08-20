@@ -52,7 +52,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
-          python -m pip install pytest pytest-cov pytest-rerunfailures pytest-xdist
+          # 钉扎版本：自建 runner 预装版本与本地健康环境（cov 7.1.0/xdist 3.8.0）不一致时
+          # 会导致 xdist worker coverage 数据丢失（实测 84%→43%）。钉扎确保 CI 与本地一致。
+          python -m pip install pytest==8.4.2 pytest-cov==7.1.0 pytest-xdist==3.8.0 pytest-rerunfailures==16.4.0
+      - name: Debug - show installed versions
+        run: |
+          echo "=== Installed pytest/cov/xdist versions ==="
+          pip list | grep -iE 'pytest|cov|xdist|coverage'
+          echo "=== Python version ==="
+          python3 --version
       - name: Timestamp - after install
         run: |
           echo "Install completed at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -103,6 +111,13 @@ jobs:
         run: python scripts/check_pr_ref_consistency.py ${{ github.event.pull_request.number }}
       - name: Run tests with coverage
         run: python -m pytest -q tests -n 6 --cov=memory_core --cov-report=xml
+      - name: Debug - inspect coverage data files
+        if: always()
+        run: |
+          echo "=== Coverage data files (.coverage*) ==="
+          ls -lh .coverage* 2>/dev/null || echo "No .coverage files found"
+          echo "=== Coverage report summary ==="
+          python -m coverage report --skip-covered 2>/dev/null | tail -5 || echo "No coverage data available"
       - name: Timestamp - after tests
         run: |
           echo "Tests completed at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
