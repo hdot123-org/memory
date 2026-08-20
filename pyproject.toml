@@ -78,6 +78,10 @@ include = ["memory_core*", "workspace*"]
 [tool.setuptools.package-data]
 workspace = ["templates/**/*"]
 
+[tool.coverage.run]
+parallel = true
+sigterm = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

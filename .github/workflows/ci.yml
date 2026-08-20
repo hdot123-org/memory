@@ -111,13 +111,16 @@ jobs:
         run: python scripts/check_pr_ref_consistency.py ${{ github.event.pull_request.number }}
       - name: Run tests with coverage
         run: python -m pytest -q tests -n 6 --cov=memory_core --cov-report=xml
-      - name: Debug - inspect coverage data files
+      - name: Debug - inspect coverage shard files
         if: always()
         run: |
-          echo "=== Coverage data files (.coverage*) ==="
-          ls -lh .coverage* 2>/dev/null || echo "No .coverage files found"
-          echo "=== Coverage report summary ==="
-          python -m coverage report --skip-covered 2>/dev/null | tail -5 || echo "No coverage data available"
+          echo "=== Coverage shard files (.coverage.*) ==="
+          ls -la .coverage* 2>/dev/null || echo "No .coverage files found"
+          echo "=== Shard file count ==="
+          find . -maxdepth 1 -name '.coverage.*' -type f | wc -l || echo "0"
+          echo "=== Manual combine + report (diagnostic, no fail-under) ==="
+          python -m coverage combine --keep || true
+          python -m coverage report | tail -3 || true
       - name: Timestamp - after tests
         run: |
           echo "Tests completed at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
