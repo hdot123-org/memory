@@ -12,6 +12,7 @@ TD-DR-01 findings 发布器：下载、校验、去重、inline/summary 发布�
 7. 按 shard 分节统计严重度
 """
 import json
+import subprocess
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -124,24 +125,186 @@ def load_findings_files(pattern: str) -> list[dict[str, Any]]:
     return all_findings
 
 
+def post_inline_comment(
+    finding: dict[str, Any],
+    pr_number: int,
+    repository: str,
+    commit_id: str,
+) -> bool:
+    """
+    Post inline review comment on PR.
+
+    Returns True if successful, False if API call failed.
+    """
+    body = f"**[{finding['severity']}]** {finding['message']}"
+
+    payload = {
+        "body": body,
+        "commit_id": commit_id,
+        "path": finding["file"],
+        "line": finding["line"],
+        "side": "RIGHT",
+    }
+
+    try:
+        subprocess.run(
+            [
+                "gh", "api",
+                f"repos/{repository}/pulls/{pr_number}/comments",
+                "--method", "POST",
+                "--input", "-",
+            ],
+            input=json.dumps(payload).encode(),
+            check=True,
+            capture_output=True,
+        )
+        print(f"  ✓ Inline comment posted: {finding['file']}:{finding['line']}")
+        return True
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode() if e.stderr else ""
+        if "422" in stderr:
+            print(f"  ⚠ 422 error (line may be invalid): {finding['file']}:{finding['line']}")
+            return False
+        print(f"  ✗ Failed to post inline comment: {stderr}", file=sys.stderr)
+        return False
+
+
+def post_summary_comment(
+    findings: list[dict[str, Any]],
+    pr_number: int,
+    repository: str,
+    by_shard: dict[int, list[dict[str, Any]]],
+) -> bool:
+    """
+    Post summary comment on PR with findings grouped by shard.
+
+    Returns True if successful.
+    """
+    total_counts = count_by_severity(findings)
+
+    body_lines = [
+        "## 🔍 Droid Auto Review — Findings Summary",
+        "",
+        f"**Total findings**: {len(findings)}",
+        "",
+        "**By severity**:",
+    ]
+
+    for sev in ["P0", "P1", "P2", "P3"]:
+        count = total_counts.get(sev, 0)
+        if count > 0:
+            body_lines.append(f"- **{sev}**: {count}")
+
+    body_lines.append("")
+    body_lines.append("---")
+    body_lines.append("")
+
+    # Group by shard
+    for shard_id in sorted(by_shard.keys()):
+        shard_findings = by_shard[shard_id]
+        shard_counts = count_by_severity(shard_findings)
+
+        body_lines.append(f"### Shard {shard_id} ({len(shard_findings)} findings)")
+        body_lines.append("")
+
+        for sev in ["P0", "P1", "P2", "P3"]:
+            count = shard_counts.get(sev, 0)
+            if count > 0:
+                body_lines.append(f"- **{sev}**: {count}")
+
+        body_lines.append("")
+        body_lines.append("<details>")
+        body_lines.append(f"<summary>Details ({len(shard_findings)} items)</summary>")
+        body_lines.append("")
+
+        for f in shard_findings[:20]:  # Limit to first 20 per shard
+            body_lines.append(f"- **{f['severity']}** `{f['file']}:{f['line']}`: {f['message']}")
+
+        if len(shard_findings) > 20:
+            body_lines.append(f"- ... and {len(shard_findings) - 20} more")
+
+        body_lines.append("")
+        body_lines.append("</details>")
+        body_lines.append("")
+
+    body = "\n".join(body_lines)
+
+    try:
+        subprocess.run(
+            [
+                "gh", "api",
+                f"repos/{repository}/issues/{pr_number}/comments",
+                "--method", "POST",
+                "--input", "-",
+            ],
+            input=json.dumps({"body": body}).encode(),
+            check=True,
+            capture_output=True,
+        )
+        print("✓ Summary comment posted")
+        return True
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.decode() if e.stderr else ""
+        print(f"✗ Failed to post summary comment: {stderr}", file=sys.stderr)
+        return False
+
+
 def main() -> None:
-    """CLI entry: load findings-*.json, validate, dedup, output summary."""
-    if len(sys.argv) < 2:
-        print("Usage: publish_findings.py <findings-pattern>", file=sys.stderr)
-        sys.exit(1)
+    """CLI entry: load findings, validate, dedup, publish to GitHub."""
+    import argparse
 
-    pattern = sys.argv[1]  # e.g. "findings-*.json"
-    findings = load_findings_files(pattern)
+    parser = argparse.ArgumentParser(description="Publish shard review findings")
+    parser.add_argument("--pattern", required=True, help="Glob pattern for findings files")
+    parser.add_argument("--pr-number", type=int, required=True, help="PR number")
+    parser.add_argument("--repository", required=True, help="Repository (owner/name)")
+    parser.add_argument("--commit-id", help="Commit ID for inline comments (optional)")
 
-    # 去重
+    args = parser.parse_args()
+
+    print(f"Loading findings from: {args.pattern}")
+    findings = load_findings_files(args.pattern)
+
+    if not findings:
+        print("No findings to publish")
+        return
+
+    print(f"Loaded {len(findings)} findings")
+
+    # Deduplicate
     unique = deduplicate_findings(findings)
+    print(f"After dedup: {len(unique)} findings")
 
-    # 按 shard 分组
+    # Group by shard
     by_shard = group_by_shard(unique)
 
-    # 统计
-    total_counts = count_by_severity(unique)
+    # Post inline comments (batch of 50 max per GitHub API limit)
+    if args.commit_id:
+        print("\nPosting inline comments...")
+        inline_success = 0
+        inline_failed = []
 
+        for f in unique[:50]:
+            if post_inline_comment(f, args.pr_number, args.repository, args.commit_id):
+                inline_success += 1
+            else:
+                inline_failed.append(f)
+
+        print(f"Inline comments: {inline_success} posted, {len(inline_failed)} failed")
+
+        # Degrade failed inline comments to summary
+        if inline_failed:
+            print("\nDegrading failed inline comments to summary...")
+            unique = inline_failed
+            by_shard = group_by_shard(unique)
+    else:
+        print("No commit-id provided, skipping inline comments")
+
+    # Post summary comment
+    print("\nPosting summary comment...")
+    post_summary_comment(unique, args.pr_number, args.repository, by_shard)
+
+    # Output statistics
+    total_counts = count_by_severity(unique)
     output = {
         "total_findings": len(unique),
         "by_severity": total_counts,
@@ -153,7 +316,7 @@ def main() -> None:
             for shard_id, fs in sorted(by_shard.items())
         },
     }
-    print(json.dumps(output, indent=2))
+    print("\n" + json.dumps(output, indent=2))
 
 
 if __name__ == "__main__":

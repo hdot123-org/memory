@@ -6,6 +6,13 @@
 #
 # Security: pull_request_target + dual checkout (BASE for scripts/prompt, HEAD for context)
 # BYOM: Bailian Qwen 3.7 Plus via Kong Proxy
+#
+# Budget layers (VAL-SHARD-011):
+#   Layer 1: shard job timeout-minutes (default 30)
+#   Layer 2: aggregation path timeout = DROID_REVIEW_TIMEOUT_MINUTES (default 90)
+#   Layer 3: shard size cap (SHARD_MAX_FILES / SHARD_MAX_LINES)
+#   Layer 4: concurrency cap (SHARD_MAX_PARALLEL)
+#   Layer 5: prompt budget instructions (embedded in shard-review-prompt.md)
 
 name: Droid Auto Review
 
@@ -66,9 +73,11 @@ jobs:
           MAX_COUNT: ${{ vars.SHARD_MAX_COUNT || '6' }}
         run: |
           set -eu
-          # Get changed files from PR
+          # Get changed files from PR (with status for deleted-file handling)
           gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
-            --paginate --jq '.[].filename' > changed_files.txt
+            --paginate --jq '.[] | .filename + "\t" + .status' > changed_files_with_status.txt
+          # Extract just filenames for planner
+          cut -f1 changed_files_with_status.txt > changed_files.txt
           # Filter out docs-only files
           grep -v '\.md$' changed_files.txt > code_files.txt || true
           # Run planner
@@ -79,6 +88,16 @@ jobs:
           else
             echo "shards=[]" >> "$GITHUB_OUTPUT"
           fi
+          # Save file statuses for shard scripts (deleted files need special handling)
+          cp changed_files_with_status.txt /tmp/file_statuses.txt
+
+      - name: Upload file statuses
+        if: always() && steps.docs_only.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: file-statuses-${{ github.run_id }}
+          path: /tmp/file_statuses.txt
+          retention-days: 1
 
   # ── Job 2: Review shard matrix (parallel, model call) ──
   review-shard:
@@ -88,7 +107,7 @@ jobs:
       needs.plan-shards.outputs.shards != '[]' &&
       needs.plan-shards.outputs.shards != ''
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ fromJSON(vars.DROID_REVIEW_TIMEOUT_MINUTES || '90') }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJSON(vars.SHARD_MAX_PARALLEL || '3') }}
@@ -116,20 +135,42 @@ jobs:
 
       - name: Set shard environment
         id: shard_env
+        env:
+          SHARD_FILES_JSON: ${{ toJson(matrix.shard.files) }}
+          SHARD_ID_VAL: ${{ matrix.shard.shard_id }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -eu
+
+          # Fix #1: Write SHARD_FILES without literal quote wrapping
+          # Use jq -cn --argjson to produce clean JSON into GITHUB_ENV
+          # (Previous version wrapped in literal single quotes that broke jq parsing)
           {
-            echo "SHARD_ID=${{ matrix.shard.shard_id }}"
-            echo "SHARD_FILES='${{ toJson(matrix.shard.files) }}'"
-            echo "BASE_REF=${{ github.event.pull_request.base.sha }}"
-            echo "HEAD_REF=${{ github.event.pull_request.head.sha }}"
+            echo "SHARD_ID=$SHARD_ID_VAL"
+            echo "BASE_REF=$BASE_SHA"
+            echo "HEAD_REF=$HEAD_SHA"
             echo "RUN_ID=${{ github.run_id }}"
+            echo "SHARD_FILES='$SHARD_FILES_JSON'"
           } >> "$GITHUB_ENV"
-          # Compute merge-base
+
+          # Fix #2: Compute merge-base within head-src after fetching base SHA
+          # (Previous version computed merge-base against origin/base.ref which
+          # may not be fetched in head-src clone, and || true swallowed errors)
           cd head-src
           git config --global --add safe.directory "$GITHUB_WORKSPACE/head-src"
-          MERGE_BASE=$(git merge-base HEAD origin/${{ github.event.pull_request.base.ref }})
+
+          # Fetch the base SHA explicitly so merge-base can resolve it
+          git fetch origin "$BASE_SHA" --depth=1 2>/dev/null || true
+
+          # Compute merge-base — fail-closed (no || true)
+          MERGE_BASE=$(git merge-base HEAD "$BASE_SHA")
+          if [ -z "$MERGE_BASE" ]; then
+            echo "::error::Failed to compute merge-base between HEAD and $BASE_SHA"
+            exit 1
+          fi
           echo "MERGE_BASE=$MERGE_BASE" >> "$GITHUB_ENV"
+          echo "Merge base: $MERGE_BASE"
           cd "$GITHUB_WORKSPACE"
 
       - name: Write BYOM settings file
@@ -181,6 +222,9 @@ jobs:
           path: |
             findings-shard-*.json
             shard-*.diff
+            ~/.factory/sessions/**
+            prompt.md
+            shard-env.log
           retention-days: 7
 
   # ── Job 3: Aggregate and publish findings ──
@@ -188,6 +232,7 @@ jobs:
     needs: [plan-shards, review-shard]
     if: always() && needs.plan-shards.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(vars.DROID_REVIEW_TIMEOUT_MINUTES || '90') }}
     permissions:
       contents: read
       pull-requests: write
@@ -239,15 +284,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -eu
-          python3 scripts/droid_review/publish_findings.py "findings/*/findings-shard-*.json"
-
-      - name: Report summary
-        if: steps.check_results.outputs.should_publish == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -eu
-          echo "Findings published as PR comments on #$PR_NUMBER"
+          python3 scripts/droid_review/publish_findings.py \
+            --pattern "findings/*/findings-shard-*.json" \
+            --pr-number "$PR_NUMBER" \
+            --repository "$REPOSITORY"

@@ -28,13 +28,12 @@ def workflow_raw():
     return WORKFLOW_PATH.read_text()
 
 
-def _plan(files, max_files=25, max_lines=800, max_count=6):
+def _plan(files, max_files=25, max_count=6):
     """Invoke plan_shards.plan_shards with defaults; import fresh each call."""
     from droid_review.plan_shards import plan_shards
     return plan_shards(
         files,
         max_files=max_files,
-        max_lines=max_lines,
         max_count=max_count,
     )
 
@@ -290,3 +289,232 @@ class TestPlannerInvariants:
             "findings": [],
         }
         assert validate_findings(invalid_type) is False
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Part C: Seam Integration Tests (3 tests) — workflow→script data flow
+# ══════════════════════════════════════════════════════════════════════
+
+class TestSeamIntegration:
+    """workflow→script 接缝集成测试：真实 source GITHUB_ENV 文件 + fixture git repo。"""
+
+    @pytest.fixture
+    def fixture_git_repo(self, tmp_path):
+        """创建 fixture git repo（含 base + head 分支）。"""
+        import subprocess
+        repo = tmp_path / "fixture-repo"
+        repo.mkdir()
+        subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+
+        # Base commit
+        (repo / "file1.py").write_text("def foo(): pass\n")
+        subprocess.run(["git", "add", "file1.py"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True, capture_output=True)
+        base_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        # Head commit (modify file1, add file2)
+        (repo / "file1.py").write_text("def foo():\n    return 42\n")
+        (repo / "file2.py").write_text("def bar(): pass\n")
+        subprocess.run(["git", "add", "file1.py", "file2.py"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-m", "head"], cwd=repo, check=True, capture_output=True)
+        head_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        return {
+            "repo": repo,
+            "base_sha": base_sha,
+            "head_sha": head_sha,
+        }
+
+    @pytest.fixture
+    def github_env_file(self, tmp_path):
+        """创建 GITHUB_ENV 风格文件（harness 真实 source）。"""
+        env_file = tmp_path / "github_env.txt"
+        return env_file
+
+    def test_27_shard_files_json_parsing_from_env(self):
+        """接缝集成：SHARD_FILES 从 GITHUB_ENV 真实 source 后，run_shard.sh 解析路径正确。"""
+        import json
+        import os
+        import subprocess
+        import tempfile
+
+        # Simulate workflow's toJson() output
+        shard_files = ["file1.py", "file2.py"]
+        shard_files_json = json.dumps(shard_files)
+
+        # Write GITHUB_ENV file (with proper quoting for bash)
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.env') as f:
+            f.write("SHARD_ID=0\n")
+            f.write(f"SHARD_FILES='{shard_files_json}'\n")  # Quote the JSON
+            f.write("BASE_REF=abc123\n")
+            f.write("HEAD_REF=def456\n")
+            env_file = f.name
+
+        try:
+            # Source the env file in a subprocess and validate JSON
+            # This simulates run_shard.sh's parsing logic
+            result = subprocess.run(
+                ["bash", "-c", f"source {env_file} && echo \"$SHARD_FILES\" | jq -c '.'"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            # Validate that jq successfully parsed the JSON
+            assert result.returncode == 0, f"jq failed: {result.stderr}"
+            parsed = json.loads(result.stdout.strip())
+            assert parsed == shard_files, f"Parsed {parsed} != expected {shard_files}"
+        finally:
+            os.unlink(env_file)
+
+    def test_28_fail_closed_on_invalid_shard_files_json(self):
+        """接缝集成：SHARD_FILES 非法 JSON 时 run_shard.sh fail-closed。"""
+        import os
+        import subprocess
+        import tempfile
+
+        # Write invalid JSON to GITHUB_ENV
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.env') as f:
+            f.write("SHARD_ID=0\n")
+            f.write('SHARD_FILES=\'{invalid json\'\n')
+            f.write("BASE_REF=abc\n")
+            f.write("HEAD_REF=def\n")
+            env_file = f.name
+
+        try:
+            # Source the env file and validate JSON (should fail)
+            result = subprocess.run(
+                ["bash", "-c", f"source {env_file} && echo $SHARD_FILES | jq empty 2>/dev/null"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            # jq should fail on invalid JSON
+            assert result.returncode != 0, "jq should fail on invalid JSON"
+        finally:
+            os.unlink(env_file)
+
+    def test_29_deleted_file_path_accepted_from_base_side(self, fixture_git_repo, tmp_path):
+        """接缝集成：已删除文件（仅存在于 BASE）被 run_shard.sh 接受。"""
+        import subprocess
+
+        repo = fixture_git_repo["repo"]
+
+        # Create a file in base, delete it in head
+        (repo / "deleted_file.py").write_text("# will be deleted\n")
+        subprocess.run(["git", "add", "deleted_file.py"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-m", "add deleted"], cwd=repo, check=True, capture_output=True)
+        base_with_deleted = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        subprocess.run(["git", "rm", "deleted_file.py"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-m", "delete file"], cwd=repo, check=True, capture_output=True)
+        head_after_delete = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        # Simulate the file existence check from run_shard.sh (lines 50-70)
+        check_script = tmp_path / "check_deleted.sh"
+        check_script.write_text(f"""#!/usr/bin/env bash
+set -euo pipefail
+
+# Simulate dual-checkout structure
+BASE_DIR=$(mktemp -d)
+HEAD_DIR=$(mktemp -d)
+
+# Checkout base and head
+git --git-dir={repo}/.git --work-tree=$BASE_DIR checkout {base_with_deleted} -- . 2>/dev/null || true
+git --git-dir={repo}/.git --work-tree=$HEAD_DIR checkout {head_after_delete} -- . 2>/dev/null || true
+
+# File to check
+FILE="deleted_file.py"
+
+# Check existence (from run_shard.sh logic)
+if [ -f "$HEAD_DIR/$FILE" ]; then
+  echo "EXISTS_IN_HEAD"
+elif [ -f "$BASE_DIR/$FILE" ]; then
+  echo "EXISTS_IN_BASE_DELETED"
+else
+  echo "NOT_FOUND"
+fi
+
+rm -rf "$BASE_DIR" "$HEAD_DIR"
+""")
+        check_script.chmod(0o755)
+
+        result = subprocess.run(
+            ["bash", str(check_script)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        # Should find file in BASE (deleted in HEAD)
+        assert "EXISTS_IN_BASE_DELETED" in result.stdout
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Part D: publish_findings Integration (1 test) — mock gh CLI
+# ══════════════════════════════════════════════════════════════════════
+
+class TestPublishFindingsIntegration:
+    """publish_findings.py 集成测试：mock gh CLI 验证 inline/422 降级路径。"""
+
+    def test_30_publish_findings_422_degradation(self, tmp_path, monkeypatch):
+        """publish_findings 422 降级：inline 失败后降级到 summary comment。"""
+        import subprocess
+        from unittest.mock import MagicMock, patch
+
+        from droid_review.publish_findings import (
+            post_inline_comment,
+            post_summary_comment,
+        )
+
+        # Create findings data
+        findings = [
+            {
+                "severity": "P1",
+                "file": "test.py",
+                "line": 10,
+                "message": "test bug",
+                "shard_id": 0,
+            }
+        ]
+
+        # Mock subprocess.run to simulate 422 error for inline
+        def mock_subprocess_run_422(*args, **kwargs):
+            error = subprocess.CalledProcessError(1, "gh")
+            error.stderr = b"422 Unprocessable Entity"
+            raise error
+
+        # Test inline failure (422)
+        with patch("subprocess.run", side_effect=mock_subprocess_run_422):
+            result = post_inline_comment(
+                findings[0],
+                pr_number=889,
+                repository="hdot123-org/memory",
+                commit_id="abc123",
+            )
+            assert result is False  # 422 should return False
+
+        # Mock successful summary post
+        def mock_subprocess_run_success(*args, **kwargs):
+            return MagicMock(returncode=0)
+
+        # Test summary success
+        with patch("subprocess.run", side_effect=mock_subprocess_run_success):
+            by_shard = {0: findings}
+            result = post_summary_comment(
+                findings,
+                pr_number=889,
+                repository="hdot123-org/memory",
+                by_shard=by_shard,
+            )
+            assert result is True

@@ -33,7 +33,6 @@ def _group_by_directory(files: list[str]) -> dict[str, list[str]]:
 def plan_shards(
     files: list[str],
     max_files: int = 25,
-    max_lines: int = 800,
     max_count: int = 6,
 ) -> dict[str, Any]:
     """
