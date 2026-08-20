@@ -242,7 +242,6 @@ def test_python_version_selection_prefers_3_12_plus():
     or emit a clear error instead of crashing with ModuleNotFoundError.
     """
     import os
-    import shutil
 
     # Build a fake python3 that reports 3.9 — place it first in PATH
     fake_dir = Path("/tmp") / "regression_fake_python"
@@ -287,8 +286,6 @@ def test_python_selection_error_message_when_only_old_python():
     """Regression: when only Python < 3.11 is available, script exits with
     a clear error mentioning the version requirement."""
     import os
-    import shutil
-    import sys
 
     # Create a temporary directory with a fake python3 that is < 3.11
     fake_dir = Path("/tmp") / "regression_old_python"
