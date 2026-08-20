@@ -60,3 +60,25 @@ def _guard_load_key_not_patched():
             f"This indicates a test in the previous run failed to restore load_key. "
             f"Use monkeypatch.setattr() instead of direct module attribute assignment."
         )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Force coverage data flush for xdist workers before exit.
+
+    Root cause: The codebase uses os._exit(0) in signal handlers (SIGINT/SIGALRM)
+    to skip atexit callbacks. When xdist workers receive these signals during tests,
+    they exit immediately without flushing coverage data, causing severe variance
+    (84% → 28% → 71%) in coverage measurements.
+
+    Fix: Save coverage data in pytest_sessionfinish, which runs before worker exit.
+    This ensures coverage data is available for pytest-cov to combine even if workers
+    crash or receive signals.
+    """
+    try:
+        import coverage
+        cov = coverage.Coverage.current()
+        if cov is not None:
+            cov.save()
+    except Exception:
+        # Coverage module not active or error - silently continue
+        pass

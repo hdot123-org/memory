@@ -2,8 +2,27 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
+# Python version selection: project requires Python 3.12+ (tomllib, memory_core).
+# Prefer python3.12 explicitly, fallback to python3 if it's 3.11+.
+if command -v python3.12 &>/dev/null; then
+  PYTHON="python3.12"
+elif command -v python3 &>/dev/null; then
+  PY_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+  PY_MAJOR=$(echo "$PY_VERSION" | cut -d. -f1)
+  PY_MINOR=$(echo "$PY_VERSION" | cut -d. -f2)
+  if [[ "$PY_MAJOR" -ge 3 && "$PY_MINOR" -ge 11 ]]; then
+    PYTHON="python3"
+  else
+    echo "Error: Python 3.11+ required, found $PY_VERSION" >&2
+    exit 1
+  fi
+else
+  echo "Error: Python 3.11+ not found" >&2
+  exit 1
+fi
+
 echo "=== validate_memory_system ==="
-python3 -c "
+$PYTHON -c "
 import sys
 sys.path.insert(0, 'memory_core/tools')
 from validate_memory_system import ValidateResult, check_gateway_import, check_core_builder_resolve, check_context_package, check_core_config_path
@@ -24,8 +43,8 @@ if not result.all_passed:
 "
 
 echo "=== pollution detection (if available) ==="
-if python3 memory_core/tools/validate_memory_system.py --help 2>&1 | grep -q -i pollution; then
-    python3 memory_core/tools/validate_memory_system.py --check pollution
+if $PYTHON memory_core/tools/validate_memory_system.py --help 2>&1 | grep -q -i pollution; then
+    $PYTHON memory_core/tools/validate_memory_system.py --check pollution
 else
     echo "(pollution check sub-command not yet available; skipping non-fatally)"
 fi
@@ -46,7 +65,7 @@ check_ci_config() {
 
     # 2. Validate YAML syntax
     if [ "$errors" -eq 0 ]; then
-        if ! python3 -c "
+        if ! $PYTHON -c "
 import sys
 try:
     import yaml
@@ -75,7 +94,7 @@ if 'jobs' not in data:
         REQUIRED_JOBS=("test" "ci-ok")
         MISSING_JOBS=""
         for job in "${REQUIRED_JOBS[@]}"; do
-            if ! python3 -c "
+            if ! $PYTHON -c "
 import yaml
 with open('$CI_FILE', 'r') as f:
     data = yaml.safe_load(f)
