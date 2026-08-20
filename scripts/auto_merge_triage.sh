@@ -83,18 +83,21 @@ EMPTY_RESULT='{"mergeable":[],"behind":[],"conflicting":[],"pending":[],"stalled
 classify() {
   jq '
     def rollup(pr): (pr.statusCheckRollup // []);
-    # green = every reported check succeeded (or was harmlessly skipped) AND
-    # at least one check reported.
-    # Acceptable conclusions: SUCCESS, SKIPPED, NEUTRAL — these are non-failures.
+    # green = at least one SUCCESS (防假绿下限) AND all checks are SUCCESS/SKIPPED/NEUTRAL.
+    # Three-layer semantics:
+    #   1. SKIPPED/NEUTRAL = branch protection alignment (non-blocking checks)
+    #   2. any(SUCCESS) = anti-fake-green lower bound (all-SKIPPED rollup requires human review)
+    #   3. null conclusion = still queued/in-progress (not counted as reported)
     # Failure conclusions: FAILURE, TIMED_OUT, CANCELLED, ACTION_REQUIRED.
-    # Rationale (INFRA-428 + scrutiny R2): qa.yml #830 added two nightly jobs
-    # (Coverage Audit / Full Regression) that report SKIPPED on PR events.
-    # The old logic required conclusion == "SUCCESS" for every check, so every
-    # PR rollup contained SKIPPED → checks_green was never true → sweep
-    # always stalled → zero merges. SKIPPED/NEUTRAL are semantically "not a
-    # failure" and must not block merge.
+    # Rationale (INFRA-428 + scrutiny R2 + scrutiny R1 blocking): qa.yml #830 added two
+    # nightly jobs (Coverage Audit / Full Regression) that report SKIPPED on PR events.
+    # PR #862 fixed the deadlock by accepting SKIPPED/NEUTRAL as non-failures. However,
+    # the all() check without any(SUCCESS) allowed all-SKIPPED rollups to pass as mergeable,
+    # creating a fake-green hole (reviewer-verified). The any(SUCCESS) guard ensures at
+    # least one real success exists before allowing merge.
     def checks_green(pr):
       (rollup(pr) | length) > 0
+      and (any(rollup(pr)[]; .conclusion == "SUCCESS"))
       and all(rollup(pr)[]; .conclusion == "SUCCESS" or .conclusion == "SKIPPED" or .conclusion == "NEUTRAL");
     # complete = every check run has reported a non-null conclusion.
     # has("conclusion") alone is not enough: the rollup of a queued/

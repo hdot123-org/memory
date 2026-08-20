@@ -729,16 +729,25 @@ class TestAutoMergeTriageHardeningInfra428:
             )
 
 
-class TestAutoMergeTriageSkippedNeutralHandling:
-    """scrutiny R2 / INFRA-428 修复：SKIPPED/NEUTRAL 应视为非失败。
+class TestAutoMergeTriageSkippedChecks:
+    """scrutiny R1 blocking / INFRA-428 修复：SKIPPED/NEUTRAL 防假绿约束。
 
     根因：qa.yml #830 起两个夜间 job（Coverage Audit / Full Regression）
     在 PR 事件报 SKIPPED——旧逻辑要求所有 check 的 conclusion == "SUCCESS"，
     导致任何 PR 的 rollup 永久含 SKIPPED，checks_green 永远 false，sweep
     判定永远 stalled，零 merge（历史 #855/#856 实际靠 GitHub 原生 auto-merge 合的）。
 
-    修复后：SKIPPED/NEUTRAL 视为非失败（仅 FAILURE/TIMED_OUT/CANCELLED/ACTION_REQUIRED
-    为失败）。sweep 与原生 --auto 并存无害（原生优先，sweep 兜底）。
+    PR #862 修复了死锁，接受 SKIPPED/NEUTRAL 为非失败（与 branch protection 对齐）。
+    但 PR #862 的实现缺 any(SUCCESS) 下限——全 SKIPPED 的 rollup 会被判 mergeable，
+    造成假绿洞（reviewer 实测证实）。
+
+    修复后（本提交）：
+    - SKIPPED/NEUTRAL 视为非失败（branch protection 对齐）
+    - any(SUCCESS) 防假绿下限（全 SKIPPED/NEUTRAL 需人工审查）
+    - null conclusion（排队中）仍不算 complete
+    - FAILURE/CANCELLED/TIMED_OUT/ACTION_REQUIRED 仍判非绿
+
+    sweep 与原生 --auto 并存无害（原生优先，sweep 兜底）。
     """
 
     def _run_triage(self, prs: list, *extra_args: str) -> dict:
@@ -771,8 +780,12 @@ class TestAutoMergeTriageSkippedNeutralHandling:
         assert output["mergeable"][0]["action"] == "merge"
         assert output["stalled"] == [], "SKIPPED 不应触发 stalled"
 
-    def test_all_skipped_is_green(self):
-        """全 SKIPPED（罕见但理论上可能）→ mergeable。"""
+    def test_all_skipped_is_not_mergeable(self):
+        """防假绿：全 SKIPPED（无任何 SUCCESS）→ 非 mergeable（需人工审查）。
+
+        scrutiny R1 blocking：reviewer 实测证实 PR #862 实现缺 any(SUCCESS) 下限，
+        全 SKIPPED rollup 会被判 mergeable/action=merge，造成功能规格禁止的假绿洞。
+        """
         prs = [{
             "number": 101, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
             "isDraft": False,
@@ -782,8 +795,11 @@ class TestAutoMergeTriageSkippedNeutralHandling:
             ],
         }]
         output = self._run_triage(prs)
-        assert output["mergeable"][0]["number"] == 101
-        assert output["stalled"] == []
+        assert output["mergeable"] == [], (
+            "全 SKIPPED 不得判 mergeable（防假绿下限 any(SUCCESS) 生效）"
+        )
+        # 全 SKIPPED 但非空 rollup → stalled（所有 check 已报告但无 SUCCESS）
+        assert len(output["stalled"]) == 1 or len(output["pending"]) == 1
 
     def test_skipped_plus_failure_is_stalled(self):
         """SKIPPED + FAILURE → stalled（FAILURE 仍阻塞合并）。"""
@@ -875,8 +891,13 @@ class TestAutoMergeTriageSkippedNeutralHandling:
         assert output["mergeable"][0]["number"] == 107
         assert output["stalled"] == []
 
-    def test_all_neutral_is_green(self):
-        """全 NEUTRAL → mergeable。"""
+    def test_all_neutral_is_not_mergeable(self):
+        """防假绿：全 NEUTRAL（无任何 SUCCESS）→ 非 mergeable（需人工审查）。
+
+        与全 SKIPPED 同理：any(SUCCESS) 下限要求至少一个真实成功。
+        NEUTRAL 是 annotation-only check（branch protection 对齐），但单独
+        存在时不代表代码被验证过。
+        """
         prs = [{
             "number": 108, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
             "isDraft": False,
@@ -886,8 +907,10 @@ class TestAutoMergeTriageSkippedNeutralHandling:
             ],
         }]
         output = self._run_triage(prs)
-        assert output["mergeable"][0]["number"] == 108
-        assert output["stalled"] == []
+        assert output["mergeable"] == [], (
+            "全 NEUTRAL 不得判 mergeable（防假绿下限 any(SUCCESS) 生效）"
+        )
+        assert len(output["stalled"]) == 1 or len(output["pending"]) == 1
 
     def test_neutral_plus_failure_is_stalled(self):
         """NEUTRAL + FAILURE → stalled（FAILURE 仍阻塞）。"""
@@ -965,13 +988,23 @@ class TestAutoMergeTriageSkippedNeutralHandling:
 
         本测试用注释形式记录判定矩阵，便于后续维护。
         """
-        # 非失败结论（视为 green）：
+        # 非失败结论（视为 green 的前提条件）：
         non_failure_conclusions = ["SUCCESS", "SKIPPED", "NEUTRAL"]
         # 失败结论（触发 stalled）：
         failure_conclusions = ["FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"]
 
-        # 验证非失败结论单独存在时判 mergeable
-        for conclusion in non_failure_conclusions:
+        # 验证 SUCCESS 单独存在时判 mergeable
+        prs = [{
+            "number": 200,
+            "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+        }]
+        output = self._run_triage(prs)
+        assert output["mergeable"], "SUCCESS 应判为 green"
+
+        # 验证 SKIPPED/NEUTRAL 单独存在时 NOT 判 mergeable（防假绿下限）
+        for conclusion in ["SKIPPED", "NEUTRAL"]:
             prs = [{
                 "number": 200 + non_failure_conclusions.index(conclusion),
                 "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
@@ -979,7 +1012,9 @@ class TestAutoMergeTriageSkippedNeutralHandling:
                 "statusCheckRollup": [{"conclusion": conclusion}],
             }]
             output = self._run_triage(prs)
-            assert output["mergeable"], f"{conclusion} 应判为 green（非失败）"
+            assert not output["mergeable"], (
+                f"{conclusion} 单独存在时 NOT 判为 green（防假绿下限 any(SUCCESS)）"
+            )
 
         # 验证失败结论单独存在时判 stalled
         for conclusion in failure_conclusions:
