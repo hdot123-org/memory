@@ -394,12 +394,19 @@ def test_immediate_mode_skips_branch_with_open_pr(tmp_path: Path):
 # VAL-REMOTEBR-001/002/003: Tiered thresholds — MERGED 1h / CLOSED 4h / ORPHAN 24h
 # ============================================================================
 def test_merged_pr_recent_branch_preserved(tmp_path: Path):
-    """MERGED PR branch < 1h old is preserved (tier=MERGED)."""
+    """MERGED PR branch < 1h old is preserved (tier=MERGED).
+    Content is already in main, so guard doesn't apply and age threshold is checked."""
     now = datetime.now(timezone.utc)
     recent_date = now - timedelta(minutes=30)  # 30 min ago, < 1h threshold
 
     branches = [("merged-recent", recent_date, False)]
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Merge content into main so guard doesn't protect the branch
+    subprocess.run(["git", "merge", "--no-ff", "merged-recent", "-m", "Merge merged-recent"],
+                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(["git", "push", "origin", "main"],
+                   cwd=clone_dir, check=True, capture_output=True)
 
     mock_gh = create_gh_mock(tmp_path, {"merged-recent": [{"number": 101, "state": "MERGED"}]})
 
@@ -420,12 +427,21 @@ def test_merged_pr_recent_branch_preserved(tmp_path: Path):
 
 
 def test_merged_pr_old_branch_deleted(tmp_path: Path):
-    """MERGED PR branch > 1h old is deleted (tier=MERGED)."""
+    """MERGED PR branch > 1h old is deleted (tier=MERGED).
+    Content must be merged into main so the guard does not falsely protect it
+    (after guard expansion in M2 hardening, MERGED branches also go through
+    content-equivalence check)."""
     now = datetime.now(timezone.utc)
     old_date = now - timedelta(hours=3)  # 3h ago, > 1h threshold
 
     branches = [("merged-old", old_date, False)]
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Merge merged-old into main so content is equivalent (bypass guard after expansion)
+    subprocess.run(["git", "merge", "--no-ff", "merged-old", "-m", "Merge merged-old"],
+                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(["git", "push", "origin", "main"],
+                   cwd=clone_dir, check=True, capture_output=True)
 
     mock_gh = create_gh_mock(tmp_path, {"merged-old": [{"number": 102, "state": "MERGED"}]})
 
@@ -556,6 +572,172 @@ def test_orphan_old_branch_deleted(tmp_path: Path):
     remaining_branches = get_remote_branches(bare_repo)
     assert "orphan-old" not in remaining_branches, "Old ORPHAN branch should be deleted"
     assert "tier=ORPHAN (24h)" in stdout
+
+
+# ============================================================================
+# M2-hardening: MERGED branch with reverted content is protected
+# ============================================================================
+def test_merged_pr_reverted_branch_protected(tmp_path: Path):
+    """MERGED PR branch whose content was reverted from main is PROTECTED.
+    
+    Scenario: branch was squash-merged into main, then reverted. The branch
+    still has unique commits (squash SHA ≠ original), but now main no longer
+    contains the content. The guard must protect it to prevent data loss.
+    """
+    now = datetime.now(timezone.utc)
+    old_date = now - timedelta(days=2)
+
+    branches = [("reverted-feature", old_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Simulate squash merge: add same content to main as a new commit
+    subprocess.run(["git", "checkout", "main"], cwd=clone_dir, check=True, capture_output=True)
+    (clone_dir / "reverted-feature.txt").write_text("Content for reverted-feature\n")
+    subprocess.run(["git", "add", "."], cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Squash merge reverted-feature"],
+                   cwd=clone_dir, check=True, capture_output=True)
+
+    # Simulate revert: remove the content from main
+    subprocess.run(["git", "rm", "reverted-feature.txt"],
+                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Revert 'Squash merge reverted-feature'"],
+                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(["git", "push", "origin", "main"],
+                   cwd=clone_dir, check=True, capture_output=True)
+
+    # Branch has MERGED PR but content is no longer in main
+    mock_gh = create_gh_mock(tmp_path, {
+        "reverted-feature": [{"number": 601, "state": "MERGED"}]
+    })
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "reverted-feature" in remaining_branches, (
+        "MERGED branch with reverted content must be PROTECTED (content guard expanded)"
+    )
+    assert "PROTECTED" in stdout.upper() or "has unique commits" in stdout.lower(), (
+        "Output should indicate protection. stdout: " + stdout
+    )
+
+
+# ============================================================================
+# M2-hardening: BRANCH_AGE_* validation
+# ============================================================================
+def test_branch_age_zero_falls_back_to_default(tmp_path: Path):
+    """BRANCH_AGE_MERGED_HOURS=0 should fall back to default (1h)."""
+    now = datetime.now(timezone.utc)
+    old_date = now - timedelta(hours=3)
+
+    branches = [("test-zero", old_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Merge content so guard doesn't block
+    subprocess.run(["git", "merge", "--no-ff", "test-zero", "-m", "Merge test-zero"],
+                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(["git", "push", "origin", "main"],
+                   cwd=clone_dir, check=True, capture_output=True)
+
+    mock_gh = create_gh_mock(tmp_path, {
+        "test-zero": [{"number": 701, "state": "MERGED"}]
+    })
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
+        "BRANCH_AGE_MERGED_HOURS": "0",  # Invalid value
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    # Should use default 1h, not crash or delete with 0h threshold
+    assert exit_code == 0
+    assert "MERGED=1h" in stdout or "tier=MERGED (1h)" in stdout
+
+
+def test_branch_age_negative_falls_back_to_default(tmp_path: Path):
+    """BRANCH_AGE_CLOSED_HOURS=-5 should fall back to default (4h)."""
+    now = datetime.now(timezone.utc)
+    old_date = now - timedelta(hours=6)
+
+    branches = [("test-negative", old_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Merge content so guard doesn't block
+    subprocess.run(["git", "merge", "--no-ff", "test-negative", "-m", "Merge test-negative"],
+                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(["git", "push", "origin", "main"],
+                   cwd=clone_dir, check=True, capture_output=True)
+
+    mock_gh = create_gh_mock(tmp_path, {
+        "test-negative": [{"number": 702, "state": "CLOSED"}]
+    })
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
+        "BRANCH_AGE_CLOSED_HOURS": "-5",  # Invalid value
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    # Should use default 4h, not crash or behave erratically
+    assert exit_code == 0
+    assert "CLOSED=4h" in stdout or "tier=CLOSED (4h)" in stdout
+
+
+# ============================================================================
+# M2-hardening: env variable override
+# ============================================================================
+def test_env_override_changes_behavior(tmp_path: Path):
+    """Changing BRANCH_AGE_MERGED_HOURS changes the deletion threshold."""
+    now = datetime.now(timezone.utc)
+    # Branch is 5h old: would be deleted with default 1h, but kept with 10h override
+    recent_date = now - timedelta(hours=5)
+
+    branches = [("test-override", recent_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Merge content so guard doesn't block
+    subprocess.run(["git", "merge", "--no-ff", "test-override", "-m", "Merge test-override"],
+                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(["git", "push", "origin", "main"],
+                   cwd=clone_dir, check=True, capture_output=True)
+
+    mock_gh = create_gh_mock(tmp_path, {
+        "test-override": [{"number": 703, "state": "MERGED"}]
+    })
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
+        "BRANCH_AGE_MERGED_HOURS": "10",  # Override: 10h instead of default 1h
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "test-override" in remaining_branches, (
+        "Branch should be KEPT when threshold is increased to 10h (branch is 5h old)"
+    )
+    assert "MERGED=10h" in stdout, "Output should show the overridden value"
 
 
 # ============================================================================
@@ -1277,18 +1459,26 @@ def test_fully_merged_branch_not_falsely_protected(tmp_path: Path):
 # ============================================================================
 def test_immediate_mode_deletes_merged_pr_branch(tmp_path: Path):
     """When --immediate <branch> and the branch has a MERGED PR (state "MERGED"),
-    the branch IS deleted even though it has unique commits not in main.
+    the branch IS deleted when its content is already fully in main.
 
     GitHub/gh-CLI state values are "OPEN", "CLOSED", "MERGED". A MERGED PR has
-    state "MERGED" (NOT "CLOSED"), so CLOSED_NOT_MERGED_COUNT is 0 for merged
-    PRs → not protected → eligible for deletion. This is the correct, intended
-    behavior: a merged PR's branch should be cleaned up.
+    state "MERGED" (NOT "CLOSED"). After M2 guard expansion, MERGED branches
+    also go through content-equivalence check: if the content is in main (merge-tree
+    equivalent), the guard does NOT protect it and the branch is deleted.
     """
     now = datetime.now(timezone.utc)
     old_date = now - timedelta(days=2)  # 2 days ago
 
     branches = [("merged-feature", old_date, False)]
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Merge content into main so the guard's content-equivalence check passes
+    subprocess.run(["git", "checkout", "main"], cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "merge", "--no-ff", "-m", "Merge merged-feature", "origin/merged-feature"],
+        cwd=clone_dir, check=True, capture_output=True,
+    )
+    subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
 
     # Mock gh to return a MERGED PR for this branch
     mock_gh = create_gh_mock(tmp_path, {
@@ -1308,7 +1498,7 @@ def test_immediate_mode_deletes_merged_pr_branch(tmp_path: Path):
 
     remaining_branches = get_remote_branches(bare_repo)
     assert "merged-feature" not in remaining_branches, (
-        "Branch with a MERGED PR should be deleted in immediate mode"
+        "Branch with a MERGED PR (content in main) should be deleted in immediate mode"
     )
     assert exit_code == 0, f"Expected exit 0, got {exit_code}. stderr: {stderr}"
 
