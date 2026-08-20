@@ -7,6 +7,8 @@ INFRA-399: 突变类用例一律在隔离的 tmp git 夹具仓库上运行（fix
 CI 间歇性失败（PR #797 后首现）。只读用例仍在真实仓库上运行。
 """
 
+import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -234,84 +236,84 @@ def test_invalid_mode():
 
 # ── Regression tests for Python version selection (PR #859) ──────────────
 
-def test_python_version_selection_prefers_3_12_plus():
+
+def _make_stub_python(bin_dir: Path, name: str, report_version: str) -> None:
+    """Create an executable stub that reports `report_version` for any -c
+    version query (mimicking an interpreter older than 3.11 for every
+    invocation the selection logic can make)."""
+    stub = bin_dir / name
+    stub.write_text(f'#!/bin/sh\necho "{report_version}"\n', encoding="utf-8")
+    stub.chmod(0o755)
+
+
+def _hermetic_bin_dir(tmp_path: Path) -> Path:
+    """Minimal PATH dir: stub pythons + only the shell utilities the script's
+    Python-selection block needs (cut).  Nothing else — no real interpreters,
+    no git — so behaviour is identical on macOS and Linux CI runners."""
+    bin_dir = tmp_path / "stubbin"
+    bin_dir.mkdir()
+    cut_path = shutil.which("cut")
+    assert cut_path is not None, "cut must exist to build hermetic PATH"
+    os.symlink(cut_path, bin_dir / "cut")
+    return bin_dir
+
+
+BASH_PATH = shutil.which("bash")
+
+
+def _run_script_hermetic(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    """Run the health check with an explicit environment; bash is resolved to
+    an absolute path beforehand so a scrubbed PATH cannot break the launch."""
+    assert BASH_PATH is not None, "bash must exist to run the script"
+    return subprocess.run(
+        [BASH_PATH, str(SCRIPT_PATH), "--ci"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def test_python_version_selection_prefers_3_12_plus(tmp_path: Path):
     """Regression: script must select a Python >= 3.11 with tomllib support.
 
-    Even when PATH contains a python3 < 3.11 first, the script should
-    still find a qualifying interpreter (python3.12 or python3 >= 3.11)
-    or emit a clear error instead of crashing with ModuleNotFoundError.
+    A PATH whose plain ``python3`` stub reports 3.9 must not make the script
+    crash with ModuleNotFoundError: it either finds a qualifying interpreter
+    (here: a python3.12 stub) or reports the version requirement clearly.
     """
-    import os
+    bin_dir = _hermetic_bin_dir(tmp_path)
+    _make_stub_python(bin_dir, "python3", "3.9")
+    # A qualifying python3.12 stub: the script's first choice.
+    _make_stub_python(bin_dir, "python3.12", "3.12.13")
 
-    # Build a fake python3 that reports 3.9 — place it first in PATH
-    fake_dir = Path("/tmp") / "regression_fake_python"
-    fake_dir.mkdir(exist_ok=True)
-    fake_py = fake_dir / "python3"
-    fake_py.write_text(
-        '#!/bin/bash\npython3.12 -c "import sys; print(f\'3.9\')" "$@"\n',
-        encoding="utf-8",
-    )
-    fake_py.chmod(0o755)
-
-    # Prepend fake dir so plain python3 resolves to our 3.9 stub
     env = os.environ.copy()
-    env["PATH"] = str(fake_dir) + os.pathsep + env["PATH"]
-    # Remove python3.12 from reach to force the fallback branch
-    # (python3 version check).  We keep the real system python3.12 reachable
-    # via an explicit absolute path, but the script uses `command -v python3.12`
-    # which scans PATH — so we must make it invisible there too.
-    # Instead of hiding it, we verify the script's actual behaviour:
-    # on this system python3.12 IS available, so the script should succeed.
-    result = subprocess.run(
-        ["bash", str(SCRIPT_PATH), "--ci"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        env=env,
+    env["PATH"] = f"{bin_dir}{os.pathsep}/usr/bin:/bin"
+
+    result = _run_script_hermetic(env)
+    # With a qualifying python3.12 on PATH the script must proceed past
+    # interpreter selection.  It will then fail later on real repo work
+    # (stub python cannot import tomllib / memory_core) — that is expected;
+    # the contract under test is interpreter selection, and the failure
+    # must never be the bare ModuleNotFoundError-style crash of the
+    # pre-fix script, nor the "Python 3.11+ required" gate.
+    assert "Python 3.11+ required" not in result.stderr, (
+        f"python3.12 stub was on PATH but script still rejected the "
+        f"environment: stderr={result.stderr!r}"
     )
-    # The script should either succeed (found python3.12 via command -v)
-    # or fail with a clear Python version error — never with ModuleNotFoundError.
-    if result.returncode != 0:
-        assert "ModuleNotFoundError" not in result.stderr, (
-            "Script must not crash with ModuleNotFoundError — "
-            "it should select a Python with tomllib or report clearly"
-        )
-        assert "Python 3.11+" in result.stderr or "Python 3.11+" in result.stdout, (
-            "When no suitable Python is found, the error message must mention "
-            "the minimum version requirement"
-        )
+    assert "Python 3.11+ not found" not in result.stderr
 
 
-def test_python_selection_error_message_when_only_old_python():
+def test_python_selection_error_message_when_only_old_python(tmp_path: Path):
     """Regression: when only Python < 3.11 is available, script exits with
     a clear error mentioning the version requirement."""
-    import os
+    bin_dir = _hermetic_bin_dir(tmp_path)
+    # Only an old python3 stub; no python3.12 anywhere on the stub PATH.
+    _make_stub_python(bin_dir, "python3", "3.9")
 
-    # Create a temporary directory with a fake python3 that is < 3.11
-    fake_dir = Path("/tmp") / "regression_old_python"
-    fake_dir.mkdir(exist_ok=True)
-    fake_py = fake_dir / "python3"
-    fake_py.write_text(
-        '#!/bin/bash\necho "3.9"\n',
-        encoding="utf-8",
-    )
-    fake_py.chmod(0o755)
-
-    # Also create fake python3.9 to ensure no python3.12 is found
-    # (the script checks `command -v python3.12` first)
-    # We need an environment where ONLY python3 exists and it is < 3.11
-    # Build a minimal PATH with only our fake python3
     env = os.environ.copy()
-    # Keep /usr/bin for bash, git but strip any real python paths
-    env["PATH"] = str(fake_dir) + os.pathsep + "/usr/bin:/bin"
+    env["PATH"] = str(bin_dir)
 
-    result = subprocess.run(
-        ["bash", str(SCRIPT_PATH), "--ci"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    result = _run_script_hermetic(env)
     # Script should exit non-zero with a clear version error
     assert result.returncode != 0, "Script should fail when only old Python available"
     assert "Python 3.11+" in result.stderr or "Python 3.11+" in result.stdout, (
@@ -326,29 +328,28 @@ def test_script_uses_python_variable_not_hardcoded():
     outside the version selection block, not hardcoded 'python3'."""
     script_content = SCRIPT_PATH.read_text(encoding="utf-8")
 
-    # Find the end of the Python version selection block
-    # The block ends at the third 'fi' after "Python version selection" comment
-    # After that, all Python invocations should use $PYTHON
+    # The selection block starts at the "Python version selection" comment
+    # and ends at the 'fi' of the `else ... fi` at column 0 (the block's
+    # last line).  Selection contains exactly two 'fi' (inner elif + outer);
+    # the column-0 'fi' is the outer one ending the block.
     lines = script_content.split("\n")
-    in_version_block = False
-    fi_count = 0
-    version_block_ended_at = -1
+    selection_start = -1
     for i, line in enumerate(lines):
         if "Python version selection" in line:
-            in_version_block = True
-            continue
-        if in_version_block:
-            if line.strip().startswith("fi"):
-                fi_count += 1
-                if fi_count >= 3:
-                    version_block_ended_at = i
-                    break
+            selection_start = i
+            break
+    assert selection_start >= 0, "Could not find version selection comment"
 
+    version_block_ended_at = -1
+    for i in range(selection_start, len(lines)):
+        if lines[i] == "fi":
+            version_block_ended_at = i
+            break
     assert version_block_ended_at > 0, "Could not find end of version selection block"
 
     # Check that no hardcoded python3 calls exist after the version block
     hardcoded_python3_lines = []
-    for i in range(version_block_ended_at, len(lines)):
+    for i in range(version_block_ended_at + 1, len(lines)):
         line = lines[i]
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
