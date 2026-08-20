@@ -60,6 +60,11 @@ class TestConsoleScriptSigint:
             stderr=subprocess.PIPE,
             env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
             cwd="/tmp",
+            # Isolate child in its own process group so SIGINT sent to the
+            # child PID cannot leak back into the xdist test runner process
+            # group and cause spurious KeyboardInterrupt in the test process
+            # itself (flaky root cause: PR #858 CI / main nightly / PR #890).
+            start_new_session=True,
         )
 
         time.sleep(1.0)  # Let process reach stdin.read()
@@ -95,6 +100,9 @@ class TestConsoleScriptSigint:
             stderr=subprocess.PIPE,
             env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
             cwd="/tmp",
+            # start_new_session: isolate child process group to prevent SIGINT
+            # leakage into xdist test runner (fixes three-time flaky recurrence).
+            start_new_session=True,
         )
 
         # Send SIGINT very early (during import phase)
@@ -137,6 +145,7 @@ class TestMPathSigint:
             stderr=subprocess.PIPE,
             env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
             cwd="/tmp",
+            start_new_session=True,  # process group isolation (SIGINT leak guard)
         )
 
         time.sleep(1.0)
@@ -405,6 +414,7 @@ class TestEntryPathMatrix:
             stderr=subprocess.PIPE,
             env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
             cwd="/tmp",
+            start_new_session=True,  # process group isolation (SIGINT leak guard)
         )
 
         time.sleep(1.0)
@@ -438,6 +448,7 @@ class TestEntryPathMatrix:
             stderr=subprocess.PIPE,
             env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
             cwd="/tmp",
+            start_new_session=True,  # process group isolation (SIGINT leak guard)
         )
 
         time.sleep(1.0)
