@@ -122,7 +122,9 @@ jobs:
           COVERAGE_FILE: ${{ runner.temp }}/cov-${{ github.run_id }}-${{ github.run_attempt }}/.coverage
         run: |
           mkdir -p "$(dirname "$COVERAGE_FILE")"
-          python -m pytest -q tests -n 6 --cov=memory_core --cov-report=xml
+          # Diagnostic: run serial (-n 0) to isolate xdist vs runner env issue
+          echo "=== Serial (-n 0) coverage diagnostic ==="
+          python -m pytest -q tests -n 0 --cov=memory_core --cov-report=xml
       - name: Debug - inspect coverage shard files
         if: always()
         env:
