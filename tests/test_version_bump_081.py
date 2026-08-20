@@ -99,24 +99,34 @@ class TestCLIVersionFlag:
     """VAL-VERSION-002: memory-init --version and memory-migrate --version show CURRENT_MEMORY_VERSION."""
 
     def test_memory_init_version_output(self) -> None:
-        """memory-init --version logic uses CURRENT_MEMORY_VERSION."""
-        # Test the version logic directly without subprocess to avoid environment dependency
-        from memory_core.constants import CURRENT_MEMORY_VERSION
+        """memory-init --version displays CURRENT_MEMORY_VERSION via subprocess."""
+        import subprocess
+        import sys
 
-        # The --version flag now uses CURRENT_MEMORY_VERSION directly
-        # Verify the constant is accessible and non-empty
-        assert CURRENT_MEMORY_VERSION, "CURRENT_MEMORY_VERSION must be set"
-        assert isinstance(CURRENT_MEMORY_VERSION, str), "CURRENT_MEMORY_VERSION must be a string"
+        result = subprocess.run(
+            [sys.executable, "-m", "memory_core.tools.init_project_memory", "--version"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"memory-init --version failed: {result.stderr}"
+        assert CURRENT_MEMORY_VERSION in result.stdout, (
+            f"Expected {CURRENT_MEMORY_VERSION} in output, got: {result.stdout}"
+        )
 
     def test_memory_migrate_version_output(self) -> None:
-        """memory-migrate --version logic uses CURRENT_MEMORY_VERSION."""
-        # Test the version logic directly without subprocess to avoid environment dependency
-        from memory_core.constants import CURRENT_MEMORY_VERSION
+        """memory-migrate --version displays CURRENT_MEMORY_VERSION via subprocess."""
+        import subprocess
+        import sys
 
-        # The --version flag now uses CURRENT_MEMORY_VERSION directly
-        # Verify the constant is accessible and non-empty
-        assert CURRENT_MEMORY_VERSION, "CURRENT_MEMORY_VERSION must be set"
-        assert isinstance(CURRENT_MEMORY_VERSION, str), "CURRENT_MEMORY_VERSION must be a string"
+        result = subprocess.run(
+            [sys.executable, "-m", "memory_core.tools.migrate_project_memory", "--version"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"memory-migrate --version failed: {result.stderr}"
+        assert CURRENT_MEMORY_VERSION in result.stdout, (
+            f"Expected {CURRENT_MEMORY_VERSION} in output, got: {result.stdout}"
+        )
 
 
 # ---------------------------------------------------------------------------

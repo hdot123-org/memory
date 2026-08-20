@@ -65,6 +65,7 @@ class TestPhaseAReconciliation:
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
         env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
+        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
@@ -85,6 +86,7 @@ class TestPhaseAReconciliation:
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
         env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
+        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
 
         subprocess.run(
             ["bash", str(watchdog_script)],
@@ -107,6 +109,7 @@ class TestPhaseAReconciliation:
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
         env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
+        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
 
         subprocess.run(
             ["bash", str(watchdog_script)],
@@ -133,6 +136,7 @@ class TestPhaseBReconciliation:
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
         env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
+        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
@@ -156,6 +160,7 @@ class TestPhaseBReconciliation:
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
         env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
+        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
 
         subprocess.run(
             ["bash", str(watchdog_script)],
@@ -176,6 +181,7 @@ class TestWatchdogIdempotency:
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
         env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
+        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
@@ -195,6 +201,7 @@ class TestWatchdogIdempotency:
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
         env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
+        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
