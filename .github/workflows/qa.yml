@@ -67,7 +67,7 @@ jobs:
       - name: Run pytest with coverage (gated at current threshold)
         # 门禁 pytest 在前：生成权威 coverage.xml（也是 gap 分析的数据源）
         run: |
-          python -m pytest tests/ -n 6 --cov=memory_core --cov-report=xml --cov-branch --cov-fail-under=15
+          python -m pytest tests/ -n 6 --cov=memory_core --cov-report=xml --cov-branch --cov-fail-under=80
       - name: Run coverage gap analysis
         # 复用门禁 pytest 的 coverage.xml（--reuse-xml），不再内部串行重跑全量 pytest。
         # 旧模式在自建 runner 上必挂：内部串行 pytest 超 timeout=600 产出半成品 XML
