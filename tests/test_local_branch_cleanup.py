@@ -275,16 +275,34 @@ def create_branch_with_merged_content(
 
 def run_local_cleanup(
     clone_dir: Path,
+    tmp_path: Path | None = None,
     env_overrides: dict | None = None,
 ) -> tuple[int, str, str]:
     """
     Run local_branch_cleanup.sh and return (exit_code, stdout, stderr).
+
+    Args:
+        clone_dir: Git repository path
+        tmp_path: pytest tmp_path fixture for isolation (prevents writing to production paths)
+        env_overrides: Optional environment variable overrides
+
+    Returns:
+        Tuple of (exit_code, stdout, stderr)
+
+    Note:
+        If tmp_path is provided, BACKUP_DIR defaults to tmp_path/backup to prevent
+        test pollution of production backup directory at ~/.factory/webhook/locks/branch_cleanup_backup
     """
     script_path = get_script_path()
     cmd = ["bash", str(script_path)]
 
     env = subprocess.os.environ.copy()
     env["REPO_ROOT"] = str(clone_dir)
+
+    # Isolation: default BACKUP_DIR to tmp_path to prevent test pollution
+    if tmp_path is not None and "BACKUP_DIR" not in (env_overrides or {}):
+        env["BACKUP_DIR"] = str(tmp_path / "backup")
+
     if env_overrides:
         env.update(env_overrides)
 
@@ -353,8 +371,8 @@ def test_deletes_gone_branch_with_equivalent_patches(tmp_path: Path):
     assert branch_name in branch_vv, f"Branch {branch_name} not found locally"
     assert ": gone]" in branch_vv, f"Branch {branch_name} not marked as gone"
 
-    # Run cleanup
-    exit_code, stdout, stderr = run_local_cleanup(clone_dir)
+    # Run cleanup with tmp_path for isolation
+    exit_code, stdout, stderr = run_local_cleanup(clone_dir, tmp_path)
 
     assert exit_code == 0, f"Cleanup failed: {stderr}"
 
@@ -366,6 +384,15 @@ def test_deletes_gone_branch_with_equivalent_patches(tmp_path: Path):
 
     # Verify log shows deletion
     assert f"Deleted branch: {branch_name}" in stdout or "deleted" in stdout.lower()
+
+    # Regression test: production backup dir not polluted by this test run
+    prod_backup_dir = Path.home() / ".factory" / "webhook" / "locks" / "branch_cleanup_backup"
+    if prod_backup_dir.exists():
+        # Check that backup went to tmp_path, not production dir
+        isolated_backup = tmp_path / "backup"
+        assert isolated_backup.exists(), (
+            f"BACKUP_DIR isolation failed: expected backup in {isolated_backup}"
+        )
 
 
 # ============================================================================
@@ -404,8 +431,8 @@ def test_preserves_gone_branch_with_unique_commits(tmp_path: Path):
     branch_vv = get_branch_vv(clone_dir)
     assert ": gone]" in branch_vv
 
-    # Run cleanup
-    exit_code, stdout, stderr = run_local_cleanup(clone_dir)
+    # Run cleanup with tmp_path for isolation
+    exit_code, stdout, stderr = run_local_cleanup(clone_dir, tmp_path)
 
     assert exit_code == 0, f"Cleanup failed: {stderr}"
 
@@ -453,7 +480,7 @@ def test_skips_worktree_occupied_branch(tmp_path: Path):
     )
 
     # Run cleanup
-    exit_code, stdout, stderr = run_local_cleanup(clone_dir)
+    exit_code, stdout, stderr = run_local_cleanup(clone_dir, tmp_path)
 
     assert exit_code == 0, f"Cleanup failed: {stderr}"
 
@@ -475,7 +502,7 @@ def test_skips_worktree_occupied_branch(tmp_path: Path):
     )
 
     # Run cleanup again
-    exit_code2, stdout2, stderr2 = run_local_cleanup(clone_dir)
+    exit_code2, stdout2, stderr2 = run_local_cleanup(clone_dir, tmp_path)
 
     assert exit_code2 == 0, f"Second cleanup failed: {stderr2}"
 
@@ -517,6 +544,7 @@ def test_backup_contains_tip_sha_and_restorable(tmp_path: Path):
     # Run cleanup with custom backup dir
     exit_code, stdout, stderr = run_local_cleanup(
         clone_dir,
+        tmp_path,
         env_overrides={"BACKUP_DIR": str(backup_dir)},
     )
 
@@ -709,7 +737,7 @@ def test_never_touches_main_or_alive_branches(tmp_path: Path):
     ).stdout.strip()
 
     # Run cleanup
-    exit_code, stdout, stderr = run_local_cleanup(clone_dir)
+    exit_code, stdout, stderr = run_local_cleanup(clone_dir, tmp_path)
 
     assert exit_code == 0, f"Cleanup failed: {stderr}"
 
@@ -769,6 +797,7 @@ def test_offline_run_with_env_overrides(tmp_path: Path):
     # Run with DRY_RUN=1 (should not actually delete)
     exit_code, stdout, stderr = run_local_cleanup(
         clone_dir,
+        tmp_path,
         env_overrides={"DRY_RUN": "1"},
     )
 
@@ -793,6 +822,7 @@ def test_handles_missing_repo_root(tmp_path: Path):
     # Use a path that exists but is not a git repo
     exit_code, stdout, stderr = run_local_cleanup(
         nonexistent,
+        tmp_path,
         env_overrides={"REPO_ROOT": str(nonexistent)},
     )
 
@@ -826,7 +856,7 @@ def test_processes_multiple_gone_branches(tmp_path: Path):
     )
 
     # Run cleanup
-    exit_code, stdout, stderr = run_local_cleanup(clone_dir)
+    exit_code, stdout, stderr = run_local_cleanup(clone_dir, tmp_path)
 
     assert exit_code == 0, f"Cleanup failed: {stderr}"
 
@@ -877,6 +907,7 @@ def test_posthog_api_key_unset_skips_event(tmp_path: Path):
 
     exit_code, stdout, stderr = run_local_cleanup(
         clone_dir,
+        tmp_path,
         env_overrides=env_overrides,
     )
 
@@ -987,6 +1018,7 @@ def test_backup_branch_with_slash_name(tmp_path: Path):
     # Run cleanup with custom backup dir
     exit_code, stdout, stderr = run_local_cleanup(
         clone_dir,
+        tmp_path,
         env_overrides={"BACKUP_DIR": str(backup_dir)},
     )
 
@@ -1074,7 +1106,7 @@ def test_preserves_branch_when_git_cherry_fails(tmp_path: Path):
     assert ": gone]" in branch_vv, f"Branch {branch_name} not marked as gone"
 
     # Run cleanup - should preserve branch due to git cherry failure
-    exit_code, stdout, stderr = run_local_cleanup(clone_dir)
+    exit_code, stdout, stderr = run_local_cleanup(clone_dir, tmp_path)
 
     assert exit_code == 0, f"Cleanup failed: {stderr}"
 
