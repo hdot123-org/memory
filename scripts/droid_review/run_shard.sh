@@ -215,6 +215,7 @@ if [ "$FINDINGS_PARSED" = "false" ]; then
       echo "Envelope .result parse succeeded"
     else
       # Extract JSON from markdown code blocks
+      # shellcheck disable=SC2016  # 单引号是有意的：```json/``` 是字面量 markdown 围栏，不需要展开
       JSON_BLOCK=$(echo "$RESULT" | sed -n '/```json/,/```/p' | sed '1d;$d' | sed '/^$/d')
       if [ -n "$JSON_BLOCK" ] && echo "$JSON_BLOCK" | jq -e '.shard_id != null and .findings != null' >/dev/null 2>&1; then
         echo "$JSON_BLOCK" | jq '.' > "findings-shard-${SHARD_ID}.json"

@@ -54,11 +54,13 @@ jobs:
 
           if [ "${{ github.event_name }}" = "pull_request_target" ]; then
             # pull_request_target trigger: use event context
-            echo "pr_number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
-            echo "base_sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
-            echo "head_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
-            echo "draft=${{ github.event.pull_request.draft }}" >> "$GITHUB_OUTPUT"
-            echo "user_login=${{ github.event.pull_request.user.login }}" >> "$GITHUB_OUTPUT"
+            {
+              echo "pr_number=${{ github.event.pull_request.number }}"
+              echo "base_sha=${{ github.event.pull_request.base.sha }}"
+              echo "head_sha=${{ github.event.pull_request.head.sha }}"
+              echo "draft=${{ github.event.pull_request.draft }}"
+              echo "user_login=${{ github.event.pull_request.user.login }}"
+            } >> "$GITHUB_OUTPUT"
             echo "Resolved PR context from pull_request_target event"
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             # workflow_dispatch trigger: fetch PR data via API
@@ -74,11 +76,13 @@ jobs:
             DRAFT=$(echo "$PR_DATA" | jq -r '.draft')
             USER_LOGIN=$(echo "$PR_DATA" | jq -r '.user.login')
 
-            echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-            echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
-            echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-            echo "draft=$DRAFT" >> "$GITHUB_OUTPUT"
-            echo "user_login=$USER_LOGIN" >> "$GITHUB_OUTPUT"
+            {
+              echo "pr_number=$PR_NUMBER"
+              echo "base_sha=$BASE_SHA"
+              echo "head_sha=$HEAD_SHA"
+              echo "draft=$DRAFT"
+              echo "user_login=$USER_LOGIN"
+            } >> "$GITHUB_OUTPUT"
             echo "Resolved PR context from workflow_dispatch (PR #$PR_NUMBER, head=$HEAD_SHA)"
           else
             echo "::error::Unsupported event name: ${{ github.event_name }}"
