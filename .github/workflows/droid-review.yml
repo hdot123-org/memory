@@ -1,16 +1,14 @@
-# Droid Auto Review Workflow
-# Uses Bailian (Qwen 3.7 Plus) via Kong Proxy BYOM configuration
-# Kong Proxy at ai.exa.edu.kg routes qwen3.7-plus to node1 via Tailscale
-# BYOM customModels written to ~/.factory/settings.json before droid-action runs
-# (droid-action `settings` input targets ~/.factory/droid/settings.json which is
-#  a separate config namespace — customModels must go in ~/.factory/settings.json)
+# Droid Auto Review — 3-job shard pipeline (TD-DR-01)
+# Three contracts (NEVER break):
+#   1. Workflow name: "Droid Auto Review"
+#   2. Aggregation job name: "droid-review" (branch-protection/ci-ok dependency)
+#   3. Artifact prefix: "droid-review-debug-" (watchdog quota-sweep dependency)
+#
+# Security: pull_request_target + dual checkout (BASE for scripts/prompt, HEAD for context)
+# BYOM: Bailian Qwen 3.7 Plus via Kong Proxy
 
 name: Droid Auto Review
 
-# Security: use pull_request_target only.
-# This runs the workflow from the BASE branch (main), not the PR head,
-# preventing malicious PRs from accessing secrets via modified workflows.
-# The ref fix below ensures the correct PR code is checked out for review.
 on:
   pull_request_target:
     types: [opened, ready_for_review, reopened, synchronize]
@@ -20,24 +18,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  droid-review:
+  # ── Job 1: Plan shards (no model call, ~1min) ──
+  plan-shards:
     if: github.event.pull_request.draft == false && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ fromJSON(vars.DROID_REVIEW_TIMEOUT_MINUTES || '90') }}
-    env:
-      NVIDIA_KONG_PROXY_KEY: ${{ secrets.NVIDIA_KONG_PROXY_KEY }}
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-      id-token: write
-      actions: read
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      docs_only: ${{ steps.docs_only.outputs.skip }}
     steps:
-      - name: Checkout repository
+      - name: Checkout repository (BASE)
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 1
+
       - name: Detect docs-only PR
         id: docs_only
         env:
@@ -61,8 +55,84 @@ jobs:
             echo "$NON_MD"
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Write BYOM settings file
+
+      - name: Plan shards
+        id: plan
         if: steps.docs_only.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MAX_FILES: ${{ vars.SHARD_MAX_FILES || '25' }}
+          MAX_COUNT: ${{ vars.SHARD_MAX_COUNT || '6' }}
+        run: |
+          set -eu
+          # Get changed files from PR
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
+            --paginate --jq '.[].filename' > changed_files.txt
+          # Filter out docs-only files
+          grep -v '\.md$' changed_files.txt > code_files.txt || true
+          # Run planner
+          if [ -s code_files.txt ]; then
+            PLAN=$(python3 scripts/droid_review/plan_shards.py "$MAX_FILES" "$MAX_COUNT" < code_files.txt)
+            echo "Plan output: $PLAN"
+            echo "shards=$(echo "$PLAN" | jq -c '.shards')" >> "$GITHUB_OUTPUT"
+          else
+            echo "shards=[]" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Job 2: Review shard matrix (parallel, model call) ──
+  review-shard:
+    needs: plan-shards
+    if: >-
+      needs.plan-shards.outputs.docs_only != 'true' &&
+      needs.plan-shards.outputs.shards != '[]' &&
+      needs.plan-shards.outputs.shards != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(vars.DROID_REVIEW_TIMEOUT_MINUTES || '90') }}
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(vars.SHARD_MAX_PARALLEL || '3') }}
+      matrix:
+        shard: ${{ fromJSON(needs.plan-shards.outputs.shards) }}
+    env:
+      NVIDIA_KONG_PROXY_KEY: ${{ secrets.NVIDIA_KONG_PROXY_KEY }}
+    permissions:
+      contents: read
+      actions: write
+      id-token: write
+    steps:
+      - name: Checkout repository (BASE)
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+
+      - name: Checkout PR head (HEAD → head-src/)
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          path: head-src
+
+      - name: Set shard environment
+        id: shard_env
+        run: |
+          set -eu
+          {
+            echo "SHARD_ID=${{ matrix.shard.shard_id }}"
+            echo "SHARD_FILES='${{ toJson(matrix.shard.files) }}'"
+            echo "BASE_REF=${{ github.event.pull_request.base.sha }}"
+            echo "HEAD_REF=${{ github.event.pull_request.head.sha }}"
+            echo "RUN_ID=${{ github.run_id }}"
+          } >> "$GITHUB_ENV"
+          # Compute merge-base
+          cd head-src
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/head-src"
+          MERGE_BASE=$(git merge-base HEAD origin/${{ github.event.pull_request.base.ref }})
+          echo "MERGE_BASE=$MERGE_BASE" >> "$GITHUB_ENV"
+          cd "$GITHUB_WORKSPACE"
+
+      - name: Write BYOM settings file
         run: |
           mkdir -p ~/.factory
           cat > ~/.factory/settings.json << 'SETTINGS_EOF'
@@ -82,28 +152,102 @@ jobs:
           SETTINGS_EOF
           echo "BYOM settings written to ~/.factory/settings.json"
           python3 -c "import json; json.load(open('$HOME/.factory/settings.json')); print('JSON validation passed')"
+
       - name: Pre-check credentials
-        if: steps.docs_only.outputs.skip != 'true'
         env:
           FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
         run: |
           echo "Verifying Factory API credentials before review..."
           if [ -z "$FACTORY_API_KEY" ]; then
             echo "::error::FACTORY_API_KEY secret is empty or not configured."
-            echo "::error::This is the root cause of the 2026-08-16 multi-hour hang."
-            echo "::error::Please update the GitHub secret with a valid key."
             exit 1
           fi
           echo "Secret is present (length: ${#FACTORY_API_KEY} chars)."
-          echo "Note: HTTP endpoint validation removed - /v1/auth/check returns 404 (endpoint does not exist)."
-          echo "droid-action will fail fast if credentials are invalid (90-minute timeout prevents hangs)."
-      - name: Run Droid Auto Review
-        if: steps.docs_only.outputs.skip != 'true'
-        uses: Factory-AI/droid-action@e5ae50268211d2e9ac85edb57c28bf253b6627f7
+
+      - name: Run shard review
+        env:
+          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          chmod +x scripts/droid_review/run_shard.sh
+          bash scripts/droid_review/run_shard.sh
+
+      - name: Upload findings artifact
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
-          automatic_review: true
-          automatic_security_review: true
-          review_model: "qwen3.7-plus"
-          allowed_bots: "dependabot[bot]"
-          security_block_on_high: "false"
+          name: droid-review-debug-${{ github.run_id }}-shard-${{ matrix.shard.shard_id }}
+          path: |
+            findings-shard-*.json
+            shard-*.diff
+          retention-days: 7
+
+  # ── Job 3: Aggregate and publish findings ──
+  droid-review:
+    needs: [plan-shards, review-shard]
+    if: always() && needs.plan-shards.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      actions: read
+    steps:
+      - name: Checkout repository (BASE)
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+
+      - name: Check shard results
+        id: check_results
+        run: |
+          set -eu
+          DOCS_ONLY="${{ needs.plan-shards.outputs.docs_only }}"
+          SHARDS="${{ needs.plan-shards.outputs.shards }}"
+
+          if [ "$DOCS_ONLY" = "true" ]; then
+            echo "docs-only PR — skipping aggregation"
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$SHARDS" = "[]" ] || [ -z "$SHARDS" ]; then
+            echo "no shards planned — skipping aggregation"
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check if any review-shard job failed
+          if [ "${{ needs.review-shard.result }}" != "success" ] && [ "${{ needs.review-shard.result }}" != "skipped" ]; then
+            echo "::error::review-shard job failed — fail-closed"
+            exit 1
+          fi
+
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+
+      - name: Download findings artifacts
+        if: steps.check_results.outputs.should_publish == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: droid-review-debug-${{ github.run_id }}-shard-*
+          path: findings/
+
+      - name: Publish findings
+        if: steps.check_results.outputs.should_publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -eu
+          python3 scripts/droid_review/publish_findings.py "findings/*/findings-shard-*.json"
+
+      - name: Report summary
+        if: steps.check_results.outputs.should_publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -eu
+          echo "Findings published as PR comments on #$PR_NUMBER"
