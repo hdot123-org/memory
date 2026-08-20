@@ -9,10 +9,10 @@ project, the tools that produce them, and how to access the results.
 
 - **What:** Percentage of source lines / branches exercised by the test
   suite, measured by `pytest --cov=memory_core`.
-- **Target:** a coverage floor of **15%** is enforced via
-  `--cov-fail-under=15` in `pyproject.toml`. The long-term goal is to
+- **Target:** a coverage floor of **80%** is enforced via
+  `--cov-fail-under=80` in `pyproject.toml`. The long-term goal is to
   raise the floor incrementally as more tests are added.
-- **Current:** ~16% (see the latest CI run / Codecov badge).
+- **Current:** ~84% (see the latest CI run / Codecov badge).
 - **Where to view:**
   - Pull-request coverage diff on GitHub.
   - Project dashboard on **Codecov** at

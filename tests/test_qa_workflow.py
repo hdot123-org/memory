@@ -148,6 +148,117 @@ class TestQaOkSkippedHandling:
             assert job_name in run_block, f"qa-ok must check {job_name} result"
 
 
+class TestSubsetJobsNoCovGuard:
+    """子集 job 的 pytest 步骤必须含 --no-cov 且不含 --cov-fail-under。
+
+    防退化原理：子集 job（hook-lifecycle/business-policy/schema-migration/boundary-security）
+    只跑部分测试套件，天然覆盖率 30-47%，不得被 pyproject addopts 的 fail-under=80 连坐。
+    --no-cov 完全禁用覆盖率统计与阈值检查，恢复子集 job 的原始语义。
+
+    回归防护（2026-08-21，PR #871 解锁 FIX-HAS-TEST 门禁）：
+    若有人误删 --no-cov 或加回 --cov-fail-under，此测试拦截。
+    """
+
+    SUBSET_JOBS = [
+        "hook-lifecycle",
+        "business-policy",
+        "schema-migration",
+        "boundary-security",
+    ]
+
+    @pytest.fixture
+    def qa_data(self):
+        """Load qa.yml workflow."""
+        workflow_path = REPO_ROOT / ".github/workflows/qa.yml"
+        content = workflow_path.read_text()
+        data = yaml.safe_load(content)
+        assert data is not None
+        assert "jobs" in data
+        return data
+
+    @staticmethod
+    def _extract_pytest_steps(job_def):
+        """Extract all steps whose run block invokes pytest as a command.
+
+        Only matches lines that actually *run* pytest (``python -m pytest`` or
+        bare ``pytest``), not ``pip install pytest`` setup lines.
+        """
+        steps = job_def.get("steps", [])
+        pytest_steps = []
+        for step in steps:
+            run_block = step.get("run", "")
+            invokes_pytest = False
+            for line in run_block.splitlines():
+                stripped = line.strip()
+                # skip install / comment lines
+                if stripped.startswith(("#", "pip ", "python -m pip ")):
+                    continue
+                if "pytest" in stripped and "-m pip" not in stripped:
+                    invokes_pytest = True
+                    break
+            if invokes_pytest:
+                pytest_steps.append((step.get("name", "<unnamed>"), run_block))
+        return pytest_steps
+
+    def test_all_subset_jobs_exist(self, qa_data):
+        """All 4 subset jobs must be present in qa.yml."""
+        for job_name in self.SUBSET_JOBS:
+            assert job_name in qa_data["jobs"], (
+                f"Subset job '{job_name}' missing from qa.yml"
+            )
+
+    def test_subset_jobs_have_pytest_steps(self, qa_data):
+        """Each subset job must have at least one pytest step."""
+        for job_name in self.SUBSET_JOBS:
+            job_def = qa_data["jobs"][job_name]
+            pytest_steps = self._extract_pytest_steps(job_def)
+            assert len(pytest_steps) > 0, (
+                f"Subset job '{job_name}' has no pytest steps"
+            )
+
+    @pytest.mark.parametrize("job_name", [
+        "hook-lifecycle",
+        "business-policy",
+        "schema-migration",
+        "boundary-security",
+    ])
+    def test_subset_job_pytest_steps_contain_no_cov(self, qa_data, job_name):
+        """Every pytest step in subset jobs must contain --no-cov.
+
+        子集 job 只跑部分测试，覆盖率天然 30-47%。不加 --no-cov 会被
+        pyproject addopts 的 fail-under=80 连坐导致 CI 红。
+        """
+        job_def = qa_data["jobs"][job_name]
+        pytest_steps = self._extract_pytest_steps(job_def)
+        for step_name, run_block in pytest_steps:
+            assert "--no-cov" in run_block, (
+                f"Subset job '{job_name}' step '{step_name}' "
+                f"must contain --no-cov to avoid fail-under=80 coverage gate; "
+                f"run block: {run_block!r}"
+            )
+
+    @pytest.mark.parametrize("job_name", [
+        "hook-lifecycle",
+        "business-policy",
+        "schema-migration",
+        "boundary-security",
+    ])
+    def test_subset_job_pytest_steps_no_cov_fail_under(self, qa_data, job_name):
+        """No pytest step in subset jobs must contain --cov-fail-under.
+
+        子集 job 不承担覆盖率上报职责，显式禁止 fail-under 门槛。
+        即使 --no-cov 已经禁用覆盖率统计，此断言提供双重防护。
+        """
+        job_def = qa_data["jobs"][job_name]
+        pytest_steps = self._extract_pytest_steps(job_def)
+        for step_name, run_block in pytest_steps:
+            assert "--cov-fail-under" not in run_block, (
+                f"Subset job '{job_name}' step '{step_name}' "
+                f"must NOT contain --cov-fail-under; "
+                f"run block: {run_block!r}"
+            )
+
+
 class TestQaWorkflowActionlint:
     """qa.yml 语法正确性验证。"""
 

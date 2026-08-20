@@ -680,7 +680,7 @@ memory-core 已有完整的三层监控基础设施，规则引擎统一后**直
 | 全部 125 个测试通过 | pytest |
 | 16 个 CLI 入口不变 | pyproject.toml diff |
 | 4 个公共 API 符号不变 | memory_core.__init__.py diff |
-| 覆盖率不低于 15% | pytest --cov-fail-under=15 |
+| 覆盖率不低于 80% | pytest --cov-fail-under=80 |
 
 ---
 
