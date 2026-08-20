@@ -58,13 +58,16 @@ class TestMemoryInitCLI:
         assert result.returncode == 0, f"stderr: {result.stderr}"
 
     def test_init_version_flag(self) -> None:
-        """memory-init --version logic uses CURRENT_MEMORY_VERSION."""
-        # Test the version logic directly without subprocess to avoid environment dependency
-
-        # The --version flag now uses CURRENT_MEMORY_VERSION directly
-        # Verify the constant is accessible and non-empty
-        assert CURRENT_MEMORY_VERSION, "CURRENT_MEMORY_VERSION must be set"
-        assert isinstance(CURRENT_MEMORY_VERSION, str), "CURRENT_MEMORY_VERSION must be a string"
+        """memory-init --version displays CURRENT_MEMORY_VERSION via subprocess."""
+        result = subprocess.run(
+            [sys.executable, "-m", "memory_core.tools.init_project_memory", "--version"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+        assert CURRENT_MEMORY_VERSION in result.stdout, (
+            f"Expected {CURRENT_MEMORY_VERSION} in output, got: {result.stdout}"
+        )
 
 
 class TestMemoryValidateCLI:
