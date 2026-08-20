@@ -21,7 +21,6 @@ Key guarantees:
 """
 
 import argparse
-import importlib.metadata
 import json
 import logging
 import os
@@ -2625,11 +2624,7 @@ def main(argv: list[str] | None = None) -> int:
         default=False,
         help="Allow initialization in non-git directories (default: reject non-git).",
     )
-    try:
-        _pkg_version = importlib.metadata.version("memory-core")
-    except importlib.metadata.PackageNotFoundError:
-        _pkg_version = "unknown"
-    parser.add_argument("--version", action="version", version=f"%(prog)s {_pkg_version}")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {CURRENT_MEMORY_VERSION}")
     args = parser.parse_args(argv)
 
     # Validate mutually exclusive options

@@ -989,7 +989,7 @@ class TestResolveCoreBuilder:
     def test_external_core_no_fallback_raises(self, gateway_module, monkeypatch):
         monkeypatch.setenv("MEMORY_HOOK_EXTERNAL_CORE_MODULE", "nonexistent_module")
         monkeypatch.setenv("MEMORY_HOOK_EXTERNAL_CORE_FUNC", "nonexistent_func")
-        with pytest.raises(Exception):
+        with pytest.raises(ImportError):
             gateway_module._resolve_core_builder("external-core", allow_fallback=False)
 
 

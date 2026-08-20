@@ -74,7 +74,7 @@ def test_global_events_jsonl_no_longer_appended(tmp_path: Path) -> None:
             host="factory",
             event=f"event-{i}",
             payload={"cwd": str(project)},
-            now_iso_fn=lambda: f"2026-08-01T12:0{i}:00Z",
+            now_iso_fn=lambda i=i: f"2026-08-01T12:0{i}:00Z",
         )
 
     # Verify global events.jsonl unchanged

@@ -13,10 +13,10 @@ import os
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 
 import pytest
-import tomllib
 
 
 def _read_memory_lock(path: Path) -> dict:
