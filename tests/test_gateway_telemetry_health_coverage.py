@@ -149,9 +149,8 @@ class TestMaybeSyncTelemetryBatchCaptureFailure:
             last_sync_attempt=time.time() - 600,
         )
 
-        import socket as socket_mod
         with patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}), \
-             patch("socket.create_connection", side_effect=socket_mod.error("unreachable")):
+             patch("socket.create_connection", side_effect=OSError("unreachable")):
             gw._maybe_sync_telemetry(artifact_root)
 
         # Should have updated last_sync_attempt

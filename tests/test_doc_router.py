@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """doc_router.py 单元测试。
 
 覆盖所有函数和边界情况：
@@ -231,4 +230,4 @@ class TestExceptionDirs:
             "memory/kb/patterns/",
             "memory/kb/global/",
         }
-        assert EXCEPTION_DIRS == required
+        assert required == EXCEPTION_DIRS

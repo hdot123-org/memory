@@ -33,7 +33,7 @@ def test_forbidden_suffixes_exists():
 def test_forbidden_suffixes_content():
     """FORBIDDEN_SUFFIXES contains expected file extensions."""
     expected = (".sql", ".bak", ".sqlite", ".db", ".dump", ".sql.gz")
-    assert FORBIDDEN_SUFFIXES == expected
+    assert expected == FORBIDDEN_SUFFIXES
 
 
 def test_forbidden_dirs_exists():
@@ -44,7 +44,7 @@ def test_forbidden_dirs_exists():
 
 def test_forbidden_dirs_content():
     """FORBIDDEN_DIRS contains expected directory names."""
-    assert FORBIDDEN_DIRS == frozenset({"backups"})
+    assert frozenset({"backups"}) == FORBIDDEN_DIRS
 
 
 def test_re_mv_matches_git_mv():

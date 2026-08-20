@@ -81,7 +81,7 @@ def _capture_to_pending(
                     "captured_at": captured_at,
                     "pending_path": str(pending_path),
                 })
-            except (OSError, IOError):
+            except OSError:
                 pass
 
     return candidates

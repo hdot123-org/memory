@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unit tests for memory_core.constants invariants.
 
 Validates that the single-source-of-truth constants remain structurally

@@ -6,9 +6,10 @@ with a single typed configuration object.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Collection
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from memory_hook_interfaces import PathUtils, PolicyRegistry
@@ -246,7 +247,7 @@ class CoreConfig:
         core_evidence_refs: list[str] | None = None,
         policy_registry: PolicyRegistry | None = None,
         path_utils: PathUtils | None = None,
-    ) -> "CoreConfig":
+    ) -> CoreConfig:
         """Bridge: accept the current 37 kwargs and return a CoreConfig."""
         return cls(
             host=host,
