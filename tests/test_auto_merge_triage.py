@@ -727,3 +727,267 @@ class TestAutoMergeTriageHardeningInfra428:
                 f"PR #{idx + 1} (mergeable={matrix[idx][0]}, state={matrix[idx][1]}, "
                 f"draft={matrix[idx][2]}, rollup={matrix[idx][3]}) 应为 {exp}，实际 {found}"
             )
+
+
+class TestAutoMergeTriageSkippedNeutralHandling:
+    """scrutiny R2 / INFRA-428 修复：SKIPPED/NEUTRAL 应视为非失败。
+
+    根因：qa.yml #830 起两个夜间 job（Coverage Audit / Full Regression）
+    在 PR 事件报 SKIPPED——旧逻辑要求所有 check 的 conclusion == "SUCCESS"，
+    导致任何 PR 的 rollup 永久含 SKIPPED，checks_green 永远 false，sweep
+    判定永远 stalled，零 merge（历史 #855/#856 实际靠 GitHub 原生 auto-merge 合的）。
+
+    修复后：SKIPPED/NEUTRAL 视为非失败（仅 FAILURE/TIMED_OUT/CANCELLED/ACTION_REQUIRED
+    为失败）。sweep 与原生 --auto 并存无害（原生优先，sweep 兜底）。
+    """
+
+    def _run_triage(self, prs: list, *extra_args: str) -> dict:
+        result = subprocess.run(
+            ["bash", str(get_script_path()), *extra_args],
+            input=json.dumps(prs),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        return json.loads(result.stdout)
+
+    # ----- 判定矩阵：SKIPPED 场景 -----
+
+    def test_success_plus_skipped_is_green(self):
+        """SUCCESS + SKIPPED 混合 → mergeable（SKIPPED 不阻塞合并）。"""
+        prs = [{
+            "number": 100, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "SKIPPED"},  # 夜间 job 在 PR 事件报 SKIPPED
+                {"conclusion": "SUCCESS"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["mergeable"][0]["number"] == 100, (
+            "SUCCESS+SKIPPED 应判为 green（修复前会被误判为 stalled）"
+        )
+        assert output["mergeable"][0]["action"] == "merge"
+        assert output["stalled"] == [], "SKIPPED 不应触发 stalled"
+
+    def test_all_skipped_is_green(self):
+        """全 SKIPPED（罕见但理论上可能）→ mergeable。"""
+        prs = [{
+            "number": 101, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SKIPPED"},
+                {"conclusion": "SKIPPED"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["mergeable"][0]["number"] == 101
+        assert output["stalled"] == []
+
+    def test_skipped_plus_failure_is_stalled(self):
+        """SKIPPED + FAILURE → stalled（FAILURE 仍阻塞合并）。"""
+        prs = [{
+            "number": 102, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "SKIPPED"},
+                {"conclusion": "FAILURE"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["stalled"][0]["number"] == 102, (
+            "FAILURE 仍应触发 stalled（SKIPPED 不应掩盖真实失败）"
+        )
+        assert output["mergeable"] == []
+
+    def test_failure_only_is_stalled(self):
+        """仅 FAILURE → stalled（旧逻辑与新逻辑行为一致）。"""
+        prs = [{
+            "number": 103, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "FAILURE"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["stalled"][0]["number"] == 103
+        assert output["mergeable"] == []
+
+    def test_timed_out_is_stalled(self):
+        """TIMED_OUT → stalled（失败结论之一）。"""
+        prs = [{
+            "number": 104, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "TIMED_OUT"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["stalled"][0]["number"] == 104
+        assert output["mergeable"] == []
+
+    def test_cancelled_is_stalled(self):
+        """CANCELLED → stalled（失败结论之一）。"""
+        prs = [{
+            "number": 105, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "CANCELLED"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["stalled"][0]["number"] == 105
+        assert output["mergeable"] == []
+
+    def test_action_required_is_stalled(self):
+        """ACTION_REQUIRED → stalled（失败结论之一）。"""
+        prs = [{
+            "number": 106, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "ACTION_REQUIRED"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["stalled"][0]["number"] == 106
+        assert output["mergeable"] == []
+
+    # ----- 判定矩阵：NEUTRAL 场景 -----
+
+    def test_success_plus_neutral_is_green(self):
+        """SUCCESS + NEUTRAL 混合 → mergeable（NEUTRAL 不阻塞合并）。"""
+        prs = [{
+            "number": 107, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "NEUTRAL"},  # 某些 check 可能报 NEUTRAL
+                {"conclusion": "SUCCESS"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["mergeable"][0]["number"] == 107
+        assert output["stalled"] == []
+
+    def test_all_neutral_is_green(self):
+        """全 NEUTRAL → mergeable。"""
+        prs = [{
+            "number": 108, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "NEUTRAL"},
+                {"conclusion": "NEUTRAL"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["mergeable"][0]["number"] == 108
+        assert output["stalled"] == []
+
+    def test_neutral_plus_failure_is_stalled(self):
+        """NEUTRAL + FAILURE → stalled（FAILURE 仍阻塞）。"""
+        prs = [{
+            "number": 109, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "NEUTRAL"},
+                {"conclusion": "FAILURE"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["stalled"][0]["number"] == 109
+        assert output["mergeable"] == []
+
+    # ----- 混合场景：SKIPPED + NEUTRAL + 失败结论 -----
+
+    def test_complex_matrix_real_world_scenario(self):
+        """真实场景：多个 SUCCESS + SKIPPED（夜间 job）+ NEUTRAL → mergeable。"""
+        prs = [{
+            "number": 110, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},      # CI
+                {"conclusion": "SUCCESS"},      # Droid Auto Review
+                {"conclusion": "SKIPPED"},      # Coverage Audit（夜间 job）
+                {"conclusion": "SKIPPED"},      # Full Regression（夜间 job）
+                {"conclusion": "NEUTRAL"},      # 某些 lint check
+                {"conclusion": "SUCCESS"},      # Evolution Governance
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["mergeable"][0]["number"] == 110, (
+            "真实 PR 场景（含夜间 job SKIPPED）应判为 green 并可合并"
+        )
+        assert output["mergeable"][0]["action"] == "merge"
+        assert output["stalled"] == []
+
+    def test_regression_old_behavior_preserved(self):
+        """回归测试：纯 SUCCESS 仍判为 mergeable（旧逻辑行为不变）。"""
+        prs = [{
+            "number": 111, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "SUCCESS"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["mergeable"][0]["number"] == 111
+        assert output["mergeable"][0]["action"] == "merge"
+
+    def test_in_progress_plus_skipped_still_pending(self):
+        """in_progress + SKIPPED → pending（in_progress 未报齐，fail-closed）。"""
+        prs = [{
+            "number": 112, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "SKIPPED"},
+                {"status": "in_progress", "conclusion": None},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["pending"][0]["number"] == 112, (
+            "in_progress check 未报齐时应判 pending（early-fire 防护优先）"
+        )
+        assert output["mergeable"] == []
+
+    # ----- 判定矩阵覆盖总结 -----
+
+    def test_judgment_matrix_documentation(self):
+        """判定矩阵文档：SUCCESS/SKIPPED/NEUTRAL 非失败，FAILURE/TIMED_OUT/CANCELLED/ACTION_REQUIRED 失败。
+
+        本测试用注释形式记录判定矩阵，便于后续维护。
+        """
+        # 非失败结论（视为 green）：
+        non_failure_conclusions = ["SUCCESS", "SKIPPED", "NEUTRAL"]
+        # 失败结论（触发 stalled）：
+        failure_conclusions = ["FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"]
+
+        # 验证非失败结论单独存在时判 mergeable
+        for conclusion in non_failure_conclusions:
+            prs = [{
+                "number": 200 + non_failure_conclusions.index(conclusion),
+                "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [{"conclusion": conclusion}],
+            }]
+            output = self._run_triage(prs)
+            assert output["mergeable"], f"{conclusion} 应判为 green（非失败）"
+
+        # 验证失败结论单独存在时判 stalled
+        for conclusion in failure_conclusions:
+            prs = [{
+                "number": 300 + failure_conclusions.index(conclusion),
+                "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [{"conclusion": conclusion}],
+            }]
+            output = self._run_triage(prs)
+            assert output["stalled"], f"{conclusion} 应判为 stalled（失败）"
