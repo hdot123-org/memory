@@ -5,6 +5,25 @@
 #   bash scripts/repo_health_check.sh --full   # Full mode (includes gh CLI remote checks)
 set -euo pipefail
 
+# Python version selection: project requires Python 3.12+ (tomllib, memory_core).
+# Prefer python3.12 explicitly, fallback to python3 if it's 3.11+.
+if command -v python3.12 &>/dev/null; then
+  PYTHON="python3.12"
+elif command -v python3 &>/dev/null; then
+  PY_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+  PY_MAJOR=$(echo "$PY_VERSION" | cut -d. -f1)
+  PY_MINOR=$(echo "$PY_VERSION" | cut -d. -f2)
+  if [[ "$PY_MAJOR" -ge 3 && "$PY_MINOR" -ge 11 ]]; then
+    PYTHON="python3"
+  else
+    echo "Error: Python 3.11+ required, found $PY_VERSION" >&2
+    exit 1
+  fi
+else
+  echo "Error: Python 3.11+ not found" >&2
+  exit 1
+fi
+
 # ── Mode parsing ──────────────────────────────────────────────────────────────
 MODE="ci"
 case "${1:-}" in
@@ -41,7 +60,7 @@ record() {
 
 # ── Extract version from pyproject.toml using python tomllib ──────────────────
 get_pyproject_version() {
-  python3 -c "
+  $PYTHON -c "
 import tomllib
 with open('pyproject.toml', 'rb') as f:
     data = tomllib.load(f)
@@ -58,13 +77,13 @@ check_version_consistency() {
   PYPROJECT_VERSION="$pyproject_ver"
 
   # constants.py: CURRENT_MEMORY_VERSION (derived from __version__)
-  constants_ver="$(python3 -c "
+  constants_ver="$($PYTHON -c "
 from memory_core.constants import CURRENT_MEMORY_VERSION
 print(CURRENT_MEMORY_VERSION)
 ")"
 
   # README.md: extract version from the release-please marker line.
-  # Uses grep+sed instead of python3 -c for CI reliability — python3 inline
+  # Uses grep+sed instead of $PYTHON -c for CI reliability — python inline
   # multi-line scripts had persistent encoding/parsing issues on ubuntu-latest.
   set +o pipefail
   readme_ver="$(grep 'x-release-please-version' README.md 2>/dev/null \
@@ -175,7 +194,7 @@ check_tags_releases() {
   fi
 
   local is_draft
-  is_draft="$(echo "$release_info" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('isDraft', False))")"
+  is_draft="$(echo "$release_info" | $PYTHON -c "import sys,json; d=json.load(sys.stdin); print(d.get('isDraft', False))")"
 
   if [[ "$is_draft" == "True" ]]; then
     record "FULL" "tags-releases-align" "FAIL" "${latest_tag} is draft"
@@ -221,7 +240,7 @@ check_release_workflow() {
   # Check if latest run is success
   # Priority: main branch (workflow_dispatch re-runs) > tag branch (tag push triggers)
   local latest_conclusion
-  latest_conclusion="$(echo "$run_info" | python3 -c "
+  latest_conclusion="$(echo "$run_info" | $PYTHON -c "
 import sys, json
 runs = json.load(sys.stdin)
 # First check main branch runs (workflow_dispatch re-triggers)
