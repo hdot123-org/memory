@@ -23,17 +23,15 @@ Exit codes:
 """
 
 import argparse
-import importlib.metadata
 import json
 import logging
 import os
 import shutil
 import sys
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
-
-import tomllib
 
 logger = logging.getLogger(__name__)
 
@@ -1449,11 +1447,7 @@ def _build_migrate_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Rollback a previous migration, restoring .memory/ from backup.",
     )
-    try:
-        _pkg_version = importlib.metadata.version("memory-core")
-    except importlib.metadata.PackageNotFoundError:
-        _pkg_version = "unknown"
-    parser.add_argument("--version", action="version", version=f"%(prog)s {_pkg_version}")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {CURRENT_MEMORY_VERSION}")
     return parser
 
 

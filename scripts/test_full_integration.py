@@ -21,11 +21,10 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
-
-import tomllib
 
 # Add memory_core to path for imports
 SCRIPT_DIR = Path(__file__).parent.resolve()
