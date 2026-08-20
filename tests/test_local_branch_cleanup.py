@@ -627,6 +627,12 @@ def test_launchd_plist_installed_and_hourly(tmp_path: Path):
     assert "StandardOutPath" in content
     assert "StandardErrorPath" in content
 
+    # Verify plist doesn't self-reference test repo (REPO_ROOT non-self-reference)
+    # Plist should reference production paths, not test fixture paths
+    assert str(tmp_path) not in content, (
+        "plist should not reference test tmp_path (would create circular dependency)"
+    )
+
     # In real deployment, launchctl load would be called
     # This test verifies the plist is correctly structured
 
@@ -1117,6 +1123,7 @@ def test_preserves_branch_when_git_cherry_fails(tmp_path: Path):
     )
 
     # Verify log shows preservation due to git cherry failure
-    assert "preserving" in stdout.lower() or "cherry" in stdout.lower() or "fail" in stdout.lower(), (
-        f"Expected preservation message in stdout: {stdout}"
+    # log_error writes to stderr, so check stderr (not stdout)
+    assert "preserving" in stderr.lower() or "cherry" in stderr.lower() or "fail" in stderr.lower(), (
+        f"Expected preservation message in stderr: {stderr}"
     )
