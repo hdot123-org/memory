@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .DS_Store
 .coverage
+.coverage.*
 log/
 
 # Schema audit log (runtime-generated, not for tracking)

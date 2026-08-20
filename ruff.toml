@@ -10,5 +10,5 @@ ignore = ["E501", "E402"]
 max-complexity = 20
 
 [lint.per-file-ignores]
-"memory_core/tools/memory_hook_gateway.py" = ["F821", "F401", "C901"]
+"memory_core/tools/memory_hook_gateway.py" = ["F821", "F401"]
 "memory_core/tools/memory_hook_impls.py" = ["F401"]

@@ -588,7 +588,7 @@ class TestFullPytestSuite:
     def test_pytest_collect_only_succeeds(self):
         """pytest --collect-only exits 0, no INTERNALERROR."""
         result = subprocess.run(
-            [sys.executable, "-m", "pytest", "--collect-only", "-q"],
+            [sys.executable, "-m", "pytest", "--collect-only", "-q", "--no-cov"],
             capture_output=True,
             text=True,
             cwd=str(REPO_ROOT),
@@ -609,6 +609,7 @@ class TestFullPytestSuite:
                 "pytest",
                 "--collect-only",
                 "-q",
+                "--no-cov",
                 str(Path(__file__)),
             ],
             capture_output=True,
