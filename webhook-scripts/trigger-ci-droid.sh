@@ -24,6 +24,11 @@ FLOCK_BIN="${FLOCK_BIN:-/opt/homebrew/bin/flock}"
 
 # === PostHog 事件上报 ===
 send_posthog_event() {
+  # POSTHOG_DRY_RUN=1: print only, do not send (test isolation guard)
+  if [[ "${POSTHOG_DRY_RUN:-0}" == "1" ]]; then
+    echo "[POSTHOG_DRY_RUN] Would send: event=$1 pr=$2 stage=$3 detail=$4"
+    return 0
+  fi
   local event_type="$1"
   local pr_number="$2"
   local stage="$3"
@@ -45,6 +50,17 @@ send_posthog_event() {
         \"timestamp\": \"$timestamp\"
       }]
     }" || true
+}
+
+# Cross-platform mtime (macOS stat -f %m / GNU stat -c %Y)
+# Conditional assignment avoids GNU stdout leak into $() capture
+# (GNU stat treats -f as --file-system, leaking fs-listing stdout)
+_portable_mtime() {
+    local _f="$1" _ts
+    if ! _ts=$(stat -f %m "$_f" 2>/dev/null); then
+        _ts=$(stat -c %Y "$_f" 2>/dev/null || echo 0)
+    fi
+    printf '%s' "$_ts"
 }
 
 # === Process timeout wrapper (macOS has no `timeout` command) ===
@@ -135,7 +151,7 @@ if [ ! -f "$PENDING_CI_FILE" ]; then
     FALLBACK_LOCK="${LOCK_DIR}/ci-fallback-${PR_NUMBER}.lock"
     mkdir -p "$LOCK_DIR" 2>/dev/null
     if [ -f "$FALLBACK_LOCK" ]; then
-        FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(stat -f %m "$FALLBACK_LOCK" 2>/dev/null || stat -c %Y "$FALLBACK_LOCK" 2>/dev/null || echo 0) ))
+        FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(_portable_mtime "$FALLBACK_LOCK") ))
         if [ "$FALLBACK_LOCK_AGE_SEC" -lt 0 ]; then FALLBACK_LOCK_AGE_SEC=0; fi
         FALLBACK_LOCK_AGE=$(( FALLBACK_LOCK_AGE_SEC / 60 ))
         if [ "$FALLBACK_LOCK_AGE" -gt 1440 ]; then FALLBACK_LOCK_AGE=1440; fi
@@ -221,7 +237,7 @@ except Exception as e:
         FALLBACK_LOCK="${LOCK_DIR}/ci-fallback-${PR_NUMBER}.lock"
         mkdir -p "$LOCK_DIR" 2>/dev/null
         if [ -f "$FALLBACK_LOCK" ]; then
-            FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(stat -f %m "$FALLBACK_LOCK" 2>/dev/null || stat -c %Y "$FALLBACK_LOCK" 2>/dev/null || echo 0) ))
+            FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(_portable_mtime "$FALLBACK_LOCK") ))
             if [ "$FALLBACK_LOCK_AGE_SEC" -lt 0 ]; then FALLBACK_LOCK_AGE_SEC=0; fi
             FALLBACK_LOCK_AGE=$(( FALLBACK_LOCK_AGE_SEC / 60 ))
             if [ "$FALLBACK_LOCK_AGE" -gt 1440 ]; then FALLBACK_LOCK_AGE=1440; fi
@@ -266,7 +282,7 @@ mkdir -p "$LOCK_DIR" 2>/dev/null
 
 # Secondary stale lock check (timestamp-based, for locks older than 60min)
 if [ -f "$LOCK_FILE" ]; then
-    LOCK_AGE_SEC=$(( $(date +%s) - $(stat -f %m "$LOCK_FILE" 2>/dev/null || stat -c %Y "$LOCK_FILE" 2>/dev/null || echo 0) ))
+    LOCK_AGE_SEC=$(( $(date +%s) - $(_portable_mtime "$LOCK_FILE") ))
     if [ "$LOCK_AGE_SEC" -lt 0 ]; then LOCK_AGE_SEC=0; fi
     LOCK_AGE_MIN=$(( LOCK_AGE_SEC / 60 ))
     if [ "$LOCK_AGE_MIN" -gt 1440 ]; then LOCK_AGE_MIN=1440; fi
@@ -368,7 +384,7 @@ except Exception as e:
         exec 200>&-
         FALLBACK_LOCK="${LOCK_DIR}/ci-fallback-${PR_NUMBER}.lock"
         if [ -f "$FALLBACK_LOCK" ]; then
-            FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(stat -f %m "$FALLBACK_LOCK" 2>/dev/null || stat -c %Y "$FALLBACK_LOCK" 2>/dev/null || echo 0) ))
+            FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(_portable_mtime "$FALLBACK_LOCK") ))
             if [ "$FALLBACK_LOCK_AGE_SEC" -lt 0 ]; then FALLBACK_LOCK_AGE_SEC=0; fi
             FALLBACK_LOCK_AGE=$(( FALLBACK_LOCK_AGE_SEC / 60 ))
             if [ "$FALLBACK_LOCK_AGE" -gt 1440 ]; then FALLBACK_LOCK_AGE=1440; fi
@@ -504,7 +520,7 @@ else
         # H2: 4xx fallback dedup lock (same 60min TTL as missing-pending-ci path)
         FALLBACK_LOCK="${LOCK_DIR}/ci-fallback-${PR_NUMBER}.lock"
         if [ -f "$FALLBACK_LOCK" ]; then
-            FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(stat -f %m "$FALLBACK_LOCK" 2>/dev/null || stat -c %Y "$FALLBACK_LOCK" 2>/dev/null || echo 0) ))
+            FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(_portable_mtime "$FALLBACK_LOCK") ))
             if [ "$FALLBACK_LOCK_AGE_SEC" -lt 0 ]; then FALLBACK_LOCK_AGE_SEC=0; fi
             FALLBACK_LOCK_AGE=$(( FALLBACK_LOCK_AGE_SEC / 60 ))
             if [ "$FALLBACK_LOCK_AGE" -gt 1440 ]; then FALLBACK_LOCK_AGE=1440; fi
@@ -535,7 +551,7 @@ else
             # 复用 4xx 的去重逻辑（60min TTL 防风暴）
             FALLBACK_LOCK="${LOCK_DIR}/ci-fallback-${PR_NUMBER}.lock"
             if [ -f "$FALLBACK_LOCK" ]; then
-                FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(stat -f %m "$FALLBACK_LOCK" 2>/dev/null || stat -c %Y "$FALLBACK_LOCK" 2>/dev/null || echo 0) ))
+                FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(_portable_mtime "$FALLBACK_LOCK") ))
                 if [ "$FALLBACK_LOCK_AGE_SEC" -lt 0 ]; then FALLBACK_LOCK_AGE_SEC=0; fi
                 FALLBACK_LOCK_AGE=$(( FALLBACK_LOCK_AGE_SEC / 60 ))
                 if [ "$FALLBACK_LOCK_AGE" -gt 1440 ]; then FALLBACK_LOCK_AGE=1440; fi

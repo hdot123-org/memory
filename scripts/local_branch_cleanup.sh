@@ -78,6 +78,8 @@ backup_tip_sha() {
   
   mkdir -p "$BACKUP_DIR"
   # Replace slashes with underscores so feat/xxx becomes feat_xxx (avoids subdirectory creation)
+  # Note: underscore collision possible (feat/xxx vs feat_xxx both → feat_xxx)
+  # Acceptable tradeoff: simple filename, rare collision in practice
   local safe_name="${branch_name//\//_}"
   local backup_file="$BACKUP_DIR/$safe_name"
   echo "$tip_sha" > "$backup_file"
@@ -163,9 +165,9 @@ cleanup_gone_branches() {
       continue
     fi
     
-    # Validate output format: must contain only '^-' or '^+' lines
+    # Validate output format: strict whitelist — every non-empty line must match ^[-+]
     # If any line doesn't match, treat as malformed and preserve
-    if ! echo "$cherry_output" | grep -qE '^[+-] '; then
+    if [[ -n "$cherry_output" ]] && echo "$cherry_output" | grep -qvE '^[-+] '; then
       log_error "git cherry output malformed for $branch, preserving branch"
       send_posthog_event "local_branch_cherry_malformed" "$branch" "$tip_sha" "Output doesn't match expected format"
       ((preserved_count++))

@@ -162,6 +162,9 @@ def temp_env(stub_api_server, tmp_path):
     # 启用 ECHO_DROID 避免真实 droid exec
     env["ECHO_DROID"] = "1"
 
+    # PostHog dry-run：避免测试发送真实分析事件
+    env["POSTHOG_DRY_RUN"] = "1"
+
     # 缩短重试参数避免测试超时
     env["MAX_RETRIES"] = "2"
     env["RETRY_DELAY"] = "1"
