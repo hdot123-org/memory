@@ -83,12 +83,17 @@ EMPTY_RESULT='{"mergeable":[],"behind":[],"conflicting":[],"pending":[],"stalled
 classify() {
   jq '
     def rollup(pr): (pr.statusCheckRollup // []);
-    # green = every reported check succeeded AND at least one check reported.
-    # conclusion must be a non-null string "SUCCESS"; null conclusion means
+    # green = every reported check succeeded OR was skipped AND at least one check reported
+    # AND at least one check must be SUCCESS (prevents all-SKIPPED fake green).
+    # SKIPPED checks are treated as passing (aligned with branch protection semantics).
+    # conclusion must be a non-null string "SUCCESS" or "SKIPPED"; null conclusion means
     # the check is still queued/in_progress.
     def checks_green(pr):
       (rollup(pr) | length) > 0
-      and all(rollup(pr)[]; (.conclusion // "") == "SUCCESS");
+      and (any(rollup(pr)[]; (.conclusion // "") == "SUCCESS"))
+      and all(rollup(pr)[];
+        (.conclusion // "") == "SUCCESS" or (.conclusion // "") == "SKIPPED"
+      );
     # complete = every check run has reported a non-null conclusion.
     # has("conclusion") alone is not enough: the rollup of a queued/
     # in_progress check contains "conclusion": null, and jq has() would

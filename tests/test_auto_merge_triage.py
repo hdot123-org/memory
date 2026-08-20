@@ -727,3 +727,174 @@ class TestAutoMergeTriageHardeningInfra428:
                 f"PR #{idx + 1} (mergeable={matrix[idx][0]}, state={matrix[idx][1]}, "
                 f"draft={matrix[idx][2]}, rollup={matrix[idx][3]}) 应为 {exp}，实际 {found}"
             )
+
+
+class TestAutoMergeTriageSkippedChecks:
+    """SKIPPED check handling fix (PR #850 deadlock).
+
+    实证：PR #850 有 17 SUCCESS + 2 SKIPPED（Coverage Audit 与 Full Regression
+    对该 PR 天然 skipping），但 checks_green 要求 all(.conclusion == 'SUCCESS')
+    导致 SKIPPED 判非绿 → PR 被归为 stalled，永远不合并。
+
+    修复语义（与 branch protection 对齐）：
+    - SKIPPED 的非必需 check 视为通过
+    - 至少一个 check 存在（防全 SKIPPED 假绿）
+    - null conclusion（排队中）仍不算 complete
+    - FAILURE/CANCELLED/TIMED_OUT 仍判非绿
+    """
+
+    def _run_triage(self, prs: list, *extra_args: str) -> dict:
+        result = subprocess.run(
+            ["bash", str(get_script_path()), *extra_args],
+            input=json.dumps(prs),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        return json.loads(result.stdout)
+
+    def test_pr_with_skipped_and_success_is_mergeable(self):
+        """PR #850 实证：17 SUCCESS + 2 SKIPPED → mergeable（非 stalled）。"""
+        prs = [{
+            "number": 850,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "SKIPPED"},  # Coverage Audit
+                {"conclusion": "SKIPPED"},  # Full Regression
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert len(output["mergeable"]) == 1, (
+            "PR #850 实证：SKIPPED + SUCCESS 应判 mergeable（与 branch protection 对齐）"
+        )
+        assert output["mergeable"][0]["number"] == 850
+        assert output["mergeable"][0]["action"] == "merge"
+        assert output["stalled"] == [], "SKIPPED 不应判 stalled（死锁根因）"
+
+    def test_all_skipped_is_not_mergeable(self):
+        """防退化：全 SKIPPED rollup 不判 mergeable（防假绿）。"""
+        prs = [{
+            "number": 999,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SKIPPED"},
+                {"conclusion": "SKIPPED"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["mergeable"] == [], "全 SKIPPED 不得判 mergeable（防假绿回归）"
+        # 全 SKIPPED 但非空 rollup → stalled（有 check 但无 SUCCESS）
+        assert len(output["stalled"]) == 1 or len(output["pending"]) == 1
+
+    def test_null_conclusion_still_pending(self):
+        """null conclusion（排队中）仍判 pending（既有语义不回归）。"""
+        prs = [{
+            "number": 100,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": None, "status": "in_progress"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["pending"][0]["number"] == 100
+        assert output["mergeable"] == [], "null conclusion 仍判 pending（early-fire 防护）"
+
+    def test_failure_still_not_mergeable(self):
+        """FAILURE 仍判非绿（既有语义不回归）。"""
+        prs = [{
+            "number": 101,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "FAILURE"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["stalled"][0]["number"] == 101
+        assert output["mergeable"] == [], "FAILURE 仍判 stalled（非绿）"
+
+    def test_cancelled_still_not_mergeable(self):
+        """CANCELLED 仍判非绿（既有语义不回归）。"""
+        prs = [{
+            "number": 102,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "CANCELLED"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["stalled"][0]["number"] == 102
+        assert output["mergeable"] == [], "CANCELLED 仍判 stalled（非绿）"
+
+    def test_mixed_skipped_success_failure_is_stalled(self):
+        """混合 SKIPPED + SUCCESS + FAILURE → stalled（非 mergeable）。"""
+        prs = [{
+            "number": 103,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "SKIPPED"},
+                {"conclusion": "FAILURE"},
+            ],
+        }]
+        output = self._run_triage(prs)
+        assert output["stalled"][0]["number"] == 103
+        assert output["mergeable"] == [], "含 FAILURE 不得判 mergeable"
+
+    def test_get_category_with_skipped_returns_mergeable(self):
+        """--get-category 对 SKIPPED+SUCCESS 返回 mergeable。"""
+        prs = [{
+            "number": 850,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "SKIPPED"},
+            ],
+        }]
+        result = subprocess.run(
+            ["bash", str(get_script_path()), "--get-category", "850"],
+            input=json.dumps(prs),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "mergeable"
+
+    def test_get_action_with_skipped_returns_merge(self):
+        """--get-action 对 SKIPPED+SUCCESS 返回 merge。"""
+        prs = [{
+            "number": 850,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "statusCheckRollup": [
+                {"conclusion": "SUCCESS"},
+                {"conclusion": "SKIPPED"},
+            ],
+        }]
+        result = subprocess.run(
+            ["bash", str(get_script_path()), "--get-action", "850"],
+            input=json.dumps(prs),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "merge"
