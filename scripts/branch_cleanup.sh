@@ -65,9 +65,24 @@ is_retired() {
 }
 
 # Get tiered thresholds (in hours) - can be overridden via environment variables
+# Validate that values are positive integers, fall back to defaults if invalid
 MERGED_HOURS="${BRANCH_AGE_MERGED_HOURS:-1}"
+if ! [[ "$MERGED_HOURS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Warning: BRANCH_AGE_MERGED_HOURS='$MERGED_HOURS' is not a positive integer, using default (1h)"
+  MERGED_HOURS=1
+fi
+
 CLOSED_HOURS="${BRANCH_AGE_CLOSED_HOURS:-4}"
+if ! [[ "$CLOSED_HOURS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Warning: BRANCH_AGE_CLOSED_HOURS='$CLOSED_HOURS' is not a positive integer, using default (4h)"
+  CLOSED_HOURS=4
+fi
+
 ORPHAN_HOURS="${BRANCH_AGE_ORPHAN_HOURS:-24}"
+if ! [[ "$ORPHAN_HOURS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Warning: BRANCH_AGE_ORPHAN_HOURS='$ORPHAN_HOURS' is not a positive integer, using default (24h)"
+  ORPHAN_HOURS=24
+fi
 
 # Convert hours to seconds for easier comparison
 MERGED_SECONDS=$((MERGED_HOURS * 3600))
@@ -170,18 +185,22 @@ for BRANCH in $BRANCHES; do
     fi
   fi
 
-  # Protect branches with unmerged unique commits from CLOSED (not merged) PRs.
-  # These branches contain code that was never merged and would be lost if deleted.
+  # Protect branches with unmerged unique commits from CLOSED (not merged) PRs
+  # or MERGED PRs whose content was reverted from main.
+  # These branches contain code that would be lost if deleted.
+  # Guard expanded (orchestrator 2026-08-20裁决): MERGED branches also go through
+  # content-equivalence check. After a squash-merge + revert, main no longer has
+  # the content, so deleting the branch = data loss.
   # Exception (INFRA-383): if the content check proves the branch tree adds
   # nothing to main (squash-merged elsewhere), it is NOT protected.
   # Exception (INFRA-388): branches on the checked-in retirement list are NOT
   # protected — their work was superseded by an equivalent implementation on
   # main and a PR review approved the deletion (retirement list merge).
-  if [[ "$UNIQUE_COUNT" -gt 0 ]] && [[ "$CLOSED_NOT_MERGED_COUNT" -gt 0 ]] && [[ "$CONTENT_MERGED" != "yes" ]]; then
+  if [[ "$UNIQUE_COUNT" -gt 0 ]] && [[ "$CLOSED_NOT_MERGED_COUNT" -gt 0 || "$MERGED_PR_COUNT" -gt 0 ]] && [[ "$CONTENT_MERGED" != "yes" ]]; then
     if is_retired "$BRANCH"; then
       echo "  Retired (INFRA-388): work superseded per $RETIREMENT_FILE, protection waived."
     else
-      echo "  ⚠️  PROTECTED: branch has $UNIQUE_COUNT unique commit(s) and $CLOSED_NOT_MERGED_COUNT CLOSED (not merged) PR(s) — would lose unmerged code."
+      echo "  ⚠️  PROTECTED: branch has $UNIQUE_COUNT unique commit(s) and $((CLOSED_NOT_MERGED_COUNT + MERGED_PR_COUNT)) CLOSED/MERGED PR(s) — would lose unique code."
       PROTECTED_BRANCHES+=("$BRANCH ($UNIQUE_COUNT unique commits)")
       continue
     fi
