@@ -12,6 +12,3 @@ max-complexity = 20
 [lint.per-file-ignores]
 "memory_core/tools/memory_hook_gateway.py" = ["F821", "F401", "C901"]
 "memory_core/tools/memory_hook_impls.py" = ["F401"]
-# C901 suppressions for functions with complexity > 20 that require extensive refactoring (M1-F5)
-"memory_core/tools/session_end_logger.py" = ["C901"]
-"memory_core/tools/mcp_server.py" = ["C901"]
