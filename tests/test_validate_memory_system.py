@@ -52,7 +52,7 @@ class TestValidateReturnsZeroOnHealthySystem:
             f"Expected summary report in stdout.\nGot: {result.stdout}"
         )
         lines = result.stdout.splitlines()
-        passed_line = [l for l in lines if "checks passed" in l]
+        passed_line = [ln for ln in lines if "checks passed" in ln]
         assert len(passed_line) == 1, f"Expected exactly one summary line, got: {passed_line}"
         summary = passed_line[0]
         assert "/" in summary

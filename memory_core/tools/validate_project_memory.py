@@ -19,15 +19,13 @@ Exit codes:
 """
 
 import argparse
-import importlib.metadata
 import json
 import logging
 import re
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
-
-import tomllib
 
 logger = logging.getLogger(__name__)
 
@@ -380,7 +378,7 @@ def check_migrations_log(memory_root: Path, result: CheckResult) -> bool:
             result.record("migrations_log", False, "migrations.log is empty")
             return False
         # Each line should be a migration record
-        lines = [l for l in text.splitlines() if l.strip() and not l.strip().startswith("#")]
+        lines = [line for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
         # Validate line format (lenient: warn but do not fail)
         malformed: list[str] = []
         for idx, line in enumerate(lines, 1):
@@ -865,11 +863,7 @@ def main() -> int:
         action="store_true",
         help="Only report what would be checked without reading files.",
     )
-    try:
-        _pkg_version = importlib.metadata.version("memory-core")
-    except importlib.metadata.PackageNotFoundError:
-        _pkg_version = "unknown"
-    parser.add_argument("--version", action="version", version=f"%(prog)s {_pkg_version}")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {CURRENT_MEMORY_VERSION}")
     args = parser.parse_args()
 
     target = args.target.resolve()

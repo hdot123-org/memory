@@ -203,10 +203,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
           python -m pip install mypy
-      - name: Run mypy --strict (baseline 220 errors, advisory only)
+      - name: Run mypy --strict (advisory only)
         continue-on-error: true
         run: |
-          echo "Typing hardening: baseline 220 errors (22 files), 18 files now pass mypy --strict"
+          echo "Typing hardening: mypy --strict on memory_core/"
           python -m mypy --strict memory_core/ 2>&1 | tee mypy-report.txt || true
           echo "---"
           echo "Report written to mypy-report.txt"
