@@ -3846,7 +3846,7 @@ def test_run_audit_tool_strips_gh_token_from_subprocess():
 
     with patch.dict(os.environ, {'GH_TOKEN': 'secret_token', 'GITHUB_TOKEN': 'another_secret'}):
         with patch('evolution_scanner.subprocess.run', side_effect=fake_run):
-            run_audit_tool(tool, Path('.'))
+            run_audit_tool(tool, Path())
 
     assert 'GH_TOKEN' not in captured_env, "GH_TOKEN must be stripped from audit subprocess env"
     assert 'GITHUB_TOKEN' not in captured_env, "GITHUB_TOKEN must be stripped from audit subprocess env"

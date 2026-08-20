@@ -1649,10 +1649,9 @@ def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
         old_handler = signal.signal(signal.SIGALRM, _write_handler)
         signal.alarm(2)  # 2-second timeout
 
-        with log_file.open("a", encoding="utf-8") as fh:
-            with exclusive_lock(fh):
-                fh.write(heartbeat)
-                fh.flush()
+        with log_file.open("a", encoding="utf-8") as fh, exclusive_lock(fh):
+            fh.write(heartbeat)
+            fh.flush()
     except HookTimeoutError:
         _logger.warning("_log_prompt_submit: write timed out for session %s", session_prefix)
     finally:
@@ -1768,7 +1767,7 @@ def _probe_posthog_network(hostname: str) -> bool:
         sock = socket.create_connection((hostname, 443), timeout=2)
         sock.close()
         return True
-    except (socket.error, OSError):
+    except OSError:
         return False
 
 
@@ -1836,11 +1835,10 @@ def _compact_metrics_jsonl(metrics_file: Path, last_synced_line: int, offset_fil
                 if line_num > last_synced_line:
                     remaining_lines.append(line)
 
-        with metrics_file.open("w", encoding="utf-8") as f:
-            with exclusive_lock(f):
-                f.writelines(remaining_lines)
-                f.flush()
-                os.fsync(f.fileno())
+        with metrics_file.open("w", encoding="utf-8") as f, exclusive_lock(f):
+            f.writelines(remaining_lines)
+            f.flush()
+            os.fsync(f.fileno())
 
         offset_file.write_text("0", encoding="utf-8")
     except OSError as exc:

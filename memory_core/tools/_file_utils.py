@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 File utility functions for exclusive locking and ISO timestamps.
 
@@ -11,9 +10,10 @@ never supported Windows).
 """
 
 import fcntl
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
-from typing import IO, Iterator
+from typing import IO
 
 
 @contextmanager

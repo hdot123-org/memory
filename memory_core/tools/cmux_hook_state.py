@@ -3,9 +3,9 @@
 import json
 import os
 import tempfile
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
 
 try:
     from ._file_utils import exclusive_lock, now_iso
@@ -26,9 +26,8 @@ def _hook_state_lock_path(path: Path) -> Path:
 def _exclusive_hook_state_lock(path: Path) -> Iterator[None]:
     lock_path = _hook_state_lock_path(path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open("a+", encoding="utf-8") as handle:
-        with exclusive_lock(handle):
-            yield
+    with lock_path.open("a+", encoding="utf-8") as handle, exclusive_lock(handle):
+        yield
 
 
 def runtime_state_dir(project_dir: Path) -> Path:

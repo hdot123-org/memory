@@ -1377,7 +1377,7 @@ def audit_project(
         and is_memory_core_source_repo(project_root.resolve())
     )
 
-    checks: list[tuple[str, "Any"]] = []
+    checks: list[tuple[str, Any]] = []
 
     if not is_source_repo:
         # 检查 1: 哈希完整性（源仓库跳过：签名被禁用，manifest.json 不存在是预期行为）

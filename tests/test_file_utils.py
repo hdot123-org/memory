@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unit tests for _file_utils.py file utilities."""
 
 import tempfile
@@ -16,7 +15,7 @@ def test_exclusive_lock_context_manager():
             f.flush()
 
         # File should be accessible after lock released
-        with open(f.name, "r") as f2:
+        with open(f.name) as f2:
             assert f2.read() == "test data"
 
         Path(f.name).unlink()
@@ -42,9 +41,8 @@ def test_exclusive_lock_releases_on_exception():
             pass
 
         # Should be able to acquire lock again
-        with open(f.name, "w") as f2:
-            with exclusive_lock(f2):
-                f2.write("more data")
+        with open(f.name, "w") as f2, exclusive_lock(f2):
+            f2.write("more data")
 
         Path(f.name).unlink()
 
