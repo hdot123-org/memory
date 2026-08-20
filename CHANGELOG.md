@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.0](https://github.com/hdot123-org/memory/compare/v0.37.0...v0.38.0) (2026-08-20)
+
+
+### Features
+
+* **scripts:** 分支清理分层阈值（MERGED 1h/CLOSED 4h/ORPHAN 24h） ([#874](https://github.com/hdot123-org/memory/issues/874)) ([a47772f](https://github.com/hdot123-org/memory/commit/a47772f65b540530062f3488a341f8589a6832e2))
+
 ## [0.37.0](https://github.com/hdot123-org/memory/compare/v0.36.0...v0.37.0) (2026-08-20)
 
 
