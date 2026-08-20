@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Shared rule helper functions extracted from business_policy_checks.py.
 

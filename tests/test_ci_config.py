@@ -572,18 +572,48 @@ class TestRepoVarsReferences:
         assert "fromJSON(vars.DROID_REVIEW_TIMEOUT_MINUTES || '90')" in droid_review_raw
 
     def test_watchdog_max_attempt_has_fallback(self, watchdog_raw):
-        """WATCHDOG_MAX_ATTEMPT shell 变量有 :- 回退默认值。"""
-        assert "MAX_ATTEMPT:-3" in watchdog_raw or "MAX_ATTEMPT:- 3" in watchdog_raw
+        """WATCHDOG_MAX_ATTEMPT 变量缺失时有 -z 判断回退（非 :- 死代码模式）。"""
+        # VAL-VARS-004 修复：先 -z 判断再赋值，而非 :- 赋值后再 -z 判断（死代码）
+        assert 'if [ -z "${MAX_ATTEMPT:-}" ]' in watchdog_raw
+        # 确认死代码模式不存在：:-3 赋值后再 -z 判断永远走不到
+        import re
+        assert not re.search(
+            r'MAX_ATTEMPT="\$\{MAX_ATTEMPT:-3\}"\s*\n\s*if\s+\[\s+-z',
+            watchdog_raw,
+        ), "MAX_ATTEMPT 仍有 :-3 死代码模式（:- 展开先于 -z 判断）"
 
     def test_quota_recovery_window_has_fallback(self, watchdog_raw):
-        """QUOTA_RECOVERY_WINDOW_SECONDS shell 变量有 :- 回退默认值。"""
-        assert "QUOTA_RECOVERY_WINDOW_SECONDS:-1800" in watchdog_raw or \
-               "QUOTA_RECOVERY_WINDOW_SECONDS:- 1800" in watchdog_raw
+        """QUOTA_RECOVERY_WINDOW_SECONDS 变量缺失时有 -z 判断回退（非 :- 死代码模式）。"""
+        assert 'if [ -z "${QUOTA_RECOVERY_WINDOW_SECONDS:-}" ]' in watchdog_raw
+        import re
+        assert not re.search(
+            r'QUOTA_RECOVERY_WINDOW_SECONDS="\$\{QUOTA_RECOVERY_WINDOW_SECONDS:-1800\}"\s*\n\s*if\s+\[\s+-z',
+            watchdog_raw,
+        ), "QUOTA_RECOVERY_WINDOW_SECONDS 仍有 :-1800 死代码模式"
 
     def test_quota_scan_window_has_fallback(self, watchdog_raw):
-        """QUOTA_SCAN_WINDOW_HOURS shell 变量有 :- 回退默认值。"""
-        assert "QUOTA_SCAN_WINDOW_HOURS:-6" in watchdog_raw or \
-               "QUOTA_SCAN_WINDOW_HOURS:- 6" in watchdog_raw
+        """QUOTA_SCAN_WINDOW_HOURS 变量缺失时有 -z 判断回退（非 :- 死代码模式）。"""
+        assert 'if [ -z "${QUOTA_SCAN_WINDOW_HOURS:-}" ]' in watchdog_raw
+        import re
+        assert not re.search(
+            r'QUOTA_SCAN_WINDOW_HOURS="\$\{QUOTA_SCAN_WINDOW_HOURS:-6\}"\s*\n\s*if\s+\[\s+-z',
+            watchdog_raw,
+        ), "QUOTA_SCAN_WINDOW_HOURS 仍有 :-6 死代码模式"
+
+    def test_watchdog_no_dead_code_fallback_pattern(self, watchdog_raw):
+        """VAL-VARS-004: 所有 vars 回退均使用 -z 判断模式，无 :- 死代码。"""
+        import re
+        # 搜索 ":-数字" 赋值后紧跟 -z 判断的死代码模式
+        dead_patterns = [
+            r'MAX_ATTEMPT="\$\{MAX_ATTEMPT:-\d+\}"\s*\n\s*if\s+\[\s+-z',
+            r'QUOTA_SCAN_WINDOW_HOURS="\$\{QUOTA_SCAN_WINDOW_HOURS:-\d+\}"\s*\n\s*if\s+\[\s+-z',
+            r'QUOTA_RECOVERY_WINDOW_SECONDS="\$\{QUOTA_RECOVERY_WINDOW_SECONDS:-\d+\}"\s*\n\s*if\s+\[\s+-z',
+            r'WATCHDOG_MAX_ATTEMPT="\$\{WATCHDOG_MAX_ATTEMPT:-\d+\}"\s*\n\s*if\s+\[\s+-z',
+        ]
+        for pat in dead_patterns:
+            assert not re.search(pat, watchdog_raw), (
+                f"watchdog.yml 仍有死代码回退模式（:- 展开先于 -z 判断）：{pat}"
+            )
 
     # 硬编码残留检查（防回退）
     def test_watchdog_no_hardcoded_1800(self, watchdog_raw):

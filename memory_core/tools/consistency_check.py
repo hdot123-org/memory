@@ -292,11 +292,7 @@ def check_required_imports_from_constants() -> tuple[list[str], list[str]]:
 
             # Check for import from constants
             has_import = False
-            if "from memory_core.constants import" in content:
-                has_import = True
-            elif "from constants import" in content:
-                has_import = True
-            elif "import memory_core.constants" in content:
+            if "from memory_core.constants import" in content or "from constants import" in content or "import memory_core.constants" in content:
                 has_import = True
 
             if not has_import:

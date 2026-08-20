@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unit tests for _rule_errors.py exception hierarchy."""
 
 import pytest

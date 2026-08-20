@@ -23,8 +23,9 @@ import argparse
 import cProfile
 import pstats
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import IO, Iterator
+from typing import IO
 
 
 @contextmanager

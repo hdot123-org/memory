@@ -68,6 +68,13 @@ spawn_fallback() {
   # This is triggered when the main CI injection was lost
   local spawn_cmd="$HOME/.local/bin/droid --new-session --tag ci-fallback-$pr_num --command 'CI webhook injection lost for PR #$pr_num (status: $ci_status). Repository: $repo_path. Please verify PR merge status and perform branch cleanup if needed: check if PR #$pr_num is merged, if so delete the remote branch and update local main branch. If not merged, investigate why.'"
 
+  # Dry-run guard: prevent real droid sessions during testing
+  if [ "${ECHO_DROID:-0}" = "1" ]; then
+    echo "[ECHO_DROID] Would spawn: $spawn_cmd"
+    echo "Fallback session dry-run complete (ECHO_DROID=1)"
+    return 0
+  fi
+
   echo "Executing: $spawn_cmd"
 
   # Spawn new session in background

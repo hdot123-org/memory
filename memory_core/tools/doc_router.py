@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """文档分类路由引擎。
 
 提供 DOC_CATEGORIES 路由表（single source of truth）和路径解析/校验 API。

@@ -123,7 +123,7 @@ class TestNormalizeNumbers:
     def test_standalone_numbers(self) -> None:
         msg = "retried 3 times after 300 ms"
         result = normalize_error_msg(msg)
-        assert "retried N times after N ms" == result
+        assert result == "retried N times after N ms"
 
 
 class TestNormalizeWhitespace:

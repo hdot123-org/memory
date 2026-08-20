@@ -496,9 +496,8 @@ def _write_audit_log(
     audit_path = memory_dir / AUDIT_LOG_FILENAME
 
     line = json.dumps(audit_entry, ensure_ascii=False) + "\n"
-    with audit_path.open("a", encoding="utf-8") as f:
-        with exclusive_lock(f):
-            f.write(line)
+    with audit_path.open("a", encoding="utf-8") as f, exclusive_lock(f):
+        f.write(line)
 
 
 def sign_project_incremental(
@@ -643,10 +642,9 @@ def sign_project_incremental(
 
     # Write manifest with fcntl.flock exclusive lock
     memory_dir.mkdir(parents=True, exist_ok=True)
-    with manifest_path.open("w", encoding="utf-8") as f:
-        with exclusive_lock(f):
-            json.dump(manifest, f, ensure_ascii=False, indent=2)
-            f.write("\n")
+    with manifest_path.open("w", encoding="utf-8") as f, exclusive_lock(f):
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+        f.write("\n")
 
     # Write audit log
     _write_audit_log(
