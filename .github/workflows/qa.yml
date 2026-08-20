@@ -71,7 +71,14 @@ jobs:
           COVERAGE_FILE: ${{ runner.temp }}/cov-${{ github.run_id }}-${{ github.run_attempt }}/.coverage
         run: |
           mkdir -p "$(dirname "$COVERAGE_FILE")"
-          python -m pytest tests/ -n 6 --cov=memory_core --cov-report=xml --cov-branch --cov-fail-under=80
+          # CI 串行（-n 0）裁决依据（2026-08-20 编排器裁定）：
+          # - A/B 对照实锤 runner-01 上 xdist 分片丢失：同 job 串行 TOTAL 14298/miss 2288=84%
+          #   vs 并行 miss 8087=43%；runner-02 隔离后串行同样 84%
+          # - 串行在两 runner 上均实测 84% 正确，夜间 job 时间不敏感
+          # - 本地 -n 6 并行验证标准不变（addopts 未动）
+          # - COVERAGE_FILE 隔离 env 保留，保护未来恢复并行
+          # - 不违反 VAL-COV-015（该断言禁 no:randomly/固定 seed，不禁分发模式）
+          python -m pytest tests/ -n 0 --cov=memory_core --cov-report=xml --cov-branch --cov-fail-under=80
       - name: Run coverage gap analysis
         # 复用门禁 pytest 的 coverage.xml（--reuse-xml），不再内部串行重跑全量 pytest。
         # 旧模式在自建 runner 上必挂：内部串行 pytest 超 timeout=600 产出半成品 XML
