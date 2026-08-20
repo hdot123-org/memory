@@ -175,6 +175,80 @@ class TestWorkflowStructure:
             f"shard_env HEAD_SHA must not use github.event.pull_request: {head_sha_src!r}"
         )
 
+    def test_10d_no_depth_1_in_base_fetch(self, workflow_raw):
+        """VAL-SHARD-002: git fetch origin BASE_SHA 不得使用 --depth=1。
+
+        --depth=1 会把 base SHA 写入 .git/shallow，导致 merge-base 在 base 前进过的
+        PR 上返回空（shallow graft 阻断历史遍历）。必须完整 fetch 才能正确计算 merge-base。
+        """
+        import re
+        # Find the shard_env step's run block
+        pattern = re.compile(
+            r'git fetch origin "\$BASE_SHA"(\s*--depth=1)?',
+            re.MULTILINE
+        )
+        matches = pattern.findall(workflow_raw)
+        assert matches, "git fetch origin \"$BASE_SHA\" not found in workflow"
+        # Ensure no --depth=1 flag
+        for depth_flag in matches:
+            assert depth_flag.strip() == "", (
+                "git fetch must NOT use --depth=1 (breaks merge-base computation)"
+            )
+
+    def test_10e_artifact_includes_debug_transcripts_and_error_logs(self, workflow_data):
+        """VAL-SHARD-012: debug artifact 必须包含 session transcripts 和执行错误日志。
+
+        upload-artifact 不展开 ~，且拒绝工作区外路径。必须先用 step 把 $HOME/.factory/sessions/
+        复制到工作区内的 debug-sessions/，然后上传 debug-sessions/**。
+        同时必须包含 shard-exec-error.log 和 droid-exec-stdout.json 用于诊断 droid exec 失败。
+        """
+        jobs = workflow_data.get("jobs", {})
+        shard_job = jobs.get("review-shard", {})
+        steps = shard_job.get("steps", [])
+
+        # Find the "Collect debug transcripts" step
+        collect_step = None
+        for step in steps:
+            if "Collect debug transcripts" in step.get("name", ""):
+                collect_step = step
+                break
+        assert collect_step is not None, "review-shard must have 'Collect debug transcripts' step"
+
+        # Verify the step copies from $HOME/.factory/sessions to debug-sessions
+        run_script = collect_step.get("run", "")
+        assert "$HOME/.factory/sessions" in run_script or "${HOME}/.factory/sessions" in run_script, (
+            "Collect step must reference $HOME/.factory/sessions"
+        )
+        assert "debug-sessions" in run_script, (
+            "Collect step must copy transcripts to debug-sessions/ in workspace"
+        )
+
+        # Find the upload artifact step
+        upload_step = None
+        for step in steps:
+            uses = step.get("uses", "")
+            if "upload-artifact" in uses:
+                upload_step = step
+                break
+        assert upload_step is not None, "review-shard must have upload-artifact step"
+
+        # Verify the artifact path includes debug-sessions/** and error logs
+        upload_with = upload_step.get("with", {})
+        upload_path = upload_with.get("path", "")
+        assert "debug-sessions/**" in upload_path, (
+            f"Artifact must include debug-sessions/** (transcripts copied into workspace), got: {upload_path!r}"
+        )
+        assert "shard-exec-error.log" in upload_path, (
+            f"Artifact must include shard-exec-error.log for diagnosing droid exec failures, got: {upload_path!r}"
+        )
+        assert "droid-exec-stdout.json" in upload_path, (
+            f"Artifact must include droid-exec-stdout.json for diagnosing droid exec failures, got: {upload_path!r}"
+        )
+        # Ensure we're NOT using ~ directly (upload-artifact doesn't expand it)
+        assert "~/.factory/sessions" not in upload_path, (
+            "Artifact path must NOT use ~/.factory/sessions directly (upload-artifact doesn't expand ~)"
+        )
+
 
 # ══════════════════════════════════════════════════════════════════════
 # Part B: Planner invariants (16 tests)

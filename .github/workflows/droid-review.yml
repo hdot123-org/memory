@@ -31,7 +31,7 @@ on:
         type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -226,7 +226,11 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE/head-src"
 
           # Fetch the base SHA explicitly so merge-base can resolve it
-          git fetch origin "$BASE_SHA" --depth=1 || {
+          # NOTE: Do NOT use --depth=1 here! Shallow fetch writes the base SHA
+          # into .git/shallow, causing merge-base to return empty when the base
+          # branch has advanced past the PR's fork point. This would fail-close
+          # every PR where base moved forward. Full fetch is required.
+          git fetch origin "$BASE_SHA" || {
             echo "::error::Failed to fetch base SHA $BASE_SHA"
             exit 1
           }
@@ -291,6 +295,26 @@ jobs:
           chmod +x scripts/droid_review/run_shard.sh
           bash scripts/droid_review/run_shard.sh
 
+      - name: Collect debug transcripts
+        if: always()
+        run: |
+          set -eu
+          # upload-artifact does not expand '~' and rejects paths outside the
+          # workspace. Copy Factory session transcripts into the workspace so
+          # the watchdog's 429-fingerprint grep can find them. Also collect
+          # run_shard.sh execution logs for diagnosing droid exec failures.
+          mkdir -p debug-sessions
+          if [ -d "$HOME/.factory/sessions" ]; then
+            echo "Copying session transcripts from $HOME/.factory/sessions/"
+            cp -r "$HOME/.factory/sessions/"* debug-sessions/ 2>/dev/null || \
+              echo "No session files to copy (or copy failed, continuing)"
+          else
+            echo "::warning::$HOME/.factory/sessions does not exist — no transcripts to upload"
+          fi
+          # shard-exec-error.log and droid-exec-stdout.json are written by
+          # run_shard.sh in the workspace root — upload-artifact will pick them
+          # up directly (no copy needed).
+
       - name: Upload findings artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -299,9 +323,11 @@ jobs:
           path: |
             findings-shard-*.json
             shard-*.diff
-            ~/.factory/sessions/**
+            shard-exec-error.log
+            droid-exec-stdout.json
             prompt.md
             shard-env.log
+            debug-sessions/**
           retention-days: 7
 
   # ── Job 3: Aggregate and publish findings ──
