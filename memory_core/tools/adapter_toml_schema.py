@@ -1,12 +1,11 @@
 """Adapter TOML schema and loader for memory/system/adapter.toml configuration."""
 
 
+import tomllib
 import warnings as _warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
-
-import tomllib
 
 from memory_core.constants import (
     CURRENT_MEMORY_VERSION,
