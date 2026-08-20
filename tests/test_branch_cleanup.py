@@ -579,7 +579,7 @@ def test_orphan_old_branch_deleted(tmp_path: Path):
 # ============================================================================
 def test_merged_pr_reverted_branch_protected(tmp_path: Path):
     """MERGED PR branch whose content was reverted from main is PROTECTED.
-    
+
     Scenario: branch was squash-merged into main, then reverted. The branch
     still has unique commits (squash SHA ≠ original), but now main no longer
     contains the content. The guard must protect it to prevent data loss.
