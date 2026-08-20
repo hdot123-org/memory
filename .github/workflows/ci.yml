@@ -116,7 +116,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/check_pr_ref_consistency.py ${{ github.event.pull_request.number }}
       - name: Run tests with coverage
-        run: python -m pytest -q tests -n 6 --cov=memory_core --cov-report=xml
+        env:
+          # Isolate coverage data files to prevent cross-job interference on shared runners
+          # (pytest-cov combine/erase globs can delete .coverage.* from concurrent processes)
+          COVERAGE_FILE: ${{ runner.temp }}/cov-${{ github.run_id }}-${{ github.run_attempt }}/.coverage
+        run: |
+          mkdir -p "$(dirname "$COVERAGE_FILE")"
+          python -m pytest -q tests -n 6 --cov=memory_core --cov-report=xml
       - name: Debug - inspect coverage shard files
         if: always()
         run: |

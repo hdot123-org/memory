@@ -66,7 +66,11 @@ jobs:
           python -m pip install pytest pytest-cov pytest-rerunfailures pytest-xdist
       - name: Run pytest with coverage (gated at current threshold)
         # 门禁 pytest 在前：生成权威 coverage.xml（也是 gap 分析的数据源）
+        env:
+          # Isolate coverage data files to prevent cross-job interference on shared runners
+          COVERAGE_FILE: ${{ runner.temp }}/cov-${{ github.run_id }}-${{ github.run_attempt }}/.coverage
         run: |
+          mkdir -p "$(dirname "$COVERAGE_FILE")"
           python -m pytest tests/ -n 6 --cov=memory_core --cov-report=xml --cov-branch --cov-fail-under=80
       - name: Run coverage gap analysis
         # 复用门禁 pytest 的 coverage.xml（--reuse-xml），不再内部串行重跑全量 pytest。
@@ -204,7 +208,11 @@ jobs:
           python -m pip install -e ".[dev]"
       - name: Full test suite with coverage
         # 加 xml 报告：供下方 gap 分析复用（--reuse-xml），避免内部再串行重跑全量
+        env:
+          # Isolate coverage data files to prevent cross-job interference on shared runners
+          COVERAGE_FILE: ${{ runner.temp }}/cov-${{ github.run_id }}-${{ github.run_attempt }}-full/.coverage
         run: |
+          mkdir -p "$(dirname "$COVERAGE_FILE")"
           python -m pytest tests/ --cov=memory_core --cov-report=term-missing --cov-report=xml --cov-branch --durations=20
       - name: Full integration test
         run: |
