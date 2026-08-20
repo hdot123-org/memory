@@ -52,21 +52,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
-          # Force reinstall pytest ecosystem to ensure all plugins are in the same location
-          # This fixes the xdist coverage issue where pytest-cov was in dist-packages but pytest-xdist was in ~/.local
-          python -m pip install --force-reinstall pytest==8.4.2 pytest-cov==7.1.0 pytest-xdist==3.8.0 pytest-rerunfailures==16.4.0
-      - name: Debug - verify plugin locations
-        run: |
-          echo "=== pytest-cov location ==="
-          python -c "import pytest_cov; print(pytest_cov.__file__)"
-          echo "=== pytest-xdist location ==="
-          python -c "import xdist; print(xdist.__file__)"
-      - name: Debug - show installed versions
-        run: |
-          echo "=== Installed pytest/cov/xdist versions ==="
-          pip list | grep -iE 'pytest|cov|xdist|coverage'
-          echo "=== Python version ==="
-          python3 --version
+          python -m pip install pytest pytest-cov pytest-xdist
       - name: Timestamp - after install
         run: |
           echo "Install completed at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -122,24 +108,7 @@ jobs:
           COVERAGE_FILE: ${{ runner.temp }}/cov-${{ github.run_id }}-${{ github.run_attempt }}/.coverage
         run: |
           mkdir -p "$(dirname "$COVERAGE_FILE")"
-          # Diagnostic: run serial (-n 0) to isolate xdist vs runner env issue
-          echo "=== Serial (-n 0) coverage diagnostic ==="
-          python -m pytest -q tests -n 0 --cov=memory_core --cov-report=xml
-      - name: Debug - inspect coverage shard files
-        if: always()
-        env:
-          COVERAGE_FILE: ${{ runner.temp }}/cov-${{ github.run_id }}-${{ github.run_attempt }}/.coverage
-        run: |
-          echo "=== Coverage shard files in COVERAGE_FILE directory ==="
-          COV_DIR="$(dirname "$COVERAGE_FILE")"
-          ls -la "$COV_DIR"/ 2>/dev/null || echo "Directory does not exist: $COV_DIR"
-          echo "=== Shard file count ==="
-          find "$COV_DIR" -maxdepth 1 -name '.coverage.*' -type f 2>/dev/null | wc -l || echo "0"
-          echo "=== Coverage shard files in workspace (.coverage.*) ==="
-          ls -la .coverage* 2>/dev/null || echo "No .coverage files in workspace"
-          echo "=== Manual combine from isolated dir + report (diagnostic, no fail-under) ==="
-          python -m coverage combine --keep "$COV_DIR"/.coverage || true
-          python -m coverage report | tail -3 || true
+          python -m pytest -q tests -n 6 --cov=memory_core --cov-report=xml
       - name: Timestamp - after tests
         run: |
           echo "Tests completed at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
