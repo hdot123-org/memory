@@ -391,17 +391,17 @@ def test_immediate_mode_skips_branch_with_open_pr(tmp_path: Path):
 
 
 # ============================================================================
-# VAL-BRANCH-004: SCHEDULED_MODE — branch < 24h old is NOT deleted
+# VAL-REMOTEBR-001/002/003: Tiered thresholds — MERGED 1h / CLOSED 4h / ORPHAN 24h
 # ============================================================================
-def test_scheduled_mode_respects_24h_threshold(tmp_path: Path):
-    """When --scheduled and branch < 24h old, it is NOT deleted."""
+def test_merged_pr_recent_branch_preserved(tmp_path: Path):
+    """MERGED PR branch < 1h old is preserved (tier=MERGED)."""
     now = datetime.now(timezone.utc)
-    fresh_date = now - timedelta(hours=12)  # 12 hours ago
+    recent_date = now - timedelta(minutes=30)  # 30 min ago, < 1h threshold
 
-    branches = [("feature-recent", fresh_date, False)]
+    branches = [("merged-recent", recent_date, False)]
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
-    mock_gh = create_gh_mock(tmp_path, {"feature-recent": []})
+    mock_gh = create_gh_mock(tmp_path, {"merged-recent": [{"number": 101, "state": "MERGED"}]})
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -414,22 +414,20 @@ def test_scheduled_mode_respects_24h_threshold(tmp_path: Path):
     )
 
     remaining_branches = get_remote_branches(bare_repo)
-    assert "feature-recent" in remaining_branches, "Recent branch should NOT be deleted in scheduled mode"
-    assert "within 24h" in stdout or "skipping" in stdout.lower()
+    assert "merged-recent" in remaining_branches, "Recent MERGED branch should NOT be deleted"
+    assert "within MERGED (1h) threshold" in stdout
+    assert "Tiered thresholds: MERGED=1h CLOSED=4h ORPHAN=24h" in stdout
 
 
-# ============================================================================
-# VAL-BRANCH-005: SCHEDULED_MODE — old orphan (> 24h, no PR) is deleted
-# ============================================================================
-def test_scheduled_mode_deletes_old_orphan(tmp_path: Path):
-    """When --scheduled and branch > 24h old with no PR, it is deleted."""
+def test_merged_pr_old_branch_deleted(tmp_path: Path):
+    """MERGED PR branch > 1h old is deleted (tier=MERGED)."""
     now = datetime.now(timezone.utc)
-    old_date = now - timedelta(days=2)  # 2 days ago
+    old_date = now - timedelta(hours=3)  # 3h ago, > 1h threshold
 
-    branches = [("feature-old", old_date, False)]
+    branches = [("merged-old", old_date, False)]
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
-    mock_gh = create_gh_mock(tmp_path, {"feature-old": []})
+    mock_gh = create_gh_mock(tmp_path, {"merged-old": [{"number": 102, "state": "MERGED"}]})
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -442,7 +440,122 @@ def test_scheduled_mode_deletes_old_orphan(tmp_path: Path):
     )
 
     remaining_branches = get_remote_branches(bare_repo)
-    assert "feature-old" not in remaining_branches, "Old orphan branch should be deleted"
+    assert "merged-old" not in remaining_branches, "Old MERGED branch should be deleted"
+    assert "tier=MERGED (1h)" in stdout
+
+
+def test_closed_pr_recent_branch_preserved(tmp_path: Path):
+    """CLOSED PR branch < 4h old is preserved (tier=CLOSED).
+    Content must be merged into main to bypass the unmerged-unique-commits protection."""
+    now = datetime.now(timezone.utc)
+    recent_date = now - timedelta(hours=2)  # 2h ago, < 4h threshold
+
+    branches = [("closed-recent", recent_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Merge closed-recent into main so content is equivalent (bypass protection)
+    subprocess.run(["git", "merge", "--no-ff", "closed-recent", "-m", "Merge closed-recent"],
+                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(["git", "push", "origin", "main"],
+                   cwd=clone_dir, check=True, capture_output=True)
+
+    mock_gh = create_gh_mock(tmp_path, {"closed-recent": [{"number": 201, "state": "CLOSED"}]})
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "closed-recent" in remaining_branches, "Recent CLOSED branch should NOT be deleted"
+    assert "within CLOSED (4h) threshold" in stdout
+
+
+def test_closed_pr_old_branch_deleted(tmp_path: Path):
+    """CLOSED PR branch > 4h old is deleted (tier=CLOSED).
+    Content must be merged into main to bypass the unmerged-unique-commits protection."""
+    now = datetime.now(timezone.utc)
+    old_date = now - timedelta(hours=6)  # 6h ago, > 4h threshold
+
+    branches = [("closed-old", old_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    # Merge closed-old into main so content is equivalent (bypass protection)
+    subprocess.run(["git", "merge", "--no-ff", "closed-old", "-m", "Merge closed-old"],
+                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(["git", "push", "origin", "main"],
+                   cwd=clone_dir, check=True, capture_output=True)
+
+    mock_gh = create_gh_mock(tmp_path, {"closed-old": [{"number": 202, "state": "CLOSED"}]})
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "closed-old" not in remaining_branches, "Old CLOSED branch should be deleted"
+    assert "tier=CLOSED (4h)" in stdout
+
+
+def test_orphan_recent_branch_preserved(tmp_path: Path):
+    """No-PR branch < 24h old is preserved (tier=ORPHAN)."""
+    now = datetime.now(timezone.utc)
+    recent_date = now - timedelta(hours=12)  # 12h ago, < 24h threshold
+
+    branches = [("orphan-recent", recent_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    mock_gh = create_gh_mock(tmp_path, {"orphan-recent": []})
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "orphan-recent" in remaining_branches, "Recent ORPHAN branch should NOT be deleted"
+    assert "within ORPHAN (24h) threshold" in stdout
+
+
+def test_orphan_old_branch_deleted(tmp_path: Path):
+    """No-PR branch > 24h old is deleted (tier=ORPHAN)."""
+    now = datetime.now(timezone.utc)
+    old_date = now - timedelta(days=2)  # 2 days ago, > 24h threshold
+
+    branches = [("orphan-old", old_date, False)]
+    bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
+
+    mock_gh = create_gh_mock(tmp_path, {"orphan-old": []})
+
+    env_overrides = {
+        "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
+    }
+
+    exit_code, stdout, stderr = run_branch_cleanup(
+        "--scheduled",
+        cwd=clone_dir,
+        env_overrides=env_overrides,
+    )
+
+    remaining_branches = get_remote_branches(bare_repo)
+    assert "orphan-old" not in remaining_branches, "Old ORPHAN branch should be deleted"
+    assert "tier=ORPHAN (24h)" in stdout
 
 
 # ============================================================================
