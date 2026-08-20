@@ -83,12 +83,19 @@ EMPTY_RESULT='{"mergeable":[],"behind":[],"conflicting":[],"pending":[],"stalled
 classify() {
   jq '
     def rollup(pr): (pr.statusCheckRollup // []);
-    # green = every reported check succeeded AND at least one check reported.
-    # conclusion must be a non-null string "SUCCESS"; null conclusion means
-    # the check is still queued/in_progress.
+    # green = every reported check succeeded (or was harmlessly skipped) AND
+    # at least one check reported.
+    # Acceptable conclusions: SUCCESS, SKIPPED, NEUTRAL — these are non-failures.
+    # Failure conclusions: FAILURE, TIMED_OUT, CANCELLED, ACTION_REQUIRED.
+    # Rationale (INFRA-428 + scrutiny R2): qa.yml #830 added two nightly jobs
+    # (Coverage Audit / Full Regression) that report SKIPPED on PR events.
+    # The old logic required conclusion == "SUCCESS" for every check, so every
+    # PR rollup contained SKIPPED → checks_green was never true → sweep
+    # always stalled → zero merges. SKIPPED/NEUTRAL are semantically "not a
+    # failure" and must not block merge.
     def checks_green(pr):
       (rollup(pr) | length) > 0
-      and all(rollup(pr)[]; (.conclusion // "") == "SUCCESS");
+      and all(rollup(pr)[]; .conclusion == "SUCCESS" or .conclusion == "SKIPPED" or .conclusion == "NEUTRAL");
     # complete = every check run has reported a non-null conclusion.
     # has("conclusion") alone is not enough: the rollup of a queued/
     # in_progress check contains "conclusion": null, and jq has() would
