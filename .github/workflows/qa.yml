@@ -102,16 +102,16 @@ jobs:
           python -m pip install pytest pytest-cov
       - name: Hook gateway & lifecycle tests
         run: |
-          python -m pytest tests/ -k "hook or gateway or lifecycle or session" -v --tb=short --no-header -q
+          python -m pytest tests/ -k "hook or gateway or lifecycle or session" -v --tb=short --no-header -q --no-cov
       - name: PreToolUse guard tests
         run: |
-          python -m pytest tests/ -k "pretooluse or guard" -v --tb=short --no-header -q
+          python -m pytest tests/ -k "pretooluse or guard" -v --tb=short --no-header -q --no-cov
       - name: Telemetry tests
         run: |
-          python -m pytest tests/ -k "telemetry or posthog or metrics" -v --tb=short --no-header -q
+          python -m pytest tests/ -k "telemetry or posthog or metrics" -v --tb=short --no-header -q --no-cov
       - name: Integrity tests
         run: |
-          python -m pytest tests/ -k "integrity or resign or manifest or signing" -v --tb=short --no-header -q
+          python -m pytest tests/ -k "integrity or resign or manifest or signing" -v --tb=short --no-header -q --no-cov
 
   business-policy:
     name: Business Policy & Guard Tests
@@ -129,13 +129,13 @@ jobs:
           python -m pip install pytest pytest-cov
       - name: Business policy tests
         run: |
-          python -m pytest tests/ -k "business_policy or rule or marker" -v --tb=short --no-header -q
+          python -m pytest tests/ -k "business_policy or rule or marker" -v --tb=short --no-header -q --no-cov
       - name: Guard classification tests
         run: |
-          python -m pytest tests/ -k "guard_classify or guard_pattern or denylist" -v --tb=short --no-header -q
+          python -m pytest tests/ -k "guard_classify or guard_pattern or denylist" -v --tb=short --no-header -q --no-cov
       - name: Scope resolver tests
         run: |
-          python -m pytest tests/ -k "scope or resolver or routing" -v --tb=short --no-header -q
+          python -m pytest tests/ -k "scope or resolver or routing" -v --tb=short --no-header -q --no-cov
 
   schema-migration:
     name: Schema & Migration Tests
@@ -153,13 +153,13 @@ jobs:
           python -m pip install pytest pytest-cov
       - name: Migration tests
         run: |
-          python -m pytest tests/ -k "migrate or migration" -v --tb=short --no-header -q
+          python -m pytest tests/ -k "migrate or migration" -v --tb=short --no-header -q --no-cov
       - name: Schema tests
         run: |
-          python -m pytest tests/ -k "schema or adapter or index_schema or template" -v --tb=short --no-header -q
+          python -m pytest tests/ -k "schema or adapter or index_schema or template" -v --tb=short --no-header -q --no-cov
       - name: Version sync tests
         run: |
-          python -m pytest tests/ -k "version_sync or upgrade or hook_upgrade" -v --tb=short --no-header -q
+          python -m pytest tests/ -k "version_sync or upgrade or hook_upgrade" -v --tb=short --no-header -q --no-cov
 
   boundary-security:
     name: Boundary & Security Tests
@@ -177,10 +177,10 @@ jobs:
           python -m pip install pytest pytest-cov
       - name: Boundary tests
         run: |
-          python -m pytest tests/ -k "boundary or readonly or pollution or source_repo" -v --tb=short --no-header -q
+          python -m pytest tests/ -k "boundary or readonly or pollution or source_repo" -v --tb=short --no-header -q --no-cov
       - name: Denylist & guard tests
         run: |
-          python -m pytest tests/ -k "denylist or guard_patterns or evidence" -v --tb=short --no-header -q
+          python -m pytest tests/ -k "denylist or guard_patterns or evidence" -v --tb=short --no-header -q --no-cov
       - name: Boundary check script
         run: |
           python scripts/check_boundary.py
