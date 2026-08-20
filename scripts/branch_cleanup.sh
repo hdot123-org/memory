@@ -64,12 +64,21 @@ is_retired() {
   return 1
 }
 
-# Get cutoff as epoch seconds for reliable comparison (24 hours ago)
-CUTOFF_EPOCH=$(date -u -d '24 hours ago' '+%s' 2>/dev/null || date -u -v-24H '+%s')
+# Get tiered thresholds (in hours) - can be overridden via environment variables
+MERGED_HOURS="${BRANCH_AGE_MERGED_HOURS:-1}"
+CLOSED_HOURS="${BRANCH_AGE_CLOSED_HOURS:-4}"
+ORPHAN_HOURS="${BRANCH_AGE_ORPHAN_HOURS:-24}"
+
+# Convert hours to seconds for easier comparison
+MERGED_SECONDS=$((MERGED_HOURS * 3600))
+CLOSED_SECONDS=$((CLOSED_HOURS * 3600))
+ORPHAN_SECONDS=$((ORPHAN_HOURS * 3600))
+
+NOW_EPOCH=$(date +%s)
 
 echo "=== Branch Cleanup Script ==="
 echo "Mode: $MODE"
-echo "Cutoff epoch: $CUTOFF_EPOCH ($(date -u -d "@$CUTOFF_EPOCH" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -r "$CUTOFF_EPOCH" '+%Y-%m-%dT%H:%M:%SZ'))"
+echo "Tiered thresholds: MERGED=${MERGED_HOURS}h CLOSED=${CLOSED_HOURS}h ORPHAN=${ORPHAN_HOURS}h"
 echo ""
 
 # Determine which branches to process
@@ -129,8 +138,9 @@ for BRANCH in $BRANCHES; do
     continue
   fi
 
-  # Count PRs by state: OPEN, CLOSED (not merged)
+  # Count PRs by state: OPEN, CLOSED (not merged), MERGED
   OPEN_PR_COUNT=$(echo "$ALL_PRS" | jq '[.[] | select(.state == "OPEN")] | length')
+  MERGED_PR_COUNT=$(echo "$ALL_PRS" | jq '[.[] | select(.state == "MERGED")] | length')
   CLOSED_NOT_MERGED_COUNT=$(echo "$ALL_PRS" | jq '[.[] | select(.state == "CLOSED")] | length')
 
   # Skip if has open PR
@@ -198,12 +208,28 @@ for BRANCH in $BRANCHES; do
     echo "  Immediate mode: orphan branch with no open PR, deleting."
     SHOULD_DELETE=true
   else
-    # SCHEDULED MODE: Check age threshold (24h)
-    if [[ "$LAST_COMMIT_EPOCH" -lt "$CUTOFF_EPOCH" ]]; then
-      echo "  No open PR and last commit ($LAST_COMMIT_DATE) is older than 24h."
+    # SCHEDULED MODE: Determine tier based on PR state
+    TIER_SECONDS=""
+    TIER_NAME=""
+    
+    if [[ "$MERGED_PR_COUNT" -gt 0 ]]; then
+      TIER_SECONDS="$MERGED_SECONDS"
+      TIER_NAME="MERGED (${MERGED_HOURS}h)"
+    elif [[ "$CLOSED_NOT_MERGED_COUNT" -gt 0 ]]; then
+      TIER_SECONDS="$CLOSED_SECONDS"
+      TIER_NAME="CLOSED (${CLOSED_HOURS}h)"
+    else
+      TIER_SECONDS="$ORPHAN_SECONDS"
+      TIER_NAME="ORPHAN (${ORPHAN_HOURS}h)"
+    fi
+    
+    TIER_CUTOFF=$((NOW_EPOCH - TIER_SECONDS))
+    
+    if [[ "$LAST_COMMIT_EPOCH" -lt "$TIER_CUTOFF" ]]; then
+      echo "  No open PR, tier=$TIER_NAME, last commit ($LAST_COMMIT_DATE) is older than threshold."
       SHOULD_DELETE=true
     else
-      echo "  Last commit ($LAST_COMMIT_DATE) is within 24h, skipping."
+      echo "  Last commit ($LAST_COMMIT_DATE) is within $TIER_NAME threshold, skipping."
     fi
   fi
 

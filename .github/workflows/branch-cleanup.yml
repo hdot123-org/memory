@@ -2,7 +2,7 @@ name: Branch Cleanup
 
 on:
   schedule:
-    - cron: '0 0,5,10,15,20 * * *'  # Every 5h at UTC 00/05/10/15/20 (Beijing 08/13/18/23/04) - avoids Beijing 14:00-18:00 peak hours
+    - cron: '0 * * * *'  # Every hour at minute 0 (UTC)
   pull_request:
     types: [closed]
   workflow_dispatch:
@@ -34,6 +34,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
           TRIGGER_BRANCH: ${{ github.event.pull_request.head.ref }}
+          # Tiered thresholds: MERGED PR 1h / CLOSED PR 4h / ORPHAN 24h
+          BRANCH_AGE_MERGED_HOURS: ${{ vars.BRANCH_AGE_MERGED_HOURS }}
+          BRANCH_AGE_CLOSED_HOURS: ${{ vars.BRANCH_AGE_CLOSED_HOURS }}
+          BRANCH_AGE_ORPHAN_HOURS: ${{ vars.BRANCH_AGE_ORPHAN_HOURS }}
         run: |
           # Determine mode based on trigger event
           if [ "${{ github.event_name }}" = "pull_request" ]; then
