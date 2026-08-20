@@ -52,9 +52,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
-          # 钉扎版本：自建 runner 预装版本与本地健康环境（cov 7.1.0/xdist 3.8.0）不一致时
-          # 会导致 xdist worker coverage 数据丢失（实测 84%→43%）。钉扎确保 CI 与本地一致。
-          python -m pip install pytest==8.4.2 pytest-cov==7.1.0 pytest-xdist==3.8.0 pytest-rerunfailures==16.4.0
+          # Force reinstall pytest ecosystem to ensure all plugins are in the same location
+          # This fixes the xdist coverage issue where pytest-cov was in dist-packages but pytest-xdist was in ~/.local
+          python -m pip install --force-reinstall pytest==8.4.2 pytest-cov==7.1.0 pytest-xdist==3.8.0 pytest-rerunfailures==16.4.0
+      - name: Debug - verify plugin locations
+        run: |
+          echo "=== pytest-cov location ==="
+          python -c "import pytest_cov; print(pytest_cov.__file__)"
+          echo "=== pytest-xdist location ==="
+          python -c "import xdist; print(xdist.__file__)"
       - name: Debug - show installed versions
         run: |
           echo "=== Installed pytest/cov/xdist versions ==="
