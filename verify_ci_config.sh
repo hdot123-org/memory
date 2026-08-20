@@ -51,9 +51,9 @@ else
     exit 1
 fi
 
-# VAL-CI-006: pytest config includes --cov-fail-under=15
-echo "VAL-CI-006: pytest config includes --cov-fail-under=15"
-if grep -q '\-\-cov-fail-under=15' pyproject.toml || grep -q '\-\-cov-fail-under=15' .github/workflows/ci.yml; then
+# VAL-CI-006: pytest config includes --cov-fail-under=80
+echo "VAL-CI-006: pytest config includes --cov-fail-under=80"
+if grep -q '\-\-cov-fail-under=80' pyproject.toml || grep -q '\-\-cov-fail-under=80' .github/workflows/ci.yml; then
     echo "  ✓ PASS"
 else
     echo "  ✗ FAIL"

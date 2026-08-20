@@ -78,10 +78,14 @@ include = ["memory_core*", "workspace*"]
 [tool.setuptools.package-data]
 workspace = ["templates/**/*"]
 
+[tool.coverage.run]
+parallel = true
+sigterm = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "--cov=memory_core --cov-report=term-missing --cov-fail-under=15 --durations=10"
+addopts = "--cov=memory_core --cov-report=term-missing --cov-fail-under=80 --durations=10"
 
 [tool.mypy]
 python_version = "3.12"
@@ -189,6 +193,7 @@ DEP001 = [
     "memory_hook_core",
     "memory_hook_impls",
     "memory_hook_interfaces",
+    "coverage",  # transitive via pytest-cov; used in conftest.py pytest_sessionfinish hook
     "memory_hook_schema",
     "memory_hook_integrity_manifest",
     "cmux_hook_state",
