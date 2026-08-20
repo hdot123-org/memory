@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.37.0](https://github.com/hdot123-org/memory/compare/v0.36.0...v0.37.0) (2026-08-20)
+
+
+### Features
+
+* **auto-merge:** triage 盲区分类补全与自愈硬化 (INFRA-428) ([#853](https://github.com/hdot123-org/memory/issues/853)) ([c8267b9](https://github.com/hdot123-org/memory/commit/c8267b99e88be576aa6f0bc4e0e7c535c1dcd8e3))
+* **TD-BR-01:** 本地分支自动清理（launchd 每小时调度） ([#856](https://github.com/hdot123-org/memory/issues/856)) ([f0fd885](https://github.com/hdot123-org/memory/commit/f0fd885744c26a524175d77938d59f3ae3fcad9a))
+* **TD-DR-02:** 自愈参数外置为 repo variables ([#854](https://github.com/hdot123-org/memory/issues/854)) ([17d813f](https://github.com/hdot123-org/memory/commit/17d813f547d620c0e292a22d3e87366620d2177e))
+
+
+### Bug Fixes
+
+* **TD-DR-03:** 修复注入降级机制 ([#855](https://github.com/hdot123-org/memory/issues/855)) ([b85c5e0](https://github.com/hdot123-org/memory/commit/b85c5e0eed83754567da57931f028c18ca20f1c1))
+
 ## [0.36.0](https://github.com/hdot123-org/memory/compare/v0.35.0...v0.36.0) (2026-08-19)
 
 
