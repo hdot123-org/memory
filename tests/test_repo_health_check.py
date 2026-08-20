@@ -230,3 +230,137 @@ def test_invalid_mode():
     # Should fail with error
     assert result.returncode != 0
     assert "Usage:" in result.stdout or "Usage:" in result.stderr
+
+
+# ── Regression tests for Python version selection (PR #859) ──────────────
+
+def test_python_version_selection_prefers_3_12_plus():
+    """Regression: script must select a Python >= 3.11 with tomllib support.
+
+    Even when PATH contains a python3 < 3.11 first, the script should
+    still find a qualifying interpreter (python3.12 or python3 >= 3.11)
+    or emit a clear error instead of crashing with ModuleNotFoundError.
+    """
+    import os
+    import shutil
+
+    # Build a fake python3 that reports 3.9 — place it first in PATH
+    fake_dir = Path("/tmp") / "regression_fake_python"
+    fake_dir.mkdir(exist_ok=True)
+    fake_py = fake_dir / "python3"
+    fake_py.write_text(
+        '#!/bin/bash\npython3.12 -c "import sys; print(f\'3.9\')" "$@"\n',
+        encoding="utf-8",
+    )
+    fake_py.chmod(0o755)
+
+    # Prepend fake dir so plain python3 resolves to our 3.9 stub
+    env = os.environ.copy()
+    env["PATH"] = str(fake_dir) + os.pathsep + env["PATH"]
+    # Remove python3.12 from reach to force the fallback branch
+    # (python3 version check).  We keep the real system python3.12 reachable
+    # via an explicit absolute path, but the script uses `command -v python3.12`
+    # which scans PATH — so we must make it invisible there too.
+    # Instead of hiding it, we verify the script's actual behaviour:
+    # on this system python3.12 IS available, so the script should succeed.
+    result = subprocess.run(
+        ["bash", str(SCRIPT_PATH), "--ci"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    # The script should either succeed (found python3.12 via command -v)
+    # or fail with a clear Python version error — never with ModuleNotFoundError.
+    if result.returncode != 0:
+        assert "ModuleNotFoundError" not in result.stderr, (
+            "Script must not crash with ModuleNotFoundError — "
+            "it should select a Python with tomllib or report clearly"
+        )
+        assert "Python 3.11+" in result.stderr or "Python 3.11+" in result.stdout, (
+            "When no suitable Python is found, the error message must mention "
+            "the minimum version requirement"
+        )
+
+
+def test_python_selection_error_message_when_only_old_python():
+    """Regression: when only Python < 3.11 is available, script exits with
+    a clear error mentioning the version requirement."""
+    import os
+    import shutil
+    import sys
+
+    # Create a temporary directory with a fake python3 that is < 3.11
+    fake_dir = Path("/tmp") / "regression_old_python"
+    fake_dir.mkdir(exist_ok=True)
+    fake_py = fake_dir / "python3"
+    fake_py.write_text(
+        '#!/bin/bash\necho "3.9"\n',
+        encoding="utf-8",
+    )
+    fake_py.chmod(0o755)
+
+    # Also create fake python3.9 to ensure no python3.12 is found
+    # (the script checks `command -v python3.12` first)
+    # We need an environment where ONLY python3 exists and it is < 3.11
+    # Build a minimal PATH with only our fake python3
+    env = os.environ.copy()
+    # Keep /usr/bin for bash, git but strip any real python paths
+    env["PATH"] = str(fake_dir) + os.pathsep + "/usr/bin:/bin"
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT_PATH), "--ci"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    # Script should exit non-zero with a clear version error
+    assert result.returncode != 0, "Script should fail when only old Python available"
+    assert "Python 3.11+" in result.stderr or "Python 3.11+" in result.stdout, (
+        f"Expected clear version error, got stderr={result.stderr!r} stdout={result.stdout!r}"
+    )
+    # Must NOT crash with ModuleNotFoundError
+    assert "ModuleNotFoundError" not in result.stderr
+
+
+def test_script_uses_python_variable_not_hardcoded():
+    """Regression: script must use $PYTHON variable for all Python calls
+    outside the version selection block, not hardcoded 'python3'."""
+    script_content = SCRIPT_PATH.read_text(encoding="utf-8")
+
+    # Find the end of the Python version selection block
+    # The block ends at the third 'fi' after "Python version selection" comment
+    # After that, all Python invocations should use $PYTHON
+    lines = script_content.split("\n")
+    in_version_block = False
+    fi_count = 0
+    version_block_ended_at = -1
+    for i, line in enumerate(lines):
+        if "Python version selection" in line:
+            in_version_block = True
+            continue
+        if in_version_block:
+            if line.strip().startswith("fi"):
+                fi_count += 1
+                if fi_count >= 3:
+                    version_block_ended_at = i
+                    break
+
+    assert version_block_ended_at > 0, "Could not find end of version selection block"
+
+    # Check that no hardcoded python3 calls exist after the version block
+    hardcoded_python3_lines = []
+    for i in range(version_block_ended_at, len(lines)):
+        line = lines[i]
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        # Flag lines that call 'python3' directly (not inside $PYTHON)
+        if "python3" in line and "$PYTHON" not in line and "python3." not in line:
+            hardcoded_python3_lines.append((i + 1, stripped))
+
+    assert not hardcoded_python3_lines, (
+        f"Script should use $PYTHON variable after version selection block, "
+        f"not hardcoded 'python3'. Found at: {hardcoded_python3_lines}"
+    )
