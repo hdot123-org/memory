@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.39.0](https://github.com/hdot123-org/memory/compare/v0.38.0...v0.39.0) (2026-08-21)
+
+
+### Features
+
+* **M2-F6:** 规则集扩展 + safe-fix 批量修复 + mypy 版本钉扎 ([#907](https://github.com/hdot123-org/memory/issues/907)) ([b1b7467](https://github.com/hdot123-org/memory/commit/b1b746712771cdc846f335db52bcf3e4f88d314d))
+* TD-DR-01 droid-review 单路径 Shard Pipeline 实现 ([#889](https://github.com/hdot123-org/memory/issues/889)) ([9ea255e](https://github.com/hdot123-org/memory/commit/9ea255e906003b44420c165ed8ce08e8772ae55e))
+* 覆盖率门槛 15→80（memory_core 单域） ([#871](https://github.com/hdot123-org/memory/issues/871)) ([9707e3e](https://github.com/hdot123-org/memory/commit/9707e3ef78a0eb2330c96307253053b152a540f1))
+
+
+### Bug Fixes
+
+* **M2-F8:** 残项收尾批 - vulture/SIGINT/deptry/test隔离 ([#908](https://github.com/hdot123-org/memory/issues/908)) ([e16dc64](https://github.com/hdot123-org/memory/commit/e16dc64b490d0d65618f64c693c55acf53300297))
+* **tests:** 隔离 SIGINT 测试子进程进程组修复 flaky ([#892](https://github.com/hdot123-org/memory/issues/892)) ([83b2613](https://github.com/hdot123-org/memory/commit/83b26138606c8681f46337c3bb31aacb900aab66))
+* 移除 ruff.toml 僵尸 C901 配置并修复分支覆盖率污染 ([#902](https://github.com/hdot123-org/memory/issues/902)) ([b6c3cc2](https://github.com/hdot123-org/memory/commit/b6c3cc2969f43052e4a19b21ae01b5daa40e8fe5))
+
 ## [0.38.0](https://github.com/hdot123-org/memory/compare/v0.37.0...v0.38.0) (2026-08-20)
 
 
