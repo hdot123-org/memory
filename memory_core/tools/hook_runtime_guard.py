@@ -10,7 +10,7 @@ import signal
 _BOOT_SECONDS = 8  # < Factory's 10s timeout
 
 
-def _exit0_handler(signum: int, frame: object) -> None:
+def _exit0_handler(_signum: int, _frame: object) -> None:
     """Clean exit handler for SIGINT/SIGALRM.
 
     Uses os._exit(0) to skip atexit callbacks (telemetry PostHog

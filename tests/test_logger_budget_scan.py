@@ -455,6 +455,7 @@ class TestLargeJsonlWithSigint:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            start_new_session=True,
         )
         # Send payload via stdin and keep it open briefly
         proc.stdin.write(stdin_payload.encode())  # type: ignore[union-attr]
