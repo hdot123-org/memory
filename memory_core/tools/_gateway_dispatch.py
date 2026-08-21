@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ._gateway_config import REPO_ROOT, PROJECT_LIFECYCLE_ROOT, _FORCE_HOOK
+from ._gateway_config import REPO_ROOT, PROJECT_LIFECYCLE_ROOT, ARTIFACT_ROOT, EVENT_LOG, _FORCE_HOOK
 from ._gateway_artifacts import append_error_log
 
 # Lazy import for _get_host_delegate to avoid circular dependency
@@ -342,3 +342,55 @@ def _record_project_lifecycle_event(
             {"host": host, "event": event, "cwd": str(cwd), "error": str(exc)},
         )
         return None
+
+
+def _emit_fast_path_metrics(args: argparse.Namespace, start_time: float) -> None:
+    """Emit minimal metrics for fast-path events (no context package).
+
+    Writes directly to metrics file without building a full package.
+    Non-blocking: exceptions are caught and logged.
+    """
+    try:
+        from .memory_hook_metrics import _resolve_metrics_path, append_metrics_record
+        duration_ms = max(1, int((time.time() - start_time) * 1000))
+        record = {
+            "timestamp": now_iso(),
+            "host": str(args.host),
+            "event": str(args.event),
+            "status": "fast_path",
+            "context_package_size_bytes": 0,
+            "validation_error_count": 0,
+            "missing_paths_count": 0,
+            "degraded": False,
+            "core_provider": "",
+            "package_kind": "",
+            "duration_ms": duration_ms,
+            "fast_path": True,
+        }
+        path = _resolve_metrics_path(ARTIFACT_ROOT)
+        append_metrics_record(path, record)
+    except Exception as exc:
+        _logger.debug("fast-path metrics emit skipped: %s", exc)
+
+
+def _record_event_log_minimal(args: argparse.Namespace, start_time: float) -> None:
+    """Write minimal event log entry for fast-path events.
+
+    Appends a single JSON line to EVENT_LOG without building full context.
+    Non-blocking: exceptions are caught and logged.
+    """
+    try:
+        duration_ms = max(1, int((time.time() - start_time) * 1000))
+        record = {
+            "timestamp": now_iso(),
+            "event": str(args.event),
+            "host": str(args.host),
+            "status": "ok",
+            "duration_ms": duration_ms,
+            "fast_path": True,
+        }
+        EVENT_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with EVENT_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        _logger.debug("fast-path event log skipped: %s", exc)

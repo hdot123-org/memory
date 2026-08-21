@@ -301,3 +301,109 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
     except Exception as exc:
         # Top-level catch: sync must never break gateway flow
         _logger.debug("_maybe_sync_telemetry failed: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Prompt-submit logging helpers
+# ---------------------------------------------------------------------------
+
+
+def _read_last_user_message_from_transcript(transcript_path: str | None) -> str | None:
+    """Read last user message from transcript file."""
+    if not transcript_path:
+        return None
+    path = Path(transcript_path)
+    if not path.exists():
+        return None
+    try:
+        last_user: str | None = None
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("role") == "user":
+                    content = entry.get("content", "")
+                    if isinstance(content, str) and content:
+                        last_user = content
+        return last_user
+    except OSError:
+        return None
+
+
+def _sanitize_for_log(text: str, max_len: int = 2000) -> str:
+    """Sanitize text for logging (truncate and escape)."""
+    if not isinstance(text, str):
+        text = str(text)
+    if len(text) > max_len:
+        text = text[:max_len] + "... (truncated)"
+    return text.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+
+
+def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
+    """Log prompt-submit event to session file."""
+    import signal
+    import re
+    from datetime import datetime
+    
+    class HookTimeoutError(Exception):
+        pass
+    
+    session_id: str = payload.get("session_id", "unknown")
+    transcript_path: str | None = payload.get("transcript_path")
+    
+    prompt: str | None = payload.get("prompt")
+    if not prompt:
+        prompt = _read_last_user_message_from_transcript(transcript_path)
+    if not prompt:
+        prompt = "(no prompt captured)"
+    
+    now = datetime.now()
+    date_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%H:%M:%S")
+    session_prefix = session_id[:8]
+    
+    log_dir = project_root / "memory" / "log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"{date_str}-sessions.md"
+    
+    prompt_count = 1
+    if log_file.exists():
+        try:
+            content = log_file.read_text(encoding="utf-8")
+            pattern = re.compile(rf"#### [^\n]+— {re.escape(session_prefix)} \[?heartbeat")
+            matches = pattern.findall(content)
+            prompt_count = len(matches) + 1
+        except OSError:
+            pass
+    
+    preview = _sanitize_for_log(prompt)[:100]
+    
+    heartbeat = (
+        f"#### {time_str} — {session_prefix} [heartbeat]\n"
+        f"- **用户消息**: {preview}\n"
+        f"- **累计 prompt 数**: {prompt_count}\n"
+        "---\n"
+    )
+    
+    def _write_handler(_signum, _frame):
+        raise HookTimeoutError("prompt-submit log write timed out")
+    
+    old_handler = None
+    try:
+        old_handler = signal.signal(signal.SIGALRM, _write_handler)
+        signal.alarm(2)
+        
+        with log_file.open("a", encoding="utf-8") as fh, exclusive_lock(fh):
+            fh.write(heartbeat)
+            fh.flush()
+    except HookTimeoutError:
+        _logger.warning("_log_prompt_submit: write timed out for session %s", session_prefix)
+    finally:
+        signal.alarm(0)
+        if old_handler is not None:
+            signal.signal(signal.SIGALRM, old_handler)

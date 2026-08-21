@@ -495,3 +495,4 @@ def _write_artifacts_via_sink(package: dict[str, Any]) -> dict[str, str]:
 def _append_error_log_via_sink(component: str, message: str, context: dict[str, Any]) -> None:
     """IF-5: Log error via Sink facade."""
     _get_error_sink().log(component, message, context)
+
