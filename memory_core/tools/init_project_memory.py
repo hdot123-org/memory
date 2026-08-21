@@ -894,32 +894,8 @@ tags: [project, knowledge]
 # Auto-fill helpers
 # ---------------------------------------------------------------------------
 
-def fill_template_fields(content: str, project_info: Any) -> str:
-    """Fill detected project information into template content.
-
-    Replaces '（待填写）' placeholders with actual values from ProjectInfo.
-    Only replaces placeholders, never overwrites existing filled values.
-
-    Args:
-        content: The template content to fill.
-        project_info: ProjectInfo instance with detected values.
-
-    Returns:
-        Filled content with placeholders replaced.
-    """
-    if project_info is None:
-        return content
-
-    # Import ProjectInfo for type checking
-    try:
-        from .project_probe import ProjectInfo as _ProjectInfo
-    except ImportError:
-        from memory_core.tools.project_probe import ProjectInfo as _ProjectInfo
-
-    if not isinstance(project_info, _ProjectInfo):
-        return content
-
-    # Fill CANONICAL.md fields
+def _fill_canonical_table(content: str, project_info: Any) -> str:
+    """Fill CANONICAL.md table fields (language, type, toolchain, repo)."""
     # 主语言
     if project_info.primary_language:
         content = re.sub(
@@ -956,9 +932,7 @@ def fill_template_fields(content: str, project_info: Any) -> str:
 
     # 仓库 - add git remote URL
     if project_info.git_remote_url:
-        # Add a new row for remote URL in the 仓库 section
         remote_row = f"| 远程仓库 | `{project_info.git_remote_url}` |"
-        # Check if there's already a remote row (already filled)
         if "远程仓库" not in content:
             content = re.sub(
                 r'(\| 本地仓库 \| .+? \|)\n',
@@ -967,7 +941,11 @@ def fill_template_fields(content: str, project_info: Any) -> str:
                 count=1,
             )
 
-    # Fill project scope .md fields
+    return content
+
+
+def _fill_scope_fields(content: str, project_info: Any) -> str:
+    """Fill project scope .md fields (language, framework, database, overview)."""
     # 语言
     if project_info.primary_language:
         content = re.sub(
@@ -1000,6 +978,40 @@ def fill_template_fields(content: str, project_info: Any) -> str:
             project_info.project_overview,
             content,
         )
+
+    return content
+
+
+def fill_template_fields(content: str, project_info: Any) -> str:
+    """Fill detected project information into template content.
+
+    Replaces '（待填写）' placeholders with actual values from ProjectInfo.
+    Only replaces placeholders, never overwrites existing filled values.
+
+    Args:
+        content: The template content to fill.
+        project_info: ProjectInfo instance with detected values.
+
+    Returns:
+        Filled content with placeholders replaced.
+    """
+    if project_info is None:
+        return content
+
+    # Import ProjectInfo for type checking
+    try:
+        from .project_probe import ProjectInfo as _ProjectInfo
+    except ImportError:
+        from memory_core.tools.project_probe import ProjectInfo as _ProjectInfo
+
+    if not isinstance(project_info, _ProjectInfo):
+        return content
+
+    # Fill CANONICAL.md table fields
+    content = _fill_canonical_table(content, project_info)
+
+    # Fill project scope .md fields
+    content = _fill_scope_fields(content, project_info)
 
     return content
 
@@ -1606,6 +1618,108 @@ def _cleanup_legacy_hooks_json(target: Path, result: dict[str, Any] | None) -> N
                 result["warnings"].append(f"failed to remove legacy hooks.json {legacy_path}: {exc}")
 
 
+# Legacy host reference patterns to scrub from AGENTS.md (VAL-P4-010)
+_LEGACY_HOST_PATTERNS = [
+    "~/.codex/bin/memory-hook",
+    "~/.claude/bin/memory-hook",
+    ".codex/hooks.json",
+    ".claude/hooks.json",
+]
+
+
+def _scrub_legacy_refs(text: str) -> tuple[str, bool]:
+    """Remove legacy codex/claude hook references from AGENTS.md.
+
+    These legacy hosts are superseded by factory (the sole supported host).
+    Returns (scrubbed_text, was_modified).
+    """
+    modified = False
+    for pattern in _LEGACY_HOST_PATTERNS:
+        if pattern in text:
+            text = text.replace(pattern, "")
+            modified = True
+    # Clean up any resulting double-blank lines from removals
+    while "\n\n\n" in text:
+        text = text.replace("\n\n\n", "\n\n")
+    return text, modified
+
+
+def _update_existing_agents_md(
+    agents_path: Path,
+    content: str,
+    new_block: str,
+    result: dict[str, Any],
+    mode: str,
+) -> bool:
+    """Update AGENTS.md file that already has markers.
+
+    Returns True if update was performed, False if skipped.
+    """
+    begin_idx = content.index(MEMORY_HOOK_BEGIN_MARKER)
+    end_idx = content.index(MEMORY_HOOK_END_MARKER) + len(MEMORY_HOOK_END_MARKER)
+    before = content[:begin_idx].rstrip("\n")
+    after = content[end_idx:].lstrip("\n")
+
+    # VAL-P4-010: Scrub legacy host references
+    before, before_modified = _scrub_legacy_refs(before)
+    after, after_modified = _scrub_legacy_refs(after)
+
+    # Strip trailing/leading newlines appropriately
+    if before:
+        before += "\n"
+    if after:
+        after = "\n" + after
+
+    new_content = before + new_block + after
+
+    if new_content == content and not before_modified and not after_modified:
+        result["skipped"].append("file:AGENTS.md (hook block up-to-date)")
+        return False
+
+    # Mode check: adopt/update/repair should not modify markers in adopt mode
+    if mode == "adopt":
+        result["skipped"].append("file:AGENTS.md (existing marker preserved in adopt mode)")
+        return False
+
+    agents_path.write_text(new_content, encoding="utf-8")
+    result["created"].append("file:AGENTS.md (hook block updated)")
+    return True
+
+
+def _handle_no_markers_agents_md(
+    agents_path: Path,
+    content: str,
+    new_block: str,
+    result: dict[str, Any],
+    mode: str,
+) -> None:
+    """Handle AGENTS.md file that exists but has no markers."""
+    if mode == "adopt":
+        # adopt mode: do not append to files without markers (safe default)
+        result["skipped"].append(f"file:AGENTS.md (no marker in {mode} mode, not appending)")
+        return
+
+    if mode == "update":
+        # update mode: scrub legacy refs only, do not create full block
+        scrubbed, was_modified = _scrub_legacy_refs(content)
+        if was_modified:
+            agents_path.write_text(scrubbed, encoding="utf-8")
+            result["created"].append("file:AGENTS.md (legacy host references scrubbed)")
+        else:
+            result["skipped"].append("file:AGENTS.md (no legacy references found)")
+        return
+
+    if mode == "create":
+        # create mode: append to existing content
+        new_content = content.rstrip("\n") + "\n\n" + new_block
+        agents_path.write_text(new_content, encoding="utf-8")
+        result["created"].append("file:AGENTS.md (hook block appended)")
+        return
+
+    # repair mode: do not append to files without markers
+    result["skipped"].append(f"file:AGENTS.md (no marker in {mode} mode, not appending)")
+
+
 def update_agents_md(
     target: Path,
     *,
@@ -1636,104 +1750,27 @@ def update_agents_md(
     agents_path = target / "AGENTS.md"
     new_block = template_agents_md_block()
 
-    # Legacy host reference patterns to scrub from AGENTS.md (VAL-P4-010)
-    legacy_host_patterns = [
-        "~/.codex/bin/memory-hook",
-        "~/.claude/bin/memory-hook",
-        ".codex/hooks.json",
-        ".claude/hooks.json",
-    ]
-
-    def _scrub_legacy_refs(text: str) -> tuple[str, bool]:
-        """Remove legacy codex/claude hook references from text. These legacy hosts are superseded by factory (sole supported host; see SUPPORTED_HOSTS). Returns (new_text, was_modified)."""
-        modified = False
-        for pattern in legacy_host_patterns:
-            if pattern in text:
-                text = text.replace(pattern, "")
-                modified = True
-        # Clean up any resulting double-blank lines from removals
-        while "\n\n\n" in text:
-            text = text.replace("\n\n\n", "\n\n")
-        return text, modified
-
     if agents_path.exists():
         content = agents_path.read_text(encoding="utf-8")
         has_begin = MEMORY_HOOK_BEGIN_MARKER in content
         has_end = MEMORY_HOOK_END_MARKER in content
 
         if has_begin and has_end:
-            begin_idx = content.index(MEMORY_HOOK_BEGIN_MARKER)
-            end_idx = content.index(MEMORY_HOOK_END_MARKER) + len(MEMORY_HOOK_END_MARKER)
-            before = content[:begin_idx]
-            after = content[end_idx:]
-
-            # Strip legacy host references from before/after sections
-            before, before_modified = _scrub_legacy_refs(before)
-            after, after_modified = _scrub_legacy_refs(after)
-
-            # Strip trailing newlines from before, prepend a single newline
-            before = before.rstrip("\n")
-            if before:
-                before = before + "\n"
-
-            # Strip leading newlines from after, append a single newline
-            after = after.lstrip("\n")
-            if after:
-                after = "\n" + after
-
-            new_content = before + new_block + after
-
-            if new_content == content and not before_modified and not after_modified:
-                result["skipped"].append("file:AGENTS.md (hook block up-to-date)")
-                return
-
-            # Mode check: adopt/update/repair should not modify markers in adopt mode
-            if mode == "adopt":
-                result["skipped"].append("file:AGENTS.md (existing marker preserved in adopt mode)")
-                return
-
-            agents_path.write_text(new_content, encoding="utf-8")
-            result["created"].append("file:AGENTS.md (hook block updated)")
-            return
-
-        # No markers found - mode-aware handling
-        if mode in ("adopt",):
-            # adopt mode: do not append to files without markers (safe default)
-            result["skipped"].append(f"file:AGENTS.md (no marker in {mode} mode, not appending)")
-            return
-
-        if mode == "update":
-            # update mode: scrub legacy refs even without markers, but don't create full block
-            scrubbed, was_modified = _scrub_legacy_refs(content)
-            if was_modified:
-                agents_path.write_text(scrubbed, encoding="utf-8")
-                result["created"].append("file:AGENTS.md (legacy host references scrubbed)")
-            else:
-                result["skipped"].append("file:AGENTS.md (no legacy references found)")
-            return
-
-        if mode == "create":
-            # create mode: append to existing content
-            new_content = content.rstrip("\n") + "\n\n" + new_block
-            agents_path.write_text(new_content, encoding="utf-8")
-            result["created"].append("file:AGENTS.md (hook block appended)")
-            return
+            _update_existing_agents_md(agents_path, content, new_block, result, mode)
         else:
-            # repair mode: do not append to files without markers
-            result["skipped"].append(f"file:AGENTS.md (no marker in {mode} mode, not appending)")
-            return
+            _handle_no_markers_agents_md(agents_path, content, new_block, result, mode)
+        return
 
     # File doesn't exist
-    if mode in ("adopt",):
+    if mode == "adopt":
         # adopt mode: don't create new AGENTS.md
         result["skipped"].append(f"file:AGENTS.md (not created in {mode} mode)")
         return
 
     # create/update/repair mode: create AGENTS.md when absent
-    new_content = new_block
-
-    agents_path.write_text(new_content, encoding="utf-8")
+    agents_path.write_text(new_block, encoding="utf-8")
     result["created"].append("file:AGENTS.md")
+
 
 
 # ---------------------------------------------------------------------------

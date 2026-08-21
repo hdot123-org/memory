@@ -256,3 +256,52 @@ class TestMainSettingsRead:
             rc = main([])
 
         assert rc == 0
+
+
+class TestReadJsonlChunksOSError:
+    """Pinning test for _read_jsonl_chunks OSError behavior (#876)."""
+
+    def test_mid_stream_oserror_returns_true(self, tmp_path: Path) -> None:
+        """_read_jsonl_chunks returns True on mid-stream OSError (treat as truncation)."""
+        import time
+
+        from memory_core.tools.session_end_logger import _read_jsonl_chunks, _StreamingState
+
+        # Create a JSONL file
+        jsonl = tmp_path / "session.jsonl"
+        lines = [
+            {"type": "session_start", "title": "test", "timestamp": "2025-01-01T00:00:00Z"},
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "Hello"}]}, "timestamp": "2025-01-01T00:01:00Z"},
+        ]
+        jsonl.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+
+        state = _StreamingState()
+        start_monotonic = time.monotonic()
+
+        # Mock the file read to raise OSError mid-stream.
+        # Patch pathlib.Path.open (not builtins.open) because Path.open uses
+        # io.open directly on CPython.
+        call_count = [0]
+        real_file = jsonl.open("rb")
+
+        class _FailingFile:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self, size=-1):
+                call_count[0] += 1
+                if call_count[0] >= 2:
+                    raise OSError("Simulated mid-stream read error")
+                return real_file.read(size)
+
+            def close(self):
+                real_file.close()
+
+        with patch.object(Path, "open", return_value=_FailingFile()):
+            result = _read_jsonl_chunks(jsonl, state, start_monotonic)
+
+        # Behavioral pinning: mid-stream OSError → return True (treat as truncation)
+        assert result is True

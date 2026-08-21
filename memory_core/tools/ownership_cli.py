@@ -186,6 +186,74 @@ def _build_default_ownership() -> MemoryOwnership:
     )
 
 
+def _diff_domains(
+    current_domains: dict[str, Any], proposed_domains: dict[str, Any], plan: dict[str, Any]
+) -> None:
+    """Compare domains and populate plan with changes."""
+    # Removed domains
+    for name in set(current_domains) - set(proposed_domains):
+        plan["domains_removed"].append(
+            {"name": name, "path": current_domains[name].path}
+        )
+        plan["has_changes"] = True
+
+    # Added domains
+    for name in set(proposed_domains) - set(current_domains):
+        plan["domains_added"].append(
+            {"name": name, "path": proposed_domains[name].path}
+        )
+        plan["has_changes"] = True
+
+    # Modified domains
+    for name in set(current_domains) & set(proposed_domains):
+        c = current_domains[name]
+        p = proposed_domains[name]
+        changes: dict[str, Any] = {}
+        if c.path != p.path:
+            changes["path"] = {"from": c.path, "to": p.path}
+        if c.level != p.level:
+            changes["level"] = {"from": c.level.name, "to": p.level.name}
+        if c.recursive != p.recursive:
+            changes["recursive"] = {"from": c.recursive, "to": p.recursive}
+        if changes:
+            plan["domains_modified"].append({"name": name, **changes})
+            plan["has_changes"] = True
+
+
+def _diff_resources(
+    current_resources: dict[str, Any], proposed_resources: dict[str, Any], plan: dict[str, Any]
+) -> None:
+    """Compare resources and populate plan with changes."""
+    # Removed resources
+    for name in set(current_resources) - set(proposed_resources):
+        plan["resources_removed"].append(
+            {"name": name, "path": current_resources[name].path}
+        )
+        plan["has_changes"] = True
+
+    # Added resources
+    for name in set(proposed_resources) - set(current_resources):
+        plan["resources_added"].append(
+            {"name": name, "path": proposed_resources[name].path}
+        )
+        plan["has_changes"] = True
+
+    # Modified resources
+    for name in set(current_resources) & set(proposed_resources):
+        c_res: OwnershipResource = current_resources[name]
+        p_res: OwnershipResource = proposed_resources[name]
+        changes_res: dict[str, Any] = {}
+        if c_res.path != p_res.path:
+            changes_res["path"] = {"from": c_res.path, "to": p_res.path}
+        if c_res.level != p_res.level:
+            changes_res["level"] = {"from": c_res.level.name, "to": p_res.level.name}
+        if c_res.domain != p_res.domain:
+            changes_res["domain"] = {"from": c_res.domain, "to": p_res.domain}
+        if changes_res:
+            plan["resources_modified"].append({"name": name, **changes_res})
+            plan["has_changes"] = True
+
+
 def _diff_ownership(
     current: MemoryOwnership, proposed: MemoryOwnership
 ) -> dict[str, Any]:
@@ -212,68 +280,12 @@ def _diff_ownership(
     # Domain diff
     current_domains = {d.name: d for d in current.domains}
     proposed_domains = {d.name: d for d in proposed.domains}
-
-    for name in set(current_domains) - set(proposed_domains):
-        plan["domains_removed"].append(
-            {"name": name, "path": current_domains[name].path}
-        )
-        plan["has_changes"] = True
-
-    for name in set(proposed_domains) - set(current_domains):
-        plan["domains_added"].append(
-            {"name": name, "path": proposed_domains[name].path}
-        )
-        plan["has_changes"] = True
-
-    for name in set(current_domains) & set(proposed_domains):
-        c = current_domains[name]
-        p = proposed_domains[name]
-        changes: dict[str, Any] = {}
-        if c.path != p.path:
-            changes["path"] = {"from": c.path, "to": p.path}
-        if c.level != p.level:
-            changes["level"] = {
-                "from": c.level.name,
-                "to": p.level.name,
-            }
-        if c.recursive != p.recursive:
-            changes["recursive"] = {"from": c.recursive, "to": p.recursive}
-        if changes:
-            plan["domains_modified"].append({"name": name, **changes})
-            plan["has_changes"] = True
+    _diff_domains(current_domains, proposed_domains, plan)
 
     # Resource diff
     current_resources: dict[str, OwnershipResource] = {r.name: r for r in current.resources}
     proposed_resources: dict[str, OwnershipResource] = {r.name: r for r in proposed.resources}
-
-    for name in set(current_resources) - set(proposed_resources):
-        plan["resources_removed"].append(
-            {"name": name, "path": current_resources[name].path}
-        )
-        plan["has_changes"] = True
-
-    for name in set(proposed_resources) - set(current_resources):
-        plan["resources_added"].append(
-            {"name": name, "path": proposed_resources[name].path}
-        )
-        plan["has_changes"] = True
-
-    for name in set(current_resources) & set(proposed_resources):
-        c_res: OwnershipResource = current_resources[name]
-        p_res: OwnershipResource = proposed_resources[name]
-        changes_res: dict[str, Any] = {}
-        if c_res.path != p_res.path:
-            changes_res["path"] = {"from": c_res.path, "to": p_res.path}
-        if c_res.level != p_res.level:
-            changes_res["level"] = {
-                "from": c_res.level.name,
-                "to": p_res.level.name,
-            }
-        if c_res.domain != p_res.domain:
-            changes_res["domain"] = {"from": c_res.domain, "to": p_res.domain}
-        if changes_res:
-            plan["resources_modified"].append({"name": name, **changes_res})
-            plan["has_changes"] = True
+    _diff_resources(current_resources, proposed_resources, plan)
 
     return plan
 

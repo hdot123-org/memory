@@ -39,7 +39,7 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from memory_core.constants import SYSTEM_DIR
 
@@ -393,6 +393,7 @@ def sign_project(
         return None
 
     if now_iso is None:
+
         def now_iso() -> str:
             return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -415,22 +416,22 @@ def sign_project(
         hm = _hmac_sha256(raw, key)
 
         # M4: Classify entry for ownership metadata
-        ownership_id, protection_level, classification_source = _classify_entry(
-            rel_str, resolved_root
-        )
+        ownership_id, protection_level, classification_source = _classify_entry(rel_str, resolved_root)
 
-        entries.append({
-            "path": str(fpath),
-            "rel_path": rel_str,
-            "sha256": sha,
-            "hmac_sha256": hm,
-            "size_bytes": fpath.stat().st_size,
-            "signed_at": timestamp,
-            # M4: Manifest v2 fields
-            "ownership_id": ownership_id,
-            "protection_level": protection_level,
-            "classification_source": classification_source,
-        })
+        entries.append(
+            {
+                "path": str(fpath),
+                "rel_path": rel_str,
+                "sha256": sha,
+                "hmac_sha256": hm,
+                "size_bytes": fpath.stat().st_size,
+                "signed_at": timestamp,
+                # M4: Manifest v2 fields
+                "ownership_id": ownership_id,
+                "protection_level": protection_level,
+                "classification_source": classification_source,
+            }
+        )
 
     manifest = {
         "schema_version": SCHEMA_VERSION,
@@ -500,6 +501,72 @@ def _write_audit_log(
         f.write(line)
 
 
+def _load_existing_manifest(manifest_path: Path) -> dict[str, Any] | None:
+    """Parse manifest.json into a dict; return None if unreadable/corrupt/not an object."""
+    try:
+        loaded: Any = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        _logger.warning("sign_project_incremental: failed to load manifest: %s", exc)
+        return None
+    if isinstance(loaded, dict):
+        return cast("dict[str, Any]", loaded)
+    _logger.warning("sign_project_incremental: manifest is not a JSON object")
+    return None
+
+
+def _resign_changed_paths(
+    existing_manifest: dict[str, Any], changed_paths: list[str], resolved_root: Path, key: bytes, timestamp: str
+) -> dict[str, dict[str, Any]]:
+    """Re-sign changed files and return updated entries_by_rel dict."""
+    entries_by_rel: dict[str, dict[str, Any]] = {}
+    for entry in existing_manifest.get("entries", []):
+        entries_by_rel[entry["rel_path"]] = entry
+
+    for rel_path_str in changed_paths:
+        abs_path = resolved_root / rel_path_str
+        if not abs_path.exists():
+            entries_by_rel.pop(rel_path_str, None)
+            continue
+
+        raw = abs_path.read_bytes()
+        sha = hashlib.sha256(raw).hexdigest()
+        hm = _hmac_sha256(raw, key)
+
+        ownership_id, protection_level, classification_source = _classify_entry(rel_path_str, resolved_root)
+
+        entries_by_rel[rel_path_str] = {
+            "path": str(abs_path),
+            "rel_path": rel_path_str,
+            "sha256": sha,
+            "hmac_sha256": hm,
+            "size_bytes": abs_path.stat().st_size,
+            "signed_at": timestamp,
+            "ownership_id": ownership_id,
+            "protection_level": protection_level,
+            "classification_source": classification_source,
+        }
+    return entries_by_rel
+
+
+def _rebuild_entries_preserving_order(
+    existing_manifest: dict[str, Any], entries_by_rel: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Rebuild entries list preserving original order for unchanged entries."""
+    original_order = [e["rel_path"] for e in existing_manifest.get("entries", [])]
+    seen_in_order: set[str] = set()
+    new_entries: list[dict[str, Any]] = []
+
+    for rp in original_order:
+        if rp in entries_by_rel and rp not in seen_in_order:
+            seen_in_order.add(rp)
+            new_entries.append(entries_by_rel[rp])
+
+    for rp, entry in entries_by_rel.items():
+        if rp not in seen_in_order:
+            new_entries.append(entry)
+    return new_entries
+
+
 def sign_project_incremental(
     project_root: Path,
     key: bytes,
@@ -530,7 +597,6 @@ def sign_project_incremental(
     Returns:
         The manifest dict that was written, or None if skipped (anti-pollution)
     """
-    # Anti-pollution: Skip if project_root is memory-core source repo
     if is_memory_core_source_repo is not None and is_memory_core_source_repo(project_root):
         return None
 
@@ -538,13 +604,16 @@ def sign_project_incremental(
         return None
 
     if now_iso is None:
+
         def now_iso_fn() -> str:
             return datetime.now(UTC).isoformat(timespec="seconds")
     elif callable(now_iso):
         now_iso_fn = now_iso
     else:
+
         def _constant_now_iso() -> str:
             return str(now_iso)
+
         now_iso_fn = _constant_now_iso
 
     resolved_root = project_root.resolve()
@@ -553,11 +622,8 @@ def sign_project_incremental(
 
     # Fallback to full sign if manifest doesn't exist
     if not manifest_path.exists():
-        _logger.info(
-            "sign_project_incremental: manifest not found, falling back to full sign"
-        )
+        _logger.info("sign_project_incremental: manifest not found, falling back to full sign")
         result = sign_project(resolved_root, key, now_iso=now_iso_fn, include_runtime=include_runtime)
-        # Write audit log for the fallback full-sign with reason
         if result is not None:
             _write_audit_log(
                 resolved_root,
@@ -569,66 +635,30 @@ def sign_project_incremental(
             )
         return result
 
-    # Load existing manifest
-    try:
-        existing_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        _logger.warning("sign_project_incremental: failed to load manifest: %s", exc)
-        return sign_project(resolved_root, key, now_iso=now_iso_fn, include_runtime=include_runtime)
-
-    # Build a lookup of existing entries by rel_path
-    entries_by_rel: dict[str, dict[str, Any]] = {}
-    for entry in existing_manifest.get("entries", []):
-        entries_by_rel[entry["rel_path"]] = entry
+    # Load existing manifest; on load failure fall back to a full sign and
+    # return its result immediately (matches the original control flow).
+    existing_manifest = _load_existing_manifest(manifest_path)
+    if existing_manifest is None:
+        result = sign_project(resolved_root, key, now_iso=now_iso_fn, include_runtime=include_runtime)
+        if result is not None:
+            _write_audit_log(
+                resolved_root,
+                action="full-sign",
+                changed_paths=list(changed_paths),
+                entry_count=result.get("entry_count", 0),
+                reason=reason,
+                now_iso=now_iso_fn(),
+            )
+        return result
 
     timestamp = now_iso_fn()
     ownership_digest = _compute_ownership_digest(resolved_root)
 
     # Re-sign changed files
-    for rel_path_str in changed_paths:
-        abs_path = resolved_root / rel_path_str
-        if not abs_path.exists():
-            # File was deleted — remove from manifest
-            entries_by_rel.pop(rel_path_str, None)
-            continue
+    entries_by_rel = _resign_changed_paths(existing_manifest, changed_paths, resolved_root, key, timestamp)
 
-        raw = abs_path.read_bytes()
-        sha = hashlib.sha256(raw).hexdigest()
-        hm = _hmac_sha256(raw, key)
-
-        # M4: Classify entry for ownership metadata
-        ownership_id, protection_level, classification_source = _classify_entry(
-            rel_path_str, resolved_root
-        )
-
-        entries_by_rel[rel_path_str] = {
-            "path": str(abs_path),
-            "rel_path": rel_path_str,
-            "sha256": sha,
-            "hmac_sha256": hm,
-            "size_bytes": abs_path.stat().st_size,
-            "signed_at": timestamp,
-            # M4: Manifest v2 fields
-            "ownership_id": ownership_id,
-            "protection_level": protection_level,
-            "classification_source": classification_source,
-        }
-
-    # Rebuild entries list (preserving original order for unchanged entries)
-    original_order = [e["rel_path"] for e in existing_manifest.get("entries", [])]
-    seen_in_order: set[str] = set()
-    new_entries: list[dict[str, Any]] = []
-
-    # First, walk original order to preserve it for unchanged entries
-    for rp in original_order:
-        if rp in entries_by_rel and rp not in seen_in_order:
-            seen_in_order.add(rp)
-            new_entries.append(entries_by_rel[rp])
-
-    # Then add any new entries that weren't in original order
-    for rp, entry in entries_by_rel.items():
-        if rp not in seen_in_order:
-            new_entries.append(entry)
+    # Rebuild entries list preserving original order
+    new_entries = _rebuild_entries_preserving_order(existing_manifest, entries_by_rel)
 
     manifest = {
         "schema_version": SCHEMA_VERSION,

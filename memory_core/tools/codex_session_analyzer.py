@@ -51,6 +51,48 @@ class SessionAnalyzer:
 
         self.errors: list[str] = []
 
+    def _parse_session_meta(self, payload: dict[str, Any]) -> None:
+        """Parse session_meta event."""
+        self.session_id = payload.get("id", "")
+        self.cwd = payload.get("cwd", "")
+        self.model_provider = payload.get("model_provider", "")
+        self.cli_version = payload.get("cli_version", "")
+        self.started_at = payload.get("timestamp", "")
+
+    def _parse_event_msg(self, payload: dict[str, Any], ts: str) -> None:
+        """Parse event_msg event."""
+        evt_type = payload.get("type", "")
+        if evt_type == "user_message":
+            msg = payload.get("message", "")
+            if msg.strip():
+                self.user_messages.append({"timestamp": ts, "message": msg})
+        elif evt_type == "agent_message":
+            msg = payload.get("message", "")
+            phase = payload.get("phase")
+            if msg.strip() and not phase:
+                self.assistant_messages.append({"timestamp": ts, "message": msg})
+        elif evt_type == "agent_reasoning":
+            text = payload.get("text", "")
+            if text.strip():
+                self.assistant_messages.append({"timestamp": ts, "message": text})
+        elif evt_type == "token_count":
+            info = payload.get("info", {})
+            if info and "total_token_usage" in info:
+                self.token_events.append({
+                    "timestamp": ts,
+                    **info["total_token_usage"],
+                })
+
+    def _parse_response_item(self, payload: dict[str, Any], ts: str) -> None:
+        """Parse response_item event."""
+        payload_type = payload.get("type", "")
+        if payload_type == "function_call":
+            self.tool_calls.append({
+                "timestamp": ts,
+                "name": payload.get("name", ""),
+                "arguments": payload.get("arguments", ""),
+            })
+
     def parse_file(self, path: Path) -> None:
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             if not line.strip():
@@ -65,43 +107,11 @@ class SessionAnalyzer:
             payload = obj.get("payload", {})
 
             if t == "session_meta":
-                self.session_id = payload.get("id", "")
-                self.cwd = payload.get("cwd", "")
-                self.model_provider = payload.get("model_provider", "")
-                self.cli_version = payload.get("cli_version", "")
-                self.started_at = payload.get("timestamp", "")
-
+                self._parse_session_meta(payload)
             elif t == "event_msg":
-                evt_type = payload.get("type", "")
-                if evt_type == "user_message":
-                    msg = payload.get("message", "")
-                    if msg.strip():
-                        self.user_messages.append({"timestamp": ts, "message": msg})
-                elif evt_type == "agent_message":
-                    msg = payload.get("message", "")
-                    phase = payload.get("phase")
-                    if msg.strip() and not phase:
-                        self.assistant_messages.append({"timestamp": ts, "message": msg})
-                elif evt_type == "agent_reasoning":
-                    text = payload.get("text", "")
-                    if text.strip():
-                        self.assistant_messages.append({"timestamp": ts, "message": text})
-                elif evt_type == "token_count":
-                    info = payload.get("info", {})
-                    if info and "total_token_usage" in info:
-                        self.token_events.append({
-                            "timestamp": ts,
-                            **info["total_token_usage"],
-                        })
-
+                self._parse_event_msg(payload, ts)
             elif t == "response_item":
-                payload_type = payload.get("type", "")
-                if payload_type == "function_call":
-                    self.tool_calls.append({
-                        "timestamp": ts,
-                        "name": payload.get("name", ""),
-                        "arguments": payload.get("arguments", ""),
-                    })
+                self._parse_response_item(payload, ts)
 
     @property
     def total_user_messages(self) -> int:

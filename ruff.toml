@@ -7,7 +7,7 @@ select = ["E", "F", "W", "I", "C901", "UP", "B", "SIM", "PTH"]
 ignore = ["E501", "E402"]
 
 [lint.mccabe]
-max-complexity = 20
+max-complexity = 15
 
 [lint.per-file-ignores]
 "memory_core/tools/memory_hook_gateway.py" = ["F821", "F401"]
