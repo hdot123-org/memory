@@ -109,7 +109,7 @@ def load_findings_files(pattern: str) -> list[dict[str, Any]]:
     返回合并后的 findings 列表（带 shard_id 注入）。
     """
     all_findings = []
-    for path in Path(".").glob(pattern):
+    for path in Path().glob(pattern):
         try:
             data = json.loads(path.read_text())
             if not validate_findings(data):

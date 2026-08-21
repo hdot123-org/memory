@@ -62,7 +62,7 @@ def plan_shards(
 
     # Step 2: split large groups into chunks
     chunks = []
-    for dir_path, dir_files in dir_groups.items():
+    for _dir_path, dir_files in dir_groups.items():
         if len(dir_files) <= max_files:
             chunks.append(dir_files)
         else:

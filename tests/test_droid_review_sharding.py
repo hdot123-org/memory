@@ -484,7 +484,6 @@ class TestSeamIntegration:
     def test_27_shard_files_json_parsing_from_env(self):
         """接缝集成：SHARD_FILES 从 GITHUB_ENV 多行定界符格式正确解析（runner 语义）。"""
         import json
-        import os
         import tempfile
 
         # Simulate workflow's toJson() output
@@ -503,7 +502,7 @@ class TestSeamIntegration:
             # Parse GITHUB_ENV file using runner semantics (literal read between delimiters)
             # This is what the GitHub Actions runner actually does
             env_vars = {}
-            with open(env_file) as f:
+            with Path(env_file).open() as f:
                 lines = f.readlines()
 
             i = 0
@@ -538,11 +537,10 @@ class TestSeamIntegration:
             )
             assert result.returncode == 0, f"jq failed: {result.stderr}"
         finally:
-            os.unlink(env_file)
+            Path(env_file).unlink()
 
     def test_28_fail_closed_on_invalid_shard_files_json(self):
         """接缝集成：SHARD_FILES 非法 JSON 时 run_shard.sh fail-closed（runner 语义）。"""
-        import os
         import subprocess
         import tempfile
 
@@ -557,7 +555,7 @@ class TestSeamIntegration:
         try:
             # Parse using runner semantics (literal read)
             env_vars = {}
-            with open(env_file) as f:
+            with Path(env_file).open() as f:
                 lines = f.readlines()
 
             i = 0
@@ -589,7 +587,7 @@ class TestSeamIntegration:
             # jq should fail on invalid JSON
             assert result.returncode != 0, "jq should fail on invalid JSON"
         finally:
-            os.unlink(env_file)
+            Path(env_file).unlink()
 
     def test_29_deleted_file_path_accepted_from_base_side(self, fixture_git_repo, tmp_path):
         """接缝集成：已删除文件（仅存在于 BASE）被 run_shard.sh 接受。"""
