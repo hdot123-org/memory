@@ -299,7 +299,7 @@ def test_val_write_002_global_formal_categories_only_by_promote(test_env):
 
     # Verify that write targets don't include global formal categories
     # (operations/engineering/collaboration in global-kb)
-    for key, target in targets.items():
+    for _key, target in targets.items():
         if isinstance(target, str):
             # Should not write to global formal categories
             assert "global-kb/operations" not in target

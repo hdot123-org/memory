@@ -1279,7 +1279,7 @@ class TestTcpConnectOk:
         from memory_core.tools.daily_kb_audit import _tcp_connect_ok
 
         def mock_create_connection(*args, **kwargs):
-            raise socket.timeout("Connection timed out")
+            raise TimeoutError("Connection timed out")
 
         monkeypatch.setattr(socket, "create_connection", mock_create_connection)
         result = _tcp_connect_ok("localhost", 80, timeout=1)

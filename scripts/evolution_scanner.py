@@ -7,7 +7,7 @@ import subprocess
 import sys
 import uuid
 from dataclasses import asdict, dataclass, replace
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -274,7 +274,7 @@ def _is_suppression_expired(entry: dict[str, Any]) -> bool:
     # Try to parse ISO 8601 date
     try:
         expires_date = date.fromisoformat(str(expires_str))
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(UTC).date()
         return expires_date < today
     except (ValueError, TypeError):
         # Malformed expires value = fail open (don't suppress)
@@ -292,10 +292,7 @@ def _matches_suppression(finding: Finding, entry: dict[str, Any]) -> bool:
         return False
 
     # Check if suppression has expired
-    if _is_suppression_expired(entry):
-        return False
-
-    return True
+    return not _is_suppression_expired(entry)
 
 
 def apply_suppressions(findings: list[Finding], suppressions: list[dict[str, Any]]) -> list[Finding]:
@@ -333,7 +330,7 @@ def get_open_issues(dedup_label: str, failure_label: str = "evolution-isolated")
         all_issues = _query_issues(search, "open", 200)
         closed_issues = _query_issues(search, "closed", 100)
         # VAL-DUP-001: Filter closed issues by time window (only include those closed within DEDUP_CLOSED_WINDOW_DAYS)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         window_cutoff = now - timedelta(days=DEDUP_CLOSED_WINDOW_DAYS)
         for i in closed_issues:
             closed_at_str = i.get("closedAt")
@@ -576,11 +573,14 @@ def _process_findings_with_reopen(
     # INFRA-396: only issues verified as OPEN block the fallback create;
     # closed-in-window entries exist in this list for dedup purposes only.
     open_issue_keys = set()
-    if open_issues:
-        for issue in open_issues:
-            if isinstance(issue, dict) and "rule_id" in issue and "location" in issue:
-                if issue.get("state", "open") == "open":
-                    open_issue_keys.add((issue["rule_id"], issue["location"]))
+    for issue in open_issues or []:
+        if (
+            isinstance(issue, dict)
+            and "rule_id" in issue
+            and "location" in issue
+            and issue.get("state", "open") == "open"
+        ):
+            open_issue_keys.add((issue["rule_id"], issue["location"]))
 
     for f in findings[:quota]:
         if f.severity == "critical" and (f.rule_id, f.location) in resolved_keys:
@@ -663,7 +663,7 @@ def update_history(history_path: Path, findings: list[Finding], issues_created: 
     data.setdefault("resolved_findings", [])
     current_keys = {(f.rule_id, f.location) for f in findings}
     prev = data["snapshots"][-1].get("findings", []) if data.get("snapshots") else []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     now_iso = now.isoformat()
     # Skip findings whose category came from a failed tool (prevents false "resolved")
     new_resolved = [{"rule_id": p.get("rule_id", ""), "location": p.get("location", ""), "resolved_at": now_iso}
@@ -691,7 +691,7 @@ def write_heartbeat(repo_root: Path, issues_created: int, findings_count: int) -
     mid-tick, this file won't be updated, allowing the independent
     heartbeat monitor to detect partial failures.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     heartbeat = {
         "timestamp": now.isoformat(),
         "tick_id": now.strftime("%Y%m%d-%H%M%S"),
@@ -783,7 +783,7 @@ def check_persistent_info_findings(
 
     # 生成提案（跳过已 suppress 的）
     proposals: list[dict[str, Any]] = []
-    expires_date = (datetime.now(timezone.utc) + timedelta(days=90)).strftime("%Y-%m-%d")
+    expires_date = (datetime.now(UTC) + timedelta(days=90)).strftime("%Y-%m-%d")
 
     for rule_id, location in persistent_info_findings:
         if (rule_id, location) in suppressed_keys:
@@ -817,7 +817,7 @@ def check_isolation(findings: list[Finding], history_path: Path, threshold: int,
                 print(f"[evolution] Warning: gh issue list stderr (isolation): {stderr}")
             return
         all_issues = json.loads(result.stdout) if result.stdout.strip() else []
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for finding in findings:
             if sum(1 for s in recent if any(f["rule_id"] == finding.rule_id and f["location"] == finding.location for f in s["findings"])) < threshold:
                 continue

@@ -10,10 +10,11 @@ import logging
 import os
 import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from memory_core.constants import (
     OWNERSHIP_SCHEMA_VERSION,
@@ -349,9 +350,7 @@ def _check_path_escape(rel_path: str) -> bool:
     if rel_path.startswith("/"):
         return True
     # Check for tilde expansion attempts
-    if rel_path.startswith("~"):
-        return True
-    return False
+    return rel_path.startswith("~")
 
 
 def _normalize_to_project_relative(path: str, project_root: Path) -> str:
@@ -437,10 +436,11 @@ def classify_owned_path(
     # will be checked against ownership domains.
     # If it's outside project_root (or no project_root given), it stays
     # absolute and will be rejected by _check_path_escape.
-    if project_root is not None:
-        normalized = _normalize_to_project_relative(original, project_root)
-    else:
-        normalized = original
+    normalized = (
+        _normalize_to_project_relative(original, project_root)
+        if project_root is not None
+        else original
+    )
 
     # Reject path escape attempts on the normalized path.
     # After _normalize_to_project_relative, paths under project_root are relative
@@ -466,13 +466,14 @@ def classify_owned_path(
                 reason=f"Exact match to owned resource: {resource.name}",
             )
         # Support glob patterns in resource paths (e.g., "memory/log/*-errors.jsonl")
-        if "*" in resource.path or "?" in resource.path:
-            if fnmatch.fnmatch(path_str, resource.path):
-                return Owned(
-                    resource=resource,
-                    level=resource.level,
-                    reason=f"Glob match to owned resource: {resource.name}",
-                )
+        if ("*" in resource.path or "?" in resource.path) and fnmatch.fnmatch(
+            path_str, resource.path
+        ):
+            return Owned(
+                resource=resource,
+                level=resource.level,
+                reason=f"Glob match to owned resource: {resource.name}",
+            )
 
     # Check domains
     for domain in ownership.domains:
@@ -480,14 +481,16 @@ def classify_owned_path(
         path_parts = path_str.split("/")
 
         # Check if path is under this domain
-        if len(path_parts) >= len(domain_parts):
-            if path_parts[: len(domain_parts)] == domain_parts:
-                if domain.recursive or len(path_parts) == len(domain_parts):
-                    return Owned(
-                        domain=domain,
-                        level=domain.level,
-                        reason=f"Path under owned domain: {domain.name}",
-                    )
+        if (
+            len(path_parts) >= len(domain_parts)
+            and path_parts[: len(domain_parts)] == domain_parts
+            and (domain.recursive or len(path_parts) == len(domain_parts))
+        ):
+            return Owned(
+                domain=domain,
+                level=domain.level,
+                reason=f"Path under owned domain: {domain.name}",
+            )
 
     return NotOwned(reason="Path not in any owned domain or resource")
 
@@ -562,7 +565,7 @@ def classify_agents_md_block(
     if len(block_starts_before) == len(block_ends_before) and len(block_starts_before) > 0:
         # Build protected ranges
         protected_ranges = []
-        for start, end in zip(block_starts_before, block_ends_before):
+        for start, end in zip(block_starts_before, block_ends_before, strict=True):
             protected_ranges.append((start.start(), end.end()))
 
         # Check if content changed within any protected range

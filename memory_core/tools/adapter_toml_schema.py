@@ -3,9 +3,10 @@
 
 import tomllib
 import warnings as _warnings
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from memory_core.constants import (
     CURRENT_MEMORY_VERSION,

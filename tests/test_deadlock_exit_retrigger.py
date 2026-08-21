@@ -273,10 +273,9 @@ echo "TRIGGER_CALLED" >> "$SANDBOX/trigger_calls.log"
 
         # Verify trigger was NOT called (E4 guard blocked it)
         trigger_log = sandbox / "trigger_calls.log"
-        if trigger_log.exists():
-            call_count = len(trigger_log.read_text().strip().split("\n"))
-        else:
-            call_count = 0
+        call_count = (
+            len(trigger_log.read_text().strip().split("\n")) if trigger_log.exists() else 0
+        )
 
         # redEvidence: Without guard, call_count > 0 (trigger called)
         # With guard, call_count = 0 (trigger blocked by E4 check)
@@ -662,8 +661,10 @@ class TestSessionIdForLog:
 
         assert extract_pos != -1, \
             "SESSION_ID_FOR_LOG must be set somewhere in the script"
-        assert extract_pos < log_pos, \
-            "SESSION_ID_FOR_LOG must be extracted BEFORE the log line (found at pos %d, log at %d)" % (extract_pos, log_pos)
+        assert extract_pos < log_pos, (
+            f"SESSION_ID_FOR_LOG must be extracted BEFORE the log line "
+            f"(found at pos {extract_pos}, log at {log_pos})"
+        )
 
         # Verify extraction uses Python to read from status file (consistent with existing pattern)
         # The extraction should use $STATUS_FILE and parse sessionId

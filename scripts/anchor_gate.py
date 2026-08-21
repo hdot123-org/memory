@@ -57,15 +57,15 @@ def log_extract_err(target: str, number: int, result: subprocess.CompletedProces
         with open(_extract_log_path, "a") as f:
             err = (result.stderr or "").strip().replace("\n", " | ")[:500]
             f.write(
-                "[%s] anchor-extract %s#%s rc=%s: %s\n"
-                % (_ts_extract(), target, number, result.returncode, err)
+                f"[{_ts_extract()}] anchor-extract {target}#{number} "
+                f"rc={result.returncode}: {err}\n"
             )
     except Exception as exc:
         # INFRA-359: never silently swallow the log failure -- warn on
         # stderr, but keep it best effort so the gate decision is unchanged.
         print(
-            "anchor_gate: extract log write failed (%s#%s rc=%s): %s"
-            % (target, number, result.returncode, exc),
+            f"anchor_gate: extract log write failed ({target}#{number} "
+            f"rc={result.returncode}): {exc}",
             file=sys.stderr,
         )
 
@@ -75,15 +75,14 @@ def log_drift(target_ref: str, number: int, reason: str) -> None:
     try:
         with open(_drift_log_path, "a") as f:
             f.write(
-                "[%s] DRIFT: %s GitHub Issue #%s %s\n"
-                % (_ts_drift(), target_ref, number, reason)
+                f"[{_ts_drift()}] DRIFT: {target_ref} GitHub Issue #{number} {reason}\n"
             )
     except Exception as exc:
         # INFRA-359: never silently swallow the log failure -- warn on
         # stderr, but keep it best effort so the gate decision is unchanged.
         print(
-            "anchor_gate: drift log write failed (%s GitHub Issue #%s %s): %s"
-            % (target_ref, number, reason, exc),
+            f"anchor_gate: drift log write failed ({target_ref} GitHub Issue "
+            f"#{number} {reason}): {exc}",
             file=sys.stderr,
         )
 
@@ -126,14 +125,14 @@ def gate(candidates_json: str, target_ref: str, repo: str, log_dir: str) -> str:
         rc, anchor = extract_anchor("issue", number, repo)
         if rc != 0:
             # gh failure -> fail-closed, no close, drift trail
-            log_drift(target_ref, number, "anchor extract failed (rc=%s)" % rc)
+            log_drift(target_ref, number, f"anchor extract failed (rc={rc})")
             continue
         if anchor == target_ref:
             return str(number)
         if not anchor:
             log_drift(target_ref, number, "missing anchor")
         else:
-            log_drift(target_ref, number, "anchor mismatch (got %s)" % anchor)
+            log_drift(target_ref, number, f"anchor mismatch (got {anchor})")
 
     return ""
 
@@ -141,15 +140,14 @@ def gate(candidates_json: str, target_ref: str, repo: str, log_dir: str) -> str:
 def main() -> None:
     if len(sys.argv) != 4:
         print(
-            "Usage: %s <target_ref> <repo> <log_dir>  (candidates JSON on stdin)"
-            % sys.argv[0],
+            f"Usage: {sys.argv[0]} <target_ref> <repo> <log_dir>  (candidates JSON on stdin)",
             file=sys.stderr,
         )
         sys.exit(2)
 
     target_ref, repo, log_dir = sys.argv[1], sys.argv[2], sys.argv[3]
     if not os.path.isdir(log_dir):
-        print("Error: log_dir not found: %s" % log_dir, file=sys.stderr)
+        print(f"Error: log_dir not found: {log_dir}", file=sys.stderr)
         sys.exit(2)
 
     candidates_json = sys.stdin.read()

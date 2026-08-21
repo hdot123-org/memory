@@ -8,7 +8,7 @@ Verify F1-F5 end-to-end collaboration:
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -478,7 +478,7 @@ class TestCross004FullLifecycle:
         error_file = project / "memory" / "log" / f"{date_str}-errors.jsonl"
         error_file.parent.mkdir(parents=True, exist_ok=True)
         entry = json.dumps({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": "ERROR",
             "message": error_msg,
         }) + "\n"

@@ -5,7 +5,7 @@ proposal output to stdout, and that non-persistent findings do not.
 """
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -80,7 +80,7 @@ def test_suppression_suggestion_001_persistent_info_finding_emits_snippet(tmp_pa
 
     # Verify expires is exactly 90 days from today (UTC)
     from datetime import timedelta
-    expected_expires = (datetime.now(timezone.utc).date() + timedelta(days=90)).isoformat()
+    expected_expires = (datetime.now(UTC).date() + timedelta(days=90)).isoformat()
     assert proposal["expires"] == expected_expires
 
     # Verify stdout contains the proposal
@@ -287,7 +287,7 @@ def test_suppression_suggestion_multiple_persistent_findings(tmp_path):
 
     # All should have the same expires
     from datetime import timedelta
-    expected_expires = (datetime.now(timezone.utc).date() + timedelta(days=90)).isoformat()
+    expected_expires = (datetime.now(UTC).date() + timedelta(days=90)).isoformat()
     assert all(p["expires"] == expected_expires for p in proposals)
 
 
@@ -386,7 +386,7 @@ def test_suppression_suggestion_004_expired_suppress_allows_reproposal(tmp_path)
     suppress_path = evolution_dir / "suppress.json"
 
     from datetime import timedelta
-    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    yesterday = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
     suppress_content = {
         "suppressed": [
             {

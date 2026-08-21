@@ -4,13 +4,8 @@ This is a CI regression guard: ensures release-please can bump all version
 locations without version drift.
 """
 
-import sys
+import tomllib
 from pathlib import Path
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 
 def _read_pyproject_version() -> str:

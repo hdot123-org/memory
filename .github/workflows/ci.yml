@@ -58,7 +58,7 @@ jobs:
           echo "Install completed at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
       - name: Lint with ruff
         run: |
-          pip install ruff
+          pip install ruff==0.16.1
           ruff check .
       - name: Install shellcheck and actionlint
         run: |

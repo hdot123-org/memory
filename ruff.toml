@@ -3,7 +3,7 @@ line-length = 120
 exclude = ["memory_core/workspace", "workspace", "templates", "vulture_whitelist.py"]
 
 [lint]
-select = ["E", "F", "W", "I", "C901"]
+select = ["E", "F", "W", "I", "C901", "UP", "B", "SIM", "PTH"]
 ignore = ["E501", "E402"]
 
 [lint.mccabe]

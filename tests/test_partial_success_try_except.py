@@ -63,9 +63,8 @@ class TestPartialSuccessTryExcept:
         call_count = [0]
         def batch_capture_side_effect(events):
             call_count[0] += 1
-            if call_count[0] == 1:
-                return True  # first chunk succeeds
-            return False  # second chunk fails -> partial success
+            # Only the first chunk succeeds; later chunks fail -> partial success
+            return call_count[0] == 1
         mock_telemetry.batch_capture.side_effect = batch_capture_side_effect
 
         # Make last_sync_attempt_file.write_text raise OSError

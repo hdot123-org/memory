@@ -201,9 +201,7 @@ class ProjectProbe:
         if name in _SKIP_DIRS:
             return True
         # Skip hidden directories except .github (for CI detection)
-        if name.startswith(".") and name != ".github":
-            return True
-        return False
+        return name.startswith(".") and name != ".github"
 
     def _find_files(self, pattern: str) -> list[Path]:
         """在目标目录中查找匹配模式的文件（跳过忽略目录）。"""
@@ -251,7 +249,7 @@ class ProjectProbe:
 
         # 策略 2: 通过文件扩展名统计
         ext_counts: dict[str, int] = {}
-        for root, dirs, files in os.walk(self.target):
+        for _root, dirs, files in os.walk(self.target):
             dirs[:] = [d for d in dirs if not self._should_skip_dir(d)]
             for fname in files:
                 ext = Path(fname).suffix.lower()
@@ -313,12 +311,13 @@ class ProjectProbe:
 
     def _detect_library_markers(self) -> int:
         """检测库/包项目标记数量。"""
-        if self._find_files("setup.py") or self._find_files("pyproject.toml"):
-            if self._find_files("src") and any(
-                d.is_dir() for d in (self.target / "src").iterdir()
-                if (self.target / "src").exists()
-            ):
-                return 1
+        if (
+            self._find_files("setup.py") or self._find_files("pyproject.toml")
+        ) and self._find_files("src") and any(
+            d.is_dir() for d in (self.target / "src").iterdir()
+            if (self.target / "src").exists()
+        ):
+            return 1
         return 0
 
     def _detect_frontend_markers(self) -> int:

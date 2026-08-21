@@ -215,7 +215,7 @@ def test_retention_days_env_var_override(tmp_path: Path, monkeypatch) -> None:
         ("2026-07-30.jsonl", 2, True),    # 2 days ago, should be preserved
     ]
 
-    for date_str, age_days, should_preserve in files_to_create:
+    for date_str, age_days, _should_preserve in files_to_create:
         file = events_dir / date_str
         file.write_text(f'{{"date": "{date_str}", "age": {age_days}}}\n', encoding="utf-8")
 
@@ -273,7 +273,7 @@ def test_default_retention_is_30_days(tmp_path: Path, monkeypatch) -> None:
         ("2026-07-15.jsonl", 17, True),   # 17 days ago, should be preserved
     ]
 
-    for date_str, age_days, should_preserve in files_to_create:
+    for date_str, _age_days, _should_preserve in files_to_create:
         file = events_dir / date_str
         file.write_text(f'{{"date": "{date_str}"}}\n', encoding="utf-8")
 

@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -114,7 +114,7 @@ def _write_audit_log(
     Falls back to stderr-only if the path is not writable.
     """
     record = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "event": "schema_convert",
         "drop_audit": True,
         "from_version": schema_from,

@@ -23,15 +23,17 @@ Exit codes:
 """
 
 import argparse
+import contextlib
 import json
 import logging
 import os
 import shutil
 import sys
 import tomllib
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -233,7 +235,7 @@ def migrate_v010_to_v020(memory_root: Path) -> dict[str, Any]:
                     "memory_version": CURRENT_MEMORY_VERSION,
                     "schema_version": data_json.get("schema", "context-package-v1"),
                     "adapter_version": "builtin",
-                    "locked_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "locked_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "lock_reason": "upgrade",
                 }
             }
@@ -242,7 +244,7 @@ def migrate_v010_to_v020(memory_root: Path) -> dict[str, Any]:
             memory = lock_data.get("memory") or {}
             old_version = memory.get("memory_version", "unknown")
             memory["memory_version"] = CURRENT_MEMORY_VERSION
-            memory["locked_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            memory["locked_at"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             memory["lock_reason"] = "upgrade"
             lock_data["memory"] = memory
     except Exception as exc:
@@ -349,7 +351,7 @@ def _v05_backup(memory_root: Path, target_root: Path) -> Path:
     manifest = {
         "from_version": "0.4.0",
         "to_version": "0.5.0",
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source_files_count": source_files_count,
         "source_root": str(memory_root),
     }
@@ -460,17 +462,14 @@ def _v05_cleanup(memory_root: Path, result: dict[str, Any]) -> None:
     """Remove .memory/ directory if empty or has only remaining subdirs."""
     remaining_items = list(memory_root.iterdir())
     for item in remaining_items:
-        if item.name == BACKUPS_DIR_NAME:
-            if not any(item.iterdir()):
-                shutil.rmtree(str(item))
+        if item.name == BACKUPS_DIR_NAME and not any(item.iterdir()):
+            shutil.rmtree(str(item))
 
     try:
         for item in memory_root.iterdir():
             if item.is_dir():
-                try:
+                with contextlib.suppress(OSError):
                     shutil.rmtree(str(item))
-                except OSError:
-                    pass
             else:
                 item.unlink()
         memory_root.rmdir()
@@ -642,14 +641,14 @@ def migrate_v070_to_v080(memory_root: Path) -> dict[str, Any]:
             # JSON format (legacy)
             lock_data = json.loads(lock_text)
             lock_data.setdefault("memory", {})["memory_version"] = "0.8.0"
-            lock_data["memory"]["locked_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            lock_data["memory"]["locked_at"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             lock_data["memory"]["lock_reason"] = "upgrade to 0.8.0"
             _write_toml_memory_lock(lock_data, lock_path)
         else:
             # TOML format
             lock_data = tomllib.loads(lock_text)
             lock_data.setdefault("memory", {})["memory_version"] = "0.8.0"
-            lock_data["memory"]["locked_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            lock_data["memory"]["locked_at"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             lock_data["memory"]["lock_reason"] = "upgrade to 0.8.0"
             _write_toml_memory_lock(lock_data, lock_path)
 
@@ -766,7 +765,7 @@ def append_migration_log(
     dry_run: bool = False,
 ) -> str:
     """Append a record to migrations.log. Returns the log line."""
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     dry_tag = " [DRY RUN]" if dry_run else ""
     line = f"{now} | {from_version} | {to_version} | {status} | {detail}{dry_tag}"
 
@@ -794,7 +793,7 @@ def _create_backup(memory_root: Path, from_version: str, to_version: str) -> Pat
     backups_dir = memory_root / BACKUPS_DIR_NAME
     backups_dir.mkdir(parents=True, exist_ok=True)
 
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     backup_dest = backups_dir / ts
 
     def _ignore_backups(dirpath: str, names: list[str]) -> list[str]:
@@ -821,7 +820,7 @@ def _create_backup(memory_root: Path, from_version: str, to_version: str) -> Pat
     manifest = {
         "from_version": from_version,
         "to_version": to_version,
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source_files_count": source_files_count,
     }
     manifest_path = backup_dest / BACKUP_MANIFEST_NAME
@@ -963,7 +962,7 @@ def execute_rollback(memory_root: Path, *, backup_dir: Path | None = None) -> di
     # Write rolled_back log entry
     log_path = memory_root / MIGRATIONS_LOG_NAME
     if log_path.is_file():
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         line = f"{now} | {bd.name} | rollback | rolled_back | Restored from backup {bd.name}"
         _append_migrations_log(log_path, line)
 
@@ -1114,7 +1113,7 @@ def _perform_backup(
         if is_v05_plus_layout:
             backups_dir = memory_root / BACKUPS_DIR_NAME
             backups_dir.mkdir(parents=True, exist_ok=True)
-            ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
             backup_dest = backups_dir / ts
             source_files_count = 0
             for p in memory_root.rglob("*"):
@@ -1128,7 +1127,7 @@ def _perform_backup(
             manifest = {
                 "from_version": from_version,
                 "to_version": to_version,
-                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "source_files_count": source_files_count,
                 "layout": "v05+",
             }
@@ -1141,7 +1140,7 @@ def _perform_backup(
             _create_backup(memory_root, from_version, to_version)
     except Exception as exc:
         log_path = memory_root / MIGRATIONS_LOG_NAME
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         line = (
             f"{now} | {from_version} | {to_version} | failed_backup_failed"
             f" | Backup creation failed: memory_root={memory_root} exc={exc}"
@@ -1295,7 +1294,7 @@ def _handle_migration_exception(
     log_path = memory_root / MIGRATIONS_LOG_NAME
     if not log_path.is_file():
         log_path = (target / V05_SYSTEM_DIR) / MIGRATIONS_LOG_NAME
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     if rb_succeeded:
         line = f"{now} | {from_version} | {to_version} | failed_rolled_back | {exc}"

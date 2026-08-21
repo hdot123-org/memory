@@ -41,8 +41,7 @@ def _expand_invisible_ranges():
     from memory_core.tools.pretooluse_guard import _CC_CF_RANGES
 
     for _start, _end in _CC_CF_RANGES:
-        for _cp in range(_start, _end + 1):
-            yield _cp
+        yield from range(_start, _end + 1)
 
 
 

@@ -22,9 +22,11 @@ import os
 import subprocess
 import sys
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 # Add memory_core to path for imports
 SCRIPT_DIR = Path(__file__).parent.resolve()
@@ -399,7 +401,7 @@ class IntegrationTester:
                 for path_str in gaps:
                     try:
                         # Import and call record_project_lifecycle
-                        from datetime import datetime, timezone
+                        from datetime import datetime
 
                         from memory_core.tools.project_lifecycle import record_project_lifecycle
 
@@ -410,7 +412,7 @@ class IntegrationTester:
                             host="integration-test",
                             event="discovery-registration",
                             payload={},
-                            now_iso_fn=lambda: datetime.now(timezone.utc).isoformat(),
+                            now_iso_fn=lambda: datetime.now(UTC).isoformat(),
                         )
                         fixed.append(path_str)
                     except Exception as exc:
@@ -814,7 +816,7 @@ class IntegrationTester:
             missing_system = 0
             valid = 0
 
-            for path_str, entry in paths.items():
+            for path_str, _entry in paths.items():
                 path = Path(path_str)
                 if not path.exists():
                     stale += 1

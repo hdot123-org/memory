@@ -190,13 +190,18 @@ class TestInitGeneratesRuntimeReads:
 
         missing = []
         for read_file in runtime_reads:
-            # Check if this file or its containing directory is created
-            if read_file not in created_files and not any(
-                read_file.startswith(d.replace("dir:", "")) for d in created_files if d.startswith("dir:")
+            # Check if this file or its containing directory is created;
+            # anything not created must be covered by KB_TEMPLATES
+            if (
+                read_file not in created_files
+                and not any(
+                    read_file.startswith(d.replace("dir:", ""))
+                    for d in created_files
+                    if d.startswith("dir:")
+                )
+                and read_file not in ["NOW.md", "memory/kb/INDEX.md", "memory/docs/INDEX.md"]
             ):
-                # Check if it's covered by KB_TEMPLATES
-                if read_file not in ["NOW.md", "memory/kb/INDEX.md", "memory/docs/INDEX.md"]:
-                    missing.append(read_file)
+                missing.append(read_file)
 
         # NOW.md is checked in a separate test
         # KB index files should be generated

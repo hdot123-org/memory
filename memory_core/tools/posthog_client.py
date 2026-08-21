@@ -92,10 +92,11 @@ class PostHogAnalytics:
         # 1. POSTHOG_API_KEY set (including '') -> user intent overrides default
         # 2. POSTHOG_API_KEY not set -> load default from data file
         # 3. Both empty -> disabled (no-op)
-        if "POSTHOG_API_KEY" in os.environ:
-            api_key = os.environ["POSTHOG_API_KEY"].strip()
-        else:
-            api_key = _load_default_key()
+        api_key = (
+            os.environ["POSTHOG_API_KEY"].strip()
+            if "POSTHOG_API_KEY" in os.environ
+            else _load_default_key()
+        )
 
         if not api_key:
             logger.info("POSTHOG_API_KEY is empty, analytics disabled")

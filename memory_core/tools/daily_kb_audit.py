@@ -660,7 +660,7 @@ def _tcp_connect_ok(host: str, port: int, timeout: int = TCP_TIMEOUT) -> bool:
     try:
         with socket.create_connection((host, int(port)), timeout=timeout):
             return True
-    except (socket.timeout, ConnectionRefusedError, OSError):
+    except (TimeoutError, ConnectionRefusedError, OSError):
         return False
 
 

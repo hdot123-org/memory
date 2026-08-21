@@ -83,10 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     # Determine global KB root
-    if args.global_kb_root:
-        global_kb_root = args.global_kb_root
-    else:
-        global_kb_root = get_global_kb_root()
+    global_kb_root = args.global_kb_root or get_global_kb_root()
 
     pending_dir = global_kb_root / "pending"
 

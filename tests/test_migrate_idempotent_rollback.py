@@ -3,7 +3,7 @@
 import json
 import multiprocessing
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -196,7 +196,7 @@ def _worker_append(log_path_str: str, start: int, count: int) -> None:
     """Worker process that appends lines to migrations.log."""
     log_path = Path(log_path_str)
     for i in range(count):
-        line = f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')} | 0.1.0 | 0.2.0 | success | worker line {start + i}"
+        line = f"{datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')} | 0.1.0 | 0.2.0 | success | worker line {start + i}"
         # Use the actual append logic from the module
         try:
             import fcntl

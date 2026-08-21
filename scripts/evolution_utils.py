@@ -10,7 +10,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -1005,7 +1005,7 @@ def _parse_iso_timestamp(ts: str) -> datetime | None:
     except (ValueError, TypeError, AttributeError):
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -1041,10 +1041,10 @@ def detect_sync_orphans(
         3. age > threshold_minutes（给 Linear 足够的同步时间）
     """
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
     # 防御：注入的 now 若为 naive，按 UTC 处理，避免与 tz-aware created_at 相减报错
     if now.tzinfo is None:
-        now = now.replace(tzinfo=timezone.utc)
+        now = now.replace(tzinfo=UTC)
 
     orphans: list[dict[str, Any]] = []
     for issue in gh_issues:
@@ -1111,7 +1111,7 @@ def reconcile_in_progress(dedup_label: str) -> int:
         print(f"[evolution] Warning: Failed to fetch open issues for reconciliation: {e}")
         return 0
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     stuck_count = 0
 
     for issue in issues:
@@ -1272,7 +1272,7 @@ def classify_orphan_issues(
     current_keys = {(f.rule_id, f.location) for f in current_findings}
 
     classifications = []
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
 
     for issue in open_issues:
         # INFRA-403: closed-in-window dedup entries are not live orphans
@@ -1701,7 +1701,7 @@ def forward_drift_watch(
         return []
 
     records = []
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
 
     for finding in findings:
         # Skip non-actionable findings (excluded categories)
@@ -1768,7 +1768,7 @@ def close_expired_notifications() -> int:
         print("[notification-ttl] Warning: failed to parse issues JSON")
         return 0
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     ttl_seconds = NOTIFICATION_TTL_DAYS * 86400  # Convert days to seconds
     closed_count = 0
 

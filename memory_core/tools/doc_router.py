@@ -67,8 +67,4 @@ def is_registered_doc_dir(path: Path) -> bool:
         if rel.startswith(cat_dir):
             return True
 
-    for exc_dir in EXCEPTION_DIRS:
-        if rel.startswith(exc_dir):
-            return True
-
-    return False
+    return any(rel.startswith(exc_dir) for exc_dir in EXCEPTION_DIRS)

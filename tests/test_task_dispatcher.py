@@ -84,7 +84,7 @@ class TestTaskDispatcher:
         d.dispatch(prompt, task_name="filetest")
         # instructions.md should exist somewhere in workspace
         found = False
-        for root, _dirs, files in os.walk(d.workspace):
+        for _root, _dirs, files in os.walk(d.workspace):
             if "instructions.md" in files:
                 found = True
                 break

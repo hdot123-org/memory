@@ -227,9 +227,10 @@ def main() -> int:
         if layout_audit.get("degraded"):
             if report["status"] != "error":
                 report["status"] = "degraded"
-        elif layout_audit.get("p0", 0) > 0 or layout_audit.get("p1", 0) > 0:
-            if report["status"] not in ("error", "degraded"):
-                report["status"] = "degraded"
+        elif (layout_audit.get("p0", 0) > 0 or layout_audit.get("p1", 0) > 0) and report[
+            "status"
+        ] not in ("error", "degraded"):
+            report["status"] = "degraded"
 
     output_path = Path(args.output) if args.output else (target / "memory" / "system" / "health-report.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)

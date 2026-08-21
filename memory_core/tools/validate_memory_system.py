@@ -325,9 +325,7 @@ def _is_whitelisted_path(rel_path: Path) -> bool:
     if top.startswith(".") and rel_path.is_file():
         return True
     # Root-level config files (README, LICENSE, CHANGELOG, etc.)
-    if rel_path.parent == rel_path:
-        return True
-    return False
+    return rel_path.parent == rel_path
 
 
 def _has_forbidden_state_name(rel_path: Path) -> bool:
@@ -458,14 +456,13 @@ def detect_pollution(repo_root: Path) -> list[dict[str, Any]]:
                     })
 
         # ── Rule 2: Forbidden state files in runtime locations ──
-        if _has_forbidden_state_name(rel_path):
-            if not _is_whitelisted_path(rel_path):
-                findings.append({
-                    "path": str(rel_path),
-                    "rule": "forbidden-state-file",
-                    "severity": "error",
-                    "detail": f"Runtime state file {rel_path.name!r} found outside whitelisted paths",
-                })
+        if _has_forbidden_state_name(rel_path) and not _is_whitelisted_path(rel_path):
+            findings.append({
+                "path": str(rel_path),
+                "rule": "forbidden-state-file",
+                "severity": "error",
+                "detail": f"Runtime state file {rel_path.name!r} found outside whitelisted paths",
+            })
 
         # ── Rule 3: Business strings in runtime content ──
         content_findings = _scan_file_content(filepath, repo_root)
