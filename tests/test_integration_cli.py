@@ -63,6 +63,7 @@ class TestMemoryInitCLI:
             [sys.executable, "-m", "memory_core.tools.init_project_memory", "--version"],
             capture_output=True,
             text=True,
+            cwd=REPO_ROOT,
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
         assert CURRENT_MEMORY_VERSION in result.stdout, (
