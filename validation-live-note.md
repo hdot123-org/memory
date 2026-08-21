@@ -1,0 +1,1 @@
+# Live validation test fixture
