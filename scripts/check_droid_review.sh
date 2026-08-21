@@ -3,6 +3,14 @@
 # Exit 0 if droid-review passed, exit 1 if failed or not found
 # Skip gracefully for non-PR events (push to main)
 
+# Race condition fix validation test - substantial change to trigger real review
+# This comment block explains the stale-check race scenario:
+# When a PR transitions from draft to ready, a stale concluded check
+# (e.g., 'skipped' from draft era) may coexist with a brand-new in_progress
+# review on the same SHA. The old single-phase logic would immediately read
+# the stale conclusion → ci-ok sees failure → cancel-on-ci-fail kills the
+# running review → merge deadlock.
+
 set -e
 
 # Input: GitHub event name, repository, commit SHA, GitHub token
