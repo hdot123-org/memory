@@ -337,11 +337,11 @@ def _read_last_user_message_from_transcript(transcript_path: str | None) -> str 
 
 def _sanitize_for_log(text: str, max_len: int = 2000) -> str:
     """Sanitize text for logging (truncate and escape)."""
-    if not isinstance(text, str):
-        text = str(text)
-    if len(text) > max_len:
-        text = text[:max_len] + "... (truncated)"
-    return text.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+    try:
+        from ._redaction import redact as _shared_redact
+    except ImportError:
+        from _redaction import redact as _shared_redact  # type: ignore
+    return _shared_redact(text, max_len=max_len)
 
 
 def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:

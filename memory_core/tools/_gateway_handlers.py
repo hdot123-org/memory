@@ -102,15 +102,6 @@ def _emit_pretooluse_metrics(host: str, event: str, status: str, start_time: flo
         _logger.debug("pre-tool-use metrics emit skipped: %s", exc)
 
 
-def _sanitize_for_log(text: str, max_len: int = 2000) -> str:
-    """Sanitize text for logging (truncate and escape)."""
-    if not isinstance(text, str):
-        text = str(text)
-    if len(text) > max_len:
-        text = text[:max_len] + "... (truncated)"
-    return text.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
-
-
 # ---------------------------------------------------------------------------
 # 事件处理函数
 # ---------------------------------------------------------------------------

@@ -157,6 +157,9 @@ from ._gateway_telemetry import (
     _sanitize_for_log,
 )
 
+# Redaction delegation (security: _sanitize_for_log 委托 _redaction.redact 脱敏)
+from ._redaction import redact
+
 # ---------------------------------------------------------------------------
 # _gateway_dispatch — CWD 发现、delegate 执行、输出格式化
 # ---------------------------------------------------------------------------
