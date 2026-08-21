@@ -389,9 +389,10 @@ def check_adapter_registry_complete() -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
 
-    gateway_file = TOOLS_DIR / "memory_hook_gateway.py"
+    # M3 gateway split: _ADAPTER_REGISTRY lives in _gateway_config.py
+    gateway_file = TOOLS_DIR / "_gateway_config.py"
     if not gateway_file.exists():
-        errors.append("memory_hook_gateway.py: file not found")
+        errors.append("_gateway_config.py: file not found")
         return errors, warnings
 
     try:
@@ -400,17 +401,17 @@ def check_adapter_registry_complete() -> tuple[list[str], list[str]]:
         # Find _ADAPTER_REGISTRY
         registry_match = re.search(r'_ADAPTER_REGISTRY\s*=\s*\{([^}]+)\}', content, re.DOTALL)
         if not registry_match:
-            errors.append("memory_hook_gateway.py: _ADAPTER_REGISTRY not found")
+            errors.append("_gateway_config.py: _ADAPTER_REGISTRY not found")
             return errors, warnings
 
         registry_content = registry_match.group(1)
 
         # Check for default (workbot has been archived, no longer required)
         if '"default"' not in registry_content and "'default'" not in registry_content:
-            errors.append("memory_hook_gateway.py: _ADAPTER_REGISTRY missing 'default' entry")
+            errors.append("_gateway_config.py: _ADAPTER_REGISTRY missing 'default' entry")
 
     except Exception as exc:
-        errors.append(f"memory_hook_gateway.py: error checking registry: {exc}")
+        errors.append(f"_gateway_config.py: error checking registry: {exc}")
 
     return errors, warnings
 
@@ -739,9 +740,10 @@ def check_provider_builder_called() -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
 
-    gateway_file = TOOLS_DIR / "memory_hook_gateway.py"
+    # M3 gateway split: provider/shadow builder logic lives in _gateway_policy.py
+    gateway_file = TOOLS_DIR / "_gateway_policy.py"
     if not gateway_file.exists():
-        errors.append("memory_hook_gateway.py: file not found")
+        errors.append("_gateway_policy.py: file not found")
         return errors, warnings
 
     content = gateway_file.read_text(encoding="utf-8")
@@ -769,7 +771,7 @@ def check_provider_builder_called() -> tuple[list[str], list[str]]:
             and "build_context_package_from_config(config)" in after_assignment
         ):
             errors.append(
-                "memory_hook_gateway.py: provider_builder is assigned but "
+                "_gateway_policy.py: provider_builder is assigned but "
                 "build_context_package_from_config is called directly instead"
             )
 
@@ -785,7 +787,7 @@ def check_provider_builder_called() -> tuple[list[str], list[str]]:
             and "build_context_package_from_config(config)" in after_shadow
         ):
             errors.append(
-                "memory_hook_gateway.py: shadow_builder is assigned but "
+                "_gateway_policy.py: shadow_builder is assigned but "
                 "build_context_package_from_config is called directly instead"
             )
 

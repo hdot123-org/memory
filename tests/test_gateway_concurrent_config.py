@@ -24,8 +24,11 @@ if str(repo_root) not in sys.path:
 
 
 def _clear_gateway_modules() -> None:
+    # M3 gateway split: _gateway_* 子模块必须与 memory_hook* 一起清理，
+    # 否则重新加载的门面 import 新 memory_hook_core，而缓存的 _gateway_policy
+    # 仍持有旧 build_context_package_from_config（函数对象身份漂移）。
     for name in list(sys.modules.keys()):
-        if name.startswith("memory_core.tools.memory_hook"):
+        if name.startswith(("memory_core.tools.memory_hook", "memory_core.tools._gateway")):
             if "integrity" in name:
                 continue  # Preserve integrity modules to avoid stale refs
             del sys.modules[name]

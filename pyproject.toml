@@ -172,6 +172,30 @@ strict = true
 module = "memory_core.tools.mcp_server"
 strict = true
 
+[[tool.mypy.overrides]]
+module = "memory_core.tools._gateway_config"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools._gateway_artifacts"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools._gateway_telemetry"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools._gateway_policy"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools._gateway_dispatch"
+strict = true
+
+[[tool.mypy.overrides]]
+module = "memory_core.tools._gateway_handlers"
+strict = true
+
 [tool.deptry]
 ignore = [
     "tomllib",  # stdlib in Python 3.11+
@@ -216,6 +240,12 @@ DEP001 = [
     "_redaction",
     "_scope_resolver_base",
     "_utils",
+    "_gateway_config",
+    "_gateway_artifacts",
+    "_gateway_telemetry",
+    "_gateway_policy",
+    "_gateway_dispatch",
+    "_gateway_handlers",
     "business_policy_checks",
     "error_logger",
     "yaml",

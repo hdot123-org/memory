@@ -115,12 +115,18 @@ class TestSignalHandlerPlacement:
         assert "signal.alarm" in content
 
     def test_gateway_sigint_before_imports(self):
-        """VAL-SIGINT-005: SIGINT handler appears before import argparse in gateway.py."""
+        """VAL-SIGINT-005: SIGINT handler registered before heavyweight imports in gateway.py.
+
+        M3 gateway split: the facade keeps the boot-time signal handlers at
+        the top (before the submodule re-export imports); the heavy arg-parsing
+        code now lives in _gateway_dispatch, so we compare against the first
+        re-export import as the "heavyweight import" marker.
+        """
         content = GATEWAY_PATH.read_text()
         sigint_line = content.index("signal.signal(signal.SIGINT")
-        argparse_line = content.index("import argparse")
-        assert sigint_line < argparse_line, (
-            "SIGINT handler must appear before import argparse"
+        heavy_import_line = content.index("from ._gateway_artifacts import")
+        assert sigint_line < heavy_import_line, (
+            "SIGINT handler must be registered before heavyweight gateway imports"
         )
 
     def test_gateway_has_sigalrm_boot_timeout(self):

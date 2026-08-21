@@ -18,8 +18,11 @@ import pytest
 # Helper: reset adapter to default and force-reload gateway modules
 # ---------------------------------------------------------------------------
 
+# M3 gateway split: 拆分模块（_gateway_*）与 memory_hook* 必须一起清理，
+# 否则门面重新加载新 memory_hook_core 时 _gateway_policy 仍持有旧函数对象。
 _MODULE_PREFIXES = (
     "memory_core.tools.memory_hook",
+    "memory_core.tools._gateway",
     "memory_core.tools.memory_root_discovery",
 )
 

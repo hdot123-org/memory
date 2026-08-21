@@ -910,8 +910,9 @@ class TestExecuteDelegate:
 class TestAppendErrorLog:
     def test_fallback_writes_to_log(self, gateway_module, tmp_path, monkeypatch):
         monkeypatch.setattr(gateway_module, "ERROR_LOG", tmp_path / "errors.log")
-        # Force RuntimeError from sink
-        monkeypatch.setattr(gateway_module, "_append_error_log_via_sink", MagicMock(side_effect=RuntimeError("fail")))
+        # Force RuntimeError from _get_error_sink to trigger fallback path
+        # Note: append_error_log directly calls _get_error_sink(), not _append_error_log_via_sink
+        monkeypatch.setattr(gateway_module, "_get_error_sink", MagicMock(side_effect=RuntimeError("fail")))
 
         gateway_module.append_error_log("test-component", "test message", {"key": "value"})
 
