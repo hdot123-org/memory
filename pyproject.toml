@@ -99,6 +99,20 @@ module = "memory_core.tools.error_logger"
 strict = true
 
 [[tool.mypy.overrides]]
+module = [
+    "memory_core.tools._init_autofill",
+    "memory_core.tools._init_config",
+    "memory_core.tools._init_finalize",
+    "memory_core.tools._init_hooks",
+    "memory_core.tools._init_pipeline",
+    "memory_core.tools._init_render",
+    "memory_core.tools._init_templates_core",
+    "memory_core.tools._init_templates_misc",
+    "memory_core.tools._init_templates_plans",
+]
+strict = true
+
+[[tool.mypy.overrides]]
 module = "memory_core.tools.version_sync"
 strict = true
 
@@ -210,6 +224,15 @@ DEP001 = [
     "evolution_adapters",
     "evolution_utils",
     "evolution_scanner",
+    "_init_autofill",
+    "_init_config",
+    "_init_finalize",
+    "_init_hooks",
+    "_init_pipeline",
+    "_init_render",
+    "_init_templates_core",
+    "_init_templates_misc",
+    "_init_templates_plans",
 ]
 DEP002 = [
     "pytest-cov",
