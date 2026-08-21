@@ -278,7 +278,7 @@ print('')
 
         # Run N=3 times to accumulate counter (below threshold N=5)
         # This verifies counter increment logic without triggering actual Linear API calls
-        for tick in range(3):
+        for _tick in range(3):
             subprocess.run(
                 ["bash", str(sandbox_script)],
                 env=env,

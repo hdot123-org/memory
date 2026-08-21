@@ -7,7 +7,7 @@ import json
 import os
 import subprocess
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -59,7 +59,7 @@ class TestPhaseAReconciliation:
 
     def test_phase_a_detects_stale_uninjected_file(self, temp_locks_dir, watchdog_script):
         """Phase A 应该检测超过 30 分钟未注入的 pending-ci 文件"""
-        created_at = datetime.now(timezone.utc) - timedelta(minutes=35)
+        created_at = datetime.now(UTC) - timedelta(minutes=35)
         file_path = create_pending_ci_file(temp_locks_dir, 123, created_at)
 
         env = os.environ.copy()
@@ -80,7 +80,7 @@ class TestPhaseAReconciliation:
 
     def test_phase_a_ignores_recent_file(self, temp_locks_dir, watchdog_script):
         """Phase A 不应该删除 30 分钟内的文件"""
-        created_at = datetime.now(timezone.utc) - timedelta(minutes=20)
+        created_at = datetime.now(UTC) - timedelta(minutes=20)
         file_path = create_pending_ci_file(temp_locks_dir, 124, created_at)
 
         env = os.environ.copy()
@@ -100,8 +100,8 @@ class TestPhaseAReconciliation:
 
     def test_phase_a_ignores_file_with_injected_at(self, temp_locks_dir, watchdog_script):
         """Phase A 应该跳过已注入的文件（由 Phase B 处理）"""
-        created_at = datetime.now(timezone.utc) - timedelta(minutes=35)
-        injected_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+        created_at = datetime.now(UTC) - timedelta(minutes=35)
+        injected_at = datetime.now(UTC) - timedelta(minutes=30)
         file_path = create_pending_ci_file(
             temp_locks_dir, 125, created_at, injected_at=injected_at
         )
@@ -127,8 +127,8 @@ class TestPhaseBReconciliation:
 
     def test_phase_b_detects_stale_injected_file(self, temp_locks_dir, watchdog_script):
         """Phase B 应该检测超过 45 分钟已注入但未消费的文件"""
-        created_at = datetime.now(timezone.utc) - timedelta(minutes=55)
-        injected_at = datetime.now(timezone.utc) - timedelta(minutes=50)
+        created_at = datetime.now(UTC) - timedelta(minutes=55)
+        injected_at = datetime.now(UTC) - timedelta(minutes=50)
         create_pending_ci_file(
             temp_locks_dir, 126, created_at, injected_at=injected_at
         )
@@ -151,8 +151,8 @@ class TestPhaseBReconciliation:
 
     def test_phase_b_ignores_recent_injected_file(self, temp_locks_dir, watchdog_script):
         """Phase B 不应该处理 45 分钟内注入的文件"""
-        created_at = datetime.now(timezone.utc) - timedelta(minutes=40)
-        injected_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+        created_at = datetime.now(UTC) - timedelta(minutes=40)
+        injected_at = datetime.now(UTC) - timedelta(minutes=30)
         file_path = create_pending_ci_file(
             temp_locks_dir, 127, created_at, injected_at=injected_at
         )

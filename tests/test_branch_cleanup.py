@@ -6,7 +6,7 @@ import json
 import os
 import shutil
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -292,7 +292,7 @@ def get_remote_branches(bare_repo: Path) -> list[str]:
 # ============================================================================
 def test_immediate_mode_only_processes_specified_branch(tmp_path: Path):
     """When invoked as --immediate feature-A, only feature-A is processed."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)  # 2 days ago
 
     # Create branches: feature-A (target), feature-B, feature-C (should be untouched)
@@ -336,7 +336,7 @@ def test_immediate_mode_only_processes_specified_branch(tmp_path: Path):
 # ============================================================================
 def test_immediate_mode_deletes_branch_without_open_pr(tmp_path: Path):
     """When --immediate <branch> and no open PR, branch is deleted regardless of age."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     fresh_date = now - timedelta(minutes=5)  # Very fresh commit
 
     branches = [("feature-fresh", fresh_date, False)]
@@ -364,7 +364,7 @@ def test_immediate_mode_deletes_branch_without_open_pr(tmp_path: Path):
 # ============================================================================
 def test_immediate_mode_skips_branch_with_open_pr(tmp_path: Path):
     """When --immediate <branch> and branch has open PR, branch is NOT deleted."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)
 
     branches = [("feature-with-pr", old_date, True)]
@@ -396,7 +396,7 @@ def test_immediate_mode_skips_branch_with_open_pr(tmp_path: Path):
 def test_merged_pr_recent_branch_preserved(tmp_path: Path):
     """MERGED PR branch < 1h old is preserved (tier=MERGED).
     Content is already in main, so guard doesn't apply and age threshold is checked."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     recent_date = now - timedelta(minutes=30)  # 30 min ago, < 1h threshold
 
     branches = [("merged-recent", recent_date, False)]
@@ -431,7 +431,7 @@ def test_merged_pr_old_branch_deleted(tmp_path: Path):
     Content must be merged into main so the guard does not falsely protect it
     (after guard expansion in M2 hardening, MERGED branches also go through
     content-equivalence check)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(hours=3)  # 3h ago, > 1h threshold
 
     branches = [("merged-old", old_date, False)]
@@ -463,7 +463,7 @@ def test_merged_pr_old_branch_deleted(tmp_path: Path):
 def test_closed_pr_recent_branch_preserved(tmp_path: Path):
     """CLOSED PR branch < 4h old is preserved (tier=CLOSED).
     Content must be merged into main to bypass the unmerged-unique-commits protection."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     recent_date = now - timedelta(hours=2)  # 2h ago, < 4h threshold
 
     branches = [("closed-recent", recent_date, False)]
@@ -495,7 +495,7 @@ def test_closed_pr_recent_branch_preserved(tmp_path: Path):
 def test_closed_pr_old_branch_deleted(tmp_path: Path):
     """CLOSED PR branch > 4h old is deleted (tier=CLOSED).
     Content must be merged into main to bypass the unmerged-unique-commits protection."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(hours=6)  # 6h ago, > 4h threshold
 
     branches = [("closed-old", old_date, False)]
@@ -526,7 +526,7 @@ def test_closed_pr_old_branch_deleted(tmp_path: Path):
 
 def test_orphan_recent_branch_preserved(tmp_path: Path):
     """No-PR branch < 24h old is preserved (tier=ORPHAN)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     recent_date = now - timedelta(hours=12)  # 12h ago, < 24h threshold
 
     branches = [("orphan-recent", recent_date, False)]
@@ -551,7 +551,7 @@ def test_orphan_recent_branch_preserved(tmp_path: Path):
 
 def test_orphan_old_branch_deleted(tmp_path: Path):
     """No-PR branch > 24h old is deleted (tier=ORPHAN)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)  # 2 days ago, > 24h threshold
 
     branches = [("orphan-old", old_date, False)]
@@ -584,7 +584,7 @@ def test_merged_pr_reverted_branch_protected(tmp_path: Path):
     still has unique commits (squash SHA ≠ original), but now main no longer
     contains the content. The guard must protect it to prevent data loss.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)
 
     branches = [("reverted-feature", old_date, False)]
@@ -634,7 +634,7 @@ def test_merged_pr_reverted_branch_protected(tmp_path: Path):
 # ============================================================================
 def test_branch_age_zero_falls_back_to_default(tmp_path: Path):
     """BRANCH_AGE_MERGED_HOURS=0 should fall back to default (1h)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(hours=3)
 
     branches = [("test-zero", old_date, False)]
@@ -668,7 +668,7 @@ def test_branch_age_zero_falls_back_to_default(tmp_path: Path):
 
 def test_branch_age_negative_falls_back_to_default(tmp_path: Path):
     """BRANCH_AGE_CLOSED_HOURS=-5 should fall back to default (4h)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(hours=6)
 
     branches = [("test-negative", old_date, False)]
@@ -705,7 +705,7 @@ def test_branch_age_negative_falls_back_to_default(tmp_path: Path):
 # ============================================================================
 def test_env_override_changes_behavior(tmp_path: Path):
     """Changing BRANCH_AGE_MERGED_HOURS changes the deletion threshold."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     # Branch is 5h old: would be deleted with default 1h, but kept with 10h override
     recent_date = now - timedelta(hours=5)
 
@@ -745,7 +745,7 @@ def test_env_override_changes_behavior(tmp_path: Path):
 # ============================================================================
 def test_scheduled_mode_skips_branch_with_open_pr(tmp_path: Path):
     """When --scheduled and branch > 24h old has open PR, it is NOT deleted."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)
 
     branches = [("feature-with-pr", old_date, True)]
@@ -846,7 +846,7 @@ def test_empty_branch_list_exits_cleanly(tmp_path: Path):
 # ============================================================================
 def test_deleted_branches_tracked_in_output(tmp_path: Path):
     """Script outputs deleted branch names in a parseable format."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)
 
     branches = [
@@ -967,7 +967,7 @@ def test_workflow_calls_extracted_script():
 # ============================================================================
 def test_immediate_mode_no_age_threshold(tmp_path: Path):
     """In --immediate mode, age check is skipped entirely."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     very_fresh = now - timedelta(seconds=30)  # 30 seconds old
 
     branches = [("brand-new", very_fresh, False)]
@@ -1021,7 +1021,7 @@ def test_immediate_mode_nonexistent_branch(tmp_path: Path):
 # ============================================================================
 def test_scheduled_mode_multiple_orphans(tmp_path: Path):
     """3 orphan branches (> 24h, no PR) all deleted."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)
     fresh_date = now - timedelta(hours=12)
 
@@ -1099,7 +1099,7 @@ def test_script_has_execute_permission():
 # ============================================================================
 def test_gh_cli_failure_skip_branch(tmp_path: Path):
     """When gh pr list fails, branch is skipped (not deleted)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)
 
     branches = [("feature-api-error", old_date, False)]
@@ -1150,7 +1150,7 @@ def test_unreadable_commit_date_skip_branch(tmp_path: Path):
 # ============================================================================
 def test_output_format_parseable(tmp_path: Path):
     """Script writes deleted_count and protected_count in parseable format."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)
 
     branches = [("test-branch", old_date, False)]
@@ -1187,7 +1187,7 @@ def test_output_format_parseable(tmp_path: Path):
 # ============================================================================
 def test_cross_immediate_mode_only_specified_branch(tmp_path: Path):
     """PR for branch-A closed. Script processes ONLY branch-A."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)
 
     branches = [
@@ -1222,7 +1222,7 @@ def test_cross_immediate_mode_only_specified_branch(tmp_path: Path):
 # ============================================================================
 def test_cross_immediate_mode_deletes_regardless_of_age(tmp_path: Path):
     """Branch 5 minutes old with no open PR → deleted in immediate mode."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     very_fresh = now - timedelta(minutes=5)
 
     branches = [("young-branch", very_fresh, False)]
@@ -1250,7 +1250,7 @@ def test_cross_immediate_mode_deletes_regardless_of_age(tmp_path: Path):
 # ============================================================================
 def test_cross_immediate_mode_skips_branch_with_pr(tmp_path: Path):
     """Branch has open PR → NOT deleted in immediate mode."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)
 
     branches = [("protected-branch", old_date, True)]
@@ -1305,7 +1305,7 @@ def test_cross_immediate_mode_never_deletes_main(tmp_path: Path):
 # ============================================================================
 def test_cross_scheduled_mode_criteria_enforced(tmp_path: Path):
     """Stale (> 24h, no PR) → deleted. Fresh (< 24h, no PR) → preserved. Has open PR → preserved."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)
     fresh_date = now - timedelta(hours=12)
 
@@ -1392,7 +1392,7 @@ def test_fully_merged_branch_not_falsely_protected(tmp_path: Path):
     "protected". The fix uses 2-dot `origin/main..origin/$BRANCH` (commits in
     branch but not in main), so a fully-merged branch reports 0 unique commits.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)  # older than 24h threshold
 
     # Set up a fixture repo with one feature branch.
@@ -1466,7 +1466,7 @@ def test_immediate_mode_deletes_merged_pr_branch(tmp_path: Path):
     also go through content-equivalence check: if the content is in main (merge-tree
     equivalent), the guard does NOT protect it and the branch is deleted.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)  # 2 days ago
 
     branches = [("merged-feature", old_date, False)]
@@ -1515,7 +1515,7 @@ def test_scheduled_mode_protects_closed_not_merged_with_unique_commits(tmp_path:
     UNIQUE_COUNT will be > 0. Combined with a CLOSED PR, the safety-protection
     feature kicks in and the branch is preserved.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)  # 2 days ago
 
     branches = [("closed-unmerged", old_date, False)]
@@ -1568,7 +1568,7 @@ def test_squash_merged_branch_not_falsely_protected(tmp_path: Path) -> None:
     - PR state: CLOSED (not merged)
     Expected: branch deleted (not protected).
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)
 
     # Build the fixture manually: the standard helper cannot express
@@ -1671,7 +1671,7 @@ def test_closed_branch_with_unique_content_still_protected(tmp_path: Path) -> No
     - branch adds unique-file.txt with content that main never receives.
     Expected: branch protected (not deleted), PROTECTED marker in output.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)
 
     branches = [("unique-content", old_date, False)]
@@ -1723,7 +1723,7 @@ def test_retired_branch_not_falsely_protected(tmp_path: Path) -> None:
     unmerged-unique-commits protection. Open-PR protection and the 24h age
     threshold still apply.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old_date = now - timedelta(days=2)
 
     branches = [("superseded-feature", old_date, False)]
@@ -1764,7 +1764,7 @@ def test_retired_branch_not_falsely_protected(tmp_path: Path) -> None:
 def test_retired_branch_with_open_pr_still_skipped(tmp_path: Path) -> None:
     """A retired branch with an OPEN PR is still skipped: retirement only
     exempts the unmerged-unique-commits protection, never the open-PR rule."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     fresh_date = now - timedelta(hours=1)  # within 24h (irrelevant here)
 
     branches = [("retired-open-pr", fresh_date, False)]
@@ -1801,7 +1801,7 @@ def test_retired_branch_with_open_pr_still_skipped(tmp_path: Path) -> None:
 def test_retired_branch_within_24h_threshold_skipped(tmp_path: Path) -> None:
     """A retired branch whose last commit is within the 24h threshold is
     skipped by the age gate: retirement is not an immediate-delete order."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     fresh_date = now - timedelta(hours=1)
 
     branches = [("retired-fresh", fresh_date, False)]

@@ -9,15 +9,17 @@ This module provides default implementations for:
 """
 
 
+import contextlib
 import json
 import os
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 # Import shared rule helpers (consolidation REF-001 §4.3)
 try:
@@ -70,7 +72,7 @@ except ImportError:
         WriteTargetPolicy,
     )
 
-try:
+with contextlib.suppress(ImportError):
     from ._validation_constants import (
         MKR_ABSORBED_STATUS,
         MKR_ACTIVE_LEGAL_MAP_ONLY,
@@ -94,8 +96,6 @@ try:
         MKR_WORKSPACE_GIT_COMMIT_RULE,
         MKR_WORKSPACE_PROJECT_MAP_REF,
     )
-except ImportError:
-    pass
 
 # Import domain exceptions (REF-001 §4.8)
 try:
@@ -464,8 +464,8 @@ class RouteTargetPolicyImpl(RouteTargetPolicy):
             if value is None:
                 raise ValueError(f"route {kind!r} is not configured")
             return value
-        except KeyError:
-            raise UnknownRouteKindError(f"unsupported route kind: {kind}")
+        except KeyError as err:
+            raise UnknownRouteKindError(f"unsupported route kind: {kind}") from err
 
     def resolve_kb_file(self, domain: str, filename: str) -> Path | None:
         """Resolve a knowledge base file with layered fallback.

@@ -184,7 +184,7 @@ class SwallowVisitor(ast.NodeVisitor):
     def _extract_evidence(self, node: ast.ExceptHandler) -> str:
         """Extract the except clause as evidence string."""
         try:
-            with open(self.filepath, "rb") as f:
+            with Path(self.filepath).open("rb") as f:
                 raw = f.read()
 
             # Remove BOM if present

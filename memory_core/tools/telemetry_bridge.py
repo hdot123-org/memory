@@ -17,7 +17,7 @@ import os
 import socket
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -254,7 +254,7 @@ class TelemetryBridge:
 
             # Top-level timestamp is required by the PostHog batch API.
             # The SDK's _enqueue always adds it; omitting it can trigger 400.
-            item_timestamp = datetime.now(timezone.utc).isoformat()
+            item_timestamp = datetime.now(UTC).isoformat()
 
             batch_items.append({
                 "event": event_name,

@@ -13,7 +13,7 @@ error_logger.py (C层) 在写入文件后调用 sign_project_incremental。
 import hashlib
 import json
 import unittest.mock
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -55,7 +55,7 @@ def _create_minimal_project(tmp_path: Path) -> Path:
     manifest = {
         "schema_version": "integrity-manifest-v2",
         "project_root": str(project.resolve()),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "key_fingerprint": "sha256:00000000",
         "ownership_digest": "0" * 64,
         "entry_count": 0,

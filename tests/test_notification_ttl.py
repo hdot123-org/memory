@@ -6,7 +6,7 @@ are not affected.
 """
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -31,7 +31,7 @@ class TestCloseExpiredNotifications:
     def test_ttl_expired_closes_notification_issue(self):
         """VAL-NTF-002: Notification issue older than TTL is closed."""
         # Issue created 10 days ago (past 7-day TTL)
-        old_date = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+        old_date = (datetime.now(UTC) - timedelta(days=10)).isoformat()
         mock_issues = [
             {
                 "number": 700,
@@ -66,7 +66,7 @@ class TestCloseExpiredNotifications:
     def test_ttl_not_expired_does_not_close(self):
         """VAL-NTF-002: Notification issue within TTL is NOT closed."""
         # Issue created 3 days ago (within 7-day TTL)
-        recent_date = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        recent_date = (datetime.now(UTC) - timedelta(days=3)).isoformat()
         mock_issues = [
             {
                 "number": 701,
@@ -88,7 +88,7 @@ class TestCloseExpiredNotifications:
     def test_non_notification_issues_not_affected(self):
         """VAL-NTF-002: Non-notification issues are never closed by TTL logic."""
         # Old issue without notification labels
-        old_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        old_date = (datetime.now(UTC) - timedelta(days=30)).isoformat()
         mock_issues = [
             {
                 "number": 650,
@@ -109,7 +109,7 @@ class TestCloseExpiredNotifications:
 
     def test_mixed_issues_only_close_expired_notifications(self):
         """TTL logic only closes expired notification issues, leaves others alone."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         old_date = (now - timedelta(days=10)).isoformat()
         recent_date = (now - timedelta(days=3)).isoformat()
 
@@ -147,7 +147,7 @@ class TestCloseExpiredNotifications:
 
     def test_close_comment_contains_ttl_marker(self):
         """VAL-CROSS-204: Close comment contains TTL marker for traceability."""
-        old_date = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+        old_date = (datetime.now(UTC) - timedelta(days=10)).isoformat()
         mock_issues = [
             {
                 "number": 700,
@@ -220,7 +220,7 @@ class TestCloseExpiredNotifications:
     def test_boundary_exact_ttl_days(self):
         """Issue exactly at TTL boundary (7 days) is closed."""
         # Exactly 7 days old
-        boundary_date = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        boundary_date = (datetime.now(UTC) - timedelta(days=7)).isoformat()
         mock_issues = [
             {
                 "number": 700,
@@ -245,7 +245,7 @@ class TestCloseExpiredNotifications:
     def test_one_day_before_ttl_not_closed(self):
         """Issue one day before TTL (6 days old) is NOT closed."""
         # 6 days old (one day before TTL)
-        recent_date = (datetime.now(timezone.utc) - timedelta(days=6)).isoformat()
+        recent_date = (datetime.now(UTC) - timedelta(days=6)).isoformat()
         mock_issues = [
             {
                 "number": 700,

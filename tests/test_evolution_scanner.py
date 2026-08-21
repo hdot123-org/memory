@@ -5,7 +5,7 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
@@ -200,7 +200,7 @@ def test_regression_detection(tmp_path):
     update_history(history_path, findings_2, 1, 100)
 
     # Verify resolved_findings was populated
-    with open(history_path) as f:
+    with history_path.open() as f:
         data = json.load(f)
 
     assert len(data["resolved_findings"]) == 1
@@ -237,10 +237,10 @@ def test_findings_over_time(tmp_path):
     findings = [Finding("RULE_1", "warning", "test", "Issue", "file.md", "evidence")]
 
     # Add 105 snapshots
-    for i in range(105):
+    for _i in range(105):
         update_history(history_path, findings, 1, 100)
 
-    with open(history_path) as f:
+    with history_path.open() as f:
         data = json.load(f)
 
     assert len(data["snapshots"]) == 100
@@ -267,7 +267,7 @@ def test_isolation_label(tmp_path):
         ],
         "resolved_findings": [],
     }
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     findings = [Finding("RULE_001", "warning", "test", "Stuck", "file.md", "evidence")]
@@ -353,7 +353,7 @@ def test_update_history_empty(tmp_path):
 
     update_history(history_path, findings, 1, 100)
 
-    with open(history_path) as f:
+    with history_path.open() as f:
         data = json.load(f)
 
     assert len(data["snapshots"]) == 1
@@ -594,7 +594,7 @@ def test_adapt_error_patterns():
 def test_config_has_json_flags():
     """VAL-FIX-ADAPT-004: Config commands include --json flags."""
     config_path = Path(__file__).parent.parent / ".evolution" / "config.yml"
-    with open(config_path) as f:
+    with config_path.open() as f:
         config_content = f.read()
 
     # Check that --json flags are present
@@ -610,7 +610,7 @@ def test_config_has_json_flags():
 def test_cache_key_contains_run_id():
     """VAL-FIX-HIST-001: Cache key uses run-scoped pattern with github.run_id."""
     workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-scan.yml"
-    with open(workflow_path) as f:
+    with workflow_path.open() as f:
         content = f.read()
 
     # Cache key must contain github.run_id for run-scoped saves
@@ -1000,7 +1000,7 @@ def test_gh_limit_200_in_check_isolation(tmp_path):
         ],
         "resolved_findings": [],
     }
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     findings = [Finding("RULE_001", "warning", "test", "Stuck", "file.md", "evidence")]
@@ -1073,7 +1073,7 @@ def test_check_isolation_single_api_call(tmp_path):
         ],
         "resolved_findings": [],
     }
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     # 3 findings that all meet the threshold
@@ -2180,7 +2180,7 @@ def test_check_isolation_does_not_swallow_unexpected_exceptions(tmp_path):
 def test_workflow_generates_error_patterns():
     """INFRA-81: CI workflow has a step generating registry.jsonl before scanning."""
     workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-scan.yml"
-    with open(workflow_path) as f:
+    with workflow_path.open() as f:
         content = f.read()
 
     assert "memory-error-patterns --all-projects" in content
@@ -2193,7 +2193,7 @@ def test_workflow_generates_error_patterns():
 def test_config_error_patterns_no_dead_command():
     """INFRA-81: error_patterns entry has no misleading dead command field."""
     config_path = Path(__file__).parent.parent / ".evolution" / "config.yml"
-    with open(config_path) as f:
+    with config_path.open() as f:
         lines = f.read().splitlines()
 
     # Find the error_patterns block
@@ -2322,7 +2322,7 @@ def test_update_history_skips_failed_tool_categories(tmp_path):
     update_history(history_path, [finding_f1, finding_f2], 1, 100, failed_categories=set())
 
     # Verify tick 1 created snapshot with both findings
-    with open(history_path) as f:
+    with history_path.open() as f:
         data = json.load(f)
     assert len(data["snapshots"]) == 1
     assert len(data["snapshots"][0]["findings"]) == 2
@@ -2335,7 +2335,7 @@ def test_update_history_skips_failed_tool_categories(tmp_path):
 
     # Verify: RULE_001 (daily_audit) should NOT be in resolved_findings
     # because its category came from a failed tool
-    with open(history_path) as f:
+    with history_path.open() as f:
         data = json.load(f)
 
     resolved_rules = {r["rule_id"] for r in data["resolved_findings"]}
@@ -3349,7 +3349,7 @@ def test_load_history_findings_wrong_type_skipped(tmp_path):
         'resolved_findings': []
     }
 
-    with open(history_path, 'w') as f:
+    with history_path.open('w') as f:
         json.dump(history_data, f)
 
     result = load_history(history_path)
@@ -3383,7 +3383,7 @@ def test_load_history_findings_list_of_strings_filtered(tmp_path):
         'resolved_findings': []
     }
 
-    with open(history_path, 'w') as f:
+    with history_path.open('w') as f:
         json.dump(history_data, f)
 
     result = load_history(history_path)
@@ -3415,7 +3415,7 @@ def test_load_history_non_list_resolved_findings(tmp_path):
         "snapshots": [],
         "resolved_findings": {"not": "a_list"}
     }
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     # Should not crash, should reset to []
@@ -3432,7 +3432,7 @@ def test_load_history_non_list_resolved_findings(tmp_path):
 
     # Test with resolved_findings as string
     history_data["resolved_findings"] = "invalid_string"
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     result = load_history(history_path)
@@ -3440,7 +3440,7 @@ def test_load_history_non_list_resolved_findings(tmp_path):
 
     # Test with resolved_findings as int
     history_data["resolved_findings"] = 42
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     result = load_history(history_path)
@@ -3487,7 +3487,7 @@ def test_load_history_non_list_findings_in_snapshot(tmp_path):
         "resolved_findings": []
     }
 
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     # Should skip invalid snapshots, preserve valid ones
@@ -3844,9 +3844,11 @@ def test_run_audit_tool_strips_gh_token_from_subprocess():
                               capture_output=True, text=True, timeout=5)
         return result
 
-    with patch.dict(os.environ, {'GH_TOKEN': 'secret_token', 'GITHUB_TOKEN': 'another_secret'}):
-        with patch('evolution_scanner.subprocess.run', side_effect=fake_run):
-            run_audit_tool(tool, Path())
+    with (
+        patch.dict(os.environ, {'GH_TOKEN': 'secret_token', 'GITHUB_TOKEN': 'another_secret'}),
+        patch('evolution_scanner.subprocess.run', side_effect=fake_run),
+    ):
+        run_audit_tool(tool, Path())
 
     assert 'GH_TOKEN' not in captured_env, "GH_TOKEN must be stripped from audit subprocess env"
     assert 'GITHUB_TOKEN' not in captured_env, "GITHUB_TOKEN must be stripped from audit subprocess env"
@@ -3932,7 +3934,7 @@ def test_load_history_filters_findings_missing_keys(tmp_path):
         ],
         "resolved_findings": [],
     }
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     data = load_history(history_path)
@@ -3955,7 +3957,7 @@ def test_update_history_handles_malformed_prev_findings(tmp_path):
         }],
         "resolved_findings": [],
     }
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(malformed_data, f)
 
     # Second tick - should not crash even though prev findings are malformed
@@ -4392,7 +4394,7 @@ def test_evolution_self_audit_findings_sufficient(tmp_path, monkeypatch):
 
     # Latest snapshot is recent (1 hour ago) so no staleness warning
     findings_items = [{"rule_id": f"RULE_{i}", "severity": "warning"} for i in range(10)]
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     history_data = {
         "snapshots": [
             {"timestamp": (now - timedelta(hours=2)).isoformat(), "findings": []},
@@ -4415,7 +4417,7 @@ def test_evolution_self_audit_findings_stale(tmp_path, monkeypatch):
     )
 
     # Latest snapshot is 72 hours old - beyond the 48h threshold
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     history_data = {
         "snapshots": [
             {"timestamp": (now - timedelta(hours=73)).isoformat(), "findings": []},
@@ -4838,12 +4840,12 @@ def test_get_open_issues_closed_uses_limit_100():
 
 def test_get_open_issues_dedup_set_includes_closed():
     """VAL-DUP-001: dedup set includes keys from closed issues within 7-day window."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
     open_data = json.dumps([
         {"title": "[evolution] RULE_A", "body": "**Rule ID**: RULE_A\n**Location**: file_a.py", "number": 10}
     ])
     # Closed issue within 7-day window (closed 3 days ago)
-    closed_3d_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    closed_3d_ago = (datetime.now(UTC) - timedelta(days=3)).isoformat()
     closed_data = json.dumps([
         {"title": "[evolution] RULE_B", "body": "**Rule ID**: RULE_B\n**Location**: file_b.py", "number": 20, "closedAt": closed_3d_ago}
     ])
@@ -4862,9 +4864,9 @@ def test_get_open_issues_dedup_set_includes_closed():
 
 def test_recently_closed_issue_prevents_recreation():
     """VAL-DUP-001: finding matching a recently closed issue (within 7 days) is NOT re-created."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
     # Closed issue within 7-day window (closed 3 days ago)
-    closed_3d_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    closed_3d_ago = (datetime.now(UTC) - timedelta(days=3)).isoformat()
     closed_data = json.dumps([
         {"title": "[evolution] RULE_X", "body": "**Rule ID**: RULE_X\n**Location**: stale.py", "number": 99, "closedAt": closed_3d_ago}
     ])
@@ -4906,12 +4908,12 @@ def test_open_issue_still_blocks_creation():
 
 def test_mixed_open_and_closed_dedup():
     """VAL-DUP-001: both open and recent closed issues contribute to dedup set."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
     open_data = json.dumps([
         {"title": "[evolution] RULE_OPEN", "body": "**Rule ID**: RULE_OPEN\n**Location**: open.py", "number": 1}
     ])
     # Closed issue within 7-day window (closed 3 days ago)
-    closed_3d_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    closed_3d_ago = (datetime.now(UTC) - timedelta(days=3)).isoformat()
     closed_data = json.dumps([
         {"title": "[evolution] RULE_CLOSED", "body": "**Rule ID**: RULE_CLOSED\n**Location**: closed.py", "number": 2, "closedAt": closed_3d_ago}
     ])
@@ -5037,7 +5039,7 @@ def test_detect_sync_orphans_finds_orphan():
     """GAP-A: 无 linkback、不在 Linear、超过阈值 → 判定为孤立。"""
     from evolution_utils import detect_sync_orphans
 
-    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=UTC)
     created_at = (now - timedelta(minutes=60)).isoformat()
     gh_issues = [
         {
@@ -5059,7 +5061,7 @@ def test_detect_sync_orphans_skips_recent_issue():
     """GAP-A: 无 linkback 但创建时间过近（未超阈值）→ 不是孤立（给 Linear 同步时间）。"""
     from evolution_utils import detect_sync_orphans
 
-    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=UTC)
     created_at = (now - timedelta(minutes=10)).isoformat()
     gh_issues = [
         {
@@ -5080,7 +5082,7 @@ def test_detect_sync_orphans_skips_synced_issue():
     """GAP-A: 已有 linear-linkback → 已同步，不是孤立。"""
     from evolution_utils import detect_sync_orphans
 
-    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=UTC)
     created_at = (now - timedelta(minutes=60)).isoformat()
     gh_issues = [
         {
@@ -5101,7 +5103,7 @@ def test_detect_sync_orphans_skips_title_in_linear():
     """GAP-A: 无 linkback 但标题在 Linear 中已存在 → linkback 缺失但 Linear issue 已创建，不是孤立。"""
     from evolution_utils import detect_sync_orphans
 
-    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=UTC)
     title = "RULE_W at file_d.py"
     created_at = (now - timedelta(minutes=60)).isoformat()
     gh_issues = [
@@ -5123,7 +5125,7 @@ def test_detect_sync_orphans_empty_list():
     """GAP-A: 空 gh_issues → 空结果。"""
     from evolution_utils import detect_sync_orphans
 
-    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=UTC)
     orphans = detect_sync_orphans([], set(), threshold_minutes=30, now=now)
 
     assert orphans == []
@@ -5133,7 +5135,7 @@ def test_detect_sync_orphans_multiple():
     """GAP-A: 孤立与非孤立混合 → 正确过滤。"""
     from evolution_utils import detect_sync_orphans
 
-    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 8, 11, 12, 0, 0, tzinfo=UTC)
     old = (now - timedelta(minutes=90)).isoformat()
     recent = (now - timedelta(minutes=5)).isoformat()
 
@@ -5170,12 +5172,12 @@ def test_reconcile_in_progress_exists():
 
 def test_reconcile_detects_stuck_issue(tmp_path):
     """VAL-RECON-002: Detects issues open > 72h with no PR."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from evolution_utils import reconcile_in_progress
 
     # Mock an issue open for 100 hours (> 72h threshold)
-    old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
+    old_date = (datetime.now(UTC) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
     mock_issues = [
         {
             "number": 42,
@@ -5200,12 +5202,12 @@ def test_reconcile_detects_stuck_issue(tmp_path):
 
 def test_reconcile_ignores_recent_issue(tmp_path):
     """VAL-RECON-003: Does not flag issues < 72h old."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from evolution_utils import reconcile_in_progress
 
     # Mock a recent issue (10h old)
-    recent_date = (datetime.now(timezone.utc) - timedelta(hours=10)).isoformat().replace("+00:00", "Z")
+    recent_date = (datetime.now(UTC) - timedelta(hours=10)).isoformat().replace("+00:00", "Z")
     mock_issues = [
         {
             "number": 43,
@@ -5228,12 +5230,12 @@ def test_reconcile_ignores_recent_issue(tmp_path):
 
 def test_reconcile_ignores_issue_with_pr(tmp_path):
     """VAL-RECON-004: Does not flag issues that have associated PRs."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from evolution_utils import reconcile_in_progress
 
     # Mock an old issue (> 72h)
-    old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
+    old_date = (datetime.now(UTC) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
     mock_issues = [
         {
             "number": 44,
@@ -5257,11 +5259,11 @@ def test_reconcile_ignores_issue_with_pr(tmp_path):
 
 def test_reconcile_adds_advisory_comment(tmp_path):
     """VAL-RECON-005: Adds advisory comment to stuck issues."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from evolution_utils import reconcile_in_progress
 
-    old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
+    old_date = (datetime.now(UTC) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
     mock_issues = [
         {
             "number": 45,
@@ -5313,7 +5315,7 @@ def test_reconcile_called_in_main():
     # Read the scanner source to verify the call order
     # Use __file__-based absolute path — relative paths fail in CI where CWD may differ
     scanner_path = Path(__file__).parent.parent / "scripts" / "evolution_scanner.py"
-    with open(scanner_path) as f:
+    with scanner_path.open() as f:
         scanner_code = f.read()
 
     # Find the positions of auto_close_resolved and reconcile_in_progress calls
@@ -5327,11 +5329,11 @@ def test_reconcile_called_in_main():
 
 def test_reconcile_idempotency_guard(tmp_path):
     """VAL-RECON-008: Idempotency guard prevents duplicate comments."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from evolution_utils import reconcile_in_progress
 
-    old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
+    old_date = (datetime.now(UTC) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
     mock_issues = [
         {
             "number": 46,
@@ -5364,12 +5366,12 @@ def test_reconcile_idempotency_guard(tmp_path):
 
 def test_reconcile_returns_count(tmp_path):
     """VAL-RECON-009: Returns count of stuck issues."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from evolution_utils import reconcile_in_progress
 
     # Mock 3 old issues
-    old_date = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
+    old_date = (datetime.now(UTC) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
     mock_issues = [
         {"number": 47, "body": "**Rule ID**: R1\n**Location**: f1.py", "createdAt": old_date},
         {"number": 48, "body": "**Rule ID**: R2\n**Location**: f2.py", "createdAt": old_date},
@@ -5858,7 +5860,7 @@ def test_heartbeat_workflow_yaml_exists():
     assert workflow_path.exists(), ".github/workflows/evolution-heartbeat.yml must exist"
 
     # Validate YAML syntax
-    with open(workflow_path) as f:
+    with workflow_path.open() as f:
         data = yaml.safe_load(f)
     assert data is not None, "YAML must be parseable"
     assert isinstance(data, dict), "YAML must be a mapping"
@@ -5869,7 +5871,7 @@ def test_heartbeat_workflow_has_independent_cron():
     import yaml
     workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-heartbeat.yml"
 
-    with open(workflow_path) as f:
+    with workflow_path.open() as f:
         data = yaml.safe_load(f)
 
     # Must have on.schedule.cron trigger
@@ -5895,13 +5897,13 @@ def test_heartbeat_freshness_check_stale():
     # Create a history file with old snapshot (> 2 hours ago)
     with tempfile.TemporaryDirectory() as tmpdir:
         history_path = Path(tmpdir) / "findings_over_time.json"
-        old_time = datetime.now(timezone.utc) - timedelta(hours=3)
+        old_time = datetime.now(UTC) - timedelta(hours=3)
         data = {
             "snapshots": [
                 {"timestamp": old_time.isoformat(), "tick_id": "old", "findings": []}
             ]
         }
-        with open(history_path, "w") as f:
+        with history_path.open("w") as f:
             json.dump(data, f)
 
         # Should detect staleness
@@ -5918,13 +5920,13 @@ def test_heartbeat_freshness_check_fresh():
     # Create a history file with recent snapshot (< 1 hour ago)
     with tempfile.TemporaryDirectory() as tmpdir:
         history_path = Path(tmpdir) / "findings_over_time.json"
-        recent_time = datetime.now(timezone.utc) - timedelta(minutes=30)
+        recent_time = datetime.now(UTC) - timedelta(minutes=30)
         data = {
             "snapshots": [
                 {"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}
             ]
         }
-        with open(history_path, "w") as f:
+        with history_path.open("w") as f:
             json.dump(data, f)
 
         # Should NOT detect staleness
@@ -5973,8 +5975,8 @@ def test_heartbeat_pr_coverage_check_missing_pr():
                 args=[],
                 returncode=0,
                 stdout=json.dumps([
-                    {"number": 100, "title": "[evolution] TEST_RULE_1", "createdAt": (datetime.now(timezone.utc) - timedelta(hours=36)).isoformat()},
-                    {"number": 101, "title": "[evolution] TEST_RULE_2", "createdAt": (datetime.now(timezone.utc) - timedelta(hours=12)).isoformat()},
+                    {"number": 100, "title": "[evolution] TEST_RULE_1", "createdAt": (datetime.now(UTC) - timedelta(hours=36)).isoformat()},
+                    {"number": 101, "title": "[evolution] TEST_RULE_2", "createdAt": (datetime.now(UTC) - timedelta(hours=12)).isoformat()},
                 ]),
                 stderr=""
             ),
@@ -6011,7 +6013,7 @@ def test_heartbeat_pr_coverage_check_with_pr():
                 args=[],
                 returncode=0,
                 stdout=json.dumps([
-                    {"number": 100, "title": "[evolution] TEST_RULE_1", "createdAt": (datetime.now(timezone.utc) - timedelta(hours=36)).isoformat()},
+                    {"number": 100, "title": "[evolution] TEST_RULE_1", "createdAt": (datetime.now(UTC) - timedelta(hours=36)).isoformat()},
                 ]),
                 stderr=""
             ),
@@ -6079,18 +6081,18 @@ def test_heartbeat_main_integration():
         history_path = Path(tmpdir) / "findings_over_time.json"
 
         # Create fresh history
-        recent_time = datetime.now(timezone.utc) - timedelta(minutes=30)
+        recent_time = datetime.now(UTC) - timedelta(minutes=30)
         data = {
             "snapshots": [
                 {"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}
             ]
         }
-        with open(history_path, "w") as f:
+        with history_path.open("w") as f:
             json.dump(data, f)
 
         # INFRA-204: create fresh heartbeat marker so check_heartbeat_marker passes
         heartbeat_path = Path(tmpdir) / "heartbeat.json"
-        with open(heartbeat_path, "w") as f:
+        with heartbeat_path.open("w") as f:
             json.dump({"timestamp": recent_time.isoformat(), "status": "ok"}, f)
 
         monitor_path = Path(tmpdir) / "monitor_heartbeat.json"
@@ -6122,19 +6124,19 @@ def test_heartbeat_detects_stale_and_creates_alert():
         history_path = Path(tmpdir) / "findings_over_time.json"
 
         # Create stale history (> 2 hours old)
-        old_time = datetime.now(timezone.utc) - timedelta(hours=3)
+        old_time = datetime.now(UTC) - timedelta(hours=3)
         data = {
             "snapshots": [
                 {"timestamp": old_time.isoformat(), "tick_id": "old", "findings": []}
             ]
         }
-        with open(history_path, "w") as f:
+        with history_path.open("w") as f:
             json.dump(data, f)
 
         # INFRA-204: fresh heartbeat marker so only history staleness triggers alert
-        recent_time = datetime.now(timezone.utc) - timedelta(minutes=30)
+        recent_time = datetime.now(UTC) - timedelta(minutes=30)
         heartbeat_path = Path(tmpdir) / "heartbeat.json"
-        with open(heartbeat_path, "w") as f:
+        with heartbeat_path.open("w") as f:
             json.dump({"timestamp": recent_time.isoformat(), "status": "ok"}, f)
 
         monitor_path = Path(tmpdir) / "monitor_heartbeat.json"
@@ -6295,7 +6297,7 @@ def test_check_heartbeat_channel_fresh(tmp_path, monkeypatch):
     heartbeat_path = tmp_path / "heartbeat.json"
     monkeypatch.setattr(evolution_self_audit, "HEARTBEAT_FILE", heartbeat_path)
 
-    recent_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    recent_time = datetime.now(UTC) - timedelta(minutes=10)
     data = {"timestamp": recent_time.isoformat(), "status": "ok"}
     heartbeat_path.write_text(json.dumps(data))
 
@@ -6310,7 +6312,7 @@ def test_check_heartbeat_channel_stale(tmp_path, monkeypatch):
     heartbeat_path = tmp_path / "heartbeat.json"
     monkeypatch.setattr(evolution_self_audit, "HEARTBEAT_FILE", heartbeat_path)
 
-    old_time = datetime.now(timezone.utc) - timedelta(hours=3)
+    old_time = datetime.now(UTC) - timedelta(hours=3)
     data = {"timestamp": old_time.isoformat(), "status": "ok"}
     heartbeat_path.write_text(json.dumps(data))
 
@@ -6674,7 +6676,7 @@ def test_check_heartbeat_marker_fresh(tmp_path):
     from evolution_heartbeat import check_heartbeat_marker
 
     marker_path = tmp_path / "heartbeat.json"
-    recent_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    recent_time = datetime.now(UTC) - timedelta(minutes=10)
     marker_path.write_text(json.dumps({"timestamp": recent_time.isoformat()}))
 
     with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", marker_path):
@@ -6689,7 +6691,7 @@ def test_check_heartbeat_marker_stale(tmp_path):
     from evolution_heartbeat import check_heartbeat_marker
 
     marker_path = tmp_path / "heartbeat.json"
-    old_time = datetime.now(timezone.utc) - timedelta(hours=5)
+    old_time = datetime.now(UTC) - timedelta(hours=5)
     marker_path.write_text(json.dumps({"timestamp": old_time.isoformat()}))
 
     with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", marker_path):
@@ -6765,7 +6767,7 @@ def test_main_dedup_skips_duplicate_alert(tmp_path):
     from evolution_heartbeat import main
 
     # Fresh history + fresh heartbeat marker so only dedup path is exercised via anomaly
-    recent_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    recent_time = datetime.now(UTC) - timedelta(minutes=10)
     history_path = tmp_path / "findings_over_time.json"
     history_path.write_text(json.dumps({
         "snapshots": [{"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}]
@@ -6775,7 +6777,7 @@ def test_main_dedup_skips_duplicate_alert(tmp_path):
     monitor_path = tmp_path / "monitor_heartbeat.json"
 
     # Force an anomaly via stale history (use stale time) so alert path is entered
-    stale_time = datetime.now(timezone.utc) - timedelta(hours=5)
+    stale_time = datetime.now(UTC) - timedelta(hours=5)
     history_path.write_text(json.dumps({
         "snapshots": [{"timestamp": stale_time.isoformat(), "tick_id": "old", "findings": []}]
     }))
@@ -6803,7 +6805,7 @@ def test_main_writes_monitor_heartbeat(tmp_path):
     """INFRA-204: main() writes the monitor heartbeat marker on a clean run."""
     from evolution_heartbeat import main
 
-    recent_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    recent_time = datetime.now(UTC) - timedelta(minutes=10)
     history_path = tmp_path / "findings_over_time.json"
     history_path.write_text(json.dumps({
         "snapshots": [{"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}]
@@ -8820,7 +8822,7 @@ def test_ghost_findings_run_31915486263_scenario(tmp_path):
     ]
 
     # Mock: 5 closed issues, all closed 10 days ago (outside 7-day window)
-    closed_10d_ago = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    closed_10d_ago = (datetime.now(UTC) - timedelta(days=10)).isoformat()
     closed_issues_data = [
         {
             "number": 635 + i * 10,
@@ -8867,7 +8869,7 @@ def test_ghost_findings_run_31915486263_scenario(tmp_path):
 
 def test_dedup_window_matrix_3_days_included():
     """TDD: Closed issue closed 3 days ago should be included in dedup set."""
-    closed_3d_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    closed_3d_ago = (datetime.now(UTC) - timedelta(days=3)).isoformat()
 
     with patch('evolution_scanner.subprocess.run') as mock_run:
         # Open query returns empty list, closed query returns the test issue
@@ -8896,7 +8898,7 @@ def test_dedup_window_matrix_3_days_included():
 def test_dedup_window_matrix_7_days_boundary():
     """TDD: Closed issue closed just inside 7-day window should be included (boundary)."""
     # Use 6 days 23 hours ago to avoid timing race between test setup and implementation
-    closed_just_inside = (datetime.now(timezone.utc) - timedelta(days=6, hours=23)).isoformat()
+    closed_just_inside = (datetime.now(UTC) - timedelta(days=6, hours=23)).isoformat()
 
     with patch('evolution_scanner.subprocess.run') as mock_run:
         # Open query returns empty list, closed query returns the test issue
@@ -8924,7 +8926,7 @@ def test_dedup_window_matrix_7_days_boundary():
 
 def test_dedup_window_matrix_10_days_excluded():
     """TDD: Closed issue closed 10 days ago should be EXCLUDED from dedup set."""
-    closed_10d_ago = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    closed_10d_ago = (datetime.now(UTC) - timedelta(days=10)).isoformat()
 
     with patch('evolution_scanner.subprocess.run') as mock_run:
         # Open query returns empty list, closed query returns the test issue
@@ -9111,7 +9113,7 @@ def test_ghost_finding_scenario_run_31915486263():
     ]
 
     # Mock: 5 closed issues, all closed 10 days ago (> 7 day window)
-    closed_10d_ago = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    closed_10d_ago = (datetime.now(UTC) - timedelta(days=10)).isoformat()
     closed_issues_data = [
         {
             "number": 635 + i * 10,
@@ -9124,14 +9126,13 @@ def test_ghost_finding_scenario_run_31915486263():
 
     # Mock subprocess.run to return empty open issues and 5 old closed issues
     def mock_subprocess_run(cmd, *args, **kwargs):
-        if "gh" in cmd and "issue" in cmd and "list" in cmd:
-            if "--state" in cmd:
-                state_idx = cmd.index("--state")
-                state = cmd[state_idx + 1]
-                if state == "open":
-                    return Mock(returncode=0, stdout="[]", stderr="")
-                elif state == "closed":
-                    return Mock(returncode=0, stdout=json.dumps(closed_issues_data), stderr="")
+        if "gh" in cmd and "issue" in cmd and "list" in cmd and "--state" in cmd:
+            state_idx = cmd.index("--state")
+            state = cmd[state_idx + 1]
+            if state == "open":
+                return Mock(returncode=0, stdout="[]", stderr="")
+            if state == "closed":
+                return Mock(returncode=0, stdout=json.dumps(closed_issues_data), stderr="")
         return Mock(returncode=0, stdout="{}", stderr="")
 
     with patch('evolution_scanner.subprocess.run', side_effect=mock_subprocess_run), \
@@ -9491,7 +9492,7 @@ def test_infra_396_get_open_issues_tags_state():
     open_data = json.dumps([
         {"title": "[evolution] RULE_A", "body": "**Rule ID**: RULE_A\n**Location**: a.py", "number": 10}
     ])
-    closed_3d_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    closed_3d_ago = (datetime.now(UTC) - timedelta(days=3)).isoformat()
     closed_data = json.dumps([
         {"title": "[evolution] RULE_B", "body": "**Rule ID**: RULE_B\n**Location**: b.py", "number": 20, "closedAt": closed_3d_ago}
     ])

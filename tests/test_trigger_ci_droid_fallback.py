@@ -18,7 +18,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -66,7 +66,7 @@ class StubSessionsAPIHandler(BaseHTTPRequestHandler):
             response = {
                 "id": session_id,
                 "status": "active",
-                "createdAt": datetime.now(timezone.utc).isoformat(),
+                "createdAt": datetime.now(UTC).isoformat(),
             }
             self.wfile.write(json.dumps(response).encode())
             return
@@ -184,7 +184,7 @@ def create_pending_ci_file(locks_dir: Path, pr_number: int, session_id: str):
     data = {
         "session_id": session_id,
         "pr_number": str(pr_number),
-        "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "cwd": "/test/repo",
     }
     file_path = locks_dir / f"pending-ci-{pr_number}.json"
@@ -244,7 +244,7 @@ class TestVAL_INJECT_002_Dedup_Lock:
 
         fallback_spawn_count = 0
 
-        for i in range(3):
+        for _i in range(3):
             # 每次调用前创建 pending-ci 文件（模拟新的 webhook 触发）
             create_pending_ci_file(locks_dir, pr_number, session_id)
 

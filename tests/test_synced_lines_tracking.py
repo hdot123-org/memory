@@ -159,9 +159,8 @@ class TestNoDuplicateOnPartialFailure:
         call_count = [0]
         def batch_capture_side_effect(events):
             call_count[0] += 1
-            if call_count[0] == 1:
-                return True
-            return False
+            # Only the first chunk succeeds; later chunks fail
+            return call_count[0] == 1
         mock_telemetry.batch_capture.side_effect = batch_capture_side_effect
 
         with patch("socket.create_connection"), \
@@ -225,9 +224,8 @@ class TestNoDuplicateOnPartialFailure:
         call_count = [0]
         def batch_capture_side_effect(events):
             call_count[0] += 1
-            if call_count[0] == 1:
-                return True
-            return False
+            # Only the first chunk succeeds; later chunks fail
+            return call_count[0] == 1
         mock_telemetry.batch_capture.side_effect = batch_capture_side_effect
 
         with patch("socket.create_connection"), \

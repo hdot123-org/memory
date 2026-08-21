@@ -26,7 +26,7 @@ import logging
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -113,7 +113,7 @@ DIRECTORY_STRUCTURE = [
 
 def _now_iso() -> str:
     """Return current date in ISO format (YYYY-MM-DD)."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 def _slug(text: str) -> str:
@@ -1199,8 +1199,8 @@ def _fill_scope_subdir_templates(
             fill_map["{{PROJECT_TYPE}}"] = project_info.project_type
 
     # Additional runtime fill
-    from datetime import datetime, timezone
-    fill_map["{{CREATED_AT}}"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    from datetime import datetime
+    fill_map["{{CREATED_AT}}"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     fill_map["{{UPDATED_AT}}"] = fill_map["{{CREATED_AT}}"]
 
     # Process each template file in the scope directory
@@ -1454,9 +1454,10 @@ def _is_old_bare_gateway_command(command: str) -> bool:
     if "memory-hook --host" in command:
         return False
     # If it's a bare gateway command (direct python path or bare gateway)
-    if "memory_hook_gateway.py" in command or command.strip().startswith("memory-hook-gateway"):
-        return True
-    return False
+    return (
+        "memory_hook_gateway.py" in command
+        or command.strip().startswith("memory-hook-gateway")
+    )
 
 
 def template_hooks_json(host: str = "claude") -> dict[str, Any]:
@@ -2306,7 +2307,7 @@ def _finalize_integrity_audit(
         audit_path = memory_root / "integrity-audit.jsonl"
         if not audit_path.exists():
             audit_entry = {
-                "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
                 "action": "init",
                 "version": CURRENT_MEMORY_VERSION,
                 "project": project_name,

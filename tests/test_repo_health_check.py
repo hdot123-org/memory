@@ -254,7 +254,7 @@ def _hermetic_bin_dir(tmp_path: Path) -> Path:
     bin_dir.mkdir()
     cut_path = shutil.which("cut")
     assert cut_path is not None, "cut must exist to build hermetic PATH"
-    os.symlink(cut_path, bin_dir / "cut")
+    (bin_dir / "cut").symlink_to(cut_path)
     return bin_dir
 
 

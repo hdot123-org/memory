@@ -204,7 +204,7 @@ class TestExitCodesUnchanged:
     def test_no_exit_code_one(self):
         """VAL-FORMAT-005: No decision path exits with code 1"""
         # Verify that neither allow nor block uses exit 1
-        for matched, expected_decision, expected_permission in [
+        for matched, expected_decision, _expected_permission in [
             (False, "allow", "allow"),
             (True, "block", "deny"),
         ]:

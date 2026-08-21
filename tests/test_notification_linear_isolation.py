@@ -536,7 +536,7 @@ class TestGateA47EvidenceChain:
         status_file.write_text(json.dumps(status_data_1))
 
         # Load and check
-        with open(status_file) as f:
+        with status_file.open() as f:
             data = json.load(f)
 
         session_id = data.get("sessionId")
@@ -559,7 +559,7 @@ class TestGateA47EvidenceChain:
         }
         status_file.write_text(json.dumps(status_data_2))
 
-        with open(status_file) as f:
+        with status_file.open() as f:
             data = json.load(f)
 
         session_id = data.get("sessionId")
@@ -588,7 +588,7 @@ class TestGateA47EvidenceChain:
         status_file.write_text(json.dumps(status_data))
 
         # Load and check
-        with open(status_file) as f:
+        with status_file.open() as f:
             data = json.load(f)
 
         session_id = data.get("sessionId")

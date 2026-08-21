@@ -1,7 +1,7 @@
 """Tests for suppress.json expires lifecycle mechanism (VAL-SUPPRESS-001/002/003)."""
 import json
 import sys
-from datetime import datetime, timedelta, timezone, tzinfo
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 
 import pytest
@@ -85,7 +85,7 @@ def test_today_suppression_still_suppresses(tmp_path: Path) -> None:
     suppress_path = evolution_dir / "suppress.json"
 
     # Use today's UTC date (VAL-SUPPRESS-001 requires UTC comparison)
-    today_str = datetime.now(timezone.utc).date().isoformat()
+    today_str = datetime.now(UTC).date().isoformat()
     today_entry = {
         "rule_id": "TEST_RULE_003",
         "location": "test/file3.md",
@@ -329,7 +329,7 @@ def test_uses_utc_date_not_local(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     from datetime import date as date_class
 
     # Freeze UTC time: 2026-08-13 20:00 UTC → UTC date = 2026-08-13
-    frozen_utc = datetime(2026, 8, 13, 20, 0, 0, tzinfo=timezone.utc)
+    frozen_utc = datetime(2026, 8, 13, 20, 0, 0, tzinfo=UTC)
     frozen_utc_date = frozen_utc.date()  # 2026-08-13
 
     # Monkeypatch datetime and date to freeze time completely

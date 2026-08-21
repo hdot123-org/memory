@@ -37,7 +37,7 @@ import hashlib
 import hmac as _hmac
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -394,7 +394,7 @@ def sign_project(
 
     if now_iso is None:
         def now_iso() -> str:
-            return datetime.now(timezone.utc).isoformat(timespec="seconds")
+            return datetime.now(UTC).isoformat(timespec="seconds")
 
     resolved_root = project_root.resolve()
     files = _discover_canonical_files(resolved_root, include_runtime=include_runtime)
@@ -479,7 +479,7 @@ def _write_audit_log(
         now_iso: Optional ISO timestamp string
     """
     if now_iso is None:
-        now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        now_iso = datetime.now(UTC).isoformat(timespec="seconds")
 
     audit_entry = {
         "timestamp": now_iso,
@@ -539,7 +539,7 @@ def sign_project_incremental(
 
     if now_iso is None:
         def now_iso_fn() -> str:
-            return datetime.now(timezone.utc).isoformat(timespec="seconds")
+            return datetime.now(UTC).isoformat(timespec="seconds")
     elif callable(now_iso):
         now_iso_fn = now_iso
     else:

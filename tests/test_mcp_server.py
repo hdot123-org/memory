@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -165,7 +164,7 @@ class TestResolveDocPath:
 
 class TestSaveMemoryGuards:
     def test_save_memory_home_guard(self) -> None:
-        home = os.path.expanduser("~")
+        home = str(Path("~").expanduser())
         payload = _invoke(
             "save_memory",
             {
@@ -255,7 +254,7 @@ class TestValidateWrite:
         payload = _invoke(
             "validate_write",
             {
-                "path": os.path.join(SOURCE_REPO_CWD, "memory", "kb", "x.md"),
+                "path": str(Path(SOURCE_REPO_CWD) / "memory" / "kb" / "x.md"),
                 "tool_name": "Write",
                 "cwd": SOURCE_REPO_CWD,
             },

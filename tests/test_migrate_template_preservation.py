@@ -10,7 +10,7 @@ Covers:
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from memory_core.tools.migrate_project_memory import (
@@ -85,10 +85,9 @@ def _create_v040_project(
 
     # Create adapter.toml
     if adapter_content is None:
-        if scope:
-            adapter_content = _V040_ADAPTER_CONTENT.replace("test-scope", scope)
-        else:
-            adapter_content = _V040_ADAPTER_NO_SCOPE
+        adapter_content = (
+            _V040_ADAPTER_CONTENT.replace("test-scope", scope) if scope else _V040_ADAPTER_NO_SCOPE
+        )
 
     (memory_root / "adapter.toml").write_text(adapter_content, encoding="utf-8")
 
@@ -97,7 +96,7 @@ def _create_v040_project(
     (memory_root / "memory.lock").write_text(
         f'# memory.lock\n[memory]\nmemory_version = "0.4.0"\n'
         f'schema_version = "context-package-v1"\nadapter_version = "builtin"\n'
-        f'locked_at = "{datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}"\n'
+        f'locked_at = "{datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")}"\n'
         f'lock_reason = "initial"\n',
         encoding="utf-8",
     )

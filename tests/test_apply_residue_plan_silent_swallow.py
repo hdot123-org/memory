@@ -118,9 +118,11 @@ def _run_under_ownership_failure(
     Used by both runtime test classes so their caplog assertions stay identical
     (INFRA-287: deduplicate the duplicated test_caplog_captures_debug blocks).
     """
-    with mock.patch(f"{MODULE}.load_memory_ownership", side_effect=RuntimeError("boom")):
-        with caplog.at_level(logging.DEBUG, logger=LOGGER_NAME):
-            call()
+    with (
+        mock.patch(f"{MODULE}.load_memory_ownership", side_effect=RuntimeError("boom")),
+        caplog.at_level(logging.DEBUG, logger=LOGGER_NAME),
+    ):
+        call()
 
     assert any(
         expected_fragment in record.message

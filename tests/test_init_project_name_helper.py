@@ -53,9 +53,11 @@ class TestProjectNameFallbackLoggedAtDebug:
 
     def test_project_name_fallback_logged_at_debug(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
         """When git fails, a DEBUG-level log entry is emitted."""
-        with patch("subprocess.run", side_effect=FileNotFoundError("git not found")):
-            with caplog.at_level("DEBUG", logger="memory_core.tools.init_project_memory"):
-                _project_name(tmp_path)
+        with (
+            patch("subprocess.run", side_effect=FileNotFoundError("git not found")),
+            caplog.at_level("DEBUG", logger="memory_core.tools.init_project_memory"),
+        ):
+            _project_name(tmp_path)
 
         # Check that a debug message mentioning git remote failure exists
         assert any(
@@ -69,9 +71,11 @@ class TestProjectNameFallbackLoggedAtDebug:
         fake_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="https://github.com/org/my-repo.git\n", stderr=""
         )
-        with patch("subprocess.run", return_value=fake_result):
-            with caplog.at_level("DEBUG", logger="memory_core.tools.init_project_memory"):
-                result = _project_name(tmp_path)
+        with (
+            patch("subprocess.run", return_value=fake_result),
+            caplog.at_level("DEBUG", logger="memory_core.tools.init_project_memory"),
+        ):
+            result = _project_name(tmp_path)
 
         assert result == "my_repo"
         assert not any(
