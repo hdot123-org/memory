@@ -48,7 +48,9 @@ class TestAuditGate:
         assert "droid exec" in content, "droid exec not found in run_shard.sh"
         assert "--auto low" in content, "missing --auto low flag"
         assert "-m qwen3.7-plus" in content, "missing model flag"
-        assert "--cwd head-src" in content, "missing --cwd head-src flag"
+        # shard-cwd-layout-fix 已绝对化 --cwd 路径（防 droid CLI 相对路径静默崩溃）
+        assert "--cwd" in content, "missing --cwd flag"
+        assert "GITHUB_WORKSPACE" in content and "head-src" in content, "missing absolute --cwd path"
         assert "--tag" in content, "missing --tag flag"
 
     def test_val_gate_004_findings_schema_validation(self):
@@ -501,7 +503,9 @@ class TestDroidReview503SelfHeal:
         # Verify key flags are present
         assert "--auto low" in content
         assert "-m qwen3.7-plus" in content
-        assert "--cwd head-src" in content
+        # shard-cwd-layout-fix 已绝对化 --cwd 路径（防 droid CLI 相对路径静默崩溃）
+        assert "--cwd" in content, "missing --cwd flag"
+        assert "GITHUB_WORKSPACE" in content and "head-src" in content, "missing absolute --cwd path"
 
 
 class TestRepoVarsReferences:
