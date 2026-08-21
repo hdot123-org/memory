@@ -297,3 +297,83 @@ def test_no_hardcoded_phc_in_python_files():
     assert result.returncode == 1, (
         f"No .py files should contain hardcoded phc_ keys, found:\n{result.stdout}"
     )
+
+
+def test_sentinel_no_sdk_graceful_degradation():
+    """Regression test: sentinel no-SDK path behavior.
+
+    When posthog_client.posthog is None and _POSTHOG_AVAILABLE is False,
+    PostHogAnalytics() should be constructible, and capture()/shutdown()
+    should not raise any exceptions (graceful degradation semantics).
+
+    This test pins the sentinel behavior to prevent regression of the
+    type-ignore environment divergence fix (v3 hook environment isomorphism).
+    """
+    from memory_core.tools import posthog_client
+    from memory_core.tools.posthog_client import PostHogAnalytics
+
+    # Reset singleton to ensure clean state
+    PostHogAnalytics._instance = None
+
+    # Monkeypatch module attributes to simulate no-SDK environment
+    original_posthog = posthog_client.posthog
+    original_available = posthog_client._POSTHOG_AVAILABLE
+
+    try:
+        # Simulate SDK completely unavailable
+        posthog_client.posthog = None
+        posthog_client._POSTHOG_AVAILABLE = False
+
+        # Should be constructible without raising
+        analytics = PostHogAnalytics()
+
+        # Should be in disabled state
+        assert not analytics._enabled, "Analytics should be disabled when SDK unavailable"
+        assert analytics._client is None, "Client should be None when SDK unavailable"
+
+        # capture() should not raise (graceful no-op)
+        analytics.capture("test_event", {"key": "value"})
+        analytics.capture("another_event", distinct_id="user123")
+
+        # shutdown() should not raise (graceful no-op)
+        analytics.shutdown()
+
+    finally:
+        # Restore original state
+        posthog_client.posthog = original_posthog
+        posthog_client._POSTHOG_AVAILABLE = original_available
+        PostHogAnalytics._instance = None
+
+
+def test_sentinel_no_sdk_multiple_operations():
+    """Regression test: multiple operations in no-SDK environment.
+
+    Ensures that repeated capture() and shutdown() calls in a no-SDK
+    environment remain safe and do not accumulate errors or side effects.
+    """
+    from memory_core.tools import posthog_client
+    from memory_core.tools.posthog_client import PostHogAnalytics
+
+    # Reset singleton
+    PostHogAnalytics._instance = None
+
+    original_posthog = posthog_client.posthog
+    original_available = posthog_client._POSTHOG_AVAILABLE
+
+    try:
+        posthog_client.posthog = None
+        posthog_client._POSTHOG_AVAILABLE = False
+
+        analytics = PostHogAnalytics()
+
+        # Multiple operations should all be safe no-ops
+        for i in range(5):
+            analytics.capture(f"event_{i}", {"iteration": i})
+
+        analytics.shutdown()
+        analytics.shutdown()  # Multiple shutdowns should be safe
+
+    finally:
+        posthog_client.posthog = original_posthog
+        posthog_client._POSTHOG_AVAILABLE = original_available
+        PostHogAnalytics._instance = None

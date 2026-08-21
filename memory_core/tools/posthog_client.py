@@ -11,6 +11,7 @@ Features:
 import logging
 import os
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -35,12 +36,14 @@ def _load_default_key() -> str:
 
 
 # Try to import posthog SDK
+posthog: ModuleType | None = None
+_POSTHOG_AVAILABLE = False
+
 try:
-    import posthog
+    import posthog as _posthog
+    posthog = _posthog
     _POSTHOG_AVAILABLE = True
 except ImportError:
-    posthog = None  # type: ignore[assignment]
-    _POSTHOG_AVAILABLE = False
     logger.debug("posthog SDK not installed, analytics will be no-op")
 
 
@@ -88,6 +91,10 @@ class PostHogAnalytics:
             logger.warning("posthog SDK not installed, analytics disabled")
             return
 
+        # Narrow type for mypy: if we reach here, posthog must be loaded
+        if posthog is None:
+            return
+
         # Three-state key resolution:
         # 1. POSTHOG_API_KEY set (including '') -> user intent overrides default
         # 2. POSTHOG_API_KEY not set -> load default from data file
@@ -106,13 +113,14 @@ class PostHogAnalytics:
         host = os.environ.get("POSTHOG_HOST", "https://us.posthog.com").strip()
 
         try:
-            self._client = posthog.Posthog(
-                project_api_key=api_key,
-                host=host,
-                on_error=lambda e: logger.debug(f"PostHog error: {e}"),
-            )
-            self._enabled = True
-            logger.debug(f"PostHog analytics initialized with host: {host}")
+            if posthog is not None:
+                self._client = posthog.Posthog(
+                    project_api_key=api_key,
+                    host=host,
+                    on_error=lambda e: logger.debug(f"PostHog error: {e}"),
+                )
+                self._enabled = True
+                logger.debug(f"PostHog analytics initialized with host: {host}")
         except Exception as e:
             logger.warning(f"Failed to initialize PostHog client: {e}")
 
