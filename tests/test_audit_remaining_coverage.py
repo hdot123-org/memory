@@ -1936,14 +1936,14 @@ class TestSha256FileOSError:
 
     def test_sha256_file_permission_error(self, tmp_path, monkeypatch):
         """OSError when reading file returns None."""
-        from memory_core.tools.daily_kb_audit import _sha256_file
         from pathlib import Path
+
+        from memory_core.tools.daily_kb_audit import _sha256_file
 
         test_file = tmp_path / "test.txt"
         test_file.write_text("test", encoding="utf-8")
 
         # After PTH conversion, code uses Path.open() instead of builtins.open
-        original_open = Path.open
 
         def mock_path_open(self, *args, **kwargs):
             raise PermissionError("Permission denied")
