@@ -162,10 +162,7 @@ class TestExtendedPolicyRegistry:
         ]
         for method_name in list_methods:
             method = getattr(reg, method_name)
-            if "for_scope" in method_name:
-                result = method("scope")
-            else:
-                result = method()
+            result = method("scope") if "for_scope" in method_name else method()
             assert isinstance(result, list), f"{method_name} should return list"
 
         # Methods that should return {}

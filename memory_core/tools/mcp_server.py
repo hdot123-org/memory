@@ -118,23 +118,25 @@ def _search_memory(query: str, cwd: str) -> list[dict[str, Any]]:
     global_kb_root = str(get_global_kb_root())
 
     search_roots = [
-        (os.path.join(cwd, "memory", "kb"), "kb", cwd, "project"),
-        (os.path.join(cwd, "memory", "docs"), "docs", cwd, "project"),
+        (str(Path(cwd) / "memory" / "kb"), "kb", cwd, "project"),
+        (str(Path(cwd) / "memory" / "docs"), "docs", cwd, "project"),
         (global_kb_root, "global", global_kb_root, "global"),
     ]
 
     for root_dir, context_type, base_for_rel, source in search_roots:
-        if not os.path.isdir(root_dir):
+        if not Path(root_dir).is_dir():
             # Skip missing directories gracefully.
             continue
         for dirpath, _dirnames, filenames in os.walk(root_dir):
             for filename in filenames:
                 if not filename.endswith(".md"):
                     continue
-                file_path = os.path.join(dirpath, filename)
+                file_path = str(Path(dirpath) / filename)
                 relative_path = os.path.relpath(file_path, base_for_rel)
                 try:
-                    with open(file_path, encoding="utf-8", errors="replace") as fh:
+                    with Path(file_path).open(
+                        encoding="utf-8", errors="replace"
+                    ) as fh:
                         for line_number, line in enumerate(fh, start=1):
                             if query_lower in line.lower():
                                 results.append(
@@ -168,7 +170,7 @@ def _validate_filename(filename: str) -> dict[str, Any] | None:
         "/" in filename
         or "\\" in filename
         or filename.startswith(".")
-        or os.path.isabs(filename)
+        or Path(filename).is_absolute()
     ):
         return {
             "status": "error",
@@ -202,9 +204,9 @@ def _resolve_doc_path(category: str, filename: str, cwd: str) -> dict[str, Any]:
     if filename_error:
         return filename_error
     rel_dir = DOC_CATEGORIES[category]
-    full_path = os.path.join(cwd, rel_dir, filename)
+    full_path = Path(cwd) / rel_dir / filename
     return {
-        "path": os.path.abspath(full_path),
+        "path": str(full_path.absolute()),
         "category": category,
         "filename": filename,
         "categories": categories,
@@ -219,8 +221,8 @@ def _save_memory(
     Creates parent directories as needed. Refuses to write when ``cwd`` resolves
     to the user's HOME directory (anti-pollution guard).
     """
-    real_cwd = os.path.realpath(os.path.expanduser(cwd))
-    home = os.path.realpath(os.path.expanduser("~"))
+    real_cwd = Path(cwd).expanduser().resolve()
+    home = Path("~").expanduser().resolve()
     if real_cwd == home:
         return {
             "status": "error",
@@ -250,23 +252,22 @@ def _save_memory(
     if filename_error:
         return filename_error
     rel_dir = DOC_CATEGORIES[category]
-    full_path = os.path.join(cwd, rel_dir, filename)
+    full_path = Path(cwd) / rel_dir / filename
     # Final safety net: verify the resolved path stays within the target dir.
-    expected_root = os.path.realpath(os.path.join(cwd, rel_dir))
-    if os.path.commonpath([os.path.realpath(full_path), expected_root]) != expected_root:
+    expected_root = (Path(cwd) / rel_dir).resolve()
+    if full_path.resolve().is_relative_to(expected_root) is False:
         return {
             "status": "error",
             "message": "Invalid filename: path traversal detected",
         }
-    parent = os.path.dirname(full_path)
     try:
-        os.makedirs(parent, exist_ok=True)
-        with open(full_path, "w", encoding="utf-8") as fh:
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        with full_path.open("w", encoding="utf-8") as fh:
             fh.write(content)
     except OSError as exc:
         return {"status": "error", "message": f"Failed to write file: {exc}"}
     return {
-        "path": os.path.abspath(full_path),
+        "path": str(full_path.absolute()),
         "bytes_written": len(content),
     }
 
@@ -298,9 +299,7 @@ def _record_event(event: str, cwd: str, host: str) -> dict[str, Any]:
     Writes to the global lifecycle registry under
     ``~/.memory-core/project-lifecycle``.
     """
-    lifecycle_root = Path(
-        os.path.expanduser("~/.memory-core/project-lifecycle")
-    )
+    lifecycle_root = Path("~/.memory-core/project-lifecycle").expanduser()
     record = record_project_lifecycle(
         lifecycle_root=lifecycle_root,
         cwd=Path(cwd),
@@ -319,8 +318,8 @@ def _record_event(event: str, cwd: str, host: str) -> dict[str, Any]:
 
 def _get_health(cwd: str) -> dict[str, Any]:
     """Read the project health report from ``memory/system/health-report.json``."""
-    path = os.path.join(cwd, "memory", "system", "health-report.json")
-    if not os.path.isfile(path):
+    path = Path(cwd) / "memory" / "system" / "health-report.json"
+    if not path.is_file():
         return {
             "status": "no_health_report",
             "message": (
@@ -329,26 +328,26 @@ def _get_health(cwd: str) -> dict[str, Any]:
             ),
         }
     try:
-        with open(path, encoding="utf-8") as fh:
+        with path.open(encoding="utf-8") as fh:
             loaded: dict[str, Any] = json.load(fh)
         return loaded
     except (json.JSONDecodeError, OSError) as exc:
         return {
             "status": "error",
             "message": f"Failed to read health report: {exc}",
-            "path": path,
+            "path": str(path),
         }
 
 
 def _list_projects() -> list[dict[str, Any]]:
     """List all known projects from the global lifecycle registry."""
-    lifecycle_root = os.path.expanduser("~/.memory-core/project-lifecycle")
-    index_path = os.path.join(lifecycle_root, "path-index.json")
-    projects_dir = os.path.join(lifecycle_root, "projects")
-    if not os.path.isfile(index_path):
+    lifecycle_root = Path("~/.memory-core/project-lifecycle").expanduser()
+    index_path = lifecycle_root / "path-index.json"
+    projects_dir = lifecycle_root / "projects"
+    if not index_path.is_file():
         return []
     try:
-        with open(index_path, encoding="utf-8") as fh:
+        with index_path.open(encoding="utf-8") as fh:
             index = json.load(fh)
     except (json.JSONDecodeError, OSError):
         return []
@@ -364,10 +363,10 @@ def _list_projects() -> list[dict[str, Any]]:
             continue
         # Prefer the richer per-project record file when available.
         record = entry
-        project_file = os.path.join(projects_dir, f"{project_id}.json")
-        if os.path.isfile(project_file):
+        project_file = projects_dir / f"{project_id}.json"
+        if project_file.is_file():
             try:
-                with open(project_file, encoding="utf-8") as fh:
+                with project_file.open(encoding="utf-8") as fh:
                     loaded = json.load(fh)
                     if isinstance(loaded, dict):
                         record = loaded
@@ -401,15 +400,15 @@ def _get_daily_summary(date: str, cwd: str) -> dict[str, Any]:
             "status": "error",
             "message": f"Invalid date format: '{date}'. Expected YYYY-MM-DD.",
         }
-    path = os.path.join(cwd, "memory", "log", f"{date}-sessions.md")
-    if not os.path.isfile(path):
+    path = Path(cwd) / "memory" / "log" / f"{date}-sessions.md"
+    if not path.is_file():
         return {
             "date": date,
             "found": False,
             "message": "No session log for this date",
         }
     try:
-        with open(path, encoding="utf-8", errors="replace") as fh:
+        with path.open(encoding="utf-8", errors="replace") as fh:
             content = fh.read()
     except OSError as exc:
         return {
@@ -687,7 +686,7 @@ async def list_tools() -> list[Tool]:
 # ---------------------------------------------------------------------------
 def _handle_load_context(arguments: dict[str, Any]) -> Any:
     """Handle the load_context tool call."""
-    cwd = arguments.get("cwd") or os.getcwd()
+    cwd = arguments.get("cwd") or str(Path.cwd())
     return _load_context(cwd)
 
 
@@ -696,7 +695,7 @@ def _handle_search_memory(arguments: dict[str, Any]) -> Any:
     query = arguments.get("query")
     if not query or not isinstance(query, str):
         return {"status": "error", "message": "'query' is required and must be a non-empty string"}
-    cwd = arguments.get("cwd") or os.getcwd()
+    cwd = arguments.get("cwd") or str(Path.cwd())
     return _search_memory(query, cwd)
 
 
@@ -708,7 +707,7 @@ def _handle_resolve_doc_path(arguments: dict[str, Any]) -> Any:
         return {"status": "error", "message": "'category' is required"}
     if not filename or not isinstance(filename, str):
         return {"status": "error", "message": "'filename' is required"}
-    cwd = arguments.get("cwd") or os.getcwd()
+    cwd = arguments.get("cwd") or str(Path.cwd())
     return _resolve_doc_path(category, filename, cwd)
 
 
@@ -723,7 +722,7 @@ def _handle_save_memory(arguments: dict[str, Any]) -> Any:
         return {"status": "error", "message": "'filename' is required"}
     if content is None or not isinstance(content, str):
         return {"status": "error", "message": "'content' is required"}
-    cwd = arguments.get("cwd") or os.getcwd()
+    cwd = arguments.get("cwd") or str(Path.cwd())
     return _save_memory(category, filename, content, cwd)
 
 
@@ -733,7 +732,7 @@ def _handle_validate_write(arguments: dict[str, Any]) -> Any:
     if not path or not isinstance(path, str):
         return {"status": "error", "message": "'path' is required"}
     tool_name = arguments.get("tool_name") or "Write"
-    cwd = arguments.get("cwd") or os.getcwd()
+    cwd = arguments.get("cwd") or str(Path.cwd())
     return _validate_write(path, tool_name, cwd)
 
 
@@ -754,7 +753,7 @@ def _handle_record_event(arguments: dict[str, Any]) -> Any:
 
 def _handle_get_health(arguments: dict[str, Any]) -> Any:
     """Handle the get_health tool call."""
-    cwd = arguments.get("cwd") or os.getcwd()
+    cwd = arguments.get("cwd") or str(Path.cwd())
     return _get_health(cwd)
 
 
@@ -766,7 +765,7 @@ def _handle_list_projects(arguments: dict[str, Any]) -> Any:
 def _handle_get_daily_summary(arguments: dict[str, Any]) -> Any:
     """Handle the get_daily_summary tool call."""
     date = arguments.get("date") or datetime.now().strftime("%Y-%m-%d")
-    cwd = arguments.get("cwd") or os.getcwd()
+    cwd = arguments.get("cwd") or str(Path.cwd())
     return _get_daily_summary(date, cwd)
 
 

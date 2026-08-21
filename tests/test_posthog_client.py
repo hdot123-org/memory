@@ -106,16 +106,18 @@ def test_posthog_analytics_uses_default_key():
         mock_client = MagicMock()
         mock_posthog.Posthog.return_value = mock_client
 
-        with patch("memory_core.tools.posthog_client.posthog", mock_posthog):
-            with patch("memory_core.tools.posthog_client._POSTHOG_AVAILABLE", True):
-                analytics = PostHogAnalytics()
+        with (
+            patch("memory_core.tools.posthog_client.posthog", mock_posthog),
+            patch("memory_core.tools.posthog_client._POSTHOG_AVAILABLE", True),
+        ):
+            analytics = PostHogAnalytics()
 
-                # Should have loaded default key
-                assert analytics._enabled, "Should be enabled with default key"
-                mock_posthog.Posthog.assert_called_once()
-                call_args = mock_posthog.Posthog.call_args
-                assert "project_api_key" in call_args.kwargs
-                assert call_args.kwargs["project_api_key"].startswith("phc_")
+            # Should have loaded default key
+            assert analytics._enabled, "Should be enabled with default key"
+            mock_posthog.Posthog.assert_called_once()
+            call_args = mock_posthog.Posthog.call_args
+            assert "project_api_key" in call_args.kwargs
+            assert call_args.kwargs["project_api_key"].startswith("phc_")
     finally:
         if old_val is not None:
             os.environ["POSTHOG_API_KEY"] = old_val

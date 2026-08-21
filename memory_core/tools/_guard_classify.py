@@ -459,7 +459,7 @@ def _classify_multiedit(
     has_block = False
 
     edits = payload.get("edits", [])
-    for i, edit in enumerate(edits):
+    for _i, edit in enumerate(edits):
         if not isinstance(edit, dict):
             continue
         path = edit.get("file_path", "")

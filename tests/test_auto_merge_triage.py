@@ -257,7 +257,7 @@ class TestAutoMergeTriageWorkflow:
         jobs = data.get("jobs", {})
 
         # Check if there's a dedicated triage job
-        has_triage_job = any("triage" in job_name.lower() for job_name in jobs.keys())
+        has_triage_job = any("triage" in job_name.lower() for job_name in jobs)
 
         # Or check if auto-merge job has triage steps
         auto_merge_steps = jobs.get("auto-merge", {}).get("steps", [])

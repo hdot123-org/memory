@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Verification script for routing rule injection feature."""
-import os
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, os.getcwd())
+sys.path.insert(0, str(Path.cwd()))
 
 from memory_core.tools.init_project_memory import (
     MEMORY_HOOK_BEGIN_MARKER,

@@ -83,10 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     # Determine global KB root
-    if args.global_kb_root:
-        global_kb_root = args.global_kb_root
-    else:
-        global_kb_root = get_global_kb_root()
+    global_kb_root = args.global_kb_root or get_global_kb_root()
 
     pending_dir = global_kb_root / "pending"
 
@@ -137,7 +134,7 @@ def _interactive_mode(pending_dir: Path) -> int:
         print(f"{i}. {candidate.name}")
         # Try to read first line as title
         try:
-            with open(candidate, encoding="utf-8") as f:
+            with candidate.open(encoding="utf-8") as f:
                 first_line = f.readline().strip()
                 if first_line.startswith("# "):
                     print(f"   {first_line}")

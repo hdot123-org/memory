@@ -124,7 +124,7 @@ def _hold_lock_child(path_str: str, ready_event, release_event) -> None:
     """Child process helper: acquire exclusive lock, signal ready, wait for release."""
     import fcntl
 
-    with open(path_str, "a") as f:
+    with Path(path_str).open("a") as f:
         fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         ready_event.set()
         release_event.wait(timeout=10)

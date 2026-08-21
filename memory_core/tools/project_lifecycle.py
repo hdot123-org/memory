@@ -6,6 +6,7 @@ Codex workspace churn separate from memory retention.
 """
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -14,9 +15,10 @@ import subprocess
 import sys
 import tempfile
 import warnings
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 
 def _safe_slug(value: str) -> str:
@@ -184,11 +186,8 @@ def _cleanup_old_event_files(
             now = datetime.now()
         else:
             result = now_fn()
-            if isinstance(result, datetime):
-                now = result
-            else:
-                # now_fn returned an ISO string; parse the date portion
-                now = datetime.fromisoformat(str(result)[:19])
+            # now_fn may return an ISO string; parse the date portion
+            now = result if isinstance(result, datetime) else datetime.fromisoformat(str(result)[:19])
 
         today_str = now.strftime("%Y-%m-%d")
         cutoff_date = now.date() - timedelta(days=retention_days)
@@ -199,12 +198,10 @@ def _cleanup_old_event_files(
 
         # Throttle: check if cleanup already ran today
         if sentinel_path.exists():
-            try:
+            with contextlib.suppress(OSError):
                 last_cleanup_date = sentinel_path.read_text(encoding="utf-8").strip()
                 if last_cleanup_date == today_str:
                     return 0
-            except OSError:
-                pass
 
         if not events_dir.exists() or not events_dir.is_dir():
             return 0
@@ -223,10 +220,8 @@ def _cleanup_old_event_files(
                 continue
 
         # Write/update the sentinel with today's date
-        try:
+        with contextlib.suppress(OSError):
             sentinel_path.write_text(today_str + "\n", encoding="utf-8")
-        except OSError:
-            pass
 
         return deleted_count
     except Exception as exc:
@@ -447,13 +442,11 @@ def rebuild_path_index(lifecycle_root: str | Path) -> dict[str, Any]:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(path_index, f, ensure_ascii=False, indent=2, sort_keys=True)
             f.write("\n")
-        os.replace(temp_path, index_path)
+        Path(temp_path).replace(index_path)
     except Exception:
         # Clean up temp file on failure
-        try:
-            os.unlink(temp_path)
-        except OSError:
-            pass
+        with contextlib.suppress(OSError):
+            Path(temp_path).unlink()
         raise
 
     return result
@@ -617,7 +610,7 @@ def migrate_lifecycle_events(lifecycle_root: Path) -> dict[str, Any]:
     # Archive original events.jsonl (atomic rename)
     archive_path = lifecycle_root / "events.jsonl.archived"
     try:
-        os.replace(events_jsonl, archive_path)
+        Path(events_jsonl).replace(archive_path)
     except OSError:
         # If rename fails, try copy + delete as fallback
         import shutil

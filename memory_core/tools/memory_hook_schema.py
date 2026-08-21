@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -114,7 +114,7 @@ def _write_audit_log(
     Falls back to stderr-only if the path is not writable.
     """
     record = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "event": "schema_convert",
         "drop_audit": True,
         "from_version": schema_from,
@@ -129,7 +129,7 @@ def _write_audit_log(
     try:
         p = Path(log_path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        with open(p, "a", encoding="utf-8") as f:
+        with p.open("a", encoding="utf-8") as f:
             f.write(line + "\n")
     except OSError as exc:
         logger.warning("Failed to write audit log to %s: %s", log_path, exc)

@@ -8,7 +8,7 @@ import argparse
 import json
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -92,7 +92,7 @@ def patch_memory_lock(lock_path: Path, target_version: str) -> bool:
         return False
 
     # Patch locked_at to current timestamp
-    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    now_iso = datetime.now(UTC).isoformat(timespec="seconds")
     new_content, count2 = re.subn(
         r'^(locked_at\s*=\s*)"[^"]+"',
         rf'\g<1>"{now_iso}"',
@@ -127,7 +127,7 @@ def patch_adapter_toml_version(adapter_path: Path, target_version: str) -> bool:
     version_found = False
     version_already_correct = False
 
-    for i, line in enumerate(lines):
+    for _i, line in enumerate(lines):
         if line.strip() == "[core]":
             in_core_section = True
             patched_lines.append(line)
@@ -386,13 +386,11 @@ def sync_single_project(
     if patch_ownership_memory_version(ownership_path, target_version):
         changed_paths.append("memory/system/ownership.toml")
 
-    if lock_path.exists():
-        if patch_memory_lock(lock_path, target_version):
-            changed_paths.append("memory/system/memory.lock")
+    if lock_path.exists() and patch_memory_lock(lock_path, target_version):
+        changed_paths.append("memory/system/memory.lock")
 
-    if adapter_path.exists():
-        if patch_adapter_toml_version(adapter_path, target_version):
-            changed_paths.append("memory/system/adapter.toml")
+    if adapter_path.exists() and patch_adapter_toml_version(adapter_path, target_version):
+        changed_paths.append("memory/system/adapter.toml")
 
     if changed_paths:
         result["patched"] = True

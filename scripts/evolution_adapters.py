@@ -1,6 +1,7 @@
 """Adapter functions for converting audit tool output to Finding-compatible dicts."""
 import hashlib
 import re
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -371,10 +372,10 @@ TOOL_TO_CATEGORIES = {
 
 def quarantine_corrupted_file(history_path: Path) -> None:
     """Rename corrupted history file to quarantine path with timestamp."""
-    from datetime import datetime, timezone
+    from datetime import datetime
     if not history_path.exists():
         return
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
     qpath = history_path.with_suffix(f".corrupted.{ts}.json")
     # Handle collision: if quarantine file already exists, append counter
     counter = 1

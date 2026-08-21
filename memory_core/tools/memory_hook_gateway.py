@@ -33,13 +33,15 @@ if __name__ == "__main__":
 
 # 以下 import 在 SIGALRM + SIGINT 保护下执行（仅 __main__ 时）
 import argparse
+import contextlib
 import hashlib
 import json
 import re
 import subprocess
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, cast
+from typing import TYPE_CHECKING, Any, cast
 
 # Import fail-closed guard helpers
 from memory_core.tools._guard_patterns import (
@@ -190,10 +192,8 @@ CONTEXT_ROOT = ARTIFACT_ROOT / "contexts"
 EVENT_LOG = ARTIFACT_ROOT / "events.jsonl"
 ERROR_LOG = _configured_error_log(WORKSPACE_ROOT)
 PROJECT_LIFECYCLE_ROOT = _configured_project_lifecycle_root(WORKSPACE_ROOT)
-try:
-    from .cmux_hook_state import default_hook_state_path, record_hook_event
-except ImportError:
-    pass  # noqa: E402
+with contextlib.suppress(ImportError):
+    from .cmux_hook_state import default_hook_state_path, record_hook_event  # noqa: E402
 
 # M3: Import is_memory_core_source_repo from ownership module
 try:
@@ -1017,10 +1017,7 @@ def build_context_package(
     )
     requested_provider = os.environ.get("MEMORY_HOOK_CORE_PROVIDER", "legacy").strip() or "legacy"
     provider_name, provider_builder, provider_errors = _resolve_core_builder(requested_provider, allow_fallback=True)
-    if provider_builder is not None:
-        package = provider_builder(config)
-    else:
-        package = build_context_package_from_config(config)
+    package = provider_builder(config) if provider_builder is not None else build_context_package_from_config(config)
 
     # Bug 3 fix: Source-repo in develop mode should not get consumer-project
     # validation errors. Skip validation layers for source-repo.
@@ -1742,9 +1739,7 @@ def _should_skip_sync(now: float, last_success: float, last_attempt: float) -> b
     if (now - last_success) < 3600:
         return True
     # Skip if within 5-minute backoff after recent attempt
-    if (now - last_attempt) < 300:
-        return True
-    return False
+    return (now - last_attempt) < 300
 
 
 def _normalize_posthog_host() -> str:
@@ -1809,7 +1804,7 @@ def _batch_send_records(
     for chunk_start in range(0, len(records_with_lines), batch_size):
         chunk = records_with_lines[chunk_start:chunk_start + batch_size]
         events = []
-        for line_num, record in chunk:
+        for _line_num, record in chunk:
             event_name = str(record.get("event") or "memory.replayed_event")
             events.append({"event_name": event_name, "properties": {**record}})
 
@@ -1829,9 +1824,7 @@ def _compact_metrics_jsonl(metrics_file: Path, last_synced_line: int, offset_fil
     try:
         remaining_lines = []
         with metrics_file.open("r", encoding="utf-8") as f:
-            line_num = 0
-            for line in f:
-                line_num += 1
+            for line_num, line in enumerate(f, start=1):
                 if line_num > last_synced_line:
                     remaining_lines.append(line)
 
@@ -1855,15 +1848,11 @@ def _record_sync_outcome(
     """Record sync outcome: update timestamps and write status."""
     if success:
         success_file = artifact_root / ".last_sync_success"
-        try:
+        with contextlib.suppress(OSError):
             success_file.write_text(str(now), encoding="utf-8")
-        except OSError:
-            pass
     else:
-        try:
+        with contextlib.suppress(OSError):
             attempt_file.write_text(str(now), encoding="utf-8")
-        except OSError:
-            pass
     _write_sync_status(artifact_root, success, pending_count)
 
 

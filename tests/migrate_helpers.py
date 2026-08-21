@@ -16,7 +16,7 @@ same two files.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from memory_core.constants import CURRENT_MEMORY_VERSION
@@ -57,7 +57,7 @@ def create_memory_skeleton(
     (memory_root / "kb" / "lessons").mkdir(parents=True)
     (memory_root / "kb" / "global").mkdir(parents=True)
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     (memory_root / "memory.lock").write_text(
         f'# memory.lock\n[memory]\nmemory_version = "{version}"\n'
         f'schema_version = "context-package-v1"\nadapter_version = "builtin"\n'

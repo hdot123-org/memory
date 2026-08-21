@@ -338,9 +338,8 @@ def _process_jsonl_line(raw_line: str, state: _StreamingState) -> None:
         ts = line.get("timestamp", "")
 
         parsed_ts = _parse_jsonl_timestamp(ts)
-        if parsed_ts:
-            if state.end_time is None or parsed_ts > state.end_time:
-                state.end_time = parsed_ts
+        if parsed_ts and (state.end_time is None or parsed_ts > state.end_time):
+            state.end_time = parsed_ts
 
         # 第一条 user message
         if role == "user" and state.first_user_message is None:

@@ -282,7 +282,4 @@ def is_global_kb_initialized(global_kb_root: Path | None = None) -> bool:
             return False
 
     # Check INDEX.md exists
-    if not (global_kb_root / "INDEX.md").is_file():
-        return False
-
-    return True
+    return (global_kb_root / "INDEX.md").is_file()

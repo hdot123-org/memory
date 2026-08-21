@@ -117,11 +117,8 @@ def _is_json_like(text: str) -> bool:
         # TOML section: [identifier] where identifier is alphanumeric/underscore/hyphen/dot
         # JSON array: [{ or [" or [1 or [...] where content is not just an identifier
         match = re.match(r'^\[([a-zA-Z_][a-zA-Z0-9_\-\.]*)\]', stripped)
-        if match:
-            # Looks like a TOML section header, not JSON
-            return False
-        # Otherwise treat as JSON array
-        return True
+        # A match is a TOML section header, not JSON; otherwise treat as JSON array
+        return match is None
     return False
 
 
@@ -570,10 +567,14 @@ def check_document_paths(memory_root: Path, result: CheckResult) -> bool:
             missing_refs = []
             for ref in referenced_files:
                 ref_path = project_root / ref
-                if not ref_path.exists() and not ref.startswith("http"):
-                    # Skip if it looks like a pattern, not a literal path
-                    if "*" not in ref and "?" not in ref:
-                        missing_refs.append(ref)
+                # Skip if it looks like a pattern (not a literal path) or an external URL
+                if (
+                    not ref_path.exists()
+                    and not ref.startswith("http")
+                    and "*" not in ref
+                    and "?" not in ref
+                ):
+                    missing_refs.append(ref)
 
             if missing_refs:
                 result.record(
@@ -646,9 +647,10 @@ def check_shared_resources(target: Path, memory_root: Path, result: CheckResult)
                     for idx, hook in enumerate(hooks):
                         if not isinstance(hook, dict):
                             continue
-                        if "memory-hook" in hook.get("command", ""):
-                            if not hook.get("event") or not hook.get("command"):
-                                incomplete.append(str(idx))
+                        if "memory-hook" in hook.get("command", "") and (
+                            not hook.get("event") or not hook.get("command")
+                        ):
+                            incomplete.append(str(idx))
 
                     if incomplete:
                         result.record(

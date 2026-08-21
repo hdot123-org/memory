@@ -3,9 +3,10 @@
 
 import tomllib
 import warnings as _warnings
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from memory_core.constants import (
     CURRENT_MEMORY_VERSION,
@@ -173,7 +174,7 @@ def load_adapter_toml(path: Path, *, strict: bool = False) -> AdapterConfig:
     if not path.is_file():
         return AdapterConfig(project_name="", project_scope="")
 
-    with open(path, "rb") as fh:
+    with path.open("rb") as fh:
         data: dict[str, Any] = tomllib.load(fh)
 
     if _has_new_sections(data):

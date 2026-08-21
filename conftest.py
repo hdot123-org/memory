@@ -15,11 +15,12 @@ def _cancel_pending_sigalrm():
     isolates each test from its predecessors' timeouts.
     """
     yield
+    import contextlib
     import signal
-    try:
-        signal.alarm(0)  # Cancel any pending alarm
-    except (ValueError, OSError, AttributeError):
-        pass
+
+    # Cancel any pending alarm
+    with contextlib.suppress(ValueError, OSError, AttributeError):
+        signal.alarm(0)
 
 
 @pytest.fixture(autouse=True)

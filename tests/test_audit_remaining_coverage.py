@@ -1279,7 +1279,7 @@ class TestTcpConnectOk:
         from memory_core.tools.daily_kb_audit import _tcp_connect_ok
 
         def mock_create_connection(*args, **kwargs):
-            raise socket.timeout("Connection timed out")
+            raise TimeoutError("Connection timed out")
 
         monkeypatch.setattr(socket, "create_connection", mock_create_connection)
         result = _tcp_connect_ok("localhost", 80, timeout=1)
@@ -1936,15 +1936,19 @@ class TestSha256FileOSError:
 
     def test_sha256_file_permission_error(self, tmp_path, monkeypatch):
         """OSError when reading file returns None."""
+        from pathlib import Path
+
         from memory_core.tools.daily_kb_audit import _sha256_file
 
         test_file = tmp_path / "test.txt"
         test_file.write_text("test", encoding="utf-8")
 
-        def mock_open(*args, **kwargs):
+        # After PTH conversion, code uses Path.open() instead of builtins.open
+
+        def mock_path_open(self, *args, **kwargs):
             raise PermissionError("Permission denied")
 
-        monkeypatch.setattr("builtins.open", mock_open)
+        monkeypatch.setattr(Path, "open", mock_path_open)
         result = _sha256_file(test_file)
         assert result is None
 

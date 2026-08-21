@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import contextlib
 import json
 import logging
 import sys
@@ -103,10 +104,8 @@ def _handle_token_line(line: str, current: dict[str, Any]) -> None:
     for token_part in rest.split():
         if "=" in token_part:
             k, v = token_part.split("=", 1)
-            try:
+            with contextlib.suppress(ValueError):
                 current[f"{k}_tokens"] = int(v)
-            except ValueError:
-                pass
 
 
 def _handle_tool_calls_line(line: str, current: dict[str, Any]) -> None:
@@ -226,7 +225,7 @@ def _extract_transcript_summary(jsonl_path: Path) -> dict[str, Any]:
         return {}
 
     for line in lines_to_process:
-        if not line.get("type") == "message":
+        if line.get("type") != "message":
             continue
 
         msg = line.get("message", {})
@@ -532,7 +531,7 @@ def _resolve_projects(args: argparse.Namespace) -> list[Path]:
                 idx = json.loads(LIFECYCLE_INDEX.read_text())
                 paths_dict = idx.get("paths", {})
                 # paths 是 dict，key 是路径
-                projects = [Path(p).resolve() for p in paths_dict.keys()]
+                projects = [Path(p).resolve() for p in paths_dict]
             except (json.JSONDecodeError, OSError) as exc:
                 logger.warning("daily_summary_generator: failed to read lifecycle index %s: %s", LIFECYCLE_INDEX, exc)
                 print(f"Warning: failed to read lifecycle index: {exc}", file=sys.stderr)

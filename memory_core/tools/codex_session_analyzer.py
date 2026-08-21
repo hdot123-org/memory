@@ -197,6 +197,25 @@ def find_todays_sessions() -> list[Path]:
     return find_rollout_files(target_date=today)
 
 
+def _glob_rollout_pattern(pattern: str) -> list[Path]:
+    """Expand a glob pattern (or plain path) into a sorted list of Paths.
+
+    Uses :meth:`Path.glob` by anchoring the pattern at its deepest existing
+    parent directory, mirroring the behaviour of :func:`glob.glob`.
+    """
+    raw = Path(pattern)
+    base = raw
+    # Walk up until we hit an existing directory (or the filesystem root).
+    while not base.exists() and base.parent != base:
+        base = base.parent
+    if not base.is_dir():
+        base = base.parent if base.parent != base else Path()
+    rel = str(raw.relative_to(base)) if raw != base else raw.name
+    if not rel or rel == ".":
+        return []
+    return sorted(base.glob(rel))
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -214,8 +233,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Find files
     if args.rollout:
-        from glob import glob
-        files = [Path(p) for p in sorted(glob(args.rollout))]
+        files = _glob_rollout_pattern(args.rollout)
     elif args.thread_id:
         files = find_rollout_files(thread_id=args.thread_id)
     elif args.today:

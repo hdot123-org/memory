@@ -26,6 +26,8 @@ from unittest.mock import MagicMock, patch
 scripts_dir = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(scripts_dir))
 
+from datetime import UTC
+
 from evolution_scanner import Finding
 from evolution_utils import (
     REVERSE_DRIFT_SENTINEL,
@@ -471,11 +473,11 @@ def test_get_open_issues_passes_body_and_category():
 
 def test_get_open_issues_closed_entry_carries_state_closed():
     """Closed-in-window entries still tagged state='closed' (INFRA-396 regression)."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from evolution_scanner import get_open_issues
 
-    closed_3d_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    closed_3d_ago = (datetime.now(UTC) - timedelta(days=3)).isoformat()
     closed_data = json.dumps([
         {"title": "[evolution] RULE_Q",
          "body": "**Rule ID**: RULE_Q\n**Location**: q.py",

@@ -15,6 +15,7 @@ The denylist is enforced at two points:
 2. memory_hook_gateway.py: At runtime when processing hook events
 """
 
+import contextlib
 import os
 import re
 from dataclasses import dataclass
@@ -148,10 +149,8 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
 def denied_project_roots() -> list[Path]:
     """Return exact project roots that memory hooks must never manage."""
     roots: list[Path] = []
-    try:
+    with contextlib.suppress(RuntimeError):
         roots.append(Path.home())
-    except RuntimeError:
-        pass
 
     configured = os.environ.get("MEMORY_HOOK_DENY_PROJECT_ROOTS", "")
     for raw in configured.split(os.pathsep):
