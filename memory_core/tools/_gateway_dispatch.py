@@ -133,6 +133,37 @@ def _execute_delegate_via_facade(
     return delegate.execute(event, raw_payload, payload)
 
 
+def _require_env(name: str) -> str:
+    """Require an environment variable; raise RuntimeError if missing."""
+    value = os.environ.get(name, "")
+    if not value:
+        raise RuntimeError(f"missing required env: {name}")
+    return value
+
+
+def _canonicalize_cmux_refs(workspace_ref: str, surface_ref: str) -> tuple[str, str]:
+    """Canonicalize cmux workspace/surface refs via cmux identify."""
+    proc = subprocess.run(
+        ["cmux", "identify", "--workspace", workspace_ref, "--surface", surface_ref],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return workspace_ref, surface_ref
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return workspace_ref, surface_ref
+    caller = payload.get("caller")
+    if not isinstance(caller, dict):
+        return workspace_ref, surface_ref
+    return (
+        str(caller.get("workspace_ref") or workspace_ref),
+        str(caller.get("surface_ref") or surface_ref),
+    )
+
+
 def _delegate_codex(event: str, raw_payload: str) -> subprocess.CompletedProcess[str]:
     """Codex delegate 执行。"""
     return _execute_delegate_via_facade("codex", event, raw_payload, {})
