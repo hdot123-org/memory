@@ -236,7 +236,7 @@ def _validate_suppress_json_raw(suppress_path: Path) -> None:
     Raises AssertionError (or calls pytest.fail) on structural violations.
     Shared by real-file guard and negative-path tests (VAL-SUPPRESS-002).
     """
-    with open(suppress_path, encoding="utf-8") as f:
+    with suppress_path.open(encoding="utf-8") as f:
         data = json.load(f)
 
     assert isinstance(data, dict), f"suppress.json root must be a dict, got {type(data).__name__}"

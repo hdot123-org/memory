@@ -129,7 +129,7 @@ def _write_audit_log(
     try:
         p = Path(log_path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        with open(p, "a", encoding="utf-8") as f:
+        with p.open("a", encoding="utf-8") as f:
             f.write(line + "\n")
     except OSError as exc:
         logger.warning("Failed to write audit log to %s: %s", log_path, exc)

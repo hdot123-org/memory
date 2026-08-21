@@ -442,11 +442,11 @@ def rebuild_path_index(lifecycle_root: str | Path) -> dict[str, Any]:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(path_index, f, ensure_ascii=False, indent=2, sort_keys=True)
             f.write("\n")
-        os.replace(temp_path, index_path)
+        Path(temp_path).replace(index_path)
     except Exception:
         # Clean up temp file on failure
         with contextlib.suppress(OSError):
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
         raise
 
     return result
@@ -610,7 +610,7 @@ def migrate_lifecycle_events(lifecycle_root: Path) -> dict[str, Any]:
     # Archive original events.jsonl (atomic rename)
     archive_path = lifecycle_root / "events.jsonl.archived"
     try:
-        os.replace(events_jsonl, archive_path)
+        Path(events_jsonl).replace(archive_path)
     except OSError:
         # If rename fails, try copy + delete as fallback
         import shutil

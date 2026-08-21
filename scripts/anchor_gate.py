@@ -29,12 +29,13 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_DIR = Path(__file__).resolve().parent
 # Same resolution as GATE A 4.5/4.6 in trigger-droid.sh:
 # repo layout  <root>/webhook-scripts/../scripts/extract_anchor.py
 # prod layout  ~/.factory/webhook/scripts/../scripts/extract_anchor.py
-EXTRACTOR = os.path.join(SCRIPT_DIR, "extract_anchor.py")
+EXTRACTOR = str(SCRIPT_DIR / "extract_anchor.py")
 
 EXTRACT_TIMEOUT = 60  # extract_anchor.py has its own 30s gh timeout
 
@@ -54,7 +55,7 @@ def log_extract_err(target: str, number: int, result: subprocess.CompletedProces
     if result.returncode == 0 and not (result.stderr or "").strip():
         return
     try:
-        with open(_extract_log_path, "a") as f:
+        with Path(_extract_log_path).open("a") as f:
             err = (result.stderr or "").strip().replace("\n", " | ")[:500]
             f.write(
                 f"[{_ts_extract()}] anchor-extract {target}#{number} "
@@ -73,7 +74,7 @@ def log_extract_err(target: str, number: int, result: subprocess.CompletedProces
 def log_drift(target_ref: str, number: int, reason: str) -> None:
     """Record a skipped close to anchor-drift.log, §4b format (best effort)."""
     try:
-        with open(_drift_log_path, "a") as f:
+        with Path(_drift_log_path).open("a") as f:
             f.write(
                 f"[{_ts_drift()}] DRIFT: {target_ref} GitHub Issue #{number} {reason}\n"
             )
@@ -105,8 +106,8 @@ def extract_anchor(target: str, number: int, repo: str) -> tuple[int, str]:
 def gate(candidates_json: str, target_ref: str, repo: str, log_dir: str) -> str:
     """Return the issue number to close, or '' (fail-closed)."""
     global _extract_log_path, _drift_log_path
-    _extract_log_path = os.path.join(log_dir, "anchor-extract.log")
-    _drift_log_path = os.path.join(log_dir, "anchor-drift.log")
+    _extract_log_path = str(Path(log_dir) / "anchor-extract.log")
+    _drift_log_path = str(Path(log_dir) / "anchor-drift.log")
 
     try:
         candidates = json.loads(candidates_json) if candidates_json.strip() else []
@@ -146,7 +147,7 @@ def main() -> None:
         sys.exit(2)
 
     target_ref, repo, log_dir = sys.argv[1], sys.argv[2], sys.argv[3]
-    if not os.path.isdir(log_dir):
+    if not Path(log_dir).is_dir():
         print(f"Error: log_dir not found: {log_dir}", file=sys.stderr)
         sys.exit(2)
 

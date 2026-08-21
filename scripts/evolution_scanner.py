@@ -72,7 +72,7 @@ def _unique_tmp_path(final_path: Path) -> Path:
 
 
 def load_config(repo_root: Path) -> dict[str, Any]:
-    with open(repo_root / ".evolution" / "config.yml") as f:
+    with (repo_root / ".evolution" / "config.yml").open() as f:
         config_data: dict[str, Any] = yaml.safe_load(f)
         return config_data
 
@@ -208,7 +208,7 @@ def load_suppressions(repo_root: Path) -> list[dict[str, Any]]:
     if not suppress_path.exists():
         return []
     try:
-        with open(suppress_path, encoding="utf-8") as f:
+        with suppress_path.open(encoding="utf-8") as f:
             data = json.load(f)
         entries = data.get("suppressed", [])
         if not isinstance(entries, list):
@@ -515,11 +515,11 @@ def _reopen_closed_issue(rule_id: str, location: str, dedup_label: str, history_
     # Write updated history back to file
     try:
         tmp_path = _unique_tmp_path(history_path)
-        with open(tmp_path, "w", encoding="utf-8") as f:
+        with tmp_path.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp_path, history_path)
+        tmp_path.replace(history_path)
     except Exception as e:
         print(f"[evolution] Warning: Failed to update reopen counter in history: {e}")
         # Reopen succeeded but counter update failed - still return True
@@ -677,11 +677,11 @@ def update_history(history_path: Path, findings: list[Finding], issues_created: 
     data["snapshots"].append(snapshot)
     data["snapshots"] = data["snapshots"][-snapshot_limit:]
     tmp_path = _unique_tmp_path(history_path)
-    with open(tmp_path, "w") as f:
+    with tmp_path.open("w") as f:
         json.dump(data, f, indent=2)
         f.flush()
         os.fsync(f.fileno())
-    os.replace(tmp_path, history_path)
+    tmp_path.replace(history_path)
 
 
 def write_heartbeat(repo_root: Path, issues_created: int, findings_count: int) -> None:
@@ -701,11 +701,11 @@ def write_heartbeat(repo_root: Path, issues_created: int, findings_count: int) -
     }
     heartbeat_path = repo_root / ".evolution" / "heartbeat.json"
     tmp_path = _unique_tmp_path(heartbeat_path)
-    with open(tmp_path, "w") as f:
+    with tmp_path.open("w") as f:
         json.dump(heartbeat, f, indent=2)
         f.flush()
         os.fsync(f.fileno())
-    os.replace(tmp_path, heartbeat_path)
+    tmp_path.replace(heartbeat_path)
 
 
 def check_persistent_info_findings(

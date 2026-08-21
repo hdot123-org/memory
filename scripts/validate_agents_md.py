@@ -18,7 +18,7 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 
 def get_pyproject_version() -> str:
     import tomllib
-    with open(PYPROJECT, "rb") as f:
+    with PYPROJECT.open("rb") as f:
         data: dict[str, Any] = tomllib.load(f)
         version: str = data["project"]["version"]
         return version

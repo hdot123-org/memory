@@ -11,7 +11,7 @@ from pathlib import Path
 def _read_pyproject_version() -> str:
     """Read version from pyproject.toml [project].version."""
     pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
-    with open(pyproject_path, "rb") as f:
+    with pyproject_path.open("rb") as f:
         data = tomllib.load(f)
     return data["project"]["version"]
 

@@ -607,10 +607,9 @@ class TestDeadlockExitProductionSchemaRobustness:
         This test documents the real schema from ~/.factory/webhook/status/INFRA-337.json
         and verifies the test fixtures match. If the schema changes, this test fails.
         """
-        import os
-        real_file = os.path.expanduser("~/.factory/webhook/status/INFRA-337.json")
-        if os.path.exists(real_file):
-            with open(real_file) as f:
+        real_file = Path("~/.factory/webhook/status/INFRA-337.json").expanduser()
+        if real_file.exists():
+            with real_file.open() as f:
                 real_data = json.load(f)
 
             # Document the real schema fields

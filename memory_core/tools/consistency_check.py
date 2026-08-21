@@ -228,7 +228,7 @@ def check_init_validate_roundtrip() -> tuple[list[str], list[str]]:
             errors.append("init: memory.lock not created")
         else:
             try:
-                with open(memory_lock, "rb") as f:
+                with memory_lock.open("rb") as f:
                     lock_data = tomllib.load(f)
                 if "memory" not in lock_data:
                     errors.append("init: memory.lock missing [memory] section")
@@ -241,7 +241,7 @@ def check_init_validate_roundtrip() -> tuple[list[str], list[str]]:
             errors.append("init: adapter.toml not created")
         else:
             try:
-                with open(adapter_toml, "rb") as f:
+                with adapter_toml.open("rb") as f:
                     adapter_data = tomllib.load(f)
                 required_sections = ["core", "policy", "routing"]
                 for section in required_sections:

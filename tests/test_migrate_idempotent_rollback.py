@@ -201,10 +201,10 @@ def _worker_append(log_path_str: str, start: int, count: int) -> None:
         try:
             import fcntl
         except ImportError:
-            with open(log_path, "a", encoding="utf-8") as f:
+            with log_path.open("a", encoding="utf-8") as f:
                 f.write(line + "\n")
         else:
-            with open(log_path, "a", encoding="utf-8") as f:
+            with log_path.open("a", encoding="utf-8") as f:
                 fcntl.flock(f.fileno(), fcntl.LOCK_EX)
                 try:
                     f.write(line + "\n")

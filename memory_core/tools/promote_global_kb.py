@@ -134,7 +134,7 @@ def _interactive_mode(pending_dir: Path) -> int:
         print(f"{i}. {candidate.name}")
         # Try to read first line as title
         try:
-            with open(candidate, encoding="utf-8") as f:
+            with candidate.open(encoding="utf-8") as f:
                 first_line = f.readline().strip()
                 if first_line.startswith("# "):
                     print(f"   {first_line}")

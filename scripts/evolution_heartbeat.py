@@ -324,9 +324,9 @@ def write_monitor_heartbeat(anomalies: int) -> None:
     }
     MONITOR_HEARTBEAT_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = _unique_tmp_path(MONITOR_HEARTBEAT_PATH)
-    with open(tmp, "w") as f:
+    with tmp.open("w") as f:
         json.dump(data, f, indent=2)
-    os.replace(tmp, MONITOR_HEARTBEAT_PATH)
+    tmp.replace(MONITOR_HEARTBEAT_PATH)
 
 
 def extract_recorded_anomalies(issue_body: str) -> set[str]:

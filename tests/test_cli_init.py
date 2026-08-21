@@ -32,7 +32,7 @@ def _read_adapter_toml(target: Path) -> dict[str, Any]:
     """Parse adapter.toml from target .memory/ directory."""
     import tomllib
     adapter_path = target / "memory" / "system" / "adapter.toml"
-    with open(adapter_path, "rb") as f:
+    with adapter_path.open("rb") as f:
         return tomllib.load(f)
 
 

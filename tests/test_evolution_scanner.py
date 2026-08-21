@@ -200,7 +200,7 @@ def test_regression_detection(tmp_path):
     update_history(history_path, findings_2, 1, 100)
 
     # Verify resolved_findings was populated
-    with open(history_path) as f:
+    with history_path.open() as f:
         data = json.load(f)
 
     assert len(data["resolved_findings"]) == 1
@@ -240,7 +240,7 @@ def test_findings_over_time(tmp_path):
     for _i in range(105):
         update_history(history_path, findings, 1, 100)
 
-    with open(history_path) as f:
+    with history_path.open() as f:
         data = json.load(f)
 
     assert len(data["snapshots"]) == 100
@@ -267,7 +267,7 @@ def test_isolation_label(tmp_path):
         ],
         "resolved_findings": [],
     }
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     findings = [Finding("RULE_001", "warning", "test", "Stuck", "file.md", "evidence")]
@@ -353,7 +353,7 @@ def test_update_history_empty(tmp_path):
 
     update_history(history_path, findings, 1, 100)
 
-    with open(history_path) as f:
+    with history_path.open() as f:
         data = json.load(f)
 
     assert len(data["snapshots"]) == 1
@@ -594,7 +594,7 @@ def test_adapt_error_patterns():
 def test_config_has_json_flags():
     """VAL-FIX-ADAPT-004: Config commands include --json flags."""
     config_path = Path(__file__).parent.parent / ".evolution" / "config.yml"
-    with open(config_path) as f:
+    with config_path.open() as f:
         config_content = f.read()
 
     # Check that --json flags are present
@@ -610,7 +610,7 @@ def test_config_has_json_flags():
 def test_cache_key_contains_run_id():
     """VAL-FIX-HIST-001: Cache key uses run-scoped pattern with github.run_id."""
     workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-scan.yml"
-    with open(workflow_path) as f:
+    with workflow_path.open() as f:
         content = f.read()
 
     # Cache key must contain github.run_id for run-scoped saves
@@ -1000,7 +1000,7 @@ def test_gh_limit_200_in_check_isolation(tmp_path):
         ],
         "resolved_findings": [],
     }
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     findings = [Finding("RULE_001", "warning", "test", "Stuck", "file.md", "evidence")]
@@ -1073,7 +1073,7 @@ def test_check_isolation_single_api_call(tmp_path):
         ],
         "resolved_findings": [],
     }
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     # 3 findings that all meet the threshold
@@ -2180,7 +2180,7 @@ def test_check_isolation_does_not_swallow_unexpected_exceptions(tmp_path):
 def test_workflow_generates_error_patterns():
     """INFRA-81: CI workflow has a step generating registry.jsonl before scanning."""
     workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-scan.yml"
-    with open(workflow_path) as f:
+    with workflow_path.open() as f:
         content = f.read()
 
     assert "memory-error-patterns --all-projects" in content
@@ -2193,7 +2193,7 @@ def test_workflow_generates_error_patterns():
 def test_config_error_patterns_no_dead_command():
     """INFRA-81: error_patterns entry has no misleading dead command field."""
     config_path = Path(__file__).parent.parent / ".evolution" / "config.yml"
-    with open(config_path) as f:
+    with config_path.open() as f:
         lines = f.read().splitlines()
 
     # Find the error_patterns block
@@ -2322,7 +2322,7 @@ def test_update_history_skips_failed_tool_categories(tmp_path):
     update_history(history_path, [finding_f1, finding_f2], 1, 100, failed_categories=set())
 
     # Verify tick 1 created snapshot with both findings
-    with open(history_path) as f:
+    with history_path.open() as f:
         data = json.load(f)
     assert len(data["snapshots"]) == 1
     assert len(data["snapshots"][0]["findings"]) == 2
@@ -2335,7 +2335,7 @@ def test_update_history_skips_failed_tool_categories(tmp_path):
 
     # Verify: RULE_001 (daily_audit) should NOT be in resolved_findings
     # because its category came from a failed tool
-    with open(history_path) as f:
+    with history_path.open() as f:
         data = json.load(f)
 
     resolved_rules = {r["rule_id"] for r in data["resolved_findings"]}
@@ -3349,7 +3349,7 @@ def test_load_history_findings_wrong_type_skipped(tmp_path):
         'resolved_findings': []
     }
 
-    with open(history_path, 'w') as f:
+    with history_path.open('w') as f:
         json.dump(history_data, f)
 
     result = load_history(history_path)
@@ -3383,7 +3383,7 @@ def test_load_history_findings_list_of_strings_filtered(tmp_path):
         'resolved_findings': []
     }
 
-    with open(history_path, 'w') as f:
+    with history_path.open('w') as f:
         json.dump(history_data, f)
 
     result = load_history(history_path)
@@ -3415,7 +3415,7 @@ def test_load_history_non_list_resolved_findings(tmp_path):
         "snapshots": [],
         "resolved_findings": {"not": "a_list"}
     }
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     # Should not crash, should reset to []
@@ -3432,7 +3432,7 @@ def test_load_history_non_list_resolved_findings(tmp_path):
 
     # Test with resolved_findings as string
     history_data["resolved_findings"] = "invalid_string"
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     result = load_history(history_path)
@@ -3440,7 +3440,7 @@ def test_load_history_non_list_resolved_findings(tmp_path):
 
     # Test with resolved_findings as int
     history_data["resolved_findings"] = 42
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     result = load_history(history_path)
@@ -3487,7 +3487,7 @@ def test_load_history_non_list_findings_in_snapshot(tmp_path):
         "resolved_findings": []
     }
 
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     # Should skip invalid snapshots, preserve valid ones
@@ -3934,7 +3934,7 @@ def test_load_history_filters_findings_missing_keys(tmp_path):
         ],
         "resolved_findings": [],
     }
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     data = load_history(history_path)
@@ -3957,7 +3957,7 @@ def test_update_history_handles_malformed_prev_findings(tmp_path):
         }],
         "resolved_findings": [],
     }
-    with open(history_path, "w") as f:
+    with history_path.open("w") as f:
         json.dump(malformed_data, f)
 
     # Second tick - should not crash even though prev findings are malformed
@@ -5315,7 +5315,7 @@ def test_reconcile_called_in_main():
     # Read the scanner source to verify the call order
     # Use __file__-based absolute path — relative paths fail in CI where CWD may differ
     scanner_path = Path(__file__).parent.parent / "scripts" / "evolution_scanner.py"
-    with open(scanner_path) as f:
+    with scanner_path.open() as f:
         scanner_code = f.read()
 
     # Find the positions of auto_close_resolved and reconcile_in_progress calls
@@ -5860,7 +5860,7 @@ def test_heartbeat_workflow_yaml_exists():
     assert workflow_path.exists(), ".github/workflows/evolution-heartbeat.yml must exist"
 
     # Validate YAML syntax
-    with open(workflow_path) as f:
+    with workflow_path.open() as f:
         data = yaml.safe_load(f)
     assert data is not None, "YAML must be parseable"
     assert isinstance(data, dict), "YAML must be a mapping"
@@ -5871,7 +5871,7 @@ def test_heartbeat_workflow_has_independent_cron():
     import yaml
     workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-heartbeat.yml"
 
-    with open(workflow_path) as f:
+    with workflow_path.open() as f:
         data = yaml.safe_load(f)
 
     # Must have on.schedule.cron trigger
@@ -5903,7 +5903,7 @@ def test_heartbeat_freshness_check_stale():
                 {"timestamp": old_time.isoformat(), "tick_id": "old", "findings": []}
             ]
         }
-        with open(history_path, "w") as f:
+        with history_path.open("w") as f:
             json.dump(data, f)
 
         # Should detect staleness
@@ -5926,7 +5926,7 @@ def test_heartbeat_freshness_check_fresh():
                 {"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}
             ]
         }
-        with open(history_path, "w") as f:
+        with history_path.open("w") as f:
             json.dump(data, f)
 
         # Should NOT detect staleness
@@ -6087,12 +6087,12 @@ def test_heartbeat_main_integration():
                 {"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}
             ]
         }
-        with open(history_path, "w") as f:
+        with history_path.open("w") as f:
             json.dump(data, f)
 
         # INFRA-204: create fresh heartbeat marker so check_heartbeat_marker passes
         heartbeat_path = Path(tmpdir) / "heartbeat.json"
-        with open(heartbeat_path, "w") as f:
+        with heartbeat_path.open("w") as f:
             json.dump({"timestamp": recent_time.isoformat(), "status": "ok"}, f)
 
         monitor_path = Path(tmpdir) / "monitor_heartbeat.json"
@@ -6130,13 +6130,13 @@ def test_heartbeat_detects_stale_and_creates_alert():
                 {"timestamp": old_time.isoformat(), "tick_id": "old", "findings": []}
             ]
         }
-        with open(history_path, "w") as f:
+        with history_path.open("w") as f:
             json.dump(data, f)
 
         # INFRA-204: fresh heartbeat marker so only history staleness triggers alert
         recent_time = datetime.now(UTC) - timedelta(minutes=30)
         heartbeat_path = Path(tmpdir) / "heartbeat.json"
-        with open(heartbeat_path, "w") as f:
+        with heartbeat_path.open("w") as f:
             json.dump({"timestamp": recent_time.isoformat(), "status": "ok"}, f)
 
         monitor_path = Path(tmpdir) / "monitor_heartbeat.json"

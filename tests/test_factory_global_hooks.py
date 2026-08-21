@@ -99,7 +99,7 @@ def test_install_factory_hooks_writes_wrapper_and_settings_json(monkeypatch, tmp
     assert result["success"] is True
     assert wrapper.is_file()
     assert settings_path.is_file()
-    assert os.stat(wrapper).st_mode & stat.S_IXUSR
+    assert wrapper.stat().st_mode & stat.S_IXUSR
     assert result["gateway_command"] == str(gateway)
     assert result["init_command"] == str(init)
 
