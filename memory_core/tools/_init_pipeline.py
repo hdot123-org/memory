@@ -260,16 +260,6 @@ def _create_directories(target: Path, result: dict[str, Any]) -> None:
                 result["errors"].append(f"failed to create {dir_rel}/.keep: {exc}")
 
 
-def _find_repo_root(path: Path) -> Path | None:
-    """Walk up from path to find the git repository root."""
-    current = path.resolve()
-    while current != current.parent:
-        if (current / ".git").is_dir():
-            return current
-        current = current.parent
-    return None
-
-
 def _find_repo_root(start_path: Path) -> Path | None:
     """Find the root of the git repository containing start_path.
 
@@ -288,29 +278,6 @@ def _find_repo_root(start_path: Path) -> Path | None:
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, OSError):
         pass
     return None
-
-
-def _is_memory_repo(repo_root: Path) -> bool:
-    """Check if the given repo root is the memory repository itself.
-
-    The memory repository contains memory_core/ and has specific markers.
-    """
-    # Check for memory_core directory (signature of the memory repo)
-    memory_core_dir = repo_root / "memory_core"
-    if not memory_core_dir.is_dir():
-        return False
-
-    # Check for pyproject.toml with memory-core name
-    pyproject_path = repo_root / "pyproject.toml"
-    if pyproject_path.exists():
-        try:
-            content = pyproject_path.read_text(encoding="utf-8")
-            if 'name = "memory-core"' in content:
-                return True
-        except (OSError, UnicodeDecodeError):
-            pass
-
-    return False
 
 
 def _is_memory_repo(repo_root: Path) -> bool:
