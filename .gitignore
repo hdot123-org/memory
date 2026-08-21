@@ -65,6 +65,10 @@ memory/system/
 memory/inbox.md
 memory/projects/
 
+# Coverage and runtime artifacts (PR #907 cleanup)
+coverage.xml
+memory_core/memory/
+
 # Root-level .memory/ (project-local runtime state, not for tracking)
 /.memory/
 

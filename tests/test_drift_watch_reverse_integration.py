@@ -14,8 +14,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 # Add scripts directory to path for imports
 scripts_dir = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(scripts_dir))
@@ -24,27 +22,12 @@ from evolution_scanner import Finding
 from evolution_utils import (
     OrphanIssueClassification,
     execute_orphan_classifications,
-    get_tick_tracker,
     reverse_drift_watch,
 )
 
 # INFRA-415: shared factory, imported under the original local name so call
 # sites stay unchanged.
 from tests.drift_watch_helpers import make_issue as _make_issue
-
-
-@pytest.fixture(autouse=True)
-def reset_tick_tracker():
-    """Reset global tick tracker state before each test.
-
-    Prevents cross-test state pollution: when the full suite runs, some test
-    may start the tracker and make API calls, exhausting the budget. This
-    fixture ensures each test starts with a clean tracker state.
-    """
-    tracker = get_tick_tracker()
-    tracker.start_time = None
-    tracker.api_calls = 0
-    yield
 
 
 def _gh_ok(stdout: str = "") -> MagicMock:
