@@ -38,9 +38,11 @@ def _get_discover_fn() -> Any:
     if _discover_fn is None:
         try:
             from .memory_hook_integrity_manifest import _discover_canonical_files
+
             _discover_fn = _discover_canonical_files
         except ImportError:
             from memory_hook_integrity_manifest import _discover_canonical_files  # type: ignore
+
             _discover_fn = _discover_canonical_files
     return _discover_fn
 
@@ -80,6 +82,56 @@ class IntegrityResult:
             "errors": self.errors,
             "warnings": self.warnings,
         }
+
+
+def _verify_single_entry(entry: dict[str, Any], resolved_root: Path, key: bytes, result: IntegrityResult) -> None:
+    """Verify a single manifest entry, recording errors/summary into result.
+
+    Note: membership in the manifest (signed_paths) is tracked by the caller
+    for every entry regardless of verification outcome — a tampered file is
+    still a signed file, not an unsigned one.
+    """
+    rel: str = entry.get("rel_path", "")
+    expected_sha: str = entry.get("sha256", "")
+    expected_hmac: str = entry.get("hmac_sha256", "")
+    abs_path = resolved_root / rel
+
+    if not abs_path.exists():
+        result.add_error(rel, "missing", "Signed file no longer exists")
+        return
+
+    try:
+        raw = abs_path.read_bytes()
+    except OSError as exc:
+        result.add_error(rel, "unreadable", f"Cannot read file: {exc}")
+        return
+
+    actual_sha = hashlib.sha256(raw).hexdigest()
+    actual_hmac = _hmc.new(key, raw, hashlib.sha256).hexdigest()
+
+    if actual_sha != expected_sha:
+        result.add_error(
+            rel, "tampered", f"SHA-256 mismatch: expected {expected_sha[:16]}..., got {actual_sha[:16]}..."
+        )
+    elif actual_hmac != expected_hmac:
+        result.add_error(rel, "tampered", "HMAC mismatch (content may have been replayed)")
+    else:
+        result.summary["verified_ok"] += 1
+
+
+def _check_unsigned_files(resolved_root: Path, signed_paths: set[Path], result: IntegrityResult) -> None:
+    """Check for new unsigned files and add warnings to result."""
+    discover_fn = _get_discover_fn()
+    if discover_fn is None:
+        return
+
+    current_files = set(discover_fn(resolved_root))
+    for fpath in current_files:
+        if fpath.name == MANIFEST_FILENAME and fpath.parent.name == SYSTEM_DIR.split("/")[-1]:
+            continue  # Skip manifest.json itself
+        if fpath not in signed_paths:
+            rel = str(fpath.relative_to(resolved_root))
+            result.add_warning(rel, "new_unsigned", "File exists but not in manifest")
 
 
 def verify_project(
@@ -123,18 +175,16 @@ def verify_project(
     # M4: Accept both v1 and v2 schemas
     schema_version = manifest.get("schema_version", "")
     if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
-        result.add_error(
-            "", "schema_mismatch",
-            f"Unsupported schema version: {schema_version!r}"
-        )
+        result.add_error("", "schema_mismatch", f"Unsupported schema version: {schema_version!r}")
         return result
 
     # Check key fingerprint
     expected_fp = "sha256:" + hashlib.sha256(key).hexdigest()[:8]
     if manifest.get("key_fingerprint") != expected_fp:
         result.add_warning(
-            "", "key_mismatch",
-            f"Key fingerprint mismatch: manifest={manifest.get('key_fingerprint')}, current={expected_fp}"
+            "",
+            "key_mismatch",
+            f"Key fingerprint mismatch: manifest={manifest.get('key_fingerprint')}, current={expected_fp}",
         )
 
     entries = manifest.get("entries", [])
@@ -142,43 +192,16 @@ def verify_project(
 
     signed_paths = set()
     for entry in entries:
+        _verify_single_entry(entry, resolved_root, key, result)
+        # Membership is tracked for every manifest entry, even failed ones:
+        # a tampered file is still signed, not unsigned.
         rel = entry.get("rel_path", "")
         abs_path = resolved_root / rel
-        signed_paths.add(abs_path.resolve())
-
-        expected_sha = entry.get("sha256", "")
-        expected_hmac = entry.get("hmac_sha256", "")
-
-        if not abs_path.exists():
-            result.add_error(rel, "missing", "Signed file no longer exists")
-            continue
-
-        try:
-            raw = abs_path.read_bytes()
-        except OSError as exc:
-            result.add_error(rel, "unreadable", f"Cannot read file: {exc}")
-            continue
-
-        actual_sha = hashlib.sha256(raw).hexdigest()
-        actual_hmac = _hmc.new(key, raw, hashlib.sha256).hexdigest()
-
-        if actual_sha != expected_sha:
-            result.add_error(rel, "tampered", f"SHA-256 mismatch: expected {expected_sha[:16]}..., got {actual_sha[:16]}...")
-        elif actual_hmac != expected_hmac:
-            result.add_error(rel, "tampered", "HMAC mismatch (content may have been replayed)")
-        else:
-            result.summary["verified_ok"] += 1
+        if abs_path.exists():
+            signed_paths.add(abs_path.resolve())
 
     # Check for new unsigned files (exclude manifest.json itself to avoid chicken-egg)
-    discover_fn = _get_discover_fn()
-    if discover_fn is not None:
-        current_files = set(discover_fn(resolved_root))
-        for fpath in current_files:
-            if fpath.name == MANIFEST_FILENAME and fpath.parent.name == SYSTEM_DIR.split("/")[-1]:
-                continue  # Skip manifest.json itself
-            if fpath not in signed_paths:
-                rel = str(fpath.relative_to(resolved_root))
-                result.add_warning(rel, "new_unsigned", "File exists but not in manifest")
+    _check_unsigned_files(resolved_root, signed_paths, result)
 
     # M4: On failure, return (ok=False, errors=[...]) only — NO auto re-sign.
     # Caller must use memory_integrity_resign.py CLI for explicit re-sign.

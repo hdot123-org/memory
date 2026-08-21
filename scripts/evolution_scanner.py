@@ -1016,52 +1016,81 @@ def _integrate_forward_drift_watch(
                     print(f"  - {record.finding_key[0]} at {record.finding_key[1]}: {record.reason}")
 
 
+def _execute_audit_tools(config: dict[str, Any], repo_root: Path) -> tuple[list[tuple[str, Any]], set[str]]:
+    """Execute audit tools and track failures."""
+    raw_results = [(t["name"], run_audit_tool(t, repo_root)) for t in config["audit_tools"]]
+    failed_categories = set()
+    for tool_name, result in raw_results:
+        if result is None:  # Tool failed
+            failed_categories.update(TOOL_TO_CATEGORIES.get(tool_name, set()))
+    return raw_results, failed_categories
+
+
+def _process_and_suppress_findings(
+    raw_results: list[tuple[str, Any]],
+    repo_root: Path,
+) -> tuple[list[Finding], set[tuple[str, str]], set[tuple[str, str]]]:
+    """Process findings: normalize, deduplicate, and apply suppressions."""
+    all_findings = [normalize_finding(r) for _, res in raw_results if res is not None for r in res]
+    # VAL-OPUS5-SCN-004: dedup_intra_tick must be called before other processing
+    all_findings = dedup_intra_tick(all_findings)
+
+    suppressions = load_suppressions(repo_root)
+    before_suppression = len(all_findings)
+    pre_suppression_keys = {(f.rule_id, f.location) for f in all_findings}
+    all_findings = apply_suppressions(all_findings, suppressions)
+    post_suppression_keys = {(f.rule_id, f.location) for f in all_findings}
+    suppressed_keys = pre_suppression_keys - post_suppression_keys
+    suppressed_count = before_suppression - len(all_findings)
+
+    if suppressed_count > 0:
+        print(f"[evolution] Suppressed {suppressed_count} findings by suppress.json")
+
+    return all_findings, suppressed_keys, pre_suppression_keys
+
+
+def _handle_audit_failures(raw_results: list[tuple[str, Any]]) -> None:
+    """Handle audit tool execution failures: exit if all failed, warn if some failed."""
+    failed_count = sum(1 for _, result in raw_results if result is None)
+
+    if failed_count == len(raw_results):
+        print("::error::All audit tools failed, cannot produce reliable findings")
+        sys.exit(1)
+
+    if failed_count > 0:
+        print(f"[evolution] Warning: {failed_count}/{len(raw_results)} adapter(s) failed, results may be incomplete")
+
+
 def main() -> None:
     repo_root = Path(__file__).parent.parent
     if check_kill_switch(repo_root):
         sys.exit(0)
 
-    # VAL-DRF-004: Start tick budget tracker
     tracker = get_tick_tracker()
     tracker.start()
 
     config = load_config(repo_root)
     validate_config(config)
     ensure_labels(config["dedup_label"], config["failure_label"])
-    tracker.record_api_call()  # ensure_labels makes gh calls
+    tracker.record_api_call()
 
     history_path = repo_root / ".evolution" / "findings_over_time.json"
-    # Track tool failures to prevent false "resolved" cascade
+
+    # Execute audit tools: run_audit_tool(t, repo_root) for each tool
     raw_results = [(t["name"], run_audit_tool(t, repo_root)) for t in config["audit_tools"]]
-    failed_categories = set()
-    for tool_name, result in raw_results:
-        if result is None:  # Tool failed
-            failed_categories.update(TOOL_TO_CATEGORIES.get(tool_name, set()))
-    # Fail when all audit tools failed (prevents silent completion on broken pipeline)
-    if config["audit_tools"] and all(result is None for _, result in raw_results):
-        print("::error::All audit tools failed, cannot produce reliable findings")
-        sys.exit(1)
+    failed_categories = {
+        cat for tool_name, result in raw_results if result is None
+        for cat in TOOL_TO_CATEGORIES.get(tool_name, set())
+    }
 
-    # P1-1: Warn when some adapters fail (partial failure detection)
-    failed_tools_count = sum(1 for _, result in raw_results if result is None)
-    if 0 < failed_tools_count < len(raw_results):
-        print(f"[evolution] Warning: {failed_tools_count}/{len(raw_results)} adapter(s) failed, results may be incomplete")
+    # Validate audit tool execution results
+    if raw_results:
+        _handle_audit_failures(raw_results)
 
-    all_findings = [normalize_finding(r) for _, res in raw_results if res is not None for r in res]
-    all_findings = dedup_intra_tick(all_findings)
-    # Load and apply suppression list (P2-2: prevent amplification loop)
-    suppressions = load_suppressions(repo_root)
-    before_suppression = len(all_findings)
-    # Track suppressed findings for forward drift watch (VAL-DRF-001)
-    pre_suppression_keys = {(f.rule_id, f.location) for f in all_findings}
-    all_findings = apply_suppressions(all_findings, suppressions)
-    post_suppression_keys = {(f.rule_id, f.location) for f in all_findings}
-    suppressed_keys = pre_suppression_keys - post_suppression_keys
-    suppressed_count = before_suppression - len(all_findings)
-    if suppressed_count > 0:
-        print(f"[evolution] Suppressed {suppressed_count} findings by suppress.json")
+    # Process findings: normalize, dedup_intra_tick, and apply suppressions
+    all_findings, suppressed_keys, pre_suppression_keys = _process_and_suppress_findings(raw_results, repo_root)
     findings = detect_regressions(all_findings, history_path)
-    # Load resolved_findings set for reopen decisions (VAL-REOPEN)
+
     _resolved_keys = set()
     _hist_data = load_history(history_path)
     if _hist_data is not None:
@@ -1069,20 +1098,15 @@ def main() -> None:
             if isinstance(r, dict):
                 _resolved_keys.add((r.get("rule_id", ""), r.get("location", "")))
 
-    # VAL-DUP-004: Peel critical regressions before dedup to prevent black hole effect
-    # Critical regressions must bypass dedup to reach _process_findings_with_reopen
     critical_regressions, remaining_findings = _peel_critical_regressions(findings, _resolved_keys)
 
-    deduped = []
-    gh_failed = False
     open_issues = []
-    # INFRA-410: real creation-path outcomes for forward drift watch classification
     issued_keys: set[tuple[str, str]] = set()
     suppressed_reopen_keys: set[tuple[str, str]] = set()
+    deduped: list[Any] = []
+    gh_failed = False
     try:
         open_issues = get_open_issues(config["dedup_label"], config["failure_label"])
-
-        # VAL-DUP-004: Process critical regressions first (bypass dedup)
         issues_created = 0
         if critical_regressions:
             issues_created += _process_findings_with_reopen(
@@ -1091,20 +1115,13 @@ def main() -> None:
                 issued_keys=issued_keys, suppressed_reopen_keys=suppressed_reopen_keys,
             )
 
-        # Then deduplicate and process remaining findings
         deduped = sort_by_severity(deduplicate(remaining_findings, open_issues), config["severity_order"])
-        # INFRA-198: independent quotas so critical findings don't starve self_audit
-        # INFRA-265: exclude daily_audit from issue creation (infrastructure findings)
-        # INFRA-third-quota-pool: code_hygiene gets independent third pool
         code_hygiene = [f for f in deduped if f.category == "code_hygiene"]
         regular = [f for f in deduped
                    if f.category not in ISSUE_EXCLUDED_CATEGORIES
                    and f.category != "code_hygiene"]
         self_audit = [f for f in deduped if f.category == "evolution_self_audit"]
-        # VAL-REOPEN: For regression findings (upgraded to critical by detect_regressions),
-        # try to reopen a matching closed issue before creating a new one.
-        # INFRA-396: open_issues passed to every pool so the fallback-create guard
-        # cannot be bypassed by pool routing.
+
         issues_created += _process_findings_with_reopen(
             regular, config["max_issues_per_tick"], _resolved_keys,
             config["dedup_label"], history_path, open_issues,

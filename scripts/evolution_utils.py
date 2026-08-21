@@ -616,6 +616,60 @@ def _fetch_issue_comments(issue_number: int) -> str | None:
         return None
 
 
+def _extract_linear_id_from_issue(
+    issue_body: str, issue_number: int | None
+) -> tuple[str | None, bool | None]:
+    """Extract Linear ID from issue body or comments.
+
+    Returns:
+        (linear_id, should_block) where:
+        - linear_id is the extracted INFRA-xxx ID or None
+        - should_block is True if we must block close (fail-closed),
+          False if we must block close (marker but no ID),
+          None if extraction succeeded or no linkback found
+    """
+    # Step 1: Try to extract linkback from body ONLY (no comment fetch yet)
+    # Optimization (VAL-CLOSE-026): skip comment fetch if body already has linkback
+    linear_id = _extract_linear_linkback(issue_body, "")
+
+    # Step 2: If body doesn't have linkback, check if marker exists but extraction failed
+    if not linear_id and _has_linear_linkback_marker(issue_body, ""):
+        # P0-1 fail-closed: marker present but ID extraction failed
+        logger.warning(
+            "linear-linkback marker found but ID could not be extracted — "
+            "fail-closed: blocking close to prevent unverified state"
+        )
+        return None, False
+
+    # Step 3: If body has no linkback marker at all, fetch comments to search there
+    # VAL-FAILOPEN-005/006/007: comment fetch failure → fail-closed (return False)
+    # because the linkback may exist in comments and we can't verify without them.
+    issue_comments = ""
+    if not linear_id and issue_number is not None:
+        # No linkback in body, check comments
+        fetched_comments = _fetch_issue_comments(issue_number)
+        if fetched_comments is None:
+            # Fail-closed: can't verify linkback in comments
+            logger.warning(
+                f"Failed to fetch comments for issue #{issue_number} — "
+                f"fail-closed: blocking close to prevent unverified state"
+            )
+            return None, False
+        issue_comments = fetched_comments
+        # Try to extract linkback from comments
+        linear_id = _extract_linear_linkback(issue_body, issue_comments)
+
+        # Check if marker exists in comments but extraction failed
+        if not linear_id and _has_linear_linkback_marker(issue_body, issue_comments):
+            logger.warning(
+                "linear-linkback marker found in comments but ID could not be extracted — "
+                "fail-closed: blocking close to prevent unverified state"
+            )
+            return None, False
+
+    return linear_id, None
+
+
 def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = None) -> bool:
     """Verify that the fix for this issue has been merged via Linear API.
 
@@ -640,53 +694,17 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
         - LINEAR_API_KEY missing (fail-closed: closing a Linear-linked issue
           without verification triggers reopen churn)
     """
-    # Step 1: Try to extract linkback from body ONLY (no comment fetch yet)
-    # Optimization (VAL-CLOSE-026): skip comment fetch if body already has linkback
-    linear_id = _extract_linear_linkback(issue_body, "")
+    # Step 1: Extract linkback from body
+    linear_id, should_block = _extract_linear_id_from_issue(issue_body, issue_number)
+    if should_block is not None:
+        return should_block
 
-    # Step 2: If body doesn't have linkback, check if marker exists but extraction failed
-    if not linear_id and _has_linear_linkback_marker(issue_body, ""):
-        # P0-1 fail-closed: marker present but ID extraction failed
-        logger.warning(
-            "linear-linkback marker found but ID could not be extracted — "
-            "fail-closed: blocking close to prevent unverified state"
-        )
-        return False
-
-    # Step 3: If body has no linkback marker at all, fetch comments to search there
-    # VAL-FAILOPEN-005/006/007: comment fetch failure → fail-closed (return False)
-    # because the linkback may exist in comments and we can't verify without them.
-    issue_comments = ""
-    if not linear_id and issue_number is not None:
-        # No linkback in body, check comments
-        fetched_comments = _fetch_issue_comments(issue_number)
-        if fetched_comments is None:
-            # Fail-closed: can't verify linkback in comments
-            logger.warning(
-                f"Failed to fetch comments for issue #{issue_number} — "
-                f"fail-closed: blocking close to prevent unverified state"
-            )
-            return False
-        issue_comments = fetched_comments
-        # Try to extract linkback from comments
-        linear_id = _extract_linear_linkback(issue_body, issue_comments)
-
-        # Check if marker exists in comments but extraction failed
-        if not linear_id and _has_linear_linkback_marker(issue_body, issue_comments):
-            logger.warning(
-                "linear-linkback marker found in comments but ID could not be extracted — "
-                "fail-closed: blocking close to prevent unverified state"
-            )
-            return False
-
-    # Step 4: No linkback found anywhere - backward compat for environmental findings
+    # Step 2: No linkback found anywhere - backward compat for environmental findings
     if not linear_id:
         logger.debug("No linear-linkback found in issue body or comments")
         return True
 
-    # Check if LINEAR_API_KEY is available
-    # Fail-CLOSED: if we can't verify Linear state, don't close — the Linear
-    # native GitHub integration will reopen it, causing infinite churn.
+    # Step 3: Check if LINEAR_API_KEY is available
     api_key = os.environ.get("LINEAR_API_KEY")
     if not api_key:
         logger.warning(
@@ -853,6 +871,94 @@ def _should_skip_partial_output(findings: list[Any], history_path: Path) -> bool
     return False
 
 
+def _should_skip_close(
+    issue: dict[str, Any], rule_id: str, location: str,
+    failed_categories: set[str] | None, history_path: Path | None,
+) -> str | None:
+    """Return skip reason if issue should not be closed, else None.
+
+    Returns:
+        "protected" | "self_audit" | "grace_deferred" | "linear_unverified" | None
+    """
+    # GAP-C1: protect issues whose category came from a failed audit tool
+    if failed_categories:
+        category = _parse_issue_category(issue.get("body", ""))
+        if category and category in failed_categories:
+            print(f"[evolution] Skip auto-close #{issue['number']}: category '{category}' tool failed this tick ({rule_id} @ {location})")
+            return "protected"
+
+    # INFRA-216: Exclude self-audit findings from auto-close
+    category = _parse_issue_category(issue.get("body", ""))
+    if category == SELF_AUDIT_CATEGORY:
+        print(f"[evolution] Skip auto-close #{issue['number']}: self-audit finding "
+              f"({rule_id} @ {location}) — transient health signal, requires manual/Droid resolution")
+        return "self_audit"
+
+    # GAP-C3: Check grace period using history
+    if history_path is not None:
+        absence_count = _count_consecutive_absences(rule_id, location, history_path)
+        if absence_count < GRACE_PERIOD_TICKS:
+            print(f"[evolution] Skip auto-close #{issue['number']}: absent {absence_count}/{GRACE_PERIOD_TICKS} ticks (grace period)")
+            return "grace_deferred"
+
+    # VAL-CLOSE-001-024: Verify fix is merged via Linear before closing
+    issue_body = issue.get("body", "")
+    if not _verify_fix_merged_via_linear(issue_body, issue.get("number")):
+        logger.info(f"Skipping auto-close for issue #{issue['number']}: fix not verified as merged")
+        print(f"[evolution] Skip auto-close #{issue['number']}: fix not verified as merged via Linear")
+        return "linear_unverified"
+
+    return None
+
+
+def _close_issue(issue_number: int, rule_id: str, location: str) -> bool:
+    """Close a single issue, return True on success."""
+    close_msg = (
+        f"该 finding 在最近一次扫描中已不再出现，自动关闭此 Issue。"
+        f"（Rule: {rule_id}, Location: {location}）"
+    )
+    try:
+        close_result = subprocess.run(
+            ["gh", "issue", "close", str(issue_number), "--comment", close_msg],
+            capture_output=True, text=True, timeout=30
+        )
+        if close_result.returncode == 0:
+            print(f"[evolution] Closed issue #{issue_number}: {rule_id} @ {location}")
+            return True
+        else:
+            print(f"[evolution] Warning: Failed to close issue #{issue_number}: {close_result.stderr}")
+    except Exception as e:
+        print(f"[evolution] Warning: Failed to close issue #{issue_number}: {e}")
+    return False
+
+
+def _fetch_open_issues(dedup_label: str) -> list[dict[str, Any]] | None:
+    """Fetch all open evolution-found issues. Returns None on failure."""
+    try:
+        result = subprocess.run(
+            ["gh", "issue", "list", "--search", f"label:{dedup_label}",
+             "--state", "open", "--limit", "200", "--json", "number,body"],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode != 0:
+            print(f"[evolution] Warning: Failed to list open issues: {result.stderr}")
+            return None
+        return json.loads(result.stdout) if result.stdout.strip() else []
+    except Exception as e:
+        print(f"[evolution] Warning: Failed to fetch open issues: {e}")
+        return None
+
+
+def _log_auto_close_summary(protected_count: int, grace_deferred_count: int, self_audit_skip_count: int) -> None:
+    """Log summary statistics for auto-close operation."""
+    if protected_count > 0:
+        print(f"[evolution] Protected {protected_count} issue(s) from auto-close due to failed audit categories")
+    if grace_deferred_count > 0:
+        print(f"[evolution] Deferred {grace_deferred_count} issue(s) auto-close due to grace period")
+    if self_audit_skip_count > 0:
+        print(f"[evolution] Skipped {self_audit_skip_count} self-audit issue(s) from auto-close (transient health signals)")
+
+
 def auto_close_resolved(findings: list[Any], dedup_label: str, failed_categories: set[str] | None = None,
                        history_path: Path | None = None) -> None:
     """Close GitHub Issues whose findings are no longer present in current scan.
@@ -890,27 +996,12 @@ def auto_close_resolved(findings: list[Any], dedup_label: str, failed_categories
     if history_path is not None and _should_skip_partial_output(findings, history_path):
         return
 
-    # Fetch all open evolution-found issues
-    try:
-        result = subprocess.run(
-            ["gh", "issue", "list", "--search", f"label:{dedup_label}",
-             "--state", "open", "--limit", "200", "--json", "number,body"],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.returncode != 0:
-            print(f"[evolution] Warning: Failed to list open issues: {result.stderr}")
-            return
-
-        issues = json.loads(result.stdout) if result.stdout.strip() else []
-    except Exception as e:
-        print(f"[evolution] Warning: Failed to fetch open issues: {e}")
+    issues = _fetch_open_issues(dedup_label)
+    if issues is None:
         return
 
     # Close issues not in current findings
-    closed_count = 0
-    protected_count = 0
-    grace_deferred_count = 0
-    self_audit_skip_count = 0
+    counters = {"closed": 0, "protected": 0, "grace_deferred": 0, "self_audit_skip": 0}
     for issue in issues:
         rule_id, location = _parse_issue_fields(issue.get("body", ""))
         if rule_id is None or location is None:
@@ -918,70 +1009,22 @@ def auto_close_resolved(findings: list[Any], dedup_label: str, failed_categories
 
         issue_key = (rule_id, location)
         if issue_key not in current_keys:
-            # GAP-C1: protect issues whose category came from a failed audit tool.
-            # A failed tool emits no findings, so its issues vanish from the
-            # current scan even though the underlying problem may still exist.
-            if failed_categories:
-                category = _parse_issue_category(issue.get("body", ""))
-                if category and category in failed_categories:
-                    protected_count += 1
-                    print(f"[evolution] Skip auto-close #{issue['number']}: category '{category}' tool failed this tick ({rule_id} @ {location})")
-                    continue
+            skip_reason = _should_skip_close(issue, rule_id, location, failed_categories, history_path)
+            if skip_reason == "protected":
+                counters["protected"] += 1
+            elif skip_reason == "self_audit":
+                counters["self_audit_skip"] += 1
+            elif skip_reason == "grace_deferred":
+                counters["grace_deferred"] += 1
+            elif skip_reason == "linear_unverified":
+                pass  # already logged in _should_skip_close
+            else:
+                if _close_issue(issue["number"], rule_id, location):
+                    counters["closed"] += 1
 
-            # INFRA-216: Exclude self-audit findings from auto-close.
-            # Self-audit findings (e.g., EVOLUTION_HEARTBEAT_STALE) are transient
-            # health signals. Auto-closing them triggers a flapping loop with the
-            # state gate (Gate A), which reverts any non-Droid closure. These
-            # issues should stay open until investigated by a human or Droid.
-            category = _parse_issue_category(issue.get("body", ""))
-            if category == SELF_AUDIT_CATEGORY:
-                self_audit_skip_count += 1
-                print(f"[evolution] Skip auto-close #{issue['number']}: self-audit finding "
-                      f"({rule_id} @ {location}) — transient health signal, requires manual/Droid resolution")
-                continue
-
-            # GAP-C3: Check grace period using history
-            if history_path is not None:
-                absence_count = _count_consecutive_absences(rule_id, location, history_path)
-                if absence_count < GRACE_PERIOD_TICKS:
-                    grace_deferred_count += 1
-                    print(f"[evolution] Skip auto-close #{issue['number']}: absent {absence_count}/{GRACE_PERIOD_TICKS} ticks (grace period)")
-                    continue
-
-            # VAL-CLOSE-001-024: Verify fix is merged via Linear before closing
-            issue_body = issue.get("body", "")
-            if not _verify_fix_merged_via_linear(issue_body, issue.get("number")):
-                logger.info(f"Skipping auto-close for issue #{issue['number']}: fix not verified as merged")
-                print(f"[evolution] Skip auto-close #{issue['number']}: fix not verified as merged via Linear")
-                continue
-
-            # This finding is no longer present - close the issue
-            close_msg = (
-                f"该 finding 在最近一次扫描中已不再出现，自动关闭此 Issue。"
-                f"（Rule: {rule_id}, Location: {location}）"
-            )
-            try:
-                close_result = subprocess.run(
-                    ["gh", "issue", "close", str(issue["number"]),
-                     "--comment", close_msg],
-                    capture_output=True, text=True, timeout=30
-                )
-                if close_result.returncode == 0:
-                    closed_count += 1
-                    print(f"[evolution] Closed issue #{issue['number']}: {rule_id} @ {location}")
-                else:
-                    print(f"[evolution] Warning: Failed to close issue #{issue['number']}: {close_result.stderr}")
-            except Exception as e:
-                print(f"[evolution] Warning: Failed to close issue #{issue['number']}: {e}")
-
-    if closed_count > 0:
-        print(f"[evolution] Auto-closed {closed_count} resolved issues")
-    if protected_count > 0:
-        print(f"[evolution] Protected {protected_count} issue(s) from auto-close due to failed audit categories")
-    if grace_deferred_count > 0:
-        print(f"[evolution] Deferred {grace_deferred_count} issue(s) auto-close due to grace period")
-    if self_audit_skip_count > 0:
-        print(f"[evolution] Skipped {self_audit_skip_count} self-audit issue(s) from auto-close (transient health signals)")
+    if counters["closed"] > 0:
+        print(f"[evolution] Auto-closed {counters['closed']} resolved issues")
+    _log_auto_close_summary(counters["protected"], counters["grace_deferred"], counters["self_audit_skip"])
 
 
 # ============================================================================
