@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -108,10 +108,10 @@ def check_findings_over_time() -> list[dict[str, Any]]:
         if timestamp_str:
             try:
                 last_time = datetime.fromisoformat(timestamp_str)
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 # Handle naive datetimes by assuming UTC
                 if last_time.tzinfo is None:
-                    last_time = last_time.replace(tzinfo=timezone.utc)
+                    last_time = last_time.replace(tzinfo=UTC)
                 age_hours = (now - last_time).total_seconds() / 3600
                 if age_hours > STALE_THRESHOLD_HOURS:
                     findings.append({
@@ -525,7 +525,7 @@ def check_linear_sync() -> list[dict[str, Any]]:
         })
         return findings
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     checked = 0
     for issue in issues:
         number = issue.get("number")
@@ -539,7 +539,7 @@ def check_linear_sync() -> list[dict[str, Any]]:
                           if created_at_str.endswith("Z") else created_at_str)
             created_at = datetime.fromisoformat(normalized)
             if created_at.tzinfo is None:
-                created_at = created_at.replace(tzinfo=timezone.utc)
+                created_at = created_at.replace(tzinfo=UTC)
         except (ValueError, TypeError):
             continue
 
@@ -625,9 +625,9 @@ def check_heartbeat_channel() -> list[dict[str, Any]]:
 
         ts = datetime.fromisoformat(ts_str)
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+            ts = ts.replace(tzinfo=UTC)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         age_hours = (now - ts).total_seconds() / 3600
 
         if age_hours > HEARTBEAT_STALE_THRESHOLD_HOURS:

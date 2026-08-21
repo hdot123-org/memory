@@ -206,7 +206,7 @@ class TestClaudeEventMapping:
         assert "Stop" in _CLAUDE_EVENT_MAP
 
     def test_all_mappings_valid(self):
-        for native, canonical in _CLAUDE_EVENT_MAP.items():
+        for _native, canonical in _CLAUDE_EVENT_MAP.items():
             assert canonical in _VALID_EVENT_TYPES
 
 

@@ -356,12 +356,12 @@ class TestAnchorGate:
         """
         lines = ["#!/bin/bash", "# args: issue view <N> --repo ..."]
         for num, (body, rc) in sorted(cases.items()):
-            lines.append("if [ \"$3\" = \"%s\" ]; then" % num)
+            lines.append(f'if [ "$3" = "{num}" ]; then')
             for line in body.split("\n"):
-                lines.append("  printf '%%s\\n' %s" % shlex.quote(line))
+                lines.append(f"  printf '%s\\n' {shlex.quote(line)}")
             if rc != 0:
                 lines.append("  echo 'gh error' >&2")
-            lines.append("  exit %d" % rc)
+            lines.append(f"  exit {rc}")
             lines.append("fi")
         lines.append("echo 'unexpected gh call: $*' >&2")
         lines.append("exit 1")

@@ -4,7 +4,7 @@ INFRA-213: Tests the scanner liveness check (gh run list) and main() orchestrati
 """
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -22,7 +22,7 @@ def _gh_result(stdout: str = "", returncode: int = 0, stderr: str = "") -> Magic
 
 def _recent_run(hours_ago: float, conclusion: str = "success") -> dict:
     """Create a gh run list entry from N hours ago."""
-    ts = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).strftime(
+    ts = (datetime.now(UTC) - timedelta(hours=hours_ago)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     return {"status": "completed", "conclusion": conclusion, "createdAt": ts}

@@ -84,9 +84,11 @@ class TestRecursionAvoidance:
         mock.capture.side_effect = counting_side_effect
 
         # batch_capture will fail and call _capture_error, which should not recurse
-        with patch.object(bridge, '_is_enabled', return_value=True):
-            with patch("urllib.request.urlopen", side_effect=OSError("network down")):
-                bridge.batch_capture([{"event_name": "test", "properties": {}}])
+        with (
+            patch.object(bridge, '_is_enabled', return_value=True),
+            patch("urllib.request.urlopen", side_effect=OSError("network down")),
+        ):
+            bridge.batch_capture([{"event_name": "test", "properties": {}}])
 
         # Should be exactly 1 call: _capture_error's attempt to emit error event
         # NOT infinite recursion

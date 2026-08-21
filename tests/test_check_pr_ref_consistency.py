@@ -18,7 +18,6 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -134,7 +133,7 @@ def _make_side_effect(
     pr_number: int,
     pr_body: str,
     closing_refs: list[int],
-    issue_comments: Optional[dict] = None,
+    issue_comments: dict | None = None,
 ):
     """Build a subprocess.run side_effect mocking gh pr view + gh issue view.
 

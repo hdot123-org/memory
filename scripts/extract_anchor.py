@@ -15,12 +15,12 @@ Returns:
 
 Architecture reference: docs/architecture/issue-flow.md §9.4/§10.3（镜像定位锚点）
 """
-import os
 import subprocess
 import sys
+from pathlib import Path
 
 # Add scripts/ to path so we can import evolution_utils
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_DIR = str(Path(__file__).resolve().parent)
 sys.path.insert(0, SCRIPT_DIR)
 
 from evolution_utils import extract_linkback_anchor

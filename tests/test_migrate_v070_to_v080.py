@@ -5,7 +5,7 @@ Covers VAL-MIGRATE-001 through VAL-MIGRATE-005 and VAL-CROSS-002.
 
 import sys
 import tomllib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from memory_core.tools.adapter_toml_schema import load_adapter_toml
@@ -34,7 +34,7 @@ def _create_v070_project(tmp_path: Path) -> Path:
     memory_root.mkdir(parents=True)
 
     # Create memory.lock at 0.7.0
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     lock_content = f"""# memory.lock
 [memory]
 memory_version = "0.7.0"
@@ -313,7 +313,7 @@ def test_migrate_with_custom_global_kb_config(tmp_path: Path) -> None:
     project_root.mkdir(parents=True)
 
     # Create adapter.toml with custom [global_kb]
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     lock_content = f"""# memory.lock
 [memory]
 memory_version = "0.7.0"

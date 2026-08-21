@@ -1,6 +1,6 @@
 """Tests for task_dispatcher — resilient task delivery with long-prompt fallback."""
 
-import os
+from pathlib import Path
 
 from memory_core.tools.task_dispatcher import (
     MAX_INLINE_CHARS,
@@ -66,9 +66,9 @@ class TestTaskDispatcher:
     def test_cleanup_removes_workspace(self) -> None:
         d = _MockDispatcher()
         ws = d.workspace
-        assert os.path.exists(ws)
+        assert Path(ws).exists()
         d.cleanup()
-        assert not os.path.exists(ws)
+        assert not Path(ws).exists()
 
     def test_get_summary(self) -> None:
         d = _MockDispatcher()
@@ -82,11 +82,9 @@ class TestTaskDispatcher:
         d = _MockDispatcher()
         prompt = "x" * (MAX_INLINE_CHARS + 1)
         d.dispatch(prompt, task_name="filetest")
-        # instructions.md should exist somewhere in workspace
-        found = False
-        for root, _dirs, files in os.walk(d.workspace):
-            if "instructions.md" in files:
-                found = True
-                break
+        found = any(
+            (Path(root) / "instructions.md").is_file()
+            for root, _dirs, _files in Path(d.workspace).walk()
+        )
         assert found is True
         d.cleanup()

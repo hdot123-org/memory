@@ -61,11 +61,7 @@ def _is_in_registered_dir(file_path: Path) -> bool:
         if rel_dir.startswith(cat_dir):
             return True
 
-    for exc_dir in EXCEPTION_DIRS:
-        if rel_dir.startswith(exc_dir):
-            return True
-
-    return False
+    return any(rel_dir.startswith(exc_dir) for exc_dir in EXCEPTION_DIRS)
 
 
 def scan_doc_classification() -> list[dict[str, str]]:

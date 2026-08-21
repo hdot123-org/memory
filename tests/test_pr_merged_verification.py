@@ -287,8 +287,7 @@ class TestVALCLOSE004:
     @patch("evolution_utils.urllib.request.urlopen")
     def test_timeout_fail_closed(self, mock_urlopen):
         """VAL-CLOSE-004/VAL-FAILOPEN-004: Timeout -> fail-closed, returns False."""
-        import socket
-        mock_urlopen.side_effect = socket.timeout("timed out")
+        mock_urlopen.side_effect = TimeoutError("timed out")
         issue_body = "<!-- linear-linkback INFRA-123 -->"
 
         result = _verify_fix_merged_via_linear(issue_body)
@@ -777,22 +776,24 @@ class TestVALCLOSE006:
             "resolved_findings": []
         }
 
-        with patch("evolution_utils.load_history", return_value=history_data):
-            with patch("evolution_utils._verify_fix_merged_via_linear") as mock_verify:
-                auto_close_resolved(
-                    findings, "evolution-found",
-                    history_path=Path("/tmp/test_history.json")
-                )
+        with (
+            patch("evolution_utils.load_history", return_value=history_data),
+            patch("evolution_utils._verify_fix_merged_via_linear") as mock_verify,
+        ):
+            auto_close_resolved(
+                findings, "evolution-found",
+                history_path=Path("/tmp/test_history.json")
+            )
 
-                # _verify_fix_merged_via_linear should NOT be called
-                assert not mock_verify.called
+            # _verify_fix_merged_via_linear should NOT be called
+            assert not mock_verify.called
 
-                # No close call
-                close_calls = [
-                    c for c in mock_subprocess.call_args_list
-                    if len(c[0]) > 2 and c[0][0][2] == "close"
-                ]
-                assert len(close_calls) == 0
+            # No close call
+            close_calls = [
+                c for c in mock_subprocess.call_args_list
+                if len(c[0]) > 2 and c[0][0][2] == "close"
+            ]
+            assert len(close_calls) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -828,23 +829,25 @@ class TestVALCLOSE007:
             "resolved_findings": []
         }
 
-        with patch("evolution_utils.load_history", return_value=history_data):
-            with patch("evolution_utils._verify_fix_merged_via_linear") as mock_verify:
-                auto_close_resolved(
-                    findings, "evolution-found",
-                    failed_categories={"daily_audit"},
-                    history_path=Path("/tmp/test_history.json")
-                )
+        with (
+            patch("evolution_utils.load_history", return_value=history_data),
+            patch("evolution_utils._verify_fix_merged_via_linear") as mock_verify,
+        ):
+            auto_close_resolved(
+                findings, "evolution-found",
+                failed_categories={"daily_audit"},
+                history_path=Path("/tmp/test_history.json")
+            )
 
-                # _verify_fix_merged_via_linear should NOT be called
-                assert not mock_verify.called
+            # _verify_fix_merged_via_linear should NOT be called
+            assert not mock_verify.called
 
-                # No close call
-                close_calls = [
-                    c for c in mock_subprocess.call_args_list
-                    if len(c[0]) > 2 and c[0][0][2] == "close"
-                ]
-                assert len(close_calls) == 0
+            # No close call
+            close_calls = [
+                c for c in mock_subprocess.call_args_list
+                if len(c[0]) > 2 and c[0][0][2] == "close"
+            ]
+            assert len(close_calls) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -878,13 +881,15 @@ class TestVALCLOSE011:
             "resolved_findings": []
         }
 
-        with patch("evolution_utils.load_history", return_value=history_data):
-            with patch("evolution_utils.urllib.request.urlopen") as mock_urlopen:
-                auto_close_resolved(
-                    findings, "evolution-found",
-                    history_path=Path("/tmp/test_history.json")
-                )
-                assert not mock_urlopen.called
+        with (
+            patch("evolution_utils.load_history", return_value=history_data),
+            patch("evolution_utils.urllib.request.urlopen") as mock_urlopen,
+        ):
+            auto_close_resolved(
+                findings, "evolution-found",
+                history_path=Path("/tmp/test_history.json")
+            )
+            assert not mock_urlopen.called
 
 
 # ---------------------------------------------------------------------------
@@ -920,14 +925,16 @@ class TestVALCLOSE012:
             "resolved_findings": []
         }
 
-        with patch("evolution_utils.load_history", return_value=history_data):
-            with patch("evolution_utils.urllib.request.urlopen") as mock_urlopen:
-                auto_close_resolved(
-                    findings, "evolution-found",
-                    failed_categories={"daily_audit"},
-                    history_path=Path("/tmp/test_history.json")
-                )
-                assert not mock_urlopen.called
+        with (
+            patch("evolution_utils.load_history", return_value=history_data),
+            patch("evolution_utils.urllib.request.urlopen") as mock_urlopen,
+        ):
+            auto_close_resolved(
+                findings, "evolution-found",
+                failed_categories={"daily_audit"},
+                history_path=Path("/tmp/test_history.json")
+            )
+            assert not mock_urlopen.called
 
 
 # ---------------------------------------------------------------------------

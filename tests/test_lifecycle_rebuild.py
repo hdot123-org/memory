@@ -333,7 +333,7 @@ def test_rebuild_real_environment(tmp_path: Path) -> None:
     # All consumer projects present
     paths = result["paths"]
     for name, _ in consumer_projects:
-        assert any(name in p for p in paths.keys()), f"Missing consumer project: {name}"
+        assert any(name in p for p in paths), f"Missing consumer project: {name}"
 
 
 # ── Additional edge case tests ───────────────────────────────────────────

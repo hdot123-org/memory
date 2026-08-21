@@ -176,10 +176,7 @@ def layer1_smoke(qa: QAResult) -> None:
         start = time.monotonic()
         code, stdout, stderr = run_cmd([cmd_name], timeout=15)
         ms = (time.monotonic() - start) * 1000
-        if cmd_name in CLI_NO_ARGS_OK:
-            ok = code == 0
-        else:
-            ok = code != 0
+        ok = code == 0 if cmd_name in CLI_NO_ARGS_OK else code != 0
         qa.add(TestResult(f"{cmd_name} (no args)", 1, ok, error="" if ok else "unexpected exit code", duration_ms=ms))
         status = color("PASS", GREEN) if ok else color("FAIL", RED)
         print(f"  {status} {cmd_name} (no args) ({ms:.0f}ms)")

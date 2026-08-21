@@ -26,7 +26,7 @@ import logging
 import shutil
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -173,9 +173,7 @@ def _is_forbidden_path(path: str, target: Path | None = None) -> bool:
     forbidden = ["agents.md", "index.md", "claude.md"]
     if any(f in path_lower for f in forbidden):
         return True
-    if "project-map" in path_lower:
-        return True
-    return False
+    return "project-map" in path_lower
 
 
 # Import now_iso utility (REF-001 §4.8)
@@ -658,7 +656,7 @@ def apply_residue_plan(
 
     # Determine backup directory
     if backup_dir is None:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         backup_dir = target / "memory" / "system" / "backups" / f"residue-{timestamp}"
 
     # Filter actions

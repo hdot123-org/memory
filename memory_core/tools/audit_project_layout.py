@@ -263,12 +263,9 @@ MEMORY_STRUCTURE_PATTERNS = {
 
 def _is_allowed_root_file(name: str) -> bool:
     """Check if a root file is allowed/expected."""
-    if name in ALLOWED_ROOT_FILES:
-        return True
-    for pattern in ALLOWED_ROOT_PATTERNS:
-        if fnmatch.fnmatch(name, pattern):
-            return True
-    return False
+    return name in ALLOWED_ROOT_FILES or any(
+        fnmatch.fnmatch(name, pattern) for pattern in ALLOWED_ROOT_PATTERNS
+    )
 
 
 def _check_root_pollution(root: Path, result: AuditResult) -> None:
@@ -1017,30 +1014,32 @@ def _scan_root_pollution(
                     )
                 )
             continue
-        if item.is_file():
+        if (
+            item.is_file()
+            and name.endswith(".md")
+            and not _is_allowed_root_file(name)
+            and not any(f.path == name for f in audit_result.findings)
+        ):
             # Check for root-level markdown files that might be business content
-            if name.endswith(".md") and not _is_allowed_root_file(name):
-                # Check if it's already in findings
-                if not any(f.path == name for f in audit_result.findings):
-                    buckets["needs_human_decision"].append(
-                        {
-                            "path": name,
-                            "severity": "P2",
-                            "kind": "unknown_md_file",
-                            "message": f"Unclassified markdown file in root: {name}",
-                        }
-                    )
-                    actions.append(
-                        PlanAction(
-                            action=ACTION_MANUAL_DECISION_REQUIRED,
-                            path=name,
-                            severity="P2",
-                            kind="unknown_md_file",
-                            message=f"Unclassified markdown file in root: {name}",
-                            source_bucket="needs_human_decision",
-                            target_bucket="needs_human_decision",
-                        )
-                    )
+            buckets["needs_human_decision"].append(
+                {
+                    "path": name,
+                    "severity": "P2",
+                    "kind": "unknown_md_file",
+                    "message": f"Unclassified markdown file in root: {name}",
+                }
+            )
+            actions.append(
+                PlanAction(
+                    action=ACTION_MANUAL_DECISION_REQUIRED,
+                    path=name,
+                    severity="P2",
+                    kind="unknown_md_file",
+                    message=f"Unclassified markdown file in root: {name}",
+                    source_bucket="needs_human_decision",
+                    target_bucket="needs_human_decision",
+                )
+            )
 
 
 def _populate_forbidden_overwrites(target: Path) -> list[str]:

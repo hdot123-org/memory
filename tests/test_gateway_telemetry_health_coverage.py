@@ -752,22 +752,25 @@ class TestSyncFailureHandling:
         def raise_osterror(*args, **kwargs):
             raise OSError("disk full")
 
-        with patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}), \
-             patch("socket.create_connection") as mock_conn:
-            mock_conn.return_value = MagicMock()
-            mock_tel_module = MagicMock()
-            mock_tel_module.telemetry = mock_telemetry
-            with patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": mock_tel_module}):
-                # Patch Path.write_text to raise OSError for attempt file
-                with patch.object(Path, "write_text") as mock_write:
-                    def side_effect(self_path, *args, **kwargs):
-                        if ".last_sync_attempt" in str(self_path):
-                            raise OSError("disk full")
-                        return original_write(*args, **kwargs)
-                    mock_write.side_effect = side_effect
+        mock_tel_module = MagicMock()
+        mock_tel_module.telemetry = mock_telemetry
 
-                    # Should not raise - OSError is caught
-                    gw._maybe_sync_telemetry(artifact_root)
+        with (
+            patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
+            patch("socket.create_connection") as mock_conn,
+            patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": mock_tel_module}),
+            patch.object(Path, "write_text") as mock_write,
+        ):
+            mock_conn.return_value = MagicMock()
+
+            def side_effect(self_path, *args, **kwargs):
+                if ".last_sync_attempt" in str(self_path):
+                    raise OSError("disk full")
+                return original_write(*args, **kwargs)
+            mock_write.side_effect = side_effect
+
+            # Should not raise - OSError is caught
+            gw._maybe_sync_telemetry(artifact_root)
 
     def test_top_level_exception_in_sync(self, tmp_path):
         """Top-level exception handler catches exceptions outside inner try block."""
@@ -916,18 +919,20 @@ class TestPreToolUseGuard:
             gw._log_prompt_submit = lambda *a, **kw: None
 
             import subprocess as subprocess_module
-            with patch.object(gw, "_discover_cwd", return_value=project_dir):
-                with patch("subprocess.run", side_effect=subprocess_module.TimeoutExpired("cmd", 5)):
-                    with patch.object(gw, "append_error_log", mock_append_error):
-                        from memory_core.tools import memory_hook_metrics
-                        with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
-                            result = gw.main()
+            with (
+                patch.object(gw, "_discover_cwd", return_value=project_dir),
+                patch("subprocess.run", side_effect=subprocess_module.TimeoutExpired("cmd", 5)),
+                patch.object(gw, "append_error_log", mock_append_error),
+            ):
+                from memory_core.tools import memory_hook_metrics
+                with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
+                    result = gw.main()
 
-                # Should fall back to allow decision
-                assert result == 0
-                # Should have logged timeout error
-                assert len(captured_errors) > 0
-                assert "pretooluse-guard" in captured_errors[0]["component"]
+            # Should fall back to allow decision
+            assert result == 0
+            # Should have logged timeout error
+            assert len(captured_errors) > 0
+            assert "pretooluse-guard" in captured_errors[0]["component"]
 
         finally:
             sys.stdin = original_stdin
@@ -979,18 +984,20 @@ class TestPreToolUseGuard:
             gw._maybe_sync_telemetry = lambda *a, **kw: None
             gw._log_prompt_submit = lambda *a, **kw: None
 
-            with patch.object(gw, "_discover_cwd", return_value=project_dir):
-                with patch("subprocess.run", side_effect=RuntimeError("guard failed")):
-                    with patch.object(gw, "append_error_log", mock_append_error):
-                        from memory_core.tools import memory_hook_metrics
-                        with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
-                            result = gw.main()
+            with (
+                patch.object(gw, "_discover_cwd", return_value=project_dir),
+                patch("subprocess.run", side_effect=RuntimeError("guard failed")),
+                patch.object(gw, "append_error_log", mock_append_error),
+            ):
+                from memory_core.tools import memory_hook_metrics
+                with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
+                    result = gw.main()
 
-                # Should fall back to allow decision
-                assert result == 0
-                # Should have logged exception error
-                assert len(captured_errors) > 0
-                assert "pretooluse-guard" in captured_errors[0]["component"]
+            # Should fall back to allow decision
+            assert result == 0
+            # Should have logged exception error
+            assert len(captured_errors) > 0
+            assert "pretooluse-guard" in captured_errors[0]["component"]
 
         finally:
             sys.stdin = original_stdin

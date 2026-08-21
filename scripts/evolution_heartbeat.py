@@ -12,7 +12,7 @@ import os
 import subprocess
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -85,9 +85,9 @@ def check_history_freshness(
 
     # Ensure timezone-aware comparison
     if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
+        ts = ts.replace(tzinfo=UTC)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     age_hours = (now - ts).total_seconds() / 3600
     result["age_hours"] = age_hours
 
@@ -237,7 +237,7 @@ def check_scanner_liveness(
             result["message"] = "No scanner runs found (workflow may be disabled)"
             return result
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for run in runs:
             created_str = run.get("createdAt", "")
             try:
@@ -289,9 +289,9 @@ def check_heartbeat_marker(max_age_hours: int = FRESHNESS_THRESHOLD_HOURS) -> di
 
         ts = datetime.fromisoformat(ts_str)
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+            ts = ts.replace(tzinfo=UTC)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         age_hours = (now - ts).total_seconds() / 3600
         result["age_hours"] = age_hours
 
@@ -316,7 +316,7 @@ def write_monitor_heartbeat(anomalies: int) -> None:
     Allows the scanner's self-audit to detect if the heartbeat monitor
     workflow itself has stopped running.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     data = {
         "timestamp": now.isoformat(),
         "status": "ok" if anomalies == 0 else "anomaly",
@@ -324,9 +324,9 @@ def write_monitor_heartbeat(anomalies: int) -> None:
     }
     MONITOR_HEARTBEAT_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = _unique_tmp_path(MONITOR_HEARTBEAT_PATH)
-    with open(tmp, "w") as f:
+    with tmp.open("w") as f:
         json.dump(data, f, indent=2)
-    os.replace(tmp, MONITOR_HEARTBEAT_PATH)
+    tmp.replace(MONITOR_HEARTBEAT_PATH)
 
 
 def extract_recorded_anomalies(issue_body: str) -> set[str]:
@@ -540,7 +540,7 @@ def _build_alert_body(scanner_stale: bool, issues_without_pr: int) -> str:
     body_lines = [
         "## Evolution Heartbeat Alert",
         "",
-        f"**Detected**: {datetime.now(timezone.utc).isoformat()}",
+        f"**Detected**: {datetime.now(UTC).isoformat()}",
         "",
         "### Anomalies",
         "",

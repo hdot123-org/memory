@@ -3,10 +3,10 @@ Resilient task dispatcher that automatically handles long prompts
 by falling back to file-based instruction delivery.
 """
 
-import os
 import shutil
 import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 
 # Safe character limit for inline prompts (adjust based on actual limit)
 MAX_INLINE_CHARS = 40_000
@@ -80,15 +80,15 @@ class TaskDispatcher:
 
     def _dispatch_file_based(self, prompt: str, task_id: str, char_count: int) -> TaskResult:
         """Dispatch via file-based instruction delivery."""
-        task_dir = os.path.join(self.workspace, task_id)
-        os.makedirs(task_dir, exist_ok=True)
+        task_dir = Path(self.workspace) / task_id
+        task_dir.mkdir(parents=True, exist_ok=True)
 
-        instructions_path = os.path.join(task_dir, "instructions.md")
-        results_dir = os.path.join(task_dir, "results")
-        os.makedirs(results_dir, exist_ok=True)
+        instructions_path = task_dir / "instructions.md"
+        results_dir = task_dir / "results"
+        results_dir.mkdir(parents=True, exist_ok=True)
 
         # Write instructions
-        with open(instructions_path, "w", encoding="utf-8") as f:
+        with instructions_path.open("w", encoding="utf-8") as f:
             f.write(prompt)
 
         # Construct a short prompt that references the file
@@ -132,7 +132,7 @@ class TaskDispatcher:
 
     def cleanup(self) -> None:
         """Remove all temporary files."""
-        if os.path.exists(self.workspace):
+        if Path(self.workspace).exists():
             shutil.rmtree(self.workspace, ignore_errors=True)
 
     def get_summary(self) -> str:

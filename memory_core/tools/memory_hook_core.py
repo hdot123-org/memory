@@ -6,9 +6,9 @@ so gateway wiring can stay thin without changing external behavior.
 """
 
 
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from memory_core.tools.memory_hook_config import CoreConfig

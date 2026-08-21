@@ -62,10 +62,10 @@ def get_pr_data(pr_number: int) -> dict[str, Any]:
                 "Error: gh CLI not found. Install GitHub CLI or use --base for local mode.",
                 file=sys.stderr,
             )
-            raise SystemExit(2)
+            raise SystemExit(2) from None
         except json.JSONDecodeError as exc:
             print(f"Error: failed to parse gh output: {exc}", file=sys.stderr)
-            raise SystemExit(2)
+            raise SystemExit(2) from exc
         except subprocess.CalledProcessError as exc:
             stderr = exc.stderr.strip()
             last_err = stderr
@@ -85,7 +85,7 @@ def get_pr_data(pr_number: int) -> dict[str, Any]:
                 time.sleep(wait)
                 continue
             print(f"Error: gh pr view failed: {stderr}", file=sys.stderr)
-            raise SystemExit(2)
+            raise SystemExit(2) from exc
     # 不可达兜底（mypy --strict 要求显式返回/退出路径）
     print(
         f"Error: gh pr view failed after {max_attempts} attempts: "
@@ -111,10 +111,10 @@ def get_local_data(base_ref: str, cwd: Path | None = None) -> dict[str, Any]:
         return {"commits": commits, "files": files, "author": ""}
     except subprocess.CalledProcessError as exc:
         print(f"Error: git command failed: {exc.stderr.strip()}", file=sys.stderr)
-        raise SystemExit(2)
+        raise SystemExit(2) from exc
     except FileNotFoundError:
         print("Error: git not found.", file=sys.stderr)
-        raise SystemExit(2)
+        raise SystemExit(2) from None
 
 
 def is_dependabot(author: str) -> bool:

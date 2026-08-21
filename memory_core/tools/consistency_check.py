@@ -109,12 +109,13 @@ def check_host_enum_coverage() -> tuple[list[str], list[str]]:
                 # Check if all supported hosts are covered
                 unique_conditions = set(host_conditions)
                 for host in supported_hosts:
-                    if host not in unique_conditions:
-                        # Only report if at least one supported host IS present
-                        # This means it's a partial match
-                        if any(h in supported_hosts for h in unique_conditions):
-                            errors.append(f"{py_file}: if/elif chain missing host '{host}'")
-                            break
+                    # Only report if at least one supported host IS present
+                    # (partial match)
+                    if host not in unique_conditions and any(
+                        h in supported_hosts for h in unique_conditions
+                    ):
+                        errors.append(f"{py_file}: if/elif chain missing host '{host}'")
+                        break
 
             # Check for hardcoded tuples without factory
             tuple_match = re.search(r'\(\s*"codex"\s*,\s*"claude"\s*\)', content)
@@ -171,11 +172,13 @@ def check_no_duplicate_version_definitions() -> tuple[list[str], list[str]]:
             # Check for version = "x.y.z" where x.y.z matches CURRENT_MEMORY_VERSION
             # This might be a hardcoded version definition
             pattern = r'^\s*version\s*=\s*["\']' + re.escape(const_version) + r'["\']'
-            if re.search(pattern, content, re.MULTILINE):
-                # Only report if it's not part of a template string generation
-                # Check if it's in a template function
-                if "def template_" not in content[:content.find(const_version)][:1000] if content.find(const_version) > 0 else True:
-                    pass  # This is actually expected in template functions
+            # Only report if it's not part of a template string generation;
+            # version literals inside template functions are expected.
+            if re.search(pattern, content, re.MULTILINE) and (
+                content.find(const_version) <= 0
+                or "def template_" not in content[: content.find(const_version)][:1000]
+            ):
+                pass  # This is actually expected in template functions
         except Exception as exc:
             warnings.append(f"check_no_duplicate_version_definitions: check raised {exc}")
 
@@ -225,7 +228,7 @@ def check_init_validate_roundtrip() -> tuple[list[str], list[str]]:
             errors.append("init: memory.lock not created")
         else:
             try:
-                with open(memory_lock, "rb") as f:
+                with memory_lock.open("rb") as f:
                     lock_data = tomllib.load(f)
                 if "memory" not in lock_data:
                     errors.append("init: memory.lock missing [memory] section")
@@ -238,7 +241,7 @@ def check_init_validate_roundtrip() -> tuple[list[str], list[str]]:
             errors.append("init: adapter.toml not created")
         else:
             try:
-                with open(adapter_toml, "rb") as f:
+                with adapter_toml.open("rb") as f:
                     adapter_data = tomllib.load(f)
                 required_sections = ["core", "policy", "routing"]
                 for section in required_sections:
@@ -367,11 +370,14 @@ def check_no_handwritten_toml_parser() -> tuple[list[str], list[str]]:
 
                 if func_match:
                     func_body = content[content.find("_parse_adapter_toml"):]
-                    # Check if using tomllib
-                    if "tomllib" not in func_body[:1500]:  # First ~1500 chars of function
-                        # Check if using manual line parsing (handwritten)
-                        if "split(" in func_body[:1500] and "in_section" in func_body[:1500]:
-                            errors.append(f"{filename}: _parse_adapter_toml uses handwritten parser (not tomllib)")
+                    # Check if using tomllib; handwritten parsers rely on
+                    # split() plus an in_section flag within the first ~1500 chars
+                    if (
+                        "tomllib" not in func_body[:1500]
+                        and "split(" in func_body[:1500]
+                        and "in_section" in func_body[:1500]
+                    ):
+                        errors.append(f"{filename}: _parse_adapter_toml uses handwritten parser (not tomllib)")
         except Exception as exc:
             warnings.append(f"check_no_handwritten_toml_parser: check raised {exc}")
 
@@ -756,15 +762,16 @@ def check_provider_builder_called() -> tuple[list[str], list[str]]:
         after_assignment = content[assignment_pos:assignment_pos + 500]
 
         # Check if it's assigned to build_context_package_from_config but that function is called directly
-        if "build_context_package_from_config" in provider_match.group(1):
-            # Check if the variable is actually used vs direct function call
-            if "provider_builder(config)" not in after_assignment:
-                # Check if there's a direct call to build_context_package_from_config after assignment
-                if "build_context_package_from_config(config)" in after_assignment:
-                    errors.append(
-                        "memory_hook_gateway.py: provider_builder is assigned but "
-                        "build_context_package_from_config is called directly instead"
-                    )
+        # (i.e. the variable is unused and a direct call follows the assignment)
+        if (
+            "build_context_package_from_config" in provider_match.group(1)
+            and "provider_builder(config)" not in after_assignment
+            and "build_context_package_from_config(config)" in after_assignment
+        ):
+            errors.append(
+                "memory_hook_gateway.py: provider_builder is assigned but "
+                "build_context_package_from_config is called directly instead"
+            )
 
     # Also check shadow_builder
     shadow_match = re.search(shadow_pattern, content)
@@ -772,13 +779,15 @@ def check_provider_builder_called() -> tuple[list[str], list[str]]:
         shadow_pos = shadow_match.start()
         after_shadow = content[shadow_pos:shadow_pos + 500]
 
-        if "shadow_builder" in shadow_match.group(1):
-            if "shadow_builder(config)" not in after_shadow:
-                if "build_context_package_from_config(config)" in after_shadow:
-                    errors.append(
-                        "memory_hook_gateway.py: shadow_builder is assigned but "
-                        "build_context_package_from_config is called directly instead"
-                    )
+        if (
+            "shadow_builder" in shadow_match.group(1)
+            and "shadow_builder(config)" not in after_shadow
+            and "build_context_package_from_config(config)" in after_shadow
+        ):
+            errors.append(
+                "memory_hook_gateway.py: shadow_builder is assigned but "
+                "build_context_package_from_config is called directly instead"
+            )
 
     return errors, warnings
 

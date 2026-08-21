@@ -32,17 +32,18 @@ class TestVerifyMissingKey:
             fake_key = Path(td) / "nonexistent.key"
             assert not fake_key.exists()
 
-            with mock.patch.object(
-                os, "environ", {**os.environ, "MEMORY_INTEGRITY_KEY_PATH": str(fake_key)},
-            ):
-                # Also need to mock load_key so it returns None with the fake path
-                with mock.patch(
+            with (
+                mock.patch.object(
+                    os, "environ", {**os.environ, "MEMORY_INTEGRITY_KEY_PATH": str(fake_key)},
+                ),
+                mock.patch(
                     "memory_core.tools.memory_hook_integrity_keys.load_key",
                     return_value=None,
-                ):
-                    root = Path(td)
-                    with caplog.at_level(logging.WARNING):
-                        _integrity_verify(root)
+                ),
+            ):
+                root = Path(td)
+                with caplog.at_level(logging.WARNING):
+                    _integrity_verify(root)
 
                     # WARNING should have been logged
                     assert any(

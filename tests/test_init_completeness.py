@@ -117,7 +117,7 @@ class TestAdapterTomlHostFactory:
         adapter_path = tmp_path / "memory" / "system" / "adapter.toml"
         assert adapter_path.exists()
 
-        with open(adapter_path, "rb") as fh:
+        with adapter_path.open("rb") as fh:
             data = tomllib.load(fh)
 
         assert data["routing"]["host"] == "factory"

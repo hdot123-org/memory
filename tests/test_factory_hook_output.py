@@ -439,27 +439,29 @@ class TestFastPathOutput:
             no_delegate=False,
         )
 
-        with patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', event]):
-            with patch('sys.stdin', StringIO('{"cwd": "/tmp"}')):
-                with patch.object(gw, '_parse_args', return_value=args):
-                    with patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}):
-                        with patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")):
-                            with patch.object(gw, '_handle_source_repo_check', return_value=None):
-                                with patch.object(gw, 'is_denied_project_root', return_value=False):
-                                    with patch.object(gw, '_should_noop_for_external_context', return_value=False):
-                                        with patch.object(gw, '_handle_pretooluse_guard', return_value=None):
-                                            with patch.object(gw, 'build_context_package') as mock_build:
-                                                with patch.object(gw, '_record_project_lifecycle_event', return_value=None):
-                                                    with patch.object(gw, '_emit_fast_path_metrics'):
-                                                        with patch.object(gw, '_record_event_log_minimal'):
-                                                            with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
-                                                                result = gw.main()
+        with (
+            patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', event]),
+            patch('sys.stdin', StringIO('{"cwd": "/tmp"}')),
+            patch.object(gw, '_parse_args', return_value=args),
+            patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}),
+            patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")),
+            patch.object(gw, '_handle_source_repo_check', return_value=None),
+            patch.object(gw, 'is_denied_project_root', return_value=False),
+            patch.object(gw, '_should_noop_for_external_context', return_value=False),
+            patch.object(gw, '_handle_pretooluse_guard', return_value=None),
+            patch.object(gw, 'build_context_package') as mock_build,
+            patch.object(gw, '_record_project_lifecycle_event', return_value=None),
+            patch.object(gw, '_emit_fast_path_metrics'),
+            patch.object(gw, '_record_event_log_minimal'),
+            patch('sys.stdout', new_callable=StringIO) as mock_stdout,
+        ):
+            result = gw.main()
 
-                                                                # Verify fast-path was taken
-                                                                assert result == 0
-                                                                assert mock_build.call_count == 0
-                                                                output = mock_stdout.getvalue().strip()
-                                                                assert json.loads(output) == {"suppressOutput": True}
+            # Verify fast-path was taken
+            assert result == 0
+            assert mock_build.call_count == 0
+            output = mock_stdout.getvalue().strip()
+            assert json.loads(output) == {"suppressOutput": True}
 
 
 class TestFastPathLifecycleRecording:
@@ -479,26 +481,28 @@ class TestFastPathLifecycleRecording:
 
         mock_lifecycle = MagicMock(return_value={"status": "active"})
 
-        with patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']):
-            with patch('sys.stdin', StringIO('{"cwd": "/tmp"}')):
-                with patch.object(gw, '_parse_args', return_value=args):
-                    with patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}):
-                        with patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")):
-                            with patch.object(gw, '_handle_source_repo_check', return_value=None):
-                                with patch.object(gw, 'is_denied_project_root', return_value=False):
-                                    with patch.object(gw, '_should_noop_for_external_context', return_value=False):
-                                        with patch.object(gw, '_handle_pretooluse_guard', return_value=None):
-                                            with patch.object(gw, 'build_context_package') as mock_build:
-                                                with patch.object(gw, '_record_project_lifecycle_event', mock_lifecycle):
-                                                    with patch.object(gw, '_emit_fast_path_metrics'):
-                                                        with patch.object(gw, '_record_event_log_minimal'):
-                                                            with patch('sys.stdout', new_callable=StringIO):
-                                                                gw.main()
+        with (
+            patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']),
+            patch('sys.stdin', StringIO('{"cwd": "/tmp"}')),
+            patch.object(gw, '_parse_args', return_value=args),
+            patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}),
+            patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")),
+            patch.object(gw, '_handle_source_repo_check', return_value=None),
+            patch.object(gw, 'is_denied_project_root', return_value=False),
+            patch.object(gw, '_should_noop_for_external_context', return_value=False),
+            patch.object(gw, '_handle_pretooluse_guard', return_value=None),
+            patch.object(gw, 'build_context_package') as mock_build,
+            patch.object(gw, '_record_project_lifecycle_event', mock_lifecycle),
+            patch.object(gw, '_emit_fast_path_metrics'),
+            patch.object(gw, '_record_event_log_minimal'),
+            patch('sys.stdout', new_callable=StringIO),
+        ):
+            gw.main()
 
-                                                                # Verify lifecycle was called
-                                                                assert mock_lifecycle.call_count == 1
-                                                                # Verify build_context_package was NOT called
-                                                                assert mock_build.call_count == 0
+            # Verify lifecycle was called
+            assert mock_lifecycle.call_count == 1
+            # Verify build_context_package was NOT called
+            assert mock_build.call_count == 0
 
 
 class TestFastPathNoBuildContextPackage:
@@ -518,24 +522,26 @@ class TestFastPathNoBuildContextPackage:
 
         mock_build = MagicMock()
 
-        with patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'notification']):
-            with patch('sys.stdin', StringIO('{"cwd": "/tmp"}')):
-                with patch.object(gw, '_parse_args', return_value=args):
-                    with patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}):
-                        with patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")):
-                            with patch.object(gw, '_handle_source_repo_check', return_value=None):
-                                with patch.object(gw, 'is_denied_project_root', return_value=False):
-                                    with patch.object(gw, '_should_noop_for_external_context', return_value=False):
-                                        with patch.object(gw, '_handle_pretooluse_guard', return_value=None):
-                                            with patch.object(gw, 'build_context_package', mock_build):
-                                                with patch.object(gw, '_record_project_lifecycle_event', return_value=None):
-                                                    with patch.object(gw, '_emit_fast_path_metrics'):
-                                                        with patch.object(gw, '_record_event_log_minimal'):
-                                                            with patch('sys.stdout', new_callable=StringIO):
-                                                                gw.main()
+        with (
+            patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'notification']),
+            patch('sys.stdin', StringIO('{"cwd": "/tmp"}')),
+            patch.object(gw, '_parse_args', return_value=args),
+            patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}),
+            patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")),
+            patch.object(gw, '_handle_source_repo_check', return_value=None),
+            patch.object(gw, 'is_denied_project_root', return_value=False),
+            patch.object(gw, '_should_noop_for_external_context', return_value=False),
+            patch.object(gw, '_handle_pretooluse_guard', return_value=None),
+            patch.object(gw, 'build_context_package', mock_build),
+            patch.object(gw, '_record_project_lifecycle_event', return_value=None),
+            patch.object(gw, '_emit_fast_path_metrics'),
+            patch.object(gw, '_record_event_log_minimal'),
+            patch('sys.stdout', new_callable=StringIO),
+        ):
+            gw.main()
 
-                                                                # Verify build_context_package was NOT called
-                                                                assert mock_build.call_count == 0
+            # Verify build_context_package was NOT called
+            assert mock_build.call_count == 0
 
 
 class TestFastPathExceptionHandling:
@@ -556,29 +562,31 @@ class TestFastPathExceptionHandling:
         def raise_exception(*args, **kwargs):
             raise RuntimeError("lifecycle failed")
 
-        with patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']):
-            with patch('sys.stdin', StringIO('{"cwd": "/tmp"}')):
-                with patch.object(gw, '_parse_args', return_value=args):
-                    with patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}):
-                        with patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")):
-                            with patch.object(gw, '_handle_source_repo_check', return_value=None):
-                                with patch.object(gw, 'is_denied_project_root', return_value=False):
-                                    with patch.object(gw, '_should_noop_for_external_context', return_value=False):
-                                        with patch.object(gw, '_handle_pretooluse_guard', return_value=None):
-                                            with patch.object(gw, 'build_context_package') as mock_build:
-                                                with patch.object(gw, '_record_project_lifecycle_event', side_effect=raise_exception):
-                                                    with patch.object(gw, '_emit_fast_path_metrics'):
-                                                        with patch.object(gw, '_record_event_log_minimal'):
-                                                            with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
-                                                                result = gw.main()
+        with (
+            patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']),
+            patch('sys.stdin', StringIO('{"cwd": "/tmp"}')),
+            patch.object(gw, '_parse_args', return_value=args),
+            patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}),
+            patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")),
+            patch.object(gw, '_handle_source_repo_check', return_value=None),
+            patch.object(gw, 'is_denied_project_root', return_value=False),
+            patch.object(gw, '_should_noop_for_external_context', return_value=False),
+            patch.object(gw, '_handle_pretooluse_guard', return_value=None),
+            patch.object(gw, 'build_context_package') as mock_build,
+            patch.object(gw, '_record_project_lifecycle_event', side_effect=raise_exception),
+            patch.object(gw, '_emit_fast_path_metrics'),
+            patch.object(gw, '_record_event_log_minimal'),
+            patch('sys.stdout', new_callable=StringIO) as mock_stdout,
+        ):
+            result = gw.main()
 
-                                                                # Should still succeed
-                                                                assert result == 0
-                                                                # Should not call build_context_package
-                                                                assert mock_build.call_count == 0
-                                                                # Should still output suppressOutput
-                                                                output = mock_stdout.getvalue().strip()
-                                                                assert json.loads(output) == {"suppressOutput": True}
+            # Should still succeed
+            assert result == 0
+            # Should not call build_context_package
+            assert mock_build.call_count == 0
+            # Should still output suppressOutput
+            output = mock_stdout.getvalue().strip()
+            assert json.loads(output) == {"suppressOutput": True}
 
 
 class TestBuildContextPackageLifecycleParameter:
@@ -628,29 +636,30 @@ class TestFastPathFileWriting:
             no_delegate=False,
         )
 
-        with patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']):
-            with patch('sys.stdin', StringIO('{"cwd": "/tmp"}')):
-                with patch.object(gw, '_parse_args', return_value=args):
-                    with patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}):
-                        with patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")):
-                            with patch.object(gw, '_handle_source_repo_check', return_value=None):
-                                with patch.object(gw, 'is_denied_project_root', return_value=False):
-                                    with patch.object(gw, '_should_noop_for_external_context', return_value=False):
-                                        with patch.object(gw, '_handle_pretooluse_guard', return_value=None):
-                                            with patch.object(gw, 'build_context_package') as mock_build:
-                                                with patch.object(gw, '_record_project_lifecycle_event', return_value=None):
-                                                    with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
+        with (
+            patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']),
+            patch('sys.stdin', StringIO('{"cwd": "/tmp"}')),
+            patch.object(gw, '_parse_args', return_value=args),
+            patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}),
+            patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")),
+            patch.object(gw, '_handle_source_repo_check', return_value=None),
+            patch.object(gw, 'is_denied_project_root', return_value=False),
+            patch.object(gw, '_should_noop_for_external_context', return_value=False),
+            patch.object(gw, '_handle_pretooluse_guard', return_value=None),
+            patch.object(gw, 'build_context_package') as mock_build,
+            patch.object(gw, '_record_project_lifecycle_event', return_value=None),
+            patch('sys.stdout', new_callable=StringIO) as mock_stdout,
+        ):
+            # Run the actual functions (not mocked)
+            result = gw.main()
 
-                                                        # Run the actual functions (not mocked)
-                                                        result = gw.main()
+            # Verify suppressOutput
+            assert result == 0
+            output = mock_stdout.getvalue().strip()
+            assert json.loads(output) == {"suppressOutput": True}
 
-                                                        # Verify suppressOutput
-                                                        assert result == 0
-                                                        output = mock_stdout.getvalue().strip()
-                                                        assert json.loads(output) == {"suppressOutput": True}
-
-                                                        # Verify build_context_package was NOT called
-                                                        assert mock_build.call_count == 0
+            # Verify build_context_package was NOT called
+            assert mock_build.call_count == 0
 
         # Verify event log was written
         assert event_log_path.exists(), "Event log file should be created"
@@ -703,18 +712,20 @@ class TestFastPathFileWriting:
         # Count files before
         files_before = set(context_root.rglob("*")) if context_root.exists() else set()
 
-        with patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']):
-            with patch('sys.stdin', StringIO('{"cwd": "/tmp"}')):
-                with patch.object(gw, '_parse_args', return_value=args):
-                    with patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}):
-                        with patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")):
-                            with patch.object(gw, '_handle_source_repo_check', return_value=None):
-                                with patch.object(gw, 'is_denied_project_root', return_value=False):
-                                    with patch.object(gw, '_should_noop_for_external_context', return_value=False):
-                                        with patch.object(gw, '_handle_pretooluse_guard', return_value=None):
-                                            with patch.object(gw, '_record_project_lifecycle_event', return_value=None):
-                                                with patch('sys.stdout', new_callable=StringIO):
-                                                    gw.main()
+        with (
+            patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']),
+            patch('sys.stdin', StringIO('{"cwd": "/tmp"}')),
+            patch.object(gw, '_parse_args', return_value=args),
+            patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}),
+            patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")),
+            patch.object(gw, '_handle_source_repo_check', return_value=None),
+            patch.object(gw, 'is_denied_project_root', return_value=False),
+            patch.object(gw, '_should_noop_for_external_context', return_value=False),
+            patch.object(gw, '_handle_pretooluse_guard', return_value=None),
+            patch.object(gw, '_record_project_lifecycle_event', return_value=None),
+            patch('sys.stdout', new_callable=StringIO),
+        ):
+            gw.main()
 
         # Count files after
         files_after = set(context_root.rglob("*")) if context_root.exists() else set()

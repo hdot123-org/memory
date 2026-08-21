@@ -15,7 +15,7 @@ import shutil
 import stat
 import string
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -94,7 +94,7 @@ def resolve_init_command(init_command: str, warnings: list[str]) -> str | None:
 
 
 def _backup_existing_file(path: Path) -> Path:
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     backup_path = path.with_name(f"{path.name}.bak.{timestamp}")
     suffix = 1
     while backup_path.exists():

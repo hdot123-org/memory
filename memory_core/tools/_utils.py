@@ -23,7 +23,7 @@ def sha256_file(path: Path) -> str | None:
     """
     try:
         hasher = hashlib.sha256()
-        with open(path, 'rb') as f:
+        with Path(path).open('rb') as f:
             while chunk := f.read(8192):
                 hasher.update(chunk)
         return hasher.hexdigest()

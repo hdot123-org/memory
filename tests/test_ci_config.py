@@ -81,7 +81,7 @@ class TestAuditGate:
 
         # Must not contain bypass commands in any step's run block
         all_steps = []
-        for job_name, job_data in data.get("jobs", {}).items():
+        for _job_name, job_data in data.get("jobs", {}).items():
             all_steps.extend(job_data.get("steps", []))
         run_blocks = [s.get("run", "") for s in all_steps if s.get("run")]
         for run_block in run_blocks:
@@ -151,7 +151,7 @@ class TestCrossAreaAuditGate:
         # Verify no bypass mechanisms in any run block
         data = yaml.safe_load(content)
         all_steps = []
-        for job_name, job_data in data.get("jobs", {}).items():
+        for _job_name, job_data in data.get("jobs", {}).items():
             all_steps.extend(job_data.get("steps", []))
         run_blocks = [s.get("run", "") for s in all_steps if s.get("run")]
         for run_block in run_blocks:

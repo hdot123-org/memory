@@ -17,6 +17,7 @@ Usage:
 import argparse
 import json
 import sys
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -286,11 +287,8 @@ def cmd_plan_update(
     """Generate migration plan between current and proposed ownership."""
     current = load_memory_ownership(project_root)
 
-    if use_defaults:
-        proposed = _build_default_ownership()
-    else:
-        # Without explicit proposed config, plan is defaults vs current
-        proposed = _build_default_ownership()
+    # Without explicit proposed config, plan is defaults vs current
+    proposed = _build_default_ownership()
 
     plan = _diff_ownership(current, proposed)
 
@@ -397,10 +395,7 @@ def cmd_apply_update(
     """Execute ownership migration plan with approval."""
     current = load_memory_ownership(project_root)
 
-    if use_defaults:
-        proposed = _build_default_ownership()
-    else:
-        proposed = _build_default_ownership()
+    proposed = _build_default_ownership()
 
     plan = _diff_ownership(current, proposed)
 
@@ -523,11 +518,11 @@ def _write_source_repo_mode(project_root: Path, mode: str) -> int:
     ownership_file = memory_dir / "ownership.toml"
     ownership = load_memory_ownership(project_root)
 
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     source_repo_section = {
         "mode": mode,
-        "activated_at": datetime.now(timezone.utc).isoformat(),
+        "activated_at": datetime.now(UTC).isoformat(),
         "activated_by": "cli",
     }
 
