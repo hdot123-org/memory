@@ -1016,16 +1016,6 @@ def _integrate_forward_drift_watch(
                     print(f"  - {record.finding_key[0]} at {record.finding_key[1]}: {record.reason}")
 
 
-def _execute_audit_tools(config: dict[str, Any], repo_root: Path) -> tuple[list[tuple[str, Any]], set[str]]:
-    """Execute audit tools and track failures."""
-    raw_results = [(t["name"], run_audit_tool(t, repo_root)) for t in config["audit_tools"]]
-    failed_categories = set()
-    for tool_name, result in raw_results:
-        if result is None:  # Tool failed
-            failed_categories.update(TOOL_TO_CATEGORIES.get(tool_name, set()))
-    return raw_results, failed_categories
-
-
 def _process_and_suppress_findings(
     raw_results: list[tuple[str, Any]],
     repo_root: Path,

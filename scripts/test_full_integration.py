@@ -375,8 +375,10 @@ class IntegrationTester:
                         now_iso_fn=lambda: datetime.now(UTC).isoformat(),
                     )
                     fixed.append(path_str)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # Restore visible failure semantics per M2 scrutiny R2
+                    import sys
+                    print(f"Failed to register {path_str}: {exc}", file=sys.stderr)
         return sorted(gaps), sorted(fixed)
 
     def _check_consumer_discovery(self) -> list[CheckResult]:

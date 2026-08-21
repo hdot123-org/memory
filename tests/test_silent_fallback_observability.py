@@ -73,15 +73,11 @@ class TestF2ResolveRouteTargetNarrowException:
             gw, "write_targets",
             lambda: {"fact": "/tmp/fact", "system_error": "/tmp/err", "invalid_memory": "/tmp/inv"},
         )
-        monkeypatch.setattr(
-            gw, "GLOBAL_RULE_PATH", "/tmp/global-rule",
-        )
-        monkeypatch.setattr(
-            gw, "WORKSPACE_ROOT", Path("/tmp"),
-        )
-        monkeypatch.setattr(
-            gw, "ROUTE_PROJECT_RUNTIME_SCOPE", "default",
-        )
+        # Use monkeypatch.setitem on _adapter_config instead of module attributes
+        # (M3-F10: globals().update removed, constants now in _adapter_config)
+        monkeypatch.setitem(gw._adapter_config, "GLOBAL_RULE_PATH", "/tmp/global-rule")
+        monkeypatch.setattr(gw, "WORKSPACE_ROOT", Path("/tmp"))
+        monkeypatch.setitem(gw._adapter_config, "ROUTE_PROJECT_RUNTIME_SCOPE", "default")
 
         bp_mock = type("BP", (), {"get_project_runtime_root": lambda self: {}})()
         monkeypatch.setattr(gw, "_get_gateway_business_policy", lambda: bp_mock)
