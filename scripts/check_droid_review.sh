@@ -51,19 +51,36 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
     -H "Accept: application/vnd.github+json" \
     "https://api.github.com/repos/${REPOSITORY}/commits/${COMMIT_SHA}/check-runs?check_name=droid-review")
   
-  # Extract the conclusion of the latest non-cancelled check run.
-  # When dual triggers exist, two check runs are created and one is cancelled.
-  # We must select the one that actually completed.
-  # Note: "skipped" is NOT excluded here — Dependabot PRs cause the droid-review
-  # job to be skipped (job-level if condition), and we need to see that conclusion
-  # to apply the Dependabot exception below. Only "cancelled" is excluded
-  # (dual-trigger race where one run is cancelled mid-flight).
+  # Decision logic — two-phase to prevent stale-check race condition.
+  #
+  # Race scenario (confirmed: run 32435306919/32435603998):
+  #   When a PR transitions from draft to ready, a stale concluded check
+  #   (e.g., 'skipped' from draft era) may coexist with a brand-new
+  #   in_progress review on the same SHA. The old single-phase logic
+  #   would immediately read the stale conclusion → ci-ok sees failure
+  #   → cancel-on-ci-fail kills the running review → merge deadlock.
+  #
+  # Fix: Phase 1 checks for any active (non-completed) check runs first.
+  # If found, return 'pending' to keep polling. Only when all runs are
+  # completed does Phase 2 read the latest non-cancelled conclusion.
+  #
+  # Dependabot skip exception is unaffected: when no active runs exist,
+  # Phase 2 reads the 'skipped' conclusion and the Dependabot check below
+  # handles it as before.
   STATUS=$(echo "$CHECKS" | jq -r '
-    .check_runs
-    | map(select(.conclusion != null and .conclusion != "cancelled"))
-    | sort_by(.started_at)
-    | last
-    | .conclusion // "pending"
+    # Phase 1: active-check guard — any non-completed run means keep waiting
+    if (.check_runs | map(select(.status != "completed")) | length > 0) then
+      "pending"
+    else
+      # Phase 2: all runs completed — read latest non-cancelled conclusion
+      # "skipped" is NOT excluded (Dependabot path needs it)
+      # "cancelled" is excluded (dual-trigger race where one run was cancelled)
+      .check_runs
+      | map(select(.conclusion != null and .conclusion != "cancelled"))
+      | sort_by(.started_at)
+      | last
+      | .conclusion // "pending"
+    end
   ')
 
   echo "droid-review conclusion: $STATUS"
