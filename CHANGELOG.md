@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.1](https://github.com/hdot123-org/memory/compare/v0.39.0...v0.39.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* 修复 scrutiny R1 阻塞问题——全局 tick tracker 跨测试污染 ([#925](https://github.com/hdot123-org/memory/issues/925)) ([212ebe0](https://github.com/hdot123-org/memory/commit/212ebe03797b94613d4065a138cb922e9d798e9b))
+
 ## [0.39.0](https://github.com/hdot123-org/memory/compare/v0.38.0...v0.39.0) (2026-08-21)
 
 
