@@ -14,13 +14,13 @@ from pathlib import Path
 from typing import Any
 
 from ._gateway_config import (
+    CONTEXT_ROOT,
     ERROR_LOG,
     EVENT_LOG,
-    CONTEXT_ROOT,
-    _logger,
-    now_iso,
     _get_artifact_sink,
     _get_error_sink,
+    _logger,
+    now_iso,
 )
 
 
@@ -253,11 +253,22 @@ def _launch_async_health_check(cwd: Path) -> None:
                 "status": "error",
                 "launch_status": "failed",
                 "last_launch_error": str(e),
-                "target": str(cwd),
+                "checked_at": now_iso(),
+                "missing_paths": [],
+                "validation_errors": [],
             }
             report_path.write_text(json.dumps(failure_report, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception:
-            pass  # Last resort: silently skip
+        except Exception as write_err:
+            # Fallback: use append_error_log if writing health report fails
+            append_error_log(
+                "memory-hook-gateway",
+                "failed to launch async health check and write health report",
+                {
+                    "cwd": str(cwd),
+                    "launch_error": str(e),
+                    "write_error": str(write_err),
+                },
+            )
 
 
 def _inject_health_alert(cwd: Path, package: dict[str, Any]) -> None:

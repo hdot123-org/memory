@@ -16,7 +16,6 @@ import argparse
 import json
 import logging
 import os
-import re
 import subprocess
 import sys
 import time
@@ -24,49 +23,43 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from ._guard_patterns import is_protected_path_target
-from ._gateway_config import (
-    REPO_ROOT,
-    WORKSPACE_ROOT,
-    ARTIFACT_ROOT,
-    CONTEXT_ROOT,
-    EVENT_LOG,
-    ERROR_LOG,
-    get_config,
-    is_memory_core_source_repo,
-    get_source_repo_mode,
-    is_denied_project_root,
-    _integrity_sign,
-    _integrity_verify,
-)
 from ._gateway_artifacts import (
     _build_readonly_source_repo_package,
-    append_error_log,
-    _update_state_dynamic_fields,
-    _launch_async_health_check,
     _inject_health_alert,
+    _launch_async_health_check,
+    _update_state_dynamic_fields,
+    append_error_log,
 )
-from .memory_hook_impls import ArtifactWriter
-from ._gateway_telemetry import (
-    _maybe_sync_telemetry,
-    _read_last_user_message_from_transcript,
-    _log_prompt_submit,
+from ._gateway_config import (
+    ARTIFACT_ROOT,
+    CONTEXT_ROOT,
+    ERROR_LOG,
+    _integrity_verify,
+    get_source_repo_mode,
+    is_denied_project_root,
+    is_memory_core_source_repo,
+)
+from ._gateway_dispatch import (
+    _delegate_noop_response,
+    _discover_cwd,
+    _emit_fast_path_metrics,
+    _execute_delegate,
+    _parse_args,
+    _read_payload,
+    _record_event_log_minimal,
+    _record_project_lifecycle_event,
+    _should_noop_for_external_context,
 )
 from ._gateway_policy import (
     build_context_package,
     determine_project_scope,
 )
-from ._gateway_dispatch import (
-    _parse_args,
-    _read_payload,
-    _discover_cwd,
-    _should_noop_for_external_context,
-    _delegate_noop_response,
-    _execute_delegate,
-    _record_project_lifecycle_event,
-    _emit_fast_path_metrics,
-    _record_event_log_minimal,
+from ._gateway_telemetry import (
+    _log_prompt_submit,
+    _maybe_sync_telemetry,
 )
+from ._guard_patterns import is_protected_path_target
+from .memory_hook_impls import ArtifactWriter
 
 _logger = logging.getLogger(__name__)
 
@@ -274,8 +267,7 @@ def _write_artifacts_and_emit_metrics(
     args: argparse.Namespace, writer: Any, package: dict[str, Any], cwd: Path, start_time: float
 ) -> bool:
     """Write artifacts, re-sign manifest, and emit metrics. Returns write_ok status."""
-    from ._gateway_policy import _integrity_sign
-    
+
     write_ok = writer.write(args.host, args.event, package)
     if not write_ok:
         append_error_log(

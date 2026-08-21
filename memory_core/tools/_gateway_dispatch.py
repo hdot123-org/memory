@@ -13,23 +13,25 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
-from ._gateway_config import REPO_ROOT, PROJECT_LIFECYCLE_ROOT, ARTIFACT_ROOT, EVENT_LOG, _FORCE_HOOK
 from ._gateway_artifacts import append_error_log
+from ._gateway_config import _FORCE_HOOK, ARTIFACT_ROOT, EVENT_LOG, PROJECT_LIFECYCLE_ROOT, REPO_ROOT
 
-# Lazy import for _get_host_delegate to avoid circular dependency
-def _get_host_delegate(host: str):
-    """Get host delegate (lazy import to avoid circular dependency)."""
-    from ._gateway_config import _get_host_delegate as _impl
-    return _impl(host)
+
+def _get_host_delegate(host: str) -> Any:
+    """Get host delegate (delegates to memory_hook_impls.resolve_host_delegate)."""
+    from .memory_hook_impls import resolve_host_delegate
+    return resolve_host_delegate(host)
 
 try:
     from ._file_utils import now_iso
     from .project_lifecycle import record_project_lifecycle
 except ImportError:
     from _file_utils import now_iso  # type: ignore
+
     from memory_core.tools.project_lifecycle import record_project_lifecycle
 
 _logger = logging.getLogger(__name__)
@@ -130,7 +132,8 @@ def _execute_delegate_via_facade(
 ) -> subprocess.CompletedProcess[str]:
     """IF-5: Execute delegate via Facade."""
     delegate = _get_host_delegate(host)
-    return delegate.execute(event, raw_payload, payload)
+    result: subprocess.CompletedProcess[str] = delegate.execute(event, raw_payload, payload)
+    return result
 
 
 def _require_env(name: str) -> str:
@@ -197,10 +200,11 @@ def _should_noop_for_external_context(payload: dict[str, Any]) -> bool:
 def _delegate_noop_response(host: str) -> int:
     """M2: delegate-owned bypass instead of gateway host-dispatch."""
     delegate = _get_host_delegate(host)
-    result = delegate.noop_response()
+    result: Any = delegate.noop_response()
     if result.stdout:
         sys.stdout.write(result.stdout)
-    return result.returncode
+    exit_code: int = result.returncode
+    return exit_code
 
 
 def _build_degraded_package_with_error(

@@ -15,6 +15,64 @@ import threading
 from pathlib import Path
 from typing import Any, cast
 
+__all__ = [
+    # Path constants
+    "REPO_ROOT",
+    "WORKSPACE_ROOT",
+    "ARTIFACT_ROOT",
+    "CONTEXT_ROOT",
+    "EVENT_LOG",
+    "ERROR_LOG",
+    "PROJECT_LIFECYCLE_ROOT",
+    "BATCH_SIZE",
+    "NON_INJECTION_EVENTS",
+    "_FORCE_HOOK",
+    # File utilities (re-exported)
+    "exclusive_lock",
+    "now_iso",
+    # Ownership/mode detection (conditionally available)
+    "get_source_repo_mode",
+    "is_memory_core_source_repo",
+    # Lifecycle tracking
+    "record_project_lifecycle",
+    # Rule helpers (re-exported)
+    "_existing_paths",
+    "_get_write_targets_dict",
+    "_json_object_keys",
+    "_json_string_values",
+    "_markdown_code_tokens",
+    "_path_is_under",
+    "_path_is_under_lexical",
+    "_section_body",
+    "_section_bullets",
+    # Adapter configuration
+    "_ADAPTER_NAME",
+    "_adapter_config",
+    "_load_adapter_profile",
+    "get_config",
+    "get_config_dict",
+    "load_adapter_config",
+    "reload_adapter",
+    # Integrity checking
+    "_integrity_sign",
+    "_integrity_verify",
+    "_collect_changed_paths",
+    # IF-5 facade functions
+    "_get_gateway_business_policy",
+    "_get_policy_registry",
+    "_get_route_policy",
+    "_get_write_policy",
+    "_get_artifact_sink",
+    "_get_error_sink",
+    "_resolve_route_target_via_policy",
+    "_apply_hook_runtime_write_targets",
+    "_write_targets_via_policy",
+    "_get_policy_pack_via_registry",
+    "_resolve_policy_conflict_via_registry",
+    # Utilities
+    "_logger",
+]
+
 # ---------------------------------------------------------------------------
 # 路径发现与常量
 # ---------------------------------------------------------------------------
@@ -25,7 +83,7 @@ _cwd_seed = Path(_project_cwd_env) if _project_cwd_env else Path.cwd()
 try:
     from .memory_root_discovery import discover_roots
 except ImportError:
-    from memory_core.tools.memory_root_discovery import discover_roots  # type: ignore
+    from memory_core.tools.memory_root_discovery import discover_roots
 
 REPO_ROOT, WORKSPACE_ROOT = discover_roots(_cwd_seed)
 _FORCE_HOOK = bool(os.environ.get("MEMORY_HOOK_FORCE") or os.environ.get("WORKBOT_FORCE_HOOK"))
@@ -70,9 +128,9 @@ _logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 try:
-    from ._file_utils import exclusive_lock, now_iso
+    from ._file_utils import exclusive_lock, now_iso  # noqa: F401
 except ImportError:
-    from _file_utils import exclusive_lock, now_iso  # type: ignore
+    from _file_utils import now_iso  # type: ignore  # noqa: F401
 
 try:
     from ._rule_helpers import (
@@ -106,22 +164,18 @@ except ImportError:
 with contextlib.suppress(ImportError):
     from .cmux_hook_state import default_hook_state_path, record_hook_event  # noqa: F401
 
-try:
-    from ..ownership import get_source_repo_mode, is_memory_core_source_repo
-except ImportError:
-    from memory_core.ownership import get_source_repo_mode, is_memory_core_source_repo  # type: ignore
+with contextlib.suppress(ImportError):
+    from ..ownership import get_source_repo_mode, is_memory_core_source_repo  # noqa: F401
 
-try:
-    from .project_lifecycle import record_project_lifecycle
-except ImportError:
-    from memory_core.tools.project_lifecycle import record_project_lifecycle  # type: ignore
+with contextlib.suppress(ImportError):
+    from .project_lifecycle import record_project_lifecycle  # noqa: F401
 
 try:
     import memory_core.tools.denylist as _denylist
     is_denied_project_root = _denylist.is_denied_project_root
 except ImportError:
-    import memory_core.tools.denylist as _denylist  # type: ignore
-    is_denied_project_root = _denylist.is_denied_project_root  # type: ignore
+    import memory_core.tools.denylist as _denylist
+    is_denied_project_root = _denylist.is_denied_project_root
 
 # ---------------------------------------------------------------------------
 # 非注入事件集合
@@ -264,6 +318,7 @@ def reload_adapter(adapter_name: str | None = None) -> None:
 # IF-5 门面函数（基础层）
 # ---------------------------------------------------------------------------
 
+from .memory_hook_adapters.neutral_policy import NeutralGatewayBusinessPolicy
 from .memory_hook_impls import (
     ArtifactSinkImpl,
     ErrorSinkImpl,
@@ -272,22 +327,20 @@ from .memory_hook_impls import (
     RouteTargetPolicyImpl,
     WriteTargetPolicyImpl,
 )
-from .memory_hook_adapters.neutral_policy import NeutralGatewayBusinessPolicy
 
 _default_policy_registry: PolicyRegistryImpl | None = None
 _default_route_policy: RouteTargetPolicyImpl | None = None
 _default_write_policy: WriteTargetPolicyImpl | None = None
 
 
-def _get_gateway_business_policy():
+def _get_gateway_business_policy() -> Any:
     """获取业务策略实例。"""
-    from datetime import datetime
-    
+
     def _read_text_if_exists(path: Path) -> str:
         if not path.exists():
             return ""
         return path.read_text(encoding="utf-8")
-    
+
     config = GatewayBusinessPolicyConfig(
         repo_root=REPO_ROOT,
         workspace_root=WORKSPACE_ROOT,
@@ -363,13 +416,13 @@ def _get_write_policy() -> WriteTargetPolicyImpl:
     return _default_write_policy
 
 
-def _get_artifact_sink():
+def _get_artifact_sink() -> ArtifactSinkImpl:
     """获取 artifact sink。"""
     from datetime import datetime
     return ArtifactSinkImpl(CONTEXT_ROOT, EVENT_LOG, datetime_module=datetime)
 
 
-def _get_error_sink():
+def _get_error_sink() -> ErrorSinkImpl:
     """获取 error sink。"""
     return ErrorSinkImpl(ERROR_LOG, now_iso_fn=now_iso)
 

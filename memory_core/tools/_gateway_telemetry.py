@@ -11,9 +11,12 @@ import contextlib
 import json
 import logging
 import os
+import re
+import signal
 import socket
 import sys
 import time
+from datetime import datetime as datetime  # noqa: A004 — 模块级绑定，供测试 patch
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +29,12 @@ _logger = logging.getLogger(__name__)
 
 # Batch size for telemetry sync
 BATCH_SIZE = 500
+
+
+class _PromptLogTimeoutError(Exception):
+    """prompt-submit 日志写入超时（SIGALRM 触发）。"""
+
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -346,31 +355,24 @@ def _sanitize_for_log(text: str, max_len: int = 2000) -> str:
 
 def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
     """Log prompt-submit event to session file."""
-    import signal
-    import re
-    from datetime import datetime
-    
-    class HookTimeoutError(Exception):
-        pass
-    
     session_id: str = payload.get("session_id", "unknown")
     transcript_path: str | None = payload.get("transcript_path")
-    
+
     prompt: str | None = payload.get("prompt")
     if not prompt:
         prompt = _read_last_user_message_from_transcript(transcript_path)
     if not prompt:
         prompt = "(no prompt captured)"
-    
+
     now = datetime.now()
     date_str = now.strftime("%Y-%m-%d")
     time_str = now.strftime("%H:%M:%S")
     session_prefix = session_id[:8]
-    
+
     log_dir = project_root / "memory" / "log"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"{date_str}-sessions.md"
-    
+
     prompt_count = 1
     if log_file.exists():
         try:
@@ -380,28 +382,28 @@ def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
             prompt_count = len(matches) + 1
         except OSError:
             pass
-    
+
     preview = _sanitize_for_log(prompt)[:100]
-    
+
     heartbeat = (
         f"#### {time_str} — {session_prefix} [heartbeat]\n"
         f"- **用户消息**: {preview}\n"
         f"- **累计 prompt 数**: {prompt_count}\n"
         "---\n"
     )
-    
-    def _write_handler(_signum, _frame):
-        raise HookTimeoutError("prompt-submit log write timed out")
-    
+
+    def _write_handler(signum: int, frame: Any) -> None:
+        raise _PromptLogTimeoutError("prompt-submit log write timed out")
+
     old_handler = None
     try:
         old_handler = signal.signal(signal.SIGALRM, _write_handler)
         signal.alarm(2)
-        
+
         with log_file.open("a", encoding="utf-8") as fh, exclusive_lock(fh):
             fh.write(heartbeat)
             fh.flush()
-    except HookTimeoutError:
+    except _PromptLogTimeoutError:
         _logger.warning("_log_prompt_submit: write timed out for session %s", session_prefix)
     finally:
         signal.alarm(0)

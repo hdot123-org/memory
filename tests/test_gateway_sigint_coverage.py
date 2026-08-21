@@ -33,6 +33,8 @@ import pytest
 
 REPO_ROOT = Path(__file__).parent.parent
 GATEWAY_PATH = REPO_ROOT / "memory_core" / "tools" / "memory_hook_gateway.py"
+# M3 gateway split: _git_registration_probe 现位于 _gateway_policy.py
+GATEWAY_POLICY_PATH = REPO_ROOT / "memory_core" / "tools" / "_gateway_policy.py"
 HOOK_RUNTIME_GUARD_PATH = REPO_ROOT / "memory_core" / "tools" / "hook_runtime_guard.py"
 
 
@@ -359,7 +361,7 @@ class TestCodeInspection:
 
     def test_git_registration_probe_timeout_5(self) -> None:
         """VAL-NR-009: _git_registration_probe has timeout=5."""
-        content = GATEWAY_PATH.read_text()
+        content = GATEWAY_POLICY_PATH.read_text()
 
         # Find _git_registration_probe function
         func_start = content.find("def _git_registration_probe(")
@@ -372,7 +374,6 @@ class TestCodeInspection:
         assert "timeout=5" in func_body, (
             "_git_registration_probe does not have timeout=5"
         )
-
     def test_hook_runtime_guard_structure(self) -> None:
         """VAL-GW-005: hook_runtime_guard.py has correct structure."""
         assert HOOK_RUNTIME_GUARD_PATH.exists(), "hook_runtime_guard.py does not exist"

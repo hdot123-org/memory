@@ -119,9 +119,13 @@ class TestMemoryHookSchemaAuditLog:
 
 
 class TestGatewaySyncStatusWrite(_WarnsAndStderrMixin):
-    """memory_hook_gateway.py: sync status write OSError now warns."""
+    """gateway telemetry: sync status write OSError now warns.
 
-    PATH = "memory_core/tools/memory_hook_gateway.py"
+    M3 gateway split: _write_sync_status lives in _gateway_policy? No —
+    it lives in _gateway_telemetry.py after the M3 split.
+    """
+
+    PATH = "memory_core/tools/_gateway_telemetry.py"
     WARN_NEEDLE = 'status_file.write_text(json.dumps(status'
 
     def test_binds_exception(self):
@@ -138,9 +142,13 @@ class TestGatewaySyncStatusWrite(_WarnsAndStderrMixin):
 
 
 class TestGatewayPayloadParse(_WarnsAndStderrMixin):
-    """memory_hook_gateway.py: payload parse except now warns."""
+    """gateway handlers: payload parse except now warns.
 
-    PATH = "memory_core/tools/memory_hook_gateway.py"
+    M3 gateway split: the payload-parse fallback lives in
+    _gateway_handlers._handle_pretooluse_guard.
+    """
+
+    PATH = "memory_core/tools/_gateway_handlers.py"
     WARN_NEEDLE = "payload_dict = json.loads(raw_payload)"
 
     def test_binds_exception(self):

@@ -14,7 +14,8 @@ from pathlib import Path
 from tests.silent_swallow_helpers import function_body as _func_body
 
 REPO_ROOT = Path(__file__).parent.parent
-SOURCE_PATH = REPO_ROOT / "memory_core" / "tools" / "memory_hook_gateway.py"
+# M3 gateway split: _gateway_excepthook / _handle_pretooluse_guard 现位于 _gateway_handlers.py
+SOURCE_PATH = REPO_ROOT / "memory_core" / "tools" / "_gateway_handlers.py"
 
 
 class TestGatewayExcepthookSilentSwallow:

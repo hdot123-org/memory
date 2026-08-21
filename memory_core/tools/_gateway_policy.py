@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 from collections.abc import Callable
@@ -17,43 +16,24 @@ from typing import Any, cast
 from ._gateway_config import (
     REPO_ROOT,
     WORKSPACE_ROOT,
-    PROJECT_LIFECYCLE_ROOT,
-    get_config,
-    get_config_dict,
     _adapter_config,
-    _get_gateway_business_policy,
-    _get_policy_registry,
-    _get_route_policy,
-    _get_write_policy,
+    _apply_hook_runtime_write_targets,
     _get_artifact_sink,
     _get_error_sink,
-    _resolve_route_target_via_policy,
-    _apply_hook_runtime_write_targets,
-    _write_targets_via_policy,
+    _get_gateway_business_policy,
     _get_policy_pack_via_registry,
-    _resolve_policy_conflict_via_registry,
-    is_memory_core_source_repo,
-    is_denied_project_root,
-    record_project_lifecycle,
+    _get_policy_registry,
     _get_write_targets_dict,
-)
-from ._gateway_artifacts import (
-    append_error_log,
-    write_artifacts,
-)
-from ._gateway_telemetry import (
-    _maybe_sync_telemetry,
+    _resolve_route_target_via_policy,
+    _write_targets_via_policy,
+    get_config,
+    is_memory_core_source_repo,
 )
 
 # Import for build_context_package
 from .memory_hook_config import CoreConfig
 from .memory_hook_core import build_context_package_from_config
-from .memory_hook_impls import (
-    ArtifactWriter,
-    resolve_host_delegate,
-)
 from .memory_hook_schema import convert_legacy_to_memory_v1, convert_to_v1
-
 
 # ---------------------------------------------------------------------------
 # Core Builder 解析
@@ -66,10 +46,10 @@ def _load_external_core_builder() -> CoreBuilder:
     """加载外部 core builder。"""
     module_name = os.environ.get("MEMORY_HOOK_EXTERNAL_CORE_MODULE", "memory_core.tools.memory_hook_core")
     func_name = os.environ.get("MEMORY_HOOK_EXTERNAL_CORE_FUNC", "build_context_package_from_config")
-    
+
     if module_name == "memory_core.tools.memory_hook_core" and func_name == "build_context_package_from_config":
         return build_context_package_from_config
-    
+
     module = __import__(module_name, fromlist=[func_name])
     builder = getattr(module, func_name)
     if not callable(builder):
@@ -95,37 +75,37 @@ def _resolve_core_builder(provider: str, *, allow_fallback: bool = True) -> tupl
 
 def determine_project_scope(cwd: Path) -> str:
     """确定项目 scope。"""
-    return _get_gateway_business_policy().determine_project_scope(cwd)
+    return cast(str, _get_gateway_business_policy().determine_project_scope(cwd))
 
 
 def project_map_refs() -> list[str]:
     """获取 project map refs。"""
-    return _get_gateway_business_policy().project_map_refs()
+    return cast(list[str], _get_gateway_business_policy().project_map_refs())
 
 
 def validate_project_map_files() -> list[str]:
     """验证 project map 文件。"""
-    return _get_gateway_business_policy().validate_project_map_files()
+    return cast(list[str], _get_gateway_business_policy().validate_project_map_files())
 
 
 def validate_unique_legal_system_contract() -> list[str]:
     """验证唯一 legal system contract。"""
-    return _get_gateway_business_policy().validate_unique_legal_system_contract()
+    return cast(list[str], _get_gateway_business_policy().validate_unique_legal_system_contract())
 
 
 def decision_refs_for_scope(project_scope: str) -> list[str]:
     """获取 decision refs for scope。"""
-    return _get_gateway_business_policy().decision_refs_for_scope(project_scope)
+    return cast(list[str], _get_gateway_business_policy().decision_refs_for_scope(project_scope))
 
 
 def lesson_refs_for_scope(project_scope: str) -> list[str]:
     """获取 lesson refs for scope。"""
-    return _get_gateway_business_policy().lesson_refs_for_scope(project_scope)
+    return cast(list[str], _get_gateway_business_policy().lesson_refs_for_scope(project_scope))
 
 
 def docs_refs_for_scope(project_scope: str) -> list[str]:
     """获取 docs refs for scope。"""
-    return _get_gateway_business_policy().docs_refs_for_scope(project_scope)
+    return cast(list[str], _get_gateway_business_policy().docs_refs_for_scope(project_scope))
 
 
 def truth_basis_for_scope(project_scope: str) -> dict[str, Any]:
@@ -171,12 +151,12 @@ def resolve_route_target(kind: str) -> str:
 
 def governance_frozen_tuple_blocker_errors() -> list[str]:
     """获取 governance frozen tuple blocker 错误。"""
-    return _get_gateway_business_policy().governance_frozen_tuple_blocker_errors()
+    return cast(list[str], _get_gateway_business_policy().governance_frozen_tuple_blocker_errors())
 
 
 def event_contract_blocker_errors() -> list[str]:
     """获取 event contract blocker 错误。"""
-    return _get_gateway_business_policy().event_contract_blocker_errors()
+    return cast(list[str], _get_gateway_business_policy().event_contract_blocker_errors())
 
 
 def read_text_if_exists(path: Path) -> str:
@@ -223,7 +203,7 @@ def _registration_payload_paths(payload: dict[str, Any]) -> list[str]:
         raw_values = [item for item in raw if isinstance(item, str)]
     else:
         return []
-    
+
     normalized: list[str] = []
     for item in raw_values:
         normalized_item = _normalize_repo_scope_entry(item)
@@ -256,7 +236,7 @@ def _git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, An
     map_scope = [str(path) for path in get_config("REGISTRATION_GIT_SCOPE")]
     registration_paths = _registration_payload_paths(payload)
     tracked_scope = map_scope + [str(REPO_ROOT / item) for item in registration_paths]
-    
+
     try:
         proc = subprocess.run(
             ["git", "-C", str(REPO_ROOT), "status", "--short", "--", *tracked_scope],
@@ -268,7 +248,7 @@ def _git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, An
         entries = [line for line in (proc.stdout or "").splitlines() if line.strip()]
     except subprocess.TimeoutExpired:
         entries = []
-    
+
     try:
         head_commit = subprocess.run(
             ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
@@ -280,12 +260,12 @@ def _git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, An
         latest_commit = (head_commit.stdout or "").strip()
     except subprocess.TimeoutExpired:
         latest_commit = ""
-    
+
     commit_scope: list[str] = [
         path for path in (_normalize_repo_scope_entry(p) for p in get_config("REGISTRATION_GIT_SCOPE")) if path
     ]
     commit_scope.extend(registration_paths)
-    
+
     head_touched = _git_name_only("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", "--", *commit_scope)
     map_touched = any(
         any(_path_matches_scope(item, scope) for scope in commit_scope[: len(get_config("REGISTRATION_GIT_SCOPE"))])
@@ -295,7 +275,7 @@ def _git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, An
         any(_path_matches_scope(item, scope) for scope in registration_paths)
         for item in head_touched
     )
-    
+
     if entries:
         status = "pending-commit"
     elif not registration_paths:
@@ -304,7 +284,7 @@ def _git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, An
         status = "committed-coupled"
     else:
         status = "committed-not-proven"
-    
+
     return {
         "phase": get_config("REGISTRATION_COMMIT_PHASE"),
         "policy": get_config("REGISTRATION_COMMIT_POLICY"),
@@ -336,19 +316,19 @@ def build_context_package(
     lifecycle_record: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """构建 context package。"""
+    from ._gateway_config import EVENT_LOG
     from ._gateway_dispatch import _discover_cwd, _record_project_lifecycle_event
-    from ._gateway_config import EVENT_LOG, ARTIFACT_ROOT
-    
+
     cwd = _discover_cwd(payload)
-    
+
     if lifecycle_record is None:
         lifecycle_record = _record_project_lifecycle_event(
             host=host, event=event, payload=payload, cwd=cwd
         )
-    
+
     project_scope = determine_project_scope(cwd)
     business_policy = _get_gateway_business_policy()
-    
+
     config = CoreConfig(
         host=host,
         event=event,
@@ -388,13 +368,13 @@ def build_context_package(
         event_contract_blocker_scopes=get_config("EVENT_CONTRACT_BLOCKER_SCOPES"),
         core_evidence_refs=get_config("CORE_EVIDENCE_REFS"),
     )
-    
+
     requested_provider = os.environ.get("MEMORY_HOOK_CORE_PROVIDER", "legacy").strip() or "legacy"
     provider_name, provider_builder, provider_errors = _resolve_core_builder(
         requested_provider, allow_fallback=True
     )
     package = provider_builder(config) if provider_builder is not None else build_context_package_from_config(config)
-    
+
     # Bug 3 fix: Source-repo in develop mode should not get consumer-project
     # validation errors. Skip validation layers for source-repo.
     if is_memory_core_source_repo(cwd):
@@ -404,7 +384,7 @@ def build_context_package(
             package["missing_paths"] = []
         if isinstance(package.get("system_context"), dict):
             package["system_context"]["source_repo_skip_validation"] = True
-    
+
     system_context = package.setdefault("system_context", {})
     if isinstance(system_context, dict):
         system_context["core_provider"] = provider_name
@@ -413,7 +393,7 @@ def build_context_package(
             system_context["project_lifecycle"] = lifecycle_record
         if provider_errors:
             system_context["core_provider_fallback_errors"] = provider_errors
-    
+
     if provider_errors and not is_memory_core_source_repo(cwd):
         package.setdefault("validation_errors", [])
         validation_errors = package.get("validation_errors")
@@ -421,7 +401,7 @@ def build_context_package(
             validation_errors.extend(provider_errors)
         if package.get("status") == "ok":
             package["status"] = "degraded"
-    
+
     if os.environ.get("MEMORY_HOOK_SHADOW_RUN"):
         shadow_provider = "external-core" if provider_name == "legacy" else "legacy"
         shadow_result: dict[str, Any]
@@ -445,10 +425,10 @@ def build_context_package(
             }
         if isinstance(system_context, dict):
             system_context["shadow_run"] = shadow_result
-    
+
     # M2: adapter-level artifact compaction policy
     _apply_artifact_compaction(package)
-    
+
     return package
 
 
@@ -463,9 +443,9 @@ def build_context_package_simple(
     """Simplified 3-parameter entry point returning a schema-converted package."""
     if payload is None:
         payload = {}
-    
+
     v2_package = build_context_package(host, event, payload)
-    
+
     if schema == "memory-v1":
         v1_package = convert_to_v1(v2_package)
         return convert_legacy_to_memory_v1(v1_package)

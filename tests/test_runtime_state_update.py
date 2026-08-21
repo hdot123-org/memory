@@ -10,16 +10,10 @@ Covers:
 """
 
 import subprocess
-import sys
 from pathlib import Path
 from textwrap import dedent
 
-# Ensure memory_core/tools is importable
-TOOLS_DIR = str(Path(__file__).resolve().parent.parent / "memory_core" / "tools")
-if TOOLS_DIR not in sys.path:
-    sys.path.insert(0, TOOLS_DIR)
-
-from memory_hook_gateway import _update_state_dynamic_fields
+from memory_core.tools._gateway_artifacts import _update_state_dynamic_fields
 
 _SCOPE = "test-project"
 
