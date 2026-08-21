@@ -33,6 +33,7 @@ import re
 import socket
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,7 @@ except ImportError:  # pragma: no cover - 防御性回退
 
 try:
     import yaml
+
     _HAS_YAML = True
 except ImportError:  # pragma: no cover - 缺 PyYAML 时跳过基础设施检查
     yaml = None
@@ -96,10 +98,10 @@ LARK_NOTIFY_TIMEOUT = 15  # 秒
 INFRA_INVENTORY = MEMORY_CORE_HOME / "infrastructure-inventory.yaml"
 
 # 超时（秒）
-SSH_TIMEOUT = 10          # 顶层 SSH 探测 / docker ps 通过 SSH 的整体超时
-SSH_CONNECT_TIMEOUT = 5   # ssh -o ConnectTimeout=...
-TCP_TIMEOUT = 5           # 端口/数据库 TCP connect
-HTTP_TIMEOUT = 5          # curl --max-time
+SSH_TIMEOUT = 10  # 顶层 SSH 探测 / docker ps 通过 SSH 的整体超时
+SSH_CONNECT_TIMEOUT = 5  # ssh -o ConnectTimeout=...
+TCP_TIMEOUT = 5  # 端口/数据库 TCP connect
+HTTP_TIMEOUT = 5  # curl --max-time
 # (任务规格里 6a 写 10 秒，6c 端口写 3 秒；TCP_TIMEOUT 常量值为 5，
 #  check_ports 内部传入 3 以贴合规格。)
 
@@ -110,6 +112,7 @@ HTTP_TIMEOUT = 5          # curl --max-time
 # ---------------------------------------------------------------------------
 # 工具函数
 # ---------------------------------------------------------------------------
+
 
 def _now_iso_local() -> str:
     """当前本地时间 ISO8601 字符串（带时区）。"""
@@ -166,6 +169,7 @@ def _make_violation(
 # 项目路径解析
 # ---------------------------------------------------------------------------
 
+
 def load_registered_projects() -> list[tuple[str, Path]]:
     """从 path-index.json 读取所有注册项目，返回 [(name, path), ...]。
 
@@ -201,6 +205,7 @@ def load_registered_projects() -> list[tuple[str, Path]]:
 # 全局 KB 内容指纹（用于残留检测）
 # ---------------------------------------------------------------------------
 
+
 def build_global_kb_fingerprints() -> dict[str, str]:
     """对全局 KB 三个域下每个知识文件计算“归一化指纹”。
 
@@ -233,6 +238,7 @@ def build_global_kb_fingerprints() -> dict[str, str]:
 # 检查 1: manifest.json 哈希完整性
 # ---------------------------------------------------------------------------
 
+
 def check_manifest_integrity(project_root: Path) -> list[dict[str, Any]]:
     """重新计算 manifest entries 每个文件的 SHA-256，和记录值比对。
 
@@ -244,33 +250,39 @@ def check_manifest_integrity(project_root: Path) -> list[dict[str, Any]]:
     manifest_path = project_root / MANIFEST_PATH_REL
 
     if not manifest_path.exists():
-        violations.append(_make_violation(
-            "hash_mismatch",
-            "critical",
-            MANIFEST_PATH_REL,
-            "manifest.json 不存在：项目未签名（缺少完整性清单）",
-        ))
+        violations.append(
+            _make_violation(
+                "hash_mismatch",
+                "critical",
+                MANIFEST_PATH_REL,
+                "manifest.json 不存在：项目未签名（缺少完整性清单）",
+            )
+        )
         return violations
 
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as e:
-        violations.append(_make_violation(
-            "hash_mismatch",
-            "critical",
-            MANIFEST_PATH_REL,
-            f"manifest.json 解析失败：{e}",
-        ))
+        violations.append(
+            _make_violation(
+                "hash_mismatch",
+                "critical",
+                MANIFEST_PATH_REL,
+                f"manifest.json 解析失败：{e}",
+            )
+        )
         return violations
 
     entries = manifest.get("entries", [])
     if not isinstance(entries, list):
-        violations.append(_make_violation(
-            "hash_mismatch",
-            "critical",
-            MANIFEST_PATH_REL,
-            "manifest.json entries 字段格式错误",
-        ))
+        violations.append(
+            _make_violation(
+                "hash_mismatch",
+                "critical",
+                MANIFEST_PATH_REL,
+                "manifest.json entries 字段格式错误",
+            )
+        )
         return violations
 
     for entry in entries:
@@ -283,31 +295,37 @@ def check_manifest_integrity(project_root: Path) -> list[dict[str, Any]]:
 
         abs_path = project_root / rel_path
         if not abs_path.exists():
-            violations.append(_make_violation(
-                "hash_mismatch",
-                "critical",
-                rel_path,
-                "manifest 签名的文件已缺失（可能被删除）",
-            ))
+            violations.append(
+                _make_violation(
+                    "hash_mismatch",
+                    "critical",
+                    rel_path,
+                    "manifest 签名的文件已缺失（可能被删除）",
+                )
+            )
             continue
 
         actual_sha = _sha256_file(abs_path)
         if actual_sha is None:
-            violations.append(_make_violation(
-                "hash_mismatch",
-                "critical",
-                rel_path,
-                "签名文件无法读取（权限或 IO 错误）",
-            ))
+            violations.append(
+                _make_violation(
+                    "hash_mismatch",
+                    "critical",
+                    rel_path,
+                    "签名文件无法读取（权限或 IO 错误）",
+                )
+            )
             continue
 
         if actual_sha != expected_sha:
-            violations.append(_make_violation(
-                "hash_mismatch",
-                "critical",
-                rel_path,
-                "SHA-256 不匹配：文件被篡改（manifest 与实际内容不一致）",
-            ))
+            violations.append(
+                _make_violation(
+                    "hash_mismatch",
+                    "critical",
+                    rel_path,
+                    "SHA-256 不匹配：文件被篡改（manifest 与实际内容不一致）",
+                )
+            )
 
     return violations
 
@@ -315,6 +333,7 @@ def check_manifest_integrity(project_root: Path) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # 检查 2: memory/kb/ 下未签名文件
 # ---------------------------------------------------------------------------
+
 
 def check_unsigned_files(project_root: Path) -> list[dict[str, Any]]:
     """扫描 memory/kb/ 下所有 .md 文件，对比 manifest entries。
@@ -349,12 +368,14 @@ def check_unsigned_files(project_root: Path) -> list[dict[str, Any]]:
         # 统一用 posix 风格分隔，和 manifest rel_path 一致
         rel_path_norm = rel_path.replace("\\", "/")
         if rel_path_norm not in signed_rel_paths:
-            violations.append(_make_violation(
-                "unsigned_file",
-                "warning",
-                rel_path_norm,
-                "memory/kb 下未签名文件（不在 manifest entries 中，可能是违规新增）",
-            ))
+            violations.append(
+                _make_violation(
+                    "unsigned_file",
+                    "warning",
+                    rel_path_norm,
+                    "memory/kb 下未签名文件（不在 manifest entries 中，可能是违规新增）",
+                )
+            )
 
     return violations
 
@@ -362,6 +383,7 @@ def check_unsigned_files(project_root: Path) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # 检查 3: 通用经验残留检测
 # ---------------------------------------------------------------------------
+
 
 def check_global_residue(
     project_root: Path,
@@ -399,12 +421,14 @@ def check_global_residue(
                     rel_path = str(md_path.relative_to(project_root))
                 except ValueError:
                     rel_path = str(md_path)
-                violations.append(_make_violation(
-                    "residue",
-                    "warning",
-                    rel_path.replace("\\", "/"),
-                    f"疑似全局通用经验残留：内容与全局 KB {matched_global} 高度重复",
-                ))
+                violations.append(
+                    _make_violation(
+                        "residue",
+                        "warning",
+                        rel_path.replace("\\", "/"),
+                        f"疑似全局通用经验残留：内容与全局 KB {matched_global} 高度重复",
+                    )
+                )
 
     return violations
 
@@ -413,10 +437,9 @@ def check_global_residue(
 # 检查 4: 大文件/数据库文件违规
 # ---------------------------------------------------------------------------
 
-_EXCLUDED_DIR_SEGMENTS = frozenset({
-    ".git", "node_modules", "__pycache__", ".venv", "venv",
-    "dist", "build", ".mypy_cache", ".pytest_cache"
-})
+_EXCLUDED_DIR_SEGMENTS = frozenset(
+    {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".mypy_cache", ".pytest_cache"}
+)
 
 
 def _is_excludable_path(item: Path, project_root: Path) -> bool:
@@ -539,6 +562,7 @@ def check_large_or_db_files(project_root: Path) -> list[dict[str, Any]]:
 # 检查 5: 三文件版本一致性
 # ---------------------------------------------------------------------------
 
+
 def _extract_version_from_toml(text: str) -> str | None:
     """从 TOML 文本里抽 memory_version / version 字段。
 
@@ -587,32 +611,38 @@ def check_version_consistency(project_root: Path) -> list[dict[str, Any]]:
             versions[label] = ver
 
     for label in missing:
-        violations.append(_make_violation(
-            "version_mismatch",
-            "critical",
-            f"{SYSTEM_DIR}/{label}",
-            f"{label} 缺失或无法解析版本号",
-        ))
+        violations.append(
+            _make_violation(
+                "version_mismatch",
+                "critical",
+                f"{SYSTEM_DIR}/{label}",
+                f"{label} 缺失或无法解析版本号",
+            )
+        )
 
     # 比对：任一文件与期望值不同
     for label, ver in versions.items():
         if ver != CURRENT_MEMORY_VERSION:
-            violations.append(_make_violation(
-                "version_mismatch",
-                "critical",
-                f"{SYSTEM_DIR}/{label}",
-                f"{label} 版本 {ver} 与期望 {CURRENT_MEMORY_VERSION} 不一致",
-            ))
+            violations.append(
+                _make_violation(
+                    "version_mismatch",
+                    "critical",
+                    f"{SYSTEM_DIR}/{label}",
+                    f"{label} 版本 {ver} 与期望 {CURRENT_MEMORY_VERSION} 不一致",
+                )
+            )
 
     # 三者互相不一致（即便都和期望相同，也校验一致性）
     unique_versions = set(versions.values())
     if len(unique_versions) > 1:
-        violations.append(_make_violation(
-            "version_mismatch",
-            "critical",
-            f"{SYSTEM_DIR}/",
-            f"三文件版本不一致：{versions}",
-        ))
+        violations.append(
+            _make_violation(
+                "version_mismatch",
+                "critical",
+                f"{SYSTEM_DIR}/",
+                f"三文件版本不一致：{versions}",
+            )
+        )
 
     return violations
 
@@ -620,6 +650,7 @@ def check_version_consistency(project_root: Path) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # 检查 6: 基础设施健康检查（服务器 / Docker / 端口 / HTTP / 数据库）
 # ---------------------------------------------------------------------------
+
 
 def _load_infra_inventory() -> dict[str, Any] | None:
     """加载基础设施清单 YAML。
@@ -630,8 +661,7 @@ def _load_infra_inventory() -> dict[str, Any] | None:
     """
     if not _HAS_YAML:
         print(
-            "[infra] PyYAML 不可用，跳过基础设施检查 "
-            "（可 `pip install pyyaml` 启用）",
+            "[infra] PyYAML 不可用，跳过基础设施检查 （可 `pip install pyyaml` 启用）",
             file=sys.stderr,
         )
         return None
@@ -672,8 +702,10 @@ def _run_ssh(
     """以 BatchMode 执行一条 SSH 命令，返回 (rc, stdout, stderr)。"""
     cmd = [
         "ssh",
-        "-o", f"ConnectTimeout={SSH_CONNECT_TIMEOUT}",
-        "-o", "BatchMode=yes",
+        "-o",
+        f"ConnectTimeout={SSH_CONNECT_TIMEOUT}",
+        "-o",
+        "BatchMode=yes",
         ssh_alias,
         *remote_cmd,
     ]
@@ -695,6 +727,41 @@ def check_ssh_reachable(ssh_alias: str) -> bool:
     """检查 SSH 是否可达（`ssh <alias> echo ok`）。"""
     rc, out, _ = _run_ssh(ssh_alias, ["echo", "ok"])
     return rc == 0 and out.strip() == "ok"
+
+
+def _parse_df_output(out: str) -> dict[str, dict[str, Any]]:
+    """Parse df -h -P output into filesystems dict."""
+    filesystems: dict[str, dict[str, Any]] = {}
+    for line in out.splitlines():
+        line = line.strip()
+        if not line or line.startswith("Filesystem"):
+            continue
+        parts = line.split()
+        if len(parts) < 6:
+            continue
+        size, used, avail = parts[1], parts[2], parts[3]
+        use_pct_str = parts[4].rstrip("%")
+        mount = " ".join(parts[5:])
+        try:
+            use_pct = int(use_pct_str)
+        except ValueError:
+            continue
+        filesystems[mount] = {"size": size, "used": used, "avail": avail, "use_pct": use_pct}
+    return filesystems
+
+
+def _find_matching_mount(disk_check: dict[str, Any], filesystems: dict[str, dict[str, Any]]) -> str | None:
+    """Find matching mount point for a disk check config."""
+    mount_config = disk_check.get("mount")
+    pattern = disk_check.get("pattern")
+    if mount_config:
+        mount_str = str(mount_config)
+        return mount_str if mount_str in filesystems else None
+    if pattern:
+        for fs_mount in filesystems:
+            if re.search(pattern, fs_mount):
+                return fs_mount
+    return None
 
 
 def check_disk_space(
@@ -744,33 +811,8 @@ def check_disk_space(
         global_violations.append(v)
         return result
 
-    # 解析 df -h -P 输出:
-    # Filesystem      Size  Used Avail Use% Mounted on
-    # /dev/sda1        50G   35G   12G  75% /
-    # overlay          50G   35G   12G  75% /
-    filesystems: dict[str, dict[str, Any]] = {}
-    for line in out.splitlines():
-        line = line.strip()
-        if not line or line.startswith("Filesystem"):
-            continue
-        parts = line.split()
-        if len(parts) < 6:
-            continue
-        size = parts[1]
-        used = parts[2]
-        avail = parts[3]
-        use_pct_str = parts[4].rstrip("%")
-        mount = " ".join(parts[5:])  # mount path 可能有空格
-        try:
-            use_pct = int(use_pct_str)
-        except ValueError:
-            continue
-        filesystems[mount] = {
-            "size": size,
-            "used": used,
-            "avail": avail,
-            "use_pct": use_pct,
-        }
+    # 解析 df -h -P 输出
+    filesystems = _parse_df_output(out)
 
     # 逐个配置项检查
     for dc in disk_checks:
@@ -778,22 +820,12 @@ def check_disk_space(
             continue
         warn_pct = int(dc.get("warn_pct", 80))
         crit_pct = int(dc.get("crit_pct", 90))
-        mount_config: Any = dc.get("mount")
-        pattern = dc.get("pattern")
 
         # 通过 mount 精确匹配或 pattern 正则匹配
-        matched_mount: str | None = None
-        if mount_config:
-            _mount_s = str(mount_config)
-            matched_mount = _mount_s if _mount_s in filesystems else None
-        elif pattern:
-            for fs_mount in filesystems:
-                if re.search(pattern, fs_mount):
-                    matched_mount = fs_mount
-                    break
+        matched_mount = _find_matching_mount(dc, filesystems)
 
         if matched_mount is None:
-            label = mount_config or pattern or "?"
+            label = dc.get("mount") or dc.get("pattern") or "?"
             v = _make_violation(
                 "disk_full",
                 "warning",
@@ -887,10 +919,7 @@ def _check_systemd_services(
 
     if rc != 0:
         # systemctl 整体不可用（权限/PATH 问题），逐个标 warning
-        detail = (
-            f"systemctl 批量查询执行失败 (rc={rc})，无法核对服务状态"
-            f"（疑似权限或 systemd 未安装）"
-        )
+        detail = f"systemctl 批量查询执行失败 (rc={rc})，无法核对服务状态（疑似权限或 systemd 未安装）"
         v = _make_violation(
             "service_down",
             "warning",
@@ -966,8 +995,7 @@ def _check_systemd_services(
             "service_down",
             "critical",
             f"{server_name}/{svc}",
-            f"systemd 服务 {svc} 状态异常："
-            f"ActiveState={active_state}, SubState={sub_state}",
+            f"systemd 服务 {svc} 状态异常：ActiveState={active_state}, SubState={sub_state}",
         )
         record_violations.append(v)
         global_violations.append(v)
@@ -1130,9 +1158,14 @@ def _check_server_http_endpoints(
         if not url:
             continue
         cmd = [
-            "curl", "-sf", "-o", "/dev/null",
-            "-w", "%{http_code}",
-            "--max-time", str(HTTP_TIMEOUT),
+            "curl",
+            "-sf",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{http_code}",
+            "--max-time",
+            str(HTTP_TIMEOUT),
             str(url),
         ]
         try:
@@ -1237,10 +1270,7 @@ def check_server(
     disk_checks = checks.get("disk_space") or []
     if disk_checks and ssh_ok:
         name = str(server.get("name", "unknown"))
-        normalized_checks: list[dict[str, Any]] = [
-            {"path": d} if isinstance(d, str) else d
-            for d in disk_checks
-        ]
+        normalized_checks: list[dict[str, Any]] = [{"path": d} if isinstance(d, str) else d for d in disk_checks]
         record["disk_space"] = check_disk_space(
             ssh_alias=str(ssh_alias),
             server_name=name,
@@ -1346,6 +1376,15 @@ def check_infrastructure() -> dict[str, Any]:
 # 单项目编排
 # ---------------------------------------------------------------------------
 
+
+def _safe_check(check_fn: Callable[[], list[Any]], error_violation: Callable[[Exception], Any]) -> list[Any]:
+    """Wrapper for check execution with error handling."""
+    try:
+        return check_fn()
+    except Exception as e:
+        return [error_violation(e)]
+
+
 def audit_project(
     project_name: str,
     project_root: Path,
@@ -1359,12 +1398,14 @@ def audit_project(
 
     # 跳过不存在的项目路径
     if not project_root.exists():
-        record["violations"].append(_make_violation(
-            "hash_mismatch",
-            "warning",
-            str(project_root),
-            "项目路径不存在（可能已删除），跳过",
-        ))
+        record["violations"].append(
+            _make_violation(
+                "hash_mismatch",
+                "warning",
+                str(project_root),
+                "项目路径不存在（可能已删除），跳过",
+            )
+        )
         record["skipped"] = True
         return record
 
@@ -1372,68 +1413,34 @@ def audit_project(
     # （源仓库的版本号由自身维护，跑版本检查会产生误报）
     # 此外，源仓库的完整性签名在设计上被禁用（sign_project 拒绝签名源仓库），
     # 因此 manifest.json 不存在是预期行为，跑完整性检查会产生 HASH_MISMATCH 误报。
-    is_source_repo = (
-        is_memory_core_source_repo is not None
-        and is_memory_core_source_repo(project_root.resolve())
-    )
-
-    checks: list[tuple[str, Any]] = []
+    is_source_repo = is_memory_core_source_repo is not None and is_memory_core_source_repo(project_root.resolve())
 
     if not is_source_repo:
-        # 检查 1: 哈希完整性（源仓库跳过：签名被禁用，manifest.json 不存在是预期行为）
-        def _c1() -> list[dict[str, Any]]:
-            try:
-                return check_manifest_integrity(project_root)
-            except Exception as e:  # 单项目失败不影响其他项目
-                return [_make_violation("hash_mismatch", "warning",
-                                         MANIFEST_PATH_REL,
-                                         f"检查异常：{e}")]
+        checks = [
+            (
+                lambda: check_manifest_integrity(project_root),
+                lambda e: _make_violation("hash_mismatch", "warning", MANIFEST_PATH_REL, f"检查异常：{e}"),
+            ),
+            (
+                lambda: check_unsigned_files(project_root),
+                lambda e: _make_violation("unsigned_file", "warning", "memory/kb/", f"检查异常：{e}"),
+            ),
+            (
+                lambda: check_global_residue(project_root, global_fingerprints),
+                lambda e: _make_violation("residue", "warning", "memory/kb/", f"检查异常：{e}"),
+            ),
+            (
+                lambda: check_large_or_db_files(project_root),
+                lambda e: _make_violation("large_file", "warning", str(project_root), f"检查异常：{e}"),
+            ),
+            (
+                lambda: check_version_consistency(project_root),
+                lambda e: _make_violation("version_mismatch", "warning", f"{SYSTEM_DIR}/", f"检查异常：{e}"),
+            ),
+        ]
 
-        # KB 相关检查（源仓库跳过，它没有消费项目 KB 结构）
-        def _c2() -> list[dict[str, Any]]:
-            try:
-                return check_unsigned_files(project_root)
-            except Exception as e:
-                return [_make_violation("unsigned_file", "warning",
-                                         "memory/kb/",
-                                         f"检查异常：{e}")]
-
-        def _c3() -> list[dict[str, Any]]:
-            try:
-                return check_global_residue(project_root, global_fingerprints)
-            except Exception as e:
-                return [_make_violation("residue", "warning",
-                                         "memory/kb/",
-                                         f"检查异常：{e}")]
-
-        def _c4() -> list[dict[str, Any]]:
-            try:
-                return check_large_or_db_files(project_root)
-            except Exception as e:
-                return [_make_violation("large_file", "warning",
-                                         str(project_root),
-                                         f"检查异常：{e}")]
-
-        # 检查 5: 版本一致性（源仓库跳过，避免误报）
-        def _c5() -> list[dict[str, Any]]:
-            try:
-                return check_version_consistency(project_root)
-            except Exception as e:
-                return [_make_violation("version_mismatch", "warning",
-                                         f"{SYSTEM_DIR}/",
-                                         f"检查异常：{e}")]
-
-        checks = [("_c1", _c1), ("_c2", _c2), ("_c3", _c3), ("_c4", _c4), ("_c5", _c5)]
-
-    for _, fn in checks:
-        try:
-            violations = fn()
-        except Exception as e:  # 双保险
-            violations = [_make_violation(
-                "hash_mismatch", "warning", str(project_root),
-                f"检查函数异常：{e}",
-            )]
-        if violations:
+        for check_fn, error_fn in checks:
+            violations = _safe_check(check_fn, error_fn)
             record["violations"].extend(violations)
 
     if is_source_repo:
@@ -1446,6 +1453,7 @@ def audit_project(
 # 报告 & 输出
 # ---------------------------------------------------------------------------
 
+
 def build_report(
     projects_results: dict[str, dict[str, Any]],
     infrastructure: dict[str, Any] | None = None,
@@ -1457,10 +1465,7 @@ def build_report(
         infrastructure: 基础设施检查结果（可为 None 表示本次未执行）。
     """
     today = now_iso()[:10]  # Extract YYYY-MM-DD from full ISO timestamp
-    project_violations = sum(
-        len(r.get("violations", []))
-        for r in projects_results.values()
-    )
+    project_violations = sum(len(r.get("violations", [])) for r in projects_results.values())
     infra_violations = 0
     if infrastructure is not None:
         infra_violations = len(infrastructure.get("violations", []))
@@ -1499,9 +1504,8 @@ def write_report(report: dict[str, Any]) -> Path:
 # 飞书通知（lark-cli）
 # ---------------------------------------------------------------------------
 
-def _summarize_violation_block(
-    label: str, viols: list[dict[str, Any]], lines: list[str]
-) -> tuple[int, int]:
+
+def _summarize_violation_block(label: str, viols: list[dict[str, Any]], lines: list[str]) -> tuple[int, int]:
     """格式化违规块并追加到 lines,返回 (critical_count, warning_count)。"""
     c = sum(1 for v in viols if v.get("severity") == "critical")
     w = sum(1 for v in viols if v.get("severity") == "warning")
@@ -1527,9 +1531,7 @@ def _summarize_report(report: dict[str, Any]) -> str:
         # 即便无违规，也附上基础设施摘要（若有）
         _append_infra_summary(lines, report)
         lines.append("")
-        lines.append(
-            f"详细报告: {AUDIT_DIR}/daily-audit-{report['audit_date']}.json"
-        )
+        lines.append(f"详细报告: {AUDIT_DIR}/daily-audit-{report['audit_date']}.json")
         return "\n".join(lines)
 
     critical_count = 0
@@ -1586,10 +1588,9 @@ def _summarize_containers(rec: dict[str, Any]) -> str:
     containers = rec.get("containers") or {}
     if containers:
         up_n = sum(
-            1 for s in containers.values()
-            if s and s != "DOWN"
-            and "restarting" not in s.lower()
-            and "unhealthy" not in s.lower()
+            1
+            for s in containers.values()
+            if s and s != "DOWN" and "restarting" not in s.lower() and "unhealthy" not in s.lower()
         )
         return f"容器 {up_n}/{len(containers)} 正常"
     return "容器 -"
@@ -1685,9 +1686,13 @@ def notify_via_lark(report: dict[str, Any]) -> bool:
     summary = _summarize_report(report)
     # lark-cli im +messages-send --chat-id <ID> --text "<TEXT>"
     cmd = [
-        "lark-cli", "im", "+messages-send",
-        "--chat-id", chat_id,
-        "--text", summary,
+        "lark-cli",
+        "im",
+        "+messages-send",
+        "--chat-id",
+        chat_id,
+        "--text",
+        summary,
     ]
     try:
         result = subprocess.run(
@@ -1705,8 +1710,7 @@ def notify_via_lark(report: dict[str, Any]) -> bool:
 
     if result.returncode != 0:
         print(
-            f"[notify] lark-cli 失败 (rc={result.returncode}): "
-            f"{result.stderr.strip() or result.stdout.strip()}",
+            f"[notify] lark-cli 失败 (rc={result.returncode}): {result.stderr.strip() or result.stdout.strip()}",
             file=sys.stderr,
         )
         return False
@@ -1718,6 +1722,7 @@ def notify_via_lark(report: dict[str, Any]) -> bool:
 # ---------------------------------------------------------------------------
 # CLI 入口
 # ---------------------------------------------------------------------------
+
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -1770,10 +1775,7 @@ def _count_critical_infra(infra: dict[str, Any] | None) -> int:
     n = 0
     for kind in ("servers", "databases"):
         for _name, rec in (infra.get(kind) or {}).items():
-            n += sum(
-                1 for v in rec.get("violations", [])
-                if v.get("severity") == "critical"
-            )
+            n += sum(1 for v in rec.get("violations", []) if v.get("severity") == "critical")
     return n
 
 
@@ -1784,10 +1786,7 @@ def _count_warning_infra(infra: dict[str, Any] | None) -> int:
     n = 0
     for kind in ("servers", "databases"):
         for _name, rec in (infra.get(kind) or {}).items():
-            n += sum(
-                1 for v in rec.get("violations", [])
-                if v.get("severity") == "warning"
-            )
+            n += sum(1 for v in rec.get("violations", []) if v.get("severity") == "warning")
     return n
 
 
@@ -1812,9 +1811,7 @@ def _run_infra_check(no_infra: bool) -> dict[str, Any] | None:
         return None
 
 
-def _handle_no_projects(
-    infra_results: dict[str, Any] | None, args: argparse.Namespace
-) -> int:
+def _handle_no_projects(infra_results: dict[str, Any] | None, args: argparse.Namespace) -> int:
     """处理无注册项目场景，返回退出码。"""
     print(
         f"[audit] 未发现注册项目（或 {LIFECYCLE_INDEX} 不存在）",
@@ -1844,10 +1841,14 @@ def _audit_all_projects(
         except Exception as e:
             projects_results[name] = {
                 "path": str(root),
-                "violations": [_make_violation(
-                    "hash_mismatch", "warning", str(root),
-                    f"项目巡检异常：{e}",
-                )],
+                "violations": [
+                    _make_violation(
+                        "hash_mismatch",
+                        "warning",
+                        str(root),
+                        f"项目巡检异常：{e}",
+                    )
+                ],
                 "error": str(e),
             }
     return projects_results
@@ -1859,16 +1860,8 @@ def _summarize_to_console(
     report: dict[str, Any],
 ) -> int:
     """打印控制台摘要，返回 critical 计数。"""
-    crit = sum(
-        1 for r in projects_results.values()
-        for v in r.get("violations", [])
-        if v.get("severity") == "critical"
-    )
-    warn = sum(
-        1 for r in projects_results.values()
-        for v in r.get("violations", [])
-        if v.get("severity") == "warning"
-    )
+    crit = sum(1 for r in projects_results.values() for v in r.get("violations", []) if v.get("severity") == "critical")
+    warn = sum(1 for r in projects_results.values() for v in r.get("violations", []) if v.get("severity") == "warning")
     if infra_results is not None:
         crit += _count_critical_infra(infra_results)
         warn += _count_warning_infra(infra_results)

@@ -196,6 +196,51 @@ class IntegrationTester:
             results.extend(self._check_single_platform(host))
         return results
 
+    def _check_hook_entries(self, host: str, config_file: Path, config: dict[str, Any]) -> CheckResult:
+        """Check if hook config has expected memory entries."""
+        try:
+            config_content = json.loads(config_file.read_text(encoding="utf-8"))
+            hooks = config_content.get("hooks", {} if "factory" in host else [])
+
+            expected_events = set(config["events"])
+            found_events: set[str] = set()
+
+            if host in ("factory", "codex"):
+                # Factory and Codex use dict with event names as keys
+                for event in expected_events:
+                    if event in hooks and hooks[event]:
+                        found_events.add(event)
+            else:
+                # Claude uses list format
+                if isinstance(hooks, list):
+                    for hook in hooks:
+                        if isinstance(hook, dict):
+                            event = hook.get("event", "")
+                            if event in expected_events:
+                                found_events.add(event)
+
+            missing_events = expected_events - found_events
+            if not missing_events:
+                return CheckResult(
+                    f"{host}:memory_entries",
+                    "PASS",
+                    f"All {len(expected_events)} expected events registered",
+                    details=[f"Found: {', '.join(sorted(found_events))}"],
+                )
+            else:
+                return CheckResult(
+                    f"{host}:memory_entries",
+                    "FAIL",
+                    f"Missing {len(missing_events)} expected events",
+                    details=[f"Missing: {', '.join(sorted(missing_events))}"],
+                )
+        except (json.JSONDecodeError, OSError) as exc:
+            return CheckResult(
+                f"{host}:memory_entries",
+                "FAIL",
+                f"Failed to parse config: {exc}",
+            )
+
     def _check_single_platform(self, host: str) -> list[CheckResult]:
         """Check hook installation for a single platform."""
         results: list[CheckResult] = []
@@ -246,48 +291,7 @@ class IntegrationTester:
             return results
 
         # 3. Check hook config has memory entries
-        try:
-            config_content = json.loads(config_file.read_text(encoding="utf-8"))
-            hooks = config_content.get("hooks", {} if "factory" in host else [])
-
-            expected_events = set(config["events"])
-            found_events: set[str] = set()
-
-            if host in ("factory", "codex"):
-                # Factory and Codex use dict with event names as keys
-                for event in expected_events:
-                    if event in hooks and hooks[event]:
-                        found_events.add(event)
-            else:
-                # Claude uses list format
-                if isinstance(hooks, list):
-                    for hook in hooks:
-                        if isinstance(hook, dict):
-                            event = hook.get("event", "")
-                            if event in expected_events:
-                                found_events.add(event)
-
-            missing_events = expected_events - found_events
-            if not missing_events:
-                results.append(CheckResult(
-                    f"{host}:memory_entries",
-                    "PASS",
-                    f"All {len(expected_events)} expected events registered",
-                    details=[f"Found: {', '.join(sorted(found_events))}"],
-                ))
-            else:
-                results.append(CheckResult(
-                    f"{host}:memory_entries",
-                    "FAIL",
-                    f"Missing {len(missing_events)} expected events",
-                    details=[f"Missing: {', '.join(sorted(missing_events))}"],
-                ))
-        except (json.JSONDecodeError, OSError) as exc:
-            results.append(CheckResult(
-                f"{host}:memory_entries",
-                "FAIL",
-                f"Failed to parse config: {exc}",
-            ))
+        results.append(self._check_hook_entries(host, config_file, config))
 
         # 4. Check wrapper can execute (if exists)
         if wrapper.exists():
@@ -323,14 +327,10 @@ class IntegrationTester:
     # -------------------------------------------------------------------------
     # Category 2: Consumer Project Discovery
     # -------------------------------------------------------------------------
-    def _check_consumer_discovery(self) -> list[CheckResult]:
-        """Scan for and discover consumer projects."""
-        results: list[CheckResult] = []
-
-        # Scan for consumer projects under user's home directory
+    def _scan_consumer_projects(self) -> list[Path]:
+        """Scan for consumer projects under user's home directory."""
         base_dir = Path.home()
-        discovered_projects: list[Path] = []
-
+        projects: list[Path] = []
         try:
             for path in base_dir.rglob("memory/system/adapter.toml"):
                 project_root = path.parent.parent.parent
@@ -347,10 +347,44 @@ class IntegrationTester:
                 adapter_content = path.read_text(encoding="utf-8")
                 if "{{" in adapter_content:
                     continue
-                discovered_projects.append(project_root)
+                projects.append(project_root)
         except PermissionError:
             pass
+        return projects
 
+    def _find_registration_gaps(
+        self, discovered_paths: dict[str, Path], registered_paths: set[str]
+    ) -> tuple[list[str], list[str]]:
+        """Find gaps between discovered and registered projects, attempt to fix if self.fix."""
+        gaps = set(discovered_paths.keys()) - registered_paths
+        fixed: list[str] = []
+        if gaps and self.fix:
+            for path_str in gaps:
+                try:
+                    from datetime import datetime
+
+                    from memory_core.tools.project_lifecycle import record_project_lifecycle
+
+                    path = Path(path_str)
+                    record_project_lifecycle(
+                        lifecycle_root=self.storage_root / "project-lifecycle",
+                        cwd=path,
+                        host="integration-test",
+                        event="discovery-registration",
+                        payload={},
+                        now_iso_fn=lambda: datetime.now(UTC).isoformat(),
+                    )
+                    fixed.append(path_str)
+                except Exception:
+                    pass
+        return sorted(gaps), sorted(fixed)
+
+    def _check_consumer_discovery(self) -> list[CheckResult]:
+        """Scan for and discover consumer projects."""
+        results: list[CheckResult] = []
+
+        # Scan for consumer projects
+        discovered_projects = self._scan_consumer_projects()
         results.append(CheckResult(
             "discovery:scan_complete",
             "PASS",
@@ -385,49 +419,22 @@ class IntegrationTester:
         # Cross-reference discovered vs registered
         discovered_paths = {str(p.expanduser().resolve()): p for p in discovered_projects}
         registered_paths = set(registered_projects.keys())
+        gaps, fixed = self._find_registration_gaps(discovered_paths, registered_paths)
 
-        # Projects initialized but NOT in path-index (gap)
-        gaps = set(discovered_paths.keys()) - registered_paths
         if gaps:
             results.append(CheckResult(
                 "discovery:registration_gaps",
                 "WARN",
                 f"{len(gaps)} initialized project(s) not in path-index",
-                details=sorted(gaps),
+                details=gaps,
             ))
-            if self.fix:
-                # Attempt to register missing projects
-                fixed = []
-                for path_str in gaps:
-                    try:
-                        # Import and call record_project_lifecycle
-                        from datetime import datetime
-
-                        from memory_core.tools.project_lifecycle import record_project_lifecycle
-
-                        path = Path(path_str)
-                        record_project_lifecycle(
-                            lifecycle_root=self.storage_root / "project-lifecycle",
-                            cwd=path,
-                            host="integration-test",
-                            event="discovery-registration",
-                            payload={},
-                            now_iso_fn=lambda: datetime.now(UTC).isoformat(),
-                        )
-                        fixed.append(path_str)
-                    except Exception as exc:
-                        results.append(CheckResult(
-                            f"discovery:fix_{path_str}",
-                            "FAIL",
-                            f"Failed to register {path_str}: {exc}",
-                        ))
-                if fixed:
-                    results.append(CheckResult(
-                        "discovery:fixed_gaps",
-                        "PASS",
-                        f"Registered {len(fixed)} missing project(s)",
-                        details=sorted(fixed),
-                    ))
+            if fixed:
+                results.append(CheckResult(
+                    "discovery:fixed_gaps",
+                    "PASS",
+                    f"Registered {len(fixed)} missing project(s)",
+                    details=fixed,
+                ))
         else:
             results.append(CheckResult(
                 "discovery:registration_gaps",
@@ -436,11 +443,7 @@ class IntegrationTester:
             ))
 
         # Registered projects whose paths no longer exist (stale)
-        stale = []
-        for path_str in registered_paths:
-            if not Path(path_str).exists():
-                stale.append(path_str)
-
+        stale = [p for p in registered_paths if not Path(p).exists()]
         if stale:
             results.append(CheckResult(
                 "discovery:stale_entries",

@@ -187,6 +187,33 @@ except ImportError:
 # Validation functions
 # ---------------------------------------------------------------------------
 
+def _build_forbidden_paths(target: Path | None) -> set[str]:
+    """Build set of forbidden paths from ownership classification."""
+    if target is None:
+        return set()
+
+    forbidden_paths: set[str] = set()
+    try:
+        ownership = load_memory_ownership(target)
+        if target.exists():
+            for item in target.rglob("*"):
+                if item.is_file():
+                    try:
+                        rel_path = item.relative_to(target).as_posix()
+                        classification = classify_owned_path(rel_path, ownership=ownership)
+                        if isinstance(classification, Owned):
+                            forbidden_paths.add(rel_path.lower())
+                    except (ValueError, OSError):
+                        pass
+    except Exception:
+        logger.debug(
+            "_validate_plan: dynamic forbidden-path scan failed, "
+            "falling back to legacy patterns",
+            exc_info=True,
+        )
+    return forbidden_paths
+
+
 def _validate_plan(plan: dict[str, Any], target: Path | None = None) -> tuple[bool, list[str]]:
     """Validate migration plan structure.
 
@@ -212,28 +239,16 @@ def _validate_plan(plan: dict[str, Any], target: Path | None = None) -> tuple[bo
     if plan.get("requires_human_confirmation") is True:
         errors.append("Plan requires human confirmation (requires_human_confirmation=true)")
 
-    # Step 2.9: Initialize forbidden patterns from classify_owned_path if target available
-    forbidden_paths: set[str] = set()
-    if target is not None:
-        try:
-            ownership = load_memory_ownership(target)
-            # Check all files under target
-            if target.exists():
-                for item in target.rglob("*"):
-                    if item.is_file():
-                        try:
-                            rel_path = item.relative_to(target).as_posix()
-                            classification = classify_owned_path(rel_path, ownership=ownership)
-                            if isinstance(classification, Owned):
-                                forbidden_paths.add(rel_path.lower())
-                        except (ValueError, OSError):
-                            pass
-        except Exception:
-            logger.debug(
-                "_validate_plan: dynamic forbidden-path scan failed, "
-                "falling back to legacy patterns",
-                exc_info=True,
-            )
+    # Build forbidden paths from ownership
+    try:
+        forbidden_paths = _build_forbidden_paths(target)
+    except Exception:
+        logger.debug(
+            "_validate_plan: forbidden paths construction failed, "
+            "falling back to empty set",
+            exc_info=True,
+        )
+        forbidden_paths = set()
 
     # Check actions
     actions = plan.get("actions", [])
@@ -244,25 +259,32 @@ def _validate_plan(plan: dict[str, Any], target: Path | None = None) -> tuple[bo
     for i, action in enumerate(actions):
         if not isinstance(action, dict):
             errors.append(f"Action {i} must be an object")
-            continue
-
-        action_type = action.get("action", "")
-
-        # Reject manual_decision_required actions
-        if action_type == "manual_decision_required":
-            errors.append(f"Action {i} requires manual decision: {action.get('path', 'unknown')}")
-
-        # Step 2.9: Check forbidden overwrites using classify_owned_path
-        path = action.get("path", "")
-        if path:
-            # Check against dynamically loaded owned paths
-            if path.lower() in forbidden_paths:
-                errors.append(f"Action {i} targets owned/forbidden path: {path}")
-            # Also use _is_forbidden_path as fallback
-            elif _is_forbidden_path(path, target=target):
-                errors.append(f"Action {i} targets forbidden path: {path}")
+        else:
+            errors.extend(_validate_plan_action(action, i, forbidden_paths, target))
 
     return len(errors) == 0, errors
+
+
+def _validate_plan_action(
+    action: dict[str, Any], i: int, forbidden_paths: set[str], target: Path | None
+) -> list[str]:
+    """Validate a single action and return error messages."""
+    errors: list[str] = []
+    action_type = action.get("action", "")
+
+    # Reject manual_decision_required actions
+    if action_type == "manual_decision_required":
+        errors.append(f"Action {i} requires manual decision: {action.get('path', 'unknown')}")
+
+    # Check forbidden paths
+    path = action.get("path", "")
+    if path:
+        if path.lower() in forbidden_paths:
+            errors.append(f"Action {i} targets owned/forbidden path: {path}")
+        elif _is_forbidden_path(path, target=target):
+            errors.append(f"Action {i} targets forbidden path: {path}")
+
+    return errors
 
 
 # ---------------------------------------------------------------------------

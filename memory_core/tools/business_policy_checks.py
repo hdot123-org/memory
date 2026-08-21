@@ -185,17 +185,9 @@ class ProjectMapValidator(PolicyValidatorBase):
             errors.append("project-map governance still references transition wave files")
         return errors
 
-    def validate_unique_legal_system_contract(self) -> list[str]:
-        cfg = self._config
+    def _check_workspace_contract(self, workspace_index: str, cfg: Any) -> list[str]:
+        """Check workspace index contract markers."""
         errors: list[str] = []
-        workspace_index = self._read_text_if_exists(cfg.workspace_index_path)
-        docs_index = self._read_text_if_exists(cfg.docs_index_path)
-        overview_doc = self._read_text_if_exists(cfg.overview_doc_path)
-        global_index = self._read_text_if_exists(cfg.global_index_path)
-        core_text = self._read_text_if_exists(cfg.project_map_files[1])
-        registry_text = self._read_text_if_exists(cfg.project_map_files[2])
-        hook_contract = self._read_text_if_exists(cfg.hook_contract_path)
-
         if MKR_WORKSPACE_PROJECT_MAP_REF not in workspace_index:
             errors.append("workspace index does not load the project-map entry")
         if MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY not in workspace_index:
@@ -208,6 +200,21 @@ class ProjectMapValidator(PolicyValidatorBase):
             truth_model_ref = str(cfg.truth_model)
         if truth_model_ref not in workspace_index:
             errors.append("workspace index does not reference the truth model canonical")
+        return errors
+
+    def validate_unique_legal_system_contract(self) -> list[str]:
+        cfg = self._config
+        errors: list[str] = []
+        workspace_index = self._read_text_if_exists(cfg.workspace_index_path)
+        docs_index = self._read_text_if_exists(cfg.docs_index_path)
+        overview_doc = self._read_text_if_exists(cfg.overview_doc_path)
+        global_index = self._read_text_if_exists(cfg.global_index_path)
+        core_text = self._read_text_if_exists(cfg.project_map_files[1])
+        registry_text = self._read_text_if_exists(cfg.project_map_files[2])
+        hook_contract = self._read_text_if_exists(cfg.hook_contract_path)
+
+        errors.extend(self._check_workspace_contract(workspace_index, cfg))
+
         if MKR_WORKSPACE_PROJECT_MAP_REF not in overview_doc:
             errors.append("overview doc does not reference the project-map entry")
         if MKR_INCOMING_RAW not in docs_index or MKR_DOCS_UNABSORBED not in docs_index:
@@ -441,38 +448,42 @@ class TruthBasisResolver:
 
     def _classify_truth_ref(self, path: Path) -> str:
         cfg = self._config
-        if path == cfg.project_map_root / "legal-core-map.md":
-            return "legal-core"
-        if path == cfg.project_map_root / "INDEX.md":
-            return "project-map-index"
+        # Table-driven classification: (exact_path_or_none, relative_root_or_none, label)
+        # Exact matches (path == key) checked first, then _path_is_under checks.
+        ws = cfg.workspace_root
+        rr = cfg.repo_root
+        pm = cfg.project_map_root
+
+        exact_table: list[tuple[Path | None, str]] = [
+            (pm / "legal-core-map.md", "legal-core"),
+            (pm / "INDEX.md", "project-map-index"),
+            (rr / "AGENTS.md", "repo-policy"),
+            (ws / "INDEX.md", "workspace-entry"),
+        ]
+        for exact_path, label in exact_table:
+            if path == exact_path:
+                return label
+
         if path in cfg.global_canonical:
             return "global-canonical"
-        if _path_is_under(path, cfg.workspace_root / "memory" / "kb" / "global" / "projects"):
-            return "compatibility-only"
-        if _path_is_under(path, cfg.workspace_root / "memory" / "kb" / "projects"):
-            return "project-canonical"
-        if _path_is_under(path, cfg.workspace_root / "memory" / "docs"):
-            return "docs"
-        if _path_is_under(path, cfg.workspace_root / "projects"):
-            return "project-runtime"
-        if _path_is_under(path, cfg.workspace_root / "memory" / "artifacts"):
-            return "artifact"
-        if _path_is_under(path, cfg.workspace_root / "tools"):
-            return "tooling"
-        if _path_is_under(path, cfg.workspace_root / "memory" / "log"):
-            return "log"
-        if _path_is_under(path, cfg.workspace_root / "memory" / "system"):
-            return "system"
-        if _path_is_under(path, cfg.repo_root / "app"):
-            return "app"
-        if _path_is_under(path, cfg.repo_root / "agents"):
-            return "agents"
-        if _path_is_under(path, cfg.repo_root / "gpt-web-to"):
-            return "gpt-web-to"
-        if path == cfg.repo_root / "AGENTS.md":
-            return "repo-policy"
-        if path == cfg.workspace_root / "INDEX.md":
-            return "workspace-entry"
+
+        under_table: list[tuple[Path, str]] = [
+            (ws / "memory" / "kb" / "global" / "projects", "compatibility-only"),
+            (ws / "memory" / "kb" / "projects", "project-canonical"),
+            (ws / "memory" / "docs", "docs"),
+            (ws / "projects", "project-runtime"),
+            (ws / "memory" / "artifacts", "artifact"),
+            (ws / "tools", "tooling"),
+            (ws / "memory" / "log", "log"),
+            (ws / "memory" / "system", "system"),
+            (rr / "app", "app"),
+            (rr / "agents", "agents"),
+            (rr / "gpt-web-to", "gpt-web-to"),
+        ]
+        for root, label in under_table:
+            if _path_is_under(path, root):
+                return label
+
         return "other"
 
     def _authority_ref_allowed(self, path: Path) -> bool:
