@@ -324,6 +324,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: droid-review-debug-${{ github.run_id }}-shard-${{ matrix.shard.shard_id }}
+          include-hidden-files: true
           path: |
             findings-shard-*.json
             shard-*.diff

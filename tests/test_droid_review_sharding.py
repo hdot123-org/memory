@@ -248,6 +248,12 @@ class TestWorkflowStructure:
         assert "~/.factory/sessions" not in upload_path, (
             "Artifact path must NOT use ~/.factory/sessions directly (upload-artifact doesn't expand ~)"
         )
+        # Structural lock: upload-artifact@v4 defaults to include-hidden-files:false,
+        # which silently drops .factory/ dot-directories. Must be explicitly enabled.
+        assert upload_with.get("include-hidden-files") is True, (
+            "Upload step must set include-hidden-files: true to include .factory/sessions/ "
+            "(actions/upload-artifact@v4 defaults to false and silently drops hidden files)"
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════
