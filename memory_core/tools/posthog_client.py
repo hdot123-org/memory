@@ -39,7 +39,7 @@ try:
     import posthog
     _POSTHOG_AVAILABLE = True
 except ImportError:
-    posthog = None  # type: ignore[assignment]
+    posthog = None
     _POSTHOG_AVAILABLE = False
     logger.debug("posthog SDK not installed, analytics will be no-op")
 

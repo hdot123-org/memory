@@ -422,7 +422,7 @@ def _get_daily_summary(date: str, cwd: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # MCP server wiring
 # ---------------------------------------------------------------------------
-@app.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]
+@app.list_tools()  # type: ignore[untyped-decorator]
 async def list_tools() -> list[Tool]:
     """Declare the nine tools exposed by this server.
 
