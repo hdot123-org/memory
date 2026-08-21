@@ -93,4 +93,35 @@ def _guard_load_key_not_patched():
         )
 
 
+@pytest.fixture(autouse=True)
+def _reset_gateway_adapter_config():
+    """Reset gateway adapter config and singleton caches after each test.
+
+    memory_hook_gateway maintains module-level state:
+    - _adapter_config: dict storing runtime configuration
+    - _default_route_policy, _default_policy_registry, _default_write_policy: singletons
+
+    Some tests use monkeypatch.setattr(gw, '_adapter_config', {...}) which replaces
+    the dict reference. Without resetting, subsequent tests see stale/polluted state,
+    causing failures like "AttributeError: 'NoneType' object has no attribute 'get'"
+    when accessing get_config() values that were removed.
+
+    This fixture resets the adapter config to the default profile and clears
+    singleton caches, following the pattern of _reset_tick_tracker above.
+    """
+    yield
+    try:
+        from memory_core.tools import memory_hook_gateway as gw
+        # Reload default adapter profile to restore _adapter_config
+        gw.reload_adapter('default')
+        # Reset singleton caches so next access rebuilds with fresh config
+        gw._default_route_policy = None
+        gw._default_policy_registry = None
+        gw._default_write_policy = None
+    except Exception:
+        # If gateway import fails (e.g., in minimal test environments),
+        # skip the reset silently rather than breaking the test suite
+        pass
+
+
 

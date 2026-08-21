@@ -45,7 +45,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 # Import fail-closed guard helpers
 from memory_core.tools._guard_patterns import (
-    PROTECTED_PATH_MARKERS,
     is_protected_path_target,
 )
 
@@ -54,56 +53,6 @@ if TYPE_CHECKING:
 
     _T = TypeVar("_T")
 
-    # Dynamic constants injected via globals().update(profile) at runtime.
-    # Declared here for mypy static analysis.
-    PROJECT_MAP_ROOT: Path
-    PROJECT_MAP_FILES: list[Path]
-    PROJECT_MAP_GOVERNANCE: Path
-    TRUTH_MODEL: Path
-    GLOBAL_CANONICAL: list[Path]
-    AUTHORITY_ALLOWED_PATHS: set[Path]
-    LOWER_EVIDENCE_ROOTS: list[Path]
-    LEGAL_CORE_MARKERS: list[str]
-    REQUIRED_REGISTRY_SCOPES: list[str]
-    PROJECT_CANONICAL: dict[str, Path]
-    PROJECT_RUNTIME_ROOT: dict[str, Path]
-    PROJECT_DOC_REFS: dict[str, list[Path]]
-    DEFAULT_DECISION_REFS: list[Path]
-    PROJECT_DECISION_REFS: dict[str, list[Path]]
-    DEFAULT_LESSON_REFS: list[Path]
-    PROJECT_LESSON_REFS: dict[str, list[Path]]
-    GOVERNANCE_FROZEN_TUPLE_FILES: list[Path]
-    EVENT_CONTRACT_FILES: dict[str, Path]
-    FROZEN_TUPLE_EXPECTED: set[str]
-    FROZEN_TUPLE_LEGACY_MARKERS: set[str]
-    FORMAL_SOURCE_TYPES: set[str]
-    FORMAL_EVENT_TYPES: set[str]
-    FORMAL_EVENT_STATUSES: set[str]
-    FORMAL_FIELD_KEYS: set[str]
-    LEGACY_FIELD_KEYS: set[str]
-    REQUIRED_CANONICAL: list[Path]
-    HOOK_CONTRACT_PATH: Path
-    DEFAULT_PROJECT_SCOPE: str
-    SCOPE_MATCH_HINTS: dict[str, list[Path]]
-    POLICY_PACK_PATH: Path
-    POLICY_ALLOWED_SCOPES: set[str]
-    POLICY_SCOPE_INHERITS: dict[str, str]
-    GLOBAL_RULE_PATH: Path
-    ROUTE_PROJECT_RUNTIME_SCOPE: str
-    REGISTRATION_GIT_SCOPE: list[Path]
-    REGISTRATION_COMMIT_PHASE: str
-    REGISTRATION_COMMIT_POLICY: str
-    LEGALITY_SOURCE_POLICY: str
-    GOVERNANCE_BLOCKER_SCOPES: set[str]
-    EVENT_CONTRACT_BLOCKER_SCOPES: set[str]
-    CORE_EVIDENCE_REFS: list[str]
-    MEMORY_SYSTEM_PATH: Path
-    GATEWAY_POLICY_CLASS: Any
-    ARTIFACT_COMPACTION: dict[str, bool]
-    CLAUDE_HOOK_STATE_FILE: str | None
-    GLOBAL_KB_ROOT: Path | None
-    GLOBAL_KB_ENABLED: bool
-
 # Import file utilities (REF-001 §4.8)
 try:
     from ._file_utils import exclusive_lock, now_iso
@@ -111,6 +60,7 @@ except ImportError:
     from _file_utils import exclusive_lock, now_iso  # type: ignore
 
 # Import shared rule helpers (consolidation REF-001 §4.3)
+# These are re-exported for test access via gateway module
 try:
     from ._rule_helpers import (
         _existing_paths,
@@ -124,7 +74,7 @@ try:
         _section_bullets,
     )
 except ImportError:
-    from _rule_helpers import (  # type: ignore
+    from _rule_helpers import (  # type: ignore  # noqa: F401
         _existing_paths,
         _get_write_targets_dict,
         _json_object_keys,
@@ -141,14 +91,12 @@ try:
     # Consolidated: import from denylist instead of denied_project_roots
     import memory_core.tools.denylist as _denylist
 
-    from ..constants import SYSTEM_DIR
     from .memory_root_discovery import discover_roots
     from .project_lifecycle import record_project_lifecycle
     is_denied_project_root = _denylist.is_denied_project_root
 except ImportError:
     # Consolidated: import from denylist instead of denied_project_roots
     import memory_core.tools.denylist as _denylist
-    from memory_core.constants import SYSTEM_DIR
     from memory_core.tools.memory_root_discovery import discover_roots
     from memory_core.tools.project_lifecycle import record_project_lifecycle
     is_denied_project_root = _denylist.is_denied_project_root
@@ -192,8 +140,9 @@ CONTEXT_ROOT = ARTIFACT_ROOT / "contexts"
 EVENT_LOG = ARTIFACT_ROOT / "events.jsonl"
 ERROR_LOG = _configured_error_log(WORKSPACE_ROOT)
 PROJECT_LIFECYCLE_ROOT = _configured_project_lifecycle_root(WORKSPACE_ROOT)
+# cmux_hook_state imports - re-exported for backward compatibility
 with contextlib.suppress(ImportError):
-    from .cmux_hook_state import default_hook_state_path, record_hook_event  # noqa: E402
+    from .cmux_hook_state import default_hook_state_path, record_hook_event  # noqa: F401
 
 # M3: Import is_memory_core_source_repo from ownership module
 try:
@@ -229,7 +178,10 @@ try:
 except ImportError:
     from memory_hook_adapters.neutral_policy import NeutralGatewayBusinessPolicy  # type: ignore
     from memory_hook_config import CoreConfig  # type: ignore
-    from memory_hook_core import build_context_package_core, build_context_package_from_config  # type: ignore
+    from memory_hook_core import (  # type: ignore  # noqa: F401
+        build_context_package_core,
+        build_context_package_from_config,
+    )
     from memory_hook_impls import (  # type: ignore
         ArtifactSinkImpl,
         ArtifactWriter,
@@ -392,17 +344,10 @@ def get_config_dict() -> dict[str, Any]:
 
 
 def load_adapter_config(profile: dict[str, Any]) -> None:
-    """Load adapter runtime profile into _adapter_config.
-
-    Also writes keys into globals() for backward compatibility with
-    existing code that reads module-level attributes directly.
-    """
+    """Load adapter runtime profile into _adapter_config."""
     with _config_lock:
         _adapter_config.clear()
         _adapter_config.update(profile)
-    # Backward-compat: expose keys as module globals so hasattr() checks
-    # and direct attribute reads from existing callers still work.
-    globals().update(profile)
 
 
 # Load adapter profile once; feed both new config store and legacy globals.
@@ -413,8 +358,9 @@ load_adapter_config(_adapter_profile)
 def reload_adapter(adapter_name: str | None = None) -> None:
     """Reload adapter configuration in the current process.
 
-    Replaces the module-level adapter state (_ADAPTER_NAME / _adapter_config
-    / module globals) with the profile for *adapter_name*.
+    Replaces the module-level adapter state (_ADAPTER_NAME / _adapter_config)
+    with the profile for *adapter_name*. All subsequent get_config() calls
+    will return values from the new profile.
 
     Args:
         adapter_name: Adapter name to load.  If ``None``, reads from
@@ -439,7 +385,6 @@ def reload_adapter(adapter_name: str | None = None) -> None:
     with _config_lock:
         _adapter_config.clear()
         _adapter_config.update(new_profile)
-    globals().update(new_profile)
 
     _ADAPTER_NAME = adapter_name
 
@@ -466,39 +411,39 @@ def _build_gateway_business_policy() -> GatewayBusinessPolicy:
     config = GatewayBusinessPolicyConfig(
         repo_root=REPO_ROOT,
         workspace_root=WORKSPACE_ROOT,
-        project_map_root=PROJECT_MAP_ROOT,
-        project_map_files=PROJECT_MAP_FILES,
-        project_map_governance=PROJECT_MAP_GOVERNANCE,
-        truth_model=TRUTH_MODEL,
-        global_canonical=GLOBAL_CANONICAL,
-        authority_allowed_paths=AUTHORITY_ALLOWED_PATHS,
-        lower_evidence_roots=LOWER_EVIDENCE_ROOTS,
-        legal_core_markers=LEGAL_CORE_MARKERS,
-        required_registry_scopes=REQUIRED_REGISTRY_SCOPES,
-        project_canonical=PROJECT_CANONICAL,
-        project_runtime_root=PROJECT_RUNTIME_ROOT,
-        project_doc_refs=PROJECT_DOC_REFS,
-        default_decision_refs=DEFAULT_DECISION_REFS,
-        project_decision_refs=PROJECT_DECISION_REFS,
-        default_lesson_refs=DEFAULT_LESSON_REFS,
-        project_lesson_refs=PROJECT_LESSON_REFS,
-        governance_frozen_tuple_files=GOVERNANCE_FROZEN_TUPLE_FILES,
-        event_contract_files=EVENT_CONTRACT_FILES,
-        frozen_tuple_expected=FROZEN_TUPLE_EXPECTED,
-        frozen_tuple_legacy_markers=FROZEN_TUPLE_LEGACY_MARKERS,
-        formal_source_types=FORMAL_SOURCE_TYPES,
-        formal_event_types=FORMAL_EVENT_TYPES,
-        formal_event_statuses=FORMAL_EVENT_STATUSES,
-        formal_field_keys=FORMAL_FIELD_KEYS,
-        legacy_field_keys=LEGACY_FIELD_KEYS,
-        required_canonical=REQUIRED_CANONICAL,
+        project_map_root=get_config("PROJECT_MAP_ROOT"),
+        project_map_files=get_config("PROJECT_MAP_FILES"),
+        project_map_governance=get_config("PROJECT_MAP_GOVERNANCE"),
+        truth_model=get_config("TRUTH_MODEL"),
+        global_canonical=get_config("GLOBAL_CANONICAL"),
+        authority_allowed_paths=get_config("AUTHORITY_ALLOWED_PATHS"),
+        lower_evidence_roots=get_config("LOWER_EVIDENCE_ROOTS"),
+        legal_core_markers=get_config("LEGAL_CORE_MARKERS"),
+        required_registry_scopes=get_config("REQUIRED_REGISTRY_SCOPES"),
+        project_canonical=get_config("PROJECT_CANONICAL"),
+        project_runtime_root=get_config("PROJECT_RUNTIME_ROOT"),
+        project_doc_refs=get_config("PROJECT_DOC_REFS"),
+        default_decision_refs=get_config("DEFAULT_DECISION_REFS"),
+        project_decision_refs=get_config("PROJECT_DECISION_REFS"),
+        default_lesson_refs=get_config("DEFAULT_LESSON_REFS"),
+        project_lesson_refs=get_config("PROJECT_LESSON_REFS"),
+        governance_frozen_tuple_files=get_config("GOVERNANCE_FROZEN_TUPLE_FILES"),
+        event_contract_files=get_config("EVENT_CONTRACT_FILES"),
+        frozen_tuple_expected=get_config("FROZEN_TUPLE_EXPECTED"),
+        frozen_tuple_legacy_markers=get_config("FROZEN_TUPLE_LEGACY_MARKERS"),
+        formal_source_types=get_config("FORMAL_SOURCE_TYPES"),
+        formal_event_types=get_config("FORMAL_EVENT_TYPES"),
+        formal_event_statuses=get_config("FORMAL_EVENT_STATUSES"),
+        formal_field_keys=get_config("FORMAL_FIELD_KEYS"),
+        legacy_field_keys=get_config("LEGACY_FIELD_KEYS"),
+        required_canonical=get_config("REQUIRED_CANONICAL"),
         workspace_index_path=WORKSPACE_ROOT / "INDEX.md",
         docs_index_path=WORKSPACE_ROOT / "memory" / "docs" / "INDEX.md",
         overview_doc_path=WORKSPACE_ROOT / "memory" / "docs" / "记忆系统全景文档.md",
         global_index_path=WORKSPACE_ROOT / "memory" / "kb" / "global" / "INDEX.md",
-        hook_contract_path=HOOK_CONTRACT_PATH,
-        default_project_scope=DEFAULT_PROJECT_SCOPE,
-        scope_match_hints=SCOPE_MATCH_HINTS,
+        hook_contract_path=get_config("HOOK_CONTRACT_PATH"),
+        default_project_scope=get_config("DEFAULT_PROJECT_SCOPE"),
+        scope_match_hints=get_config("SCOPE_MATCH_HINTS"),
         read_text_if_exists_fn=read_text_if_exists,
     )
     _policy_class = _adapter_config.get("GATEWAY_POLICY_CLASS", NeutralGatewayBusinessPolicy)
@@ -543,9 +488,9 @@ def _get_policy_registry() -> PolicyRegistry:
     global _default_policy_registry
     if _default_policy_registry is None:
         _default_policy_registry = PolicyRegistryImpl(
-            policy_pack_path=POLICY_PACK_PATH,
-            allowed_scopes=set(POLICY_ALLOWED_SCOPES),
-            scope_inherits=dict(POLICY_SCOPE_INHERITS),
+            policy_pack_path=get_config("POLICY_PACK_PATH"),
+            allowed_scopes=set(get_config("POLICY_ALLOWED_SCOPES")),
+            scope_inherits=dict(get_config("POLICY_SCOPE_INHERITS")),
         )
     return _default_policy_registry
 
@@ -556,8 +501,8 @@ def _get_route_policy() -> RouteTargetPolicy:
         _default_route_policy = RouteTargetPolicyImpl(
             WORKSPACE_ROOT,
             REPO_ROOT,
-            global_rule_path=GLOBAL_RULE_PATH,
-            project_runtime_path=PROJECT_RUNTIME_ROOT.get(ROUTE_PROJECT_RUNTIME_SCOPE),
+            global_rule_path=get_config("GLOBAL_RULE_PATH"),
+            project_runtime_path=get_config("PROJECT_RUNTIME_ROOT").get(get_config("ROUTE_PROJECT_RUNTIME_SCOPE")),
         )
     return _default_route_policy
 
@@ -819,7 +764,7 @@ def _path_matches_scope(candidate: str, scope_entry: str) -> bool:
 
 
 def _git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, Any]:
-    map_scope = [str(path) for path in REGISTRATION_GIT_SCOPE]
+    map_scope = [str(path) for path in get_config("REGISTRATION_GIT_SCOPE")]
     registration_paths = _registration_payload_paths(payload)
     tracked_scope = map_scope + [str(REPO_ROOT / item) for item in registration_paths]
     # git calls are bounded by timeout=5 to guard the ~10s hook budget; on
@@ -846,10 +791,10 @@ def _git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, An
         latest_commit = (head_commit.stdout or "").strip()
     except subprocess.TimeoutExpired:
         latest_commit = ""
-    commit_scope: list[str] = [path for path in (_normalize_repo_scope_entry(p) for p in REGISTRATION_GIT_SCOPE) if path]
+    commit_scope: list[str] = [path for path in (_normalize_repo_scope_entry(p) for p in get_config("REGISTRATION_GIT_SCOPE")) if path]
     commit_scope.extend(registration_paths)
     head_touched = _git_name_only("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", "--", *commit_scope)
-    map_touched = any(any(_path_matches_scope(item, scope) for scope in commit_scope[: len(REGISTRATION_GIT_SCOPE)]) for item in head_touched)
+    map_touched = any(any(_path_matches_scope(item, scope) for scope in commit_scope[: len(get_config("REGISTRATION_GIT_SCOPE"))]) for item in head_touched)
     registration_touched = any(any(_path_matches_scope(item, scope) for scope in registration_paths) for item in head_touched)
     if entries:
         status = "pending-commit"
@@ -860,8 +805,8 @@ def _git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, An
     else:
         status = "committed-not-proven"
     return {
-        "phase": REGISTRATION_COMMIT_PHASE,
-        "policy": REGISTRATION_COMMIT_POLICY,
+        "phase": get_config("REGISTRATION_COMMIT_PHASE"),
+        "policy": get_config("REGISTRATION_COMMIT_POLICY"),
         "gate_event": "stop",
         "triggered_on_current_event": event == "stop",
         "status": status,
@@ -929,12 +874,12 @@ def resolve_route_target(kind: str) -> str:
         project_runtime_root = _get_gateway_business_policy().get_project_runtime_root()
         route_map = {
             "fact": targets["fact"],
-            "global-rule": str(GLOBAL_RULE_PATH),
+            "global-rule": str(get_config("GLOBAL_RULE_PATH")),
             "source-material": str(WORKSPACE_ROOT / "memory" / "docs" / "references"),
             "project-runtime": str(
                 project_runtime_root.get(
-                    ROUTE_PROJECT_RUNTIME_SCOPE,
-                    WORKSPACE_ROOT / "projects" / ROUTE_PROJECT_RUNTIME_SCOPE,
+                    get_config("ROUTE_PROJECT_RUNTIME_SCOPE"),
+                    WORKSPACE_ROOT / "projects" / get_config("ROUTE_PROJECT_RUNTIME_SCOPE"),
                 )
             ),
             "system-error": targets["system_error"],
@@ -988,11 +933,11 @@ def build_context_package(
         project_canonical=business_policy.get_project_canonical(),
         project_runtime_root=business_policy.get_project_runtime_root(),
         global_canonical=business_policy.get_global_canonical(),
-        project_map_governance=PROJECT_MAP_GOVERNANCE,
+        project_map_governance=get_config("PROJECT_MAP_GOVERNANCE"),
         event_log=EVENT_LOG,
-        legality_source_policy=LEGALITY_SOURCE_POLICY,
-        registration_commit_policy=REGISTRATION_COMMIT_POLICY,
-        registration_commit_phase=REGISTRATION_COMMIT_PHASE,
+        legality_source_policy=get_config("LEGALITY_SOURCE_POLICY"),
+        registration_commit_policy=get_config("REGISTRATION_COMMIT_POLICY"),
+        registration_commit_phase=get_config("REGISTRATION_COMMIT_PHASE"),
         project_map_refs=project_map_refs(),
         extract_excerpt_fn=_extract_excerpt,
         now_iso_fn=now_iso,
@@ -1008,12 +953,12 @@ def build_context_package(
         decision_refs_for_scope_fn=decision_refs_for_scope,
         lesson_refs_for_scope_fn=lesson_refs_for_scope,
         docs_refs_for_scope_fn=docs_refs_for_scope,
-        hook_contract_path=HOOK_CONTRACT_PATH,
+        hook_contract_path=get_config("HOOK_CONTRACT_PATH"),
         surface_id=os.environ.get("CMUX_SURFACE_ID", ""),
         workspace_id=os.environ.get("CMUX_WORKSPACE_ID", ""),
-        governance_blocker_scopes=GOVERNANCE_BLOCKER_SCOPES,
-        event_contract_blocker_scopes=EVENT_CONTRACT_BLOCKER_SCOPES,
-        core_evidence_refs=CORE_EVIDENCE_REFS,
+        governance_blocker_scopes=get_config("GOVERNANCE_BLOCKER_SCOPES"),
+        event_contract_blocker_scopes=get_config("EVENT_CONTRACT_BLOCKER_SCOPES"),
+        core_evidence_refs=get_config("CORE_EVIDENCE_REFS"),
     )
     requested_provider = os.environ.get("MEMORY_HOOK_CORE_PROVIDER", "legacy").strip() or "legacy"
     provider_name, provider_builder, provider_errors = _resolve_core_builder(requested_provider, allow_fallback=True)
@@ -1668,7 +1613,7 @@ def _build_readonly_source_repo_package(cwd: Path, host: str, event: str) -> dic
     that declares the repo is in read-only mode with no allowed writes.
     """
     # Get ownership domains/resources for rules
-    from ..ownership import DEFAULT_OWNERSHIP_DOMAINS, DEFAULT_OWNERSHIP_RESOURCES
+    from ..ownership import DEFAULT_OWNERSHIP_DOMAINS
 
     ownership_domains = [
         {
