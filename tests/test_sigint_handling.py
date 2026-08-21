@@ -41,6 +41,7 @@ class _SigintRunnerMixin:
             stderr=subprocess.PIPE,
             env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
             cwd=self.SIGINT_CWD,
+            start_new_session=True,
         )
         time.sleep(1)  # Wait for process to start and enter main()
         proc.send_signal(signal.SIGINT)

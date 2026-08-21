@@ -53,6 +53,7 @@ class TestFullHookChainSigint:
             stderr=subprocess.PIPE,
             env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
             cwd="/tmp",
+            start_new_session=True,
         )
         time.sleep(1.0)  # Let it reach work phase (blocked on stdin.read)
         proc.send_signal(signal.SIGINT)
@@ -93,6 +94,7 @@ class TestFullHookChainSigint:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
+            start_new_session=True,
         )
         time.sleep(0.5)
         proc.send_signal(signal.SIGINT)
@@ -125,6 +127,7 @@ class TestFullHookChainSigint:
             stderr=subprocess.PIPE,
             env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
             cwd="/tmp",
+            start_new_session=True,
         )
         time.sleep(0.5)
         gw_proc.send_signal(signal.SIGINT)
@@ -155,6 +158,7 @@ class TestFullHookChainSigint:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
+            start_new_session=True,
         )
         time.sleep(0.5)
         log_proc.send_signal(signal.SIGINT)
@@ -186,6 +190,7 @@ class TestForceHookSigint:
             stderr=subprocess.PIPE,
             env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
             cwd="/tmp",
+            start_new_session=True,
         )
         time.sleep(1.0)
         proc.send_signal(signal.SIGINT)
@@ -222,6 +227,7 @@ class TestForceHookSigint:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env={**os.environ, "MEMORY_HOOK_FORCE": "1"},
+            start_new_session=True,
         )
         time.sleep(0.5)
         proc.send_signal(signal.SIGINT)
@@ -262,6 +268,7 @@ class TestSourceRepoNoopSigint:
             stderr=subprocess.PIPE,
             env=env,
             cwd=str(REPO_ROOT),  # source-repo cwd
+            start_new_session=True,
         )
         time.sleep(1.0)
         proc.send_signal(signal.SIGINT)
@@ -304,6 +311,7 @@ class TestSourceRepoNoopSigint:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
+            start_new_session=True,
         )
         time.sleep(0.5)
         proc.send_signal(signal.SIGINT)

@@ -246,7 +246,6 @@ def load_path_index(lifecycle_root: Path) -> dict[str, Any]:
     except (json.JSONDecodeError, OSError):
         return {"paths": {}}
     return data if isinstance(data, dict) else {"paths": {}}
-    return data if isinstance(data, dict) else {"paths": {}}
 
 
 def sync_all_known_projects(
