@@ -6084,7 +6084,7 @@ def test_check_linear_sync_in_main():
             ],
         ) as mock_check,
     ):
-        result = evolution_self_audit.main()
+        result = evolution_self_audit.main([])
         mock_check.assert_called_once()
         assert result == 1  # Has findings
 
@@ -6512,7 +6512,7 @@ def test_check_heartbeat_channel_in_main(tmp_path, monkeypatch):
         patch.object(evolution_self_audit, "check_reverse_closure", return_value=[]),
         patch.object(evolution_self_audit, "check_heartbeat_channel", return_value=[finding]) as mock_hb,
     ):
-        exit_code = evolution_self_audit.main()
+        exit_code = evolution_self_audit.main([])
         assert exit_code == 1, "main() should return 1 when check_heartbeat_channel reports a finding"
         mock_hb.assert_called_once()
 
@@ -6740,7 +6740,7 @@ def test_check_reverse_closure_in_main():
             ],
         ) as mock_check,
     ):
-        result = evolution_self_audit.main()
+        result = evolution_self_audit.main([])
         mock_check.assert_called_once()
         assert result == 1  # Has findings
 
@@ -9738,3 +9738,29 @@ def test_dup_004_main_ordering_peel_before_dedup():
         f"Found {len(reopen_specific_calls)} reopen-specific calls and {len(create_calls)} create calls. "
         "If this assertion fails, peel was likely removed from main()."
     )
+
+
+# ---------------------------------------------------------------------------
+# Tests for evolution_self_audit CLI entry (--help / --version contract)
+# ---------------------------------------------------------------------------
+
+
+def test_evolution_self_audit_main_accepts_help_flag(capsys):
+    """main(--help) 正常退出 0 且打印用法（VAL-CPLX-011 入口点冒烟契约）。"""
+    from evolution_self_audit import main
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--help"])
+    assert exc_info.value.code == 0
+    captured = capsys.readouterr()
+    assert "memory-evolution-audit" in captured.out
+    assert "usage:" in captured.out
+
+
+def test_evolution_self_audit_main_rejects_unknown_flag():
+    """main 未知参数退出码非 0（argparse 契约），防止 --help 支持破坏参数校验。"""
+    from evolution_self_audit import main
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--definitely-not-a-real-flag"])
+    assert exc_info.value.code != 0
