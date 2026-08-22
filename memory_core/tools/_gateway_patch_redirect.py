@@ -72,7 +72,7 @@ _REDIRECT_TARGETS: dict[str, tuple[str, ...]] = {
     ),
     "CONTEXT_ROOT": ("_gateway_handlers", "_gateway_artifacts", "_gateway_config"),
     "ERROR_LOG": ("_gateway_handlers", "_gateway_artifacts", "_gateway_config"),
-    "EVENT_LOG": ("_gateway_handlers", "_gateway_dispatch", "_gateway_config"),
+    "EVENT_LOG": ("_gateway_handlers", "_gateway_dispatch", "_gateway_config", "_gateway_artifacts"),
     # _gateway_dispatch 内部查找
     "_delegate_codex": ("_gateway_dispatch",),
     "_delegate_claude": ("_gateway_dispatch",),
@@ -108,7 +108,10 @@ _REDIRECT_TARGETS: dict[str, tuple[str, ...]] = {
     # _gateway_telemetry 内部查找
     "BATCH_SIZE": ("_gateway_telemetry",),
     "socket": ("_gateway_telemetry",),
-    "datetime": ("_gateway_telemetry",),
+    "datetime": ("_gateway_telemetry", "_gateway_artifacts"),
+    # _gateway_config 路径常量（被 _gateway_dispatch 等子模块直接引用）
+    "REPO_ROOT": ("_gateway_config", "_gateway_dispatch"),
+    "_FORCE_HOOK": ("_gateway_config", "_gateway_dispatch"),
     # _gateway_config 内部查找
     "_load_adapter_profile": ("_gateway_config",),
     "_default_write_policy": ("_gateway_config",),
