@@ -10,12 +10,37 @@ Verifies:
 import io
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 repo_root = Path(__file__).resolve().parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
+
+
+def make_capture_emit(calls: list) -> Callable:
+    """Build an emit_metrics side-effect that records each call into *calls*.
+
+    INFRA-517: extracted from the 100%-identical ``capture_emit`` bodies in
+    test_pretooluse_calls_emit_metrics_on_success / _on_fallback (10 lines /
+    35 tokens each, triggering CODE_HYGIENE_DUPLICATE_BLOCK). Behavior is
+    unchanged: the factory captures the same emit_metrics call fields.
+    """
+
+    def capture_emit(artifact_root, host, event, package, duration_ms=0):
+        calls.append(
+            {
+                "artifact_root": artifact_root,
+                "host": host,
+                "event": event,
+                "package": package,
+                "duration_ms": duration_ms,
+            }
+        )
+        return Path("/tmp/test_metrics.jsonl")
+
+    return capture_emit
 
 
 class TestSessionEndEventNaming:
@@ -117,20 +142,9 @@ class TestPreToolUseEmitMetrics:
         """
         from memory_core.tools import memory_hook_gateway
 
-        # Mock emit_metrics to capture calls
+        # Mock emit_metrics to capture calls (INFRA-517 shared factory)
         emit_calls = []
-
-        def capture_emit(artifact_root, host, event, package, duration_ms=0):
-            emit_calls.append(
-                {
-                    "artifact_root": artifact_root,
-                    "host": host,
-                    "event": event,
-                    "package": package,
-                    "duration_ms": duration_ms,
-                }
-            )
-            return Path("/tmp/test_metrics.jsonl")
+        capture_emit = make_capture_emit(emit_calls)
 
         # Create a mock process result
         mock_proc = MagicMock()
@@ -189,18 +203,7 @@ class TestPreToolUseEmitMetrics:
         from memory_core.tools import memory_hook_gateway
 
         emit_calls = []
-
-        def capture_emit(artifact_root, host, event, package, duration_ms=0):
-            emit_calls.append(
-                {
-                    "artifact_root": artifact_root,
-                    "host": host,
-                    "event": event,
-                    "package": package,
-                    "duration_ms": duration_ms,
-                }
-            )
-            return Path("/tmp/test_metrics.jsonl")
+        capture_emit = make_capture_emit(emit_calls)
 
         # Mock subprocess.run to raise an exception (guard unavailable)
         with (
