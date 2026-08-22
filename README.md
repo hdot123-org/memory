@@ -414,7 +414,7 @@ CI pytest 在自建 runner 上以串行模式（`-n 0`）运行以保证覆盖�
 
 **CI 安全门禁：** `.github/workflows/droid-review.yml` 中 `security_block_on_high: "false"`（Advisory 模式），AI 安全审查仅留 Comment 不阻断合并。确定性工具（shellcheck、actionlint、pytest、fix-has-test guard）作为 CI 硬门禁负责实际阻断。
 
-**Fix-has-test 门禁：** `scripts/check_fix_has_test.py` 强制执行"修一个 Bug 必加一个测试"原则。PR 中含 `fix:`/`hotfix:`/`bugfix:` commit 但未修改 `tests/` 下任何文件时，CI 直接失败。豁免 Dependabot PR、release-please PR、纯文档变更。
+**Fix-has-test 门禁：** `scripts/check_fix_has_test.py` 强制执行"修一个 Bug 必加一个测试"原则。PR 中含 `fix:`/`hotfix:`/`bugfix:` commit 但未修改 `tests/` 下任何文件时，CI 直接失败。豁免 Dependabot PR、release-please PR、纯文档变更，以及非代码变更 PR（全部改动均不在 `memory_core/`、`scripts/`、`tests/` 下，如仅改 shell/workflow/文档的基础设施回填，由 bash -n/shellcheck/mission 验证覆盖）。
 
 ## 版本与许可
 
