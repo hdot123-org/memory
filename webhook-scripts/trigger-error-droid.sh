@@ -133,8 +133,10 @@ if [ -f "$LOCK_FILE" ]; then
 
     # Validate timestamp: empty or non-numeric means corrupt lock file
     if [ -z "$LOCK_TIMESTAMP" ] || ! [[ "$LOCK_TIMESTAMP" =~ ^[0-9]+$ ]]; then
-        log "WARN: Corrupt lock file for fingerprint '$FINGERPRINT' (empty/invalid timestamp), removing and proceeding"
-        rm -f "$LOCK_FILE" 2>/dev/null
+        log "WARN: Corrupt lock file for fingerprint '$FINGERPRINT' (empty/invalid timestamp), truncating and proceeding"
+        # M3 (VAL-M3-002): Do NOT rm lock file — flock operates on inode, not filename.
+        # Truncate to allow fresh metadata write after flock acquisition.
+        : > "$LOCK_FILE" 2>/dev/null
     else
         # age>TTL check: cap at 1440min (24hr) max to prevent overflow display
         LOCK_AGE_SEC=$(( $(date +%s) - LOCK_TIMESTAMP ))
@@ -147,8 +149,10 @@ if [ -f "$LOCK_FILE" ]; then
             send_posthog_event "lock_stale" "$FINGERPRINT" "dedup" "age=${LOCK_AGE_MIN}min"
             # If PID is dead, reclaim the lock instead of permanently blocking
             if [ -n "$LOCK_PID" ] && ! kill -0 "$LOCK_PID" 2>/dev/null; then
-                log "INFO: Stale lock PID $LOCK_PID is dead, reclaiming lock for fingerprint '$FINGERPRINT'"
-                rm -f "$LOCK_FILE" 2>/dev/null
+                log "INFO: Stale lock PID $LOCK_PID is dead, will fall through to flock -n for fingerprint '$FINGERPRINT'"
+                # M3 (VAL-M3-002): Do NOT rm lock file — flock operates on inode, not filename.
+                # Deleting causes race with concurrent processes. Truncate to clear stale metadata.
+                : > "$LOCK_FILE" 2>/dev/null
             else
                 exit 0
             fi
@@ -242,7 +246,8 @@ if [ -z "$ERROR_TYPE" ]; then
     else
         log "ERROR: ERROR_TYPE is empty and not an alert trigger, skipping"
         send_posthog_event "empty_error_type" "unknown" "validation" "ERROR_TYPE empty, not alert"
-        rm -f "$LOCK_FILE"
+        # M3 (VAL-M3-002): truncate lock instead of rm (flock operates on inode)
+        : > "$LOCK_FILE"
         exit 0
     fi
 fi
@@ -255,7 +260,8 @@ GITHUB_REPO=$(echo "$ROUTE_RESULT" | cut -d'|' -f2)
 if [ -z "$REPO_PATH" ] || [ ! -d "$REPO_PATH" ]; then
     log "ERROR: Routed repo path does not exist: $REPO_PATH"
     send_posthog_event "route_repo_failed" "$FINGERPRINT" "routing" "repo_path=$REPO_PATH not found"
-    rm -f "$LOCK_FILE"
+    # M3 (VAL-M3-002): truncate lock instead of rm (flock operates on inode)
+    : > "$LOCK_FILE"
     exit 0
 fi
 
@@ -265,8 +271,9 @@ log "Routed: failed_event=$FAILED_EVENT -> repo=$REPO_PATH github=$GITHUB_REPO"
 (
     # C1: EXIT trap inside subshell — fires when subshell exits, NOT when main shell exits
     # SC2064: single-quote the trap; $LOCK_FILE is inherited by the subshell and
-    # expands at signal time, so the value at exit is what gets removed.
-    trap 'rm -f "$LOCK_FILE" 2>/dev/null' EXIT
+    # expands at signal time, so the value at exit is what gets cleared.
+    # M3 (VAL-M3-002): truncate lock instead of rm (flock operates on inode)
+    trap ': > "$LOCK_FILE" 2>/dev/null' EXIT
 
     # 覆盖 log 函数，只追加到日志文件，不使用 tee（避免双重写入）
     log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
@@ -349,8 +356,8 @@ except:
 
     log "--- async droid exec completed ---"
 
-    # Release lock
-    rm -f "$LOCK_FILE" 2>/dev/null
+    # M3 (VAL-M3-002): truncate lock instead of rm (flock operates on inode)
+    : > "$LOCK_FILE" 2>/dev/null
 
 ) >> "$LOG_FILE" 2>&1 &
 SUBSHELL_PID=$!

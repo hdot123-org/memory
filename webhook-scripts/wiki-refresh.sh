@@ -133,7 +133,13 @@ log "Acquired flock: $WIKI_LOCK"
 
 # 拉取最新代码 (GitHub is now primary remote → origin)
 cd "$REPO_PATH" || { log "ERROR: cd $REPO_PATH failed"; exit 1; }
-git pull origin main 2>&1 | tee -a "$LOG_FILE"
+
+# Capture git pull output and check exit status
+if ! git pull origin main 2>&1 | tee -a "$LOG_FILE"; then
+    log "ERROR: git pull origin main failed — aborting wiki refresh"
+    log "Will not start droid /wiki to avoid working with stale code"
+    exit 1
+fi
 
 # === 异步执行 ===
 (
