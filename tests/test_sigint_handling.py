@@ -51,17 +51,13 @@ class _SigintRunnerMixin:
     def test_sigint_exits_zero(self):
         """Send SIGINT to running process, assert exit code 0."""
         returncode, _stdout, stderr = self._spawn_and_sigint()
-        assert returncode == 0, (
-            f"Expected exit 0, got {returncode}\nstderr: {stderr.decode()}"
-        )
+        assert returncode == 0, f"Expected exit 0, got {returncode}\nstderr: {stderr.decode()}"
 
     def test_no_traceback_on_sigint(self):
         """No traceback in stderr on SIGINT."""
         _returncode, _stdout, stderr = self._spawn_and_sigint()
         stderr_text = stderr.decode()
-        assert "Traceback" not in stderr_text, (
-            f"Traceback found in stderr:\n{stderr_text}"
-        )
+        assert "Traceback" not in stderr_text, f"Traceback found in stderr:\n{stderr_text}"
 
 
 class TestSessionEndLoggerSigint(_SigintRunnerMixin):
@@ -104,9 +100,7 @@ class TestSignalHandlerPlacement:
         content = LOGGER_PATH.read_text()
         sigint_line = content.index("signal.signal(signal.SIGINT")
         argparse_line = content.index("import argparse")
-        assert sigint_line < argparse_line, (
-            "SIGINT handler must appear before import argparse"
-        )
+        assert sigint_line < argparse_line, "SIGINT handler must appear before import argparse"
 
     def test_logger_has_sigalrm_boot_timeout(self):
         """session_end_logger already has SIGALRM from PR #207 — verify it still exists."""
@@ -125,9 +119,7 @@ class TestSignalHandlerPlacement:
         content = GATEWAY_PATH.read_text()
         sigint_line = content.index("signal.signal(signal.SIGINT")
         heavy_import_line = content.index("from ._gateway_artifacts import")
-        assert sigint_line < heavy_import_line, (
-            "SIGINT handler must be registered before heavyweight gateway imports"
-        )
+        assert sigint_line < heavy_import_line, "SIGINT handler must be registered before heavyweight gateway imports"
 
     def test_gateway_has_sigalrm_boot_timeout(self):
         """VAL-SIGINT-003: Gateway has SIGALRM boot timeout for imports."""
@@ -158,12 +150,10 @@ class TestOsExitRegression:
         stderr during interpreter shutdown.
         """
         content = LOGGER_PATH.read_text()
-        assert "os._exit(0)" in content, (
-            "_sigint_handler must use os._exit(0) to skip atexit callbacks"
-        )
+        assert "os._exit(0)" in content, "_sigint_handler must use os._exit(0) to skip atexit callbacks"
         # The handler function definition must reference os._exit
         sigint_handler_idx = content.index("def _sigint_handler")
-        handler_body = content[sigint_handler_idx:sigint_handler_idx + 200]
+        handler_body = content[sigint_handler_idx : sigint_handler_idx + 200]
         assert "os._exit(0)" in handler_body, (
             "_sigint_handler body must call os._exit(0), not sys.exit(0) — "
             "sys.exit would trigger telemetry atexit Traceback during shutdown"
@@ -181,11 +171,9 @@ class TestOsExitRegression:
         Traceback pollution on stderr during SIGALRM-driven boot timeout.
         """
         content = LOGGER_PATH.read_text()
-        assert "os._exit(0)" in content, (
-            "_boot_timeout_handler must use os._exit(0) to skip atexit callbacks"
-        )
+        assert "os._exit(0)" in content, "_boot_timeout_handler must use os._exit(0) to skip atexit callbacks"
         handler_idx = content.index("def _boot_timeout_handler")
-        handler_body = content[handler_idx:handler_idx + 200]
+        handler_body = content[handler_idx : handler_idx + 200]
         assert "os._exit(0)" in handler_body, (
             "_boot_timeout_handler body must call os._exit(0), not sys.exit(0) — "
             "sys.exit would trigger telemetry atexit Traceback during shutdown"
@@ -222,11 +210,9 @@ class TestRemainingOsExitRegression:
         stderr during the timeout-driven shutdown.
         """
         content = LOGGER_PATH.read_text()
-        assert "os._exit(0)" in content, (
-            "_set_timeout must use os._exit(0) to skip atexit callbacks"
-        )
+        assert "os._exit(0)" in content, "_set_timeout must use os._exit(0) to skip atexit callbacks"
         func_idx = content.index("def _set_timeout")
-        func_body = content[func_idx:func_idx + 300]
+        func_body = content[func_idx : func_idx + 300]
         assert "os._exit(0)" in func_body, (
             "_set_timeout's _handler must call os._exit(0), not sys.exit(0) — "
             "sys.exit would trigger telemetry atexit Traceback during shutdown"
@@ -246,13 +232,11 @@ class TestRemainingOsExitRegression:
         timeout-driven shutdown.
         """
         content = LOGGER_PATH.read_text()
-        assert "os._exit(0)" in content, (
-            "_safe_run_session_end must use os._exit(0) to skip atexit callbacks"
-        )
+        assert "os._exit(0)" in content, "_safe_run_session_end must use os._exit(0) to skip atexit callbacks"
         func_idx = content.index("def _safe_run_session_end")
         # Narrow the window to the timeout-exit path (the except SystemExit branch)
         timeout_idx = content.index("except SystemExit", func_idx)
-        exit_window = content[timeout_idx:timeout_idx + 450]
+        exit_window = content[timeout_idx : timeout_idx + 450]
         assert "os._exit(0)" in exit_window, (
             "_safe_run_session_end timeout-exit must call os._exit(0), not "
             "sys.exit(0) — sys.exit would trigger telemetry atexit Traceback "
@@ -286,12 +270,10 @@ class TestOsExitGatewayGuard:
         stderr during interpreter shutdown.
         """
         content = GATEWAY_PATH.read_text()
-        assert "os._exit(0)" in content, (
-            "_sigint_handler must use os._exit(0) to skip atexit callbacks"
-        )
+        assert "os._exit(0)" in content, "_sigint_handler must use os._exit(0) to skip atexit callbacks"
         # The handler function definition must reference os._exit
         sigint_handler_idx = content.index("def _sigint_handler")
-        handler_body = content[sigint_handler_idx:sigint_handler_idx + 200]
+        handler_body = content[sigint_handler_idx : sigint_handler_idx + 200]
         assert "os._exit(0)" in handler_body, (
             "_sigint_handler body must call os._exit(0), not sys.exit(0) — "
             "sys.exit would trigger telemetry atexit Traceback during shutdown"
@@ -309,11 +291,9 @@ class TestOsExitGatewayGuard:
         Traceback pollution on stderr during SIGALRM-driven boot timeout.
         """
         content = GATEWAY_PATH.read_text()
-        assert "os._exit(0)" in content, (
-            "_boot_timeout_handler must use os._exit(0) to skip atexit callbacks"
-        )
+        assert "os._exit(0)" in content, "_boot_timeout_handler must use os._exit(0) to skip atexit callbacks"
         handler_idx = content.index("def _boot_timeout_handler")
-        handler_body = content[handler_idx:handler_idx + 200]
+        handler_body = content[handler_idx : handler_idx + 200]
         assert "os._exit(0)" in handler_body, (
             "_boot_timeout_handler body must call os._exit(0), not sys.exit(0) — "
             "sys.exit would trigger telemetry atexit Traceback during shutdown"
@@ -331,11 +311,9 @@ class TestOsExitGatewayGuard:
         SIGINT/SIGALRM-driven shutdown of the bootstrap guard.
         """
         content = GUARD_PATH.read_text()
-        assert "os._exit(0)" in content, (
-            "_exit0_handler must use os._exit(0) to skip atexit callbacks"
-        )
+        assert "os._exit(0)" in content, "_exit0_handler must use os._exit(0) to skip atexit callbacks"
         handler_idx = content.index("def _exit0_handler")
-        handler_body = content[handler_idx:handler_idx + 300]
+        handler_body = content[handler_idx : handler_idx + 300]
         assert "os._exit(0)" in handler_body, (
             "_exit0_handler body must call os._exit(0), not sys.exit(0) — "
             "sys.exit would trigger telemetry atexit Traceback during shutdown"

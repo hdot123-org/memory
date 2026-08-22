@@ -1,6 +1,5 @@
 """Tests for memory_core.tools.audit_project_layout module."""
 
-
 import json
 from pathlib import Path
 
@@ -677,7 +676,8 @@ class TestPlanResidueMigration:
         # Workspace conflict should have at least one item requiring coordination
         # Note: may trigger through needs_human_decision bucket
         workspace_items = [
-            item for bucket in plan.buckets.values()
+            item
+            for bucket in plan.buckets.values()
             for item in (bucket if isinstance(bucket, list) else [])
             if isinstance(item, dict) and item.get("path") == "workspace/memory"
         ]

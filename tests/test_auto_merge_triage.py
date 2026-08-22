@@ -47,17 +47,25 @@ class TestAutoMergeTriage:
         assert result.returncode == 0
         output = json.loads(result.stdout)
         assert output == {
-            "mergeable": [], "behind": [], "conflicting": [],
-            "pending": [], "stalled": [], "unknown": [],
+            "mergeable": [],
+            "behind": [],
+            "conflicting": [],
+            "pending": [],
+            "stalled": [],
+            "unknown": [],
         }
 
     def test_mergeable_pr_classified(self):
         """PR with mergeable=MERGEABLE + green rollup → mergeable list."""
-        prs = [{
-            "number": 123, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [{"conclusion": "SUCCESS"}],
-        }]
+        prs = [
+            {
+                "number": 123,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+            }
+        ]
         result = subprocess.run(
             ["bash", str(get_script_path())],
             input=json.dumps(prs),
@@ -119,15 +127,30 @@ class TestAutoMergeTriage:
     def test_mixed_prs_classified(self):
         """Mixed PRs → correct classification into all categories."""
         prs = [
-            {"number": 1, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-             "isDraft": False, "statusCheckRollup": [{"conclusion": "SUCCESS"}]},
+            {
+                "number": 1,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+            },
             {"number": 2, "mergeable": "MERGEABLE", "mergeStateStatus": "BEHIND"},
             {"number": 3, "mergeable": "CONFLICTING", "mergeStateStatus": "DIRTY"},
             {"number": 4, "mergeable": "UNKNOWN", "mergeStateStatus": "UNKNOWN"},
-            {"number": 5, "mergeable": "MERGEABLE", "mergeStateStatus": "BLOCKED",
-             "isDraft": False, "statusCheckRollup": [{"conclusion": "SUCCESS"}]},
-            {"number": 6, "mergeable": "MERGEABLE", "mergeStateStatus": "DRAFT",
-             "isDraft": True, "statusCheckRollup": [{"conclusion": "SUCCESS"}]},
+            {
+                "number": 5,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "BLOCKED",
+                "isDraft": False,
+                "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+            },
+            {
+                "number": 6,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "DRAFT",
+                "isDraft": True,
+                "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+            },
         ]
         result = subprocess.run(
             ["bash", str(get_script_path())],
@@ -154,8 +177,12 @@ class TestAutoMergeTriage:
         assert result.returncode == 0
         output = json.loads(result.stdout)
         assert output == {
-            "mergeable": [], "behind": [], "conflicting": [],
-            "pending": [], "stalled": [], "unknown": [],
+            "mergeable": [],
+            "behind": [],
+            "conflicting": [],
+            "pending": [],
+            "stalled": [],
+            "unknown": [],
         }
 
 
@@ -196,10 +223,15 @@ class TestAutoMergeTriageActions:
 
     def test_mergeable_pr_has_merge_action(self):
         """MERGEABLE + green rollup PR → action=merge."""
-        prs = [{
-            "number": 123, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False, "statusCheckRollup": [{"conclusion": "SUCCESS"}],
-        }]
+        prs = [
+            {
+                "number": 123,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+            }
+        ]
         result = subprocess.run(
             ["bash", str(get_script_path())],
             input=json.dumps(prs),
@@ -233,17 +265,12 @@ class TestAutoMergeTriageWorkflow:
 
         # At least one step should mention triage, conflicting, or behind
         has_triage = any(
-            "triage" in name.lower() or "conflict" in name.lower() or "behind" in name.lower()
-            for name in step_names
+            "triage" in name.lower() or "conflict" in name.lower() or "behind" in name.lower() for name in step_names
         )
         # Or the workflow uses the triage script
-        uses_triage = any(
-            "auto_merge_triage" in str(s) for s in steps
-        )
+        uses_triage = any("auto_merge_triage" in str(s) for s in steps)
 
-        assert has_triage or uses_triage, (
-            f"auto-merge.yml lacks triage logic. Steps: {step_names}"
-        )
+        assert has_triage or uses_triage, f"auto-merge.yml lacks triage logic. Steps: {step_names}"
 
     def test_auto_merge_yaml_schedule_not_just_resolve(self):
         """Schedule path does more than just resolve (has triage/self-heal)."""
@@ -261,14 +288,9 @@ class TestAutoMergeTriageWorkflow:
 
         # Or check if auto-merge job has triage steps
         auto_merge_steps = jobs.get("auto-merge", {}).get("steps", [])
-        has_triage_steps = any(
-            "triage" in str(s).lower() or "auto_merge_triage" in str(s)
-            for s in auto_merge_steps
-        )
+        has_triage_steps = any("triage" in str(s).lower() or "auto_merge_triage" in str(s) for s in auto_merge_steps)
 
-        assert has_triage_job or has_triage_steps, (
-            "auto-merge.yml schedule path lacks triage/self-heal logic"
-        )
+        assert has_triage_job or has_triage_steps, "auto-merge.yml schedule path lacks triage/self-heal logic"
 
 
 class TestAutoMergeTriageHardeningInfra416:
@@ -306,9 +328,7 @@ class TestAutoMergeTriageHardeningInfra416:
         """VAL-T416-001：notify 步骤按 head SHA sentinel 去重评论。"""
         data = self._load_workflow()
         run_block = self._notify_step(data)["run"]
-        assert "auto-merge-conflict-" in run_block, (
-            "notify 步骤必须包含 head SHA sentinel（幂等去重）"
-        )
+        assert "auto-merge-conflict-" in run_block, "notify 步骤必须包含 head SHA sentinel（幂等去重）"
         assert "--json comments" in run_block or "--json headRefOid" in run_block, (
             "notify 步骤必须查询既有评论/head SHA"
         )
@@ -317,9 +337,7 @@ class TestAutoMergeTriageHardeningInfra416:
         """VAL-T416-002：已有同 SHA sentinel 时跳过评论（INFRA-428 起命中分支 exit 0，见 VAL-428-003）。"""
         data = self._load_workflow()
         run_block = self._notify_step(data)["run"]
-        assert "Skipping duplicate notification" in run_block, (
-            "去重命中分支必须显式跳过且不调 gh pr comment"
-        )
+        assert "Skipping duplicate notification" in run_block, "去重命中分支必须显式跳过且不调 gh pr comment"
         # 去重分支在 gh pr comment 之前短路
         assert run_block.index("Skipping duplicate notification") < run_block.index("gh pr comment")
 
@@ -340,9 +358,7 @@ class TestAutoMergeTriageHardeningInfra416:
         """VAL-T416-004：mergeable=UNKNOWN 时等待重取一次，仍未知交 schedule 兜底。"""
         data = self._load_workflow()
         run_block = self._triage_step(data)["run"]
-        assert '"$MERGEABLE" = "UNKNOWN"' in run_block, (
-            "triage 步骤必须对 UNKNOWN 状态做一次重取"
-        )
+        assert '"$MERGEABLE" = "UNKNOWN"' in run_block, "triage 步骤必须对 UNKNOWN 状态做一次重取"
         # UNKNOWN 路径最终动作只能是 skip（脚本分类保证），workflow 不猜测
         assert "UNKNOWN retry" in run_block
 
@@ -454,10 +470,15 @@ class TestAutoMergeTriageHardeningInfra428:
 
     def test_blocked_pr_waits_not_merges(self):
         """VAL-428-001a：mergeStateStatus=BLOCKED → pending/wait，不再盲合并。"""
-        prs = [{
-            "number": 5, "mergeable": "MERGEABLE", "mergeStateStatus": "BLOCKED",
-            "isDraft": False, "statusCheckRollup": self.GREEN,
-        }]
+        prs = [
+            {
+                "number": 5,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "BLOCKED",
+                "isDraft": False,
+                "statusCheckRollup": self.GREEN,
+            }
+        ]
         output = self._run_triage(prs)
         assert output["pending"][0]["number"] == 5
         assert output["pending"][0]["action"] == "wait"
@@ -465,10 +486,15 @@ class TestAutoMergeTriageHardeningInfra428:
 
     def test_draft_pr_by_flag_waits(self):
         """VAL-428-001b：isDraft=true → pending/wait（即使 rollup 全绿）。"""
-        prs = [{
-            "number": 6, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": True, "statusCheckRollup": self.GREEN,
-        }]
+        prs = [
+            {
+                "number": 6,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": True,
+                "statusCheckRollup": self.GREEN,
+            }
+        ]
         output = self._run_triage(prs)
         assert output["pending"][0]["number"] == 6
         assert output["pending"][0]["action"] == "wait"
@@ -476,10 +502,14 @@ class TestAutoMergeTriageHardeningInfra428:
 
     def test_draft_pr_by_state_waits(self):
         """VAL-428-001c：mergeStateStatus=DRAFT → pending/wait。"""
-        prs = [{
-            "number": 7, "mergeable": "MERGEABLE", "mergeStateStatus": "DRAFT",
-            "isDraft": True,
-        }]
+        prs = [
+            {
+                "number": 7,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "DRAFT",
+                "isDraft": True,
+            }
+        ]
         output = self._run_triage(prs)
         assert output["pending"][0]["number"] == 7
         assert output["mergeable"] == []
@@ -488,47 +518,65 @@ class TestAutoMergeTriageHardeningInfra428:
 
     def test_early_fire_no_rollup_waits(self):
         """VAL-428-002a：rollup 为空（check 未报）→ pending/wait，fail-closed。"""
-        prs = [{
-            "number": 8, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-        }]
+        prs = [
+            {
+                "number": 8,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+            }
+        ]
         output = self._run_triage(prs)
         assert output["pending"][0]["number"] == 8
         assert output["mergeable"] == [], "check 未报齐时不得 merge（early-fire 盲合并）"
 
     def test_early_fire_pending_check_waits(self):
         """VAL-428-002b：rollup 有 in_progress check → pending/wait。"""
-        prs = [{
-            "number": 9, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"},
-                {"status": "in_progress", "conclusion": None},
-            ],
-        }]
+        prs = [
+            {
+                "number": 9,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},
+                    {"status": "in_progress", "conclusion": None},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
         assert output["pending"][0]["number"] == 9
         assert output["mergeable"] == []
 
     def test_green_rollup_merges(self):
         """VAL-428-002c：MERGEABLE + rollup 全绿 → mergeable/merge（正向路径保持）。"""
-        prs = [{
-            "number": 10, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"}, {"conclusion": "SUCCESS"},
-            ],
-        }]
+        prs = [
+            {
+                "number": 10,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},
+                    {"conclusion": "SUCCESS"},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
         assert output["mergeable"][0]["number"] == 10
         assert output["mergeable"][0]["action"] == "merge"
 
     def test_conflicting_wins_over_rollup(self):
         """VAL-428-002d：CONFLICTING 优先级最高，rollup 全绿也不掩盖冲突。"""
-        prs = [{
-            "number": 11, "mergeable": "CONFLICTING", "mergeStateStatus": "BEHIND",
-            "isDraft": False, "statusCheckRollup": self.GREEN,
-        }]
+        prs = [
+            {
+                "number": 11,
+                "mergeable": "CONFLICTING",
+                "mergeStateStatus": "BEHIND",
+                "isDraft": False,
+                "statusCheckRollup": self.GREEN,
+            }
+        ]
         output = self._run_triage(prs)
         assert output["conflicting"][0]["number"] == 11
         assert output["behind"] == [], "冲突 PR 不得 update-branch 盲合并"
@@ -536,20 +584,28 @@ class TestAutoMergeTriageHardeningInfra428:
 
     def test_behind_wins_over_pending_states(self):
         """VAL-428-002e：BEHIND 优先于 draft/blocked/rollup（先追平再谈其他）。"""
-        prs = [{
-            "number": 12, "mergeable": "MERGEABLE", "mergeStateStatus": "BEHIND",
-            "isDraft": True,
-        }]
+        prs = [
+            {
+                "number": 12,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "BEHIND",
+                "isDraft": True,
+            }
+        ]
         output = self._run_triage(prs)
         assert output["behind"][0]["number"] == 12
         assert output["pending"] == []
 
     def test_unknown_mergeable_skips_even_with_rollup(self):
         """VAL-428-002f：mergeable=UNKNOWN → skip（GitHub 未算完，不猜测）。"""
-        prs = [{
-            "number": 13, "mergeable": "UNKNOWN", "mergeStateStatus": "UNKNOWN",
-            "statusCheckRollup": self.GREEN,
-        }]
+        prs = [
+            {
+                "number": 13,
+                "mergeable": "UNKNOWN",
+                "mergeStateStatus": "UNKNOWN",
+                "statusCheckRollup": self.GREEN,
+            }
+        ]
         output = self._run_triage(prs)
         assert output["unknown"][0]["number"] == 13
 
@@ -577,9 +633,7 @@ class TestAutoMergeTriageHardeningInfra428:
         assert "Skipping duplicate notification" in run_block
         segment = run_block.split("Skipping duplicate notification", 1)[1]
         segment_before_comment = segment.split("gh pr comment", 1)[0]
-        assert "exit 0" in segment_before_comment, (
-            "去重命中必须 exit 0，否则未解决冲突每 10 分钟产生永久红腿"
-        )
+        assert "exit 0" in segment_before_comment, "去重命中必须 exit 0，否则未解决冲突每 10 分钟产生永久红腿"
         assert "exit 1" not in segment_before_comment
 
     # ----- VAL-428-004：update-branch 竞态守卫 -----
@@ -590,22 +644,26 @@ class TestAutoMergeTriageHardeningInfra428:
         steps = data["jobs"]["auto-merge"]["steps"]
         behind_step = next(s for s in steps if s.get("name") == "Handle BEHIND PR (update-branch self-heal)")
         run_block = behind_step["run"]
-        assert "if ! gh pr update-branch" in run_block or \
-            ("gh pr update-branch" in run_block and "exit 0" in run_block), (
-            "update-branch 必须有失败降级分支（竞态守卫），不允许裸 exit 1"
-        )
+        assert "if ! gh pr update-branch" in run_block or (
+            "gh pr update-branch" in run_block and "exit 0" in run_block
+        ), "update-branch 必须有失败降级分支（竞态守卫），不允许裸 exit 1"
 
     # ----- VAL-428-005：stalled 类别 -----
 
     def test_stalled_check_reported_not_success(self):
         """VAL-428-005a：rollup 报齐但含 FAILURE → stalled/wait。"""
-        prs = [{
-            "number": 14, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"}, {"conclusion": "FAILURE"},
-            ],
-        }]
+        prs = [
+            {
+                "number": 14,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},
+                    {"conclusion": "FAILURE"},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
         assert output["stalled"][0]["number"] == 14
         assert output["stalled"][0]["action"] == "wait"
@@ -630,12 +688,8 @@ class TestAutoMergeTriageHardeningInfra428:
         steps = data["jobs"]["auto-merge"]["steps"]
         triage_step = next(s for s in steps if s.get("name") == "Triage PR mergeable state")
         assert "stalled=" in triage_step["run"], "triage 步骤未输出 stalled 标志"
-        stalled_step = next(
-            s for s in steps if s.get("name") and "stalled" in s.get("name", "").lower()
-        )
-        assert "steps.triage.outputs.stalled" in stalled_step.get("if", ""), (
-            "stalled 步骤的 if 条件未消费 stalled 标志"
-        )
+        stalled_step = next(s for s in steps if s.get("name") and "stalled" in s.get("name", "").lower())
+        assert "steps.triage.outputs.stalled" in stalled_step.get("if", ""), "stalled 步骤的 if 条件未消费 stalled 标志"
 
     # ----- VAL-428-006：workflow 级并发控制 -----
 
@@ -650,11 +704,15 @@ class TestAutoMergeTriageHardeningInfra428:
 
     def test_get_category_mode(self):
         """--get-category 返回类别名（stalled 辅助输出的事实源）。"""
-        prs = [{
-            "number": 14, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [{"conclusion": "FAILURE"}],
-        }]
+        prs = [
+            {
+                "number": 14,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [{"conclusion": "FAILURE"}],
+            }
+        ]
         result = subprocess.run(
             ["bash", str(get_script_path()), "--get-category", "14"],
             input=json.dumps(prs),
@@ -693,34 +751,45 @@ class TestAutoMergeTriageHardeningInfra428:
         """全状态矩阵每个 PR 恰好落一个类别（分类完备性 + 互斥性）。"""
         matrix = [
             # (mergeable, mergeStateStatus, isDraft, rollup) -> 期望类别
-            ("MERGEABLE", "CLEAN", False, [{"conclusion": "SUCCESS"}]),   # mergeable
-            ("MERGEABLE", "CLEAN", False, []),                             # pending (early-fire)
-            ("MERGEABLE", "CLEAN", False, [{"conclusion": "FAILURE"}]),    # stalled
-            ("MERGEABLE", "CLEAN", False, [{"status": "in_progress"}]),    # pending
-            ("MERGEABLE", "BEHIND", False, [{"conclusion": "SUCCESS"}]),   # behind
-            ("MERGEABLE", "BEHIND", True, []),                             # behind (BEHIND 优先)
+            ("MERGEABLE", "CLEAN", False, [{"conclusion": "SUCCESS"}]),  # mergeable
+            ("MERGEABLE", "CLEAN", False, []),  # pending (early-fire)
+            ("MERGEABLE", "CLEAN", False, [{"conclusion": "FAILURE"}]),  # stalled
+            ("MERGEABLE", "CLEAN", False, [{"status": "in_progress"}]),  # pending
+            ("MERGEABLE", "BEHIND", False, [{"conclusion": "SUCCESS"}]),  # behind
+            ("MERGEABLE", "BEHIND", True, []),  # behind (BEHIND 优先)
             ("MERGEABLE", "BLOCKED", False, [{"conclusion": "SUCCESS"}]),  # pending
-            ("MERGEABLE", "DRAFT", True, []),                              # pending
-            ("CONFLICTING", "BEHIND", False, [{"conclusion": "SUCCESS"}]), # conflicting
+            ("MERGEABLE", "DRAFT", True, []),  # pending
+            ("CONFLICTING", "BEHIND", False, [{"conclusion": "SUCCESS"}]),  # conflicting
             ("CONFLICTING", "CLEAN", False, [{"conclusion": "SUCCESS"}]),  # conflicting
-            ("UNKNOWN", "UNKNOWN", False, []),                             # unknown
-            ("UNKNOWN", "BLOCKED", False, [{"conclusion": "SUCCESS"}]),    # unknown (UNKNOWN 优先)
+            ("UNKNOWN", "UNKNOWN", False, []),  # unknown
+            ("UNKNOWN", "BLOCKED", False, [{"conclusion": "SUCCESS"}]),  # unknown (UNKNOWN 优先)
         ]
         expected = [
-            "mergeable", "pending", "stalled", "pending", "behind", "behind",
-            "pending", "pending", "conflicting", "conflicting", "unknown", "unknown",
+            "mergeable",
+            "pending",
+            "stalled",
+            "pending",
+            "behind",
+            "behind",
+            "pending",
+            "pending",
+            "conflicting",
+            "conflicting",
+            "unknown",
+            "unknown",
         ]
         prs = [
             {
-                "number": i + 1, "mergeable": m, "mergeStateStatus": s,
-                "isDraft": d, "statusCheckRollup": r,
+                "number": i + 1,
+                "mergeable": m,
+                "mergeStateStatus": s,
+                "isDraft": d,
+                "statusCheckRollup": r,
             }
             for i, (m, s, d, r) in enumerate(matrix)
         ]
         output = self._run_triage(prs)
-        category_numbers: dict[str, list[int]] = {
-            cat: [p["number"] for p in prs_] for cat, prs_ in output.items()
-        }
+        category_numbers: dict[str, list[int]] = {cat: [p["number"] for p in prs_] for cat, prs_ in output.items()}
         for idx, exp in enumerate(expected):
             found = [cat for cat, nums in category_numbers.items() if (idx + 1) in nums]
             assert found == [exp], (
@@ -764,19 +833,21 @@ class TestAutoMergeTriageSkippedChecks:
 
     def test_success_plus_skipped_is_green(self):
         """SUCCESS + SKIPPED 混合 → mergeable（SKIPPED 不阻塞合并）。"""
-        prs = [{
-            "number": 100, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"},
-                {"conclusion": "SKIPPED"},  # 夜间 job 在 PR 事件报 SKIPPED
-                {"conclusion": "SUCCESS"},
-            ],
-        }]
+        prs = [
+            {
+                "number": 100,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},
+                    {"conclusion": "SKIPPED"},  # 夜间 job 在 PR 事件报 SKIPPED
+                    {"conclusion": "SUCCESS"},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
-        assert output["mergeable"][0]["number"] == 100, (
-            "SUCCESS+SKIPPED 应判为 green（修复前会被误判为 stalled）"
-        )
+        assert output["mergeable"][0]["number"] == 100, "SUCCESS+SKIPPED 应判为 green（修复前会被误判为 stalled）"
         assert output["mergeable"][0]["action"] == "merge"
         assert output["stalled"] == [], "SKIPPED 不应触发 stalled"
 
@@ -786,90 +857,110 @@ class TestAutoMergeTriageSkippedChecks:
         scrutiny R1 blocking：reviewer 实测证实 PR #862 实现缺 any(SUCCESS) 下限，
         全 SKIPPED rollup 会被判 mergeable/action=merge，造成功能规格禁止的假绿洞。
         """
-        prs = [{
-            "number": 101, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SKIPPED"},
-                {"conclusion": "SKIPPED"},
-            ],
-        }]
+        prs = [
+            {
+                "number": 101,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SKIPPED"},
+                    {"conclusion": "SKIPPED"},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
-        assert output["mergeable"] == [], (
-            "全 SKIPPED 不得判 mergeable（防假绿下限 any(SUCCESS) 生效）"
-        )
+        assert output["mergeable"] == [], "全 SKIPPED 不得判 mergeable（防假绿下限 any(SUCCESS) 生效）"
         # 全 SKIPPED 但非空 rollup → stalled（所有 check 已报告但无 SUCCESS）
         assert len(output["stalled"]) == 1 or len(output["pending"]) == 1
 
     def test_skipped_plus_failure_is_stalled(self):
         """SKIPPED + FAILURE → stalled（FAILURE 仍阻塞合并）。"""
-        prs = [{
-            "number": 102, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"},
-                {"conclusion": "SKIPPED"},
-                {"conclusion": "FAILURE"},
-            ],
-        }]
+        prs = [
+            {
+                "number": 102,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},
+                    {"conclusion": "SKIPPED"},
+                    {"conclusion": "FAILURE"},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
-        assert output["stalled"][0]["number"] == 102, (
-            "FAILURE 仍应触发 stalled（SKIPPED 不应掩盖真实失败）"
-        )
+        assert output["stalled"][0]["number"] == 102, "FAILURE 仍应触发 stalled（SKIPPED 不应掩盖真实失败）"
         assert output["mergeable"] == []
 
     def test_failure_only_is_stalled(self):
         """仅 FAILURE → stalled（旧逻辑与新逻辑行为一致）。"""
-        prs = [{
-            "number": 103, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"},
-                {"conclusion": "FAILURE"},
-            ],
-        }]
+        prs = [
+            {
+                "number": 103,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},
+                    {"conclusion": "FAILURE"},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
         assert output["stalled"][0]["number"] == 103
         assert output["mergeable"] == []
 
     def test_timed_out_is_stalled(self):
         """TIMED_OUT → stalled（失败结论之一）。"""
-        prs = [{
-            "number": 104, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"},
-                {"conclusion": "TIMED_OUT"},
-            ],
-        }]
+        prs = [
+            {
+                "number": 104,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},
+                    {"conclusion": "TIMED_OUT"},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
         assert output["stalled"][0]["number"] == 104
         assert output["mergeable"] == []
 
     def test_cancelled_is_stalled(self):
         """CANCELLED → stalled（失败结论之一）。"""
-        prs = [{
-            "number": 105, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"},
-                {"conclusion": "CANCELLED"},
-            ],
-        }]
+        prs = [
+            {
+                "number": 105,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},
+                    {"conclusion": "CANCELLED"},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
         assert output["stalled"][0]["number"] == 105
         assert output["mergeable"] == []
 
     def test_action_required_is_stalled(self):
         """ACTION_REQUIRED → stalled（失败结论之一）。"""
-        prs = [{
-            "number": 106, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"},
-                {"conclusion": "ACTION_REQUIRED"},
-            ],
-        }]
+        prs = [
+            {
+                "number": 106,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},
+                    {"conclusion": "ACTION_REQUIRED"},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
         assert output["stalled"][0]["number"] == 106
         assert output["mergeable"] == []
@@ -878,15 +969,19 @@ class TestAutoMergeTriageSkippedChecks:
 
     def test_success_plus_neutral_is_green(self):
         """SUCCESS + NEUTRAL 混合 → mergeable（NEUTRAL 不阻塞合并）。"""
-        prs = [{
-            "number": 107, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"},
-                {"conclusion": "NEUTRAL"},  # 某些 check 可能报 NEUTRAL
-                {"conclusion": "SUCCESS"},
-            ],
-        }]
+        prs = [
+            {
+                "number": 107,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},
+                    {"conclusion": "NEUTRAL"},  # 某些 check 可能报 NEUTRAL
+                    {"conclusion": "SUCCESS"},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
         assert output["mergeable"][0]["number"] == 107
         assert output["stalled"] == []
@@ -898,31 +993,37 @@ class TestAutoMergeTriageSkippedChecks:
         NEUTRAL 是 annotation-only check（branch protection 对齐），但单独
         存在时不代表代码被验证过。
         """
-        prs = [{
-            "number": 108, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "NEUTRAL"},
-                {"conclusion": "NEUTRAL"},
-            ],
-        }]
+        prs = [
+            {
+                "number": 108,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "NEUTRAL"},
+                    {"conclusion": "NEUTRAL"},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
-        assert output["mergeable"] == [], (
-            "全 NEUTRAL 不得判 mergeable（防假绿下限 any(SUCCESS) 生效）"
-        )
+        assert output["mergeable"] == [], "全 NEUTRAL 不得判 mergeable（防假绿下限 any(SUCCESS) 生效）"
         assert len(output["stalled"]) == 1 or len(output["pending"]) == 1
 
     def test_neutral_plus_failure_is_stalled(self):
         """NEUTRAL + FAILURE → stalled（FAILURE 仍阻塞）。"""
-        prs = [{
-            "number": 109, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"},
-                {"conclusion": "NEUTRAL"},
-                {"conclusion": "FAILURE"},
-            ],
-        }]
+        prs = [
+            {
+                "number": 109,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},
+                    {"conclusion": "NEUTRAL"},
+                    {"conclusion": "FAILURE"},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
         assert output["stalled"][0]["number"] == 109
         assert output["mergeable"] == []
@@ -931,54 +1032,62 @@ class TestAutoMergeTriageSkippedChecks:
 
     def test_complex_matrix_real_world_scenario(self):
         """真实场景：多个 SUCCESS + SKIPPED（夜间 job）+ NEUTRAL → mergeable。"""
-        prs = [{
-            "number": 110, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"},      # CI
-                {"conclusion": "SUCCESS"},      # Droid Auto Review
-                {"conclusion": "SKIPPED"},      # Coverage Audit（夜间 job）
-                {"conclusion": "SKIPPED"},      # Full Regression（夜间 job）
-                {"conclusion": "NEUTRAL"},      # 某些 lint check
-                {"conclusion": "SUCCESS"},      # Evolution Governance
-            ],
-        }]
+        prs = [
+            {
+                "number": 110,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},  # CI
+                    {"conclusion": "SUCCESS"},  # Droid Auto Review
+                    {"conclusion": "SKIPPED"},  # Coverage Audit（夜间 job）
+                    {"conclusion": "SKIPPED"},  # Full Regression（夜间 job）
+                    {"conclusion": "NEUTRAL"},  # 某些 lint check
+                    {"conclusion": "SUCCESS"},  # Evolution Governance
+                ],
+            }
+        ]
         output = self._run_triage(prs)
-        assert output["mergeable"][0]["number"] == 110, (
-            "真实 PR 场景（含夜间 job SKIPPED）应判为 green 并可合并"
-        )
+        assert output["mergeable"][0]["number"] == 110, "真实 PR 场景（含夜间 job SKIPPED）应判为 green 并可合并"
         assert output["mergeable"][0]["action"] == "merge"
         assert output["stalled"] == []
 
     def test_regression_old_behavior_preserved(self):
         """回归测试：纯 SUCCESS 仍判为 mergeable（旧逻辑行为不变）。"""
-        prs = [{
-            "number": 111, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"},
-                {"conclusion": "SUCCESS"},
-            ],
-        }]
+        prs = [
+            {
+                "number": 111,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},
+                    {"conclusion": "SUCCESS"},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
         assert output["mergeable"][0]["number"] == 111
         assert output["mergeable"][0]["action"] == "merge"
 
     def test_in_progress_plus_skipped_still_pending(self):
         """in_progress + SKIPPED → pending（in_progress 未报齐，fail-closed）。"""
-        prs = [{
-            "number": 112, "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [
-                {"conclusion": "SUCCESS"},
-                {"conclusion": "SKIPPED"},
-                {"status": "in_progress", "conclusion": None},
-            ],
-        }]
+        prs = [
+            {
+                "number": 112,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [
+                    {"conclusion": "SUCCESS"},
+                    {"conclusion": "SKIPPED"},
+                    {"status": "in_progress", "conclusion": None},
+                ],
+            }
+        ]
         output = self._run_triage(prs)
-        assert output["pending"][0]["number"] == 112, (
-            "in_progress check 未报齐时应判 pending（early-fire 防护优先）"
-        )
+        assert output["pending"][0]["number"] == 112, "in_progress check 未报齐时应判 pending（early-fire 防护优先）"
         assert output["mergeable"] == []
 
     # ----- 判定矩阵覆盖总结 -----
@@ -994,35 +1103,42 @@ class TestAutoMergeTriageSkippedChecks:
         failure_conclusions = ["FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"]
 
         # 验证 SUCCESS 单独存在时判 mergeable
-        prs = [{
-            "number": 200,
-            "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-            "isDraft": False,
-            "statusCheckRollup": [{"conclusion": "SUCCESS"}],
-        }]
+        prs = [
+            {
+                "number": 200,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "isDraft": False,
+                "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+            }
+        ]
         output = self._run_triage(prs)
         assert output["mergeable"], "SUCCESS 应判为 green"
 
         # 验证 SKIPPED/NEUTRAL 单独存在时 NOT 判 mergeable（防假绿下限）
         for conclusion in ["SKIPPED", "NEUTRAL"]:
-            prs = [{
-                "number": 200 + non_failure_conclusions.index(conclusion),
-                "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-                "isDraft": False,
-                "statusCheckRollup": [{"conclusion": conclusion}],
-            }]
+            prs = [
+                {
+                    "number": 200 + non_failure_conclusions.index(conclusion),
+                    "mergeable": "MERGEABLE",
+                    "mergeStateStatus": "CLEAN",
+                    "isDraft": False,
+                    "statusCheckRollup": [{"conclusion": conclusion}],
+                }
+            ]
             output = self._run_triage(prs)
-            assert not output["mergeable"], (
-                f"{conclusion} 单独存在时 NOT 判为 green（防假绿下限 any(SUCCESS)）"
-            )
+            assert not output["mergeable"], f"{conclusion} 单独存在时 NOT 判为 green（防假绿下限 any(SUCCESS)）"
 
         # 验证失败结论单独存在时判 stalled
         for conclusion in failure_conclusions:
-            prs = [{
-                "number": 300 + failure_conclusions.index(conclusion),
-                "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
-                "isDraft": False,
-                "statusCheckRollup": [{"conclusion": conclusion}],
-            }]
+            prs = [
+                {
+                    "number": 300 + failure_conclusions.index(conclusion),
+                    "mergeable": "MERGEABLE",
+                    "mergeStateStatus": "CLEAN",
+                    "isDraft": False,
+                    "statusCheckRollup": [{"conclusion": conclusion}],
+                }
+            ]
             output = self._run_triage(prs)
             assert output["stalled"], f"{conclusion} 应判为 stalled（失败）"

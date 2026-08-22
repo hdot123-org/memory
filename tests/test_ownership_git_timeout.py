@@ -107,9 +107,7 @@ class TestMemoryHookProjectCwdEnvVar:
         (tools_dir / "memory_hook_gateway.py").write_text("# marker")
 
         # Set env var to match the path
-        env_patch = patch.dict(
-            os.environ, {"MEMORY_HOOK_PROJECT_CWD": str(tmp_path)}
-        )
+        env_patch = patch.dict(os.environ, {"MEMORY_HOOK_PROJECT_CWD": str(tmp_path)})
         env_patch.start()
 
         try:
@@ -120,9 +118,7 @@ class TestMemoryHookProjectCwdEnvVar:
                 assert result is True
 
                 # Should NOT have called git subprocess
-                assert not mock_run.called, (
-                    "Git subprocess should not be called when env var matches"
-                )
+                assert not mock_run.called, "Git subprocess should not be called when env var matches"
         finally:
             env_patch.stop()
 
@@ -135,9 +131,7 @@ class TestMemoryHookProjectCwdEnvVar:
         other_path = tmp_path / "other_path"
         other_path.mkdir()
 
-        env_patch = patch.dict(
-            os.environ, {"MEMORY_HOOK_PROJECT_CWD": str(other_path)}
-        )
+        env_patch = patch.dict(os.environ, {"MEMORY_HOOK_PROJECT_CWD": str(other_path)})
         env_patch.start()
 
         try:
@@ -148,9 +142,7 @@ class TestMemoryHookProjectCwdEnvVar:
                 is_memory_core_source_repo(test_dir)
 
                 # Should have called git subprocess
-                assert mock_run.called, (
-                    "Git subprocess should be called when env var doesn't match"
-                )
+                assert mock_run.called, "Git subprocess should be called when env var doesn't match"
         finally:
             env_patch.stop()
 
@@ -172,9 +164,7 @@ class TestMemoryHookProjectCwdEnvVar:
                 is_memory_core_source_repo(test_dir)
 
                 # Should have called git subprocess
-                assert mock_run.called, (
-                    "Git subprocess should be called when env var not set"
-                )
+                assert mock_run.called, "Git subprocess should be called when env var not set"
         finally:
             env_patch.stop()
 
@@ -198,9 +188,7 @@ class TestGitDetectorInjection:
             assert custom_detector.call_args[0][0] == test_dir.resolve()
 
             # Should NOT have called subprocess.run
-            assert not mock_run.called, (
-                "subprocess.run should not be called when git_detector provided"
-            )
+            assert not mock_run.called, "subprocess.run should not be called when git_detector provided"
 
             # Should return False (detector returned None)
             assert result is False
@@ -247,9 +235,7 @@ class TestMarkerBasedDetection:
             assert result is True
 
             # Should NOT have called git subprocess
-            assert not mock_run.called, (
-                "Git subprocess should not be called when markers exist"
-            )
+            assert not mock_run.called, "Git subprocess should not be called when markers exist"
 
     def test_multiple_markers_any_one_sufficient(self, tmp_path):
         """VAL-GIT-006: Any single marker file is sufficient."""
@@ -273,9 +259,7 @@ class TestMarkerBasedDetection:
                 result = is_memory_core_source_repo(test_dir)
 
                 assert result is True, f"Should detect marker: {marker_path}"
-                assert not mock_run.called, (
-                    f"Git should not be called for marker: {marker_path}"
-                )
+                assert not mock_run.called, f"Git should not be called for marker: {marker_path}"
 
 
 class TestNormalFastPathPerformance:
@@ -302,9 +286,7 @@ class TestNormalFastPathPerformance:
             elapsed = time.monotonic() - start
 
             # Should complete quickly
-            assert elapsed < 0.5, (
-                f"Normal path should complete in < 500ms, took {elapsed:.3f}s"
-            )
+            assert elapsed < 0.5, f"Normal path should complete in < 500ms, took {elapsed:.3f}s"
             assert result is False
 
     def test_no_artificial_delay(self, tmp_path):
@@ -322,9 +304,7 @@ class TestNormalFastPathPerformance:
             elapsed = time.monotonic() - start
 
             # Should be nearly instant
-            assert elapsed < 0.1, (
-                f"Should be nearly instant, took {elapsed:.3f}s"
-            )
+            assert elapsed < 0.1, f"Should be nearly instant, took {elapsed:.3f}s"
 
 
 class TestEdgeCases:
@@ -350,9 +330,7 @@ class TestEdgeCases:
         test_dir.mkdir()
 
         # Set env var to empty string
-        env_patch = patch.dict(
-            os.environ, {"MEMORY_HOOK_PROJECT_CWD": ""}
-        )
+        env_patch = patch.dict(os.environ, {"MEMORY_HOOK_PROJECT_CWD": ""})
         env_patch.start()
 
         try:
@@ -363,9 +341,7 @@ class TestEdgeCases:
                 is_memory_core_source_repo(test_dir)
 
                 # Should have called git subprocess
-                assert mock_run.called, (
-                    "Git subprocess should be called when env var is empty"
-                )
+                assert mock_run.called, "Git subprocess should be called when env var is empty"
         finally:
             env_patch.stop()
 

@@ -166,8 +166,6 @@ _PLACEHOLDERS = [
 ]
 
 
-
-
 def _check_fill_quality(target: Path, report: VerifyReport) -> None:
     """Check fill quality — warnings, not errors.
 

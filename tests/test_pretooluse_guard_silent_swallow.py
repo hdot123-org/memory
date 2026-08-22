@@ -23,9 +23,7 @@ class TestFailClosedWithRawCheckSilentSwallow:
 
     def test_except_binds_exception(self):
         body = _func_body(SOURCE_PATH.read_text(), "_fail_closed_with_raw_check")
-        assert "except Exception as exc:" in body, (
-            "_fail_closed_with_raw_check except must bind the exception as `exc`"
-        )
+        assert "except Exception as exc:" in body, "_fail_closed_with_raw_check except must bind the exception as `exc`"
 
     def test_except_logs_debug(self):
         body = _func_body(SOURCE_PATH.read_text(), "_fail_closed_with_raw_check")

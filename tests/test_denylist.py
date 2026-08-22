@@ -1,6 +1,5 @@
 """Tests for denylist module - denied_project_roots functions."""
 
-
 import os
 from pathlib import Path
 

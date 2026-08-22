@@ -34,6 +34,7 @@ from memory_core.tools.memory_hook_integrity_verify import (
 
 # --- Key Management Tests ---
 
+
 class TestKeyManagement:
     def test_generate_key_length(self):
         key = generate_key()
@@ -91,6 +92,7 @@ class TestKeyManagement:
 
 
 # --- Manifest Tests ---
+
 
 class TestManifest:
     def test_schema_version(self):
@@ -269,6 +271,7 @@ class TestManifest:
 
 # --- Verification Tests ---
 
+
 class TestVerification:
     def test_verify_fresh_project_is_ok(self):
         with tempfile.TemporaryDirectory() as td:
@@ -351,9 +354,7 @@ class TestVerification:
             root = Path(td)
             memory_dir = root / "memory" / "system"
             memory_dir.mkdir(parents=True)
-            (memory_dir / "manifest.json").write_text(
-                json.dumps({"schema_version": "old-v0"})
-            )
+            (memory_dir / "manifest.json").write_text(json.dumps({"schema_version": "old-v0"}))
 
             key = generate_key()
             result = verify_project(root, key)

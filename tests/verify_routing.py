@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verification script for routing rule injection feature."""
+
 import shutil
 import subprocess
 import sys

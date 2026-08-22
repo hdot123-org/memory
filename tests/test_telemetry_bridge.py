@@ -30,6 +30,7 @@ from memory_core.tools.telemetry_bridge import (
 def _restore_telemetry_singleton():
     """Restore TelemetryBridge singleton state after each test."""
     from memory_core.tools.telemetry_bridge import telemetry
+
     original = telemetry._analytics
     yield
     telemetry._analytics = original
@@ -52,7 +53,10 @@ class TestTelemetryBridgeHelpers:
         assert _sanitize_value("/Users/test/project/file.txt") == "file.txt"
         # Windows paths on macOS are not detected as absolute
         # (Path.is_absolute() returns False for C:\ paths on POSIX)
-        assert _sanitize_value("C:\\Users\\test\\project") == "project" or _sanitize_value("C:\\Users\\test\\project") == "C:\\Users\\test\\project"
+        assert (
+            _sanitize_value("C:\\Users\\test\\project") == "project"
+            or _sanitize_value("C:\\Users\\test\\project") == "C:\\Users\\test\\project"
+        )
         assert _sanitize_value("/tmp/logs") == "logs"
 
     def test_sanitize_value_preserves_relative_paths(self):
@@ -169,6 +173,7 @@ class TestModuleLevelSetup:
     def test_module_level_telemetry_exists(self):
         """Module should export telemetry singleton."""
         from memory_core.tools import telemetry_bridge
+
         assert hasattr(telemetry_bridge, "telemetry")
         assert isinstance(telemetry_bridge.telemetry, TelemetryBridge)
 

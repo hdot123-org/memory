@@ -33,7 +33,7 @@ def test_rebuild_path_index_works_without_events(tmp_path: Path) -> None:
             "status": "active",
             "host": "factory",
             "event": "session-start",
-            "observed_at": f"2026-08-0{i+1}T12:00:00Z",
+            "observed_at": f"2026-08-0{i + 1}T12:00:00Z",
             "local_path": f"/tmp/project-{i}",
             "path_exists": True,
             "git_root": f"/tmp/project-{i}",
@@ -139,9 +139,9 @@ def test_existing_tests_pass():
 
     # record_project_lifecycle must accept lifecycle_root, cwd, host, event, payload, now_iso_fn
     sig = inspect.signature(record_project_lifecycle)
-    assert set(sig.parameters.keys()) == {
-        "lifecycle_root", "cwd", "host", "event", "payload", "now_iso_fn"
-    }, "record_project_lifecycle signature changed — potential breaking change"
+    assert set(sig.parameters.keys()) == {"lifecycle_root", "cwd", "host", "event", "payload", "now_iso_fn"}, (
+        "record_project_lifecycle signature changed — potential breaking change"
+    )
 
     # migrate_lifecycle_events must accept lifecycle_root
     sig = inspect.signature(migrate_lifecycle_events)
@@ -154,14 +154,13 @@ def test_existing_tests_pass():
     # Verify the test file count for lifecycle-related tests is at least 3
     # (gateway, rebuild, compat/cross) — catches accidental test deletion
     import pathlib
+
     tests_dir = pathlib.Path(__file__).parent
-    lifecycle_test_files = [
-        f for f in tests_dir.glob("test_*lifecycle*.py")
-    ] + [
-        f for f in tests_dir.glob("test_*compat*.py")
-    ] + [
-        f for f in tests_dir.glob("test_*cross*.py")
-    ]
+    lifecycle_test_files = (
+        [f for f in tests_dir.glob("test_*lifecycle*.py")]
+        + [f for f in tests_dir.glob("test_*compat*.py")]
+        + [f for f in tests_dir.glob("test_*cross*.py")]
+    )
     # Deduplicate (a file matching multiple patterns would be counted once)
     lifecycle_test_files = list(set(lifecycle_test_files))
     assert len(lifecycle_test_files) >= 3, (

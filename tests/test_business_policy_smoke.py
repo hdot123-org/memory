@@ -9,7 +9,6 @@ Covers:
 - Boundary inputs: oversized strings / special characters
 """
 
-
 import dataclasses
 import json
 import os
@@ -28,6 +27,7 @@ class TestModuleImport:
 
     def test_import_module(self):
         import memory_core.tools.business_policy_checks as mpc
+
         assert mpc is not None
 
     def test_import_classes(self):
@@ -38,6 +38,7 @@ class TestModuleImport:
             ScopeResolver,
             TruthBasisResolver,
         )
+
         assert ProjectMapValidator is not None
         assert FrozenTupleChecker is not None
         assert EventContractChecker is not None
@@ -55,6 +56,7 @@ class TestModuleImport:
             _section_body,
             _section_bullets,
         )
+
         assert callable(_path_is_under)
         assert callable(_path_is_under_lexical)
         assert callable(_section_bullets)
@@ -68,6 +70,7 @@ class TestModuleImport:
 # ---------------------------------------------------------------------------
 # Shared fixture: minimal GatewayBusinessPolicyConfig
 # ---------------------------------------------------------------------------
+
 
 def _noop_read_text(path: Path) -> str:
     """Default read_text_if_exists that returns empty string for missing files."""
@@ -87,10 +90,17 @@ def config(tmp_path: Path) -> Any:
     project_map.mkdir(parents=True, exist_ok=True)
     workspace.mkdir(parents=True, exist_ok=True)
     for subdir in [
-        "memory", "memory/kb", "memory/kb/global",
-        "memory/kb/global/projects", "memory/kb/projects",
-        "docs", "projects", "memory/artifacts", "tools",
-        "memory/log", "memory/system",
+        "memory",
+        "memory/kb",
+        "memory/kb/global",
+        "memory/kb/global/projects",
+        "memory/kb/projects",
+        "docs",
+        "projects",
+        "memory/artifacts",
+        "tools",
+        "memory/log",
+        "memory/system",
     ]:
         (workspace / subdir).mkdir(exist_ok=True)
     (repo / "app").mkdir(exist_ok=True)
@@ -149,12 +159,14 @@ def config(tmp_path: Path) -> Any:
 class TestProjectMapValidator:
     def test_instantiation(self, config):
         from memory_core.tools.business_policy_checks import ProjectMapValidator
+
         v = ProjectMapValidator(config)
         assert v is not None
         assert v._config is config
 
     def test_validate_project_map_files_missing(self, config):
         from memory_core.tools.business_policy_checks import ProjectMapValidator
+
         v = ProjectMapValidator(config)
         errors = v.validate_project_map_files()
         assert isinstance(errors, list)
@@ -162,6 +174,7 @@ class TestProjectMapValidator:
 
     def test_validate_unique_legal_system_contract_missing(self, config):
         from memory_core.tools.business_policy_checks import ProjectMapValidator
+
         v = ProjectMapValidator(config)
         errors = v.validate_unique_legal_system_contract()
         assert isinstance(errors, list)
@@ -176,6 +189,7 @@ class TestProjectMapValidator:
 class TestFrozenTupleChecker:
     def test_instantiation(self, config):
         from memory_core.tools.business_policy_checks import FrozenTupleChecker
+
         c = FrozenTupleChecker(config)
         assert c is not None
 
@@ -187,6 +201,7 @@ class TestFrozenTupleChecker:
             frozen_tuple_legacy_markers=set(),
         )
         from memory_core.tools.business_policy_checks import FrozenTupleChecker
+
         c = FrozenTupleChecker(cfg)
         errors = c.governance_frozen_tuple_blocker_errors()
         assert errors == []
@@ -197,6 +212,7 @@ class TestFrozenTupleChecker:
             governance_frozen_tuple_files=[config.repo_root / "nonexistent.md"],
         )
         from memory_core.tools.business_policy_checks import FrozenTupleChecker
+
         c = FrozenTupleChecker(cfg)
         errors = c.governance_frozen_tuple_blocker_errors()
         assert len(errors) > 0
@@ -211,11 +227,13 @@ class TestFrozenTupleChecker:
 class TestEventContractChecker:
     def test_instantiation(self, config):
         from memory_core.tools.business_policy_checks import EventContractChecker
+
         c = EventContractChecker(config)
         assert c is not None
 
     def test_event_contract_missing_files(self, config):
         from memory_core.tools.business_policy_checks import EventContractChecker
+
         cfg = dataclasses.replace(
             config,
             event_contract_files={
@@ -297,11 +315,13 @@ class TestEventContractChecker:
 class TestTruthBasisResolver:
     def test_instantiation(self, config):
         from memory_core.tools.business_policy_checks import TruthBasisResolver
+
         r = TruthBasisResolver(config)
         assert r is not None
 
     def test_get_project_canonical(self, config):
         from memory_core.tools.business_policy_checks import TruthBasisResolver
+
         r = TruthBasisResolver(config)
         result = r.get_project_canonical()
         assert isinstance(result, dict)
@@ -309,6 +329,7 @@ class TestTruthBasisResolver:
 
     def test_truth_basis_unknown_scope(self, config):
         from memory_core.tools.business_policy_checks import TruthBasisResolver
+
         r = TruthBasisResolver(config)
         result = r.truth_basis_for_scope("nonexistent-scope")
         assert isinstance(result, dict)
@@ -317,6 +338,7 @@ class TestTruthBasisResolver:
 
     def test_path_classification(self, config):
         from memory_core.tools.business_policy_checks import TruthBasisResolver
+
         r = TruthBasisResolver(config)
         for path in [
             config.repo_root / "AGENTS.md",
@@ -336,6 +358,7 @@ class TestTruthBasisResolver:
 class TestScopeResolver:
     def test_instantiation(self, config):
         from memory_core.tools.business_policy_checks import ScopeResolver
+
         r = ScopeResolver(config)
         assert r is not None
 
@@ -343,53 +366,62 @@ class TestScopeResolver:
         override = tmp_path / "scope.json"
         override.write_text("{}", encoding="utf-8")
         from memory_core.tools.business_policy_checks import ScopeResolver
+
         r = ScopeResolver(config, scope_config_path=override)
         assert r is not None
 
     def test_determine_project_scope_default(self, config):
         from memory_core.tools.business_policy_checks import ScopeResolver
+
         r = ScopeResolver(config)
         scope = r.determine_project_scope(config.repo_root / "unknown-dir")
         assert scope == config.default_project_scope
 
     def test_determine_project_scope_outside_repo(self, config, tmp_path):
         from memory_core.tools.business_policy_checks import ScopeResolver
+
         r = ScopeResolver(config)
         scope = r.determine_project_scope(tmp_path / "outside-repo")
         assert scope == config.default_project_scope
 
     def test_get_project_canonical(self, config):
         from memory_core.tools.business_policy_checks import ScopeResolver
+
         r = ScopeResolver(config)
         result = r.get_project_canonical()
         assert isinstance(result, dict)
 
     def test_get_project_runtime_root(self, config):
         from memory_core.tools.business_policy_checks import ScopeResolver
+
         r = ScopeResolver(config)
         result = r.get_project_runtime_root()
         assert isinstance(result, dict)
 
     def test_get_required_canonical(self, config):
         from memory_core.tools.business_policy_checks import ScopeResolver
+
         r = ScopeResolver(config)
         result = r.get_required_canonical()
         assert isinstance(result, list)
 
     def test_get_global_canonical(self, config):
         from memory_core.tools.business_policy_checks import ScopeResolver
+
         r = ScopeResolver(config)
         result = r.get_global_canonical()
         assert isinstance(result, list)
 
     def test_project_map_refs(self, config):
         from memory_core.tools.business_policy_checks import ScopeResolver
+
         r = ScopeResolver(config)
         refs = r.project_map_refs()
         assert isinstance(refs, list)
 
     def test_refs_for_scope(self, config):
         from memory_core.tools.business_policy_checks import ScopeResolver
+
         r = ScopeResolver(config)
         assert isinstance(r.decision_refs_for_scope("test-scope"), list)
         assert isinstance(r.lesson_refs_for_scope("test-scope"), list)
@@ -397,11 +429,17 @@ class TestScopeResolver:
 
     def test_scope_override_valid_json(self, config, tmp_path):
         override = tmp_path / "scope.json"
-        override.write_text(json.dumps({
-            "project_canonical": {"custom-scope": "custom.md"},
-            "project_runtime_root": {"custom-scope": "runtime/"},
-        }), encoding="utf-8")
+        override.write_text(
+            json.dumps(
+                {
+                    "project_canonical": {"custom-scope": "custom.md"},
+                    "project_runtime_root": {"custom-scope": "runtime/"},
+                }
+            ),
+            encoding="utf-8",
+        )
         from memory_core.tools.business_policy_checks import ScopeResolver
+
         r = ScopeResolver(config, scope_config_path=override)
         canonical = r.get_project_canonical()
         assert "custom-scope" in canonical
@@ -412,11 +450,13 @@ class TestScopeResolver:
         override = tmp_path / "scope.json"
         override.write_text("not json", encoding="utf-8")
         from memory_core.tools.business_policy_checks import ScopeResolver
+
         r = ScopeResolver(config, scope_config_path=override)
         assert r._scope_overrides == {}
 
     def test_scope_override_env_var(self, config, tmp_path):
         from memory_core.tools.business_policy_checks import ScopeResolver
+
         override = tmp_path / "scope.json"
         override.write_text("{}", encoding="utf-8")
         old = os.environ.get(ScopeResolver.SCOPE_CONFIG_PATH_ENV)
@@ -439,6 +479,7 @@ class TestScopeResolver:
 class TestHelperPathIsUnder:
     def test_path_under_root(self, tmp_path):
         from memory_core.tools.business_policy_checks import _path_is_under
+
         root = tmp_path / "root"
         root.mkdir()
         child = root / "child" / "file.txt"
@@ -448,6 +489,7 @@ class TestHelperPathIsUnder:
 
     def test_path_not_under_root(self, tmp_path):
         from memory_core.tools.business_policy_checks import _path_is_under
+
         root = tmp_path / "root"
         other = tmp_path / "other"
         root.mkdir()
@@ -458,6 +500,7 @@ class TestHelperPathIsUnder:
 
     def test_lexical_path_under(self, tmp_path):
         from memory_core.tools.business_policy_checks import _path_is_under_lexical
+
         root = tmp_path / "root"
         root.mkdir()
         child = root / "sub"
@@ -466,6 +509,7 @@ class TestHelperPathIsUnder:
 
     def test_lexical_path_not_under(self, tmp_path):
         from memory_core.tools.business_policy_checks import _path_is_under_lexical
+
         root = tmp_path / "root"
         other = tmp_path / "other"
         root.mkdir()
@@ -476,17 +520,20 @@ class TestHelperPathIsUnder:
 class TestHelperSectionParsing:
     def test_section_bullets_basic(self):
         from memory_core.tools.business_policy_checks import _section_bullets
+
         text = "Some intro\n## My Section\n- item1\n- item2\n## Next\n"
         result = _section_bullets(text, "## My Section")
         assert result == ["item1", "item2"]
 
     def test_section_bullets_empty(self):
         from memory_core.tools.business_policy_checks import _section_bullets
+
         result = _section_bullets("no heading here", "## Missing")
         assert result == []
 
     def test_section_body_basic(self):
         from memory_core.tools.business_policy_checks import _section_body
+
         text = "intro\n## My Section\nbody line 1\nbody line 2\n## Next\n"
         result = _section_body(text, "## My Section")
         assert "body line 1" in result
@@ -494,6 +541,7 @@ class TestHelperSectionParsing:
 
     def test_section_body_missing_heading(self):
         from memory_core.tools.business_policy_checks import _section_body
+
         result = _section_body("no heading", "## Missing")
         assert result == ""
 
@@ -501,21 +549,25 @@ class TestHelperSectionParsing:
 class TestHelperJsonParsing:
     def test_markdown_code_tokens(self):
         from memory_core.tools.business_policy_checks import _markdown_code_tokens
+
         result = _markdown_code_tokens("use `foo` and `bar`")
         assert result == {"foo", "bar"}
 
     def test_markdown_code_tokens_empty(self):
         from memory_core.tools.business_policy_checks import _markdown_code_tokens
+
         assert _markdown_code_tokens("") == set()
 
     def test_json_string_values(self):
         from memory_core.tools.business_policy_checks import _json_string_values
+
         text = '{"key": "val1"} {"key": "val2"}'
         result = _json_string_values(text, "key")
         assert result == {"val1", "val2"}
 
     def test_json_object_keys(self):
         from memory_core.tools.business_policy_checks import _json_object_keys
+
         text = '{"a": 1, "b": 2}'
         result = _json_object_keys(text)
         assert result == {"a", "b"}
@@ -524,6 +576,7 @@ class TestHelperJsonParsing:
 class TestHelperExistingPaths:
     def test_existing_paths_filters(self, tmp_path):
         from memory_core.tools.business_policy_checks import _existing_paths
+
         existing = tmp_path / "exists.txt"
         existing.touch()
         missing = tmp_path / "missing.txt"
@@ -532,6 +585,7 @@ class TestHelperExistingPaths:
 
     def test_existing_paths_empty_list(self):
         from memory_core.tools.business_policy_checks import _existing_paths
+
         assert _existing_paths([]) == []
 
 
@@ -545,28 +599,33 @@ class TestFailurePaths:
 
     def test_section_bullets_empty_text(self):
         from memory_core.tools.business_policy_checks import _section_bullets
+
         result = _section_bullets("", "## H")
         assert result == []
 
     def test_section_body_empty_text(self):
         from memory_core.tools.business_policy_checks import _section_body
+
         result = _section_body("", "## H")
         assert result == ""
 
     def test_markdown_code_tokens_special_chars(self):
         from memory_core.tools.business_policy_checks import _markdown_code_tokens
+
         text = "`hello world!@#$%^&*()`"
         result = _markdown_code_tokens(text)
         assert "hello world!@#$%^&*()" in result
 
     def test_json_string_values_special_chars(self):
         from memory_core.tools.business_policy_checks import _json_string_values
+
         text = '{"k": "v@#$$%"}'
         result = _json_string_values(text, "k")
         assert "v@#$$%" in result
 
     def test_project_map_validator_empty_config_paths(self, config):
         from memory_core.tools.business_policy_checks import ProjectMapValidator
+
         v = ProjectMapValidator(config)
         errors = v.validate_project_map_files()
         assert isinstance(errors, list)
@@ -579,6 +638,7 @@ class TestFailurePaths:
             frozen_tuple_legacy_markers=set(),
         )
         from memory_core.tools.business_policy_checks import FrozenTupleChecker
+
         c = FrozenTupleChecker(cfg)
         assert c.governance_frozen_tuple_blocker_errors() == []
 
@@ -588,18 +648,21 @@ class TestBoundaryInputs:
 
     def test_section_bullets_very_long_text(self):
         from memory_core.tools.business_policy_checks import _section_bullets
+
         long_text = "x" * 100_000 + "\n## H\n- item\n"
         result = _section_bullets(long_text, "## H")
         assert result == ["item"]
 
     def test_markdown_code_tokens_very_long_text(self):
         from memory_core.tools.business_policy_checks import _markdown_code_tokens
+
         long_text = " ".join(f"`tok{i}`" for i in range(1000))
         result = _markdown_code_tokens(long_text)
         assert len(result) == 1000
 
     def test_path_is_under_very_deep_path(self, tmp_path):
         from memory_core.tools.business_policy_checks import _path_is_under
+
         root = tmp_path / "root"
         deep = root
         for _ in range(50):
@@ -610,6 +673,7 @@ class TestBoundaryInputs:
     def test_event_contract_checker_empty_sets(self, config, tmp_path):
         """EventContractChecker with empty formal sets and minimal files."""
         from memory_core.tools.business_policy_checks import EventContractChecker
+
         doc_dir = tmp_path / "evt"
         doc_dir.mkdir()
         # Create minimal files so the checker runs; empty sets mean everything matches
@@ -638,6 +702,7 @@ class TestBoundaryInputs:
 
     def test_truth_basis_resolver_no_files_on_disk(self, config):
         from memory_core.tools.business_policy_checks import TruthBasisResolver
+
         r = TruthBasisResolver(config)
         result = r.truth_basis_for_scope("test-scope")
         assert isinstance(result, dict)

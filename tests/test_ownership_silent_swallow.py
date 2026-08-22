@@ -42,17 +42,13 @@ class TestIsMemoryCoreSourceRepoSilentSwallow:
         content = OWNERSHIP_PATH.read_text()
         func_body = _function_body(content, "is_memory_core_source_repo")
         positions = _except_positions(func_body)
-        assert len(positions) >= 1, (
-            "is_memory_core_source_repo must have an except Exception block"
-        )
-        except_block = func_body[positions[0]:positions[0] + 300]
+        assert len(positions) >= 1, "is_memory_core_source_repo must have an except Exception block"
+        except_block = func_body[positions[0] : positions[0] + 300]
         assert "logger.debug" in except_block, (
             "is_memory_core_source_repo except block must call logger.debug — "
             "bare pass silently swallows git root detection failures"
         )
-        assert "exc_info=True" in except_block, (
-            "logger.debug must include exc_info=True so the traceback is captured"
-        )
+        assert "exc_info=True" in except_block, "logger.debug must include exc_info=True so the traceback is captured"
 
     def test_no_bare_pass_in_function_scope(self):
         """The function must not contain a bare `except Exception: pass` swallow."""
@@ -81,7 +77,7 @@ class TestLoadMemoryOwnershipSilentSwallow:
             f"blocks (toml parse + json parse), found {len(positions)}"
         )
         for pos in positions:
-            except_block = func_body[pos:pos + 300]
+            except_block = func_body[pos : pos + 300]
             assert "logger.debug" in except_block, (
                 "load_memory_ownership except block must call logger.debug — "
                 "bare pass silently swallows ownership parse failures"
@@ -96,7 +92,7 @@ class TestLoadMemoryOwnershipSilentSwallow:
         func_body = _function_body(content, "load_memory_ownership")
         toml_idx = func_body.index("ownership.toml parse failed")
         # logger.debug( precedes the message; exc_info=True follows it.
-        window = func_body[max(0, toml_idx - 80):toml_idx + 200]
+        window = func_body[max(0, toml_idx - 80) : toml_idx + 200]
         assert "logger.debug" in window
         assert "exc_info=True" in window
 
@@ -106,7 +102,7 @@ class TestLoadMemoryOwnershipSilentSwallow:
         func_body = _function_body(content, "load_memory_ownership")
         json_idx = func_body.index("ownership.json parse failed")
         # logger.debug( precedes the message; exc_info=True follows it.
-        window = func_body[max(0, json_idx - 80):json_idx + 200]
+        window = func_body[max(0, json_idx - 80) : json_idx + 200]
         assert "logger.debug" in window
         assert "exc_info=True" in window
 

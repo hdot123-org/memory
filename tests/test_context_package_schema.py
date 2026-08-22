@@ -19,6 +19,7 @@ from memory_core.tools.memory_hook_schema import (
 # Fixtures: sample packages in each schema format
 # ---------------------------------------------------------------------------
 
+
 def _sample_v2_package() -> dict[str, Any]:
     """Minimal wb-hook-v2 context package."""
     return {
@@ -79,6 +80,7 @@ def _sample_v1_package() -> dict[str, Any]:
 # memory-v1 structure verification
 # ---------------------------------------------------------------------------
 
+
 class TestMemoryV1Structure:
     """Verify memory-v1 output references memory/kb/projects/{scope}/* canonical files."""
 
@@ -124,6 +126,7 @@ class TestMemoryV1Structure:
 # legacy conversion: v2 → memory-v1
 # ---------------------------------------------------------------------------
 
+
 class TestV2ToMemoryV1:
     """Legacy conversion from wb-hook-v2 to memory-v1."""
 
@@ -142,6 +145,7 @@ class TestV2ToMemoryV1:
 # ---------------------------------------------------------------------------
 # legacy conversion: v1 → memory-v1
 # ---------------------------------------------------------------------------
+
 
 class TestV1ToMemoryV1:
     """Legacy conversion from context-package-v1 to memory-v1."""
@@ -167,6 +171,7 @@ class TestV1ToMemoryV1:
 # identity: memory-v1 → memory-v1 (no-op)
 # ---------------------------------------------------------------------------
 
+
 class TestMemoryV1Identity:
     """Already memory-v1 package is returned as-is."""
 
@@ -182,6 +187,7 @@ class TestMemoryV1Identity:
 # ---------------------------------------------------------------------------
 # predicate helpers
 # ---------------------------------------------------------------------------
+
 
 class TestPredicates:
     """is_v1 / is_v2 / is_memory_v1 predicates."""
@@ -205,6 +211,7 @@ class TestPredicates:
 # ---------------------------------------------------------------------------
 # build_context_package_simple: integration tests
 # ---------------------------------------------------------------------------
+
 
 class TestBuildContextPackageSimple:
     """Test build_context_package_simple with both schema modes."""

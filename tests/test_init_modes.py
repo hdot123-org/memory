@@ -148,7 +148,10 @@ class TestInitModeUpdate:
         assert MEMORY_HOOK_END_MARKER not in content
         assert "No memory markers here." in content
         # Should be in skipped list (either "no marker" or "no legacy references")
-        assert any("AGENTS.md" in s and ("no marker" in s.lower() or "no legacy" in s.lower()) for s in result.get("skipped", []))
+        assert any(
+            "AGENTS.md" in s and ("no marker" in s.lower() or "no legacy" in s.lower())
+            for s in result.get("skipped", [])
+        )
 
     def test_update_preserves_business_index_even_with_force(self, tmp_path: Path) -> None:
         """update mode should not overwrite business INDEX.md even with --force."""

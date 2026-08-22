@@ -8,7 +8,6 @@ Covers validation assertions:
 - VAL-CROSS-001: init full flow (config → routing works)
 """
 
-
 from pathlib import Path
 
 import pytest
@@ -48,7 +47,9 @@ class TestInitCreatesGlobalKbStructure:
         assert (global_kb_root / "pending").is_dir()
         assert (global_kb_root / "INDEX.md").is_file()
 
-    def test_init_idempotent_does_not_overwrite_existing_index(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_init_idempotent_does_not_overwrite_existing_index(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """If global KB INDEX.md already exists, init should not overwrite it."""
         monkeypatch.setenv("HOME", str(tmp_path))
         global_kb_root = tmp_path / ".memory" / "global-kb"
@@ -160,10 +161,7 @@ class TestInitUpdateModePreservesGlobalKb:
         adapter_path = project / "memory" / "system" / "adapter.toml"
         custom_content = adapter_path.read_text()
         custom_root = "/custom/global-kb/path"
-        custom_content = custom_content.replace(
-            'root = "~/.memory/global-kb"',
-            f'root = "{custom_root}"'
-        )
+        custom_content = custom_content.replace('root = "~/.memory/global-kb"', f'root = "{custom_root}"')
         adapter_path.write_text(custom_content)
 
         # Verify custom config

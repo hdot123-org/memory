@@ -17,6 +17,7 @@ from memory_core.tools.memory_hook_integrity_keys import generate_key
 def _mock_source_repo(monkeypatch, project_root: Path):
     """Monkeypatch is_memory_core_source_repo to return False for project_root."""
     from memory_core.ownership import is_memory_core_source_repo as real_fn
+
     monkeypatch.setattr(
         "memory_core.tools.memory_hook_integrity_manifest.is_memory_core_source_repo",
         lambda p: p != project_root and real_fn(p),
@@ -26,6 +27,7 @@ def _mock_source_repo(monkeypatch, project_root: Path):
 # ---------------------------------------------------------------------------
 # Helper: run init via CLI
 # ---------------------------------------------------------------------------
+
 
 def _run_init_cli(target: Path, host: str = "factory", **extra_args: str) -> subprocess.CompletedProcess:
     """Run init_project_memory as a subprocess and return the CompletedProcess."""
@@ -52,6 +54,7 @@ def _run_init_cli(target: Path, host: str = "factory", **extra_args: str) -> sub
 # VAL-P0-001: init never writes any hooks.json
 # ---------------------------------------------------------------------------
 
+
 class TestNoHooksJson:
     def test_init_creates_no_hooks_json(self, tmp_path: Path) -> None:
         """VAL-P0-001: init never writes any hooks.json under .claude/, .codex/, .factory/."""
@@ -67,6 +70,7 @@ class TestNoHooksJson:
     def test_no_generate_hooks_json_in_source(self) -> None:
         """VAL-P0-001 (source): generate_hooks_json not called in init body."""
         import ast
+
         source_path = Path(__file__).parent.parent / "memory_core" / "tools" / "init_project_memory.py"
         source = source_path.read_text(encoding="utf-8")
         tree = ast.parse(source)
@@ -77,13 +81,18 @@ class TestNoHooksJson:
                 # Should not contain an active call to generate_hooks_json
                 # (commented-out reference is OK)
                 lines = func_source.split("\n")
-                active_calls = [line for line in lines if "generate_hooks_json(" in line and not line.strip().startswith("#")]
-                assert len(active_calls) == 0, f"generate_hooks_json still called in init_project_memory: {active_calls}"
+                active_calls = [
+                    line for line in lines if "generate_hooks_json(" in line and not line.strip().startswith("#")
+                ]
+                assert len(active_calls) == 0, (
+                    f"generate_hooks_json still called in init_project_memory: {active_calls}"
+                )
 
 
 # ---------------------------------------------------------------------------
 # VAL-P0-002: AGENTS.md contains no host-specific path references
 # ---------------------------------------------------------------------------
+
 
 class TestAgentsMdHostNeutral:
     def test_agents_md_no_legacy_host_strings(self, tmp_path: Path) -> None:
@@ -103,6 +112,7 @@ class TestAgentsMdHostNeutral:
 # ---------------------------------------------------------------------------
 # VAL-P0-003: adapter.toml [routing] host field is fixed to "factory"
 # ---------------------------------------------------------------------------
+
 
 class TestAdapterTomlHostFactory:
     def test_adapter_toml_host_factory(self, tmp_path: Path) -> None:
@@ -126,6 +136,7 @@ class TestAdapterTomlHostFactory:
 # ---------------------------------------------------------------------------
 # VAL-P0-004: Host neutrality — byte-identical output across two fresh inits
 # ---------------------------------------------------------------------------
+
 
 class TestHostNeutrality:
     def test_init_creates_byte_identical_output(self, tmp_path: Path) -> None:
@@ -163,16 +174,19 @@ class TestHostNeutrality:
 # VAL-P0-005: argparse rejects non-factory --host values in init CLI
 # ---------------------------------------------------------------------------
 
+
 class TestArgparseRejectsLegacyHosts:
     def test_argparse_rejects_codex(self, tmp_path: Path) -> None:
         """VAL-P0-005: --host codex raises SystemExit."""
         from memory_core.tools.init_project_memory import main
+
         with pytest.raises(SystemExit):
             main(["--target", str(tmp_path), "--host", "codex"])
 
     def test_argparse_rejects_claude(self, tmp_path: Path) -> None:
         """VAL-P0-005: --host claude raises SystemExit."""
         from memory_core.tools.init_project_memory import main
+
         with pytest.raises(SystemExit):
             main(["--target", str(tmp_path), "--host", "claude"])
 
@@ -180,6 +194,7 @@ class TestArgparseRejectsLegacyHosts:
         """VAL-P0-005: --host factory exits 0."""
         (tmp_path / ".git").mkdir()
         from memory_core.tools.init_project_memory import main
+
         ret = main(["--target", str(tmp_path), "--host", "factory"])
         assert ret == 0
 
@@ -188,10 +203,12 @@ class TestArgparseRejectsLegacyHosts:
 # VAL-P0-006: SUPPORTED_HOSTS constant is ("factory",)
 # ---------------------------------------------------------------------------
 
+
 class TestSupportedHostsFactoryOnly:
     def test_supported_hosts_factory_only(self) -> None:
         """VAL-P0-006: SUPPORTED_HOSTS == ('factory',)."""
         from memory_core.constants import SUPPORTED_HOSTS
+
         assert SUPPORTED_HOSTS == ("factory",)
         assert len(SUPPORTED_HOSTS) == 1
         assert "factory" in SUPPORTED_HOSTS
@@ -201,12 +218,14 @@ class TestSupportedHostsFactoryOnly:
 # VAL-P0-007: memory_hook_gateway --host argparse accepts only factory
 # ---------------------------------------------------------------------------
 
+
 class TestGatewayArgparseFactoryOnly:
     def test_gateway_rejects_codex(self) -> None:
         """VAL-P0-007: gateway --host codex raises SystemExit."""
         import sys
 
         from memory_core.tools.memory_hook_gateway import _parse_args
+
         old_argv = sys.argv
         try:
             sys.argv = ["gateway", "--host", "codex", "--event", "session-start"]
@@ -220,6 +239,7 @@ class TestGatewayArgparseFactoryOnly:
         import sys
 
         from memory_core.tools.memory_hook_gateway import _parse_args
+
         old_argv = sys.argv
         try:
             sys.argv = ["gateway", "--host", "claude", "--event", "session-start"]
@@ -233,6 +253,7 @@ class TestGatewayArgparseFactoryOnly:
         import sys
 
         from memory_core.tools.memory_hook_gateway import _parse_args
+
         old_argv = sys.argv
         try:
             sys.argv = ["gateway", "--host", "factory", "--event", "session-start"]
@@ -246,10 +267,12 @@ class TestGatewayArgparseFactoryOnly:
 # VAL-P0-008: adapter_toml_schema.py rejects non-factory hosts in strict mode
 # ---------------------------------------------------------------------------
 
+
 class TestAdapterTomlStrictRejectsLegacyHosts:
     def test_strict_rejects_codex(self, tmp_path: Path) -> None:
         """VAL-P0-008: strict mode rejects host = 'codex'."""
         from memory_core.tools.adapter_toml_schema import load_adapter_toml
+
         toml_content = """\
 [core]
 version = "0.6.0"
@@ -274,6 +297,7 @@ canonical_files = []
     def test_strict_accepts_factory(self, tmp_path: Path) -> None:
         """VAL-P0-008: strict mode accepts host = 'factory'."""
         from memory_core.tools.adapter_toml_schema import load_adapter_toml
+
         toml_content = """\
 [core]
 version = "0.6.0"
@@ -298,6 +322,7 @@ canonical_files = []
     def test_adapter_config_default_host_is_factory(self) -> None:
         """VAL-P0-008: AdapterConfig.host defaults to 'factory'."""
         from memory_core.tools.adapter_toml_schema import AdapterConfig
+
         config = AdapterConfig(project_name="x", project_scope="x")
         assert config.host == "factory"
 
@@ -305,6 +330,7 @@ canonical_files = []
 # ---------------------------------------------------------------------------
 # VAL-P0-009: CoreConfig __post_init__ rejects non-factory hosts
 # ---------------------------------------------------------------------------
+
 
 class TestCoreConfigRejectsNonFactory:
     def test_core_config_rejects_codex(self) -> None:
@@ -406,6 +432,7 @@ class TestCoreConfigRejectsNonFactory:
 # Phase 1 — Initialization Template Completion (VAL-P1-001 through VAL-P1-010)
 # ---------------------------------------------------------------------------
 
+
 def _build_config_from_init(tmp_path: Path):
     """Build GatewayBusinessPolicyConfig from a freshly initialized tmp_path."""
     from memory_core.tools.memory_hook_impls import GatewayBusinessPolicyConfig
@@ -426,8 +453,16 @@ def _build_config_from_init(tmp_path: Path):
     project_map_root = tmp_path / "project-map"
 
     # Ensure all required dirs exist (some may be created by init)
-    for d in ["memory/kb/global", "memory/kb/global/projects", "memory/kb/projects", "memory/docs",
-              "memory/log", "memory/system", "tools", "tests"]:
+    for d in [
+        "memory/kb/global",
+        "memory/kb/global/projects",
+        "memory/kb/projects",
+        "memory/docs",
+        "memory/log",
+        "memory/system",
+        "tools",
+        "tests",
+    ]:
         (tmp_path / d).mkdir(parents=True, exist_ok=True)
 
     # Build paths based on init output
@@ -445,8 +480,13 @@ def _build_config_from_init(tmp_path: Path):
     global_canonical = [truth_model, memory_system_path, hook_contract_path, memory_routing, pm_governance]
 
     authority_allowed_paths = {
-        index_md, core_map, truth_model, memory_system_path,
-        hook_contract_path, pm_governance, memory_routing,
+        index_md,
+        core_map,
+        truth_model,
+        memory_system_path,
+        hook_contract_path,
+        pm_governance,
+        memory_routing,
     }
 
     lower_evidence_roots = [
@@ -466,9 +506,14 @@ def _build_config_from_init(tmp_path: Path):
         lower_evidence_roots=lower_evidence_roots,
         legal_core_markers=["active-legal", "project-map/INDEX.md", "truth-model.md", "memory-system.md"],
         required_registry_scopes=[
-            "project-map/**", "memory/kb/global/**", "memory/kb/projects/**",
-            "memory/docs/**", "memory/log/**", "memory_core/projects/**",
-            "memory_core/tools/**", "tests/**",
+            "project-map/**",
+            "memory/kb/global/**",
+            "memory/kb/projects/**",
+            "memory/docs/**",
+            "memory/log/**",
+            "memory_core/projects/**",
+            "memory_core/tools/**",
+            "tests/**",
         ],
         project_canonical={},
         project_runtime_root={},
@@ -568,6 +613,7 @@ class TestTruthBasisTruthModel:
 
         config = _build_config_from_init(tmp_path)
         from memory_core.tools.business_policy_checks import TruthBasisResolver
+
         resolver = TruthBasisResolver(config)
         file_path = config.repo_root / "memory" / "kb" / "global" / "truth-model.md"
         content = file_path.read_text(encoding="utf-8")
@@ -587,6 +633,7 @@ class TestTruthBasisMemorySystem:
 
         config = _build_config_from_init(tmp_path)
         from memory_core.tools.business_policy_checks import TruthBasisResolver
+
         resolver = TruthBasisResolver(config)
         file_path = config.repo_root / "memory" / "kb" / "global" / "memory-system.md"
         content = file_path.read_text(encoding="utf-8")
@@ -606,6 +653,7 @@ class TestTruthBasisMemoryRouting:
 
         config = _build_config_from_init(tmp_path)
         from memory_core.tools.business_policy_checks import TruthBasisResolver
+
         resolver = TruthBasisResolver(config)
         file_path = config.repo_root / "memory" / "kb" / "global" / "memory-routing.md"
         content = file_path.read_text(encoding="utf-8")
@@ -625,6 +673,7 @@ class TestTruthBasisHookContract:
 
         config = _build_config_from_init(tmp_path)
         from memory_core.tools.business_policy_checks import TruthBasisResolver
+
         resolver = TruthBasisResolver(config)
         file_path = config.repo_root / "memory" / "kb" / "global" / "hook-contract.md"
         content = file_path.read_text(encoding="utf-8")
@@ -644,6 +693,7 @@ class TestTruthBasisProjectMapGovernance:
 
         config = _build_config_from_init(tmp_path)
         from memory_core.tools.business_policy_checks import TruthBasisResolver
+
         resolver = TruthBasisResolver(config)
         file_path = config.repo_root / "memory" / "kb" / "global" / "project-map-governance.md"
         content = file_path.read_text(encoding="utf-8")
@@ -831,7 +881,9 @@ class TestPostInitAuditSurfacesP1Findings:
 
         assert result["success"] is True, "init should still succeed despite P1 findings"
         audit_warnings = [w for w in result.get("warnings", []) if "audit" in w.lower() or "p1" in w.lower()]
-        assert len(audit_warnings) > 0, f"Expected P1 audit warnings in result['warnings'], got: {result.get('warnings', [])}"
+        assert len(audit_warnings) > 0, (
+            f"Expected P1 audit warnings in result['warnings'], got: {result.get('warnings', [])}"
+        )
 
 
 class TestPostInitAuditDoesNotBlockOnException:
@@ -880,12 +932,18 @@ class TestCleanProjectNoP1AuditWarnings:
         # Structural P1 (memory/, project-map/) are inherent to init — filter them out.
         # Only assert no pollution-related P1 warnings.
         pollution_p1 = [
-            w for w in result.get("warnings", [])
-            if "p1" in w.lower() and any(
+            w
+            for w in result.get("warnings", [])
+            if "p1" in w.lower()
+            and any(
                 keyword in w.lower()
                 for keyword in [
-                    "root_pollution", "root_report", "root_spreadsheet",
-                    "root_dump", "root_backup", "manifest"
+                    "root_pollution",
+                    "root_report",
+                    "root_spreadsheet",
+                    "root_dump",
+                    "root_backup",
+                    "manifest",
                 ]
             )
         ]
@@ -933,13 +991,8 @@ class TestSignProjectExcludesRuntimeByDefault:
         manifest = sign_project(root, key)
         assert manifest is not None
 
-        artifact_entries = [
-            e for e in manifest["entries"]
-            if "memory/artifacts/memory-hook" in e["rel_path"]
-        ]
-        assert artifact_entries == [], (
-            f"sign_project default should exclude runtime artifacts, got: {artifact_entries}"
-        )
+        artifact_entries = [e for e in manifest["entries"] if "memory/artifacts/memory-hook" in e["rel_path"]]
+        assert artifact_entries == [], f"sign_project default should exclude runtime artifacts, got: {artifact_entries}"
 
 
 class TestSignProjectIncludesRuntimeWhenRequested:
@@ -955,13 +1008,8 @@ class TestSignProjectIncludesRuntimeWhenRequested:
         manifest = sign_project(root, key, include_runtime=True)
         assert manifest is not None
 
-        artifact_entries = [
-            e for e in manifest["entries"]
-            if "memory/artifacts/memory-hook" in e["rel_path"]
-        ]
-        assert len(artifact_entries) >= 1, (
-            "sign_project(include_runtime=True) should include runtime artifacts"
-        )
+        artifact_entries = [e for e in manifest["entries"] if "memory/artifacts/memory-hook" in e["rel_path"]]
+        assert len(artifact_entries) >= 1, "sign_project(include_runtime=True) should include runtime artifacts"
 
 
 class TestSignProjectIncrementalExcludesRuntimeByDefault:
@@ -984,13 +1032,8 @@ class TestSignProjectIncrementalExcludesRuntimeByDefault:
         manifest = sign_project_incremental(root, key, changed_paths=["memory/system/CANONICAL.md"])
         assert manifest is not None
 
-        artifact_entries = [
-            e for e in manifest["entries"]
-            if "memory/artifacts/memory-hook" in e["rel_path"]
-        ]
-        assert artifact_entries == [], (
-            "sign_project_incremental default should exclude runtime artifacts"
-        )
+        artifact_entries = [e for e in manifest["entries"] if "memory/artifacts/memory-hook" in e["rel_path"]]
+        assert artifact_entries == [], "sign_project_incremental default should exclude runtime artifacts"
 
 
 class TestSignProjectIncrementalIncludesRuntime:
@@ -1018,10 +1061,7 @@ class TestSignProjectIncrementalIncludesRuntime:
         )
         assert manifest is not None
 
-        artifact_entries = [
-            e for e in manifest["entries"]
-            if "memory/artifacts/memory-hook" in e["rel_path"]
-        ]
+        artifact_entries = [e for e in manifest["entries"] if "memory/artifacts/memory-hook" in e["rel_path"]]
         assert len(artifact_entries) >= 1, (
             "sign_project_incremental(include_runtime=True) should include runtime artifacts"
         )
@@ -1038,10 +1078,7 @@ class TestDiscoverCanonicalFilesRespectsIncludeRuntime:
         _mock_source_repo(monkeypatch, root)
 
         files = _discover_canonical_files(root, include_runtime=False)
-        artifact_files = [
-            f for f in files
-            if "memory/artifacts/memory-hook" in str(f)
-        ]
+        artifact_files = [f for f in files if "memory/artifacts/memory-hook" in str(f)]
         assert artifact_files == [], (
             f"_discover_canonical_files(include_runtime=False) should exclude artifacts, got: {artifact_files}"
         )
@@ -1063,22 +1100,21 @@ class TestResignCLIExcludesRuntimeByDefault:
         old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
         os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(key_path)
         try:
-            exit_code = resign_main([
-                "--project-root", str(root),
-                "--reason", "test re-sign",
-                "--force",
-            ])
+            exit_code = resign_main(
+                [
+                    "--project-root",
+                    str(root),
+                    "--reason",
+                    "test re-sign",
+                    "--force",
+                ]
+            )
             assert exit_code == 0
 
             manifest_path = root / "memory" / "system" / "manifest.json"
             manifest = json.loads(manifest_path.read_text())
-            artifact_entries = [
-                e for e in manifest["entries"]
-                if "memory/artifacts/memory-hook" in e["rel_path"]
-            ]
-            assert artifact_entries == [], (
-                "resign CLI default should exclude runtime artifacts"
-            )
+            artifact_entries = [e for e in manifest["entries"] if "memory/artifacts/memory-hook" in e["rel_path"]]
+            assert artifact_entries == [], "resign CLI default should exclude runtime artifacts"
         finally:
             if old_env is not None:
                 os.environ["MEMORY_INTEGRITY_KEY_PATH"] = old_env
@@ -1102,23 +1138,22 @@ class TestResignCLIIncludeRuntime:
         old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
         os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(key_path)
         try:
-            exit_code = resign_main([
-                "--project-root", str(root),
-                "--reason", "test re-sign with runtime",
-                "--force",
-                "--include-runtime",
-            ])
+            exit_code = resign_main(
+                [
+                    "--project-root",
+                    str(root),
+                    "--reason",
+                    "test re-sign with runtime",
+                    "--force",
+                    "--include-runtime",
+                ]
+            )
             assert exit_code == 0
 
             manifest_path = root / "memory" / "system" / "manifest.json"
             manifest = json.loads(manifest_path.read_text())
-            artifact_entries = [
-                e for e in manifest["entries"]
-                if "memory/artifacts/memory-hook" in e["rel_path"]
-            ]
-            assert len(artifact_entries) >= 1, (
-                "resign CLI --include-runtime should include runtime artifacts"
-            )
+            artifact_entries = [e for e in manifest["entries"] if "memory/artifacts/memory-hook" in e["rel_path"]]
+            assert len(artifact_entries) >= 1, "resign CLI --include-runtime should include runtime artifacts"
         finally:
             if old_env is not None:
                 os.environ["MEMORY_INTEGRITY_KEY_PATH"] = old_env
@@ -1146,10 +1181,7 @@ class TestAuditManifestNoFalsePositives:
         (tmp_path / "memory" / "system" / "manifest.json").write_text(json.dumps(manifest))
 
         result = audit_project_layout(tmp_path)
-        runtime_findings = [
-            f for f in result.findings
-            if f.kind == "manifest_includes_runtime"
-        ]
+        runtime_findings = [f for f in result.findings if f.kind == "manifest_includes_runtime"]
         assert runtime_findings == [], (
             f"Expected no manifest_includes_runtime findings for canonical paths, got: {runtime_findings}"
         )
@@ -1166,7 +1198,10 @@ class TestAuditManifestCatchesTrueRuntimePaths:
         manifest = {
             "schema_version": "integrity-manifest-v2",
             "entries": [
-                {"path": "/project/memory/artifacts/memory-hook/contexts/ctx.json", "rel_path": "memory/artifacts/memory-hook/contexts/ctx.json"},
+                {
+                    "path": "/project/memory/artifacts/memory-hook/contexts/ctx.json",
+                    "rel_path": "memory/artifacts/memory-hook/contexts/ctx.json",
+                },
                 {"path": "/project/tmp/foo.log", "rel_path": "tmp/foo.log"},
                 {"path": "/project/memory/system/cache/cache.json", "rel_path": "memory/system/cache/cache.json"},
             ],
@@ -1174,13 +1209,8 @@ class TestAuditManifestCatchesTrueRuntimePaths:
         (tmp_path / "memory" / "system" / "manifest.json").write_text(json.dumps(manifest))
 
         result = audit_project_layout(tmp_path)
-        runtime_findings = [
-            f for f in result.findings
-            if f.kind == "manifest_includes_runtime"
-        ]
-        assert len(runtime_findings) >= 1, (
-            "Expected manifest_includes_runtime findings for true runtime paths"
-        )
+        runtime_findings = [f for f in result.findings if f.kind == "manifest_includes_runtime"]
+        assert len(runtime_findings) >= 1, "Expected manifest_includes_runtime findings for true runtime paths"
 
 
 # ---------------------------------------------------------------------------
@@ -1200,6 +1230,7 @@ class TestCodexGlobalHooksDeleted:
     def test_codex_global_hooks_module_not_importable(self) -> None:
         """VAL-P4-001: import memory_core.tools.codex_global_hooks raises ImportError."""
         import importlib.util
+
         spec = importlib.util.find_spec("memory_core.tools.codex_global_hooks")
         assert spec is None, "codex_global_hooks module should not be importable"
 
@@ -1216,6 +1247,7 @@ class TestClaudeGlobalHooksDeleted:
     def test_claude_global_hooks_module_not_importable(self) -> None:
         """VAL-P4-002: import memory_core.tools.claude_global_hooks raises ImportError."""
         import importlib.util
+
         spec = importlib.util.find_spec("memory_core.tools.claude_global_hooks")
         assert spec is None, "claude_global_hooks module should not be importable"
 
@@ -1268,7 +1300,9 @@ class TestFactoryGlobalHooksNoCodexProbe:
         repo_root = Path(__file__).parent.parent
         content = (repo_root / "memory_core" / "tools" / "factory_global_hooks.py").read_text(encoding="utf-8")
         assert "codex_global_hooks.py" not in content, "factory_global_hooks.py should not probe for codex_global_hooks"
-        assert "claude_global_hooks.py" not in content, "factory_global_hooks.py should not probe for claude_global_hooks"
+        assert "claude_global_hooks.py" not in content, (
+            "factory_global_hooks.py should not probe for claude_global_hooks"
+        )
 
 
 class TestHookUpgradeNoCodexClaudeImports:
@@ -1390,9 +1424,6 @@ class TestReadmeNoCodexClaudeHostRefs:
         assert "--host claude" not in content
 
 
-
-
-
 # ---------------------------------------------------------------------------
 # Cross-Area Flows (VAL-CROSS-001 through VAL-CROSS-006)
 # ---------------------------------------------------------------------------
@@ -1473,7 +1504,9 @@ class TestCrossInitUpdateIdempotent:
         assert result["success"] is True
 
         after = _hash_key_files(tmp_path)
-        assert before == after, f"Files changed after update: keys before={set(before.keys()) - set(after.keys())}, after={set(after.keys()) - set(before.keys())}"
+        assert before == after, (
+            f"Files changed after update: keys before={set(before.keys()) - set(after.keys())}, after={set(after.keys()) - set(before.keys())}"
+        )
 
 
 class TestCrossLegacyMigrationPath:
@@ -1547,6 +1580,7 @@ canonical_files = []
         # (c) ProjectMapValidator returns zero errors
         config = _build_config_from_init(tmp_path)
         from memory_core.tools.business_policy_checks import ProjectMapValidator
+
         validator = ProjectMapValidator(config)
         errors = validator.validate_unique_legal_system_contract()
         assert errors == [], f"ProjectMapValidator errors after migration: {errors}"
@@ -1578,8 +1612,7 @@ class TestCrossAuditNoFalsePositivesFreshInit:
         # Audit: no manifest_includes_runtime findings for non-.keep files
         result = audit_project_layout(tmp_path)
         runtime_findings = [
-            f for f in result.findings
-            if f.kind == "manifest_includes_runtime" and ".keep" not in f.message
+            f for f in result.findings if f.kind == "manifest_includes_runtime" and ".keep" not in f.message
         ]
         assert runtime_findings == [], (
             f"Fresh init manifest should not trigger manifest_includes_runtime for canonical files: {runtime_findings}"
@@ -1594,10 +1627,7 @@ class TestCrossSingleHostWrapperOnly:
         repo_root = Path(__file__).parent.parent
         tools_dir = repo_root / "memory_core" / "tools"
 
-        wrapper_files = sorted([
-            p.name
-            for p in tools_dir.glob("*_global_hooks.py")
-        ])
+        wrapper_files = sorted([p.name for p in tools_dir.glob("*_global_hooks.py")])
         assert wrapper_files == ["factory_global_hooks.py"], (
             f"Expected only factory_global_hooks.py, found: {wrapper_files}"
         )
@@ -1605,6 +1635,7 @@ class TestCrossSingleHostWrapperOnly:
     def test_factory_global_hooks_importable(self) -> None:
         """VAL-CROSS-005: import memory_core.tools.factory_global_hooks succeeds."""
         from memory_core.tools import factory_global_hooks  # noqa: F401
+
         assert factory_global_hooks is not None
 
 
@@ -1616,6 +1647,7 @@ class TestCrossVersionBumpRecorded:
         from packaging.version import Version
 
         from memory_core.constants import CURRENT_MEMORY_VERSION
+
         assert Version(CURRENT_MEMORY_VERSION) >= Version("0.6.0")
 
     def test_changelog_has_chinese_entry(self) -> None:
@@ -1623,8 +1655,17 @@ class TestCrossVersionBumpRecorded:
         repo_root = Path(__file__).parent.parent
         content = (repo_root / "CHANGELOG.md").read_text(encoding="utf-8")
         # Check for Chinese entries describing the host tightening + tech debt cleanup
-        assert any(phrase in content for phrase in [
-            "收紧", "完整性签名", "初始化模板补全", "初始化行为修复",
-            "跨 phase", "存量项目迁移", "旧 host 痕迹", "审计前缀",
-            "host 单一化",
-        ]), "CHANGELOG.md must contain Chinese entry for host tightening + tech debt cleanup"
+        assert any(
+            phrase in content
+            for phrase in [
+                "收紧",
+                "完整性签名",
+                "初始化模板补全",
+                "初始化行为修复",
+                "跨 phase",
+                "存量项目迁移",
+                "旧 host 痕迹",
+                "审计前缀",
+                "host 单一化",
+            ]
+        ), "CHANGELOG.md must contain Chinese entry for host tightening + tech debt cleanup"

@@ -11,7 +11,6 @@ Tests the safe migrator functionality including:
 - Destination exists rejection
 """
 
-
 import json
 from pathlib import Path
 
@@ -290,7 +289,11 @@ class TestDryRun:
         plan = {
             "target": str(project),
             "actions": [
-                {"action": "ignore_runtime_artifact", "path": "memory/artifacts/memory-hook/log.json", "severity": "P2"},
+                {
+                    "action": "ignore_runtime_artifact",
+                    "path": "memory/artifacts/memory-hook/log.json",
+                    "severity": "P2",
+                },
             ],
             "risk_level": "low",
             "requires_human_confirmation": False,
@@ -470,7 +473,11 @@ class TestIgnoreRuntimeArtifact:
         plan = {
             "target": str(project),
             "actions": [
-                {"action": "ignore_runtime_artifact", "path": "memory/artifacts/memory-hook/log.json", "severity": "P2"},
+                {
+                    "action": "ignore_runtime_artifact",
+                    "path": "memory/artifacts/memory-hook/log.json",
+                    "severity": "P2",
+                },
             ],
             "risk_level": "low",
             "requires_human_confirmation": False,
@@ -499,7 +506,11 @@ class TestIgnoreRuntimeArtifact:
         plan = {
             "target": str(project),
             "actions": [
-                {"action": "ignore_runtime_artifact", "path": "memory/artifacts/memory-hook/log.json", "severity": "P2"},
+                {
+                    "action": "ignore_runtime_artifact",
+                    "path": "memory/artifacts/memory-hook/log.json",
+                    "severity": "P2",
+                },
             ],
             "risk_level": "low",
             "requires_human_confirmation": False,
@@ -790,11 +801,15 @@ class TestCLIMain:
         plan_file = tmp_path / "plan.json"
         plan_file.write_text(json.dumps(plan))
 
-        exit_code = main([
-            "--target", str(project),
-            "--plan", str(plan_file),
-            "--dry-run",
-        ])
+        exit_code = main(
+            [
+                "--target",
+                str(project),
+                "--plan",
+                str(plan_file),
+                "--dry-run",
+            ]
+        )
 
         assert exit_code == 0
         assert report_file.exists()  # Not moved
@@ -818,12 +833,16 @@ class TestCLIMain:
         plan_file = tmp_path / "plan.json"
         plan_file.write_text(json.dumps(plan))
 
-        exit_code = main([
-            "--target", str(project),
-            "--plan", str(plan_file),
-            "--dry-run",
-            "--json",
-        ])
+        exit_code = main(
+            [
+                "--target",
+                str(project),
+                "--plan",
+                str(plan_file),
+                "--dry-run",
+                "--json",
+            ]
+        )
 
         assert exit_code == 0
 
@@ -838,9 +857,12 @@ class TestCLIMain:
         project = tmp_path / "project"
         project.mkdir()
 
-        exit_code = main([
-            "--target", str(project),
-        ])
+        exit_code = main(
+            [
+                "--target",
+                str(project),
+            ]
+        )
 
         assert exit_code == 1
 
@@ -849,11 +871,16 @@ class TestCLIMain:
         project = tmp_path / "project"
         project.mkdir()
 
-        exit_code = main([
-            "--target", str(project),
-            "--plan", "/dev/null",
-            "--rollback", "/dev/null",
-        ])
+        exit_code = main(
+            [
+                "--target",
+                str(project),
+                "--plan",
+                "/dev/null",
+                "--rollback",
+                "/dev/null",
+            ]
+        )
 
         assert exit_code == 2
 
@@ -886,11 +913,15 @@ class TestCLIMain:
         backup_file = tmp_path / "test-report.md.backup"
         backup_file.write_text("# Original")
 
-        exit_code = main([
-            "--target", str(project),
-            "--rollback", str(manifest_file),
-            "--dry-run",
-        ])
+        exit_code = main(
+            [
+                "--target",
+                str(project),
+                "--rollback",
+                str(manifest_file),
+                "--dry-run",
+            ]
+        )
 
         # Should succeed in dry-run (backup file not found is expected)
         assert exit_code == 0 or exit_code == 1  # May fail due to missing backup file

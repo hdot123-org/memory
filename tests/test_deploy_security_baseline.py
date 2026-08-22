@@ -43,17 +43,15 @@ def test_deploy_to_empty_dir(tmp_path: Path):
     assert exit_code == 0, f"Expected exit 0, got {exit_code}. stdout={stdout}\nstderr={stderr}"
 
     # Check that the expected files were copied
-    assert (target / ".github" / "workflows" / "droid-review.yml").is_file(), \
+    assert (target / ".github" / "workflows" / "droid-review.yml").is_file(), (
         "droid-review.yml should be copied to target"
-    assert (target / ".github" / "workflows" / "auto-merge.yml").is_file(), \
-        "auto-merge.yml should be copied to target"
-    assert (target / "scripts" / "check_droid_review.sh").is_file(), \
-        "check_droid_review.sh should be copied to target"
+    )
+    assert (target / ".github" / "workflows" / "auto-merge.yml").is_file(), "auto-merge.yml should be copied to target"
+    assert (target / "scripts" / "check_droid_review.sh").is_file(), "check_droid_review.sh should be copied to target"
 
     # Verify check_droid_review.sh is executable
     check_script = target / "scripts" / "check_droid_review.sh"
-    assert os.access(check_script, os.X_OK), \
-        "check_droid_review.sh should have execute permission"
+    assert os.access(check_script, os.X_OK), "check_droid_review.sh should have execute permission"
 
 
 # ============================================================================
@@ -78,12 +76,14 @@ def test_skip_existing_without_force(tmp_path: Path):
 
     # Verify the original content is preserved
     actual_content = (workflows_dir / "droid-review.yml").read_text()
-    assert actual_content == original_content, \
+    assert actual_content == original_content, (
         f"Original file content should be preserved when FORCE is not set. Got: {actual_content!r}"
+    )
 
     # Verify output mentions skipping
-    assert "skipping" in stdout.lower() or "already exists" in stdout.lower(), \
+    assert "skipping" in stdout.lower() or "already exists" in stdout.lower(), (
         f"Expected 'skipping' message in output. stdout: {stdout}"
+    )
 
 
 # ============================================================================
@@ -108,12 +108,10 @@ def test_force_overwrites(tmp_path: Path):
 
     # Verify the file was overwritten (content should differ from original)
     actual_content = (workflows_dir / "droid-review.yml").read_text()
-    assert actual_content != original_content, \
-        "File should be overwritten when FORCE=1 is set"
+    assert actual_content != original_content, "File should be overwritten when FORCE=1 is set"
 
     # Verify output mentions deployment (not skipping)
-    assert "deployed" in stdout.lower() or "[+]" in stdout, \
-        f"Expected deployment message in output. stdout: {stdout}"
+    assert "deployed" in stdout.lower() or "[+]" in stdout, f"Expected deployment message in output. stdout: {stdout}"
 
 
 # ============================================================================

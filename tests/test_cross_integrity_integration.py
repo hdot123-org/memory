@@ -88,9 +88,7 @@ class TestCross001InitModifyIncremental:
 
         # Step 3: Incremental sign only the changed file
         changed_rel = str(canonical_file.relative_to(project))
-        manifest_after = sign_project_incremental(
-            project, key, changed_paths=[changed_rel]
-        )
+        manifest_after = sign_project_incremental(project, key, changed_paths=[changed_rel])
         assert manifest_after is not None
 
         entries_after = {e["rel_path"]: e for e in manifest_after["entries"]}
@@ -118,9 +116,7 @@ class TestCross001InitModifyIncremental:
         canonical_file.write_text("# Modified\n")
         changed_rel = str(canonical_file.relative_to(project))
 
-        sign_project_incremental(
-            project, key, changed_paths=[changed_rel], reason="test-modification"
-        )
+        sign_project_incremental(project, key, changed_paths=[changed_rel], reason="test-modification")
 
         # Check audit log - only incremental sign writes to audit log
         audit_path = project / "memory" / "system" / "integrity-audit.jsonl"
@@ -191,6 +187,7 @@ class TestCross002HeartbeatSessionEndCoexist:
         )
 
         import fcntl
+
         with sessions_file.open("a", encoding="utf-8") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
@@ -221,6 +218,7 @@ class TestCross002HeartbeatSessionEndCoexist:
         )
 
         import fcntl
+
         with sessions_file.open("a", encoding="utf-8") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
@@ -244,9 +242,7 @@ class TestCross002HeartbeatSessionEndCoexist:
         sessions_file = project / "memory" / "log" / f"{date_str}-sessions.md"
 
         # Step 1: Write heartbeat (F4)
-        hb_path = self._write_heartbeat(
-            project, session_id, "Hello, this is a test prompt for heartbeat", count=1
-        )
+        hb_path = self._write_heartbeat(project, session_id, "Hello, this is a test prompt for heartbeat", count=1)
         assert hb_path == sessions_file
         assert sessions_file.exists()
 
@@ -276,9 +272,7 @@ class TestCross002HeartbeatSessionEndCoexist:
 
         # Verify should pass — manifest should match final file state
         result = verify_project(project, key)
-        assert result.ok, (
-            f"Verification failed after both heartbeat and session-end: {result.errors}"
-        )
+        assert result.ok, f"Verification failed after both heartbeat and session-end: {result.errors}"
 
     def test_multiple_heartbeats_then_session_end(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Multiple heartbeats + session-end coexist, manifest consistent."""
@@ -294,9 +288,7 @@ class TestCross002HeartbeatSessionEndCoexist:
 
         # Write 3 heartbeats
         for i in range(1, 4):
-            self._write_heartbeat(
-                project, session_id, f"Prompt message number {i} for testing", count=i
-            )
+            self._write_heartbeat(project, session_id, f"Prompt message number {i} for testing", count=i)
             sign_project_incremental(project, key, changed_paths=[rel_sessions])
 
         # Write session-end
@@ -356,9 +348,7 @@ class TestCross003SessionStartDetectsLayerChanges:
             f"sessions.md should be in manifest after incremental sign: {manifest_rel_paths}"
         )
 
-    def test_incremental_sign_fixes_discrepancy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_incremental_sign_fixes_discrepancy(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """After layer writes file, incremental sign restores verification consistency."""
         _monkeypatch_source_detection(monkeypatch, tmp_path)
         project = _create_minimal_project(tmp_path)
@@ -382,9 +372,7 @@ class TestCross003SessionStartDetectsLayerChanges:
             f"Expected no unsigned warnings after incremental sign, got: {result.warnings}"
         )
 
-    def test_collect_changed_paths_detects_modified_file(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_collect_changed_paths_detects_modified_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """_collect_changed_paths() returns file whose content changed after last signing."""
         _monkeypatch_source_detection(monkeypatch, tmp_path)
         project = _create_minimal_project(tmp_path)
@@ -400,9 +388,7 @@ class TestCross003SessionStartDetectsLayerChanges:
 
         # _collect_changed_paths should detect it (takes manifest dict, not path)
         changed = _collect_changed_paths(project, manifest)
-        assert any("adapter.toml" in p for p in changed), (
-            f"Expected adapter.toml in changed paths, got: {changed}"
-        )
+        assert any("adapter.toml" in p for p in changed), f"Expected adapter.toml in changed paths, got: {changed}"
 
 
 # ============================================================
@@ -415,9 +401,7 @@ class TestCross004FullLifecycle:
     `verify_project()` passes after each step; manifest contains all files.
     """
 
-    def _write_heartbeat_entry(
-        self, project: Path, session_id: str, prompt: str, count: int, date_str: str
-    ) -> str:
+    def _write_heartbeat_entry(self, project: Path, session_id: str, prompt: str, count: int, date_str: str) -> str:
         """Write a heartbeat entry to sessions.md."""
         sessions_file = project / "memory" / "log" / f"{date_str}-sessions.md"
         sessions_file.parent.mkdir(parents=True, exist_ok=True)
@@ -430,6 +414,7 @@ class TestCross004FullLifecycle:
             f"---\n\n"
         )
         import fcntl
+
         with sessions_file.open("a", encoding="utf-8") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
@@ -438,18 +423,13 @@ class TestCross004FullLifecycle:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
         return f"memory/log/{date_str}-sessions.md"
 
-    def _write_session_end_entry(
-        self, project: Path, session_id: str, date_str: str
-    ) -> str:
+    def _write_session_end_entry(self, project: Path, session_id: str, date_str: str) -> str:
         """Write a session-end entry to sessions.md."""
         sessions_file = project / "memory" / "log" / f"{date_str}-sessions.md"
         sessions_file.parent.mkdir(parents=True, exist_ok=True)
-        entry = (
-            f"## Session End: {session_id}\n"
-            f"- **Status**: completed\n"
-            f"---\n\n"
-        )
+        entry = f"## Session End: {session_id}\n- **Status**: completed\n---\n\n"
         import fcntl
+
         with sessions_file.open("a", encoding="utf-8") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
@@ -458,31 +438,31 @@ class TestCross004FullLifecycle:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
         return f"memory/log/{date_str}-sessions.md"
 
-    def _write_daily_summary(
-        self, project: Path, date_str: str
-    ) -> str:
+    def _write_daily_summary(self, project: Path, date_str: str) -> str:
         """Write a daily summary file (B-layer simulation)."""
         summary_file = project / "memory" / "log" / f"{date_str}.md"
         summary_file.parent.mkdir(parents=True, exist_ok=True)
         summary_file.write_text(
-            f"# Daily Summary: {date_str}\n\n"
-            f"## Sessions\n- 1 session completed\n\n"
-            f"## Errors\n- None\n"
+            f"# Daily Summary: {date_str}\n\n## Sessions\n- 1 session completed\n\n## Errors\n- None\n"
         )
         return f"memory/log/{date_str}.md"
 
-    def _write_error_log(
-        self, project: Path, date_str: str, error_msg: str
-    ) -> str:
+    def _write_error_log(self, project: Path, date_str: str, error_msg: str) -> str:
         """Write an error log entry (C-layer simulation)."""
         error_file = project / "memory" / "log" / f"{date_str}-errors.jsonl"
         error_file.parent.mkdir(parents=True, exist_ok=True)
-        entry = json.dumps({
-            "timestamp": datetime.now(UTC).isoformat(),
-            "level": "ERROR",
-            "message": error_msg,
-        }) + "\n"
+        entry = (
+            json.dumps(
+                {
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "level": "ERROR",
+                    "message": error_msg,
+                }
+            )
+            + "\n"
+        )
         import fcntl
+
         with error_file.open("a", encoding="utf-8") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
@@ -546,9 +526,7 @@ class TestCross004FullLifecycle:
         assert "Daily Summary" in summary_file.read_text()
 
         # Step 5: Error log (F5 C-layer)
-        rel_errors = self._write_error_log(
-            project, date_str=date_str, error_msg="Test error in lifecycle"
-        )
+        rel_errors = self._write_error_log(project, date_str=date_str, error_msg="Test error in lifecycle")
         sign_project_incremental(project, key, changed_paths=[rel_errors])
         result = verify_project(project, key)
         assert result.ok, f"Step 5 (error) verification failed: {result.errors}"
@@ -564,19 +542,11 @@ class TestCross004FullLifecycle:
         manifest_data = json.loads(manifest_path.read_text())
         manifest_rel_paths = {e["rel_path"] for e in manifest_data["entries"]}
 
-        assert rel_sessions in manifest_rel_paths, (
-            f"Sessions.md not in manifest: {manifest_rel_paths}"
-        )
-        assert rel_summary in manifest_rel_paths, (
-            f"Summary not in manifest: {manifest_rel_paths}"
-        )
-        assert rel_errors in manifest_rel_paths, (
-            f"Errors not in manifest: {manifest_rel_paths}"
-        )
+        assert rel_sessions in manifest_rel_paths, f"Sessions.md not in manifest: {manifest_rel_paths}"
+        assert rel_summary in manifest_rel_paths, f"Summary not in manifest: {manifest_rel_paths}"
+        assert rel_errors in manifest_rel_paths, f"Errors not in manifest: {manifest_rel_paths}"
 
-    def test_full_lifecycle_multiple_heartbeats(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_full_lifecycle_multiple_heartbeats(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Multiple heartbeats throughout lifecycle, manifest stays consistent."""
         _monkeypatch_source_detection(monkeypatch, tmp_path)
         project = _create_minimal_project(tmp_path)
@@ -625,9 +595,7 @@ class TestCross004FullLifecycle:
         assert rel_summary in manifest_rel_paths
         assert rel_errors in manifest_rel_paths
 
-    def test_audit_log_shows_complete_lifecycle_sequence(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_audit_log_shows_complete_lifecycle_sequence(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Audit log contains the full sequence of signing operations."""
         _monkeypatch_source_detection(monkeypatch, tmp_path)
         project = _create_minimal_project(tmp_path)

@@ -12,6 +12,7 @@ Replay #724/INFRA-346 original form:
 
 Architecture reference: architecture.md §3.6 (通知终态 — Linear 隔离)
 """
+
 from __future__ import annotations
 
 import json
@@ -95,14 +96,12 @@ class TestPath1_Reconcile_4b_LabelFilter:
     def test_notification_issue_lacks_evolution_found_label(self) -> None:
         """VAL-NTF-005 §4b: Notification issue does NOT have evolution-found label."""
         labels = _label_names(NOTIFICATION_ISSUE_724)
-        assert "evolution-found" not in labels, \
-            "Notification issue must not have evolution-found label"
+        assert "evolution-found" not in labels, "Notification issue must not have evolution-found label"
 
     def test_real_mirror_has_evolution_found_label(self) -> None:
         """VAL-NTF-005 §4b: Real mirror issue DOES have evolution-found label."""
         labels = _label_names(REAL_MIRROR_ISSUE_999)
-        assert "evolution-found" in labels, \
-            "Real mirror issue must have evolution-found label"
+        assert "evolution-found" in labels, "Real mirror issue must have evolution-found label"
 
     def test_label_filter_excludes_notification(self) -> None:
         """Simulate gh --label evolution-found filtering: notification excluded."""
@@ -116,8 +115,7 @@ class TestPath1_Reconcile_4b_LabelFilter:
     def test_notification_body_mentions_infra_but_not_selected(self) -> None:
         """VAL-NTF-005 §4b: Even though #724 body mentions INFRA-346, it's excluded."""
         # Verify notification body contains the INFRA ref
-        assert TARGET_REF in NOTIFICATION_ISSUE_724["body"], \
-            "Test fixture: notification body should mention INFRA-346"
+        assert TARGET_REF in NOTIFICATION_ISSUE_724["body"], "Test fixture: notification body should mention INFRA-346"
         # But label filter excludes it
         labels = _label_names(NOTIFICATION_ISSUE_724)
         assert "evolution-found" not in labels
@@ -144,11 +142,9 @@ class TestPath2_GateA_45_PRMergedOverride:
         gate_a_45_section = content[gate_a_45_pos:gate_a_46_pos]
 
         # Check that 4.5 uses --search
-        assert "--search" in gate_a_45_section, \
-            "GATE A 4.5 must use --search to find PR candidates"
+        assert "--search" in gate_a_45_section, "GATE A 4.5 must use --search to find PR candidates"
         # Check that 4.5 uses anchor validation
-        assert "extract_anchor.py" in gate_a_45_section, \
-            "GATE A 4.5 must call extract_anchor.py for anchor validation"
+        assert "extract_anchor.py" in gate_a_45_section, "GATE A 4.5 must call extract_anchor.py for anchor validation"
 
     def test_notification_pr_would_not_match_anchor_validation(self) -> None:
         """VAL-NTF-005 GATE A 4.5: Notification PRs fail anchor validation."""
@@ -179,8 +175,7 @@ class TestPath3_GateA_46_SyncOriginOverride:
         # Count occurrences — GATE A 4.6 and other sections still use this filter
         # (4.5 was changed to use --search + anchor validation in PR #794)
         count = content.count("--label evolution-found")
-        assert count >= 2, \
-            f"Expected at least 2 uses of --label evolution-found (4.6 + other), got {count}"
+        assert count >= 2, f"Expected at least 2 uses of --label evolution-found (4.6 + other), got {count}"
 
     def test_sync_origin_excludes_notification_issues(self) -> None:
         """VAL-NTF-005 GATE A 4.6: Notification issues excluded from sync-origin check."""
@@ -188,10 +183,8 @@ class TestPath3_GateA_46_SyncOriginOverride:
         issues = [NOTIFICATION_ISSUE_724, REAL_MIRROR_ISSUE_999]
         filtered = [issue for issue in issues if _has_evolution_found(issue)]
         selected_numbers = {issue["number"] for issue in filtered}
-        assert 724 not in selected_numbers, \
-            "Notification issue #724 must NOT be selected by GATE A 4.6"
-        assert 999 in selected_numbers, \
-            "Real mirror #999 must be selected by GATE A 4.6"
+        assert 724 not in selected_numbers, "Notification issue #724 must NOT be selected by GATE A 4.6"
+        assert 999 in selected_numbers, "Real mirror #999 must be selected by GATE A 4.6"
 
 
 # ============================================================================
@@ -209,15 +202,13 @@ class TestAnchorExtraction_NotificationIssue:
     def test_no_linkback_marker_in_notification_body(self) -> None:
         """VAL-NTF-005: Notification issue body has no linear-linkback marker."""
         body: str = NOTIFICATION_ISSUE_724["body"]
-        assert not _has_linear_linkback_marker(body), \
-            "Notification issue should not have linear-linkback marker"
+        assert not _has_linear_linkback_marker(body), "Notification issue should not have linear-linkback marker"
 
     def test_extract_linkback_returns_none_for_notification(self) -> None:
         """VAL-NTF-005: _extract_linear_linkback returns None for notification issue."""
         body: str = NOTIFICATION_ISSUE_724["body"]
         result = _extract_linear_linkback(body)
-        assert result is None, \
-            "Should not extract any INFRA ref from notification issue"
+        assert result is None, "Should not extract any INFRA ref from notification issue"
 
     def test_extract_linkback_anchor_returns_none_for_notification_comments(self) -> None:
         """VAL-NTF-005: extract_linkback_anchor returns None for notification comments."""
@@ -258,8 +249,7 @@ class TestAnchorGate_Replay724:
                 mock_extract.return_value = (0, "")  # rc=0, anchor="" (no anchor)
                 result = anchor_gate_fn(candidates_json, TARGET_REF, "test/repo", tmpdir)
 
-            assert result == "", \
-                "anchor_gate must NOT select notification issue (no anchor)"
+            assert result == "", "anchor_gate must NOT select notification issue (no anchor)"
 
     def test_anchor_gate_selects_real_mirror_over_notification(self) -> None:
         """VAL-NTF-005: anchor_gate selects real mirror, not notification issue."""
@@ -278,8 +268,7 @@ class TestAnchorGate_Replay724:
                 mock_extract_fn.side_effect = mock_extract
                 result = anchor_gate_fn(candidates_json, TARGET_REF, "test/repo", tmpdir)
 
-            assert result == "999", \
-                "anchor_gate must select real mirror #999, not notification #724"
+            assert result == "999", "anchor_gate must select real mirror #999, not notification #724"
 
     def test_anchor_gate_rejects_both_when_neither_matches(self) -> None:
         """VAL-NTF-005: When notification has wrong anchor, it's rejected."""
@@ -291,8 +280,7 @@ class TestAnchorGate_Replay724:
                 mock_extract.return_value = (0, "INFRA-999")  # Wrong ref
                 result = anchor_gate_fn(candidates_json, TARGET_REF, "test/repo", tmpdir)
 
-            assert result == "", \
-                "anchor_gate must reject notification with mismatched anchor"
+            assert result == "", "anchor_gate must reject notification with mismatched anchor"
 
 
 # ============================================================================
@@ -314,8 +302,7 @@ class TestDispatchChainExclusion:
         reconcile_script = Path(__file__).parent.parent / "webhook-scripts" / "reconcile-evolution.sh"
         content = reconcile_script.read_text()
         # The Linear GraphQL query must filter by evolution-found label
-        assert "evolution-found" in content, \
-            "Reconcile Linear query must filter by evolution-found label"
+        assert "evolution-found" in content, "Reconcile Linear query must filter by evolution-found label"
 
     def test_reconcile_terminal_query_filters_evolution_found(self) -> None:
         """VAL-NTF-003: reconcile terminal cleanup query requires evolution-found label."""
@@ -324,8 +311,7 @@ class TestDispatchChainExclusion:
         # Section 4b terminal cleanup also uses evolution-found label filter
         # Count occurrences: at least 2 (section 4 active + section 4b terminal)
         count = content.count("evolution-found")
-        assert count >= 2, \
-            f"Expected at least 2 evolution-found references in reconcile, got {count}"
+        assert count >= 2, f"Expected at least 2 evolution-found references in reconcile, got {count}"
 
     def test_notification_issue_not_in_linear_evolution_found_query(self) -> None:
         """VAL-NTF-003: Notification issues don't have evolution-found label in Linear."""
@@ -339,8 +325,7 @@ class TestDispatchChainExclusion:
         trigger_script = Path(__file__).parent.parent / "webhook-scripts" / "trigger-droid.sh"
         content = trigger_script.read_text()
         # Team whitelist check
-        assert "TEAM_KEY" in content and "INFRA" in content, \
-            "trigger-droid.sh must have team whitelist for INFRA"
+        assert "TEAM_KEY" in content and "INFRA" in content, "trigger-droid.sh must have team whitelist for INFRA"
 
 
 # ============================================================================
@@ -362,8 +347,7 @@ class TestTerminalCleanupNotificationExclusion:
         reconcile_script = Path(__file__).parent.parent / "webhook-scripts" / "reconcile-evolution.sh"
         content = reconcile_script.read_text()
         # Section 4b: terminal cleanup must use label filter
-        assert "--label evolution-found" in content, \
-            "Section 4b terminal cleanup must filter by evolution-found label"
+        assert "--label evolution-found" in content, "Section 4b terminal cleanup must filter by evolution-found label"
 
     def test_notification_issue_excluded_from_close_candidates(self) -> None:
         """VAL-NTF-004: Notification issue is excluded from close candidates."""
@@ -372,10 +356,8 @@ class TestTerminalCleanupNotificationExclusion:
         # Filter by evolution-found label (what gh --label evolution-found does)
         candidates = [issue for issue in all_open_issues if _has_evolution_found(issue)]
         candidate_numbers = {issue["number"] for issue in candidates}
-        assert 724 not in candidate_numbers, \
-            "Notification issue #724 must NOT be a close candidate"
-        assert 999 in candidate_numbers, \
-            "Real mirror #999 should be a close candidate"
+        assert 724 not in candidate_numbers, "Notification issue #724 must NOT be a close candidate"
+        assert 999 in candidate_numbers, "Real mirror #999 should be a close candidate"
 
     def test_anchor_gate_provides_second_layer_of_protection(self) -> None:
         """VAL-NTF-004: Even if label filter bypassed, anchor gate blocks notification."""
@@ -388,8 +370,7 @@ class TestTerminalCleanupNotificationExclusion:
                 mock_extract.return_value = (0, "")  # No anchor
                 result = anchor_gate_fn(candidates_json, TARGET_REF, "test/repo", tmpdir)
 
-            assert result == "", \
-                "Even without label filter, anchor gate must block notification issue"
+            assert result == "", "Even without label filter, anchor gate must block notification issue"
 
 
 # ============================================================================
@@ -412,10 +393,7 @@ class TestThreePathMatrix:
         assert path1_result[0]["number"] == 999, "§4b: only real mirror selected"
 
         # Path 2: GATE A 4.5 label filter (same mechanism)
-        path2_result = [
-            i for i in [NOTIFICATION_ISSUE_724, REAL_MIRROR_ISSUE_999]
-            if _has_evolution_found(i)
-        ]
+        path2_result = [i for i in [NOTIFICATION_ISSUE_724, REAL_MIRROR_ISSUE_999] if _has_evolution_found(i)]
         assert len(path2_result) == 1
         assert path2_result[0]["number"] == 999, "GATE A 4.5: only real mirror selected"
 
@@ -472,21 +450,20 @@ class TestGateA45AnchorUnified:
         gate_a_45_section = script_content[gate_a_45_pos:gate_a_46_pos]
 
         # Find the actual gh pr list command line (skip comments)
-        lines = gate_a_45_section.split('\n')
-        gh_pr_cmd_lines = [line for line in lines if 'gh pr list' in line and '--state merged' in line]
+        lines = gate_a_45_section.split("\n")
+        gh_pr_cmd_lines = [line for line in lines if "gh pr list" in line and "--state merged" in line]
 
         assert len(gh_pr_cmd_lines) > 0, "GATE A 4.5 must have gh pr list command"
 
         # Check the actual command uses --search, not --label evolution-found
-        gh_cmd = ' '.join(gh_pr_cmd_lines)
-        assert "--search" in gh_cmd, \
-            "GATE A 4.5 must use --search to find PR candidates"
-        assert "--label evolution-found" not in gh_cmd, \
+        gh_cmd = " ".join(gh_pr_cmd_lines)
+        assert "--search" in gh_cmd, "GATE A 4.5 must use --search to find PR candidates"
+        assert "--label evolution-found" not in gh_cmd, (
             "GATE A 4.5 gh pr list command must NOT use --label evolution-found filter (anchor validation replaces it)"
+        )
 
         # Verify: anchor extraction is present (extract_anchor.py call)
-        assert "extract_anchor.py" in gate_a_45_section, \
-            "GATE A 4.5 must call extract_anchor.py for anchor validation"
+        assert "extract_anchor.py" in gate_a_45_section, "GATE A 4.5 must call extract_anchor.py for anchor validation"
 
     def test_notification_pr_without_anchor_excluded(self, tmp_path: Any) -> None:
         """GATE A 4.5: PR without anchor (notification PR) → BLOCK (fail-closed).
@@ -531,7 +508,7 @@ class TestGateA47EvidenceChain:
             "status": "completed",
             "sessionId": "session-123",
             "exitCode": 0,
-            "completedAt": "2026-01-01T12:00:00Z"
+            "completedAt": "2026-01-01T12:00:00Z",
         }
         status_file.write_text(json.dumps(status_data_1))
 
@@ -543,20 +520,14 @@ class TestGateA47EvidenceChain:
         completed_at = data.get("completedAt")
 
         # Evidence chain: sessionId OR completedAt
-        has_evidence = (
-            (session_id and str(session_id).lower() not in ("none", "null", ""))
-            or (completed_at and str(completed_at).lower() not in ("none", "null", ""))
+        has_evidence = (session_id and str(session_id).lower() not in ("none", "null", "")) or (
+            completed_at and str(completed_at).lower() not in ("none", "null", "")
         )
 
         assert has_evidence is True, "Scenario 1: sessionId present → evidence chain passes"
 
         # Scenario 2: sessionId 空 + completedAt 存在 → PASS
-        status_data_2 = {
-            "status": "completed",
-            "sessionId": None,
-            "exitCode": 0,
-            "completedAt": "2026-01-01T12:00:00Z"
-        }
+        status_data_2 = {"status": "completed", "sessionId": None, "exitCode": 0, "completedAt": "2026-01-01T12:00:00Z"}
         status_file.write_text(json.dumps(status_data_2))
 
         with status_file.open() as f:
@@ -565,9 +536,8 @@ class TestGateA47EvidenceChain:
         session_id = data.get("sessionId")
         completed_at = data.get("completedAt")
 
-        has_evidence = (
-            (session_id and str(session_id).lower() not in ("none", "null", ""))
-            or (completed_at and str(completed_at).lower() not in ("none", "null", ""))
+        has_evidence = (session_id and str(session_id).lower() not in ("none", "null", "")) or (
+            completed_at and str(completed_at).lower() not in ("none", "null", "")
         )
 
         assert has_evidence is True, "Scenario 2: completedAt present → evidence chain passes (sessionId relaxed)"
@@ -579,12 +549,7 @@ class TestGateA47EvidenceChain:
         """
         # Simulate status file with no evidence
         status_file = tmp_path / "INFRA-888.json"
-        status_data = {
-            "status": "completed",
-            "sessionId": None,
-            "exitCode": 0,
-            "completedAt": None
-        }
+        status_data = {"status": "completed", "sessionId": None, "exitCode": 0, "completedAt": None}
         status_file.write_text(json.dumps(status_data))
 
         # Load and check
@@ -595,9 +560,8 @@ class TestGateA47EvidenceChain:
         completed_at = data.get("completedAt")
 
         # Evidence chain: sessionId OR completedAt
-        has_evidence = (
-            (session_id and str(session_id).lower() not in ("none", "null", ""))
-            or (completed_at and str(completed_at).lower() not in ("none", "null", ""))
+        has_evidence = (session_id and str(session_id).lower() not in ("none", "null", "")) or (
+            completed_at and str(completed_at).lower() not in ("none", "null", "")
         )
 
         assert not has_evidence, "No evidence → BLOCK (fail-closed)"
@@ -632,11 +596,9 @@ class TestLinearSentinelQuery:
         source = inspect.getsource(_verify_fix_merged_via_linear)
 
         # Should call _fetch_linear_comments
-        assert "_fetch_linear_comments" in source, \
-            "Trust chain should query Linear comments for sentinel"
+        assert "_fetch_linear_comments" in source, "Trust chain should query Linear comments for sentinel"
         # Should check for deadlock-exit sentinel prefix
-        assert "deadlock-exit" in source, \
-            "Trust chain should check for deadlock-exit sentinel"
+        assert "deadlock-exit" in source, "Trust chain should check for deadlock-exit sentinel"
 
 
 class TestSessionIdForLog:
@@ -652,10 +614,8 @@ class TestSessionIdForLog:
         content = reconcile_script.read_text()
 
         # Should extract sessionId from status file
-        assert "SESSION_ID_FOR_LOG" in content, \
-            "reconcile must define SESSION_ID_FOR_LOG variable"
+        assert "SESSION_ID_FOR_LOG" in content, "reconcile must define SESSION_ID_FOR_LOG variable"
         # Should use python to extract from JSON
-        assert "sessionId" in content and "json.load" in content, \
+        assert "sessionId" in content and "json.load" in content, (
             "SESSION_ID_FOR_LOG should be extracted from status file JSON"
-
-
+        )

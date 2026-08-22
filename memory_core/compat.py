@@ -151,6 +151,7 @@ _CURRENT_VERSIONS: dict[str, str] = {
 # Report dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CompatibilityReport:
     """Result of a compatibility check.
@@ -191,6 +192,7 @@ class CompatibilityReport:
 # ---------------------------------------------------------------------------
 # Version parsing helpers
 # ---------------------------------------------------------------------------
+
 
 def _parse_version_tuple(ver: str) -> tuple[int, ...]:
     """Parse a version string like '0.1.0' into a comparable tuple."""
@@ -234,6 +236,7 @@ def _get_compat_entry(version: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Check functions
 # ---------------------------------------------------------------------------
+
 
 def _check_version_registered(version: str) -> dict[str, Any]:
     """Check if the given version is in the compatibility matrix."""
@@ -288,8 +291,7 @@ def _check_min_installer(
         return {
             "check": "min_installer_version",
             "status": "error",
-            "detail": f"Installed {installed_version} < minimum {min_ver}; "
-            f"please upgrade memory-core",
+            "detail": f"Installed {installed_version} < minimum {min_ver}; please upgrade memory-core",
         }
     except (ValueError, AttributeError):
         return {
@@ -311,8 +313,7 @@ def _check_newer_than_known(version: str) -> dict[str, Any]:
             return {
                 "check": "version_newer_than_known",
                 "status": "warning",
-                "detail": f"Version {version} is newer than known max; "
-                f"compatibility matrix may be outdated",
+                "detail": f"Version {version} is newer than known max; compatibility matrix may be outdated",
             }
     except (ValueError, AttributeError):
         pass
@@ -326,6 +327,7 @@ def _check_newer_than_known(version: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Main check function
 # ---------------------------------------------------------------------------
+
 
 def check_compatibility(
     version: str | None = None,
@@ -407,9 +409,7 @@ def format_report(report: CompatibilityReport) -> str:
     ]
 
     for check in report.checks:
-        status_icon = {"ok": "✓", "warning": "⚠", "mismatch": "✗", "error": "✗"}.get(
-            check["status"], "?"
-        )
+        status_icon = {"ok": "✓", "warning": "⚠", "mismatch": "✗", "error": "✗"}.get(check["status"], "?")
         lines.append(f"  {status_icon} {check['check']}: {check['detail']}")
 
     if report.errors:

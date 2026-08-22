@@ -44,9 +44,7 @@ class TestCheckSystemdServices:
         )
         global_v: list[dict] = []
         record_v: list[dict] = []
-        result = _check_systemd_services(
-            "srv", "server1", ["nginx", "mysql"], global_v, record_v
-        )
+        result = _check_systemd_services("srv", "server1", ["nginx", "mysql"], global_v, record_v)
         assert result == {"nginx": "unknown", "mysql": "unknown"}
         assert len(global_v) == 1
         assert len(record_v) == 1
@@ -56,42 +54,28 @@ class TestCheckSystemdServices:
 
     def test_service_active_running(self, monkeypatch):
         """Service with ActiveState=active, SubState=running is marked running."""
-        mock_output = (
-            "=== nginx ===\n"
-            "LoadState=loaded\n"
-            "ActiveState=active\n"
-            "SubState=running\n"
-        )
+        mock_output = "=== nginx ===\nLoadState=loaded\nActiveState=active\nSubState=running\n"
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit._run_ssh",
             lambda alias, cmds: (0, mock_output, ""),
         )
         global_v: list[dict] = []
         record_v: list[dict] = []
-        result = _check_systemd_services(
-            "srv", "server1", ["nginx"], global_v, record_v
-        )
+        result = _check_systemd_services("srv", "server1", ["nginx"], global_v, record_v)
         assert result == {"nginx": "running"}
         assert global_v == []
         assert record_v == []
 
     def test_service_not_found(self, monkeypatch):
         """Service with LoadState=not-found gets warning violation."""
-        mock_output = (
-            "=== custom-svc ===\n"
-            "LoadState=not-found\n"
-            "ActiveState=inactive\n"
-            "SubState=dead\n"
-        )
+        mock_output = "=== custom-svc ===\nLoadState=not-found\nActiveState=inactive\nSubState=dead\n"
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit._run_ssh",
             lambda alias, cmds: (0, mock_output, ""),
         )
         global_v: list[dict] = []
         record_v: list[dict] = []
-        result = _check_systemd_services(
-            "srv", "server1", ["custom-svc"], global_v, record_v
-        )
+        result = _check_systemd_services("srv", "server1", ["custom-svc"], global_v, record_v)
         assert result == {"custom-svc": "not-found"}
         assert len(global_v) == 1
         assert global_v[0]["severity"] == "warning"
@@ -99,21 +83,14 @@ class TestCheckSystemdServices:
 
     def test_service_abnormal_state(self, monkeypatch):
         """Service with abnormal state gets critical violation."""
-        mock_output = (
-            "=== nginx ===\n"
-            "LoadState=loaded\n"
-            "ActiveState=failed\n"
-            "SubState=failed\n"
-        )
+        mock_output = "=== nginx ===\nLoadState=loaded\nActiveState=failed\nSubState=failed\n"
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit._run_ssh",
             lambda alias, cmds: (0, mock_output, ""),
         )
         global_v: list[dict] = []
         record_v: list[dict] = []
-        result = _check_systemd_services(
-            "srv", "server1", ["nginx"], global_v, record_v
-        )
+        result = _check_systemd_services("srv", "server1", ["nginx"], global_v, record_v)
         assert result == {"nginx": "failed/failed"}
         assert len(global_v) == 1
         assert global_v[0]["severity"] == "critical"
@@ -121,21 +98,14 @@ class TestCheckSystemdServices:
 
     def test_service_missing_from_output(self, monkeypatch):
         """Service not found in parsed output gets warning violation."""
-        mock_output = (
-            "=== other-svc ===\n"
-            "LoadState=loaded\n"
-            "ActiveState=active\n"
-            "SubState=running\n"
-        )
+        mock_output = "=== other-svc ===\nLoadState=loaded\nActiveState=active\nSubState=running\n"
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit._run_ssh",
             lambda alias, cmds: (0, mock_output, ""),
         )
         global_v: list[dict] = []
         record_v: list[dict] = []
-        result = _check_systemd_services(
-            "srv", "server1", ["missing-svc"], global_v, record_v
-        )
+        result = _check_systemd_services("srv", "server1", ["missing-svc"], global_v, record_v)
         assert result == {"missing-svc": "unknown"}
         assert len(global_v) == 1
         assert global_v[0]["severity"] == "warning"
@@ -162,9 +132,7 @@ class TestCheckSystemdServices:
         )
         global_v: list[dict] = []
         record_v: list[dict] = []
-        result = _check_systemd_services(
-            "srv", "server1", ["nginx", "mysql", "redis"], global_v, record_v
-        )
+        result = _check_systemd_services("srv", "server1", ["nginx", "mysql", "redis"], global_v, record_v)
         assert result["nginx"] == "running"
         assert result["mysql"] == "failed/failed"
         assert result["redis"] == "not-found"
@@ -180,31 +148,20 @@ class TestCheckSystemdServices:
         )
         global_v: list[dict] = []
         record_v: list[dict] = []
-        result = _check_systemd_services(
-            "srv", "server1", ["nginx"], global_v, record_v
-        )
+        result = _check_systemd_services("srv", "server1", ["nginx"], global_v, record_v)
         assert result == {"nginx": "unknown"}
         assert len(global_v) == 1
 
     def test_partial_output_with_blank_lines(self, monkeypatch):
         """Output with blank lines and whitespace is parsed correctly."""
-        mock_output = (
-            "\n"
-            "=== nginx ===\n"
-            "  LoadState=loaded  \n"
-            "  ActiveState=active  \n"
-            "  SubState=running  \n"
-            "\n"
-        )
+        mock_output = "\n=== nginx ===\n  LoadState=loaded  \n  ActiveState=active  \n  SubState=running  \n\n"
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit._run_ssh",
             lambda alias, cmds: (0, mock_output, ""),
         )
         global_v: list[dict] = []
         record_v: list[dict] = []
-        result = _check_systemd_services(
-            "srv", "server1", ["nginx"], global_v, record_v
-        )
+        result = _check_systemd_services("srv", "server1", ["nginx"], global_v, record_v)
         assert result == {"nginx": "running"}
         assert global_v == []
 
@@ -237,9 +194,9 @@ class TestHTTPEndpointHealthCheck:
             "memory_core.tools.daily_kb_audit.subprocess.run",
             lambda *a, **kw: mock_result,
         )
-        server = self._make_server_with_http([
-            {"url": "http://example.com/health", "name": "api", "expected_status": 200}
-        ])
+        server = self._make_server_with_http(
+            [{"url": "http://example.com/health", "name": "api", "expected_status": 200}]
+        )
         global_v: list[dict] = []
         record = check_server(server, global_v)
         assert record["http_endpoints"]["api"]["status"] == 200
@@ -248,6 +205,7 @@ class TestHTTPEndpointHealthCheck:
 
     def test_http_endpoint_timeout(self, monkeypatch):
         """HTTP endpoint timeout triggers critical violation."""
+
         def raise_timeout(*a, **kw):
             raise subprocess.TimeoutExpired(cmd="curl", timeout=7)
 
@@ -255,9 +213,7 @@ class TestHTTPEndpointHealthCheck:
             "memory_core.tools.daily_kb_audit.subprocess.run",
             raise_timeout,
         )
-        server = self._make_server_with_http([
-            {"url": "http://example.com/slow", "name": "slow-api"}
-        ])
+        server = self._make_server_with_http([{"url": "http://example.com/slow", "name": "slow-api"}])
         global_v: list[dict] = []
         record = check_server(server, global_v)
         assert record["http_endpoints"]["slow-api"]["status"] == -2
@@ -268,6 +224,7 @@ class TestHTTPEndpointHealthCheck:
 
     def test_http_endpoint_curl_not_found(self, monkeypatch):
         """curl not installed triggers critical violation."""
+
         def raise_file_not_found(*a, **kw):
             raise FileNotFoundError("curl")
 
@@ -275,9 +232,7 @@ class TestHTTPEndpointHealthCheck:
             "memory_core.tools.daily_kb_audit.subprocess.run",
             raise_file_not_found,
         )
-        server = self._make_server_with_http([
-            {"url": "http://example.com/health", "name": "api"}
-        ])
+        server = self._make_server_with_http([{"url": "http://example.com/health", "name": "api"}])
         global_v: list[dict] = []
         record = check_server(server, global_v)
         assert record["http_endpoints"]["api"]["status"] == -1
@@ -294,9 +249,7 @@ class TestHTTPEndpointHealthCheck:
             "memory_core.tools.daily_kb_audit.subprocess.run",
             lambda *a, **kw: mock_result,
         )
-        server = self._make_server_with_http([
-            {"url": "http://example.com/health", "name": "api"}
-        ])
+        server = self._make_server_with_http([{"url": "http://example.com/health", "name": "api"}])
         global_v: list[dict] = []
         record = check_server(server, global_v)
         assert record["http_endpoints"]["api"]["status"] == 0
@@ -312,9 +265,7 @@ class TestHTTPEndpointHealthCheck:
             "memory_core.tools.daily_kb_audit.subprocess.run",
             lambda *a, **kw: mock_result,
         )
-        server = self._make_server_with_http([
-            {"url": "http://example.com/health", "name": "api"}
-        ])
+        server = self._make_server_with_http([{"url": "http://example.com/health", "name": "api"}])
         global_v: list[dict] = []
         record = check_server(server, global_v)
         assert record["http_endpoints"]["api"]["status"] == 0
@@ -329,9 +280,9 @@ class TestHTTPEndpointHealthCheck:
             "memory_core.tools.daily_kb_audit.subprocess.run",
             lambda *a, **kw: mock_result,
         )
-        server = self._make_server_with_http([
-            {"url": "http://example.com/health", "name": "api", "expected_status": 200}
-        ])
+        server = self._make_server_with_http(
+            [{"url": "http://example.com/health", "name": "api", "expected_status": 200}]
+        )
         global_v: list[dict] = []
         record = check_server(server, global_v)
         assert record["http_endpoints"]["api"]["status"] == 500
@@ -348,9 +299,7 @@ class TestHTTPEndpointHealthCheck:
             "memory_core.tools.daily_kb_audit.subprocess.run",
             lambda *a, **kw: mock_result,
         )
-        server = self._make_server_with_http([
-            {"url": "http://example.com/health"}
-        ])
+        server = self._make_server_with_http([{"url": "http://example.com/health"}])
         global_v: list[dict] = []
         record = check_server(server, global_v)
         # Name should be the URL when not provided
@@ -389,10 +338,12 @@ class TestHTTPEndpointHealthCheck:
             "memory_core.tools.daily_kb_audit.subprocess.run",
             mock_subprocess_run,
         )
-        server = self._make_server_with_http([
-            {"url": "http://api.example.com", "name": "api", "expected_status": 200},
-            {"url": "http://web.example.com", "name": "web", "expected_status": 200},
-        ])
+        server = self._make_server_with_http(
+            [
+                {"url": "http://api.example.com", "name": "api", "expected_status": 200},
+                {"url": "http://web.example.com", "name": "web", "expected_status": 200},
+            ]
+        )
         global_v: list[dict] = []
         record = check_server(server, global_v)
         assert record["http_endpoints"]["api"]["status"] == 200

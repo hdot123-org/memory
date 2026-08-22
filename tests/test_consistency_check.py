@@ -1,4 +1,3 @@
-
 import json
 import sys
 from pathlib import Path
@@ -229,10 +228,7 @@ class TestCheckContributingVersionSource:
     def test_warning_on_chinese_stale_claim(self) -> None:
         """A stale Chinese claim that the version is only in pyproject.toml
         must trigger a warning when constants.py defines a version."""
-        stale_content = (
-            "# Contributing\n\n"
-            "版本号只在 `pyproject.toml` 中维护。\n"
-        )
+        stale_content = "# Contributing\n\n版本号只在 `pyproject.toml` 中维护。\n"
 
         def fake_read_text(self, encoding=None):
             if self.name == "CONTRIBUTING.md":
@@ -240,11 +236,13 @@ class TestCheckContributingVersionSource:
             return original_read_text(self, encoding=encoding)
 
         original_read_text = Path.read_text
-        with patch.object(Path, "read_text", fake_read_text), \
-                patch(
-                    "memory_core.tools.consistency_check._load_constants",
-                    return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
-                ):
+        with (
+            patch.object(Path, "read_text", fake_read_text),
+            patch(
+                "memory_core.tools.consistency_check._load_constants",
+                return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
+            ),
+        ):
             errors, warnings = check_contributing_version_source()
 
         assert errors == []
@@ -254,10 +252,7 @@ class TestCheckContributingVersionSource:
     def test_warning_on_english_stale_claim(self) -> None:
         """A stale English claim that the version is only in pyproject.toml
         must trigger a warning when constants.py defines a version."""
-        stale_content = (
-            "# Contributing\n\n"
-            "The version is only in pyproject.toml.\n"
-        )
+        stale_content = "# Contributing\n\nThe version is only in pyproject.toml.\n"
 
         def fake_read_text(self, encoding=None):
             if self.name == "CONTRIBUTING.md":
@@ -265,11 +260,13 @@ class TestCheckContributingVersionSource:
             return original_read_text(self, encoding=encoding)
 
         original_read_text = Path.read_text
-        with patch.object(Path, "read_text", fake_read_text), \
-                patch(
-                    "memory_core.tools.consistency_check._load_constants",
-                    return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
-                ):
+        with (
+            patch.object(Path, "read_text", fake_read_text),
+            patch(
+                "memory_core.tools.consistency_check._load_constants",
+                return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
+            ),
+        ):
             errors, warnings = check_contributing_version_source()
 
         assert errors == []
@@ -285,10 +282,7 @@ class TestCheckContributingVersionSource:
         finding had ``location=""`` and could not be properly deduped or
         resolved, causing stale findings to persist indefinitely.
         """
-        stale_content = (
-            "# Contributing\n\n"
-            "The version is only in pyproject.toml.\n"
-        )
+        stale_content = "# Contributing\n\nThe version is only in pyproject.toml.\n"
 
         def fake_read_text(self, encoding=None):
             if self.name == "CONTRIBUTING.md":
@@ -296,11 +290,13 @@ class TestCheckContributingVersionSource:
             return original_read_text(self, encoding=encoding)
 
         original_read_text = Path.read_text
-        with patch.object(Path, "read_text", fake_read_text), \
-                patch(
-                    "memory_core.tools.consistency_check._load_constants",
-                    return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
-                ):
+        with (
+            patch.object(Path, "read_text", fake_read_text),
+            patch(
+                "memory_core.tools.consistency_check._load_constants",
+                return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
+            ),
+        ):
             errors, warnings = check_contributing_version_source()
 
         assert len(warnings) == 1
@@ -331,11 +327,13 @@ class TestCheckContributingVersionSource:
             return original_read_text(self, encoding=encoding)
 
         original_read_text = Path.read_text
-        with patch.object(Path, "read_text", fake_read_text), \
-                patch(
-                    "memory_core.tools.consistency_check._load_constants",
-                    return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
-                ):
+        with (
+            patch.object(Path, "read_text", fake_read_text),
+            patch(
+                "memory_core.tools.consistency_check._load_constants",
+                return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
+            ),
+        ):
             errors, warnings = check_contributing_version_source()
 
         assert errors == []
@@ -347,10 +345,7 @@ class TestCheckContributingVersionSource:
         Chinese historical markers (之前, 原来, 修复, etc.) must also suppress
         the stale claim detection on that line.
         """
-        historical_content = (
-            "# Contributing\n\n"
-            "之前的版本号只在 `pyproject.toml` 中维护，现已迁移到 __init__.py。\n"
-        )
+        historical_content = "# Contributing\n\n之前的版本号只在 `pyproject.toml` 中维护，现已迁移到 __init__.py。\n"
 
         def fake_read_text(self, encoding=None):
             if self.name == "CONTRIBUTING.md":
@@ -358,11 +353,13 @@ class TestCheckContributingVersionSource:
             return original_read_text(self, encoding=encoding)
 
         original_read_text = Path.read_text
-        with patch.object(Path, "read_text", fake_read_text), \
-                patch(
-                    "memory_core.tools.consistency_check._load_constants",
-                    return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
-                ):
+        with (
+            patch.object(Path, "read_text", fake_read_text),
+            patch(
+                "memory_core.tools.consistency_check._load_constants",
+                return_value={"CURRENT_MEMORY_VERSION": "1.2.3"},
+            ),
+        ):
             errors, warnings = check_contributing_version_source()
 
         assert errors == []
@@ -490,7 +487,9 @@ class TestMain:
             assert isinstance(check["warnings"], list)
             assert isinstance(check["passed"], bool)
 
-    def test_main_exit_code_reflects_errors(self, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_main_exit_code_reflects_errors(
+        self, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test that exit code reflects check results."""
         monkeypatch.setattr(sys, "argv", ["consistency_check", "--json"])
         exit_code = main()

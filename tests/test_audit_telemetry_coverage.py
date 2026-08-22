@@ -46,5 +46,4 @@ def test_always_exits_zero():
     assert stdout, "Script produced no stdout output"
 
     # Should contain expected report markers
-    assert "Telemetry Coverage" in stdout or "覆盖率" in stdout, \
-        f"Unexpected output format. stdout: {stdout[:500]}"
+    assert "Telemetry Coverage" in stdout or "覆盖率" in stdout, f"Unexpected output format. stdout: {stdout[:500]}"

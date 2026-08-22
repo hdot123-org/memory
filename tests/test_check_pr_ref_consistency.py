@@ -14,6 +14,7 @@ mocking. This is **disclosure, not fabrication** — the fixtures exercise
 the same regex/subset logic that would run against real API data; they
 just cannot be populated from a live `gh pr view` snapshot of #729.
 """
+
 import json
 import subprocess
 import sys
@@ -99,9 +100,7 @@ def _mock_gh_pr_view(pr_number: int, body: str, closing_refs: list[int]) -> Magi
             "repository": {
                 "pullRequest": {
                     "body": body,
-                    "closingIssuesReferences": {
-                        "nodes": [{"number": n} for n in closing_refs]
-                    },
+                    "closingIssuesReferences": {"nodes": [{"number": n} for n in closing_refs]},
                 }
             }
         }
@@ -171,6 +170,7 @@ def _run_check(pr_number: int, side_effect_fn=None):
         sys.path.insert(0, str(SCRIPT_PATH.parent))
         try:
             import importlib
+
             mod = importlib.import_module("check_pr_ref_consistency")
             importlib.reload(mod)
             exit_code = mod.main([str(pr_number)])
@@ -182,6 +182,7 @@ def _run_check(pr_number: int, side_effect_fn=None):
 # ===========================================================================
 # VAL-GATE-201: #729 mismatch form must be caught
 # ===========================================================================
+
 
 class TestMismatchCaught:
     """#729 form: linkback {337,342,345} vs Fixes {335} → exit non-zero + diff output."""
@@ -217,6 +218,7 @@ class TestMismatchCaught:
 # VAL-GATE-202: Compliant PR must pass
 # ===========================================================================
 
+
 class TestCompliantPasses:
     """Compliant PR: linkback ⊆ Fixes → exit 0."""
 
@@ -241,6 +243,7 @@ class TestCompliantPasses:
 # VAL-GATE-204: No-linkback PR must pass (backward compat)
 # ===========================================================================
 
+
 class TestNoLinkbackPasses:
     """Issues without linkback → check passes (backward compat)."""
 
@@ -263,6 +266,7 @@ class TestNoLinkbackPasses:
 # ===========================================================================
 # Read-only proof (VAL-GATE-203)
 # ===========================================================================
+
 
 class TestReadOnly:
     """The check must be strictly read-only — no write operations."""
@@ -297,6 +301,7 @@ class TestReadOnly:
 # lost these regression classes. Ensures comma-separated extraction and None
 # body defense never regress.
 
+
 class TestCommaSeparatedList:
     """Comma-separated INFRA IDs must all be extracted.
 
@@ -307,47 +312,56 @@ class TestCommaSeparatedList:
     def test_comma_separated_two_ids(self):
         """Comma-separated pair: 'Fixes INFRA-100, INFRA-200' → {INFRA-100, INFRA-200}."""
         from check_pr_ref_consistency import extract_fixes_infra_ids
+
         body = "Some changes\n\nFixes INFRA-100, INFRA-200"
         assert extract_fixes_infra_ids(body) == {"INFRA-100", "INFRA-200"}
 
     def test_comma_separated_three_ids(self):
         """Comma-separated triple: 'Fixes INFRA-1, INFRA-2, INFRA-3' → all three."""
         from check_pr_ref_consistency import extract_fixes_infra_ids
+
         body = "Fixes INFRA-1, INFRA-2, INFRA-3"
         assert extract_fixes_infra_ids(body) == {"INFRA-1", "INFRA-2", "INFRA-3"}
 
     def test_oxford_comma_with_and(self):
         """Oxford comma variant: 'Fixes INFRA-1, INFRA-2, and INFRA-3' → all three (red→green)."""
         from check_pr_ref_consistency import extract_fixes_infra_ids
+
         body = "Fixes INFRA-1, INFRA-2, and INFRA-3"
         assert extract_fixes_infra_ids(body) == {"INFRA-1", "INFRA-2", "INFRA-3"}
 
     def test_oxford_comma_and_connector_no_trailing_comma(self):
         """'Fixes INFRA-1, INFRA-2 and INFRA-3' (no trailing comma before 'and') → all three."""
         from check_pr_ref_consistency import extract_fixes_infra_ids
+
         body = "Fixes INFRA-1, INFRA-2 and INFRA-3"
         assert extract_fixes_infra_ids(body) == {"INFRA-1", "INFRA-2", "INFRA-3"}
 
     def test_word_boundary_rejects_disclose(self):
         """\\b word boundary: 'disclose INFRA-999' must NOT match (not a closing keyword)."""
         from check_pr_ref_consistency import extract_fixes_infra_ids
+
         body = "This change will disclose INFRA-999 later"
         assert extract_fixes_infra_ids(body) == set()
+
     def test_word_boundary_rejects_prefix_fix(self):
         """\\b word boundary: 'refix INFRA-100' must NOT match."""
         from check_pr_ref_consistency import extract_fixes_infra_ids
+
         body = "We refix INFRA-100 in this PR"
         assert extract_fixes_infra_ids(body) == set()
 
     def test_single_fix_keyword_still_works(self):
         """Single ID: 'Fixes INFRA-335' → {INFRA-335}."""
         from check_pr_ref_consistency import extract_fixes_infra_ids
+
         body = "Fixes INFRA-335"
         assert extract_fixes_infra_ids(body) == {"INFRA-335"}
 
     def test_multiple_fixes_lines(self):
         """Multiple lines: 'Fixes INFRA-1\\nFixes INFRA-2' → both extracted."""
         from check_pr_ref_consistency import extract_fixes_infra_ids
+
         body = "Fixes INFRA-1\nFixes INFRA-2"
         assert extract_fixes_infra_ids(body) == {"INFRA-1", "INFRA-2"}
 
@@ -364,27 +378,32 @@ class TestExtractNoneBodyDefense:
     def test_extract_none_returns_empty_set(self):
         """extract_fixes_infra_ids(None) returns empty set without raising."""
         from check_pr_ref_consistency import extract_fixes_infra_ids
+
         assert extract_fixes_infra_ids(None) == set()
 
     def test_extract_empty_string_returns_empty_set(self):
         """extract_fixes_infra_ids('') returns empty set."""
         from check_pr_ref_consistency import extract_fixes_infra_ids
+
         assert extract_fixes_infra_ids("") == set()
 
     def test_extract_whitespace_returns_empty_set(self):
         """extract_fixes_infra_ids('   ') returns empty set."""
         from check_pr_ref_consistency import extract_fixes_infra_ids
+
         assert extract_fixes_infra_ids("   ") == set()
 
     def test_extract_no_keyword_returns_empty_set(self):
         """Body with no closing keyword returns empty set."""
         from check_pr_ref_consistency import extract_fixes_infra_ids
+
         assert extract_fixes_infra_ids("Just a description with INFRA-100 mentioned") == set()
 
 
 # ===========================================================================
 # Subset direction (architecture §3.5: direction fixed as ⊆)
 # ===========================================================================
+
 
 class TestSubsetDirection:
     """Direction is fixed as ⊆ (linkback ⊆ Fixes).
@@ -423,6 +442,7 @@ class TestSubsetDirection:
 # GitHub 关键词变体扩展（scrutiny 2026-08-18）
 # ===========================================================================
 
+
 class TestGitHubKeywordVariants:
     """GitHub 支持 9 个等价的关闭关键词变体。
 
@@ -434,11 +454,20 @@ class TestGitHubKeywordVariants:
     所有变体都必须被正确识别和提取。
     """
 
-    @pytest.mark.parametrize("keyword", [
-        "close", "closes", "closed",
-        "fix", "fixes", "fixed",
-        "resolve", "resolves", "resolved",
-    ])
+    @pytest.mark.parametrize(
+        "keyword",
+        [
+            "close",
+            "closes",
+            "closed",
+            "fix",
+            "fixes",
+            "fixed",
+            "resolve",
+            "resolves",
+            "resolved",
+        ],
+    )
     def test_all_keyword_variants_recognized(self, keyword):
         """所有 9 个关键词变体都应该被正确识别（red→green）。
 
@@ -538,6 +567,7 @@ resolve INFRA-345"""
 # gh-version independence (PR #797 regression)
 # ===========================================================================
 
+
 class TestGhVersionIndependence:
     """PR #797 regression: self-hosted runner gh < 2.67 rejects
     `gh pr view --json closingIssuesReferences` with "Unknown JSON field".
@@ -548,7 +578,10 @@ class TestGhVersionIndependence:
     def test_does_not_use_gh_pr_view_field(self):
         """Must not call `gh pr view --json ...closingIssuesReferences...`."""
         side_effect = _make_side_effect(
-            729, PR_729_BODY, PR_729_CLOSING_REFS, {711: ISSUE_711_COMMENTS},
+            729,
+            PR_729_BODY,
+            PR_729_CLOSING_REFS,
+            {711: ISSUE_711_COMMENTS},
         )
         _, mock_run = _run_check(729, side_effect)
         for call in mock_run.call_args_list:
@@ -556,20 +589,19 @@ class TestGhVersionIndependence:
             cmd_str = " ".join(args) if isinstance(args, list) else str(args)
             if "pr view" in cmd_str:
                 assert "closingIssuesReferences" not in cmd_str, (
-                    f"gh pr view must not request closingIssuesReferences "
-                    f"(unsupported on gh < 2.67): {cmd_str}"
+                    f"gh pr view must not request closingIssuesReferences (unsupported on gh < 2.67): {cmd_str}"
                 )
 
     def test_fetches_via_graphql(self):
         """PR data must be fetched via `gh api graphql`."""
         side_effect = _make_side_effect(
-            729, PR_729_BODY, PR_729_CLOSING_REFS, {711: ISSUE_711_COMMENTS},
+            729,
+            PR_729_BODY,
+            PR_729_CLOSING_REFS,
+            {711: ISSUE_711_COMMENTS},
         )
         _, mock_run = _run_check(729, side_effect)
-        graphql_calls = [
-            " ".join(call[0][0]) for call in mock_run.call_args_list
-            if "graphql" in " ".join(call[0][0])
-        ]
+        graphql_calls = [" ".join(call[0][0]) for call in mock_run.call_args_list if "graphql" in " ".join(call[0][0])]
         assert graphql_calls, "Expected gh api graphql call for PR data"
         assert any("repository" in c and "pullRequest" in c for c in graphql_calls), (
             "GraphQL query must target repository.pullRequest"
@@ -581,6 +613,7 @@ class TestGhVersionIndependence:
 # Ported from the closed-unmerged PR #806 (INFRA-398); the script-side fix
 # (comma-list extraction in the keyword regex) landed on main via PR #807.
 # ===========================================================================
+
 
 class TestCommaSeparatedLists:
     """逗号分隔的 INFRA 列表必须全部提取（源自被弃置的 PR #802/#806）。
@@ -650,6 +683,7 @@ class TestCommaSeparatedLists:
 # (`pr_data.get("body") or ""`) landed on main via PR #807.
 # ===========================================================================
 
+
 class TestNoneBodyDefense:
     """PR body 为 null（GitHub API 对空 body 返回 null）不得触发 TypeError。
 
@@ -666,9 +700,7 @@ class TestNoneBodyDefense:
                 "repository": {
                     "pullRequest": {
                         "body": None,
-                        "closingIssuesReferences": {
-                            "nodes": [{"number": n} for n in closing_refs]
-                        },
+                        "closingIssuesReferences": {"nodes": [{"number": n} for n in closing_refs]},
                     }
                 }
             }
@@ -679,6 +711,7 @@ class TestNoneBodyDefense:
 
     def test_none_body_with_closing_refs(self):
         """body=null 且有 closing refs（无 linkback）→ 退出 0 而非崩溃。"""
+
         def side_effect(args, **kwargs):
             cmd = " ".join(args)
             if "remote get-url" in cmd:
@@ -692,6 +725,7 @@ class TestNoneBodyDefense:
 
     def test_none_body_with_linkback_fails_correctly(self):
         """body=null 且引用 issue 带 linkback → 正常 FAIL（exit 1），而非 TypeError。"""
+
         def side_effect(args, **kwargs):
             cmd = " ".join(args)
             if "remote get-url" in cmd:
@@ -733,6 +767,7 @@ def _make_error_side_effect(
         fail_at: "graphql" for fetch_pr_data, "issue_view" for fetch_issue_comments
         closing_refs: closing refs for the PR mock (needed when fail_at="issue_view")
     """
+
     def side_effect(args, **kwargs):
         cmd = " ".join(args)
         if "remote get-url" in cmd:
@@ -762,6 +797,7 @@ def _make_raw_stdout_side_effect(graphql_stdout: str):
         graphql_stdout: raw stdout the graphql mock returns (valid JSON,
             truncated JSON, or any other payload shape under test)
     """
+
     def side_effect(args, **kwargs):
         cmd = " ".join(args)
         if "remote get-url" in cmd:
@@ -785,9 +821,7 @@ class TestFetchPrFailClosed:
 
     def test_eof_during_pr_fetch_exits_1(self, capsys):
         """EOF during gh api graphql (PR fetch) → exit 1, not 0 or crash."""
-        error = subprocess.CalledProcessError(
-            1, "gh api graphql", stderr="Post api.github.com/graphql EOF"
-        )
+        error = subprocess.CalledProcessError(1, "gh api graphql", stderr="Post api.github.com/graphql EOF")
         exit_code, _ = _run_check(827, _make_error_side_effect(error, "graphql"))
         assert exit_code == 1, "EOF during PR fetch must exit 1 (fail-closed)"
         captured = capsys.readouterr()
@@ -795,9 +829,7 @@ class TestFetchPrFailClosed:
 
     def test_503_during_pr_fetch_exits_1(self, capsys):
         """503 during gh api graphql (PR fetch) → exit 1."""
-        error = subprocess.CalledProcessError(
-            1, "gh api graphql", stderr="HTTP 503"
-        )
+        error = subprocess.CalledProcessError(1, "gh api graphql", stderr="HTTP 503")
         exit_code, _ = _run_check(827, _make_error_side_effect(error, "graphql"))
         assert exit_code == 1, "503 during PR fetch must exit 1 (fail-closed)"
         captured = capsys.readouterr()
@@ -805,9 +837,7 @@ class TestFetchPrFailClosed:
 
     def test_timeout_during_pr_fetch_exits_1(self, capsys):
         """Timeout during gh api graphql (PR fetch) → exit 1."""
-        error = subprocess.TimeoutExpired(
-            cmd=["gh", "api", "graphql"], timeout=30
-        )
+        error = subprocess.TimeoutExpired(cmd=["gh", "api", "graphql"], timeout=30)
         exit_code, _ = _run_check(827, _make_error_side_effect(error, "graphql"))
         assert exit_code == 1, "Timeout during PR fetch must exit 1 (fail-closed)"
         captured = capsys.readouterr()
@@ -834,9 +864,7 @@ class TestFetchCommentsFailClosed:
 
     def test_eof_during_comment_fetch_exits_1(self, capsys):
         """EOF during gh issue view (comment fetch) → exit 1."""
-        error = subprocess.CalledProcessError(
-            1, "gh issue view", stderr="Post api.github.com/graphql EOF"
-        )
+        error = subprocess.CalledProcessError(1, "gh issue view", stderr="Post api.github.com/graphql EOF")
         exit_code, _ = _run_check(
             827,
             _make_error_side_effect(error, "issue_view", closing_refs=[711]),
@@ -847,9 +875,7 @@ class TestFetchCommentsFailClosed:
 
     def test_503_during_comment_fetch_exits_1(self, capsys):
         """503 during gh issue view (comment fetch) → exit 1."""
-        error = subprocess.CalledProcessError(
-            1, "gh issue view", stderr="HTTP 503"
-        )
+        error = subprocess.CalledProcessError(1, "gh issue view", stderr="HTTP 503")
         exit_code, _ = _run_check(
             827,
             _make_error_side_effect(error, "issue_view", closing_refs=[711]),
@@ -858,9 +884,7 @@ class TestFetchCommentsFailClosed:
 
     def test_timeout_during_comment_fetch_exits_1(self, capsys):
         """Timeout during gh issue view (comment fetch) → exit 1."""
-        error = subprocess.TimeoutExpired(
-            cmd=["gh", "issue", "view", "711"], timeout=30
-        )
+        error = subprocess.TimeoutExpired(cmd=["gh", "issue", "view", "711"], timeout=30)
         exit_code, _ = _run_check(
             827,
             _make_error_side_effect(error, "issue_view", closing_refs=[711]),

@@ -58,9 +58,7 @@ class TestLoadRegisteredProjectsEdgeCases:
         """When paths key is not a dict, returns empty list."""
         idx_path = tmp_path / "path-index.json"
         idx_path.write_text(json.dumps({"paths": [1, 2, 3]}), encoding="utf-8")
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx_path
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx_path)
         result = load_registered_projects()
         assert result == []
 
@@ -73,9 +71,7 @@ class TestLoadRegisteredProjectsEdgeCases:
 class TestBuildGlobalKbFingerprintsEdgeCases:
     def test_domain_not_dir(self, tmp_path, monkeypatch):
         """When a domain dir is a file (not dir), it's skipped."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.GLOBAL_KB_ROOT", tmp_path
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.GLOBAL_KB_ROOT", tmp_path)
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit.GLOBAL_KB_DOMAINS",
             ["domain1"],
@@ -87,9 +83,7 @@ class TestBuildGlobalKbFingerprintsEdgeCases:
 
     def test_skip_names(self, tmp_path, monkeypatch):
         """Files in GLOBAL_KB_SKIP are skipped."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.GLOBAL_KB_ROOT", tmp_path
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.GLOBAL_KB_ROOT", tmp_path)
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit.GLOBAL_KB_DOMAINS",
             ["lessons"],
@@ -158,9 +152,7 @@ class TestCheckManifestIntegrityEdgeCases:
         data_file = tmp_path / "data.txt"
         data_file.write_text("actual content", encoding="utf-8")
         manifest = {"entries": [{"rel_path": "data.txt", "sha256": "wrong_hash"}]}
-        (sys_dir / "manifest.json").write_text(
-            json.dumps(manifest), encoding="utf-8"
-        )
+        (sys_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         viols = check_manifest_integrity(tmp_path)
         assert len(viols) == 1
         assert "篡改" in viols[0]["detail"]
@@ -240,12 +232,8 @@ class TestCheckVersionConsistencyEdgeCases:
         system_dir.mkdir(parents=True)
         # Write all three files with a non-matching version
         for fname in ("memory.lock", "adapter.toml", "ownership.toml"):
-            (system_dir / fname).write_text(
-                'version = "0.0.1-wrong"\n', encoding="utf-8"
-            )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.CURRENT_MEMORY_VERSION", "1.0.0"
-        )
+            (system_dir / fname).write_text('version = "0.0.1-wrong"\n', encoding="utf-8")
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.CURRENT_MEMORY_VERSION", "1.0.0")
         viols = check_version_consistency(tmp_path)
         assert len(viols) >= 1
         assert any("不一致" in v["detail"] for v in viols)
@@ -270,36 +258,26 @@ class TestLoadInfraInventoryEdgeCases:
     def test_yaml_parse_error(self, tmp_path, monkeypatch):
         pytest.importorskip("yaml")
         """When YAML file is malformed, returns None."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._HAS_YAML", True
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._HAS_YAML", True)
         inv = tmp_path / "inventory.yaml"
         inv.write_text("{{invalid yaml: [", encoding="utf-8")
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.INFRA_INVENTORY", inv
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.INFRA_INVENTORY", inv)
         result = _load_infra_inventory()
         assert result is None
 
     def test_not_mapping(self, tmp_path, monkeypatch):
         """When YAML top-level is not a dict, returns None."""
         pytest.importorskip("yaml")
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._HAS_YAML", True
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._HAS_YAML", True)
         inv = tmp_path / "inventory.yaml"
         inv.write_text("- just\n- a\n- list\n", encoding="utf-8")
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.INFRA_INVENTORY", inv
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.INFRA_INVENTORY", inv)
         result = _load_infra_inventory()
         assert result is None
 
     def test_no_yaml_available(self, monkeypatch):
         """When PyYAML not available, returns None."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._HAS_YAML", False
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._HAS_YAML", False)
         result = _load_infra_inventory()
         assert result is None
 
@@ -333,9 +311,7 @@ class TestCheckServerContainerBranches:
                 return (0, "", "")  # docker ps empty output
             return (0, "", "")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
         viols: list[dict] = []
         result = check_server(server, viols)
         assert result["containers"]["nginx"] == "DOWN"
@@ -366,9 +342,7 @@ class TestCheckServerContainerBranches:
                 return (0, "'nginx: Restarting'\n", "")
             return (0, "", "")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
         viols: list[dict] = []
         result = check_server(server, viols)
         # The container name parsing includes quotes from the format string,
@@ -396,9 +370,7 @@ class TestCheckServerContainerBranches:
                 return (1, "", "permission denied")
             return (0, "", "")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
         viols: list[dict] = []
         check_server(server, viols)
         assert any("docker ps" in v.get("detail", "") for v in viols)
@@ -417,15 +389,15 @@ class TestCheckDiskSpaceBranches:
         def mock_run_ssh(alias, cmds, **kw):
             return (0, ssh_output, "")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
         global_v: list[dict] = []
         record_v: list[dict] = []
         check_disk_space(
-            "srv", "server1",
+            "srv",
+            "server1",
             [{"mount": "/nonexistent", "warn_pct": 80, "crit_pct": 90}],
-            global_v, record_v,
+            global_v,
+            record_v,
         )
         assert any("未找到" in v["detail"] for v in global_v)
 
@@ -436,15 +408,15 @@ class TestCheckDiskSpaceBranches:
         def mock_run_ssh(alias, cmds, **kw):
             return (0, ssh_output, "")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
         global_v: list[dict] = []
         record_v: list[dict] = []
         result = check_disk_space(
-            "srv", "server1",
+            "srv",
+            "server1",
             [{"pattern": "/d.*", "warn_pct": 80, "crit_pct": 90}],
-            global_v, record_v,
+            global_v,
+            record_v,
         )
         assert "/data" in result
 
@@ -495,14 +467,18 @@ class TestCheckInfrastructureBranches:
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit.check_server",
             lambda server, viols: {
-                "ssh_ok": True, "ports": {}, "containers": {},
-                "http_endpoints": {}, "violations": [],
+                "ssh_ok": True,
+                "ports": {},
+                "containers": {},
+                "http_endpoints": {},
+                "violations": [],
             },
         )
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit.check_database",
             lambda db, viols: {
-                "connect_ok": True, "violations": [],
+                "connect_ok": True,
+                "violations": [],
             },
         )
         result = check_infrastructure()
@@ -526,9 +502,7 @@ class TestAuditProjectEdgeCases:
     def test_source_repo_skips_kb_checks(self, tmp_path, monkeypatch):
         """Source repo skips all audit checks (manifest, KB, version)."""
         # Create minimal project structure
-        (tmp_path / "manifest.json").write_text(
-            json.dumps({"entries": []}), encoding="utf-8"
-        )
+        (tmp_path / "manifest.json").write_text(json.dumps({"entries": []}), encoding="utf-8")
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit.is_memory_core_source_repo",
             lambda p: True,
@@ -540,20 +514,17 @@ class TestAuditProjectEdgeCases:
 
     def test_check_function_exception(self, tmp_path, monkeypatch):
         """When a check function raises, exception is caught gracefully."""
-        (tmp_path / "manifest.json").write_text(
-            json.dumps({"entries": []}), encoding="utf-8"
-        )
+        (tmp_path / "manifest.json").write_text(json.dumps({"entries": []}), encoding="utf-8")
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit.is_memory_core_source_repo",
             lambda p: False,
         )
+
         # Make check_unsigned_files raise
         def bad_check(*args, **kwargs):
             raise RuntimeError("simulated failure")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.check_unsigned_files", bad_check
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.check_unsigned_files", bad_check)
         result = audit_project("test", tmp_path, {})
         # Should have error caught gracefully
         assert any("异常" in v.get("detail", "") for v in result["violations"])
@@ -705,7 +676,7 @@ class TestAppendInfraSummary:
         joined = "\n".join(lines)
         assert "🔴" in joined  # 95%
         assert "🟡" in joined  # 85%
-        assert "✓" in joined   # 50%
+        assert "✓" in joined  # 50%
 
     def test_container_restarting_unhealthy(self):
         """Containers with restarting/unhealthy states are not counted as healthy."""
@@ -797,10 +768,7 @@ class TestSummarizeReportInfraViolations:
             "total_violations": 5,
             "projects": {
                 "proj1": {
-                    "violations": [
-                        {"severity": "critical", "type": f"t{i}", "detail": f"d{i}"}
-                        for i in range(5)
-                    ]
+                    "violations": [{"severity": "critical", "type": f"t{i}", "detail": f"d{i}"} for i in range(5)]
                 }
             },
             "infrastructure": None,
@@ -915,11 +883,7 @@ class TestMainBranches:
             "memory_core.tools.daily_kb_audit.check_infrastructure",
             lambda: {
                 "servers": {
-                    "srv1": {
-                        "violations": [
-                            {"severity": "critical", "type": "container_down", "detail": "nginx"}
-                        ]
-                    }
+                    "srv1": {"violations": [{"severity": "critical", "type": "container_down", "detail": "nginx"}]}
                 },
                 "databases": {},
             },
@@ -1056,9 +1020,7 @@ class TestMainBranches:
             "memory_core.tools.daily_kb_audit.check_infrastructure",
             lambda: {"servers": {}, "databases": {}, "violations": []},
         )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.notify_via_lark", mock_notify
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.notify_via_lark", mock_notify)
         main(["--no-write", "--notify"])
         assert notify_called[0] is True
 
@@ -1106,6 +1068,7 @@ class TestStripFrontmatter:
     def test_strip_yaml_frontmatter(self):
         """Remove YAML frontmatter from markdown."""
         from memory_core.tools.daily_kb_audit import _strip_frontmatter
+
         text = "---\ntitle: test\n---\n# Content"
         result = _strip_frontmatter(text)
         assert result == "# Content"
@@ -1113,6 +1076,7 @@ class TestStripFrontmatter:
     def test_no_frontmatter(self):
         """Text without frontmatter is unchanged."""
         from memory_core.tools.daily_kb_audit import _strip_frontmatter
+
         text = "# Just content"
         result = _strip_frontmatter(text)
         assert result == text
@@ -1120,6 +1084,7 @@ class TestStripFrontmatter:
     def test_multiple_frontmatter_only_first(self):
         """Only first frontmatter block is stripped."""
         from memory_core.tools.daily_kb_audit import _strip_frontmatter
+
         text = "---\ntitle: test\n---\n# Content\n---\nmore\n---"
         result = _strip_frontmatter(text)
         assert "---\nmore\n---" in result
@@ -1134,6 +1099,7 @@ class TestReadTextSafe:
     def test_read_existing_file(self, tmp_path):
         """Read existing file returns content."""
         from memory_core.tools.daily_kb_audit import _read_text_safe
+
         test_file = tmp_path / "test.txt"
         test_file.write_text("hello world", encoding="utf-8")
         result = _read_text_safe(test_file)
@@ -1142,12 +1108,14 @@ class TestReadTextSafe:
     def test_read_nonexistent_file(self, tmp_path):
         """Non-existent file returns None."""
         from memory_core.tools.daily_kb_audit import _read_text_safe
+
         result = _read_text_safe(tmp_path / "nonexistent.txt")
         assert result is None
 
     def test_read_binary_file_as_utf8(self, tmp_path):
         """Binary file that's not valid UTF-8 returns None."""
         from memory_core.tools.daily_kb_audit import _read_text_safe
+
         test_file = tmp_path / "binary.txt"
         test_file.write_bytes(b"\xff\xfe\x00\x01")
         _read_text_safe(test_file)
@@ -1167,6 +1135,7 @@ class TestCheckGlobalResidue:
             _normalize_for_compare,
             check_global_residue,
         )
+
         # Create project KB
         lessons_dir = tmp_path / "memory" / "kb" / "lessons"
         lessons_dir.mkdir(parents=True)
@@ -1193,6 +1162,7 @@ class TestCheckGlobalResidue:
     def test_no_residue_when_different(self, tmp_path):
         """No residue when content is different."""
         from memory_core.tools.daily_kb_audit import check_global_residue
+
         lessons_dir = tmp_path / "memory" / "kb" / "lessons"
         lessons_dir.mkdir(parents=True)
         lesson_file = lessons_dir / "test.md"
@@ -1205,12 +1175,14 @@ class TestCheckGlobalResidue:
     def test_empty_fingerprints(self, tmp_path):
         """Empty fingerprints returns no violations."""
         from memory_core.tools.daily_kb_audit import check_global_residue
+
         viols = check_global_residue(tmp_path, {})
         assert viols == []
 
     def test_text_none_skipped(self, tmp_path):
         """Files that can't be read are skipped."""
         from memory_core.tools.daily_kb_audit import check_global_residue
+
         lessons_dir = tmp_path / "memory" / "kb" / "lessons"
         lessons_dir.mkdir(parents=True)
         # Create a binary file that can't be read as UTF-8
@@ -1229,6 +1201,7 @@ class TestExtractVersionFromToml:
     def test_extract_memory_version(self):
         """Extract memory_version from TOML."""
         from memory_core.tools.daily_kb_audit import _extract_version_from_toml
+
         text = '[memory]\nmemory_version = "1.2.3"\n'
         result = _extract_version_from_toml(text)
         assert result == "1.2.3"
@@ -1236,6 +1209,7 @@ class TestExtractVersionFromToml:
     def test_extract_core_version(self):
         """Extract version from [core] section."""
         from memory_core.tools.daily_kb_audit import _extract_version_from_toml
+
         text = '[core]\nversion = "2.0.0"\n'
         result = _extract_version_from_toml(text)
         assert result == "2.0.0"
@@ -1243,6 +1217,7 @@ class TestExtractVersionFromToml:
     def test_no_version_field(self):
         """No version field returns None."""
         from memory_core.tools.daily_kb_audit import _extract_version_from_toml
+
         text = '[section]\nother = "value"\n'
         result = _extract_version_from_toml(text)
         assert result is None
@@ -1264,8 +1239,10 @@ class TestTcpConnectOk:
             class MockSocket:
                 def __enter__(self):
                     return self
+
                 def __exit__(self, *args):
                     pass
+
             return MockSocket()
 
         monkeypatch.setattr(socket, "create_connection", mock_create_connection)
@@ -1308,6 +1285,7 @@ class TestBuildReport:
     def test_build_report_with_infra(self):
         """Build report includes infrastructure."""
         from memory_core.tools.daily_kb_audit import build_report
+
         projects_results = {
             "proj1": {
                 "path": "/tmp/proj1",
@@ -1328,9 +1306,8 @@ class TestBuildReport:
     def test_build_report_without_infra(self):
         """Build report without infrastructure."""
         from memory_core.tools.daily_kb_audit import build_report
-        projects_results = {
-            "proj1": {"path": "/tmp/proj1", "violations": []}
-        }
+
+        projects_results = {"proj1": {"path": "/tmp/proj1", "violations": []}}
         report = build_report(projects_results, infrastructure=None)
         assert "infrastructure" not in report or report["infrastructure"] is None
 
@@ -1344,10 +1321,9 @@ class TestWriteReport:
     def test_write_report(self, tmp_path, monkeypatch):
         """Write report to audit directory."""
         from memory_core.tools.daily_kb_audit import write_report
+
         audit_dir = tmp_path / "audit"
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.AUDIT_DIR", audit_dir
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.AUDIT_DIR", audit_dir)
         report = {
             "audit_date": "2026-07-12",
             "projects_checked": 1,
@@ -1398,13 +1374,7 @@ class TestMainCliBranches:
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit.check_infrastructure",
             lambda: {
-                "servers": {
-                    "srv1": {
-                        "violations": [
-                            {"severity": "critical", "type": "container_down"}
-                        ]
-                    }
-                },
+                "servers": {"srv1": {"violations": [{"severity": "critical", "type": "container_down"}]}},
                 "databases": {},
             },
         )
@@ -1482,9 +1452,7 @@ class TestCheckServerHttpEndpoints:
                 return 0, "ok", ""
             return 1, "", ""
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
 
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -1495,10 +1463,8 @@ class TestCheckServerHttpEndpoints:
             "host": "localhost",
             "ssh_alias": "test",
             "checks": {
-                "http_endpoints": [
-                    {"name": "health", "url": "http://localhost/health", "expected_status": 200}
-                ]
-            }
+                "http_endpoints": [{"name": "health", "url": "http://localhost/health", "expected_status": 200}]
+            },
         }
 
         result = check_server(server, [])
@@ -1517,9 +1483,7 @@ class TestCheckServerHttpEndpoints:
                 return 0, "ok", ""
             return 1, "", ""
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
 
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -1530,10 +1494,8 @@ class TestCheckServerHttpEndpoints:
             "host": "localhost",
             "ssh_alias": "test",
             "checks": {
-                "http_endpoints": [
-                    {"name": "health", "url": "http://localhost/health", "expected_status": 200}
-                ]
-            }
+                "http_endpoints": [{"name": "health", "url": "http://localhost/health", "expected_status": 200}]
+            },
         }
 
         violations = []
@@ -1557,11 +1519,7 @@ class TestBuildReportExtended:
         from memory_core.tools.daily_kb_audit import build_report
 
         project_results = {
-            "proj1": {
-                "violations": [
-                    {"severity": "critical", "type": "test", "detail": "Test violation"}
-                ]
-            }
+            "proj1": {"violations": [{"severity": "critical", "type": "test", "detail": "Test violation"}]}
         }
 
         report = build_report(project_results)
@@ -1576,11 +1534,7 @@ class TestBuildReportExtended:
         from memory_core.tools.daily_kb_audit import build_report
 
         project_results = {}
-        infra = {
-            "servers": {"srv1": {}},
-            "databases": {"db1": {}},
-            "violations": []
-        }
+        infra = {"servers": {"srv1": {}}, "databases": {"db1": {}}, "violations": []}
 
         report = build_report(project_results, infrastructure=infra)
 
@@ -1600,14 +1554,8 @@ class TestAuditProjectFull:
         """Source repo skips KB checks."""
         from memory_core.tools.daily_kb_audit import audit_project
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.is_memory_core_source_repo",
-            lambda p: True
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.check_manifest_integrity",
-            lambda p: []
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.is_memory_core_source_repo", lambda p: True)
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.check_manifest_integrity", lambda p: [])
 
         result = audit_project("test", tmp_path, {})
 
@@ -1618,37 +1566,20 @@ class TestAuditProjectFull:
         """All checks are executed."""
         from memory_core.tools.daily_kb_audit import audit_project
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.is_memory_core_source_repo",
-            lambda p: False
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.is_memory_core_source_repo", lambda p: False)
 
         # Mock all check functions
         check_calls = []
+
         def mock_check(*args, **kwargs):
             check_calls.append(1)
             return []
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.check_manifest_integrity",
-            mock_check
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.check_unsigned_files",
-            mock_check
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.check_global_residue",
-            mock_check
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.check_large_or_db_files",
-            mock_check
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.check_version_consistency",
-            mock_check
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.check_manifest_integrity", mock_check)
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.check_unsigned_files", mock_check)
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.check_global_residue", mock_check)
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.check_large_or_db_files", mock_check)
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.check_version_consistency", mock_check)
 
         audit_project("test", tmp_path, {})
 
@@ -1667,17 +1598,9 @@ class TestCheckDatabase:
         """Database is reachable via TCP."""
         from memory_core.tools.daily_kb_audit import check_database
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._tcp_connect_ok",
-            lambda host, port, timeout=5: True
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._tcp_connect_ok", lambda host, port, timeout=5: True)
 
-        db = {
-            "name": "test_db",
-            "host": "localhost",
-            "port": 3306,
-            "check": "tcp_connect"
-        }
+        db = {"name": "test_db", "host": "localhost", "port": 3306, "check": "tcp_connect"}
 
         violations = []
         result = check_database(db, violations)
@@ -1689,17 +1612,9 @@ class TestCheckDatabase:
         """Database is not reachable."""
         from memory_core.tools.daily_kb_audit import check_database
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._tcp_connect_ok",
-            lambda host, port, timeout=5: False
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._tcp_connect_ok", lambda host, port, timeout=5: False)
 
-        db = {
-            "name": "test_db",
-            "host": "localhost",
-            "port": 3306,
-            "check": "tcp_connect"
-        }
+        db = {"name": "test_db", "host": "localhost", "port": 3306, "check": "tcp_connect"}
 
         violations = []
         result = check_database(db, violations)
@@ -1726,9 +1641,7 @@ class TestCheckSshReachable:
                 return 0, "ok", ""
             return 1, "", ""
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
 
         result = check_ssh_reachable("test_host")
 
@@ -1741,9 +1654,7 @@ class TestCheckSshReachable:
         def mock_run_ssh(host, cmd, **kwargs):
             return 1, "", "Connection failed"
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
 
         result = check_ssh_reachable("test_host")
 
@@ -1775,14 +1686,10 @@ class TestCheckSystemdServices:
             )
             return 0, output, ""
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
 
         violations = []
-        result = _check_systemd_services(
-            "test_host", "test_server", ["nginx", "mysql"], [], violations
-        )
+        result = _check_systemd_services("test_host", "test_server", ["nginx", "mysql"], [], violations)
 
         assert result == {"nginx": "running", "mysql": "running"}
         assert len(violations) == 0
@@ -1792,22 +1699,13 @@ class TestCheckSystemdServices:
         from memory_core.tools.daily_kb_audit import _check_systemd_services
 
         def mock_run_ssh(host, cmd, **kwargs):
-            output = (
-                "=== nginx ===\n"
-                "LoadState=not-found\n"
-                "ActiveState=inactive\n"
-                "SubState=dead\n"
-            )
+            output = "=== nginx ===\nLoadState=not-found\nActiveState=inactive\nSubState=dead\n"
             return 0, output, ""
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
 
         violations = []
-        result = _check_systemd_services(
-            "test_host", "test_server", ["nginx"], [], violations
-        )
+        result = _check_systemd_services("test_host", "test_server", ["nginx"], [], violations)
 
         assert result["nginx"] == "not-found"
         assert len(violations) > 0
@@ -1818,22 +1716,13 @@ class TestCheckSystemdServices:
         from memory_core.tools.daily_kb_audit import _check_systemd_services
 
         def mock_run_ssh(host, cmd, **kwargs):
-            output = (
-                "=== nginx ===\n"
-                "LoadState=loaded\n"
-                "ActiveState=failed\n"
-                "SubState=failed\n"
-            )
+            output = "=== nginx ===\nLoadState=loaded\nActiveState=failed\nSubState=failed\n"
             return 0, output, ""
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
 
         violations = []
-        result = _check_systemd_services(
-            "test_host", "test_server", ["nginx"], [], violations
-        )
+        result = _check_systemd_services("test_host", "test_server", ["nginx"], [], violations)
 
         assert result["nginx"] == "failed/failed"
         assert len(violations) > 0
@@ -1858,13 +1747,9 @@ class TestCheckDiskSpace:
                 return 0, output, ""
             return 0, "", ""
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
 
-        disk_checks = [
-            {"mount": "/", "warn_threshold": 80, "crit_threshold": 90}
-        ]
+        disk_checks = [{"mount": "/", "warn_threshold": 80, "crit_threshold": 90}]
 
         violations = []
         result = check_disk_space("test_host", "test_server", disk_checks, [], violations)
@@ -1883,13 +1768,9 @@ class TestCheckDiskSpace:
                 return 0, output, ""
             return 0, "", ""
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
 
-        disk_checks = [
-            {"mount": "/", "warn_threshold": 80, "crit_threshold": 90}
-        ]
+        disk_checks = [{"mount": "/", "warn_threshold": 80, "crit_threshold": 90}]
 
         violations = []
         result = check_disk_space("test_host", "test_server", disk_checks, [], violations)
@@ -1909,13 +1790,9 @@ class TestCheckDiskSpace:
                 return 0, output, ""
             return 0, "", ""
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
 
-        disk_checks = [
-            {"mount": "/", "warn_threshold": 80, "crit_threshold": 90}
-        ]
+        disk_checks = [{"mount": "/", "warn_threshold": 80, "crit_threshold": 90}]
 
         violations = []
         result = check_disk_space("test_host", "test_server", disk_checks, [], violations)
@@ -1962,9 +1839,7 @@ class TestLoadRegisteredProjectsErrors:
 
         idx_path = tmp_path / "path-index.json"
         idx_path.write_text("{invalid json", encoding="utf-8")
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx_path
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx_path)
         result = load_registered_projects()
         assert result == []
 
@@ -1976,13 +1851,8 @@ class TestLoadRegisteredProjectsErrors:
 
         idx_path = tmp_path / "path-index.json"
         factory_path = str(Path.home() / ".factory")
-        idx_path.write_text(
-            json.dumps({"paths": {factory_path: {"project_name": "factory"}}}),
-            encoding="utf-8"
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx_path
-        )
+        idx_path.write_text(json.dumps({"paths": {factory_path: {"project_name": "factory"}}}), encoding="utf-8")
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx_path)
         result = load_registered_projects()
         assert result == []
 
@@ -1998,6 +1868,7 @@ class TestCheckManifestIntegrityParseErrors:
         manifest_path.write_text("{bad json", encoding="utf-8")
 
         from memory_core.tools.daily_kb_audit import check_manifest_integrity
+
         viols = check_manifest_integrity(tmp_path)
         assert len(viols) > 0
         assert viols[0]["severity"] == "critical"
@@ -2016,6 +1887,7 @@ class TestCheckManifestIntegrityParseErrors:
         monkeypatch.setattr("pathlib.Path.read_text", mock_read_text)
 
         from memory_core.tools.daily_kb_audit import check_manifest_integrity
+
         viols = check_manifest_integrity(tmp_path)
         assert len(viols) > 0
         assert viols[0]["severity"] == "critical"
@@ -2034,6 +1906,7 @@ class TestCheckUnsignedFilesManifestErrors:
         manifest_path.write_text("{bad json", encoding="utf-8")
 
         from memory_core.tools.daily_kb_audit import check_unsigned_files
+
         viols = check_unsigned_files(tmp_path)
         # Should still find the unsigned file
         assert len(viols) > 0
@@ -2053,6 +1926,7 @@ class TestCheckUnsignedFilesManifestErrors:
         monkeypatch.setattr("pathlib.Path.read_text", mock_read_text)
 
         from memory_core.tools.daily_kb_audit import check_unsigned_files
+
         viols = check_unsigned_files(tmp_path)
         assert len(viols) > 0
 
@@ -2121,9 +1995,7 @@ class TestCheckVersionConsistencyBranches:
         for fname in ("memory.lock", "adapter.toml", "ownership.toml"):
             (system_dir / fname).write_text('version = "1.0.0"\n', encoding="utf-8")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.CURRENT_MEMORY_VERSION", "1.0.0"
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.CURRENT_MEMORY_VERSION", "1.0.0")
 
         viols = check_version_consistency(tmp_path)
         assert len(viols) == 0
@@ -2145,9 +2017,7 @@ class TestLoadInfraInventoryYamlErrors:
             raise OSError("Permission denied")
 
         monkeypatch.setattr("pathlib.Path.read_text", mock_read_text)
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.INFRA_INVENTORY", inv
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.INFRA_INVENTORY", inv)
 
         result = _load_infra_inventory()
         assert result is None
@@ -2161,9 +2031,7 @@ class TestLoadInfraInventoryYamlErrors:
         inv = tmp_path / "inventory.yaml"
         inv.write_text("{{invalid yaml", encoding="utf-8")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.INFRA_INVENTORY", inv
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.INFRA_INVENTORY", inv)
 
         result = _load_infra_inventory()
         assert result is None
@@ -2259,12 +2127,7 @@ class TestCheckDatabaseUnsupportedType:
         """Unsupported check type returns warning."""
         from memory_core.tools.daily_kb_audit import check_database
 
-        db = {
-            "name": "test_db",
-            "host": "localhost",
-            "port": 3306,
-            "check": "mysql_ping"
-        }
+        db = {"name": "test_db", "host": "localhost", "port": 3306, "check": "mysql_ping"}
 
         violations = []
         result = check_database(db, violations)
@@ -2282,8 +2145,7 @@ class TestCheckInfrastructureParsing:
         from memory_core.tools.daily_kb_audit import check_infrastructure
 
         monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._load_infra_inventory",
-            lambda: {"servers": ["not a dict", 123]}
+            "memory_core.tools.daily_kb_audit._load_infra_inventory", lambda: {"servers": ["not a dict", 123]}
         )
 
         result = check_infrastructure()
@@ -2294,8 +2156,7 @@ class TestCheckInfrastructureParsing:
         from memory_core.tools.daily_kb_audit import check_infrastructure
 
         monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit._load_infra_inventory",
-            lambda: {"databases": ["not a dict", 123]}
+            "memory_core.tools.daily_kb_audit._load_infra_inventory", lambda: {"databases": ["not a dict", 123]}
         )
 
         result = check_infrastructure()
@@ -2312,14 +2173,8 @@ class TestAuditProjectErrorHandling:
         def bad_check(*args, **kwargs):
             raise RuntimeError("Manifest check failed")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.check_manifest_integrity",
-            bad_check
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.is_memory_core_source_repo",
-            lambda p: False
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.check_manifest_integrity", bad_check)
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.is_memory_core_source_repo", lambda p: False)
 
         result = audit_project("test", tmp_path, {})
         assert any("异常" in v.get("detail", "") for v in result["violations"])
@@ -2351,21 +2206,15 @@ class TestMainCliBranchesExtended:
         """Main with projects processes them."""
         from memory_core.tools.daily_kb_audit import main
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.load_registered_projects",
-            lambda: [("proj1", tmp_path)]
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.load_registered_projects", lambda: [("proj1", tmp_path)])
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit.check_infrastructure",
-            lambda: {"servers": {}, "databases": {}, "violations": []}
+            lambda: {"servers": {}, "databases": {}, "violations": []},
         )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.build_global_kb_fingerprints",
-            lambda: {}
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.build_global_kb_fingerprints", lambda: {})
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit.audit_project",
-            lambda name, root, fp: {"path": str(root), "violations": []}
+            lambda name, root, fp: {"path": str(root), "violations": []},
         )
 
         result = main(["--no-write"])
@@ -2375,21 +2224,15 @@ class TestMainCliBranchesExtended:
         """Main --json outputs JSON."""
         from memory_core.tools.daily_kb_audit import main
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.load_registered_projects",
-            lambda: [("proj1", tmp_path)]
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.load_registered_projects", lambda: [("proj1", tmp_path)])
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit.check_infrastructure",
-            lambda: {"servers": {}, "databases": {}, "violations": []}
+            lambda: {"servers": {}, "databases": {}, "violations": []},
         )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.build_global_kb_fingerprints",
-            lambda: {}
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.build_global_kb_fingerprints", lambda: {})
         monkeypatch.setattr(
             "memory_core.tools.daily_kb_audit.audit_project",
-            lambda name, root, fp: {"path": str(root), "violations": []}
+            lambda name, root, fp: {"path": str(root), "violations": []},
         )
 
         main(["--no-write", "--json"])
@@ -2416,6 +2259,7 @@ class TestCheckManifestIntegrityFileUnreadable:
         monkeypatch.setattr("memory_core.tools.daily_kb_audit._sha256_file", mock_sha256)
 
         from memory_core.tools.daily_kb_audit import check_manifest_integrity
+
         viols = check_manifest_integrity(tmp_path)
         assert len(viols) == 1
         assert "无法读取" in viols[0]["detail"]
@@ -2430,6 +2274,7 @@ class TestCheckLargeOrDbFilesComprehensive:
         db_file.write_bytes(b"\x00" * 100)
 
         from memory_core.tools.daily_kb_audit import check_large_or_db_files
+
         viols = check_large_or_db_files(tmp_path)
         assert any("数据库" in v["detail"] for v in viols)
 
@@ -2439,6 +2284,7 @@ class TestCheckLargeOrDbFilesComprehensive:
         dump_file.write_bytes(b"\x00" * 100)
 
         from memory_core.tools.daily_kb_audit import check_large_or_db_files
+
         viols = check_large_or_db_files(tmp_path)
         assert any("数据库" in v["detail"] for v in viols)
 
@@ -2454,6 +2300,7 @@ class TestCheckLargeOrDbFilesComprehensive:
         monkeypatch.setattr("pathlib.Path.relative_to", mock_relative_to)
 
         from memory_core.tools.daily_kb_audit import check_large_or_db_files
+
         viols = check_large_or_db_files(tmp_path)
         assert any("backups" in v["file"] for v in viols)
 
@@ -2471,9 +2318,7 @@ class TestCheckSystemdServicesComprehensive:
         monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
 
         violations = []
-        result = _check_systemd_services(
-            "test_host", "test_server", ["nginx"], [], violations
-        )
+        result = _check_systemd_services("test_host", "test_server", ["nginx"], [], violations)
 
         assert result["nginx"] == "unknown"
         assert len(violations) > 0
@@ -2490,9 +2335,7 @@ class TestCheckSystemdServicesComprehensive:
         monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
 
         violations = []
-        result = _check_systemd_services(
-            "test_host", "test_server", ["nginx"], [], violations
-        )
+        result = _check_systemd_services("test_host", "test_server", ["nginx"], [], violations)
 
         assert result["nginx"] == "unknown"
         assert len(violations) > 0
@@ -2508,9 +2351,7 @@ class TestCheckSystemdServicesComprehensive:
         monkeypatch.setattr("memory_core.tools.daily_kb_audit._run_ssh", mock_run_ssh)
 
         violations = []
-        result = _check_systemd_services(
-            "test_host", "test_server", ["nginx"], [], violations
-        )
+        result = _check_systemd_services("test_host", "test_server", ["nginx"], [], violations)
 
         assert result["nginx"] == "failed/failed"
         assert len(violations) > 0
@@ -2540,10 +2381,8 @@ class TestCheckServerHttpEndpointsComprehensive:
             "host": "localhost",
             "ssh_alias": "test",
             "checks": {
-                "http_endpoints": [
-                    {"name": "health", "url": "http://localhost/health", "expected_status": 200}
-                ]
-            }
+                "http_endpoints": [{"name": "health", "url": "http://localhost/health", "expected_status": 200}]
+            },
         }
 
         violations = []
@@ -2568,10 +2407,8 @@ class TestCheckServerHttpEndpointsComprehensive:
             "host": "localhost",
             "ssh_alias": "test",
             "checks": {
-                "http_endpoints": [
-                    {"name": "health", "url": "http://localhost/health", "expected_status": 200}
-                ]
-            }
+                "http_endpoints": [{"name": "health", "url": "http://localhost/health", "expected_status": 200}]
+            },
         }
 
         violations = []
@@ -2595,7 +2432,7 @@ class TestCheckServerHttpEndpointsComprehensive:
                 "http_endpoints": [
                     {"name": "health"}  # No URL
                 ]
-            }
+            },
         }
 
         violations = []
@@ -2610,10 +2447,7 @@ class TestAuditProjectSourceRepoDetection:
         """Source repo skips KB checks."""
         from memory_core.tools.daily_kb_audit import audit_project
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.is_memory_core_source_repo",
-            lambda p: True
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.is_memory_core_source_repo", lambda p: True)
 
         result = audit_project("test", tmp_path, {})
         assert "note" in result
@@ -2623,30 +2457,12 @@ class TestAuditProjectSourceRepoDetection:
         """is_memory_core_source_repo=None doesn't skip."""
         from memory_core.tools.daily_kb_audit import audit_project
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.is_memory_core_source_repo",
-            None
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.check_manifest_integrity",
-            lambda p: []
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.check_unsigned_files",
-            lambda p: []
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.check_global_residue",
-            lambda p, f: []
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.check_large_or_db_files",
-            lambda p: []
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.check_version_consistency",
-            lambda p: []
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.is_memory_core_source_repo", None)
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.check_manifest_integrity", lambda p: [])
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.check_unsigned_files", lambda p: [])
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.check_global_residue", lambda p, f: [])
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.check_large_or_db_files", lambda p: [])
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.check_version_consistency", lambda p: [])
 
         result = audit_project("test", tmp_path, {})
         # Should run all checks
@@ -2664,6 +2480,7 @@ class TestCheckUnsignedFilesValueError:
 
         # Mock relative_to to raise ValueError
         original_relative_to = tmp_path.__class__.relative_to
+
         def mock_relative_to(self, *args, **kwargs):
             if self == kb_dir / "test.md":
                 raise ValueError("different root")
@@ -2672,6 +2489,7 @@ class TestCheckUnsignedFilesValueError:
         monkeypatch.setattr("pathlib.Path.relative_to", mock_relative_to)
 
         from memory_core.tools.daily_kb_audit import check_unsigned_files
+
         viols = check_unsigned_files(tmp_path)
         # Should still find the file, using str(md_path) as fallback
         assert len(viols) > 0
@@ -2686,6 +2504,7 @@ class TestCheckLargeOrDbFilesValueError:
         sql_file.write_bytes(b"\x00" * (1024 * 1024 + 100))
 
         original_relative_to = tmp_path.__class__.relative_to
+
         def mock_relative_to(self, *args, **kwargs):
             if self == sql_file:
                 raise ValueError("different root")
@@ -2694,6 +2513,7 @@ class TestCheckLargeOrDbFilesValueError:
         monkeypatch.setattr("pathlib.Path.relative_to", mock_relative_to)
 
         from memory_core.tools.daily_kb_audit import check_large_or_db_files
+
         viols = check_large_or_db_files(tmp_path)
         # Should still flag the file
         assert len(viols) > 0
@@ -2712,9 +2532,7 @@ class TestCheckVersionConsistencyFilesMissing:
         (system_dir / "memory.lock").write_text('version = "1.0.0"\n', encoding="utf-8")
         (system_dir / "ownership.toml").write_text('version = "1.0.0"\n', encoding="utf-8")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.CURRENT_MEMORY_VERSION", "1.0.0"
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.CURRENT_MEMORY_VERSION", "1.0.0")
 
         viols = check_version_consistency(tmp_path)
         assert len(viols) > 0
@@ -2730,9 +2548,7 @@ class TestLoadInfraInventoryFileNotExists:
 
         monkeypatch.setattr("memory_core.tools.daily_kb_audit._HAS_YAML", True)
         inv = tmp_path / "nonexistent.yaml"
-        monkeypatch.setattr(
-            "memory_core.tools.daily_kb_audit.INFRA_INVENTORY", inv
-        )
+        monkeypatch.setattr("memory_core.tools.daily_kb_audit.INFRA_INVENTORY", inv)
 
         result = _load_infra_inventory()
         assert result is None
@@ -2780,4 +2596,3 @@ class TestCheckDiskSpaceMountNotFound:
 
         assert len(global_v) > 0
         assert "未找到匹配的挂载点" in global_v[0]["detail"]
-

@@ -71,11 +71,16 @@ def _sanitize_value(value: Any) -> Any:
     try:
         as_path = Path(value)
         # Check both POSIX absolute, current OS separator, and Windows drive letter
-        is_abs = as_path.is_absolute() or os.sep in value or (len(value) >= 3 and value[1] == ':' and value[2] in ('\\', '/'))
+        is_abs = (
+            as_path.is_absolute()
+            or os.sep in value
+            or (len(value) >= 3 and value[1] == ":" and value[2] in ("\\", "/"))
+        )
         if is_abs:
             # Use PureWindowsPath for Windows-style paths to get correct basename
-            if '\\' in value:
+            if "\\" in value:
                 from pathlib import PureWindowsPath
+
                 return PureWindowsPath(value).name
             return as_path.name
     except (OSError, ValueError) as exc:
@@ -153,6 +158,7 @@ class TelemetryBridge:
         self._analytics = None
         try:
             from memory_core.tools.posthog_client import analytics
+
             self._analytics = analytics
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug("telemetry_bridge: posthog_client unavailable: %s", exc)
@@ -256,13 +262,15 @@ class TelemetryBridge:
             # The SDK's _enqueue always adds it; omitting it can trigger 400.
             item_timestamp = datetime.now(UTC).isoformat()
 
-            batch_items.append({
-                "event": event_name,
-                "properties": enriched,
-                "distinct_id": distinct_id,
-                "timestamp": item_timestamp,
-                "uuid": str(__import__("uuid").uuid4()),
-            })
+            batch_items.append(
+                {
+                    "event": event_name,
+                    "properties": enriched,
+                    "distinct_id": distinct_id,
+                    "timestamp": item_timestamp,
+                    "uuid": str(__import__("uuid").uuid4()),
+                }
+            )
 
         return batch_items
 
@@ -291,11 +299,13 @@ class TelemetryBridge:
 
         batch_url = f"{host}/batch/"
         headers = {"Content-Type": "application/json"}
-        payload = json.dumps({
-            "api_key": api_key,
-            "batch": batch_items,
-            "sentAt": now_iso(),
-        }).encode("utf-8")
+        payload = json.dumps(
+            {
+                "api_key": api_key,
+                "batch": batch_items,
+                "sentAt": now_iso(),
+            }
+        ).encode("utf-8")
 
         # Send without retry and a short timeout. Telemetry is lossy-tolerant
         # (the caller swallows failures and retries on the next session), so it
@@ -304,24 +314,18 @@ class TelemetryBridge:
         # SessionEnd/Start hook timeouts when the PostHog endpoint was slow.
         max_retries = 0
         for attempt in range(max_retries + 1):
-            req = urllib.request.Request(
-                batch_url, data=payload, headers=headers, method="POST"
-            )
+            req = urllib.request.Request(batch_url, data=payload, headers=headers, method="POST")
             try:
                 with urllib.request.urlopen(req, timeout=3) as response:
                     response.read()  # Consume full response
-                logger.debug(
-                    "telemetry_bridge.batch_capture: sent %d events", len(batch_items)
-                )
+                logger.debug("telemetry_bridge.batch_capture: sent %d events", len(batch_items))
                 return True
 
             except urllib.error.HTTPError as http_exc:
                 # Read response body for diagnostics (str(HTTPError) omits it)
                 body_text = ""
                 try:
-                    body_text = http_exc.read().decode(
-                        "utf-8", errors="replace"
-                    )[:300]
+                    body_text = http_exc.read().decode("utf-8", errors="replace")[:300]
                 except Exception as exc:
                     logger.debug(
                         "telemetry_bridge.batch_capture: failed to read HTTP error body: %s",
@@ -333,17 +337,17 @@ class TelemetryBridge:
                 if should_retry and attempt < max_retries:
                     logger.debug(
                         "telemetry_bridge.batch_capture: HTTP %d, retrying %d/%d",
-                        http_exc.code, attempt + 1, max_retries,
+                        http_exc.code,
+                        attempt + 1,
+                        max_retries,
                     )
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
                     continue
 
                 # Non-retryable or exhausted retries: enrich message with body
                 if body_text:
                     http_exc.msg = f"{http_exc.msg} [body: {body_text}]"
-                logger.debug(
-                    "telemetry_bridge.batch_capture: HTTP error: %s", http_exc
-                )
+                logger.debug("telemetry_bridge.batch_capture: HTTP error: %s", http_exc)
                 self._capture_error(http_exc, "batch", "batch_capture")
                 return False
 
@@ -352,13 +356,13 @@ class TelemetryBridge:
                 if attempt < max_retries:
                     logger.debug(
                         "telemetry_bridge.batch_capture: URLError, retrying %d/%d: %s",
-                        attempt + 1, max_retries, url_exc,
+                        attempt + 1,
+                        max_retries,
+                        url_exc,
                     )
-                    time.sleep(2 ** attempt)
+                    time.sleep(2**attempt)
                     continue
-                logger.debug(
-                    "telemetry_bridge.batch_capture: exhausted retries: %s", url_exc
-                )
+                logger.debug("telemetry_bridge.batch_capture: exhausted retries: %s", url_exc)
                 self._capture_error(url_exc, "batch", "batch_capture")
                 return False
 

@@ -98,7 +98,7 @@ def _split_shell_args(arg_string: str) -> list[str]:
                 current.append(ch)
         elif ch in ('"', "'"):
             in_quote = ch
-        elif ch in (' ', '\t'):
+        elif ch in (" ", "\t"):
             if current:
                 args.append("".join(current))
                 current = []
@@ -370,19 +370,14 @@ def _classify_agents_md(
     }
 
 
-def _classify_write_edit(
-    payload: dict[str, Any], project_root: Path, ownership: Any
-) -> RuleResult:
+def _classify_write_edit(payload: dict[str, Any], project_root: Path, ownership: Any) -> RuleResult:
     """Handle Write and Edit tool classification."""
     tool_name = payload.get("tool_name", "")
     file_path = payload.get("file_path")
 
     if not file_path:
         return RuleResult(
-            matched=False,
-            severity="info",
-            message=f"{tool_name} without file_path",
-            detail={"decision": "allow"}
+            matched=False, severity="info", message=f"{tool_name} without file_path", detail={"decision": "allow"}
         )
 
     # Special handling for AGENTS.md (5b.4: diff-aware)
@@ -399,7 +394,7 @@ def _classify_write_edit(
             detail={
                 "decision": decision,
                 "scenario": agents_result.get("scenario"),
-            }
+            },
         )
 
     # 文件类型黑名单检查
@@ -410,7 +405,7 @@ def _classify_write_edit(
             matched=(decision == "block"),
             severity="error" if decision == "block" else "info",
             message=ft_block["reason"],
-            detail={"decision": decision}
+            detail={"decision": decision},
         )
 
     # 文档路由校验（memory/docs/ 或 memory/kb/ 下必须使用注册目录）
@@ -421,7 +416,7 @@ def _classify_write_edit(
             matched=(decision == "block"),
             severity="error" if decision == "block" else "info",
             message=dr_block["reason"],
-            detail={"decision": decision}
+            detail={"decision": decision},
         )
 
     # classify_owned_path normalizes absolute paths to project-relative
@@ -432,27 +427,17 @@ def _classify_write_edit(
             matched=True,
             severity="error",
             message=f"Protected {result.level.name} path: {result.reason}",
-            detail={"decision": "block"}
+            detail={"decision": "block"},
         )
-    return RuleResult(
-        matched=False,
-        severity="info",
-        message=result.reason,
-        detail={"decision": "allow"}
-    )
+    return RuleResult(matched=False, severity="info", message=result.reason, detail={"decision": "allow"})
 
 
-def _classify_multiedit(
-    payload: dict[str, Any], project_root: Path, ownership: Any
-) -> RuleResult:
+def _classify_multiedit(payload: dict[str, Any], project_root: Path, ownership: Any) -> RuleResult:
     """Handle MultiEdit tool classification."""
     paths = _parse_multiedit_paths(payload)
     if not paths:
         return RuleResult(
-            matched=False,
-            severity="info",
-            message="MultiEdit with no file paths",
-            detail={"decision": "allow"}
+            matched=False, severity="info", message="MultiEdit with no file paths", detail={"decision": "allow"}
         )
 
     item_results: list[dict[str, Any]] = []
@@ -480,22 +465,26 @@ def _classify_multiedit(
         # 文件类型黑名单检查
         ft_block = _check_file_type_block(path)
         if ft_block is not None:
-            item_results.append({
-                "path": path,
-                "decision": "block",
-                "reason": ft_block["reason"],
-            })
+            item_results.append(
+                {
+                    "path": path,
+                    "decision": "block",
+                    "reason": ft_block["reason"],
+                }
+            )
             has_block = True
             continue
 
         # 文档路由校验（memory/docs/ 或 memory/kb/ 下必须使用注册目录）
         dr_block = _check_doc_routing(path)
         if dr_block is not None:
-            item_results.append({
-                "path": path,
-                "decision": "block",
-                "reason": dr_block["reason"],
-            })
+            item_results.append(
+                {
+                    "path": path,
+                    "decision": "block",
+                    "reason": dr_block["reason"],
+                }
+            )
             has_block = True
             continue
 
@@ -504,18 +493,22 @@ def _classify_multiedit(
         # internally via _normalize_to_project_relative (single source of truth).
         result = classify_owned_path(path, ownership, project_root)
         if hasattr(result, "level"):
-            item_results.append({
-                "path": path,
-                "decision": "block",
-                "reason": f"Protected {result.level.name} path: {result.reason}",
-            })
+            item_results.append(
+                {
+                    "path": path,
+                    "decision": "block",
+                    "reason": f"Protected {result.level.name} path: {result.reason}",
+                }
+            )
             has_block = True
         else:
-            item_results.append({
-                "path": path,
-                "decision": "allow",
-                "reason": result.reason,
-            })
+            item_results.append(
+                {
+                    "path": path,
+                    "decision": "allow",
+                    "reason": result.reason,
+                }
+            )
 
     if has_block:
         blocked = [r for r in item_results if r["decision"] == "block"]
@@ -527,7 +520,7 @@ def _classify_multiedit(
             detail={
                 "decision": "block",
                 "item_results": item_results,
-            }
+            },
         )
     return RuleResult(
         matched=False,
@@ -536,21 +529,16 @@ def _classify_multiedit(
         detail={
             "decision": "allow",
             "item_results": item_results,
-        }
+        },
     )
 
 
-def _classify_notebook(
-    payload: dict[str, Any], project_root: Path, ownership: Any
-) -> RuleResult:
+def _classify_notebook(payload: dict[str, Any], project_root: Path, ownership: Any) -> RuleResult:
     """Handle NotebookEdit tool classification."""
     notebook_path = payload.get("notebook_path")
     if not notebook_path:
         return RuleResult(
-            matched=False,
-            severity="info",
-            message="NotebookEdit without notebook_path",
-            detail={"decision": "allow"}
+            matched=False, severity="info", message="NotebookEdit without notebook_path", detail={"decision": "allow"}
         )
 
     # classify_owned_path normalizes absolute paths to project-relative
@@ -558,30 +546,17 @@ def _classify_notebook(
     result = classify_owned_path(notebook_path, ownership, project_root)
     if hasattr(result, "level"):
         return RuleResult(
-            matched=True,
-            severity="error",
-            message=f"Protected notebook: {result.reason}",
-            detail={"decision": "block"}
+            matched=True, severity="error", message=f"Protected notebook: {result.reason}", detail={"decision": "block"}
         )
-    return RuleResult(
-        matched=False,
-        severity="info",
-        message=result.reason,
-        detail={"decision": "allow"}
-    )
+    return RuleResult(matched=False, severity="info", message=result.reason, detail={"decision": "allow"})
 
 
-def _classify_execute(
-    payload: dict[str, Any], project_root: Path, ownership: Any
-) -> RuleResult:
+def _classify_execute(payload: dict[str, Any], project_root: Path, ownership: Any) -> RuleResult:
     """Handle Execute tool classification."""
     command = payload.get("command", "")
     if not command:
         return RuleResult(
-            matched=False,
-            severity="info",
-            message="Execute without command",
-            detail={"decision": "allow"}
+            matched=False, severity="info", message="Execute without command", detail={"decision": "allow"}
         )
 
     paths = _extract_path_from_execute(command)
@@ -594,7 +569,7 @@ def _classify_execute(
                         matched=True,
                         severity="error",
                         message=f"Uncertain path '{path}' targeting owned resources",
-                        detail={"decision": "block"}
+                        detail={"decision": "block"},
                     )
                 continue
 
@@ -607,7 +582,7 @@ def _classify_execute(
                     matched=(decision == "block"),
                     severity="error" if decision == "block" else "info",
                     message=ft_block["reason"],
-                    detail={"decision": decision}
+                    detail={"decision": decision},
                 )
 
             # classify_owned_path normalizes absolute paths to project-relative
@@ -618,13 +593,10 @@ def _classify_execute(
                     matched=True,
                     severity="error",
                     message=f"Execute targets protected path '{path}': {result.reason}",
-                    detail={"decision": "block"}
+                    detail={"decision": "block"},
                 )
         return RuleResult(
-            matched=False,
-            severity="info",
-            message="No owned paths in Execute targets",
-            detail={"decision": "allow"}
+            matched=False, severity="info", message="No owned paths in Execute targets", detail={"decision": "allow"}
         )
     else:
         if _contains_owned_root_string(command):
@@ -632,19 +604,14 @@ def _classify_execute(
                 matched=True,
                 severity="error",
                 message="Cannot parse Execute command but contains owned resource references",
-                detail={"decision": "block"}
+                detail={"decision": "block"},
             )
         return RuleResult(
-            matched=False,
-            severity="info",
-            message="No owned paths detected in Execute",
-            detail={"decision": "allow"}
+            matched=False, severity="info", message="No owned paths detected in Execute", detail={"decision": "allow"}
         )
 
 
-def _classify_task(
-    payload: dict[str, Any], project_root: Path, ownership: Any
-) -> RuleResult:
+def _classify_task(payload: dict[str, Any], project_root: Path, ownership: Any) -> RuleResult:
     """Handle Task tool classification.
 
     Always allows the Task (with ownership policy injection).
@@ -669,20 +636,15 @@ def _classify_task(
         detail={
             "decision": "allow",
             "injected_prompt": injected_prompt,
-        }
+        },
     )
 
 
-def _classify_unknown(
-    payload: dict[str, Any], project_root: Path, ownership: Any
-) -> RuleResult:
+def _classify_unknown(payload: dict[str, Any], project_root: Path, ownership: Any) -> RuleResult:
     """Handle unknown tool - allow."""
     tool_name = payload.get("tool_name", "")
     return RuleResult(
-        matched=False,
-        severity="info",
-        message=f"Unknown tool: {tool_name}",
-        detail={"decision": "allow"}
+        matched=False, severity="info", message=f"Unknown tool: {tool_name}", detail={"decision": "allow"}
     )
 
 
@@ -700,10 +662,7 @@ def classify_tool_use(payload: dict[str, Any], project_root: Path) -> RuleResult
     tool_name = payload.get("tool_name", "")
     if not tool_name:
         return RuleResult(
-            matched=False,
-            severity="info",
-            message="No tool_name specified",
-            detail={"decision": "allow"}
+            matched=False, severity="info", message="No tool_name specified", detail={"decision": "allow"}
         )
 
     ownership = load_memory_ownership(project_root)

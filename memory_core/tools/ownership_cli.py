@@ -98,6 +98,7 @@ def _render_ownership(ownership: MemoryOwnership) -> str:
 # show
 # ---------------------------------------------------------------------------
 
+
 def cmd_show(project_root: Path, *, json_output: bool = False) -> int:
     """Display current ownership configuration."""
     ownership_path = _ownership_file_path(project_root)
@@ -123,6 +124,7 @@ def cmd_show(project_root: Path, *, json_output: bool = False) -> int:
 # validate
 # ---------------------------------------------------------------------------
 
+
 def cmd_validate(project_root: Path, *, json_output: bool = False) -> int:
     """Validate ownership schema for weakening and file existence."""
     ownership_path = _ownership_file_path(project_root)
@@ -131,9 +133,7 @@ def cmd_validate(project_root: Path, *, json_output: bool = False) -> int:
 
     # Check file exists
     if not ownership_path.exists():
-        warnings.append(
-            f"ownership.toml not found at {ownership_path}; using defaults"
-        )
+        warnings.append(f"ownership.toml not found at {ownership_path}; using defaults")
 
     ownership = load_memory_ownership(project_root)
 
@@ -143,10 +143,7 @@ def cmd_validate(project_root: Path, *, json_output: bool = False) -> int:
 
     # Check schema version
     if ownership.schema_version != OWNERSHIP_SCHEMA_VERSION:
-        warnings.append(
-            f"Schema version mismatch: expected {OWNERSHIP_SCHEMA_VERSION}, "
-            f"got {ownership.schema_version}"
-        )
+        warnings.append(f"Schema version mismatch: expected {OWNERSHIP_SCHEMA_VERSION}, got {ownership.schema_version}")
 
     if json_output:
         result = {
@@ -175,6 +172,7 @@ def cmd_validate(project_root: Path, *, json_output: bool = False) -> int:
 # plan-update
 # ---------------------------------------------------------------------------
 
+
 def _build_default_ownership() -> MemoryOwnership:
     """Build a fresh default ownership configuration."""
     return MemoryOwnership(
@@ -186,22 +184,16 @@ def _build_default_ownership() -> MemoryOwnership:
     )
 
 
-def _diff_domains(
-    current_domains: dict[str, Any], proposed_domains: dict[str, Any], plan: dict[str, Any]
-) -> None:
+def _diff_domains(current_domains: dict[str, Any], proposed_domains: dict[str, Any], plan: dict[str, Any]) -> None:
     """Compare domains and populate plan with changes."""
     # Removed domains
     for name in set(current_domains) - set(proposed_domains):
-        plan["domains_removed"].append(
-            {"name": name, "path": current_domains[name].path}
-        )
+        plan["domains_removed"].append({"name": name, "path": current_domains[name].path})
         plan["has_changes"] = True
 
     # Added domains
     for name in set(proposed_domains) - set(current_domains):
-        plan["domains_added"].append(
-            {"name": name, "path": proposed_domains[name].path}
-        )
+        plan["domains_added"].append({"name": name, "path": proposed_domains[name].path})
         plan["has_changes"] = True
 
     # Modified domains
@@ -226,16 +218,12 @@ def _diff_resources(
     """Compare resources and populate plan with changes."""
     # Removed resources
     for name in set(current_resources) - set(proposed_resources):
-        plan["resources_removed"].append(
-            {"name": name, "path": current_resources[name].path}
-        )
+        plan["resources_removed"].append({"name": name, "path": current_resources[name].path})
         plan["has_changes"] = True
 
     # Added resources
     for name in set(proposed_resources) - set(current_resources):
-        plan["resources_added"].append(
-            {"name": name, "path": proposed_resources[name].path}
-        )
+        plan["resources_added"].append({"name": name, "path": proposed_resources[name].path})
         plan["has_changes"] = True
 
     # Modified resources
@@ -254,9 +242,7 @@ def _diff_resources(
             plan["has_changes"] = True
 
 
-def _diff_ownership(
-    current: MemoryOwnership, proposed: MemoryOwnership
-) -> dict[str, Any]:
+def _diff_ownership(current: MemoryOwnership, proposed: MemoryOwnership) -> dict[str, Any]:
     """Compute diff between current and proposed ownership."""
     plan: dict[str, Any] = {
         "has_changes": False,
@@ -348,6 +334,7 @@ def cmd_plan_update(
 # apply-update
 # ---------------------------------------------------------------------------
 
+
 def _write_ownership_toml(project_root: Path, ownership: MemoryOwnership) -> Path:
     """Write ownership configuration as TOML to memory/system/ownership.toml."""
     import json as _json
@@ -390,7 +377,7 @@ def _write_ownership_toml(project_root: Path, ownership: MemoryOwnership) -> Pat
     if ownership.policy:
         lines.append("[policy]")
         for k, v in ownership.policy.items():
-            lines.append(f'{k} = {_json.dumps(v)}')
+            lines.append(f"{k} = {_json.dumps(v)}")
         lines.append("")
 
     ownership_path.write_text("\n".join(lines), encoding="utf-8")
@@ -518,6 +505,7 @@ def cmd_apply_update(
 # source-repo-mode subcommand
 # ---------------------------------------------------------------------------
 
+
 def _write_source_repo_mode(project_root: Path, mode: str) -> int:
     """Write source_repo mode to ownership.toml.
 
@@ -550,7 +538,7 @@ def _write_source_repo_mode(project_root: Path, mode: str) -> int:
         lines.append(f'name = "{d.name}"')
         lines.append(f'path = "{d.path}"')
         lines.append(f'level = "{d.level.name.lower()}"')
-        lines.append(f'recursive = {str(d.recursive).lower()}')
+        lines.append(f"recursive = {str(d.recursive).lower()}")
         lines.append(f'description = "{d.description}"')
         lines.append("")
 
@@ -572,9 +560,9 @@ def _write_source_repo_mode(project_root: Path, mode: str) -> int:
         if isinstance(val, str):
             lines.append(f'{key} = "{val}"')
         elif isinstance(val, bool):
-            lines.append(f'{key} = {str(val).lower()}')
+            lines.append(f"{key} = {str(val).lower()}")
         elif isinstance(val, (int, float)):
-            lines.append(f'{key} = {val}')
+            lines.append(f"{key} = {val}")
 
     # Source repo policy section
     lines.append("")
@@ -646,6 +634,7 @@ def cmd_source_repo_mode(project_root: Path, mode: str | None = None, json_outpu
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser."""
     parser = argparse.ArgumentParser(
@@ -664,9 +653,7 @@ def build_parser() -> argparse.ArgumentParser:
     val_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     # plan-update
-    plan_p = sub.add_parser(
-        "plan-update", help="Generate ownership migration plan"
-    )
+    plan_p = sub.add_parser("plan-update", help="Generate ownership migration plan")
     plan_p.add_argument("--project-root", type=Path, required=True, help="Path to project root")
     plan_p.add_argument("--json", action="store_true", help="Output as JSON")
     plan_p.add_argument(
@@ -676,9 +663,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # apply-update
-    apply_p = sub.add_parser(
-        "apply-update", help="Execute ownership migration"
-    )
+    apply_p = sub.add_parser("apply-update", help="Execute ownership migration")
     apply_p.add_argument("--project-root", type=Path, required=True, help="Path to project root")
     apply_p.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
     apply_p.add_argument("--json", action="store_true", help="Output as JSON")
@@ -694,8 +679,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Manage source repo operating mode (readonly/develop)",
     )
     srm_p.add_argument("--project-root", type=Path, required=True, help="Path to project root")
-    srm_p.add_argument("mode", nargs="?", choices=list(VALID_SOURCE_REPO_MODES),
-                       help="Mode to switch to (omit to show current mode)")
+    srm_p.add_argument(
+        "mode", nargs="?", choices=list(VALID_SOURCE_REPO_MODES), help="Mode to switch to (omit to show current mode)"
+    )
     srm_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     # dev — alias for source-repo-mode develop
@@ -724,9 +710,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "validate":
         return cmd_validate(project_root, json_output=args.json)
     elif args.command == "plan-update":
-        return cmd_plan_update(
-            project_root, json_output=args.json, use_defaults=args.use_defaults
-        )
+        return cmd_plan_update(project_root, json_output=args.json, use_defaults=args.use_defaults)
     elif args.command == "apply-update":
         return cmd_apply_update(
             project_root,
@@ -735,17 +719,11 @@ def main(argv: list[str] | None = None) -> int:
             use_defaults=args.use_defaults,
         )
     elif args.command == "source-repo-mode":
-        return cmd_source_repo_mode(
-            project_root, mode=args.mode, json_output=args.json
-        )
+        return cmd_source_repo_mode(project_root, mode=args.mode, json_output=args.json)
     elif args.command == "dev":
-        return cmd_source_repo_mode(
-            project_root, mode="develop", json_output=False
-        )
+        return cmd_source_repo_mode(project_root, mode="develop", json_output=False)
     elif args.command == "prod":
-        return cmd_source_repo_mode(
-            project_root, mode="readonly", json_output=False
-        )
+        return cmd_source_repo_mode(project_root, mode="readonly", json_output=False)
     else:
         parser.print_help()
         return 2

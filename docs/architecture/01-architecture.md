@@ -179,11 +179,11 @@ memory/
     "host": "...",
     "event": "...",
     "status": "ok" | "degraded",
-    "system_context": { ... },
-    "project_context": { ... },
-    "task_context": { ... },
+    "system_context": {...},
+    "project_context": {...},
+    "task_context": {...},
     "allowed_reads": [...],
-    "allowed_writes": { ... },
+    "allowed_writes": {...},
     "evidence_refs": [...],
 }
 ```

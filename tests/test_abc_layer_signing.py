@@ -34,6 +34,7 @@ def _mock_load_key(monkeypatch):
     boundaries (e.g., test_integrity_resign.py::test_resign_no_key_fails
     would find a key and falsely fail).
     """
+
     def _fake_load_key(path=None):
         real = _original_load_key(path)
         if real is None:
@@ -44,6 +45,7 @@ def _mock_load_key(monkeypatch):
 
 
 # ── 辅助函数 ──────────────────────────────────────────────────────
+
 
 def _create_minimal_project(tmp_path: Path) -> Path:
     """创建最小项目结构，包含 manifest.json。"""
@@ -68,6 +70,7 @@ def _create_minimal_project(tmp_path: Path) -> Path:
 
 
 # ── B 层测试 (daily_summary_generator.py) ──────────────────────────
+
 
 class TestBLayerSigning:
     """B 层: daily_summary_generator.py 在写入 {date}.md 后签名。"""
@@ -102,11 +105,23 @@ class TestBLayerSigning:
 
         from memory_core.tools.daily_summary_generator import _write_daily_log
 
-        _write_daily_log(project, today, [
-            {"full_session_id": "abc123de", "title": "Test", "model": "GLM-5.1",
-             "duration": "2m30s", "input_tokens": 100, "output_tokens": 200,
-             "tool_calls_raw": "Read=1", "user_prompt_preview": "test"}
-        ], dry_run=False)
+        _write_daily_log(
+            project,
+            today,
+            [
+                {
+                    "full_session_id": "abc123de",
+                    "title": "Test",
+                    "model": "GLM-5.1",
+                    "duration": "2m30s",
+                    "input_tokens": 100,
+                    "output_tokens": 200,
+                    "tool_calls_raw": "Read=1",
+                    "user_prompt_preview": "test",
+                }
+            ],
+            dry_run=False,
+        )
 
         # 验证文件被写入
         output_path = project / "memory" / "log" / f"{today}.md"
@@ -149,17 +164,30 @@ class TestBLayerSigning:
         # resolves at call time, so monkeypatch on the manifest module is sufficient.
         from memory_core.tools.daily_summary_generator import _write_daily_log
 
-        _write_daily_log(project, today, [
-            {"full_session_id": "abc123de", "title": "Test", "model": "GLM-5.1",
-             "duration": "1m", "input_tokens": 10, "output_tokens": 20,
-             "tool_calls_raw": "", "user_prompt_preview": "test"}
-        ], dry_run=False)
+        _write_daily_log(
+            project,
+            today,
+            [
+                {
+                    "full_session_id": "abc123de",
+                    "title": "Test",
+                    "model": "GLM-5.1",
+                    "duration": "1m",
+                    "input_tokens": 10,
+                    "output_tokens": 20,
+                    "tool_calls_raw": "",
+                    "user_prompt_preview": "test",
+                }
+            ],
+            dry_run=False,
+        )
 
         output_path = project / "memory" / "log" / f"{today}.md"
         assert output_path.exists(), "Output file should exist even if signing fails"
 
 
 # ── C 层测试 (error_logger.py) ─────────────────────────────────────
+
 
 class TestCLayerSigning:
     """C 层: error_logger.py 在写入 {date}-errors.jsonl 后签名。"""
@@ -273,6 +301,7 @@ class TestCLayerSigning:
 
 # ── 跨层测试: Manifest 更新 ───────────────────────────────────────
 
+
 class TestManifestUpdated:
     """VAL-F5-006: Manifest entries are refreshed after each layer's signing."""
 
@@ -297,7 +326,8 @@ class TestManifestUpdated:
 
         key = b"test" * 8
         result = sign_project_incremental(
-            project, key,
+            project,
+            key,
             changed_paths=[f"memory/log/{today}-sessions.md"],
         )
 
@@ -315,9 +345,7 @@ class TestManifestUpdated:
 
         today = datetime.now().strftime("%Y-%m-%d")
         errors_jsonl = project / "memory" / "log" / f"{today}-errors.jsonl"
-        errors_jsonl.write_text(
-            json.dumps({"ts": "2026-05-28T10:00:00", "type": "test", "msg": "test"}) + "\n"
-        )
+        errors_jsonl.write_text(json.dumps({"ts": "2026-05-28T10:00:00", "type": "test", "msg": "test"}) + "\n")
 
         monkeypatch.setattr(
             "memory_core.tools.memory_hook_integrity_manifest.is_memory_core_source_repo",
@@ -332,7 +360,8 @@ class TestManifestUpdated:
 
         key = b"test" * 8
         result = sign_project_incremental(
-            project, key,
+            project,
+            key,
             changed_paths=[f"memory/log/{today}-errors.jsonl"],
         )
 

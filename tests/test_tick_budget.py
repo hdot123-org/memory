@@ -9,6 +9,7 @@ Budget requirements:
 3. Budget exhaustion: skip drift watch operations, log warning, don't fail tick
 4. Integration: tick must respect both duration and API budgets
 """
+
 import sys
 import time
 from pathlib import Path
@@ -21,8 +22,7 @@ from evolution_scanner import Finding  # noqa: E402
 from evolution_utils import API_CALL_BUDGET, TICK_DURATION_BUDGET, TickBudgetTracker  # noqa: E402
 
 
-def _make_finding(rule_id="RULE_A", location="src/a.py::L10",
-                  severity="warning", category="code_quality") -> Finding:
+def _make_finding(rule_id="RULE_A", location="src/a.py::L10", severity="warning", category="code_quality") -> Finding:
     return Finding(
         rule_id=rule_id,
         severity=severity,
@@ -62,13 +62,13 @@ class TestTickBudgetTracking:
     def test_drf_004_tracker_has_duration_budget(self):
         """Tracker must track duration budget."""
         tracker = TickBudgetTracker()
-        assert hasattr(tracker, 'start_time')
-        assert hasattr(tracker, 'elapsed_seconds')
+        assert hasattr(tracker, "start_time")
+        assert hasattr(tracker, "elapsed_seconds")
 
     def test_drf_004_tracker_has_api_budget(self):
         """Tracker must track API call budget."""
         tracker = TickBudgetTracker()
-        assert hasattr(tracker, 'api_calls')
+        assert hasattr(tracker, "api_calls")
         assert tracker.api_calls == 0
 
     def test_drf_004_tracker_record_api_call(self):
@@ -141,7 +141,7 @@ class TestTickBudgetIntegration:
         issue_excluded_categories = set()
 
         # Should skip and return empty when budget exceeded
-        with patch('evolution_utils.get_tick_tracker', return_value=tracker):
+        with patch("evolution_utils.get_tick_tracker", return_value=tracker):
             result = forward_drift_watch(
                 findings,
                 open_issue_keys,
@@ -164,16 +164,12 @@ class TestTickBudgetIntegration:
         findings = [_make_finding()]
 
         # Should not raise, just log and return empty
-        with patch('evolution_utils.get_tick_tracker', return_value=tracker), \
-             patch('builtins.print') as mock_print:
-            result = forward_drift_watch(
-                findings,
-                set(), set(), set(), {}, set()
-            )
+        with patch("evolution_utils.get_tick_tracker", return_value=tracker), patch("builtins.print") as mock_print:
+            result = forward_drift_watch(findings, set(), set(), set(), {}, set())
             assert result == []
             # Should have logged budget exhaustion
             logged_messages = [str(call) for call in mock_print.call_args_list]
-            budget_warning = any('budget' in msg.lower() for msg in logged_messages)
+            budget_warning = any("budget" in msg.lower() for msg in logged_messages)
             assert budget_warning, f"Expected budget warning in: {logged_messages}"
 
     def test_drf_004_normal_operation_within_budget(self):
@@ -187,11 +183,8 @@ class TestTickBudgetIntegration:
         findings = [_make_finding()]
 
         # Should work normally within budget
-        with patch('evolution_utils.get_tick_tracker', return_value=tracker):
-            result = forward_drift_watch(
-                findings,
-                set(), set(), set(), {}, set()
-            )
+        with patch("evolution_utils.get_tick_tracker", return_value=tracker):
+            result = forward_drift_watch(findings, set(), set(), set(), {}, set())
             # Should return records (ghost finding detected)
             assert len(result) > 0
             assert result[0].status == "GHOST"

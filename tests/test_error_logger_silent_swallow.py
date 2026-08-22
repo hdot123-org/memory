@@ -50,8 +50,7 @@ class TestTrySignFileSilentSwallow:
         content = ERROR_LOGGER_PATH.read_text()
         body = _func_body(content, "_try_sign_file")
         assert "logger.warning" in body, (
-            "_try_sign_file except block must call logger.warning — "
-            "bare pass silently swallows signing failures"
+            "_try_sign_file except block must call logger.warning — bare pass silently swallows signing failures"
         )
         assert "sign_project_incremental failed" in body, (
             "logger.warning must include descriptive message about signing failure"
@@ -62,8 +61,7 @@ class TestTrySignFileSilentSwallow:
         content = ERROR_LOGGER_PATH.read_text()
         body = _func_body(content, "_try_sign_file")
         assert "sys.stderr" in body, (
-            "_try_sign_file except block must have a stderr fallback for when "
-            "logging itself fails"
+            "_try_sign_file except block must have a stderr fallback for when logging itself fails"
         )
 
     def test_no_bare_pass(self):
@@ -78,6 +76,4 @@ class TestTrySignFileSilentSwallow:
         """The function must not re-raise the exception (graceful degradation preserved)."""
         content = ERROR_LOGGER_PATH.read_text()
         body = _func_body(content, "_try_sign_file")
-        assert "raise" not in body, (
-            "_try_sign_file must not re-raise — signing failure must not block main flow"
-        )
+        assert "raise" not in body, "_try_sign_file must not re-raise — signing failure must not block main flow"

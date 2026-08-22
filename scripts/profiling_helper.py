@@ -82,12 +82,8 @@ def profile(
 Profile = profile
 
 
-
-
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="cProfile context manager utility."
-    )
+    parser = argparse.ArgumentParser(description="cProfile context manager utility.")
     parser.add_argument(
         "--section",
         default="sample",

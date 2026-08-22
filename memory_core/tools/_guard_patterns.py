@@ -84,9 +84,7 @@ RE_PYTHON_OPEN = re.compile(r"open\s*\(\s*['\"]([^'\"]+)['\"]")
 RE_PYTHON_PATH = re.compile(r"Path\s*\(\s*['\"]([^'\"]+)['\"]\)")
 
 # fs.writeFileSync / writeFile / appendFileSync / appendFile in node -e
-RE_NODE_FS_WRITE = re.compile(
-    r"(?:writeFileSync|writeFile|appendFileSync|appendFile)\s*\(\s*['\"]([^'\"]+)['\"]"
-)
+RE_NODE_FS_WRITE = re.compile(r"(?:writeFileSync|writeFile|appendFileSync|appendFile)\s*\(\s*['\"]([^'\"]+)['\"]")
 
 # require('fs').writeFileSync patterns in node -e
 RE_NODE_REQUIRE_FS = re.compile(
@@ -98,13 +96,13 @@ RE_NODE_REQUIRE_FS = re.compile(
 # ---------------------------------------------------------------------------
 
 UNCERTAIN_PATH_PATTERNS: list[str] = [
-    r"\*",   # wildcards
+    r"\*",  # wildcards
     r"\?",
-    r"\$",   # variables
-    r"`",    # command substitution
+    r"\$",  # variables
+    r"`",  # command substitution
     r"\$\(",
-    r"\{",   # brace expansion
-    r"\[",   # bracket expansion
+    r"\{",  # brace expansion
+    r"\[",  # bracket expansion
 ]
 
 # ---------------------------------------------------------------------------

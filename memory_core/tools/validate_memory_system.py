@@ -10,7 +10,6 @@ Runs a series of structural checks against the gateway module:
 Prints a summary report to stdout and returns 0 on success, 1 on failure.
 """
 
-
 import argparse
 import inspect
 import sys
@@ -88,6 +87,7 @@ def check_gateway_import(result: ValidateResult) -> bool:
     """Verify the gateway module imports without raising."""
     try:
         import memory_hook_gateway  # noqa: F401
+
         result.record("gateway_import", True, "memory_hook_gateway loaded")
         return True
     except Exception as exc:
@@ -99,6 +99,7 @@ def check_core_builder_resolve(result: ValidateResult) -> tuple[bool, Any]:
     """Verify _resolve_core_builder returns a callable for the legacy provider."""
     try:
         from memory_hook_gateway import _resolve_core_builder
+
         provider_name, builder, errors = _resolve_core_builder("legacy", allow_fallback=False)
         if not callable(builder):
             result.record("core_builder_resolve", False, "builder is not callable")
@@ -123,6 +124,7 @@ def _wrap_builder_with_kwargs(builder: Any) -> Any:
                 return builder(**kwargs)
             config = CoreConfig(**kwargs)
             return builder(config)
+
         return wrapped
     # Builder already accepts kwargs (old interface)
     return builder
@@ -217,12 +219,11 @@ def check_context_package(result: ValidateResult, builder: Any) -> bool:
     return True
 
 
-
-
 def check_core_config_path(result: ValidateResult) -> bool:
     """Verify the CoreConfig-native assembly path works."""
     try:
         from memory_hook_core import build_context_package_from_config
+
         if not callable(build_context_package_from_config):
             result.record("core_config_path", False, "build_context_package_from_config is not callable")
             return False
@@ -238,6 +239,7 @@ def check_v1_schema(result: ValidateResult) -> bool:
     try:
         from memory_hook_gateway import build_context_package_simple
         from memory_hook_schema import is_v1
+
         package = build_context_package_simple("factory", "test", {})
         if not is_v1(package):
             result.record("v1_schema", False, f"expected context-package-v1, got {package.get('schema_version')}")
@@ -258,8 +260,9 @@ def check_package_imports(result: ValidateResult) -> bool:
     """Verify memory_core.tools public API is importable."""
     try:
         import memory_core.tools
-        assert hasattr(memory_core.tools, 'build_context_package')
-        assert hasattr(memory_core.tools, 'CoreConfig')
+
+        assert hasattr(memory_core.tools, "build_context_package")
+        assert hasattr(memory_core.tools, "CoreConfig")
         result.record("package_imports", True, "4 public symbols importable")
         return True
     except Exception as exc:
@@ -371,12 +374,14 @@ def _scan_file_content(filepath: Path, repo_root: Path) -> list[dict[str, Any]]:
     text_lower = text.lower()
     for keyword in _FORBIDDEN_BUSINESS_STRINGS:
         if keyword in text_lower:
-            findings.append({
-                "path": str(rel_path),
-                "rule": f"business-string:{keyword}",
-                "severity": "error",
-                "detail": f"Forbidden business keyword '{keyword}' found in runtime content",
-            })
+            findings.append(
+                {
+                    "path": str(rel_path),
+                    "rule": f"business-string:{keyword}",
+                    "severity": "error",
+                    "detail": f"Forbidden business keyword '{keyword}' found in runtime content",
+                }
+            )
     return findings
 
 
@@ -403,12 +408,14 @@ def detect_pollution(repo_root: Path) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
 
     if not repo_root.is_dir():
-        findings.append({
-            "path": str(repo_root),
-            "rule": "repo-root-missing",
-            "severity": "error",
-            "detail": "Repository root does not exist",
-        })
+        findings.append(
+            {
+                "path": str(repo_root),
+                "rule": "repo-root-missing",
+                "severity": "error",
+                "detail": "Repository root does not exist",
+            }
+        )
         return findings
 
     # Walk every file in the working tree.
@@ -430,12 +437,14 @@ def detect_pollution(repo_root: Path) -> list[dict[str, Any]]:
             mem_idx = parts.index(".memory")
             if mem_idx == 0:
                 # .memory/ at repo root — always unexpected
-                findings.append({
-                    "path": str(rel_path),
-                    "rule": "unexpected-memory-dir",
-                    "severity": "error",
-                    "detail": ".memory/ directory found at repository root",
-                })
+                findings.append(
+                    {
+                        "path": str(rel_path),
+                        "rule": "unexpected-memory-dir",
+                        "severity": "error",
+                        "detail": ".memory/ directory found at repository root",
+                    }
+                )
             else:
                 # Allowed parents: memory/system/, archive/legacy-workbot/
                 allowed_parents = (
@@ -443,26 +452,28 @@ def detect_pollution(repo_root: Path) -> list[dict[str, Any]]:
                     ("archive", "legacy-workbot"),
                 )
                 is_allowed = any(
-                    parts[: mem_idx] == allowed[: mem_idx]
-                    for allowed in allowed_parents
-                    if len(allowed) == mem_idx
+                    parts[:mem_idx] == allowed[:mem_idx] for allowed in allowed_parents if len(allowed) == mem_idx
                 )
                 if not is_allowed:
-                    findings.append({
-                        "path": str(rel_path),
-                        "rule": "unexpected-memory-dir",
-                        "severity": "error",
-                        "detail": ".memory/ directory found outside memory/system/ or archive/",
-                    })
+                    findings.append(
+                        {
+                            "path": str(rel_path),
+                            "rule": "unexpected-memory-dir",
+                            "severity": "error",
+                            "detail": ".memory/ directory found outside memory/system/ or archive/",
+                        }
+                    )
 
         # ── Rule 2: Forbidden state files in runtime locations ──
         if _has_forbidden_state_name(rel_path) and not _is_whitelisted_path(rel_path):
-            findings.append({
-                "path": str(rel_path),
-                "rule": "forbidden-state-file",
-                "severity": "error",
-                "detail": f"Runtime state file {rel_path.name!r} found outside whitelisted paths",
-            })
+            findings.append(
+                {
+                    "path": str(rel_path),
+                    "rule": "forbidden-state-file",
+                    "severity": "error",
+                    "detail": f"Runtime state file {rel_path.name!r} found outside whitelisted paths",
+                }
+            )
 
         # ── Rule 3: Business strings in runtime content ──
         content_findings = _scan_file_content(filepath, repo_root)
@@ -545,4 +556,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

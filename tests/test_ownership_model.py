@@ -600,9 +600,7 @@ class TestIsMemoryCoreSourceRepo:
         subdir = tmp_path / "subdir"
         subdir.mkdir()
 
-        with patch(
-            "memory_core.ownership.subprocess.run"
-        ) as mock_run:
+        with patch("memory_core.ownership.subprocess.run") as mock_run:
             mock_run.return_value.returncode = 0
             mock_run.return_value.stdout = str(tmp_path)
 
@@ -611,9 +609,7 @@ class TestIsMemoryCoreSourceRepo:
 
     def test_handles_git_failure(self, tmp_path):
         """Should handle git command failure gracefully."""
-        with patch(
-            "memory_core.ownership.subprocess.run"
-        ) as mock_run:
+        with patch("memory_core.ownership.subprocess.run") as mock_run:
             mock_run.return_value.returncode = 1
 
             result = is_memory_core_source_repo(tmp_path)
@@ -690,12 +686,15 @@ class TestEdgeCases:
         # This depends on exact match, so likely not owned
         assert isinstance(result, (Owned, NotOwned))
 
-    @pytest.mark.parametrize("path", [
-        "../../../etc/passwd",
-        "..\\..\\windows\\system32",
-        "./../../escape",
-        "normal/../escape",
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "../../../etc/passwd",
+            "..\\..\\windows\\system32",
+            "./../../escape",
+            "normal/../escape",
+        ],
+    )
     def test_various_escape_patterns(self, path):
         """Should detect various escape patterns."""
         result = classify_owned_path(path)

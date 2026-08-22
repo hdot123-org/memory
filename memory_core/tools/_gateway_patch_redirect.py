@@ -179,9 +179,7 @@ class _RedirectModule(types.ModuleType):
                         del ns[name]
 
 
-def _resolve_target_dicts(
-    gateway_module: types.ModuleType, parent: str, mod_name: str
-) -> list[dict[str, Any]]:
+def _resolve_target_dicts(gateway_module: types.ModuleType, parent: str, mod_name: str) -> list[dict[str, Any]]:
     """解析目标模块命名空间的所有存活实例（sys.modules + 孤儿模块）。
 
     返回可直接写入的命名空间 dict：
@@ -194,11 +192,7 @@ def _resolve_target_dicts(
     seen: set[int] = set()
 
     def _try_add(ns: Any) -> None:
-        if (
-            isinstance(ns, dict)
-            and ns.get("__name__") == full
-            and id(ns) not in seen
-        ):
+        if isinstance(ns, dict) and ns.get("__name__") == full and id(ns) not in seen:
             dicts.append(ns)
             seen.add(id(ns))
 

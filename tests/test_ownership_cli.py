@@ -44,6 +44,7 @@ def project_with_ownership(project_root: Path) -> Path:
 # Helper tests
 # ---------------------------------------------------------------------------
 
+
 class TestHelpers:
     def test_ownership_file_path(self, project_root: Path) -> None:
         result = _ownership_file_path(project_root)
@@ -71,6 +72,7 @@ class TestHelpers:
 # ---------------------------------------------------------------------------
 # show command tests
 # ---------------------------------------------------------------------------
+
 
 class TestCmdShow:
     def test_show_defaults(self, project_root: Path) -> None:
@@ -102,6 +104,7 @@ class TestCmdShow:
 # validate command tests
 # ---------------------------------------------------------------------------
 
+
 class TestCmdValidate:
     def test_validate_defaults(self, project_root: Path) -> None:
         """Default ownership should validate clean."""
@@ -119,9 +122,7 @@ class TestCmdValidate:
         data = json.loads(output)
         assert data["valid"] is True
 
-    def test_validate_no_file_gives_warning(
-        self, project_root: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_validate_no_file_gives_warning(self, project_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
         rc = cmd_validate(project_root, json_output=True)
         assert rc == 0
         output = capsys.readouterr().out
@@ -132,6 +133,7 @@ class TestCmdValidate:
 # ---------------------------------------------------------------------------
 # plan-update command tests
 # ---------------------------------------------------------------------------
+
 
 class TestCmdPlanUpdate:
     def test_plan_no_changes(self, project_with_ownership: Path) -> None:
@@ -179,6 +181,7 @@ class TestDiffOwnership:
 # apply-update command tests
 # ---------------------------------------------------------------------------
 
+
 class TestCmdApplyUpdate:
     def test_apply_no_changes(self, project_with_ownership: Path) -> None:
         rc = cmd_apply_update(project_with_ownership, yes=True, use_defaults=True)
@@ -192,9 +195,7 @@ class TestCmdApplyUpdate:
         assert ownership_path.exists()
 
     def test_apply_json(self, project_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = cmd_apply_update(
-            project_root, yes=True, json_output=True, use_defaults=True
-        )
+        rc = cmd_apply_update(project_root, yes=True, json_output=True, use_defaults=True)
         assert rc == 0
         output = capsys.readouterr().out
         data = json.loads(output)
@@ -204,6 +205,7 @@ class TestCmdApplyUpdate:
 # ---------------------------------------------------------------------------
 # write_ownership_toml tests
 # ---------------------------------------------------------------------------
+
 
 class TestWriteOwnershipToml:
     def test_writes_file(self, project_root: Path) -> None:
@@ -229,6 +231,7 @@ class TestWriteOwnershipToml:
 # CLI integration tests
 # ---------------------------------------------------------------------------
 
+
 class TestCLI:
     def test_main_show(self, project_root: Path) -> None:
         rc = main(["show", "--project-root", str(project_root)])
@@ -247,9 +250,7 @@ class TestCLI:
         assert rc == 0
 
     def test_main_apply_update_json(self, project_root: Path) -> None:
-        rc = main(
-            ["apply-update", "--project-root", str(project_root), "--yes", "--json"]
-        )
+        rc = main(["apply-update", "--project-root", str(project_root), "--yes", "--json"])
         assert rc == 0
 
     def test_main_no_command(self) -> None:

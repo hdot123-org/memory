@@ -154,10 +154,14 @@ class GhMockHarness:
             [
                 "bash",
                 str(get_script_path()),
-                "--deleted", str(deleted_file),
-                "--protected", str(protected_file),
-                "--run-url", run_url,
-                "--run-date", run_date,
+                "--deleted",
+                str(deleted_file),
+                "--protected",
+                str(protected_file),
+                "--run-url",
+                run_url,
+                "--run-date",
+                run_date,
             ],
             capture_output=True,
             text=True,
@@ -218,9 +222,7 @@ def test_duplicate_run_same_protected_set_silent(tmp_path: Path):
         issues={781: tracker_body(["fix/pr-ref-consistency-gate (4 unique commits)"])},
     )
 
-    exit_code, stdout, _ = harness.run_script(
-        protected=["fix/pr-ref-consistency-gate (4 unique commits)"]
-    )
+    exit_code, stdout, _ = harness.run_script(protected=["fix/pr-ref-consistency-gate (4 unique commits)"])
 
     assert exit_code == 0, stdout
     assert "issue_action=reused-silent" in stdout
@@ -307,9 +309,7 @@ def test_first_deletion_creates_single_tracker(tmp_path: Path):
     the marker and labels."""
     harness = GhMockHarness(tmp_path)
 
-    exit_code, stdout, _ = harness.run_script(
-        deleted=["fix/pr-ref-consistency-gate"]
-    )
+    exit_code, stdout, _ = harness.run_script(deleted=["fix/pr-ref-consistency-gate"])
 
     assert exit_code == 0, stdout
     assert "issue_action=created" in stdout
@@ -330,16 +330,16 @@ def test_shrunk_protected_set_updates_and_keeps_open(tmp_path: Path):
     harness = GhMockHarness(
         tmp_path,
         issues={
-            781: tracker_body([
-                "fix/pr-ref-consistency-gate (4 unique commits)",
-                "feat/other (2 unique commits)",
-            ])
+            781: tracker_body(
+                [
+                    "fix/pr-ref-consistency-gate (4 unique commits)",
+                    "feat/other (2 unique commits)",
+                ]
+            )
         },
     )
 
-    exit_code, stdout, _ = harness.run_script(
-        protected=["fix/pr-ref-consistency-gate (4 unique commits)"]
-    )
+    exit_code, stdout, _ = harness.run_script(protected=["fix/pr-ref-consistency-gate (4 unique commits)"])
 
     assert exit_code == 0, stdout
     assert "issue_action=updated" in stdout
@@ -363,9 +363,7 @@ def test_legacy_duplicates_closed_pointing_to_tracker(tmp_path: Path):
         },
     )
 
-    exit_code, stdout, _ = harness.run_script(
-        protected=["fix/pr-ref-consistency-gate (4 unique commits)"]
-    )
+    exit_code, stdout, _ = harness.run_script(protected=["fix/pr-ref-consistency-gate (4 unique commits)"])
 
     assert exit_code == 0, stdout
     calls = harness.read_calls()
@@ -434,15 +432,12 @@ def test_protected_only_no_tracker_creates_nothing(tmp_path: Path):
     GitHub issues."""
     harness = GhMockHarness(tmp_path)
 
-    exit_code, stdout, _ = harness.run_script(
-        protected=["fix/pr-ref-consistency-gate (4 unique commits)"]
-    )
+    exit_code, stdout, _ = harness.run_script(protected=["fix/pr-ref-consistency-gate (4 unique commits)"])
 
     assert exit_code == 0, stdout
     assert "issue_action=none" in stdout or "protected_only" in stdout.lower()
     calls = harness.read_calls()
-    assert calls_matching(calls, ["issue", "create"]) == [], \
-        "protected-only run must NOT create an issue"
+    assert calls_matching(calls, ["issue", "create"]) == [], "protected-only run must NOT create an issue"
     assert harness.open_issue_numbers() == [], "no issue should be created"
 
 
@@ -466,8 +461,9 @@ def test_protected_only_with_tracker_updates_no_create(tmp_path: Path):
 
     assert exit_code == 0, stdout
     calls = harness.read_calls()
-    assert calls_matching(calls, ["issue", "create"]) == [], \
+    assert calls_matching(calls, ["issue", "create"]) == [], (
         "protected-only run must NOT create an issue even if tracker updated"
+    )
     # May update or comment on existing tracker, but not create new one
     assert harness.open_issue_numbers() == ["781"], "existing tracker remains"
 
@@ -480,9 +476,7 @@ def test_deletions_create_tracker(tmp_path: Path):
     This is the existing behavior from VAL-BCI-008, verified here for completeness."""
     harness = GhMockHarness(tmp_path)
 
-    exit_code, stdout, _ = harness.run_script(
-        deleted=["feat/gone-branch"]
-    )
+    exit_code, stdout, _ = harness.run_script(deleted=["feat/gone-branch"])
 
     assert exit_code == 0, stdout
     assert "issue_action=created" in stdout
@@ -534,17 +528,11 @@ def test_double_run_idempotent(tmp_path: Path):
 def test_workflow_calls_tracking_issue_script():
     """branch-cleanup.yml invokes scripts/branch_cleanup_issue.sh with the
     documented arguments and always() condition."""
-    workflow_path = (
-        Path(__file__).parent.parent / ".github" / "workflows" / "branch-cleanup.yml"
-    )
+    workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "branch-cleanup.yml"
     content = workflow_path.read_text()
 
-    assert "scripts/branch_cleanup_issue.sh" in content, (
-        "Workflow must call the INFRA-385 tracking-issue script"
-    )
-    assert "if: always()" in content, (
-        "Step must run always so resolved tracking issues get closed"
-    )
+    assert "scripts/branch_cleanup_issue.sh" in content, "Workflow must call the INFRA-385 tracking-issue script"
+    assert "if: always()" in content, "Step must run always so resolved tracking issues get closed"
     for arg in ("--deleted", "--protected", "--run-url", "--run-date"):
         assert arg in content, f"Workflow must pass {arg}"
     assert "GH_REPO_KEY" in content, "Workflow must pass the repository key for gh search"

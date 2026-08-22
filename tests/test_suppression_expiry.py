@@ -1,4 +1,5 @@
 """Tests for suppress.json expires lifecycle mechanism (VAL-SUPPRESS-001/002/003)."""
+
 import json
 import sys
 from datetime import UTC, datetime, timedelta, tzinfo
@@ -43,8 +44,9 @@ def test_expired_suppression_does_not_suppress(tmp_path: Path) -> None:
     )
 
     # Expired entry should NOT suppress the finding
-    assert not _matches_suppression(finding, suppressions[0]), \
+    assert not _matches_suppression(finding, suppressions[0]), (
         "Expired suppression entry should not suppress matching finding"
+    )
 
 
 def test_future_suppression_still_suppresses(tmp_path: Path) -> None:
@@ -74,8 +76,7 @@ def test_future_suppression_still_suppresses(tmp_path: Path) -> None:
     )
 
     # Future entry should suppress the finding
-    assert _matches_suppression(finding, suppressions[0]), \
-        "Future suppression entry should suppress matching finding"
+    assert _matches_suppression(finding, suppressions[0]), "Future suppression entry should suppress matching finding"
 
 
 def test_today_suppression_still_suppresses(tmp_path: Path) -> None:
@@ -106,8 +107,9 @@ def test_today_suppression_still_suppresses(tmp_path: Path) -> None:
     )
 
     # Today's date should suppress the finding
-    assert _matches_suppression(finding, suppressions[0]), \
+    assert _matches_suppression(finding, suppressions[0]), (
         "Today's date suppression entry should suppress matching finding"
+    )
 
 
 def test_no_expires_field_permanent_suppression(tmp_path: Path) -> None:
@@ -136,8 +138,9 @@ def test_no_expires_field_permanent_suppression(tmp_path: Path) -> None:
     )
 
     # Legacy entry (no expires) should suppress the finding
-    assert _matches_suppression(finding, suppressions[0]), \
+    assert _matches_suppression(finding, suppressions[0]), (
         "Legacy suppression entry (no expires) should suppress matching finding"
+    )
 
 
 def test_malformed_expires_fails_open(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -167,13 +170,13 @@ def test_malformed_expires_fails_open(tmp_path: Path, capsys: pytest.CaptureFixt
     )
 
     # Malformed entry should NOT suppress (fail-open)
-    assert not _matches_suppression(finding, suppressions[0]), \
-        "Malformed expires should fail open and not suppress"
+    assert not _matches_suppression(finding, suppressions[0]), "Malformed expires should fail open and not suppress"
 
     # Verify warning was printed to stderr during load_suppressions
     captured = capsys.readouterr()
-    assert "not-a-valid-date" in captured.err or "malformed" in captured.err.lower(), \
+    assert "not-a-valid-date" in captured.err or "malformed" in captured.err.lower(), (
         "Warning about malformed expires should be printed to stderr"
+    )
 
 
 def test_malformed_expires_warns_only_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -212,8 +215,7 @@ def test_malformed_expires_warns_only_once(tmp_path: Path, capsys: pytest.Captur
 
     # Verify no additional warnings were printed during matching
     captured = capsys.readouterr()
-    assert "malformed" not in captured.err.lower(), \
-        "No additional malformed warnings should be emitted during matching"
+    assert "malformed" not in captured.err.lower(), "No additional malformed warnings should be emitted during matching"
 
 
 def test_wildcard_suppression_with_expires(tmp_path: Path) -> None:
@@ -243,8 +245,7 @@ def test_wildcard_suppression_with_expires(tmp_path: Path) -> None:
     )
 
     # Wildcard with future expires should suppress
-    assert _matches_suppression(finding, suppressions[0]), \
-        "Wildcard suppression with future expires should suppress"
+    assert _matches_suppression(finding, suppressions[0]), "Wildcard suppression with future expires should suppress"
 
 
 def test_wildcard_suppression_expired(tmp_path: Path) -> None:
@@ -274,8 +275,9 @@ def test_wildcard_suppression_expired(tmp_path: Path) -> None:
     )
 
     # Wildcard with past expires should NOT suppress
-    assert not _matches_suppression(finding, suppressions[0]), \
+    assert not _matches_suppression(finding, suppressions[0]), (
         "Wildcard suppression with past expires should not suppress"
+    )
 
 
 def test_non_matching_finding_not_suppressed(tmp_path: Path) -> None:
@@ -303,8 +305,9 @@ def test_non_matching_finding_not_suppressed(tmp_path: Path) -> None:
         evidence="Test evidence",
     )
 
-    assert not _matches_suppression(finding_different_rule, suppressions[0]), \
+    assert not _matches_suppression(finding_different_rule, suppressions[0]), (
         "Finding with different rule_id should not be suppressed"
+    )
 
     # Finding with different location
     finding_different_location = Finding(
@@ -316,8 +319,9 @@ def test_non_matching_finding_not_suppressed(tmp_path: Path) -> None:
         evidence="Test evidence",
     )
 
-    assert not _matches_suppression(finding_different_location, suppressions[0]), \
+    assert not _matches_suppression(finding_different_location, suppressions[0]), (
         "Finding with different location should not be suppressed"
+    )
 
 
 def test_uses_utc_date_not_local(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -370,8 +374,9 @@ def test_uses_utc_date_not_local(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         location="test/file_utc.md",
         evidence="Test evidence",
     )
-    assert _matches_suppression(finding_today, suppressions_today[0]), \
+    assert _matches_suppression(finding_today, suppressions_today[0]), (
         "Entry with UTC-today expires should suppress (not expired)"
+    )
 
     # Entry with expires = UTC yesterday (2026-08-12) → should NOT suppress (expired)
     utc_yesterday = frozen_utc_date - timedelta(days=1)  # 2026-08-12
@@ -391,8 +396,9 @@ def test_uses_utc_date_not_local(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         location="test/file_utc2.md",
         evidence="Test evidence 2",
     )
-    assert not _matches_suppression(finding_yesterday, suppressions_yesterday[0]), \
+    assert not _matches_suppression(finding_yesterday, suppressions_yesterday[0]), (
         "Entry with UTC-yesterday expires should be expired and not suppress"
+    )
 
     # Key determinism check: even though local (UTC+8) date is 2026-08-14
     # (which differs from UTC 2026-08-13), the expiry follows UTC.
@@ -413,5 +419,6 @@ def test_uses_utc_date_not_local(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         location="test/file_utc3.md",
         evidence="Test evidence 3",
     )
-    assert _matches_suppression(finding_local, suppressions_local[0]), \
+    assert _matches_suppression(finding_local, suppressions_local[0]), (
         "Entry with local-today but UTC-future date should suppress (UTC wins)"
+    )

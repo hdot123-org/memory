@@ -15,6 +15,7 @@ Exit codes:
     1 - violation (fix commit without test files)
     2 - script error (gh/git unavailable, API failure)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,9 +34,7 @@ FIX_PATTERN = re.compile(r"^(fix|hotfix|bugfix)(\(.+\))?!?:", re.IGNORECASE)
 RELEASE_PLEASE_PATTERN = re.compile(r"^chore\(main\):\s*release", re.IGNORECASE)
 
 
-def _run(
-    cmd: list[str], *, cwd: Path | None = None
-) -> subprocess.CompletedProcess[str]:
+def _run(cmd: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     """Run a subprocess command, raising on failure."""
     return subprocess.run(
         cmd,
@@ -52,9 +51,7 @@ def get_pr_data(pr_number: int) -> dict[str, Any]:
     last_err = ""
     for attempt in range(1, max_attempts + 1):
         try:
-            result = _run(
-                ["gh", "pr", "view", str(pr_number), "--json", "commits,files,author"]
-            )
+            result = _run(["gh", "pr", "view", str(pr_number), "--json", "commits,files,author"])
             data: dict[str, Any] = json.loads(result.stdout)
             return data
         except FileNotFoundError:
@@ -72,14 +69,19 @@ def get_pr_data(pr_number: int) -> dict[str, Any]:
             # 仅对 GitHub API 瞬时故障（5xx/EOF/TLS）重试；非瞬时错误（如 404）直接失败
             transient = any(
                 marker in stderr
-                for marker in ("HTTP 503", "HTTP 502", "HTTP 500", "HTTP 429",
-                               "unexpected EOF", "TLS handshake timeout")
+                for marker in (
+                    "HTTP 503",
+                    "HTTP 502",
+                    "HTTP 500",
+                    "HTTP 429",
+                    "unexpected EOF",
+                    "TLS handshake timeout",
+                )
             )
             if transient and attempt < max_attempts:
                 wait = 10 * attempt
                 print(
-                    f"Transient GitHub API error (attempt {attempt}/{max_attempts}): "
-                    f"{stderr}\nRetrying in {wait}s...",
+                    f"Transient GitHub API error (attempt {attempt}/{max_attempts}): {stderr}\nRetrying in {wait}s...",
                     file=sys.stderr,
                 )
                 time.sleep(wait)
@@ -88,8 +90,7 @@ def get_pr_data(pr_number: int) -> dict[str, Any]:
             raise SystemExit(2) from exc
     # 不可达兜底（mypy --strict 要求显式返回/退出路径）
     print(
-        f"Error: gh pr view failed after {max_attempts} attempts: "
-        f"{last_err}",
+        f"Error: gh pr view failed after {max_attempts} attempts: {last_err}",
         file=sys.stderr,
     )
     raise SystemExit(2)
@@ -99,14 +100,10 @@ def get_local_data(base_ref: str, cwd: Path | None = None) -> dict[str, Any]:
     """Get commits and changed files from git."""
     try:
         log_result = _run(["git", "log", f"{base_ref}..HEAD", "--format=%s"], cwd=cwd)
-        commits = [
-            line for line in log_result.stdout.strip().split("\n") if line
-        ]
+        commits = [line for line in log_result.stdout.strip().split("\n") if line]
 
         diff_result = _run(["git", "diff", "--name-only", base_ref], cwd=cwd)
-        files = [
-            line for line in diff_result.stdout.strip().split("\n") if line
-        ]
+        files = [line for line in diff_result.stdout.strip().split("\n") if line]
 
         return {"commits": commits, "files": files, "author": ""}
     except subprocess.CalledProcessError as exc:
@@ -187,9 +184,7 @@ def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Fix-has-test CI guard")
     parser.add_argument("--pr", type=int, default=None, help="PR number (CI mode)")
-    parser.add_argument(
-        "--base", default=None, help="Base ref for local mode (git diff)"
-    )
+    parser.add_argument("--base", default=None, help="Base ref for local mode (git diff)")
     parser.add_argument("--json", action="store_true", help="JSON output")
     args = parser.parse_args()
 

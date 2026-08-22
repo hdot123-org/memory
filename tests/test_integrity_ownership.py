@@ -184,9 +184,7 @@ class TestOwnershipDerivedSigningScope:
 
             digest1 = _compute_ownership_digest(root)
 
-            (memory_dir / "ownership.toml").write_text(
-                '[policy]\nmode = "strict"\n'
-            )
+            (memory_dir / "ownership.toml").write_text('[policy]\nmode = "strict"\n')
 
             digest2 = _compute_ownership_digest(root)
 
@@ -297,9 +295,7 @@ class TestV1Compatibility:
                     }
                 ],
             }
-            (memory_dir / MANIFEST_FILENAME).write_text(
-                json.dumps(v1_manifest) + "\n"
-            )
+            (memory_dir / MANIFEST_FILENAME).write_text(json.dumps(v1_manifest) + "\n")
 
             result = verify_project(root, key)
             assert result.ok
@@ -338,9 +334,7 @@ class TestV1Compatibility:
                     }
                 ],
             }
-            (memory_dir / MANIFEST_FILENAME).write_text(
-                json.dumps(v1_manifest) + "\n"
-            )
+            (memory_dir / MANIFEST_FILENAME).write_text(json.dumps(v1_manifest) + "\n")
 
             # Tamper
             canonical.write_text("# Tampered!\n")

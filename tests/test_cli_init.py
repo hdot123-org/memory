@@ -17,9 +17,11 @@ from memory_core.constants import REQUIRED_MEMORY_DIRS, REQUIRED_MEMORY_FILES
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _call_main(argv: list[str]) -> int:
     """Invoke init_project_memory.main() with patched sys.argv."""
     from memory_core.tools.init_project_memory import main
+
     old_argv = sys.argv
     try:
         sys.argv = ["memory-init", *argv]
@@ -31,6 +33,7 @@ def _call_main(argv: list[str]) -> int:
 def _read_adapter_toml(target: Path) -> dict[str, Any]:
     """Parse adapter.toml from target .memory/ directory."""
     import tomllib
+
     adapter_path = target / "memory" / "system" / "adapter.toml"
     with adapter_path.open("rb") as f:
         return tomllib.load(f)
@@ -39,6 +42,7 @@ def _read_adapter_toml(target: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # 1. test_init_creates_required_files_in_target
 # ---------------------------------------------------------------------------
+
 
 def test_init_creates_required_files_in_target(tmp_path: Path) -> None:
     """main([... --target tmp_path]) 后 7 必备文件 + 4 kb 子目录全部存在."""
@@ -61,6 +65,7 @@ def test_init_creates_required_files_in_target(tmp_path: Path) -> None:
 # 2. test_init_dry_run_does_not_write
 # ---------------------------------------------------------------------------
 
+
 def test_init_dry_run_does_not_write(tmp_path: Path) -> None:
     """--dry-run 后目标目录不应有 .memory/."""
     exit_code = _call_main(["--target", str(tmp_path), "--dry-run"])
@@ -71,6 +76,7 @@ def test_init_dry_run_does_not_write(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 3. test_init_dry_run_json_output_shape
 # ---------------------------------------------------------------------------
+
 
 def test_init_dry_run_json_output_shape(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     """--dry-run --json 输出可被 json.loads 解析，含至少 success/operations 字段."""
@@ -91,6 +97,7 @@ def test_init_dry_run_json_output_shape(tmp_path: Path, capsys: pytest.CaptureFi
 # 4. test_init_with_explicit_scope
 # ---------------------------------------------------------------------------
 
+
 def test_init_with_explicit_scope(tmp_path: Path) -> None:
     """--scope my-proj 后 adapter.toml routing.project_scope == "my_proj"."""
     exit_code = _call_main(["--target", str(tmp_path), "--scope", "my-proj"])
@@ -106,6 +113,7 @@ def test_init_with_explicit_scope(tmp_path: Path) -> None:
 # 5. test_init_with_host_claude
 # ---------------------------------------------------------------------------
 
+
 def test_init_with_host_factory(tmp_path: Path) -> None:
     """--host factory 后 adapter.toml routing.host == "factory"."""
     exit_code = _call_main(["--target", str(tmp_path), "--host", "factory"])
@@ -120,6 +128,7 @@ def test_init_with_host_factory(tmp_path: Path) -> None:
 # 6. test_init_rejects_invalid_host
 # ---------------------------------------------------------------------------
 
+
 def test_init_rejects_invalid_host(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     """--host invalid 应因 argparse choices 限制而退出非零."""
     with pytest.raises(SystemExit) as exc_info:
@@ -131,6 +140,7 @@ def test_init_rejects_invalid_host(tmp_path: Path, capsys: pytest.CaptureFixture
 # ---------------------------------------------------------------------------
 # 7. test_init_idempotent_on_existing_memory
 # ---------------------------------------------------------------------------
+
 
 def test_init_idempotent_on_existing_memory(tmp_path: Path) -> None:
     """已 init 过的 target 再次 init 不应报错也不应破坏现有内容."""

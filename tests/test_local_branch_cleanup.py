@@ -12,6 +12,7 @@ Coverage:
 - VAL-LOCALBR-007: main/非 gone 分支永不触碰
 - 离线运行 + 环境变量覆盖阈值
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -118,9 +119,7 @@ def create_fixture_repo(tmp_path: Path) -> tuple[Path, Path]:
     return bare_repo, clone_dir
 
 
-def create_branch_with_unique_content(
-    clone_dir: Path, bare_repo: Path, branch_name: str
-) -> str:
+def create_branch_with_unique_content(clone_dir: Path, bare_repo: Path, branch_name: str) -> str:
     """
     Create a branch with content NOT in main (for testing VAL-LOCALBR-002).
 
@@ -180,9 +179,7 @@ def create_branch_with_unique_content(
     return tip_sha
 
 
-def create_branch_with_merged_content(
-    clone_dir: Path, bare_repo: Path, branch_name: str
-) -> str:
+def create_branch_with_merged_content(clone_dir: Path, bare_repo: Path, branch_name: str) -> str:
     """
     Create a branch, then merge it to main, then delete remote branch.
     This simulates a squash-merged scenario where the branch is gone but
@@ -378,9 +375,7 @@ def test_deletes_gone_branch_with_equivalent_patches(tmp_path: Path):
 
     # Verify branch was deleted
     remaining_branches = get_local_branches(clone_dir)
-    assert branch_name not in remaining_branches, (
-        f"Branch {branch_name} should be deleted but still exists"
-    )
+    assert branch_name not in remaining_branches, f"Branch {branch_name} should be deleted but still exists"
 
     # Verify log shows deletion
     assert f"Deleted branch: {branch_name}" in stdout or "deleted" in stdout.lower()
@@ -390,9 +385,7 @@ def test_deletes_gone_branch_with_equivalent_patches(tmp_path: Path):
     if prod_backup_dir.exists():
         # Check that backup went to tmp_path, not production dir
         isolated_backup = tmp_path / "backup"
-        assert isolated_backup.exists(), (
-            f"BACKUP_DIR isolation failed: expected backup in {isolated_backup}"
-        )
+        assert isolated_backup.exists(), f"BACKUP_DIR isolation failed: expected backup in {isolated_backup}"
 
 
 # ============================================================================
@@ -438,9 +431,7 @@ def test_preserves_gone_branch_with_unique_commits(tmp_path: Path):
 
     # Verify branch was NOT deleted (contains unique content)
     remaining_branches = get_local_branches(clone_dir)
-    assert branch_name in remaining_branches, (
-        f"Branch {branch_name} with unique content should be preserved"
-    )
+    assert branch_name in remaining_branches, f"Branch {branch_name} with unique content should be preserved"
 
     # Verify log shows preservation
     assert "unique content" in stdout.lower() or "preserving" in stdout.lower() or "contains" in stdout.lower()
@@ -486,9 +477,7 @@ def test_skips_worktree_occupied_branch(tmp_path: Path):
 
     # Verify branch was NOT deleted (worktree occupied)
     remaining_branches = get_local_branches(clone_dir)
-    assert branch_name in remaining_branches, (
-        f"Branch {branch_name} should be skipped while worktree occupied"
-    )
+    assert branch_name in remaining_branches, f"Branch {branch_name} should be skipped while worktree occupied"
 
     # Verify log shows skip
     assert "worktree" in stdout.lower() or "skip" in stdout.lower()
@@ -508,9 +497,7 @@ def test_skips_worktree_occupied_branch(tmp_path: Path):
 
     # Now branch should be deleted
     remaining_branches2 = get_local_branches(clone_dir)
-    assert branch_name not in remaining_branches2, (
-        f"Branch {branch_name} should be deleted after worktree removed"
-    )
+    assert branch_name not in remaining_branches2, f"Branch {branch_name} should be deleted after worktree removed"
 
 
 # ============================================================================
@@ -577,9 +564,7 @@ def test_backup_contains_tip_sha_and_restorable(tmp_path: Path):
         check=True,
     )
     restored_sha = result.stdout.strip()
-    assert restored_sha == tip_sha, (
-        f"Restored branch SHA {restored_sha} != original {tip_sha}"
-    )
+    assert restored_sha == tip_sha, f"Restored branch SHA {restored_sha} != original {tip_sha}"
 
 
 # ============================================================================
@@ -629,9 +614,7 @@ def test_launchd_plist_installed_and_hourly(tmp_path: Path):
 
     # Verify plist doesn't self-reference test repo (REPO_ROOT non-self-reference)
     # Plist should reference production paths, not test fixture paths
-    assert str(tmp_path) not in content, (
-        "plist should not reference test tmp_path (would create circular dependency)"
-    )
+    assert str(tmp_path) not in content, "plist should not reference test tmp_path (would create circular dependency)"
 
     # In real deployment, launchctl load would be called
     # This test verifies the plist is correctly structured
@@ -651,9 +634,7 @@ def test_script_includes_fetch_prune(tmp_path: Path):
     content = script_path.read_text()
 
     # Verify script contains fetch --prune
-    assert "git fetch --prune" in content or "git fetch" in content, (
-        "Script does not contain git fetch --prune"
-    )
+    assert "git fetch --prune" in content or "git fetch" in content, "Script does not contain git fetch --prune"
 
     # Verify it's called before scanning for gone branches
     lines = content.split("\n")
@@ -668,9 +649,7 @@ def test_script_includes_fetch_prune(tmp_path: Path):
 
     assert fetch_line is not None, "git fetch not found"
     assert scan_line is not None, "gone branch scanning not found"
-    assert fetch_line < scan_line, (
-        "git fetch should be called before scanning for gone branches"
-    )
+    assert fetch_line < scan_line, "git fetch should be called before scanning for gone branches"
 
 
 # ============================================================================
@@ -921,15 +900,11 @@ def test_posthog_api_key_unset_skips_event(tmp_path: Path):
     assert exit_code == 0, f"Script failed when POSTHOG_API_KEY unset: {stderr}"
 
     # Log should contain skip message
-    assert "POSTHOG_API_KEY not set, skip event" in stdout, (
-        "Expected skip message not found in stdout"
-    )
+    assert "POSTHOG_API_KEY not set, skip event" in stdout, "Expected skip message not found in stdout"
 
     # Branch with unique content should still be preserved (not deleted)
     remaining = get_local_branches(clone_dir)
-    assert branch_name in remaining, (
-        f"Branch {branch_name} should be preserved even without POSTHOG_API_KEY"
-    )
+    assert branch_name in remaining, f"Branch {branch_name} should be preserved even without POSTHOG_API_KEY"
 
 
 # ============================================================================
@@ -1032,22 +1007,16 @@ def test_backup_branch_with_slash_name(tmp_path: Path):
 
     # Verify branch was deleted
     remaining_branches = get_local_branches(clone_dir)
-    assert branch_name not in remaining_branches, (
-        f"Branch {branch_name} should be deleted"
-    )
+    assert branch_name not in remaining_branches, f"Branch {branch_name} should be deleted"
 
     # Verify backup file exists with underscores (not slashes)
     safe_name = branch_name.replace("/", "_")
     backup_file = backup_dir / safe_name
-    assert backup_file.exists(), (
-        f"Backup file not created: {backup_file} (expected slashes replaced with underscores)"
-    )
+    assert backup_file.exists(), f"Backup file not created: {backup_file} (expected slashes replaced with underscores)"
 
     # Verify backup contains correct SHA
     backup_sha = backup_file.read_text().strip()
-    assert backup_sha == tip_sha, (
-        f"Backup SHA mismatch: {backup_sha} != {tip_sha}"
-    )
+    assert backup_sha == tip_sha, f"Backup SHA mismatch: {backup_sha} != {tip_sha}"
 
     # Verify we can restore the branch using the backup SHA
     restore_branch = "restore-slash-test"
@@ -1067,9 +1036,7 @@ def test_backup_branch_with_slash_name(tmp_path: Path):
         check=True,
     )
     restored_sha = result.stdout.strip()
-    assert restored_sha == tip_sha, (
-        f"Restored branch SHA {restored_sha} != original {tip_sha}"
-    )
+    assert restored_sha == tip_sha, f"Restored branch SHA {restored_sha} != original {tip_sha}"
 
 
 # ============================================================================

@@ -243,18 +243,19 @@ Gateway 同时承担以下职责：
 # memory_hook_gateway.py
 # 唯一公开入口：CLI 调用
 
+
 def main() -> int:
     """CLI 入口：解析参数 → 读取 payload → 构建上下文包 → 写入产物 → 分派委托。
-    
+
     CLI 参数：
         --host: "codex" | "claude"
         --event: "session-start" | "prompt-submit" | "stop" | "notification"
         --no-delegate: 跳过委托分派，仅返回上下文包
-    
+
     stdin: JSON payload
     stdout: JSON context package
     stderr: 错误信息
-    
+
     返回：0 = 成功, 1 = degraded, 2 = error
     """
 ```
@@ -265,6 +266,7 @@ def main() -> int:
 # memory_hook_gateway.py
 # 供 Python 代码直接调用的 API（替代直接调用 core）
 
+
 def build_context_package(
     host: str,
     event: str,
@@ -274,17 +276,17 @@ def build_context_package(
     adapter: str | None = None,
 ) -> dict[str, Any]:
     """构建上下文包（Python API）。
-    
+
     参数：
         host: 主机标识（"codex" / "claude"）
         event: 事件名
         payload: 事件载荷（可选，默认为空 dict）
         cwd: 工作目录（可选，默认使用当前目录）
         adapter: adapter 名称（可选，默认使用环境变量或 "workbot"）
-    
+
     返回：
         Context package dict，结构见 3.3 节
-    
+
     异常：
         RuntimeError: 当 adapter 加载失败或关键配置缺失时
     """
@@ -297,9 +299,11 @@ Core 的 37 个参数应该被重构为 **结构化配置对象**，而非扁平
 ```python
 # memory_hook_core.py（重构后）
 
+
 @dataclass
 class CoreConfig:
     """核心组装配置。将 37 个参数归类为 4 个配置组。"""
+
     # 组 1：环境信息
     host: str
     event: str
@@ -308,7 +312,7 @@ class CoreConfig:
     project_scope: str
     workspace_root: Path
     repo_root: Path
-    
+
     # 组 2：路径配置
     required_canonical: list[Path]
     project_canonical: dict[str, Path]
@@ -319,7 +323,7 @@ class CoreConfig:
     hook_contract_path: Path
     surface_id: str
     workspace_id: str
-    
+
     # 组 3：策略配置
     legality_source_policy: str
     registration_commit_policy: str
@@ -327,7 +331,7 @@ class CoreConfig:
     governance_blocker_scopes: Collection[str] | None
     event_contract_blocker_scopes: Collection[str] | None
     core_evidence_refs: list[str] | None
-    
+
     # 组 4：回调函数（通过 PolicyRegistry 统一封装）
     policy_registry: PolicyRegistry  # 替代 21-26, 28-31 共 10 个 callback
     path_utils: PathUtils  # 替代 18-20 共 3 个 callback
@@ -335,10 +339,10 @@ class CoreConfig:
 
 def build_context_package_core(config: CoreConfig) -> dict[str, Any]:
     """核心上下文组装（重构后：单参数）。
-    
+
     参数：
         config: 结构化配置对象
-    
+
     返回：
         Context package dict
     """
@@ -356,21 +360,19 @@ Gateway 返回的 context package 应遵循以下稳定契约（内部 v2 版本
 ```python
 {
     # === 元数据 ===
-    "schema_version": "internal-v2",           # 内部 v2 固定版本
-    "generated_at": "2026-04-26T12:00:00",   # ISO 时间戳
-    "host": "codex",                         # 主机标识
-    "event": "session-start",                # 事件名
-    
+    "schema_version": "internal-v2",  # 内部 v2 固定版本
+    "generated_at": "2026-04-26T12:00:00",  # ISO 时间戳
+    "host": "codex",  # 主机标识
+    "event": "session-start",  # 事件名
     # === 状态 ===
-    "status": "ok" | "degraded",             # 组装状态
-    "missing_paths": ["/path/to/missing"],   # 缺失的必需路径
+    "status": "ok" | "degraded",  # 组装状态
+    "missing_paths": ["/path/to/missing"],  # 缺失的必需路径
     "validation_errors": ["error message"],  # 验证错误列表
-    
     # === 系统上下文 ===
     "system_context": {
-        "boot_entry": "...",                 # INDEX.md 路径
-        "state_entry": "...",                # NOW.md 路径
-        "state_summary": [...],              # NOW.md 摘要
+        "boot_entry": "...",  # INDEX.md 路径
+        "state_entry": "...",  # NOW.md 路径
+        "state_summary": [...],  # NOW.md 摘要
         "project_map_validation": "pass" | "fail",
         "legality_contract_validation": "pass" | "fail",
         "truth_basis_validation": "pass" | "fail",
@@ -384,7 +386,6 @@ Gateway 返回的 context package 应遵循以下稳定契约（内部 v2 版本
         "policy_pack": {...},
         # ... 其他系统级信息
     },
-    
     # === 项目上下文 ===
     "project_context": {
         "scope": "workbot",
@@ -397,7 +398,6 @@ Gateway 返回的 context package 应遵循以下稳定契约（内部 v2 版本
         "evidence_refs": [...],
         "conflict_status": "...",
     },
-    
     # === 任务上下文 ===
     "task_context": {
         "event": "session-start",
@@ -407,10 +407,9 @@ Gateway 返回的 context package 应遵循以下稳定契约（内部 v2 版本
         "workspace_id": "...",
         "payload_keys": [...],
     },
-    
     # === 读写权限 ===
-    "allowed_reads": ["/path/to/read"],       # 允许读取的文件列表
-    "allowed_writes": {...},                 # 允许写入的目标
+    "allowed_reads": ["/path/to/read"],  # 允许读取的文件列表
+    "allowed_writes": {...},  # 允许写入的目标
     "evidence_refs": ["/path/to/evidence"],  # 证据引用
 }
 ```

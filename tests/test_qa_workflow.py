@@ -6,6 +6,7 @@ PR 时段与 ci.yml test 串行跑两份全量 pytest 导致自建 runner 排队
 coverage-audit 加 schedule/dispatch-only 事件门，PR 时段跳过、夜间全量保留。
 qa-ok 聚合必须正确处理 skipped 状态（job 级 if 跳过时 needs.result == 'skipped'）。
 """
+
 import shutil
 import subprocess
 from pathlib import Path
@@ -42,12 +43,8 @@ class TestCoverageAuditScheduleGate:
         对齐 full-regression 的既有先例。
         """
         job_if = str(coverage_audit_job.get("if", ""))
-        assert "schedule" in job_if, (
-            "coverage-audit if gate must reference 'schedule' event"
-        )
-        assert "workflow_dispatch" in job_if, (
-            "coverage-audit if gate must reference 'workflow_dispatch' event"
-        )
+        assert "schedule" in job_if, "coverage-audit if gate must reference 'schedule' event"
+        assert "workflow_dispatch" in job_if, "coverage-audit if gate must reference 'workflow_dispatch' event"
 
     def test_coverage_audit_if_gate_excludes_pull_request(self, coverage_audit_job):
         """coverage-audit if 门必须排除 pull_request 事件。
@@ -66,9 +63,7 @@ class TestCoverageAuditScheduleGate:
         runs_on = coverage_audit_job.get("runs-on", [])
         if isinstance(runs_on, str):
             runs_on = [runs_on]
-        assert "self-hosted" in runs_on, (
-            "coverage-audit must remain on self-hosted runner"
-        )
+        assert "self-hosted" in runs_on, "coverage-audit must remain on self-hosted runner"
 
     def test_full_regression_has_same_gate_pattern(self, qa_data):
         """full-regression 也使用相同的 schedule/dispatch-only 门控（既有先例）。"""
@@ -102,9 +97,7 @@ class TestQaOkSkippedHandling:
     def test_qa_ok_needs_coverage_audit(self, qa_ok_job):
         """qa-ok 的 needs 列表必须包含 coverage-audit。"""
         needs = qa_ok_job.get("needs", [])
-        assert "coverage-audit" in needs, (
-            "qa-ok must depend on coverage-audit"
-        )
+        assert "coverage-audit" in needs, "qa-ok must depend on coverage-audit"
 
     def test_qa_ok_handles_skipped_coverage_audit(self, qa_ok_job):
         """qa-ok 的 coverage-audit 检查必须接受 skipped 状态。
@@ -122,9 +115,7 @@ class TestQaOkSkippedHandling:
 
         # 检查 coverage-audit 的判定逻辑必须包含 skipped 分支
         # 方式：查找 coverage-audit 相关 if 块，确认 skipped 被接受
-        assert "coverage-audit" in run_block, (
-            "qa-ok verify step must check coverage-audit result"
-        )
+        assert "coverage-audit" in run_block, "qa-ok verify step must check coverage-audit result"
         # 关键断言：coverage-audit 的失败判定必须排除 skipped 状态
         # 即：!= 'success' && != 'skipped' 或等价的 OR 逻辑
         assert "skipped" in run_block, (
@@ -203,25 +194,24 @@ class TestSubsetJobsNoCovGuard:
     def test_all_subset_jobs_exist(self, qa_data):
         """All 4 subset jobs must be present in qa.yml."""
         for job_name in self.SUBSET_JOBS:
-            assert job_name in qa_data["jobs"], (
-                f"Subset job '{job_name}' missing from qa.yml"
-            )
+            assert job_name in qa_data["jobs"], f"Subset job '{job_name}' missing from qa.yml"
 
     def test_subset_jobs_have_pytest_steps(self, qa_data):
         """Each subset job must have at least one pytest step."""
         for job_name in self.SUBSET_JOBS:
             job_def = qa_data["jobs"][job_name]
             pytest_steps = self._extract_pytest_steps(job_def)
-            assert len(pytest_steps) > 0, (
-                f"Subset job '{job_name}' has no pytest steps"
-            )
+            assert len(pytest_steps) > 0, f"Subset job '{job_name}' has no pytest steps"
 
-    @pytest.mark.parametrize("job_name", [
-        "hook-lifecycle",
-        "business-policy",
-        "schema-migration",
-        "boundary-security",
-    ])
+    @pytest.mark.parametrize(
+        "job_name",
+        [
+            "hook-lifecycle",
+            "business-policy",
+            "schema-migration",
+            "boundary-security",
+        ],
+    )
     def test_subset_job_pytest_steps_contain_no_cov(self, qa_data, job_name):
         """Every pytest step in subset jobs must contain --no-cov.
 
@@ -237,12 +227,15 @@ class TestSubsetJobsNoCovGuard:
                 f"run block: {run_block!r}"
             )
 
-    @pytest.mark.parametrize("job_name", [
-        "hook-lifecycle",
-        "business-policy",
-        "schema-migration",
-        "boundary-security",
-    ])
+    @pytest.mark.parametrize(
+        "job_name",
+        [
+            "hook-lifecycle",
+            "business-policy",
+            "schema-migration",
+            "boundary-security",
+        ],
+    )
     def test_subset_job_pytest_steps_no_cov_fail_under(self, qa_data, job_name):
         """No pytest step in subset jobs must contain --cov-fail-under.
 
@@ -272,9 +265,7 @@ class TestQaWorkflowActionlint:
             capture_output=True,
             text=True,
         )
-        assert result.returncode == 0, (
-            f"actionlint failed on qa.yml:\n{result.stdout}\n{result.stderr}"
-        )
+        assert result.returncode == 0, f"actionlint failed on qa.yml:\n{result.stdout}\n{result.stderr}"
 
     def test_qa_yml_valid_yaml(self):
         """qa.yml is valid YAML that can be parsed."""

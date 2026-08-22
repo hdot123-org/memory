@@ -14,6 +14,7 @@ TD-DR-01 分片规划器：贪心装箱 + 目录亲和 + 溢出处理。
 溢出处理：当文件量大到无法塞入 max_count 个 max_files 容量的分片时，
 自动放大分片数（突破 max_count 上限），并在输出中设 overflow_warning=true。
 """
+
 import json
 import sys
 from collections import defaultdict
@@ -90,10 +91,12 @@ def plan_shards(
     # Step 5: build output
     shards = []
     for i, shard_files_list in enumerate(shards_files):
-        shards.append({
-            "shard_id": i,
-            "files": sorted(shard_files_list),
-        })
+        shards.append(
+            {
+                "shard_id": i,
+                "files": sorted(shard_files_list),
+            }
+        )
 
     return {
         "shards": shards,

@@ -122,7 +122,7 @@ class TestInitForceRestriction:
             '[memory]\nproject = "test"\nmemory_version = "0.4.0"\n'
             'schema_version = "context-package-v1"\nadapter_version = "builtin"\n'
             'locked_at = "2026-01-01"\nlock_reason = "initial"\n',
-            encoding="utf-8"
+            encoding="utf-8",
         )
 
         # Try to force overwrite with mode=create

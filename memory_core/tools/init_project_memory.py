@@ -202,7 +202,10 @@ def init_project_memory(
 
     # Mode-aware business file check
     index_md_path = target / "INDEX.md"
-    has_business_index = index_md_path.exists() and "project-map" not in index_md_path.read_text(encoding="utf-8", errors="ignore").lower()
+    has_business_index = (
+        index_md_path.exists()
+        and "project-map" not in index_md_path.read_text(encoding="utf-8", errors="ignore").lower()
+    )
     if mode in ("adopt", "update", "repair") and has_business_index:
         result["warnings"].append(f"{mode} mode: skipping business INDEX.md (not a memory file)")
 
@@ -255,9 +258,7 @@ def init_project_memory(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Initialize a memory/system/ directory skeleton in a target project."
-    )
+    parser = argparse.ArgumentParser(description="Initialize a memory/system/ directory skeleton in a target project.")
     parser.add_argument(
         "--target",
         type=Path,

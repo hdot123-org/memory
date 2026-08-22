@@ -55,25 +55,19 @@ def _inspect_wrapper(wrapper_file: Path) -> dict[str, Any]:
     }
 
     if not wrapper_file.exists():
-        findings["issues"].append(
-            {"kind": "missing_wrapper", "detail": "Wrapper script not found"}
-        )
+        findings["issues"].append({"kind": "missing_wrapper", "detail": "Wrapper script not found"})
         return findings
 
     try:
         content = wrapper_file.read_text(encoding="utf-8")
     except OSError as exc:
-        findings["issues"].append(
-            {"kind": "unreadable", "detail": f"Cannot read wrapper: {exc}"}
-        )
+        findings["issues"].append({"kind": "unreadable", "detail": f"Cannot read wrapper: {exc}"})
         return findings
 
     # Check for old patterns
     for pattern, description in _OLD_WRAPPER_PATTERNS:
         if re.search(pattern, content):
-            findings["issues"].append(
-                {"kind": "old_pattern", "pattern": pattern, "detail": description}
-            )
+            findings["issues"].append({"kind": "old_pattern", "pattern": pattern, "detail": description})
 
     # Check for current markers
     for marker in _CURRENT_WRAPPER_MARKERS:
@@ -103,17 +97,13 @@ def _inspect_settings(settings_file: Path) -> dict[str, Any]:
     }
 
     if not settings_file.exists():
-        findings["issues"].append(
-            {"kind": "missing_settings", "detail": "settings.json not found"}
-        )
+        findings["issues"].append({"kind": "missing_settings", "detail": "settings.json not found"})
         return findings
 
     warnings: list[str] = []
     settings = _load_settings_json(settings_file, warnings)
     if warnings:
-        findings["issues"].extend(
-            {"kind": "settings_parse", "detail": w} for w in warnings
-        )
+        findings["issues"].extend({"kind": "settings_parse", "detail": w} for w in warnings)
 
     hooks = settings.get("hooks", {})
     memory_command_markers = (
@@ -160,6 +150,7 @@ def _inspect_settings(settings_file: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # inspect
 # ---------------------------------------------------------------------------
+
 
 def cmd_inspect(
     *,
@@ -213,6 +204,7 @@ def cmd_inspect(
 # plan-upgrade
 # ---------------------------------------------------------------------------
 
+
 def cmd_plan_upgrade(
     *,
     factory_home: Path | None = None,
@@ -236,27 +228,19 @@ def cmd_plan_upgrade(
     # Plan wrapper actions
     wrapper_issues = wrapper_findings.get("issues", [])
     wrapper_needs_regen = any(
-        i.get("kind") in ("old_wrapper", "old_pattern", "missing_wrapper")
-        for i in wrapper_issues
+        i.get("kind") in ("old_wrapper", "old_pattern", "missing_wrapper") for i in wrapper_issues
     )
     if wrapper_needs_regen:
-        plan["actions"].append(
-            {"action": "regenerate_wrapper", "path": str(wp), "reason": "Old wrapper detected"}
-        )
+        plan["actions"].append({"action": "regenerate_wrapper", "path": str(wp), "reason": "Old wrapper detected"})
         if wp.exists():
             plan["files_to_backup"].append(str(wp))
         plan["files_to_modify"].append(str(wp))
 
     # Plan settings actions
     settings_issues = settings_findings.get("issues", [])
-    settings_needs_update = any(
-        i.get("kind") in ("missing_hook_event", "missing_settings")
-        for i in settings_issues
-    )
+    settings_needs_update = any(i.get("kind") in ("missing_hook_event", "missing_settings") for i in settings_issues)
     if settings_needs_update:
-        plan["actions"].append(
-            {"action": "update_settings", "path": str(sp), "reason": "Missing hook events"}
-        )
+        plan["actions"].append({"action": "update_settings", "path": str(sp), "reason": "Missing hook events"})
         if sp.exists():
             plan["files_to_backup"].append(str(sp))
         plan["files_to_modify"].append(str(sp))
@@ -288,6 +272,7 @@ def cmd_plan_upgrade(
 # ---------------------------------------------------------------------------
 # apply-upgrade
 # ---------------------------------------------------------------------------
+
 
 def _prompt_upgrade_approval() -> tuple[bool, dict[str, Any] | None]:
     """Prompt user for upgrade approval.
@@ -375,9 +360,7 @@ def _apply_upgrade_and_format(
         result["backups"].extend(install_result.get("backups", []))
         result["message"] = "Upgrade applied successfully"
     else:
-        result["errors"].extend(
-            f"Install failed: {w}" for w in install_result.get("warnings", [])
-        )
+        result["errors"].extend(f"Install failed: {w}" for w in install_result.get("warnings", []))
         result["message"] = "Upgrade failed"
 
     # Format output
@@ -465,6 +448,7 @@ def cmd_apply_upgrade(
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
+
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser."""

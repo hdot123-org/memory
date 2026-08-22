@@ -6,7 +6,6 @@ VAL-GW-004: Health report read/parse/inject into package tested
 VAL-GW-005: IF-5 facade factory methods tested
 """
 
-
 import json
 import os
 import sys
@@ -25,6 +24,7 @@ from tests.sync_artifacts_helpers import setup_sync_artifacts as _setup_sync_art
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_capture_build(captured_packages: list[dict]):
     """Build a ``build_context_package`` stub that records into ``captured_packages``.
@@ -53,6 +53,7 @@ def _make_capture_build(captured_packages: list[dict]):
 # VAL-GW-003: Telemetry error handling paths
 # ===========================================================================
 
+
 class TestMaybeSyncTelemetryBatchCaptureFailure:
     """Tests for batch_capture failure paths in _maybe_sync_telemetry."""
 
@@ -67,7 +68,7 @@ class TestMaybeSyncTelemetryBatchCaptureFailure:
             metrics_lines=metrics_lines,
             offset=0,
             last_sync_success=time.time() - 7200,  # 2 hours ago
-            last_sync_attempt=time.time() - 600,    # 10 minutes ago
+            last_sync_attempt=time.time() - 600,  # 10 minutes ago
         )
 
         mock_telemetry = MagicMock()
@@ -77,8 +78,10 @@ class TestMaybeSyncTelemetryBatchCaptureFailure:
         mock_sock_instance = MagicMock()
         mock_socket.create_connection.return_value = mock_sock_instance
 
-        with patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}), \
-             patch("socket.create_connection", mock_socket.create_connection):
+        with (
+            patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
+            patch("socket.create_connection", mock_socket.create_connection),
+        ):
             mock_tel_module = MagicMock()
             mock_tel_module.telemetry = mock_telemetry
             with patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": mock_tel_module}):
@@ -109,8 +112,10 @@ class TestMaybeSyncTelemetryBatchCaptureFailure:
         mock_telemetry = MagicMock()
         mock_telemetry.batch_capture.side_effect = RuntimeError("network error")
 
-        with patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}), \
-             patch("socket.create_connection") as mock_conn:
+        with (
+            patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
+            patch("socket.create_connection") as mock_conn,
+        ):
             mock_conn.return_value = MagicMock()
             mock_tel_module = MagicMock()
             mock_tel_module.telemetry = mock_telemetry
@@ -131,8 +136,10 @@ class TestMaybeSyncTelemetryBatchCaptureFailure:
         metrics_file.write_text(json.dumps({"event": "x"}) + "\n", encoding="utf-8")
 
         # Patch socket to succeed, but mock batch_capture to raise
-        with patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}), \
-             patch("socket.create_connection") as mock_conn:
+        with (
+            patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
+            patch("socket.create_connection") as mock_conn,
+        ):
             mock_conn.return_value = MagicMock()
             mock_tel_module = MagicMock()
             mock_tel_module.telemetry.batch_capture.side_effect = ConnectionError("fail")
@@ -149,8 +156,10 @@ class TestMaybeSyncTelemetryBatchCaptureFailure:
             last_sync_attempt=time.time() - 600,
         )
 
-        with patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}), \
-             patch("socket.create_connection", side_effect=OSError("unreachable")):
+        with (
+            patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
+            patch("socket.create_connection", side_effect=OSError("unreachable")),
+        ):
             gw._maybe_sync_telemetry(artifact_root)
 
         # Should have updated last_sync_attempt
@@ -177,8 +186,10 @@ class TestMaybeSyncTelemetryBatchCaptureFailure:
         mock_telemetry = MagicMock()
         mock_telemetry.batch_capture.return_value = True
 
-        with patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}), \
-             patch("socket.create_connection") as mock_conn:
+        with (
+            patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
+            patch("socket.create_connection") as mock_conn,
+        ):
             mock_conn.return_value = MagicMock()
             mock_tel_module = MagicMock()
             mock_tel_module.telemetry = mock_telemetry
@@ -197,6 +208,7 @@ class TestMaybeSyncTelemetryBatchCaptureFailure:
 # ===========================================================================
 # VAL-GW-004: Health report read/parse/inject
 # ===========================================================================
+
 
 class TestHealthReportInjection:
     """Tests for health report reading, parsing, and injection into context package."""
@@ -225,9 +237,7 @@ class TestHealthReportInjection:
             "status": "degraded",
             "validation_errors": ["error1", "error2", "error3"],
         }
-        (memory_system / "health-report.json").write_text(
-            json.dumps(health_report), encoding="utf-8"
-        )
+        (memory_system / "health-report.json").write_text(json.dumps(health_report), encoding="utf-8")
 
         captured_packages = []
 
@@ -243,12 +253,21 @@ class TestHealthReportInjection:
             sys.argv = ["gw", "--host", "factory", "--event", "session-start", "--no-delegate"]
             sys.stdout = MagicMock()
 
-            for attr in ["is_memory_core_source_repo", "get_source_repo_mode",
-                         "is_denied_project_root", "_should_noop_for_external_context",
-                         "build_context_package", "write_artifacts",
-                         "_integrity_verify", "_integrity_sign", "_execute_delegate",
-                         "_launch_async_health_check", "_update_state_dynamic_fields",
-                         "_maybe_sync_telemetry", "_log_prompt_submit"]:
+            for attr in [
+                "is_memory_core_source_repo",
+                "get_source_repo_mode",
+                "is_denied_project_root",
+                "_should_noop_for_external_context",
+                "build_context_package",
+                "write_artifacts",
+                "_integrity_verify",
+                "_integrity_sign",
+                "_execute_delegate",
+                "_launch_async_health_check",
+                "_update_state_dynamic_fields",
+                "_maybe_sync_telemetry",
+                "_log_prompt_submit",
+            ]:
                 orig_attrs[attr] = getattr(gw, attr)
 
             gw.is_memory_core_source_repo = lambda cwd: False
@@ -268,6 +287,7 @@ class TestHealthReportInjection:
             # Patch _discover_cwd to return our project_dir
             with patch.object(gw, "_discover_cwd", return_value=project_dir):
                 from memory_core.tools import memory_hook_metrics
+
                 with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
                     gw.main()
 
@@ -294,9 +314,7 @@ class TestHealthReportInjection:
         memory_system.mkdir(parents=True)
 
         health_report = {"status": "healthy", "validation_errors": []}
-        (memory_system / "health-report.json").write_text(
-            json.dumps(health_report), encoding="utf-8"
-        )
+        (memory_system / "health-report.json").write_text(json.dumps(health_report), encoding="utf-8")
 
         captured_packages = []
 
@@ -312,12 +330,21 @@ class TestHealthReportInjection:
             sys.argv = ["gw", "--host", "factory", "--event", "session-start", "--no-delegate"]
             sys.stdout = MagicMock()
 
-            for attr in ["is_memory_core_source_repo", "get_source_repo_mode",
-                         "is_denied_project_root", "_should_noop_for_external_context",
-                         "build_context_package", "write_artifacts",
-                         "_integrity_verify", "_integrity_sign", "_execute_delegate",
-                         "_launch_async_health_check", "_update_state_dynamic_fields",
-                         "_maybe_sync_telemetry", "_log_prompt_submit"]:
+            for attr in [
+                "is_memory_core_source_repo",
+                "get_source_repo_mode",
+                "is_denied_project_root",
+                "_should_noop_for_external_context",
+                "build_context_package",
+                "write_artifacts",
+                "_integrity_verify",
+                "_integrity_sign",
+                "_execute_delegate",
+                "_launch_async_health_check",
+                "_update_state_dynamic_fields",
+                "_maybe_sync_telemetry",
+                "_log_prompt_submit",
+            ]:
                 orig_attrs[attr] = getattr(gw, attr)
 
             gw.is_memory_core_source_repo = lambda cwd: False
@@ -336,6 +363,7 @@ class TestHealthReportInjection:
 
             with patch.object(gw, "_discover_cwd", return_value=project_dir):
                 from memory_core.tools import memory_hook_metrics
+
                 with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
                     gw.main()
 
@@ -368,12 +396,21 @@ class TestHealthReportInjection:
             sys.argv = ["gw", "--host", "factory", "--event", "session-start", "--no-delegate"]
             sys.stdout = MagicMock()
 
-            for attr in ["is_memory_core_source_repo", "get_source_repo_mode",
-                         "is_denied_project_root", "_should_noop_for_external_context",
-                         "build_context_package", "write_artifacts",
-                         "_integrity_verify", "_integrity_sign", "_execute_delegate",
-                         "_launch_async_health_check", "_update_state_dynamic_fields",
-                         "_maybe_sync_telemetry", "_log_prompt_submit"]:
+            for attr in [
+                "is_memory_core_source_repo",
+                "get_source_repo_mode",
+                "is_denied_project_root",
+                "_should_noop_for_external_context",
+                "build_context_package",
+                "write_artifacts",
+                "_integrity_verify",
+                "_integrity_sign",
+                "_execute_delegate",
+                "_launch_async_health_check",
+                "_update_state_dynamic_fields",
+                "_maybe_sync_telemetry",
+                "_log_prompt_submit",
+            ]:
                 orig_attrs[attr] = getattr(gw, attr)
 
             gw.is_memory_core_source_repo = lambda cwd: False
@@ -392,6 +429,7 @@ class TestHealthReportInjection:
 
             with patch.object(gw, "_discover_cwd", return_value=project_dir):
                 from memory_core.tools import memory_hook_metrics
+
                 with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
                     gw.main()
 
@@ -412,9 +450,7 @@ class TestHealthReportInjection:
         memory_system.mkdir(parents=True)
 
         # Write malformed JSON
-        (memory_system / "health-report.json").write_text(
-            "{invalid json content", encoding="utf-8"
-        )
+        (memory_system / "health-report.json").write_text("{invalid json content", encoding="utf-8")
 
         captured_packages = []
 
@@ -430,12 +466,21 @@ class TestHealthReportInjection:
             sys.argv = ["gw", "--host", "factory", "--event", "session-start", "--no-delegate"]
             sys.stdout = MagicMock()
 
-            for attr in ["is_memory_core_source_repo", "get_source_repo_mode",
-                         "is_denied_project_root", "_should_noop_for_external_context",
-                         "build_context_package", "write_artifacts",
-                         "_integrity_verify", "_integrity_sign", "_execute_delegate",
-                         "_launch_async_health_check", "_update_state_dynamic_fields",
-                         "_maybe_sync_telemetry", "_log_prompt_submit"]:
+            for attr in [
+                "is_memory_core_source_repo",
+                "get_source_repo_mode",
+                "is_denied_project_root",
+                "_should_noop_for_external_context",
+                "build_context_package",
+                "write_artifacts",
+                "_integrity_verify",
+                "_integrity_sign",
+                "_execute_delegate",
+                "_launch_async_health_check",
+                "_update_state_dynamic_fields",
+                "_maybe_sync_telemetry",
+                "_log_prompt_submit",
+            ]:
                 orig_attrs[attr] = getattr(gw, attr)
 
             gw.is_memory_core_source_repo = lambda cwd: False
@@ -454,6 +499,7 @@ class TestHealthReportInjection:
 
             with patch.object(gw, "_discover_cwd", return_value=project_dir):
                 from memory_core.tools import memory_hook_metrics
+
                 with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
                     # Should not raise - except block handles malformed JSON
                     gw.main()
@@ -478,9 +524,7 @@ class TestHealthReportInjection:
             "status": "degraded",
             "validation_errors": [f"error_{i}" for i in range(10)],
         }
-        (memory_system / "health-report.json").write_text(
-            json.dumps(health_report), encoding="utf-8"
-        )
+        (memory_system / "health-report.json").write_text(json.dumps(health_report), encoding="utf-8")
 
         captured_packages = []
 
@@ -496,12 +540,21 @@ class TestHealthReportInjection:
             sys.argv = ["gw", "--host", "factory", "--event", "session-start", "--no-delegate"]
             sys.stdout = MagicMock()
 
-            for attr in ["is_memory_core_source_repo", "get_source_repo_mode",
-                         "is_denied_project_root", "_should_noop_for_external_context",
-                         "build_context_package", "write_artifacts",
-                         "_integrity_verify", "_integrity_sign", "_execute_delegate",
-                         "_launch_async_health_check", "_update_state_dynamic_fields",
-                         "_maybe_sync_telemetry", "_log_prompt_submit"]:
+            for attr in [
+                "is_memory_core_source_repo",
+                "get_source_repo_mode",
+                "is_denied_project_root",
+                "_should_noop_for_external_context",
+                "build_context_package",
+                "write_artifacts",
+                "_integrity_verify",
+                "_integrity_sign",
+                "_execute_delegate",
+                "_launch_async_health_check",
+                "_update_state_dynamic_fields",
+                "_maybe_sync_telemetry",
+                "_log_prompt_submit",
+            ]:
                 orig_attrs[attr] = getattr(gw, attr)
 
             gw.is_memory_core_source_repo = lambda cwd: False
@@ -520,6 +573,7 @@ class TestHealthReportInjection:
 
             with patch.object(gw, "_discover_cwd", return_value=project_dir):
                 from memory_core.tools import memory_hook_metrics
+
                 with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
                     gw.main()
 
@@ -538,6 +592,7 @@ class TestHealthReportInjection:
 # ===========================================================================
 # VAL-GW-005: IF-5 facade factory methods
 # ===========================================================================
+
 
 class TestIF5FacadeFactoryMethods:
     """Tests for IF-5 facade factory methods and adapter functions."""
@@ -618,9 +673,7 @@ class TestIF5FacadeFactoryMethods:
         mock_registry.resolve_conflict.return_value = "resolved_value"
 
         with patch.object(gw, "_get_policy_registry", return_value=mock_registry):
-            result = gw._resolve_policy_conflict_via_registry(
-                "policy_key", ["val1", "val2"], "merge"
-            )
+            result = gw._resolve_policy_conflict_via_registry("policy_key", ["val1", "val2"], "merge")
 
         mock_registry.resolve_conflict.assert_called_once_with("policy_key", ["val1", "val2"], "merge")
         assert result == "resolved_value"
@@ -631,9 +684,7 @@ class TestIF5FacadeFactoryMethods:
         mock_registry.resolve_conflict.return_value = "resolved"
 
         with patch.object(gw, "_get_policy_registry", return_value=mock_registry):
-            gw._resolve_policy_conflict_via_registry(
-                "key", ["a", "b"], None
-            )
+            gw._resolve_policy_conflict_via_registry("key", ["a", "b"], None)
 
         mock_registry.resolve_conflict.assert_called_once_with("key", ["a", "b"], "default")
 
@@ -661,6 +712,7 @@ class TestIF5FacadeFactoryMethods:
 # ===========================================================================
 # VAL-GW-003 (additional): Sync failure handling paths
 # ===========================================================================
+
 
 class TestSyncFailureHandling:
     """Additional tests for sync failure paths."""
@@ -724,7 +776,7 @@ class TestSyncFailureHandling:
             tmp_path,
             metrics_lines=[json.dumps({"event": "x"}) + "\n"],
             last_sync_success=time.time() - 7200,  # 2 hours ago
-            last_sync_attempt=time.time() - 60,    # 1 minute ago
+            last_sync_attempt=time.time() - 60,  # 1 minute ago
         )
 
         with patch("socket.create_connection") as mock_conn:
@@ -767,6 +819,7 @@ class TestSyncFailureHandling:
                 if ".last_sync_attempt" in str(self_path):
                     raise OSError("disk full")
                 return original_write(*args, **kwargs)
+
             mock_write.side_effect = side_effect
 
             # Should not raise - OSError is caught
@@ -787,15 +840,19 @@ class TestSyncFailureHandling:
         offset_file = artifact_root / ".offset"
         original_read = offset_file.read_text
 
-        with patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}), \
-             patch("socket.create_connection") as mock_conn:
+        with (
+            patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
+            patch("socket.create_connection") as mock_conn,
+        ):
             mock_conn.return_value = MagicMock()
             # Make offset read fail to trigger top-level exception
             with patch.object(Path, "read_text") as mock_read:
+
                 def side_effect(self_path, *args, **kwargs):
                     if ".offset" in str(self_path):
                         raise RuntimeError("file corrupted")
                     return original_read(*args, **kwargs)
+
                 mock_read.side_effect = side_effect
 
                 # Should not raise - top-level exception is caught
@@ -805,6 +862,7 @@ class TestSyncFailureHandling:
 # ===========================================================================
 # VAL-GW-003 (additional): PreToolUse guard in main()
 # ===========================================================================
+
 
 class TestPreToolUseGuard:
     """Tests for PreToolUse guard interception in main() (lines 1926-1949)."""
@@ -832,12 +890,21 @@ class TestPreToolUseGuard:
             sys.stdout = MagicMock()
             sys.stdout.write = capture_stdout
 
-            for attr in ["is_memory_core_source_repo", "get_source_repo_mode",
-                         "is_denied_project_root", "_should_noop_for_external_context",
-                         "build_context_package", "write_artifacts",
-                         "_integrity_verify", "_integrity_sign", "_execute_delegate",
-                         "_launch_async_health_check", "_update_state_dynamic_fields",
-                         "_maybe_sync_telemetry", "_log_prompt_submit"]:
+            for attr in [
+                "is_memory_core_source_repo",
+                "get_source_repo_mode",
+                "is_denied_project_root",
+                "_should_noop_for_external_context",
+                "build_context_package",
+                "write_artifacts",
+                "_integrity_verify",
+                "_integrity_sign",
+                "_execute_delegate",
+                "_launch_async_health_check",
+                "_update_state_dynamic_fields",
+                "_maybe_sync_telemetry",
+                "_log_prompt_submit",
+            ]:
                 orig_attrs[attr] = getattr(gw, attr)
 
             gw.is_memory_core_source_repo = lambda cwd: False
@@ -863,6 +930,7 @@ class TestPreToolUseGuard:
 
                 with patch("subprocess.run", return_value=mock_proc):
                     from memory_core.tools import memory_hook_metrics
+
                     with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
                         result = gw.main()
 
@@ -896,12 +964,21 @@ class TestPreToolUseGuard:
             sys.argv = ["gw", "--host", "factory", "--event", "pre-tool-use", "--no-delegate"]
             sys.stdout = MagicMock()
 
-            for attr in ["is_memory_core_source_repo", "get_source_repo_mode",
-                         "is_denied_project_root", "_should_noop_for_external_context",
-                         "build_context_package", "write_artifacts",
-                         "_integrity_verify", "_integrity_sign", "_execute_delegate",
-                         "_launch_async_health_check", "_update_state_dynamic_fields",
-                         "_maybe_sync_telemetry", "_log_prompt_submit"]:
+            for attr in [
+                "is_memory_core_source_repo",
+                "get_source_repo_mode",
+                "is_denied_project_root",
+                "_should_noop_for_external_context",
+                "build_context_package",
+                "write_artifacts",
+                "_integrity_verify",
+                "_integrity_sign",
+                "_execute_delegate",
+                "_launch_async_health_check",
+                "_update_state_dynamic_fields",
+                "_maybe_sync_telemetry",
+                "_log_prompt_submit",
+            ]:
                 orig_attrs[attr] = getattr(gw, attr)
 
             gw.is_memory_core_source_repo = lambda cwd: False
@@ -919,12 +996,14 @@ class TestPreToolUseGuard:
             gw._log_prompt_submit = lambda *a, **kw: None
 
             import subprocess as subprocess_module
+
             with (
                 patch.object(gw, "_discover_cwd", return_value=project_dir),
                 patch("subprocess.run", side_effect=subprocess_module.TimeoutExpired("cmd", 5)),
                 patch.object(gw, "append_error_log", mock_append_error),
             ):
                 from memory_core.tools import memory_hook_metrics
+
                 with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
                     result = gw.main()
 
@@ -962,12 +1041,21 @@ class TestPreToolUseGuard:
             sys.argv = ["gw", "--host", "factory", "--event", "pre-tool-use", "--no-delegate"]
             sys.stdout = MagicMock()
 
-            for attr in ["is_memory_core_source_repo", "get_source_repo_mode",
-                         "is_denied_project_root", "_should_noop_for_external_context",
-                         "build_context_package", "write_artifacts",
-                         "_integrity_verify", "_integrity_sign", "_execute_delegate",
-                         "_launch_async_health_check", "_update_state_dynamic_fields",
-                         "_maybe_sync_telemetry", "_log_prompt_submit"]:
+            for attr in [
+                "is_memory_core_source_repo",
+                "get_source_repo_mode",
+                "is_denied_project_root",
+                "_should_noop_for_external_context",
+                "build_context_package",
+                "write_artifacts",
+                "_integrity_verify",
+                "_integrity_sign",
+                "_execute_delegate",
+                "_launch_async_health_check",
+                "_update_state_dynamic_fields",
+                "_maybe_sync_telemetry",
+                "_log_prompt_submit",
+            ]:
                 orig_attrs[attr] = getattr(gw, attr)
 
             gw.is_memory_core_source_repo = lambda cwd: False
@@ -990,6 +1078,7 @@ class TestPreToolUseGuard:
                 patch.object(gw, "append_error_log", mock_append_error),
             ):
                 from memory_core.tools import memory_hook_metrics
+
                 with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
                     result = gw.main()
 

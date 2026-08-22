@@ -29,6 +29,7 @@ except Exception:
 # Data sources
 # ---------------------------------------------------------------------------
 
+
 def _find_event_log(project_root: Path, target_date: str) -> Path | None:
     """Locate the date-partitioned event log."""
     candidates = [
@@ -52,6 +53,7 @@ def _find_context_snapshots(project_root: Path, target_date: str) -> list[Path]:
 # ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
+
 
 def _load_events(log_path: Path) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
@@ -92,6 +94,7 @@ def _filter_by_project(events: list[dict[str, Any]], project_path: str) -> list[
 # Analysis
 # ---------------------------------------------------------------------------
 
+
 class SessionStats:
     def __init__(self) -> None:
         self.sessions: list[str] = []
@@ -110,12 +113,14 @@ class SessionStats:
         cwd = evt.get("cwd", "unknown")
 
         # Timeline
-        self.timeline.append({
-            "time": ts[:19] if len(ts) >= 19 else ts,
-            "event": event_type,
-            "status": status,
-            "project": str(cwd),
-        })
+        self.timeline.append(
+            {
+                "time": ts[:19] if len(ts) >= 19 else ts,
+                "event": event_type,
+                "status": status,
+                "project": str(cwd),
+            }
+        )
 
         # Count by type
         if event_type == "session-start":
@@ -138,12 +143,14 @@ class SessionStats:
         # Errors
         validation_errors = evt.get("validation_errors", [])
         if validation_errors:
-            self.errors.append({
-                "time": ts[:19] if len(ts) >= 19 else ts,
-                "event": event_type,
-                "project": proj,
-                "errors": validation_errors,
-            })
+            self.errors.append(
+                {
+                    "time": ts[:19] if len(ts) >= 19 else ts,
+                    "event": event_type,
+                    "project": proj,
+                    "errors": validation_errors,
+                }
+            )
 
 
 def _load_errors(project_root: Path, target_date: str) -> list[str]:
@@ -163,6 +170,7 @@ def _load_errors(project_root: Path, target_date: str) -> list[str]:
 # ---------------------------------------------------------------------------
 # Output
 # ---------------------------------------------------------------------------
+
 
 def _print_report(stats: SessionStats, target_date: str, errors_log: list[str]) -> None:
     print("=" * 60)
@@ -227,6 +235,7 @@ def _json_report(stats: SessionStats, target_date: str, errors_log: list[str]) -
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def _resolve_target_date(args: argparse.Namespace) -> str | None:
     """Resolve the target date from parsed arguments."""

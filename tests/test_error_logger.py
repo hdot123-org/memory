@@ -32,9 +32,9 @@ _FAKE_KEY = _PREFIX + "abcd1234efgh"
 _FAKE_KEY_A = _PREFIX + "aaaa1111bbbb"
 _FAKE_KEY_B = _PREFIX + "bbbb2222cccc"
 _FAKE_KEY_E = _PREFIX + "efgh5678ijkl"
-_MIN_KEY = _PREFIX + "abcdefghij"   # 10 alphanumerics -- minimum that matches new pattern
+_MIN_KEY = _PREFIX + "abcdefghij"  # 10 alphanumerics -- minimum that matches new pattern
 _TOO_SHORT = _PREFIX + "abcdefghi"  # 9 alphanumerics -- below new threshold
-_REDACTED = "[REDACTED]"            # expected output of the redaction transform
+_REDACTED = "[REDACTED]"  # expected output of the redaction transform
 
 
 # ---------------------------------------------------------------------------
@@ -110,16 +110,18 @@ class TestRedactContext:
 class TestValidErrorTypes:
     """Verify the canonical set of supported error types."""
 
-    EXPECTED = frozenset({
-        "transcript_missing",
-        "hook_timeout",
-        "json_parse_error",
-        "directory_creation_failed",
-        "file_write_failed",
-        "llm_api_error",
-        "llm_timeout",
-        "settings_read_failed",
-    })
+    EXPECTED = frozenset(
+        {
+            "transcript_missing",
+            "hook_timeout",
+            "json_parse_error",
+            "directory_creation_failed",
+            "file_write_failed",
+            "llm_api_error",
+            "llm_timeout",
+            "settings_read_failed",
+        }
+    )
 
     def test_all_expected_types_present(self):
         assert VALID_ERROR_TYPES == self.EXPECTED
@@ -266,31 +268,26 @@ class TestDetectCallingScript:
 
     def test_returns_unknown_when_stack_raises(self, monkeypatch):
         """inspect.stack() raising must still yield "unknown" (no swallow crash)."""
+
         def _boom(*args, **kwargs):
             raise RuntimeError("simulated stack failure")
 
-        monkeypatch.setattr(
-            "memory_core.tools.error_logger.inspect.stack", _boom
-        )
+        monkeypatch.setattr("memory_core.tools.error_logger.inspect.stack", _boom)
 
         assert _detect_calling_script() == "unknown"
 
     def test_logs_debug_record_when_stack_raises(self, monkeypatch, caplog):
         """The previously-swallowed exception must now emit a debug log record."""
+
         def _boom(*args, **kwargs):
             raise RuntimeError("simulated stack failure")
 
-        monkeypatch.setattr(
-            "memory_core.tools.error_logger.inspect.stack", _boom
-        )
+        monkeypatch.setattr("memory_core.tools.error_logger.inspect.stack", _boom)
 
         with caplog.at_level("DEBUG", logger="memory_core.tools.error_logger"):
             _detect_calling_script()
 
-        debug_records = [
-            r for r in caplog.records if r.levelname == "DEBUG"
-            and "_detect_calling_script" in r.message
-        ]
+        debug_records = [r for r in caplog.records if r.levelname == "DEBUG" and "_detect_calling_script" in r.message]
         assert debug_records, "expected a DEBUG log record for the swallowed exception"
 
 
@@ -309,9 +306,7 @@ class TestTrySignFile:
         def _boom(*args, **kwargs):
             raise RuntimeError("simulated signing failure")
 
-        monkeypatch.setattr(
-            error_logger._integrity, "sign_project_incremental", _boom
-        )
+        monkeypatch.setattr(error_logger._integrity, "sign_project_incremental", _boom)
 
         # Should return None without raising.
         error_logger._try_sign_file(tmp_path, "memory/log/test-errors.jsonl")
@@ -323,16 +318,13 @@ class TestTrySignFile:
         def _boom(*args, **kwargs):
             raise RuntimeError("simulated signing failure")
 
-        monkeypatch.setattr(
-            error_logger._integrity, "sign_project_incremental", _boom
-        )
+        monkeypatch.setattr(error_logger._integrity, "sign_project_incremental", _boom)
 
         with caplog.at_level("WARNING", logger="memory_core.tools.error_logger"):
             error_logger._try_sign_file(tmp_path, "memory/log/test-errors.jsonl")
 
         warning_records = [
-            r for r in caplog.records if r.levelname == "WARNING"
-            and "sign_project_incremental failed" in r.message
+            r for r in caplog.records if r.levelname == "WARNING" and "sign_project_incremental failed" in r.message
         ]
         assert warning_records, "expected a WARNING log record for the swallowed exception"
 

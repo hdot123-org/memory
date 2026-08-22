@@ -38,7 +38,8 @@ class TestUpdateStateDynamicFields:
         memory_dir = tmp_path / "memory" / "kb" / "projects" / _SCOPE
         memory_dir.mkdir(parents=True)
         state_path = memory_dir / "STATE.md"
-        state_path.write_text(dedent("""\
+        state_path.write_text(
+            dedent("""\
             # Test State
 
             ## 当前工作区
@@ -48,7 +49,9 @@ class TestUpdateStateDynamicFields:
             ## 待处理事项
 
             - [ ] something
-        """), encoding="utf-8")
+        """),
+            encoding="utf-8",
+        )
 
         _update_state_dynamic_fields(tmp_path, _SCOPE)
 
@@ -67,7 +70,8 @@ class TestUpdateStateDynamicFields:
         memory_dir = tmp_path / "memory" / "kb" / "projects" / _SCOPE
         memory_dir.mkdir(parents=True)
         state_path = memory_dir / "STATE.md"
-        state_path.write_text(dedent("""\
+        state_path.write_text(
+            dedent("""\
             # Test State
 
             ## 当前工作区
@@ -79,7 +83,9 @@ class TestUpdateStateDynamicFields:
             | 日期 | 决策 |
             |------|------|
             | today | something |
-        """), encoding="utf-8")
+        """),
+            encoding="utf-8",
+        )
 
         _update_state_dynamic_fields(tmp_path, _SCOPE)
 
@@ -117,7 +123,8 @@ class TestUpdateStateDynamicFields:
         state_path = memory_dir / "STATE.md"
         # Simulate a STATE.md that also has static-like fields (unlikely in
         # practice, but this test guards against over-aggressive regex)
-        state_path.write_text(dedent("""\
+        state_path.write_text(
+            dedent("""\
             # Test State
 
             ## 项目状态
@@ -133,7 +140,9 @@ class TestUpdateStateDynamicFields:
             ## 待处理事项
 
             - [ ] task 1
-        """), encoding="utf-8")
+        """),
+            encoding="utf-8",
+        )
 
         before_static_section = state_path.read_text(encoding="utf-8").split("## 当前工作区")[0]
 
@@ -224,7 +233,8 @@ class TestUpdateStateDynamicFields:
         memory_dir.mkdir(parents=True)
         state_path = memory_dir / "STATE.md"
         # Put a similar-looking line in another section
-        state_path.write_text(dedent("""\
+        state_path.write_text(
+            dedent("""\
             # Test State
 
             ## 关键决策
@@ -236,7 +246,9 @@ class TestUpdateStateDynamicFields:
             ## 当前工作区
 
             （待填写：当前工作区描述）
-        """), encoding="utf-8")
+        """),
+            encoding="utf-8",
+        )
 
         _update_state_dynamic_fields(tmp_path, _SCOPE)
 

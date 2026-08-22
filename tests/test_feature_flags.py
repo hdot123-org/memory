@@ -117,6 +117,7 @@ class TestIsEnabled:
     def reset_registry(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Reset global registry and env before each test."""
         import os as _os
+
         reset_flags()
         # Remove any MEMORY_FEATURE_* vars that might leak
         for key in list(_os.environ.keys()):

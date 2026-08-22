@@ -25,6 +25,7 @@ from memory_core.tools.memory_hook_integrity_manifest import (
 
 # --- VAL-F1-001: memory_log Domain Registered as STANDARD ---
 
+
 class TestMemoryLogDomain:
     """Test memory_log domain registration."""
 
@@ -35,27 +36,22 @@ class TestMemoryLogDomain:
 
     def test_memory_log_domain_path(self):
         """memory_log domain should have path='memory/log'."""
-        memory_log = next(
-            d for d in DEFAULT_OWNERSHIP_DOMAINS if d.name == "memory_log"
-        )
+        memory_log = next(d for d in DEFAULT_OWNERSHIP_DOMAINS if d.name == "memory_log")
         assert memory_log.path == "memory/log"
 
     def test_memory_log_domain_level_is_standard(self):
         """memory_log domain should have STANDARD protection level."""
-        memory_log = next(
-            d for d in DEFAULT_OWNERSHIP_DOMAINS if d.name == "memory_log"
-        )
+        memory_log = next(d for d in DEFAULT_OWNERSHIP_DOMAINS if d.name == "memory_log")
         assert memory_log.level == ProtectionLevel.STANDARD
 
     def test_memory_log_domain_is_recursive(self):
         """memory_log domain should be recursive."""
-        memory_log = next(
-            d for d in DEFAULT_OWNERSHIP_DOMAINS if d.name == "memory_log"
-        )
+        memory_log = next(d for d in DEFAULT_OWNERSHIP_DOMAINS if d.name == "memory_log")
         assert memory_log.recursive is True
 
 
 # --- VAL-F1-002: error_log Resource Covers errors.jsonl Files ---
+
 
 class TestErrorLogResource:
     """Test error_log resource registration."""
@@ -67,16 +63,12 @@ class TestErrorLogResource:
 
     def test_error_log_resource_path_pattern(self):
         """error_log resource should match memory/log/*-errors.jsonl pattern."""
-        error_log = next(
-            r for r in DEFAULT_OWNERSHIP_RESOURCES if r.name == "error_log"
-        )
+        error_log = next(r for r in DEFAULT_OWNERSHIP_RESOURCES if r.name == "error_log")
         assert "errors.jsonl" in error_log.path
 
     def test_error_log_resource_level_is_standard(self):
         """error_log resource should have STANDARD protection level."""
-        error_log = next(
-            r for r in DEFAULT_OWNERSHIP_RESOURCES if r.name == "error_log"
-        )
+        error_log = next(r for r in DEFAULT_OWNERSHIP_RESOURCES if r.name == "error_log")
         assert error_log.level == ProtectionLevel.STANDARD
 
     def test_classify_error_log_path(self):
@@ -86,6 +78,7 @@ class TestErrorLogResource:
 
 
 # --- VAL-F1-003: _discover_canonical_files Finds memory/log/ Files ---
+
 
 class TestDiscoverCanonicalFilesMemoryLog:
     """Test that _discover_canonical_files discovers memory/log/ files."""
@@ -127,6 +120,7 @@ class TestDiscoverCanonicalFilesMemoryLog:
 
 # --- VAL-F1-004: VOLATILE_PATTERNS No Longer Excludes errors.jsonl ---
 
+
 class TestVolatilePatternsNotExcludeErrorsJsonl:
     """Test that errors.jsonl is NOT matched by volatile patterns."""
 
@@ -141,6 +135,7 @@ class TestVolatilePatternsNotExcludeErrorsJsonl:
 
 
 # --- VAL-F1-005: classify_owned_path Correctly Classifies memory/log/ Paths ---
+
 
 class TestClassifyOwnedPathMemoryLog:
     """Test classify_owned_path for memory/log/ paths."""
@@ -167,6 +162,7 @@ class TestClassifyOwnedPathMemoryLog:
 
 # --- VAL-F1-006: Existing Ownership Domains Unchanged ---
 
+
 class TestExistingDomainsUnchanged:
     """Test that existing domains and resources are not affected."""
 
@@ -178,14 +174,17 @@ class TestExistingDomainsUnchanged:
         """Should have 11 resources total (10 existing + error_log)."""
         assert len(DEFAULT_OWNERSHIP_RESOURCES) == 11
 
-    @pytest.mark.parametrize("name", [
-        "memory_docs",
-        "memory_kb",
-        "memory_system",
-        "project_map",
-        "audit",
-        "review",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "memory_docs",
+            "memory_kb",
+            "memory_system",
+            "project_map",
+            "audit",
+            "review",
+        ],
+    )
     def test_existing_domains_still_present(self, name):
         """All 6 original domains should still exist."""
         domain_names = {d.name for d in DEFAULT_OWNERSHIP_DOMAINS}
@@ -200,18 +199,21 @@ class TestExistingDomainsUnchanged:
                 # memory_log is STANDARD
                 assert domain.level == ProtectionLevel.STANDARD
 
-    @pytest.mark.parametrize("name", [
-        "agents_md",
-        "audit_summary",
-        "readme_md",
-        "changelog_md",
-        "contributing_md",
-        "memory_lock",
-        "adapter_toml",
-        "ownership_toml",
-        "migrations_log",
-        "manifest_json",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "agents_md",
+            "audit_summary",
+            "readme_md",
+            "changelog_md",
+            "contributing_md",
+            "memory_lock",
+            "adapter_toml",
+            "ownership_toml",
+            "migrations_log",
+            "manifest_json",
+        ],
+    )
     def test_existing_resources_still_present(self, name):
         """All 10 original resources should still exist."""
         resource_names = {r.name for r in DEFAULT_OWNERSHIP_RESOURCES}
@@ -219,9 +221,6 @@ class TestExistingDomainsUnchanged:
 
     def test_memory_log_is_only_standard_domain(self):
         """memory_log should be the only STANDARD domain among defaults."""
-        standard_domains = [
-            d for d in DEFAULT_OWNERSHIP_DOMAINS
-            if d.level == ProtectionLevel.STANDARD
-        ]
+        standard_domains = [d for d in DEFAULT_OWNERSHIP_DOMAINS if d.level == ProtectionLevel.STANDARD]
         assert len(standard_domains) == 1
         assert standard_domains[0].name == "memory_log"

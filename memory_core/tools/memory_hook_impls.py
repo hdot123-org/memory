@@ -8,7 +8,6 @@ This module provides default implementations for:
 - ArtifactSinkImpl / ErrorSinkImpl
 """
 
-
 import contextlib
 import json
 import os
@@ -122,6 +121,7 @@ except ImportError:
 # IF-1: HostDelegate Implementations
 # ---------------------------------------------------------------------------
 
+
 class FactoryDelegate(HostDelegate):
     """Neutral delegate for Factory host: returns empty JSON for all events.
 
@@ -175,10 +175,15 @@ class NoopHostDelegate(HostDelegate):
         - host_unavailable: True (delegate is a noop, host not present)
         - policy_decision: "no_host" (separate from delegate availability)
         """
-        result_json = json.dumps({
-            "host_unavailable": True,
-            "policy_decision": "no_host",
-        }) + "\n"
+        result_json = (
+            json.dumps(
+                {
+                    "host_unavailable": True,
+                    "policy_decision": "no_host",
+                }
+            )
+            + "\n"
+        )
         return subprocess.CompletedProcess(args=[], returncode=0, stdout=result_json, stderr="")
 
     @property
@@ -215,6 +220,7 @@ def resolve_host_delegate(host: str, mode: str = "auto") -> HostDelegate:
 # ---------------------------------------------------------------------------
 # IF-2: PolicyRegistry Implementation
 # ---------------------------------------------------------------------------
+
 
 class PolicyRegistryImpl(PolicyRegistry):
     """Default policy registry implementation with policy-pack support."""
@@ -361,14 +367,10 @@ class PolicyRegistryImpl(PolicyRegistry):
             return values[0]
 
         # Get strategy for this policy key
-        effective_strategy = strategy or self._conflict_strategies.get(
-            policy_key, self._conflict_strategies["default"]
-        )
+        effective_strategy = strategy or self._conflict_strategies.get(policy_key, self._conflict_strategies["default"])
 
         if effective_strategy == "fail-fast":
-            raise ValueError(
-                f"conflict on {policy_key} with values {values!r}: strategy={effective_strategy}"
-            )
+            raise ValueError(f"conflict on {policy_key} with values {values!r}: strategy={effective_strategy}")
         elif effective_strategy == "preserve-and-escalate":
             # Return first value but mark as escalated
             return values[0]
@@ -428,6 +430,7 @@ class PolicyRegistryImpl(PolicyRegistry):
 # ---------------------------------------------------------------------------
 # IF-3: RouteTargetPolicy / WriteTargetPolicy Implementations
 # ---------------------------------------------------------------------------
+
 
 class RouteTargetPolicyImpl(RouteTargetPolicy):
     """Default route target policy implementation."""
@@ -523,8 +526,8 @@ class WriteTargetPolicyImpl(WriteTargetPolicy):
 
     def get_targets(self) -> dict[str, Any]:
         result = dict(self._targets)
-        if result.get('fact') is None:
-            result['fact'] = str(self._workspace_root / 'memory' / 'log' / f'{datetime.now().date().isoformat()}.md')
+        if result.get("fact") is None:
+            result["fact"] = str(self._workspace_root / "memory" / "log" / f"{datetime.now().date().isoformat()}.md")
         return result
 
 
@@ -655,6 +658,7 @@ class GatewayBusinessPolicyImpl(ScopeResolverBase, GatewayBusinessPolicy):
 # ---------------------------------------------------------------------------
 # IF-4: ArtifactSink / ErrorSink Implementations
 # ---------------------------------------------------------------------------
+
 
 class ArtifactSinkImpl(ArtifactSink):
     """Default artifact sink implementation."""
@@ -798,6 +802,7 @@ class ErrorSinkImpl(ErrorSink):
 # IF-5: ArtifactWriter / DelegateRouter Implementations
 # ---------------------------------------------------------------------------
 
+
 class ArtifactWriter:
     """Handles writing context packages to artifact files.
 
@@ -816,9 +821,7 @@ class ArtifactWriter:
         self.error_log = error_log
         self.datetime_module = datetime_module or datetime
         event_log = context_root.parent / "events.jsonl"
-        self._sink = ArtifactSinkImpl(
-            context_root, event_log, datetime_module=self.datetime_module
-        )
+        self._sink = ArtifactSinkImpl(context_root, event_log, datetime_module=self.datetime_module)
         self._last_error: str | None = None
 
     def write(self, host: str, event: str, package: dict[str, Any]) -> bool:
@@ -853,10 +856,7 @@ class ArtifactWriter:
         now = self.datetime_module.now()
         timestamp = now.strftime("%Y%m%dT%H%M%S")
         day = now.date().isoformat()
-        line = (
-            f"[{timestamp}] [ArtifactWriter] [error] "
-            f"artifact write failed | context={rendered}\n"
-        )
+        line = f"[{timestamp}] [ArtifactWriter] [error] artifact write failed | context={rendered}\n"
         daily_error_log = self.error_log.parent / "errors" / f"{day}.log"
         daily_error_log.parent.mkdir(parents=True, exist_ok=True)
         with daily_error_log.open("a", encoding="utf-8") as handle:

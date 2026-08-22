@@ -38,6 +38,7 @@ import pytest
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def artifact_dir(tmp_path):
     """Create an isolated artifact directory for each test."""
@@ -51,12 +52,14 @@ def gateway_module():
     """Return the gateway module with mocked heavy dependencies."""
     # Import once and cache
     from memory_core.tools import memory_hook_gateway as gw
+
     return gw
 
 
 # ---------------------------------------------------------------------------
 # now_iso
 # ---------------------------------------------------------------------------
+
 
 class TestNowIso:
     def test_returns_iso_string(self, gateway_module):
@@ -69,6 +72,7 @@ class TestNowIso:
 # ---------------------------------------------------------------------------
 # _read_payload
 # ---------------------------------------------------------------------------
+
 
 class TestReadPayload:
     def test_empty_string(self, gateway_module):
@@ -86,13 +90,14 @@ class TestReadPayload:
         assert result == {"payload": "just a string"}
 
     def test_list_payload_wrapped(self, gateway_module):
-        result = gateway_module._read_payload('[1, 2, 3]')
+        result = gateway_module._read_payload("[1, 2, 3]")
         assert result == {"payload": [1, 2, 3]}
 
 
 # ---------------------------------------------------------------------------
 # _payload_cwd / _environment_cwd / _original_cwd
 # ---------------------------------------------------------------------------
+
 
 class TestCwdHelpers:
     def test_payload_cwd_none_when_missing(self, gateway_module):
@@ -128,6 +133,7 @@ class TestCwdHelpers:
 # _path_within_repo
 # ---------------------------------------------------------------------------
 
+
 class TestPathWithinRepo:
     def test_path_inside_repo(self, gateway_module, monkeypatch):
         # REPO_ROOT is set at import time; we can't easily change it.
@@ -144,6 +150,7 @@ class TestPathWithinRepo:
 # ---------------------------------------------------------------------------
 # _discover_cwd
 # ---------------------------------------------------------------------------
+
 
 class TestDiscoverCwd:
     def test_uses_payload_cwd_when_in_repo(self, gateway_module, monkeypatch):
@@ -180,6 +187,7 @@ class TestDiscoverCwd:
 # _should_noop_for_external_context
 # ---------------------------------------------------------------------------
 
+
 class TestShouldNoop:
     def test_noop_when_all_outside(self, gateway_module, monkeypatch):
         monkeypatch.delenv("MEMORY_HOOK_FORCE", raising=False)
@@ -207,6 +215,7 @@ class TestShouldNoop:
 # _sanitize_for_log
 # ---------------------------------------------------------------------------
 
+
 class TestSanitizeForLog:
     def test_empty_string(self, gateway_module):
         assert gateway_module._sanitize_for_log("") == ""
@@ -224,7 +233,7 @@ class TestSanitizeForLog:
 
     def test_redacts_bearer_tokens(self, gateway_module):
         # The regex requires a trailing space or quote after the token
-        text = 'Authorization: Bearer mytoken1234567890abcdef more text'
+        text = "Authorization: Bearer mytoken1234567890abcdef more text"
         result = gateway_module._sanitize_for_log(text)
         assert "mytoken1234567890abc" not in result
 
@@ -254,6 +263,7 @@ class TestSanitizeForLog:
 # _extract_excerpt
 # ---------------------------------------------------------------------------
 
+
 class TestExtractExcerpt:
     def test_nonexistent_file(self, gateway_module, tmp_path):
         result = gateway_module._extract_excerpt(tmp_path / "missing.md")
@@ -276,6 +286,7 @@ class TestExtractExcerpt:
 # _section_bullets
 # ---------------------------------------------------------------------------
 
+
 class TestSectionBullets:
     def test_no_heading(self, gateway_module):
         assert gateway_module._section_bullets("no heading here", "### Target") == []
@@ -295,6 +306,7 @@ class TestSectionBullets:
 # _section_body
 # ---------------------------------------------------------------------------
 
+
 class TestSectionBody:
     def test_heading_not_found(self, gateway_module):
         assert gateway_module._section_body("no heading", "## Missing") == ""
@@ -310,6 +322,7 @@ class TestSectionBody:
 # ---------------------------------------------------------------------------
 # _markdown_code_tokens / _json_string_values / _json_object_keys
 # ---------------------------------------------------------------------------
+
 
 class TestTextHelpers:
     def test_markdown_code_tokens(self, gateway_module):
@@ -333,6 +346,7 @@ class TestTextHelpers:
 # _collect_changed_paths
 # ---------------------------------------------------------------------------
 
+
 class TestCollectChangedPaths:
     def test_no_entries(self, gateway_module, tmp_path):
         result = gateway_module._collect_changed_paths(tmp_path, {})
@@ -347,6 +361,7 @@ class TestCollectChangedPaths:
         # Create a file with known content
         (tmp_path / "file.txt").write_bytes(b"hello")
         import hashlib
+
         correct_sha = hashlib.sha256(b"hello").hexdigest()
         manifest = {"entries": [{"rel_path": "file.txt", "sha256": correct_sha}]}
         result = gateway_module._collect_changed_paths(tmp_path, manifest)
@@ -362,6 +377,7 @@ class TestCollectChangedPaths:
 # ---------------------------------------------------------------------------
 # _write_sync_status
 # ---------------------------------------------------------------------------
+
 
 class TestWriteSyncStatus:
     def test_success_status(self, gateway_module, artifact_dir):
@@ -396,6 +412,7 @@ class TestWriteSyncStatus:
 # ---------------------------------------------------------------------------
 # _maybe_sync_telemetry
 # ---------------------------------------------------------------------------
+
 
 class TestMaybeSyncTelemetry:
     def test_skips_within_success_window(self, gateway_module, artifact_dir):
@@ -447,8 +464,10 @@ class TestMaybeSyncTelemetry:
         mock_telemetry = MagicMock()
         mock_telemetry.batch_capture.return_value = True
 
-        with patch("socket.create_connection") as mock_conn, \
-             patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": MagicMock(telemetry=mock_telemetry)}):
+        with (
+            patch("socket.create_connection") as mock_conn,
+            patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": MagicMock(telemetry=mock_telemetry)}),
+        ):
             mock_sock = MagicMock()
             mock_conn.return_value = mock_sock
             gateway_module._maybe_sync_telemetry(artifact_dir)
@@ -468,8 +487,10 @@ class TestMaybeSyncTelemetry:
         mock_telemetry = MagicMock()
         mock_telemetry.batch_capture.return_value = False
 
-        with patch("socket.create_connection") as mock_conn, \
-             patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": MagicMock(telemetry=mock_telemetry)}):
+        with (
+            patch("socket.create_connection") as mock_conn,
+            patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": MagicMock(telemetry=mock_telemetry)}),
+        ):
             mock_sock = MagicMock()
             mock_conn.return_value = mock_sock
             gateway_module._maybe_sync_telemetry(artifact_dir)
@@ -488,8 +509,10 @@ class TestMaybeSyncTelemetry:
         mock_telemetry = MagicMock()
         mock_telemetry.batch_capture.return_value = True
 
-        with patch("socket.create_connection") as mock_conn, \
-             patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": MagicMock(telemetry=mock_telemetry)}):
+        with (
+            patch("socket.create_connection") as mock_conn,
+            patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": MagicMock(telemetry=mock_telemetry)}),
+        ):
             mock_sock = MagicMock()
             mock_conn.return_value = mock_sock
             # Should not crash
@@ -518,6 +541,7 @@ class TestMaybeSyncTelemetry:
 # ---------------------------------------------------------------------------
 # _gateway_excepthook
 # ---------------------------------------------------------------------------
+
 
 class TestGatewayExcepthook:
     def test_writes_error_record(self, gateway_module, artifact_dir, monkeypatch):
@@ -582,6 +606,7 @@ class TestGatewayExcepthook:
 # _read_last_user_message_from_transcript
 # ---------------------------------------------------------------------------
 
+
 class TestReadLastUserMessage:
     def test_none_path(self, gateway_module):
         assert gateway_module._read_last_user_message_from_transcript(None) is None
@@ -620,6 +645,7 @@ class TestReadLastUserMessage:
 # _build_readonly_source_repo_package
 # ---------------------------------------------------------------------------
 
+
 class TestBuildReadonlySourceRepoPackage:
     def test_returns_readonly_package(self, gateway_module, tmp_path):
         # Mock the ownership module imports
@@ -628,9 +654,7 @@ class TestBuildReadonlySourceRepoPackage:
         mock_ownership.DEFAULT_OWNERSHIP_RESOURCES = []
 
         with patch.dict("sys.modules", {"memory_core.ownership": mock_ownership}):
-            package = gateway_module._build_readonly_source_repo_package(
-                tmp_path, "factory", "session-start"
-            )
+            package = gateway_module._build_readonly_source_repo_package(tmp_path, "factory", "session-start")
         assert package["mode"] == "read-only"
         assert package["status"] == "ok"
         assert package["host"] == "factory"
@@ -645,11 +669,11 @@ class TestBuildReadonlySourceRepoPackage:
 # _build_degraded_package_with_error
 # ---------------------------------------------------------------------------
 
+
 class TestBuildDegradedPackage:
     def test_builds_degraded_package(self, gateway_module, tmp_path):
         package = gateway_module._build_degraded_package_with_error(
-            "factory", "session-start", tmp_path, "something failed",
-            error_type="test_error"
+            "factory", "session-start", tmp_path, "something failed", error_type="test_error"
         )
         assert package["status"] == "degraded"
         assert package["mode"] == "degraded"
@@ -661,6 +685,7 @@ class TestBuildDegradedPackage:
 # ---------------------------------------------------------------------------
 # _path_is_under
 # ---------------------------------------------------------------------------
+
 
 class TestPathIsUnder:
     def test_path_under_root(self, gateway_module, tmp_path):
@@ -678,6 +703,7 @@ class TestPathIsUnder:
 # _normalize_repo_scope_entry
 # ---------------------------------------------------------------------------
 
+
 class TestNormalizeRepoScopeEntry:
     def test_path_under_repo(self, gateway_module):
         repo_root = gateway_module.REPO_ROOT
@@ -693,6 +719,7 @@ class TestNormalizeRepoScopeEntry:
 # ---------------------------------------------------------------------------
 # _registration_payload_paths
 # ---------------------------------------------------------------------------
+
 
 class TestRegistrationPayloadPaths:
     def test_string_value(self, gateway_module):
@@ -717,6 +744,7 @@ class TestRegistrationPayloadPaths:
 # ---------------------------------------------------------------------------
 # _update_state_dynamic_fields
 # ---------------------------------------------------------------------------
+
 
 class TestUpdateStateDynamicFields:
     def test_no_state_file(self, gateway_module, tmp_path):
@@ -794,6 +822,7 @@ class TestUpdateStateDynamicFields:
 # _launch_async_health_check
 # ---------------------------------------------------------------------------
 
+
 class TestLaunchAsyncHealthCheck:
     def test_launches_subprocess(self, gateway_module, tmp_path, monkeypatch):
         mock_popen = MagicMock()
@@ -819,6 +848,7 @@ class TestLaunchAsyncHealthCheck:
 # ---------------------------------------------------------------------------
 # _log_prompt_submit
 # ---------------------------------------------------------------------------
+
 
 class TestLogPromptSubmit:
     def test_writes_heartbeat(self, gateway_module, tmp_path, monkeypatch):
@@ -857,6 +887,7 @@ class TestLogPromptSubmit:
 # _apply_artifact_compaction
 # ---------------------------------------------------------------------------
 
+
 class TestApplyArtifactCompaction:
     def test_no_policy(self, gateway_module, monkeypatch):
         package = {"system_context": "data", "project_context": "data"}
@@ -889,6 +920,7 @@ class TestApplyArtifactCompaction:
 # _execute_delegate (basic coverage)
 # ---------------------------------------------------------------------------
 
+
 class TestExecuteDelegate:
     def test_factory_host_no_delegate(self, gateway_module, tmp_path, monkeypatch):
         args = MagicMock()
@@ -906,6 +938,7 @@ class TestExecuteDelegate:
 # ---------------------------------------------------------------------------
 # append_error_log
 # ---------------------------------------------------------------------------
+
 
 class TestAppendErrorLog:
     def test_fallback_writes_to_log(self, gateway_module, tmp_path, monkeypatch):
@@ -927,12 +960,14 @@ class TestAppendErrorLog:
 # _ensure_artifact_dirs
 # ---------------------------------------------------------------------------
 
+
 class TestEnsureArtifactDirs:
     def test_creates_context_root(self, gateway_module, tmp_path, monkeypatch):
         context_root = tmp_path / "contexts"
         monkeypatch.setattr(gateway_module, "CONTEXT_ROOT", context_root)
         monkeypatch.setattr(
-            gateway_module, "_get_artifact_sink",
+            gateway_module,
+            "_get_artifact_sink",
             MagicMock(side_effect=RuntimeError("fail")),
         )
         gateway_module._ensure_artifact_dirs()
@@ -943,6 +978,7 @@ class TestEnsureArtifactDirs:
 # write_artifacts fallback
 # ---------------------------------------------------------------------------
 
+
 class TestWriteArtifacts:
     def test_fallback_writes_snapshot(self, gateway_module, tmp_path, monkeypatch):
         context_root = tmp_path / "contexts"
@@ -950,11 +986,13 @@ class TestWriteArtifacts:
         monkeypatch.setattr(gateway_module, "CONTEXT_ROOT", context_root)
         monkeypatch.setattr(gateway_module, "EVENT_LOG", event_log)
         monkeypatch.setattr(
-            gateway_module, "_write_artifacts_via_sink",
+            gateway_module,
+            "_write_artifacts_via_sink",
             MagicMock(side_effect=RuntimeError("fail")),
         )
         monkeypatch.setattr(
-            gateway_module, "_get_artifact_sink",
+            gateway_module,
+            "_get_artifact_sink",
             MagicMock(side_effect=RuntimeError("fail")),
         )
 
@@ -971,6 +1009,7 @@ class TestWriteArtifacts:
 # ---------------------------------------------------------------------------
 # _resolve_core_builder
 # ---------------------------------------------------------------------------
+
 
 class TestResolveCoreBuilder:
     def test_legacy_provider(self, gateway_module):
@@ -998,6 +1037,7 @@ class TestResolveCoreBuilder:
 # _git_name_only (subprocess helper)
 # ---------------------------------------------------------------------------
 
+
 class TestGitNameOnly:
     def test_returns_empty_on_failure(self, gateway_module, monkeypatch):
         mock_run = MagicMock()
@@ -1020,6 +1060,7 @@ class TestGitNameOnly:
 # _path_matches_scope
 # ---------------------------------------------------------------------------
 
+
 class TestPathMatchesScope:
     def test_exact_match(self, gateway_module):
         assert gateway_module._path_matches_scope("memory/docs", "memory/docs") is True
@@ -1038,6 +1079,7 @@ class TestPathMatchesScope:
 # _existing_paths
 # ---------------------------------------------------------------------------
 
+
 class TestExistingPaths:
     def test_existing_paths(self, gateway_module, tmp_path):
         existing = tmp_path / "exists.txt"
@@ -1050,6 +1092,7 @@ class TestExistingPaths:
 # ---------------------------------------------------------------------------
 # _require_env
 # ---------------------------------------------------------------------------
+
 
 class TestRequireEnv:
     def test_returns_value(self, gateway_module, monkeypatch):
@@ -1071,10 +1114,12 @@ class TestRequireEnv:
 # _parse_args
 # ---------------------------------------------------------------------------
 
+
 class TestParseArgs:
     def test_parses_factory_session_start(self, gateway_module, monkeypatch):
         monkeypatch.setattr(
-            sys, "argv",
+            sys,
+            "argv",
             ["memory_hook_gateway.py", "--host", "factory", "--event", "session-start"],
         )
         args = gateway_module._parse_args()
@@ -1084,7 +1129,8 @@ class TestParseArgs:
 
     def test_parses_with_no_delegate_flag(self, gateway_module, monkeypatch):
         monkeypatch.setattr(
-            sys, "argv",
+            sys,
+            "argv",
             ["memory_hook_gateway.py", "--host", "factory", "--event", "prompt-submit", "--no-delegate"],
         )
         args = gateway_module._parse_args()
@@ -1094,7 +1140,8 @@ class TestParseArgs:
 
     def test_parses_stop_event(self, gateway_module, monkeypatch):
         monkeypatch.setattr(
-            sys, "argv",
+            sys,
+            "argv",
             ["memory_hook_gateway.py", "--host", "factory", "--event", "stop"],
         )
         args = gateway_module._parse_args()
@@ -1104,6 +1151,7 @@ class TestParseArgs:
 # ---------------------------------------------------------------------------
 # read_text_if_exists
 # ---------------------------------------------------------------------------
+
 
 class TestReadTextIfExists:
     def test_existing_file(self, gateway_module, tmp_path):
@@ -1120,6 +1168,7 @@ class TestReadTextIfExists:
 # ---------------------------------------------------------------------------
 # _delegate_noop_response
 # ---------------------------------------------------------------------------
+
 
 class TestDelegateNoopResponse:
     def test_returns_returncode(self, gateway_module, monkeypatch):
@@ -1149,11 +1198,15 @@ class TestDelegateNoopResponse:
 # _record_project_lifecycle_event
 # ---------------------------------------------------------------------------
 
+
 class TestRecordProjectLifecycleEvent:
     def test_returns_none_when_env_not_set(self, gateway_module, monkeypatch):
         monkeypatch.delenv("MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE", raising=False)
         result = gateway_module._record_project_lifecycle_event(
-            host="factory", event="session-start", payload={}, cwd=Path("/tmp"),
+            host="factory",
+            event="session-start",
+            payload={},
+            cwd=Path("/tmp"),
         )
         assert result is None
 
@@ -1161,6 +1214,7 @@ class TestRecordProjectLifecycleEvent:
 # ---------------------------------------------------------------------------
 # determine_project_scope (wrapper)
 # ---------------------------------------------------------------------------
+
 
 class TestDetermineProjectScope:
     def test_returns_string(self, gateway_module):
@@ -1171,6 +1225,7 @@ class TestDetermineProjectScope:
 # ---------------------------------------------------------------------------
 # _apply_hook_runtime_write_targets
 # ---------------------------------------------------------------------------
+
 
 class TestApplyHookRuntimeWriteTargets:
     def test_no_env_adds_nothing(self, gateway_module, monkeypatch):
@@ -1191,6 +1246,7 @@ class TestApplyHookRuntimeWriteTargets:
 # ---------------------------------------------------------------------------
 # validate_project_map_files / validate_unique_legal_system_contract / etc
 # ---------------------------------------------------------------------------
+
 
 class TestBusinessPolicyWrappers:
     def test_project_map_refs_returns_list(self, gateway_module):
@@ -1238,6 +1294,7 @@ class TestBusinessPolicyWrappers:
 # write_targets / resolve_route_target (with fallback)
 # ---------------------------------------------------------------------------
 
+
 class TestWriteTargetsAndRouteTarget:
     def test_write_targets_returns_dict(self, gateway_module):
         result = gateway_module.write_targets()
@@ -1249,6 +1306,7 @@ class TestWriteTargetsAndRouteTarget:
         # Force the policy to raise so we hit the fallback path
         def raise_key_error(kind):
             raise KeyError("test")
+
         monkeypatch.setattr(
             gateway_module,
             "_resolve_route_target_via_policy",
@@ -1260,6 +1318,7 @@ class TestWriteTargetsAndRouteTarget:
     def test_resolve_route_target_unsupported_kind(self, gateway_module, monkeypatch):
         def raise_key_error(kind):
             raise KeyError("test")
+
         monkeypatch.setattr(
             gateway_module,
             "_resolve_route_target_via_policy",
@@ -1273,6 +1332,7 @@ class TestWriteTargetsAndRouteTarget:
 # build_context_package_simple
 # ---------------------------------------------------------------------------
 
+
 class TestBuildContextPackageSimple:
     def test_returns_context_package(self, gateway_module):
         result = gateway_module.build_context_package_simple(
@@ -1282,15 +1342,14 @@ class TestBuildContextPackageSimple:
         assert "status" in result
 
     def test_memory_v1_schema(self, gateway_module):
-        result = gateway_module.build_context_package_simple(
-            "factory", "session-start", {}, schema="memory-v1"
-        )
+        result = gateway_module.build_context_package_simple("factory", "session-start", {}, schema="memory-v1")
         assert isinstance(result, dict)
 
 
 # ---------------------------------------------------------------------------
 # _execute_delegate (additional paths)
 # ---------------------------------------------------------------------------
+
 
 class TestExecuteDelegateAdditional:
     def test_codex_host_calls_delegate(self, gateway_module, tmp_path, monkeypatch):
@@ -1354,6 +1413,7 @@ class TestExecuteDelegateAdditional:
 # _apply_artifact_compaction (additional cases)
 # ---------------------------------------------------------------------------
 
+
 class TestApplyArtifactCompactionAdditional:
     def test_strips_project_context(self, gateway_module, monkeypatch):
         package = {"system_context": "data", "project_context": "data"}
@@ -1381,6 +1441,7 @@ class TestApplyArtifactCompactionAdditional:
 # get_config / get_config_dict
 # ---------------------------------------------------------------------------
 
+
 class TestGetConfig:
     def test_get_config_returns_value(self, gateway_module, monkeypatch):
         monkeypatch.setitem(gateway_module._adapter_config, "TEST_KEY", "test_value")
@@ -1405,6 +1466,7 @@ class TestGetConfig:
 # _sanitize_for_log (additional patterns)
 # ---------------------------------------------------------------------------
 
+
 class TestSanitizeForLogAdditional:
     def test_redacts_sk_pattern(self, gateway_module):
         text = "key is sk-1234567890abcdef"
@@ -1428,6 +1490,7 @@ class TestSanitizeForLogAdditional:
 # ---------------------------------------------------------------------------
 # _log_prompt_submit (with transcript fallback)
 # ---------------------------------------------------------------------------
+
 
 class TestLogPromptSubmitWithTranscript:
     def test_reads_from_transcript_when_no_prompt(self, gateway_module, tmp_path, monkeypatch):
@@ -1460,6 +1523,7 @@ class TestLogPromptSubmitWithTranscript:
 # _build_readonly_source_repo_package (full test)
 # ---------------------------------------------------------------------------
 
+
 class TestBuildReadonlySourceRepoPackageFull:
     def test_includes_source_repo_domains(self, gateway_module, tmp_path):
         mock_ownership = MagicMock()
@@ -1467,9 +1531,7 @@ class TestBuildReadonlySourceRepoPackageFull:
         mock_ownership.DEFAULT_OWNERSHIP_RESOURCES = []
 
         with patch.dict("sys.modules", {"memory_core.ownership": mock_ownership}):
-            package = gateway_module._build_readonly_source_repo_package(
-                tmp_path, "factory", "session-start"
-            )
+            package = gateway_module._build_readonly_source_repo_package(tmp_path, "factory", "session-start")
 
         # Should include source-repo-specific domains
         domain_names = [d["name"] for d in package["rules"]["ownership_domains"]]
@@ -1480,6 +1542,7 @@ class TestBuildReadonlySourceRepoPackageFull:
 # ---------------------------------------------------------------------------
 # _write_sync_status (incremental behavior)
 # ---------------------------------------------------------------------------
+
 
 class TestWriteSyncStatusIncremental:
     def test_success_after_failure_resets_count(self, gateway_module, artifact_dir):
@@ -1499,6 +1562,7 @@ class TestWriteSyncStatusIncremental:
 # _maybe_sync_telemetry (compaction after success)
 # ---------------------------------------------------------------------------
 
+
 class TestMaybeSyncTelemetryCompaction:
     def test_compacts_metrics_after_success(self, gateway_module, artifact_dir):
         (artifact_dir / ".last_sync_success").write_text(str(time.time() - 4000))
@@ -1515,8 +1579,10 @@ class TestMaybeSyncTelemetryCompaction:
         mock_telemetry = MagicMock()
         mock_telemetry.batch_capture.return_value = True
 
-        with patch("socket.create_connection") as mock_conn, \
-             patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": MagicMock(telemetry=mock_telemetry)}):
+        with (
+            patch("socket.create_connection") as mock_conn,
+            patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": MagicMock(telemetry=mock_telemetry)}),
+        ):
             mock_sock = MagicMock()
             mock_conn.return_value = mock_sock
             gateway_module._maybe_sync_telemetry(artifact_dir)
@@ -1533,6 +1599,7 @@ class TestMaybeSyncTelemetryCompaction:
 # ---------------------------------------------------------------------------
 # _gateway_excepthook (additional edge cases)
 # ---------------------------------------------------------------------------
+
 
 class TestGatewayExcepthookEdgeCases:
     def test_handles_missing_start_time(self, gateway_module, artifact_dir, monkeypatch):
@@ -1556,6 +1623,7 @@ class TestGatewayExcepthookEdgeCases:
 # _discover_cwd (PREFER_EXTERNAL_CWD path)
 # ---------------------------------------------------------------------------
 
+
 class TestDiscoverCwdPreferExternal:
     def test_prefers_external_cwd_when_set(self, gateway_module, monkeypatch):
         monkeypatch.setenv("MEMORY_HOOK_ORIGINAL_CWD", "/external/path")
@@ -1568,6 +1636,7 @@ class TestDiscoverCwdPreferExternal:
 # _should_noop_for_external_context (WORKBOT_FORCE_HOOK)
 # ---------------------------------------------------------------------------
 
+
 class TestShouldNoopWorkbotForce:
     def test_not_noop_when_workbot_forced(self, gateway_module, monkeypatch):
         monkeypatch.setenv("WORKBOT_FORCE_HOOK", "1")
@@ -1579,6 +1648,7 @@ class TestShouldNoopWorkbotForce:
 # _path_within_repo (edge cases)
 # ---------------------------------------------------------------------------
 
+
 class TestPathWithinRepoEdgeCases:
     def test_repo_root_itself(self, gateway_module):
         result = gateway_module._path_within_repo(gateway_module.REPO_ROOT)
@@ -1589,11 +1659,13 @@ class TestPathWithinRepoEdgeCases:
 # Integration test: main() with minimal mocking
 # ---------------------------------------------------------------------------
 
+
 class TestMainIntegration:
     def test_main_with_no_delegate_flag(self, gateway_module, monkeypatch, capsys):
         # Set up minimal environment
         monkeypatch.setattr(
-            sys, "argv",
+            sys,
+            "argv",
             ["memory_hook_gateway.py", "--host", "factory", "--event", "session-start", "--no-delegate"],
         )
         monkeypatch.setattr(sys, "stdin", MagicMock(read=lambda: '{"cwd": "' + str(gateway_module.REPO_ROOT) + '"}'))
@@ -1624,6 +1696,7 @@ class TestMainIntegration:
 # _resolve_core_builder (external-core success path)
 # ---------------------------------------------------------------------------
 
+
 class TestResolveCoreBuilderExternalSuccess:
     def test_external_core_success(self, gateway_module, monkeypatch):
         # Test external-core builder with default module/func (should succeed)
@@ -1641,6 +1714,7 @@ class TestResolveCoreBuilderExternalSuccess:
 # _git_registration_probe (basic coverage)
 # ---------------------------------------------------------------------------
 
+
 class TestGitRegistrationProbe:
     def test_returns_dict_with_status(self, gateway_module):
         result = gateway_module._git_registration_probe("session-start", {})
@@ -1653,6 +1727,7 @@ class TestGitRegistrationProbe:
 # ---------------------------------------------------------------------------
 # build_context_package (basic smoke test)
 # ---------------------------------------------------------------------------
+
 
 class TestBuildContextPackage:
     def test_returns_context_package(self, gateway_module):
@@ -1669,6 +1744,7 @@ class TestBuildContextPackage:
 # _load_adapter_profile
 # ---------------------------------------------------------------------------
 
+
 class TestLoadAdapterProfile:
     def test_loads_default_adapter(self, gateway_module):
         profile = gateway_module._load_adapter_profile(
@@ -1678,14 +1754,13 @@ class TestLoadAdapterProfile:
 
     def test_unknown_adapter_raises(self, gateway_module):
         with pytest.raises(KeyError, match="unknown adapter"):
-            gateway_module._load_adapter_profile(
-                "nonexistent", gateway_module.REPO_ROOT, gateway_module.WORKSPACE_ROOT
-            )
+            gateway_module._load_adapter_profile("nonexistent", gateway_module.REPO_ROOT, gateway_module.WORKSPACE_ROOT)
 
 
 # ---------------------------------------------------------------------------
 # reload_adapter
 # ---------------------------------------------------------------------------
+
 
 class TestReloadAdapter:
     def test_reload_default(self, gateway_module, monkeypatch):
@@ -1702,6 +1777,7 @@ class TestReloadAdapter:
 # ---------------------------------------------------------------------------
 # _configured_artifact_root / _configured_error_log / etc
 # ---------------------------------------------------------------------------
+
 
 class TestConfiguredPaths:
     def test_artifact_root_from_env(self, gateway_module, monkeypatch):
@@ -1743,6 +1819,7 @@ class TestConfiguredPaths:
 # _integrity_sign / _integrity_verify (smoke tests)
 # ---------------------------------------------------------------------------
 
+
 class TestIntegrityFunctions:
     def test_integrity_sign_does_not_crash(self, gateway_module, tmp_path):
         # Should not raise even if keys are missing
@@ -1756,6 +1833,7 @@ class TestIntegrityFunctions:
 # ---------------------------------------------------------------------------
 # _canonicalize_cmux_refs
 # ---------------------------------------------------------------------------
+
 
 class TestCanonicalizeCmuxRefs:
     def test_returns_original_on_failure(self, gateway_module, monkeypatch):
@@ -1793,6 +1871,7 @@ class TestCanonicalizeCmuxRefs:
 # _delegate_codex / _delegate_claude
 # ---------------------------------------------------------------------------
 
+
 class TestDelegateFunctions:
     def test_delegate_codex(self, gateway_module, monkeypatch):
         mock_result = MagicMock()
@@ -1810,6 +1889,7 @@ class TestDelegateFunctions:
 # ---------------------------------------------------------------------------
 # _get_policy_registry / _get_route_policy / _get_write_policy (singleton behavior)
 # ---------------------------------------------------------------------------
+
 
 class TestPolicySingletons:
     def test_get_policy_registry_returns_same_instance(self, gateway_module):
@@ -1832,6 +1912,7 @@ class TestPolicySingletons:
 # _git_registration_probe (with payload)
 # ---------------------------------------------------------------------------
 
+
 class TestGitRegistrationProbeWithPayload:
     def test_with_registration_paths(self, gateway_module):
         payload = {"registration_paths": [str(gateway_module.REPO_ROOT / "memory")]}
@@ -1845,6 +1926,7 @@ class TestGitRegistrationProbeWithPayload:
 # HookTimeoutError
 # ---------------------------------------------------------------------------
 
+
 class TestHookTimeoutError:
     def test_is_exception(self, gateway_module):
         assert issubclass(gateway_module.HookTimeoutError, Exception)
@@ -1855,6 +1937,7 @@ class TestHookTimeoutError:
 # ---------------------------------------------------------------------------
 # _log_prompt_submit (prompt count increment)
 # ---------------------------------------------------------------------------
+
 
 class TestLogPromptSubmitCountIncrement:
     def test_increments_prompt_count(self, gateway_module, tmp_path, monkeypatch):

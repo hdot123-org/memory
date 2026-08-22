@@ -32,6 +32,4 @@ def assert_shellcheck_clean(script_path: Path) -> None:
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, (
-        f"shellcheck failed:\n{result.stdout}\n{result.stderr}"
-    )
+    assert result.returncode == 0, f"shellcheck failed:\n{result.stdout}\n{result.stderr}"

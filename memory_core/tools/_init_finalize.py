@@ -30,6 +30,7 @@ def _finalize_auto_fill(
         return
     try:
         from .project_probe import ProjectProbe
+
         probe = ProjectProbe(target)
         project_info = probe.probe()
         _apply_auto_fill(target, project_info, result, project_name=project_name)
@@ -46,6 +47,7 @@ def _finalize_skill_yaml(
     """Generate and write memory-init-fill skill YAML."""
     try:
         from .template_sync import generate_skill_memory_init_fill_yaml
+
         fill_skill_content = generate_skill_memory_init_fill_yaml(project_name)
         if fill_skill_content:
             fill_skills_dir = target / "memory" / "system" / "skills"
@@ -84,7 +86,7 @@ def _finalize_integrity_signing(
         changed_paths = []
         for entry in result.get("created", []):
             if entry.startswith("file:"):
-                path_part = entry[len("file:"):]
+                path_part = entry[len("file:") :]
                 paren_idx = path_part.find(" (")
                 if paren_idx >= 0:
                     path_part = path_part[:paren_idx]
@@ -104,6 +106,7 @@ def _finalize_integrity_audit(
     """Create initial integrity-audit.jsonl."""
     try:
         import json as _json
+
         audit_path = memory_root / "integrity-audit.jsonl"
         if not audit_path.exists():
             audit_entry = {
@@ -147,7 +150,9 @@ def _finalize_ownership_toml(
                 except ImportError:
                     from memory_core.tools.version_sync import patch_ownership_memory_version
                 if patch_ownership_memory_version(ownership_path, CURRENT_MEMORY_VERSION):
-                    result["created"].append(f"file:ownership.toml (memory_version patched to {CURRENT_MEMORY_VERSION})")
+                    result["created"].append(
+                        f"file:ownership.toml (memory_version patched to {CURRENT_MEMORY_VERSION})"
+                    )
                 else:
                     result["skipped"].append("file:ownership.toml (already up-to-date)")
             else:
@@ -163,6 +168,7 @@ def _finalize_evidence_refs(
     """Validate evidence references on disk."""
     try:
         from memory_core.tools.evidence_ref_validator import validate_evidence_refs_on_disk
+
         ref_errors = validate_evidence_refs_on_disk(target)
         for err in ref_errors:
             result["warnings"].append(
@@ -180,6 +186,7 @@ def _finalize_post_audit(
     """Run post-initialization audit and collect P1 findings."""
     try:
         from .audit_project_layout import audit_project_layout
+
         audit_result = audit_project_layout(target)
         for finding in audit_result.findings:
             if finding.severity == "P1":
@@ -226,5 +233,3 @@ def _finalize_init(
 
     # Post-init audit
     _finalize_post_audit(target, result)
-
-

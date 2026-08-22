@@ -159,9 +159,7 @@ def patch_adapter_toml_version(adapter_path: Path, target_version: str) -> bool:
     return True
 
 
-def _gate_version_bump(
-    current_version: str, target_version: str, schema_changed: bool
-) -> str:
+def _gate_version_bump(current_version: str, target_version: str, schema_changed: bool) -> str:
     """Gate check for version upgrade.
 
     Returns "allowed" if upgrade is safe (patch/minor + schema unchanged).
@@ -305,11 +303,13 @@ def sync_all_known_projects(
 
             # Propagate errors from sync_single_project
             for error in result.get("errors", []):
-                report["errors"].append({
-                    "path": local_path,
-                    "name": project_name,
-                    **error,
-                })
+                report["errors"].append(
+                    {
+                        "path": local_path,
+                        "name": project_name,
+                        **error,
+                    }
+                )
         except Exception as exc:
             report["errors"].append({"path": local_path, "name": project_name, "reason": str(exc)})
 
@@ -355,6 +355,7 @@ def sync_single_project(
     # Compare with target schema - if different, mark as changed
     # Use canonical schema schema version as the target
     from memory_core.constants import CANONICAL_MEMORY_LOCK_SCHEMA
+
     schema_changed = current_schema is not None and current_schema != CANONICAL_MEMORY_LOCK_SCHEMA
 
     # Gate check
@@ -372,10 +373,12 @@ def sync_single_project(
             # Resign ownership.toml only
             resign_result = _try_resign_all(project_path, ["memory/system/ownership.toml"])
             if not resign_result["resigned"]:
-                result["errors"].append({
-                    "step": "resign",
-                    "reason": resign_result["reason"],
-                })
+                result["errors"].append(
+                    {
+                        "step": "resign",
+                        "reason": resign_result["reason"],
+                    }
+                )
         else:
             result["reason"] = "patch failed"
         return result
@@ -401,10 +404,12 @@ def sync_single_project(
         # Resign all changed files
         resign_result = _try_resign_all(project_path, changed_paths)
         if not resign_result["resigned"]:
-            result["errors"].append({
-                "step": "resign",
-                "reason": resign_result["reason"],
-            })
+            result["errors"].append(
+                {
+                    "step": "resign",
+                    "reason": resign_result["reason"],
+                }
+            )
     else:
         result["reason"] = "no files changed"
 
@@ -440,9 +445,7 @@ def _try_resign_all(project_path: Path, changed_paths: list[str]) -> dict[str, A
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Sync ownership.toml memory_version across all known projects."
-    )
+    parser = argparse.ArgumentParser(description="Sync ownership.toml memory_version across all known projects.")
     parser.add_argument(
         "--target",
         type=Path,

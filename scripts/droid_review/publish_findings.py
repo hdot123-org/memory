@@ -11,6 +11,7 @@ TD-DR-01 findings 发布器：下载、校验、去重、inline/summary 发布�
 6. 批次 ≤50（GitHub API 限制）
 7. 按 shard 分节统计严重度
 """
+
 import json
 import subprocess
 import sys
@@ -149,10 +150,13 @@ def post_inline_comment(
     try:
         subprocess.run(
             [
-                "gh", "api",
+                "gh",
+                "api",
                 f"repos/{repository}/pulls/{pr_number}/comments",
-                "--method", "POST",
-                "--input", "-",
+                "--method",
+                "POST",
+                "--input",
+                "-",
             ],
             input=json.dumps(payload).encode(),
             check=True,
@@ -232,10 +236,13 @@ def post_summary_comment(
     try:
         subprocess.run(
             [
-                "gh", "api",
+                "gh",
+                "api",
                 f"repos/{repository}/issues/{pr_number}/comments",
-                "--method", "POST",
-                "--input", "-",
+                "--method",
+                "POST",
+                "--input",
+                "-",
             ],
             input=json.dumps({"body": body}).encode(),
             check=True,

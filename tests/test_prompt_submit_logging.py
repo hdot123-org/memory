@@ -23,15 +23,19 @@ import pytest  # noqa: F401 - needed for tmp_path fixture
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _import_log_prompt_submit():
     """Import the function under test, handling relative imports."""
     try:
         from memory_core.tools.memory_hook_gateway import _log_prompt_submit
+
         return _log_prompt_submit
     except ImportError:
         import sys
+
         sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
         from memory_core.tools.memory_hook_gateway import _log_prompt_submit
+
         return _log_prompt_submit
 
 
@@ -39,17 +43,18 @@ def _import_read_last_user_message():
     """Import the transcript reader helper."""
     try:
         from memory_core.tools.memory_hook_gateway import _read_last_user_message_from_transcript
+
         return _read_last_user_message_from_transcript
     except ImportError:
         import sys
+
         sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
         from memory_core.tools.memory_hook_gateway import _read_last_user_message_from_transcript
+
         return _read_last_user_message_from_transcript
 
 
-HEARTBEAT_HEADER_RE = re.compile(
-    r"^#### \d{2}:\d{2}:\d{2} — [\w\-]{1,8} \[heartbeat\]"
-)
+HEARTBEAT_HEADER_RE = re.compile(r"^#### \d{2}:\d{2}:\d{2} — [\w\-]{1,8} \[heartbeat\]")
 
 
 def _parse_heartbeat_blocks(text: str) -> list[dict]:
@@ -67,19 +72,22 @@ def _parse_heartbeat_blocks(text: str) -> list[dict]:
         ts_match = re.match(r"#### (\d{2}:\d{2}:\d{2}) — ([\w\-]+)", header)
         msg_match = re.search(r"\*\*用户消息\*\*: (.+)", body)
         count_match = re.search(r"\*\*累计 prompt 数\*\*: (\d+)", body)
-        blocks.append({
-            "header": header,
-            "timestamp": ts_match.group(1) if ts_match else None,
-            "session_prefix": ts_match.group(2) if ts_match else None,
-            "message": msg_match.group(1) if msg_match else None,
-            "count": int(count_match.group(1)) if count_match else None,
-        })
+        blocks.append(
+            {
+                "header": header,
+                "timestamp": ts_match.group(1) if ts_match else None,
+                "session_prefix": ts_match.group(2) if ts_match else None,
+                "message": msg_match.group(1) if msg_match else None,
+                "count": int(count_match.group(1)) if count_match else None,
+            }
+        )
     return blocks
 
 
 # ---------------------------------------------------------------------------
 # VAL-F4-001: Heartbeat entry format
 # ---------------------------------------------------------------------------
+
 
 class TestHeartbeatFormat:
     """Test heartbeat entry format matches the spec."""
@@ -122,6 +130,7 @@ class TestHeartbeatFormat:
 # VAL-F4-002: User message preview in entry body
 # ---------------------------------------------------------------------------
 
+
 class TestUserMessagePreview:
     """Test user message is truncated to 100 characters."""
 
@@ -156,6 +165,7 @@ class TestUserMessagePreview:
 # ---------------------------------------------------------------------------
 # VAL-F4-003: Cumulative prompt count
 # ---------------------------------------------------------------------------
+
 
 class TestCumulativePromptCount:
     """Test that prompt count increments monotonically per session."""
@@ -212,12 +222,14 @@ class TestCumulativePromptCount:
 # VAL-F4-004: fcntl.flock exclusive lock on write
 # ---------------------------------------------------------------------------
 
+
 class TestFileLock:
     """Test that exclusive_lock is used for exclusive locking."""
 
     def test_source_uses_exclusive_lock(self):
         """Source code must use exclusive_lock for file locking."""
         import inspect
+
         log_fn = _import_log_prompt_submit()
         source = inspect.getsource(log_fn)
         assert "exclusive_lock" in source
@@ -225,6 +237,7 @@ class TestFileLock:
     def test_source_uses_with_statement(self):
         """exclusive_lock should be used in a with statement."""
         import inspect
+
         log_fn = _import_log_prompt_submit()
         source = inspect.getsource(log_fn)
         assert "with" in source
@@ -235,12 +248,14 @@ class TestFileLock:
 # VAL-F4-005: SIGALRM timeout protection
 # ---------------------------------------------------------------------------
 
+
 class TestTimeoutProtection:
     """Test 2-second SIGALRM timeout."""
 
     def test_source_sets_alarm(self):
         """Source code must set SIGALRM."""
         import inspect
+
         log_fn = _import_log_prompt_submit()
         source = inspect.getsource(log_fn)
         assert "signal.alarm" in source or "SIGALRM" in source
@@ -248,6 +263,7 @@ class TestTimeoutProtection:
     def test_source_restores_handler(self):
         """Source code must restore old signal handler."""
         import inspect
+
         log_fn = _import_log_prompt_submit()
         source = inspect.getsource(log_fn)
         assert "signal.signal" in source
@@ -256,6 +272,7 @@ class TestTimeoutProtection:
 # ---------------------------------------------------------------------------
 # VAL-F4-006: Missing prompt field graceful fallback
 # ---------------------------------------------------------------------------
+
 
 class TestMissingPromptFallback:
     """Test fallback when payload lacks prompt field."""
@@ -266,9 +283,7 @@ class TestMissingPromptFallback:
 
         # Create a transcript file
         transcript = tmp_path / "transcript.jsonl"
-        transcript.write_text(
-            json.dumps({"role": "user", "content": "transcript message"}) + "\n"
-        )
+        transcript.write_text(json.dumps({"role": "user", "content": "transcript message"}) + "\n")
 
         project_root = tmp_path / "project"
         project_root.mkdir()
@@ -301,10 +316,14 @@ class TestMissingPromptFallback:
         reader = _import_read_last_user_message()
         transcript = tmp_path / "transcript.jsonl"
         transcript.write_text(
-            json.dumps({"role": "assistant", "content": "hi"}) + "\n"
-            + json.dumps({"role": "user", "content": "msg1"}) + "\n"
-            + json.dumps({"role": "assistant", "content": "bye"}) + "\n"
-            + json.dumps({"role": "user", "content": "msg2"}) + "\n"
+            json.dumps({"role": "assistant", "content": "hi"})
+            + "\n"
+            + json.dumps({"role": "user", "content": "msg1"})
+            + "\n"
+            + json.dumps({"role": "assistant", "content": "bye"})
+            + "\n"
+            + json.dumps({"role": "user", "content": "msg2"})
+            + "\n"
         )
         result = reader(str(transcript))
         assert result == "msg2"
@@ -313,9 +332,7 @@ class TestMissingPromptFallback:
         """Transcript reader returns None if no user messages."""
         reader = _import_read_last_user_message()
         transcript = tmp_path / "transcript.jsonl"
-        transcript.write_text(
-            json.dumps({"role": "assistant", "content": "hi"}) + "\n"
-        )
+        transcript.write_text(json.dumps({"role": "assistant", "content": "hi"}) + "\n")
         result = reader(str(transcript))
         assert result is None
 
@@ -336,18 +353,24 @@ class TestMissingPromptFallback:
 # VAL-F4-007: Cross-day session writes to correct date file
 # ---------------------------------------------------------------------------
 
+
 class TestCrossDaySession:
     """Test that midnight crossover writes to correct date file."""
 
     @staticmethod
     def _make_fixed_datetime(dt: datetime):
         """Create a datetime subclass whose .now() returns a fixed time."""
+
         class FixedDatetime(datetime):
             @classmethod
             def now(cls, tz=None):
                 return cls(
-                    dt.year, dt.month, dt.day,
-                    dt.hour, dt.minute, dt.second,
+                    dt.year,
+                    dt.month,
+                    dt.day,
+                    dt.hour,
+                    dt.minute,
+                    dt.second,
                 )
 
             def astimezone(self, tz=None):
@@ -402,6 +425,7 @@ class TestCrossDaySession:
 # ---------------------------------------------------------------------------
 # VAL-F4-008: Factory payload fields consumed correctly
 # ---------------------------------------------------------------------------
+
 
 class TestFactoryPayload:
     """Test full Factory payload is handled correctly."""

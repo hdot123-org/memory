@@ -4,7 +4,6 @@ Each test constructs a miniature repository under tmp_path and calls
 detect_pollution() directly.  No real-repo state is touched.
 """
 
-
 import sys
 from pathlib import Path
 
@@ -85,7 +84,9 @@ class TestWhitelistedLocations:
         findings = detect_pollution(tmp_path)
         error_findings = [f for f in findings if f["severity"] == "error"]
         assert not any(
-            "memory/system/STATE.md" in f["path"] or "memory/system/PLAN.md" in f["path"] or "memory/system/CANONICAL.md" in f["path"]
+            "memory/system/STATE.md" in f["path"]
+            or "memory/system/PLAN.md" in f["path"]
+            or "memory/system/CANONICAL.md" in f["path"]
             for f in error_findings
         ), f"Unexpected finding: {error_findings}"
 
@@ -97,10 +98,9 @@ class TestWhitelistedLocations:
         (wb_mem / "PLAN.md").write_text("# Archived Plan\n")
         findings = detect_pollution(tmp_path)
         error_findings = [f for f in findings if f["severity"] == "error"]
-        assert not any(
-            "legacy-workbot" in f["path"] and "STATE.md" in f["path"]
-            for f in error_findings
-        ), f"Unexpected finding: {error_findings}"
+        assert not any("legacy-workbot" in f["path"] and "STATE.md" in f["path"] for f in error_findings), (
+            f"Unexpected finding: {error_findings}"
+        )
 
     def test_state_in_workspace_templates_memory_system(self, tmp_path: Path) -> None:
         """workspace/templates/memory/system/ is NO longer whitelisted — should be flagged."""
@@ -113,8 +113,7 @@ class TestWhitelistedLocations:
         error_findings = [f for f in findings if f["severity"] == "error"]
         # workspace/templates/memory/system/ is no longer whitelisted, so these SHOULD be flagged
         assert any(
-            "templates/memory/system" in f["path"] and f["rule"] == "forbidden-state-file"
-            for f in error_findings
+            "templates/memory/system" in f["path"] and f["rule"] == "forbidden-state-file" for f in error_findings
         ), f"Expected forbidden-state-file finding for workspace/templates/memory/system/, got {error_findings}"
 
 
@@ -127,10 +126,7 @@ class TestBusinessStringPollution:
         (pm / "test-map.md").write_text("# Project Map\n\nThis is for axonhub integration.\n")
         findings = detect_pollution(tmp_path)
         error_findings = [f for f in findings if f["severity"] == "error"]
-        assert any(
-            "business-string" in f["rule"] and "axonhub" in f.get("detail", "").lower()
-            for f in error_findings
-        )
+        assert any("business-string" in f["rule"] and "axonhub" in f.get("detail", "").lower() for f in error_findings)
 
     def test_workbot_in_global_kb(self, tmp_path: Path) -> None:
         root = _create_minimal_repo(tmp_path)
@@ -138,10 +134,7 @@ class TestBusinessStringPollution:
         (kb / "new-guide.md").write_text("# Guide\n\nworkbot-specific instructions here.\n")
         findings = detect_pollution(tmp_path)
         error_findings = [f for f in findings if f["severity"] == "error"]
-        assert any(
-            "business-string" in f["rule"] and "workbot" in f.get("detail", "").lower()
-            for f in error_findings
-        )
+        assert any("business-string" in f["rule"] and "workbot" in f.get("detail", "").lower() for f in error_findings)
 
 
 class TestUnexpectedMemoryDirs:
@@ -154,9 +147,9 @@ class TestUnexpectedMemoryDirs:
         (proj_mem / "STATE.md").write_text("# State\n")
         findings = detect_pollution(tmp_path)
         error_findings = [f for f in findings if f["severity"] == "error"]
-        assert any(
-            f["rule"] == "unexpected-memory-dir" for f in error_findings
-        ), f"Expected unexpected-memory-dir finding, got {error_findings}"
+        assert any(f["rule"] == "unexpected-memory-dir" for f in error_findings), (
+            f"Expected unexpected-memory-dir finding, got {error_findings}"
+        )
 
     def test_memory_dir_at_repo_root(self, tmp_path: Path) -> None:
         """memory/system/ at repo root is the canonical location — should NOT be flagged."""
@@ -167,6 +160,6 @@ class TestUnexpectedMemoryDirs:
         findings = detect_pollution(tmp_path)
         error_findings = [f for f in findings if f["severity"] == "error"]
         # memory/system at repo root is now the canonical location — should NOT be flagged as unexpected
-        assert not any(
-            f["rule"] == "unexpected-memory-dir" for f in error_findings
-        ), f"Expected no unexpected-memory-dir for root memory/system/, got {error_findings}"
+        assert not any(f["rule"] == "unexpected-memory-dir" for f in error_findings), (
+            f"Expected no unexpected-memory-dir for root memory/system/, got {error_findings}"
+        )

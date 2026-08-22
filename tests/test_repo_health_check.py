@@ -297,8 +297,7 @@ def test_python_version_selection_prefers_3_12_plus(tmp_path: Path):
     # must never be the bare ModuleNotFoundError-style crash of the
     # pre-fix script, nor the "Python 3.11+ required" gate.
     assert "Python 3.11+ required" not in result.stderr, (
-        f"python3.12 stub was on PATH but script still rejected the "
-        f"environment: stderr={result.stderr!r}"
+        f"python3.12 stub was on PATH but script still rejected the environment: stderr={result.stderr!r}"
     )
     assert "Python 3.11+ not found" not in result.stderr
 

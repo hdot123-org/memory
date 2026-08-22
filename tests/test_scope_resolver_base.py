@@ -70,9 +70,7 @@ class TestScopeResolverBase:
 
     def test_load_scope_overrides_from_file(self, mock_config, tmp_path):
         overrides_file = tmp_path / "overrides.json"
-        overrides_file.write_text(
-            '{"project_canonical": {"custom": "/custom/path"}}'
-        )
+        overrides_file.write_text('{"project_canonical": {"custom": "/custom/path"}}')
         resolver = ScopeResolverBase(mock_config, scope_config_path=overrides_file)
         result = resolver.get_project_canonical()
         assert "custom" in result
@@ -101,12 +99,8 @@ class TestScopeResolverBase:
 
     def test_load_scope_overrides_env_var(self, mock_config, tmp_path, monkeypatch):
         overrides_file = tmp_path / "env_overrides.json"
-        overrides_file.write_text(
-            '{"project_runtime_root": {"env_scope": "/env/root"}}'
-        )
-        monkeypatch.setenv(
-            ScopeResolverBase.SCOPE_CONFIG_PATH_ENV, str(overrides_file)
-        )
+        overrides_file.write_text('{"project_runtime_root": {"env_scope": "/env/root"}}')
+        monkeypatch.setenv(ScopeResolverBase.SCOPE_CONFIG_PATH_ENV, str(overrides_file))
         resolver = ScopeResolverBase(mock_config)
         result = resolver.get_project_runtime_root()
         assert "env_scope" in result

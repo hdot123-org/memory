@@ -15,6 +15,7 @@ Comment lines are allowed to mention `--mission` for historical context.
 This test asserts the invariant I1 from the mission architecture doc:
     Managed trigger scripts' non-comment lines must not contain `--mission`.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -54,11 +55,7 @@ def test_dispatch_scripts_do_not_use_mission_flag(script_name: str) -> None:
     script_path = WEBHOOK_DIR / script_name
     assert script_path.is_file(), f"managed script missing: {script_path}"
 
-    offenders = [
-        (lineno, line)
-        for lineno, line in _non_comment_lines(script_path)
-        if "--mission" in line
-    ]
+    offenders = [(lineno, line) for lineno, line in _non_comment_lines(script_path) if "--mission" in line]
     assert offenders == [], (
         f"{script_name} still contains `--mission` on non-comment line(s); "
         f"offenders: {[(n, ln.strip()) for n, ln in offenders]}"
@@ -72,9 +69,7 @@ def test_manifest_includes_trigger_ci_droid() -> None:
     text = manifest_path.read_text(encoding="utf-8")
 
     # Must appear as a quoted array entry (avoid substring false positives).
-    assert '"trigger-ci-droid.sh"' in text, (
-        "MANIFEST.sh MANAGED_FILES must include trigger-ci-droid.sh"
-    )
+    assert '"trigger-ci-droid.sh"' in text, "MANIFEST.sh MANAGED_FILES must include trigger-ci-droid.sh"
 
 
 def test_comment_lines_may_reference_mission() -> None:

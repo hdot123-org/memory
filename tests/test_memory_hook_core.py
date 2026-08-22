@@ -8,7 +8,6 @@ Verifies:
 - VAL-TEL-003: Real errors still produce degraded status.
 """
 
-
 import os
 from pathlib import Path
 
@@ -41,8 +40,7 @@ class TestMissingCanonicalFilesSeverityFix:
         result = build_context_package_core(**kwargs)
 
         assert result["status"] == "ok", (
-            f"Expected status 'ok' when only canonical files are missing, "
-            f"got '{result['status']}'"
+            f"Expected status 'ok' when only canonical files are missing, got '{result['status']}'"
         )
 
     def test_missing_canonical_files_in_warnings(self, tmp_path: Path) -> None:
@@ -64,12 +62,8 @@ class TestMissingCanonicalFilesSeverityFix:
 
         # Missing canonical files should NOT be in missing_paths (which feeds degraded)
         for path_str in result.get("missing_paths", []):
-            assert "truth-model.md" not in path_str, (
-                "truth-model.md should not be in missing_paths"
-            )
-            assert "memory-system.md" not in path_str, (
-                "memory-system.md should not be in missing_paths"
-            )
+            assert "truth-model.md" not in path_str, "truth-model.md should not be in missing_paths"
+            assert "memory-system.md" not in path_str, "memory-system.md should not be in missing_paths"
 
         # validation_errors should not contain canonical-file-missing entries
         for err in result.get("validation_errors", []):
@@ -87,8 +81,7 @@ class TestMissingCanonicalFilesSeverityFix:
         result = build_context_package_core(**kwargs)
 
         assert result["status"] == "degraded", (
-            f"Expected status 'degraded' when real errors exist, "
-            f"got '{result['status']}'"
+            f"Expected status 'degraded' when real errors exist, got '{result['status']}'"
         )
 
     def test_non_canonical_missing_still_degraded(self, tmp_path: Path) -> None:
@@ -102,8 +95,7 @@ class TestMissingCanonicalFilesSeverityFix:
         result = build_context_package_core(**kwargs)
 
         assert result["status"] == "degraded", (
-            f"Expected status 'degraded' when non-canonical file is missing, "
-            f"got '{result['status']}'"
+            f"Expected status 'degraded' when non-canonical file is missing, got '{result['status']}'"
         )
 
     def test_payload_schema_backward_compatible(self, tmp_path: Path) -> None:
@@ -159,9 +151,7 @@ class TestMetricsIsolation:
         build_context_package_core(**kwargs)
 
         # build_context_package_core should not create any metrics file
-        assert not metrics_path.exists(), (
-            "build_context_package_core must not emit metrics (gateway does that)"
-        )
+        assert not metrics_path.exists(), "build_context_package_core must not emit metrics (gateway does that)"
 
     def test_metrics_disabled_env_suppresses_output(self, tmp_path: Path, monkeypatch) -> None:
         """VAL-CROSS-005: MEMORY_HOOK_METRICS_DISABLED=1 suppresses metrics."""

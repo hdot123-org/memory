@@ -32,9 +32,7 @@ class TestSourceRepoVersionCheckSkip:
         (manifest_dir / "manifest.json").write_text('{"entries": []}')
 
         # Patch check_version_consistency to track if it's called
-        with patch(
-            "memory_core.tools.daily_kb_audit.check_version_consistency"
-        ) as mock_c5:
+        with patch("memory_core.tools.daily_kb_audit.check_version_consistency") as mock_c5:
             mock_c5.return_value = []
 
             audit_project("test-project", tmp_path, {})
@@ -49,9 +47,7 @@ class TestSourceRepoVersionCheckSkip:
         manifest_dir.mkdir(parents=True)
         (manifest_dir / "manifest.json").write_text('{"entries": []}')
 
-        with patch(
-            "memory_core.tools.daily_kb_audit.check_version_consistency"
-        ) as mock_c5:
+        with patch("memory_core.tools.daily_kb_audit.check_version_consistency") as mock_c5:
             mock_c5.return_value = []
 
             audit_project("consumer-project", tmp_path, {})
@@ -76,10 +72,7 @@ class TestSourceRepoVersionCheckSkip:
         result = audit_project("memory-core", tmp_path, {})
 
         # No version_mismatch violations should exist
-        version_violations = [
-            v for v in result["violations"]
-            if v.get("type") == "version_mismatch"
-        ]
+        version_violations = [v for v in result["violations"] if v.get("type") == "version_mismatch"]
         assert len(version_violations) == 0
 
     def test_source_repo_has_note(self, tmp_path: Path) -> None:
@@ -119,12 +112,14 @@ class TestSourceRepoManifestCheckSkip:
         (tmp_path / "memory_core" / "ownership.py").touch()
 
         # Do NOT create manifest.json — it should not matter for source repo
-        with patch(
-            "memory_core.tools.daily_kb_audit.check_manifest_integrity"
-        ) as mock_c1:
+        with patch("memory_core.tools.daily_kb_audit.check_manifest_integrity") as mock_c1:
             mock_c1.return_value = [
-                {"type": "hash_mismatch", "severity": "critical",
-                 "file": "memory/system/manifest.json", "detail": "test"}
+                {
+                    "type": "hash_mismatch",
+                    "severity": "critical",
+                    "file": "memory/system/manifest.json",
+                    "detail": "test",
+                }
             ]
 
             result = audit_project("memory-core", tmp_path, {})
@@ -141,9 +136,7 @@ class TestSourceRepoManifestCheckSkip:
         manifest_dir.mkdir(parents=True)
         (manifest_dir / "manifest.json").write_text('{"entries": []}')
 
-        with patch(
-            "memory_core.tools.daily_kb_audit.check_manifest_integrity"
-        ) as mock_c1:
+        with patch("memory_core.tools.daily_kb_audit.check_manifest_integrity") as mock_c1:
             mock_c1.return_value = []
 
             audit_project("consumer-project", tmp_path, {})

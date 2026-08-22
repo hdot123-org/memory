@@ -148,9 +148,7 @@ def _batch_send_records(
     return synced_records, last_synced_line
 
 
-def _compact_metrics_jsonl(
-    metrics_file: Path, last_synced_line: int, offset_file: Path
-) -> None:
+def _compact_metrics_jsonl(metrics_file: Path, last_synced_line: int, offset_file: Path) -> None:
     """Compact metrics.jsonl after successful sync, keeping only unsent records."""
     try:
         remaining_lines = []
@@ -174,9 +172,7 @@ def _compact_metrics_jsonl(
 # ---------------------------------------------------------------------------
 
 
-def _write_sync_status(
-    artifact_root: Path, success: bool, pending_count: int
-) -> None:
+def _write_sync_status(artifact_root: Path, success: bool, pending_count: int) -> None:
     """Write .sync_status.json with lifecycle tracking fields."""
     status_file = artifact_root / ".sync_status.json"
     now_iso_val = now_iso()
@@ -287,9 +283,7 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
 
         # Step 5-8: Batch send and handle outcome
         try:
-            synced_count, last_synced_line = _batch_send_records(
-                records_with_lines, BATCH_SIZE, offset_file
-            )
+            synced_count, last_synced_line = _batch_send_records(records_with_lines, BATCH_SIZE, offset_file)
 
             all_synced = synced_count == len(records_with_lines)
             if all_synced:
@@ -297,15 +291,11 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
                 _compact_metrics_jsonl(metrics_file, last_synced_line, offset_file)
             else:
                 remaining = len(records_with_lines) - synced_count
-                _record_sync_outcome(
-                    artifact_root, False, remaining, now, last_sync_attempt_file
-                )
+                _record_sync_outcome(artifact_root, False, remaining, now, last_sync_attempt_file)
 
         except Exception as exc:
             _logger.debug("telemetry sync send failed: %s", exc)
-            _record_sync_outcome(
-                artifact_root, False, pending_count, now, last_sync_attempt_file
-            )
+            _record_sync_outcome(artifact_root, False, pending_count, now, last_sync_attempt_file)
 
     except Exception as exc:
         # Top-level catch: sync must never break gateway flow

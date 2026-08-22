@@ -1,4 +1,3 @@
-
 import json
 import sys
 from pathlib import Path
@@ -73,12 +72,12 @@ Content
 
     def test_parse_frontmatter_nested_quotes(self) -> None:
         """Test parsing frontmatter with nested quotes."""
-        text = '''---
+        text = """---
 title: "Test 'nested' quotes"
 ---
 
 Content
-'''
+"""
         result = _parse_frontmatter(text)
         assert result["title"] == "Test 'nested' quotes"
 
@@ -136,7 +135,7 @@ class TestIsJsonLike:
 
     def test_is_json_like_array(self) -> None:
         """Test detecting JSON array."""
-        assert _is_json_like('[1, 2, 3]') is True
+        assert _is_json_like("[1, 2, 3]") is True
 
     def test_is_json_like_whitespace(self) -> None:
         """Test handling whitespace before JSON."""
@@ -179,11 +178,15 @@ schema_version = "1.0"
     def test_parse_json_legacy_format(self, tmp_path: Path) -> None:
         """Test parsing JSON legacy format lock file."""
         lock_file = tmp_path / "memory.lock"
-        lock_file.write_text(json.dumps({
-            "version": "0.3.0",
-            "schema": "1.0",
-            "adapter_version": "builtin",
-        }))
+        lock_file.write_text(
+            json.dumps(
+                {
+                    "version": "0.3.0",
+                    "schema": "1.0",
+                    "adapter_version": "builtin",
+                }
+            )
+        )
         result = _parse_lock_file(lock_file)
         assert result["memory"]["memory_version"] == "0.3.0"
 
@@ -414,9 +417,13 @@ class TestCheckLockVersion:
         lock_file = memory_root / "memory.lock"
         # Use JSON format since TOML starting with [ looks like JSON array
         # and triggers JSON parsing which will fail
-        lock_file.write_text(json.dumps({
-            "version": CURRENT_MEMORY_VERSION,
-        }))
+        lock_file.write_text(
+            json.dumps(
+                {
+                    "version": CURRENT_MEMORY_VERSION,
+                }
+            )
+        )
 
         result = CheckResult()
         check_lock_version(memory_root, result)
@@ -429,9 +436,13 @@ class TestCheckLockVersion:
         memory_root.mkdir(parents=True)
         lock_file = memory_root / "memory.lock"
         # Use JSON format for compatibility
-        lock_file.write_text(json.dumps({
-            "version": "0.0.1",
-        }))
+        lock_file.write_text(
+            json.dumps(
+                {
+                    "version": "0.0.1",
+                }
+            )
+        )
 
         result = CheckResult()
         check_lock_version(memory_root, result)
@@ -566,9 +577,13 @@ class TestCheckMemoryLockSemver:
         memory_root.mkdir(parents=True)
         lock_file = memory_root / "memory.lock"
         # Use JSON format for compatibility
-        lock_file.write_text(json.dumps({
-            "version": "1.2.3",
-        }))
+        lock_file.write_text(
+            json.dumps(
+                {
+                    "version": "1.2.3",
+                }
+            )
+        )
 
         result = CheckResult()
         check_memory_lock_semver(memory_root, result)
@@ -581,9 +596,13 @@ class TestCheckMemoryLockSemver:
         memory_root.mkdir(parents=True)
         lock_file = memory_root / "memory.lock"
         # Use JSON format for compatibility
-        lock_file.write_text(json.dumps({
-            "version": "1.2",
-        }))
+        lock_file.write_text(
+            json.dumps(
+                {
+                    "version": "1.2",
+                }
+            )
+        )
 
         result = CheckResult()
         check_memory_lock_semver(memory_root, result)
@@ -652,9 +671,13 @@ class TestValidateProjectMemory:
                 (memory_root / fname).write_text(content)
             elif fname == "memory.lock":
                 # Use JSON format for better compatibility
-                (memory_root / fname).write_text(json.dumps({
-                    "version": CURRENT_MEMORY_VERSION,
-                }))
+                (memory_root / fname).write_text(
+                    json.dumps(
+                        {
+                            "version": CURRENT_MEMORY_VERSION,
+                        }
+                    )
+                )
             elif fname == "adapter.toml":
                 (memory_root / fname).write_text(f"""[core]
 version = "{CURRENT_MEMORY_VERSION}"
@@ -701,7 +724,9 @@ class TestMain:
         exit_code = main()
         assert exit_code == 2
 
-    def test_main_invalid_target(self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_main_invalid_target(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test main with file as target (not directory)."""
         not_a_dir = tmp_path / "file.txt"
         not_a_dir.write_text("content")
@@ -710,7 +735,9 @@ class TestMain:
         exit_code = main()
         assert exit_code == 2
 
-    def test_main_json_output(self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_main_json_output(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test main with JSON output."""
         memory_root = tmp_path / "memory" / "system"
         memory_root.mkdir(parents=True)
@@ -722,7 +749,9 @@ class TestMain:
             elif fname == "memory.lock":
                 (memory_root / fname).write_text(json.dumps({"version": CURRENT_MEMORY_VERSION}))
             elif fname == "adapter.toml":
-                (memory_root / fname).write_text(f"[core]\nversion = \"{CURRENT_MEMORY_VERSION}\"\n\n[routing]\nhost = \"{SUPPORTED_HOSTS[0]}\"")
+                (memory_root / fname).write_text(
+                    f'[core]\nversion = "{CURRENT_MEMORY_VERSION}"\n\n[routing]\nhost = "{SUPPORTED_HOSTS[0]}"'
+                )
             elif fname == "migrations.log":
                 (memory_root / fname).write_text("# Log\n2026-01-15T10:00:00Z | 0.2.0 | 0.3.0 | success | test\n")
             else:
@@ -777,9 +806,13 @@ Content
         memory_root.mkdir(parents=True)
         lock_file = memory_root / "memory.lock"
         # Legacy JSON format with top-level version key
-        lock_file.write_text(json.dumps({
-            "version": CURRENT_MEMORY_VERSION,
-        }))
+        lock_file.write_text(
+            json.dumps(
+                {
+                    "version": CURRENT_MEMORY_VERSION,
+                }
+            )
+        )
 
         result = CheckResult()
         check_lock_version(memory_root, result)
@@ -794,7 +827,7 @@ Content
         memory_root.mkdir(parents=True)
         adapter_file = memory_root / "adapter.toml"
         # Legacy format with version at top level (not in [core] section)
-        adapter_file.write_text(f"version = \"{CURRENT_MEMORY_VERSION}\"")
+        adapter_file.write_text(f'version = "{CURRENT_MEMORY_VERSION}"')
 
         result = CheckResult()
         check_adapter_version(memory_root, result)

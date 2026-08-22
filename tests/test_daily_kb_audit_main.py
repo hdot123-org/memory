@@ -19,6 +19,7 @@ from memory_core.tools.daily_kb_audit import main
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def _patch_infra_clean():
     """Patch check_infrastructure to return clean (no violations)."""
@@ -135,6 +136,7 @@ def _patch_write_report(tmp_path: Path):
 @pytest.fixture()
 def _patch_build_report():
     """Patch build_report to return a simple report dict."""
+
     def _build(projects_results, infrastructure=None):
         total_v = sum(len(r.get("violations", [])) for r in projects_results.values())
         r: dict = {
@@ -165,11 +167,15 @@ def _patch_notify():
 # Group 1: No projects found
 # ---------------------------------------------------------------------------
 
+
 class TestMainNoProjects:
     """main() when load_registered_projects() returns []."""
 
     def test_no_projects_clean_infra_returns_0(
-        self, _patch_infra_clean, _patch_no_projects, _patch_build_report,
+        self,
+        _patch_infra_clean,
+        _patch_no_projects,
+        _patch_build_report,
         _patch_write_report,
     ):
         """No projects + clean infra → exit 0."""
@@ -177,7 +183,10 @@ class TestMainNoProjects:
         assert rc == 0
 
     def test_no_projects_critical_infra_returns_1(
-        self, _patch_infra_critical, _patch_no_projects, _patch_build_report,
+        self,
+        _patch_infra_critical,
+        _patch_no_projects,
+        _patch_build_report,
         _patch_write_report,
     ):
         """No projects + critical infra → exit 1."""
@@ -185,8 +194,12 @@ class TestMainNoProjects:
         assert rc == 1
 
     def test_no_projects_json_output(
-        self, _patch_infra_clean, _patch_no_projects, _patch_build_report,
-        _patch_write_report, capsys: pytest.CaptureFixture,
+        self,
+        _patch_infra_clean,
+        _patch_no_projects,
+        _patch_build_report,
+        _patch_write_report,
+        capsys: pytest.CaptureFixture,
     ):
         """No projects + --json → JSON printed to stdout."""
         main(["--no-write", "--json"])
@@ -195,7 +208,10 @@ class TestMainNoProjects:
         assert data["projects_checked"] == 0
 
     def test_no_projects_write_report(
-        self, _patch_infra_clean, _patch_no_projects, _patch_build_report,
+        self,
+        _patch_infra_clean,
+        _patch_no_projects,
+        _patch_build_report,
         _patch_write_report,
     ):
         """No projects + write enabled → write_report called."""
@@ -203,15 +219,22 @@ class TestMainNoProjects:
         # If we got here without error, write_report was called
 
     def test_no_projects_notify(
-        self, _patch_infra_clean, _patch_no_projects, _patch_build_report,
-        _patch_write_report, _patch_notify,
+        self,
+        _patch_infra_clean,
+        _patch_no_projects,
+        _patch_build_report,
+        _patch_write_report,
+        _patch_notify,
     ):
         """No projects + --notify → notify_via_lark called."""
         main(["--no-write", "--notify"])
         _patch_notify.assert_called_once()
 
     def test_no_projects_no_infra_skips_check(
-        self, _patch_no_projects, _patch_build_report, _patch_write_report,
+        self,
+        _patch_no_projects,
+        _patch_build_report,
+        _patch_write_report,
     ):
         """--no-infra → check_infrastructure not called."""
         with patch(
@@ -226,36 +249,57 @@ class TestMainNoProjects:
 # Group 2: Projects found, normal audit path
 # ---------------------------------------------------------------------------
 
+
 class TestMainWithProjects:
     """main() when projects exist."""
 
     def test_clean_audit_returns_0(
-        self, _patch_infra_clean, _patch_one_project, _patch_fingerprints,
-        _patch_audit_project_clean, _patch_build_report, _patch_write_report,
+        self,
+        _patch_infra_clean,
+        _patch_one_project,
+        _patch_fingerprints,
+        _patch_audit_project_clean,
+        _patch_build_report,
+        _patch_write_report,
     ):
         """All clean → exit 0."""
         rc = main(["--no-write"])
         assert rc == 0
 
     def test_critical_project_returns_1(
-        self, _patch_infra_clean, _patch_one_project, _patch_fingerprints,
-        _patch_audit_project_critical, _patch_build_report, _patch_write_report,
+        self,
+        _patch_infra_clean,
+        _patch_one_project,
+        _patch_fingerprints,
+        _patch_audit_project_critical,
+        _patch_build_report,
+        _patch_write_report,
     ):
         """Critical project violation → exit 1."""
         rc = main(["--no-write"])
         assert rc == 1
 
     def test_warning_only_returns_0(
-        self, _patch_infra_clean, _patch_one_project, _patch_fingerprints,
-        _patch_audit_project_warning, _patch_build_report, _patch_write_report,
+        self,
+        _patch_infra_clean,
+        _patch_one_project,
+        _patch_fingerprints,
+        _patch_audit_project_warning,
+        _patch_build_report,
+        _patch_write_report,
     ):
         """Warning-only → exit 0 (warnings don't block)."""
         rc = main(["--no-write"])
         assert rc == 0
 
     def test_json_output_with_projects(
-        self, _patch_infra_clean, _patch_one_project, _patch_fingerprints,
-        _patch_audit_project_clean, _patch_build_report, _patch_write_report,
+        self,
+        _patch_infra_clean,
+        _patch_one_project,
+        _patch_fingerprints,
+        _patch_audit_project_clean,
+        _patch_build_report,
+        _patch_write_report,
         capsys: pytest.CaptureFixture,
     ):
         """--json → valid JSON to stdout."""
@@ -265,8 +309,13 @@ class TestMainWithProjects:
         assert data["projects_checked"] == 1
 
     def test_notify_called(
-        self, _patch_infra_clean, _patch_one_project, _patch_fingerprints,
-        _patch_audit_project_clean, _patch_build_report, _patch_write_report,
+        self,
+        _patch_infra_clean,
+        _patch_one_project,
+        _patch_fingerprints,
+        _patch_audit_project_clean,
+        _patch_build_report,
+        _patch_write_report,
         _patch_notify,
     ):
         """--notify → notify_via_lark called."""
@@ -278,12 +327,17 @@ class TestMainWithProjects:
 # Group 3: Infrastructure check degradation
 # ---------------------------------------------------------------------------
 
+
 class TestMainInfraDegradation:
     """main() when check_infrastructure() raises."""
 
     def test_infra_exception_degrades_gracefully(
-        self, _patch_one_project, _patch_fingerprints,
-        _patch_audit_project_clean, _patch_build_report, _patch_write_report,
+        self,
+        _patch_one_project,
+        _patch_fingerprints,
+        _patch_audit_project_clean,
+        _patch_build_report,
+        _patch_write_report,
     ):
         """check_infrastructure() raises → infra_results=None, continues."""
         with patch(
@@ -295,8 +349,12 @@ class TestMainInfraDegradation:
             assert rc == 0
 
     def test_infra_exception_with_critical_project_still_returns_1(
-        self, _patch_one_project, _patch_fingerprints,
-        _patch_audit_project_critical, _patch_build_report, _patch_write_report,
+        self,
+        _patch_one_project,
+        _patch_fingerprints,
+        _patch_audit_project_critical,
+        _patch_build_report,
+        _patch_write_report,
     ):
         """check_infrastructure() raises + critical project → exit 1."""
         with patch(
@@ -311,12 +369,16 @@ class TestMainInfraDegradation:
 # Group 4: Project audit exception handling
 # ---------------------------------------------------------------------------
 
+
 class TestMainProjectAuditException:
     """main() when audit_project() raises for one project."""
 
     def test_single_project_exception_captured(
-        self, _patch_infra_clean, _patch_fingerprints,
-        _patch_build_report, _patch_write_report,
+        self,
+        _patch_infra_clean,
+        _patch_fingerprints,
+        _patch_build_report,
+        _patch_write_report,
     ):
         """audit_project raises → captured as warning, doesn't crash."""
         with patch(
@@ -349,12 +411,17 @@ class TestMainProjectAuditException:
 # Group 5: No-write flag
 # ---------------------------------------------------------------------------
 
+
 class TestMainNoWrite:
     """main() --no-write flag."""
 
     def test_no_write_skips_write_report(
-        self, _patch_infra_clean, _patch_one_project, _patch_fingerprints,
-        _patch_audit_project_clean, _patch_build_report,
+        self,
+        _patch_infra_clean,
+        _patch_one_project,
+        _patch_fingerprints,
+        _patch_audit_project_clean,
+        _patch_build_report,
     ):
         """--no-write → write_report not called."""
         with patch(
@@ -364,8 +431,13 @@ class TestMainNoWrite:
             mock_write.assert_not_called()
 
     def test_write_enabled_calls_write_report(
-        self, _patch_infra_clean, _patch_one_project, _patch_fingerprints,
-        _patch_audit_project_clean, _patch_build_report, _patch_write_report,
+        self,
+        _patch_infra_clean,
+        _patch_one_project,
+        _patch_fingerprints,
+        _patch_audit_project_clean,
+        _patch_build_report,
+        _patch_write_report,
     ):
         """Default (no --no-write) → write_report called."""
         # If we reach here without exception, write_report was patched and callable

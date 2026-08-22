@@ -134,9 +134,7 @@ def _search_memory(query: str, cwd: str) -> list[dict[str, Any]]:
                 file_path = str(Path(dirpath) / filename)
                 relative_path = os.path.relpath(file_path, base_for_rel)
                 try:
-                    with Path(file_path).open(
-                        encoding="utf-8", errors="replace"
-                    ) as fh:
+                    with Path(file_path).open(encoding="utf-8", errors="replace") as fh:
                         for line_number, line in enumerate(fh, start=1):
                             if query_lower in line.lower():
                                 results.append(
@@ -166,18 +164,10 @@ def _validate_filename(filename: str) -> dict[str, Any] | None:
     Rejects filenames containing path separators, traversal sequences,
     leading dots, or absolute paths to prevent path traversal attacks.
     """
-    if (
-        "/" in filename
-        or "\\" in filename
-        or filename.startswith(".")
-        or Path(filename).is_absolute()
-    ):
+    if "/" in filename or "\\" in filename or filename.startswith(".") or Path(filename).is_absolute():
         return {
             "status": "error",
-            "message": (
-                "Invalid filename: must not contain path separators or "
-                "traversal sequences"
-            ),
+            "message": ("Invalid filename: must not contain path separators or traversal sequences"),
         }
     return None
 
@@ -194,9 +184,7 @@ def _resolve_doc_path(category: str, filename: str, cwd: str) -> dict[str, Any]:
     if category not in DOC_CATEGORIES:
         return {
             "status": "error",
-            "message": (
-                f"Unknown category: '{category}'. Valid categories: {categories}"
-            ),
+            "message": (f"Unknown category: '{category}'. Valid categories: {categories}"),
             "categories": categories,
         }
     # Validate filename to prevent path traversal attacks
@@ -213,9 +201,7 @@ def _resolve_doc_path(category: str, filename: str, cwd: str) -> dict[str, Any]:
     }
 
 
-def _save_memory(
-    category: str, filename: str, content: str, cwd: str
-) -> dict[str, Any]:
+def _save_memory(category: str, filename: str, content: str, cwd: str) -> dict[str, Any]:
     """Write memory content to the resolved path for ``category``.
 
     Creates parent directories as needed. Refuses to write when ``cwd`` resolves
@@ -231,9 +217,7 @@ def _save_memory(
     # Refuse to write into the memory-core source repository itself (read-only).
     # Without this guard an MCP client could bypass hook protection and pollute
     # the protocol library by passing cwd pointing at this source repo.
-    if is_memory_core_source_repo is not None and is_memory_core_source_repo(
-        Path(cwd)
-    ):
+    if is_memory_core_source_repo is not None and is_memory_core_source_repo(Path(cwd)):
         return {
             "status": "error",
             "message": "Cannot write to memory-core source repository (read-only)",
@@ -242,9 +226,7 @@ def _save_memory(
     if category not in DOC_CATEGORIES:
         return {
             "status": "error",
-            "message": (
-                f"Unknown category: '{category}'. Valid categories: {categories}"
-            ),
+            "message": (f"Unknown category: '{category}'. Valid categories: {categories}"),
             "categories": categories,
         }
     # Validate filename to prevent path traversal attacks
@@ -322,10 +304,7 @@ def _get_health(cwd: str) -> dict[str, Any]:
     if not path.is_file():
         return {
             "status": "no_health_report",
-            "message": (
-                "Health report not found. Run memory-init or wait for the next "
-                "session-start hook."
-            ),
+            "message": ("Health report not found. Run memory-init or wait for the next session-start hook."),
         }
     try:
         with path.open(encoding="utf-8") as fh:
@@ -377,16 +356,13 @@ def _list_projects() -> list[dict[str, Any]]:
         projects.append(
             {
                 "project_id": project_id,
-                "project_name": record.get("project_name")
-                or entry.get("project_name"),
+                "project_name": record.get("project_name") or entry.get("project_name"),
                 "status": record.get("status") or entry.get("status"),
-                "local_path": record.get("local_path")
-                or entry.get("local_path"),
+                "local_path": record.get("local_path") or entry.get("local_path"),
                 "last_observed_at": record.get("last_observed_at")
                 or record.get("observed_at")
                 or entry.get("last_observed_at"),
-                "git_remote": record.get("git_remote")
-                or entry.get("git_remote"),
+                "git_remote": record.get("git_remote") or entry.get("git_remote"),
             }
         )
     return projects
@@ -444,8 +420,7 @@ async def list_tools() -> list[Tool]:
                     "cwd": {
                         "type": "string",
                         "description": (
-                            "Absolute path to the project root. Defaults to the "
-                            "server's current working directory."
+                            "Absolute path to the project root. Defaults to the server's current working directory."
                         ),
                     },
                 },
@@ -505,8 +480,7 @@ async def list_tools() -> list[Tool]:
                     "cwd": {
                         "type": "string",
                         "description": (
-                            "Absolute path to the project root. Defaults to the "
-                            "server's current working directory."
+                            "Absolute path to the project root. Defaults to the server's current working directory."
                         ),
                     },
                 },
@@ -525,9 +499,7 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "category": {
                         "type": "string",
-                        "description": (
-                            "Document category label (one of DOC_CATEGORIES keys)."
-                        ),
+                        "description": ("Document category label (one of DOC_CATEGORIES keys)."),
                     },
                     "filename": {
                         "type": "string",
@@ -540,8 +512,7 @@ async def list_tools() -> list[Tool]:
                     "cwd": {
                         "type": "string",
                         "description": (
-                            "Absolute path to the project root. Defaults to the "
-                            "server's current working directory."
+                            "Absolute path to the project root. Defaults to the server's current working directory."
                         ),
                     },
                 },
@@ -594,10 +565,7 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "event": {
                         "type": "string",
-                        "description": (
-                            "Lifecycle event name (e.g. session-start, "
-                            "prompt-submit, stop)."
-                        ),
+                        "description": ("Lifecycle event name (e.g. session-start, prompt-submit, stop)."),
                     },
                     "cwd": {
                         "type": "string",
@@ -605,10 +573,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "host": {
                         "type": "string",
-                        "description": (
-                            "Host tag identifying the calling platform. Defaults "
-                            "to 'mcp'."
-                        ),
+                        "description": ("Host tag identifying the calling platform. Defaults to 'mcp'."),
                     },
                 },
                 "required": ["event", "cwd"],
@@ -627,8 +592,7 @@ async def list_tools() -> list[Tool]:
                     "cwd": {
                         "type": "string",
                         "description": (
-                            "Absolute path to the project root. Defaults to the "
-                            "server's current working directory."
+                            "Absolute path to the project root. Defaults to the server's current working directory."
                         ),
                     },
                 },
@@ -660,15 +624,12 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "date": {
                         "type": "string",
-                        "description": (
-                            "Date in YYYY-MM-DD format. Defaults to today."
-                        ),
+                        "description": ("Date in YYYY-MM-DD format. Defaults to today."),
                     },
                     "cwd": {
                         "type": "string",
                         "description": (
-                            "Absolute path to the project root. Defaults to the "
-                            "server's current working directory."
+                            "Absolute path to the project root. Defaults to the server's current working directory."
                         ),
                     },
                 },
@@ -799,9 +760,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     text=json.dumps(
                         {
                             "status": "error",
-                            "message": (
-                                f"Tool '{name}' is not available on this server"
-                            ),
+                            "message": (f"Tool '{name}' is not available on this server"),
                         }
                     ),
                 )

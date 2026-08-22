@@ -20,6 +20,7 @@ from memory_core.tools.memory_root_discovery import (
 # discover_project_root
 # ---------------------------------------------------------------------------
 
+
 class TestDiscoverProjectRoot:
     """discover_project_root walks upward to find .memory/."""
 
@@ -162,6 +163,7 @@ class TestDiscoverProjectRoot:
 # discover_workspace_root
 # ---------------------------------------------------------------------------
 
+
 class TestDiscoverWorkspaceRoot:
     """discover_workspace_root checks for memory_core/ subdir."""
 
@@ -211,6 +213,7 @@ class TestDiscoverWorkspaceRoot:
 # ---------------------------------------------------------------------------
 # discover_roots
 # ---------------------------------------------------------------------------
+
 
 class TestDiscoverRoots:
     """discover_roots returns (repo_root, workspace_root)."""

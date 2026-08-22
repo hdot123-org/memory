@@ -33,6 +33,7 @@ from memory_core.tools.daily_summary_generator import (
 # _parse_args tests
 # ---------------------------------------------------------------------------
 
+
 class TestParseArgs:
     def test_date_arg(self):
         args = _parse_args(["--date", "2026-05-28"])
@@ -68,6 +69,7 @@ class TestParseArgs:
 # ---------------------------------------------------------------------------
 # _read_a_layer tests
 # ---------------------------------------------------------------------------
+
 
 class TestReadALayer:
     def test_missing_file_returns_none(self, tmp_path):
@@ -148,6 +150,7 @@ class TestReadALayer:
 # _extract_text_blocks tests
 # ---------------------------------------------------------------------------
 
+
 class TestExtractTextBlocks:
     def test_empty_list(self):
         assert _extract_text_blocks([]) == []
@@ -181,6 +184,7 @@ class TestExtractTextBlocks:
 # ---------------------------------------------------------------------------
 # _read_full_jsonl and _read_partial_jsonl tests
 # ---------------------------------------------------------------------------
+
 
 class TestJsonlReaders:
     def test_read_full_jsonl(self, tmp_path):
@@ -221,14 +225,17 @@ class TestJsonlReaders:
 # _find_session_jsonl tests
 # ---------------------------------------------------------------------------
 
+
 class TestFindSessionJsonl:
     def test_nonexistent_home(self, tmp_path, monkeypatch):
         import memory_core.tools.daily_summary_generator as mod
+
         monkeypatch.setattr(mod, "SESSIONS_HOME", tmp_path / "nonexistent")
         assert mod._find_session_jsonl("abc12345") is None
 
     def test_exact_match(self, tmp_path, monkeypatch):
         import memory_core.tools.daily_summary_generator as mod
+
         sessions_dir = tmp_path / "session1"
         sessions_dir.mkdir()
         jsonl_file = sessions_dir / "abc12345-1234-5678-9abc-def012345678.jsonl"
@@ -240,6 +247,7 @@ class TestFindSessionJsonl:
 
     def test_prefix_match(self, tmp_path, monkeypatch):
         import memory_core.tools.daily_summary_generator as mod
+
         sessions_dir = tmp_path / "sdir"
         sessions_dir.mkdir()
         target = sessions_dir / "abcd1234-extra.jsonl"
@@ -254,13 +262,20 @@ class TestFindSessionJsonl:
 # _extract_transcript_summary tests
 # ---------------------------------------------------------------------------
 
+
 class TestExtractTranscriptSummary:
     def test_basic_extraction(self, tmp_path):
         jsonl_path = tmp_path / "session.jsonl"
         lines = [
-            json.dumps({"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "Hello"}]}}),
-            json.dumps({"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "Hi there"}]}}),
-            json.dumps({"type": "message", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Read"}]}}),
+            json.dumps(
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "Hello"}]}}
+            ),
+            json.dumps(
+                {"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "Hi there"}]}}
+            ),
+            json.dumps(
+                {"type": "message", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Read"}]}}
+            ),
         ]
         jsonl_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         result = _extract_transcript_summary(jsonl_path)
@@ -279,17 +294,21 @@ class TestExtractTranscriptSummary:
         # We'll monkeypatch the size instead for speed
         small_data = [
             json.dumps({"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}}),
-            json.dumps({"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}}),
+            json.dumps(
+                {"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}}
+            ),
         ]
         jsonl_path.write_text("\n".join(small_data) + "\n", encoding="utf-8")
 
         # Mock the internal read functions to simulate large file behavior
         # without patching Path.stat globally (which would pollute other tests)
-        with patch("memory_core.tools.daily_summary_generator._read_partial_jsonl",
-                   return_value=[
-                       {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}},
-                       {"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}},
-                   ]):
+        with patch(
+            "memory_core.tools.daily_summary_generator._read_partial_jsonl",
+            return_value=[
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}},
+                {"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}},
+            ],
+        ):
             result = _extract_transcript_summary(jsonl_path)
         assert "hi" in result.get("user_messages", "")
         assert "hello" in result.get("assistant_messages", "")
@@ -298,6 +317,7 @@ class TestExtractTranscriptSummary:
 # ---------------------------------------------------------------------------
 # _generate_data_report tests
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateDataReport:
     def test_empty_sessions(self):
@@ -366,11 +386,18 @@ class TestGenerateDataReport:
 # _write_daily_log tests
 # ---------------------------------------------------------------------------
 
+
 class TestWriteDailyLog:
     def test_write_data_report(self, tmp_path):
         sessions = [
-            {"full_session_id": "abcd1234", "input_tokens": 100, "output_tokens": 200,
-             "title": "Test", "model": "GLM", "duration": "1m"},
+            {
+                "full_session_id": "abcd1234",
+                "input_tokens": 100,
+                "output_tokens": 200,
+                "title": "Test",
+                "model": "GLM",
+                "duration": "1m",
+            },
         ]
         result = _write_daily_log(tmp_path, "2026-05-28", sessions)
         assert result.exists()
@@ -395,6 +422,7 @@ class TestWriteDailyLog:
 # ---------------------------------------------------------------------------
 # _fallback_check tests
 # ---------------------------------------------------------------------------
+
 
 class TestFallbackCheck:
     def test_no_missing_logs(self, tmp_path):
@@ -435,6 +463,7 @@ class TestFallbackCheck:
 # _enrich_with_b_layer tests
 # ---------------------------------------------------------------------------
 
+
 class TestEnrichWithBLayer:
     def test_no_full_session_id(self):
         sessions = [{"title": "no id"}]
@@ -453,7 +482,9 @@ class TestEnrichWithBLayer:
         jsonl_path = tmp_path / "session.jsonl"
         lines = [
             json.dumps({"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}}),
-            json.dumps({"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}}),
+            json.dumps(
+                {"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}}
+            ),
         ]
         jsonl_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -465,8 +496,12 @@ class TestEnrichWithBLayer:
             "assistant_messages": "hello",
             "tool_names": [],
         }
-        with patch("memory_core.tools.daily_summary_generator._find_session_jsonl", return_value=jsonl_path), \
-             patch("memory_core.tools.daily_summary_generator._extract_transcript_summary", return_value=expected_b_data):
+        with (
+            patch("memory_core.tools.daily_summary_generator._find_session_jsonl", return_value=jsonl_path),
+            patch(
+                "memory_core.tools.daily_summary_generator._extract_transcript_summary", return_value=expected_b_data
+            ),
+        ):
             result = _enrich_with_b_layer(sessions)
         assert len(result) == 1
         assert "hi" in result[0].get("user_messages", "")
@@ -477,6 +512,7 @@ class TestEnrichWithBLayer:
 # _resolve_projects tests
 # ---------------------------------------------------------------------------
 
+
 class TestResolveProjects:
     def test_explicit_project(self):
         args = argparse.Namespace(project="/tmp/myproj", all_projects=False)
@@ -486,6 +522,7 @@ class TestResolveProjects:
 
     def test_all_projects_with_lifecycle_index(self, tmp_path, monkeypatch):
         import memory_core.tools.daily_summary_generator as mod
+
         index_file = tmp_path / "path-index.json"
         index_file.write_text(json.dumps({"paths": {"/tmp/proj1": {}, "/tmp/proj2": {}}}), encoding="utf-8")
         monkeypatch.setattr(mod, "LIFECYCLE_INDEX", index_file)
@@ -495,6 +532,7 @@ class TestResolveProjects:
 
     def test_all_projects_empty_index_fallback(self, tmp_path, monkeypatch):
         import memory_core.tools.daily_summary_generator as mod
+
         index_file = tmp_path / "nonexistent" / "path-index.json"
         monkeypatch.setattr(mod, "LIFECYCLE_INDEX", index_file)
         # No matching projects found
@@ -513,10 +551,12 @@ class TestResolveProjects:
 # _try_sign_file tests
 # ---------------------------------------------------------------------------
 
+
 class TestTrySignFile:
     def test_no_integrity_module(self, tmp_path):
         """Should silently do nothing when integrity modules are None."""
         import memory_core.tools.daily_summary_generator as mod
+
         orig_integrity = mod._integrity
         orig_keys = mod._integrity_keys
         try:
@@ -538,9 +578,7 @@ class TestTrySignFile:
         import memory_core.tools.daily_summary_generator as dsg_mod
 
         mock_integrity = MagicMock()
-        mock_integrity.sign_project_incremental = MagicMock(
-            side_effect=RuntimeError("Sign failed")
-        )
+        mock_integrity.sign_project_incremental = MagicMock(side_effect=RuntimeError("Sign failed"))
         mock_keys = MagicMock()
         mock_keys.load_key = MagicMock(return_value="test-key")
 
@@ -557,9 +595,7 @@ class TestTrySignFile:
         # Patch only this specific logger instance (NOT the global
         # logging.getLogger) so pytest's own logging plugin keeps working.
         target_logger = logging.getLogger(dsg_mod.__name__)
-        monkeypatch.setattr(
-            target_logger, "warning", MagicMock(side_effect=RuntimeError("Logging broken"))
-        )
+        monkeypatch.setattr(target_logger, "warning", MagicMock(side_effect=RuntimeError("Logging broken")))
 
         # Should NOT raise — double failure is handled gracefully
         _try_sign_file(tmp_path, "test.md")
@@ -572,6 +608,7 @@ class TestTrySignFile:
 # ---------------------------------------------------------------------------
 # process_project tests
 # ---------------------------------------------------------------------------
+
 
 class TestProcessProject:
     def test_no_a_layer_returns_false(self, tmp_path):
@@ -591,8 +628,10 @@ class TestProcessProject:
         content = "### abcd1234\n- **标题**: Test\n- **模型**: GLM | 时长: 1m\n- **Token**: input=10 output=20\n"
         (log_dir / "2026-05-28-sessions.md").write_text(content, encoding="utf-8")
 
-        with patch("memory_core.tools.daily_summary_generator._enrich_with_b_layer", side_effect=lambda s: s), \
-             patch("memory_core.tools.daily_summary_generator._fallback_check", return_value=[]):
+        with (
+            patch("memory_core.tools.daily_summary_generator._enrich_with_b_layer", side_effect=lambda s: s),
+            patch("memory_core.tools.daily_summary_generator._fallback_check", return_value=[]),
+        ):
             result = process_project(tmp_path, "2026-05-28", fallback_days=0)
         assert result is True
         assert (log_dir / "2026-05-28.md").exists()
@@ -601,6 +640,7 @@ class TestProcessProject:
 # ---------------------------------------------------------------------------
 # main() tests
 # ---------------------------------------------------------------------------
+
 
 class TestMain:
     def test_no_date_returns_1(self, capsys):
@@ -646,6 +686,7 @@ class TestMain:
 # Integration-style tests
 # ---------------------------------------------------------------------------
 
+
 class TestIntegration:
     def test_full_pipeline_without_llm(self, tmp_path):
         """End-to-end without LLM (fallback report)."""
@@ -662,8 +703,10 @@ class TestIntegration:
         """)
         (log_dir / "2026-06-01-sessions.md").write_text(content, encoding="utf-8")
 
-        with patch("memory_core.tools.daily_summary_generator._enrich_with_b_layer", side_effect=lambda s: s), \
-             patch("memory_core.tools.daily_summary_generator._fallback_check", return_value=[]):
+        with (
+            patch("memory_core.tools.daily_summary_generator._enrich_with_b_layer", side_effect=lambda s: s),
+            patch("memory_core.tools.daily_summary_generator._fallback_check", return_value=[]),
+        ):
             result = process_project(tmp_path, "2026-06-01", fallback_days=0)
 
         assert result is True
@@ -674,4 +717,3 @@ class TestIntegration:
         assert "代码重构" in text
         assert "in=5000" in text
         assert "out=3000" in text
-

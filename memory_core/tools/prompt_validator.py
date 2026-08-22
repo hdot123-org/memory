@@ -19,9 +19,9 @@ class ValidationResult:
     recommendation: str | None = None
 
 
-def validate_prompt(prompt: str, *,
-                    max_chars: int = MAX_PROMPT_CHARS,
-                    warn_at: int = WARNING_THRESHOLD_CHARS) -> ValidationResult:
+def validate_prompt(
+    prompt: str, *, max_chars: int = MAX_PROMPT_CHARS, warn_at: int = WARNING_THRESHOLD_CHARS
+) -> ValidationResult:
     """
     Validate a prompt before dispatching to a subagent.
 
@@ -43,8 +43,7 @@ def validate_prompt(prompt: str, *,
             is_safe=True,
             char_count=char_count,
             estimated_tokens=estimated_tokens,
-            warning=f"Prompt near limit: {char_count}/{max_chars} chars "
-                    f"(~{estimated_tokens} tokens)",
+            warning=f"Prompt near limit: {char_count}/{max_chars} chars (~{estimated_tokens} tokens)",
             recommendation="Consider file-based dispatch for safety",
         )
 
@@ -68,8 +67,7 @@ def check_prompt_or_raise(prompt: str, *, mode: str = "warn") -> ValidationResul
     if not result.is_safe:
         if mode == "error":
             raise PromptTooLongError(
-                f"Prompt too long: {result.char_count} chars "
-                f"(max: {MAX_PROMPT_CHARS}). {result.recommendation}"
+                f"Prompt too long: {result.char_count} chars (max: {MAX_PROMPT_CHARS}). {result.recommendation}"
             )
         elif mode == "warn":
             print(f"[PROMPT WARNING] {result.warning}. {result.recommendation}")
@@ -79,4 +77,5 @@ def check_prompt_or_raise(prompt: str, *, mode: str = "warn") -> ValidationResul
 
 class PromptTooLongError(ValueError):
     """Raised when a prompt exceeds the safe character limit."""
+
     pass

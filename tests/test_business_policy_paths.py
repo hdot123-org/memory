@@ -37,6 +37,7 @@ from memory_core.tools.memory_hook_impls import GatewayBusinessPolicyConfig
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _noop_read(path: Path) -> str:
     return ""
 
@@ -53,7 +54,11 @@ def _make_config(tmp_path: Path, **overrides: Any) -> GatewayBusinessPolicyConfi
         "repo_root": repo,
         "workspace_root": repo / "workspace",
         "project_map_root": pm_root,
-        "project_map_files": [pm_root / "INDEX.md", pm_root / "legal-core-map.md", pm_root / "ingestion-registry-map.md"],
+        "project_map_files": [
+            pm_root / "INDEX.md",
+            pm_root / "legal-core-map.md",
+            pm_root / "ingestion-registry-map.md",
+        ],
         "project_map_governance": pm_root / "governance.md",
         "truth_model": repo / "workspace" / "truth_model.md",
         "global_canonical": [repo / "workspace" / "global_1.md", repo / "workspace" / "global_2.md"],
@@ -113,6 +118,7 @@ def _make_sibling_pair(tmp_path: Path) -> tuple[Path, Path]:
 # ---------------------------------------------------------------------------
 # 1. _path_is_under (symlink-resolving containment)
 # ---------------------------------------------------------------------------
+
 
 class TestPathIsUnder:
     """Tests for the module-level _path_is_under function."""
@@ -189,6 +195,7 @@ class TestPathIsUnder:
 # 2. _path_is_under_lexical (no symlink resolution)
 # ---------------------------------------------------------------------------
 
+
 class TestPathIsUnderLexical:
     """Tests for _path_is_under_lexical — lexical containment only."""
 
@@ -237,6 +244,7 @@ class TestPathIsUnderLexical:
 # ---------------------------------------------------------------------------
 # 4. TruthBasisResolver._classify_truth_ref
 # ---------------------------------------------------------------------------
+
 
 class TestTruthBasisResolverClassify:
     """Tests for _classify_truth_ref — scope classification by path."""
@@ -373,6 +381,7 @@ class TestTruthBasisResolverClassify:
 # 5. TruthBasisResolver._authority_ref_allowed
 # ---------------------------------------------------------------------------
 
+
 class TestTruthBasisResolverAuthorityAllowed:
     """Tests for _authority_ref_allowed — permission check for authority refs."""
 
@@ -410,6 +419,7 @@ class TestTruthBasisResolverAuthorityAllowed:
 # ---------------------------------------------------------------------------
 # 6. TruthBasisResolver._lower_evidence_ref
 # ---------------------------------------------------------------------------
+
 
 class TestTruthBasisResolverLowerEvidence:
     """Tests for _lower_evidence_ref — check if path is under evidence roots."""
@@ -457,6 +467,7 @@ class TestTruthBasisResolverLowerEvidence:
 # ---------------------------------------------------------------------------
 # 7. ScopeResolver.determine_project_scope
 # ---------------------------------------------------------------------------
+
 
 class TestScopeResolverDetermineScope:
     """Tests for ScopeResolver.determine_project_scope."""
@@ -512,16 +523,22 @@ class TestScopeResolverDetermineScope:
 # 8. ScopeResolver with scope overrides (JSON config)
 # ---------------------------------------------------------------------------
 
+
 class TestScopeResolverOverrides:
     """Tests for ScopeResolver with scope config overrides."""
 
     def test_load_valid_scope_config(self, tmp_path: Path) -> None:
         cfg = _make_config(tmp_path)
         config_file = tmp_path / "scope_config.json"
-        config_file.write_text(json.dumps({
-            "project_canonical": {"custom-scope": "workspace/custom.md"},
-            "project_runtime_root": {"custom-scope": "workspace/custom_rt"},
-        }), encoding="utf-8")
+        config_file.write_text(
+            json.dumps(
+                {
+                    "project_canonical": {"custom-scope": "workspace/custom.md"},
+                    "project_runtime_root": {"custom-scope": "workspace/custom_rt"},
+                }
+            ),
+            encoding="utf-8",
+        )
 
         resolver = ScopeResolver(cfg, scope_config_path=config_file)
         canon = resolver.get_project_canonical()
@@ -556,9 +573,14 @@ class TestScopeResolverOverrides:
         cfg = _make_config(tmp_path)
         config_file = tmp_path / "scope_config.json"
         abs_path = str(tmp_path / "abs_canonical.md")
-        config_file.write_text(json.dumps({
-            "project_canonical": {"abs-scope": abs_path},
-        }), encoding="utf-8")
+        config_file.write_text(
+            json.dumps(
+                {
+                    "project_canonical": {"abs-scope": abs_path},
+                }
+            ),
+            encoding="utf-8",
+        )
 
         resolver = ScopeResolver(cfg, scope_config_path=config_file)
         canon = resolver.get_project_canonical()
@@ -567,9 +589,14 @@ class TestScopeResolverOverrides:
     def test_env_var_scope_config_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         cfg = _make_config(tmp_path)
         config_file = tmp_path / "env_scope.json"
-        config_file.write_text(json.dumps({
-            "project_canonical": {"env-scope": "env_canonical.md"},
-        }), encoding="utf-8")
+        config_file.write_text(
+            json.dumps(
+                {
+                    "project_canonical": {"env-scope": "env_canonical.md"},
+                }
+            ),
+            encoding="utf-8",
+        )
 
         monkeypatch.setenv(ScopeResolver.SCOPE_CONFIG_PATH_ENV, str(config_file))
         resolver = ScopeResolver(cfg)
@@ -580,6 +607,7 @@ class TestScopeResolverOverrides:
 # ---------------------------------------------------------------------------
 # 9. Edge cases: empty, None-equivalent, Unicode,超长路径
 # ---------------------------------------------------------------------------
+
 
 class TestPathEdgeCases:
     """Boundary and edge-case tests for path handling."""
@@ -693,6 +721,7 @@ class TestPathEdgeCases:
 # 10. ScopeResolver helper methods
 # ---------------------------------------------------------------------------
 
+
 class TestScopeResolverHelpers:
     """Tests for ScopeResolver's non-scope-determination helpers."""
 
@@ -754,6 +783,7 @@ class TestScopeResolverHelpers:
 # 11. Boundary paths (exactly at root)
 # ---------------------------------------------------------------------------
 
+
 class TestBoundaryPaths:
     """Paths that sit exactly on scope boundaries."""
 
@@ -785,6 +815,7 @@ class TestBoundaryPaths:
 # ---------------------------------------------------------------------------
 # 12. TruthBasisResolver truth_basis_for_scope integration
 # ---------------------------------------------------------------------------
+
 
 class TestTruthBasisForScopeIntegration:
     """Integration tests for truth_basis_for_scope end-to-end."""

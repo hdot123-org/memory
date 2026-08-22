@@ -240,10 +240,13 @@ def test_rebuild_cli_dry_run(tmp_path: Path, capsys) -> None:
     original_mtime = index_path.stat().st_mtime_ns
 
     with pytest.raises(SystemExit) as exc_info:
-        rebuild_main([
-            "--lifecycle-root", str(tmp_path),
-            "--dry-run",
-        ])
+        rebuild_main(
+            [
+                "--lifecycle-root",
+                str(tmp_path),
+                "--dry-run",
+            ]
+        )
 
     assert exc_info.value.code == 0
 
@@ -271,10 +274,13 @@ def test_rebuild_cli_json_output(tmp_path: Path, capsys) -> None:
     _write_project_file(projects_dir, "json-001", record)
 
     with pytest.raises(SystemExit) as exc_info:
-        rebuild_main([
-            "--lifecycle-root", str(tmp_path),
-            "--json",
-        ])
+        rebuild_main(
+            [
+                "--lifecycle-root",
+                str(tmp_path),
+                "--json",
+            ]
+        )
 
     assert exc_info.value.code == 0
 

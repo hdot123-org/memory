@@ -85,6 +85,7 @@ Orchestrator → Task.start(task_id="T1")
 ```python
 MAX_SAFE_PROMPT_CHARS = 50_000  # or token count
 
+
 def dispatch_task(prompt: str, **kwargs):
     char_count = len(prompt)
     if char_count > MAX_SAFE_PROMPT_CHARS:
@@ -148,6 +149,7 @@ import tempfile
 import os
 import shutil
 
+
 class FileBasedTask:
     def __init__(self, workspace=None):
         self.workspace = workspace or tempfile.mkdtemp(prefix="factory_task_")
@@ -189,11 +191,11 @@ class FileBasedTask:
 ```python
 class PromptBudget:
     BUDGET_PER_TASK = 40_000  # chars
-    TOTAL_BUDGET = 200_000    # chars for entire orchestration
-    
+    TOTAL_BUDGET = 200_000  # chars for entire orchestration
+
     def __init__(self):
         self.used = 0
-    
+
     def allocate(self, prompt: str) -> bool:
         cost = len(prompt)
         if cost > self.BUDGET_PER_TASK:
@@ -345,8 +347,7 @@ class TaskDispatcher:
             return self._dispatch_file_based(prompt, task_id, char_count)
         elif char_count > WARNING_THRESHOLD:
             # Log warning but still try inline
-            print(f"[WARN] Task '{task_id}' prompt is {char_count} chars "
-                  f"(near limit of {MAX_INLINE_CHARS})")
+            print(f"[WARN] Task '{task_id}' prompt is {char_count} chars (near limit of {MAX_INLINE_CHARS})")
             return self._dispatch_inline(prompt, task_id, char_count)
         else:
             return self._dispatch_inline(prompt, task_id, char_count)
@@ -444,8 +445,7 @@ class TaskDispatcher:
             f"  Total tasks: {len(self.results)}\n"
             f"  Inline: {inline_count}, File-based: {file_count}\n"
             f"  Total prompt chars dispatched: {total_chars}\n"
-            f"  Failed: {len(failed)}\n"
-            + (f"  Errors: {[r.error for r in failed]}" if failed else "")
+            f"  Failed: {len(failed)}\n" + (f"  Errors: {[r.error for r in failed]}" if failed else "")
         )
 ```
 
@@ -479,17 +479,17 @@ class ValidationResult:
     recommendation: Optional[str] = None
 
 
-def validate_prompt(prompt: str, *, 
-                    max_chars: int = MAX_PROMPT_CHARS,
-                    warn_at: int = WARNING_THRESHOLD_CHARS) -> ValidationResult:
+def validate_prompt(
+    prompt: str, *, max_chars: int = MAX_PROMPT_CHARS, warn_at: int = WARNING_THRESHOLD_CHARS
+) -> ValidationResult:
     """
     Validate a prompt before dispatching to a subagent.
-    
+
     Returns a ValidationResult indicating whether the prompt is safe to use inline.
     """
     char_count = len(prompt)
     estimated_tokens = char_count // 4  # rough estimate
-    
+
     if char_count > max_chars:
         return ValidationResult(
             is_safe=False,
@@ -503,11 +503,10 @@ def validate_prompt(prompt: str, *,
             is_safe=True,
             char_count=char_count,
             estimated_tokens=estimated_tokens,
-            warning=f"Prompt near limit: {char_count}/{max_chars} chars "
-                    f"(~{estimated_tokens} tokens)",
+            warning=f"Prompt near limit: {char_count}/{max_chars} chars (~{estimated_tokens} tokens)",
             recommendation="Consider file-based dispatch for safety",
         )
-    
+
     return ValidationResult(
         is_safe=True,
         char_count=char_count,
@@ -518,27 +517,27 @@ def validate_prompt(prompt: str, *,
 def check_prompt_or_raise(prompt: str, *, mode: str = "warn") -> None:
     """
     Validate and optionally raise an error.
-    
+
     mode: "warn" = print warning but allow
           "error" = raise PromptTooLongError
           "auto" = return validation result for caller to decide
     """
     result = validate_prompt(prompt)
-    
+
     if not result.is_safe:
         if mode == "error":
             raise PromptTooLongError(
-                f"Prompt too long: {result.char_count} chars "
-                f"(max: {MAX_PROMPT_CHARS}). {result.recommendation}"
+                f"Prompt too long: {result.char_count} chars (max: {MAX_PROMPT_CHARS}). {result.recommendation}"
             )
         elif mode == "warn":
             print(f"[PROMPT WARNING] {result.warning}. {result.recommendation}")
-    
+
     return result
 
 
 class PromptTooLongError(ValueError):
     """Raised when a prompt exceeds the safe character limit."""
+
     pass
 ```
 
@@ -550,7 +549,7 @@ class PromptTooLongError(ValueError):
 
 ```python
 """
-Resilient orchestrator wrapper that combines validation, 
+Resilient orchestrator wrapper that combines validation,
 dispatch, and automatic fallback.
 """
 
@@ -562,18 +561,18 @@ from .prompt_validator import validate_prompt, ValidationResult
 class ResilientOrchestrator:
     """
     Orchestrator wrapper that ensures no prompt is ever silently truncated.
-    
+
     Flow:
     1. Validate prompt length
     2. If safe → dispatch inline
     3. If unsafe → dispatch via file-based approach
     4. On failure → retry with fallback strategy
     """
-    
+
     def __init__(self, dispatcher: Optional[TaskDispatcher] = None):
         self.dispatcher = dispatcher or TaskDispatcher()
         self.max_retries = 2
-    
+
     def dispatch_task(
         self,
         prompt: str,
@@ -583,34 +582,30 @@ class ResilientOrchestrator:
         """Dispatch with full validation and automatic fallback."""
         # Step 1: Validate
         validation = validate_prompt(prompt)
-        
+
         if not validation.is_safe:
             # Direct to file-based
-            return self.dispatcher.dispatch(
-                prompt, task_name=task_name, force_file_based=True
-            )
-        
+            return self.dispatcher.dispatch(prompt, task_name=task_name, force_file_based=True)
+
         if validation.warning:
             print(f"[{task_name}] {validation.warning}")
-        
+
         # Step 2: Try inline first
         result = self.dispatcher.dispatch(prompt, task_name=task_name)
-        
+
         # Step 3: Retry on failure
         if not result.success and self.max_retries > 0:
             for attempt in range(self.max_retries):
                 print(f"[{task_name}] Retry {attempt + 1} via file-based...")
-                result = self.dispatcher.dispatch(
-                    prompt, task_name=task_name, force_file_based=True
-                )
+                result = self.dispatcher.dispatch(prompt, task_name=task_name, force_file_based=True)
                 if result.success:
                     break
-        
+
         return result
-    
+
     def cleanup(self):
         self.dispatcher.cleanup()
-    
+
     def summary(self) -> str:
         return self.dispatcher.get_summary()
 ```

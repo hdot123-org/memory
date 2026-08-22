@@ -4,7 +4,6 @@ Asserts the live repository remains clean and the script catches obvious
 violations injected via tmp_path fixtures.
 """
 
-
 import subprocess
 import sys
 from pathlib import Path
@@ -28,8 +27,7 @@ def test_live_repo_is_clean():
         check=False,
     )
     assert result.returncode == 0, (
-        f"BOUNDARY guard reports findings on live repo:\n"
-        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        f"BOUNDARY guard reports findings on live repo:\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )
 
 
@@ -107,8 +105,8 @@ def test_cli_returns_nonzero_on_findings(tmp_path):
     fake_script = fake_repo / "check_boundary.py"
     src = SCRIPT_PATH.read_text(encoding="utf-8")
     src = src.replace(
-        'REPO_ROOT = Path(__file__).resolve().parents[1]',
-        f'REPO_ROOT = Path({str(fake_repo)!r})',
+        "REPO_ROOT = Path(__file__).resolve().parents[1]",
+        f"REPO_ROOT = Path({str(fake_repo)!r})",
     )
     fake_script.write_text(src, encoding="utf-8")
 
@@ -133,6 +131,7 @@ def test_cli_json_output(tmp_path):
     )
     assert result.returncode == 0
     import json as _json
+
     payload = _json.loads(result.stdout)
     assert "findings" in payload and "count" in payload
     assert payload["count"] == 0

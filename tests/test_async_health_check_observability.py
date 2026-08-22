@@ -5,7 +5,6 @@ Verifies that _launch_async_health_check writes structured failure records
 when Popen fails (e.g., due to OSError, FileNotFoundError, etc.).
 """
 
-
 import json
 import subprocess
 import sys
@@ -18,9 +17,7 @@ if str(repo_root) not in sys.path:
 from memory_core.tools import memory_hook_gateway as gateway
 
 
-def test_launch_async_health_check_popen_failure_writes_structured_error(
-    tmp_path: Path, monkeypatch
-):
+def test_launch_async_health_check_popen_failure_writes_structured_error(tmp_path: Path, monkeypatch):
     """When subprocess.Popen raises, a structured failure record should be written."""
     # Create a fake cwd with memory/system structure
     cwd = tmp_path / "project"
@@ -95,9 +92,7 @@ def test_launch_async_health_check_popen_failure_writes_to_error_log_on_write_fa
     assert "python not found" in log["context"].get("launch_error", "")
 
 
-def test_launch_async_health_check_success_does_not_write_failure(
-    tmp_path: Path, monkeypatch
-):
+def test_launch_async_health_check_success_does_not_write_failure(tmp_path: Path, monkeypatch):
     """When Popen succeeds, no failure record should be written."""
     cwd = tmp_path / "project"
     report_path = cwd / "memory" / "system" / "health-report.json"
@@ -120,9 +115,7 @@ def test_launch_async_health_check_success_does_not_write_failure(
     assert not report_path.exists()
 
 
-def test_launch_async_health_check_includes_checked_at_timestamp(
-    tmp_path: Path, monkeypatch
-):
+def test_launch_async_health_check_includes_checked_at_timestamp(tmp_path: Path, monkeypatch):
     """Failure record should include a valid ISO timestamp."""
     cwd = tmp_path / "project"
     report_path = cwd / "memory" / "system" / "health-report.json"

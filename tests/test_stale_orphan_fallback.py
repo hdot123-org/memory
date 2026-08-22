@@ -10,6 +10,7 @@ TDD redEvidence: Without stale orphan fallback, issues without status files
 (pre-date status mechanism) are stuck OPEN forever. With fallback, they are
 canceled after N consecutive ticks.
 """
+
 import os
 import subprocess
 from pathlib import Path
@@ -25,8 +26,7 @@ class TestStaleOrphanFallbackConfig:
     def test_fallback_ticks_constant_defined(self):
         """STALE_ORPHAN_FALLBACK_TICKS constant must be defined."""
         content = REPO_SCRIPT.read_text()
-        assert "STALE_ORPHAN_FALLBACK_TICKS=" in content, \
-            "Must define STALE_ORPHAN_FALLBACK_TICKS constant"
+        assert "STALE_ORPHAN_FALLBACK_TICKS=" in content, "Must define STALE_ORPHAN_FALLBACK_TICKS constant"
 
     def test_fallback_ticks_value_is_5(self):
         """Default N=5 (≈2.5h at 30min/tick)."""
@@ -49,37 +49,39 @@ class TestStaleOrphanFallbackLogic:
         """Companion counter file must be in LOCK_DIR."""
         content = REPO_SCRIPT.read_text()
         # Must reference a companion counter file path
-        assert "stale-orphan-" in content or "STALE_ORPHAN_COUNT_FILE" in content, \
+        assert "stale-orphan-" in content or "STALE_ORPHAN_COUNT_FILE" in content, (
             "Must define companion counter file path for stale orphan tick counting"
+        )
 
     def test_counter_increment_logic(self):
         """Counter must be read and incremented each tick."""
         content = REPO_SCRIPT.read_text()
         # Must read existing counter
-        assert ("cat" in content and "stale-orphan" in content) or \
-               "STALE_ORPHAN_COUNT" in content, \
+        assert ("cat" in content and "stale-orphan" in content) or "STALE_ORPHAN_COUNT" in content, (
             "Must read existing counter value"
+        )
 
     def test_fallback_threshold_check(self):
         """Must compare counter against threshold."""
         content = REPO_SCRIPT.read_text()
         # Must check counter >= threshold
-        assert "STALE_ORPHAN_FALLBACK_TICKS" in content, \
-            "Must compare counter against STALE_ORPHAN_FALLBACK_TICKS"
+        assert "STALE_ORPHAN_FALLBACK_TICKS" in content, "Must compare counter against STALE_ORPHAN_FALLBACK_TICKS"
 
     def test_linear_canceled_action(self):
         """When threshold reached, must cancel Linear issue."""
         content = REPO_SCRIPT.read_text()
         # Must contain canceled action (Linear state change)
-        assert "canceled" in content.lower() or "cancel" in content.lower(), \
+        assert "canceled" in content.lower() or "cancel" in content.lower(), (
             "Must cancel Linear issue when threshold reached"
+        )
 
     def test_evidence_comment_on_cancel(self):
         """Cancel must include evidence comment (stale duration, no status file, tick count)."""
         content = REPO_SCRIPT.read_text()
         # Must write a comment explaining the decision
-        assert "comment" in content.lower() and "stale" in content.lower(), \
+        assert "comment" in content.lower() and "stale" in content.lower(), (
             "Must write evidence comment when canceling stale orphan"
+        )
 
 
 class TestStaleOrphanSemanticPreservation:
@@ -88,10 +90,8 @@ class TestStaleOrphanSemanticPreservation:
     def test_e4_block_still_exists(self):
         """The original E4 BLOCK (no status file) must still exist."""
         content = REPO_SCRIPT.read_text()
-        assert "retrigger BLOCKED" in content, \
-            "E4 BLOCK log message must still exist"
-        assert "no status file" in content, \
-            "E4 BLOCK must still check for missing status file"
+        assert "retrigger BLOCKED" in content, "E4 BLOCK log message must still exist"
+        assert "no status file" in content, "E4 BLOCK must still check for missing status file"
 
     def test_fallback_only_for_no_status_file(self):
         """Fallback must also exist in the no-status-file branch (after E4 BLOCK).
@@ -112,18 +112,19 @@ class TestStaleOrphanSemanticPreservation:
         # own copy of the same pattern, which is expected.
         fallback_pattern = '"$STALE_ORPHAN_COUNT" -ge "$STALE_ORPHAN_FALLBACK_TICKS"'
         fallback_pos = content.rfind(fallback_pattern)
-        assert fallback_pos > no_status_pos, \
+        assert fallback_pos > no_status_pos, (
             "Fallback threshold check must be in the no-status-file branch (after E4 BLOCK)"
+        )
         # Both branches must have their own threshold check
-        assert content.count(fallback_pattern) == 2, \
+        assert content.count(fallback_pattern) == 2, (
             "Expected exactly two threshold checks (no-status-file branch + status=failed branch)"
+        )
 
     def test_e4_block_with_status_file_not_affected(self):
         """When status file EXISTS, the script must NOT enter fallback path."""
         content = REPO_SCRIPT.read_text()
         # The main retrigger OK=1 check must still exist (bypasses fallback)
-        assert 'RETRIGGER_OK=1' in content or 'RETRIGGER_OK' in content, \
-            "RETRIGGER_OK flag must still control flow"
+        assert "RETRIGGER_OK=1" in content or "RETRIGGER_OK" in content, "RETRIGGER_OK flag must still control flow"
         # When status file exists AND RETRIGGER_OK=1, we go to trigger path
         # NOT to fallback — this is ensured by the structure of the existing code
 
@@ -133,7 +134,7 @@ class TestStaleOrphanFallbackSandbox:
 
     @pytest.mark.skipif(
         os.environ.get("CI") == "true",
-        reason="Sandbox test is environment-sensitive and fails in CI due to shell/path differences. Logic verified by other 11 tests."
+        reason="Sandbox test is environment-sensitive and fails in CI due to shell/path differences. Logic verified by other 11 tests.",
     )
     def test_no_status_consecutive_ticks_trigger_cancel(self, tmp_path):
         """No status file + consecutive ≥N ticks → Linear canceled (sandbox test).
@@ -203,19 +204,17 @@ op_get_field() { echo "fake-key"; }
         # Stub scripts/extract_anchor.py
         scripts_dir = sandbox / "scripts"
         scripts_dir.mkdir()
-        (scripts_dir / "extract_anchor.py").write_text(
-            'import sys; print("")  # no anchor\n'
-        )
+        (scripts_dir / "extract_anchor.py").write_text('import sys; print("")  # no anchor\n')
 
         # Modify script for sandbox
         content = sandbox_script.read_text()
 
         # Replace macOS-specific Python path with generic python3 for cross-platform compatibility
-        content = content.replace('/opt/homebrew/bin/python3', 'python3')
+        content = content.replace("/opt/homebrew/bin/python3", "python3")
 
         # Stub TEAM_ID extraction to avoid Python/yaml dependency issues
         content = content.replace(
-            '''TEAM_ID=$(TEAM_KEY="$TEAM_KEY" python3 -c "
+            """TEAM_ID=$(TEAM_KEY="$TEAM_KEY" python3 -c "
 import yaml, os, sys
 team_key = os.environ['TEAM_KEY']
 with open(os.path.expanduser('~/.factory/config/repositories.yml')) as f:
@@ -225,56 +224,47 @@ for td in cfg.get('teams', {}).values():
         print(td.get('linearTeamId', ''))
         sys.exit(0)
 print('')
-" 2>/dev/null || echo "")''',
-            'TEAM_ID="fake-team-id-12345"'
+" 2>/dev/null || echo "")""",
+            'TEAM_ID="fake-team-id-12345"',
         )
-        content = content.replace(
-            'WEBHOOK_BASE="${HOME}/.factory/webhook"',
-            f'WEBHOOK_BASE="{sandbox}"'
-        )
-        content = content.replace(
-            'SCRIPT_DIR="${HOME}/.factory/webhook/scripts"',
-            f'SCRIPT_DIR="{sandbox}"'
-        )
+        content = content.replace('WEBHOOK_BASE="${HOME}/.factory/webhook"', f'WEBHOOK_BASE="{sandbox}"')
+        content = content.replace('SCRIPT_DIR="${HOME}/.factory/webhook/scripts"', f'SCRIPT_DIR="{sandbox}"')
         # Also replace the SCRIPT_DIR assignment that uses WEBHOOK_BASE
-        content = content.replace(
-            'SCRIPT_DIR="${WEBHOOK_BASE}/scripts"',
-            f'SCRIPT_DIR="{sandbox}"'
-        )
+        content = content.replace('SCRIPT_DIR="${WEBHOOK_BASE}/scripts"', f'SCRIPT_DIR="{sandbox}"')
 
         # Stub LINEAR_ISSUES, TERMINAL_ISSUES, and GH_EVOLUTION_ISSUES
         # Need to replace entire multi-line Python blocks to prevent
         # orphaned 'import' statements from being interpreted as shell commands
         import re
+
         content = re.sub(
             r'LINEAR_ISSUES=\$\(TEAM_ID=.*?2>>"\$LOG_FILE"\)',
             'LINEAR_ISSUES="uuid-orphan|INFRA-ORPHAN|Orphan Issue|Backlog|2026-01-01T00:00:00Z"',
             content,
-            flags=re.DOTALL
+            flags=re.DOTALL,
         )
         content = re.sub(
-            r'TERMINAL_ISSUES=\$\(TEAM_ID=.*?2>>"\$LOG_FILE"\)',
-            'TERMINAL_ISSUES=""',
-            content,
-            flags=re.DOTALL
+            r'TERMINAL_ISSUES=\$\(TEAM_ID=.*?2>>"\$LOG_FILE"\)', 'TERMINAL_ISSUES=""', content, flags=re.DOTALL
         )
         content = re.sub(
             r'GH_EVOLUTION_ISSUES=\$\(gh issue list.*?\|\| echo "\[\]"\)',
             'GH_EVOLUTION_ISSUES="[]"',
             content,
-            flags=re.DOTALL
+            flags=re.DOTALL,
         )
 
         sandbox_script.write_text(content)
 
         env = os.environ.copy()
-        env.update({
-            "PATH": f"{bin_dir}:{env['PATH']}",
-            "LINEAR_API_KEY": "fake-key",
-            "TEAM_ID": "fake-team-id",
-            "SANDBOX": str(sandbox),
-            "HOME": str(tmp_path),
-        })
+        env.update(
+            {
+                "PATH": f"{bin_dir}:{env['PATH']}",
+                "LINEAR_API_KEY": "fake-key",
+                "TEAM_ID": "fake-team-id",
+                "SANDBOX": str(sandbox),
+                "HOME": str(tmp_path),
+            }
+        )
 
         # Run N=3 times to accumulate counter (below threshold N=5)
         # This verifies counter increment logic without triggering actual Linear API calls
@@ -290,12 +280,10 @@ print('')
 
         # After 3 ticks, counter file must exist with value >= 3
         counter_file = lock_dir / "stale-orphan-INFRA-ORPHAN.count"
-        assert counter_file.exists(), \
-            f"Counter file must exist after 3 ticks: {counter_file}"
+        assert counter_file.exists(), f"Counter file must exist after 3 ticks: {counter_file}"
 
         counter_value = int(counter_file.read_text().strip())
-        assert counter_value >= 3, \
-            f"Counter must be >= 3 after 3 ticks, got {counter_value}"
+        assert counter_value >= 3, f"Counter must be >= 3 after 3 ticks, got {counter_value}"
 
         # Check log for stale orphan counter entries
         log_files = sorted(log_dir.glob("reconcile-*.log"))
@@ -306,8 +294,7 @@ print('')
                 found_counter_log = True
                 break
 
-        assert found_counter_log, \
-            "Log must contain 'stale orphan counter=' entries"
+        assert found_counter_log, "Log must contain 'stale orphan counter=' entries"
 
 
 class TestStaleOrphanIdempotency:
@@ -318,9 +305,9 @@ class TestStaleOrphanIdempotency:
         content = REPO_SCRIPT.read_text()
         # Must have some form of idempotency check for the cancel action
         # Either via sentinel comment check, or a "canceled" state marker file
-        assert ("sentinel" in content.lower() and "cancel" in content.lower()) or \
-               "stale-orphan" in content, \
+        assert ("sentinel" in content.lower() and "cancel" in content.lower()) or "stale-orphan" in content, (
             "Must have idempotency mechanism for stale orphan cancel"
+        )
 
 
 import pytest

@@ -4,6 +4,7 @@
 - memory-validate 版本检查通过,不强制升级
 - 路由正常工作(只是没有全局 fallback)
 """
+
 from pathlib import Path
 
 from memory_core.tools.adapter_toml_schema import (
@@ -26,9 +27,9 @@ class TestVALCompat001ValidateWithoutGlobalKB:
         memory_root.mkdir(parents=True)
 
         # 0.7.0 lock file (canonical format with [memory] section)
-        lock_content = '''[memory]
+        lock_content = """[memory]
 memory_version = "0.7.0"
-'''
+"""
         (memory_root / "memory.lock").write_text(lock_content, encoding="utf-8")
 
         result = CheckResult()
@@ -75,9 +76,9 @@ canonical_files = []
         memory_root = tmp_path / "memory" / "system"
         memory_root.mkdir(parents=True)
 
-        lock_content = '''[memory]
+        lock_content = """[memory]
 memory_version = "0.6.0"
-'''
+"""
         (memory_root / "memory.lock").write_text(lock_content, encoding="utf-8")
 
         result = CheckResult()
@@ -186,9 +187,7 @@ adapter_version = "0.6.0"
         result = policy.resolve_kb_file("lessons", "nonexistent.md")
         assert result is None
 
-    def test_route_target_policy_with_global_kb_disabled_no_fallback(
-        self, tmp_path: Path
-    ):
+    def test_route_target_policy_with_global_kb_disabled_no_fallback(self, tmp_path: Path):
         """enabled=false 时不 fallback 到全局层"""
         from memory_core.tools.memory_hook_impls import RouteTargetPolicyImpl
 
@@ -214,9 +213,7 @@ adapter_version = "0.6.0"
         result = policy.resolve_kb_file("lessons", "global-lesson.md")
         assert result is None, "enabled=false 时不应 fallback 到全局层"
 
-    def test_route_target_policy_graceful_degradation_when_global_missing(
-        self, tmp_path: Path
-    ):
+    def test_route_target_policy_graceful_degradation_when_global_missing(self, tmp_path: Path):
         """全局层不存在时优雅降级(只用项目层,不报错)"""
         from memory_core.tools.memory_hook_impls import RouteTargetPolicyImpl
 
@@ -257,9 +254,7 @@ class TestVALCompat003NoRegression:
         memory_root.mkdir(parents=True)
 
         # memory.lock (0.8.0 版本, canonical format with [memory] section)
-        (memory_root / "memory.lock").write_text(
-            '[memory]\nmemory_version = "0.8.0"\n', encoding="utf-8"
-        )
+        (memory_root / "memory.lock").write_text('[memory]\nmemory_version = "0.8.0"\n', encoding="utf-8")
 
         # adapter.toml (0.8 风格,有 [global_kb] 段)
         adapter_content = """[core]

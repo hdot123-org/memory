@@ -85,10 +85,7 @@ class CoreConfig:
 
     @property
     def uses_interfaces(self) -> bool:
-        return (
-            self.policy_registry is not None
-            and self.path_utils is not None
-        )
+        return self.policy_registry is not None and self.path_utils is not None
 
     def __post_init__(self) -> None:
         # Group 1: Environment validation
@@ -106,59 +103,37 @@ class CoreConfig:
     def _validate_environment(self) -> None:
         """Validate environment fields."""
         if self.host not in SUPPORTED_HOSTS:
-            raise ValueError(
-                f"host must be one of {SUPPORTED_HOSTS}, got {self.host!r}"
-            )
+            raise ValueError(f"host must be one of {SUPPORTED_HOSTS}, got {self.host!r}")
         if not isinstance(self.event, str) or not self.event:
             raise ValueError("event must be a non-empty string")
         if not isinstance(self.payload, dict):
-            raise TypeError(
-                f"payload must be a dict, got {type(self.payload).__name__}"
-            )
+            raise TypeError(f"payload must be a dict, got {type(self.payload).__name__}")
         if not isinstance(self.cwd, Path):
-            raise TypeError(
-                f"cwd must be a Path, got {type(self.cwd).__name__}"
-            )
+            raise TypeError(f"cwd must be a Path, got {type(self.cwd).__name__}")
         if not isinstance(self.project_scope, str) or not self.project_scope:
             raise ValueError("project_scope must be a non-empty string")
         if not isinstance(self.workspace_root, Path):
-            raise TypeError(
-                f"workspace_root must be a Path, got {type(self.workspace_root).__name__}"
-            )
+            raise TypeError(f"workspace_root must be a Path, got {type(self.workspace_root).__name__}")
         if not isinstance(self.repo_root, Path):
-            raise TypeError(
-                f"repo_root must be a Path, got {type(self.repo_root).__name__}"
-            )
+            raise TypeError(f"repo_root must be a Path, got {type(self.repo_root).__name__}")
 
     def _validate_paths(self) -> None:
         """Validate paths fields."""
         if not isinstance(self.required_canonical, list):
-            raise TypeError(
-                f"required_canonical must be a list, got {type(self.required_canonical).__name__}"
-            )
+            raise TypeError(f"required_canonical must be a list, got {type(self.required_canonical).__name__}")
         if not isinstance(self.project_canonical, dict):
-            raise TypeError(
-                f"project_canonical must be a dict, got {type(self.project_canonical).__name__}"
-            )
+            raise TypeError(f"project_canonical must be a dict, got {type(self.project_canonical).__name__}")
         if not isinstance(self.project_runtime_root, dict):
-            raise TypeError(
-                f"project_runtime_root must be a dict, got {type(self.project_runtime_root).__name__}"
-            )
+            raise TypeError(f"project_runtime_root must be a dict, got {type(self.project_runtime_root).__name__}")
         if not isinstance(self.global_canonical, list):
-            raise TypeError(
-                f"global_canonical must be a list, got {type(self.global_canonical).__name__}"
-            )
+            raise TypeError(f"global_canonical must be a list, got {type(self.global_canonical).__name__}")
         if not isinstance(self.hook_contract_path, Path):
-            raise TypeError(
-                f"hook_contract_path must be a Path, got {type(self.hook_contract_path).__name__}"
-            )
+            raise TypeError(f"hook_contract_path must be a Path, got {type(self.hook_contract_path).__name__}")
 
     def _validate_policy(self) -> None:
         """Validate policy string fields."""
         if not isinstance(self.project_map_refs, list):
-            raise TypeError(
-                f"project_map_refs must be a list, got {type(self.project_map_refs).__name__}"
-            )
+            raise TypeError(f"project_map_refs must be a list, got {type(self.project_map_refs).__name__}")
         for _name in (
             "legality_source_policy",
             "registration_commit_policy",
@@ -168,13 +143,9 @@ class CoreConfig:
             if not isinstance(val, str) or not val:
                 raise ValueError(f"{_name} must be a non-empty string")
         if not isinstance(self.surface_id, str):
-            raise TypeError(
-                f"surface_id must be a string, got {type(self.surface_id).__name__}"
-            )
+            raise TypeError(f"surface_id must be a string, got {type(self.surface_id).__name__}")
         if not isinstance(self.workspace_id, str):
-            raise TypeError(
-                f"workspace_id must be a string, got {type(self.workspace_id).__name__}"
-            )
+            raise TypeError(f"workspace_id must be a string, got {type(self.workspace_id).__name__}")
 
     def _validate_callbacks(self) -> None:
         """Validate that all callback fields are callable."""
@@ -195,13 +166,12 @@ class CoreConfig:
             "docs_refs_for_scope_fn",
         ):
             if not callable(getattr(self, _name)):
-                raise TypeError(
-                    f"{_name} must be callable, got {type(getattr(self, _name)).__name__}"
-                )
+                raise TypeError(f"{_name} must be callable, got {type(getattr(self, _name)).__name__}")
 
     def to_gateway_kwargs(self) -> dict[str, Any]:
         """Return a dict suitable for passing to legacy **kwargs providers."""
         from dataclasses import asdict
+
         return asdict(self)
 
     @classmethod

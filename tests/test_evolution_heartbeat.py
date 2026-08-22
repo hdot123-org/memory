@@ -2,6 +2,7 @@
 
 INFRA-213: Tests the scanner liveness check (gh run list) and main() orchestration.
 """
+
 import json
 import sys
 from datetime import UTC, datetime, timedelta
@@ -22,15 +23,14 @@ def _gh_result(stdout: str = "", returncode: int = 0, stderr: str = "") -> Magic
 
 def _recent_run(hours_ago: float, conclusion: str = "success") -> dict:
     """Create a gh run list entry from N hours ago."""
-    ts = (datetime.now(UTC) - timedelta(hours=hours_ago)).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
+    ts = (datetime.now(UTC) - timedelta(hours=hours_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {"status": "completed", "conclusion": conclusion, "createdAt": ts}
 
 
 # ---------------------------------------------------------------------------
 # check_scanner_liveness
 # ---------------------------------------------------------------------------
+
 
 def test_scanner_alive_recent_success():
     """Scanner ran 30 minutes ago → alive."""
@@ -117,13 +117,16 @@ def test_scanner_subprocess_timeout():
 # main() orchestration
 # ---------------------------------------------------------------------------
 
+
 def test_main_all_ok_returns_0():
     """Scanner alive + no issues without PR → exit 0."""
     runs = [_recent_run(0.5, "success")]
-    with patch("evolution_heartbeat.subprocess.run") as mock_run, \
-         patch("evolution_heartbeat.check_heartbeat_marker") as mock_hb, \
-         patch("evolution_heartbeat.check_history_freshness") as mock_hist, \
-         patch("evolution_heartbeat.write_monitor_heartbeat"):
+    with (
+        patch("evolution_heartbeat.subprocess.run") as mock_run,
+        patch("evolution_heartbeat.check_heartbeat_marker") as mock_hb,
+        patch("evolution_heartbeat.check_history_freshness") as mock_hist,
+        patch("evolution_heartbeat.write_monitor_heartbeat"),
+    ):
         mock_run.return_value = _gh_result(json.dumps(runs))
         mock_hb.return_value = {"stale": True, "message": "advisory stale"}
         mock_hist.return_value = {"stale": True, "message": "advisory stale"}
@@ -141,13 +144,15 @@ def test_main_all_ok_returns_0():
 def test_main_scanner_stale_returns_1():
     """Scanner stale → exit 1, alert created."""
     runs = [_recent_run(5.0, "success")]
-    with patch("evolution_heartbeat.subprocess.run") as mock_run, \
-         patch("evolution_heartbeat.check_heartbeat_marker") as mock_hb, \
-         patch("evolution_heartbeat.check_history_freshness") as mock_hist, \
-         patch("evolution_heartbeat.check_pr_coverage") as mock_cov, \
-         patch("evolution_heartbeat.alert_issue_exists", return_value=False), \
-         patch("evolution_heartbeat.create_alert_issue") as mock_create, \
-         patch("evolution_heartbeat.write_monitor_heartbeat"):
+    with (
+        patch("evolution_heartbeat.subprocess.run") as mock_run,
+        patch("evolution_heartbeat.check_heartbeat_marker") as mock_hb,
+        patch("evolution_heartbeat.check_history_freshness") as mock_hist,
+        patch("evolution_heartbeat.check_pr_coverage") as mock_cov,
+        patch("evolution_heartbeat.alert_issue_exists", return_value=False),
+        patch("evolution_heartbeat.create_alert_issue") as mock_create,
+        patch("evolution_heartbeat.write_monitor_heartbeat"),
+    ):
         mock_run.return_value = _gh_result(json.dumps(runs))
         mock_hb.return_value = {"stale": True, "message": "advisory"}
         mock_hist.return_value = {"stale": True, "message": "advisory"}
@@ -169,10 +174,12 @@ def test_main_advisory_checks_do_not_trigger_alert():
     must NOT trigger alerts when the scanner is confirmed alive.
     """
     runs = [_recent_run(0.3, "success")]
-    with patch("evolution_heartbeat.subprocess.run") as mock_run, \
-         patch("evolution_heartbeat.check_heartbeat_marker") as mock_hb, \
-         patch("evolution_heartbeat.check_history_freshness") as mock_hist, \
-         patch("evolution_heartbeat.write_monitor_heartbeat"):
+    with (
+        patch("evolution_heartbeat.subprocess.run") as mock_run,
+        patch("evolution_heartbeat.check_heartbeat_marker") as mock_hb,
+        patch("evolution_heartbeat.check_history_freshness") as mock_hist,
+        patch("evolution_heartbeat.write_monitor_heartbeat"),
+    ):
         mock_run.return_value = _gh_result(json.dumps(runs))
         mock_hb.return_value = {"stale": True, "message": "marker missing"}
         mock_hist.return_value = {"stale": True, "message": "history missing"}
@@ -228,7 +235,8 @@ def test_heartbeat_001_anomaly_resolved_auto_closes_alert():
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         mock_run.return_value = _gh_result(returncode=0)
         closed = evolution_heartbeat.resolve_cleared_alerts(
-            current_anomalies, open_alerts,
+            current_anomalies,
+            open_alerts,
         )
 
     assert closed == [646]
@@ -261,7 +269,8 @@ def test_heartbeat_001b_both_anomalies_cleared():
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         mock_run.return_value = _gh_result(returncode=0)
         closed = evolution_heartbeat.resolve_cleared_alerts(
-            current_anomalies, open_alerts,
+            current_anomalies,
+            open_alerts,
         )
 
     assert closed == [700]
@@ -278,7 +287,8 @@ def test_heartbeat_002_anomaly_persists_no_close():
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         mock_run.return_value = _gh_result(returncode=0)
         closed = evolution_heartbeat.resolve_cleared_alerts(
-            current_anomalies, open_alerts,
+            current_anomalies,
+            open_alerts,
         )
 
     assert closed == []
@@ -299,7 +309,8 @@ def test_heartbeat_002b_partial_clear_no_close():
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         mock_run.return_value = _gh_result(returncode=0)
         closed = evolution_heartbeat.resolve_cleared_alerts(
-            current_anomalies, open_alerts,
+            current_anomalies,
+            open_alerts,
         )
 
     assert closed == []
@@ -313,7 +324,8 @@ def test_heartbeat_003_no_anomaly_no_action():
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         mock_run.return_value = _gh_result(returncode=0)
         closed = evolution_heartbeat.resolve_cleared_alerts(
-            current_anomalies, open_alerts,
+            current_anomalies,
+            open_alerts,
         )
 
     assert closed == []
@@ -322,44 +334,46 @@ def test_heartbeat_003_no_anomaly_no_action():
 
 def test_extract_recorded_anomalies_from_body():
     """Unit: parse anomaly types from alert issue body."""
-    assert evolution_heartbeat.extract_recorded_anomalies(
-        _ALERT_BODY_ISSUES_WITHOUT_PR
-    ) == {"issues_without_pr"}
-    assert evolution_heartbeat.extract_recorded_anomalies(
-        _ALERT_BODY_SCANNER_STALE
-    ) == {"scanner_stale"}
-    assert evolution_heartbeat.extract_recorded_anomalies(
-        _ALERT_BODY_BOTH
-    ) == {"scanner_stale", "issues_without_pr"}
+    assert evolution_heartbeat.extract_recorded_anomalies(_ALERT_BODY_ISSUES_WITHOUT_PR) == {"issues_without_pr"}
+    assert evolution_heartbeat.extract_recorded_anomalies(_ALERT_BODY_SCANNER_STALE) == {"scanner_stale"}
+    assert evolution_heartbeat.extract_recorded_anomalies(_ALERT_BODY_BOTH) == {"scanner_stale", "issues_without_pr"}
     assert evolution_heartbeat.extract_recorded_anomalies("") == set()
 
 
 def test_compute_current_anomalies_from_checks():
     """Unit: compute current anomaly set from liveness + coverage results."""
     # Scanner alive, no issues without PR → empty
-    assert evolution_heartbeat.compute_current_anomalies(
-        {"alive": True}, {"issues_without_pr": 0},
-    ) == set()
+    assert (
+        evolution_heartbeat.compute_current_anomalies(
+            {"alive": True},
+            {"issues_without_pr": 0},
+        )
+        == set()
+    )
 
     # Scanner stale → scanner_stale
     assert evolution_heartbeat.compute_current_anomalies(
-        {"alive": False}, {"issues_without_pr": 0},
+        {"alive": False},
+        {"issues_without_pr": 0},
     ) == {"scanner_stale"}
 
     # Issues without PR → issues_without_pr
     assert evolution_heartbeat.compute_current_anomalies(
-        {"alive": True}, {"issues_without_pr": 3},
+        {"alive": True},
+        {"issues_without_pr": 3},
     ) == {"issues_without_pr"}
 
     # Both
     assert evolution_heartbeat.compute_current_anomalies(
-        {"alive": False}, {"issues_without_pr": 1},
+        {"alive": False},
+        {"issues_without_pr": 1},
     ) == {"scanner_stale", "issues_without_pr"}
 
 
 # ---------------------------------------------------------------------------
 # VAL-HB-004: fail-closed hardening
 # ---------------------------------------------------------------------------
+
 
 def test_heartbeat_004_check_pr_coverage_gh_failure_marks_data_unknown():
     """VAL-HB-004: gh subprocess failure in check_pr_coverage must NOT return
@@ -369,9 +383,7 @@ def test_heartbeat_004_check_pr_coverage_gh_failure_marks_data_unknown():
         mock_run.return_value = _gh_result(returncode=1, stderr="fatal: unable to access")
         result = evolution_heartbeat.check_pr_coverage()
 
-    assert result["data_ok"] is False, (
-        "check_pr_coverage must set data_ok=False when gh fails"
-    )
+    assert result["data_ok"] is False, "check_pr_coverage must set data_ok=False when gh fails"
 
 
 def test_heartbeat_004_resolve_cleared_alerts_skips_when_coverage_data_unknown():
@@ -385,7 +397,9 @@ def test_heartbeat_004_resolve_cleared_alerts_skips_when_coverage_data_unknown()
 
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         closed = evolution_heartbeat.resolve_cleared_alerts(
-            current_anomalies, open_alerts, coverage_data_ok=False,
+            current_anomalies,
+            open_alerts,
+            coverage_data_ok=False,
         )
 
     assert closed == [], "Must not close any alerts when coverage data is unknown"
@@ -395,11 +409,13 @@ def test_heartbeat_004_resolve_cleared_alerts_skips_when_coverage_data_unknown()
 def test_heartbeat_004_main_skips_self_heal_on_coverage_data_unknown():
     """VAL-HB-004: main() must skip self-heal when check_pr_coverage reports data_ok=False."""
     runs = [_recent_run(0.5, "success")]  # scanner alive
-    with patch("evolution_heartbeat.subprocess.run") as mock_run, \
-         patch("evolution_heartbeat.check_heartbeat_marker") as mock_hb, \
-         patch("evolution_heartbeat.check_history_freshness") as mock_hist, \
-         patch("evolution_heartbeat.write_monitor_heartbeat"), \
-         patch("evolution_heartbeat.list_open_alert_issues") as mock_list:
+    with (
+        patch("evolution_heartbeat.subprocess.run") as mock_run,
+        patch("evolution_heartbeat.check_heartbeat_marker") as mock_hb,
+        patch("evolution_heartbeat.check_history_freshness") as mock_hist,
+        patch("evolution_heartbeat.write_monitor_heartbeat"),
+        patch("evolution_heartbeat.list_open_alert_issues") as mock_list,
+    ):
         # gh run list succeeds (scanner alive)
         # gh issue list for check_pr_coverage fails
         def side_effect(args, **kwargs):
@@ -428,9 +444,9 @@ def test_heartbeat_004_main_skips_self_heal_on_coverage_data_unknown():
     # Strengthened assertion: verify zero gh issue close/comment subprocess calls
     # (not just "skip self-heal" but actively prove no gh close/comment was invoked)
     close_or_comment_calls = [
-        c for c in mock_run.call_args_list
-        if ("comment" in c.args[0] or "close" in c.args[0])
-        and "run" not in c.args[0]  # exclude "gh run list"
+        c
+        for c in mock_run.call_args_list
+        if ("comment" in c.args[0] or "close" in c.args[0]) and "run" not in c.args[0]  # exclude "gh run list"
     ]
     assert len(close_or_comment_calls) == 0, (
         f"Zero gh close/comment calls expected when coverage data unknown, "
@@ -442,6 +458,7 @@ def test_heartbeat_004_main_skips_self_heal_on_coverage_data_unknown():
 # Close/comment returncode hardening
 # ---------------------------------------------------------------------------
 
+
 def test_heartbeat_close_failure_not_added_to_closed_list():
     """gh issue close fails → issue NOT in closed list, error logged."""
     open_alerts = [
@@ -450,6 +467,7 @@ def test_heartbeat_close_failure_not_added_to_closed_list():
     current_anomalies: set[str] = set()
 
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
+
         def side_effect(args, **kwargs):
             if "comment" in args:
                 return _gh_result(returncode=0)  # comment succeeds
@@ -459,7 +477,8 @@ def test_heartbeat_close_failure_not_added_to_closed_list():
 
         mock_run.side_effect = side_effect
         closed = evolution_heartbeat.resolve_cleared_alerts(
-            current_anomalies, open_alerts,
+            current_anomalies,
+            open_alerts,
         )
 
     assert closed == [], "Failed close must not be in closed list"
@@ -473,6 +492,7 @@ def test_heartbeat_comment_failure_prevents_close():
     current_anomalies: set[str] = set()
 
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
+
         def side_effect(args, **kwargs):
             if "comment" in args:
                 return _gh_result(returncode=1, stderr="rate limited")  # comment fails
@@ -482,7 +502,8 @@ def test_heartbeat_comment_failure_prevents_close():
 
         mock_run.side_effect = side_effect
         closed = evolution_heartbeat.resolve_cleared_alerts(
-            current_anomalies, open_alerts,
+            current_anomalies,
+            open_alerts,
         )
 
     assert closed == [], "Close must be skipped when comment fails"
@@ -497,24 +518,21 @@ def test_heartbeat_comment_failure_prevents_close():
 # String coupling elimination: roundtrip test
 # ---------------------------------------------------------------------------
 
+
 def test_anomaly_text_roundtrip_scanner_stale():
     """create_alert_issue body must be parseable by extract_recorded_anomalies.
     This roundtrip test prevents wording drift that would cause silent never-heal."""
     # Simulate what create_alert_issue writes for scanner_stale
     body = evolution_heartbeat._build_alert_body(scanner_stale=True, issues_without_pr=0)
     parsed = evolution_heartbeat.extract_recorded_anomalies(body)
-    assert parsed == {"scanner_stale"}, (
-        f"Roundtrip failed: create_alert_issue body not parseable. Got {parsed}"
-    )
+    assert parsed == {"scanner_stale"}, f"Roundtrip failed: create_alert_issue body not parseable. Got {parsed}"
 
 
 def test_anomaly_text_roundtrip_issues_without_pr():
     """Roundtrip: issues_without_pr anomaly text."""
     body = evolution_heartbeat._build_alert_body(scanner_stale=False, issues_without_pr=3)
     parsed = evolution_heartbeat.extract_recorded_anomalies(body)
-    assert parsed == {"issues_without_pr"}, (
-        f"Roundtrip failed: create_alert_issue body not parseable. Got {parsed}"
-    )
+    assert parsed == {"issues_without_pr"}, f"Roundtrip failed: create_alert_issue body not parseable. Got {parsed}"
 
 
 def test_anomaly_text_roundtrip_both():
@@ -545,14 +563,17 @@ def test_anomaly_constants_match():
 # Repeat comment protection (duplicate prevention)
 # ---------------------------------------------------------------------------
 
+
 def test_issue_has_self_heal_comment_detects_existing():
     """_issue_has_self_heal_comment: detects existing self-heal comment."""
-    comments_json = json.dumps({
-        "comments": [
-            {"body": "Some regular comment"},
-            {"body": "🩹 **自愈**：以下异常已消失，自动关闭此告警：\n\n- test"},
-        ]
-    })
+    comments_json = json.dumps(
+        {
+            "comments": [
+                {"body": "Some regular comment"},
+                {"body": "🩹 **自愈**：以下异常已消失，自动关闭此告警：\n\n- test"},
+            ]
+        }
+    )
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         mock_run.return_value = _gh_result(stdout=comments_json)
         result = evolution_heartbeat._issue_has_self_heal_comment(646)
@@ -567,12 +588,14 @@ def test_issue_has_self_heal_comment_detects_existing():
 
 def test_issue_has_self_heal_comment_no_match():
     """_issue_has_self_heal_comment: no self-heal marker → False."""
-    comments_json = json.dumps({
-        "comments": [
-            {"body": "Some regular comment"},
-            {"body": "Another comment without the marker"},
-        ]
-    })
+    comments_json = json.dumps(
+        {
+            "comments": [
+                {"body": "Some regular comment"},
+                {"body": "Another comment without the marker"},
+            ]
+        }
+    )
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         mock_run.return_value = _gh_result(stdout=comments_json)
         result = evolution_heartbeat._issue_has_self_heal_comment(646)
@@ -599,9 +622,7 @@ def test_resolve_cleared_alerts_skips_duplicate_comment():
     # Simulate: gh issue view returns existing self-heal comment, close succeeds
     def side_effect(args, **kwargs):
         if "view" in args:  # gh issue view for checking comments
-            return _gh_result(stdout=json.dumps({
-                "comments": [{"body": "🩹 **自愈**：previous attempt"}]
-            }))
+            return _gh_result(stdout=json.dumps({"comments": [{"body": "🩹 **自愈**：previous attempt"}]}))
         if "close" in args:
             return _gh_result(returncode=0)  # close succeeds this time
         return _gh_result(returncode=0)
@@ -609,7 +630,8 @@ def test_resolve_cleared_alerts_skips_duplicate_comment():
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         mock_run.side_effect = side_effect
         closed = evolution_heartbeat.resolve_cleared_alerts(
-            current_anomalies, open_alerts,
+            current_anomalies,
+            open_alerts,
         )
 
     assert closed == [646], "Should close after detecting existing comment"
@@ -627,9 +649,7 @@ def test_resolve_cleared_alerts_skips_duplicate_comment_close_fails():
 
     def side_effect(args, **kwargs):
         if "view" in args:  # gh issue view for checking comments
-            return _gh_result(stdout=json.dumps({
-                "comments": [{"body": "🩹 **自愈**：previous attempt"}]
-            }))
+            return _gh_result(stdout=json.dumps({"comments": [{"body": "🩹 **自愈**：previous attempt"}]}))
         if "close" in args:
             return _gh_result(returncode=1, stderr="still failing")  # close fails again
         return _gh_result(returncode=0)
@@ -637,7 +657,8 @@ def test_resolve_cleared_alerts_skips_duplicate_comment_close_fails():
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         mock_run.side_effect = side_effect
         closed = evolution_heartbeat.resolve_cleared_alerts(
-            current_anomalies, open_alerts,
+            current_anomalies,
+            open_alerts,
         )
 
     assert closed == [], "Should not add to closed list when close fails"

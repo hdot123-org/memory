@@ -61,9 +61,7 @@ class OwnershipDomain:
 
     def __post_init__(self) -> None:
         # Normalize path to use forward slashes
-        object.__setattr__(
-            self, "path", self.path.replace("\\", "/").strip("/")
-        )
+        object.__setattr__(self, "path", self.path.replace("\\", "/").strip("/"))
 
 
 @dataclass(frozen=True)
@@ -86,9 +84,7 @@ class OwnershipResource:
 
     def __post_init__(self) -> None:
         # Normalize path to use forward slashes
-        object.__setattr__(
-            self, "path", self.path.replace("\\", "/").strip("/")
-        )
+        object.__setattr__(self, "path", self.path.replace("\\", "/").strip("/"))
 
 
 @dataclass(frozen=True)
@@ -402,13 +398,13 @@ def _normalize_to_project_relative(path: str, project_root: Path) -> str:
         root_str = str(abs_root)
 
         # Ensure root ends with / for proper prefix matching
-        if not root_str.endswith('/'):
-            root_str += '/'
+        if not root_str.endswith("/"):
+            root_str += "/"
 
         # Check if path is under project_root
         if path_str.startswith(root_str):
             # Extract relative part
-            rel_part = path_str[len(root_str):]
+            rel_part = path_str[len(root_str) :]
             return rel_part if rel_part else path
 
         return path
@@ -436,11 +432,7 @@ def classify_owned_path(
     # will be checked against ownership domains.
     # If it's outside project_root (or no project_root given), it stays
     # absolute and will be rejected by _check_path_escape.
-    normalized = (
-        _normalize_to_project_relative(original, project_root)
-        if project_root is not None
-        else original
-    )
+    normalized = _normalize_to_project_relative(original, project_root) if project_root is not None else original
 
     # Reject path escape attempts on the normalized path.
     # After _normalize_to_project_relative, paths under project_root are relative
@@ -466,9 +458,7 @@ def classify_owned_path(
                 reason=f"Exact match to owned resource: {resource.name}",
             )
         # Support glob patterns in resource paths (e.g., "memory/log/*-errors.jsonl")
-        if ("*" in resource.path or "?" in resource.path) and fnmatch.fnmatch(
-            path_str, resource.path
-        ):
+        if ("*" in resource.path or "?" in resource.path) and fnmatch.fnmatch(path_str, resource.path):
             return Owned(
                 resource=resource,
                 level=resource.level,
@@ -622,8 +612,7 @@ def load_memory_ownership(project_root: Path) -> MemoryOwnership:
             return MemoryOwnership.from_dict(data)
         except Exception:
             logger.debug(
-                "load_memory_ownership: ownership.toml parse failed, "
-                "falling through to defaults",
+                "load_memory_ownership: ownership.toml parse failed, falling through to defaults",
                 exc_info=True,
             )
 
@@ -636,8 +625,7 @@ def load_memory_ownership(project_root: Path) -> MemoryOwnership:
             return MemoryOwnership.from_dict(data)
         except Exception:
             logger.debug(
-                "load_memory_ownership: ownership.json parse failed, "
-                "falling through to defaults",
+                "load_memory_ownership: ownership.json parse failed, falling through to defaults",
                 exc_info=True,
             )
 
@@ -684,14 +672,9 @@ def validate_ownership_schema(ownership: MemoryOwnership) -> list[str]:
         if current.name in default_domain_map:
             default = default_domain_map[current.name]
             if current.level.value < default.level.value:
-                errors.append(
-                    f"Domain '{current.name}' downgraded from "
-                    f"{default.level.name} to {current.level.name}"
-                )
+                errors.append(f"Domain '{current.name}' downgraded from {default.level.name} to {current.level.name}")
             if default.level == ProtectionLevel.CRITICAL and not current.recursive:
-                errors.append(
-                    f"Critical domain '{current.name}' must be recursive"
-                )
+                errors.append(f"Critical domain '{current.name}' must be recursive")
 
     # Check for resource downgrades
     default_resource_map: dict[str, OwnershipResource] = {r.name: r for r in DEFAULT_OWNERSHIP_RESOURCES}
@@ -699,10 +682,7 @@ def validate_ownership_schema(ownership: MemoryOwnership) -> list[str]:
         if res.name in default_resource_map:
             default_res = default_resource_map[res.name]
             if res.level.value < default_res.level.value:
-                errors.append(
-                    f"Resource '{res.name}' downgraded from "
-                    f"{default_res.level.name} to {res.level.name}"
-                )
+                errors.append(f"Resource '{res.name}' downgraded from {default_res.level.name} to {res.level.name}")
 
     return errors
 

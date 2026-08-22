@@ -7,7 +7,6 @@ bindings and is intended to serve as the default
 profile for any new memory-enabled project.
 """
 
-
 import os
 from pathlib import Path
 from typing import Any
@@ -23,9 +22,7 @@ except ImportError:  # pragma: no cover
     from ..adapter_toml_schema import load_adapter_toml
 
 
-def build_default_runtime_profile(
-    repo_root: Path, workspace_root: Path | None = None
-) -> dict[str, Any]:
+def build_default_runtime_profile(repo_root: Path, workspace_root: Path | None = None) -> dict[str, Any]:
     """Build a generic runtime profile from ``memory/system/adapter.toml``.
 
     Parameters

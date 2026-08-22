@@ -64,6 +64,9 @@ jobs:
         run: |
           pip install ruff==0.16.1
           ruff check .
+      - name: Format check with ruff
+        run: |
+          ruff format --check .
       - name: Install shellcheck and actionlint
         run: |
           # 优先用 PATH 里已存在的（自建 runner 已预装）；否则下载到 job 本地目录。

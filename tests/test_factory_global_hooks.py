@@ -1,4 +1,3 @@
-
 import json
 import os
 import shutil
@@ -70,16 +69,16 @@ def _fake_memory_commands(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
     init = command_dir / "memory-init"
     init.write_text(
         "#!/bin/sh\n"
-        "host=\"\"\n"
+        'host=""\n'
         "while [ $# -gt 0 ]; do\n"
-        "  case \"$1\" in\n"
-        "    --target) shift; target=\"$1\" ;;\n"
-        "    --host) shift; host=\"$1\" ;;\n"
+        '  case "$1" in\n'
+        '    --target) shift; target="$1" ;;\n'
+        '    --host) shift; host="$1" ;;\n'
         "  esac\n"
         "  shift\n"
         "done\n"
-        "mkdir -p \"$target/memory/system\"\n"
-        "echo \"$host\" > \"$target/memory/system/init-host\"\n",
+        'mkdir -p "$target/memory/system"\n'
+        'echo "$host" > "$target/memory/system/init-host"\n',
         encoding="utf-8",
     )
     init.chmod(init.stat().st_mode | stat.S_IXUSR)
@@ -109,10 +108,20 @@ def test_install_factory_hooks_writes_wrapper_and_settings_json(monkeypatch, tmp
     assert "--host factory" in wrapper_text
     assert str(gateway) in wrapper_text
     assert str(init) in wrapper_text
-    assert "exec \"$MEMORY_HOOK_GATEWAY\" \"$@\"" in wrapper_text
+    assert 'exec "$MEMORY_HOOK_GATEWAY" "$@"' in wrapper_text
 
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert set(settings["hooks"]) == {"SessionStart", "UserPromptSubmit", "Stop", "Notification", "PreToolUse", "PostToolUse", "SubagentStop", "PreCompact", "SessionEnd"}
+    assert set(settings["hooks"]) == {
+        "SessionStart",
+        "UserPromptSubmit",
+        "Stop",
+        "Notification",
+        "PreToolUse",
+        "PostToolUse",
+        "SubagentStop",
+        "PreCompact",
+        "SessionEnd",
+    }
     commands = [
         hook["command"]
         for event_groups in settings["hooks"].values()
@@ -126,11 +135,7 @@ def test_install_factory_hooks_writes_wrapper_and_settings_json(monkeypatch, tmp
     # Verify PreToolUse hook exists with correct event
     pretooluse_hooks = settings["hooks"].get("PreToolUse", [])
     assert len(pretooluse_hooks) >= 1
-    pretooluse_commands = [
-        h["command"]
-        for g in pretooluse_hooks
-        for h in g.get("hooks", [])
-    ]
+    pretooluse_commands = [h["command"] for g in pretooluse_hooks for h in g.get("hooks", [])]
     assert any("--event pre-tool-use" in cmd for cmd in pretooluse_commands)
 
 
@@ -366,7 +371,9 @@ def test_install_factory_hooks_backs_up_existing_settings_json(monkeypatch, tmp_
     factory_home = tmp_path / ".factory"
     factory_home.mkdir()
     settings_path = factory_home / "settings.json"
-    existing_settings = '{"model":"keep","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"keep-me"}]}]}}\n'
+    existing_settings = (
+        '{"model":"keep","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"keep-me"}]}]}}\n'
+    )
     settings_path.write_text(existing_settings, encoding="utf-8")
     _fake_memory_commands(tmp_path, monkeypatch)
 
@@ -440,11 +447,7 @@ def test_pretooluse_hook_registered_in_settings_json(monkeypatch, tmp_path: Path
     assert len(pretooluse_hooks) >= 1
 
     # Verify the command uses pre-tool-use event
-    commands = [
-        h["command"]
-        for g in pretooluse_hooks
-        for h in g.get("hooks", [])
-    ]
+    commands = [h["command"] for g in pretooluse_hooks for h in g.get("hooks", [])]
     assert any("--event pre-tool-use" in cmd for cmd in commands)
 
 
@@ -464,9 +467,7 @@ def test_pretooluse_existing_user_hooks_preserved(monkeypatch, tmp_path: Path) -
                     "hooks": [{"type": "command", "command": "user-custom-guard"}],
                 }
             ],
-            "SessionStart": [
-                {"hooks": [{"type": "command", "command": "old-session-hook"}]}
-            ],
+            "SessionStart": [{"hooks": [{"type": "command", "command": "old-session-hook"}]}],
         },
     }
     settings_path.write_text(json.dumps(existing_settings), encoding="utf-8")
@@ -480,15 +481,14 @@ def test_pretooluse_existing_user_hooks_preserved(monkeypatch, tmp_path: Path) -
     # User PreToolUse hooks should be preserved
     assert "PreToolUse" in settings["hooks"]
     pretooluse_hooks = settings["hooks"]["PreToolUse"]
-    user_hooks = [h for g in pretooluse_hooks for h in g.get("hooks", []) if "user-custom-guard" in str(h.get("command", ""))]
+    user_hooks = [
+        h for g in pretooluse_hooks for h in g.get("hooks", []) if "user-custom-guard" in str(h.get("command", ""))
+    ]
     assert len(user_hooks) >= 1
 
     # Memory hooks should also be present
     memory_hooks = [
-        h
-        for g in pretooluse_hooks
-        for h in g.get("hooks", [])
-        if "memory-hook" in str(h.get("command", ""))
+        h for g in pretooluse_hooks for h in g.get("hooks", []) if "memory-hook" in str(h.get("command", ""))
     ]
     assert len(memory_hooks) >= 1
 
@@ -622,8 +622,10 @@ def test_render_wrapper_resolves_bare_name_to_absolute_path() -> None:
     assert fake_abs_path in rendered
     # The bare name should NOT appear as the default for MEMORY_HOOK_GATEWAY
     # (it should be the resolved path instead)
-    assert f"MEMORY_HOOK_GATEWAY=${{MEMORY_HOOK_GATEWAY:-{fake_abs_path}}}" in rendered or \
-           f"MEMORY_HOOK_GATEWAY=${{MEMORY_HOOK_GATEWAY:-'{fake_abs_path}'}}" in rendered
+    assert (
+        f"MEMORY_HOOK_GATEWAY=${{MEMORY_HOOK_GATEWAY:-{fake_abs_path}}}" in rendered
+        or f"MEMORY_HOOK_GATEWAY=${{MEMORY_HOOK_GATEWAY:-'{fake_abs_path}'}}" in rendered
+    )
 
 
 def test_render_wrapper_preserves_absolute_path_as_is() -> None:

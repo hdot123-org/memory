@@ -13,6 +13,7 @@ import pytest
 def gw():
     """Import gateway module."""
     from memory_core.tools import memory_hook_gateway as gw_mod
+
     return gw_mod
 
 
@@ -56,6 +57,7 @@ def _sample_package(**overrides):
 # VAL-OUTPUT-001: session-start outputs Factory JSON Output format
 # ===========================================================================
 
+
 class TestSessionStartOutputFormat:
     """session-start must output hookSpecificOutput with SessionStart."""
 
@@ -78,6 +80,7 @@ class TestSessionStartOutputFormat:
 # ===========================================================================
 # VAL-OUTPUT-002: prompt-submit outputs Factory JSON Output format
 # ===========================================================================
+
 
 class TestPromptSubmitOutputFormat:
     """prompt-submit must output hookSpecificOutput with UserPromptSubmit."""
@@ -102,6 +105,7 @@ class TestPromptSubmitOutputFormat:
 # VAL-OUTPUT-003: additionalContext contains allowed_reads
 # ===========================================================================
 
+
 class TestAdditionalContextAllowedReads:
     """additionalContext must contain Allowed Reads section."""
 
@@ -124,6 +128,7 @@ class TestAdditionalContextAllowedReads:
 # VAL-OUTPUT-004: additionalContext contains allowed_writes
 # ===========================================================================
 
+
 class TestAdditionalContextAllowedWrites:
     """additionalContext must contain Allowed Writes section."""
 
@@ -145,6 +150,7 @@ class TestAdditionalContextAllowedWrites:
 # ===========================================================================
 # VAL-OUTPUT-004b: dict-valued allowed_writes (e.g. kb_policy) render as nested sub-items
 # ===========================================================================
+
 
 class TestAdditionalContextDictWrites:
     """Dict-valued writes must render as nested sub-items, not dict repr."""
@@ -181,6 +187,7 @@ class TestAdditionalContextDictWrites:
 # ===========================================================================
 # VAL-OUTPUT-005: additionalContext omits internal metadata
 # ===========================================================================
+
 
 class TestAdditionalContextOmitsMetadata:
     """additionalContext must NOT contain internal metadata fields."""
@@ -225,6 +232,7 @@ class TestAdditionalContextOmitsMetadata:
 # VAL-OUTPUT-006: suppressOutput is true
 # ===========================================================================
 
+
 class TestSuppressOutput:
     """Output must contain suppressOutput: true."""
 
@@ -239,24 +247,39 @@ class TestSuppressOutput:
 # VAL-OUTPUT-007: non-injection events output empty JSON
 # ===========================================================================
 
+
 class TestNonInjectionEventsSuppressed:
     """Non-injection events suppress output when successful (VAL-HOOK-001)
     and remain visible (``{}``) when degraded (VAL-HOOK-002)."""
 
-    @pytest.mark.parametrize("event", [
-        "stop", "notification", "pre-compact", "session-end",
-        "post-tool-use", "subagent-stop",
-    ])
+    @pytest.mark.parametrize(
+        "event",
+        [
+            "stop",
+            "notification",
+            "pre-compact",
+            "session-end",
+            "post-tool-use",
+            "subagent-stop",
+        ],
+    )
     def test_non_injection_events_ok_suppressed(self, gw, event):
         """Successful (status ok) non-injection events output {"suppressOutput": true}."""
         package = _sample_package(event=event)
         result = json.loads(gw._build_factory_hook_output(package, event))
         assert result == {"suppressOutput": True}
 
-    @pytest.mark.parametrize("event", [
-        "stop", "notification", "pre-compact", "session-end",
-        "post-tool-use", "subagent-stop",
-    ])
+    @pytest.mark.parametrize(
+        "event",
+        [
+            "stop",
+            "notification",
+            "pre-compact",
+            "session-end",
+            "post-tool-use",
+            "subagent-stop",
+        ],
+    )
     def test_non_injection_events_degraded_not_suppressed(self, gw, event):
         """Degraded (status != ok) non-injection events output {} so errors stay visible."""
         package = _sample_package(event=event, status="degraded")
@@ -267,6 +290,7 @@ class TestNonInjectionEventsSuppressed:
 # ===========================================================================
 # VAL-OUTPUT-008: validation_errors included only when non-empty
 # ===========================================================================
+
 
 class TestValidationErrorsConditional:
     """Validation Warnings section appears only when validation_errors is non-empty."""
@@ -291,6 +315,7 @@ class TestValidationErrorsConditional:
 # VAL-OUTPUT-009: output size significantly smaller than full package
 # ===========================================================================
 
+
 class TestOutputSizeSmaller:
     """Output must be < 50% of full package size."""
 
@@ -306,12 +331,14 @@ class TestOutputSizeSmaller:
 # VAL-NOREGRESS-001: PreToolUse guard unaffected
 # ===========================================================================
 
+
 class TestPreToolUseUnaffected:
     """PreToolUse events still return via _handle_pretooluse_guard."""
 
     def test_pretooluse_guard_called_before_execute_delegate(self, gw):
         """_handle_pretooluse_guard is called before _execute_delegate in main()."""
         import inspect
+
         source = inspect.getsource(gw.main)
         guard_pos = source.find("_handle_pretooluse_guard")
         dispatch_pos = source.find("_dispatch_output")
@@ -324,12 +351,14 @@ class TestPreToolUseUnaffected:
 # VAL-NOREGRESS-003: --no-delegate mode still outputs full package
 # ===========================================================================
 
+
 class TestNoDelegateUnaffected:
     """--no-delegate branch still outputs complete package JSON."""
 
     def test_no_delegate_outputs_full_package(self, gw, tmp_path, capsys):
         """--no-delegate stdout is full context-package JSON."""
         import argparse
+
         args = argparse.Namespace(host="factory", event="session-start", no_delegate=True)
         package = _sample_package()
 
@@ -345,6 +374,7 @@ class TestNoDelegateUnaffected:
 # Integration: _execute_delegate uses _build_factory_hook_output for Factory
 # ===========================================================================
 
+
 class TestExecuteDelegateIntegration:
     """_execute_delegate Factory branch uses _build_factory_hook_output."""
 
@@ -352,6 +382,7 @@ class TestExecuteDelegateIntegration:
         """Factory host session-start outputs Factory JSON Output format."""
         import argparse
         from unittest.mock import MagicMock
+
         args = argparse.Namespace(host="factory", event="session-start")
         package = _sample_package()
 
@@ -370,6 +401,7 @@ class TestExecuteDelegateIntegration:
         """Factory host stop event (status ok) outputs {"suppressOutput": true}."""
         import argparse
         from unittest.mock import MagicMock
+
         args = argparse.Namespace(host="factory", event="stop")
         package = _sample_package(event="stop")
 
@@ -386,6 +418,7 @@ class TestExecuteDelegateIntegration:
         """Factory host stop event (degraded) outputs {} so errors stay visible."""
         import argparse
         from unittest.mock import MagicMock
+
         args = argparse.Namespace(host="factory", event="stop")
         package = _sample_package(event="stop", status="degraded")
 
@@ -402,6 +435,7 @@ class TestExecuteDelegateIntegration:
         """Factory host prompt-submit outputs Factory JSON Output format."""
         import argparse
         from unittest.mock import MagicMock
+
         args = argparse.Namespace(host="factory", event="prompt-submit")
         package = _sample_package(event="prompt-submit")
 
@@ -420,13 +454,21 @@ class TestExecuteDelegateIntegration:
 # VAL-FAST-001 to VAL-FAST-011: Fast-path optimization for non-injection events
 # ===========================================================================
 
+
 class TestFastPathOutput:
     """Fast-path returns suppressOutput for non-injection events."""
 
-    @pytest.mark.parametrize("event", [
-        "stop", "notification", "subagent-stop",
-        "post-tool-use", "pre-compact", "session-end",
-    ])
+    @pytest.mark.parametrize(
+        "event",
+        [
+            "stop",
+            "notification",
+            "subagent-stop",
+            "post-tool-use",
+            "pre-compact",
+            "session-end",
+        ],
+    )
     def test_fast_path_returns_suppress_output(self, gw, event, monkeypatch):
         """Non-injection events return {"suppressOutput": true} via fast-path."""
         import argparse
@@ -440,20 +482,20 @@ class TestFastPathOutput:
         )
 
         with (
-            patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', event]),
-            patch('sys.stdin', StringIO('{"cwd": "/tmp"}')),
-            patch.object(gw, '_parse_args', return_value=args),
-            patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}),
-            patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")),
-            patch.object(gw, '_handle_source_repo_check', return_value=None),
-            patch.object(gw, 'is_denied_project_root', return_value=False),
-            patch.object(gw, '_should_noop_for_external_context', return_value=False),
-            patch.object(gw, '_handle_pretooluse_guard', return_value=None),
-            patch.object(gw, 'build_context_package') as mock_build,
-            patch.object(gw, '_record_project_lifecycle_event', return_value=None),
-            patch.object(gw, '_emit_fast_path_metrics'),
-            patch.object(gw, '_record_event_log_minimal'),
-            patch('sys.stdout', new_callable=StringIO) as mock_stdout,
+            patch("sys.argv", ["memory_hook_gateway", "--host", "factory", "--event", event]),
+            patch("sys.stdin", StringIO('{"cwd": "/tmp"}')),
+            patch.object(gw, "_parse_args", return_value=args),
+            patch.object(gw, "_read_payload", return_value={"cwd": "/tmp"}),
+            patch.object(gw, "_discover_cwd", return_value=gw.Path("/tmp")),
+            patch.object(gw, "_handle_source_repo_check", return_value=None),
+            patch.object(gw, "is_denied_project_root", return_value=False),
+            patch.object(gw, "_should_noop_for_external_context", return_value=False),
+            patch.object(gw, "_handle_pretooluse_guard", return_value=None),
+            patch.object(gw, "build_context_package") as mock_build,
+            patch.object(gw, "_record_project_lifecycle_event", return_value=None),
+            patch.object(gw, "_emit_fast_path_metrics"),
+            patch.object(gw, "_record_event_log_minimal"),
+            patch("sys.stdout", new_callable=StringIO) as mock_stdout,
         ):
             result = gw.main()
 
@@ -482,20 +524,20 @@ class TestFastPathLifecycleRecording:
         mock_lifecycle = MagicMock(return_value={"status": "active"})
 
         with (
-            patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']),
-            patch('sys.stdin', StringIO('{"cwd": "/tmp"}')),
-            patch.object(gw, '_parse_args', return_value=args),
-            patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}),
-            patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")),
-            patch.object(gw, '_handle_source_repo_check', return_value=None),
-            patch.object(gw, 'is_denied_project_root', return_value=False),
-            patch.object(gw, '_should_noop_for_external_context', return_value=False),
-            patch.object(gw, '_handle_pretooluse_guard', return_value=None),
-            patch.object(gw, 'build_context_package') as mock_build,
-            patch.object(gw, '_record_project_lifecycle_event', mock_lifecycle),
-            patch.object(gw, '_emit_fast_path_metrics'),
-            patch.object(gw, '_record_event_log_minimal'),
-            patch('sys.stdout', new_callable=StringIO),
+            patch("sys.argv", ["memory_hook_gateway", "--host", "factory", "--event", "stop"]),
+            patch("sys.stdin", StringIO('{"cwd": "/tmp"}')),
+            patch.object(gw, "_parse_args", return_value=args),
+            patch.object(gw, "_read_payload", return_value={"cwd": "/tmp"}),
+            patch.object(gw, "_discover_cwd", return_value=gw.Path("/tmp")),
+            patch.object(gw, "_handle_source_repo_check", return_value=None),
+            patch.object(gw, "is_denied_project_root", return_value=False),
+            patch.object(gw, "_should_noop_for_external_context", return_value=False),
+            patch.object(gw, "_handle_pretooluse_guard", return_value=None),
+            patch.object(gw, "build_context_package") as mock_build,
+            patch.object(gw, "_record_project_lifecycle_event", mock_lifecycle),
+            patch.object(gw, "_emit_fast_path_metrics"),
+            patch.object(gw, "_record_event_log_minimal"),
+            patch("sys.stdout", new_callable=StringIO),
         ):
             gw.main()
 
@@ -523,20 +565,20 @@ class TestFastPathNoBuildContextPackage:
         mock_build = MagicMock()
 
         with (
-            patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'notification']),
-            patch('sys.stdin', StringIO('{"cwd": "/tmp"}')),
-            patch.object(gw, '_parse_args', return_value=args),
-            patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}),
-            patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")),
-            patch.object(gw, '_handle_source_repo_check', return_value=None),
-            patch.object(gw, 'is_denied_project_root', return_value=False),
-            patch.object(gw, '_should_noop_for_external_context', return_value=False),
-            patch.object(gw, '_handle_pretooluse_guard', return_value=None),
-            patch.object(gw, 'build_context_package', mock_build),
-            patch.object(gw, '_record_project_lifecycle_event', return_value=None),
-            patch.object(gw, '_emit_fast_path_metrics'),
-            patch.object(gw, '_record_event_log_minimal'),
-            patch('sys.stdout', new_callable=StringIO),
+            patch("sys.argv", ["memory_hook_gateway", "--host", "factory", "--event", "notification"]),
+            patch("sys.stdin", StringIO('{"cwd": "/tmp"}')),
+            patch.object(gw, "_parse_args", return_value=args),
+            patch.object(gw, "_read_payload", return_value={"cwd": "/tmp"}),
+            patch.object(gw, "_discover_cwd", return_value=gw.Path("/tmp")),
+            patch.object(gw, "_handle_source_repo_check", return_value=None),
+            patch.object(gw, "is_denied_project_root", return_value=False),
+            patch.object(gw, "_should_noop_for_external_context", return_value=False),
+            patch.object(gw, "_handle_pretooluse_guard", return_value=None),
+            patch.object(gw, "build_context_package", mock_build),
+            patch.object(gw, "_record_project_lifecycle_event", return_value=None),
+            patch.object(gw, "_emit_fast_path_metrics"),
+            patch.object(gw, "_record_event_log_minimal"),
+            patch("sys.stdout", new_callable=StringIO),
         ):
             gw.main()
 
@@ -563,20 +605,20 @@ class TestFastPathExceptionHandling:
             raise RuntimeError("lifecycle failed")
 
         with (
-            patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']),
-            patch('sys.stdin', StringIO('{"cwd": "/tmp"}')),
-            patch.object(gw, '_parse_args', return_value=args),
-            patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}),
-            patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")),
-            patch.object(gw, '_handle_source_repo_check', return_value=None),
-            patch.object(gw, 'is_denied_project_root', return_value=False),
-            patch.object(gw, '_should_noop_for_external_context', return_value=False),
-            patch.object(gw, '_handle_pretooluse_guard', return_value=None),
-            patch.object(gw, 'build_context_package') as mock_build,
-            patch.object(gw, '_record_project_lifecycle_event', side_effect=raise_exception),
-            patch.object(gw, '_emit_fast_path_metrics'),
-            patch.object(gw, '_record_event_log_minimal'),
-            patch('sys.stdout', new_callable=StringIO) as mock_stdout,
+            patch("sys.argv", ["memory_hook_gateway", "--host", "factory", "--event", "stop"]),
+            patch("sys.stdin", StringIO('{"cwd": "/tmp"}')),
+            patch.object(gw, "_parse_args", return_value=args),
+            patch.object(gw, "_read_payload", return_value={"cwd": "/tmp"}),
+            patch.object(gw, "_discover_cwd", return_value=gw.Path("/tmp")),
+            patch.object(gw, "_handle_source_repo_check", return_value=None),
+            patch.object(gw, "is_denied_project_root", return_value=False),
+            patch.object(gw, "_should_noop_for_external_context", return_value=False),
+            patch.object(gw, "_handle_pretooluse_guard", return_value=None),
+            patch.object(gw, "build_context_package") as mock_build,
+            patch.object(gw, "_record_project_lifecycle_event", side_effect=raise_exception),
+            patch.object(gw, "_emit_fast_path_metrics"),
+            patch.object(gw, "_record_event_log_minimal"),
+            patch("sys.stdout", new_callable=StringIO) as mock_stdout,
         ):
             result = gw.main()
 
@@ -601,14 +643,17 @@ class TestBuildContextPackageLifecycleParameter:
         params = sig.parameters
 
         # Verify lifecycle_record parameter exists
-        assert 'lifecycle_record' in params
+        assert "lifecycle_record" in params
         # Verify it's optional (has default)
-        assert params['lifecycle_record'].default is None or params['lifecycle_record'].default == inspect.Parameter.empty
+        assert (
+            params["lifecycle_record"].default is None or params["lifecycle_record"].default == inspect.Parameter.empty
+        )
 
 
 # ===========================================================================
 # Integration Test: Fast-path file writing behavior
 # ===========================================================================
+
 
 class TestFastPathFileWriting:
     """Integration test: fast-path actually writes event log and metrics to tmp directory."""
@@ -627,8 +672,8 @@ class TestFastPathFileWriting:
         metrics_dir.mkdir()
 
         # Override module-level constants to use tmp directories
-        monkeypatch.setattr(gw, 'ARTIFACT_ROOT', artifact_root)
-        monkeypatch.setattr(gw, 'EVENT_LOG', event_log_path)
+        monkeypatch.setattr(gw, "ARTIFACT_ROOT", artifact_root)
+        monkeypatch.setattr(gw, "EVENT_LOG", event_log_path)
 
         args = argparse.Namespace(
             host="factory",
@@ -637,18 +682,18 @@ class TestFastPathFileWriting:
         )
 
         with (
-            patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']),
-            patch('sys.stdin', StringIO('{"cwd": "/tmp"}')),
-            patch.object(gw, '_parse_args', return_value=args),
-            patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}),
-            patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")),
-            patch.object(gw, '_handle_source_repo_check', return_value=None),
-            patch.object(gw, 'is_denied_project_root', return_value=False),
-            patch.object(gw, '_should_noop_for_external_context', return_value=False),
-            patch.object(gw, '_handle_pretooluse_guard', return_value=None),
-            patch.object(gw, 'build_context_package') as mock_build,
-            patch.object(gw, '_record_project_lifecycle_event', return_value=None),
-            patch('sys.stdout', new_callable=StringIO) as mock_stdout,
+            patch("sys.argv", ["memory_hook_gateway", "--host", "factory", "--event", "stop"]),
+            patch("sys.stdin", StringIO('{"cwd": "/tmp"}')),
+            patch.object(gw, "_parse_args", return_value=args),
+            patch.object(gw, "_read_payload", return_value={"cwd": "/tmp"}),
+            patch.object(gw, "_discover_cwd", return_value=gw.Path("/tmp")),
+            patch.object(gw, "_handle_source_repo_check", return_value=None),
+            patch.object(gw, "is_denied_project_root", return_value=False),
+            patch.object(gw, "_should_noop_for_external_context", return_value=False),
+            patch.object(gw, "_handle_pretooluse_guard", return_value=None),
+            patch.object(gw, "build_context_package") as mock_build,
+            patch.object(gw, "_record_project_lifecycle_event", return_value=None),
+            patch("sys.stdout", new_callable=StringIO) as mock_stdout,
         ):
             # Run the actual functions (not mocked)
             result = gw.main()
@@ -667,24 +712,24 @@ class TestFastPathFileWriting:
         assert len(event_log_content) > 0, "Event log should not be empty"
 
         # Parse the event log entry
-        event_entry = json.loads(event_log_content.strip().split('\n')[-1])
-        assert event_entry['event'] == 'stop'
-        assert event_entry['host'] == 'factory'
-        assert event_entry['fast_path'] is True
-        assert 'timestamp' in event_entry
-        assert 'duration_ms' in event_entry
+        event_entry = json.loads(event_log_content.strip().split("\n")[-1])
+        assert event_entry["event"] == "stop"
+        assert event_entry["host"] == "factory"
+        assert event_entry["fast_path"] is True
+        assert "timestamp" in event_entry
+        assert "duration_ms" in event_entry
 
         # Verify metrics were written (check if metrics file exists in artifact_root)
         metrics_file = artifact_root / "metrics.jsonl"
         if metrics_file.exists():
             metrics_content = metrics_file.read_text()
             if metrics_content:
-                metrics_entry = json.loads(metrics_content.strip().split('\n')[-1])
-                assert metrics_entry['event'] == 'stop'
-                assert metrics_entry['host'] == 'factory'
-                assert metrics_entry['status'] == 'fast_path'
-                assert metrics_entry['fast_path'] is True
-                assert 'duration_ms' in metrics_entry
+                metrics_entry = json.loads(metrics_content.strip().split("\n")[-1])
+                assert metrics_entry["event"] == "stop"
+                assert metrics_entry["host"] == "factory"
+                assert metrics_entry["status"] == "fast_path"
+                assert metrics_entry["fast_path"] is True
+                assert "duration_ms" in metrics_entry
 
     def test_fast_path_does_not_write_artifact_snapshot(self, gw, tmp_path, monkeypatch):
         """Fast-path does NOT write artifact snapshot to contexts/ directory."""
@@ -699,9 +744,9 @@ class TestFastPathFileWriting:
         context_root.mkdir()
         event_log_path = artifact_root / "events.jsonl"
 
-        monkeypatch.setattr(gw, 'ARTIFACT_ROOT', artifact_root)
-        monkeypatch.setattr(gw, 'CONTEXT_ROOT', context_root)
-        monkeypatch.setattr(gw, 'EVENT_LOG', event_log_path)
+        monkeypatch.setattr(gw, "ARTIFACT_ROOT", artifact_root)
+        monkeypatch.setattr(gw, "CONTEXT_ROOT", context_root)
+        monkeypatch.setattr(gw, "EVENT_LOG", event_log_path)
 
         args = argparse.Namespace(
             host="factory",
@@ -713,17 +758,17 @@ class TestFastPathFileWriting:
         files_before = set(context_root.rglob("*")) if context_root.exists() else set()
 
         with (
-            patch('sys.argv', ['memory_hook_gateway', '--host', 'factory', '--event', 'stop']),
-            patch('sys.stdin', StringIO('{"cwd": "/tmp"}')),
-            patch.object(gw, '_parse_args', return_value=args),
-            patch.object(gw, '_read_payload', return_value={"cwd": "/tmp"}),
-            patch.object(gw, '_discover_cwd', return_value=gw.Path("/tmp")),
-            patch.object(gw, '_handle_source_repo_check', return_value=None),
-            patch.object(gw, 'is_denied_project_root', return_value=False),
-            patch.object(gw, '_should_noop_for_external_context', return_value=False),
-            patch.object(gw, '_handle_pretooluse_guard', return_value=None),
-            patch.object(gw, '_record_project_lifecycle_event', return_value=None),
-            patch('sys.stdout', new_callable=StringIO),
+            patch("sys.argv", ["memory_hook_gateway", "--host", "factory", "--event", "stop"]),
+            patch("sys.stdin", StringIO('{"cwd": "/tmp"}')),
+            patch.object(gw, "_parse_args", return_value=args),
+            patch.object(gw, "_read_payload", return_value={"cwd": "/tmp"}),
+            patch.object(gw, "_discover_cwd", return_value=gw.Path("/tmp")),
+            patch.object(gw, "_handle_source_repo_check", return_value=None),
+            patch.object(gw, "is_denied_project_root", return_value=False),
+            patch.object(gw, "_should_noop_for_external_context", return_value=False),
+            patch.object(gw, "_handle_pretooluse_guard", return_value=None),
+            patch.object(gw, "_record_project_lifecycle_event", return_value=None),
+            patch("sys.stdout", new_callable=StringIO),
         ):
             gw.main()
 

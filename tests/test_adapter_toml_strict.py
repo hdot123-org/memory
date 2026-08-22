@@ -1,6 +1,5 @@
 """Strict validation tests for load_adapter_toml."""
 
-
 from pathlib import Path
 
 import pytest

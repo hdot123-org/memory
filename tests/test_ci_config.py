@@ -4,6 +4,7 @@ CI configuration tests for trust chain reconstruction mission.
 Tests for VAL-GATE-* assertions (Audit Gate) and VAL-CROSS-029/030/031/032.
 Validates YAML structure of droid-review.yml, auto-merge.yml, and ci.yml.
 """
+
 import subprocess
 from pathlib import Path
 
@@ -63,14 +64,11 @@ class TestAuditGate:
     def test_val_gate_005_actionlint_passes(self):
         """VAL-GATE-005: Modified droid-review.yml passes actionlint."""
         import shutil
+
         if not shutil.which("actionlint"):
             pytest.skip("actionlint not installed")
         workflow_path = REPO_ROOT / ".github/workflows/droid-review.yml"
-        result = subprocess.run(
-            ["actionlint", str(workflow_path)],
-            capture_output=True,
-            text=True
-        )
+        result = subprocess.run(["actionlint", str(workflow_path)], capture_output=True, text=True)
         assert result.returncode == 0, f"actionlint failed:\n{result.stdout}\n{result.stderr}"
 
     def test_val_gate_006_auto_merge_no_bypass(self):
@@ -90,10 +88,7 @@ class TestAuditGate:
 
         # Must use shared-workflows/auto-merge (respects check status)
         steps = data["jobs"]["auto-merge"]["steps"]
-        auto_merge_step = next(
-            (s for s in steps if "auto-merge" in s.get("uses", "")),
-            None
-        )
+        auto_merge_step = next((s for s in steps if "auto-merge" in s.get("uses", "")), None)
         assert auto_merge_step is not None, "auto-merge step using shared-workflows/auto-merge not found"
         assert "shared-workflows/auto-merge" in auto_merge_step["uses"]
 
@@ -115,10 +110,7 @@ class TestAuditGate:
 
         # Must have step that runs check_droid_review.sh
         steps = ci_ok_job["steps"]
-        check_step = next(
-            (s for s in steps if "check_droid_review.sh" in s.get("run", "")),
-            None
-        )
+        check_step = next((s for s in steps if "check_droid_review.sh" in s.get("run", "")), None)
         assert check_step is not None
 
         # Must not be continue-on-error
@@ -160,10 +152,7 @@ class TestCrossAreaAuditGate:
 
         # Verify auto-merge uses shared workflow that respects checks
         steps = data["jobs"]["auto-merge"]["steps"]
-        merge_step = next(
-            (s for s in steps if "auto-merge" in s.get("uses", "")),
-            None
-        )
+        merge_step = next((s for s in steps if "auto-merge" in s.get("uses", "")), None)
         assert merge_step is not None
         # Shared workflow respects check status by design
 
@@ -316,9 +305,9 @@ class TestDroidReviewDocsOnlySkip:
         workflow_path = REPO_ROOT / ".github/workflows/droid-review.yml"
         data = yaml.safe_load(workflow_path.read_text())
         job_if = str(data["jobs"]["review-shard"].get("if", ""))
-        assert "docs_only" in job_if or "docs-only" in job_if.lower() or \
-            "needs.plan-shards.outputs.docs_only" in job_if, \
-            "review-shard job must be gated on docs_only output"
+        assert (
+            "docs_only" in job_if or "docs-only" in job_if.lower() or "needs.plan-shards.outputs.docs_only" in job_if
+        ), "review-shard job must be gated on docs_only output"
 
     def test_droid_review_job_not_skipped_for_docs(self):
         """VAL-DRSKIP-005: droid-review job 级 if 不含 docs 跳过（保证 check run 结论为 success）。"""
@@ -408,9 +397,7 @@ class TestDroidReview503SelfHeal:
     def test_watchdog_has_actions_write_permission(self, watchdog_data):
         """VAL-503-002: watchdog 独立持有 actions: write（rerun API 必需）。"""
         perms = watchdog_data.get("permissions", {})
-        assert perms.get("actions") == "write", (
-            "watchdog must hold actions:write to call rerun-failed-jobs"
-        )
+        assert perms.get("actions") == "write", "watchdog must hold actions:write to call rerun-failed-jobs"
         # 权限最小化：只授予 rerun 所需的 actions，不携带其他写权限
         assert "contents" not in perms or perms["contents"] == "read"
 
@@ -483,9 +470,7 @@ class TestDroidReview503SelfHeal:
         steps = droid_review_data["jobs"]["droid-review"]["steps"]
         names = [s.get("name", "") for s in steps]
         for name in names:
-            assert "Self-heal" not in str(name), (
-                "in-job self-heal step must not return; use droid-review-watchdog.yml"
-            )
+            assert "Self-heal" not in str(name), "in-job self-heal step must not return; use droid-review-watchdog.yml"
         run_blocks = [s.get("run", "") for s in steps if s.get("run")]
         for rb in run_blocks:
             assert "rerun-failed-jobs" not in rb, (
@@ -558,6 +543,7 @@ class TestRepoVarsReferences:
         assert 'if [ -z "${MAX_ATTEMPT:-}" ]' in watchdog_raw
         # 确认死代码模式不存在：:-3 赋值后再 -z 判断永远走不到
         import re
+
         assert not re.search(
             r'MAX_ATTEMPT="\$\{MAX_ATTEMPT:-3\}"\s*\n\s*if\s+\[\s+-z',
             watchdog_raw,
@@ -567,6 +553,7 @@ class TestRepoVarsReferences:
         """QUOTA_RECOVERY_WINDOW_SECONDS 变量缺失时有 -z 判断回退（非 :- 死代码模式）。"""
         assert 'if [ -z "${QUOTA_RECOVERY_WINDOW_SECONDS:-}" ]' in watchdog_raw
         import re
+
         assert not re.search(
             r'QUOTA_RECOVERY_WINDOW_SECONDS="\$\{QUOTA_RECOVERY_WINDOW_SECONDS:-1800\}"\s*\n\s*if\s+\[\s+-z',
             watchdog_raw,
@@ -576,6 +563,7 @@ class TestRepoVarsReferences:
         """QUOTA_SCAN_WINDOW_HOURS 变量缺失时有 -z 判断回退（非 :- 死代码模式）。"""
         assert 'if [ -z "${QUOTA_SCAN_WINDOW_HOURS:-}" ]' in watchdog_raw
         import re
+
         assert not re.search(
             r'QUOTA_SCAN_WINDOW_HOURS="\$\{QUOTA_SCAN_WINDOW_HOURS:-6\}"\s*\n\s*if\s+\[\s+-z',
             watchdog_raw,
@@ -584,6 +572,7 @@ class TestRepoVarsReferences:
     def test_watchdog_no_dead_code_fallback_pattern(self, watchdog_raw):
         """VAL-VARS-004: 所有 vars 回退均使用 -z 判断模式，无 :- 死代码。"""
         import re
+
         # 搜索 ":-数字" 赋值后紧跟 -z 判断的死代码模式
         dead_patterns = [
             r'MAX_ATTEMPT="\$\{MAX_ATTEMPT:-\d+\}"\s*\n\s*if\s+\[\s+-z',
@@ -592,24 +581,26 @@ class TestRepoVarsReferences:
             r'WATCHDOG_MAX_ATTEMPT="\$\{WATCHDOG_MAX_ATTEMPT:-\d+\}"\s*\n\s*if\s+\[\s+-z',
         ]
         for pat in dead_patterns:
-            assert not re.search(pat, watchdog_raw), (
-                f"watchdog.yml 仍有死代码回退模式（:- 展开先于 -z 判断）：{pat}"
-            )
+            assert not re.search(pat, watchdog_raw), f"watchdog.yml 仍有死代码回退模式（:- 展开先于 -z 判断）：{pat}"
 
     # 硬编码残留检查（防回退）
     def test_watchdog_no_hardcoded_1800(self, watchdog_raw):
         """quota-sweep 不含硬编码 1800（已通过 vars 引用替代）。"""
         # 排除注释和日志字符串中的 1800
         import re
+
         # 找到 shell run block 中的 -lt 1800 模式（硬编码残留）
-        assert not re.search(r'-lt\s+1800\b', watchdog_raw), \
+        assert not re.search(r"-lt\s+1800\b", watchdog_raw), (
             "watchdog quota-sweep 仍有硬编码 '-lt 1800'，应改用 $QUOTA_RECOVERY_WINDOW_SECONDS"
+        )
 
     def test_watchdog_no_hardcoded_6_hours(self, watchdog_raw):
         """quota-sweep 不含硬编码 '6 hours ago'（已通过 vars 引用替代）。"""
         import re
-        assert not re.search(r"'\d+\s+hours\s+ago'", watchdog_raw), \
+
+        assert not re.search(r"'\d+\s+hours\s+ago'", watchdog_raw), (
             "watchdog quota-sweep 仍有硬编码 'N hours ago'，应改用 $QUOTA_SCAN_WINDOW_HOURS"
+        )
 
     # branch-cleanup.yml 中将来 F4 会添加的 vars 引用
     # （本测试只验证已外置的变量，BRANCH_AGE_* 由 F4 处理）

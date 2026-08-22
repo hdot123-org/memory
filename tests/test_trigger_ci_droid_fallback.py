@@ -11,6 +11,7 @@
 
 测试用 stub HTTP server（mock sessions API），严禁向生产 session 注入测试消息。
 """
+
 import json
 import os
 import shutil
@@ -220,13 +221,12 @@ class TestVAL_INJECT_001_5xx_Synchronous_Fallback:
 
         # 验证：日志包含 fallback 派生动作
         combined_output = result.stdout + result.stderr
-        assert "FALLBACK: Spawning droid exec" in combined_output or \
-               "FALLBACK: droid exec" in combined_output, \
-               "Expected fallback spawn log"
+        assert "FALLBACK: Spawning droid exec" in combined_output or "FALLBACK: droid exec" in combined_output, (
+            "Expected fallback spawn log"
+        )
 
         # 验证：日志包含 5xx 重试耗尽信息
-        assert "5xx" in combined_output.lower() or "504" in combined_output, \
-               "Expected 5xx retry logs"
+        assert "5xx" in combined_output.lower() or "504" in combined_output, "Expected 5xx retry logs"
 
         # 验证：创建了 fallback 去重锁
         fallback_lock = locks_dir / f"ci-fallback-{pr_number}.lock"
@@ -259,13 +259,11 @@ class TestVAL_INJECT_002_Dedup_Lock:
             combined_output = result.stdout + result.stderr
 
             # 统计 fallback 派生次数
-            if "FALLBACK: Spawning droid exec" in combined_output or \
-               "FALLBACK: droid exec" in combined_output:
+            if "FALLBACK: Spawning droid exec" in combined_output or "FALLBACK: droid exec" in combined_output:
                 fallback_spawn_count += 1
 
         # 验证：只派生 1 次 fallback
-        assert fallback_spawn_count == 1, \
-               f"Expected 1 fallback spawn, got {fallback_spawn_count}"
+        assert fallback_spawn_count == 1, f"Expected 1 fallback spawn, got {fallback_spawn_count}"
 
         # 验证：第 2、3 次调用命中去重锁
         # 通过日志检查（"already triggered" 或 "lock age"）
@@ -282,17 +280,15 @@ class TestVAL_INJECT_003_Probe_Comment:
         script_content = TRIGGER_SCRIPT.read_text()
 
         # 验证：代码中存在探活相关注释
-        assert "探活" in script_content or "probe" in script_content.lower(), \
-               "Expected probe-related comments"
+        assert "探活" in script_content or "probe" in script_content.lower(), "Expected probe-related comments"
 
         # 验证：注释包含实测日期
-        assert "2026-08-20" in script_content or "2026-08-" in script_content, \
-               "Expected probe test date in comments"
+        assert "2026-08-20" in script_content or "2026-08-" in script_content, "Expected probe test date in comments"
 
         # 验证：注释包含端点存在性结论
-        assert "存在" in script_content or "可用" in script_content or \
-               "exist" in script_content.lower(), \
-               "Expected endpoint existence conclusion in comments"
+        assert "存在" in script_content or "可用" in script_content or "exist" in script_content.lower(), (
+            "Expected endpoint existence conclusion in comments"
+        )
 
 
 class TestVAL_INJECT_004_4xx_No_Regression:
@@ -317,9 +313,9 @@ class TestVAL_INJECT_004_4xx_No_Regression:
         combined_output = result.stdout + result.stderr
 
         # 验证：4xx 路径触发 fallback
-        assert "FALLBACK: Spawning droid exec" in combined_output or \
-               "FALLBACK: droid exec" in combined_output, \
-               "4xx should trigger fallback"
+        assert "FALLBACK: Spawning droid exec" in combined_output or "FALLBACK: droid exec" in combined_output, (
+            "4xx should trigger fallback"
+        )
 
         # 验证：创建了 fallback 去重锁
         fallback_lock = locks_dir / f"ci-fallback-{pr_number}.lock"
@@ -352,16 +348,13 @@ class TestVAL_INJECT_005_200_No_Regression:
         combined_output = result.stdout + result.stderr
 
         # 验证：200 路径不派生 fallback
-        assert "FALLBACK: Spawning droid exec" not in combined_output, \
-               "200 success should NOT spawn fallback"
+        assert "FALLBACK: Spawning droid exec" not in combined_output, "200 success should NOT spawn fallback"
 
         # 验证：pending-ci 文件被标记 injected_at
         if pending_file.exists():
             pending_data = json.loads(pending_file.read_text())
-            assert "injected_at" in pending_data, \
-                   "200 success should write injected_at to pending-ci file"
-            assert "message_id" in pending_data, \
-                   "200 success should write message_id to pending-ci file"
+            assert "injected_at" in pending_data, "200 success should write injected_at to pending-ci file"
+            assert "message_id" in pending_data, "200 success should write message_id to pending-ci file"
 
 
 class TestVAL_INJECT_006_Watchdog_Still_Works:
@@ -399,23 +392,23 @@ class TestVAL_INJECT_007_Probe_Failure_Direct_Fallback:
         combined_output = result.stdout + result.stderr
 
         # 验证：探活失败后直接走 fallback
-        assert "PROBE FAILED" in combined_output or \
-               "Session does not exist" in combined_output, \
-               "Expected probe failure log"
+        assert "PROBE FAILED" in combined_output or "Session does not exist" in combined_output, (
+            "Expected probe failure log"
+        )
 
         # 验证：触发了 fallback
-        assert "FALLBACK: Spawning droid exec" in combined_output or \
-               "FALLBACK: droid exec" in combined_output, \
-               "Probe failure should trigger fallback"
+        assert "FALLBACK: Spawning droid exec" in combined_output or "FALLBACK: droid exec" in combined_output, (
+            "Probe failure should trigger fallback"
+        )
 
         # 验证：总耗时短（未烧满 POST 重试）
         assert elapsed < 30, f"Expected fast fallback (< 30s), got {elapsed:.1f}s"
 
         # 验证：未执行完整的 POST 重试序列（通过检查日志中无 "Attempt 3/3" 等）
         # 注意：探活失败后应直接 exit，不进入 POST 循环
-        assert "Attempt 3/3" not in combined_output or \
-               "POSTing to" not in combined_output, \
-               "Should not exhaust POST retries after probe failure"
+        assert "Attempt 3/3" not in combined_output or "POSTing to" not in combined_output, (
+            "Should not exhaust POST retries after probe failure"
+        )
 
 
 class TestProbeEndpointExists:
@@ -428,13 +421,12 @@ class TestProbeEndpointExists:
         script_content = TRIGGER_SCRIPT.read_text()
 
         # 验证：代码注释中记录了端点返回 JSON 格式错误（非 HTML）
-        assert "JSON" in script_content and "404" in script_content, \
-               "Expected JSON 404 response documented in comments"
+        assert "JSON" in script_content and "404" in script_content, "Expected JSON 404 response documented in comments"
 
         # 验证：代码区分了 API 级 404（JSON）和路由级 404（HTML）
-        assert "Session does not exist" in script_content or \
-               "session" in script_content.lower(), \
-               "Expected session existence check in probe logic"
+        assert "Session does not exist" in script_content or "session" in script_content.lower(), (
+            "Expected session existence check in probe logic"
+        )
 
 
 if __name__ == "__main__":

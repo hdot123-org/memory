@@ -15,10 +15,10 @@ from ._init_config import (
 logger = logging.getLogger(__name__)
 
 
-
 # ---------------------------------------------------------------------------
 # Hooks / AGENTS.md helpers
 # ---------------------------------------------------------------------------
+
 
 # Markers for identifying old bare gateway commands that should be replaced
 def _is_old_bare_gateway_command(command: str) -> bool:
@@ -29,10 +29,7 @@ def _is_old_bare_gateway_command(command: str) -> bool:
     if "memory-hook --host" in command:
         return False
     # If it's a bare gateway command (direct python path or bare gateway)
-    return (
-        "memory_hook_gateway.py" in command
-        or command.strip().startswith("memory-hook-gateway")
-    )
+    return "memory_hook_gateway.py" in command or command.strip().startswith("memory-hook-gateway")
 
 
 def template_hooks_json(host: str = "claude") -> dict[str, Any]:
@@ -43,11 +40,13 @@ def template_hooks_json(host: str = "claude") -> dict[str, Any]:
     """
     hooks: list[dict[str, Any]] = []
     for claude_event, gateway_event in CLAUDE_HOOK_EVENTS:
-        hooks.append({
-            "event": claude_event,
-            "command": f"~/.claude/bin/memory-hook --host {host} --event {gateway_event}",
-            "stdin": True,
-        })
+        hooks.append(
+            {
+                "event": claude_event,
+                "command": f"~/.claude/bin/memory-hook --host {host} --event {gateway_event}",
+                "stdin": True,
+            }
+        )
     return {"hooks": hooks}
 
 
@@ -330,8 +329,6 @@ def update_agents_md(
     result["created"].append("file:AGENTS.md")
 
 
-
 # ---------------------------------------------------------------------------
 # Initialization logic
 # ---------------------------------------------------------------------------
-

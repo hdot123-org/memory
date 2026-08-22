@@ -9,6 +9,7 @@ marker, not the marker line alone.
 
 Architecture reference: docs/architecture/issue-flow.md §9.4/§10.3（镜像定位锚点）
 """
+
 import os
 import shlex
 import subprocess
@@ -141,7 +142,7 @@ exit 0
             env=env,
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
 
         assert result.returncode == 0
@@ -165,7 +166,7 @@ exit 0
             env=env,
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
 
         assert result.returncode == 0
@@ -189,7 +190,7 @@ exit 0
             env=env,
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
 
         assert result.returncode == 0
@@ -202,7 +203,7 @@ exit 0
             cwd=temp_repo,
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
 
         assert result.returncode == 1
@@ -215,7 +216,7 @@ exit 0
             "#!/bin/bash\n"
             "echo '_此 comment 由 ci-gateway skill 自动生成。_'\n"
             "echo '<!-- linear-linkback -->'\n"
-            'echo \'<p><a href="https://linear.app/jtoom/issue/INFRA-357">INFRA-357</a></p>\'\n'
+            "echo '<p><a href=\"https://linear.app/jtoom/issue/INFRA-357\">INFRA-357</a></p>'\n"
             "exit 0\n"
         )
         stub_gh.chmod(0o755)
@@ -239,6 +240,7 @@ exit 0
 # ============================================================================
 # INFRA-357: comment-block window semantics (ci-gateway multi-line format)
 # ============================================================================
+
 
 class TestCommentBlockWindow:
     """INFRA-357: extraction window = marker-bearing comment BLOCK.
@@ -304,17 +306,14 @@ class TestCommentBlockWindow:
 
     def test_marker_block_multiline_no_id_anywhere(self):
         """Marker present, no id anywhere in the block → None (fail-closed)."""
-        comments = (
-            "_此 comment 由 ci-gateway skill 自动生成。_\n"
-            "<!-- linear-linkback -->\n"
-            "（无链接）"
-        )
+        comments = "_此 comment 由 ci-gateway skill 自动生成。_\n<!-- linear-linkback -->\n（无链接）"
         assert extract_linkback_anchor(comments) is None
 
 
 # ============================================================================
 # INFRA-357: anchor gate for compensation-layer close (trigger-droid.sh L1166)
 # ============================================================================
+
 
 class TestAnchorGate:
     """INFRA-357: compensation-layer close guard (scripts/anchor_gate.py).
@@ -369,8 +368,7 @@ class TestAnchorGate:
         stub.write_text("\n".join(lines) + "\n")
         stub.chmod(0o755)
 
-    def _run_gate(self, repo_path: Path, logs_dir: Path, candidates_json: str,
-                  target_ref: str = "INFRA-357"):
+    def _run_gate(self, repo_path: Path, logs_dir: Path, candidates_json: str, target_ref: str = "INFRA-357"):
         env = os.environ.copy()
         env["PATH"] = f"{repo_path}:{env.get('PATH', '')}"
         return subprocess.run(
@@ -391,9 +389,12 @@ class TestAnchorGate:
     def test_gate_anchor_match_returns_number(self, gate_repo):
         """Anchor == target_ref → prints issue number (close allowed)."""
         repo_path, logs_dir = gate_repo
-        self._write_stub_gh(repo_path, {
-            101: ("<!-- linear-linkback INFRA-357 -->", 0),
-        })
+        self._write_stub_gh(
+            repo_path,
+            {
+                101: ("<!-- linear-linkback INFRA-357 -->", 0),
+            },
+        )
         result = self._run_gate(repo_path, logs_dir, '[{"number": 101}]')
         assert result.returncode == 0
         assert result.stdout.strip() == "101"
@@ -402,9 +403,12 @@ class TestAnchorGate:
     def test_gate_missing_anchor_skips_close_with_drift(self, gate_repo):
         """No anchor in candidate → empty output + drift record (fail-closed)."""
         repo_path, logs_dir = gate_repo
-        self._write_stub_gh(repo_path, {
-            102: ("Branch cleanup notification, mentions INFRA-357 only in text", 0),
-        })
+        self._write_stub_gh(
+            repo_path,
+            {
+                102: ("Branch cleanup notification, mentions INFRA-357 only in text", 0),
+            },
+        )
         result = self._run_gate(repo_path, logs_dir, '[{"number": 102}]')
         assert result.returncode == 0
         assert result.stdout.strip() == ""
@@ -414,9 +418,12 @@ class TestAnchorGate:
     def test_gate_anchor_mismatch_skips_close_with_drift(self, gate_repo):
         """Anchor != target_ref → empty output + mismatch drift (fail-closed)."""
         repo_path, logs_dir = gate_repo
-        self._write_stub_gh(repo_path, {
-            103: ("<!-- linear-linkback INFRA-999 -->", 0),
-        })
+        self._write_stub_gh(
+            repo_path,
+            {
+                103: ("<!-- linear-linkback INFRA-999 -->", 0),
+            },
+        )
         result = self._run_gate(repo_path, logs_dir, '[{"number": 103}]')
         assert result.returncode == 0
         assert result.stdout.strip() == ""
@@ -426,9 +433,12 @@ class TestAnchorGate:
     def test_gate_extract_failure_skips_close_with_trails(self, gate_repo):
         """gh failure (extract_anchor exit 1) → skip + drift + anchor-extract.log."""
         repo_path, logs_dir = gate_repo
-        self._write_stub_gh(repo_path, {
-            104: ("unused", 1),
-        })
+        self._write_stub_gh(
+            repo_path,
+            {
+                104: ("unused", 1),
+            },
+        )
         result = self._run_gate(repo_path, logs_dir, '[{"number": 104}]')
         assert result.returncode == 0
         assert result.stdout.strip() == ""
@@ -445,9 +455,12 @@ class TestAnchorGate:
         """
         repo_path, logs_dir = gate_repo
         (logs_dir / "anchor-drift.log").mkdir()  # unwritable target
-        self._write_stub_gh(repo_path, {
-            107: ("Branch cleanup notification, no anchor here", 0),
-        })
+        self._write_stub_gh(
+            repo_path,
+            {
+                107: ("Branch cleanup notification, no anchor here", 0),
+            },
+        )
         result = self._run_gate(repo_path, logs_dir, '[{"number": 107}]')
         assert result.returncode == 0
         assert result.stdout.strip() == ""
@@ -462,9 +475,12 @@ class TestAnchorGate:
         """
         repo_path, logs_dir = gate_repo
         (logs_dir / "anchor-extract.log").mkdir()  # unwritable target
-        self._write_stub_gh(repo_path, {
-            108: ("unused", 1),
-        })
+        self._write_stub_gh(
+            repo_path,
+            {
+                108: ("unused", 1),
+            },
+        )
         result = self._run_gate(repo_path, logs_dir, '[{"number": 108}]')
         assert result.returncode == 0
         assert result.stdout.strip() == ""
@@ -476,13 +492,14 @@ class TestAnchorGate:
     def test_gate_multiple_candidates_first_match_wins(self, gate_repo):
         """Mismatched candidate drift-recorded; matched candidate returned."""
         repo_path, logs_dir = gate_repo
-        self._write_stub_gh(repo_path, {
-            105: ("<!-- linear-linkback INFRA-999 -->", 0),
-            106: ("<!-- linear-linkback INFRA-357 -->", 0),
-        })
-        result = self._run_gate(
-            repo_path, logs_dir, '[{"number": 105}, {"number": 106}]'
+        self._write_stub_gh(
+            repo_path,
+            {
+                105: ("<!-- linear-linkback INFRA-999 -->", 0),
+                106: ("<!-- linear-linkback INFRA-357 -->", 0),
+            },
         )
+        result = self._run_gate(repo_path, logs_dir, '[{"number": 105}, {"number": 106}]')
         assert result.returncode == 0
         assert result.stdout.strip() == "106"
         drift = self._read_log(logs_dir, "anchor-drift.log")
@@ -492,13 +509,17 @@ class TestAnchorGate:
     def test_gate_ci_gateway_multiline_candidate_matches(self, gate_repo):
         """Full chain: real ci-gateway multi-line comment → gate opens."""
         repo_path, logs_dir = gate_repo
-        self._write_stub_gh(repo_path, {
-            357: (
-                "_此 comment 由 ci-gateway skill 自动生成。_\n"
-                "<!-- linear-linkback -->\n"
-                '<p><a href="https://linear.app/jtoom/issue/INFRA-357">INFRA-357</a></p>'
-            , 0),
-        })
+        self._write_stub_gh(
+            repo_path,
+            {
+                357: (
+                    "_此 comment 由 ci-gateway skill 自动生成。_\n"
+                    "<!-- linear-linkback -->\n"
+                    '<p><a href="https://linear.app/jtoom/issue/INFRA-357">INFRA-357</a></p>',
+                    0,
+                ),
+            },
+        )
         result = self._run_gate(repo_path, logs_dir, '[{"number": 357}]')
         assert result.returncode == 0
         assert result.stdout.strip() == "357"
@@ -525,9 +546,11 @@ class TestAnchorGate:
         assert result.returncode == 2
         assert "Usage" in result.stderr
 
+
 # ============================================================================
 # VAL-ANC assertions (validation-contract.md)
 # ============================================================================
+
 
 class TestVALANCAssertions:
     """Tests for VAL-ANC-001 to VAL-ANC-005 assertions."""

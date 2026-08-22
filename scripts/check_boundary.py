@@ -99,16 +99,18 @@ def _is_dir_exempt(dir_path: Path) -> bool:
     """Check if a directory should be skipped during traversal."""
     name = dir_path.name
     # Directory names that should be pruned early to avoid slow traversal
-    exempt_names = frozenset({
-        "__pycache__",
-        ".git",
-        ".venv",
-        ".pytest_cache",
-        ".ruff_cache",
-        "node_modules",
-        "artifacts",
-        "log",
-    })
+    exempt_names = frozenset(
+        {
+            "__pycache__",
+            ".git",
+            ".venv",
+            ".pytest_cache",
+            ".ruff_cache",
+            "node_modules",
+            "artifacts",
+            "log",
+        }
+    )
     return name in exempt_names
 
 
@@ -145,24 +147,28 @@ def scan_business_kb_files() -> list[dict[str, str]]:
                 continue
             for prefix in BUSINESS_PREFIX_PATTERNS:
                 if entry.name.startswith(prefix):
-                    findings.append({
-                        "kind": "business-kb-prefix",
-                        "path": str(entry.relative_to(REPO_ROOT)),
-                        "matched": prefix,
-                        "rule": "BOUNDARY 4.1: business-prefixed kb files must live in archive/legacy-<project>/kb/",
-                    })
+                    findings.append(
+                        {
+                            "kind": "business-kb-prefix",
+                            "path": str(entry.relative_to(REPO_ROOT)),
+                            "matched": prefix,
+                            "rule": "BOUNDARY 4.1: business-prefixed kb files must live in archive/legacy-<project>/kb/",
+                        }
+                    )
                     break
     if KB_PROJECTS_DIR.is_dir():
         for entry in KB_PROJECTS_DIR.iterdir():
             if not entry.is_file():
                 continue
             if entry.name in BUSINESS_PROJECT_FILES:
-                findings.append({
-                    "kind": "business-project-file",
-                    "path": str(entry.relative_to(REPO_ROOT)),
-                    "matched": entry.name,
-                    "rule": "BOUNDARY 4.1: per-project truth files belong in adapter runtime profile, not memory/kb/projects/",
-                })
+                findings.append(
+                    {
+                        "kind": "business-project-file",
+                        "path": str(entry.relative_to(REPO_ROOT)),
+                        "matched": entry.name,
+                        "rule": "BOUNDARY 4.1: per-project truth files belong in adapter runtime profile, not memory/kb/projects/",
+                    }
+                )
     return findings
 
 
@@ -180,10 +186,7 @@ def scan_runtime_leaks() -> list[dict[str, str]]:
         # Use os.walk for fast directory pruning
         for dirpath, dirnames, filenames in os.walk(root, topdown=True):
             # Prune exempt directories in-place
-            dirnames[:] = [
-                d for d in dirnames
-                if not _is_dir_exempt(Path(dirpath) / d)
-            ]
+            dirnames[:] = [d for d in dirnames if not _is_dir_exempt(Path(dirpath) / d)]
 
             for filename in filenames:
                 filepath = Path(dirpath) / filename
@@ -203,13 +206,15 @@ def scan_runtime_leaks() -> list[dict[str, str]]:
                     m = regex.search(text)
                     if m:
                         line_no = text[: m.start()].count("\n") + 1
-                        findings.append({
-                            "kind": "runtime-leak",
-                            "path": str(filepath.relative_to(REPO_ROOT)),
-                            "line": str(line_no),
-                            "matched": name,
-                            "rule": "BOUNDARY 4.3: business runtime details (SSH alias / IP / DSN / deploy host) must not leak into core paths",
-                        })
+                        findings.append(
+                            {
+                                "kind": "runtime-leak",
+                                "path": str(filepath.relative_to(REPO_ROOT)),
+                                "line": str(line_no),
+                                "matched": name,
+                                "rule": "BOUNDARY 4.3: business runtime details (SSH alias / IP / DSN / deploy host) must not leak into core paths",
+                            }
+                        )
 
     return findings
 

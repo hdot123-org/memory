@@ -17,6 +17,7 @@ from memory_core.tools.memory_hook_schema import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _v2_package_with_drops() -> dict[str, Any]:
     """wb-hook-v2 package containing keys that get dropped."""
     return {
@@ -91,6 +92,7 @@ def _v1_package_with_project_fields() -> dict[str, Any]:
 # Test 1: is_lossless returns (True, []) when no keys are dropped
 # ---------------------------------------------------------------------------
 
+
 class TestIsLosslessNoDrop:
     def test_is_lossless_no_drop_returns_true(self) -> None:
         """输入 package 不含 _DROP_KEYS 的键，is_lossless 返回 (True, [])."""
@@ -104,6 +106,7 @@ class TestIsLosslessNoDrop:
 # Test 2: is_lossless detects system_context drop
 # ---------------------------------------------------------------------------
 
+
 class TestIsLosslessDropsSystemContext:
     def test_is_lossless_drops_system_context(self) -> None:
         """含 system_context，wb-hook-v2 → context-package-v1 返回 (False, ['system_context'])."""
@@ -116,6 +119,7 @@ class TestIsLosslessDropsSystemContext:
 # ---------------------------------------------------------------------------
 # Test 3: audit emitted on drop when enabled
 # ---------------------------------------------------------------------------
+
 
 class TestAuditEmittedOnDrop:
     def test_audit_emitted_on_drop_when_enabled(self, capsys: pytest.CaptureFixture) -> None:
@@ -133,6 +137,7 @@ class TestAuditEmittedOnDrop:
 # Test 4: audit silent when disabled
 # ---------------------------------------------------------------------------
 
+
 class TestAuditSilentWhenDisabled:
     def test_audit_silent_when_disabled(self, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
         """MEMORY_HOOK_SCHEMA_AUDIT=0 时 stderr 无 'drop_audit'."""
@@ -146,6 +151,7 @@ class TestAuditSilentWhenDisabled:
 # ---------------------------------------------------------------------------
 # Test 5: convert_to_v1 still returns same shape after audit (compatibility regression)
 # ---------------------------------------------------------------------------
+
 
 class TestConvertToV1Shape:
     def test_convert_to_v1_still_returns_same_shape_after_audit(self, capsys: pytest.CaptureFixture) -> None:
@@ -169,6 +175,7 @@ class TestConvertToV1Shape:
 # ---------------------------------------------------------------------------
 # Test 6: v1 → memory-v1 drops project business fields
 # ---------------------------------------------------------------------------
+
 
 class TestV1ToMemoryV1DropsProjectFields:
     def test_v1_to_memory_v1_drops_project_business_fields(self) -> None:

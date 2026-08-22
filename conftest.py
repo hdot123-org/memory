@@ -83,6 +83,7 @@ def _guard_load_key_not_patched():
     """
     yield
     import memory_core.tools.memory_hook_integrity_keys as _key_module
+
     # Check if load_key has been patched (lambdas or closures have different __name__)
     if hasattr(_key_module.load_key, "__name__"):
         assert _key_module.load_key.__name__ == "load_key", (
@@ -112,8 +113,9 @@ def _reset_gateway_adapter_config():
     yield
     try:
         from memory_core.tools import memory_hook_gateway as gw
+
         # Reload default adapter profile to restore _adapter_config
-        gw.reload_adapter('default')
+        gw.reload_adapter("default")
         # Reset singleton caches so next access rebuilds with fresh config
         gw._default_route_policy = None
         gw._default_policy_registry = None
@@ -122,6 +124,3 @@ def _reset_gateway_adapter_config():
         # If gateway import fails (e.g., in minimal test environments),
         # skip the reset silently rather than breaking the test suite
         pass
-
-
-

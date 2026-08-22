@@ -82,7 +82,11 @@ def _dry_run_action(
         if is_business_file:
             return "skip - business file (update mode preserves)"
         if exists:
-            return "replace marker block" if is_marker_protected else "skip - exists (update mode preserves non-marker files)"
+            return (
+                "replace marker block"
+                if is_marker_protected
+                else "skip - exists (update mode preserves non-marker files)"
+            )
         return "create"
 
     if mode == "repair":
@@ -324,4 +328,3 @@ def _is_memory_repo(repo_root: Path) -> bool:
         return False
     # Memory repo has both: gateway + repo-root memory/ directory
     return (repo_root / "memory").is_dir()
-

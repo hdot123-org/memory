@@ -1,6 +1,5 @@
 """Adapter TOML schema and loader for memory/system/adapter.toml configuration."""
 
-
 import tomllib
 import warnings as _warnings
 from collections.abc import Callable
@@ -14,6 +13,7 @@ from memory_core.constants import (
 )
 
 # ── migration transforms ──────────────────────────────────────────
+
 
 def _noop_transform(data: dict[str, Any]) -> dict[str, Any]:
     """Identity transform: returns data unchanged."""
@@ -109,26 +109,31 @@ class AdapterConfig:
     global_kb_root: str = str(Path("~/.memory/global-kb").expanduser())
 
 
-
 # ── known-key whitelists ──────────────────────────────────────────
 
 _KNOWN_CORE_KEYS: frozenset[str] = frozenset({"version", "adapter"})
-_KNOWN_POLICY_KEYS: frozenset[str] = frozenset({
-    "legality_source_policy",
-    "registration_commit_policy",
-    "registration_commit_phase",
-})
-_KNOWN_ROUTING_KEYS: frozenset[str] = frozenset({
-    "project_name",
-    "project_scope",
-    "host",
-    "canonical_files",
-    "artifact_root",
-})
-_KNOWN_GLOBAL_KB_KEYS: frozenset[str] = frozenset({
-    "enabled",
-    "root",
-})
+_KNOWN_POLICY_KEYS: frozenset[str] = frozenset(
+    {
+        "legality_source_policy",
+        "registration_commit_policy",
+        "registration_commit_phase",
+    }
+)
+_KNOWN_ROUTING_KEYS: frozenset[str] = frozenset(
+    {
+        "project_name",
+        "project_scope",
+        "host",
+        "canonical_files",
+        "artifact_root",
+    }
+)
+_KNOWN_GLOBAL_KB_KEYS: frozenset[str] = frozenset(
+    {
+        "enabled",
+        "root",
+    }
+)
 
 
 # ── internal helpers ──────────────────────────────────────────────
@@ -196,6 +201,7 @@ def load_adapter_toml(path: Path, *, strict: bool = False) -> AdapterConfig:
         if strict:
             raise ValueError(f"Unsupported host: {config.host!r}, expected one of {SUPPORTED_HOSTS}")
         import warnings
+
         warnings.warn(
             f"adapter.toml routing.host='{config.host}' is not in SUPPORTED_HOSTS={SUPPORTED_HOSTS}",
             stacklevel=2,
@@ -209,6 +215,7 @@ def load_adapter_toml(path: Path, *, strict: bool = False) -> AdapterConfig:
             raise ValueError("routing.project_name must be non-empty")
 
     return config
+
 
 def _load_new_format(data: dict[str, Any], *, strict: bool = False) -> AdapterConfig:
     """Parse the canonical ``[core]`` / ``[policy]`` / ``[routing]`` / ``[global_kb]`` layout."""
@@ -273,22 +280,22 @@ def dump_adapter_toml(config: AdapterConfig) -> str:
     lines.append("# Memory Adapter Configuration")
     lines.append("")
     lines.append("[core]")
-    lines.append(f'version = {_toml_str(config.adapter_version)}')
-    lines.append(f'adapter = {_toml_str("default")}')
+    lines.append(f"version = {_toml_str(config.adapter_version)}")
+    lines.append(f"adapter = {_toml_str('default')}")
 
     # [policy]
     lines.append("")
     lines.append("[policy]")
-    lines.append(f'legality_source_policy = {_toml_str(config.legality_source_policy)}')
-    lines.append(f'registration_commit_policy = {_toml_str(config.registration_commit_policy)}')
-    lines.append(f'registration_commit_phase = {_toml_str(config.registration_commit_phase)}')
+    lines.append(f"legality_source_policy = {_toml_str(config.legality_source_policy)}")
+    lines.append(f"registration_commit_policy = {_toml_str(config.registration_commit_policy)}")
+    lines.append(f"registration_commit_phase = {_toml_str(config.registration_commit_phase)}")
 
     # [routing]
     lines.append("")
     lines.append("[routing]")
-    lines.append(f'project_name = {_toml_str(config.project_name)}')
-    lines.append(f'project_scope = {_toml_str(config.project_scope)}')
-    lines.append(f'host = {_toml_str(config.host)}')
+    lines.append(f"project_name = {_toml_str(config.project_name)}")
+    lines.append(f"project_scope = {_toml_str(config.project_scope)}")
+    lines.append(f"host = {_toml_str(config.host)}")
 
     # canonical_files
     lines.append("canonical_files = [")
@@ -298,7 +305,7 @@ def dump_adapter_toml(config: AdapterConfig) -> str:
 
     # artifact_root (optional)
     if config.artifact_root is not None:
-        lines.append(f'artifact_root = {_toml_str(config.artifact_root)}')
+        lines.append(f"artifact_root = {_toml_str(config.artifact_root)}")
     else:
         lines.append("# artifact_root is not set")
 
@@ -309,4 +316,3 @@ def dump_adapter_toml(config: AdapterConfig) -> str:
     lines.append(f"root = {_toml_str(config.global_kb_root)}")
 
     return "\n".join(lines) + "\n"
-

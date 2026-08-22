@@ -109,15 +109,13 @@ def _write_hook_state_unlocked(path: Path, payload: dict[str, object]) -> None:
                 tmp_path.unlink()
     except OSError as exc:
         raise HookStateError(
-            f"failed to write hook state to {path}: {exc} "
-            f"(payload keys: {list(payload.keys())})"
+            f"failed to write hook state to {path}: {exc} (payload keys: {list(payload.keys())})"
         ) from exc
     try:
         load_hook_state_strict(path)
     except HookStateError as exc:
         raise HookStateError(
-            f"hook state verification failed after write to {path}: {exc} "
-            f"(payload keys: {list(payload.keys())})"
+            f"hook state verification failed after write to {path}: {exc} (payload keys: {list(payload.keys())})"
         ) from exc
 
 

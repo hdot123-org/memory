@@ -100,6 +100,7 @@ MAX_LINE: int = 1024 * 1024
 
 def _set_timeout(seconds: int) -> None:
     """设置整体超时，超时后静默退出。"""
+
     def _handler(_signum: int, _frame: Any) -> None:
         # 超时静默退出，不阻塞 hook 链
         # os._exit 跳过 atexit 回调，避免 telemetry SDK 的 Client.join 报错
@@ -113,7 +114,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """解析 CLI 参数。所有参数可选，缺失时从 stdin gateway payload 自动提取。"""
     parser = argparse.ArgumentParser(description="Session end logger for Factory.")
     parser.add_argument("--session-dir", default="", help="Session 目录路径（默认从 stdin payload 推断）")
-    parser.add_argument("--session-id", default="", help="Session ID（默认从 stdin payload 的 task_context.session_id 提取）")
+    parser.add_argument(
+        "--session-id", default="", help="Session ID（默认从 stdin payload 的 task_context.session_id 提取）"
+    )
     parser.add_argument("--project-root", default="", help="项目根目录（默认从 stdin payload 的 cwd/repo_root 提取）")
     return parser.parse_args(argv)
 
@@ -130,8 +133,6 @@ def _read_stdin_payload() -> dict[str, Any]:
         logger.warning("Failed to read stdin payload: %s", exc)
         print(f"Warning: failed to read stdin payload: {exc}", file=sys.stderr)
     return {}
-
-
 
 
 def _read_settings(settings_path: Path) -> dict[str, Any]:
@@ -355,9 +356,7 @@ def _process_jsonl_line(raw_line: str, state: _StreamingState) -> None:
             state.total_tool_calls += count
 
 
-def _read_jsonl_chunks(
-    jsonl_path: Path, state: _StreamingState, start_monotonic: float
-) -> bool:
+def _read_jsonl_chunks(jsonl_path: Path, state: _StreamingState, start_monotonic: float) -> bool:
     """Read and process JSONL file in chunks, respecting time/byte budgets.
 
     Returns True if truncated due to budget limits, False otherwise.
@@ -462,8 +461,6 @@ def _extract_session_info_streaming(
         result["truncated"] = True
 
     return result
-
-
 
 
 def _format_duration(seconds: int) -> str:
@@ -685,9 +682,7 @@ def main(argv: list[str] | None = None) -> int:
     stdin_payload = _read_stdin_payload()
 
     # Resolve paths
-    session_id, project_root_str, transcript_path, jsonl_path = _resolve_jsonl_path(
-        args, stdin_payload
-    )
+    session_id, project_root_str, transcript_path, jsonl_path = _resolve_jsonl_path(args, stdin_payload)
 
     # Missing required params → silent exit
     if not session_id or jsonl_path is None:

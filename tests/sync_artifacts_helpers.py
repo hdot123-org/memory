@@ -16,9 +16,14 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def setup_sync_artifacts(tmp_path: Path, *, metrics_lines: list[str] | None = None,
-                         offset: int = 0, last_sync_success: float = 0.0,
-                         last_sync_attempt: float = 0.0) -> Path:
+def setup_sync_artifacts(
+    tmp_path: Path,
+    *,
+    metrics_lines: list[str] | None = None,
+    offset: int = 0,
+    last_sync_success: float = 0.0,
+    last_sync_attempt: float = 0.0,
+) -> Path:
     """Create artifact root with metrics.jsonl and sidecar files for sync tests.
 
     INFRA-304: extracted from 2 identical _setup_sync_artifacts bodies

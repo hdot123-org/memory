@@ -1,4 +1,5 @@
 """Tests for evolution scanner."""
+
 import json
 import os
 import subprocess
@@ -100,12 +101,10 @@ def test_normalize_finding_missing_fields():
 
 def test_run_audit_tool_success():
     """Audit tool executes and returns JSON."""
-    tool = {"name": "test_tool", "command": "echo '{\"rule_id\": \"TEST\"}'}"}
+    tool = {"name": "test_tool", "command": 'echo \'{"rule_id": "TEST"}\'}'}
 
     with patch("evolution_scanner.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout='[{"rule_id": "TEST"}]', stderr=""
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout='[{"rule_id": "TEST"}]', stderr="")
         result = run_audit_tool(tool)
         assert len(result) == 1
         assert result[0]["rule_id"] == "TEST"
@@ -128,9 +127,7 @@ def test_dedup_existing_issues():
         Finding("RULE_002", "warning", "consistency", "Issue 2", "file2.md", "evidence"),
     ]
     # Open issues now parsed as dicts with rule_id, location, number
-    open_issues = [
-        {"rule_id": "RULE_001", "location": "file1.md", "number": 42}
-    ]
+    open_issues = [{"rule_id": "RULE_001", "location": "file1.md", "number": 42}]
 
     deduped = deduplicate(findings, open_issues)
     assert len(deduped) == 1
@@ -139,10 +136,7 @@ def test_dedup_existing_issues():
 
 def test_max_3_issues():
     """Scanner creates at most max_issues_per_tick issues."""
-    findings = [
-        Finding(f"RULE_{i}", "warning", "test", f"Issue {i}", f"file{i}.md", "evidence")
-        for i in range(5)
-    ]
+    findings = [Finding(f"RULE_{i}", "warning", "test", f"Issue {i}", f"file{i}.md", "evidence") for i in range(5)]
     # Dedup: no open issues
     open_issues = []
     deduped = deduplicate(findings, open_issues)
@@ -283,9 +277,9 @@ def test_isolation_label(tmp_path):
 
         # Verify gh issue edit was called with --add-label evolution-isolated
         edit_calls = [
-            call for call in mock_run.call_args_list
-            if len(call[0]) > 0 and len(call[0][0]) >= 4
-            and call[0][0][1] == "issue" and call[0][0][2] == "edit"
+            call
+            for call in mock_run.call_args_list
+            if len(call[0]) > 0 and len(call[0][0]) >= 4 and call[0][0][1] == "issue" and call[0][0][2] == "edit"
         ]
 
         assert len(edit_calls) > 0, "gh issue edit was not called"
@@ -388,9 +382,7 @@ def test_exit_code_nonzero_with_findings():
 
     with patch("evolution_scanner.subprocess.run") as mock_run:
         # Simulate tool returning exit code 1 (found violations) with valid JSON
-        mock_run.return_value = MagicMock(
-            returncode=1, stdout=json.dumps(real_output), stderr=""
-        )
+        mock_run.return_value = MagicMock(returncode=1, stdout=json.dumps(real_output), stderr="")
         result = run_audit_tool(tool)
 
         # Should return findings despite non-zero exit code
@@ -1011,9 +1003,13 @@ def test_gh_limit_200_in_check_isolation(tmp_path):
 
         # Find the gh issue list call
         list_calls = [
-            call for call in mock_run.call_args_list
-            if len(call[0]) > 0 and len(call[0][0]) >= 3
-            and call[0][0][0] == "gh" and call[0][0][1] == "issue" and call[0][0][2] == "list"
+            call
+            for call in mock_run.call_args_list
+            if len(call[0]) > 0
+            and len(call[0][0]) >= 3
+            and call[0][0][0] == "gh"
+            and call[0][0][1] == "issue"
+            and call[0][0][2] == "list"
         ]
         assert len(list_calls) > 0, "gh issue list was not called"
         call_args = list_calls[0][0][0]
@@ -1045,7 +1041,9 @@ def test_isolated_issue_suppresses_rebuild():
         assert "--search" in call_args, f"--search not found in command args: {call_args}"
         search_idx = call_args.index("--search")
         search_value = call_args[search_idx + 1]
-        assert search_value == "label:evolution-found,evolution-isolated", f"Expected single-prefix OR form, got: {search_value}"
+        assert search_value == "label:evolution-found,evolution-isolated", (
+            f"Expected single-prefix OR form, got: {search_value}"
+        )
         # Single label: prefix with comma-separated values is OR; repeated label: prefix is wrong
         assert search_value.count("label:") == 1, f"Should have single label: prefix, got: {search_value}"
         # Verify no --label flags are used (AND semantics bug)
@@ -1086,9 +1084,24 @@ def test_check_isolation_single_api_call(tmp_path):
     with patch("evolution_scanner.subprocess.run") as mock_run:
         # Mock gh issue list to return matching issues
         issues_data = [
-            {"number": 41, "title": "[evolution] RULE_001", "body": "**Rule ID**: RULE_001\n**Location**: file1.md", "createdAt": "2020-01-01T00:00:00Z"},
-            {"number": 42, "title": "[evolution] RULE_002", "body": "**Rule ID**: RULE_002\n**Location**: file2.md", "createdAt": "2020-01-01T00:00:00Z"},
-            {"number": 43, "title": "[evolution] RULE_003", "body": "**Rule ID**: RULE_003\n**Location**: file3.md", "createdAt": "2020-01-01T00:00:00Z"},
+            {
+                "number": 41,
+                "title": "[evolution] RULE_001",
+                "body": "**Rule ID**: RULE_001\n**Location**: file1.md",
+                "createdAt": "2020-01-01T00:00:00Z",
+            },
+            {
+                "number": 42,
+                "title": "[evolution] RULE_002",
+                "body": "**Rule ID**: RULE_002\n**Location**: file2.md",
+                "createdAt": "2020-01-01T00:00:00Z",
+            },
+            {
+                "number": 43,
+                "title": "[evolution] RULE_003",
+                "body": "**Rule ID**: RULE_003\n**Location**: file3.md",
+                "createdAt": "2020-01-01T00:00:00Z",
+            },
         ]
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -1099,17 +1112,21 @@ def test_check_isolation_single_api_call(tmp_path):
 
         # Count gh issue list calls - should be exactly 1
         list_calls = [
-            call for call in mock_run.call_args_list
-            if len(call[0]) > 0 and len(call[0][0]) >= 3
-            and call[0][0][0] == "gh" and call[0][0][1] == "issue" and call[0][0][2] == "list"
+            call
+            for call in mock_run.call_args_list
+            if len(call[0]) > 0
+            and len(call[0][0]) >= 3
+            and call[0][0][0] == "gh"
+            and call[0][0][1] == "issue"
+            and call[0][0][2] == "list"
         ]
         assert len(list_calls) == 1, f"Expected exactly 1 gh issue list call, got {len(list_calls)}"
 
         # Verify gh issue edit was called 3 times (once per finding)
         edit_calls = [
-            call for call in mock_run.call_args_list
-            if len(call[0]) > 0 and len(call[0][0]) >= 4
-            and call[0][0][1] == "issue" and call[0][0][2] == "edit"
+            call
+            for call in mock_run.call_args_list
+            if len(call[0]) > 0 and len(call[0][0]) >= 4 and call[0][0][1] == "issue" and call[0][0][2] == "edit"
         ]
         assert len(edit_calls) == 3, f"Expected 3 gh issue edit calls, got {len(edit_calls)}"
 
@@ -1227,7 +1244,7 @@ def test_corruption_quarantine_detect_regressions(tmp_path):
     """
     history_path = tmp_path / "findings_over_time.json"
 
-    corrupted_content = '{broken json'
+    corrupted_content = "{broken json"
     history_path.write_text(corrupted_content)
 
     findings = [Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")]
@@ -1584,8 +1601,7 @@ def test_empty_location_not_excluded_from_dedup():
         # Mock gh issue list returning an issue with empty location
         mock_run.side_effect = [
             MagicMock(
-                returncode=0,
-                stdout='[{"number": 123, "body": "**Rule ID**: CONSISTENCY_ERROR\\n**Location**: "}]'
+                returncode=0, stdout='[{"number": 123, "body": "**Rule ID**: CONSISTENCY_ERROR\\n**Location**: "}]'
             ),  # open query
             MagicMock(returncode=0, stdout="[]", stderr=""),  # closed query
         ]
@@ -1623,15 +1639,16 @@ def test_main_handles_gh_failure_gracefully():
     - Still call update_history() to record the tick
     This ensures the scanner doesn't create duplicate issues when gh fails.
     """
-    with patch("evolution_scanner.check_kill_switch", return_value=False), \
-         patch("evolution_scanner.load_config") as mock_config, \
-         patch("evolution_scanner.run_audit_tool", return_value=[]), \
-         patch("evolution_scanner.detect_regressions") as mock_regressions, \
-         patch("evolution_scanner.get_open_issues", side_effect=RuntimeError("gh issue list failed")), \
-         patch("evolution_scanner.update_history") as mock_history, \
-         patch("evolution_scanner.check_isolation"), \
-         patch("builtins.print") as mock_print:
-
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config") as mock_config,
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.detect_regressions") as mock_regressions,
+        patch("evolution_scanner.get_open_issues", side_effect=RuntimeError("gh issue list failed")),
+        patch("evolution_scanner.update_history") as mock_history,
+        patch("evolution_scanner.check_isolation"),
+        patch("builtins.print") as mock_print,
+    ):
         # Setup config
         mock_config.return_value = {
             "audit_tools": [],
@@ -1651,11 +1668,11 @@ def test_main_handles_gh_failure_gracefully():
 
         # Run main
         from evolution_scanner import main
+
         main()
 
         # Verify warning was printed
-        warning_calls = [call for call in mock_print.call_args_list
-                        if "Warning" in str(call) or "warning" in str(call)]
+        warning_calls = [call for call in mock_print.call_args_list if "Warning" in str(call) or "warning" in str(call)]
         assert len(warning_calls) > 0, "Expected warning message to be printed"
 
         # Verify update_history was called (with issues_created=0)
@@ -1775,13 +1792,15 @@ def test_consistency_check_extract_location_applied_consistently():
 
     # Error finding should have location extracted
     error_finding = next(f for f in findings if f["severity"] == "warning")
-    assert error_finding["location"] == "/path/to/file.md", \
+    assert error_finding["location"] == "/path/to/file.md", (
         f"Error location should be extracted, got: {error_finding['location']}"
+    )
 
     # Warning finding should have location extracted
     warning_finding = next(f for f in findings if f["severity"] == "info")
-    assert warning_finding["location"] == "/path/to/other.py", \
+    assert warning_finding["location"] == "/path/to/other.py", (
         f"Warning location should be extracted, got: {warning_finding['location']}"
+    )
 
 
 def test_consistency_check_checks_array_with_both_errors_and_warnings():
@@ -1896,7 +1915,12 @@ def test_check_isolation_logs_exception(tmp_path):
     history_path = tmp_path / "findings_over_time.json"
     history_data = {
         "snapshots": [
-            {"timestamp": "2026-01-01T00:00:00Z", "tick_id": "t1", "findings": [{"rule_id": "RULE_001", "location": "file.md"}], "issues_created": 1}
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "tick_id": "t1",
+                "findings": [{"rule_id": "RULE_001", "location": "file.md"}],
+                "issues_created": 1,
+            }
             for _ in range(3)
         ],
         "resolved_findings": [],
@@ -1904,8 +1928,7 @@ def test_check_isolation_logs_exception(tmp_path):
     history_path.write_text(json.dumps(history_data))
     findings = [Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")]
 
-    with patch("evolution_scanner.subprocess.run") as mock_run, \
-         patch("builtins.print") as mock_print:
+    with patch("evolution_scanner.subprocess.run") as mock_run, patch("builtins.print") as mock_print:
         mock_run.return_value = MagicMock(returncode=0, stdout="not valid json {{{")
         check_isolation(findings, history_path, 3, "iso", "dedup")
 
@@ -1934,8 +1957,10 @@ def test_create_issue_logs_exception():
     """P2-5: create_issue logs exception when gh fails with exception."""
     finding = Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")
 
-    with patch("evolution_scanner.subprocess.run", side_effect=Exception("gh crashed")), \
-         patch("builtins.print") as mock_print:
+    with (
+        patch("evolution_scanner.subprocess.run", side_effect=Exception("gh crashed")),
+        patch("builtins.print") as mock_print,
+    ):
         result = create_issue(finding, "evolution-found")
 
     assert result is False
@@ -1963,8 +1988,9 @@ def test_run_audit_tool_uses_shlex_split():
 
         args = mock_run.call_args[0][0]
         # shlex.split keeps '/path with spaces/file.json' as single token
-        assert any("path with spaces" in str(a) for a in args), \
+        assert any("path with spaces" in str(a) for a in args), (
             f"Path with spaces should be preserved as single argument. Args: {args}"
+        )
 
 
 # ============================================================================
@@ -2010,16 +2036,19 @@ def test_adapt_daily_audit_servers_and_databases_combined():
             "servers": {
                 "node-00": {
                     "violations": [
-                        {"type": "container_down", "severity": "critical",
-                         "file": "node-00/openclaw", "detail": "down"}
+                        {"type": "container_down", "severity": "critical", "file": "node-00/openclaw", "detail": "down"}
                     ]
                 }
             },
             "databases": {
                 "prod_db": {
                     "violations": [
-                        {"type": "db_unreachable", "severity": "critical",
-                         "file": "config/db.yml", "detail": "unreachable"}
+                        {
+                            "type": "db_unreachable",
+                            "severity": "critical",
+                            "file": "config/db.yml",
+                            "detail": "unreachable",
+                        }
                     ]
                 }
             },
@@ -2163,8 +2192,12 @@ def test_check_isolation_does_not_swallow_unexpected_exceptions(tmp_path):
     history_path = tmp_path / "findings_over_time.json"
     history_data = {
         "snapshots": [
-            {"timestamp": "2026-01-01T00:00:00Z", "tick_id": "t1",
-             "findings": [{"rule_id": "RULE_001", "location": "file.md"}], "issues_created": 1}
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "tick_id": "t1",
+                "findings": [{"rule_id": "RULE_001", "location": "file.md"}],
+                "issues_created": 1,
+            }
             for _ in range(3)
         ],
         "resolved_findings": [],
@@ -2172,8 +2205,10 @@ def test_check_isolation_does_not_swallow_unexpected_exceptions(tmp_path):
     history_path.write_text(json.dumps(history_data))
     findings = [Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")]
 
-    with patch("evolution_scanner.subprocess.run", side_effect=RuntimeError("unexpected")), \
-         pytest.raises(RuntimeError, match="unexpected"):
+    with (
+        patch("evolution_scanner.subprocess.run", side_effect=RuntimeError("unexpected")),
+        pytest.raises(RuntimeError, match="unexpected"),
+    ):
         check_isolation(findings, history_path, 3, "iso", "dedup")
 
 
@@ -2262,14 +2297,16 @@ def test_main_filters_none_results_no_false_resolved():
     A failed tool returning None must not cause previous findings from that tool
     to appear as "resolved" in history, which would then trigger false regressions.
     """
-    with patch("evolution_scanner.check_kill_switch", return_value=False), \
-         patch("evolution_scanner.load_config") as mock_config, \
-         patch("evolution_scanner.run_audit_tool") as mock_run_tool, \
-         patch("evolution_scanner.detect_regressions") as mock_regressions, \
-         patch("evolution_scanner.get_open_issues", return_value=[]), \
-         patch("evolution_scanner.update_history") as mock_history, \
-         patch("evolution_scanner.check_isolation"), \
-         patch("evolution_scanner.create_issue", return_value=True):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config") as mock_config,
+        patch("evolution_scanner.run_audit_tool") as mock_run_tool,
+        patch("evolution_scanner.detect_regressions") as mock_regressions,
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.update_history") as mock_history,
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.create_issue", return_value=True),
+    ):
         mock_config.return_value = {
             "audit_tools": [{"name": "tool_a"}, {"name": "tool_b"}],
             "severity_order": ["critical", "warning", "info"],
@@ -2282,12 +2319,24 @@ def test_main_filters_none_results_no_false_resolved():
             "snapshot_limit": 100,
         }
         # tool_a fails (None), tool_b succeeds with 1 finding
-        mock_run_tool.side_effect = [None, [{"rule_id": "R1", "severity": "warning", "category": "test",
-                                              "description": "d", "location": "f.md", "evidence": "e"}]]
+        mock_run_tool.side_effect = [
+            None,
+            [
+                {
+                    "rule_id": "R1",
+                    "severity": "warning",
+                    "category": "test",
+                    "description": "d",
+                    "location": "f.md",
+                    "evidence": "e",
+                }
+            ],
+        ]
         finding = Finding("R1", "warning", "test", "d", "f.md", "e")
         mock_regressions.return_value = [finding]
 
         from evolution_scanner import main
+
         main()
 
         # update_history should only see 1 finding (from tool_b), not 0 from tool_a
@@ -2339,10 +2388,10 @@ def test_update_history_skips_failed_tool_categories(tmp_path):
         data = json.load(f)
 
     resolved_rules = {r["rule_id"] for r in data["resolved_findings"]}
-    assert "RULE_001" not in resolved_rules, \
+    assert "RULE_001" not in resolved_rules, (
         "RULE_001 (from failed tool category 'daily_audit') must NOT be marked as resolved"
-    assert "RULE_002" not in resolved_rules, \
-        "RULE_002 is still present in current findings, should not be resolved"
+    )
+    assert "RULE_002" not in resolved_rules, "RULE_002 is still present in current findings, should not be resolved"
 
     # Tick 3: Tool recovers, RULE_001 appears again
     # It should NOT be flagged as a regression because it was never resolved
@@ -2357,10 +2406,10 @@ def test_update_history_skips_failed_tool_categories(tmp_path):
     rule_001_result = next(f for f in regressions if f.rule_id == "RULE_001")
     rule_002_result = next(f for f in regressions if f.rule_id == "RULE_002")
 
-    assert rule_001_result.severity == "warning", \
+    assert rule_001_result.severity == "warning", (
         "RULE_001 must NOT be upgraded to critical (it was never resolved, so no regression)"
-    assert rule_002_result.severity == "warning", \
-        "RULE_002 should remain warning (never resolved)"
+    )
+    assert rule_002_result.severity == "warning", "RULE_002 should remain warning (never resolved)"
 
 
 def test_load_history_structural_validation(tmp_path):
@@ -2406,6 +2455,7 @@ def test_detect_regressions_uses_load_history(tmp_path):
     import inspect
 
     from evolution_scanner import detect_regressions
+
     source = inspect.getsource(detect_regressions)
     assert "load_history" in source, "detect_regressions must use load_history() helper"
     assert "json.load" not in source, "detect_regressions must not duplicate json.load"
@@ -2416,6 +2466,7 @@ def test_update_history_uses_load_history(tmp_path):
     import inspect
 
     from evolution_scanner import update_history
+
     source = inspect.getsource(update_history)
     assert "load_history" in source, "update_history must use load_history() helper"
 
@@ -2425,6 +2476,7 @@ def test_check_isolation_uses_load_history(tmp_path):
     import inspect
 
     from evolution_scanner import check_isolation
+
     source = inspect.getsource(check_isolation)
     assert "load_history" in source, "check_isolation must use load_history() helper"
     # Check no direct file I/O for history (json.loads is OK for gh CLI output parsing)
@@ -2440,7 +2492,7 @@ def test_jsonl_malformed_line_skipped(tmp_path):
     full_path.write_text(
         '{"fingerprint": "aaa", "type": "ok", "script": "s1", "normalized_msg": "m1", '
         '"status": "detected", "total_count": 5, "threshold_met": "both"}\n'
-        '{broken json line\n'
+        "{broken json line\n"
         '{"fingerprint": "bbb", "type": "ok2", "script": "s2", "normalized_msg": "m2", '
         '"status": "detected", "total_count": 3, "threshold_met": "days"}\n'
     )
@@ -2458,8 +2510,9 @@ def test_jsonl_malformed_line_skipped(tmp_path):
 
     # Warning about malformed line should be printed
     warning_calls = [str(c) for c in mock_print.call_args_list]
-    assert any("malformed" in w or "JSONL" in w for w in warning_calls), \
+    assert any("malformed" in w or "JSONL" in w for w in warning_calls), (
         f"Expected warning about malformed JSONL line. Warnings: {warning_calls}"
+    )
 
 
 def test_jsonl_all_lines_malformed_returns_none(tmp_path):
@@ -2470,11 +2523,7 @@ def test_jsonl_all_lines_malformed_returns_none(tmp_path):
     full_path = tmp_path / source_file
     full_path.parent.mkdir(parents=True, exist_ok=True)
     # All lines are malformed JSON
-    full_path.write_text(
-        '{broken json line 1\n'
-        '{broken json line 2\n'
-        '{broken json line 3\n'
-    )
+    full_path.write_text("{broken json line 1\n{broken json line 2\n{broken json line 3\n")
     tool = {"name": "error_patterns", "output_format": "registry_jsonl", "source_file": source_file}
     with patch("builtins.print"):
         result = run_audit_tool(tool, tmp_path)
@@ -2560,30 +2609,28 @@ def test_gh_nonzero_exit_logs_stderr():
     """VAL-OPUS5-SCN-006: gh non-zero return code logs stderr to console."""
     finding = Finding("RULE_001", "warning", "test", "desc", "file.md", "evidence")
 
-    with patch("evolution_scanner.subprocess.run") as mock_run, \
-         patch("builtins.print") as mock_print:
+    with patch("evolution_scanner.subprocess.run") as mock_run, patch("builtins.print") as mock_print:
         mock_run.return_value = MagicMock(returncode=1, stderr="rate limit exceeded")
         result = create_issue(finding, "evolution-found")
 
     assert result is False
     # Verify stderr was logged
     warning_calls = [str(c) for c in mock_print.call_args_list]
-    assert any("rate limit exceeded" in w for w in warning_calls), \
+    assert any("rate limit exceeded" in w for w in warning_calls), (
         f"Expected stderr to be logged. Warnings: {warning_calls}"
+    )
 
 
 def test_gh_issue_list_nonzero_logs_stderr():
     """VAL-OPUS5-SCN-006: gh issue list non-zero exit logs stderr."""
-    with patch("evolution_scanner.subprocess.run") as mock_run, \
-         patch("builtins.print") as mock_print:
+    with patch("evolution_scanner.subprocess.run") as mock_run, patch("builtins.print") as mock_print:
         mock_run.return_value = MagicMock(returncode=1, stderr="API rate limit")
 
         with pytest.raises(RuntimeError):
             get_open_issues("evolution-found")
 
     warning_calls = [str(c) for c in mock_print.call_args_list]
-    assert any("API rate limit" in w for w in warning_calls), \
-        f"Expected stderr in warning. Warnings: {warning_calls}"
+    assert any("API rate limit" in w for w in warning_calls), f"Expected stderr in warning. Warnings: {warning_calls}"
 
 
 def test_main_calls_dedup_intra_tick():
@@ -2591,6 +2638,7 @@ def test_main_calls_dedup_intra_tick():
     import inspect
 
     from evolution_scanner import main as main_func
+
     source = inspect.getsource(main_func)
     assert "dedup_intra_tick" in source, "main() must call dedup_intra_tick()"
 
@@ -2630,16 +2678,13 @@ def test_dedup_round_trip_symmetry():
     parsed_rule_id, parsed_location = _parse_issue_fields(body)
 
     # Round-trip must match
-    assert parsed_rule_id == finding.rule_id, \
-        f"Rule ID mismatch: {parsed_rule_id!r} != {finding.rule_id!r}"
-    assert parsed_location == finding.location, \
-        f"Location mismatch: {parsed_location!r} != {finding.location!r}"
+    assert parsed_rule_id == finding.rule_id, f"Rule ID mismatch: {parsed_rule_id!r} != {finding.rule_id!r}"
+    assert parsed_location == finding.location, f"Location mismatch: {parsed_location!r} != {finding.location!r}"
 
     # Verify the dedup keys match (this is what get_open_issues uses)
     dedup_key_original = (finding.rule_id, finding.location)
     dedup_key_parsed = (parsed_rule_id, parsed_location)
-    assert dedup_key_original == dedup_key_parsed, \
-        f"Dedup keys don't match: {dedup_key_original} != {dedup_key_parsed}"
+    assert dedup_key_original == dedup_key_parsed, f"Dedup keys don't match: {dedup_key_original} != {dedup_key_parsed}"
 
 
 # ============================================================================
@@ -2907,8 +2952,9 @@ def test_load_history_skips_corrupt_snapshot(tmp_path):
 
     # Warning should mention corrupt snapshots being skipped
     warning_messages = [str(c) for c in mock_print.call_args_list]
-    assert any("corrupt" in msg.lower() or "skipped" in msg.lower() for msg in warning_messages), \
+    assert any("corrupt" in msg.lower() or "skipped" in msg.lower() for msg in warning_messages), (
         f"Expected warning about corrupt snapshots being skipped. Messages: {warning_messages}"
+    )
 
 
 def test_load_history_all_snapshots_corrupt_returns_empty(tmp_path):
@@ -2960,11 +3006,12 @@ def test_main_missing_config_key_exits_cleanly(tmp_path):
         #          max_issues_per_tick, snapshot_limit
     }
 
-    with patch("evolution_scanner.check_kill_switch", return_value=False), \
-         patch("evolution_scanner.load_config", return_value=incomplete_config), \
-         patch("builtins.print") as mock_print, \
-         pytest.raises(SystemExit) as exc_info:
-
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=incomplete_config),
+        patch("builtins.print") as mock_print,
+        pytest.raises(SystemExit) as exc_info,
+    ):
         main()
 
     # Should exit with code 1
@@ -2973,11 +3020,13 @@ def test_main_missing_config_key_exits_cleanly(tmp_path):
     # Should print a clear error message identifying the missing key
     error_messages = [str(c) for c in mock_print.call_args_list]
     error_text = " ".join(error_messages).lower()
-    assert "missing" in error_text or "required" in error_text, \
+    assert "missing" in error_text or "required" in error_text, (
         f"Expected error message about missing config key. Messages: {error_messages}"
+    )
     # Should mention at least one of the missing keys
-    assert any(key in error_text for key in ["audit_tools", "dedup_label", "max_issues_per_tick"]), \
+    assert any(key in error_text for key in ["audit_tools", "dedup_label", "max_issues_per_tick"]), (
         f"Expected error message to mention missing key name. Messages: {error_messages}"
+    )
 
 
 def test_main_config_drift_protection_all_keys_present():
@@ -2997,18 +3046,20 @@ def test_main_config_drift_protection_all_keys_present():
         "snapshot_limit": 100,
     }
 
-    with patch("evolution_scanner.check_kill_switch", return_value=False), \
-         patch("evolution_scanner.load_config", return_value=complete_config), \
-         patch("evolution_scanner.run_audit_tool", return_value=[]), \
-         patch("evolution_scanner.detect_regressions", return_value=[]), \
-         patch("evolution_scanner.get_open_issues", return_value=[]), \
-         patch("evolution_scanner.update_history"), \
-         patch("evolution_scanner.check_isolation"), \
-         patch("builtins.print"):
-
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=complete_config),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.detect_regressions", return_value=[]),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+        patch("builtins.print"),
+    ):
         # Should not raise SystemExit
         main()
         # If we get here without exception, the test passes
+
 
 # ============================================================================
 # VAL-FOLLOWUP-003/004 Tests (P2/P3 Audit — Deep Validation, Credential Redaction, fsync)
@@ -3025,7 +3076,12 @@ def test_load_history_deep_validation_quarantines_corrupt_snapshot(tmp_path):
         "snapshots": [
             {"timestamp": "2026-01-01T00:00:00Z", "tick_id": "t1", "findings": [], "issues_created": 0},
             "not_a_dict",  # Corrupt entry
-            {"timestamp": "2026-01-01T02:00:00Z", "tick_id": "t3", "findings": [{"rule_id": "R1"}], "issues_created": 1},
+            {
+                "timestamp": "2026-01-01T02:00:00Z",
+                "tick_id": "t3",
+                "findings": [{"rule_id": "R1"}],
+                "issues_created": 1,
+            },
         ],
         "resolved_findings": [],
     }
@@ -3053,7 +3109,12 @@ def test_load_history_deep_validation_quarantines_missing_findings(tmp_path):
         "snapshots": [
             {"timestamp": "2026-01-01T00:00:00Z", "tick_id": "t1", "findings": [], "issues_created": 0},
             {"timestamp": "2026-01-01T01:00:00Z", "tick_id": "t2", "no_findings_key": True},  # Missing 'findings'
-            {"timestamp": "2026-01-01T02:00:00Z", "tick_id": "t3", "findings": [{"rule_id": "R1"}], "issues_created": 1},
+            {
+                "timestamp": "2026-01-01T02:00:00Z",
+                "tick_id": "t3",
+                "findings": [{"rule_id": "R1"}],
+                "issues_created": 1,
+            },
         ],
         "resolved_findings": [],
     }
@@ -3082,10 +3143,12 @@ def test_config_missing_key_exits():
         # Missing: audit_tools, max_issues_per_tick, snapshot_limit, isolation_threshold, failure_label
     }
 
-    with patch("evolution_scanner.check_kill_switch", return_value=False), \
-         patch("evolution_scanner.load_config", return_value=incomplete_config), \
-         patch("builtins.print") as mock_print, \
-         pytest.raises(SystemExit) as exc_info:
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=incomplete_config),
+        patch("builtins.print") as mock_print,
+        pytest.raises(SystemExit) as exc_info,
+    ):
         main()
 
     assert exc_info.value.code == 1, f"Expected exit code 1, got {exc_info.value.code}"
@@ -3098,6 +3161,7 @@ def test_config_missing_key_exits():
 def test_sanitize_text_redacts_credentials():
     """VAL-FOLLOWUP-005: sanitize_text redacts common credential patterns."""
     from evolution_adapters import sanitize_text
+
     # Construct tokens dynamically to avoid triggering secret scanners in CI
     prefix_ghp = "ghp" + "_"
     ghp_token = prefix_ghp + "A" * 25
@@ -3124,6 +3188,7 @@ def test_sanitize_text_redacts_credentials():
     result = sanitize_text(f"openai {openai_key} leaked")
     assert openai_key not in result
     assert "***REDACTED***" in result
+
 
 def test_normalize_finding_preserves_critical_severity():
     """VAL-FOLLOWUP-006: normalize_finding preserves 'critical' severity (does not downgrade)."""
@@ -3176,10 +3241,10 @@ def test_sanitize_text_credential_bypass_via_zero_width_char():
     result = sanitize_text(malicious)
 
     # The reassembled token must be redacted
-    assert "ghp_AAAABBBBBBBBBBBBBBBBBBBB" not in result, \
+    assert "ghp_AAAABBBBBBBBBBBBBBBBBBBB" not in result, (
         "Credential must be redacted even with zero-width char inserted"
-    assert "***REDACTED***" in result, \
-        "Expected REDACTED marker in output"
+    )
+    assert "***REDACTED***" in result, "Expected REDACTED marker in output"
 
 
 def test_sanitize_text_credential_bypass_via_control_char():
@@ -3194,8 +3259,7 @@ def test_sanitize_text_credential_bypass_via_control_char():
     malicious = "AKIA\x01ABCDEFGHIJKLMNOP"
     result = sanitize_text(malicious)
 
-    assert "AKIAABCDEFGHIJKLMNOP" not in result, \
-        "AWS credential must be redacted even with control char inserted"
+    assert "AKIAABCDEFGHIJKLMNOP" not in result, "AWS credential must be redacted even with control char inserted"
     assert "***REDACTED***" in result
 
 
@@ -3214,10 +3278,8 @@ def test_sanitize_text_untrusted_data_end_forgery_via_control_char():
     result = sanitize_text(malicious)
 
     # The literal marker must NOT appear in output
-    assert "<!-- UNTRUSTED-DATA-END -->" not in result, \
-        "Forged trust-boundary marker must be stripped"
-    assert "UNTRUSTED-DATA-END" not in result, \
-        "Even the text of the forged marker should be gone"
+    assert "<!-- UNTRUSTED-DATA-END -->" not in result, "Forged trust-boundary marker must be stripped"
+    assert "UNTRUSTED-DATA-END" not in result, "Even the text of the forged marker should be gone"
 
 
 def test_sanitize_text_atmention_regeneration_via_inline_link():
@@ -3235,8 +3297,7 @@ def test_sanitize_text_atmention_regeneration_via_inline_link():
 
     # Result must be 'droid' — no active @mention
     assert result == "droid", f"Expected 'droid', got '{result}'"
-    assert "@droid" not in result, \
-        "Active @mention must not be regenerated"
+    assert "@droid" not in result, "Active @mention must not be regenerated"
 
 
 def test_sanitize_text_markdown_injection_via_inline_link_prefix():
@@ -3251,8 +3312,7 @@ def test_sanitize_text_markdown_injection_via_inline_link_prefix():
     result = sanitize_text(malicious)
 
     # Output must not start with '# '
-    assert not result.startswith("# "), \
-        f"Output must not start with '# ' (markdown injection), got: '{result}'"
+    assert not result.startswith("# "), f"Output must not start with '# ' (markdown injection), got: '{result}'"
     # The heading text should survive but without the markdown marker
     assert "HEADLINE" in result
 
@@ -3266,19 +3326,18 @@ def test_sanitize_text_fixed_point_loop_used():
     import inspect
 
     from evolution_adapters import sanitize_text
+
     source = inspect.getsource(sanitize_text)
 
     # Must contain a loop construct
-    assert "for " in source and "range(" in source, \
-        "sanitize_text must use a fixed-point loop"
+    assert "for " in source and "range(" in source, "sanitize_text must use a fixed-point loop"
 
     # Character removal must appear before credential redaction in the source
     bidi_pos = source.find("\\u200b")
     if bidi_pos == -1:
         bidi_pos = source.find("u200b")
     credential_pos = source.find("REDACTED")
-    assert bidi_pos < credential_pos, \
-        "Character removal (bidi strip) must appear before credential redaction in source"
+    assert bidi_pos < credential_pos, "Character removal (bidi strip) must appear before credential redaction in source"
 
 
 # ============================================================================
@@ -3292,33 +3351,46 @@ def test_main_exits_nonzero_when_zero_issues_from_label_failure():
 
     # Mock 配置和依赖
     config = {
-        'audit_tools': [{'name': 'test_tool', 'command': 'echo "[]"'}],
-        'severity_order': {'critical': 3, 'warning': 2, 'info': 1},
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 3,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
-        'github': {'owner': 'test', 'repo': 'test'}
+        "audit_tools": [{"name": "test_tool", "command": 'echo "[]"'}],
+        "severity_order": {"critical": 3, "warning": 2, "info": 1},
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 3,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
+        "github": {"owner": "test", "repo": "test"},
     }
 
     # deduped must be non-empty for the exit condition to trigger
     stuck_finding = Finding("RULE_001", "warning", "test", "test", "test.md", "test")
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.run_audit_tool', return_value=[{'rule_id': 'RULE_001', 'severity': 'warning', 'category': 'test', 'description': 'test', 'location': 'test.md', 'evidence': 'test'}]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[stuck_finding]), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.deduplicate', return_value=[stuck_finding]), \
-         patch('evolution_scanner.sort_by_severity', return_value=[stuck_finding]), \
-         patch('evolution_scanner.create_issue', return_value=False), \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.detect_regressions', return_value=[stuck_finding]), \
-         patch('evolution_scanner.check_isolation'):
-
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch(
+            "evolution_scanner.run_audit_tool",
+            return_value=[
+                {
+                    "rule_id": "RULE_001",
+                    "severity": "warning",
+                    "category": "test",
+                    "description": "test",
+                    "location": "test.md",
+                    "evidence": "test",
+                }
+            ],
+        ),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[stuck_finding]),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.deduplicate", return_value=[stuck_finding]),
+        patch("evolution_scanner.sort_by_severity", return_value=[stuck_finding]),
+        patch("evolution_scanner.create_issue", return_value=False),
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.detect_regressions", return_value=[stuck_finding]),
+        patch("evolution_scanner.check_isolation"),
+    ):
         with pytest.raises(SystemExit) as exc_info:
             main()
 
@@ -3330,70 +3402,93 @@ def test_load_history_findings_wrong_type_skipped(tmp_path):
     """P2-3: load_history 应该跳过 findings 不是列表的 snapshot"""
     from evolution_utils import load_history
 
-    history_path = tmp_path / 'history.json'
+    history_path = tmp_path / "history.json"
     history_data = {
-        'snapshots': [
+        "snapshots": [
             {
-                'timestamp': '2024-01-01T00:00:00Z',
-                'tick_id': 'tick1',
-                'findings': 'not a list',  # 错误的类型
-                'issues_created': 0
+                "timestamp": "2024-01-01T00:00:00Z",
+                "tick_id": "tick1",
+                "findings": "not a list",  # 错误的类型
+                "issues_created": 0,
             },
             {
-                'timestamp': '2024-01-01T01:00:00Z',
-                'tick_id': 'tick2',
-                'findings': [{'rule_id': 'RULE_001', 'severity': 'warning', 'category': 'test', 'description': 'test', 'location': 'test.md', 'evidence': 'test'}],
-                'issues_created': 1
-            }
+                "timestamp": "2024-01-01T01:00:00Z",
+                "tick_id": "tick2",
+                "findings": [
+                    {
+                        "rule_id": "RULE_001",
+                        "severity": "warning",
+                        "category": "test",
+                        "description": "test",
+                        "location": "test.md",
+                        "evidence": "test",
+                    }
+                ],
+                "issues_created": 1,
+            },
         ],
-        'resolved_findings': []
+        "resolved_findings": [],
     }
 
-    with history_path.open('w') as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     result = load_history(history_path)
 
     # 应该只保留第二个有效的 snapshot
-    assert len(result['snapshots']) == 1
-    assert result['snapshots'][0]['tick_id'] == 'tick2'
-    assert len(result['snapshots'][0]['findings']) == 1
+    assert len(result["snapshots"]) == 1
+    assert result["snapshots"][0]["tick_id"] == "tick2"
+    assert len(result["snapshots"][0]["findings"]) == 1
 
 
 def test_load_history_findings_list_of_strings_filtered(tmp_path):
     """P2-3: load_history 应该过滤掉 findings 列表中的非 dict 条目"""
     from evolution_utils import load_history
 
-    history_path = tmp_path / 'history.json'
+    history_path = tmp_path / "history.json"
     history_data = {
-        'snapshots': [
+        "snapshots": [
             {
-                'timestamp': '2024-01-01T00:00:00Z',
-                'tick_id': 'tick1',
-                'findings': [
-                    {'rule_id': 'RULE_001', 'severity': 'warning', 'category': 'test', 'description': 'test', 'location': 'test.md', 'evidence': 'test'},
-                    'not a dict',
+                "timestamp": "2024-01-01T00:00:00Z",
+                "tick_id": "tick1",
+                "findings": [
+                    {
+                        "rule_id": "RULE_001",
+                        "severity": "warning",
+                        "category": "test",
+                        "description": "test",
+                        "location": "test.md",
+                        "evidence": "test",
+                    },
+                    "not a dict",
                     123,
                     None,
-                    {'rule_id': 'RULE_002', 'severity': 'info', 'category': 'test', 'description': 'test2', 'location': 'test2.md', 'evidence': 'test2'}
+                    {
+                        "rule_id": "RULE_002",
+                        "severity": "info",
+                        "category": "test",
+                        "description": "test2",
+                        "location": "test2.md",
+                        "evidence": "test2",
+                    },
                 ],
-                'issues_created': 0
+                "issues_created": 0,
             }
         ],
-        'resolved_findings': []
+        "resolved_findings": [],
     }
 
-    with history_path.open('w') as f:
+    with history_path.open("w") as f:
         json.dump(history_data, f)
 
     result = load_history(history_path)
 
     # 应该只保留两个有效的 dict 条目
-    assert len(result['snapshots']) == 1
-    assert len(result['snapshots'][0]['findings']) == 2
-    assert all(isinstance(f, dict) for f in result['snapshots'][0]['findings'])
-    assert result['snapshots'][0]['findings'][0]['rule_id'] == 'RULE_001'
-    assert result['snapshots'][0]['findings'][1]['rule_id'] == 'RULE_002'
+    assert len(result["snapshots"]) == 1
+    assert len(result["snapshots"][0]["findings"]) == 2
+    assert all(isinstance(f, dict) for f in result["snapshots"][0]["findings"])
+    assert result["snapshots"][0]["findings"][0]["rule_id"] == "RULE_001"
+    assert result["snapshots"][0]["findings"][1]["rule_id"] == "RULE_002"
 
 
 # ============================================================================
@@ -3411,10 +3506,7 @@ def test_load_history_non_list_resolved_findings(tmp_path):
     history_path = tmp_path / "findings_over_time.json"
 
     # Create history with resolved_findings as a dict (invalid)
-    history_data = {
-        "snapshots": [],
-        "resolved_findings": {"not": "a_list"}
-    }
+    history_data = {"snapshots": [], "resolved_findings": {"not": "a_list"}}
     with history_path.open("w") as f:
         json.dump(history_data, f)
 
@@ -3426,8 +3518,9 @@ def test_load_history_non_list_resolved_findings(tmp_path):
         assert result["resolved_findings"] == []
 
         # Verify warning was printed
-        warning_calls = [call for call in mock_print.call_args_list
-                        if "resolved_findings" in str(call) and "not a list" in str(call)]
+        warning_calls = [
+            call for call in mock_print.call_args_list if "resolved_findings" in str(call) and "not a list" in str(call)
+        ]
         assert len(warning_calls) > 0, "Expected warning about non-list resolved_findings"
 
     # Test with resolved_findings as string
@@ -3463,28 +3556,28 @@ def test_load_history_non_list_findings_in_snapshot(tmp_path):
                 "timestamp": "2026-01-01T00:00:00Z",
                 "tick_id": "20260101-000000",
                 "findings": "not_a_list",  # Invalid: string
-                "issues_created": 0
+                "issues_created": 0,
             },
             {
                 "timestamp": "2026-01-02T00:00:00Z",
                 "tick_id": "20260102-000000",
                 "findings": {"not": "a_list"},  # Invalid: dict
-                "issues_created": 0
+                "issues_created": 0,
             },
             {
                 "timestamp": "2026-01-03T00:00:00Z",
                 "tick_id": "20260103-000000",
                 "findings": 42,  # Invalid: int
-                "issues_created": 0
+                "issues_created": 0,
             },
             {
                 "timestamp": "2026-01-04T00:00:00Z",
                 "tick_id": "20260104-000000",
                 "findings": [{"rule_id": "RULE_001", "location": "file.md"}],  # Valid
-                "issues_created": 1
-            }
+                "issues_created": 1,
+            },
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
 
     with history_path.open("w") as f:
@@ -3499,8 +3592,7 @@ def test_load_history_non_list_findings_in_snapshot(tmp_path):
         assert result["snapshots"][0]["tick_id"] == "20260104-000000"
 
         # Verify warnings were printed for skipped snapshots
-        warning_calls = [call for call in mock_print.call_args_list
-                        if "non-list findings" in str(call)]
+        warning_calls = [call for call in mock_print.call_args_list if "non-list findings" in str(call)]
         assert len(warning_calls) == 3, f"Expected 3 warnings for non-list findings, got {len(warning_calls)}"
 
 
@@ -3521,8 +3613,7 @@ def test_validate_config_none():
         assert exc_info.value.code == 1
 
         # Verify clear error message
-        error_calls = [call for call in mock_print.call_args_list
-                      if "must be a YAML mapping" in str(call)]
+        error_calls = [call for call in mock_print.call_args_list if "must be a YAML mapping" in str(call)]
         assert len(error_calls) > 0, "Expected error message about YAML mapping"
 
     # Test with other non-dict types
@@ -3583,8 +3674,9 @@ def test_update_history_calls_fsync_before_replace(tmp_path):
 
     finding = Finding("RULE_001", "warning", "test", "Test finding", "file.md", "evidence")
 
-    with patch("evolution_scanner.os.fsync", side_effect=fake_fsync), patch(
-        "evolution_scanner.os.replace", side_effect=fake_replace
+    with (
+        patch("evolution_scanner.os.fsync", side_effect=fake_fsync),
+        patch("evolution_scanner.os.replace", side_effect=fake_replace),
     ):
         update_history(history_path, [finding], 1, 100)
 
@@ -3623,9 +3715,7 @@ def test_load_history_skips_corrupt_resolved_findings(tmp_path):
 
     history_path = tmp_path / "findings_over_time.json"
     history_data = {
-        "snapshots": [
-            {"findings": [], "timestamp": "2026-01-01T00:00:00Z", "tick_id": "t1", "issues_created": 0}
-        ],
+        "snapshots": [{"findings": [], "timestamp": "2026-01-01T00:00:00Z", "tick_id": "t1", "issues_created": 0}],
         "resolved_findings": [
             "not_a_dict",
             {"resolved_at": "2026-01-01T00:00:00Z"},
@@ -3731,30 +3821,43 @@ def test_main_exits_nonzero_when_github_api_fails(tmp_path):
     from evolution_scanner import main
 
     config = {
-        'audit_tools': [{'name': 'test_tool', 'command': 'echo "[]"'}],
-        'severity_order': {'critical': 3, 'warning': 2, 'info': 1},
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 3,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
-        'github': {'owner': 'test', 'repo': 'test'}
+        "audit_tools": [{"name": "test_tool", "command": 'echo "[]"'}],
+        "severity_order": {"critical": 3, "warning": 2, "info": 1},
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 3,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
+        "github": {"owner": "test", "repo": "test"},
     }
 
     finding = Finding("RULE_001", "warning", "test", "test", "test.md", "test")
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.run_audit_tool', return_value=[{'rule_id': 'RULE_001', 'severity': 'warning', 'category': 'test', 'description': 'test', 'location': 'test.md', 'evidence': 'test'}]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[finding]), \
-         patch('evolution_scanner.detect_regressions', return_value=[finding]), \
-         patch('evolution_scanner.get_open_issues', side_effect=RuntimeError("rate limit exceeded")), \
-         patch('evolution_scanner.create_issue'), \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'):
-
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch(
+            "evolution_scanner.run_audit_tool",
+            return_value=[
+                {
+                    "rule_id": "RULE_001",
+                    "severity": "warning",
+                    "category": "test",
+                    "description": "test",
+                    "location": "test.md",
+                    "evidence": "test",
+                }
+            ],
+        ),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[finding]),
+        patch("evolution_scanner.detect_regressions", return_value=[finding]),
+        patch("evolution_scanner.get_open_issues", side_effect=RuntimeError("rate limit exceeded")),
+        patch("evolution_scanner.create_issue"),
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+    ):
         with pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 1
@@ -3765,28 +3868,29 @@ def test_main_no_exit_when_github_fails_but_no_findings():
     from evolution_scanner import main
 
     config = {
-        'audit_tools': [{'name': 'test_tool', 'command': 'echo "[]"'}],
-        'severity_order': {'critical': 3, 'warning': 2, 'info': 1},
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 3,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
-        'github': {'owner': 'test', 'repo': 'test'}
+        "audit_tools": [{"name": "test_tool", "command": 'echo "[]"'}],
+        "severity_order": {"critical": 3, "warning": 2, "info": 1},
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 3,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
+        "github": {"owner": "test", "repo": "test"},
     }
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[]), \
-         patch('evolution_scanner.detect_regressions', return_value=[]), \
-         patch('evolution_scanner.get_open_issues', side_effect=RuntimeError("rate limit exceeded")), \
-         patch('evolution_scanner.create_issue'), \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'):
-
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[]),
+        patch("evolution_scanner.detect_regressions", return_value=[]),
+        patch("evolution_scanner.get_open_issues", side_effect=RuntimeError("rate limit exceeded")),
+        patch("evolution_scanner.create_issue"),
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+    ):
         # Should NOT raise SystemExit (no findings to protect)
         main()
 
@@ -3796,31 +3900,44 @@ def test_main_does_not_auto_close_when_p2a_exits(tmp_path):
     from evolution_scanner import main
 
     config = {
-        'audit_tools': [{'name': 'test_tool', 'command': 'echo "[]"'}],
-        'severity_order': {'critical': 3, 'warning': 2, 'info': 1},
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 3,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
-        'github': {'owner': 'test', 'repo': 'test'}
+        "audit_tools": [{"name": "test_tool", "command": 'echo "[]"'}],
+        "severity_order": {"critical": 3, "warning": 2, "info": 1},
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 3,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
+        "github": {"owner": "test", "repo": "test"},
     }
 
     finding = Finding("RULE_001", "warning", "test", "test", "test.md", "test")
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.run_audit_tool', return_value=[{'rule_id': 'RULE_001', 'severity': 'warning', 'category': 'test', 'description': 'test', 'location': 'test.md', 'evidence': 'test'}]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[finding]), \
-         patch('evolution_scanner.detect_regressions', return_value=[finding]), \
-         patch('evolution_scanner.get_open_issues', side_effect=RuntimeError("rate limit exceeded")), \
-         patch('evolution_scanner.create_issue'), \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved') as mock_auto_close:
-
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch(
+            "evolution_scanner.run_audit_tool",
+            return_value=[
+                {
+                    "rule_id": "RULE_001",
+                    "severity": "warning",
+                    "category": "test",
+                    "description": "test",
+                    "location": "test.md",
+                    "evidence": "test",
+                }
+            ],
+        ),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[finding]),
+        patch("evolution_scanner.detect_regressions", return_value=[finding]),
+        patch("evolution_scanner.get_open_issues", side_effect=RuntimeError("rate limit exceeded")),
+        patch("evolution_scanner.create_issue"),
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved") as mock_auto_close,
+    ):
         with pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 1
@@ -3832,26 +3949,25 @@ def test_run_audit_tool_strips_gh_token_from_subprocess():
     """P2-B: run_audit_tool strips GH_TOKEN from subprocess environment."""
     from evolution_scanner import run_audit_tool
 
-    tool = {'name': 'test_tool', 'command': 'echo "[]"', 'output_format': 'json'}
+    tool = {"name": "test_tool", "command": 'echo "[]"', "output_format": "json"}
     captured_env = {}
 
     original_run = subprocess.run
 
     def fake_run(*args, **kwargs):
-        captured_env.update(kwargs.get('env', {}))
+        captured_env.update(kwargs.get("env", {}))
         # Return a successful result with empty findings
-        result = original_run(args[0] if args else kwargs.get('args'),
-                              capture_output=True, text=True, timeout=5)
+        result = original_run(args[0] if args else kwargs.get("args"), capture_output=True, text=True, timeout=5)
         return result
 
     with (
-        patch.dict(os.environ, {'GH_TOKEN': 'secret_token', 'GITHUB_TOKEN': 'another_secret'}),
-        patch('evolution_scanner.subprocess.run', side_effect=fake_run),
+        patch.dict(os.environ, {"GH_TOKEN": "secret_token", "GITHUB_TOKEN": "another_secret"}),
+        patch("evolution_scanner.subprocess.run", side_effect=fake_run),
     ):
         run_audit_tool(tool, Path())
 
-    assert 'GH_TOKEN' not in captured_env, "GH_TOKEN must be stripped from audit subprocess env"
-    assert 'GITHUB_TOKEN' not in captured_env, "GITHUB_TOKEN must be stripped from audit subprocess env"
+    assert "GH_TOKEN" not in captured_env, "GH_TOKEN must be stripped from audit subprocess env"
+    assert "GITHUB_TOKEN" not in captured_env, "GITHUB_TOKEN must be stripped from audit subprocess env"
 
 
 def test_scanner_restores_sys_path_with_safepath():
@@ -3859,8 +3975,7 @@ def test_scanner_restores_sys_path_with_safepath():
     import evolution_scanner
 
     script_dir = str(Path(evolution_scanner.__file__).resolve().parent)
-    assert script_dir in sys.path, \
-        "Scanner's directory must be in sys.path (restored by explicit sys.path.insert)"
+    assert script_dir in sys.path, "Scanner's directory must be in sys.path (restored by explicit sys.path.insert)"
 
 
 # ============================================================================
@@ -3885,14 +4000,15 @@ def test_ensure_labels_creates_labels():
 
 def test_main_fails_when_all_tools_fail():
     """When all audit tools fail, main() exits non-zero instead of silently completing."""
-    with patch("evolution_scanner.check_kill_switch", return_value=False), \
-         patch("evolution_scanner.load_config") as mock_config, \
-         patch("evolution_scanner.validate_config"), \
-         patch("evolution_scanner.ensure_labels"), \
-         patch("evolution_scanner.run_audit_tool", return_value=None), \
-         patch("evolution_scanner.update_history") as mock_history, \
-         patch("builtins.print"):
-
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config") as mock_config,
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=None),
+        patch("evolution_scanner.update_history") as mock_history,
+        patch("builtins.print"),
+    ):
         mock_config.return_value = {
             "audit_tools": [
                 {"name": "tool1", "command": "cmd1", "output_format": "json"},
@@ -3907,6 +4023,7 @@ def test_main_fails_when_all_tools_fail():
         }
 
         from evolution_scanner import main
+
         with pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 1
@@ -3917,6 +4034,7 @@ def test_main_fails_when_all_tools_fail():
 def test_load_history_filters_findings_missing_keys(tmp_path):
     """load_history drops findings missing rule_id or location keys."""
     from evolution_utils import load_history
+
     history_path = tmp_path / "findings_over_time.json"
     history_data = {
         "snapshots": [
@@ -3949,12 +4067,14 @@ def test_update_history_handles_malformed_prev_findings(tmp_path):
     history_path = tmp_path / "findings_over_time.json"
     # First tick with a malformed finding (missing rule_id)
     malformed_data = {
-        "snapshots": [{
-            "timestamp": "2026-01-01T00:00:00Z",
-            "tick_id": "20260101-000000",
-            "findings": [{"severity": "warning"}],  # Missing rule_id, location
-            "issues_created": 0,
-        }],
+        "snapshots": [
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "tick_id": "20260101-000000",
+                "findings": [{"severity": "warning"}],  # Missing rule_id, location
+                "issues_created": 0,
+            }
+        ],
         "resolved_findings": [],
     }
     with history_path.open("w") as f:
@@ -4015,9 +4135,7 @@ def test_check_trigger_droid_detects_missing_function(tmp_path, monkeypatch):
     """check_trigger_droid flags EVOLUTION_TRIGGER_REGRESSION when resolve_pr_ref is missing."""
     trigger_droid = tmp_path / "trigger-droid.sh"
     trigger_droid.write_text(
-        "#!/bin/bash\n"
-        "resolve_issue_ref() { echo test; }\n"
-        "# resolve_pr_ref is intentionally missing\n"
+        "#!/bin/bash\nresolve_issue_ref() { echo test; }\n# resolve_pr_ref is intentionally missing\n"
     )
     monkeypatch.setattr("evolution_self_audit.TRIGGER_DROID", trigger_droid)
     findings = check_trigger_droid()
@@ -4031,9 +4149,7 @@ def test_check_trigger_droid_all_functions_present(monkeypatch):
     mock_path = MagicMock()
     mock_path.exists.return_value = True
     mock_path.read_text.return_value = (
-        "#!/bin/bash\n"
-        "resolve_issue_ref() {\n  echo hi\n}\n"
-        "resolve_pr_ref() {\n  echo hi\n}\n"
+        "#!/bin/bash\nresolve_issue_ref() {\n  echo hi\n}\nresolve_pr_ref() {\n  echo hi\n}\n"
     )
     mock_path.__str__.return_value = "/fake/trigger-droid.sh"
     monkeypatch.setattr("evolution_self_audit.TRIGGER_DROID", mock_path)
@@ -4048,15 +4164,8 @@ def test_check_trigger_droid_stabilization_retry_recovers(monkeypatch):
     The stabilization retry prevents false positives from partial file writes
     during non-atomic deployment of trigger-droid.sh.
     """
-    full_content = (
-        "#!/bin/bash\n"
-        "resolve_issue_ref() {\n  echo hi\n}\n"
-        "resolve_pr_ref() {\n  echo hi\n}\n"
-    )
-    partial_content = (
-        "#!/bin/bash\n"
-        "resolve_issue_ref() {\n  echo hi\n}\n"
-    )
+    full_content = "#!/bin/bash\nresolve_issue_ref() {\n  echo hi\n}\nresolve_pr_ref() {\n  echo hi\n}\n"
+    partial_content = "#!/bin/bash\nresolve_issue_ref() {\n  echo hi\n}\n"
 
     mock_path = MagicMock()
     mock_path.exists.return_value = True
@@ -4076,10 +4185,7 @@ def test_check_trigger_droid_missing_function_persists(monkeypatch):
     The stabilization retry does NOT suppress real regressions — if the
     function is genuinely absent on both reads, the finding is reported.
     """
-    content_missing_pr_ref = (
-        "#!/bin/bash\n"
-        "resolve_issue_ref() {\n  echo hi\n}\n"
-    )
+    content_missing_pr_ref = "#!/bin/bash\nresolve_issue_ref() {\n  echo hi\n}\n"
 
     mock_path = MagicMock()
     mock_path.exists.return_value = True
@@ -4155,9 +4261,7 @@ def test_evolution_self_audit_suppress_empty_is_valid(tmp_path, monkeypatch):
         tmp_path / "suppress.json",
     )
     # suppress.json with empty suppressed list is a valid, healthy state
-    (tmp_path / "suppress.json").write_text(
-        json.dumps({"suppressed": []}), encoding="utf-8"
-    )
+    (tmp_path / "suppress.json").write_text(json.dumps({"suppressed": []}), encoding="utf-8")
     findings = check_suppress_json()
     assert findings == []
 
@@ -4178,7 +4282,7 @@ def test_adapt_audit_layout():
                 "severity": "info",
                 "file": "relative/path.md",  # Relative path
                 "detail": "Another issue",
-            }
+            },
         ]
     }
     result = adapt_audit_layout(raw)
@@ -4207,7 +4311,7 @@ def test_adapt_validate_project():
                 "severity": "info",
                 "file": "./local/path.md",  # Dot-prefixed relative
                 "detail": "File missing",
-            }
+            },
         ]
     }
     result = adapt_validate_project(raw)
@@ -4226,9 +4330,7 @@ def test_adapt_evolution_self_audit(tmp_path, monkeypatch):
         "memory_core.tools.evolution_self_audit.SUPPRESS_JSON",
         tmp_path / "suppress.json",
     )
-    (tmp_path / "suppress.json").write_text(
-        json.dumps({"suppressed": ["rule_1"]}), encoding="utf-8"
-    )
+    (tmp_path / "suppress.json").write_text(json.dumps({"suppressed": ["rule_1"]}), encoding="utf-8")
 
     # Scanner calls json.loads() before passing to adapter, so raw is already parsed
     # Test that normalize_location is applied (not Path.relative_to)
@@ -4248,7 +4350,7 @@ def test_adapt_evolution_self_audit(tmp_path, monkeypatch):
             "location": "./local/file.md",  # Dot-prefixed relative
             "evidence": "test2",
             "category": "evolution_self_audit",
-        }
+        },
     ]
     result = adapt_evolution_self_audit(raw)
     assert len(result) == 2
@@ -4265,7 +4367,8 @@ def test_evolution_self_audit_tool_health(tmp_path, monkeypatch):
     from memory_core.tools import evolution_self_audit
 
     monkeypatch.setattr(
-        evolution_self_audit, "FINDINGS_OVER_TIME",
+        evolution_self_audit,
+        "FINDINGS_OVER_TIME",
         tmp_path / "findings_over_time.json",
     )
 
@@ -4304,7 +4407,8 @@ def test_evolution_self_audit_tool_health_ok(tmp_path, monkeypatch):
     from memory_core.tools import evolution_self_audit
 
     monkeypatch.setattr(
-        evolution_self_audit, "FINDINGS_OVER_TIME",
+        evolution_self_audit,
+        "FINDINGS_OVER_TIME",
         tmp_path / "findings_over_time.json",
     )
 
@@ -4339,7 +4443,8 @@ def test_evolution_self_audit_tool_health_file_missing(tmp_path, monkeypatch):
     from memory_core.tools import evolution_self_audit
 
     monkeypatch.setattr(
-        evolution_self_audit, "FINDINGS_OVER_TIME",
+        evolution_self_audit,
+        "FINDINGS_OVER_TIME",
         tmp_path / "nonexistent.json",
     )
 
@@ -4352,7 +4457,8 @@ def test_evolution_self_audit_tool_health_boundary(tmp_path, monkeypatch):
     from memory_core.tools import evolution_self_audit
 
     monkeypatch.setattr(
-        evolution_self_audit, "FINDINGS_OVER_TIME",
+        evolution_self_audit,
+        "FINDINGS_OVER_TIME",
         tmp_path / "findings_over_time.json",
     )
 
@@ -4388,7 +4494,8 @@ def test_evolution_self_audit_findings_sufficient(tmp_path, monkeypatch):
     from memory_core.tools import evolution_self_audit
 
     monkeypatch.setattr(
-        evolution_self_audit, "FINDINGS_OVER_TIME",
+        evolution_self_audit,
+        "FINDINGS_OVER_TIME",
         tmp_path / "findings_over_time.json",
     )
 
@@ -4412,7 +4519,8 @@ def test_evolution_self_audit_findings_stale(tmp_path, monkeypatch):
     from memory_core.tools import evolution_self_audit
 
     monkeypatch.setattr(
-        evolution_self_audit, "FINDINGS_OVER_TIME",
+        evolution_self_audit,
+        "FINDINGS_OVER_TIME",
         tmp_path / "findings_over_time.json",
     )
 
@@ -4438,7 +4546,8 @@ def test_evolution_self_audit_findings_missing(tmp_path, monkeypatch):
     from memory_core.tools import evolution_self_audit
 
     monkeypatch.setattr(
-        evolution_self_audit, "FINDINGS_OVER_TIME",
+        evolution_self_audit,
+        "FINDINGS_OVER_TIME",
         tmp_path / "nonexistent.json",
     )
 
@@ -4450,14 +4559,16 @@ def test_evolution_self_audit_findings_missing(tmp_path, monkeypatch):
 def test_update_history_tool_status(tmp_path):
     """update_history writes tool_status to snapshot when provided."""
     history_path = tmp_path / "history.json"
-    findings = [Finding(
-        rule_id="TEST_RULE",
-        severity="warning",
-        category="test",
-        description="test",
-        location="test.py",
-        evidence="test",
-    )]
+    findings = [
+        Finding(
+            rule_id="TEST_RULE",
+            severity="warning",
+            category="test",
+            description="test",
+            location="test.py",
+            evidence="test",
+        )
+    ]
     tool_status = {"daily_kb_audit": "ok", "audit_layout": "failed"}
 
     update_history(history_path, findings, 0, 100, tool_status=tool_status)
@@ -4534,9 +4645,7 @@ def test_auto_close_resolved_does_not_close_active_issues():
     ]
 
     with patch("evolution_utils.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout=json.dumps(mock_issues), stderr=""
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr="")
 
         auto_close_resolved(current_findings, "evolution-found")
 
@@ -4549,9 +4658,7 @@ def test_auto_close_resolved_does_not_close_active_issues():
 def test_auto_close_resolved_handles_empty_list():
     """auto_close_resolved handles empty issue list gracefully."""
 
-    current_findings = [
-        Finding("RULE_001", "warning", "test", "desc", "file.py", "ev")
-    ]
+    current_findings = [Finding("RULE_001", "warning", "test", "desc", "file.py", "ev")]
 
     with patch("evolution_utils.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
@@ -4565,9 +4672,7 @@ def test_auto_close_resolved_handles_empty_list():
 def test_auto_close_resolved_skips_malformed_issues():
     """auto_close_resolved skips issues with missing or malformed body."""
 
-    current_findings = [
-        Finding("RULE_001", "warning", "test", "desc", "file.py", "ev")
-    ]
+    current_findings = [Finding("RULE_001", "warning", "test", "desc", "file.py", "ev")]
 
     # Issue 101 has no body, issue 102 is malformed
     mock_issues = [
@@ -4675,8 +4780,7 @@ def test_auto_close_resolved_all_categories_failed_protects_all():
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
         ]
 
-        auto_close_resolved(current_findings, "evolution-found",
-                            failed_categories={"daily_audit", "consistency"})
+        auto_close_resolved(current_findings, "evolution-found", failed_categories={"daily_audit", "consistency"})
 
         # list only; no close calls
         assert mock_run.call_count == 1
@@ -4727,7 +4831,10 @@ def test_auto_close_resolved_skips_self_audit_category():
 
     # Issue 101 is self-audit (must be skipped), issue 102 is consistency
     mock_issues = [
-        {"number": 101, "body": "**Rule ID**: EVOLUTION_HEARTBEAT_STALE\n**Category**: evolution_self_audit\n**Location**: system/heartbeat"},
+        {
+            "number": 101,
+            "body": "**Rule ID**: EVOLUTION_HEARTBEAT_STALE\n**Category**: evolution_self_audit\n**Location**: system/heartbeat",
+        },
         {"number": 102, "body": "**Rule ID**: RULE_002\n**Category**: consistency\n**Location**: file2.py"},
     ]
 
@@ -4762,7 +4869,10 @@ def test_auto_close_resolved_closes_non_self_audit_category():
     # Issue 101 (consistency, active - NOT closed), issue 102 (self-audit, stale - skipped)
     mock_issues = [
         {"number": 101, "body": "**Rule ID**: RULE_001\n**Category**: consistency\n**Location**: file1.py"},
-        {"number": 102, "body": "**Rule ID**: EVOLUTION_HEARTBEAT_STALE\n**Category**: evolution_self_audit\n**Location**: system/heartbeat"},
+        {
+            "number": 102,
+            "body": "**Rule ID**: EVOLUTION_HEARTBEAT_STALE\n**Category**: evolution_self_audit\n**Location**: system/heartbeat",
+        },
     ]
 
     with patch("evolution_utils.subprocess.run") as mock_run:
@@ -4788,7 +4898,10 @@ def test_auto_close_resolved_self_audit_not_affected_by_failed_categories():
     current_findings = []
 
     mock_issues = [
-        {"number": 101, "body": "**Rule ID**: EVOLUTION_HEARTBEAT_STALE\n**Category**: evolution_self_audit\n**Location**: system/heartbeat"},
+        {
+            "number": 101,
+            "body": "**Rule ID**: EVOLUTION_HEARTBEAT_STALE\n**Category**: evolution_self_audit\n**Location**: system/heartbeat",
+        },
     ]
 
     with patch("evolution_utils.subprocess.run") as mock_run:
@@ -4807,6 +4920,7 @@ def test_auto_close_resolved_self_audit_not_affected_by_failed_categories():
 # ============================================================================
 # GAP-C2: Dedup includes recently closed issues (Fixes #454)
 # ============================================================================
+
 
 def test_get_open_issues_queries_both_states():
     """VAL-DEDUP-001: get_open_issues makes two gh calls: open + closed."""
@@ -4841,14 +4955,22 @@ def test_get_open_issues_closed_uses_limit_100():
 def test_get_open_issues_dedup_set_includes_closed():
     """VAL-DUP-001: dedup set includes keys from closed issues within 7-day window."""
     from datetime import datetime, timedelta
-    open_data = json.dumps([
-        {"title": "[evolution] RULE_A", "body": "**Rule ID**: RULE_A\n**Location**: file_a.py", "number": 10}
-    ])
+
+    open_data = json.dumps(
+        [{"title": "[evolution] RULE_A", "body": "**Rule ID**: RULE_A\n**Location**: file_a.py", "number": 10}]
+    )
     # Closed issue within 7-day window (closed 3 days ago)
     closed_3d_ago = (datetime.now(UTC) - timedelta(days=3)).isoformat()
-    closed_data = json.dumps([
-        {"title": "[evolution] RULE_B", "body": "**Rule ID**: RULE_B\n**Location**: file_b.py", "number": 20, "closedAt": closed_3d_ago}
-    ])
+    closed_data = json.dumps(
+        [
+            {
+                "title": "[evolution] RULE_B",
+                "body": "**Rule ID**: RULE_B\n**Location**: file_b.py",
+                "number": 20,
+                "closedAt": closed_3d_ago,
+            }
+        ]
+    )
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=open_data, stderr=""),
@@ -4865,11 +4987,19 @@ def test_get_open_issues_dedup_set_includes_closed():
 def test_recently_closed_issue_prevents_recreation():
     """VAL-DUP-001: finding matching a recently closed issue (within 7 days) is NOT re-created."""
     from datetime import datetime, timedelta
+
     # Closed issue within 7-day window (closed 3 days ago)
     closed_3d_ago = (datetime.now(UTC) - timedelta(days=3)).isoformat()
-    closed_data = json.dumps([
-        {"title": "[evolution] RULE_X", "body": "**Rule ID**: RULE_X\n**Location**: stale.py", "number": 99, "closedAt": closed_3d_ago}
-    ])
+    closed_data = json.dumps(
+        [
+            {
+                "title": "[evolution] RULE_X",
+                "body": "**Rule ID**: RULE_X\n**Location**: stale.py",
+                "number": 99,
+                "closedAt": closed_3d_ago,
+            }
+        ]
+    )
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout="[]", stderr=""),
@@ -4882,6 +5012,7 @@ def test_recently_closed_issue_prevents_recreation():
         assert issues[0]["location"] == "stale.py"
         # Verify that deduplicate() would suppress RULE_X
         from evolution_scanner import Finding, deduplicate
+
         findings = [Finding("RULE_X", "warning", "test", "desc", "stale.py", "ev")]
         deduped = deduplicate(findings, issues)
         assert len(deduped) == 0, "RULE_X should be suppressed by recent closed issue dedup"
@@ -4889,9 +5020,9 @@ def test_recently_closed_issue_prevents_recreation():
 
 def test_open_issue_still_blocks_creation():
     """VAL-DEDUP-004: open issues still block creation (regression check)."""
-    open_data = json.dumps([
-        {"title": "[evolution] RULE_Y", "body": "**Rule ID**: RULE_Y\n**Location**: open.py", "number": 50}
-    ])
+    open_data = json.dumps(
+        [{"title": "[evolution] RULE_Y", "body": "**Rule ID**: RULE_Y\n**Location**: open.py", "number": 50}]
+    )
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=open_data, stderr=""),
@@ -4901,6 +5032,7 @@ def test_open_issue_still_blocks_creation():
         assert len(issues) == 1
         assert issues[0]["rule_id"] == "RULE_Y"
         from evolution_scanner import Finding, deduplicate
+
         findings = [Finding("RULE_Y", "warning", "test", "desc", "open.py", "ev")]
         deduped = deduplicate(findings, issues)
         assert len(deduped) == 0, "RULE_Y should be suppressed by open issue dedup"
@@ -4909,14 +5041,22 @@ def test_open_issue_still_blocks_creation():
 def test_mixed_open_and_closed_dedup():
     """VAL-DUP-001: both open and recent closed issues contribute to dedup set."""
     from datetime import datetime, timedelta
-    open_data = json.dumps([
-        {"title": "[evolution] RULE_OPEN", "body": "**Rule ID**: RULE_OPEN\n**Location**: open.py", "number": 1}
-    ])
+
+    open_data = json.dumps(
+        [{"title": "[evolution] RULE_OPEN", "body": "**Rule ID**: RULE_OPEN\n**Location**: open.py", "number": 1}]
+    )
     # Closed issue within 7-day window (closed 3 days ago)
     closed_3d_ago = (datetime.now(UTC) - timedelta(days=3)).isoformat()
-    closed_data = json.dumps([
-        {"title": "[evolution] RULE_CLOSED", "body": "**Rule ID**: RULE_CLOSED\n**Location**: closed.py", "number": 2, "closedAt": closed_3d_ago}
-    ])
+    closed_data = json.dumps(
+        [
+            {
+                "title": "[evolution] RULE_CLOSED",
+                "body": "**Rule ID**: RULE_CLOSED\n**Location**: closed.py",
+                "number": 2,
+                "closedAt": closed_3d_ago,
+            }
+        ]
+    )
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=open_data, stderr=""),
@@ -4925,6 +5065,7 @@ def test_mixed_open_and_closed_dedup():
         issues = get_open_issues("evolution-found")
         assert len(issues) == 2
         from evolution_scanner import Finding, deduplicate
+
         findings = [
             Finding("RULE_OPEN", "warning", "test", "desc", "open.py", "ev"),
             Finding("RULE_CLOSED", "warning", "test", "desc", "closed.py", "ev"),
@@ -4942,9 +5083,9 @@ def test_get_open_issues_handles_closed_query_failure():
     could not detect recently closed issues, leading to duplicate re-creation.
     Now both query failures raise RuntimeError.
     """
-    open_data = json.dumps([
-        {"title": "[evolution] RULE_OPEN", "body": "**Rule ID**: RULE_OPEN\n**Location**: open.py", "number": 1}
-    ])
+    open_data = json.dumps(
+        [{"title": "[evolution] RULE_OPEN", "body": "**Rule ID**: RULE_OPEN\n**Location**: open.py", "number": 1}]
+    )
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=open_data, stderr=""),
@@ -4952,15 +5093,16 @@ def test_get_open_issues_handles_closed_query_failure():
         ]
         # Closed query failure should raise RuntimeError (not silently return [])
         import pytest
+
         with pytest.raises(RuntimeError, match="closed"):
             get_open_issues("evolution-found")
 
 
 def test_get_open_issues_empty_closed():
     """GAP-C2: empty closed results handled correctly."""
-    open_data = json.dumps([
-        {"title": "[evolution] RULE_A", "body": "**Rule ID**: RULE_A\n**Location**: a.py", "number": 10}
-    ])
+    open_data = json.dumps(
+        [{"title": "[evolution] RULE_A", "body": "**Rule ID**: RULE_A\n**Location**: a.py", "number": 10}]
+    )
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=open_data, stderr=""),
@@ -5000,17 +5142,11 @@ def test_single_absence_production_order_no_close(tmp_path):
 
     # Now call auto_close_resolved with history_path (as main() does)
     # Mock gh subprocess calls
-    mock_issues = [
-        {"number": 101, "body": "**Rule ID**: RULE_001\n**Location**: file1.py"}
-    ]
+    mock_issues = [{"number": 101, "body": "**Rule ID**: RULE_001\n**Location**: file1.py"}]
 
     with patch("evolution_utils.subprocess.run") as mock_run:
         # Mock gh issue list (open issues)
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout=json.dumps(mock_issues),
-            stderr=""
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr="")
 
         # Call auto_close_resolved with history_path (production call signature)
         auto_close_resolved(findings_tick2, "evolution-found", None, history_path)
@@ -5018,9 +5154,13 @@ def test_single_absence_production_order_no_close(tmp_path):
         # Verify: should NOT call gh issue close (only list was called)
         # With GRACE_PERIOD_TICKS=2, a single absence (count=1) should defer close
         close_calls = [
-            call for call in mock_run.call_args_list
-            if len(call[0]) > 0 and len(call[0][0]) >= 3
-            and call[0][0][0] == "gh" and call[0][0][1] == "issue" and call[0][0][2] == "close"
+            call
+            for call in mock_run.call_args_list
+            if len(call[0]) > 0
+            and len(call[0][0]) >= 3
+            and call[0][0][0] == "gh"
+            and call[0][0][1] == "issue"
+            and call[0][0][2] == "close"
         ]
 
         assert len(close_calls) == 0, (
@@ -5167,6 +5307,7 @@ def test_detect_sync_orphans_multiple():
 def test_reconcile_in_progress_exists():
     """VAL-RECON-001: reconcile_in_progress function exists and is callable."""
     from evolution_utils import reconcile_in_progress
+
     assert callable(reconcile_in_progress)
 
 
@@ -5178,13 +5319,7 @@ def test_reconcile_detects_stuck_issue(tmp_path):
 
     # Mock an issue open for 100 hours (> 72h threshold)
     old_date = (datetime.now(UTC) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
-    mock_issues = [
-        {
-            "number": 42,
-            "body": "**Rule ID**: RULE_001\n**Location**: file.py",
-            "createdAt": old_date
-        }
-    ]
+    mock_issues = [{"number": 42, "body": "**Rule ID**: RULE_001\n**Location**: file.py", "createdAt": old_date}]
 
     with patch("evolution_utils.subprocess.run") as mock_run:
         # Mock calls: issue list, PR list (none), comment list (none), comment create
@@ -5192,7 +5327,7 @@ def test_reconcile_detects_stuck_issue(tmp_path):
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),  # issue list
             MagicMock(returncode=0, stdout="[]", stderr=""),  # PR list (no PRs)
             MagicMock(returncode=0, stdout="", stderr=""),  # comment list (no comments)
-            MagicMock(returncode=0, stdout="", stderr="")   # comment create
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment create
         ]
 
         stuck_count = reconcile_in_progress("evolution-found")
@@ -5208,20 +5343,10 @@ def test_reconcile_ignores_recent_issue(tmp_path):
 
     # Mock a recent issue (10h old)
     recent_date = (datetime.now(UTC) - timedelta(hours=10)).isoformat().replace("+00:00", "Z")
-    mock_issues = [
-        {
-            "number": 43,
-            "body": "**Rule ID**: RULE_002\n**Location**: file.py",
-            "createdAt": recent_date
-        }
-    ]
+    mock_issues = [{"number": 43, "body": "**Rule ID**: RULE_002\n**Location**: file.py", "createdAt": recent_date}]
 
     with patch("evolution_utils.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout=json.dumps(mock_issues),
-            stderr=""
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr="")
 
         stuck_count = reconcile_in_progress("evolution-found")
 
@@ -5236,20 +5361,14 @@ def test_reconcile_ignores_issue_with_pr(tmp_path):
 
     # Mock an old issue (> 72h)
     old_date = (datetime.now(UTC) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
-    mock_issues = [
-        {
-            "number": 44,
-            "body": "**Rule ID**: RULE_003\n**Location**: file.py",
-            "createdAt": old_date
-        }
-    ]
+    mock_issues = [{"number": 44, "body": "**Rule ID**: RULE_003\n**Location**: file.py", "createdAt": old_date}]
 
     with patch("evolution_utils.subprocess.run") as mock_run:
         # First call: gh issue list
         # Second call: gh pr list (returns a PR)
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
-            MagicMock(returncode=0, stdout=json.dumps([{"number": 99}]), stderr="")
+            MagicMock(returncode=0, stdout=json.dumps([{"number": 99}]), stderr=""),
         ]
 
         stuck_count = reconcile_in_progress("evolution-found")
@@ -5264,13 +5383,7 @@ def test_reconcile_adds_advisory_comment(tmp_path):
     from evolution_utils import reconcile_in_progress
 
     old_date = (datetime.now(UTC) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
-    mock_issues = [
-        {
-            "number": 45,
-            "body": "**Rule ID**: RULE_004\n**Location**: file.py",
-            "createdAt": old_date
-        }
-    ]
+    mock_issues = [{"number": 45, "body": "**Rule ID**: RULE_004\n**Location**: file.py", "createdAt": old_date}]
 
     with patch("evolution_utils.subprocess.run") as mock_run:
         # Mock calls: issue list, PR list (none), comment list (none), comment create
@@ -5278,7 +5391,7 @@ def test_reconcile_adds_advisory_comment(tmp_path):
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),  # issue list
             MagicMock(returncode=0, stdout="[]", stderr=""),  # PR list (no PRs)
             MagicMock(returncode=0, stdout="", stderr=""),  # comment list (no comments)
-            MagicMock(returncode=0, stdout="", stderr="")   # comment create
+            MagicMock(returncode=0, stdout="", stderr=""),  # comment create
         ]
 
         stuck_count = reconcile_in_progress("evolution-found")
@@ -5287,9 +5400,13 @@ def test_reconcile_adds_advisory_comment(tmp_path):
 
         # Verify comment was created
         comment_calls = [
-            call for call in mock_run.call_args_list
-            if len(call[0]) > 0 and len(call[0][0]) >= 3
-            and call[0][0][0] == "gh" and call[0][0][1] == "issue" and call[0][0][2] == "comment"
+            call
+            for call in mock_run.call_args_list
+            if len(call[0]) > 0
+            and len(call[0][0]) >= 3
+            and call[0][0][0] == "gh"
+            and call[0][0][1] == "issue"
+            and call[0][0][2] == "comment"
         ]
         assert len(comment_calls) > 0, "Should have called gh issue comment"
 
@@ -5299,11 +5416,7 @@ def test_reconcile_handles_api_failure(tmp_path):
     from evolution_utils import reconcile_in_progress
 
     with patch("evolution_utils.subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(
-            returncode=1,
-            stdout="",
-            stderr="API error"
-        )
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="API error")
 
         # Should not crash
         stuck_count = reconcile_in_progress("evolution-found")
@@ -5334,20 +5447,14 @@ def test_reconcile_idempotency_guard(tmp_path):
     from evolution_utils import reconcile_in_progress
 
     old_date = (datetime.now(UTC) - timedelta(hours=100)).isoformat().replace("+00:00", "Z")
-    mock_issues = [
-        {
-            "number": 46,
-            "body": "**Rule ID**: RULE_005\n**Location**: file.py",
-            "createdAt": old_date
-        }
-    ]
+    mock_issues = [{"number": 46, "body": "**Rule ID**: RULE_005\n**Location**: file.py", "createdAt": old_date}]
 
     with patch("evolution_utils.subprocess.run") as mock_run:
         # Mock: issue list, PR list (none), comment list (sentinel already present)
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout="[]", stderr=""),
-            MagicMock(returncode=0, stdout="<!-- evolution-recon-advisory -->", stderr="")
+            MagicMock(returncode=0, stdout="<!-- evolution-recon-advisory -->", stderr=""),
         ]
 
         stuck_count = reconcile_in_progress("evolution-found")
@@ -5357,9 +5464,13 @@ def test_reconcile_idempotency_guard(tmp_path):
 
         # Verify no comment create call
         comment_calls = [
-            call for call in mock_run.call_args_list
-            if len(call[0]) > 0 and len(call[0][0]) >= 3
-            and call[0][0][0] == "gh" and call[0][0][1] == "issue" and call[0][0][2] == "comment"
+            call
+            for call in mock_run.call_args_list
+            if len(call[0]) > 0
+            and len(call[0][0]) >= 3
+            and call[0][0][0] == "gh"
+            and call[0][0][1] == "issue"
+            and call[0][0][2] == "comment"
         ]
         assert len(comment_calls) == 0, "Should not have called gh issue comment"
 
@@ -5375,7 +5486,7 @@ def test_reconcile_returns_count(tmp_path):
     mock_issues = [
         {"number": 47, "body": "**Rule ID**: R1\n**Location**: f1.py", "createdAt": old_date},
         {"number": 48, "body": "**Rule ID**: R2\n**Location**: f2.py", "createdAt": old_date},
-        {"number": 49, "body": "**Rule ID**: R3\n**Location**: f3.py", "createdAt": old_date}
+        {"number": 49, "body": "**Rule ID**: R3\n**Location**: f3.py", "createdAt": old_date},
     ]
 
     with patch("evolution_utils.subprocess.run") as mock_run:
@@ -5390,7 +5501,7 @@ def test_reconcile_returns_count(tmp_path):
             MagicMock(returncode=0, stdout="", stderr=""),
             MagicMock(returncode=0, stdout="[]", stderr=""),
             MagicMock(returncode=0, stdout="", stderr=""),
-            MagicMock(returncode=0, stdout="", stderr="")
+            MagicMock(returncode=0, stdout="", stderr=""),
         ]
 
         stuck_count = reconcile_in_progress("evolution-found")
@@ -5408,33 +5519,35 @@ def test_regular_and_self_audit_get_independent_quotas():
     from evolution_scanner import main
 
     config = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 1,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 1,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
     }
 
     regular = Finding("REG_001", "warning", "consistency", "Regular", "file1.md", "ev1")
     self_audit = Finding("SA_001", "warning", "evolution_self_audit", "Self audit", "file2.md", "ev2")
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.validate_config'), \
-         patch('evolution_scanner.ensure_labels'), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[regular, self_audit]), \
-         patch('evolution_scanner.detect_regressions', return_value=[regular, self_audit]), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved'), \
-         patch('evolution_scanner.reconcile_in_progress'):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[regular, self_audit]),
+        patch("evolution_scanner.detect_regressions", return_value=[regular, self_audit]),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.create_issue", return_value=True) as mock_create,
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+        patch("evolution_scanner.reconcile_in_progress"),
+    ):
         main()
         assert mock_create.call_count == 2
         created_findings = [call[0][0] for call in mock_create.call_args_list]
@@ -5448,33 +5561,35 @@ def test_regular_quota_exhaustion_does_not_block_self_audit():
     from evolution_scanner import main
 
     config = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 1,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 1,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
     }
 
     critical = Finding("CRIT_001", "critical", "consistency", "Critical", "file1.md", "ev1")
     self_audit = Finding("SA_001", "warning", "evolution_self_audit", "Self audit", "file2.md", "ev2")
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.validate_config'), \
-         patch('evolution_scanner.ensure_labels'), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[critical, self_audit]), \
-         patch('evolution_scanner.detect_regressions', return_value=[critical, self_audit]), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved'), \
-         patch('evolution_scanner.reconcile_in_progress'):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[critical, self_audit]),
+        patch("evolution_scanner.detect_regressions", return_value=[critical, self_audit]),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.create_issue", return_value=True) as mock_create,
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+        patch("evolution_scanner.reconcile_in_progress"),
+    ):
         main()
         assert mock_create.call_count == 2
         created_findings = [call[0][0] for call in mock_create.call_args_list]
@@ -5488,35 +5603,36 @@ def test_self_audit_quota_is_capped():
     from evolution_scanner import main
 
     config = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 5,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 5,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
     }
 
     sa_findings = [
-        Finding(f"SA_{i}", "warning", "evolution_self_audit", f"SA {i}", f"file{i}.md", f"ev{i}")
-        for i in range(3)
+        Finding(f"SA_{i}", "warning", "evolution_self_audit", f"SA {i}", f"file{i}.md", f"ev{i}") for i in range(3)
     ]
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.validate_config'), \
-         patch('evolution_scanner.ensure_labels'), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=sa_findings), \
-         patch('evolution_scanner.detect_regressions', return_value=sa_findings), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved'), \
-         patch('evolution_scanner.reconcile_in_progress'):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=sa_findings),
+        patch("evolution_scanner.detect_regressions", return_value=sa_findings),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.create_issue", return_value=True) as mock_create,
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+        patch("evolution_scanner.reconcile_in_progress"),
+    ):
         main()
         assert mock_create.call_count == 1
         created = mock_create.call_args_list[0][0][0]
@@ -5528,15 +5644,15 @@ def test_mixed_findings_sorted_correctly_within_each_pool():
     from evolution_scanner import main
 
     config = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 2,
-        'max_self_audit_issues_per_tick': 2,
-        'max_code_hygiene_issues_per_tick': 2,
-        'snapshot_limit': 100,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 2,
+        "max_self_audit_issues_per_tick": 2,
+        "max_code_hygiene_issues_per_tick": 2,
+        "snapshot_limit": 100,
     }
 
     findings = [
@@ -5547,19 +5663,21 @@ def test_mixed_findings_sorted_correctly_within_each_pool():
         Finding("SA_WARN", "warning", "evolution_self_audit", "SA Warn", "f5.md", "ev"),
     ]
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.validate_config'), \
-         patch('evolution_scanner.ensure_labels'), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=findings), \
-         patch('evolution_scanner.detect_regressions', return_value=findings), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved'), \
-         patch('evolution_scanner.reconcile_in_progress'):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=findings),
+        patch("evolution_scanner.detect_regressions", return_value=findings),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.create_issue", return_value=True) as mock_create,
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+        patch("evolution_scanner.reconcile_in_progress"),
+    ):
         main()
         # Three-pool design: code_hygiene (2), regular (1), self_audit (2) = 5 total
         assert mock_create.call_count == 5
@@ -5594,8 +5712,7 @@ def test_config_has_max_self_audit_issues_per_tick():
     # Find repo root by looking for .evolution/config.yml
     repo_root = Path(__file__).parent.parent
     config = load_config(repo_root)
-    assert "max_self_audit_issues_per_tick" in config, \
-        "config.yml must have max_self_audit_issues_per_tick"
+    assert "max_self_audit_issues_per_tick" in config, "config.yml must have max_self_audit_issues_per_tick"
 
 
 def test_config_has_max_code_hygiene_issues_per_tick():
@@ -5607,15 +5724,15 @@ def test_config_has_max_code_hygiene_issues_per_tick():
     # Find repo root by looking for .evolution/config.yml
     repo_root = Path(__file__).parent.parent
     config = load_config(repo_root)
-    assert "max_code_hygiene_issues_per_tick" in config, \
-        "config.yml must have max_code_hygiene_issues_per_tick"
-    assert isinstance(config["max_code_hygiene_issues_per_tick"], int), \
+    assert "max_code_hygiene_issues_per_tick" in config, "config.yml must have max_code_hygiene_issues_per_tick"
+    assert isinstance(config["max_code_hygiene_issues_per_tick"], int), (
         "max_code_hygiene_issues_per_tick must be an integer"
-    assert config["max_code_hygiene_issues_per_tick"] > 0, \
-        "max_code_hygiene_issues_per_tick must be positive"
+    )
+    assert config["max_code_hygiene_issues_per_tick"] > 0, "max_code_hygiene_issues_per_tick must be positive"
 
 
 # ==================== INFRA-265: daily_audit exclusion from issue creation ====================
+
 
 def test_daily_audit_finding_does_not_create_issue():
     """INFRA-265: daily_audit category findings must NOT create GitHub issues."""
@@ -5624,38 +5741,39 @@ def test_daily_audit_finding_does_not_create_issue():
     assert "daily_audit" in ISSUE_EXCLUDED_CATEGORIES
 
     config = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 5,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 5,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
     }
 
     daily_audit_finding = Finding("DA_001", "critical", "daily_audit", "Container down", "infra.yml", "ev1")
     regular_finding = Finding("CODE_001", "warning", "code_hygiene", "Unused import", "src/app.py", "ev2")
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.validate_config'), \
-         patch('evolution_scanner.ensure_labels'), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[daily_audit_finding, regular_finding]), \
-         patch('evolution_scanner.detect_regressions', return_value=[daily_audit_finding, regular_finding]), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved'), \
-         patch('evolution_scanner.reconcile_in_progress'):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[daily_audit_finding, regular_finding]),
+        patch("evolution_scanner.detect_regressions", return_value=[daily_audit_finding, regular_finding]),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.create_issue", return_value=True) as mock_create,
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+        patch("evolution_scanner.reconcile_in_progress"),
+    ):
         main()
         created_findings = [call[0][0] for call in mock_create.call_args_list]
         created_categories = [f.category for f in created_findings]
-        assert "daily_audit" not in created_categories, \
-            "daily_audit findings must NOT trigger create_issue"
+        assert "daily_audit" not in created_categories, "daily_audit findings must NOT trigger create_issue"
         assert "code_hygiene" in created_categories
 
 
@@ -5666,32 +5784,34 @@ def test_code_hygiene_finding_still_creates_issue():
     assert "code_hygiene" not in ISSUE_EXCLUDED_CATEGORIES
 
     config = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 5,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 5,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
     }
 
     code_hygiene_finding = Finding("CODE_002", "warning", "code_hygiene", "Unused variable", "src/util.py", "ev1")
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.validate_config'), \
-         patch('evolution_scanner.ensure_labels'), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[code_hygiene_finding]), \
-         patch('evolution_scanner.detect_regressions', return_value=[code_hygiene_finding]), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved'), \
-         patch('evolution_scanner.reconcile_in_progress'):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[code_hygiene_finding]),
+        patch("evolution_scanner.detect_regressions", return_value=[code_hygiene_finding]),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.create_issue", return_value=True) as mock_create,
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+        patch("evolution_scanner.reconcile_in_progress"),
+    ):
         main()
         assert mock_create.call_count == 1
         created_finding = mock_create.call_args[0][0]
@@ -5703,33 +5823,35 @@ def test_daily_audit_finding_still_appears_in_scanner_output():
     from evolution_scanner import main
 
     config = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 5,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 5,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
     }
 
     daily_audit_finding = Finding("DA_002", "critical", "daily_audit", "HASH_MISMATCH", "manifest.json", "ev1")
     regular_finding = Finding("CODE_003", "warning", "code_hygiene", "Missing docstring", "src/mod.py", "ev2")
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.validate_config'), \
-         patch('evolution_scanner.ensure_labels'), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[daily_audit_finding, regular_finding]), \
-         patch('evolution_scanner.detect_regressions', return_value=[daily_audit_finding, regular_finding]), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
-         patch('evolution_scanner.update_history') as mock_update_history, \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved'), \
-         patch('evolution_scanner.reconcile_in_progress'):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[daily_audit_finding, regular_finding]),
+        patch("evolution_scanner.detect_regressions", return_value=[daily_audit_finding, regular_finding]),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.create_issue", return_value=True) as mock_create,
+        patch("evolution_scanner.update_history") as mock_update_history,
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+        patch("evolution_scanner.reconcile_in_progress"),
+    ):
         main()
         # daily_audit finding should NOT create an issue
         created_findings = [call[0][0] for call in mock_create.call_args_list]
@@ -5740,11 +5862,11 @@ def test_daily_audit_finding_still_appears_in_scanner_output():
         assert mock_update_history.called
         history_findings = mock_update_history.call_args[0][1]
         history_categories = [f.category for f in history_findings]
-        assert "daily_audit" in history_categories, \
-            "daily_audit findings must still appear in scanner output/history"
+        assert "daily_audit" in history_categories, "daily_audit findings must still appear in scanner output/history"
 
 
 # ==================== INFRA-268: daily_audit-only tick regression ====================
+
 
 def test_infra_268_all_daily_audit_findings_create_zero_issues():
     """INFRA-268: When ALL findings in a tick are daily_audit, zero issues are created.
@@ -5758,15 +5880,15 @@ def test_infra_268_all_daily_audit_findings_create_zero_issues():
     assert "daily_audit" in ISSUE_EXCLUDED_CATEGORIES
 
     config = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 5,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 5,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
     }
 
     # Only daily_audit findings — no regular or self_audit findings at all
@@ -5776,29 +5898,31 @@ def test_infra_268_all_daily_audit_findings_create_zero_issues():
         Finding("DA_012", "info", "daily_audit", "Disk usage high", "node-1", "ev3"),
     ]
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.validate_config'), \
-         patch('evolution_scanner.ensure_labels'), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=daily_audit_findings), \
-         patch('evolution_scanner.detect_regressions', return_value=daily_audit_findings), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
-         patch('evolution_scanner.update_history') as mock_update_history, \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved'), \
-         patch('evolution_scanner.reconcile_in_progress'):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=daily_audit_findings),
+        patch("evolution_scanner.detect_regressions", return_value=daily_audit_findings),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.create_issue", return_value=True) as mock_create,
+        patch("evolution_scanner.update_history") as mock_update_history,
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+        patch("evolution_scanner.reconcile_in_progress"),
+    ):
         main()
         # No issue should be created when all findings are daily_audit
-        assert mock_create.call_count == 0, \
-            "create_issue must never be called when all findings are daily_audit"
+        assert mock_create.call_count == 0, "create_issue must never be called when all findings are daily_audit"
         # All daily_audit findings must still be preserved in history
         assert mock_update_history.called
         history_findings = mock_update_history.call_args[0][1]
         history_categories = [f.category for f in history_findings]
-        assert history_categories.count("daily_audit") == 3, \
+        assert history_categories.count("daily_audit") == 3, (
             "All three daily_audit findings must appear in scanner output/history"
+        )
 
 
 def test_infra_268_p1_2_still_fires_for_actionable_findings_mixed_with_daily_audit():
@@ -5811,34 +5935,36 @@ def test_infra_268_p1_2_still_fires_for_actionable_findings_mixed_with_daily_aud
     from evolution_scanner import main
 
     config = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 5,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 5,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
     }
 
     daily_audit_finding = Finding("DA_020", "critical", "daily_audit", "Container down", "infra.yml", "ev1")
     # An actionable finding that will FAIL to create an issue (create_issue returns False)
     stuck_finding = Finding("STUCK_001", "warning", "code_hygiene", "Unused import", "src/app.py", "ev2")
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.validate_config'), \
-         patch('evolution_scanner.ensure_labels'), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[daily_audit_finding, stuck_finding]), \
-         patch('evolution_scanner.detect_regressions', return_value=[daily_audit_finding, stuck_finding]), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.create_issue', return_value=False), \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved'), \
-         patch('evolution_scanner.reconcile_in_progress'):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[daily_audit_finding, stuck_finding]),
+        patch("evolution_scanner.detect_regressions", return_value=[daily_audit_finding, stuck_finding]),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.create_issue", return_value=False),
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+        patch("evolution_scanner.reconcile_in_progress"),
+    ):
         with pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 1
@@ -5846,6 +5972,7 @@ def test_infra_268_p1_2_still_fires_for_actionable_findings_mixed_with_daily_aud
 
 # ==================== Observer Heartbeat Tests ====================
 # Tests for VAL-HB-001 through VAL-HB-006
+
 
 def test_heartbeat_script_exists():
     """VAL-HB-006: evolution_heartbeat.py script exists."""
@@ -5856,6 +5983,7 @@ def test_heartbeat_script_exists():
 def test_heartbeat_workflow_yaml_exists():
     """VAL-HB-001: evolution-heartbeat.yml exists with valid YAML."""
     import yaml
+
     workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-heartbeat.yml"
     assert workflow_path.exists(), ".github/workflows/evolution-heartbeat.yml must exist"
 
@@ -5869,6 +5997,7 @@ def test_heartbeat_workflow_yaml_exists():
 def test_heartbeat_workflow_has_independent_cron():
     """VAL-HB-002: Heartbeat has independent cron schedule (every 2 hours)."""
     import yaml
+
     workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-heartbeat.yml"
 
     with workflow_path.open() as f:
@@ -5886,8 +6015,7 @@ def test_heartbeat_workflow_has_independent_cron():
     cron_entry = on_triggers["schedule"][0].get("cron", "")
     assert cron_entry, "schedule must have 'cron' field"
     # Expected: '0 */2 * * *' (every 2 hours at minute 0)
-    assert "*/2" in cron_entry or "0 */2" in cron_entry, \
-        f"Cron should run every 2 hours, got: {cron_entry}"
+    assert "*/2" in cron_entry or "0 */2" in cron_entry, f"Cron should run every 2 hours, got: {cron_entry}"
 
 
 def test_heartbeat_freshness_check_stale():
@@ -5898,11 +6026,7 @@ def test_heartbeat_freshness_check_stale():
     with tempfile.TemporaryDirectory() as tmpdir:
         history_path = Path(tmpdir) / "findings_over_time.json"
         old_time = datetime.now(UTC) - timedelta(hours=3)
-        data = {
-            "snapshots": [
-                {"timestamp": old_time.isoformat(), "tick_id": "old", "findings": []}
-            ]
-        }
+        data = {"snapshots": [{"timestamp": old_time.isoformat(), "tick_id": "old", "findings": []}]}
         with history_path.open("w") as f:
             json.dump(data, f)
 
@@ -5921,11 +6045,7 @@ def test_heartbeat_freshness_check_fresh():
     with tempfile.TemporaryDirectory() as tmpdir:
         history_path = Path(tmpdir) / "findings_over_time.json"
         recent_time = datetime.now(UTC) - timedelta(minutes=30)
-        data = {
-            "snapshots": [
-                {"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}
-            ]
-        }
+        data = {"snapshots": [{"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}]}
         with history_path.open("w") as f:
             json.dump(data, f)
 
@@ -5939,28 +6059,34 @@ def test_check_linear_sync_in_main():
     """GAP-A: main() returns 1 when check_linear_sync reports findings."""
     from memory_core.tools import evolution_self_audit
 
-    with patch.object(evolution_self_audit, "check_suppress_json", return_value=[]), \
-         patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]), \
-         patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]), \
-         patch.object(evolution_self_audit, "check_trigger_droid", return_value=[]), \
-         patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]), \
-         patch.object(evolution_self_audit, "check_config_yml", return_value=[]), \
-         patch.object(evolution_self_audit, "check_tool_health", return_value=[]), \
-         patch.object(evolution_self_audit, "check_reverse_closure", return_value=[]), \
-         patch.object(evolution_self_audit, "check_heartbeat_channel", return_value=[]), \
-         patch.object(evolution_self_audit, "check_linear_sync", return_value=[{
-             "rule_id": "TEST",
-             "severity": "warning",
-             "category": "evolution_self_audit",
-             "description": "test",
-             "location": "test",
-             "evidence": "test",
-         }]) as mock_check:
-
+    with (
+        patch.object(evolution_self_audit, "check_suppress_json", return_value=[]),
+        patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]),
+        patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]),
+        patch.object(evolution_self_audit, "check_trigger_droid", return_value=[]),
+        patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]),
+        patch.object(evolution_self_audit, "check_config_yml", return_value=[]),
+        patch.object(evolution_self_audit, "check_tool_health", return_value=[]),
+        patch.object(evolution_self_audit, "check_reverse_closure", return_value=[]),
+        patch.object(evolution_self_audit, "check_heartbeat_channel", return_value=[]),
+        patch.object(
+            evolution_self_audit,
+            "check_linear_sync",
+            return_value=[
+                {
+                    "rule_id": "TEST",
+                    "severity": "warning",
+                    "category": "evolution_self_audit",
+                    "description": "test",
+                    "location": "test",
+                    "evidence": "test",
+                }
+            ],
+        ) as mock_check,
+    ):
         result = evolution_self_audit.main()
         mock_check.assert_called_once()
         assert result == 1  # Has findings
-
 
 
 def test_heartbeat_pr_coverage_check_missing_pr():
@@ -5974,26 +6100,26 @@ def test_heartbeat_pr_coverage_check_missing_pr():
             subprocess.CompletedProcess(
                 args=[],
                 returncode=0,
-                stdout=json.dumps([
-                    {"number": 100, "title": "[evolution] TEST_RULE_1", "createdAt": (datetime.now(UTC) - timedelta(hours=36)).isoformat()},
-                    {"number": 101, "title": "[evolution] TEST_RULE_2", "createdAt": (datetime.now(UTC) - timedelta(hours=12)).isoformat()},
-                ]),
-                stderr=""
+                stdout=json.dumps(
+                    [
+                        {
+                            "number": 100,
+                            "title": "[evolution] TEST_RULE_1",
+                            "createdAt": (datetime.now(UTC) - timedelta(hours=36)).isoformat(),
+                        },
+                        {
+                            "number": 101,
+                            "title": "[evolution] TEST_RULE_2",
+                            "createdAt": (datetime.now(UTC) - timedelta(hours=12)).isoformat(),
+                        },
+                    ]
+                ),
+                stderr="",
             ),
             # Second call: check PR for issue 100 (no PR)
-            subprocess.CompletedProcess(
-                args=[],
-                returncode=0,
-                stdout="[]",
-                stderr=""
-            ),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
             # Third call: check PR for issue 101 (no PR)
-            subprocess.CompletedProcess(
-                args=[],
-                returncode=0,
-                stdout="[]",
-                stderr=""
-            ),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
         ]
 
         result = check_pr_coverage("evolution-found")
@@ -6012,18 +6138,19 @@ def test_heartbeat_pr_coverage_check_with_pr():
             subprocess.CompletedProcess(
                 args=[],
                 returncode=0,
-                stdout=json.dumps([
-                    {"number": 100, "title": "[evolution] TEST_RULE_1", "createdAt": (datetime.now(UTC) - timedelta(hours=36)).isoformat()},
-                ]),
-                stderr=""
+                stdout=json.dumps(
+                    [
+                        {
+                            "number": 100,
+                            "title": "[evolution] TEST_RULE_1",
+                            "createdAt": (datetime.now(UTC) - timedelta(hours=36)).isoformat(),
+                        },
+                    ]
+                ),
+                stderr="",
             ),
             # Second call: check PR for issue 100 (has PR)
-            subprocess.CompletedProcess(
-                args=[],
-                returncode=0,
-                stdout=json.dumps([{"number": 50}]),
-                stderr=""
-            ),
+            subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps([{"number": 50}]), stderr=""),
         ]
 
         result = check_pr_coverage("evolution-found")
@@ -6037,17 +6164,10 @@ def test_heartbeat_creates_alert_on_anomaly():
 
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         mock_run.return_value = subprocess.CompletedProcess(
-            args=[],
-            returncode=0,
-            stdout="https://github.com/test/repo/issues/999",
-            stderr=""
+            args=[], returncode=0, stdout="https://github.com/test/repo/issues/999", stderr=""
         )
 
-        result = create_alert_issue(
-            scanner_stale=True,
-            issues_without_pr=2,
-            dedup_label="evolution-found"
-        )
+        result = create_alert_issue(scanner_stale=True, issues_without_pr=2, dedup_label="evolution-found")
 
         assert result is True, "Should successfully create alert issue"
         # Verify gh issue create was called
@@ -6063,11 +6183,7 @@ def test_heartbeat_no_alert_when_clean():
     from evolution_heartbeat import create_alert_issue
 
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
-        result = create_alert_issue(
-            scanner_stale=False,
-            issues_without_pr=0,
-            dedup_label="evolution-found"
-        )
+        result = create_alert_issue(scanner_stale=False, issues_without_pr=0, dedup_label="evolution-found")
 
         assert result is False, "Should not create alert when clean"
         assert not mock_run.called, "gh issue create should NOT be called"
@@ -6082,11 +6198,7 @@ def test_heartbeat_main_integration():
 
         # Create fresh history
         recent_time = datetime.now(UTC) - timedelta(minutes=30)
-        data = {
-            "snapshots": [
-                {"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}
-            ]
-        }
+        data = {"snapshots": [{"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}]}
         with history_path.open("w") as f:
             json.dump(data, f)
 
@@ -6099,17 +6211,17 @@ def test_heartbeat_main_integration():
 
         with patch("evolution_heartbeat.subprocess.run") as mock_run:
             # Mock: no open issues (clean state)
-            mock_run.return_value = subprocess.CompletedProcess(
-                args=[],
-                returncode=0,
-                stdout="[]",
-                stderr=""
-            )
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr="")
 
             # Run heartbeat
-            with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path), \
-                 patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path), \
-                 patch("evolution_heartbeat.check_scanner_liveness", return_value={"alive": True, "message": "Scanner alive"}):
+            with (
+                patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path),
+                patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path),
+                patch(
+                    "evolution_heartbeat.check_scanner_liveness",
+                    return_value={"alive": True, "message": "Scanner alive"},
+                ),
+            ):
                 exit_code = main(history_path=history_path)
 
             # Should exit 0 (clean state)
@@ -6125,11 +6237,7 @@ def test_heartbeat_detects_stale_and_creates_alert():
 
         # Create stale history (> 2 hours old)
         old_time = datetime.now(UTC) - timedelta(hours=3)
-        data = {
-            "snapshots": [
-                {"timestamp": old_time.isoformat(), "tick_id": "old", "findings": []}
-            ]
-        }
+        data = {"snapshots": [{"timestamp": old_time.isoformat(), "tick_id": "old", "findings": []}]}
         with history_path.open("w") as f:
             json.dump(data, f)
 
@@ -6151,13 +6259,20 @@ def test_heartbeat_detects_stale_and_creates_alert():
                 # alert_issue_exists: list alert issues (none, so create proceeds)
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
                 # create_alert_issue: create
-                subprocess.CompletedProcess(args=[], returncode=0, stdout="https://github.com/test/repo/issues/999", stderr=""),
+                subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="https://github.com/test/repo/issues/999", stderr=""
+                ),
             ]
 
             # Run heartbeat
-            with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path), \
-                 patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path), \
-                 patch("evolution_heartbeat.check_scanner_liveness", return_value={"alive": False, "message": "Scanner stale"}):
+            with (
+                patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path),
+                patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path),
+                patch(
+                    "evolution_heartbeat.check_scanner_liveness",
+                    return_value={"alive": False, "message": "Scanner stale"},
+                ),
+            ):
                 exit_code = main(history_path=history_path)
 
             # Should exit 1 (anomaly detected)
@@ -6280,7 +6395,8 @@ def test_check_heartbeat_channel_missing(tmp_path, monkeypatch):
     from memory_core.tools import evolution_self_audit
 
     monkeypatch.setattr(
-        evolution_self_audit, "HEARTBEAT_FILE",
+        evolution_self_audit,
+        "HEARTBEAT_FILE",
         tmp_path / "nonexistent.json",
     )
 
@@ -6359,7 +6475,8 @@ def test_check_heartbeat_channel_schema_compliance(tmp_path, monkeypatch):
     from memory_core.tools import evolution_self_audit
 
     monkeypatch.setattr(
-        evolution_self_audit, "HEARTBEAT_FILE",
+        evolution_self_audit,
+        "HEARTBEAT_FILE",
         tmp_path / "nonexistent.json",
     )
 
@@ -6367,9 +6484,7 @@ def test_check_heartbeat_channel_schema_compliance(tmp_path, monkeypatch):
     assert len(result) == 1
     finding = result[0]
     required_fields = {"rule_id", "severity", "description", "location", "evidence", "category"}
-    assert required_fields.issubset(finding.keys()), (
-        f"Missing fields: {required_fields - set(finding.keys())}"
-    )
+    assert required_fields.issubset(finding.keys()), f"Missing fields: {required_fields - set(finding.keys())}"
 
 
 def test_check_heartbeat_channel_in_main(tmp_path, monkeypatch):
@@ -6385,17 +6500,18 @@ def test_check_heartbeat_channel_in_main(tmp_path, monkeypatch):
         "category": "evolution_self_audit",
     }
 
-    with patch.object(evolution_self_audit, "check_suppress_json", return_value=[]), \
-         patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]), \
-         patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]), \
-         patch.object(evolution_self_audit, "check_trigger_droid", return_value=[]), \
-         patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]), \
-         patch.object(evolution_self_audit, "check_config_yml", return_value=[]), \
-         patch.object(evolution_self_audit, "check_tool_health", return_value=[]), \
-         patch.object(evolution_self_audit, "check_linear_sync", return_value=[]), \
-         patch.object(evolution_self_audit, "check_reverse_closure", return_value=[]), \
-         patch.object(evolution_self_audit, "check_heartbeat_channel", return_value=[finding]) as mock_hb:
-
+    with (
+        patch.object(evolution_self_audit, "check_suppress_json", return_value=[]),
+        patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]),
+        patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]),
+        patch.object(evolution_self_audit, "check_trigger_droid", return_value=[]),
+        patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]),
+        patch.object(evolution_self_audit, "check_config_yml", return_value=[]),
+        patch.object(evolution_self_audit, "check_tool_health", return_value=[]),
+        patch.object(evolution_self_audit, "check_linear_sync", return_value=[]),
+        patch.object(evolution_self_audit, "check_reverse_closure", return_value=[]),
+        patch.object(evolution_self_audit, "check_heartbeat_channel", return_value=[finding]) as mock_hb,
+    ):
         exit_code = evolution_self_audit.main()
         assert exit_code == 1, "main() should return 1 when check_heartbeat_channel reports a finding"
         mock_hb.assert_called_once()
@@ -6407,6 +6523,7 @@ def test_check_heartbeat_channel_in_main(tmp_path, monkeypatch):
 def test_check_reverse_closure_exists():
     """VAL-REVCLOSE-001: check_reverse_closure function exists."""
     from memory_core.tools import evolution_self_audit
+
     assert hasattr(evolution_self_audit, "check_reverse_closure")
     assert callable(evolution_self_audit.check_reverse_closure)
 
@@ -6436,9 +6553,11 @@ def test_check_reverse_closure_detects_mismatch(monkeypatch):
             return Mock(returncode=0, stdout=json.dumps(gh_closed_issues), stderr="")
         return Mock(returncode=0, stdout="[]", stderr="")
 
-    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
-         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
-         patch("evolution_self_audit.requests.post") as mock_post:
+    with (
+        patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run),
+        patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}),
+        patch("evolution_self_audit.requests.post") as mock_post,
+    ):
 
         def post_side_effect(url, **kwargs):
             mock_resp = Mock()
@@ -6447,26 +6566,12 @@ def test_check_reverse_closure_detects_mismatch(monkeypatch):
             # INFRA-200 is Done (closed in Linear too)
             if "INFRA-200" in query_str:
                 mock_resp.json.return_value = {
-                    "data": {
-                        "issues": {
-                            "nodes": [{
-                                "identifier": "INFRA-200",
-                                "state": {"name": "Done"}
-                            }]
-                        }
-                    }
+                    "data": {"issues": {"nodes": [{"identifier": "INFRA-200", "state": {"name": "Done"}}]}}
                 }
             # INFRA-201 is still In Progress (mismatch: GH closed, Linear open)
             else:
                 mock_resp.json.return_value = {
-                    "data": {
-                        "issues": {
-                            "nodes": [{
-                                "identifier": "INFRA-201",
-                                "state": {"name": "In Progress"}
-                            }]
-                        }
-                    }
+                    "data": {"issues": {"nodes": [{"identifier": "INFRA-201", "state": {"name": "In Progress"}}]}}
                 }
             return mock_resp
 
@@ -6502,22 +6607,16 @@ def test_check_reverse_closure_all_in_sync():
             return Mock(returncode=0, stdout=json.dumps(gh_closed_issues), stderr="")
         return Mock(returncode=0, stdout="[]", stderr="")
 
-    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
-         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
-         patch("evolution_self_audit.requests.post") as mock_post:
-
+    with (
+        patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run),
+        patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}),
+        patch("evolution_self_audit.requests.post") as mock_post,
+    ):
         # Linear issue is also Done (in sync)
         mock_resp = Mock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "data": {
-                "issues": {
-                    "nodes": [{
-                        "identifier": "INFRA-200",
-                        "state": {"name": "Done"}
-                    }]
-                }
-            }
+            "data": {"issues": {"nodes": [{"identifier": "INFRA-200", "state": {"name": "Done"}}]}}
         }
         mock_post.return_value = mock_resp
 
@@ -6545,17 +6644,20 @@ def test_check_reverse_closure_handles_api_failure(monkeypatch):
         return Mock(returncode=0, stdout="[]", stderr="")
 
     # Test 1: Missing LINEAR_API_KEY
-    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
-         patch.dict("os.environ", {}, clear=True):
+    with (
+        patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run),
+        patch.dict("os.environ", {}, clear=True),
+    ):
         findings = evolution_self_audit.check_reverse_closure()
         assert isinstance(findings, list)
         # Should not crash
 
     # Test 2: API failure
-    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
-         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
-         patch("evolution_self_audit.requests.post") as mock_post:
-
+    with (
+        patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run),
+        patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}),
+        patch("evolution_self_audit.requests.post") as mock_post,
+    ):
         mock_post.side_effect = Exception("API Error")
         findings = evolution_self_audit.check_reverse_closure()
         assert isinstance(findings, list)
@@ -6581,22 +6683,16 @@ def test_check_reverse_closure_schema_compliance():
             return Mock(returncode=0, stdout=json.dumps(gh_closed_issues), stderr="")
         return Mock(returncode=0, stdout="[]", stderr="")
 
-    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
-         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
-         patch("evolution_self_audit.requests.post") as mock_post:
-
+    with (
+        patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run),
+        patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}),
+        patch("evolution_self_audit.requests.post") as mock_post,
+    ):
         # Linear issue is still open (mismatch)
         mock_resp = Mock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "data": {
-                "issues": {
-                    "nodes": [{
-                        "identifier": "INFRA-200",
-                        "state": {"name": "In Progress"}
-                    }]
-                }
-            }
+            "data": {"issues": {"nodes": [{"identifier": "INFRA-200", "state": {"name": "In Progress"}}]}}
         }
         mock_post.return_value = mock_resp
 
@@ -6619,24 +6715,31 @@ def test_check_reverse_closure_in_main():
 
     from memory_core.tools import evolution_self_audit
 
-    with patch.object(evolution_self_audit, "check_suppress_json", return_value=[]), \
-         patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]), \
-         patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]), \
-         patch.object(evolution_self_audit, "check_trigger_droid", return_value=[]), \
-         patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]), \
-         patch.object(evolution_self_audit, "check_config_yml", return_value=[]), \
-         patch.object(evolution_self_audit, "check_tool_health", return_value=[]), \
-         patch.object(evolution_self_audit, "check_heartbeat_channel", return_value=[]), \
-         patch.object(evolution_self_audit, "check_linear_sync", return_value=[]), \
-         patch.object(evolution_self_audit, "check_reverse_closure", return_value=[{
-             "rule_id": "TEST",
-             "severity": "warning",
-             "category": "evolution_self_audit",
-             "description": "test",
-             "location": "test",
-             "evidence": "test",
-         }]) as mock_check:
-
+    with (
+        patch.object(evolution_self_audit, "check_suppress_json", return_value=[]),
+        patch.object(evolution_self_audit, "check_findings_over_time", return_value=[]),
+        patch.object(evolution_self_audit, "check_orphan_locks", return_value=[]),
+        patch.object(evolution_self_audit, "check_trigger_droid", return_value=[]),
+        patch.object(evolution_self_audit, "check_repositories_yml", return_value=[]),
+        patch.object(evolution_self_audit, "check_config_yml", return_value=[]),
+        patch.object(evolution_self_audit, "check_tool_health", return_value=[]),
+        patch.object(evolution_self_audit, "check_heartbeat_channel", return_value=[]),
+        patch.object(evolution_self_audit, "check_linear_sync", return_value=[]),
+        patch.object(
+            evolution_self_audit,
+            "check_reverse_closure",
+            return_value=[
+                {
+                    "rule_id": "TEST",
+                    "severity": "warning",
+                    "category": "evolution_self_audit",
+                    "description": "test",
+                    "location": "test",
+                    "evidence": "test",
+                }
+            ],
+        ) as mock_check,
+    ):
         result = evolution_self_audit.main()
         mock_check.assert_called_once()
         assert result == 1  # Has findings
@@ -6653,7 +6756,8 @@ def test_alert_issue_exists_true():
 
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         mock_run.return_value = subprocess.CompletedProcess(
-            args=[], returncode=0,
+            args=[],
+            returncode=0,
             stdout=json.dumps([{"number": 42}]),
             stderr="",
         )
@@ -6666,7 +6770,10 @@ def test_alert_issue_exists_false():
 
     with patch("evolution_heartbeat.subprocess.run") as mock_run:
         mock_run.return_value = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="[]", stderr="",
+            args=[],
+            returncode=0,
+            stdout="[]",
+            stderr="",
         )
         assert alert_issue_exists() is False
 
@@ -6750,6 +6857,7 @@ def test_write_monitor_heartbeat_unique_tmp_no_concurrent_race(tmp_path):
     # 读到未打补丁的默认 MONITOR_HEARTBEAT_PATH（相对路径）而误报失败。
     # 线程内只调用被测函数，才能专测并发原子写（pid+uuid4 临时名）本身。
     with patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path):
+
         def _write(_: int) -> None:
             write_monitor_heartbeat(anomalies=0)
 
@@ -6769,25 +6877,26 @@ def test_main_dedup_skips_duplicate_alert(tmp_path):
     # Fresh history + fresh heartbeat marker so only dedup path is exercised via anomaly
     recent_time = datetime.now(UTC) - timedelta(minutes=10)
     history_path = tmp_path / "findings_over_time.json"
-    history_path.write_text(json.dumps({
-        "snapshots": [{"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}]
-    }))
+    history_path.write_text(
+        json.dumps({"snapshots": [{"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}]})
+    )
     heartbeat_path = tmp_path / "heartbeat.json"
     heartbeat_path.write_text(json.dumps({"timestamp": recent_time.isoformat(), "status": "ok"}))
     monitor_path = tmp_path / "monitor_heartbeat.json"
 
     # Force an anomaly via stale history (use stale time) so alert path is entered
     stale_time = datetime.now(UTC) - timedelta(hours=5)
-    history_path.write_text(json.dumps({
-        "snapshots": [{"timestamp": stale_time.isoformat(), "tick_id": "old", "findings": []}]
-    }))
+    history_path.write_text(
+        json.dumps({"snapshots": [{"timestamp": stale_time.isoformat(), "tick_id": "old", "findings": []}]})
+    )
 
-    with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path), \
-         patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path), \
-         patch("evolution_heartbeat.subprocess.run") as mock_run, \
-         patch("evolution_heartbeat.create_alert_issue") as mock_create, \
-         patch("evolution_heartbeat.check_scanner_liveness", return_value={"alive": False, "message": "Scanner stale"}):
-
+    with (
+        patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path),
+        patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path),
+        patch("evolution_heartbeat.subprocess.run") as mock_run,
+        patch("evolution_heartbeat.create_alert_issue") as mock_create,
+        patch("evolution_heartbeat.check_scanner_liveness", return_value={"alive": False, "message": "Scanner stale"}),
+    ):
         # check_pr_coverage list -> no issues; resolve_cleared_alerts → list_open_alert_issues -> no open alerts; alert_issue_exists -> one open alert
         mock_run.side_effect = [
             subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
@@ -6807,20 +6916,20 @@ def test_main_writes_monitor_heartbeat(tmp_path):
 
     recent_time = datetime.now(UTC) - timedelta(minutes=10)
     history_path = tmp_path / "findings_over_time.json"
-    history_path.write_text(json.dumps({
-        "snapshots": [{"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}]
-    }))
+    history_path.write_text(
+        json.dumps({"snapshots": [{"timestamp": recent_time.isoformat(), "tick_id": "recent", "findings": []}]})
+    )
     heartbeat_path = tmp_path / "heartbeat.json"
     heartbeat_path.write_text(json.dumps({"timestamp": recent_time.isoformat(), "status": "ok"}))
     monitor_path = tmp_path / "monitor_heartbeat.json"
 
-    with patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path), \
-         patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path), \
-         patch("evolution_heartbeat.subprocess.run") as mock_run, \
-         patch("evolution_heartbeat.check_scanner_liveness", return_value={"alive": True, "message": "Scanner alive"}):
-        mock_run.return_value = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="[]", stderr=""
-        )
+    with (
+        patch("evolution_heartbeat.HEARTBEAT_MARKER_PATH", heartbeat_path),
+        patch("evolution_heartbeat.MONITOR_HEARTBEAT_PATH", monitor_path),
+        patch("evolution_heartbeat.subprocess.run") as mock_run,
+        patch("evolution_heartbeat.check_scanner_liveness", return_value={"alive": True, "message": "Scanner alive"}),
+    ):
+        mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr="")
 
         exit_code = main(history_path=history_path)
 
@@ -6842,10 +6951,11 @@ def test_check_reverse_closure_no_closed_issues():
             return Mock(returncode=0, stdout="[]", stderr="")
         return Mock(returncode=0, stdout="[]", stderr="")
 
-    with patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run), \
-         patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}), \
-         patch("evolution_self_audit.requests.post") as mock_post:
-
+    with (
+        patch("evolution_self_audit.subprocess.run", side_effect=mock_subprocess_run),
+        patch.dict("os.environ", {"LINEAR_API_KEY": "test-key"}),
+        patch("evolution_self_audit.requests.post") as mock_post,
+    ):
         findings = evolution_self_audit.check_reverse_closure()
         assert findings == []
         mock_post.assert_not_called()  # No Linear API calls if no closed GitHub issues
@@ -6862,13 +6972,8 @@ def test_reopen_happy_path(tmp_path):
     history_data = {
         "snapshots": [],
         "resolved_findings": [
-            {
-                "rule_id": "RULE_001",
-                "location": "file.md",
-                "resolved_at": "2026-01-01T00:00:00Z",
-                "reopen_count": 0
-            }
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -6876,14 +6981,14 @@ def test_reopen_happy_path(tmp_path):
         {
             "number": 42,
             "title": "[evolution] RULE_001",
-            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md",
         }
     ]
 
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
-            Mock(returncode=0, stdout="", stderr="")  # gh issue reopen
+            Mock(returncode=0, stdout="", stderr=""),  # gh issue reopen
         ]
 
         result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
@@ -6918,13 +7023,8 @@ def test_reopen_no_match(tmp_path):
     history_data = {
         "snapshots": [],
         "resolved_findings": [
-            {
-                "rule_id": "RULE_001",
-                "location": "file.md",
-                "resolved_at": "2026-01-01T00:00:00Z",
-                "reopen_count": 0
-            }
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -6948,9 +7048,9 @@ def test_reopen_limit_reached(tmp_path):
                 "rule_id": "RULE_001",
                 "location": "file.md",
                 "resolved_at": "2026-01-01T00:00:00Z",
-                "reopen_count": 3  # Already at limit
+                "reopen_count": 3,  # Already at limit
             }
-        ]
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -6958,7 +7058,7 @@ def test_reopen_limit_reached(tmp_path):
         {
             "number": 42,
             "title": "[evolution] RULE_001",
-            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md",
         }
     ]
 
@@ -6983,13 +7083,8 @@ def test_reopen_counter_increments(tmp_path):
     history_data = {
         "snapshots": [],
         "resolved_findings": [
-            {
-                "rule_id": "RULE_001",
-                "location": "file.md",
-                "resolved_at": "2026-01-01T00:00:00Z",
-                "reopen_count": 0
-            }
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -6997,7 +7092,7 @@ def test_reopen_counter_increments(tmp_path):
         {
             "number": 42,
             "title": "[evolution] RULE_001",
-            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md",
         }
     ]
 
@@ -7005,7 +7100,7 @@ def test_reopen_counter_increments(tmp_path):
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
-            Mock(returncode=0, stdout="", stderr="")
+            Mock(returncode=0, stdout="", stderr=""),
         ]
         result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
         assert result is True
@@ -7017,7 +7112,7 @@ def test_reopen_counter_increments(tmp_path):
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
-            Mock(returncode=0, stdout="", stderr="")
+            Mock(returncode=0, stdout="", stderr=""),
         ]
         result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
         assert result is True
@@ -7031,19 +7126,11 @@ def test_severity_upgrade_preserved(tmp_path):
     history_path = tmp_path / "history.json"
     history_data = {
         "snapshots": [],
-        "resolved_findings": [
-            {
-                "rule_id": "RULE_001",
-                "location": "file.md",
-                "resolved_at": "2026-01-01T00:00:00Z"
-            }
-        ]
+        "resolved_findings": [{"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z"}],
     }
     history_path.write_text(json.dumps(history_data))
 
-    findings = [
-        Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")
-    ]
+    findings = [Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")]
 
     upgraded = detect_regressions(findings, history_path)
 
@@ -7057,19 +7144,11 @@ def test_no_mutation_of_input_findings(tmp_path):
     history_path = tmp_path / "history.json"
     history_data = {
         "snapshots": [],
-        "resolved_findings": [
-            {
-                "rule_id": "RULE_001",
-                "location": "file.md",
-                "resolved_at": "2026-01-01T00:00:00Z"
-            }
-        ]
+        "resolved_findings": [{"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z"}],
     }
     history_path.write_text(json.dumps(history_data))
 
-    original_findings = [
-        Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")
-    ]
+    original_findings = [Finding("RULE_001", "warning", "test", "Test", "file.md", "evidence")]
 
     # Keep reference to original
     original_severity = original_findings[0].severity
@@ -7089,24 +7168,16 @@ def test_multiple_findings_independent(tmp_path):
     history_data = {
         "snapshots": [],
         "resolved_findings": [
-            {
-                "rule_id": "RULE_001",
-                "location": "file1.md",
-                "resolved_at": "2026-01-01T00:00:00Z"
-            },
-            {
-                "rule_id": "RULE_002",
-                "location": "file2.md",
-                "resolved_at": "2026-01-01T00:00:00Z"
-            }
-        ]
+            {"rule_id": "RULE_001", "location": "file1.md", "resolved_at": "2026-01-01T00:00:00Z"},
+            {"rule_id": "RULE_002", "location": "file2.md", "resolved_at": "2026-01-01T00:00:00Z"},
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
     findings = [
         Finding("RULE_001", "warning", "test", "Test 1", "file1.md", "evidence"),
         Finding("RULE_002", "info", "test", "Test 2", "file2.md", "evidence"),
-        Finding("RULE_003", "warning", "test", "Test 3", "file3.md", "evidence")
+        Finding("RULE_003", "warning", "test", "Test 3", "file3.md", "evidence"),
     ]
 
     upgraded = detect_regressions(findings, history_path)
@@ -7127,13 +7198,8 @@ def test_reopen_searches_closed_only(tmp_path):
     history_data = {
         "snapshots": [],
         "resolved_findings": [
-            {
-                "rule_id": "RULE_001",
-                "location": "file.md",
-                "resolved_at": "2026-01-01T00:00:00Z",
-                "reopen_count": 0
-            }
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -7158,13 +7224,8 @@ def test_reopen_comment_format(tmp_path):
     history_data = {
         "snapshots": [],
         "resolved_findings": [
-            {
-                "rule_id": "RULE_001",
-                "location": "file.md",
-                "resolved_at": "2026-01-01T00:00:00Z",
-                "reopen_count": 1
-            }
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 1}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -7172,14 +7233,14 @@ def test_reopen_comment_format(tmp_path):
         {
             "number": 42,
             "title": "[evolution] RULE_001",
-            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md",
         }
     ]
 
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
-            Mock(returncode=0, stdout="", stderr="")
+            Mock(returncode=0, stdout="", stderr=""),
         ]
 
         _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
@@ -7207,13 +7268,8 @@ def test_reopen_skips_create_issue(tmp_path):
     history_data = {
         "snapshots": [],
         "resolved_findings": [
-            {
-                "rule_id": "RULE_001",
-                "location": "file.md",
-                "resolved_at": "2026-01-01T00:00:00Z",
-                "reopen_count": 0
-            }
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -7221,14 +7277,14 @@ def test_reopen_skips_create_issue(tmp_path):
         {
             "number": 42,
             "title": "[evolution] RULE_001",
-            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md",
         }
     ]
 
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),  # gh issue list
-            Mock(returncode=0, stdout="", stderr="")  # gh issue reopen
+            Mock(returncode=0, stdout="", stderr=""),  # gh issue reopen
         ]
 
         result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
@@ -7248,33 +7304,24 @@ def test_reopen_malformed_body_skipped(tmp_path):
     history_data = {
         "snapshots": [],
         "resolved_findings": [
-            {
-                "rule_id": "RULE_001",
-                "location": "file.md",
-                "resolved_at": "2026-01-01T00:00:00Z",
-                "reopen_count": 0
-            }
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
     closed_issues = [
-        {
-            "number": 41,
-            "title": "[evolution] MALFORMED",
-            "body": "This is a malformed body without proper fields"
-        },
+        {"number": 41, "title": "[evolution] MALFORMED", "body": "This is a malformed body without proper fields"},
         {
             "number": 42,
             "title": "[evolution] RULE_001",
-            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
-        }
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md",
+        },
     ]
 
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
-            Mock(returncode=0, stdout="", stderr="")
+            Mock(returncode=0, stdout="", stderr=""),
         ]
 
         result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
@@ -7296,10 +7343,10 @@ def test_reopen_missing_count_defaults_to_zero(tmp_path):
             {
                 "rule_id": "RULE_001",
                 "location": "file.md",
-                "resolved_at": "2026-01-01T00:00:00Z"
+                "resolved_at": "2026-01-01T00:00:00Z",
                 # Note: no reopen_count field
             }
-        ]
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -7307,14 +7354,14 @@ def test_reopen_missing_count_defaults_to_zero(tmp_path):
         {
             "number": 42,
             "title": "[evolution] RULE_001",
-            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md",
         }
     ]
 
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
-            Mock(returncode=0, stdout="", stderr="")
+            Mock(returncode=0, stdout="", stderr=""),
         ]
 
         result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
@@ -7332,13 +7379,8 @@ def test_reopen_gh_list_failure(tmp_path):
     history_data = {
         "snapshots": [],
         "resolved_findings": [
-            {
-                "rule_id": "RULE_001",
-                "location": "file.md",
-                "resolved_at": "2026-01-01T00:00:00Z",
-                "reopen_count": 0
-            }
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -7362,13 +7404,8 @@ def test_reopen_multiple_matches_deterministic(tmp_path):
     history_data = {
         "snapshots": [],
         "resolved_findings": [
-            {
-                "rule_id": "RULE_001",
-                "location": "file.md",
-                "resolved_at": "2026-01-01T00:00:00Z",
-                "reopen_count": 0
-            }
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -7377,24 +7414,24 @@ def test_reopen_multiple_matches_deterministic(tmp_path):
         {
             "number": 41,
             "title": "[evolution] RULE_001",
-            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md",
         },
         {
             "number": 42,
             "title": "[evolution] RULE_001",
-            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md",
         },
         {
             "number": 43,
             "title": "[evolution] RULE_001",
-            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md"
-        }
+            "body": "**Rule ID**: RULE_001\n**Severity**: warning\n**Location**: file.md",
+        },
     ]
 
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             Mock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
-            Mock(returncode=0, stdout="", stderr="")
+            Mock(returncode=0, stdout="", stderr=""),
         ]
 
         result = _reopen_closed_issue("RULE_001", "file.md", "evolution-found", history_path)
@@ -7413,6 +7450,7 @@ def test_reopen_multiple_matches_deterministic(tmp_path):
 # VAL-CROSS: Cross-Area Integration Tests (M1 Trust Chain)
 # ============================================================================
 
+
 # Helper: build an issue body with Linear linkback
 def _make_issue_body(rule_id, location, category="test", linear_id=None):
     """Build a realistic issue body with optional linear-linkback."""
@@ -7427,21 +7465,21 @@ def _make_issue_body(rule_id, location, category="test", linear_id=None):
 # Helper: build a Linear API response with GitHub PR attachments
 def _make_linear_response(attachments, state_type="completed"):
     """Build a Linear GraphQL response with the given attachments."""
-    return json.dumps({
-        "data": {
-            "issue": {
-                "id": "INFRA-123",
-                "state": {
-                    "id": "state-1",
-                    "name": "Done",
-                    "type": state_type,
-                },
-                "attachments": {
-                    "nodes": attachments
+    return json.dumps(
+        {
+            "data": {
+                "issue": {
+                    "id": "INFRA-123",
+                    "state": {
+                        "id": "state-1",
+                        "name": "Done",
+                        "type": state_type,
+                    },
+                    "attachments": {"nodes": attachments},
                 }
             }
         }
-    })
+    )
 
 
 # Helper: build a GitHub PR attachment
@@ -7451,7 +7489,7 @@ def _make_pr_attachment(pr_number, merged_at=None):
         "id": f"pr-{pr_number}",
         "url": f"https://github.com/owner/repo/pull/{pr_number}",
         "sourceType": "github",
-        "metadata": {}
+        "metadata": {},
     }
 
 
@@ -7468,7 +7506,7 @@ def test_val_cross_001_complete_trust_chain(tmp_path):
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},  # tick -2
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},  # tick -1 (current)
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -7476,25 +7514,22 @@ def test_val_cross_001_complete_trust_chain(tmp_path):
     current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
 
     # Open issue with linear linkback, category not failed
-    mock_issues = [{
-        "number": 101,
-        "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
-    }]
+    mock_issues = [{"number": 101, "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")}]
 
     # Linear returns a merged PR
-    linear_response = _make_linear_response([
-        _make_pr_attachment(523, merged_at="2026-01-01T00:00:00Z")
-    ])
+    linear_response = _make_linear_response([_make_pr_attachment(523, merged_at="2026-01-01T00:00:00Z")])
 
     mock_urlopen = MagicMock()
-    mock_urlopen.__enter__ = MagicMock(return_value=MagicMock(
-        read=MagicMock(return_value=linear_response.encode("utf-8"))
-    ))
+    mock_urlopen.__enter__ = MagicMock(
+        return_value=MagicMock(read=MagicMock(return_value=linear_response.encode("utf-8")))
+    )
     mock_urlopen.__exit__ = MagicMock(return_value=False)
 
-    with patch("evolution_utils.subprocess.run") as mock_run, \
-         patch("urllib.request.urlopen", return_value=mock_urlopen), \
-         patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
+    with (
+        patch("evolution_utils.subprocess.run") as mock_run,
+        patch("urllib.request.urlopen", return_value=mock_urlopen),
+        patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}),
+    ):
         # Call sequence per architecture.md §3.2 + VAL-CLOSE-026 optimization:
         # list issues → (skip comment fetch: body has linkback) → gh pr view (merged) → close issue
         mock_run.side_effect = [
@@ -7503,8 +7538,7 @@ def test_val_cross_001_complete_trust_chain(tmp_path):
             MagicMock(returncode=0, stdout="", stderr=""),  # close
         ]
 
-        auto_close_resolved(current_findings, "evolution-found",
-                           failed_categories=set(), history_path=history_path)
+        auto_close_resolved(current_findings, "evolution-found", failed_categories=set(), history_path=history_path)
 
         # Verify close was called (3 subprocess calls: list, pr view, close)
         # Comment fetch skipped per VAL-CLOSE-026 (body has linkback)
@@ -7528,7 +7562,7 @@ def test_val_cross_002_no_double_count_grace_period(tmp_path):
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -7548,37 +7582,37 @@ def test_val_cross_003_broken_chain_no_merged_pr(tmp_path):
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
     current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
-    mock_issues = [{
-        "number": 101,
-        "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
-    }]
+    mock_issues = [{"number": 101, "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")}]
 
-    linear_response = _make_linear_response([
-        _make_pr_attachment(523)  # no mergedAt
-    ])
+    linear_response = _make_linear_response(
+        [
+            _make_pr_attachment(523)  # no mergedAt
+        ]
+    )
 
     mock_urlopen = MagicMock()
-    mock_urlopen.__enter__ = MagicMock(return_value=MagicMock(
-        read=MagicMock(return_value=linear_response.encode("utf-8"))
-    ))
+    mock_urlopen.__enter__ = MagicMock(
+        return_value=MagicMock(read=MagicMock(return_value=linear_response.encode("utf-8")))
+    )
     mock_urlopen.__exit__ = MagicMock(return_value=False)
 
-    with patch("evolution_utils.subprocess.run") as mock_run, \
-         patch("urllib.request.urlopen", return_value=mock_urlopen), \
-         patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
+    with (
+        patch("evolution_utils.subprocess.run") as mock_run,
+        patch("urllib.request.urlopen", return_value=mock_urlopen),
+        patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}),
+    ):
         # Call sequence per architecture.md §3.2: list → pr view (not merged) → sentinel via Linear comments (urllib, not subprocess)
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout=json.dumps({"mergedAt": None}), stderr=""),
         ]
 
-        auto_close_resolved(current_findings, "evolution-found",
-                           failed_categories=set(), history_path=history_path)
+        auto_close_resolved(current_findings, "evolution-found", failed_categories=set(), history_path=history_path)
 
         # List + pr view only; sentinel check now via _fetch_linear_comments (urllib), NO close call
         assert mock_run.call_count == 2
@@ -7596,32 +7630,30 @@ def test_val_cross_004_linear_no_pr_attachment(tmp_path):
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
     current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
-    mock_issues = [{
-        "number": 101,
-        "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
-    }]
+    mock_issues = [{"number": 101, "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")}]
 
     # Linear returns empty attachments
     linear_response = _make_linear_response([])
 
     mock_urlopen = MagicMock()
-    mock_urlopen.__enter__ = MagicMock(return_value=MagicMock(
-        read=MagicMock(return_value=linear_response.encode("utf-8"))
-    ))
+    mock_urlopen.__enter__ = MagicMock(
+        return_value=MagicMock(read=MagicMock(return_value=linear_response.encode("utf-8")))
+    )
     mock_urlopen.__exit__ = MagicMock(return_value=False)
 
-    with patch("evolution_utils.subprocess.run") as mock_run, \
-         patch("urllib.request.urlopen", return_value=mock_urlopen), \
-         patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
+    with (
+        patch("evolution_utils.subprocess.run") as mock_run,
+        patch("urllib.request.urlopen", return_value=mock_urlopen),
+        patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}),
+    ):
         mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr="")
 
-        auto_close_resolved(current_findings, "evolution-found",
-                           failed_categories=set(), history_path=history_path)
+        auto_close_resolved(current_findings, "evolution-found", failed_categories=set(), history_path=history_path)
 
         # Only list call, no pr view, no close
         assert mock_run.call_count == 1
@@ -7639,40 +7671,41 @@ def test_val_cross_005_linear_api_failure_fail_closed(tmp_path):
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
     current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
-    mock_issues = [{
-        "number": 101,
-        "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
-    }]
+    mock_issues = [{"number": 101, "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")}]
 
     import urllib.error
-    with patch("evolution_utils.subprocess.run") as mock_run, \
-         patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Connection refused")), \
-         patch("evolution_utils.logger") as mock_logger, \
-         patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
+
+    with (
+        patch("evolution_utils.subprocess.run") as mock_run,
+        patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Connection refused")),
+        patch("evolution_utils.logger") as mock_logger,
+        patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}),
+    ):
         # Per VAL-CLOSE-026: body has linkback → skip comment fetch
         # Only list call, then Linear API fails (fail-closed)
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
         ]
 
-        auto_close_resolved(current_findings, "evolution-found",
-                           failed_categories=set(), history_path=history_path)
+        auto_close_resolved(current_findings, "evolution-found", failed_categories=set(), history_path=history_path)
 
         # Issue NOT closed due to Linear failure (fail-closed)
         # 1 call: get open issues. No comment fetch (body has linkback per VAL-CLOSE-026).
         # No close call because Linear API failed.
-        assert mock_run.call_count == 1, \
+        assert mock_run.call_count == 1, (
             "Should only call gh issue list, not gh issue view comments (VAL-CLOSE-026) or gh issue close (fail-closed)"
+        )
 
         # Verify fail-closed warning logged
         warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
-        assert any("fail-closed" in call.lower() for call in warning_calls), \
+        assert any("fail-closed" in call.lower() for call in warning_calls), (
             "Warning log should contain 'fail-closed' message"
+        )
 
 
 # --------------------------------------------------------------------------
@@ -7687,27 +7720,22 @@ def test_val_cross_006_legacy_issue_no_linkback(tmp_path):
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
     current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
     # Issue body WITHOUT linear-linkback
-    mock_issues = [{
-        "number": 101,
-        "body": "**Rule ID**: RULE_001\n**Location**: file.md\n**Description**: test"
-    }]
+    mock_issues = [{"number": 101, "body": "**Rule ID**: RULE_001\n**Location**: file.md\n**Description**: test"}]
 
-    with patch("evolution_utils.subprocess.run") as mock_run, \
-         patch("urllib.request.urlopen") as mock_urlopen:
+    with patch("evolution_utils.subprocess.run") as mock_run, patch("urllib.request.urlopen") as mock_urlopen:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout="", stderr=""),  # comment fetch for #101
             MagicMock(returncode=0, stdout="", stderr=""),  # close
         ]
 
-        auto_close_resolved(current_findings, "evolution-found",
-                           failed_categories=set(), history_path=history_path)
+        auto_close_resolved(current_findings, "evolution-found", failed_categories=set(), history_path=history_path)
 
         # urlopen NOT called (no Linear verification for legacy issues)
         assert mock_urlopen.call_count == 0
@@ -7729,9 +7757,8 @@ def test_val_cross_007_reopen_instead_of_duplicate(tmp_path):
             {"findings": []},  # resolved
         ],
         "resolved_findings": [
-            {"rule_id": "RULE_001", "location": "file.md",
-             "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -7743,10 +7770,7 @@ def test_val_cross_007_reopen_instead_of_duplicate(tmp_path):
     assert upgraded[0].severity == "critical"
 
     # _reopen_closed_issue finds matching closed issue and reopens
-    closed_issues = [{
-        "number": 42,
-        "body": "**Rule ID**: RULE_001\n**Location**: file.md"
-    }]
+    closed_issues = [{"number": 42, "body": "**Rule ID**: RULE_001\n**Location**: file.md"}]
 
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
@@ -7781,31 +7805,32 @@ def test_val_cross_008_reopened_issue_closed_again(tmp_path):
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
         "resolved_findings": [
-            {"rule_id": "RULE_001", "location": "file.md",
-             "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 1}
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 1}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
     current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
-    mock_issues = [{
-        "number": 42,  # Same issue number that was reopened
-        "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
-    }]
+    mock_issues = [
+        {
+            "number": 42,  # Same issue number that was reopened
+            "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123"),
+        }
+    ]
 
-    linear_response = _make_linear_response([
-        _make_pr_attachment(999, merged_at="2026-02-01T00:00:00Z")
-    ])
+    linear_response = _make_linear_response([_make_pr_attachment(999, merged_at="2026-02-01T00:00:00Z")])
 
     mock_urlopen = MagicMock()
-    mock_urlopen.__enter__ = MagicMock(return_value=MagicMock(
-        read=MagicMock(return_value=linear_response.encode("utf-8"))
-    ))
+    mock_urlopen.__enter__ = MagicMock(
+        return_value=MagicMock(read=MagicMock(return_value=linear_response.encode("utf-8")))
+    )
     mock_urlopen.__exit__ = MagicMock(return_value=False)
 
-    with patch("evolution_utils.subprocess.run") as mock_run, \
-         patch("urllib.request.urlopen", return_value=mock_urlopen), \
-         patch.dict(os.environ, {"LINEAR_API_KEY": "test-key-008"}):
+    with (
+        patch("evolution_utils.subprocess.run") as mock_run,
+        patch("urllib.request.urlopen", return_value=mock_urlopen),
+        patch.dict(os.environ, {"LINEAR_API_KEY": "test-key-008"}),
+    ):
         # Call sequence per architecture.md §3.2 + VAL-CLOSE-026:
         # list → (skip comment fetch: body has linkback) → pr view (merged) → close
         mock_run.side_effect = [
@@ -7814,8 +7839,7 @@ def test_val_cross_008_reopened_issue_closed_again(tmp_path):
             MagicMock(returncode=0, stdout="", stderr=""),  # close #42 again
         ]
 
-        auto_close_resolved(current_findings, "evolution-found",
-                           failed_categories=set(), history_path=history_path)
+        auto_close_resolved(current_findings, "evolution-found", failed_categories=set(), history_path=history_path)
 
         # Issue #42 closed (same number, no new issue created)
         # 3 calls: list, pr view, close (no comment fetch per VAL-CLOSE-026)
@@ -7833,9 +7857,7 @@ def test_val_cross_009_selective_severity_upgrade(tmp_path):
     history_path = tmp_path / "findings_over_time.json"
     history_data = {
         "snapshots": [{"findings": []}],
-        "resolved_findings": [
-            {"rule_id": "RULE_OLD", "location": "old.md", "resolved_at": "2026-01-01T00:00:00Z"}
-        ]
+        "resolved_findings": [{"rule_id": "RULE_OLD", "location": "old.md", "resolved_at": "2026-01-01T00:00:00Z"}],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -7864,9 +7886,8 @@ def test_val_cross_010_reopen_limit_new_issue_created(tmp_path):
     history_data = {
         "snapshots": [],
         "resolved_findings": [
-            {"rule_id": "RULE_001", "location": "file.md",
-             "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 3}
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 3}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -7881,16 +7902,15 @@ def test_val_cross_010_reopen_limit_new_issue_created(tmp_path):
     # the finding is SUPPRESSED instead of creating a new issue.
     # This prevents the close/reopen churn loop.
     from evolution_scanner import Finding, _process_findings_with_reopen
+
     finding = Finding(
-        rule_id="RULE_001", severity="critical", category="test",
-        location="file.md", description="desc", evidence="ev"
+        rule_id="RULE_001", severity="critical", category="test", location="file.md", description="desc", evidence="ev"
     )
     resolved_keys = {("RULE_001", "file.md")}
 
     with patch("evolution_scanner.create_issue") as mock_create:
         created = _process_findings_with_reopen(
-            [finding], quota=10, resolved_keys=resolved_keys,
-            dedup_label="evolution-found", history_path=history_path
+            [finding], quota=10, resolved_keys=resolved_keys, dedup_label="evolution-found", history_path=history_path
         )
         # No new issue created (suppressed)
         assert created == 0
@@ -7906,16 +7926,12 @@ def test_val_cross_011_reopen_counter_multiple_cycles(tmp_path):
     history_data = {
         "snapshots": [],
         "resolved_findings": [
-            {"rule_id": "RULE_001", "location": "file.md",
-             "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
-    closed_issues = [{
-        "number": 42,
-        "body": "**Rule ID**: RULE_001\n**Location**: file.md"
-    }]
+    closed_issues = [{"number": 42, "body": "**Rule ID**: RULE_001\n**Location**: file.md"}]
 
     # Cycle 1: reopen_count 0 → 1
     with patch("evolution_scanner.subprocess.run") as mock_run:
@@ -7969,9 +7985,8 @@ def test_val_cross_012_no_match_new_issue_created(tmp_path):
     history_data = {
         "snapshots": [],
         "resolved_findings": [
-            {"rule_id": "RULE_001", "location": "file.md",
-             "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
-        ]
+            {"rule_id": "RULE_001", "location": "file.md", "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0}
+        ],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -7995,22 +8010,17 @@ def test_val_cross_020_grace_period_backward_compat(tmp_path):
         "snapshots": [
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
     current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
-    mock_issues = [{
-        "number": 101,
-        "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")
-    }]
+    mock_issues = [{"number": 101, "body": _make_issue_body("RULE_001", "file.md", linear_id="INFRA-123")}]
 
-    with patch("evolution_utils.subprocess.run") as mock_run, \
-         patch("urllib.request.urlopen") as mock_urlopen:
+    with patch("evolution_utils.subprocess.run") as mock_run, patch("urllib.request.urlopen") as mock_urlopen:
         mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr="")
 
-        auto_close_resolved(current_findings, "evolution-found",
-                           failed_categories=set(), history_path=history_path)
+        auto_close_resolved(current_findings, "evolution-found", failed_categories=set(), history_path=history_path)
 
         # Grace period not met → no Linear API call, no close
         assert mock_urlopen.call_count == 0
@@ -8028,23 +8038,22 @@ def test_val_cross_021_gap_c1_no_linear_call(tmp_path):
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
     current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
-    mock_issues = [{
-        "number": 101,
-        "body": _make_issue_body("RULE_001", "file.md", category="failed_tool", linear_id="INFRA-123")
-    }]
+    mock_issues = [
+        {"number": 101, "body": _make_issue_body("RULE_001", "file.md", category="failed_tool", linear_id="INFRA-123")}
+    ]
 
-    with patch("evolution_utils.subprocess.run") as mock_run, \
-         patch("urllib.request.urlopen") as mock_urlopen:
+    with patch("evolution_utils.subprocess.run") as mock_run, patch("urllib.request.urlopen") as mock_urlopen:
         mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr="")
 
         # Issue category is in failed_categories → GAP-C1 protects it
-        auto_close_resolved(current_findings, "evolution-found",
-                           failed_categories={"failed_tool"}, history_path=history_path)
+        auto_close_resolved(
+            current_findings, "evolution-found", failed_categories={"failed_tool"}, history_path=history_path
+        )
 
         # GAP-C1 fires → no Linear API call, no close
         assert mock_urlopen.call_count == 0
@@ -8081,7 +8090,7 @@ def test_val_cross_023_malformed_body_handling(tmp_path):
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -8091,12 +8100,11 @@ def test_val_cross_023_malformed_body_handling(tmp_path):
         {"number": 102, "body": ""},  # Empty body
         {
             "number": 103,
-            "body": _make_issue_body("RULE_001", "file.md")  # no linkback → backward compat
+            "body": _make_issue_body("RULE_001", "file.md"),  # no linkback → backward compat
         },
     ]
 
-    with patch("evolution_utils.subprocess.run") as mock_run, \
-         patch("urllib.request.urlopen"):
+    with patch("evolution_utils.subprocess.run") as mock_run, patch("urllib.request.urlopen"):
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr=""),
             MagicMock(returncode=0, stdout="", stderr=""),  # comment fetch for #103
@@ -8104,8 +8112,7 @@ def test_val_cross_023_malformed_body_handling(tmp_path):
         ]
 
         # Should not crash on malformed issues
-        auto_close_resolved(current_findings, "evolution-found",
-                           failed_categories=set(), history_path=history_path)
+        auto_close_resolved(current_findings, "evolution-found", failed_categories=set(), history_path=history_path)
 
         # Only valid issue (103) processed (list + comment fetch + close)
         assert mock_run.call_count == 3
@@ -8139,21 +8146,35 @@ def test_val_cross_024_no_mutation_backward_compat(tmp_path):
 def test_val_cross_025_full_suite_regression_check():
     """VAL-CROSS-025: Full test suite has 0 failures, all tests pass."""
     import subprocess
+
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", "tests/test_evolution_scanner.py", "-q", "--tb=no", "-k", "not test_val_cross_025", "--no-cov"],
-        capture_output=True, text=True, timeout=300,
-        cwd=Path(__file__).parent.parent
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_evolution_scanner.py",
+            "-q",
+            "--tb=no",
+            "-k",
+            "not test_val_cross_025",
+            "--no-cov",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        cwd=Path(__file__).parent.parent,
     )
 
     # Parse output for failure count
     output = result.stdout + result.stderr
-    lines = output.strip().split('\n')
-    summary_line = [line for line in lines if 'failed' in line or 'passed' in line][-1]
+    lines = output.strip().split("\n")
+    summary_line = [line for line in lines if "failed" in line or "passed" in line][-1]
 
     # Extract numbers: "X failed, Y passed" or "Y passed"
     import re
-    failed_match = re.search(r'(\d+) failed', summary_line)
-    passed_match = re.search(r'(\d+) passed', summary_line)
+
+    failed_match = re.search(r"(\d+) failed", summary_line)
+    passed_match = re.search(r"(\d+) passed", summary_line)
 
     failed_count = int(failed_match.group(1)) if failed_match else 0
     passed_count = int(passed_match.group(1)) if passed_match else 0
@@ -8197,7 +8218,7 @@ def test_val_cross_027_two_tick_grace_period(tmp_path):
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -8238,23 +8259,22 @@ def test_val_cross_033_gap_c1_pr_verification_non_interference(tmp_path):
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
             {"findings": [{"rule_id": "OTHER", "location": "other.md"}]},
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
     current_findings = [Finding("OTHER", "warning", "test", "other", "other.md", "ev")]
-    mock_issues = [{
-        "number": 101,
-        "body": _make_issue_body("RULE_001", "file.md", category="broken_tool", linear_id="INFRA-123")
-    }]
+    mock_issues = [
+        {"number": 101, "body": _make_issue_body("RULE_001", "file.md", category="broken_tool", linear_id="INFRA-123")}
+    ]
 
-    with patch("evolution_utils.subprocess.run") as mock_run, \
-         patch("urllib.request.urlopen") as mock_urlopen:
+    with patch("evolution_utils.subprocess.run") as mock_run, patch("urllib.request.urlopen") as mock_urlopen:
         mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues), stderr="")
 
         # Issue category in failed_categories → GAP-C1 protects
-        auto_close_resolved(current_findings, "evolution-found",
-                           failed_categories={"broken_tool"}, history_path=history_path)
+        auto_close_resolved(
+            current_findings, "evolution-found", failed_categories={"broken_tool"}, history_path=history_path
+        )
 
         # GAP-C1 fires before PR verification → no Linear API call
         assert mock_urlopen.call_count == 0
@@ -8269,7 +8289,7 @@ def test_val_cross_034_reopen_not_for_new_findings(tmp_path):
     history_path = tmp_path / "findings_over_time.json"
     history_data = {
         "snapshots": [],
-        "resolved_findings": []  # No resolved findings
+        "resolved_findings": [],  # No resolved findings
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -8296,8 +8316,7 @@ def test_val_cross_035_gh_list_failure_graceful(tmp_path):
 
     current_findings = [Finding("RULE_001", "warning", "test", "desc", "file.md", "ev")]
 
-    with patch("evolution_utils.subprocess.run") as mock_run, \
-         patch("urllib.request.urlopen") as mock_urlopen:
+    with patch("evolution_utils.subprocess.run") as mock_run, patch("urllib.request.urlopen") as mock_urlopen:
         # gh issue list fails
         mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="API error")
 
@@ -8343,9 +8362,7 @@ def test_val_cross_036_resolved_findings_survives_trimming(tmp_path):
 def test_val_cross_037_dedup_after_reopen(tmp_path):
     """VAL-CROSS-037: After reopen (now OPEN), deduplicate() finds it, no duplicate created."""
     # After reopen, issue #42 is OPEN with (RULE_001, file.md)
-    open_issues = [
-        {"rule_id": "RULE_001", "location": "file.md", "number": 42}
-    ]
+    open_issues = [{"rule_id": "RULE_001", "location": "file.md", "number": 42}]
 
     # Same finding appears in current scan
     findings = [Finding("RULE_001", "critical", "test", "reappeared", "file.md", "ev")]
@@ -8392,8 +8409,7 @@ def test_run_audit_tool_timeout_expired_caught():
     """INFRA-278: TimeoutExpired is caught and results in tool failure (None) without raising."""
     tool = {"name": "slow_tool", "command": "sleep 10", "timeout": 1}
 
-    with patch("evolution_scanner.subprocess.run") as mock_run, \
-         patch("builtins.print") as mock_print:
+    with patch("evolution_scanner.subprocess.run") as mock_run, patch("builtins.print") as mock_print:
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="sleep 10", timeout=1)
         result = run_audit_tool(tool)
 
@@ -8402,10 +8418,10 @@ def test_run_audit_tool_timeout_expired_caught():
 
         # Verify timeout warning was printed
         warning_calls = [str(c) for c in mock_print.call_args_list]
-        assert any("timed out" in w and "slow_tool" in w for w in warning_calls), \
+        assert any("timed out" in w and "slow_tool" in w for w in warning_calls), (
             f"Expected timeout warning for slow_tool. Warnings: {warning_calls}"
-        assert any("1s" in w for w in warning_calls), \
-            f"Expected timeout duration in warning. Warnings: {warning_calls}"
+        )
+        assert any("1s" in w for w in warning_calls), f"Expected timeout duration in warning. Warnings: {warning_calls}"
 
 
 def test_run_audit_tool_timeout_does_not_affect_registry_jsonl():
@@ -8483,7 +8499,8 @@ def test_val_close_027_findings_drop_skips_auto_close(tmp_path):
                 "issues_created": 0,
             }
             for i in range(1, 6)
-        ] + [
+        ]
+        + [
             {
                 "timestamp": "2026-01-06T00:00:00Z",
                 "tick_id": "t6",
@@ -8491,7 +8508,7 @@ def test_val_close_027_findings_drop_skips_auto_close(tmp_path):
                 "issues_created": 0,
             }
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -8525,7 +8542,8 @@ def test_val_close_027_normal_findings_count_proceeds(tmp_path):
                 "issues_created": 0,
             }
             for i in range(1, 6)
-        ] + [
+        ]
+        + [
             {
                 "timestamp": "2026-01-06T00:00:00Z",
                 "tick_id": "t6",
@@ -8533,7 +8551,7 @@ def test_val_close_027_normal_findings_count_proceeds(tmp_path):
                 "issues_created": 0,
             }
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -8554,8 +8572,7 @@ def test_val_close_027_normal_findings_count_proceeds(tmp_path):
 
         # Verify gh issue list was called
         list_calls = [
-            c for c in mock_run.call_args_list
-            if len(c[0][0]) > 2 and c[0][0][1] == "issue" and c[0][0][2] == "list"
+            c for c in mock_run.call_args_list if len(c[0][0]) > 2 and c[0][0][1] == "issue" and c[0][0][2] == "list"
         ]
         assert len(list_calls) > 0, "gh issue list must be called when findings count is normal"
 
@@ -8577,7 +8594,7 @@ def test_val_close_027_insufficient_history_no_protection(tmp_path):
                 "issues_created": 0,
             }
         ],
-        "resolved_findings": []
+        "resolved_findings": [],
     }
     history_path.write_text(json.dumps(history_data))
 
@@ -8593,6 +8610,8 @@ def test_val_close_027_insufficient_history_no_protection(tmp_path):
 
         # gh issue list should be called (protection disabled due to insufficient history)
         assert mock_run.call_count > 0, "Insufficient history must not enable protection"
+
+
 # INFRA-third-quota-pool: Independent third quota pool for code_hygiene
 # ============================================================================
 
@@ -8602,37 +8621,39 @@ def test_code_hygiene_gets_independent_quota():
     from evolution_scanner import main
 
     config = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 1,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 1,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
     }
 
     regular = Finding("REG_001", "warning", "consistency", "Regular", "file1.md", "ev1")
     code_hygiene = Finding("CH_001", "warning", "code_hygiene", "Code hygiene", "file2.md", "ev2")
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.validate_config'), \
-         patch('evolution_scanner.ensure_labels'), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[regular, code_hygiene]), \
-         patch('evolution_scanner.detect_regressions', return_value=[regular, code_hygiene]), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved'), \
-         patch('evolution_scanner.reconcile_in_progress'), \
-         patch('evolution_scanner.load_history', return_value={"resolved_findings": []}), \
-         patch('evolution_scanner.write_heartbeat'), \
-         patch('evolution_scanner.sort_by_severity', side_effect=lambda f, _: f), \
-         patch('evolution_scanner.deduplicate', side_effect=lambda f, _: f):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[regular, code_hygiene]),
+        patch("evolution_scanner.detect_regressions", return_value=[regular, code_hygiene]),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.create_issue", return_value=True) as mock_create,
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+        patch("evolution_scanner.reconcile_in_progress"),
+        patch("evolution_scanner.load_history", return_value={"resolved_findings": []}),
+        patch("evolution_scanner.write_heartbeat"),
+        patch("evolution_scanner.sort_by_severity", side_effect=lambda f, _: f),
+        patch("evolution_scanner.deduplicate", side_effect=lambda f, _: f),
+    ):
         main()
         assert mock_create.call_count == 2, "Both regular and code_hygiene should create issues"
         created_findings = [call[0][0] for call in mock_create.call_args_list]
@@ -8646,37 +8667,39 @@ def test_regular_exhaustion_does_not_block_code_hygiene():
     from evolution_scanner import main
 
     config = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 1,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 1,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
     }
 
     critical = Finding("CRIT_001", "critical", "consistency", "Critical", "file1.md", "ev1")
     code_hygiene = Finding("CH_001", "warning", "code_hygiene", "Code hygiene", "file2.md", "ev2")
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.validate_config'), \
-         patch('evolution_scanner.ensure_labels'), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[critical, code_hygiene]), \
-         patch('evolution_scanner.detect_regressions', return_value=[critical, code_hygiene]), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved'), \
-         patch('evolution_scanner.reconcile_in_progress'), \
-         patch('evolution_scanner.load_history', return_value={"resolved_findings": []}), \
-         patch('evolution_scanner.write_heartbeat'), \
-         patch('evolution_scanner.sort_by_severity', side_effect=lambda f, _: f), \
-         patch('evolution_scanner.deduplicate', side_effect=lambda f, _: f):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[critical, code_hygiene]),
+        patch("evolution_scanner.detect_regressions", return_value=[critical, code_hygiene]),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.create_issue", return_value=True) as mock_create,
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+        patch("evolution_scanner.reconcile_in_progress"),
+        patch("evolution_scanner.load_history", return_value={"resolved_findings": []}),
+        patch("evolution_scanner.write_heartbeat"),
+        patch("evolution_scanner.sort_by_severity", side_effect=lambda f, _: f),
+        patch("evolution_scanner.deduplicate", side_effect=lambda f, _: f),
+    ):
         main()
         assert mock_create.call_count == 2, "Both should create issues despite regular quota exhaustion"
         created_findings = [call[0][0] for call in mock_create.call_args_list]
@@ -8689,38 +8712,40 @@ def test_code_hygiene_exhaustion_does_not_block_regular():
     from evolution_scanner import main
 
     config = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 1,
-        'max_self_audit_issues_per_tick': 1,
-        'max_code_hygiene_issues_per_tick': 1,
-        'snapshot_limit': 100,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 1,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
     }
 
     regular = Finding("REG_001", "warning", "consistency", "Regular", "file1.md", "ev1")
     ch1 = Finding("CH_001", "warning", "code_hygiene", "CH 1", "file2.md", "ev2")
     ch2 = Finding("CH_002", "warning", "code_hygiene", "CH 2", "file3.md", "ev3")
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.validate_config'), \
-         patch('evolution_scanner.ensure_labels'), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[regular, ch1, ch2]), \
-         patch('evolution_scanner.detect_regressions', return_value=[regular, ch1, ch2]), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved'), \
-         patch('evolution_scanner.reconcile_in_progress'), \
-         patch('evolution_scanner.load_history', return_value={"resolved_findings": []}), \
-         patch('evolution_scanner.write_heartbeat'), \
-         patch('evolution_scanner.sort_by_severity', side_effect=lambda f, _: f), \
-         patch('evolution_scanner.deduplicate', side_effect=lambda f, _: f):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[regular, ch1, ch2]),
+        patch("evolution_scanner.detect_regressions", return_value=[regular, ch1, ch2]),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.create_issue", return_value=True) as mock_create,
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+        patch("evolution_scanner.reconcile_in_progress"),
+        patch("evolution_scanner.load_history", return_value={"resolved_findings": []}),
+        patch("evolution_scanner.write_heartbeat"),
+        patch("evolution_scanner.sort_by_severity", side_effect=lambda f, _: f),
+        patch("evolution_scanner.deduplicate", side_effect=lambda f, _: f),
+    ):
         main()
         created_findings = [call[0][0] for call in mock_create.call_args_list]
         categories = [f.category for f in created_findings]
@@ -8735,37 +8760,39 @@ def test_no_duplicate_issue_across_pools():
     from evolution_scanner import main
 
     config = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 5,
-        'max_self_audit_issues_per_tick': 5,
-        'max_code_hygiene_issues_per_tick': 5,
-        'snapshot_limit': 100,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 5,
+        "max_self_audit_issues_per_tick": 5,
+        "max_code_hygiene_issues_per_tick": 5,
+        "snapshot_limit": 100,
     }
 
     # Single code_hygiene finding
     code_hygiene = Finding("CH_001", "warning", "code_hygiene", "Code hygiene", "file1.md", "ev1")
 
-    with patch('evolution_scanner.check_kill_switch', return_value=False), \
-         patch('evolution_scanner.load_config', return_value=config), \
-         patch('evolution_scanner.validate_config'), \
-         patch('evolution_scanner.ensure_labels'), \
-         patch('evolution_scanner.run_audit_tool', return_value=[]), \
-         patch('evolution_scanner.dedup_intra_tick', return_value=[code_hygiene]), \
-         patch('evolution_scanner.detect_regressions', return_value=[code_hygiene]), \
-         patch('evolution_scanner.get_open_issues', return_value=[]), \
-         patch('evolution_scanner.create_issue', return_value=True) as mock_create, \
-         patch('evolution_scanner.update_history'), \
-         patch('evolution_scanner.check_isolation'), \
-         patch('evolution_scanner.auto_close_resolved'), \
-         patch('evolution_scanner.reconcile_in_progress'), \
-         patch('evolution_scanner.load_history', return_value={"resolved_findings": []}), \
-         patch('evolution_scanner.write_heartbeat'), \
-         patch('evolution_scanner.sort_by_severity', side_effect=lambda f, _: f), \
-         patch('evolution_scanner.deduplicate', side_effect=lambda f, _: f):
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.validate_config"),
+        patch("evolution_scanner.ensure_labels"),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.dedup_intra_tick", return_value=[code_hygiene]),
+        patch("evolution_scanner.detect_regressions", return_value=[code_hygiene]),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.create_issue", return_value=True) as mock_create,
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+        patch("evolution_scanner.reconcile_in_progress"),
+        patch("evolution_scanner.load_history", return_value={"resolved_findings": []}),
+        patch("evolution_scanner.write_heartbeat"),
+        patch("evolution_scanner.sort_by_severity", side_effect=lambda f, _: f),
+        patch("evolution_scanner.deduplicate", side_effect=lambda f, _: f),
+    ):
         main()
         assert mock_create.call_count == 1, "code_hygiene finding should create exactly 1 issue"
         created_finding = mock_create.call_args[0][0]
@@ -8778,15 +8805,15 @@ def test_validate_config_requires_code_hygiene_key():
     from evolution_utils import validate_config
 
     config_without_key = {
-        'audit_tools': [],
-        'severity_order': ['critical', 'warning', 'info'],
-        'dedup_label': 'evolution-found',
-        'isolation_threshold': 3,
-        'failure_label': 'evolution-isolated',
-        'max_issues_per_tick': 1,
-        'max_self_audit_issues_per_tick': 1,
+        "audit_tools": [],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 1,
+        "max_self_audit_issues_per_tick": 1,
         # max_code_hygiene_issues_per_tick intentionally omitted
-        'snapshot_limit': 100,
+        "snapshot_limit": 100,
     }
 
     with pytest.raises(SystemExit) as exc_info:
@@ -8795,7 +8822,7 @@ def test_validate_config_requires_code_hygiene_key():
 
     # Config with the key should pass
     config_with_key = config_without_key.copy()
-    config_with_key['max_code_hygiene_issues_per_tick'] = 1
+    config_with_key["max_code_hygiene_issues_per_tick"] = 1
     validate_config(config_with_key)  # Should not raise
 
 
@@ -8803,6 +8830,7 @@ def test_validate_config_requires_code_hygiene_key():
 # TDD: Dedup Blackhole Fix Tests (m3-blackhole-gate)
 # Reference: run 31915486263, issues #635/#645/#647/#661/#663
 # ============================================================================
+
 
 def test_ghost_findings_run_31915486263_scenario(tmp_path):
     """TDD-RED: 5 ghost findings colliding with 5 closed issues (#635/#645/#647/#661/#663).
@@ -8816,31 +8844,28 @@ def test_ghost_findings_run_31915486263_scenario(tmp_path):
     causing deduplicate() to drop all 5 findings → 0 issues created.
     """
     # Setup: 5 findings
-    findings = [
-        Finding(f"RULE_{chr(65+i)}", "warning", "test", f"desc{i}", f"file{i}.py", "ev")
-        for i in range(5)
-    ]
+    findings = [Finding(f"RULE_{chr(65 + i)}", "warning", "test", f"desc{i}", f"file{i}.py", "ev") for i in range(5)]
 
     # Mock: 5 closed issues, all closed 10 days ago (outside 7-day window)
     closed_10d_ago = (datetime.now(UTC) - timedelta(days=10)).isoformat()
     closed_issues_data = [
         {
             "number": 635 + i * 10,
-            "title": f"[evolution] RULE_{chr(65+i)}",
-            "body": f"**Rule ID**: RULE_{chr(65+i)}\n**Location**: file{i}.py",
-            "closedAt": closed_10d_ago
+            "title": f"[evolution] RULE_{chr(65 + i)}",
+            "body": f"**Rule ID**: RULE_{chr(65 + i)}\n**Location**: file{i}.py",
+            "closedAt": closed_10d_ago,
         }
         for i in range(5)
     ]
 
-    with patch('evolution_scanner.subprocess.run') as mock_run:
+    with patch("evolution_scanner.subprocess.run") as mock_run:
         # Open query returns empty list, closed query returns 5 old issues
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout="[]", stderr=""),
             MagicMock(returncode=0, stdout=json.dumps(closed_issues_data), stderr=""),
         ]
 
-        with patch('evolution_scanner.create_issue') as mock_create:
+        with patch("evolution_scanner.create_issue") as mock_create:
             mock_create.return_value = True
 
             # Step 1: get_open_issues (should filter out old closed issues)
@@ -8871,21 +8896,23 @@ def test_dedup_window_matrix_3_days_included():
     """TDD: Closed issue closed 3 days ago should be included in dedup set."""
     closed_3d_ago = (datetime.now(UTC) - timedelta(days=3)).isoformat()
 
-    with patch('evolution_scanner.subprocess.run') as mock_run:
+    with patch("evolution_scanner.subprocess.run") as mock_run:
         # Open query returns empty list, closed query returns the test issue
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout="[]", stderr=""),
             MagicMock(
                 returncode=0,
-                stdout=json.dumps([
-                    {
-                        "number": 100,
-                        "title": "[evolution] RULE_X",
-                        "body": "**Rule ID**: RULE_X\n**Location**: file.py",
-                        "closedAt": closed_3d_ago
-                    }
-                ])
-            )
+                stdout=json.dumps(
+                    [
+                        {
+                            "number": 100,
+                            "title": "[evolution] RULE_X",
+                            "body": "**Rule ID**: RULE_X\n**Location**: file.py",
+                            "closedAt": closed_3d_ago,
+                        }
+                    ]
+                ),
+            ),
         ]
 
         issues = get_open_issues("evolution-found")
@@ -8900,21 +8927,23 @@ def test_dedup_window_matrix_7_days_boundary():
     # Use 6 days 23 hours ago to avoid timing race between test setup and implementation
     closed_just_inside = (datetime.now(UTC) - timedelta(days=6, hours=23)).isoformat()
 
-    with patch('evolution_scanner.subprocess.run') as mock_run:
+    with patch("evolution_scanner.subprocess.run") as mock_run:
         # Open query returns empty list, closed query returns the test issue
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout="[]", stderr=""),
             MagicMock(
                 returncode=0,
-                stdout=json.dumps([
-                    {
-                        "number": 200,
-                        "title": "[evolution] RULE_Y",
-                        "body": "**Rule ID**: RULE_Y\n**Location**: file.py",
-                        "closedAt": closed_just_inside
-                    }
-                ])
-            )
+                stdout=json.dumps(
+                    [
+                        {
+                            "number": 200,
+                            "title": "[evolution] RULE_Y",
+                            "body": "**Rule ID**: RULE_Y\n**Location**: file.py",
+                            "closedAt": closed_just_inside,
+                        }
+                    ]
+                ),
+            ),
         ]
 
         issues = get_open_issues("evolution-found")
@@ -8928,21 +8957,23 @@ def test_dedup_window_matrix_10_days_excluded():
     """TDD: Closed issue closed 10 days ago should be EXCLUDED from dedup set."""
     closed_10d_ago = (datetime.now(UTC) - timedelta(days=10)).isoformat()
 
-    with patch('evolution_scanner.subprocess.run') as mock_run:
+    with patch("evolution_scanner.subprocess.run") as mock_run:
         # Open query returns empty list, closed query returns the test issue
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout="[]", stderr=""),
             MagicMock(
                 returncode=0,
-                stdout=json.dumps([
-                    {
-                        "number": 300,
-                        "title": "[evolution] RULE_Z",
-                        "body": "**Rule ID**: RULE_Z\n**Location**: file.py",
-                        "closedAt": closed_10d_ago
-                    }
-                ])
-            )
+                stdout=json.dumps(
+                    [
+                        {
+                            "number": 300,
+                            "title": "[evolution] RULE_Z",
+                            "body": "**Rule ID**: RULE_Z\n**Location**: file.py",
+                            "closedAt": closed_10d_ago,
+                        }
+                    ]
+                ),
+            ),
         ]
 
         issues = get_open_issues("evolution-found")
@@ -8964,22 +8995,28 @@ def test_reopen_failure_gh_error_fallback_create(tmp_path):
     # Setup: 1 critical regression finding
     finding = Finding("RULE_CRITICAL", "critical", "test", "critical desc", "critical.py", "ev")
     history_path = tmp_path / "findings_over_time.json"
-    history_path.write_text(json.dumps({
-        "snapshots": [],
-        "resolved_findings": [
+    history_path.write_text(
+        json.dumps(
             {
-                "rule_id": "RULE_CRITICAL",
-                "location": "critical.py",
-                "resolved_at": "2026-01-01T00:00:00",
-                "reopen_count": 0
+                "snapshots": [],
+                "resolved_findings": [
+                    {
+                        "rule_id": "RULE_CRITICAL",
+                        "location": "critical.py",
+                        "resolved_at": "2026-01-01T00:00:00",
+                        "reopen_count": 0,
+                    }
+                ],
             }
-        ]
-    }))
+        )
+    )
 
     resolved_keys = {("RULE_CRITICAL", "critical.py")}
 
-    with patch('evolution_scanner._reopen_closed_issue') as mock_reopen, \
-         patch('evolution_scanner.create_issue') as mock_create:
+    with (
+        patch("evolution_scanner._reopen_closed_issue") as mock_reopen,
+        patch("evolution_scanner.create_issue") as mock_create,
+    ):
         # Reopen fails (gh error)
         mock_reopen.return_value = False
         mock_create.return_value = True
@@ -9010,22 +9047,28 @@ def test_reopen_failure_no_matching_issue_fallback_create(tmp_path):
     # Setup: 1 critical regression finding
     finding = Finding("RULE_NO_MATCH", "critical", "test", "desc", "nomatch.py", "ev")
     history_path = tmp_path / "findings_over_time.json"
-    history_path.write_text(json.dumps({
-        "snapshots": [],
-        "resolved_findings": [
+    history_path.write_text(
+        json.dumps(
             {
-                "rule_id": "RULE_NO_MATCH",
-                "location": "nomatch.py",
-                "resolved_at": "2026-01-01T00:00:00",
-                "reopen_count": 0
+                "snapshots": [],
+                "resolved_findings": [
+                    {
+                        "rule_id": "RULE_NO_MATCH",
+                        "location": "nomatch.py",
+                        "resolved_at": "2026-01-01T00:00:00",
+                        "reopen_count": 0,
+                    }
+                ],
             }
-        ]
-    }))
+        )
+    )
 
     resolved_keys = {("RULE_NO_MATCH", "nomatch.py")}
 
-    with patch('evolution_scanner._reopen_closed_issue') as mock_reopen, \
-         patch('evolution_scanner.create_issue') as mock_create:
+    with (
+        patch("evolution_scanner._reopen_closed_issue") as mock_reopen,
+        patch("evolution_scanner.create_issue") as mock_create,
+    ):
         # Reopen returns False (no matching issue)
         mock_reopen.return_value = False
         mock_create.return_value = True
@@ -9056,22 +9099,28 @@ def test_reopen_limit_reached_no_fallback(tmp_path):
     # Setup: 1 critical regression finding with reopen_count = 3
     finding = Finding("RULE_LIMIT", "critical", "test", "desc", "limit.py", "ev")
     history_path = tmp_path / "findings_over_time.json"
-    history_path.write_text(json.dumps({
-        "snapshots": [],
-        "resolved_findings": [
+    history_path.write_text(
+        json.dumps(
             {
-                "rule_id": "RULE_LIMIT",
-                "location": "limit.py",
-                "resolved_at": "2026-01-01T00:00:00",
-                "reopen_count": 3  # Limit reached
+                "snapshots": [],
+                "resolved_findings": [
+                    {
+                        "rule_id": "RULE_LIMIT",
+                        "location": "limit.py",
+                        "resolved_at": "2026-01-01T00:00:00",
+                        "reopen_count": 3,  # Limit reached
+                    }
+                ],
             }
-        ]
-    }))
+        )
+    )
 
     resolved_keys = {("RULE_LIMIT", "limit.py")}
 
-    with patch('evolution_scanner._reopen_closed_issue') as mock_reopen, \
-         patch('evolution_scanner.create_issue') as mock_create:
+    with (
+        patch("evolution_scanner._reopen_closed_issue") as mock_reopen,
+        patch("evolution_scanner.create_issue") as mock_create,
+    ):
         # Reopen returns False (limit reached, not error)
         mock_reopen.return_value = False
         mock_create.return_value = True
@@ -9093,6 +9142,7 @@ def test_reopen_limit_reached_no_fallback(tmp_path):
 # TDD: VAL-DUP-002 - Ghost Finding Scenario (Run 31915486263)
 # ============================================================================
 
+
 def test_ghost_finding_scenario_run_31915486263():
     """VAL-DUP-002: 5 ghost findings should create 5 new issues when closed issues are > 7 days old.
 
@@ -9107,19 +9157,16 @@ def test_ghost_finding_scenario_run_31915486263():
     deduplicate sees only open issues, and all 5 findings survive to create issues.
     """
     # Setup: 5 findings (matching the ghost scenario)
-    findings = [
-        Finding(f"RULE_{chr(65+i)}", "warning", "test", f"desc{i}", f"file{i}.py", "ev")
-        for i in range(5)
-    ]
+    findings = [Finding(f"RULE_{chr(65 + i)}", "warning", "test", f"desc{i}", f"file{i}.py", "ev") for i in range(5)]
 
     # Mock: 5 closed issues, all closed 10 days ago (> 7 day window)
     closed_10d_ago = (datetime.now(UTC) - timedelta(days=10)).isoformat()
     closed_issues_data = [
         {
             "number": 635 + i * 10,
-            "title": f"[evolution] RULE_{chr(65+i)}",
-            "body": f"**Rule ID**: RULE_{chr(65+i)}\n**Location**: file{i}.py",
-            "closedAt": closed_10d_ago
+            "title": f"[evolution] RULE_{chr(65 + i)}",
+            "body": f"**Rule ID**: RULE_{chr(65 + i)}\n**Location**: file{i}.py",
+            "closedAt": closed_10d_ago,
         }
         for i in range(5)
     ]
@@ -9135,8 +9182,10 @@ def test_ghost_finding_scenario_run_31915486263():
                 return Mock(returncode=0, stdout=json.dumps(closed_issues_data), stderr="")
         return Mock(returncode=0, stdout="{}", stderr="")
 
-    with patch('evolution_scanner.subprocess.run', side_effect=mock_subprocess_run), \
-         patch('evolution_scanner.create_issue') as mock_create:
+    with (
+        patch("evolution_scanner.subprocess.run", side_effect=mock_subprocess_run),
+        patch("evolution_scanner.create_issue") as mock_create,
+    ):
         mock_create.return_value = True
 
         # Step 1: get_open_issues (should filter out old closed issues)
@@ -9167,6 +9216,7 @@ def test_ghost_finding_scenario_run_31915486263():
 # VAL-DUP-004: Critical regression before dedup ordering fix
 # ============================================================================
 
+
 def test_dup_004_current_dedup_swallows_critical_regression():
     """greenAtBirth: documents deduplicate() helper behavior — it removes ALL findings
     matching open/closed issue keys regardless of severity. This is by design: the
@@ -9177,9 +9227,7 @@ def test_dup_004_current_dedup_swallows_critical_regression():
     black hole was caused by main() calling dedup() BEFORE peel, which is tested by
     test_dup_004_critical_before_dedup_ordering below.
     """
-    critical_finding = Finding(
-        "RULE_001", "critical", "test", "Regression", "file.md", "evidence"
-    )
+    critical_finding = Finding("RULE_001", "critical", "test", "Regression", "file.md", "evidence")
     # Simulate get_open_issues returning a closed issue matching the critical finding
     # (this happens when the closed issue is within the 7-day window)
     closed_issue = {"rule_id": "RULE_001", "location": "file.md", "number": 100}
@@ -9199,15 +9247,9 @@ def test_dup_004_peel_critical_regressions():
     """
     from evolution_scanner import _peel_critical_regressions
 
-    critical_regression = Finding(
-        "RULE_X", "critical", "test", "Regression", "file.py", "evidence"
-    )
-    non_critical = Finding(
-        "RULE_Y", "warning", "test", "Regular", "file2.py", "evidence"
-    )
-    critical_not_resolved = Finding(
-        "RULE_Z", "critical", "test", "First-time critical", "file3.py", "evidence"
-    )
+    critical_regression = Finding("RULE_X", "critical", "test", "Regression", "file.py", "evidence")
+    non_critical = Finding("RULE_Y", "warning", "test", "Regular", "file2.py", "evidence")
+    critical_not_resolved = Finding("RULE_Z", "critical", "test", "First-time critical", "file3.py", "evidence")
     resolved_keys = {("RULE_X", "file.py")}
 
     peeled, remaining = _peel_critical_regressions(
@@ -9236,9 +9278,7 @@ def test_dup_004_critical_regression_not_swallowed_integration():
     """
     from evolution_scanner import _peel_critical_regressions
 
-    critical_finding = Finding(
-        "RULE_X", "critical", "test", "Regression", "file.py", "evidence"
-    )
+    critical_finding = Finding("RULE_X", "critical", "test", "Regression", "file.py", "evidence")
     resolved_keys = {("RULE_X", "file.py")}
     # Simulate get_open_issues returning a closed issue matching the critical finding
     # (this happens when the closed issue is within the 7-day window)
@@ -9266,9 +9306,7 @@ def test_dup_004_non_critical_still_deduped():
     """
     from evolution_scanner import _peel_critical_regressions
 
-    non_critical_finding = Finding(
-        "RULE_Y", "warning", "test", "Regular", "file2.py", "evidence"
-    )
+    non_critical_finding = Finding("RULE_Y", "warning", "test", "Regular", "file2.py", "evidence")
     resolved_keys = {("RULE_X", "file.py")}  # Doesn't contain RULE_Y
     open_issues = [{"rule_id": "RULE_Y", "location": "file2.py", "number": 200}]
     findings = [non_critical_finding]
@@ -9292,18 +9330,10 @@ def test_dup_004_mixed_critical_and_non_critical():
     """
     from evolution_scanner import _peel_critical_regressions
 
-    critical_regression = Finding(
-        "RULE_001", "critical", "test", "Regression", "file.md", "evidence"
-    )
-    non_critical_matching = Finding(
-        "RULE_002", "warning", "test", "Regular", "file2.md", "evidence"
-    )
-    critical_first_time = Finding(
-        "RULE_003", "critical", "test", "First-time critical", "file3.md", "evidence"
-    )
-    non_critical_no_match = Finding(
-        "RULE_004", "warning", "test", "Clean", "file4.md", "evidence"
-    )
+    critical_regression = Finding("RULE_001", "critical", "test", "Regression", "file.md", "evidence")
+    non_critical_matching = Finding("RULE_002", "warning", "test", "Regular", "file2.md", "evidence")
+    critical_first_time = Finding("RULE_003", "critical", "test", "First-time critical", "file3.md", "evidence")
+    non_critical_no_match = Finding("RULE_004", "warning", "test", "Clean", "file4.md", "evidence")
 
     resolved_keys = {("RULE_001", "file.md")}
     # Closed issues matching RULE_001 and RULE_002 (within 7-day window)
@@ -9341,16 +9371,31 @@ def test_dup_004_peel_excludes_issue_excluded_categories():
 
     # daily_audit finding upgraded to critical by detect_regressions
     daily_audit_finding = Finding(
-        "RULE_DAILY", "critical", "test", "Regression", "audit.log", "evidence",
+        "RULE_DAILY",
+        "critical",
+        "test",
+        "Regression",
+        "audit.log",
+        "evidence",
     )
     # Override category via dataclass replace
     daily_audit_finding = replace(daily_audit_finding, category="daily_audit")
     self_audit_finding = Finding(
-        "RULE_SELF", "critical", "test", "Regression", "self.py", "evidence",
+        "RULE_SELF",
+        "critical",
+        "test",
+        "Regression",
+        "self.py",
+        "evidence",
     )
     self_audit_finding = replace(self_audit_finding, category="evolution_self_audit")
     normal_finding = Finding(
-        "RULE_NORMAL", "critical", "test", "Regression", "code.py", "evidence",
+        "RULE_NORMAL",
+        "critical",
+        "test",
+        "Regression",
+        "code.py",
+        "evidence",
     )
     normal_finding = replace(normal_finding, category="test")
     resolved_keys = {
@@ -9393,20 +9438,24 @@ def test_dup_004_open_issue_guard_skips_duplicate_create():
 
     from evolution_scanner import Finding, _process_findings_with_reopen
 
-    critical_finding = Finding(
-        "RULE_001", "critical", "test", "Regression", "file.py", "evidence"
-    )
+    critical_finding = Finding("RULE_001", "critical", "test", "Regression", "file.py", "evidence")
     resolved_keys = {("RULE_001", "file.py")}
     # Simulate an OPEN issue already existing with same key
     open_issues = [{"rule_id": "RULE_001", "location": "file.py", "number": 100}]
     history_path = Path("/tmp/nonexistent_history.json")
 
-    with patch("evolution_scanner._reopen_closed_issue", return_value=False), \
-         patch("evolution_scanner._reopen_limit_reached", return_value=False), \
-         patch("evolution_scanner.create_issue") as mock_create:
+    with (
+        patch("evolution_scanner._reopen_closed_issue", return_value=False),
+        patch("evolution_scanner._reopen_limit_reached", return_value=False),
+        patch("evolution_scanner.create_issue") as mock_create,
+    ):
         created = _process_findings_with_reopen(
-            [critical_finding], 10, resolved_keys,
-            "evolution-found", history_path, open_issues,
+            [critical_finding],
+            10,
+            resolved_keys,
+            "evolution-found",
+            history_path,
+            open_issues,
         )
 
     # create_issue should NOT have been called because OPEN issue exists
@@ -9428,22 +9477,24 @@ def test_dup_004_closed_in_window_guard_allows_fallback_create():
 
     from evolution_scanner import Finding, _process_findings_with_reopen
 
-    critical_finding = Finding(
-        "RULE_001", "critical", "test", "Regression", "file.py", "evidence"
-    )
+    critical_finding = Finding("RULE_001", "critical", "test", "Regression", "file.py", "evidence")
     resolved_keys = {("RULE_001", "file.py")}
     # Simulate the black hole setup: only a CLOSED-in-window issue with same key
-    open_issues = [
-        {"rule_id": "RULE_001", "location": "file.py", "number": 100, "state": "closed"}
-    ]
+    open_issues = [{"rule_id": "RULE_001", "location": "file.py", "number": 100, "state": "closed"}]
     history_path = Path("/tmp/nonexistent_history.json")
 
-    with patch("evolution_scanner._reopen_closed_issue", return_value=False), \
-         patch("evolution_scanner._reopen_limit_reached", return_value=False), \
-         patch("evolution_scanner.create_issue", return_value=True) as mock_create:
+    with (
+        patch("evolution_scanner._reopen_closed_issue", return_value=False),
+        patch("evolution_scanner._reopen_limit_reached", return_value=False),
+        patch("evolution_scanner.create_issue", return_value=True) as mock_create,
+    ):
         created = _process_findings_with_reopen(
-            [critical_finding], 10, resolved_keys,
-            "evolution-found", history_path, open_issues,
+            [critical_finding],
+            10,
+            resolved_keys,
+            "evolution-found",
+            history_path,
+            open_issues,
         )
 
     # Fallback create MUST happen (VAL-DUP-003): a closed issue is not "already open"
@@ -9462,20 +9513,24 @@ def test_dup_004_guard_defaults_missing_state_to_open():
 
     from evolution_scanner import Finding, _process_findings_with_reopen
 
-    critical_finding = Finding(
-        "RULE_001", "critical", "test", "Regression", "file.py", "evidence"
-    )
+    critical_finding = Finding("RULE_001", "critical", "test", "Regression", "file.py", "evidence")
     resolved_keys = {("RULE_001", "file.py")}
     # Legacy shape: no "state" key (treated as open)
     open_issues = [{"rule_id": "RULE_001", "location": "file.py", "number": 100}]
     history_path = Path("/tmp/nonexistent_history.json")
 
-    with patch("evolution_scanner._reopen_closed_issue", return_value=False), \
-         patch("evolution_scanner._reopen_limit_reached", return_value=False), \
-         patch("evolution_scanner.create_issue") as mock_create:
+    with (
+        patch("evolution_scanner._reopen_closed_issue", return_value=False),
+        patch("evolution_scanner._reopen_limit_reached", return_value=False),
+        patch("evolution_scanner.create_issue") as mock_create,
+    ):
         created = _process_findings_with_reopen(
-            [critical_finding], 10, resolved_keys,
-            "evolution-found", history_path, open_issues,
+            [critical_finding],
+            10,
+            resolved_keys,
+            "evolution-found",
+            history_path,
+            open_issues,
         )
 
     mock_create.assert_not_called()
@@ -9489,13 +9544,20 @@ def test_infra_396_get_open_issues_tags_state():
     7-day dedup window must be tagged "closed" so downstream guards (fallback
     create in _process_findings_with_reopen) can distinguish them.
     """
-    open_data = json.dumps([
-        {"title": "[evolution] RULE_A", "body": "**Rule ID**: RULE_A\n**Location**: a.py", "number": 10}
-    ])
+    open_data = json.dumps(
+        [{"title": "[evolution] RULE_A", "body": "**Rule ID**: RULE_A\n**Location**: a.py", "number": 10}]
+    )
     closed_3d_ago = (datetime.now(UTC) - timedelta(days=3)).isoformat()
-    closed_data = json.dumps([
-        {"title": "[evolution] RULE_B", "body": "**Rule ID**: RULE_B\n**Location**: b.py", "number": 20, "closedAt": closed_3d_ago}
-    ])
+    closed_data = json.dumps(
+        [
+            {
+                "title": "[evolution] RULE_B",
+                "body": "**Rule ID**: RULE_B\n**Location**: b.py",
+                "number": 20,
+                "closedAt": closed_3d_ago,
+            }
+        ]
+    )
     with patch("evolution_scanner.subprocess.run") as mock_run:
         mock_run.side_effect = [
             MagicMock(returncode=0, stdout=open_data, stderr=""),
@@ -9525,9 +9587,7 @@ def test_infra_396_self_audit_regression_reaches_reopen_flow():
     )
     resolved_keys = {("RULE_SELF", "self.py")}
     # Closed issue within 7-day window matching the regression key
-    open_issues = [
-        {"rule_id": "RULE_SELF", "location": "self.py", "number": 300, "state": "closed"}
-    ]
+    open_issues = [{"rule_id": "RULE_SELF", "location": "self.py", "number": 300, "state": "closed"}]
 
     peeled, remaining = _peel_critical_regressions([self_audit_regression], resolved_keys)
     deduped_remaining = deduplicate(remaining, open_issues)
@@ -9556,9 +9616,7 @@ def test_dup_004_main_ordering_peel_before_dedup():
 
     # Prepare history with resolved finding (makes detect_regressions upgrade to critical)
     history_data = {
-        "resolved_findings": [
-            {"rule_id": "RULE_A", "location": "code.py", "reopen_count": 0}
-        ],
+        "resolved_findings": [{"rule_id": "RULE_A", "location": "code.py", "reopen_count": 0}],
         "snapshots": [],
     }
 
@@ -9599,35 +9657,47 @@ def test_dup_004_main_ordering_peel_before_dedup():
 
         return result
 
-    with patch("evolution_scanner.subprocess.run", side_effect=mock_subprocess_run), \
-         patch("evolution_scanner.load_history", return_value=history_data), \
-         patch("evolution_scanner.load_config", return_value={
-             "audit_tools": [{"name": "dummy_tool"}],  # Need at least one tool so run_audit_tool gets called in main()
-             "severity_order": ["critical", "warning", "info"],
-             "dedup_label": "evolution-found",
-             "isolation_threshold": 5,
-             "failure_label": "evolution-isolated",
-             "max_issues_per_tick": 10,
-             "max_self_audit_issues_per_tick": 5,
-             "max_code_hygiene_issues_per_tick": 5,
-             "snapshot_limit": 10,
-         }), \
-         patch("evolution_scanner.write_heartbeat"), \
-         patch("evolution_scanner.check_isolation"), \
-         patch("evolution_scanner.check_persistent_info_findings"), \
-         patch("evolution_scanner.load_suppressions", return_value=[]), \
-         patch("evolution_utils.forward_drift_watch", return_value=[]), \
-         patch("evolution_scanner.update_history"), \
-         patch("evolution_scanner._integrate_forward_drift_watch"), \
-         patch("evolution_scanner.run_audit_tool", return_value=[{
-             "rule_id": "RULE_A",
-             "severity": "warning",
-             "category": "test",
-             "description": "Regression",
-             "location": "code.py",
-             "evidence": "evidence",
-         }]), \
-         patch("evolution_scanner.dedup_intra_tick", side_effect=lambda x: x):
+    with (
+        patch("evolution_scanner.subprocess.run", side_effect=mock_subprocess_run),
+        patch("evolution_scanner.load_history", return_value=history_data),
+        patch(
+            "evolution_scanner.load_config",
+            return_value={
+                "audit_tools": [
+                    {"name": "dummy_tool"}
+                ],  # Need at least one tool so run_audit_tool gets called in main()
+                "severity_order": ["critical", "warning", "info"],
+                "dedup_label": "evolution-found",
+                "isolation_threshold": 5,
+                "failure_label": "evolution-isolated",
+                "max_issues_per_tick": 10,
+                "max_self_audit_issues_per_tick": 5,
+                "max_code_hygiene_issues_per_tick": 5,
+                "snapshot_limit": 10,
+            },
+        ),
+        patch("evolution_scanner.write_heartbeat"),
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.check_persistent_info_findings"),
+        patch("evolution_scanner.load_suppressions", return_value=[]),
+        patch("evolution_utils.forward_drift_watch", return_value=[]),
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner._integrate_forward_drift_watch"),
+        patch(
+            "evolution_scanner.run_audit_tool",
+            return_value=[
+                {
+                    "rule_id": "RULE_A",
+                    "severity": "warning",
+                    "category": "test",
+                    "description": "Regression",
+                    "location": "code.py",
+                    "evidence": "evidence",
+                }
+            ],
+        ),
+        patch("evolution_scanner.dedup_intra_tick", side_effect=lambda x: x),
+    ):
         scanner_main()
 
     # VAL-DUP-004 mutation sensitivity: must check for actual reopen/create calls
@@ -9638,18 +9708,23 @@ def test_dup_004_main_ordering_peel_before_dedup():
     # This query is ONLY issued by _reopen_closed_issue() during the reopen attempt,
     # NOT by the normal get_open_issues() flow.
     reopen_specific_calls = [
-        cmd for cmd in call_log
-        if isinstance(cmd, list) and "gh" in cmd[0]
-        and "issue" in cmd and "list" in cmd and "--search" in cmd
-        and "label:evolution-found" in cmd and "--state" in cmd and "closed" in cmd
-        and "--limit" in cmd and "200" in cmd
+        cmd
+        for cmd in call_log
+        if isinstance(cmd, list)
+        and "gh" in cmd[0]
+        and "issue" in cmd
+        and "list" in cmd
+        and "--search" in cmd
+        and "label:evolution-found" in cmd
+        and "--state" in cmd
+        and "closed" in cmd
+        and "--limit" in cmd
+        and "200" in cmd
     ]
 
     # Alternatively, check for create calls which happen in the fallback path
     create_calls = [
-        cmd for cmd in call_log
-        if isinstance(cmd, list) and "gh" in cmd[0]
-        and "issue" in cmd and "create" in cmd
+        cmd for cmd in call_log if isinstance(cmd, list) and "gh" in cmd[0] and "issue" in cmd and "create" in cmd
     ]
 
     # At least one of these must happen for peel to be working:
@@ -9663,4 +9738,3 @@ def test_dup_004_main_ordering_peel_before_dedup():
         f"Found {len(reopen_specific_calls)} reopen-specific calls and {len(create_calls)} create calls. "
         "If this assertion fails, peel was likely removed from main()."
     )
-

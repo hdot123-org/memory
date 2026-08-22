@@ -44,13 +44,20 @@ def _run_gateway(
     # Ensure memory_core package is importable even when cwd is a tmp_path.
     existing_pythonpath = full_env.get("PYTHONPATH", "")
     full_env["PYTHONPATH"] = (
-        f"{_REPO_ROOT}{os.pathsep}{existing_pythonpath}"
-        if existing_pythonpath
-        else str(_REPO_ROOT)
+        f"{_REPO_ROOT}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else str(_REPO_ROOT)
     )
 
     result = subprocess.run(
-        [sys.executable, "-m", "memory_core.tools.memory_hook_gateway", "--host", "factory", "--event", event, "--no-delegate"],
+        [
+            sys.executable,
+            "-m",
+            "memory_core.tools.memory_hook_gateway",
+            "--host",
+            "factory",
+            "--event",
+            event,
+            "--no-delegate",
+        ],
         input=json.dumps(payload),
         capture_output=True,
         text=True,

@@ -16,6 +16,7 @@ from memory_core.tools.telemetry_bridge import TelemetryBridge
 def _restore_telemetry_singleton():
     """Restore TelemetryBridge singleton state after each test."""
     from memory_core.tools.telemetry_bridge import telemetry
+
     original = telemetry._analytics
     yield
     telemetry._analytics = original
@@ -85,7 +86,7 @@ class TestRecursionAvoidance:
 
         # batch_capture will fail and call _capture_error, which should not recurse
         with (
-            patch.object(bridge, '_is_enabled', return_value=True),
+            patch.object(bridge, "_is_enabled", return_value=True),
             patch("urllib.request.urlopen", side_effect=OSError("network down")),
         ):
             bridge.batch_capture([{"event_name": "test", "properties": {}}])
@@ -207,12 +208,12 @@ class TestBatchCaptureRetryLogic:
         )
 
         call_count = [0]
+
         def side_effect(*args, **kwargs):
             call_count[0] += 1
             raise http_err
 
-        with patch("urllib.request.urlopen", side_effect=side_effect), \
-             patch("time.sleep"):
+        with patch("urllib.request.urlopen", side_effect=side_effect), patch("time.sleep"):
             result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
 
         assert result is False
@@ -231,6 +232,7 @@ class TestBatchCaptureRetryLogic:
         mock_response.status = 200
 
         import urllib.error
+
         http_429 = urllib.error.HTTPError(
             url="https://test/batch/",
             code=429,
@@ -240,14 +242,14 @@ class TestBatchCaptureRetryLogic:
         )
 
         call_count = [0]
+
         def side_effect(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 raise http_429
             return mock_response
 
-        with patch("urllib.request.urlopen", side_effect=side_effect), \
-             patch("time.sleep"):
+        with patch("urllib.request.urlopen", side_effect=side_effect), patch("time.sleep"):
             result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
 
         # No retry: the 429 fails the batch, dropped this session (retry next session)
@@ -269,12 +271,12 @@ class TestBatchCaptureRetryLogic:
         )
 
         call_count = [0]
+
         def side_effect(*args, **kwargs):
             call_count[0] += 1
             raise http_500
 
-        with patch("urllib.request.urlopen", side_effect=side_effect), \
-             patch("time.sleep"):
+        with patch("urllib.request.urlopen", side_effect=side_effect), patch("time.sleep"):
             result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
 
         assert result is False
@@ -292,17 +294,18 @@ class TestBatchCaptureRetryLogic:
         mock_response.status = 200
 
         import urllib.error
+
         url_err = urllib.error.URLError("handshake timed out")
 
         call_count = [0]
+
         def side_effect(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 raise url_err
             return mock_response
 
-        with patch("urllib.request.urlopen", side_effect=side_effect), \
-             patch("time.sleep"):
+        with patch("urllib.request.urlopen", side_effect=side_effect), patch("time.sleep"):
             result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
 
         # No retry: the URLError fails the batch, dropped this session (retry next session)
@@ -326,17 +329,13 @@ class TestBatchCaptureHTTPErrorBodyCapture:
             fp=__import__("io").BytesIO(b"event submitted without a distinct_id"),
         )
 
-        with patch("urllib.request.urlopen", side_effect=http_err), \
-             patch("time.sleep"):
+        with patch("urllib.request.urlopen", side_effect=http_err), patch("time.sleep"):
             result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
 
         assert result is False
 
         # Check the error event
-        error_calls = [
-            c for c in mock.capture.call_args_list
-            if c.kwargs.get("event_name") == "memory.error"
-        ]
+        error_calls = [c for c in mock.capture.call_args_list if c.kwargs.get("event_name") == "memory.error"]
         assert len(error_calls) == 1
         error_msg = error_calls[0].kwargs["properties"]["error_message"]
         assert "400" in error_msg
@@ -362,18 +361,14 @@ class TestBatchCaptureHTTPErrorBodyCapture:
             fp=broken_fp,
         )
 
-        with patch("urllib.request.urlopen", side_effect=http_err), \
-             patch("time.sleep"):
+        with patch("urllib.request.urlopen", side_effect=http_err), patch("time.sleep"):
             result = bridge.batch_capture([{"event_name": "test", "properties": {}}])
 
         # Must not crash; degrades to body_text=""
         assert result is False
 
         # Error event still emitted via the outer HTTPError handler
-        error_calls = [
-            c for c in mock.capture.call_args_list
-            if c.kwargs.get("event_name") == "memory.error"
-        ]
+        error_calls = [c for c in mock.capture.call_args_list if c.kwargs.get("event_name") == "memory.error"]
         assert len(error_calls) == 1
 
     def test_http_error_body_read_failure_logs_debug(self, bridge_with_client, caplog):
@@ -393,15 +388,17 @@ class TestBatchCaptureHTTPErrorBodyCapture:
             fp=broken_fp,
         )
 
-        with patch("urllib.request.urlopen", side_effect=http_err), \
-             patch("time.sleep"), \
-             caplog.at_level(logging.DEBUG, logger="memory_core.tools.telemetry_bridge"):
+        with (
+            patch("urllib.request.urlopen", side_effect=http_err),
+            patch("time.sleep"),
+            caplog.at_level(logging.DEBUG, logger="memory_core.tools.telemetry_bridge"),
+        ):
             bridge.batch_capture([{"event_name": "test", "properties": {}}])
 
         # The debug log should mention the HTTP error body read failure
-        assert any(
-            "failed to read HTTP error body" in r.message for r in caplog.records
-        ), "body-read failure must be logged at debug level, not silently swallowed"
+        assert any("failed to read HTTP error body" in r.message for r in caplog.records), (
+            "body-read failure must be logged at debug level, not silently swallowed"
+        )
 
 
 class TestBatchCapturePayloadEnhancements:
@@ -426,9 +423,7 @@ class TestBatchCapturePayloadEnhancements:
             return mock_response
 
         with patch("urllib.request.urlopen", side_effect=side_effect):
-            result = bridge.batch_capture([
-                {"event_name": "test_event", "properties": {"key": "value"}}
-            ])
+            result = bridge.batch_capture([{"event_name": "test_event", "properties": {"key": "value"}}])
 
         assert result is True
         assert len(captured_payloads) == 1
@@ -456,6 +451,7 @@ class TestBatchCaptureSDKCompliance:
         bridge, mock = bridge_with_client
 
         import json as json_module
+
         captured_payloads = []
         mock_response = MagicMock()
         mock_response.__enter__ = MagicMock(return_value=mock_response)
@@ -481,6 +477,7 @@ class TestBatchCaptureSDKCompliance:
         bridge, mock = bridge_with_client
 
         import json as json_module
+
         captured_payloads = []
         mock_response = MagicMock()
         mock_response.__enter__ = MagicMock(return_value=mock_response)
@@ -504,6 +501,7 @@ class TestBatchCaptureSDKCompliance:
         bridge, mock = bridge_with_client
 
         import json as json_module
+
         captured_payloads = []
         mock_response = MagicMock()
         mock_response.__enter__ = MagicMock(return_value=mock_response)
@@ -528,22 +526,26 @@ class TestResolveIngestionHost:
 
     def test_remaps_us_posthog(self):
         from memory_core.tools.telemetry_bridge import _resolve_ingestion_host
+
         assert _resolve_ingestion_host("https://us.posthog.com") == "https://us.i.posthog.com"
 
     def test_remaps_app_posthog(self):
         from memory_core.tools.telemetry_bridge import _resolve_ingestion_host
+
         assert _resolve_ingestion_host("https://app.posthog.com") == "https://us.i.posthog.com"
 
     def test_remaps_eu_posthog(self):
         from memory_core.tools.telemetry_bridge import _resolve_ingestion_host
+
         assert _resolve_ingestion_host("https://eu.posthog.com") == "https://eu.i.posthog.com"
 
     def test_passthrough_custom_host(self):
         from memory_core.tools.telemetry_bridge import _resolve_ingestion_host
+
         custom = "https://custom.posthog.example.com"
         assert _resolve_ingestion_host(custom) == custom
 
     def test_handles_trailing_slash(self):
         from memory_core.tools.telemetry_bridge import _resolve_ingestion_host
-        assert _resolve_ingestion_host("https://us.posthog.com/") == "https://us.i.posthog.com"
 
+        assert _resolve_ingestion_host("https://us.posthog.com/") == "https://us.i.posthog.com"

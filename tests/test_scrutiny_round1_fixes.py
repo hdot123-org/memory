@@ -41,9 +41,7 @@ class TestGatewayFailClosedHookSpecificOutput:
 
         # Mock subprocess.run to raise TimeoutExpired
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.TimeoutExpired(
-                cmd=["python"], timeout=5, output="timeout"
-            )
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd=["python"], timeout=5, output="timeout")
 
             # Import gateway function
             from argparse import Namespace
@@ -54,14 +52,13 @@ class TestGatewayFailClosedHookSpecificOutput:
 
             # Capture stdout
             from io import StringIO
+
             captured = StringIO()
             old_stdout = sys.stdout
             sys.stdout = captured
 
             try:
-                exit_code = _handle_pretooluse_guard(
-                    args, raw_payload, tmp_path, 0.0
-                )
+                exit_code = _handle_pretooluse_guard(args, raw_payload, tmp_path, 0.0)
             finally:
                 sys.stdout = old_stdout
 
@@ -100,14 +97,13 @@ class TestGatewayFailClosedHookSpecificOutput:
             args = Namespace(host="factory", event="pre-tool-use")
 
             from io import StringIO
+
             captured = StringIO()
             old_stdout = sys.stdout
             sys.stdout = captured
 
             try:
-                exit_code = _handle_pretooluse_guard(
-                    args, raw_payload, tmp_path, 0.0
-                )
+                exit_code = _handle_pretooluse_guard(args, raw_payload, tmp_path, 0.0)
             finally:
                 sys.stdout = old_stdout
 
@@ -132,9 +128,7 @@ class TestGatewayFailClosedHookSpecificOutput:
         raw_payload = json.dumps(payload)
 
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.TimeoutExpired(
-                cmd=["python"], timeout=5, output="timeout"
-            )
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd=["python"], timeout=5, output="timeout")
 
             from argparse import Namespace
 
@@ -143,14 +137,13 @@ class TestGatewayFailClosedHookSpecificOutput:
             args = Namespace(host="factory", event="pre-tool-use")
 
             from io import StringIO
+
             captured = StringIO()
             old_stdout = sys.stdout
             sys.stdout = captured
 
             try:
-                exit_code = _handle_pretooluse_guard(
-                    args, raw_payload, tmp_path, 0.0
-                )
+                exit_code = _handle_pretooluse_guard(args, raw_payload, tmp_path, 0.0)
             finally:
                 sys.stdout = old_stdout
 
@@ -184,12 +177,11 @@ class TestErrorLogContent:
         }
         raw_payload = json.dumps(payload)
 
-        with patch("subprocess.run") as mock_run, patch(
-            "memory_core.tools.error_logger.write_error_log"
-        ) as mock_write_log:
-            mock_run.side_effect = subprocess.TimeoutExpired(
-                cmd=["python"], timeout=5, output="timeout"
-            )
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("memory_core.tools.error_logger.write_error_log") as mock_write_log,
+        ):
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd=["python"], timeout=5, output="timeout")
 
             from argparse import Namespace
 
@@ -198,6 +190,7 @@ class TestErrorLogContent:
             args = Namespace(host="factory", event="pre-tool-use")
 
             from io import StringIO
+
             captured = StringIO()
             old_stdout = sys.stdout
             sys.stdout = captured
@@ -226,9 +219,10 @@ class TestErrorLogContent:
         }
         raw_payload = json.dumps(payload)
 
-        with patch("subprocess.run") as mock_run, patch(
-            "memory_core.tools.error_logger.write_error_log"
-        ) as mock_write_log:
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("memory_core.tools.error_logger.write_error_log") as mock_write_log,
+        ):
             mock_run.side_effect = RuntimeError("guard crashed")
 
             from argparse import Namespace
@@ -238,6 +232,7 @@ class TestErrorLogContent:
             args = Namespace(host="factory", event="pre-tool-use")
 
             from io import StringIO
+
             captured = StringIO()
             old_stdout = sys.stdout
             sys.stdout = captured
@@ -275,12 +270,11 @@ class TestFailClosedLogRedaction:
         }
         raw_payload = json.dumps(sensitive_payload)
 
-        with patch("subprocess.run") as mock_run, patch(
-            "memory_core.tools.error_logger.write_error_log"
-        ) as mock_write_log:
-            mock_run.side_effect = subprocess.TimeoutExpired(
-                cmd=["python"], timeout=5, output="timeout"
-            )
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("memory_core.tools.error_logger.write_error_log") as mock_write_log,
+        ):
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd=["python"], timeout=5, output="timeout")
 
             from argparse import Namespace
 
@@ -289,6 +283,7 @@ class TestFailClosedLogRedaction:
             args = Namespace(host="factory", event="pre-tool-use")
 
             from io import StringIO
+
             captured = StringIO()
             old_stdout = sys.stdout
             sys.stdout = captured
@@ -322,15 +317,17 @@ class TestGatewayForwarding:
         (tmp_path / "memory" / "system").mkdir(parents=True, exist_ok=True)
 
         # Mock guard subprocess output
-        guard_output = json.dumps({
-            "decision": "allow",
-            "reason": "Normal allow path",
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
-                "permissionDecisionReason": "Normal allow path",
-            },
-        })
+        guard_output = json.dumps(
+            {
+                "decision": "allow",
+                "reason": "Normal allow path",
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "allow",
+                    "permissionDecisionReason": "Normal allow path",
+                },
+            }
+        )
 
         with patch("subprocess.run") as mock_run:
             mock_result = MagicMock()
@@ -349,14 +346,13 @@ class TestGatewayForwarding:
             raw_payload = json.dumps(payload)
 
             from io import StringIO
+
             captured = StringIO()
             old_stdout = sys.stdout
             sys.stdout = captured
 
             try:
-                exit_code = _handle_pretooluse_guard(
-                    args, raw_payload, tmp_path, 0.0
-                )
+                exit_code = _handle_pretooluse_guard(args, raw_payload, tmp_path, 0.0)
             finally:
                 sys.stdout = old_stdout
 
@@ -383,15 +379,17 @@ class TestJSONParseabilityAfterRedact:
         """Redacting allow decision JSON produces valid JSON with fields intact."""
         from memory_core.tools._redaction import redact
 
-        allow_json = json.dumps({
-            "decision": "allow",
-            "reason": "Normal allow path",
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
-                "permissionDecisionReason": "Normal allow path",
-            },
-        })
+        allow_json = json.dumps(
+            {
+                "decision": "allow",
+                "reason": "Normal allow path",
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "allow",
+                    "permissionDecisionReason": "Normal allow path",
+                },
+            }
+        )
 
         redacted = redact(allow_json, max_len=len(allow_json))
         parsed = json.loads(redacted)
@@ -403,15 +401,17 @@ class TestJSONParseabilityAfterRedact:
         """Redacting deny decision JSON produces valid JSON with fields intact."""
         from memory_core.tools._redaction import redact
 
-        deny_json = json.dumps({
-            "decision": "block",
-            "reason": "Protected path",
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "deny",
-                "permissionDecisionReason": "Protected path",
-            },
-        })
+        deny_json = json.dumps(
+            {
+                "decision": "block",
+                "reason": "Protected path",
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": "Protected path",
+                },
+            }
+        )
 
         redacted = redact(deny_json, max_len=len(deny_json))
         parsed = json.loads(redacted)
@@ -605,6 +605,7 @@ class TestNonMemoryProjectEarlyReturn:
 
         # Set up environment for guard
         import os
+
         old_env = os.environ.copy()
         os.environ["FACTORY_PROJECT_DIR"] = str(tmp_path)
 
@@ -654,9 +655,7 @@ class TestGatewayNonDictPayload:
         raw_payload = json.dumps(["array", "payload"])
 
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.TimeoutExpired(
-                cmd=["python"], timeout=5, output="timeout"
-            )
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd=["python"], timeout=5, output="timeout")
 
             from argparse import Namespace
 
@@ -665,14 +664,13 @@ class TestGatewayNonDictPayload:
             args = Namespace(host="factory", event="pre-tool-use")
 
             from io import StringIO
+
             captured = StringIO()
             old_stdout = sys.stdout
             sys.stdout = captured
 
             try:
-                _handle_pretooluse_guard(
-                    args, raw_payload, tmp_path, 0.0
-                )
+                _handle_pretooluse_guard(args, raw_payload, tmp_path, 0.0)
             finally:
                 sys.stdout = old_stdout
 

@@ -118,7 +118,7 @@ provider_name, provider_builder, provider_errors = _resolve_core_builder(request
 package = provider_builder(**core_kwargs)
 system_context = package.setdefault("system_context", {})
 if isinstance(system_context, dict):
-    system_context["core_provider"] = provider_name              # 实际使用的 provider
+    system_context["core_provider"] = provider_name  # 实际使用的 provider
     system_context["core_provider_requested"] = requested_provider  # 用户请求的 provider
     if provider_errors:
         system_context["core_provider_fallback_errors"] = provider_errors  # 降级原因

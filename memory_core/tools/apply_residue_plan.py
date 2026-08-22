@@ -58,6 +58,7 @@ DEFAULT_REPORTS_DEST = "memory/artifacts/reports"
 # Data classes
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ApplyResult:
     """Result of applying a migration plan."""
@@ -163,8 +164,7 @@ def _is_forbidden_path(path: str, target: Path | None = None) -> bool:
             return isinstance(classification, Owned)
         except Exception:
             logger.debug(
-                "_is_forbidden_path: ownership classification failed, "
-                "falling through to legacy check",
+                "_is_forbidden_path: ownership classification failed, falling through to legacy check",
                 exc_info=True,
             )
 
@@ -187,6 +187,7 @@ except ImportError:
 # Validation functions
 # ---------------------------------------------------------------------------
 
+
 def _build_forbidden_paths(target: Path | None) -> set[str]:
     """Build set of forbidden paths from ownership classification."""
     if target is None:
@@ -207,8 +208,7 @@ def _build_forbidden_paths(target: Path | None) -> set[str]:
                         pass
     except Exception:
         logger.debug(
-            "_validate_plan: dynamic forbidden-path scan failed, "
-            "falling back to legacy patterns",
+            "_validate_plan: dynamic forbidden-path scan failed, falling back to legacy patterns",
             exc_info=True,
         )
     return forbidden_paths
@@ -244,8 +244,7 @@ def _validate_plan(plan: dict[str, Any], target: Path | None = None) -> tuple[bo
         forbidden_paths = _build_forbidden_paths(target)
     except Exception:
         logger.debug(
-            "_validate_plan: forbidden paths construction failed, "
-            "falling back to empty set",
+            "_validate_plan: forbidden paths construction failed, falling back to empty set",
             exc_info=True,
         )
         forbidden_paths = set()
@@ -265,9 +264,7 @@ def _validate_plan(plan: dict[str, Any], target: Path | None = None) -> tuple[bo
     return len(errors) == 0, errors
 
 
-def _validate_plan_action(
-    action: dict[str, Any], i: int, forbidden_paths: set[str], target: Path | None
-) -> list[str]:
+def _validate_plan_action(action: dict[str, Any], i: int, forbidden_paths: set[str], target: Path | None) -> list[str]:
     """Validate a single action and return error messages."""
     errors: list[str] = []
     action_type = action.get("action", "")
@@ -290,6 +287,7 @@ def _validate_plan_action(
 # ---------------------------------------------------------------------------
 # Backup functions
 # ---------------------------------------------------------------------------
+
 
 def _create_backup(
     target: Path,
@@ -355,6 +353,7 @@ def _write_manifest(manifest: BackupManifest, backup_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 # Apply functions
 # ---------------------------------------------------------------------------
+
 
 def _apply_move_root_pollution(
     target: Path,
@@ -455,6 +454,7 @@ def _apply_action(
 # Rollback functions
 # ---------------------------------------------------------------------------
 
+
 def _load_backup_manifest(manifest_path: Path) -> BackupManifest:
     """Load backup manifest from disk."""
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -528,12 +528,14 @@ def _rollback_from_manifest(
             continue
 
         if dry_run:
-            result.actions_applied.append({
-                "action": "rollback",
-                "src": entry.backup_path,
-                "dst": entry.src,
-                "status": "dry-run",
-            })
+            result.actions_applied.append(
+                {
+                    "action": "rollback",
+                    "src": entry.backup_path,
+                    "dst": entry.src,
+                    "status": "dry-run",
+                }
+            )
             continue
 
         # Perform rollback
@@ -546,12 +548,14 @@ def _rollback_from_manifest(
             if dst_path.exists():
                 dst_path.unlink()
 
-            result.actions_applied.append({
-                "action": "rollback",
-                "src": entry.backup_path,
-                "dst": entry.src,
-                "status": "applied",
-            })
+            result.actions_applied.append(
+                {
+                    "action": "rollback",
+                    "src": entry.backup_path,
+                    "dst": entry.src,
+                    "status": "applied",
+                }
+            )
         except Exception as e:
             result.errors.append(f"Failed to rollback {entry.src}: {e}")
             result.success = False
@@ -569,24 +573,31 @@ def _report_dry_run(target: Path, allowed_actions: list[Any], result: "ApplyResu
             src_path = target / path
             if src_path.exists():
                 dst_rel = f"{DEFAULT_REPORTS_DEST}/{src_path.name}"
-                result.actions_applied.append({
-                    "action": action_type,
-                    "src": path,
-                    "dst": dst_rel,
-                    "status": "dry-run",
-                })
+                result.actions_applied.append(
+                    {
+                        "action": action_type,
+                        "src": path,
+                        "dst": dst_rel,
+                        "status": "dry-run",
+                    }
+                )
             else:
-                result.actions_skipped.append({
+                result.actions_skipped.append(
+                    {
+                        "action": action_type,
+                        "path": path,
+                        "reason": "source file does not exist",
+                    }
+                )
+        elif action_type == "ignore_runtime_artifact":
+            result.actions_applied.append(
+                {
                     "action": action_type,
                     "path": path,
-                    "reason": "source file does not exist",
-                })
-        elif action_type == "ignore_runtime_artifact":
-            result.actions_applied.append({
-                "action": action_type,
-                "path": path,
-                "status": "dry-run",
-            })
+                    "status": "dry-run",
+                }
+            )
+
 
 def _apply_plan_actions(
     target: Path,
@@ -609,11 +620,13 @@ def _apply_plan_actions(
             else:
                 result.actions_failed.append({**applied_dict, "error": message})
         elif not success:
-            result.actions_failed.append({
-                "action": action.get("action"),
-                "path": action.get("path"),
-                "error": message,
-            })
+            result.actions_failed.append(
+                {
+                    "action": action.get("action"),
+                    "path": action.get("path"),
+                    "error": message,
+                }
+            )
 
     # Update manifest with actual destinations for move operations
     for entry in manifest.entries:
@@ -631,9 +644,11 @@ def _apply_plan_actions(
         result.errors.append(f"Failed to write backup manifest: {e}")
         result.success = False
 
+
 # ---------------------------------------------------------------------------
 # Main apply logic
 # ---------------------------------------------------------------------------
+
 
 def apply_residue_plan(
     target: Path,
@@ -687,11 +702,13 @@ def apply_residue_plan(
     rejected_actions = [a for a in actions if a.get("action", "") not in ALLOWED_AUTO_ACTIONS]
 
     for action in rejected_actions:
-        result.actions_skipped.append({
-            "action": action.get("action"),
-            "path": action.get("path"),
-            "reason": "action type not in allowed list",
-        })
+        result.actions_skipped.append(
+            {
+                "action": action.get("action"),
+                "path": action.get("path"),
+                "reason": "action type not in allowed list",
+            }
+        )
 
     if dry_run:
         _report_dry_run(target, allowed_actions, result)
@@ -722,6 +739,7 @@ def apply_residue_plan(
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(

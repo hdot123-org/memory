@@ -1,7 +1,5 @@
 """Tests for memory_health_report module."""
 
-
-
 from memory_core.tools.memory_health_report import (
     _determine_recommended_mode,
     _has_workspace_memory_conflict,
@@ -12,7 +10,10 @@ from memory_core.tools.memory_health_report import (
 class TestDetermineRecommendedMode:
     def test_fresh_when_no_findings_no_system_memory(self):
         mode = _determine_recommended_mode(
-            total=0, p0=0, p1=0, p2=0,
+            total=0,
+            p0=0,
+            p1=0,
+            p2=0,
             root_pollution_count=0,
             multi_generation_conflict=False,
             has_real_workspace_conflict=False,
@@ -22,7 +23,10 @@ class TestDetermineRecommendedMode:
 
     def test_update_when_no_findings_with_system_memory(self):
         mode = _determine_recommended_mode(
-            total=0, p0=0, p1=0, p2=0,
+            total=0,
+            p0=0,
+            p1=0,
+            p2=0,
             root_pollution_count=0,
             multi_generation_conflict=False,
             has_real_workspace_conflict=False,
@@ -32,7 +36,10 @@ class TestDetermineRecommendedMode:
 
     def test_manual_when_workspace_conflict(self):
         mode = _determine_recommended_mode(
-            total=0, p0=0, p1=0, p2=0,
+            total=0,
+            p0=0,
+            p1=0,
+            p2=0,
             root_pollution_count=0,
             multi_generation_conflict=False,
             has_real_workspace_conflict=True,
@@ -42,7 +49,10 @@ class TestDetermineRecommendedMode:
 
     def test_repair_when_p0_with_system_memory(self):
         mode = _determine_recommended_mode(
-            total=5, p0=2, p1=0, p2=0,
+            total=5,
+            p0=2,
+            p1=0,
+            p2=0,
             root_pollution_count=0,
             multi_generation_conflict=False,
             has_real_workspace_conflict=False,
@@ -52,7 +62,10 @@ class TestDetermineRecommendedMode:
 
     def test_adopt_when_p0_without_system_memory(self):
         mode = _determine_recommended_mode(
-            total=5, p0=2, p1=0, p2=0,
+            total=5,
+            p0=2,
+            p1=0,
+            p2=0,
             root_pollution_count=0,
             multi_generation_conflict=False,
             has_real_workspace_conflict=False,
@@ -62,7 +75,10 @@ class TestDetermineRecommendedMode:
 
     def test_repair_when_p1_with_system_memory(self):
         mode = _determine_recommended_mode(
-            total=3, p0=0, p1=2, p2=0,
+            total=3,
+            p0=0,
+            p1=2,
+            p2=0,
             root_pollution_count=0,
             multi_generation_conflict=False,
             has_real_workspace_conflict=False,
@@ -72,7 +88,10 @@ class TestDetermineRecommendedMode:
 
     def test_repair_when_p2_with_system_memory(self):
         mode = _determine_recommended_mode(
-            total=3, p0=0, p1=0, p2=2,
+            total=3,
+            p0=0,
+            p1=0,
+            p2=2,
             root_pollution_count=0,
             multi_generation_conflict=False,
             has_real_workspace_conflict=False,
@@ -82,7 +101,10 @@ class TestDetermineRecommendedMode:
 
     def test_repair_when_root_pollution(self):
         mode = _determine_recommended_mode(
-            total=2, p0=0, p1=0, p2=0,
+            total=2,
+            p0=0,
+            p1=0,
+            p2=0,
             root_pollution_count=2,
             multi_generation_conflict=False,
             has_real_workspace_conflict=False,

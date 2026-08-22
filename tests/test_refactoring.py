@@ -7,7 +7,6 @@ Covers:
 - DelegateRouter routing and noop dispatch
 """
 
-
 import json
 import subprocess
 from pathlib import Path
@@ -345,9 +344,7 @@ class TestDelegateRouter:
     def _make_fake_delegate(self):
         """Create a mock delegate that records calls."""
         delegate = MagicMock()
-        delegate.execute.return_value = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="ok\n", stderr=""
-        )
+        delegate.execute.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="ok\n", stderr="")
         delegate.noop_response.return_value = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="noop\n", stderr=""
         )
@@ -367,9 +364,7 @@ class TestDelegateRouter:
             payload={"key": "val"},
         )
 
-        factory.execute.assert_called_once_with(
-            "session-start", '{"key": "val"}', {"key": "val"}
-        )
+        factory.execute.assert_called_once_with("session-start", '{"key": "val"}', {"key": "val"})
         assert result.returncode == 0
 
     def test_delegate_router_rejects_codex_host(self):

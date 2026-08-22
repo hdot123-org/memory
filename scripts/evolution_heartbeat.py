@@ -7,6 +7,7 @@ evolution scanner pipeline:
   2. Check recent evolution-found issues for PR association
   3. Create alert issues when anomalies are detected
 """
+
 import json
 import os
 import subprocess
@@ -94,8 +95,7 @@ def check_history_freshness(
     if age_hours > max_age_hours:
         result["stale"] = True
         result["message"] = (
-            f"findings_over_time.json is stale: last snapshot "
-            f"{age_hours:.1f}h ago (threshold: {max_age_hours}h)"
+            f"findings_over_time.json is stale: last snapshot {age_hours:.1f}h ago (threshold: {max_age_hours}h)"
         )
     else:
         result["stale"] = False
@@ -123,11 +123,17 @@ def check_pr_coverage(label: str = EVOLUTION_FOUND_LABEL) -> dict[str, Any]:
 
     list_result = subprocess.run(
         [
-            "gh", "issue", "list",
-            "--label", label,
-            "--state", "open",
-            "--limit", str(PR_CHECK_WINDOW_ISSUES),
-            "--json", "number,title,createdAt",
+            "gh",
+            "issue",
+            "list",
+            "--label",
+            label,
+            "--state",
+            "open",
+            "--limit",
+            str(PR_CHECK_WINDOW_ISSUES),
+            "--json",
+            "number,title,createdAt",
         ],
         capture_output=True,
         text=True,
@@ -153,11 +159,17 @@ def check_pr_coverage(label: str = EVOLUTION_FOUND_LABEL) -> dict[str, Any]:
         # Check for associated PR via 'Fixes #N' references
         pr_result = subprocess.run(
             [
-                "gh", "pr", "list",
-                "--search", f'"{number}"',
-                "--state", "all",
-                "--limit", "1",
-                "--json", "number",
+                "gh",
+                "pr",
+                "list",
+                "--search",
+                f'"{number}"',
+                "--state",
+                "all",
+                "--limit",
+                "1",
+                "--json",
+                "number",
             ],
             capture_output=True,
             text=True,
@@ -180,9 +192,10 @@ def alert_issue_exists(label: str = ALERT_LABEL) -> bool:
     """Check if an open heartbeat alert issue already exists (INFRA-204 dedup)."""
     try:
         result = subprocess.run(
-            ["gh", "issue", "list", "--label", label, "--state", "open",
-             "--limit", "10", "--json", "number"],
-            capture_output=True, text=True, timeout=30,
+            ["gh", "issue", "list", "--label", label, "--state", "open", "--limit", "10", "--json", "number"],
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode != 0:
             return False
@@ -217,10 +230,15 @@ def check_scanner_liveness(
     try:
         proc = subprocess.run(
             [
-                "gh", "run", "list",
-                "--workflow", SCANNER_WORKFLOW,
-                "--limit", "5",
-                "--json", "status,conclusion,createdAt",
+                "gh",
+                "run",
+                "list",
+                "--workflow",
+                SCANNER_WORKFLOW,
+                "--limit",
+                "5",
+                "--json",
+                "status,conclusion,createdAt",
             ],
             capture_output=True,
             text=True,
@@ -250,10 +268,7 @@ def check_scanner_liveness(
                 result["last_status"] = run.get("conclusion") or run.get("status", "unknown")
             if age_hours <= threshold_hours:
                 result["alive"] = True
-                result["message"] = (
-                    f"Scanner alive: last run {age_hours:.1f}h ago "
-                    f"(status: {result['last_status']})"
-                )
+                result["message"] = f"Scanner alive: last run {age_hours:.1f}h ago (status: {result['last_status']})"
                 return result
 
         result["alive"] = False
@@ -298,8 +313,7 @@ def check_heartbeat_marker(max_age_hours: int = FRESHNESS_THRESHOLD_HOURS) -> di
         if age_hours > max_age_hours:
             result["stale"] = True
             result["message"] = (
-                f"heartbeat.json is stale: last heartbeat "
-                f"{age_hours:.1f}h ago (threshold: {max_age_hours}h)"
+                f"heartbeat.json is stale: last heartbeat {age_hours:.1f}h ago (threshold: {max_age_hours}h)"
             )
         else:
             result["stale"] = False
@@ -344,9 +358,7 @@ def extract_recorded_anomalies(issue_body: str) -> set[str]:
     return anomalies
 
 
-def compute_current_anomalies(
-    liveness: dict[str, Any], coverage: dict[str, Any]
-) -> set[str]:
+def compute_current_anomalies(liveness: dict[str, Any], coverage: dict[str, Any]) -> set[str]:
     """Compute the current set of anomaly types from check results.
 
     Returns a set of anomaly type strings: {"scanner_stale", "issues_without_pr"}.
@@ -363,11 +375,17 @@ def list_open_alert_issues() -> list[dict[str, Any]]:
     """List open heartbeat alert issues with their numbers and bodies."""
     result = subprocess.run(
         [
-            "gh", "issue", "list",
-            "--label", ALERT_LABEL,
-            "--state", "open",
-            "--json", "number,body",
-            "--limit", "50",
+            "gh",
+            "issue",
+            "list",
+            "--label",
+            ALERT_LABEL,
+            "--state",
+            "open",
+            "--json",
+            "number,body",
+            "--limit",
+            "50",
         ],
         capture_output=True,
         text=True,
@@ -393,8 +411,12 @@ def _issue_has_self_heal_comment(issue_num: int) -> bool:
     try:
         result = subprocess.run(
             [
-                "gh", "issue", "view", str(issue_num),
-                "--json", "comments",
+                "gh",
+                "issue",
+                "view",
+                str(issue_num),
+                "--json",
+                "comments",
             ],
             capture_output=True,
             text=True,
@@ -465,9 +487,8 @@ def resolve_cleared_alerts(
             }
             cleared_desc = [anomaly_descriptions.get(a, a) for a in cleared_names]
 
-            comment = (
-                "🩹 **自愈**：以下异常已消失，自动关闭此告警：\n\n"
-                + "\n".join(f"- {desc}" for desc in cleared_desc)
+            comment = "🩹 **自愈**：以下异常已消失，自动关闭此告警：\n\n" + "\n".join(
+                f"- {desc}" for desc in cleared_desc
             )
 
             # Check if a self-heal comment already exists (duplicate prevention)
@@ -492,8 +513,12 @@ def resolve_cleared_alerts(
             # Add self-heal comment and check return code
             comment_result = subprocess.run(
                 [
-                    "gh", "issue", "comment", str(issue_num),
-                    "--body", comment,
+                    "gh",
+                    "issue",
+                    "comment",
+                    str(issue_num),
+                    "--body",
+                    comment,
                 ],
                 capture_output=True,
                 text=True,
@@ -568,10 +593,15 @@ def create_alert_issue(
 
     create_result = subprocess.run(
         [
-            "gh", "issue", "create",
-            "--title", title,
-            "--body", body,
-            "--label", ALERT_LABEL,
+            "gh",
+            "issue",
+            "create",
+            "--title",
+            title,
+            "--body",
+            body,
+            "--label",
+            ALERT_LABEL,
         ],
         capture_output=True,
         text=True,
@@ -607,10 +637,7 @@ def main(history_path: Path = HISTORY_PATH) -> int:
     if not coverage.get("data_ok", True):
         print("[heartbeat] WARNING: PR coverage check failed, data unreliable")
     elif coverage["issues_without_pr"] > 0:
-        print(
-            f"[heartbeat] ALERT: {coverage['issues_without_pr']} issue(s) "
-            f"without PR: {coverage['missing']}"
-        )
+        print(f"[heartbeat] ALERT: {coverage['issues_without_pr']} issue(s) without PR: {coverage['missing']}")
     else:
         print("[heartbeat] PR coverage: OK")
 

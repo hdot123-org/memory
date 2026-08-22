@@ -41,7 +41,7 @@ def factory_home_with_old_wrapper(factory_home: Path) -> Path:
     """Create factory home with an old-style wrapper."""
     wrapper = factory_home / "bin" / "memory-hook"
     wrapper.write_text(
-        '#!/bin/sh\nset -eu\nMEMORY_HOOK_FORCE=1\nsome_command || true\nprintf \'{}\'\n',
+        "#!/bin/sh\nset -eu\nMEMORY_HOOK_FORCE=1\nsome_command || true\nprintf '{}'\n",
         encoding="utf-8",
     )
     return factory_home
@@ -52,15 +52,31 @@ def factory_home_with_settings(factory_home: Path) -> Path:
     """Create factory home with settings.json including all hook events."""
     settings = {
         "hooks": {
-            "SessionStart": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event session-start"}]}],
-            "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event prompt-submit"}]}],
+            "SessionStart": [
+                {"hooks": [{"type": "command", "command": "memory-hook --host factory --event session-start"}]}
+            ],
+            "UserPromptSubmit": [
+                {"hooks": [{"type": "command", "command": "memory-hook --host factory --event prompt-submit"}]}
+            ],
             "Stop": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event stop"}]}],
-            "Notification": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event notification"}]}],
-            "PreToolUse": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event pre-tool-use"}]}],
-            "PostToolUse": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event post-tool-use"}]}],
-            "SubagentStop": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event subagent-stop"}]}],
-            "PreCompact": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event pre-compact"}]}],
-            "SessionEnd": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event session-end"}]}],
+            "Notification": [
+                {"hooks": [{"type": "command", "command": "memory-hook --host factory --event notification"}]}
+            ],
+            "PreToolUse": [
+                {"hooks": [{"type": "command", "command": "memory-hook --host factory --event pre-tool-use"}]}
+            ],
+            "PostToolUse": [
+                {"hooks": [{"type": "command", "command": "memory-hook --host factory --event post-tool-use"}]}
+            ],
+            "SubagentStop": [
+                {"hooks": [{"type": "command", "command": "memory-hook --host factory --event subagent-stop"}]}
+            ],
+            "PreCompact": [
+                {"hooks": [{"type": "command", "command": "memory-hook --host factory --event pre-compact"}]}
+            ],
+            "SessionEnd": [
+                {"hooks": [{"type": "command", "command": "memory-hook --host factory --event session-end"}]}
+            ],
         }
     }
     sp = factory_home / "settings.json"
@@ -73,10 +89,16 @@ def factory_home_missing_pretooluse(factory_home: Path) -> Path:
     """Create factory home with settings.json missing PreToolUse hook."""
     settings = {
         "hooks": {
-            "SessionStart": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event session-start"}]}],
-            "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event prompt-submit"}]}],
+            "SessionStart": [
+                {"hooks": [{"type": "command", "command": "memory-hook --host factory --event session-start"}]}
+            ],
+            "UserPromptSubmit": [
+                {"hooks": [{"type": "command", "command": "memory-hook --host factory --event prompt-submit"}]}
+            ],
             "Stop": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event stop"}]}],
-            "Notification": [{"hooks": [{"type": "command", "command": "memory-hook --host factory --event notification"}]}],
+            "Notification": [
+                {"hooks": [{"type": "command", "command": "memory-hook --host factory --event notification"}]}
+            ],
         }
     }
     sp = factory_home / "settings.json"
@@ -87,6 +109,7 @@ def factory_home_missing_pretooluse(factory_home: Path) -> Path:
 # ---------------------------------------------------------------------------
 # Wrapper inspection tests
 # ---------------------------------------------------------------------------
+
 
 class TestInspectWrapper:
     def test_missing_wrapper(self, factory_home: Path) -> None:
@@ -122,6 +145,7 @@ class TestInspectWrapper:
 # Settings inspection tests
 # ---------------------------------------------------------------------------
 
+
 class TestInspectSettings:
     def test_missing_settings(self, factory_home: Path) -> None:
         sp = factory_home / "settings.json"
@@ -151,6 +175,7 @@ class TestInspectSettings:
 # inspect command tests
 # ---------------------------------------------------------------------------
 
+
 class TestCmdInspect:
     def test_inspect_clean(self, factory_home_with_wrapper: Path) -> None:
         result = cmd_inspect(factory_home=factory_home_with_wrapper)
@@ -158,9 +183,7 @@ class TestCmdInspect:
         assert "wrapper" in result
         assert "settings" in result
 
-    def test_inspect_json(
-        self, factory_home: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_inspect_json(self, factory_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
         cmd_inspect(factory_home=factory_home, json_output=True)
         output = capsys.readouterr().out
         data = json.loads(output)
@@ -176,23 +199,20 @@ class TestCmdInspect:
 # plan-upgrade command tests
 # ---------------------------------------------------------------------------
 
+
 class TestCmdPlanUpgrade:
     def test_plan_with_issues(self, factory_home: Path) -> None:
         result = cmd_plan_upgrade(factory_home=factory_home)
         # Missing wrapper and settings → should have actions
         assert len(result["actions"]) > 0
 
-    def test_plan_json(
-        self, factory_home: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_plan_json(self, factory_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
         cmd_plan_upgrade(factory_home=factory_home, json_output=True)
         output = capsys.readouterr().out
         data = json.loads(output)
         assert "actions" in data
 
-    def test_plan_missing_pretooluse(
-        self, factory_home_missing_pretooluse: Path
-    ) -> None:
+    def test_plan_missing_pretooluse(self, factory_home_missing_pretooluse: Path) -> None:
         result = cmd_plan_upgrade(factory_home=factory_home_missing_pretooluse)
         action_kinds = [a["action"] for a in result["actions"]]
         assert "update_settings" in action_kinds
@@ -201,6 +221,7 @@ class TestCmdPlanUpgrade:
 # ---------------------------------------------------------------------------
 # apply-upgrade command tests
 # ---------------------------------------------------------------------------
+
 
 class TestCmdApplyUpgrade:
     def test_dry_run(self, factory_home: Path) -> None:
@@ -211,9 +232,7 @@ class TestCmdApplyUpgrade:
         assert result["dry_run"] is True
         assert "no changes applied" in result.get("message", "").lower() or result.get("planned_actions") is not None
 
-    def test_apply_with_no_issues(
-        self, factory_home_with_wrapper: Path, factory_home_with_settings: Path
-    ) -> None:
+    def test_apply_with_no_issues(self, factory_home_with_wrapper: Path, factory_home_with_settings: Path) -> None:
         # Combine both into one factory home
         (factory_home_with_wrapper / "settings.json").write_text(
             (factory_home_with_settings / "settings.json").read_text(),
@@ -225,9 +244,7 @@ class TestCmdApplyUpgrade:
         )
         assert not result.get("errors")
 
-    def test_apply_json(
-        self, factory_home: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_apply_json(self, factory_home: Path, capsys: pytest.CaptureFixture[str]) -> None:
         cmd_apply_upgrade(
             factory_home=factory_home,
             yes=True,
@@ -257,9 +274,7 @@ class TestCmdApplyUpgrade:
             data = json.loads(output)
         assert "dry_run" in data
 
-    def test_backup_failure_recordsError_andReturns(
-        self, factory_home: Path
-    ) -> None:
+    def test_backup_failure_recordsError_andReturns(self, factory_home: Path) -> None:
         """_backup_existing_file 抛异常时, errors 填充且不进 install。"""
         # 创建一个真实存在的文件, 让备份循环能进入
         fake_file = factory_home / "fake_file.txt"
@@ -271,15 +286,19 @@ class TestCmdApplyUpgrade:
             "files_to_backup": [str(fake_file)],
             "files_to_modify": [],
         }
-        with patch(
-            "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
-            return_value=mock_plan,
-        ), patch(
-            "memory_core.tools.hook_upgrade._backup_existing_file",
-            side_effect=RuntimeError("Permission denied"),
-        ) as mock_backup, patch(
-            "memory_core.tools.factory_global_hooks.install_factory_hooks",
-        ) as mock_install:
+        with (
+            patch(
+                "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
+                return_value=mock_plan,
+            ),
+            patch(
+                "memory_core.tools.hook_upgrade._backup_existing_file",
+                side_effect=RuntimeError("Permission denied"),
+            ) as mock_backup,
+            patch(
+                "memory_core.tools.factory_global_hooks.install_factory_hooks",
+            ) as mock_install,
+        ):
             result = cmd_apply_upgrade(
                 factory_home=factory_home,
                 yes=True,
@@ -292,9 +311,7 @@ class TestCmdApplyUpgrade:
             # 验证没进 install
             mock_install.assert_not_called()
 
-    def test_install_failure_recordsError(
-        self, factory_home: Path
-    ) -> None:
+    def test_install_failure_recordsError(self, factory_home: Path) -> None:
         """install_factory_hooks 返回 success=False 时, errors 含 'Install failed'。"""
         mock_plan = {
             "factory_home": str(factory_home),
@@ -306,13 +323,16 @@ class TestCmdApplyUpgrade:
             "success": False,
             "warnings": ["disk full", "config error"],
         }
-        with patch(
-            "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
-            return_value=mock_plan,
-        ), patch(
-            "memory_core.tools.factory_global_hooks.install_factory_hooks",
-            return_value=mock_install_result,
-        ) as mock_install:
+        with (
+            patch(
+                "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
+                return_value=mock_plan,
+            ),
+            patch(
+                "memory_core.tools.factory_global_hooks.install_factory_hooks",
+                return_value=mock_install_result,
+            ) as mock_install,
+        ):
             result = cmd_apply_upgrade(
                 factory_home=factory_home,
                 yes=True,
@@ -324,9 +344,7 @@ class TestCmdApplyUpgrade:
             assert any("Install failed" in err for err in result["errors"])
             assert result["message"] == "Upgrade failed"
 
-    def test_install_success_appliesActions(
-        self, factory_home: Path
-    ) -> None:
+    def test_install_success_appliesActions(self, factory_home: Path) -> None:
         """install 返回 success=True 时, actions_applied + backups 填充。"""
         mock_plan = {
             "factory_home": str(factory_home),
@@ -341,13 +359,16 @@ class TestCmdApplyUpgrade:
             "success": True,
             "backups": ["/backup/wrapper.bak", "/backup/settings.bak"],
         }
-        with patch(
-            "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
-            return_value=mock_plan,
-        ), patch(
-            "memory_core.tools.factory_global_hooks.install_factory_hooks",
-            return_value=mock_install_result,
-        ) as mock_install:
+        with (
+            patch(
+                "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
+                return_value=mock_plan,
+            ),
+            patch(
+                "memory_core.tools.factory_global_hooks.install_factory_hooks",
+                return_value=mock_install_result,
+            ) as mock_install,
+        ):
             result = cmd_apply_upgrade(
                 factory_home=factory_home,
                 yes=True,
@@ -361,9 +382,7 @@ class TestCmdApplyUpgrade:
             assert len(result["backups"]) == 2
             assert result["message"] == "Upgrade applied successfully"
 
-    def test_interactive_yes_proceeds(
-        self, factory_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_interactive_yes_proceeds(self, factory_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """input='y' 时进入备份循环 (不早退)。"""
         mock_plan = {
             "factory_home": str(factory_home),
@@ -373,13 +392,16 @@ class TestCmdApplyUpgrade:
         }
         mock_install_result = {"success": True, "backups": []}
         monkeypatch.setattr("builtins.input", lambda _: "y")
-        with patch(
-            "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
-            return_value=mock_plan,
-        ), patch(
-            "memory_core.tools.factory_global_hooks.install_factory_hooks",
-            return_value=mock_install_result,
-        ) as mock_install:
+        with (
+            patch(
+                "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
+                return_value=mock_plan,
+            ),
+            patch(
+                "memory_core.tools.factory_global_hooks.install_factory_hooks",
+                return_value=mock_install_result,
+            ) as mock_install,
+        ):
             result = cmd_apply_upgrade(
                 factory_home=factory_home,
                 yes=False,
@@ -389,9 +411,7 @@ class TestCmdApplyUpgrade:
             mock_install.assert_called_once()
             assert result["message"] == "Upgrade applied successfully"
 
-    def test_interactive_no_aborts(
-        self, factory_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_interactive_no_aborts(self, factory_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """input='N' 时 'Aborted by user' 且不进备份。"""
         mock_plan = {
             "factory_home": str(factory_home),
@@ -400,12 +420,15 @@ class TestCmdApplyUpgrade:
             "files_to_modify": [],
         }
         monkeypatch.setattr("builtins.input", lambda _: "N")
-        with patch(
-            "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
-            return_value=mock_plan,
-        ), patch(
-            "memory_core.tools.factory_global_hooks.install_factory_hooks",
-        ) as mock_install:
+        with (
+            patch(
+                "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
+                return_value=mock_plan,
+            ),
+            patch(
+                "memory_core.tools.factory_global_hooks.install_factory_hooks",
+            ) as mock_install,
+        ):
             result = cmd_apply_upgrade(
                 factory_home=factory_home,
                 yes=False,
@@ -415,9 +438,7 @@ class TestCmdApplyUpgrade:
             mock_install.assert_not_called()
             assert result["message"] == "Aborted by user"
 
-    def test_interactive_eof_aborts(
-        self, factory_home: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_interactive_eof_aborts(self, factory_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """input 抛 EOFError 时 'Aborted by user'。"""
         mock_plan = {
             "factory_home": str(factory_home),
@@ -430,12 +451,15 @@ class TestCmdApplyUpgrade:
             raise EOFError
 
         monkeypatch.setattr("builtins.input", raise_eof)
-        with patch(
-            "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
-            return_value=mock_plan,
-        ), patch(
-            "memory_core.tools.factory_global_hooks.install_factory_hooks",
-        ) as mock_install:
+        with (
+            patch(
+                "memory_core.tools.hook_upgrade.cmd_plan_upgrade",
+                return_value=mock_plan,
+            ),
+            patch(
+                "memory_core.tools.factory_global_hooks.install_factory_hooks",
+            ) as mock_install,
+        ):
             result = cmd_apply_upgrade(
                 factory_home=factory_home,
                 yes=False,
@@ -450,6 +474,7 @@ class TestCmdApplyUpgrade:
 # CLI integration tests
 # ---------------------------------------------------------------------------
 
+
 class TestCLI:
     def test_main_inspect(self, factory_home: Path) -> None:
         rc = main(["inspect", "--factory-home", str(factory_home)])
@@ -460,9 +485,7 @@ class TestCLI:
         assert rc == 0
 
     def test_main_apply_upgrade_dry_run(self, factory_home: Path) -> None:
-        rc = main(
-            ["apply-upgrade", "--factory-home", str(factory_home), "--dry-run"]
-        )
+        rc = main(["apply-upgrade", "--factory-home", str(factory_home), "--dry-run"])
         assert rc == 0
 
     def test_main_no_command(self) -> None:

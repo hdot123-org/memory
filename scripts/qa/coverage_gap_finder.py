@@ -96,7 +96,10 @@ def run_coverage() -> Path:
     print(color("Running pytest with coverage...", CYAN))
     subprocess.run(
         [
-            sys.executable, "-m", "pytest", "tests/",
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/",
             "--cov=memory_core",
             "--cov-report=xml:coverage_gap.xml",
             "--cov-branch",
@@ -126,8 +129,7 @@ def parse_coverage_xml(xml_path: Path) -> list[ModuleCoverage]:
         #   coverage 以包根为基准输出相对路径，无 memory_core/ 前缀。
         #   此场景需排除 tests/ 等非包内文件（前缀匹配会误吞 tests/test_x.py）。
         in_package = filename.startswith("memory_core/") or (
-            not filename.startswith(("tests/", "scripts/", "/", "~"))
-            and not Path(filename).is_absolute()
+            not filename.startswith(("tests/", "scripts/", "/", "~")) and not Path(filename).is_absolute()
         )
         if not in_package:
             continue
@@ -153,16 +155,18 @@ def parse_coverage_xml(xml_path: Path) -> list[ModuleCoverage]:
         missed = total_lines - covered_lines
         is_core = basename in CORE_MODULES
 
-        modules.append(ModuleCoverage(
-            name=basename,
-            path=filename,
-            line_rate=line_rate,
-            branch_rate=branch_rate,
-            total_lines=total_lines,
-            covered_lines=covered_lines,
-            missed_lines=missed,
-            is_core=is_core,
-        ))
+        modules.append(
+            ModuleCoverage(
+                name=basename,
+                path=filename,
+                line_rate=line_rate,
+                branch_rate=branch_rate,
+                total_lines=total_lines,
+                covered_lines=covered_lines,
+                missed_lines=missed,
+                is_core=is_core,
+            )
+        )
 
     return modules
 
@@ -221,8 +225,7 @@ def analyze_gaps(modules: list[ModuleCoverage], target: float) -> dict[str, Any]
             for m in by_missed[:20]
         ],
         "zero_coverage_modules": [
-            {"module": m.name, "path": m.path, "total_lines": m.total_lines}
-            for m in zero_coverage
+            {"module": m.name, "path": m.path, "total_lines": m.total_lines} for m in zero_coverage
         ],
     }
 
@@ -256,7 +259,7 @@ def print_report(data: dict[str, Any]) -> None:
 
     print("\n  Top 20 Missed Modules:")
     print(f"  {'Module':<40} {'Coverage':>10} {'Missed':>8} {'Pri':>5} {'Core':>6}")
-    print(f"  {'-'*40} {'-'*10} {'-'*8} {'-'*5} {'-'*6}")
+    print(f"  {'-' * 40} {'-' * 10} {'-' * 8} {'-' * 5} {'-' * 6}")
     for m in data["top_20_missed"]:
         pct_str = f"{m['coverage_pct']:.1f}%"
         pri = m["priority"]

@@ -4,7 +4,6 @@ Verifies that the validator returns the correct exit code in both
 healthy and broken scenarios.
 """
 
-
 import os
 import subprocess
 import sys
@@ -36,8 +35,7 @@ class TestValidateReturnsZeroOnHealthySystem:
     def test_validate_returns_zero_on_healthy_system(self) -> None:
         result = _run_validator()
         assert result.returncode == 0, (
-            f"Expected exit code 0 but got {result.returncode}.\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+            f"Expected exit code 0 but got {result.returncode}.\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
 
     def test_validate_prints_summary(self) -> None:
@@ -59,9 +57,7 @@ class TestValidateReturnsZeroOnHealthySystem:
         parts = summary.strip().split()
         ratio = [p for p in parts if "/" in p][0]
         numerator, denominator = ratio.split("/")
-        assert numerator == denominator, (
-            f"Not all checks passed: {ratio}\nFull output: {result.stdout}"
-        )
+        assert numerator == denominator, f"Not all checks passed: {ratio}\nFull output: {result.stdout}"
 
 
 class TestValidateCatchesBrokenCore:
@@ -85,6 +81,7 @@ class TestValidateCatchesBrokenCore:
         # We need to patch the gateway's _resolve_core_builder since
         # check_core_builder_resolve imports from memory_hook_gateway.
         import memory_hook_gateway  # type: ignore
+
         monkeypatch.setattr(memory_hook_gateway, "_resolve_core_builder", _broken_resolve)
 
         result = ValidateResult()
@@ -132,9 +129,7 @@ class TestValidateCatchesBrokenCore:
 class TestWrapBuilderWithKwargsFallback:
     """Verify _wrap_builder_with_kwargs behaviour when CoreConfig is None or present."""
 
-    def test_wrapped_calls_builder_directly_when_coreconfig_none(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_wrapped_calls_builder_directly_when_coreconfig_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When CoreConfig is None, wrapped must pass kwargs directly to builder."""
         import validate_memory_system  # type: ignore
 
@@ -151,9 +146,7 @@ class TestWrapBuilderWithKwargsFallback:
 
         assert captured["args"] == {"host": "factory", "event": "test"}
 
-    def test_wrapped_uses_coreconfig_when_available(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_wrapped_uses_coreconfig_when_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When CoreConfig is available, wrapped must pass a CoreConfig instance."""
         import validate_memory_system  # type: ignore
 

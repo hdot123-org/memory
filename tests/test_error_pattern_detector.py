@@ -175,14 +175,23 @@ class TestNormalizeDeterminism:
     def test_cross_process(self) -> None:
         import subprocess
         import sys
+
         script = (
             "from memory_core.tools.error_pattern_detector import normalize_error_msg; "
             'print(normalize_error_msg("error at 2026-07-12T11:07:05+08:00 in /Users/x/file.py"))'
         )
-        r1 = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
-                          cwd=str(Path(__file__).resolve().parent.parent))
-        r2 = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
-                          cwd=str(Path(__file__).resolve().parent.parent))
+        r1 = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).resolve().parent.parent),
+        )
+        r2 = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).resolve().parent.parent),
+        )
         assert r1.stdout.strip() == r2.stdout.strip()
 
 
@@ -261,9 +270,13 @@ class TestFingerprint:
 
 class TestGroupByFingerprint:
     @staticmethod
-    def _make_entry(ts: str, msg: str, error_type: str = "llm_api_error",
-                    script: str = "daily_summary_generator",
-                    project: str = "/Users/busiji/memory") -> dict[str, Any]:
+    def _make_entry(
+        ts: str,
+        msg: str,
+        error_type: str = "llm_api_error",
+        script: str = "daily_summary_generator",
+        project: str = "/Users/busiji/memory",
+    ) -> dict[str, Any]:
         return {"ts": ts, "type": error_type, "script": script, "project": project, "msg": msg}
 
     def test_entries_same_fingerprint_grouped(self) -> None:
@@ -362,8 +375,12 @@ class TestGroupByFingerprint:
 
     def test_type_script_constant(self) -> None:
         entries = [
-            self._make_entry("2026-07-12T09:00:00+08:00", "err in /x/a.py", error_type="hook_timeout", script="session_end"),
-            self._make_entry("2026-07-12T10:00:00+08:00", "err in /y/b.py", error_type="hook_timeout", script="session_end"),
+            self._make_entry(
+                "2026-07-12T09:00:00+08:00", "err in /x/a.py", error_type="hook_timeout", script="session_end"
+            ),
+            self._make_entry(
+                "2026-07-12T10:00:00+08:00", "err in /y/b.py", error_type="hook_timeout", script="session_end"
+            ),
         ]
         groups = group_by_fingerprint(entries)
         group = list(groups.values())[0]
@@ -417,10 +434,16 @@ class TestEvaluateThreshold:
     @staticmethod
     def _make_group(distinct_days: list[str], total_count: int) -> PatternGroup:
         return PatternGroup(
-            fingerprint="abc123", type="test", script="test", normalized_msg="test",
-            status="detected", first_seen="2026-07-12T09:00:00+08:00",
-            last_seen="2026-07-12T09:00:00+08:00", distinct_days=distinct_days,
-            total_count=total_count, projects=["/test"],
+            fingerprint="abc123",
+            type="test",
+            script="test",
+            normalized_msg="test",
+            status="detected",
+            first_seen="2026-07-12T09:00:00+08:00",
+            last_seen="2026-07-12T09:00:00+08:00",
+            distinct_days=distinct_days,
+            total_count=total_count,
+            projects=["/test"],
             sample_first={"ts": "2026-07-12T09:00:00+08:00", "msg": "raw"},
             sample_last={"ts": "2026-07-12T09:00:00+08:00", "msg": "raw"},
         )
@@ -445,8 +468,20 @@ class TestEvaluateThreshold:
 class TestDateExtraction:
     def test_same_date_different_offsets(self) -> None:
         entries: list[dict[str, Any]] = [
-            {"ts": "2026-07-12T23:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "err in /a.py"},
-            {"ts": "2026-07-12T15:00:00+00:00", "type": "test", "script": "test", "project": "/test", "msg": "err in /b.py"},
+            {
+                "ts": "2026-07-12T23:00:00+08:00",
+                "type": "test",
+                "script": "test",
+                "project": "/test",
+                "msg": "err in /a.py",
+            },
+            {
+                "ts": "2026-07-12T15:00:00+00:00",
+                "type": "test",
+                "script": "test",
+                "project": "/test",
+                "msg": "err in /b.py",
+            },
         ]
         groups = group_by_fingerprint(entries)
         group = list(groups.values())[0]
@@ -536,10 +571,21 @@ class TestRegistryIO:
         write_registry(registry_path, entries)
 
         required_fields = {
-            "fingerprint", "type", "script", "normalized_msg", "status",
-            "first_seen", "last_seen", "first_detected", "last_updated",
-            "distinct_days", "total_count", "projects", "threshold_met",
-            "sample_first", "sample_last"
+            "fingerprint",
+            "type",
+            "script",
+            "normalized_msg",
+            "status",
+            "first_seen",
+            "last_seen",
+            "first_detected",
+            "last_updated",
+            "distinct_days",
+            "total_count",
+            "projects",
+            "threshold_met",
+            "sample_first",
+            "sample_last",
         }
 
         with registry_path.open() as f:
@@ -612,6 +658,7 @@ class TestRegistryIO:
 
         # last_updated should be updated to current time
         from datetime import datetime
+
         last_updated = datetime.fromisoformat(merged[0]["last_updated"])
         now = datetime.now().astimezone()
         diff = abs((now - last_updated).total_seconds())
@@ -876,9 +923,13 @@ class TestResilience:
 
         error_file = log_dir / "2026-08-01-errors.jsonl"
         with error_file.open("w") as f:
-            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "good 1"}\n')
+            f.write(
+                '{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "good 1"}\n'
+            )
             f.write('{"not valid json\n')  # Malformed
-            f.write('{"ts": "2026-08-01T11:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "good 2"}\n')
+            f.write(
+                '{"ts": "2026-08-01T11:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "good 2"}\n'
+            )
 
         entries = parse_error_file(error_file)
         assert len(entries) == 2  # Skipped malformed, kept 2 good entries
@@ -903,10 +954,14 @@ class TestResilience:
 
         error_file = log_dir / "2026-08-01-errors.jsonl"
         with error_file.open("w") as f:
-            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "test"}\n')
-            f.write('\n')  # Blank line
-            f.write('{"ts": "2026-08-01T11:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "test2"}\n')
-            f.write('\n')  # Trailing newline
+            f.write(
+                '{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "test"}\n'
+            )
+            f.write("\n")  # Blank line
+            f.write(
+                '{"ts": "2026-08-01T11:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "test2"}\n'
+            )
+            f.write("\n")  # Trailing newline
 
         entries = parse_error_file(error_file)
         assert len(entries) == 2  # Blank lines ignored
@@ -947,9 +1002,15 @@ class TestEndToEnd:
         # Create error log with multiple entries
         error_file = log_dir / "2026-08-01-errors.jsonl"
         with error_file.open("w") as f:
-            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "test_error", "script": "test_script", "project": "/test", "msg": "error in /path/file.py line 42"}\n')
-            f.write('{"ts": "2026-08-01T11:00:00+08:00", "type": "test_error", "script": "test_script", "project": "/test", "msg": "error in /path/file.py line 42"}\n')
-            f.write('{"ts": "2026-08-02T10:00:00+08:00", "type": "test_error", "script": "test_script", "project": "/test", "msg": "error in /path/file.py line 42"}\n')
+            f.write(
+                '{"ts": "2026-08-01T10:00:00+08:00", "type": "test_error", "script": "test_script", "project": "/test", "msg": "error in /path/file.py line 42"}\n'
+            )
+            f.write(
+                '{"ts": "2026-08-01T11:00:00+08:00", "type": "test_error", "script": "test_script", "project": "/test", "msg": "error in /path/file.py line 42"}\n'
+            )
+            f.write(
+                '{"ts": "2026-08-02T10:00:00+08:00", "type": "test_error", "script": "test_script", "project": "/test", "msg": "error in /path/file.py line 42"}\n'
+            )
 
         registry_path = tmp_path / "registry.jsonl"
         run_pipeline(project_root, registry_path, dry_run=False)
@@ -974,7 +1035,9 @@ class TestEndToEnd:
 
         error_file = log_dir / "2026-08-01-errors.jsonl"
         with error_file.open("w") as f:
-            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "error"}\n')
+            f.write(
+                '{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "error"}\n'
+            )
 
         registry_path = tmp_path / "registry.jsonl"
         run_pipeline(project_root, registry_path, dry_run=True)
@@ -991,7 +1054,9 @@ class TestEndToEnd:
 
         error_file = log_dir / "2026-08-01-errors.jsonl"
         with error_file.open("w") as f:
-            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "error"}\n')
+            f.write(
+                '{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "error"}\n'
+            )
 
         registry_path = tmp_path / "registry.jsonl"
 
@@ -1031,8 +1096,12 @@ class TestEndToEnd:
         log_dir1.mkdir(parents=True)
 
         with (log_dir1 / "2026-08-01-errors.jsonl").open("w") as f:
-            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "shared_error", "script": "test", "project": "/project1", "msg": "shared error"}\n')
-            f.write('{"ts": "2026-08-01T11:00:00+08:00", "type": "unique_error_1", "script": "test", "project": "/project1", "msg": "unique to project1"}\n')
+            f.write(
+                '{"ts": "2026-08-01T10:00:00+08:00", "type": "shared_error", "script": "test", "project": "/project1", "msg": "shared error"}\n'
+            )
+            f.write(
+                '{"ts": "2026-08-01T11:00:00+08:00", "type": "unique_error_1", "script": "test", "project": "/project1", "msg": "unique to project1"}\n'
+            )
 
         project2 = tmp_path / "project2"
         project2.mkdir()
@@ -1040,8 +1109,12 @@ class TestEndToEnd:
         log_dir2.mkdir(parents=True)
 
         with (log_dir2 / "2026-08-01-errors.jsonl").open("w") as f:
-            f.write('{"ts": "2026-08-01T12:00:00+08:00", "type": "shared_error", "script": "test", "project": "/project2", "msg": "shared error"}\n')
-            f.write('{"ts": "2026-08-01T13:00:00+08:00", "type": "unique_error_2", "script": "test", "project": "/project2", "msg": "unique to project2"}\n')
+            f.write(
+                '{"ts": "2026-08-01T12:00:00+08:00", "type": "shared_error", "script": "test", "project": "/project2", "msg": "shared error"}\n'
+            )
+            f.write(
+                '{"ts": "2026-08-01T13:00:00+08:00", "type": "unique_error_2", "script": "test", "project": "/project2", "msg": "unique to project2"}\n'
+            )
 
         registry_path = tmp_path / "registry.jsonl"
         run_pipeline([project1, project2], registry_path, dry_run=False)
@@ -1072,7 +1145,9 @@ class TestEndToEnd:
 
         error_file = log_dir / "2026-08-01-errors.jsonl"
         with error_file.open("w") as f:
-            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "error"}\n')
+            f.write(
+                '{"ts": "2026-08-01T10:00:00+08:00", "type": "test", "script": "test", "project": "/test", "msg": "error"}\n'
+            )
 
         registry_path = tmp_path / "registry.jsonl"
         run_pipeline(project_root, registry_path, dry_run=False, verbose=True)
@@ -1094,20 +1169,32 @@ class TestEndToEnd:
         with (log_dir / "2026-08-01-errors.jsonl").open("w") as f:
             # "both": 2+ days, 5+ count
             for i in range(5):
-                f.write(f'{{"ts": "2026-08-01T{10+i}:00:00+08:00", "type": "both_test", "script": "test", "project": "/test", "msg": "both error"}}\n')
+                f.write(
+                    f'{{"ts": "2026-08-01T{10 + i}:00:00+08:00", "type": "both_test", "script": "test", "project": "/test", "msg": "both error"}}\n'
+                )
             for i in range(5):
-                f.write(f'{{"ts": "2026-08-02T{10+i}:00:00+08:00", "type": "both_test", "script": "test", "project": "/test", "msg": "both error"}}\n')
+                f.write(
+                    f'{{"ts": "2026-08-02T{10 + i}:00:00+08:00", "type": "both_test", "script": "test", "project": "/test", "msg": "both error"}}\n'
+                )
 
             # "days": 2+ days, <5 count
-            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "days_test", "script": "test", "project": "/test", "msg": "days error"}\n')
-            f.write('{"ts": "2026-08-02T10:00:00+08:00", "type": "days_test", "script": "test", "project": "/test", "msg": "days error"}\n')
+            f.write(
+                '{"ts": "2026-08-01T10:00:00+08:00", "type": "days_test", "script": "test", "project": "/test", "msg": "days error"}\n'
+            )
+            f.write(
+                '{"ts": "2026-08-02T10:00:00+08:00", "type": "days_test", "script": "test", "project": "/test", "msg": "days error"}\n'
+            )
 
             # "count": <2 days, 5+ count
             for i in range(5):
-                f.write(f'{{"ts": "2026-08-01T{10+i}:00:00+08:00", "type": "count_test", "script": "test", "project": "/test", "msg": "count error"}}\n')
+                f.write(
+                    f'{{"ts": "2026-08-01T{10 + i}:00:00+08:00", "type": "count_test", "script": "test", "project": "/test", "msg": "count error"}}\n'
+                )
 
             # null: <2 days, <5 count
-            f.write('{"ts": "2026-08-01T10:00:00+08:00", "type": "null_test", "script": "test", "project": "/test", "msg": "null error"}\n')
+            f.write(
+                '{"ts": "2026-08-01T10:00:00+08:00", "type": "null_test", "script": "test", "project": "/test", "msg": "null error"}\n'
+            )
 
         registry_path = tmp_path / "registry.jsonl"
         run_pipeline(project_root, registry_path, dry_run=False)
@@ -1132,7 +1219,9 @@ class TestEndToEnd:
         # Generate 100 entries
         with (log_dir / "2026-08-01-errors.jsonl").open("w") as f:
             for i in range(100):
-                f.write(f'{{"ts": "2026-08-01T{10+i%12:02d}:00:00+08:00", "type": "perf_test", "script": "test", "project": "/test", "msg": "performance error {i}"}}\n')
+                f.write(
+                    f'{{"ts": "2026-08-01T{10 + i % 12:02d}:00:00+08:00", "type": "perf_test", "script": "test", "project": "/test", "msg": "performance error {i}"}}\n'
+                )
 
         registry_path = tmp_path / "registry.jsonl"
 
@@ -1171,10 +1260,21 @@ class TestRealDataEndToEnd:
 
         # All entries should have required fields
         required_fields = {
-            "fingerprint", "type", "script", "normalized_msg", "status",
-            "first_seen", "last_seen", "first_detected", "last_updated",
-            "distinct_days", "total_count", "projects", "threshold_met",
-            "sample_first", "sample_last"
+            "fingerprint",
+            "type",
+            "script",
+            "normalized_msg",
+            "status",
+            "first_seen",
+            "last_seen",
+            "first_detected",
+            "last_updated",
+            "distinct_days",
+            "total_count",
+            "projects",
+            "threshold_met",
+            "sample_first",
+            "sample_last",
         }
 
         for entry in entries:
@@ -1341,14 +1441,19 @@ class TestPipelineArtifactFiltering:
         with error_file.open("w") as f:
             # 5 test entries (same fingerprint, would trigger 'both' threshold)
             for i in range(5):
-                f.write(json.dumps({
-                    "ts": f"2026-08-0{1 + i % 2}T10:00:00+08:00",
-                    "type": "transcript_missing",
-                    "script": "session_end_logger",
-                    "project": str(project_root),
-                    "ctx": {"session_id": "test", "expected_path": f"/tmp/file{i}.jsonl"},
-                    "msg": f"transcript not found: /tmp/file{i}.jsonl",
-                }) + "\n")
+                f.write(
+                    json.dumps(
+                        {
+                            "ts": f"2026-08-0{1 + i % 2}T10:00:00+08:00",
+                            "type": "transcript_missing",
+                            "script": "session_end_logger",
+                            "project": str(project_root),
+                            "ctx": {"session_id": "test", "expected_path": f"/tmp/file{i}.jsonl"},
+                            "msg": f"transcript not found: /tmp/file{i}.jsonl",
+                        }
+                    )
+                    + "\n"
+                )
 
         registry_path = tmp_path / "registry.jsonl"
         run_pipeline(project_root, registry_path, dry_run=False)
@@ -1369,23 +1474,33 @@ class TestPipelineArtifactFiltering:
         error_file = log_dir / "2026-08-01-errors.jsonl"
         with error_file.open("w") as f:
             # Test artifact (should be filtered)
-            f.write(json.dumps({
-                "ts": "2026-08-01T10:00:00+08:00",
-                "type": "transcript_missing",
-                "script": "session_end_logger",
-                "project": str(project_root),
-                "ctx": {"session_id": "test", "expected_path": "/tmp/x.jsonl"},
-                "msg": "transcript not found: /tmp/x.jsonl",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "ts": "2026-08-01T10:00:00+08:00",
+                        "type": "transcript_missing",
+                        "script": "session_end_logger",
+                        "project": str(project_root),
+                        "ctx": {"session_id": "test", "expected_path": "/tmp/x.jsonl"},
+                        "msg": "transcript not found: /tmp/x.jsonl",
+                    }
+                )
+                + "\n"
+            )
             # Real entry (should be kept)
-            f.write(json.dumps({
-                "ts": "2026-08-01T11:00:00+08:00",
-                "type": "llm_api_error",
-                "script": "daily_summary_generator",
-                "project": str(project_root),
-                "ctx": {"session_id": "a1b2c3d4"},
-                "msg": "LLM API error in /Users/x/app.py",
-            }) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "ts": "2026-08-01T11:00:00+08:00",
+                        "type": "llm_api_error",
+                        "script": "daily_summary_generator",
+                        "project": str(project_root),
+                        "ctx": {"session_id": "a1b2c3d4"},
+                        "msg": "LLM API error in /Users/x/app.py",
+                    }
+                )
+                + "\n"
+            )
 
         registry_path = tmp_path / "registry.jsonl"
         run_pipeline(project_root, registry_path, dry_run=False)
@@ -1405,14 +1520,19 @@ class TestPipelineArtifactFiltering:
         error_file = log_dir / "2026-08-01-errors.jsonl"
         with error_file.open("w") as f:
             for i in range(3):
-                f.write(json.dumps({
-                    "ts": "2026-08-01T10:00:00+08:00",
-                    "type": "transcript_missing",
-                    "script": "session_end_logger",
-                    "project": str(project_root),
-                    "ctx": {"session_id": "test", "expected_path": f"/tmp/f{i}.jsonl"},
-                    "msg": f"transcript not found: /tmp/f{i}.jsonl",
-                }) + "\n")
+                f.write(
+                    json.dumps(
+                        {
+                            "ts": "2026-08-01T10:00:00+08:00",
+                            "type": "transcript_missing",
+                            "script": "session_end_logger",
+                            "project": str(project_root),
+                            "ctx": {"session_id": "test", "expected_path": f"/tmp/f{i}.jsonl"},
+                            "msg": f"transcript not found: /tmp/f{i}.jsonl",
+                        }
+                    )
+                    + "\n"
+                )
 
         registry_path = tmp_path / "registry.jsonl"
         run_pipeline(project_root, registry_path, dry_run=False, verbose=True)
@@ -1611,10 +1731,13 @@ class TestResolvePatterns:
     def test_resolve_by_fingerprint(self, tmp_path: Path, capsys: Any) -> None:
         """INFRA-186: --resolve <fingerprint> marks a single pattern as resolved."""
         registry_path = tmp_path / "registry.jsonl"
-        self._write_registry(registry_path, [
-            self._make_registry_entry("fp_001"),
-            self._make_registry_entry("fp_002"),
-        ])
+        self._write_registry(
+            registry_path,
+            [
+                self._make_registry_entry("fp_001"),
+                self._make_registry_entry("fp_002"),
+            ],
+        )
 
         count = resolve_patterns(fingerprint="fp_001", registry_path=registry_path)
 
@@ -1633,11 +1756,14 @@ class TestResolvePatterns:
     def test_resolve_type_marks_all_of_type(self, tmp_path: Path, capsys: Any) -> None:
         """INFRA-186: --resolve-type <type> marks all patterns of that type."""
         registry_path = tmp_path / "registry.jsonl"
-        self._write_registry(registry_path, [
-            self._make_registry_entry("fp_001", error_type="transcript_missing"),
-            self._make_registry_entry("fp_002", error_type="transcript_missing"),
-            self._make_registry_entry("fp_003", error_type="llm_api_error"),
-        ])
+        self._write_registry(
+            registry_path,
+            [
+                self._make_registry_entry("fp_001", error_type="transcript_missing"),
+                self._make_registry_entry("fp_002", error_type="transcript_missing"),
+                self._make_registry_entry("fp_003", error_type="llm_api_error"),
+            ],
+        )
 
         count = resolve_patterns(
             pattern_type="transcript_missing",
@@ -1678,9 +1804,12 @@ class TestResolvePatterns:
     def test_resolve_no_matching_patterns(self, tmp_path: Path, capsys: Any) -> None:
         """INFRA-186: Resolve prints message when no patterns match."""
         registry_path = tmp_path / "registry.jsonl"
-        self._write_registry(registry_path, [
-            self._make_registry_entry("fp_001"),
-        ])
+        self._write_registry(
+            registry_path,
+            [
+                self._make_registry_entry("fp_001"),
+            ],
+        )
 
         count = resolve_patterns(fingerprint="nonexistent_fp", registry_path=registry_path)
 
@@ -1691,9 +1820,12 @@ class TestResolvePatterns:
     def test_resolve_no_matching_type(self, tmp_path: Path, capsys: Any) -> None:
         """INFRA-186: Resolve-type prints message when no patterns match the type."""
         registry_path = tmp_path / "registry.jsonl"
-        self._write_registry(registry_path, [
-            self._make_registry_entry("fp_001", error_type="type_a"),
-        ])
+        self._write_registry(
+            registry_path,
+            [
+                self._make_registry_entry("fp_001", error_type="type_a"),
+            ],
+        )
 
         count = resolve_patterns(
             pattern_type="nonexistent_type",
@@ -1722,11 +1854,14 @@ class TestResolvePatterns:
     def test_resolve_preserves_other_entries(self, tmp_path: Path) -> None:
         """INFRA-186: Resolving one pattern does not alter other entries."""
         registry_path = tmp_path / "registry.jsonl"
-        self._write_registry(registry_path, [
-            self._make_registry_entry("fp_001"),
-            self._make_registry_entry("fp_002"),
-            self._make_registry_entry("fp_003"),
-        ])
+        self._write_registry(
+            registry_path,
+            [
+                self._make_registry_entry("fp_001"),
+                self._make_registry_entry("fp_002"),
+                self._make_registry_entry("fp_003"),
+            ],
+        )
 
         resolve_patterns(fingerprint="fp_002", registry_path=registry_path)
 
@@ -1802,4 +1937,3 @@ class TestResolveCLIMain:
         main(["--resolve-type", "transcript_missing"])
         captured = capsys.readouterr()
         assert "no registry found" in captured.err
-

@@ -433,11 +433,7 @@ def rebuild_path_index(lifecycle_root: str | Path) -> dict[str, Any]:
     index_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Write to temp file in same directory, then atomic rename
-    fd, temp_path = tempfile.mkstemp(
-        dir=index_path.parent,
-        prefix=".path-index-",
-        suffix=".tmp"
-    )
+    fd, temp_path = tempfile.mkstemp(dir=index_path.parent, prefix=".path-index-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(path_index, f, ensure_ascii=False, indent=2, sort_keys=True)
@@ -614,6 +610,7 @@ def migrate_lifecycle_events(lifecycle_root: Path) -> dict[str, Any]:
     except OSError:
         # If rename fails, try copy + delete as fallback
         import shutil
+
         shutil.copy2(events_jsonl, archive_path)
         events_jsonl.unlink()
 
@@ -657,11 +654,11 @@ def migrate_main(argv: list[str] | None = None) -> None:
         print(f"  total_read: {stats['total_read']}")
         print(f"  total_written: {stats['total_written']}")
         print(f"  skipped: {stats['skipped']}")
-        if stats['per_project']:
+        if stats["per_project"]:
             print("  per_project:")
-            for project_id, count in sorted(stats['per_project'].items()):
+            for project_id, count in sorted(stats["per_project"].items()):
                 print(f"    {project_id}: {count}")
-        if stats['archive_path']:
+        if stats["archive_path"]:
             print(f"  archive_path: {stats['archive_path']}")
         else:
             print("  archive_path: (no migration needed, events.jsonl not found)")

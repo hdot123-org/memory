@@ -3,6 +3,7 @@
 Validates that the protected path patterns in evolution-governance.yml
 correctly detect files that are renamed into or out of protected paths.
 """
+
 import re
 
 import pytest
@@ -10,10 +11,10 @@ import pytest
 # These patterns are extracted from .github/workflows/evolution-governance.yml
 # They must match the grep patterns used in the governance check
 PROTECTED_PATTERNS = [
-    re.compile(r'^\.evolution/'),
-    re.compile(r'^scripts/evolution_.*\.py$'),
-    re.compile(r'^\.github/workflows/evolution-.*\.yml$'),
-    re.compile(r'^\.github/CODEOWNERS$'),
+    re.compile(r"^\.evolution/"),
+    re.compile(r"^scripts/evolution_.*\.py$"),
+    re.compile(r"^\.github/workflows/evolution-.*\.yml$"),
+    re.compile(r"^\.github/CODEOWNERS$"),
 ]
 
 
@@ -33,9 +34,9 @@ def detect_rename_violation(changed_files: list[dict]) -> bool:
         True if any protected path is touched (including via rename)
     """
     for f in changed_files:
-        if is_protected(f.get('filename', '')):
+        if is_protected(f.get("filename", "")):
             return True
-        prev = f.get('previous_filename')
+        prev = f.get("previous_filename")
         if prev and is_protected(prev):
             return True
     return False
@@ -44,30 +45,36 @@ def detect_rename_violation(changed_files: list[dict]) -> bool:
 class TestProtectedPathPatterns:
     """Validate that protected path patterns match expected paths."""
 
-    @pytest.mark.parametrize("path", [
-        ".evolution/config.yml",
-        ".evolution/findings_over_time.json",
-        ".evolution/DISABLED",
-        ".evolution/subdir/nested.yml",
-        "scripts/evolution_scanner.py",
-        "scripts/evolution_utils.py",
-        "scripts/evolution_adapters.py",
-        ".github/workflows/evolution-scan.yml",
-        ".github/workflows/evolution-governance.yml",
-        ".github/CODEOWNERS",
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            ".evolution/config.yml",
+            ".evolution/findings_over_time.json",
+            ".evolution/DISABLED",
+            ".evolution/subdir/nested.yml",
+            "scripts/evolution_scanner.py",
+            "scripts/evolution_utils.py",
+            "scripts/evolution_adapters.py",
+            ".github/workflows/evolution-scan.yml",
+            ".github/workflows/evolution-governance.yml",
+            ".github/CODEOWNERS",
+        ],
+    )
     def test_protected_paths_detected(self, path):
         assert is_protected(path), f"Should be protected: {path}"
 
-    @pytest.mark.parametrize("path", [
-        "docs/README.md",
-        "memory_core/tools/hook.py",
-        "scripts/other_script.py",
-        ".github/workflows/ci.yml",
-        ".github/ISSUE_TEMPLATE.md",
-        "evolution/config.yml",  # Missing leading dot - NOT protected
-        "scripts/evolution.txt",  # Wrong extension
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "docs/README.md",
+            "memory_core/tools/hook.py",
+            "scripts/other_script.py",
+            ".github/workflows/ci.yml",
+            ".github/ISSUE_TEMPLATE.md",
+            "evolution/config.yml",  # Missing leading dot - NOT protected
+            "scripts/evolution.txt",  # Wrong extension
+        ],
+    )
     def test_non_protected_paths_not_detected(self, path):
         assert not is_protected(path), f"Should NOT be protected: {path}"
 
@@ -110,7 +117,10 @@ class TestRenameDetection:
         files = [
             {"filename": "docs/readme.md"},  # Not protected, not renamed
             {"filename": "README.md", "previous_filename": "docs/readme.md"},  # Not protected
-            {"filename": ".github/workflows/deploy.yml", "previous_filename": ".github/workflows/evolution-scan.yml"},  # PROTECTED rename!
+            {
+                "filename": ".github/workflows/deploy.yml",
+                "previous_filename": ".github/workflows/evolution-scan.yml",
+            },  # PROTECTED rename!
         ]
         assert detect_rename_violation(files) is True
 
@@ -126,13 +136,14 @@ class TestGovernanceWorkflowConsistency:
     def test_patterns_match_workflow(self):
         """Ensure PROTECTED_PATTERNS match the patterns in evolution-governance.yml."""
         from pathlib import Path
+
         workflow = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-governance.yml"
         content = workflow.read_text()
 
         # The workflow must still check these patterns
-        assert '.evolution/' in content, "Workflow must check .evolution/ paths"
-        assert 'scripts/evolution_.*\\.py' in content, "Workflow must check evolution scripts"
-        assert 'evolution-.*\\.yml' in content, "Workflow must check evolution workflows"
-        assert 'CODEOWNERS' in content, "Workflow must check CODEOWNERS"
+        assert ".evolution/" in content, "Workflow must check .evolution/ paths"
+        assert "scripts/evolution_.*\\.py" in content, "Workflow must check evolution scripts"
+        assert "evolution-.*\\.yml" in content, "Workflow must check evolution workflows"
+        assert "CODEOWNERS" in content, "Workflow must check CODEOWNERS"
         # Must track renames
-        assert 'previous_filename' in content, "Workflow must track file renames"
+        assert "previous_filename" in content, "Workflow must track file renames"

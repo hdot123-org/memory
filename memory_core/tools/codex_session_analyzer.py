@@ -36,6 +36,7 @@ CODEX_SESSIONS_DIR = Path.home() / ".codex" / "sessions"
 # Rollout parser
 # ---------------------------------------------------------------------------
 
+
 class SessionAnalyzer:
     def __init__(self) -> None:
         self.session_id: str = ""
@@ -78,20 +79,24 @@ class SessionAnalyzer:
         elif evt_type == "token_count":
             info = payload.get("info", {})
             if info and "total_token_usage" in info:
-                self.token_events.append({
-                    "timestamp": ts,
-                    **info["total_token_usage"],
-                })
+                self.token_events.append(
+                    {
+                        "timestamp": ts,
+                        **info["total_token_usage"],
+                    }
+                )
 
     def _parse_response_item(self, payload: dict[str, Any], ts: str) -> None:
         """Parse response_item event."""
         payload_type = payload.get("type", "")
         if payload_type == "function_call":
-            self.tool_calls.append({
-                "timestamp": ts,
-                "name": payload.get("name", ""),
-                "arguments": payload.get("arguments", ""),
-            })
+            self.tool_calls.append(
+                {
+                    "timestamp": ts,
+                    "name": payload.get("name", ""),
+                    "arguments": payload.get("arguments", ""),
+                }
+            )
 
     def parse_file(self, path: Path) -> None:
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -176,13 +181,14 @@ class SessionAnalyzer:
             for i, um in enumerate(self.user_messages):
                 msg = um["message"].strip()
                 if msg:
-                    print(f"\n[User {i+1}] {um['timestamp'][:19]}")
+                    print(f"\n[User {i + 1}] {um['timestamp'][:19]}")
                     print(f"    {msg[:max_msg_len]}{'...' if len(msg) > max_msg_len else ''}")
 
 
 # ---------------------------------------------------------------------------
 # Discovery
 # ---------------------------------------------------------------------------
+
 
 def find_rollout_files(thread_id: str | None = None, target_date: str | None = None) -> list[Path]:
     """Find rollout files matching criteria."""
@@ -230,6 +236,7 @@ def _glob_rollout_pattern(pattern: str) -> list[Path]:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Codex session rollout analyzer.")
     group = parser.add_mutually_exclusive_group(required=True)
@@ -261,21 +268,23 @@ def main(argv: list[str] | None = None) -> int:
         analyzer = SessionAnalyzer()
         analyzer.parse_file(f)
         if args.json:
-            results.append({
-                "session_id": analyzer.session_id,
-                "cwd": analyzer.cwd,
-                "model_provider": analyzer.model_provider,
-                "cli_version": analyzer.cli_version,
-                "started_at": analyzer.started_at,
-                "user_messages": analyzer.total_user_messages,
-                "assistant_messages": analyzer.total_assistant_messages,
-                "tool_calls": analyzer.total_tool_calls,
-                "token_summary": analyzer.token_summary,
-                "tool_frequency": dict(analyzer.tool_call_frequency),
-            })
+            results.append(
+                {
+                    "session_id": analyzer.session_id,
+                    "cwd": analyzer.cwd,
+                    "model_provider": analyzer.model_provider,
+                    "cli_version": analyzer.cli_version,
+                    "started_at": analyzer.started_at,
+                    "user_messages": analyzer.total_user_messages,
+                    "assistant_messages": analyzer.total_assistant_messages,
+                    "tool_calls": analyzer.total_tool_calls,
+                    "token_summary": analyzer.token_summary,
+                    "tool_frequency": dict(analyzer.tool_call_frequency),
+                }
+            )
         else:
             if len(files) > 1:
-                print(f"\n{'='*60}")
+                print(f"\n{'=' * 60}")
                 print(f"File: {f.name}")
             analyzer.print_report(show_conversation=not args.no_conversation, max_msg_len=args.max_len)
 

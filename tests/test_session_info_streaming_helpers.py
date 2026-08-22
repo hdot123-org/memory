@@ -83,11 +83,7 @@ class TestExtractFirstUserPreview:
         """Should extract text from simple content block."""
         from memory_core.tools.session_end_logger import _extract_first_user_preview
 
-        msg = {
-            "content": [
-                {"type": "text", "text": "Hello, how are you?"}
-            ]
-        }
+        msg = {"content": [{"type": "text", "text": "Hello, how are you?"}]}
         result = _extract_first_user_preview(msg)
         assert result == "Hello, how are you?"
 
@@ -95,21 +91,14 @@ class TestExtractFirstUserPreview:
         """Should truncate long text to 200 chars + '...'."""
         from memory_core.tools.session_end_logger import _extract_first_user_preview
 
-        assert_long_text_truncated(
-            _extract_first_user_preview, limit=200, input_len=250
-        )
+        assert_long_text_truncated(_extract_first_user_preview, limit=200, input_len=250)
 
     def test_system_reminder_stripped(self):
         """Should strip system-reminder from text."""
         from memory_core.tools.session_end_logger import _extract_first_user_preview
 
         msg = {
-            "content": [
-                {
-                    "type": "text",
-                    "text": "<system-reminder>Ignore this</system-reminder>Actual user message"
-                }
-            ]
+            "content": [{"type": "text", "text": "<system-reminder>Ignore this</system-reminder>Actual user message"}]
         }
         result = _extract_first_user_preview(msg)
         assert result == "Actual user message"
@@ -146,11 +135,7 @@ class TestExtractAssistantSummaryPreview:
         """Should extract text from simple content block."""
         from memory_core.tools.session_end_logger import _extract_assistant_summary_preview
 
-        msg = {
-            "content": [
-                {"type": "text", "text": "I've completed the task successfully."}
-            ]
-        }
+        msg = {"content": [{"type": "text", "text": "I've completed the task successfully."}]}
         result = _extract_assistant_summary_preview(msg)
         assert result == "I've completed the task successfully."
 
@@ -158,9 +143,7 @@ class TestExtractAssistantSummaryPreview:
         """Should truncate long text to 300 chars + '...'."""
         from memory_core.tools.session_end_logger import _extract_assistant_summary_preview
 
-        assert_long_text_truncated(
-            _extract_assistant_summary_preview, limit=300, input_len=350
-        )
+        assert_long_text_truncated(_extract_assistant_summary_preview, limit=300, input_len=350)
 
     def test_empty_content(self):
         """Should return empty string for empty content."""
@@ -185,9 +168,7 @@ class TestCollectToolUses:
         """Should count single tool use."""
         from memory_core.tools.session_end_logger import _collect_tool_uses
 
-        content = [
-            {"type": "tool_use", "name": "Read", "input": {}}
-        ]
+        content = [{"type": "tool_use", "name": "Read", "input": {}}]
         counter, total = _collect_tool_uses(content)
         assert counter == Counter({"Read": 1})
         assert total == 1
@@ -238,9 +219,7 @@ class TestCollectToolUses:
         """Should use 'Unknown' for tool_use without name."""
         from memory_core.tools.session_end_logger import _collect_tool_uses
 
-        content = [
-            {"type": "tool_use", "input": {}}
-        ]
+        content = [{"type": "tool_use", "input": {}}]
         counter, total = _collect_tool_uses(content)
         assert counter == Counter({"Unknown": 1})
         assert total == 1

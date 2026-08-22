@@ -17,6 +17,7 @@ from memory_core.tools.memory_hook_schema import (
 # Test 1: is_lossless({}, {}) -> (True, [])
 # ---------------------------------------------------------------------------
 
+
 class TestIsLosslessEmptyDicts:
     def test_empty_dicts_are_lossless(self) -> None:
         assert is_lossless({}, {}) == (True, [])
@@ -27,6 +28,7 @@ class TestIsLosslessEmptyDicts:
 # 新增字段不算丢
 # ---------------------------------------------------------------------------
 
+
 class TestIsLosslessNewKeysIgnored:
     def test_new_keys_in_output_not_loss(self) -> None:
         assert is_lossless({"a": 1}, {"a": 1, "b": 2}) == (True, [])
@@ -35,6 +37,7 @@ class TestIsLosslessNewKeysIgnored:
 # ---------------------------------------------------------------------------
 # Test 3: is_lossless({"a":1}, {}) -> (False, ["a"])
 # ---------------------------------------------------------------------------
+
 
 class TestIsLosslessDroppedKey:
     def test_dropped_top_level_key(self) -> None:
@@ -48,6 +51,7 @@ class TestIsLosslessDroppedKey:
 # 嵌套字典键缺失
 # ---------------------------------------------------------------------------
 
+
 class TestIsLosslessNestedDict:
     def test_nested_dict_missing_key(self) -> None:
         lossless, dropped = is_lossless({"a": {"b": 1}}, {"a": {}})
@@ -59,6 +63,7 @@ class TestIsLosslessNestedDict:
 # Test 5: expected_keys whitelist: is_lossless({"a":1}, {}, expected_keys={"a"}) -> (True, [])
 # ---------------------------------------------------------------------------
 
+
 class TestIsLosslessExpectedKeys:
     def test_expected_keys_whitelist(self) -> None:
         lossless, dropped = is_lossless({"a": 1}, {}, expected_keys={"a"})
@@ -69,6 +74,7 @@ class TestIsLosslessExpectedKeys:
 # ---------------------------------------------------------------------------
 # Test 6: Actual conversion + audit log interception via MEMORY_SCHEMA_AUDIT_LOG
 # ---------------------------------------------------------------------------
+
 
 class TestAuditLogWrittenOnDrop:
     def test_audit_log_file_written_when_conversion_drops_keys(

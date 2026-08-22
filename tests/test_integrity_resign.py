@@ -36,19 +36,26 @@ class TestResignCLI:
             root = self._make_project(td)
             # Missing --reason should fail (argparse raises SystemExit)
             with pytest.raises(SystemExit):
-                resign_main([
-                    "--project-root", str(root),
-                    "--force",
-                ])
+                resign_main(
+                    [
+                        "--project-root",
+                        str(root),
+                        "--force",
+                    ]
+                )
 
     def test_resign_requires_token_or_force(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._make_project(td)
             # Missing --token and --force should fail
-            exit_code = resign_main([
-                "--project-root", str(root),
-                "--reason", "test re-sign",
-            ])
+            exit_code = resign_main(
+                [
+                    "--project-root",
+                    str(root),
+                    "--reason",
+                    "test re-sign",
+                ]
+            )
             assert exit_code == 1
 
     def test_resign_with_force(self):
@@ -58,14 +65,19 @@ class TestResignCLI:
             # Set up key in env
             key_path = root / "memory" / "system" / "test.key"
             import os
+
             old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
             os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(key_path)
             try:
-                exit_code = resign_main([
-                    "--project-root", str(root),
-                    "--reason", "legitimate re-sign after approved change",
-                    "--force",
-                ])
+                exit_code = resign_main(
+                    [
+                        "--project-root",
+                        str(root),
+                        "--reason",
+                        "legitimate re-sign after approved change",
+                        "--force",
+                    ]
+                )
                 assert exit_code == 0
 
                 # Audit trail should exist
@@ -89,14 +101,20 @@ class TestResignCLI:
 
             key_path = root / "memory" / "system" / "test.key"
             import os
+
             old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
             os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(key_path)
             try:
-                exit_code = resign_main([
-                    "--project-root", str(root),
-                    "--reason", "approved re-sign",
-                    "--token", "APPROVED-TOKEN-123",
-                ])
+                exit_code = resign_main(
+                    [
+                        "--project-root",
+                        str(root),
+                        "--reason",
+                        "approved re-sign",
+                        "--token",
+                        "APPROVED-TOKEN-123",
+                    ]
+                )
                 assert exit_code == 0
 
                 audit_path = root / "memory" / "system" / "integrity-audit.jsonl"
@@ -117,15 +135,21 @@ class TestResignCLI:
 
             key_path = root / "memory" / "system" / "test.key"
             import os
+
             old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
             os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(key_path)
             try:
-                exit_code = resign_main([
-                    "--project-root", str(root),
-                    "--reason", "re-sign after fix",
-                    "--token", "FIX-123",
-                    "--strict",
-                ])
+                exit_code = resign_main(
+                    [
+                        "--project-root",
+                        str(root),
+                        "--reason",
+                        "re-sign after fix",
+                        "--token",
+                        "FIX-123",
+                        "--strict",
+                    ]
+                )
                 # Should still succeed (token provided)
                 assert exit_code == 0
 
@@ -144,15 +168,20 @@ class TestResignCLI:
 
             key_path = root / "memory" / "system" / "test.key"
             import os
+
             old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
             os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(key_path)
             try:
-                exit_code = resign_main([
-                    "--project-root", str(root),
-                    "--reason", "test dry-run",
-                    "--force",
-                    "--dry-run",
-                ])
+                exit_code = resign_main(
+                    [
+                        "--project-root",
+                        str(root),
+                        "--reason",
+                        "test dry-run",
+                        "--force",
+                        "--dry-run",
+                    ]
+                )
                 assert exit_code == 0
 
                 captured = capsys.readouterr()
@@ -168,11 +197,15 @@ class TestResignCLI:
                     os.environ.pop("MEMORY_INTEGRITY_KEY_PATH", None)
 
     def test_resign_refuses_nonexistent_root(self):
-        exit_code = resign_main([
-            "--project-root", "/nonexistent/path",
-            "--reason", "test",
-            "--force",
-        ])
+        exit_code = resign_main(
+            [
+                "--project-root",
+                "/nonexistent/path",
+                "--reason",
+                "test",
+                "--force",
+            ]
+        )
         assert exit_code == 1
 
     def test_resign_refuses_source_repo(self):
@@ -189,11 +222,15 @@ class TestResignCLI:
             (nested / "memory_hook_gateway.py").write_text("# marker\n")
             subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True, text=True)
 
-            exit_code = resign_main([
-                "--project-root", str(root),
-                "--reason", "should be refused",
-                "--force",
-            ])
+            exit_code = resign_main(
+                [
+                    "--project-root",
+                    str(root),
+                    "--reason",
+                    "should be refused",
+                    "--force",
+                ]
+            )
             assert exit_code == 1
 
     def test_resign_empty_reason_rejected(self):
@@ -202,11 +239,15 @@ class TestResignCLI:
             (root / "memory" / "system").mkdir(parents=True)
             (root / "memory" / "system" / "CANONICAL.md").write_text("# Canonical\n")
 
-            exit_code = resign_main([
-                "--project-root", str(root),
-                "--reason", "",
-                "--force",
-            ])
+            exit_code = resign_main(
+                [
+                    "--project-root",
+                    str(root),
+                    "--reason",
+                    "",
+                    "--force",
+                ]
+            )
             assert exit_code == 1
 
     def test_resign_no_key_fails(self):
@@ -218,14 +259,19 @@ class TestResignCLI:
             (memory_dir / "CANONICAL.md").write_text("# Canonical\n")
 
             import os
+
             old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
             os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(root / "memory" / "system" / "nonexistent.key")
             try:
-                exit_code = resign_main([
-                    "--project-root", str(root),
-                    "--reason", "no key test",
-                    "--force",
-                ])
+                exit_code = resign_main(
+                    [
+                        "--project-root",
+                        str(root),
+                        "--reason",
+                        "no key test",
+                        "--force",
+                    ]
+                )
                 assert exit_code == 1
             finally:
                 if old_env is not None:
@@ -240,14 +286,19 @@ class TestResignCLI:
 
             key_path = root / "memory" / "system" / "test.key"
             import os
+
             old_env = os.environ.get("MEMORY_INTEGRITY_KEY_PATH")
             os.environ["MEMORY_INTEGRITY_KEY_PATH"] = str(key_path)
             try:
-                resign_main([
-                    "--project-root", str(root),
-                    "--reason", "upgrade to v2",
-                    "--force",
-                ])
+                resign_main(
+                    [
+                        "--project-root",
+                        str(root),
+                        "--reason",
+                        "upgrade to v2",
+                        "--force",
+                    ]
+                )
 
                 manifest_path = root / "memory" / "system" / MANIFEST_FILENAME
                 manifest = json.loads(manifest_path.read_text())

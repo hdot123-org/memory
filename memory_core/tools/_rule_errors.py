@@ -8,7 +8,6 @@ Part of REF-001 strangler fig scaffold phase.
 """
 
 
-
 class MemoryCoreError(Exception):
     """Base class for all memory-core domain exceptions.
 

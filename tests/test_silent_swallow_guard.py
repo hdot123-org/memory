@@ -46,9 +46,7 @@ GUARDED_MODULES = [
 # ``except Exception:`` followed (after optional comment/whitespace lines) only
 # by a ``pass`` line, at any indentation depth. Blocks that log, bind the
 # exception, return, or continue do not match.
-_BARE_SWALLOW_RE = re.compile(
-    r"except Exception:\s*(?:#[^\n]*\n\s*)*pass\b"
-)
+_BARE_SWALLOW_RE = re.compile(r"except Exception:\s*(?:#[^\n]*\n\s*)*pass\b")
 
 
 @pytest.mark.parametrize(
