@@ -22,6 +22,8 @@ Factory Sessions API → 当前 Droid session
 
 n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，并附加 `X-CI-Token` 认证 header。
 
+> **pr_number=0 根因说明（2026-08-23 更正）**: 此前日志中出现的 `pr_number=0` 通知，根因是 ci.yml 中 `${{ github.event.pull_request.number || 0 }}` 表达式在 main 分支 push 事件时构造出 `pr_number=0`（push 事件无 pull_request 对象），**并非 n8n 传参问题**。修复方案：notify-ci-complete job 的 `if` 条件从 `always()` 改为 `always() && github.event_name == 'pull_request'`，从源头杜绝 main push 触发通知。
+
 ---
 
 ## 1. n8n Workflow JSON 模板
@@ -57,7 +59,7 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
           "parameters": [
             {
               "name": "X-CI-Token",
-              "value": "CIComplete2026"
+              "value": "<N8N_CI_TOKEN_SECRET_VALUE>"
             }
           ]
         },
@@ -160,7 +162,7 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
    - **Send Headers**: 开启
    - **Header Parameters**:
      - Name: `X-CI-Token`
-     - Value: `CIComplete2026`
+     - Value: 来自 GitHub repository secret `N8N_CI_TOKEN` 的实际值（配置见下方 Step 6）
    - **Send Body**: 开启
    - **Body Content Type**: `JSON`
    - **Specify Body**: 使用表达式，将 Webhook 节点的 body 字段映射过来:
@@ -174,7 +176,7 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
      }
      ```
 
-   **注意**: `X-CI-Token` 的值 `CIComplete2026` 必须与 Mac 上 `~/.factory/webhook/hooks.json` 中 `ci-complete` hook 的 `trigger-rule` 配置一致。
+   **注意**: `X-CI-Token` 的实际值来自 GitHub repository secret `N8N_CI_TOKEN`，必须与 Mac 上 `~/.factory/webhook/hooks.json` 中 `ci-complete` hook 的 `trigger-rule` 配置一致。
 
 3. 连接: Webhook 节点 → HTTP Request 节点
 
@@ -199,8 +201,12 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
 3. Name: `N8N_CI_WEBHOOK_URL`
 4. Value: n8n 的生产 webhook URL（即 `https://<n8n-host>/webhook/ci-complete-github`）
 5. 保存
+6. 再次点击 **New repository secret**
+7. Name: `N8N_CI_TOKEN`
+8. Value: X-CI-Token 的实际值（与 Mac 上 `~/.factory/webhook/hooks.json` 中 `ci-complete` hook 的 `trigger-rule` 配置一致）
+9. 保存
 
-ci.yml 的 notification step 已引用 `${{ secrets.N8N_CI_WEBHOOK_URL }}`，配置 secret 后即可自动工作。
+ci.yml 的 notify-ci-complete job 已引用这两个 secret，配置后即可自动工作。
 
 ---
 
@@ -284,7 +290,7 @@ curl -X POST "https://<n8n-host>/webhook-test/ci-complete-github" \
 |------|------|
 | GitHub Actions POST 到 n8n 返回 404 | 确认 workflow 已激活（Active 状态），URL 使用 `/webhook/` 而非 `/webhook-test/` |
 | n8n 转发到 Mac:5555 超时 | 确认 Mac 可达（ping/nc），5555 端口开放，adnanh/webhook 正在运行 |
-| Mac:5555 拒绝请求 | 检查 HTTP Request 节点的 `X-CI-Token` header 是否为 `CIComplete2026` |
+| Mac:5555 拒绝请求 | 检查 HTTP Request 节点的 `X-CI-Token` header 值是否与 `N8N_CI_TOKEN` secret 一致 |
 | GitHub Actions notification step 跳过 | 检查 `N8N_CI_WEBHOOK_URL` secret 是否已配置 |
 | 日志中出现 "Hook rules were not satisfied" | X-CI-Token 值不匹配或 header 未发送 |
 
@@ -296,6 +302,7 @@ curl -X POST "https://<n8n-host>/webhook-test/ci-complete-github" \
 |------|-----|------|
 | Mac webhook 端口 | `5555` | adnanh/webhook 启动配置 |
 | Mac webhook 路径 | `/hooks/ci-complete` | hooks.json 第 6 个 hook 的 id |
-| X-CI-Token | `CIComplete2026` | hooks.json ci-complete hook 的 trigger-rule |
-| GitHub Secret | `N8N_CI_WEBHOOK_URL` | ci.yml notification step 引用 |
-| Payload 字段 | `repo`, `pr_number`, `branch`, `sha`, `status` | ci.yml notification step 构造 |
+| X-CI-Token | 来自 `N8N_CI_TOKEN` secret | n8n HTTP Request 节点配置（实际值与 hooks.json trigger-rule 一致，非字面量 `CIComplete2026`） |
+| GitHub Secret (webhook) | `N8N_CI_WEBHOOK_URL` | ci.yml notify-ci-complete job 引用 |
+| GitHub Secret (token) | `N8N_CI_TOKEN` | ci.yml notify-ci-complete job 引用，作为 X-CI-Token header 值发送 |
+| Payload 字段 | `repo`, `pr_number`, `branch`, `sha`, `status` | ci.yml notify-ci-complete job 构造（仅 PR 事件触发，main push 不再发送） |
