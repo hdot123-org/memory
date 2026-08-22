@@ -8,20 +8,6 @@
 
 set -uo pipefail
 
-# === 参数 ===
-PR_NUMBER="${1:-}"
-BRANCH="${2:-}"
-SHA="${3:-}"
-STATUS="${4:-}"
-
-# === 配置 ===
-WEBHOOK_BASE="${WEBHOOK_BASE:-/Users/busiji/.factory/webhook}"
-LOG_DIR="${WEBHOOK_BASE}/logs"
-LOCK_DIR="${LOCK_DIR:-${WEBHOOK_BASE}/locks}"
-PENDING_CI_FILE="${LOCK_DIR}/pending-ci-${PR_NUMBER}.json"
-PYTHON_BIN="${PYTHON_BIN:-/opt/homebrew/bin/python3}"
-FLOCK_BIN="${FLOCK_BIN:-/opt/homebrew/bin/flock}"
-
 # === PostHog 事件上报 ===
 send_posthog_event() {
   # POSTHOG_DRY_RUN=1: print only, do not send (test isolation guard)
@@ -51,6 +37,27 @@ send_posthog_event() {
       }]
     }" || true
 }
+
+# === 参数 ===
+PR_NUMBER="${1:-}"
+BRANCH="${2:-}"
+SHA="${3:-}"
+STATUS="${4:-}"
+
+# PR_NUMBER 前置校验（必须在路径拼接前）
+if [[ ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Invalid PR_NUMBER='$PR_NUMBER' (must match ^[1-9][0-9]*$)"
+  send_posthog_event "ci_invalid_pr_number" "${PR_NUMBER:-empty}" "validation" "format_error"
+  exit 0
+fi
+
+# === 配置 ===
+WEBHOOK_BASE="${WEBHOOK_BASE:-/Users/busiji/.factory/webhook}"
+LOG_DIR="${WEBHOOK_BASE}/logs"
+LOCK_DIR="${LOCK_DIR:-${WEBHOOK_BASE}/locks}"
+PENDING_CI_FILE="${LOCK_DIR}/pending-ci-${PR_NUMBER}.json"
+PYTHON_BIN="${PYTHON_BIN:-/opt/homebrew/bin/python3}"
+FLOCK_BIN="${FLOCK_BIN:-/opt/homebrew/bin/flock}"
 
 # Cross-platform mtime (macOS stat -f %m / GNU stat -c %Y)
 # Conditional assignment avoids GNU stdout leak into $() capture
@@ -105,7 +112,7 @@ spawn_fallback() {
     echo "[ECHO_DROID] Would run: droid exec --auto high --tag '${TAG}' '${PROMPT}'" >> "$LOG_FILE"
     log "[ECHO_DROID] Fallback droid exec command printed (dry-run)"
   else
-    (cd "$repo_path" && with_timeout 3600 /Users/busiji/.local/bin/droid exec --auto high \
+    (cd "$repo_path" && with_timeout 3600 "${DROID_BIN:-$(command -v droid || echo /usr/local/bin/droid)}" exec --auto high \
         --tag "$TAG" "$PROMPT" >> "$LOG_FILE" 2>&1) || {
       log "WARN: Fallback droid exec exited with error"
       send_posthog_event "ci_fallback_failed" "$pr_num" "fallback_exec" "droid exec failed"
@@ -402,6 +409,21 @@ except Exception as e:
         }
         log "Created fallback lock: $FALLBACK_LOCK"
         FALLBACK_REPO="${PENDING_CWD:-$SCRIPT_CWD}"
+        # M1: 标记 pending 文件（不删除，保留审计轨迹）
+        if [ -f "$PENDING_CI_FILE" ]; then
+            $PYTHON_BIN -c "
+import json
+try:
+    with open('$PENDING_CI_FILE', 'r') as f:
+        data = json.load(f)
+    data['fallback_dispatched_at'] = '$(date -u +"%Y-%m-%dT%H:%M:%SZ")'
+    data['fallback_reason'] = 'probe_404'
+    with open('$PENDING_CI_FILE', 'w') as f:
+        json.dump(data, f)
+except Exception as e:
+    print(f'Failed to mark pending file: {e}')
+" 2>>"$LOG_FILE" || true
+        fi
         spawn_fallback "$PR_NUMBER" "${STATUS:-probe_failed}" "$FALLBACK_REPO"
         exit 0
     fi
@@ -456,7 +478,7 @@ while [ "$ATTEMPT" -lt "$MAX_RETRIES" ]; do
     log "HTTP Response Body: $HTTP_BODY"
 
     # 成功或 4xx 客户端错误，不需要重试
-    if [ "$HTTP_CODE" = "200" ] || [[ "$HTTP_CODE" =~ ^4 ]]; then
+    if [[ "$HTTP_CODE" =~ ^2 ]] || [[ "$HTTP_CODE" =~ ^4 ]]; then
         break
     fi
 
@@ -471,7 +493,7 @@ while [ "$ATTEMPT" -lt "$MAX_RETRIES" ]; do
 done
 
 # === 检查 API 响应 ===
-if [ "$HTTP_CODE" = "200" ]; then
+if [[ "$HTTP_CODE" =~ ^2 ]]; then
     # 验证响应包含 messageId
     MESSAGE_ID=$(echo "$HTTP_BODY" | $PYTHON_BIN -c "
 import json, sys
@@ -539,6 +561,21 @@ else
         log "Created fallback lock: $FALLBACK_LOCK"
         # Use cwd from pending-ci file if available, otherwise script CWD
         FALLBACK_REPO="${PENDING_CWD:-$SCRIPT_CWD}"
+        # M1: 标记 pending 文件（不删除，保留审计轨迹）
+        if [ -f "$PENDING_CI_FILE" ]; then
+            $PYTHON_BIN -c "
+import json
+try:
+    with open('$PENDING_CI_FILE', 'r') as f:
+        data = json.load(f)
+    data['fallback_dispatched_at'] = '$(date -u +"%Y-%m-%dT%H:%M:%SZ")'
+    data['fallback_reason'] = '4xx'
+    with open('$PENDING_CI_FILE', 'w') as f:
+        json.dump(data, f)
+except Exception as e:
+    print(f'Failed to mark pending file: {e}')
+" 2>>"$LOG_FILE" || true
+        fi
         spawn_fallback "$PR_NUMBER" "$STATUS" "$FALLBACK_REPO"
     else
         log "Server error (5xx), keeping lock for potential retry"
@@ -569,6 +606,21 @@ else
             }
             log "Created fallback lock: $FALLBACK_LOCK"
             FALLBACK_REPO="${PENDING_CWD:-$SCRIPT_CWD}"
+            # M1: 标记 pending 文件（不删除，保留审计轨迹）
+            if [ -f "$PENDING_CI_FILE" ]; then
+                $PYTHON_BIN -c "
+import json
+try:
+    with open('$PENDING_CI_FILE', 'r') as f:
+        data = json.load(f)
+    data['fallback_dispatched_at'] = '$(date -u +"%Y-%m-%dT%H:%M:%SZ")'
+    data['fallback_reason'] = '5xx_exhausted'
+    with open('$PENDING_CI_FILE', 'w') as f:
+        json.dump(data, f)
+except Exception as e:
+    print(f'Failed to mark pending file: {e}')
+" 2>>"$LOG_FILE" || true
+            fi
             spawn_fallback "$PR_NUMBER" "$STATUS" "$FALLBACK_REPO"
         fi
     fi

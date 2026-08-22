@@ -1080,7 +1080,7 @@ exit(0 if d.get('state')=='planning' and d.get('workingDirectory')==sys.argv[2] 
                 p_droid_output='{"type":"result","session_id":"'"${RESUME_SESSION_ID}"'","result":"dry-run ok (resume)"}'
             else
                 # C6: droid exec wrapped with 3600s timeout
-                p_droid_output=$(with_timeout 3600 /Users/busiji/.local/bin/droid exec \
+                p_droid_output=$(with_timeout 3600 "${DROID_BIN:-$(command -v droid || echo /usr/local/bin/droid)}" exec \
                     -s "$RESUME_SESSION_ID" \
                     --auto high \
                     --output-format json \
@@ -1094,7 +1094,7 @@ exit(0 if d.get('state')=='planning' and d.get('workingDirectory')==sys.argv[2] 
                 p_droid_output='{"type":"result","session_id":"dry-run-session","result":"dry-run ok (start)"}'
             else
                 # C6: droid exec wrapped with 3600s timeout
-                p_droid_output=$(with_timeout 3600 /Users/busiji/.local/bin/droid exec \
+                p_droid_output=$(with_timeout 3600 "${DROID_BIN:-$(command -v droid || echo /usr/local/bin/droid)}" exec \
                     --auto high \
                     --output-format json \
                     --tag "{\"name\":\"linear-gateway\",\"metadata\":{\"issueRef\":\"${p_ref}\",\"teamKey\":\"${p_team}\",\"triggerSource\":\"issue\",\"eventType\":\"Issue.${ACTION}\"}}" \
@@ -1132,7 +1132,7 @@ except: pass
                     --force >/dev/null 2>&1 || true
             fi
             p_droid_exit=0
-            p_droid_output=$(with_timeout 3600 /Users/busiji/.local/bin/droid exec \
+            p_droid_output=$(with_timeout 3600 "${DROID_BIN:-$(command -v droid || echo /usr/local/bin/droid)}" exec \
                 --auto high \
                 --output-format json \
                 --tag "{\"name\":\"linear-gateway\",\"metadata\":{\"issueRef\":\"${p_ref}\",\"teamKey\":\"${p_team}\",\"triggerSource\":\"issue\",\"eventType\":\"Issue.${ACTION}\"}}" \
