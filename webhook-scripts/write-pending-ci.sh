@@ -85,6 +85,17 @@ probe_session() {
   fi
 }
 
+# Cross-platform mtime (macOS stat -f %m / GNU stat -c %Y)
+# Conditional assignment avoids GNU stdout leak into $() capture
+# (GNU stat treats -f as --file-system, leaking fs-listing stdout)
+_portable_mtime() {
+  local _f="$1" _ts
+  if ! _ts=$(stat -f %m "$_f" 2>/dev/null); then
+    _ts=$(stat -c %Y "$_f" 2>/dev/null || echo 0)
+  fi
+  printf '%s' "$_ts"
+}
+
 # Get Factory token from 1Password MCP (reuses lib/op-mcp.sh pattern from trigger-ci-droid.sh)
 get_factory_token() {
   if [ -n "${FACTORY_TOKEN:-}" ]; then
@@ -249,7 +260,7 @@ for c in candidates:
     latest_time=0
     for f in "$SESSIONS_DIR"/*.jsonl; do
       [ -f "$f" ] || continue
-      t=$(stat -f '%m' "$f" 2>/dev/null || echo 0)
+      t=$(_portable_mtime "$f")
       if [ "$t" -gt "$latest_time" ]; then
         latest_time=$t
         LATEST_JSONL="$f"
