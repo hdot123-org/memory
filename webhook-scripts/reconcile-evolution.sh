@@ -510,6 +510,11 @@ except Exception:
 
         # Move to terminal state (reuse deadlock exit pattern)
         # Use "canceled" state since no actual work was done (GitHub mirror already closed)
+        # M3 (NB-1): DRY_RUN guard - only log, don't execute Linear changes
+        if [ "${DRY_RUN:-0}" = "1" ]; then
+            log "  ${LINEAR_REF}: [DRY_RUN] would execute terminal absorption (GitHub mirror closed, move to canceled)"
+            continue
+        fi
         ABSORB_RESULT=$(ISSUE_UUID="$ISSUE_UUID" \
             LINEAR_REF="$LINEAR_REF" \
             TEAM_ID="$TEAM_ID" \
@@ -724,6 +729,11 @@ except Exception:
 
                     # 执行死锁出口：推进 Linear 终态 + 三要素证据评论
                     # LINEAR_API_KEY 已在脚本顶部 export，子进程自动继承
+                    # M3 (NB-1): DRY_RUN guard - only log, don't execute Linear changes
+                    if [ "${DRY_RUN:-0}" = "1" ]; then
+                        log "  ${LINEAR_REF}: [DRY_RUN] would execute deadlock exit (push to completed, stale=${LINEAR_AGE_MIN}min)"
+                        continue
+                    fi
                     DEADLOCK_RESULT=$(ISSUE_UUID="$ISSUE_UUID" \
                         LINEAR_REF="$LINEAR_REF" STATUS_FILE="$STATUS_FILE" \
                         TEAM_ID="$TEAM_ID" \
