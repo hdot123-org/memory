@@ -388,7 +388,8 @@ pip install -e ".[dev]"          # 首次安装开发依赖
 ruff check .                     # Lint（含 C901 复杂度，max-complexity=15）
 ruff format --check .            # 格式检查（CI 硬门禁）
 python -m pytest tests/          # 测试 + 覆盖率（addopts 已含 --cov=memory_core --cov-fail-under=80）
-python -m mypy --strict scripts/ # 类型检查（CI 硬门禁；memory_core/ 为 advisory）
+python -m mypy --strict scripts/ # 类型检查（CI 硬门禁：scripts/ + memory_core/ 双域）
+python -m mypy --strict memory_core/  # 类型检查（CI 硬门禁；与 scripts/ 同等强制）
 deptry .                         # 依赖使用检查
 vulture memory_core/ --min-confidence 80  # 死代码检查
 python3 scripts/check_boundary.py
@@ -402,7 +403,7 @@ actionlint .github/workflows/*.yml
 |------|------|
 | 覆盖率 | `--cov-fail-under=80`（pytest addopts；当前分支基线约 84%） |
 | Lint | ruff（E,F,W,I,C901,UP,B,SIM,PTH），零 C901 豁免；ruff format --check |
-| 类型 | mypy `--strict` 于 `scripts/`（硬门禁）；`memory_core/` 逐步收紧（见 `docs/typing-tech-debt.md`） |
+| 类型 | mypy `--strict` 于 `scripts/` 与 `memory_core/`（双域硬门禁） |
 | 死代码 | vulture `--min-confidence 80` 于 `memory_core/`，零发现 |
 | 依赖 | deptry 零发现 |
 | 工具版本 | ruff 0.16.1 / mypy 2.3.0，本地 / pre-commit / CI 三方对齐 |
