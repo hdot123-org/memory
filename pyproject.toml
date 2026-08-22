@@ -293,7 +293,6 @@ DEP001 = [
     "tomllib",
     "evolution_adapters",
     "evolution_utils",
-    "evolution_scanner",
     "_init_autofill",
     "_init_config",
     "_init_finalize",
