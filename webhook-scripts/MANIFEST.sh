@@ -16,6 +16,9 @@ MANAGED_FILES=(
     "trigger-ci-droid.sh"
     "reconcile-evolution.sh"
     "ci-timeout-watchdog.sh"
+    "trigger-error-droid.sh"
+    "wiki-refresh.sh"
+    "write-pending-ci.sh"
 )
 
 # ============================================================================
@@ -52,7 +55,6 @@ ENV_DIFF_LINES=(
     "trigger-droid.sh:硬编码路径:/Users/busiji/.factory/webhook - 生产环境基础路径"
     "trigger-droid.sh:硬编码路径:/opt/homebrew/bin/python3 - macOS Python 路径"
     "trigger-droid.sh:硬编码路径:/opt/homebrew/bin/flock - macOS flock 路径"
-    "trigger-droid.sh:硬编码路径:/Users/busiji/.local/bin/droid - droid 二进制路径"
     "trigger-droid.sh:硬编码路径:/Users/busiji/.factory/config/repositories.yml - 仓库配置路径"
 
     # reconcile-evolution.sh 中的硬编码路径

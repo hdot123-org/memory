@@ -82,21 +82,36 @@ spawn_fallback() {
 
   # Determine if we need to spawn a droid session for branch cleanup
   # This is triggered when the main CI injection was lost
-  local spawn_cmd="$HOME/.local/bin/droid --new-session --tag ci-fallback-$pr_num --command 'CI webhook injection lost for PR #$pr_num (status: $ci_status). Repository: $repo_path. Please verify PR merge status and perform branch cleanup if needed: check if PR #$pr_num is merged, if so delete the remote branch and update local main branch. If not merged, investigate why.'"
+  local droid_bin="${DROID_BIN:-$(command -v droid || echo /usr/local/bin/droid)}"
+  local prompt="CI webhook injection lost for PR #$pr_num (status: $ci_status). Repository: $repo_path. Please verify PR merge status and perform branch cleanup if needed: check if PR #$pr_num is merged, if so delete the remote branch and update local main branch. If not merged, investigate why."
+  local tag="ci-fallback-$pr_num"
 
   # Dry-run guard: prevent real droid sessions during testing
   if [ "${ECHO_DROID:-0}" = "1" ]; then
-    echo "[ECHO_DROID] Would spawn: $spawn_cmd"
+    echo "[ECHO_DROID] Would run: $droid_bin exec --auto high --tag '$tag' '$prompt'"
     echo "Fallback session dry-run complete (ECHO_DROID=1)"
     return 0
   fi
 
-  echo "Executing: $spawn_cmd"
+  echo "Executing: $droid_bin exec --auto high --tag '$tag' '$prompt'"
 
-  # Spawn new session in background
-  nohup bash -c "$spawn_cmd" > /dev/null 2>&1 &
+  # Spawn new session in background (nohup preserves execution after webhook returns)
+  nohup "$droid_bin" exec --auto high --tag "$tag" "$prompt" > /dev/null 2>&1 &
+  local spawn_pid=$!
 
-  echo "Fallback session spawned successfully"
+  # Brief delay + kill -0 probe to detect immediate spawn failure
+  # (nohup ... & returns 0 immediately; $? is always 0 — previous dead code)
+  sleep 2
+  if ! kill -0 "$spawn_pid" 2>/dev/null; then
+    # Process already exited — collect exit status if available
+    wait "$spawn_pid" 2>/dev/null
+    local spawn_exit=$?
+    echo "ERROR: Failed to spawn fallback session (PID=$spawn_pid, exit=$spawn_exit)"
+    send_posthog_event "ci_fallback_spawn_failed" "$pr_num" "fallback_spawn" "exit=$spawn_exit,pid=$spawn_pid"
+    return 1
+  fi
+
+  echo "Fallback session spawned successfully (PID=$spawn_pid)"
 }
 
 # === Create locks directory if missing ===

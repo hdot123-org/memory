@@ -32,12 +32,17 @@ DEADLOCK_EXIT_SENTINEL_PREFIX="<!-- deadlock-exit "
 # N=5 对应 ~2.5h（30min/tick × 5）
 STALE_ORPHAN_FALLBACK_TICKS=5
 
+# DRY_RUN=1 guard (M1 hemostasis, VAL-M1-001):
+# When set, both cancel paths (failed-session + stale-orphan) only log intent
+# and skip all GraphQL issueUpdate(cancel) calls.
+DRY_RUN="${DRY_RUN:-0}"
+
 mkdir -p "$LOG_DIR" 2>/dev/null
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 LOG_FILE="${LOG_DIR}/reconcile-${TIMESTAMP}.log"
 
-log() { echo "[$(date '+%Y-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
 # 锚点提取失败留痕（INFRA-357）：stderr 带时间戳写入 anchor-extract.log，
 # 供事后 grep 退化痕迹；不影响调用方的 fail-closed 语义（空锚点照常 skip/block）
@@ -227,11 +232,11 @@ if [ "$TERMINAL_COUNT" -gt 0 ]; then
             elif [ -z "$ANCHOR" ]; then
                 log "  ${T_REF}: WARNING no anchor in GitHub Issue #${GH_NUMBER} — skip close (fail-closed, drift record)"
                 # 漂移守望记录（issue-flow.md §9.4）
-                echo "[$(date '+%Y-%d %H:%M:%S')] DRIFT: ${T_REF} GitHub Issue #${GH_NUMBER} missing anchor" >> "${LOG_DIR}/anchor-drift.log"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] DRIFT: ${T_REF} GitHub Issue #${GH_NUMBER} missing anchor" >> "${LOG_DIR}/anchor-drift.log"
             else
                 log "  ${T_REF}: WARNING anchor mismatch (expected ${T_REF}, got ${ANCHOR}) in GitHub Issue #${GH_NUMBER} — skip close (fail-closed)"
                 # 漂移守望记录
-                echo "[$(date '+%Y-%d %H:%M:%S')] DRIFT: ${T_REF} GitHub Issue #${GH_NUMBER} anchor mismatch (got ${ANCHOR})" >> "${LOG_DIR}/anchor-drift.log"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] DRIFT: ${T_REF} GitHub Issue #${GH_NUMBER} anchor mismatch (got ${ANCHOR})" >> "${LOG_DIR}/anchor-drift.log"
             fi
         else
             log "  ${T_REF}: no open GitHub Issue found, skip"
@@ -830,7 +835,7 @@ print('OK')
                     if [ "$DEADLOCK_RESULT" = "OK" ]; then
                         log "  ${LINEAR_REF}: DEADLOCK EXIT executed — Linear pushed to completed (session=${SESSION_ID_FOR_LOG:-unknown}, exitCode=0, stale=${LINEAR_AGE_MIN}min)"
                         # 记录到 drift log 供取证
-                        echo "[$(date '+%Y-%d %H:%M:%S')] DEADLOCK_EXIT: ${LINEAR_REF} uuid=${ISSUE_UUID} stale=${LINEAR_AGE_MIN}min" >> "${LOG_DIR}/anchor-drift.log"
+                        echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEADLOCK_EXIT: ${LINEAR_REF} uuid=${ISSUE_UUID} stale=${LINEAR_AGE_MIN}min" >> "${LOG_DIR}/anchor-drift.log"
                     else
                         log "  ${LINEAR_REF}: WARNING deadlock exit failed (${DEADLOCK_RESULT}), will retry next tick"
                     fi
@@ -853,6 +858,52 @@ print('OK')
             log "  ${LINEAR_REF}: status=failed (session failed, exitCode!=0), blocking retrigger (E4 fix)"
             RETRIGGER_OK=0
 
+            # === 基础设施故障分流 (VAL-M1-002) ===
+            # exitCode=127/126 → 不取消、标记 infra_failed、计数冻结
+            # 插入点：log blocking 之后、STALE_ORPHAN_COUNT 递增之前
+            STATUS_EXIT_CODE=$(/opt/homebrew/bin/python3 -c "
+import json
+try:
+    d = json.load(open('$STATUS_FILE'))
+    print(d.get('exitCode', ''))
+except:
+    print('')
+" 2>/dev/null || echo "")
+
+            if [ "$STATUS_EXIT_CODE" = "127" ] || [ "$STATUS_EXIT_CODE" = "126" ]; then
+                log "  ${LINEAR_REF}: INFRA FAILURE DETECTED (exitCode=${STATUS_EXIT_CODE}) — freezing counter, marking infra_failed"
+                
+                # 写 infra_failed 标记（不递增计数）
+                INFRA_FAILED_MARKER="${LOCK_DIR}/infra-failed-${LINEAR_REF}.marker"
+                echo "exitCode=${STATUS_EXIT_CODE}" > "$INFRA_FAILED_MARKER"
+                
+                # PostHog 事件（DRY_RUN 模式下只打日志）
+                if [ "$DRY_RUN" = "1" ]; then
+                    log "  ${LINEAR_REF}: [DRY_RUN] would send PostHog event ci_infra_failure_blocked_cancel (exitCode=${STATUS_EXIT_CODE})"
+                else
+                    # 实际发 PostHog 事件（复用既有上报机制，M5 会收敛到 lib/posthog.sh）
+                    if [ -n "${POSTHOG_API_KEY:-}" ]; then
+                        curl -s -X POST https://us.posthog.com/capture/ \
+                            -H "Content-Type: application/json" \
+                            -d "{
+                                \"api_key\": \"${POSTHOG_API_KEY}\",
+                                \"event\": \"ci_infra_failure_blocked_cancel\",
+                                \"properties\": {
+                                    \"distinct_id\": \"reconcile-evolution\",
+                                    \"linear_ref\": \"${LINEAR_REF}\",
+                                    \"exit_code\": ${STATUS_EXIT_CODE},
+                                    \"status_file\": \"${STATUS_FILE}\"
+                                }
+                            }" >/dev/null 2>&1 || true
+                    else
+                        log "  ${LINEAR_REF}: WARNING POSTHOG_API_KEY not set, skipping ci_infra_failure_blocked_cancel event"
+                    fi
+                fi
+                
+                # 跳过计数器递增，直接 continue
+                continue
+            fi
+
             # 复用 stale-orphan counter 机制（与 status 文件缺失路径同构）
             STALE_ORPHAN_COUNT_FILE="${LOCK_DIR}/stale-orphan-${LINEAR_REF}.count"
             if [ -f "$STALE_ORPHAN_COUNT_FILE" ]; then
@@ -871,6 +922,12 @@ print('OK')
                 STALE_ORPHAN_SENTINEL_FILE="${LOCK_DIR}/stale-orphan-${LINEAR_REF}.canceled"
                 if [ -f "$STALE_ORPHAN_SENTINEL_FILE" ]; then
                     log "  ${LINEAR_REF}: failed session fallback already executed (sentinel found), skip (idempotent)"
+                    continue
+                fi
+
+                # DRY_RUN guard (VAL-M1-001): skip actual GraphQL call
+                if [ "$DRY_RUN" = "1" ]; then
+                    log "  ${LINEAR_REF}: [DRY_RUN] would execute Linear canceled (failed-session, count=${STALE_ORPHAN_COUNT})"
                     continue
                 fi
 
@@ -976,7 +1033,7 @@ print('OK')
                     # 写幂等 sentinel
                     touch "$STALE_ORPHAN_SENTINEL_FILE"
                     # 记录到 drift log
-                    echo "[$(date '+%Y-%d %H:%M:%S')] FAILED_SESSION_CANCELED: ${LINEAR_REF} uuid=${ISSUE_UUID} count=${STALE_ORPHAN_COUNT}" >> "${LOG_DIR}/anchor-drift.log"
+                    echo "[$(date '+%Y-%m-%d %H:%M:%S')] FAILED_SESSION_CANCELED: ${LINEAR_REF} uuid=${ISSUE_UUID} count=${STALE_ORPHAN_COUNT}" >> "${LOG_DIR}/anchor-drift.log"
                     # 清理计数器
                     rm -f "$STALE_ORPHAN_COUNT_FILE"
                 else
@@ -1007,8 +1064,24 @@ print('OK')
     if [ "$RETRIGGER_OK" -eq 1 ] && [ ! -f "${STATUS_DIR}/${LINEAR_REF}.json" ]; then
         log "  ${LINEAR_REF}: retrigger BLOCKED — no status file (E4 形态，VAL-DRF-005)"
         # 转关闭评估：issue open + finding 消失（无 status 文件）→ 记录漂移
-        echo "[$(date '+%Y-%d %H:%M:%S')] DRIFT: ${LINEAR_REF} retrigger blocked — status file missing (E4)" >> "${LOG_DIR}/anchor-drift.log"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] DRIFT: ${LINEAR_REF} retrigger blocked — status file missing (E4)" >> "${LOG_DIR}/anchor-drift.log"
         RETRIGGER_OK=0
+        
+        # === 基础设施故障豁免 (m1-urgent-stale-orphan-guard) ===
+        # 若 infra-failed marker 存在，说明此 issue 是基础设施故障（exitCode=127/126）
+        # 归档后路由进 E4 的。此时必须跳过计数器递增，防止误取消。
+        # 与 status=failed 分支的 infra-failed 守卫（:877-:906）同语义。
+        INFRA_FAILED_MARKER="${LOCK_DIR}/infra-failed-${LINEAR_REF}.marker"
+        if [ -f "$INFRA_FAILED_MARKER" ]; then
+            log "  ${LINEAR_REF}: INFRA-FAILED MARKER FOUND — skipping stale-orphan counter (frozen, will not cancel)"
+            # 清零残留计数器（marker 存在后计数器失效，删除防继续误判）
+            STALE_ORPHAN_COUNT_FILE="${LOCK_DIR}/stale-orphan-${LINEAR_REF}.count"
+            if [ -f "$STALE_ORPHAN_COUNT_FILE" ]; then
+                rm -f "$STALE_ORPHAN_COUNT_FILE"
+                log "  ${LINEAR_REF}: removed stale count file (marker guard active)"
+            fi
+            continue
+        fi
         
         # Stale orphan fallback (INFRA-310 / #676):
         # 连续 N tick 被 E4 阻挡且无 status 文件 → 判定为 pre-status-mechanism 孤儿
@@ -1032,7 +1105,13 @@ print('OK')
                 log "  ${LINEAR_REF}: stale orphan fallback already executed (sentinel found), skip (idempotent)"
                 continue
             fi
-            
+
+            # DRY_RUN guard (VAL-M1-001): skip actual GraphQL call
+            if [ "$DRY_RUN" = "1" ]; then
+                log "  ${LINEAR_REF}: [DRY_RUN] would execute Linear canceled (stale-orphan, count=${STALE_ORPHAN_COUNT})"
+                continue
+            fi
+
             # 执行 Linear canceled + 证据评论
             STALE_ORPHAN_RESULT=$(ISSUE_UUID="$ISSUE_UUID" \
                 LINEAR_REF="$LINEAR_REF" \
@@ -1135,7 +1214,7 @@ print('OK')
                 # 写幂等 sentinel
                 touch "$STALE_ORPHAN_SENTINEL_FILE"
                 # 记录到 drift log
-                echo "[$(date '+%Y-%d %H:%M:%S')] STALE_ORPHAN_CANCELED: ${LINEAR_REF} uuid=${ISSUE_UUID} count=${STALE_ORPHAN_COUNT}" >> "${LOG_DIR}/anchor-drift.log"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] STALE_ORPHAN_CANCELED: ${LINEAR_REF} uuid=${ISSUE_UUID} count=${STALE_ORPHAN_COUNT}" >> "${LOG_DIR}/anchor-drift.log"
                 # 清理计数器
                 rm -f "$STALE_ORPHAN_COUNT_FILE"
             else
