@@ -289,9 +289,7 @@ class TestFullRegressionPipAudit:
     def test_full_regression_installs_pip_audit(self, qa_data_default):
         """full-regression 安装步骤必须显式安装 pip-audit。"""
         job = qa_data_default["jobs"]["full-regression"]
-        install_steps = [
-            s for s in job["steps"] if "pip install" in s.get("run", "")
-        ]
+        install_steps = [s for s in job["steps"] if "pip install" in s.get("run", "")]
         assert install_steps, "full-regression must have a pip install step"
         all_install_runs = "\n".join(s.get("run", "") for s in install_steps)
         assert "pip-audit" in all_install_runs, (
@@ -308,9 +306,7 @@ class TestFullRegressionPipAudit:
             None,
         )
         assert scan_step is not None, "full-regression must have a Dependency security scan step running pip-audit"
-        assert scan_step.get("continue-on-error") is not True, (
-            "Dependency security scan must not be continue-on-error"
-        )
+        assert scan_step.get("continue-on-error") is not True, "Dependency security scan must not be continue-on-error"
 
     @pytest.fixture
     def qa_data_default(self):
