@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.39.2](https://github.com/hdot123-org/memory/compare/v0.39.1...v0.39.2) (2026-08-22)
+
+
+### Bug Fixes
+
+* 为 memory-evolution-audit 添加 argparse 支持 --help 契约 ([#941](https://github.com/hdot123-org/memory/issues/941)) ([dd9d86c](https://github.com/hdot123-org/memory/commit/dd9d86c8c34e0764b09b30b36211c9e92d8b9b41))
+* 恢复 _write_handler 信号参数下划线前缀修复 vulture 发现 ([#940](https://github.com/hdot123-org/memory/issues/940)) ([4701b70](https://github.com/hdot123-org/memory/commit/4701b70d662fdad5860dfa75be37f615128bd5cf))
+* 移除 _init_pipeline.py 重复定义修复 mypy no-redef ([#938](https://github.com/hdot123-org/memory/issues/938)) ([f3eaf9f](https://github.com/hdot123-org/memory/commit/f3eaf9f2a3ce9bbc3809fbc0331301bd84c68b73))
+
 ## [0.39.1](https://github.com/hdot123-org/memory/compare/v0.39.0...v0.39.1) (2026-08-21)
 
 
