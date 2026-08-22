@@ -221,11 +221,20 @@ except Exception as e:
       
       echo "Phase B: PR #$PR_NUMBER injected $INJECTED_AGE_MINUTES minutes ago but not consumed"
       
-      # Check if PR is already merged
-      PR_MERGED=$($PYTHON_BIN -c "
+      # M3 (VAL-M3-001): Derive owner/repo from pending file's cwd for gh pr view -R
+      # Without -R, gh pr view fails in non-git directories (e.g., plist WorkingDirectory)
+      PR_REPO=""
+      if [ -n "$CWD" ] && [ -d "$CWD" ]; then
+        PR_REPO=$(git -C "$CWD" remote get-url origin 2>/dev/null \
+          | /usr/bin/sed -E 's#^https?://[^/]+/##;s#^git@[^:]+:##;s#\.git$##' || true)
+      fi
+
+      # Check if PR is already merged (with -R when repo is derivable)
+      if [ -n "$PR_REPO" ]; then
+        PR_MERGED=$($PYTHON_BIN -c "
 import subprocess, sys
 try:
-    result = subprocess.run(['gh', 'pr', 'view', '$PR_NUMBER', '--json', 'state'], 
+    result = subprocess.run(['gh', 'pr', 'view', '$PR_NUMBER', '-R', '$PR_REPO', '--json', 'state'],
                           capture_output=True, text=True, timeout=10)
     if result.returncode == 0:
         import json
@@ -237,13 +246,22 @@ except Exception as e:
     print(f'Error checking PR: {e}', file=sys.stderr)
     print('UNKNOWN')
 " 2>/dev/null)
-      
+      else
+        echo "Phase B: WARNING cannot derive owner/repo from cwd='$CWD', marking UNKNOWN"
+        PR_MERGED="UNKNOWN"
+      fi
+
       if [ "$PR_MERGED" = "MERGED" ]; then
         # PR is merged, message was consumed or branch cleanup will handle it
         echo "PR #$PR_NUMBER is already merged, cleaning up pending-ci file"
         rm -f "$pending_file"
+      elif [ "$PR_MERGED" = "UNKNOWN" ]; then
+        # M3 (VAL-M3-001): UNKNOWN = query failed — alert only, do NOT spawn
+        # Spawning on UNKNOWN caused false fallback sessions when gh couldn't query
+        echo "Phase B: PR #$PR_NUMBER query returned UNKNOWN (gh pr view failed), alerting only — no spawn"
+        send_posthog_event "ci_pr_status_unknown" "$PR_NUMBER" "watchdog_phase_b" "gh_pr_view_failed,repo=${PR_REPO:-none}"
       else
-        # PR not merged, injection was lost, spawn fallback
+        # OPEN or other non-merged state — injection was lost, spawn fallback
         echo "PR #$PR_NUMBER not merged (state: $PR_MERGED), spawning fallback"
         send_posthog_event "ci_injection_lost" "$PR_NUMBER" "watchdog_phase_b" "injected=${INJECTED_AGE_MINUTES}min, not consumed"
         spawn_fallback "$PR_NUMBER" "injection_lost" "$CWD"
