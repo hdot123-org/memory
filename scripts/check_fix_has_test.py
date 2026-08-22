@@ -12,6 +12,8 @@ Usage:
 
 Exit codes:
     0 - clean (no fix commit, or fix includes tests, or exempted)
+         Exemptions: docs-only, non-code-only (shell/workflow/docs),
+         dependabot, release-please
     1 - violation (fix commit without test files)
     2 - script error (gh/git unavailable, API failure)
 """
@@ -132,6 +134,25 @@ def is_docs_only(files: list[str]) -> bool:
     return all(f.endswith(".md") for f in non_empty)
 
 
+# 守卫保护的是 Python 行为回归需要回归测试；shell 镜像/workflow/文档不属于该体系，
+# 由 bash -n/shellcheck/mission 验证覆盖
+_CODE_DIRS = ("memory_core/", "scripts/", "tests/")
+
+
+def is_non_code_only(files: list[str]) -> bool:
+    """Check if all changed files are outside the code directories.
+
+    Returns True when NONE of the changed files are under memory_core/,
+    scripts/, or tests/. These are infrastructure/shell/workflow/docs changes
+    that don't affect Python behavioral correctness — covered by bash -n,
+    shellcheck, and mission-level validation instead.
+    """
+    non_empty = [f for f in files if f]
+    if not non_empty:
+        return False
+    return not any(f.startswith(_CODE_DIRS) for f in non_empty)
+
+
 def has_fix_commit(commits: list[str]) -> str | None:
     """Return the first fix commit message, or None."""
     for c in commits:
@@ -216,6 +237,11 @@ def main() -> int:
         return 0
 
     if is_docs_only(files):
+        _output_clean(args.json)
+        return 0
+
+    # Non-code-only exemption: shell/workflow/docs changes (no Python code)
+    if is_non_code_only(files):
         _output_clean(args.json)
         return 0
 
