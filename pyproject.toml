@@ -153,6 +153,31 @@ module = "memory_core.tools.memory_hook_adapters.default_runtime_profile"
 strict = true
 
 [[tool.mypy.overrides]]
+module = [
+    "memory_core.tools._audit_project",
+    "memory_core.tools._audit_checks",
+    "memory_core.tools._audit_infra",
+    "memory_core.tools._audit_server",
+    "memory_core.tools._audit_report",
+    "memory_core.tools._audit_cli",
+    "memory_core.tools._audit_patch_redirect",
+]
+strict = true
+
+[[tool.mypy.overrides]]
+module = [
+    "memory_core.tools._migrate_constants",
+    "memory_core.tools._migrate_hooks",
+    "memory_core.tools._migrate_v05",
+    "memory_core.tools._migrate_registry",
+    "memory_core.tools._migrate_rollback",
+    "memory_core.tools._migrate_orchestration",
+    "memory_core.tools._migrate_cli",
+    "memory_core.tools._migrate_patch_redirect",
+]
+strict = true
+
+[[tool.mypy.overrides]]
 module = "memory_core.tools.business_policy_checks"
 strict = true
 
@@ -246,6 +271,21 @@ DEP001 = [
     "_gateway_policy",
     "_gateway_dispatch",
     "_gateway_handlers",
+    "_audit_project",
+    "_audit_checks",
+    "_audit_infra",
+    "_audit_server",
+    "_audit_report",
+    "_audit_cli",
+    "_audit_patch_redirect",
+    "_migrate_constants",
+    "_migrate_hooks",
+    "_migrate_v05",
+    "_migrate_registry",
+    "_migrate_rollback",
+    "_migrate_orchestration",
+    "_migrate_cli",
+    "_migrate_patch_redirect",
     "business_policy_checks",
     "error_logger",
     "yaml",
