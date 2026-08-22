@@ -213,6 +213,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
+          # pip-audit 不在 dev extras 中，需单独安装（对齐 ci.yml advisory-security 先例）；
+          # 缺失时下方 Dependency security scan 步骤 exit 127（2026-08-22 夜间连续 5 晚复现）
+          python -m pip install pip-audit
       - name: Full test suite with coverage
         # 加 xml 报告：供下方 gap 分析复用（--reuse-xml），避免内部再串行重跑全量
         env:

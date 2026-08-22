@@ -276,3 +276,79 @@ class TestQaWorkflowActionlint:
         assert "jobs" in data
         assert "coverage-audit" in data["jobs"]
         assert "qa-ok" in data["jobs"]
+
+
+class TestFullRegressionPipAudit:
+    """full-regression job 的 pip-audit 安装守护（PR #960 回归）。
+
+    根因：full-regression 只安装 .[dev] extras，而 dev extras 不含 pip-audit，
+    Dependency security scan 步骤连续 5 晚 exit 127（command not found）。
+    修复：安装步骤单独 pip install pip-audit（对齐 ci.yml advisory-security 先例）。
+    """
+
+    def test_full_regression_installs_pip_audit(self, qa_data_default):
+        """full-regression 安装步骤必须显式安装 pip-audit。"""
+        job = qa_data_default["jobs"]["full-regression"]
+        install_steps = [s for s in job["steps"] if "pip install" in s.get("run", "")]
+        assert install_steps, "full-regression must have a pip install step"
+        all_install_runs = "\n".join(s.get("run", "") for s in install_steps)
+        assert "pip-audit" in all_install_runs, (
+            "full-regression install step must include 'pip install pip-audit' "
+            "(dev extras do not contain pip-audit; without it the Dependency "
+            "security scan step exits 127)"
+        )
+
+    def test_full_regression_dependency_scan_runs_pip_audit(self, qa_data_default):
+        """Dependency security scan 步骤必须执行 pip-audit 且不可吞错。"""
+        job = qa_data_default["jobs"]["full-regression"]
+        scan_step = next(
+            (s for s in job["steps"] if "pip-audit" in s.get("run", "") and "pip install" not in s.get("run", "")),
+            None,
+        )
+        assert scan_step is not None, "full-regression must have a Dependency security scan step running pip-audit"
+        assert scan_step.get("continue-on-error") is not True, "Dependency security scan must not be continue-on-error"
+
+    @pytest.fixture
+    def qa_data_default(self):
+        """Load qa.yml workflow (shared loader for this test class)."""
+        workflow_path = REPO_ROOT / ".github/workflows/qa.yml"
+        data = yaml.safe_load(workflow_path.read_text())
+        assert data is not None and "jobs" in data
+        return data
+
+
+class TestMypyOverridesRetired:
+    """pyproject mypy strict overrides 移除守护（PR #960 回归）。
+
+    根因：PR #950/#952 后双域 CI 已全局 --strict 硬门禁，逐模块
+    [[tool.mypy.overrides]]（strict = true）不再承担门禁职责，且在
+    scripts/ 域触发 "unused section(s)" note（35 模块）。2026-08-22 移除。
+    """
+
+    def test_no_strict_module_overrides_remain(self):
+        """pyproject.toml 不得再包含 strict = true 的逐模块 overrides。"""
+        import tomllib
+
+        pyproject = REPO_ROOT / "pyproject.toml"
+        config = tomllib.loads(pyproject.read_text())
+        overrides = config.get("tool", {}).get("mypy", {}).get("overrides", [])
+        strict_overrides = [o for o in overrides if o.get("strict") is True]
+        assert not strict_overrides, (
+            "Per-module mypy strict overrides were removed 2026-08-22: "
+            "dual-domain CI enforces global --strict (PR #950/#952). "
+            f"Found {len(strict_overrides)} strict override(s): "
+            f"{[o.get('module') for o in strict_overrides]}"
+        )
+
+    def test_typing_tech_debt_doc_marks_historical_baseline(self):
+        """typing-tech-debt.md Phase 2/3 必须标注为历史基线（当前 0 errors）。"""
+        doc = REPO_ROOT / "docs" / "typing-tech-debt.md"
+        content = doc.read_text()
+        assert "已全部修复 — 历史基线存档" in content, (
+            "Phase 2/3 sections must be marked as historical baseline "
+            "(mypy --strict memory_core/ is 0 errors as of 2026-08-22)"
+        )
+        # Baseline Status 不得再声称存在 strict overrides 配置
+        assert "18 modules configured" not in content, (
+            "Baseline Status must not claim active strict overrides (removed 2026-08-22)"
+        )
