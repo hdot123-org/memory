@@ -61,7 +61,7 @@ def test_fix_with_tests_passes(tmp_path):
         repo,
         "fix: correct null pointer dereference",
         {
-            "src/foo.py": "def foo(): pass",
+            "memory_core/tools/foo.py": "def foo(): pass",
             "tests/test_foo.py": "def test_foo(): pass",
         },
     )
@@ -153,7 +153,7 @@ def test_fix_without_tests_fails(tmp_path):
         repo,
         "fix: correct null pointer dereference",
         {
-            "src/foo.py": "def foo(): pass",
+            "memory_core/tools/foo.py": "def foo(): pass",
         },
     )
     result = _run_script(["--base", "base"], cwd=repo)
@@ -175,7 +175,7 @@ def test_hotfix_prefix_detected(tmp_path):
         repo,
         "hotfix: patch security hole",
         {
-            "src/security.py": "def secure(): pass",
+            "memory_core/tools/security.py": "def secure(): pass",
         },
     )
     result = _run_script(["--base", "base"], cwd=repo)
@@ -194,7 +194,7 @@ def test_bugfix_prefix_detected(tmp_path):
         repo,
         "bugfix: resolve race condition",
         {
-            "src/concurrent.py": "def sync(): pass",
+            "memory_core/tools/concurrent.py": "def sync(): pass",
         },
     )
     result = _run_script(["--base", "base"], cwd=repo)
@@ -213,7 +213,7 @@ def test_fix_with_scope_detected(tmp_path):
         repo,
         "fix(api): handle empty response",
         {
-            "src/api.py": "def api(): pass",
+            "memory_core/tools/api.py": "def api(): pass",
         },
     )
     result = _run_script(["--base", "base"], cwd=repo)
@@ -232,7 +232,7 @@ def test_feat_commit_passes(tmp_path):
         repo,
         "feat: add new endpoint",
         {
-            "src/endpoint.py": "def endpoint(): pass",
+            "memory_core/tools/endpoint.py": "def endpoint(): pass",
         },
     )
     result = _run_script(["--base", "base"], cwd=repo)
@@ -294,7 +294,7 @@ def test_fix_breaking_change_detected(tmp_path):
         repo,
         "fix!: redesign error handling",
         {
-            "src/errors.py": "def error(): pass",
+            "memory_core/tools/errors.py": "def error(): pass",
         },
     )
     result = _run_script(["--base", "base"], cwd=repo)
@@ -354,7 +354,7 @@ def test_mixed_doc_code_not_exempted(tmp_path):
         "fix: correct bug",
         {
             "docs/guide.md": "Updated guide",
-            "src/foo.py": "def foo(): pass",
+            "memory_core/tools/foo.py": "def foo(): pass",
         },
     )
     result = _run_script(["--base", "base"], cwd=repo)
@@ -369,7 +369,7 @@ def test_json_output_violation(tmp_path):
     repo = _create_fixture_repo(tmp_path)
     _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
     subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
-    _add_commit(repo, "fix: something broken", {"src/foo.py": "code"})
+    _add_commit(repo, "fix: something broken", {"memory_core/tools/foo.py": "code"})
     result = _run_script(["--base", "base", "--json"], cwd=repo)
     assert result.returncode == 1
     data = json.loads(result.stdout)
@@ -388,7 +388,7 @@ def test_json_output_clean(tmp_path):
     repo = _create_fixture_repo(tmp_path)
     _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
     subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
-    _add_commit(repo, "feat: add feature", {"src/foo.py": "code"})
+    _add_commit(repo, "feat: add feature", {"memory_core/tools/foo.py": "code"})
     result = _run_script(["--base", "base", "--json"], cwd=repo)
     assert result.returncode == 0
     data = json.loads(result.stdout)
@@ -404,7 +404,7 @@ def test_error_message_clarity(tmp_path):
     repo = _create_fixture_repo(tmp_path)
     _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
     subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
-    _add_commit(repo, "fix: null pointer dereference", {"src/foo.py": "code"})
+    _add_commit(repo, "fix: null pointer dereference", {"memory_core/tools/foo.py": "code"})
     result = _run_script(["--base", "base"], cwd=repo)
     assert result.returncode == 1
     output = result.stdout + result.stderr
@@ -421,7 +421,7 @@ def test_base_flag_works(tmp_path):
     repo = _create_fixture_repo(tmp_path)
     _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
     subprocess.run(["git", "tag", "custom-base"], cwd=repo, check=True, capture_output=True)
-    _add_commit(repo, "fix: something broken", {"src/foo.py": "code"})
+    _add_commit(repo, "fix: something broken", {"memory_core/tools/foo.py": "code"})
     result = _run_script(["--base", "custom-base"], cwd=repo)
     assert result.returncode == 1, f"Expected exit 1 with custom base, got {result.returncode}"
 
@@ -440,6 +440,7 @@ def test_script_exists_and_testable():
     assert hasattr(mod, "is_dependabot")
     assert hasattr(mod, "is_release_please")
     assert hasattr(mod, "is_docs_only")
+    assert hasattr(mod, "is_non_code_only")
 
 
 def test_fix_pattern_matches_conventional_formats():
@@ -455,6 +456,154 @@ def test_fix_pattern_matches_conventional_formats():
     assert not mod.FIX_PATTERN.match("feat: something")
     assert not mod.FIX_PATTERN.match("chore: something")
     assert not mod.FIX_PATTERN.match("fix something")
+
+
+# ============================================================================
+# VAL-GUARD-022: is_non_code_only function unit tests
+# ============================================================================
+def test_is_non_code_only_webhook_scripts_exempted():
+    """webhook-scripts-only PR → exempted (is_non_code_only returns True)."""
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
+    files = [
+        "webhook-scripts/trigger-ci-droid.sh",
+        "webhook-scripts/MANIFEST.sh",
+    ]
+    assert mod.is_non_code_only(files)
+
+
+def test_is_non_code_only_mixed_infra_exempted():
+    """Mixed webhook-scripts + .github/workflows + docs → exempted."""
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
+    files = [
+        "webhook-scripts/trigger-ci-droid.sh",
+        ".github/workflows/ci.yml",
+        "docs/architecture/ci-notify-n8n-workflow.md",
+    ]
+    assert mod.is_non_code_only(files)
+
+
+def test_is_non_code_only_memory_core_not_exempted():
+    """memory_core/ files → NOT exempted (is_non_code_only returns False)."""
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
+    files = [
+        "memory_core/tools/pretooluse_guard.py",
+        "docs/guide.md",
+    ]
+    assert not mod.is_non_code_only(files)
+
+
+def test_is_non_code_only_scripts_not_exempted():
+    """scripts/ files → NOT exempted."""
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
+    files = [
+        "scripts/check_fix_has_test.py",
+        "docs/guide.md",
+    ]
+    assert not mod.is_non_code_only(files)
+
+
+def test_is_non_code_only_tests_not_exempted():
+    """tests/ files → NOT exempted."""
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
+    files = [
+        "tests/test_check_fix_has_test.py",
+    ]
+    assert not mod.is_non_code_only(files)
+
+
+def test_is_non_code_only_empty_list():
+    """Empty file list → False."""
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
+    assert not mod.is_non_code_only([])
+
+
+def test_is_non_code_only_empty_strings_ignored():
+    """Empty strings in file list are ignored."""
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
+    files = ["", "webhook-scripts/foo.sh", ""]
+    assert mod.is_non_code_only(files)
+
+
+# ============================================================================
+# VAL-GUARD-023: Integration test — webhook-scripts-only fix PR exempted
+# ============================================================================
+def test_webhook_scripts_only_fix_exempted(tmp_path):
+    """fix: commit with only webhook-scripts/ changes → exit 0 (exempted)."""
+    repo = _create_fixture_repo(tmp_path)
+    _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
+    subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
+    _add_commit(
+        repo,
+        "fix: correct webhook script path",
+        {
+            "webhook-scripts/trigger-ci-droid.sh": "#!/bin/bash\necho fixed",
+        },
+    )
+    result = _run_script(["--base", "base"], cwd=repo)
+    assert result.returncode == 0, (
+        f"Expected exit 0 for webhook-scripts-only fix, got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+
+
+def test_mixed_infra_fix_exempted(tmp_path):
+    """fix: commit with webhook-scripts + .github + docs → exit 0 (exempted)."""
+    repo = _create_fixture_repo(tmp_path)
+    _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
+    subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
+    _add_commit(
+        repo,
+        "fix: correct ci notification logic",
+        {
+            ".github/workflows/ci.yml": "name: CI\non: push",
+            "webhook-scripts/trigger-ci-droid.sh": "#!/bin/bash\necho fixed",
+            "docs/architecture/ci-notify.md": "# CI Notification",
+        },
+    )
+    result = _run_script(["--base", "base"], cwd=repo)
+    assert result.returncode == 0, (
+        f"Expected exit 0 for mixed infra fix, got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+
+
+def test_memory_core_fix_without_test_still_violates(tmp_path):
+    """fix: commit with memory_core/ but no tests/ → exit 1 (NOT exempted)."""
+    repo = _create_fixture_repo(tmp_path)
+    _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
+    subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
+    _add_commit(
+        repo,
+        "fix: correct gateway logic",
+        {
+            "memory_core/tools/pretooluse_guard.py": "def guard(): pass",
+        },
+    )
+    result = _run_script(["--base", "base"], cwd=repo)
+    assert result.returncode == 1, (
+        f"Expected exit 1 for memory_core fix without test, got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+
+
+def test_memory_core_fix_with_test_passes(tmp_path):
+    """fix: commit with memory_core/ + tests/ → exit 0 (test present)."""
+    repo = _create_fixture_repo(tmp_path)
+    _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
+    subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
+    _add_commit(
+        repo,
+        "fix: correct gateway logic",
+        {
+            "memory_core/tools/pretooluse_guard.py": "def guard(): pass",
+            "tests/test_pretooluse_guard.py": "def test_guard(): pass",
+        },
+    )
+    result = _run_script(["--base", "base"], cwd=repo)
+    assert result.returncode == 0, (
+        f"Expected exit 0 for memory_core fix with test, got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
 
 
 def test_live_repo_does_not_violate():
