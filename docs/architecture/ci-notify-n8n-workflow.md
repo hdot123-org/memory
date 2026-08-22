@@ -28,6 +28,15 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
 >
 > **误判失败机制（2026-08-23 补充，INFRA-520）**: Factory Sessions API 对注入请求可能返回 `202 Accepted`（异步接受，消息已入队）。旧判定 `[ "$HTTP_CODE" = "200" ]` 下，202 既不命中重试循环的成功 break 条件，也不命中 5xx/000 重试条件，循环不等待直接空转，耗尽 `MAX_RETRIES=3` 次尝试后进入最终检查；最终 `if [ "$HTTP_CODE" = "200" ]` 同样失败，落入 `ERROR: API call failed` 分支并上报 `ci_inject_failed` PostHog 事件——注入实际已成功，却记录为失败。修复后两处判定均为 `[[ "$HTTP_CODE" =~ ^2 ]]`，覆盖全部 2xx 成功响应，与 4xx break / 5xx 退避重试的分诊语义对齐。受管副本 `webhook-scripts/trigger-ci-droid.sh`（PR #973 回填）与生产脚本 `~/.factory/webhook/scripts/trigger-ci-droid.sh` 保持同步。
 
+> **会话探活与锁语义硬化（2026-08-23，INFRA-521）**: M3 里程碑将 TD-WEBHOOK-03 技术债（`write-pending-ci.sh` 写入时不验活、不选最新 session，历史 77 次注入 404 丢失）修复为四层 fail-fast 语义并回填至仓库（PR #978）：
+>
+> 1. **写入前探活** — 选定 session 后先 `GET /api/v0/sessions/{id}`，显式 SESSION_ID 探活 404/5xx/无 token 均拒绝写入（`ci_write_probe_fail` PostHog 事件），杜绝写入已知死会话的 pending 文件
+> 2. **候选迭代** — sessions-index 候选按 mtime 降序逐个探活，404 顺延下一个；全部候选死则 fail-fast（`ci_write_all_sessions_dead`），不再写入
+> 3. **候选筛选** — 仅顶层 mission-session（`callingSessionId` 为空）+ orchestrator role + cwd 匹配入选，worker 子会话与其他仓库会话被过滤
+> 4. **原子写入** — tmp+mv 落盘，mv 前校验 JSON 合法性，读端不会看到半写文件；废弃的 mtime 扫描保留为 fallback 并上报 `ci_write_deprecated_scan` 事件
+>
+> 配套回归测试 `tests/test_write_pending_ci_hardening.py`（12 例，VAL-WPC-001~004 + 生产一致性快照）固化上述语义；受管副本 `webhook-scripts/write-pending-ci.sh` 与生产脚本经 `scripts/sync-webhook-scripts.sh --check` 验证保持同步。
+
 ---
 
 ## 1. n8n Workflow JSON 模板
