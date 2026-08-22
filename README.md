@@ -384,13 +384,32 @@ heartbeat 告警自愈（`resolve_cleared_alerts()`）在本轮 tick 中异常�
 ## 开发与验证
 
 ```bash
-ruff check .
-deptry .
-python -m pytest tests/
+pip install -e ".[dev]"          # 首次安装开发依赖
+ruff check .                     # Lint（含 C901 复杂度，max-complexity=15）
+ruff format --check .            # 格式检查（CI 硬门禁）
+python -m pytest tests/          # 测试 + 覆盖率（addopts 已含 --cov=memory_core --cov-fail-under=80）
+python -m mypy --strict scripts/ # 类型检查（CI 硬门禁；memory_core/ 为 advisory）
+deptry .                         # 依赖使用检查
+vulture memory_core/ --min-confidence 80  # 死代码检查
 python3 scripts/check_boundary.py
 shellcheck scripts/*.sh
 actionlint .github/workflows/*.yml
 ```
+
+**质量门禁：** CI（ci-ok 聚合门禁）与 pre-commit 强制执行以下标准：
+
+| 门禁 | 标准 |
+|------|------|
+| 覆盖率 | `--cov-fail-under=80`（pytest addopts；当前分支基线约 84%） |
+| Lint | ruff（E,F,W,I,C901,UP,B,SIM,PTH），零 C901 豁免；ruff format --check |
+| 类型 | mypy `--strict` 于 `scripts/`（硬门禁）；`memory_core/` 逐步收紧（见 `docs/typing-tech-debt.md`） |
+| 死代码 | vulture `--min-confidence 80` 于 `memory_core/`，零发现 |
+| 依赖 | deptry 零发现 |
+| 工具版本 | ruff 0.16.1 / mypy 2.3.0，本地 / pre-commit / CI 三方对齐 |
+
+CI pytest 在自建 runner 上以串行模式（`-n 0`）运行以保证覆盖率统计准确（并行分片会丢失覆盖数据）；本地并行（如 `-n 6`）验证标准不变。
+
+**模块拆分与门面架构：** 最大的四个工具模块已按单一职责拆分为 `_gateway_*`、`_init_*`、`_audit_*`、`_migrate_*` 前缀的子模块（均 ≤500 行），原文件保留为薄门面（facade）：`memory_hook_gateway.py`、`init_project_memory.py`、`daily_kb_audit.py`、`migrate_project_memory.py`。patch-redirect 兼容层保证 `monkeypatch` 打在门面上的既有测试语义不变。
 
 **CI 安全门禁：** `.github/workflows/droid-review.yml` 中 `security_block_on_high: "false"`（Advisory 模式），AI 安全审查仅留 Comment 不阻断合并。确定性工具（shellcheck、actionlint、pytest、fix-has-test guard）作为 CI 硬门禁负责实际阻断。
 
