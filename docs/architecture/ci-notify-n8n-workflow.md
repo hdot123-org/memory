@@ -24,6 +24,8 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
 
 > **pr_number=0 根因说明（2026-08-23 更正）**: 此前日志中出现的 `pr_number=0` 通知，根因是 ci.yml 中 `${{ github.event.pull_request.number || 0 }}` 表达式在 main 分支 push 事件时构造出 `pr_number=0`（push 事件无 pull_request 对象），**并非 n8n 传参问题**。修复方案：notify-ci-complete job 的 `if` 条件从 `always()` 改为 `always() && github.event_name == 'pull_request'`，从源头杜绝 main push 触发通知。
 
+> **200→^2 修复记录（2026-08-22）**: trigger-ci-droid.sh 成功判定从字面 HTTP 200 收窄为 `^2` 正则（481/496 行两处同步），202 等 2xx 成功响应不再被误判失败。
+
 ---
 
 ## 1. n8n Workflow JSON 模板
