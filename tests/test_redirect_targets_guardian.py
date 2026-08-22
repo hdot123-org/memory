@@ -48,6 +48,10 @@ def test_redirect_targets_covers_high_frequency_monkeypatch_targets():
         "_integrity_sign",
         "_execute_delegate_via_facade",
         "_get_host_delegate",
+        # Singleton policy objects (monkeypatch targets for test isolation)
+        "_default_write_policy",
+        "_default_route_policy",
+        "_default_policy_registry",
     }
 
     missing = required_targets - set(_REDIRECT_TARGETS.keys())
