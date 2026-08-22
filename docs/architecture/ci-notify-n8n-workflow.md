@@ -25,6 +25,8 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
 > **pr_number=0 根因说明（2026-08-23 更正）**: 此前日志中出现的 `pr_number=0` 通知，根因是 ci.yml 中 `${{ github.event.pull_request.number || 0 }}` 表达式在 main 分支 push 事件时构造出 `pr_number=0`（push 事件无 pull_request 对象），**并非 n8n 传参问题**。修复方案：notify-ci-complete job 的 `if` 条件从 `always()` 改为 `always() && github.event_name == 'pull_request'`，从源头杜绝 main push 触发通知。
 
 > **200→^2 修复记录（2026-08-22）**: trigger-ci-droid.sh 成功判定从字面 HTTP 200 收窄为 `^2` 正则（481/496 行两处同步），202 等 2xx 成功响应不再被误判失败。
+>
+> **误判失败机制（2026-08-23 补充，INFRA-520）**: Factory Sessions API 对注入请求可能返回 `202 Accepted`（异步接受，消息已入队）。旧判定 `[ "$HTTP_CODE" = "200" ]` 下，202 既不命中重试循环的成功 break 条件，也不命中 5xx/000 重试条件，循环不等待直接空转，耗尽 `MAX_RETRIES=3` 次尝试后进入最终检查；最终 `if [ "$HTTP_CODE" = "200" ]` 同样失败，落入 `ERROR: API call failed` 分支并上报 `ci_inject_failed` PostHog 事件——注入实际已成功，却记录为失败。修复后两处判定均为 `[[ "$HTTP_CODE" =~ ^2 ]]`，覆盖全部 2xx 成功响应，与 4xx break / 5xx 退避重试的分诊语义对齐。受管副本 `webhook-scripts/trigger-ci-droid.sh`（PR #973 回填）与生产脚本 `~/.factory/webhook/scripts/trigger-ci-droid.sh` 保持同步。
 
 ---
 
