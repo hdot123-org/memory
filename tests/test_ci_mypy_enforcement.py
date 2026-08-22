@@ -160,3 +160,65 @@ def test_readme_mypy_section_accuracy():
 
     # At least one indication of enforcement (not just "run mypy")
     assert has_gate_language, "README should use language indicating hard gate enforcement, not just advisory"
+
+
+def test_enforced_pipeline_steps_have_pipefail():
+    """M4-F1b: Enforced job pipeline steps must have pipefail semantics.
+
+    GHA default shell for `run` is `bash -e` which does NOT set pipefail.
+    A pipeline like `cmd | tee file` will always exit 0 (tee's exit code)
+    even if `cmd` fails, silently swallowing the error. This test ensures
+    every step with a pipe operator in an enforced job (listed in ci-ok.needs)
+    has proper pipefail handling via one of:
+      - shell: bash (which GHA expands to `bash -eo pipefail`)
+      - `set -o pipefail` in the run command
+      - PIPESTATUS handling at end of run command
+    """
+    ci = _load_ci_config()
+    jobs = ci.get("jobs", {})
+
+    # Jobs aggregated into ci-ok are the enforced (hard gate) jobs
+    ci_ok_job = jobs.get("ci-ok")
+    assert ci_ok_job is not None, "ci-ok job not found"
+    enforced_job_ids = set(ci_ok_job.get("needs", []))
+    assert enforced_job_ids, "ci-ok.needs is empty"
+
+    violations = []
+    for job_id in enforced_job_ids:
+        job = jobs.get(job_id)
+        if not job:
+            continue
+        for step in job.get("steps", []) or []:
+            run_cmd = step.get("run", "") or ""
+            # Only check steps that actually contain a pipe operator (| but not ||).
+            # Use regex to find | that is not preceded/followed by another |
+            if not re.search(r"(?<!\|)\|(?!\|)", run_cmd):
+                continue
+
+            has_pipefail_semantics = False
+
+            # Check 1: shell: bash (GHA expands to bash -eo pipefail)
+            if step.get("shell") == "bash":
+                has_pipefail_semantics = True
+
+            # Check 2: set -o pipefail in the run command
+            if "set -o pipefail" in run_cmd or "set -eo pipefail" in run_cmd:
+                has_pipefail_semantics = True
+
+            # Check 3: PIPESTATUS handling at end of command
+            if "PIPESTATUS" in run_cmd:
+                has_pipefail_semantics = True
+
+            if not has_pipefail_semantics:
+                violations.append(
+                    f"Job '{job_id}', step '{step.get('name', '(unnamed)')}': "
+                    f"pipeline step without pipefail semantics. "
+                    f"Add 'shell: bash' to the step, or 'set -o pipefail' / PIPESTATUS in the run command."
+                )
+
+    assert not violations, (
+        "Enforced jobs have pipeline steps without pipefail semantics. "
+        "Without pipefail, a failed command piped to 'tee' etc. is silently swallowed "
+        "because bash -e (GHA default) does not propagate non-zero exit through pipes. "
+        "Violations:\n" + "\n".join(f"  - {v}" for v in violations)
+    )

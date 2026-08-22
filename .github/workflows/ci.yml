@@ -68,6 +68,7 @@ jobs:
         run: |
           ruff format --check .
       - name: Install shellcheck and actionlint
+        shell: bash
         run: |
           # 优先用 PATH 里已存在的（自建 runner 已预装）；否则下载到 job 本地目录。
           # 不用 sudo：自建 runner 刻意无 NOPASSWD，工具装进 workspace 即可。
@@ -87,6 +88,7 @@ jobs:
           shellcheck --version | head -2; actionlint --version | head -1
           rm -f shellcheck-v0.10.0.linux.x86_64.tar.xz actionlint_1.7.7_linux_amd64.tar.gz
       - name: Shell lint
+        shell: bash
         run: |
           find . -name '*.sh' -not -path './.venv/*' -not -path './.git/*' -not -path './node_modules/*' -print0 | xargs -0 shellcheck -x
           # 自建 label（pve-linux）已通过 .github/actionlint.yaml 声明，无需过滤
@@ -166,6 +168,7 @@ jobs:
       - name: Repo delivery consistency check
         run: bash scripts/repo_health_check.sh --ci
       - name: Scan TODO/FIXME comments (advisory)
+        shell: bash
         continue-on-error: true
         run: |
           echo "=== TODO/FIXME scan in memory_core/ and scripts/ ==="
@@ -224,6 +227,7 @@ jobs:
           python -m pip install -e .
           python -m pip install mypy==2.3.0
       - name: Run mypy --strict (memory_core/)
+        shell: bash
         run: |
           echo "mypy --strict on memory_core/ (hard gate)"
           python -m mypy --strict memory_core/ 2>&1 | tee mypy-report.txt

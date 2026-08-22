@@ -7,17 +7,17 @@
 ## Baseline Status
 
 **Initial baseline (v0.9.0):** 220 errors across 36 files  
-**Current error count:** 193 errors in 19 files  
-**Progress:** 27 errors fixed (12% reduction)  
+**Current error count:** 0 errors (已清零)  
+**Progress:** 220 errors fixed (100% reduction)  
+**Status:** 双域 mypy --strict 强制门禁（memory_core/ + scripts/，0 errors）  
 **Strict overrides:** 18 modules configured with `strict = true`
 
 ## Strategy
 
 采用分阶段迁移策略，优先修复最简单的文件（unused-ignore、no-any-return 模式），逐步增加严格检查覆盖。
 
-### Phase 1 (已完成 - v0.9.0)
+### Phase 1 (已完成 - v0.9.0 → 已升级为强制门禁)
 
-✅ 添加 advisory-typing CI job (continue-on-error，不阻塞合并)  
 ✅ 建立基线：220 errors  
 ✅ 修复 18 个最简单文件：
 - 移除无效的 `# type: ignore` 注释 (unused-ignore)
@@ -25,6 +25,11 @@
 - 添加显式类型注解 (no-untyped-def)
 
 ✅ 为 18 个已修复模块添加 `[[tool.mypy.overrides]]` 严格配置
+
+**门禁升级历史：**
+- v0.9.0: advisory-typing job（continue-on-error，仅观察不阻塞）
+- PR #950 (2026-08-22): 升级为 Enforce mypy --strict (memory_core/) 硬门禁
+- 后续: scripts/ 域同步升级为硬门禁，双域 0 errors 实测
 
 **已修复模块列表 (18个):**
 ```
@@ -161,11 +166,13 @@ def get_config() -> dict:
 
 ## Monitoring
 
-### CI 集成
+### CI 集成（已升级为硬门禁）
 
-- `advisory-typing` job 每次 PR 运行 `mypy --strict memory_core/`
-- 使用 `continue-on-error: true` 确保不阻塞合并
-- 错误报告写入 `mypy-report.txt` artifact
+- `Enforce mypy --strict (memory_core/)` job：双域硬门禁，mypy 非零退出直接阻塞合并
+- `Enforce mypy --strict (scripts/)` job：同上
+- 两个 job 均通过 `ci-ok` 聚合门禁生效（branch protection required check）
+- 错误报告写入 `mypy-report.txt`（仅 memory_core/ job，供调试参考）
+- 管道步骤已加 `shell: bash` 确保 pipefail 语义（防止 tee 吞掉 mypy 非零退出码）
 
 ### 进度追踪
 
@@ -194,17 +201,19 @@ for o in d.get('tool',{}).get('mypy',{}).get('overrides',[]):
 "
 ```
 
-## Rollback Plan
+## Rollback Plan（历史参考）
 
-如果严格模式导致 CI 不稳定：
+如果严格模式导致 CI 不稳定（当前已稳定，仅供参考）：
 
-1. 移除 `pyproject.toml` 中的 `[[tool.mypy.overrides]]` 部分
-2. 删除 `.github/workflows/ci.yml` 中的 `advisory-typing` job
-3. 恢复到 v0.8.0 的非严格 mypy 配置
+1. 将 `Enforce mypy --strict (memory_core/)` 改回 `continue-on-error: true`
+2. 或将 job 从 `ci-ok.needs` 中移除（解除硬门禁）
+3. 恢复到 v0.8.0 的 advisory-typing 观察模式
+
+注：当前双域实测 0 errors，回滚需求极低。
 
 ## References
 
 - mypy 文档: https://mypy.readthedocs.io/
 - Python 类型提示 PEP: PEP 484, PEP 526, PEP 586
 - 项目 mypy 配置: `pyproject.toml` [tool.mypy]
-- CI 配置: `.github/workflows/ci.yml` advisory-typing job
+- CI 配置: `.github/workflows/ci.yml` Enforce mypy --strict jobs（双域硬门禁）
