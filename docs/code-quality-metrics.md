@@ -37,14 +37,14 @@ project, the tools that produce them, and how to access the results.
   `[[tool.mypy.overrides]]` in `pyproject.toml`.
 - **Where to view:**
   - Locally: `python -m mypy --strict memory_core/`.
-  - CI: the `advisory-typing` job in `.github/workflows/ci.yml`
-    (non-blocking / advisory until the baseline drops further).
+  - CI: the `mypy-strict-memory-core` job in `.github/workflows/ci.yml`
+    (hard gate; failures block merge via ci-ok aggregation).
 
 ### Cyclomatic Complexity
 
 - **What:** Per-function cyclomatic complexity, measured by ruff's
   `C901` rule.
-- **Threshold:** `max-complexity = 20` in `ruff.toml`; functions above
+- **Threshold:** `max-complexity = 15` in `ruff.toml`; functions above
   this are flagged and must be refactored before merge.
 - **Where to view:** `ruff check . --select C901` locally, or the
   lint step in CI.
@@ -55,7 +55,7 @@ project, the tools that produce them, and how to access the results.
 |-------------------|------------------------------------------------------------|----------------------------------------------|
 | Coverage          | `pytest --cov=memory_core --cov-report=term-missing`       | **Codecov** dashboard, PR diff               |
 | Duplicate code    | `pylint --disable=all --enable=R0801 memory_core/`         | CI advisory jobs / health check              |
-| Type errors       | `python -m mypy --strict memory_core/`                     | `advisory-typing` CI job (advisory)          |
+| Type errors       | `python -m mypy --strict memory_core/`                     | `mypy-strict-memory-core` CI job (hard gate) |
 | Complexity        | `ruff check . --select C901`                               | `ruff` lint step in CI (blocking)            |
 | Dead code         | `vulture memory_core/ --min-confidence 80`                 | pre-commit hook (local)                      |
 | Dependency usage  | `deptry .`                                                 | `deptry` step in CI (blocking)               |

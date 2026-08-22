@@ -209,8 +209,8 @@ jobs:
       - name: Telemetry coverage audit
         run: bash scripts/audit_telemetry_coverage.sh
 
-  advisory-typing:
-    name: Advisory typing (mypy --strict)
+  mypy-strict-memory-core:
+    name: Enforce mypy --strict (memory_core/)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -223,14 +223,12 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
           python -m pip install mypy==2.3.0
-      - name: Run mypy --strict (advisory only)
-        continue-on-error: true
+      - name: Run mypy --strict (memory_core/)
         run: |
-          echo "Typing hardening: mypy --strict on memory_core/"
-          python -m mypy --strict memory_core/ 2>&1 | tee mypy-report.txt || true
+          echo "mypy --strict on memory_core/ (hard gate)"
+          python -m mypy --strict memory_core/ 2>&1 | tee mypy-report.txt
           echo "---"
           echo "Report written to mypy-report.txt"
-          echo "See docs/typing-tech-debt.md for per-module breakdown and roadmap"
 
   # 聚合门禁：branch protection 只需 required 这一个 check，
   # 改动 test 的 Python 矩阵时无需同步调整 protection 配置
@@ -254,7 +252,7 @@ jobs:
   ci-ok:
     name: ci-ok
     runs-on: ubuntu-latest
-    needs: [test, advisory-security, advisory-telemetry-audit, mypy-strict-scripts]
+    needs: [test, advisory-security, advisory-telemetry-audit, mypy-strict-scripts, mypy-strict-memory-core]
     if: always()
     steps:
       - name: Verify all required jobs succeeded
@@ -263,6 +261,7 @@ jobs:
           echo "advisory-security: ${{ needs.advisory-security.result }}"
           echo "advisory-telemetry-audit: ${{ needs.advisory-telemetry-audit.result }}"
           echo "mypy-strict-scripts: ${{ needs.mypy-strict-scripts.result }}"
+          echo "mypy-strict-memory-core: ${{ needs.mypy-strict-memory-core.result }}"
           if [ "${{ needs.test.result }}" != "success" ]; then
             echo "FAIL: test did not succeed"; exit 1
           fi
@@ -274,6 +273,9 @@ jobs:
           fi
           if [ "${{ needs.mypy-strict-scripts.result }}" != "success" ]; then
             echo "FAIL: mypy --strict scripts/ did not succeed"; exit 1
+          fi
+          if [ "${{ needs.mypy-strict-memory-core.result }}" != "success" ]; then
+            echo "FAIL: mypy --strict memory_core/ did not succeed"; exit 1
           fi
           echo "All required jobs succeeded."
 
