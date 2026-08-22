@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.39.3](https://github.com/hdot123-org/memory/compare/v0.39.2...v0.39.3) (2026-08-22)
+
+
+### Bug Fixes
+
+* 修复 gateway 门面缺三单例静态 re-export 导致的测试顺序依赖 ([#947](https://github.com/hdot123-org/memory/issues/947)) ([12c4f28](https://github.com/hdot123-org/memory/commit/12c4f287603b3d7b0300f43493ced3e74554bd82))
+* 修复 nightly 缺 pip-audit、清理冗余 mypy overrides、标注 typing 历史基线 ([#960](https://github.com/hdot123-org/memory/issues/960)) ([6785632](https://github.com/hdot123-org/memory/commit/67856321536fc5eb1f8d6922ab99dc8c63e12e52))
+* 修复假门禁——管道命令缺少 pipefail 语义 ([#952](https://github.com/hdot123-org/memory/issues/952)) ([612d5f9](https://github.com/hdot123-org/memory/commit/612d5f990f48c8e2595873a061642ee5bb8e6bb0))
+
+
+### Documentation
+
+* 登记 webhook 最后一公里注入链路技术债（TD-WEBHOOK-01~04） ([#962](https://github.com/hdot123-org/memory/issues/962)) ([e0f5a10](https://github.com/hdot123-org/memory/commit/e0f5a10cc69a847f6f82082a23e2748c745c055c))
+* 补充 README 质量门禁与模块拆分架构说明 ([#948](https://github.com/hdot123-org/memory/issues/948)) ([a3993a5](https://github.com/hdot123-org/memory/commit/a3993a532de757884b83404c6dbfc528396bc834))
+
 ## [0.39.2](https://github.com/hdot123-org/memory/compare/v0.39.1...v0.39.2) (2026-08-22)
 
 
