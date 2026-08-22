@@ -1,5 +1,6 @@
 """Evolution self-audit tool: 9 checks for pipeline health."""
 
+import argparse
 import json
 import os
 import subprocess
@@ -824,8 +825,18 @@ def check_reverse_closure() -> list[dict[str, Any]]:
     return findings
 
 
-def main() -> int:
-    """Run all 9 checks and output findings as JSON."""
+def main(argv: list[str] | None = None) -> int:
+    """Run all 9 checks and output findings as JSON.
+
+    Args:
+        argv: 命令行参数（测试与入口点注入用）；None 时读 sys.argv[1:]。
+    """
+    parser = argparse.ArgumentParser(
+        prog="memory-evolution-audit",
+        description="Evolution self-audit tool: 9 checks for pipeline health.",
+    )
+    parser.parse_args(argv)
+
     all_findings: list[dict[str, Any]] = []
     all_findings.extend(check_suppress_json())
     all_findings.extend(check_findings_over_time())
