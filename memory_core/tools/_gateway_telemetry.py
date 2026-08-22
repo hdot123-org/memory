@@ -382,7 +382,7 @@ def _log_prompt_submit(project_root: Path, payload: dict[str, Any]) -> None:
         "---\n"
     )
 
-    def _write_handler(signum: int, frame: Any) -> None:
+    def _write_handler(_signum: int, _frame: Any) -> None:
         raise _PromptLogTimeoutError("prompt-submit log write timed out")
 
     old_handler = None
