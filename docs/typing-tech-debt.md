@@ -2,7 +2,7 @@
 
 > mypy --strict 技术债务追踪与迁移路线图
 > 
-> Last updated: 2026-07-14
+> Last updated: 2026-08-22
 
 ## Baseline Status
 
@@ -10,7 +10,7 @@
 **Current error count:** 0 errors (已清零)  
 **Progress:** 220 errors fixed (100% reduction)  
 **Status:** 双域 mypy --strict 强制门禁（memory_core/ + scripts/，0 errors）  
-**Strict overrides:** 18 modules configured with `strict = true`
+**Strict overrides:** 迁移期 18+ 模块曾配置 `strict = true`，2026-08-22 已移除（双域全局 `--strict` 硬门禁下逐模块配置冗余）
 
 ## Strategy
 
@@ -53,11 +53,11 @@ memory_core.tools.verify_consumer
 memory_core.tools.version_sync
 ```
 
-## Phase 2: 中等难度文件 (v0.10.0 目标)
+## Phase 2: 中等难度文件（已全部修复 — 历史基线存档，下表为当时快照）
 
-**目标:** 修复 10-15 个中等复杂度文件，将错误数降至 <150
+**目标（已达成）:** 修复 10-15 个中等复杂度文件，将错误数降至 <150
 
-### 待修复文件 (按错误数排序)
+### 待修复文件（历史快照，按错误数排序）
 
 | 文件 | 错误数 | 主要错误类型 | 优先级 | 目标日期 |
 |------|--------|------------|--------|---------|
@@ -120,11 +120,11 @@ def get_config() -> dict:
     return result
 ```
 
-## Phase 3: 复杂文件 (v0.11.0 目标)
+## Phase 3: 复杂文件（已全部修复 — 历史基线存档，下表为当时快照）
 
-**目标:** 修复剩余高错误数文件，错误数 <50
+**目标（已达成）:** 修复剩余高错误数文件，错误数 <50
 
-### 待修复文件
+### 待修复文件（历史快照）
 
 | 文件 | 错误数 | 主要挑战 | 目标日期 |
 |------|--------|---------|---------|
@@ -142,7 +142,7 @@ def get_config() -> dict:
 
 ## Error Type Breakdown
 
-当前 193 个错误的类型分布：
+历史基线（193 个错误）的类型分布（供回溯参考，当前 0 errors）：
 
 | 错误类型 | 数量 | 说明 | 修复难度 |
 |---------|------|------|---------|
@@ -190,7 +190,7 @@ python3 -m mypy --strict memory_core/ 2>&1 | grep -cE 'error:'
 # 检查特定模块是否通过严格检查
 python3 -m mypy --strict memory_core/tools/denylist.py
 
-# 查看已配置严格模式的模块
+# 查看已配置严格模式的模块（2026-08-22 起 overrides 已全部移除，预期无输出）
 python3 -c "
 import tomllib
 with open('pyproject.toml','rb') as f:
