@@ -183,7 +183,8 @@ create_failure_issue() {
 
     log "Creating failure GitHub Issue..."
 
-    local body="## PostHog 管道执行失败
+    local body
+    body="## PostHog 管道执行失败
 
 **错误上下文**
 - Error Type: \`$ERROR_TYPE\`
@@ -263,7 +264,9 @@ log "Routed: failed_event=$FAILED_EVENT -> repo=$REPO_PATH github=$GITHUB_REPO"
 # === 异步执行 ===
 (
     # C1: EXIT trap inside subshell — fires when subshell exits, NOT when main shell exits
-    trap "rm -f '$LOCK_FILE' 2>/dev/null" EXIT
+    # SC2064: single-quote the trap; $LOCK_FILE is inherited by the subshell and
+    # expands at signal time, so the value at exit is what gets removed.
+    trap 'rm -f "$LOCK_FILE" 2>/dev/null' EXIT
 
     # 覆盖 log 函数，只追加到日志文件，不使用 tee（避免双重写入）
     log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }

@@ -21,7 +21,8 @@ send_posthog_event() {
   local pr_number="$2"
   local stage="$3"
   local detail="$4"
-  local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local timestamp
+  timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   curl -s -X POST "https://us.posthog.com/batch/" \
     -H "Content-Type: application/json" \
     -d "{

@@ -139,7 +139,7 @@ git pull origin main 2>&1 | tee -a "$LOG_FILE"
 (
     log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
 
-    log "--- async wiki generation started for $(basename $REPO_PATH) ---"
+    log "--- async wiki generation started for $(basename "$REPO_PATH") ---"
     log "Launching droid exec /wiki..."
 
     DROID_OUTPUT=$("${DROID_BIN:-$(command -v droid || echo /usr/local/bin/droid)}" exec \
