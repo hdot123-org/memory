@@ -9,6 +9,7 @@ INFRA-403: execute_orphan_classifications now checks each issue's live state
 before acting (skip already-closed issues, fail-closed on unknown state), so
 the subprocess mocks must serve `gh issue view --json state` responses first.
 """
+
 import json
 import sys
 from pathlib import Path
@@ -51,13 +52,13 @@ def test_execute_close_ready_actually_closes():
         classification="CLOSE_READY",
         reason="merged_pr_verified",
         timestamp="2026-01-01T00:00:00Z",
-        action_taken="close_attempt"
+        action_taken="close_attempt",
     )
 
-    with patch('evolution_utils.subprocess.run') as mock_run:
+    with patch("evolution_utils.subprocess.run") as mock_run:
         mock_run.side_effect = [
             _state_open(),  # INFRA-403: live state check
-            _gh_ok(),       # close
+            _gh_ok(),  # close
         ]
 
         result = execute_orphan_classifications([classification])
@@ -66,10 +67,7 @@ def test_execute_close_ready_actually_closes():
         assert result["closed"] == 1, f"Expected 1 closed, got {result['closed']}"
 
         # Verify subprocess.run was called with gh issue close
-        close_calls = [
-            c for c in mock_run.call_args_list
-            if c[0][0][0:2] == ["gh", "issue"] and c[0][0][2] == "close"
-        ]
+        close_calls = [c for c in mock_run.call_args_list if c[0][0][0:2] == ["gh", "issue"] and c[0][0][2] == "close"]
         assert len(close_calls) == 1, "Should call gh issue close once"
         assert "101" in close_calls[0][0][0], "Should close issue #101"
 
@@ -86,14 +84,14 @@ def test_execute_blocked_records_reason():
         classification="BLOCKED_NO_EVIDENCE",
         reason="no_evidence_of_resolution",
         timestamp="2026-01-01T00:00:00Z",
-        action_taken="retained_with_reason"
+        action_taken="retained_with_reason",
     )
 
-    with patch('evolution_utils.subprocess.run') as mock_run:
+    with patch("evolution_utils.subprocess.run") as mock_run:
         mock_run.side_effect = [
             _state_open(),  # INFRA-403: live state check
-            _gh_ok(""),     # INFRA-403: comment scan (no sentinel yet)
-            _gh_ok(),       # comment posted
+            _gh_ok(""),  # INFRA-403: comment scan (no sentinel yet)
+            _gh_ok(),  # comment posted
         ]
 
         result = execute_orphan_classifications([classification])
@@ -103,15 +101,13 @@ def test_execute_blocked_records_reason():
 
         # Verify comment was posted (audit trail)
         comment_calls = [
-            c for c in mock_run.call_args_list
-            if c[0][0][0:2] == ["gh", "issue"] and c[0][0][2] == "comment"
+            c for c in mock_run.call_args_list if c[0][0][0:2] == ["gh", "issue"] and c[0][0][2] == "comment"
         ]
         assert len(comment_calls) == 1, "Should post comment with blocking reason"
         assert "102" in comment_calls[0][0][0], "Should comment on issue #102"
         # Verify reason is in comment body
         comment_body = comment_calls[0][0][0][-1]  # Last arg is --body
-        assert "no_evidence_of_resolution" in comment_body, \
-            "Comment must include blocking reason (audit trail)"
+        assert "no_evidence_of_resolution" in comment_body, "Comment must include blocking reason (audit trail)"
 
 
 def test_execute_respects_grace_period():
@@ -126,30 +122,26 @@ def test_execute_respects_grace_period():
         classification="CLOSE_READY",
         reason="merged_pr_verified",
         timestamp="2026-01-01T00:00:00Z",
-        action_taken="close_attempt"
+        action_taken="close_attempt",
     )
 
-    with patch('evolution_utils._count_consecutive_absences', return_value=1), \
-         patch('evolution_utils.subprocess.run') as mock_run:
+    with (
+        patch("evolution_utils._count_consecutive_absences", return_value=1),
+        patch("evolution_utils.subprocess.run") as mock_run,
+    ):
         mock_run.side_effect = [
             _state_open(),  # INFRA-403: live state check
         ]
 
         # history_path provided, but absence count < GRACE_PERIOD_TICKS (3)
-        result = execute_orphan_classifications(
-            [classification],
-            history_path=Path("/tmp/test_history.json")
-        )
+        result = execute_orphan_classifications([classification], history_path=Path("/tmp/test_history.json"))
 
         # Should defer, not close
         assert result["deferred"] == 1, f"Expected 1 deferred, got {result['deferred']}"
         assert result["closed"] == 0, "Should not close before grace period"
 
         # Verify no close call
-        close_calls = [
-            c for c in mock_run.call_args_list
-            if c[0][0][0:2] == ["gh", "issue"] and c[0][0][2] == "close"
-        ]
+        close_calls = [c for c in mock_run.call_args_list if c[0][0][0:2] == ["gh", "issue"] and c[0][0][2] == "close"]
         assert len(close_calls) == 0, "Should not call gh issue close"
 
 
@@ -164,14 +156,16 @@ def test_reverse_drift_watch_end_to_end():
         _make_issue(202, "RULE_202", "file202.py", linear_linkback="INFRA-202"),
     ]
 
-    with patch('evolution_utils._verify_fix_merged_via_linear', side_effect=[True, False]), \
-         patch('evolution_utils.subprocess.run') as mock_run:
+    with (
+        patch("evolution_utils._verify_fix_merged_via_linear", side_effect=[True, False]),
+        patch("evolution_utils.subprocess.run") as mock_run,
+    ):
         mock_run.side_effect = [
             _state_open(),  # INFRA-403: state check 201
-            _gh_ok(),       # close 201
+            _gh_ok(),  # close 201
             _state_open(),  # INFRA-403: state check 202
-            _gh_ok(""),     # INFRA-403: comment scan 202 (no sentinel yet)
-            _gh_ok(),       # comment 202
+            _gh_ok(""),  # INFRA-403: comment scan 202 (no sentinel yet)
+            _gh_ok(),  # comment 202
         ]
 
         result = reverse_drift_watch(current_findings, open_issues)
@@ -198,16 +192,13 @@ def test_reverse_drift_watch_incremental_proof():
         _make_issue(301, "RULE_301", "file301.py"),
     ]
 
-    with patch('evolution_utils.subprocess.run') as mock_run:
+    with patch("evolution_utils.subprocess.run") as mock_run:
         mock_run.return_value = _gh_ok()
 
         reverse_drift_watch(current_findings, open_issues)
 
         # Verify no issue list fetch
-        fetch_calls = [
-            c for c in mock_run.call_args_list
-            if c[0][0][0:2] == ["gh", "issue"] and c[0][0][2] == "list"
-        ]
+        fetch_calls = [c for c in mock_run.call_args_list if c[0][0][0:2] == ["gh", "issue"] and c[0][0][2] == "list"]
         assert len(fetch_calls) == 0, "reverse_drift_watch must not fetch issues"
 
 
@@ -226,13 +217,21 @@ def test_b2_fixture_integration():
         _make_issue(403, "RULE_C", "file2.py"),
     ]
 
-    with patch('evolution_utils._verify_fix_merged_via_linear', return_value=False), \
-         patch('evolution_utils.subprocess.run') as mock_run:
+    with (
+        patch("evolution_utils._verify_fix_merged_via_linear", return_value=False),
+        patch("evolution_utils.subprocess.run") as mock_run,
+    ):
         # Per blocked issue: state check, comment scan (empty), comment post
         mock_run.side_effect = [
-            _state_open(), _gh_ok(""), _gh_ok(),
-            _state_open(), _gh_ok(""), _gh_ok(),
-            _state_open(), _gh_ok(""), _gh_ok(),
+            _state_open(),
+            _gh_ok(""),
+            _gh_ok(),
+            _state_open(),
+            _gh_ok(""),
+            _gh_ok(),
+            _state_open(),
+            _gh_ok(""),
+            _gh_ok(),
         ]
 
         result = reverse_drift_watch(current_findings, open_issues)

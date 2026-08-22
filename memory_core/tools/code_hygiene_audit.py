@@ -35,9 +35,7 @@ SKIP_PATTERNS = frozenset({"_pb2.py"})
 RULE_ID = "SILENT_SWALLOW"
 SEVERITY = "warning"
 CATEGORY = "code_hygiene"
-DESCRIPTION = (
-    "Silent exception swallow: except clause uses bare pass with no logging or re-raise"
-)
+DESCRIPTION = "Silent exception swallow: except clause uses bare pass with no logging or re-raise"
 
 # Untracked comment detection constants (absorbed from scan_tech_debt.py)
 TODO_RULE_ID = "CODE_HYGIENE_UNTRACKED_TODO"
@@ -62,9 +60,9 @@ MIN_BODY_LINES = 10
 MIN_AST_TOKENS = 50
 
 
-
 class FuncInfo(NamedTuple):
     """Information about a function for duplicate detection."""
+
     file: str
     name: str
     line_no: int
@@ -103,9 +101,7 @@ class SwallowVisitor(ast.NodeVisitor):
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
         """Check except handler for silent swallow pattern."""
         if self._is_silent_swallow(node):
-            qualname = (
-                ".".join(self.stack[1:]) if len(self.stack) > 1 else self.stack[0]
-            )
+            qualname = ".".join(self.stack[1:]) if len(self.stack) > 1 else self.stack[0]
             # Use lineno for unique location (col_offset can be same for different handlers)
             location = self._build_location(qualname, node.lineno)
             evidence = self._extract_evidence(node)
@@ -203,8 +199,7 @@ class SwallowVisitor(ast.NodeVisitor):
                 return "\n".join(evidence_lines).strip()
         except Exception as e:
             print(
-                f"[code_hygiene_audit] Warning: Failed to extract evidence from "
-                f"{self.filepath}: {e}",
+                f"[code_hygiene_audit] Warning: Failed to extract evidence from {self.filepath}: {e}",
                 file=sys.stderr,
             )
 
@@ -330,9 +325,6 @@ def _count_body_lines(func_node: ast.FunctionDef | ast.AsyncFunctionDef, source_
     return count
 
 
-
-
-
 def extract_functions_for_duplicate_check(filepath: Path, repo_root: Path) -> list[FuncInfo]:
     """Extract function definitions from a Python file for duplicate detection.
 
@@ -349,7 +341,7 @@ def extract_functions_for_duplicate_check(filepath: Path, repo_root: Path) -> li
     try:
         raw = filepath.read_bytes()
         if raw.startswith(codecs.BOM_UTF8):
-            raw = raw[len(codecs.BOM_UTF8):]
+            raw = raw[len(codecs.BOM_UTF8) :]
         source = raw.decode("utf-8", errors="replace")
         source_lines = source.splitlines()
     except (OSError, UnicodeDecodeError) as e:
@@ -377,14 +369,16 @@ def extract_functions_for_duplicate_check(filepath: Path, repo_root: Path) -> li
             if body_lines >= MIN_BODY_LINES or ast_tokens >= MIN_AST_TOKENS:
                 node_copy = ast.parse(ast.unparse(node))
                 ast_dump_str = ast.dump(node_copy, annotate_fields=False)
-                funcs.append(FuncInfo(
-                    file=relpath,
-                    name=node.name,
-                    line_no=node.lineno,
-                    body_lines=body_lines,
-                    ast_tokens=ast_tokens,
-                    ast_dump=ast_dump_str,
-                ))
+                funcs.append(
+                    FuncInfo(
+                        file=relpath,
+                        name=node.name,
+                        line_no=node.lineno,
+                        body_lines=body_lines,
+                        ast_tokens=ast_tokens,
+                        ast_dump=ast_dump_str,
+                    )
+                )
     return funcs
 
 
@@ -433,22 +427,22 @@ def check_duplicates(funcs: list[FuncInfo]) -> list[dict[str, str]]:
                 if ratio >= SIMILARITY_THRESHOLD:
                     seen_pairs.add(pair_key)
                     # Build finding
-                    location = (
-                        f"{a.file}::L{a.line_no} <-> {b.file}::L{b.line_no}"
-                    )
+                    location = f"{a.file}::L{a.line_no} <-> {b.file}::L{b.line_no}"
                     evidence = (
                         f"Function '{name}' has {ratio:.0%} AST similarity "
                         f"({a.body_lines} lines / {a.ast_tokens} tokens vs "
                         f"{b.body_lines} lines / {b.ast_tokens} tokens)"
                     )
-                    findings.append({
-                        "rule_id": DUPLICATE_RULE_ID,
-                        "severity": DUPLICATE_SEVERITY,
-                        "category": CATEGORY,
-                        "description": DUPLICATE_DESCRIPTION,
-                        "location": location,
-                        "evidence": evidence,
-                    })
+                    findings.append(
+                        {
+                            "rule_id": DUPLICATE_RULE_ID,
+                            "severity": DUPLICATE_SEVERITY,
+                            "category": CATEGORY,
+                            "description": DUPLICATE_DESCRIPTION,
+                            "location": location,
+                            "evidence": evidence,
+                        }
+                    )
 
     return findings
 
@@ -566,9 +560,7 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         0 if no findings, 1 if findings found
     """
-    parser = argparse.ArgumentParser(
-        description="Audit Python code for silent exception swallowing patterns"
-    )
+    parser = argparse.ArgumentParser(description="Audit Python code for silent exception swallowing patterns")
     parser.add_argument(
         "--dry-run",
         action="store_true",

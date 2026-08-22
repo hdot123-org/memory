@@ -26,9 +26,7 @@ INDEX_SCHEMA_VERSION = "1.0"
 PROJECT_VERSION_MARKER = "memory-core"
 SCHEMA_VERSION_MARKER = "index-schema"
 
-_HEADER_RE = re.compile(
-    r"<!--\s*(?P<key>[a-zA-Z][\w-]*)\s*:\s*(?P<value>[^>]*?)\s*-->"
-)
+_HEADER_RE = re.compile(r"<!--\s*(?P<key>[a-zA-Z][\w-]*)\s*:\s*(?P<value>[^>]*?)\s*-->")
 
 
 class IndexSchemaHeaders(NamedTuple):

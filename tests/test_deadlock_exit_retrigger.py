@@ -13,6 +13,7 @@ Without the implementation, these tests would FAIL because:
 - GATE A override doesn't exist → session-completed check fails
 - Trust chain Path B doesn't exist → sentinel-based closure blocked
 """
+
 import json
 import os
 import subprocess
@@ -28,6 +29,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 # ============================================================================
 # Python Trust Chain Tests (evolution_utils._verify_fix_merged_via_linear)
 # ============================================================================
+
 
 class TestTrustChainDeadlockExitSentinel:
     """VAL-DLK trust chain extension: Path B deadlock exit sentinel.
@@ -61,43 +63,41 @@ class TestTrustChainDeadlockExitSentinel:
             # Second call: Linear comments query with sentinel
             MagicMock(),
         ]
-        mock_responses[0].read.return_value = json.dumps({
-            "data": {
-                "issue": {
-                    "id": "uuid-999",
-                    "state": {"type": "completed"},
-                    "attachments": {"nodes": [
-                        {
-                            "id": "pr-1",
-                            "url": "https://github.com/owner/repo/pull/100",
-                            "sourceType": "github",
-                            "metadata": {}
-                        }
-                    ]}
+        mock_responses[0].read.return_value = json.dumps(
+            {
+                "data": {
+                    "issue": {
+                        "id": "uuid-999",
+                        "state": {"type": "completed"},
+                        "attachments": {
+                            "nodes": [
+                                {
+                                    "id": "pr-1",
+                                    "url": "https://github.com/owner/repo/pull/100",
+                                    "sourceType": "github",
+                                    "metadata": {},
+                                }
+                            ]
+                        },
+                    }
                 }
             }
-        }).encode()
+        ).encode()
         mock_responses[0].__enter__ = lambda self: self
         mock_responses[0].__exit__ = MagicMock()
 
         sentinel_comment = f"<!-- deadlock-exit {linear_id} sessionId=abc123 exitCode=0 -->\n死锁出口执行"
-        mock_responses[1].read.return_value = json.dumps({
-            "data": {
-                "issue": {
-                    "comments": {
-                        "nodes": [
-                            {"body": sentinel_comment}
-                        ]
-                    }
-                }
-            }
-        }).encode()
+        mock_responses[1].read.return_value = json.dumps(
+            {"data": {"issue": {"comments": {"nodes": [{"body": sentinel_comment}]}}}}
+        ).encode()
         mock_responses[1].__enter__ = lambda self: self
         mock_responses[1].__exit__ = MagicMock()
 
-        with patch("evolution_utils.subprocess.run") as mock_run, \
-             patch("urllib.request.urlopen", side_effect=mock_responses), \
-             patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
+        with (
+            patch("evolution_utils.subprocess.run") as mock_run,
+            patch("urllib.request.urlopen", side_effect=mock_responses),
+            patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}),
+        ):
             # Call sequence: gh pr view (not merged) → Linear comments query (sentinel found)
             mock_run.side_effect = [
                 MagicMock(returncode=0, stdout=json.dumps({"mergedAt": None}), stderr=""),
@@ -132,34 +132,22 @@ class TestTrustChainDeadlockExitSentinel:
             MagicMock(),
             MagicMock(),
         ]
-        mock_responses[0].read.return_value = json.dumps({
-            "data": {
-                "issue": {
-                    "id": "uuid-888",
-                    "state": {"type": "completed"},
-                    "attachments": {"nodes": []}
-                }
-            }
-        }).encode()
+        mock_responses[0].read.return_value = json.dumps(
+            {"data": {"issue": {"id": "uuid-888", "state": {"type": "completed"}, "attachments": {"nodes": []}}}}
+        ).encode()
         mock_responses[0].__enter__ = lambda self: self
         mock_responses[0].__exit__ = MagicMock()
 
         # No sentinel in Linear comments
-        mock_responses[1].read.return_value = json.dumps({
-            "data": {
-                "issue": {
-                    "comments": {
-                        "nodes": []
-                    }
-                }
-            }
-        }).encode()
+        mock_responses[1].read.return_value = json.dumps({"data": {"issue": {"comments": {"nodes": []}}}}).encode()
         mock_responses[1].__enter__ = lambda self: self
         mock_responses[1].__exit__ = MagicMock()
 
-        with patch("evolution_utils.subprocess.run") as mock_run, \
-             patch("urllib.request.urlopen", side_effect=mock_responses), \
-             patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}):
+        with (
+            patch("evolution_utils.subprocess.run") as mock_run,
+            patch("urllib.request.urlopen", side_effect=mock_responses),
+            patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"}),
+        ):
             # No PRs → should still query Linear comments for sentinel (architecture §3.2)
             # Result: BLOCK (fail-closed) because no sentinel found
             result = _verify_fix_merged_via_linear(issue_body, issue_number)
@@ -171,6 +159,7 @@ class TestTrustChainDeadlockExitSentinel:
 # ============================================================================
 # Shell Sandbox Tests (reconcile-evolution.sh & trigger-droid.sh)
 # ============================================================================
+
 
 class TestRetriggerGuard:
     """VAL-DRF-005: Retrigger guard (E4 form).
@@ -234,32 +223,30 @@ echo "TRIGGER_CALLED" >> "$SANDBOX/trigger_calls.log"
 
         # Modify script to use sandbox paths
         script_content = sandbox_script.read_text()
+        script_content = script_content.replace('WEBHOOK_BASE="${HOME}/.factory/webhook"', f'WEBHOOK_BASE="{sandbox}"')
         script_content = script_content.replace(
-            'WEBHOOK_BASE="${HOME}/.factory/webhook"',
-            f'WEBHOOK_BASE="{sandbox}"'
-        )
-        script_content = script_content.replace(
-            'SCRIPT_DIR="${HOME}/.factory/webhook/scripts"',
-            f'SCRIPT_DIR="{sandbox}"'
+            'SCRIPT_DIR="${HOME}/.factory/webhook/scripts"', f'SCRIPT_DIR="{sandbox}"'
         )
         # Replace inline Python Linear API calls with stubs
         # (simplified: just skip the Linear query for this test)
         script_content = script_content.replace(
-            'LINEAR_ISSUES=$(TEAM_ID=',
-            'LINEAR_ISSUES="uuid-e4|INFRA-E4|Test Issue|进行中|2026-01-01T00:00:00Z"\n# LINEAR_ISSUES_ORIG=$(TEAM_ID='
+            "LINEAR_ISSUES=$(TEAM_ID=",
+            'LINEAR_ISSUES="uuid-e4|INFRA-E4|Test Issue|进行中|2026-01-01T00:00:00Z"\n# LINEAR_ISSUES_ORIG=$(TEAM_ID=',
         )
 
         sandbox_script.write_text(script_content)
 
         # Run with controlled environment
         env = os.environ.copy()
-        env.update({
-            "PATH": f"{bin_dir}:{env['PATH']}",
-            "LINEAR_API_KEY": "fake-key",
-            "TEAM_ID": "fake-team-id",
-            "SANDBOX": str(sandbox),
-            "HOME": str(tmp_path),  # Prevent real HOME access
-        })
+        env.update(
+            {
+                "PATH": f"{bin_dir}:{env['PATH']}",
+                "LINEAR_API_KEY": "fake-key",
+                "TEAM_ID": "fake-team-id",
+                "SANDBOX": str(sandbox),
+                "HOME": str(tmp_path),  # Prevent real HOME access
+            }
+        )
 
         # Run script (it will exit early due to stubbed Linear query)
         subprocess.run(
@@ -273,9 +260,7 @@ echo "TRIGGER_CALLED" >> "$SANDBOX/trigger_calls.log"
 
         # Verify trigger was NOT called (E4 guard blocked it)
         trigger_log = sandbox / "trigger_calls.log"
-        call_count = (
-            len(trigger_log.read_text().strip().split("\n")) if trigger_log.exists() else 0
-        )
+        call_count = len(trigger_log.read_text().strip().split("\n")) if trigger_log.exists() else 0
 
         # redEvidence: Without guard, call_count > 0 (trigger called)
         # With guard, call_count = 0 (trigger blocked by E4 check)
@@ -304,34 +289,27 @@ class TestGateASessionCompletedOverride:
         script_content = repo_script.read_text()
 
         # Verify session-completed check section exists
-        assert "# 4.7. Session-completed override" in script_content, \
+        assert "# 4.7. Session-completed override" in script_content, (
             "§4.7 session-completed override section must exist"
+        )
 
         # Verify the Python decision logic
-        assert 'status = d.get(\'status\', \'\')' in script_content, \
-            "Must check status field"
-        assert 'session_id = d.get(\'sessionId\')' in script_content, \
-            "Must extract sessionId"
-        assert 'exit_code = d.get(\'exitCode\')' in script_content, \
-            "Must extract exitCode"
-        assert 'if (status == \'completed\' and' in script_content, \
-            "Must check status=completed"
-        assert 'session_id and str(session_id).lower() not in' in script_content, \
+        assert "status = d.get('status', '')" in script_content, "Must check status field"
+        assert "session_id = d.get('sessionId')" in script_content, "Must extract sessionId"
+        assert "exit_code = d.get('exitCode')" in script_content, "Must extract exitCode"
+        assert "if (status == 'completed' and" in script_content, "Must check status=completed"
+        assert "session_id and str(session_id).lower() not in" in script_content, (
             "Must validate sessionId not null/none/empty"
-        assert 'exit_code == 0' in script_content, \
-            "Must check exitCode=0"
+        )
+        assert "exit_code == 0" in script_content, "Must check exitCode=0"
 
         # Verify PASS condition
-        assert 'if [ "$_session_completed_check" = "PASS" ]' in script_content, \
-            "Must check PASS result"
-        assert 'log "GATE A PASS (session-completed)' in script_content, \
-            "Must log PASS"
-        assert 'exit 0' in script_content, \
-            "Must exit 0 on PASS"
+        assert 'if [ "$_session_completed_check" = "PASS" ]' in script_content, "Must check PASS result"
+        assert 'log "GATE A PASS (session-completed)' in script_content, "Must log PASS"
+        assert "exit 0" in script_content, "Must exit 0 on PASS"
 
         # Verify BLOCK fall-through
-        assert 'sys.exit(0)  # fall through to BLOCK' in script_content, \
-            "Must fall through to BLOCK on invalid session"
+        assert "sys.exit(0)  # fall through to BLOCK" in script_content, "Must fall through to BLOCK on invalid session"
 
         # redEvidence: Without §4.7, these checks don't exist → GATE A blocks
         # With §4.7, session-completed check allows PASS
@@ -359,16 +337,17 @@ class TestDeadlockExitIdempotent:
         repo_script = Path(__file__).parent.parent / "webhook-scripts" / "reconcile-evolution.sh"
         script_content = repo_script.read_text()
 
-        assert 'DEADLOCK_EXIT_SENTINEL_PREFIX="<!-- deadlock-exit "' in script_content, \
+        assert 'DEADLOCK_EXIT_SENTINEL_PREFIX="<!-- deadlock-exit "' in script_content, (
             "Sentinel prefix constant must be defined"
+        )
 
         # Verify sentinel check exists
-        assert 'if [ "$SENTINEL_EXISTS" = "yes" ]' in script_content, \
-            "Sentinel check must exist for idempotency"
+        assert 'if [ "$SENTINEL_EXISTS" = "yes" ]' in script_content, "Sentinel check must exist for idempotency"
 
         # Verify skip on sentinel found
-        assert 'deadlock exit already executed (sentinel found), skip' in script_content, \
+        assert "deadlock exit already executed (sentinel found), skip" in script_content, (
             "Must skip on sentinel found (idempotent)"
+        )
 
         # redEvidence: Without these checks, deadlock exit is not idempotent
         # (second round would execute again, creating duplicate comments)
@@ -393,12 +372,12 @@ class TestDeadlockExitStaleRunning:
         script_content = repo_script.read_text()
 
         # Verify PID liveness check
-        assert 'kill -0 "$STATUS_PID"' in script_content, \
-            "Must check PID liveness"
+        assert 'kill -0 "$STATUS_PID"' in script_content, "Must check PID liveness"
 
         # Verify stale running handling
-        assert 'stale running status (PID dead), marking for retrigger' in script_content, \
+        assert "stale running status (PID dead), marking for retrigger" in script_content, (
             "Must handle stale running (dead PID)"
+        )
 
         # redEvidence: Without this check, stale running is skipped forever
 
@@ -421,12 +400,12 @@ class TestGateAFailClosed:
         script_content = repo_script.read_text()
 
         # Verify status file existence check
-        assert 'if [ -f "$status_file" ]' in script_content, \
-            "Must check status file existence"
+        assert 'if [ -f "$status_file" ]' in script_content, "Must check status file existence"
 
         # Verify fall-through to BLOCK when no status file
-        assert 'GATE A BLOCK: $ISSUE_REF moved to Done WITHOUT Droid session record' in script_content, \
+        assert "GATE A BLOCK: $ISSUE_REF moved to Done WITHOUT Droid session record" in script_content, (
             "Must BLOCK when no status file"
+        )
 
     def test_session_id_null_block(self, tmp_path):
         """sessionId=null → GATE A BLOCK (exit 1).
@@ -439,12 +418,14 @@ class TestGateAFailClosed:
         script_content = repo_script.read_text()
 
         # Verify sessionId null check
-        assert 'session_id and str(session_id).lower() not in' in script_content, \
+        assert "session_id and str(session_id).lower() not in" in script_content, (
             "Must validate sessionId not null/none/empty"
+        )
 
         # Verify fall-through to BLOCK when sessionId invalid
-        assert 'sys.exit(0)  # fall through to BLOCK' in script_content, \
+        assert "sys.exit(0)  # fall through to BLOCK" in script_content, (
             "Must fall through to BLOCK on invalid sessionId"
+        )
 
 
 class TestTerminalAbsorption:
@@ -478,19 +459,17 @@ class TestTerminalAbsorption:
 
         # Check for terminal absorption section in 5a2
         # After detecting closed GitHub mirror, should move Linear to terminal state
-        assert "GitHub Issue already closed" in script_content, \
-            "Must detect closed GitHub mirror"
+        assert "GitHub Issue already closed" in script_content, "Must detect closed GitHub mirror"
 
         # Must have logic to absorb (move to terminal state) when mirror is closed
         # Verify: after "GitHub Issue already closed" log line, the code transitions
         # Linear issue to terminal state before `continue`
-        assert "terminal absorption" in script_content.lower() or "Terminal absorption" in script_content, \
+        assert "terminal absorption" in script_content.lower() or "Terminal absorption" in script_content, (
             "Must have terminal absorption logic after detecting closed GitHub mirror"
-        assert "ABSORB_RESULT" in script_content, \
-            "Must capture absorption result in ABSORB_RESULT variable"
+        )
+        assert "ABSORB_RESULT" in script_content, "Must capture absorption result in ABSORB_RESULT variable"
         # Verify the absorption transitions state to terminal (canceled)
-        assert "terminal-absorption" in script_content, \
-            "Must write evidence comment with terminal-absorption sentinel"
+        assert "terminal-absorption" in script_content, "Must write evidence comment with terminal-absorption sentinel"
 
     def test_terminal_absorption_idempotent(self, tmp_path):
         """Terminal absorption should be idempotent (doesn't repeat on subsequent ticks).
@@ -509,8 +488,9 @@ class TestTerminalAbsorption:
         if "terminal absorption" in script_content.lower() or "absorb" in script_content.lower():
             # Should have some form of idempotency check
             # Could be: checking current state, checking sentinel, etc.
-            assert "idempotent" in script_content.lower() or "already" in script_content.lower(), \
+            assert "idempotent" in script_content.lower() or "already" in script_content.lower(), (
                 "Terminal absorption should have idempotency check"
+            )
 
 
 class TestDeadlockExitProductionSchemaRobustness:
@@ -548,21 +528,22 @@ class TestDeadlockExitProductionSchemaRobustness:
         script_content = script_path.read_text()
 
         # Fix must NOT use teams(first:1) pattern
-        assert "teams(first: 1)" not in script_content, \
-            "Must not use teams(first:1) — gets wrong team's state UUID"
+        assert "teams(first: 1)" not in script_content, "Must not use teams(first:1) — gets wrong team's state UUID"
 
         # Fix must use team(id: $teamId) with TEAM_ID env var
         # In bash, the dollar sign is escaped as \$ inside the Python heredoc
-        assert "team(id: \\$teamId)" in script_content, \
+        assert "team(id: \\$teamId)" in script_content, (
             "Must use team(id: \\$teamId) to query the specific team's states"
+        )
 
         # TEAM_ID must be passed to DEADLOCK_RESULT subprocess
-        assert 'TEAM_ID="$TEAM_ID"' in script_content, \
-            "TEAM_ID must be passed as env var to deadlock exit python"
+        assert 'TEAM_ID="$TEAM_ID"' in script_content, "TEAM_ID must be passed as env var to deadlock exit python"
 
         # Must read TEAM_ID from environment in the python block
-        assert "team_id = os.environ['TEAM_ID']" in script_content, \
+        assert "team_id = os.environ['TEAM_ID']" in script_content, (
             "Must read TEAM_ID from os.environ in deadlock exit python"
+        )
+
     def test_deadlock_exit_null_checks_defensive(self):
         """DEADLOCK_RESULT python must have defensive null checks.
 
@@ -573,14 +554,17 @@ class TestDeadlockExitProductionSchemaRobustness:
         script_content = script_path.read_text()
 
         # Must have explicit null checks, not chained .get()
-        assert "if data is None:" in script_content or "if not data:" in script_content, \
+        assert "if data is None:" in script_content or "if not data:" in script_content, (
             "Must check data is not None before accessing nested fields"
-        assert "if issue_update is None:" in script_content or "if not issue_update:" in script_content, \
+        )
+        assert "if issue_update is None:" in script_content or "if not issue_update:" in script_content, (
             "Must check issueUpdate is not None (Linear returns null on cross-team state ID)"
+        )
 
         # Must NOT have the old chained pattern
-        assert ".get('data', {}).get('issueUpdate', {}).get('success')" not in script_content, \
+        assert ".get('data', {}).get('issueUpdate', {}).get('success')" not in script_content, (
             "Must not use chained .get() pattern that crashes on null intermediate values"
+        )
 
     def test_deadlock_exit_status_file_read_defensive(self):
         """DEADLOCK_RESULT python must handle corrupt/empty/null status files.
@@ -592,14 +576,15 @@ class TestDeadlockExitProductionSchemaRobustness:
         script_content = script_path.read_text()
 
         # Must wrap status file read in try/except
-        assert "try:" in script_content and "with open(status_file)" in script_content, \
+        assert "try:" in script_content and "with open(status_file)" in script_content, (
             "Must wrap status file read in try/except"
-        assert "except" in script_content, \
-            "Must have except block for status file read errors"
+        )
+        assert "except" in script_content, "Must have except block for status file read errors"
 
         # Must handle None json.load result (file contains 'null')
-        assert "if status_data is None:" in script_content, \
+        assert "if status_data is None:" in script_content, (
             "Must handle json.load returning None (file contains literal 'null')"
+        )
 
     def test_production_fixture_schema_matches_real_files(self):
         """Regression tests must use production-schema fixtures.
@@ -615,8 +600,7 @@ class TestDeadlockExitProductionSchemaRobustness:
             # Document the real schema fields
             required_fields = {"version", "issueRef", "status", "sessionId", "exitCode"}
             for field in required_fields:
-                assert field in real_data, \
-                    f"Production status file must have '{field}' field"
+                assert field in real_data, f"Production status file must have '{field}' field"
 
             # Real file has extra fields that test fixtures should include
             optional_fields = {"pid", "startedAt", "completedAt", "heartbeat", "prUrl"}
@@ -646,30 +630,27 @@ class TestSessionIdForLog:
         script_content = script_path.read_text()
 
         # Find the DEADLOCK EXIT executed log line
-        assert 'DEADLOCK EXIT executed' in script_content, \
-            "Deadlock exit log line must exist"
+        assert "DEADLOCK EXIT executed" in script_content, "Deadlock exit log line must exist"
 
         # Verify SESSION_ID_FOR_LOG is used in log line
-        assert '${SESSION_ID_FOR_LOG:-unknown}' in script_content, \
-            "Log line must use SESSION_ID_FOR_LOG variable"
+        assert "${SESSION_ID_FOR_LOG:-unknown}" in script_content, "Log line must use SESSION_ID_FOR_LOG variable"
 
         # Verify SESSION_ID_FOR_LOG is extracted from status file BEFORE the log line
         # Find positions
-        extract_pos = script_content.find('SESSION_ID_FOR_LOG=')
-        log_pos = script_content.find('DEADLOCK EXIT executed')
+        extract_pos = script_content.find("SESSION_ID_FOR_LOG=")
+        log_pos = script_content.find("DEADLOCK EXIT executed")
 
-        assert extract_pos != -1, \
-            "SESSION_ID_FOR_LOG must be set somewhere in the script"
+        assert extract_pos != -1, "SESSION_ID_FOR_LOG must be set somewhere in the script"
         assert extract_pos < log_pos, (
-            f"SESSION_ID_FOR_LOG must be extracted BEFORE the log line "
-            f"(found at pos {extract_pos}, log at {log_pos})"
+            f"SESSION_ID_FOR_LOG must be extracted BEFORE the log line (found at pos {extract_pos}, log at {log_pos})"
         )
 
         # Verify extraction uses Python to read from status file (consistent with existing pattern)
         # The extraction should use $STATUS_FILE and parse sessionId
-        extract_section = script_content[extract_pos:extract_pos+200]
-        assert 'STATUS_FILE' in extract_section or 'sessionId' in extract_section, \
+        extract_section = script_content[extract_pos : extract_pos + 200]
+        assert "STATUS_FILE" in extract_section or "sessionId" in extract_section, (
             "SESSION_ID_FOR_LOG extraction must reference STATUS_FILE or sessionId"
+        )
 
     def test_session_id_for_log_not_always_unknown(self):
         """SESSION_ID_FOR_LOG extraction must not just default to unknown.
@@ -680,13 +661,14 @@ class TestSessionIdForLog:
         script_content = script_path.read_text()
 
         # Find the extraction
-        extract_pos = script_content.find('SESSION_ID_FOR_LOG=')
-        assert extract_pos != -1, \
-            "SESSION_ID_FOR_LOG must be set in the script"
+        extract_pos = script_content.find("SESSION_ID_FOR_LOG=")
+        assert extract_pos != -1, "SESSION_ID_FOR_LOG must be set in the script"
 
         # The extraction should NOT be just setting it to "unknown"
         # Look at the line after SESSION_ID_FOR_LOG=
-        extract_line = script_content[extract_pos:script_content.find('\n', extract_pos)]
-        assert 'unknown' not in extract_line or extract_line.count('unknown') == 0 or \
-               '${SESSION_ID_FOR_LOG:-unknown}' not in extract_line, \
-            "SESSION_ID_FOR_LOG extraction should not just be 'unknown' (that defeats the purpose)"
+        extract_line = script_content[extract_pos : script_content.find("\n", extract_pos)]
+        assert (
+            "unknown" not in extract_line
+            or extract_line.count("unknown") == 0
+            or "${SESSION_ID_FOR_LOG:-unknown}" not in extract_line
+        ), "SESSION_ID_FOR_LOG extraction should not just be 'unknown' (that defeats the purpose)"

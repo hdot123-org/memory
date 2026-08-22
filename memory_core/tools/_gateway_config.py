@@ -172,23 +172,27 @@ with contextlib.suppress(ImportError):
 
 try:
     import memory_core.tools.denylist as _denylist
+
     is_denied_project_root = _denylist.is_denied_project_root
 except ImportError:
     import memory_core.tools.denylist as _denylist
+
     is_denied_project_root = _denylist.is_denied_project_root
 
 # ---------------------------------------------------------------------------
 # 非注入事件集合
 # ---------------------------------------------------------------------------
 
-NON_INJECTION_EVENTS: frozenset[str] = frozenset({
-    "stop",
-    "notification",
-    "subagent-stop",
-    "post-tool-use",
-    "pre-compact",
-    "session-end",
-})
+NON_INJECTION_EVENTS: frozenset[str] = frozenset(
+    {
+        "stop",
+        "notification",
+        "subagent-stop",
+        "post-tool-use",
+        "pre-compact",
+        "session-end",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # L2 完整性（lazy import 避免循环依赖）
@@ -200,6 +204,7 @@ def _integrity_sign(project_root: Path) -> None:
     try:
         from .memory_hook_integrity_keys import load_or_create_key
         from .memory_hook_integrity_manifest import sign_project
+
         key = load_or_create_key()
         sign_project(project_root, key)
     except Exception as exc:
@@ -211,6 +216,7 @@ def _integrity_verify(project_root: Path) -> dict[str, Any] | None:
     try:
         from .memory_hook_integrity_keys import load_key
         from .memory_hook_integrity_verify import verify_project
+
         key = load_key()
         if key is None:
             _logger.warning("Integrity key not found — protection disabled")
@@ -419,6 +425,7 @@ def _get_write_policy() -> WriteTargetPolicyImpl:
 def _get_artifact_sink() -> ArtifactSinkImpl:
     """获取 artifact sink。"""
     from datetime import datetime
+
     return ArtifactSinkImpl(CONTEXT_ROOT, EVENT_LOG, datetime_module=datetime)
 
 

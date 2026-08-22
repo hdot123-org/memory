@@ -29,9 +29,18 @@ class TestMemoryInitCLI:
 
     def test_init_dry_run(self, tmp_project: Path) -> None:
         result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.init_project_memory",
-             "--target", str(tmp_project), "--dry-run", "--json"],
-            capture_output=True, text=True, cwd=REPO_ROOT,
+            [
+                sys.executable,
+                "-m",
+                "memory_core.tools.init_project_memory",
+                "--target",
+                str(tmp_project),
+                "--dry-run",
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
         data = json.loads(result.stdout)
@@ -39,9 +48,10 @@ class TestMemoryInitCLI:
 
     def test_init_creates_structure(self, tmp_project: Path) -> None:
         result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.init_project_memory",
-             "--target", str(tmp_project), "--json"],
-            capture_output=True, text=True, cwd=REPO_ROOT,
+            [sys.executable, "-m", "memory_core.tools.init_project_memory", "--target", str(tmp_project), "--json"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
         assert (tmp_project / "memory" / "system").is_dir()
@@ -51,9 +61,19 @@ class TestMemoryInitCLI:
         # Create existing structure first
         (tmp_project / "memory" / "system").mkdir(parents=True)
         result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.init_project_memory",
-             "--target", str(tmp_project), "--mode", "adopt", "--json"],
-            capture_output=True, text=True, cwd=REPO_ROOT,
+            [
+                sys.executable,
+                "-m",
+                "memory_core.tools.init_project_memory",
+                "--target",
+                str(tmp_project),
+                "--mode",
+                "adopt",
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
 
@@ -77,14 +97,16 @@ class TestMemoryValidateCLI:
     def test_validate_initialized_project(self, tmp_project: Path) -> None:
         # First init the project
         subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.init_project_memory",
-             "--target", str(tmp_project), "--json"],
-            capture_output=True, text=True, cwd=REPO_ROOT,
+            [sys.executable, "-m", "memory_core.tools.init_project_memory", "--target", str(tmp_project), "--json"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
         )
         result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.validate_project_memory",
-             "--target", str(tmp_project), "--json"],
-            capture_output=True, text=True, cwd=REPO_ROOT,
+            [sys.executable, "-m", "memory_core.tools.validate_project_memory", "--target", str(tmp_project), "--json"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
         data = json.loads(result.stdout)
@@ -97,7 +119,9 @@ class TestMemoryConsistencyCheckCLI:
     def test_consistency_check_on_repo(self) -> None:
         result = subprocess.run(
             [sys.executable, "-m", "memory_core.tools.consistency_check", "--json"],
-            capture_output=True, text=True, cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
         )
         data = json.loads(result.stdout)
         assert isinstance(data, dict)
@@ -109,8 +133,9 @@ class TestMemoryAuditLayoutCLI:
 
     def test_audit_layout_on_repo(self) -> None:
         result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.audit_project_layout",
-             "--target", str(REPO_ROOT), "--json"],
-            capture_output=True, text=True, cwd=REPO_ROOT,
+            [sys.executable, "-m", "memory_core.tools.audit_project_layout", "--target", str(REPO_ROOT), "--json"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"

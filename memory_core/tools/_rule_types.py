@@ -22,6 +22,7 @@ class RuleResult:
         message: Human-readable description
         detail: Machine-readable supplementary data
     """
+
     matched: bool
     severity: str = "info"
     message: str = ""
@@ -42,6 +43,7 @@ class RuleContext:
         project_root: Project root context
         extra: Extension slot for additional context
     """
+
     path: Path | None = None
     content: str | None = None
     tool_name: str | None = None

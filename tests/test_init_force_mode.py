@@ -10,7 +10,6 @@ Test cases:
 6. test_init_template_render_warning_on_special_chars - Template warnings on bad chars
 """
 
-
 import inspect
 import os
 from pathlib import Path

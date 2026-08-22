@@ -4,7 +4,6 @@ Centralises all hardcoded Chinese marker strings and Markdown section
 headers used in gateway business-policy validation methods.
 """
 
-
 # ---------------------------------------------------------------------------
 # Project-map index markers
 # ---------------------------------------------------------------------------
@@ -38,7 +37,9 @@ MKR_ATOMIC_REGISTRATION_GIT_COMMIT = "未完成同次 `git commit` 的目录登�
 # Workspace index markers
 # ---------------------------------------------------------------------------
 MKR_WORKSPACE_PROJECT_MAP_REF = "project-map/INDEX.md"
-MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY = "只有被地图标为 `active-legal` 的条目或目录，才是合法资料；仅进入登记册不授予合法性。"
+MKR_WORKSPACE_ACTIVE_LEGAL_MAP_ONLY = (
+    "只有被地图标为 `active-legal` 的条目或目录，才是合法资料；仅进入登记册不授予合法性。"
+)
 MKR_WORKSPACE_GIT_COMMIT_RULE = "目录登记和目录状态迁移必须与相关文件同次 `git commit` 才生效。"
 
 # ---------------------------------------------------------------------------

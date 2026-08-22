@@ -7,7 +7,6 @@ Covers:
 - Equivalence between simple and full API paths
 """
 
-
 import os
 from pathlib import Path
 from typing import Any

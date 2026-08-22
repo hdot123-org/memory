@@ -5,7 +5,6 @@ Usage:
   python3 workspace/tools/memory_hook_provider_rollback.py
 """
 
-
 import json
 import os
 import sys

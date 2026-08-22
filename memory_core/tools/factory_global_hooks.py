@@ -128,6 +128,7 @@ def render_wrapper(
 
     # Import version at render time so the baked-in version is always current
     from memory_core.constants import CURRENT_MEMORY_VERSION as _VER
+
     # Use string.Template for safer variable substitution
     template = string.Template("""#!/bin/sh
 set -eu
@@ -349,8 +350,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Install Factory Droid global memory hooks")
     sub = parser.add_subparsers(dest="command", required=True)
     install = sub.add_parser("install", help="Install/update Factory user-level memory hooks")
-    install.add_argument("--factory-home", type=Path, default=None, help="Factory config directory (default: ~/.factory)")
-    install.add_argument("--storage-root", type=Path, default=None, help="Global memory state root (default: ~/.memory-core)")
+    install.add_argument(
+        "--factory-home", type=Path, default=None, help="Factory config directory (default: ~/.factory)"
+    )
+    install.add_argument(
+        "--storage-root", type=Path, default=None, help="Global memory state root (default: ~/.memory-core)"
+    )
     install.add_argument("--gateway-command", default="memory-hook-gateway", help="Gateway command or absolute path")
     install.add_argument("--init-command", default="memory-init", help="Project init command or absolute path")
     install.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS, help="Hook timeout in seconds")

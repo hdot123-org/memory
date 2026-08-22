@@ -45,9 +45,10 @@ class TestSessionEndEventNaming:
         }
 
         # Call _write_session_metrics() directly with the extracted function
-        with patch.object(session_end_logger, "_resolve_metrics_path", return_value=tmp_path / "metrics.jsonl"), \
-             patch.object(session_end_logger, "append_metrics_record", side_effect=capture_append_metrics):
-
+        with (
+            patch.object(session_end_logger, "_resolve_metrics_path", return_value=tmp_path / "metrics.jsonl"),
+            patch.object(session_end_logger, "append_metrics_record", side_effect=capture_append_metrics),
+        ):
             session_end_logger._write_session_metrics(tmp_path, mock_info)
 
         # Verify append_metrics_record was called
@@ -120,13 +121,15 @@ class TestPreToolUseEmitMetrics:
         emit_calls = []
 
         def capture_emit(artifact_root, host, event, package, duration_ms=0):
-            emit_calls.append({
-                "artifact_root": artifact_root,
-                "host": host,
-                "event": event,
-                "package": package,
-                "duration_ms": duration_ms,
-            })
+            emit_calls.append(
+                {
+                    "artifact_root": artifact_root,
+                    "host": host,
+                    "event": event,
+                    "package": package,
+                    "duration_ms": duration_ms,
+                }
+            )
             return Path("/tmp/test_metrics.jsonl")
 
         # Create a mock process result
@@ -137,18 +140,23 @@ class TestPreToolUseEmitMetrics:
 
         # Mock subprocess.run to return our mock process
         # Patch emit_metrics at the module level where it's defined
-        with patch("subprocess.run", return_value=mock_proc), \
-             patch("memory_core.tools.memory_hook_metrics.emit_metrics", side_effect=capture_emit), \
-             patch.object(memory_hook_gateway, "is_memory_core_source_repo", return_value=False), \
-             patch.object(memory_hook_gateway, "is_denied_project_root", return_value=False), \
-             patch.object(memory_hook_gateway, "_should_noop_for_external_context", return_value=False), \
-             patch.object(memory_hook_gateway, "_discover_cwd", return_value=Path("/tmp/test-project")), \
-             patch.object(memory_hook_gateway, "_parse_args", return_value=MagicMock(
-                 host="factory",
-                 event="pre-tool-use",
-             )), \
-             patch("sys.stdin", io.StringIO("{}")):
-
+        with (
+            patch("subprocess.run", return_value=mock_proc),
+            patch("memory_core.tools.memory_hook_metrics.emit_metrics", side_effect=capture_emit),
+            patch.object(memory_hook_gateway, "is_memory_core_source_repo", return_value=False),
+            patch.object(memory_hook_gateway, "is_denied_project_root", return_value=False),
+            patch.object(memory_hook_gateway, "_should_noop_for_external_context", return_value=False),
+            patch.object(memory_hook_gateway, "_discover_cwd", return_value=Path("/tmp/test-project")),
+            patch.object(
+                memory_hook_gateway,
+                "_parse_args",
+                return_value=MagicMock(
+                    host="factory",
+                    event="pre-tool-use",
+                ),
+            ),
+            patch("sys.stdin", io.StringIO("{}")),
+        ):
             # Run main() - it should return the guard's returncode
             result = memory_hook_gateway.main()
 
@@ -160,9 +168,7 @@ class TestPreToolUseEmitMetrics:
 
             # Verify the event field is 'pre-tool-use'
             call = emit_calls[0]
-            assert call["event"] == "pre-tool-use", (
-                f"Event field should be 'pre-tool-use', got '{call['event']}'"
-            )
+            assert call["event"] == "pre-tool-use", f"Event field should be 'pre-tool-use', got '{call['event']}'"
 
             # Verify host field is present
             assert call["host"] == "factory", f"Expected host='factory', got '{call['host']}'"
@@ -185,29 +191,36 @@ class TestPreToolUseEmitMetrics:
         emit_calls = []
 
         def capture_emit(artifact_root, host, event, package, duration_ms=0):
-            emit_calls.append({
-                "artifact_root": artifact_root,
-                "host": host,
-                "event": event,
-                "package": package,
-                "duration_ms": duration_ms,
-            })
+            emit_calls.append(
+                {
+                    "artifact_root": artifact_root,
+                    "host": host,
+                    "event": event,
+                    "package": package,
+                    "duration_ms": duration_ms,
+                }
+            )
             return Path("/tmp/test_metrics.jsonl")
 
         # Mock subprocess.run to raise an exception (guard unavailable)
-        with patch("subprocess.run", side_effect=FileNotFoundError("guard script not found")), \
-             patch("memory_core.tools.memory_hook_metrics.emit_metrics", side_effect=capture_emit), \
-             patch.object(memory_hook_gateway, "append_error_log"), \
-             patch.object(memory_hook_gateway, "is_memory_core_source_repo", return_value=False), \
-             patch.object(memory_hook_gateway, "is_denied_project_root", return_value=False), \
-             patch.object(memory_hook_gateway, "_should_noop_for_external_context", return_value=False), \
-             patch.object(memory_hook_gateway, "_discover_cwd", return_value=Path("/tmp/test-project")), \
-             patch.object(memory_hook_gateway, "_parse_args", return_value=MagicMock(
-                 host="factory",
-                 event="pre-tool-use",
-             )), \
-             patch("sys.stdin", io.StringIO("{}")):
-
+        with (
+            patch("subprocess.run", side_effect=FileNotFoundError("guard script not found")),
+            patch("memory_core.tools.memory_hook_metrics.emit_metrics", side_effect=capture_emit),
+            patch.object(memory_hook_gateway, "append_error_log"),
+            patch.object(memory_hook_gateway, "is_memory_core_source_repo", return_value=False),
+            patch.object(memory_hook_gateway, "is_denied_project_root", return_value=False),
+            patch.object(memory_hook_gateway, "_should_noop_for_external_context", return_value=False),
+            patch.object(memory_hook_gateway, "_discover_cwd", return_value=Path("/tmp/test-project")),
+            patch.object(
+                memory_hook_gateway,
+                "_parse_args",
+                return_value=MagicMock(
+                    host="factory",
+                    event="pre-tool-use",
+                ),
+            ),
+            patch("sys.stdin", io.StringIO("{}")),
+        ):
             # Run main() - it should return 0 (fallback)
             result = memory_hook_gateway.main()
 
@@ -215,15 +228,11 @@ class TestPreToolUseEmitMetrics:
             assert result == 0, f"Expected return code 0 (fallback), got {result}"
 
             # Verify emit_metrics was called even in fallback path
-            assert len(emit_calls) > 0, (
-                "emit_metrics should have been called in pre-tool-use fallback path"
-            )
+            assert len(emit_calls) > 0, "emit_metrics should have been called in pre-tool-use fallback path"
 
             # Verify the event field is 'pre-tool-use'
             call = emit_calls[0]
-            assert call["event"] == "pre-tool-use", (
-                f"Event field should be 'pre-tool-use', got '{call['event']}'"
-            )
+            assert call["event"] == "pre-tool-use", f"Event field should be 'pre-tool-use', got '{call['event']}'"
 
     def test_pretooluse_metrics_record_has_required_fields(self):
         """VAL-PRETOOL-002: Verify metrics record contains event, host, status, duration_ms.
@@ -247,19 +256,24 @@ class TestPreToolUseEmitMetrics:
         mock_proc.stdout = json.dumps({"decision": "allow", "reason": "test"})
         mock_proc.stderr = ""
 
-        with patch("subprocess.run", return_value=mock_proc), \
-             patch("memory_core.tools.memory_hook_metrics.collect_metrics", side_effect=capture_collect_metrics), \
-             patch("memory_core.tools.memory_hook_metrics.append_metrics_record", return_value=True), \
-             patch.object(memory_hook_gateway, "is_memory_core_source_repo", return_value=False), \
-             patch.object(memory_hook_gateway, "is_denied_project_root", return_value=False), \
-             patch.object(memory_hook_gateway, "_should_noop_for_external_context", return_value=False), \
-             patch.object(memory_hook_gateway, "_discover_cwd", return_value=Path("/tmp/test-project")), \
-             patch.object(memory_hook_gateway, "_parse_args", return_value=MagicMock(
-                 host="factory",
-                 event="pre-tool-use",
-             )), \
-             patch("sys.stdin", io.StringIO("{}")):
-
+        with (
+            patch("subprocess.run", return_value=mock_proc),
+            patch("memory_core.tools.memory_hook_metrics.collect_metrics", side_effect=capture_collect_metrics),
+            patch("memory_core.tools.memory_hook_metrics.append_metrics_record", return_value=True),
+            patch.object(memory_hook_gateway, "is_memory_core_source_repo", return_value=False),
+            patch.object(memory_hook_gateway, "is_denied_project_root", return_value=False),
+            patch.object(memory_hook_gateway, "_should_noop_for_external_context", return_value=False),
+            patch.object(memory_hook_gateway, "_discover_cwd", return_value=Path("/tmp/test-project")),
+            patch.object(
+                memory_hook_gateway,
+                "_parse_args",
+                return_value=MagicMock(
+                    host="factory",
+                    event="pre-tool-use",
+                ),
+            ),
+            patch("sys.stdin", io.StringIO("{}")),
+        ):
             memory_hook_gateway.main()
 
         # Verify collect_metrics was called
@@ -303,32 +317,40 @@ class TestSourceRepoDegradedStatus:
         mock_cwd = Path("/Users/busiji/memory")
 
         # Mock all dependencies to simulate source-repo scenario
-        with patch.object(
-            memory_hook_gateway,
-            "is_memory_core_source_repo",
-            return_value=True,
-        ), patch.object(
-            memory_hook_gateway,
-            "_discover_cwd",
-            return_value=mock_cwd,
-        ), patch.object(
-            memory_hook_gateway,
-            "determine_project_scope",
-            return_value="source-repo",
-        ), patch.object(
-            memory_hook_gateway,
-            "_record_project_lifecycle_event",
-            return_value=None,
-        ), patch.object(
-            memory_hook_gateway,
-            "_get_gateway_business_policy",
-        ), patch.object(
-            memory_hook_gateway,
-            "CoreConfig",
-        ), patch.object(
-            memory_hook_gateway,
-            "_resolve_core_builder",
-        ) as mock_resolve_core_builder:
+        with (
+            patch.object(
+                memory_hook_gateway,
+                "is_memory_core_source_repo",
+                return_value=True,
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "_discover_cwd",
+                return_value=mock_cwd,
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "determine_project_scope",
+                return_value="source-repo",
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "_record_project_lifecycle_event",
+                return_value=None,
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "_get_gateway_business_policy",
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "CoreConfig",
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "_resolve_core_builder",
+            ) as mock_resolve_core_builder,
+        ):
             # Mock business policy to return empty/default values
             mock_policy_instance = MagicMock()
             mock_policy_instance.get_required_canonical.return_value = []
@@ -352,21 +374,15 @@ class TestSourceRepoDegradedStatus:
 
             # Call build_context_package - this should detect source-repo
             # and skip validation, returning status='ok'
-            result = memory_hook_gateway.build_context_package(
-                "factory", "session-start", {}
-            )
+            result = memory_hook_gateway.build_context_package("factory", "session-start", {})
 
         # VAL-DEGRADED-001: status must be 'ok', not 'degraded'
-        assert result.get("status") == "ok", (
-            f"Source-repo should get status='ok', got '{result.get('status')}'"
-        )
+        assert result.get("status") == "ok", f"Source-repo should get status='ok', got '{result.get('status')}'"
 
         # VAL-DEGRADED-002: validation_error_count must be 0 or near-zero (≤2)
         validation_errors = result.get("validation_errors", [])
         error_count = len(validation_errors) if isinstance(validation_errors, list) else 0
-        assert error_count <= 2, (
-            f"Source-repo should have ≤2 validation errors, got {error_count}: {validation_errors}"
-        )
+        assert error_count <= 2, f"Source-repo should have ≤2 validation errors, got {error_count}: {validation_errors}"
 
     def test_source_repo_readonly_mode_gets_status_ok(self):
         """Verify source-repo in readonly mode gets status='ok'.
@@ -378,26 +394,33 @@ class TestSourceRepoDegradedStatus:
 
         mock_cwd = Path("/Users/busiji/memory")
 
-        with patch.object(
-            memory_hook_gateway,
-            "is_memory_core_source_repo",
-            return_value=True,
-        ), patch.object(
-            memory_hook_gateway,
-            "get_source_repo_mode",
-            return_value="readonly",
-        ), patch.object(
-            memory_hook_gateway,
-            "_discover_cwd",
-            return_value=mock_cwd,
-        ), patch.object(
-            memory_hook_gateway,
-            "_build_readonly_source_repo_package",
-        ) as mock_readonly_builder, patch.object(
-            memory_hook_gateway,
-            "_parse_args",
-            return_value=MagicMock(host="factory", event="session-start"),
-        ), patch("sys.stdin", io.StringIO("{}")):
+        with (
+            patch.object(
+                memory_hook_gateway,
+                "is_memory_core_source_repo",
+                return_value=True,
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "get_source_repo_mode",
+                return_value="readonly",
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "_discover_cwd",
+                return_value=mock_cwd,
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "_build_readonly_source_repo_package",
+            ) as mock_readonly_builder,
+            patch.object(
+                memory_hook_gateway,
+                "_parse_args",
+                return_value=MagicMock(host="factory", event="session-start"),
+            ),
+            patch("sys.stdin", io.StringIO("{}")),
+        ):
             # Mock the readonly package builder
             mock_readonly_builder.return_value = {
                 "status": "ok",
@@ -436,33 +459,38 @@ class TestSourceRepoDegradedStatus:
             }
 
         # Capture the package returned
-        with patch.object(
-            memory_hook_gateway,
-            "is_memory_core_source_repo",
-            return_value=False,  # NOT source-repo
-        ), patch.object(
-            memory_hook_gateway,
-            "_discover_cwd",
-            return_value=mock_cwd,
-        ), patch.object(
-            memory_hook_gateway,
-            "determine_project_scope",
-            return_value="consumer-project",
-        ), patch.object(
-            memory_hook_gateway,
-            "_record_project_lifecycle_event",
-            return_value=None,
-        ), patch.object(
-            memory_hook_gateway,
-            "CoreConfig",
-        ), patch.object(
-            memory_hook_gateway,
-            "_resolve_core_builder",
-            return_value=("legacy", mock_normal_package, []),
+        with (
+            patch.object(
+                memory_hook_gateway,
+                "is_memory_core_source_repo",
+                return_value=False,  # NOT source-repo
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "_discover_cwd",
+                return_value=mock_cwd,
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "determine_project_scope",
+                return_value="consumer-project",
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "_record_project_lifecycle_event",
+                return_value=None,
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "CoreConfig",
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "_resolve_core_builder",
+                return_value=("legacy", mock_normal_package, []),
+            ),
         ):
-            result = memory_hook_gateway.build_context_package(
-                "factory", "session-start", {}
-            )
+            result = memory_hook_gateway.build_context_package("factory", "session-start", {})
 
         # Non-source-repo should still get normal validation flow
         # (in this test, the mock returns 'ok' with no errors, which is fine)

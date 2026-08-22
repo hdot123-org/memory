@@ -1,4 +1,3 @@
-
 import json
 from pathlib import Path
 
@@ -109,24 +108,30 @@ class TestSessionStats:
     def test_add_event_multiple_projects(self) -> None:
         """Test adding events from multiple projects."""
         stats = SessionStats()
-        stats.add_event({
-            "event": "session-start",
-            "generated_at": "2026-01-15T10:00:00Z",
-            "status": "ok",
-            "cwd": "/home/project1",
-        })
-        stats.add_event({
-            "event": "session-start",
-            "generated_at": "2026-01-15T10:01:00Z",
-            "status": "ok",
-            "cwd": "/home/project2",
-        })
-        stats.add_event({
-            "event": "session-start",
-            "generated_at": "2026-01-15T10:02:00Z",
-            "status": "ok",
-            "cwd": "/home/project1",
-        })
+        stats.add_event(
+            {
+                "event": "session-start",
+                "generated_at": "2026-01-15T10:00:00Z",
+                "status": "ok",
+                "cwd": "/home/project1",
+            }
+        )
+        stats.add_event(
+            {
+                "event": "session-start",
+                "generated_at": "2026-01-15T10:01:00Z",
+                "status": "ok",
+                "cwd": "/home/project2",
+            }
+        )
+        stats.add_event(
+            {
+                "event": "session-start",
+                "generated_at": "2026-01-15T10:02:00Z",
+                "status": "ok",
+                "cwd": "/home/project1",
+            }
+        )
 
         assert stats.projects["/home/project1"] == 2
         assert stats.projects["/home/project2"] == 1
@@ -134,18 +139,22 @@ class TestSessionStats:
     def test_add_event_timeline_ordering(self) -> None:
         """Test that timeline entries are added in order."""
         stats = SessionStats()
-        stats.add_event({
-            "event": "session-start",
-            "generated_at": "2026-01-15T10:00:00Z",
-            "status": "ok",
-            "cwd": "/home/project",
-        })
-        stats.add_event({
-            "event": "prompt-submit",
-            "generated_at": "2026-01-15T10:01:00Z",
-            "status": "ok",
-            "cwd": "/home/project",
-        })
+        stats.add_event(
+            {
+                "event": "session-start",
+                "generated_at": "2026-01-15T10:00:00Z",
+                "status": "ok",
+                "cwd": "/home/project",
+            }
+        )
+        stats.add_event(
+            {
+                "event": "prompt-submit",
+                "generated_at": "2026-01-15T10:01:00Z",
+                "status": "ok",
+                "cwd": "/home/project",
+            }
+        )
 
         assert len(stats.timeline) == 2
         assert stats.timeline[0]["event"] == "session-start"
@@ -243,10 +252,7 @@ class TestLoadEvents:
     def test_load_valid_events(self, tmp_path: Path) -> None:
         """Test loading valid JSON events."""
         log_file = tmp_path / "events.jsonl"
-        log_file.write_text(
-            json.dumps({"event": "test1"}) + "\n" +
-            json.dumps({"event": "test2"}) + "\n"
-        )
+        log_file.write_text(json.dumps({"event": "test1"}) + "\n" + json.dumps({"event": "test2"}) + "\n")
 
         result = _load_events(log_file)
         assert len(result) == 2
@@ -256,10 +262,7 @@ class TestLoadEvents:
     def test_load_ignores_empty_lines(self, tmp_path: Path) -> None:
         """Test that empty lines are ignored."""
         log_file = tmp_path / "events.jsonl"
-        log_file.write_text(
-            json.dumps({"event": "test1"}) + "\n\n\n" +
-            json.dumps({"event": "test2"}) + "\n"
-        )
+        log_file.write_text(json.dumps({"event": "test1"}) + "\n\n\n" + json.dumps({"event": "test2"}) + "\n")
 
         result = _load_events(log_file)
         assert len(result) == 2
@@ -267,11 +270,7 @@ class TestLoadEvents:
     def test_load_ignores_invalid_json(self, tmp_path: Path) -> None:
         """Test that invalid JSON lines are skipped."""
         log_file = tmp_path / "events.jsonl"
-        log_file.write_text(
-            "not json\n" +
-            json.dumps({"event": "test1"}) + "\n" +
-            "also not json\n"
-        )
+        log_file.write_text("not json\n" + json.dumps({"event": "test1"}) + "\n" + "also not json\n")
 
         result = _load_events(log_file)
         assert len(result) == 1
@@ -421,12 +420,14 @@ class TestPrintReport:
     def test_print_report_with_validation_errors(self, capsys: pytest.CaptureFixture) -> None:
         """Test printing report with validation errors."""
         stats = SessionStats()
-        stats.errors = [{
-            "time": "2026-01-15T10:00:00",
-            "event": "test",
-            "project": "/home/project1",
-            "errors": ["error1", "error2"],
-        }]
+        stats.errors = [
+            {
+                "time": "2026-01-15T10:00:00",
+                "event": "test",
+                "project": "/home/project1",
+                "errors": ["error1", "error2"],
+            }
+        ]
 
         _print_report(stats, "2026-01-15", ["system error"])
 
@@ -520,12 +521,17 @@ class TestMain:
         events_dir = tmp_path / "memory" / "artifacts" / "memory-hook" / "events"
         events_dir.mkdir(parents=True)
         log_file = events_dir / f"{today}.jsonl"
-        log_file.write_text(json.dumps({
-            "event": "session-start",
-            "generated_at": f"{today}T10:00:00Z",
-            "status": "ok",
-            "cwd": str(tmp_path),
-        }) + "\n")
+        log_file.write_text(
+            json.dumps(
+                {
+                    "event": "session-start",
+                    "generated_at": f"{today}T10:00:00Z",
+                    "status": "ok",
+                    "cwd": str(tmp_path),
+                }
+            )
+            + "\n"
+        )
 
         exit_code = main(["--today", "--project", str(tmp_path)])
         assert exit_code == 0
@@ -535,12 +541,17 @@ class TestMain:
         events_dir = tmp_path / "memory" / "artifacts" / "memory-hook" / "events"
         events_dir.mkdir(parents=True)
         log_file = events_dir / "2026-01-15.jsonl"
-        log_file.write_text(json.dumps({
-            "event": "session-start",
-            "generated_at": "2026-01-15T10:00:00Z",
-            "status": "ok",
-            "cwd": str(tmp_path),
-        }) + "\n")
+        log_file.write_text(
+            json.dumps(
+                {
+                    "event": "session-start",
+                    "generated_at": "2026-01-15T10:00:00Z",
+                    "status": "ok",
+                    "cwd": str(tmp_path),
+                }
+            )
+            + "\n"
+        )
 
         exit_code = main(["--date", "2026-01-15", "--project", str(tmp_path), "--json"])
         assert exit_code == 0
@@ -554,12 +565,17 @@ class TestMain:
         events_dir = tmp_path / "memory" / "artifacts" / "memory-hook"
         events_dir.mkdir(parents=True)
         log_file = events_dir / "events.jsonl"
-        log_file.write_text(json.dumps({
-            "event": "session-start",
-            "generated_at": "2026-01-15T10:00:00Z",
-            "status": "ok",
-            "cwd": str(tmp_path),
-        }) + "\n")
+        log_file.write_text(
+            json.dumps(
+                {
+                    "event": "session-start",
+                    "generated_at": "2026-01-15T10:00:00Z",
+                    "status": "ok",
+                    "cwd": str(tmp_path),
+                }
+            )
+            + "\n"
+        )
 
         exit_code = main(["--date", "2026-01-15", "--project", str(tmp_path)])
         assert exit_code == 0
@@ -571,10 +587,7 @@ class TestEdgeCases:
     def test_load_events_unicode(self, tmp_path: Path) -> None:
         """Test loading events with unicode content."""
         log_file = tmp_path / "events.jsonl"
-        log_file.write_text(
-            json.dumps({"event": "test", "message": "Hello 世界"}) + "\n",
-            encoding="utf-8"
-        )
+        log_file.write_text(json.dumps({"event": "test", "message": "Hello 世界"}) + "\n", encoding="utf-8")
 
         result = _load_events(log_file)
         assert len(result) == 1
@@ -592,12 +605,14 @@ class TestEdgeCases:
     def test_session_stats_short_timestamp(self) -> None:
         """Test SessionStats handles short timestamps."""
         stats = SessionStats()
-        stats.add_event({
-            "event": "session-start",
-            "generated_at": "10:00",  # Short timestamp
-            "status": "ok",
-            "cwd": "/home/project",
-        })
+        stats.add_event(
+            {
+                "event": "session-start",
+                "generated_at": "10:00",  # Short timestamp
+                "status": "ok",
+                "cwd": "/home/project",
+            }
+        )
 
         assert len(stats.sessions) == 1
         assert stats.timeline[0]["time"] == "10:00"  # Preserved as-is

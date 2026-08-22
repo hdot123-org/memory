@@ -21,6 +21,7 @@ from memory_core.tools.memory_hook_integrity_manifest import (
 
 # --- Helpers ---
 
+
 def _write_ownership_toml(root: Path, domains_toml: str, resources_toml: str) -> None:
     """Write a minimal ownership.toml with custom domains and resources."""
     sys_dir = root / "memory" / "system"
@@ -34,6 +35,7 @@ def _write_ownership_toml(root: Path, domains_toml: str, resources_toml: str) ->
 
 
 # --- 9-Case Parameterized Tests ---
+
 
 class TestDiscoverCanonicalFiles:
     """Parameterized behavior tests for _discover_canonical_files."""
@@ -99,11 +101,7 @@ class TestDiscoverCanonicalFiles:
         _write_ownership_toml(
             tmp_path,
             domains_toml=(
-                "[[domains]]\n"
-                'name = "flat_logs"\n'
-                'path = "memory/logs"\n'
-                'level = "STANDARD"\n'
-                "recursive = false\n"
+                '[[domains]]\nname = "flat_logs"\npath = "memory/logs"\nlevel = "STANDARD"\nrecursive = false\n'
             ),
             resources_toml="",
         )
@@ -136,12 +134,7 @@ class TestDiscoverCanonicalFiles:
         _write_ownership_toml(
             tmp_path,
             domains_toml="",
-            resources_toml=(
-                "[[resources]]\n"
-                'name = "log_md"\n'
-                'path = "memory/log/*.md"\n'
-                'level = "STANDARD"\n'
-            ),
+            resources_toml=('[[resources]]\nname = "log_md"\npath = "memory/log/*.md"\nlevel = "STANDARD"\n'),
         )
 
         log_dir = tmp_path / "memory" / "log"
@@ -160,12 +153,7 @@ class TestDiscoverCanonicalFiles:
         _write_ownership_toml(
             tmp_path,
             domains_toml="",
-            resources_toml=(
-                "[[resources]]\n"
-                'name = "root_md"\n'
-                'path = "*.md"\n'
-                'level = "STANDARD"\n'
-            ),
+            resources_toml=('[[resources]]\nname = "root_md"\npath = "*.md"\nlevel = "STANDARD"\n'),
         )
 
         (tmp_path / "README.md").write_text("# README")

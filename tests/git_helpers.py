@@ -27,10 +27,8 @@ def setup_git_repo(project_dir: Path) -> None:
     project_dir.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init"], cwd=project_dir, check=True, capture_output=True, text=True)
     subprocess.run(
-        ["git", "config", "user.email", "test@example.com"],
-        cwd=project_dir, check=True, capture_output=True, text=True
+        ["git", "config", "user.email", "test@example.com"], cwd=project_dir, check=True, capture_output=True, text=True
     )
     subprocess.run(
-        ["git", "config", "user.name", "Test User"],
-        cwd=project_dir, check=True, capture_output=True, text=True
+        ["git", "config", "user.name", "Test User"], cwd=project_dir, check=True, capture_output=True, text=True
     )

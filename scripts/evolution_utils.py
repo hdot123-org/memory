@@ -1,4 +1,5 @@
 """Utility functions for evolution scanner."""
+
 import json
 import logging
 import os
@@ -68,6 +69,7 @@ _tick_tracker = TickBudgetTracker()
 def get_tick_tracker() -> TickBudgetTracker:
     """Get the global tick budget tracker."""
     return _tick_tracker
+
 
 # GAP-C3: Grace period for auto-close
 # A finding must be absent for this many consecutive ticks before its issue is closed.
@@ -161,13 +163,13 @@ def _parse_issue_fields(body: str) -> tuple[str | None, str | None]:
     """
     rule_id = location = None
 
-    for line in body.split('\n'):
-        if line.startswith('**Description**') or line.startswith('**Evidence**'):
+    for line in body.split("\n"):
+        if line.startswith("**Description**") or line.startswith("**Evidence**"):
             break
-        if rule_id is None and line.startswith('**Rule ID**:'):
-            rule_id = sanitize_structured_field(line.split(':', 1)[1].strip())
-        elif location is None and line.startswith('**Location**:'):
-            location = sanitize_structured_field(line.split(':', 1)[1].strip())
+        if rule_id is None and line.startswith("**Rule ID**:"):
+            rule_id = sanitize_structured_field(line.split(":", 1)[1].strip())
+        elif location is None and line.startswith("**Location**:"):
+            location = sanitize_structured_field(line.split(":", 1)[1].strip())
         if rule_id and location:
             break
 
@@ -181,11 +183,11 @@ def _parse_issue_category(body: str) -> str | None:
     audit category (GAP-C1). Returns the category string, or None when the
     field is absent (e.g. legacy issues created without the Category line).
     """
-    for line in body.split('\n'):
-        if line.startswith('**Description**') or line.startswith('**Evidence**'):
+    for line in body.split("\n"):
+        if line.startswith("**Description**") or line.startswith("**Evidence**"):
             break
-        if line.startswith('**Category**:'):
-            value = line.split(':', 1)[1].strip()
+        if line.startswith("**Category**:"):
+            value = line.split(":", 1)[1].strip()
             return value or None
     return None
 
@@ -208,7 +210,7 @@ def load_history(history_path: Path) -> dict[str, Any] | None:
         return None
 
     try:
-        with history_path.open(encoding='utf-8') as f:
+        with history_path.open(encoding="utf-8") as f:
             data = json.load(f)
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         print(f"[evolution] Warning: Failed to load {history_path}: {e}")
@@ -216,7 +218,7 @@ def load_history(history_path: Path) -> dict[str, Any] | None:
         return None
 
     # Structural validation
-    if not isinstance(data, dict) or not isinstance(data.get('snapshots'), list):
+    if not isinstance(data, dict) or not isinstance(data.get("snapshots"), list):
         print(f"[evolution] Warning: Invalid history structure in {history_path}")
         quarantine_corrupted_file(history_path)
         return None
@@ -224,42 +226,46 @@ def load_history(history_path: Path) -> dict[str, Any] | None:
     # Deep validation: each snapshot must be a dict with 'findings' as a list
     # Skip corrupt entries with a warning, preserve valid entries (VAL-FOLLOWUP-001)
     valid_snapshots = []
-    for i, snapshot in enumerate(data['snapshots']):
-        if isinstance(snapshot, dict) and 'findings' in snapshot:
+    for i, snapshot in enumerate(data["snapshots"]):
+        if isinstance(snapshot, dict) and "findings" in snapshot:
             # P2-3: findings must be a list
-            if not isinstance(snapshot['findings'], list):
+            if not isinstance(snapshot["findings"], list):
                 print(f"[evolution] Warning: Snapshot at index {i} has non-list findings in {history_path}, skipped")
                 continue
             # Filter non-dict entries from findings
-            valid_findings = [f for f in snapshot['findings'] if isinstance(f, dict)]
-            if len(valid_findings) != len(snapshot['findings']):
-                print(f"[evolution] Warning: Filtered {len(snapshot['findings']) - len(valid_findings)} non-dict findings from snapshot {i} in {history_path}")
+            valid_findings = [f for f in snapshot["findings"] if isinstance(f, dict)]
+            if len(valid_findings) != len(snapshot["findings"]):
+                print(
+                    f"[evolution] Warning: Filtered {len(snapshot['findings']) - len(valid_findings)} non-dict findings from snapshot {i} in {history_path}"
+                )
             # P3: Deep-validate finding dicts have required keys for dedup
             required_finding_keys = {"rule_id", "location"}
             before_count = len(valid_findings)
             valid_findings = [f for f in valid_findings if required_finding_keys.issubset(f.keys())]
             if len(valid_findings) < before_count:
                 dropped = before_count - len(valid_findings)
-                print(f"[evolution] Warning: Dropped {dropped} findings missing rule_id/location in snapshot {i} in {history_path}")
-            snapshot['findings'] = valid_findings
+                print(
+                    f"[evolution] Warning: Dropped {dropped} findings missing rule_id/location in snapshot {i} in {history_path}"
+                )
+            snapshot["findings"] = valid_findings
             valid_snapshots.append(snapshot)
         else:
             print(f"[evolution] Warning: Corrupt snapshot at index {i} in {history_path}, skipped")
-    data['snapshots'] = valid_snapshots
+    data["snapshots"] = valid_snapshots
 
     # VAL-R3-004: resolved_findings must be a list; reset to [] if not
-    if 'resolved_findings' in data and not isinstance(data['resolved_findings'], list):
+    if "resolved_findings" in data and not isinstance(data["resolved_findings"], list):
         print(f"[evolution] Warning: resolved_findings is not a list in {history_path}, resetting to []")
-        data['resolved_findings'] = []
+        data["resolved_findings"] = []
     # Validate resolved_findings entries: each must be dict with rule_id and location
-    elif isinstance(data.get('resolved_findings'), list):
+    elif isinstance(data.get("resolved_findings"), list):
         valid_resolved = []
-        for i, entry in enumerate(data['resolved_findings']):
-            if isinstance(entry, dict) and 'rule_id' in entry and 'location' in entry:
+        for i, entry in enumerate(data["resolved_findings"]):
+            if isinstance(entry, dict) and "rule_id" in entry and "location" in entry:
                 valid_resolved.append(entry)
             else:
                 print(f"[evolution] Warning: Corrupt resolved_findings at index {i} in {history_path}, skipped")
-        data['resolved_findings'] = valid_resolved
+        data["resolved_findings"] = valid_resolved
 
     return data
 
@@ -302,8 +308,7 @@ def _count_consecutive_absences(rule_id: str, location: str, history_path: Path)
     for snapshot in reversed(snapshots):
         findings = snapshot.get("findings", [])
         present = any(
-            f.get("rule_id") == rule_id and f.get("location") == location
-            for f in findings if isinstance(f, dict)
+            f.get("rule_id") == rule_id and f.get("location") == location for f in findings if isinstance(f, dict)
         )
         if present:
             break
@@ -349,7 +354,7 @@ def _extract_linear_linkback(issue_body: str, issue_comments: str = "") -> str |
     combined = issue_body + "\n" + issue_comments
 
     # Tier 1: inline HTML comment format (backward compat)
-    pattern = r'<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->'
+    pattern = r"<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->"
     match = re.search(pattern, combined)
     if match:
         return match.group(1)
@@ -366,7 +371,7 @@ def _extract_linear_linkback(issue_body: str, issue_comments: str = "") -> str |
         return match.group(1)
 
     # Tier 2b: extract from anchor text (<a ...>INFRA-xxx</a>)
-    anchor_pattern = r'<a[^>]*>\s*([A-Z]+-\d+)\s*</a>'
+    anchor_pattern = r"<a[^>]*>\s*([A-Z]+-\d+)\s*</a>"
     match = re.search(anchor_pattern, combined)
     if match:
         return match.group(1)
@@ -448,7 +453,7 @@ def extract_linkback_anchor(comments_text: str) -> str | None:
         return None
 
     # Apply Tier1 extraction: <!-- linear-linkback INFRA-xxx -->
-    pattern = r'<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->'
+    pattern = r"<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->"
     match = re.search(pattern, linkback_block)
     if match:
         return match.group(1)
@@ -460,7 +465,7 @@ def extract_linkback_anchor(comments_text: str) -> str | None:
         return match.group(1)
 
     # Apply Tier2b: anchor text (<a ...>INFRA-xxx</a>) - FIRST occurrence only
-    anchor_pattern = r'<a[^>]*>\s*([A-Z]+-\d+)\s*</a>'
+    anchor_pattern = r"<a[^>]*>\s*([A-Z]+-\d+)\s*</a>"
     match = re.search(anchor_pattern, linkback_block)
     if match:
         return match.group(1)
@@ -495,28 +500,20 @@ def _fetch_linear_comments(linear_id: str) -> str | None:
           }
         }
         """
-        payload = json.dumps({
-            "query": query,
-            "variables": {"id": linear_id}
-        }).encode("utf-8")
+        payload = json.dumps({"query": query, "variables": {"id": linear_id}}).encode("utf-8")
 
         req = urllib.request.Request(
             "https://api.linear.app/graphql",
             data=payload,
-            headers={
-                "Authorization": api_key,
-                "Content-Type": "application/json"
-            },
-            method="POST"
+            headers={"Authorization": api_key, "Content-Type": "application/json"},
+            method="POST",
         )
 
         with urllib.request.urlopen(req, timeout=10) as resp:
             response_data = json.loads(resp.read().decode("utf-8"))
 
         if "errors" in response_data:
-            logger.warning(
-                f"Linear API returned errors fetching comments for {linear_id}: {response_data['errors']}"
-            )
+            logger.warning(f"Linear API returned errors fetching comments for {linear_id}: {response_data['errors']}")
             return None
 
         issue_data = response_data.get("data", {}).get("issue")
@@ -545,7 +542,7 @@ def _check_merged_pr(github_prs: list[dict[str, Any]], linear_id: str) -> bool |
     """
     for pr_attachment in github_prs:
         pr_url = pr_attachment.get("url", "")
-        pr_match = re.search(r'/pull/(\d+)', pr_url)
+        pr_match = re.search(r"/pull/(\d+)", pr_url)
         if not pr_match:
             continue
 
@@ -554,18 +551,13 @@ def _check_merged_pr(github_prs: list[dict[str, Any]], linear_id: str) -> bool |
         # correct repository. Without --repo, gh pr view only checks the
         # current repo context and silently fails (fail-open) for PRs in
         # other repos — the merge state is never actually confirmed.
-        repo_match = re.search(r'github\.com/([^/]+/[^/]+)/pull/', pr_url)
+        repo_match = re.search(r"github\.com/([^/]+/[^/]+)/pull/", pr_url)
         gh_cmd = ["gh", "pr", "view", pr_number, "--json", "mergedAt"]
         if repo_match:
             gh_cmd.extend(["--repo", repo_match.group(1)])
 
         try:
-            result = subprocess.run(
-                gh_cmd,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
+            result = subprocess.run(gh_cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 pr_data = json.loads(result.stdout)
                 if pr_data.get("mergedAt"):
@@ -591,6 +583,8 @@ def _check_merged_pr(github_prs: list[dict[str, Any]], linear_id: str) -> bool |
     # All PRs checked but none merged, or no extractable PRs
     # → fall through to Path B sentinel check (architecture §3.2)
     return None
+
+
 def _fetch_issue_comments(issue_number: int) -> str | None:
     """Fetch issue comments for linkback/sentinel search.
 
@@ -599,9 +593,10 @@ def _fetch_issue_comments(issue_number: int) -> str | None:
     """
     try:
         comment_result = subprocess.run(
-            ["gh", "issue", "view", str(issue_number),
-             "--json", "comments", "--jq", ".comments[].body"],
-            capture_output=True, text=True, timeout=30
+            ["gh", "issue", "view", str(issue_number), "--json", "comments", "--jq", ".comments[].body"],
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if comment_result.returncode == 0:
             return comment_result.stdout
@@ -616,9 +611,7 @@ def _fetch_issue_comments(issue_number: int) -> str | None:
         return None
 
 
-def _extract_linear_id_from_issue(
-    issue_body: str, issue_number: int | None
-) -> tuple[str | None, bool | None]:
+def _extract_linear_id_from_issue(issue_body: str, issue_number: int | None) -> tuple[str | None, bool | None]:
     """Extract Linear ID from issue body or comments.
 
     Returns:
@@ -735,19 +728,13 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
           }
         }
         """
-        payload = json.dumps({
-            "query": query,
-            "variables": {"id": linear_id}
-        }).encode("utf-8")
+        payload = json.dumps({"query": query, "variables": {"id": linear_id}}).encode("utf-8")
 
         req = urllib.request.Request(
             "https://api.linear.app/graphql",
             data=payload,
-            headers={
-                "Authorization": api_key,
-                "Content-Type": "application/json"
-            },
-            method="POST"
+            headers={"Authorization": api_key, "Content-Type": "application/json"},
+            method="POST",
         )
 
         with urllib.request.urlopen(req, timeout=10) as resp:
@@ -764,8 +751,7 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
         issue_data = response_data.get("data", {}).get("issue")
         if not issue_data:
             logger.warning(
-                f"Linear issue {linear_id} not found — fail-closed: blocking close "
-                f"(issue may have been deleted)"
+                f"Linear issue {linear_id} not found — fail-closed: blocking close (issue may have been deleted)"
             )
             return False
 
@@ -791,10 +777,7 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
         # ("github" | "url" | ...), verified against live schema
         # (__type name: "Attachment") and production attachment data.
         attachments = issue_data.get("attachments", {}).get("nodes", [])
-        github_prs = [
-            att for att in attachments
-            if att.get("sourceType") == "github"
-        ]
+        github_prs = [att for att in attachments if att.get("sourceType") == "github"]
 
         if github_prs:
             pr_result = _check_merged_pr(github_prs, linear_id)
@@ -816,20 +799,23 @@ def _verify_fix_merged_via_linear(issue_body: str, issue_number: int | None = No
         # Check sentinel regardless of whether github_prs exist (architecture §3.2).
         linear_comments = _fetch_linear_comments(linear_id)
         if linear_comments and f"<!-- deadlock-exit {linear_id}" in linear_comments:
-            logger.info(f"Deadlock exit sentinel found in Linear comments for {linear_id} — trust chain passes (session-completed)")
+            logger.info(
+                f"Deadlock exit sentinel found in Linear comments for {linear_id} — trust chain passes (session-completed)"
+            )
             return True
 
         # Neither path succeeded — do NOT close
         if not github_prs:
             logger.info(f"No GitHub PR attachments and no deadlock exit sentinel found for {linear_id}")
         else:
-            logger.info(f"No merged PR and no deadlock exit sentinel found for {linear_id} after checking all attachments")
+            logger.info(
+                f"No merged PR and no deadlock exit sentinel found for {linear_id} after checking all attachments"
+            )
         return False
 
     except urllib.error.URLError as e:
         logger.warning(
-            f"Linear API unreachable for {linear_id}: {e} — fail-closed: "
-            f"blocking close to prevent unverified state"
+            f"Linear API unreachable for {linear_id}: {e} — fail-closed: blocking close to prevent unverified state"
         )
         return False
     except Exception as e:
@@ -872,8 +858,11 @@ def _should_skip_partial_output(findings: list[Any], history_path: Path) -> bool
 
 
 def _should_skip_close(
-    issue: dict[str, Any], rule_id: str, location: str,
-    failed_categories: set[str] | None, history_path: Path | None,
+    issue: dict[str, Any],
+    rule_id: str,
+    location: str,
+    failed_categories: set[str] | None,
+    history_path: Path | None,
 ) -> str | None:
     """Return skip reason if issue should not be closed, else None.
 
@@ -884,21 +873,27 @@ def _should_skip_close(
     if failed_categories:
         category = _parse_issue_category(issue.get("body", ""))
         if category and category in failed_categories:
-            print(f"[evolution] Skip auto-close #{issue['number']}: category '{category}' tool failed this tick ({rule_id} @ {location})")
+            print(
+                f"[evolution] Skip auto-close #{issue['number']}: category '{category}' tool failed this tick ({rule_id} @ {location})"
+            )
             return "protected"
 
     # INFRA-216: Exclude self-audit findings from auto-close
     category = _parse_issue_category(issue.get("body", ""))
     if category == SELF_AUDIT_CATEGORY:
-        print(f"[evolution] Skip auto-close #{issue['number']}: self-audit finding "
-              f"({rule_id} @ {location}) — transient health signal, requires manual/Droid resolution")
+        print(
+            f"[evolution] Skip auto-close #{issue['number']}: self-audit finding "
+            f"({rule_id} @ {location}) — transient health signal, requires manual/Droid resolution"
+        )
         return "self_audit"
 
     # GAP-C3: Check grace period using history
     if history_path is not None:
         absence_count = _count_consecutive_absences(rule_id, location, history_path)
         if absence_count < GRACE_PERIOD_TICKS:
-            print(f"[evolution] Skip auto-close #{issue['number']}: absent {absence_count}/{GRACE_PERIOD_TICKS} ticks (grace period)")
+            print(
+                f"[evolution] Skip auto-close #{issue['number']}: absent {absence_count}/{GRACE_PERIOD_TICKS} ticks (grace period)"
+            )
             return "grace_deferred"
 
     # VAL-CLOSE-001-024: Verify fix is merged via Linear before closing
@@ -913,14 +908,13 @@ def _should_skip_close(
 
 def _close_issue(issue_number: int, rule_id: str, location: str) -> bool:
     """Close a single issue, return True on success."""
-    close_msg = (
-        f"该 finding 在最近一次扫描中已不再出现，自动关闭此 Issue。"
-        f"（Rule: {rule_id}, Location: {location}）"
-    )
+    close_msg = f"该 finding 在最近一次扫描中已不再出现，自动关闭此 Issue。（Rule: {rule_id}, Location: {location}）"
     try:
         close_result = subprocess.run(
             ["gh", "issue", "close", str(issue_number), "--comment", close_msg],
-            capture_output=True, text=True, timeout=30
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if close_result.returncode == 0:
             print(f"[evolution] Closed issue #{issue_number}: {rule_id} @ {location}")
@@ -936,9 +930,22 @@ def _fetch_open_issues(dedup_label: str) -> list[dict[str, Any]] | None:
     """Fetch all open evolution-found issues. Returns None on failure."""
     try:
         result = subprocess.run(
-            ["gh", "issue", "list", "--search", f"label:{dedup_label}",
-             "--state", "open", "--limit", "200", "--json", "number,body"],
-            capture_output=True, text=True, timeout=30
+            [
+                "gh",
+                "issue",
+                "list",
+                "--search",
+                f"label:{dedup_label}",
+                "--state",
+                "open",
+                "--limit",
+                "200",
+                "--json",
+                "number,body",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode != 0:
             print(f"[evolution] Warning: Failed to list open issues: {result.stderr}")
@@ -956,11 +963,14 @@ def _log_auto_close_summary(protected_count: int, grace_deferred_count: int, sel
     if grace_deferred_count > 0:
         print(f"[evolution] Deferred {grace_deferred_count} issue(s) auto-close due to grace period")
     if self_audit_skip_count > 0:
-        print(f"[evolution] Skipped {self_audit_skip_count} self-audit issue(s) from auto-close (transient health signals)")
+        print(
+            f"[evolution] Skipped {self_audit_skip_count} self-audit issue(s) from auto-close (transient health signals)"
+        )
 
 
-def auto_close_resolved(findings: list[Any], dedup_label: str, failed_categories: set[str] | None = None,
-                       history_path: Path | None = None) -> None:
+def auto_close_resolved(
+    findings: list[Any], dedup_label: str, failed_categories: set[str] | None = None, history_path: Path | None = None
+) -> None:
     """Close GitHub Issues whose findings are no longer present in current scan.
 
     Compares current findings against open evolution-found GitHub Issues.
@@ -1141,9 +1151,22 @@ def reconcile_in_progress(dedup_label: str) -> int:
     # Fetch all open evolution-found issues with createdAt
     try:
         result = subprocess.run(
-            ["gh", "issue", "list", "--search", f"label:{dedup_label}",
-             "--state", "open", "--limit", "200", "--json", "number,body,createdAt"],
-            capture_output=True, text=True, timeout=30
+            [
+                "gh",
+                "issue",
+                "list",
+                "--search",
+                f"label:{dedup_label}",
+                "--state",
+                "open",
+                "--limit",
+                "200",
+                "--json",
+                "number,body,createdAt",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode != 0:
             print(f"[evolution] Warning: Failed to list open issues for reconciliation: {result.stderr}")
@@ -1176,9 +1199,22 @@ def reconcile_in_progress(dedup_label: str) -> int:
         # Check for associated PR (search for "Fixes #N" in PR bodies)
         try:
             pr_result = subprocess.run(
-                ["gh", "pr", "list", "--search", f"Fixes #{issue_number}",
-                 "--state", "all", "--limit", "1", "--json", "number"],
-                capture_output=True, text=True, timeout=30
+                [
+                    "gh",
+                    "pr",
+                    "list",
+                    "--search",
+                    f"Fixes #{issue_number}",
+                    "--state",
+                    "all",
+                    "--limit",
+                    "1",
+                    "--json",
+                    "number",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if pr_result.returncode != 0:
                 print(f"[evolution] Warning: Failed to check PR for issue #{issue_number}: {pr_result.stderr}")
@@ -1197,9 +1233,10 @@ def reconcile_in_progress(dedup_label: str) -> int:
         # Idempotency guard: check if advisory comment already exists
         try:
             comments_result = subprocess.run(
-                ["gh", "issue", "view", str(issue_number),
-                 "--json", "comments", "--jq", ".comments[].body"],
-                capture_output=True, text=True, timeout=30
+                ["gh", "issue", "view", str(issue_number), "--json", "comments", "--jq", ".comments[].body"],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if comments_result.returncode == 0 and RECON_ADVISORY_SENTINEL in comments_result.stdout:
                 print(f"[evolution] Skip advisory for #{issue_number}: sentinel already present (idempotency guard)")
@@ -1219,7 +1256,9 @@ def reconcile_in_progress(dedup_label: str) -> int:
         try:
             comment_result = subprocess.run(
                 ["gh", "issue", "comment", str(issue_number), "--body", comment_msg],
-                capture_output=True, text=True, timeout=30
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if comment_result.returncode == 0:
                 stuck_count += 1
@@ -1255,6 +1294,7 @@ class OrphanIssueClassification:
 
     VAL-DRF-003: Every classification must have audit trail (reason + timestamp).
     """
+
     issue_number: int
     rule_id: str
     location: str
@@ -1353,15 +1393,17 @@ def classify_orphan_issues(
         # silent-skip semantics while preserving its safety properties.
         category = issue.get("category") or _parse_issue_category(issue_body)
         if failed_categories and category and category in failed_categories:
-            classifications.append(OrphanIssueClassification(
-                issue_number=issue_number,
-                rule_id=rule_id,
-                location=location,
-                classification="BLOCKED_NO_EVIDENCE",
-                reason=f"category_tool_failed:{category}",
-                timestamp=now_iso,
-                action_taken="retained_with_reason"
-            ))
+            classifications.append(
+                OrphanIssueClassification(
+                    issue_number=issue_number,
+                    rule_id=rule_id,
+                    location=location,
+                    classification="BLOCKED_NO_EVIDENCE",
+                    reason=f"category_tool_failed:{category}",
+                    timestamp=now_iso,
+                    action_taken="retained_with_reason",
+                )
+            )
             logger.info(
                 f"Orphan #{issue_number} classified as BLOCKED_NO_EVIDENCE: "
                 f"category '{category}' tool failed this tick (GAP-C1)"
@@ -1369,15 +1411,17 @@ def classify_orphan_issues(
             continue
 
         if category == SELF_AUDIT_CATEGORY:
-            classifications.append(OrphanIssueClassification(
-                issue_number=issue_number,
-                rule_id=rule_id,
-                location=location,
-                classification="BLOCKED_NO_EVIDENCE",
-                reason="self_audit_protected",
-                timestamp=now_iso,
-                action_taken="retained_with_reason"
-            ))
+            classifications.append(
+                OrphanIssueClassification(
+                    issue_number=issue_number,
+                    rule_id=rule_id,
+                    location=location,
+                    classification="BLOCKED_NO_EVIDENCE",
+                    reason="self_audit_protected",
+                    timestamp=now_iso,
+                    action_taken="retained_with_reason",
+                )
+            )
             logger.info(
                 f"Orphan #{issue_number} classified as BLOCKED_NO_EVIDENCE: "
                 f"self-audit finding protected from auto-close (INFRA-216)"
@@ -1400,25 +1444,24 @@ def classify_orphan_issues(
             else:
                 reason = "fix_verified_no_linkback"
 
-            classifications.append(OrphanIssueClassification(
-                issue_number=issue_number,
-                rule_id=rule_id,
-                location=location,
-                classification="CLOSE_READY",
-                reason=reason,
-                timestamp=now_iso,
-                action_taken="close_attempt"
-            ))
+            classifications.append(
+                OrphanIssueClassification(
+                    issue_number=issue_number,
+                    rule_id=rule_id,
+                    location=location,
+                    classification="CLOSE_READY",
+                    reason=reason,
+                    timestamp=now_iso,
+                    action_taken="close_attempt",
+                )
+            )
 
             logger.info(f"Orphan #{issue_number} classified as CLOSE_READY: {reason}")
 
         else:
             # No evidence - retain with blocking reason
             has_linear_linkback = _has_linear_linkback_marker(issue_body)
-            has_marker_but_no_id = (
-                has_linear_linkback and
-                not _extract_linear_linkback(issue_body)
-            )
+            has_marker_but_no_id = has_linear_linkback and not _extract_linear_linkback(issue_body)
 
             if has_marker_but_no_id:
                 reason = "linkback_marker_present_but_id_extraction_failed"
@@ -1427,15 +1470,17 @@ def classify_orphan_issues(
             else:
                 reason = "no_evidence_of_resolution"
 
-            classifications.append(OrphanIssueClassification(
-                issue_number=issue_number,
-                rule_id=rule_id,
-                location=location,
-                classification="BLOCKED_NO_EVIDENCE",
-                reason=reason,
-                timestamp=now_iso,
-                action_taken="retained_with_reason"
-            ))
+            classifications.append(
+                OrphanIssueClassification(
+                    issue_number=issue_number,
+                    rule_id=rule_id,
+                    location=location,
+                    classification="BLOCKED_NO_EVIDENCE",
+                    reason=reason,
+                    timestamp=now_iso,
+                    action_taken="retained_with_reason",
+                )
+            )
 
             logger.info(f"Orphan #{issue_number} classified as BLOCKED_NO_EVIDENCE: {reason}")
 
@@ -1454,13 +1499,10 @@ def _issue_still_open(issue_number: int) -> bool | None:
     """
     try:
         result = subprocess.run(
-            ["gh", "issue", "view", str(issue_number), "--json", "state"],
-            capture_output=True, text=True, timeout=30
+            ["gh", "issue", "view", str(issue_number), "--json", "state"], capture_output=True, text=True, timeout=30
         )
         if result.returncode != 0:
-            logger.warning(
-                f"Failed to view issue #{issue_number} state: {result.stderr}"
-            )
+            logger.warning(f"Failed to view issue #{issue_number} state: {result.stderr}")
             return None
         data = json.loads(result.stdout) if result.stdout.strip() else {}
         return data.get("state") == "OPEN"
@@ -1502,24 +1544,18 @@ def execute_orphan_classifications(
         # earlier in this same tick); unknown state → skip (fail-closed)
         still_open = _issue_still_open(issue_number)
         if still_open is not True:
-            logger.info(
-                f"Orphan #{issue_number} not open anymore (state check: {still_open}), skipping"
-            )
+            logger.info(f"Orphan #{issue_number} not open anymore (state check: {still_open}), skipping")
             continue
 
         if classification.classification == "CLOSE_READY":
             # Check grace period before closing
             if history_path is not None:
                 absence_count = _count_consecutive_absences(
-                    classification.rule_id,
-                    classification.location,
-                    history_path
+                    classification.rule_id, classification.location, history_path
                 )
                 if absence_count < GRACE_PERIOD_TICKS:
                     deferred_count += 1
-                    logger.info(
-                        f"Orphan #{issue_number} deferred: absent {absence_count}/{GRACE_PERIOD_TICKS} ticks"
-                    )
+                    logger.info(f"Orphan #{issue_number} deferred: absent {absence_count}/{GRACE_PERIOD_TICKS} ticks")
                     continue
 
             # Close the issue with classification reason in comment
@@ -1534,7 +1570,7 @@ def execute_orphan_classifications(
                     ["gh", "issue", "close", str(issue_number), "--comment", close_msg],
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=30,
                 )
                 if close_result.returncode == 0:
                     closed_count += 1
@@ -1550,14 +1586,13 @@ def execute_orphan_classifications(
             # commenting, so repeated ticks don't spam the same issue.
             try:
                 existing = subprocess.run(
-                    ["gh", "issue", "view", str(issue_number),
-                     "--json", "comments", "--jq", ".comments[].body"],
-                    capture_output=True, text=True, timeout=30
+                    ["gh", "issue", "view", str(issue_number), "--json", "comments", "--jq", ".comments[].body"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                 )
                 if existing.returncode == 0 and REVERSE_DRIFT_SENTINEL in existing.stdout:
-                    logger.info(
-                        f"Orphan #{issue_number} already has blocked-audit comment, skipping (idempotency)"
-                    )
+                    logger.info(f"Orphan #{issue_number} already has blocked-audit comment, skipping (idempotency)")
                     continue
             except Exception as e:
                 logger.warning(f"Failed to check comments on #{issue_number}: {e}")
@@ -1576,7 +1611,7 @@ def execute_orphan_classifications(
                     ["gh", "issue", "comment", str(issue_number), "--body", comment_msg],
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=30,
                 )
                 if comment_result.returncode == 0:
                     retained_count += 1
@@ -1586,11 +1621,7 @@ def execute_orphan_classifications(
             except Exception as e:
                 logger.error(f"Failed to comment on orphan #{issue_number}: {e}")
 
-    return {
-        "closed": closed_count,
-        "retained": retained_count,
-        "deferred": deferred_count
-    }
+    return {"closed": closed_count, "retained": retained_count, "deferred": deferred_count}
 
 
 def reverse_drift_watch(
@@ -1668,9 +1699,11 @@ def reverse_drift_watch(
 
     return result
 
+
 # ============================================================================
 # VAL-DRF-001: Forward Drift Watch — positive consistency check
 # ============================================================================
+
 
 @dataclass
 class ForwardDriftRecord:
@@ -1685,6 +1718,7 @@ class ForwardDriftRecord:
 
     Every record must have an audit trail (finding_key, status, reason, timestamp).
     """
+
     finding_key: tuple[str, str]  # (rule_id, location)
     status: str  # ISSUE_EXISTS | SUPPRESSED | CLOSED_IN_WINDOW | QUOTA_PENDING | GHOST
     reason: str  # Why this status
@@ -1739,7 +1773,9 @@ def forward_drift_watch(
 
     # VAL-DRF-004: Check budget before running drift watch
     if tracker.is_any_budget_exceeded():
-        print(f"[evolution] Budget exhausted (duration={tracker.is_duration_exceeded()}, api={tracker.is_api_exceeded()})")
+        print(
+            f"[evolution] Budget exhausted (duration={tracker.is_duration_exceeded()}, api={tracker.is_api_exceeded()})"
+        )
         print("[evolution] Skipping forward drift watch to stay within tick budget")
         return []
 
@@ -1773,12 +1809,14 @@ def forward_drift_watch(
             status = "GHOST"
             reason = "no_issue_no_reason"
 
-        records.append(ForwardDriftRecord(
-            finding_key=key,
-            status=status,
-            reason=reason,
-            timestamp=now_iso,
-        ))
+        records.append(
+            ForwardDriftRecord(
+                finding_key=key,
+                status=status,
+                reason=reason,
+                timestamp=now_iso,
+            )
+        )
 
     return records
 
@@ -1795,10 +1833,21 @@ def close_expired_notifications() -> int:
     # Query for open notification issues
     # Use multiple --label flags for AND logic (issues must have BOTH labels)
     result = subprocess.run(
-        ["gh", "issue", "list", "--state", "open",
-         "--label", "automation", "--label", "branch-cleanup",
-         "--json", "number,createdAt,body"],
-        capture_output=True, text=True
+        [
+            "gh",
+            "issue",
+            "list",
+            "--state",
+            "open",
+            "--label",
+            "automation",
+            "--label",
+            "branch-cleanup",
+            "--json",
+            "number,createdAt,body",
+        ],
+        capture_output=True,
+        text=True,
     )
 
     if result.returncode != 0:
@@ -1838,15 +1887,11 @@ def close_expired_notifications() -> int:
 
             # Comment first, then close
             comment_result = subprocess.run(
-                ["gh", "issue", "comment", str(number), "--body", comment_msg],
-                capture_output=True, text=True
+                ["gh", "issue", "comment", str(number), "--body", comment_msg], capture_output=True, text=True
             )
 
             if comment_result.returncode == 0:
-                close_result = subprocess.run(
-                    ["gh", "issue", "close", str(number)],
-                    capture_output=True, text=True
-                )
+                close_result = subprocess.run(["gh", "issue", "close", str(number)], capture_output=True, text=True)
 
                 if close_result.returncode == 0:
                     closed_count += 1

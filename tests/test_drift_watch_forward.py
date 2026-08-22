@@ -10,6 +10,7 @@ Four forward sample categories:
 3. Suppressed → legitimate reason recorded
 4. Quota pending → legitimate reason recorded
 """
+
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -26,8 +27,7 @@ from evolution_utils import (
 )
 
 
-def _make_finding(rule_id="RULE_A", location="src/a.py::L10",
-                  severity="warning", category="code_quality") -> Finding:
+def _make_finding(rule_id="RULE_A", location="src/a.py::L10", severity="warning", category="code_quality") -> Finding:
     return Finding(
         rule_id=rule_id,
         severity=severity,
@@ -384,6 +384,7 @@ class TestForwardDriftWatchStatusCountLog:
         # 我们改为直接调 forward_drift_watch 并验证 print 格式
         # （实际摘要行由 _integrate_forward_drift_watch 打印，此处 stub）
         from evolution_utils import forward_drift_watch
+
         records = forward_drift_watch(
             findings=findings,
             open_issue_keys={("R1", "a.py::L1")},

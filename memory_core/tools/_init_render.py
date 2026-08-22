@@ -51,16 +51,34 @@ def _render_standard_templates(
     for fname, template_fn in KB_TEMPLATES.items():
         is_business = fname == "INDEX.md" or fname.startswith("project-map/")
         overwritten, skipped = _write_template_file(
-            target / fname, fname, template_fn, project_name, mode, force,
-            ownership, authorized_maintenance, target, result, is_business, _decorate_index_content
+            target / fname,
+            fname,
+            template_fn,
+            project_name,
+            mode,
+            force,
+            ownership,
+            authorized_maintenance,
+            target,
+            result,
+            is_business,
+            _decorate_index_content,
         )
         any_overwritten = any_overwritten or overwritten
         any_skipped = any_skipped or skipped
 
     for fname, template_fn in FILE_TEMPLATES.items():
         overwritten, skipped = _write_template_file(
-            memory_root / fname, fname, template_fn, project_name, mode, force,
-            ownership, authorized_maintenance, target, result
+            memory_root / fname,
+            fname,
+            template_fn,
+            project_name,
+            mode,
+            force,
+            ownership,
+            authorized_maintenance,
+            target,
+            result,
         )
         any_overwritten = any_overwritten or overwritten
         any_skipped = any_skipped or skipped
@@ -88,18 +106,14 @@ def _render_evidence_ref_files(
     anchor_path.parent.mkdir(parents=True, exist_ok=True)
     anchor_content = "# Memory Anchor\n\n# Evidence ref for Truth Basis sections in global-canonical files.\n# Created by init_project_memory.\n"
     anchor_existed = anchor_path.exists()
-    should_skip, reason = _should_skip_file(
-        anchor_path, mode, force, ownership, authorized_maintenance, target, result
-    )
+    should_skip, reason = _should_skip_file(anchor_path, mode, force, ownership, authorized_maintenance, target, result)
     if anchor_existed and should_skip:
         result["skipped"].append(f"file:tests/.memory-anchor.md ({reason})")
         any_skipped = True
     else:
         try:
             anchor_path.write_text(anchor_content, encoding="utf-8")
-            result["created"].append(
-                f"file:tests/.memory-anchor.md{' (overwritten)' if anchor_existed else ''}"
-            )
+            result["created"].append(f"file:tests/.memory-anchor.md{' (overwritten)' if anchor_existed else ''}")
             if anchor_existed:
                 any_overwritten = True
         except Exception as exc:
@@ -121,9 +135,7 @@ def _render_evidence_ref_files(
     else:
         try:
             health_check_path.write_text(health_check_content, encoding="utf-8")
-            result["created"].append(
-                f"file:tools/health-check.sh{' (overwritten)' if health_check_existed else ''}"
-            )
+            result["created"].append(f"file:tools/health-check.sh{' (overwritten)' if health_check_existed else ''}")
             if health_check_existed:
                 any_overwritten = True
         except Exception as exc:
@@ -152,32 +164,54 @@ def _render_special_files(
 
     # adapter.toml
     overwritten, skipped = _write_template_file(
-        memory_root / "adapter.toml", "adapter.toml", template_adapter_toml,
-        project_name, mode, force, ownership, authorized_maintenance, target, result
+        memory_root / "adapter.toml",
+        "adapter.toml",
+        template_adapter_toml,
+        project_name,
+        mode,
+        force,
+        ownership,
+        authorized_maintenance,
+        target,
+        result,
     )
     any_overwritten = any_overwritten or overwritten
     any_skipped = any_skipped or skipped
 
     # memory/inbox.md
     overwritten, skipped = _write_template_file(
-        target / "memory" / "inbox.md", "memory/inbox.md", template_inbox_md,
-        project_name, mode, force, ownership, authorized_maintenance, target, result
+        target / "memory" / "inbox.md",
+        "memory/inbox.md",
+        template_inbox_md,
+        project_name,
+        mode,
+        force,
+        ownership,
+        authorized_maintenance,
+        target,
+        result,
     )
     any_overwritten = any_overwritten or overwritten
     any_skipped = any_skipped or skipped
 
     # Evidence ref files
-    overwritten, skipped = _render_evidence_ref_files(
-        target, mode, force, ownership, authorized_maintenance, result
-    )
+    overwritten, skipped = _render_evidence_ref_files(target, mode, force, ownership, authorized_maintenance, result)
     any_overwritten = any_overwritten or overwritten
     any_skipped = any_skipped or skipped
 
     # memory/kb/projects/{scope}.md
     scope_md_path = target / "memory" / "kb" / "projects" / f"{project_name}.md"
     overwritten, skipped = _write_template_file(
-        scope_md_path, f"memory/kb/projects/{project_name}.md", template_project_scope_md,
-        project_name, mode, force, ownership, authorized_maintenance, target, result
+        scope_md_path,
+        f"memory/kb/projects/{project_name}.md",
+        template_project_scope_md,
+        project_name,
+        mode,
+        force,
+        ownership,
+        authorized_maintenance,
+        target,
+        result,
     )
     any_overwritten = any_overwritten or overwritten
     any_skipped = any_skipped or skipped
@@ -216,16 +250,32 @@ def _render_per_scope_files(
     ]:
         file_path = scope_dir / fname
         overwritten, skipped = _write_template_file(
-            file_path, f"memory/kb/projects/{project_name}/{fname}", template_fn,
-            project_name, mode, force, ownership, authorized_maintenance, target, result
+            file_path,
+            f"memory/kb/projects/{project_name}/{fname}",
+            template_fn,
+            project_name,
+            mode,
+            force,
+            ownership,
+            authorized_maintenance,
+            target,
+            result,
         )
         any_overwritten = any_overwritten or overwritten
         any_skipped = any_skipped or skipped
 
     # NOW.md
     overwritten, skipped = _write_template_file(
-        target / "NOW.md", "NOW.md", template_now_md, project_name, mode, force,
-        ownership, authorized_maintenance, target, result
+        target / "NOW.md",
+        "NOW.md",
+        template_now_md,
+        project_name,
+        mode,
+        force,
+        ownership,
+        authorized_maintenance,
+        target,
+        result,
     )
     any_overwritten = any_overwritten or overwritten
     any_skipped = any_skipped or skipped
@@ -270,5 +320,3 @@ def _render_all_templates(
     any_skipped = any_skipped or skipped
 
     return any_overwritten, any_skipped
-
-

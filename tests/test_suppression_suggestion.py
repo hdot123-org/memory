@@ -3,6 +3,7 @@
 Tests that persistent info-level findings in the history trigger suppress.json
 proposal output to stdout, and that non-persistent findings do not.
 """
+
 import json
 import sys
 from datetime import UTC, datetime
@@ -33,12 +34,14 @@ def _make_history(num_snapshots: int, findings_per_snapshot: list[list[dict]]) -
             findings = findings_per_snapshot[i]
         else:
             findings = findings_per_snapshot[-1] if findings_per_snapshot else []
-        snapshots.append({
-            "timestamp": f"2026-08-{15 + i:02d}T00:00:00+00:00",
-            "tick_id": f"2026081{i}-000000",
-            "findings": findings,
-            "issues_created": 0,
-        })
+        snapshots.append(
+            {
+                "timestamp": f"2026-08-{15 + i:02d}T00:00:00+00:00",
+                "tick_id": f"2026081{i}-000000",
+                "findings": findings,
+                "issues_created": 0,
+            }
+        )
     return {"snapshots": snapshots, "resolved_findings": []}
 
 
@@ -66,6 +69,7 @@ def test_suppression_suggestion_001_persistent_info_finding_emits_snippet(tmp_pa
 
     # Capture stdout
     import io
+
     captured = io.StringIO()
     with patch("sys.stdout", captured):
         proposals = check_persistent_info_findings(history_path, repo_root)
@@ -80,6 +84,7 @@ def test_suppression_suggestion_001_persistent_info_finding_emits_snippet(tmp_pa
 
     # Verify expires is exactly 90 days from today (UTC)
     from datetime import timedelta
+
     expected_expires = (datetime.now(UTC).date() + timedelta(days=90)).isoformat()
     assert proposal["expires"] == expected_expires
 
@@ -112,6 +117,7 @@ def test_suppression_suggestion_002_fewer_than_10_snapshots_no_proposal(tmp_path
     history_path.write_text(json.dumps(history_data))
 
     import io
+
     captured = io.StringIO()
     with patch("sys.stdout", captured):
         proposals = check_persistent_info_findings(history_path, repo_root)
@@ -155,6 +161,7 @@ def test_suppression_suggestion_does_not_write_suppress_file(tmp_path):
     history_path.write_text(json.dumps(history_data))
 
     import io
+
     captured = io.StringIO()
     with patch("sys.stdout", captured):
         proposals = check_persistent_info_findings(history_path, repo_root)
@@ -202,6 +209,7 @@ def test_suppression_suggestion_skips_already_suppressed(tmp_path):
     history_path.write_text(json.dumps(history_data))
 
     import io
+
     captured = io.StringIO()
     with patch("sys.stdout", captured):
         proposals = check_persistent_info_findings(history_path, repo_root)
@@ -240,6 +248,7 @@ def test_suppression_suggestion_only_info_severity(tmp_path):
     history_path.write_text(json.dumps(history_data))
 
     import io
+
     captured = io.StringIO()
     with patch("sys.stdout", captured):
         proposals = check_persistent_info_findings(history_path, repo_root)
@@ -274,6 +283,7 @@ def test_suppression_suggestion_multiple_persistent_findings(tmp_path):
     history_path.write_text(json.dumps(history_data))
 
     import io
+
     captured = io.StringIO()
     with patch("sys.stdout", captured):
         proposals = check_persistent_info_findings(history_path, repo_root)
@@ -287,6 +297,7 @@ def test_suppression_suggestion_multiple_persistent_findings(tmp_path):
 
     # All should have the same expires
     from datetime import timedelta
+
     expected_expires = (datetime.now(UTC).date() + timedelta(days=90)).isoformat()
     assert all(p["expires"] == expected_expires for p in proposals)
 
@@ -297,6 +308,7 @@ def test_suppression_suggestion_no_history_file(tmp_path):
     repo_root = tmp_path
 
     import io
+
     captured = io.StringIO()
     with patch("sys.stdout", captured):
         proposals = check_persistent_info_findings(history_path, repo_root)
@@ -313,6 +325,7 @@ def test_suppression_suggestion_empty_history(tmp_path):
     history_path.write_text(json.dumps(history_data))
 
     import io
+
     captured = io.StringIO()
     with patch("sys.stdout", captured):
         proposals = check_persistent_info_findings(history_path, repo_root)
@@ -343,24 +356,29 @@ def test_suppression_suggestion_003_intermittent_finding_no_proposal(tmp_path):
     for i in range(15):
         # finding 出现在快照 0-7（共 8 个），不在 8-14
         if i < 8:
-            snapshots.append({
-                "timestamp": f"2026-08-{15 + i:02d}T00:00:00+00:00",
-                "tick_id": f"2026081{i}-000000",
-                "findings": [persistent_finding],
-                "issues_created": 0,
-            })
+            snapshots.append(
+                {
+                    "timestamp": f"2026-08-{15 + i:02d}T00:00:00+00:00",
+                    "tick_id": f"2026081{i}-000000",
+                    "findings": [persistent_finding],
+                    "issues_created": 0,
+                }
+            )
         else:
-            snapshots.append({
-                "timestamp": f"2026-08-{15 + i:02d}T00:00:00+00:00",
-                "tick_id": f"2026081{i}-000000",
-                "findings": [],
-                "issues_created": 0,
-            })
+            snapshots.append(
+                {
+                    "timestamp": f"2026-08-{15 + i:02d}T00:00:00+00:00",
+                    "tick_id": f"2026081{i}-000000",
+                    "findings": [],
+                    "issues_created": 0,
+                }
+            )
 
     history_data = {"snapshots": snapshots, "resolved_findings": []}
     history_path.write_text(json.dumps(history_data))
 
     import io
+
     captured = io.StringIO()
     with patch("sys.stdout", captured):
         proposals = check_persistent_info_findings(history_path, repo_root)
@@ -386,6 +404,7 @@ def test_suppression_suggestion_004_expired_suppress_allows_reproposal(tmp_path)
     suppress_path = evolution_dir / "suppress.json"
 
     from datetime import timedelta
+
     yesterday = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
     suppress_content = {
         "suppressed": [
@@ -411,6 +430,7 @@ def test_suppression_suggestion_004_expired_suppress_allows_reproposal(tmp_path)
     history_path.write_text(json.dumps(history_data))
 
     import io
+
     captured = io.StringIO()
     with patch("sys.stdout", captured):
         proposals = check_persistent_info_findings(history_path, repo_root)

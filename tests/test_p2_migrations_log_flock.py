@@ -53,9 +53,7 @@ class TestMigrationsLogFlock:
         content = log_file.read_text(encoding="utf-8")
         # Filter out comment lines (starting with #)
         lines = [ln for ln in content.splitlines() if ln.strip() and not ln.startswith("#")]
-        assert len(lines) == num_threads, (
-            f"Expected {num_threads} data lines, got {len(lines)}:\n{content}"
-        )
+        assert len(lines) == num_threads, f"Expected {num_threads} data lines, got {len(lines)}:\n{content}"
 
     def test_all_lines_parseable_json(self, tmp_path: Path) -> None:
         """Every written line must be valid JSON (our test format)."""

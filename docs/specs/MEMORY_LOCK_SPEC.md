@@ -132,6 +132,7 @@ def is_behind(project_lock: dict, latest_release: str) -> bool:
     仅比较 memory_version 的 SemVer，不读取项目任何业务文件。
     """
     from packaging.version import Version
+
     return Version(project_lock["memory_version"]) < Version(latest_release)
 ```
 
@@ -154,6 +155,7 @@ def is_behind(project_lock: dict, latest_release: str) -> bool:
 def classify_upgrade(current: str, target: str) -> str:
     """返回 patch / minor / major 升级类型。"""
     from packaging.version import Version
+
     c, t = Version(current), Version(target)
     if t.major > c.major:
         return "major"

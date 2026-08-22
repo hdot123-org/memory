@@ -34,7 +34,9 @@ class TestVerifyMissingKey:
 
             with (
                 mock.patch.object(
-                    os, "environ", {**os.environ, "MEMORY_INTEGRITY_KEY_PATH": str(fake_key)},
+                    os,
+                    "environ",
+                    {**os.environ, "MEMORY_INTEGRITY_KEY_PATH": str(fake_key)},
                 ),
                 mock.patch(
                     "memory_core.tools.memory_hook_integrity_keys.load_key",

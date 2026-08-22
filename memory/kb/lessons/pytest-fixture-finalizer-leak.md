@@ -52,8 +52,7 @@ CI 的 `pip install` 不锁定 pytest/pytest-rerunfailures 版本。pytest 8.x �
 
 ```python
 @pytest.mark.flaky(reruns=2)
-def test_specific_flaky_thing():
-    ...
+def test_specific_flaky_thing(): ...
 ```
 
 **理由**：全局 --reruns 掩盖真实测试问题（test isolation failure），应只在已知 flaky 测试上精确启用。
@@ -67,6 +66,7 @@ def test_specific_flaky_thing():
 def _reset_telemetry_singleton():
     yield
     from memory_core.tools.telemetry_bridge import _reset_global_state
+
     _reset_global_state()
 ```
 

@@ -163,7 +163,7 @@ class TestExtractPathFromExecute:
 
     def test_extracts_python_path_calls(self):
         """_extract_path_from_execute extracts python Path() calls."""
-        paths = _extract_path_from_execute('python -c \'Path("/tmp/file.txt")\'')
+        paths = _extract_path_from_execute("python -c 'Path(\"/tmp/file.txt\")'")
         assert "/tmp/file.txt" in paths
 
     def test_extracts_redirect_target(self):
@@ -428,7 +428,7 @@ class TestClassifyToolUse:
             "tool_name": "MultiEdit",
             "edits": [
                 {"file_path": "test.py", "old_str": "old", "new_str": "new"},
-            ]
+            ],
         }
 
         result = classify_tool_use(payload, tmp_path)
@@ -440,13 +440,7 @@ class TestClassifyToolUse:
     def test_handles_tool_input_wrapper(self, tmp_path: Path):
         """classify_tool_use handles tool_input wrapper format."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        payload = {
-            "tool_input": {
-                "tool_name": "Write",
-                "file_path": "test.sql",
-                "content": "SELECT"
-            }
-        }
+        payload = {"tool_input": {"tool_name": "Write", "file_path": "test.sql", "content": "SELECT"}}
         result = classify_tool_use(payload, tmp_path)
         assert isinstance(result, RuleResult)
         assert result.detail["decision"] == "block"
@@ -479,6 +473,7 @@ class TestRuleEvaluatorProtocolCompliance:
         from unittest.mock import MagicMock
 
         from memory_core.tools.business_policy_checks import ProjectMapValidator
+
         config = MagicMock()
         validator = ProjectMapValidator(config)
         assert hasattr(validator, "rule_name")
@@ -490,6 +485,7 @@ class TestRuleEvaluatorProtocolCompliance:
 
         from memory_core.tools._rule_types import RuleContext
         from memory_core.tools.business_policy_checks import ProjectMapValidator
+
         config = MagicMock()
         config.read_text_if_exists_fn = MagicMock(return_value="")
         config.project_map_files = [tmp_path / "index.md", tmp_path / "core.md", tmp_path / "registry.md"]
@@ -505,6 +501,7 @@ class TestRuleEvaluatorProtocolCompliance:
         from unittest.mock import MagicMock
 
         from memory_core.tools.business_policy_checks import FrozenTupleChecker
+
         config = MagicMock()
         checker = FrozenTupleChecker(config)
         assert hasattr(checker, "rule_name")
@@ -516,6 +513,7 @@ class TestRuleEvaluatorProtocolCompliance:
 
         from memory_core.tools._rule_types import RuleContext
         from memory_core.tools.business_policy_checks import FrozenTupleChecker
+
         config = MagicMock()
         config.governance_frozen_tuple_files = []
         config.frozen_tuple_expected = []
@@ -531,6 +529,7 @@ class TestRuleEvaluatorProtocolCompliance:
         from unittest.mock import MagicMock
 
         from memory_core.tools.business_policy_checks import EventContractChecker
+
         config = MagicMock()
         checker = EventContractChecker(config)
         assert hasattr(checker, "rule_name")
@@ -542,6 +541,7 @@ class TestRuleEvaluatorProtocolCompliance:
 
         from memory_core.tools._rule_types import RuleContext
         from memory_core.tools.business_policy_checks import EventContractChecker
+
         config = MagicMock()
         config.event_contract_files = {}
         checker = EventContractChecker(config)
@@ -555,6 +555,7 @@ class TestRuleEvaluatorProtocolCompliance:
         from unittest.mock import MagicMock
 
         from memory_core.tools.business_policy_checks import TruthBasisResolver
+
         config = MagicMock()
         resolver = TruthBasisResolver(config)
         assert hasattr(resolver, "rule_name")
@@ -566,6 +567,7 @@ class TestRuleEvaluatorProtocolCompliance:
 
         from memory_core.tools._rule_types import RuleContext
         from memory_core.tools.business_policy_checks import TruthBasisResolver
+
         config = MagicMock()
         config.global_canonical = []
         config.project_canonical = {}

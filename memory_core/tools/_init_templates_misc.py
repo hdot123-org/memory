@@ -7,9 +7,11 @@ from memory_core.constants import CURRENT_MEMORY_VERSION
 
 logger = logging.getLogger(__name__)
 
+
 def _now_iso() -> str:
     """Return current date in ISO format (YYYY-MM-DD)."""
     from datetime import datetime
+
     return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
@@ -85,8 +87,6 @@ def template_inbox_md(project_name: str) -> tuple[str, list[str]]:
     return content, warnings
 
 
-
-
 def template_ownership_toml(project_name: str) -> tuple[str, list[str]]:
     """Generate ownership.toml content for memory-core ownership declaration.
 
@@ -108,45 +108,55 @@ def template_ownership_toml(project_name: str) -> tuple[str, list[str]]:
 
         # Add default domains
         from memory_core.ownership import DEFAULT_OWNERSHIP_DOMAINS
+
         for domain in DEFAULT_OWNERSHIP_DOMAINS:
-            lines.extend([
-                "",
-                "[[domains]]",
-                f'name = "{domain.name}"',
-                f'path = "{domain.path}"',
-                f'level = "{domain.level.name.lower()}"',
-                f'recursive = {str(domain.recursive).lower()}',
-            ])
+            lines.extend(
+                [
+                    "",
+                    "[[domains]]",
+                    f'name = "{domain.name}"',
+                    f'path = "{domain.path}"',
+                    f'level = "{domain.level.name.lower()}"',
+                    f"recursive = {str(domain.recursive).lower()}",
+                ]
+            )
             if domain.description:
                 lines.append(f'description = "{domain.description}"')
 
-        lines.extend([
-            "",
-            "# Resources: specific files under ownership protection",
-        ])
+        lines.extend(
+            [
+                "",
+                "# Resources: specific files under ownership protection",
+            ]
+        )
 
         # Add default resources
         from memory_core.ownership import DEFAULT_OWNERSHIP_RESOURCES
+
         for resource in DEFAULT_OWNERSHIP_RESOURCES:
-            lines.extend([
-                "",
-                "[[resources]]",
-                f'name = "{resource.name}"',
-                f'path = "{resource.path}"',
-                f'level = "{resource.level.name.lower()}"',
-            ])
+            lines.extend(
+                [
+                    "",
+                    "[[resources]]",
+                    f'name = "{resource.name}"',
+                    f'path = "{resource.path}"',
+                    f'level = "{resource.level.name.lower()}"',
+                ]
+            )
             if resource.domain:
                 lines.append(f'domain = "{resource.domain}"')
             if resource.description:
                 lines.append(f'description = "{resource.description}"')
 
-        lines.extend([
-            "",
-            "# Policy: optional key-value pairs for ownership policy",
-            "[policy]",
-            f'project_name = "{project_name}"',
-            "",
-        ])
+        lines.extend(
+            [
+                "",
+                "# Policy: optional key-value pairs for ownership policy",
+                "[policy]",
+                f'project_name = "{project_name}"',
+                "",
+            ]
+        )
 
         content = "\n".join(lines)
     except (ValueError, TypeError, ImportError) as exc:
@@ -267,4 +277,3 @@ tags: [project, knowledge]
 # ---------------------------------------------------------------------------
 # Auto-fill helpers
 # ---------------------------------------------------------------------------
-

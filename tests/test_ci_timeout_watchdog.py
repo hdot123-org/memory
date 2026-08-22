@@ -3,6 +3,7 @@
 Phase A: 检测超过 30 分钟未注入的 pending-ci 文件
 Phase B: 检测超过 45 分钟已注入但未消费的 pending-ci 文件
 """
+
 import json
 import os
 import subprocess
@@ -35,6 +36,7 @@ def create_pending_ci_file(
     message_id: str | None = None,
 ):
     """创建 pending-ci 文件"""
+
     def format_timestamp(dt: datetime) -> str:
         return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -102,9 +104,7 @@ class TestPhaseAReconciliation:
         """Phase A 应该跳过已注入的文件（由 Phase B 处理）"""
         created_at = datetime.now(UTC) - timedelta(minutes=35)
         injected_at = datetime.now(UTC) - timedelta(minutes=30)
-        file_path = create_pending_ci_file(
-            temp_locks_dir, 125, created_at, injected_at=injected_at
-        )
+        file_path = create_pending_ci_file(temp_locks_dir, 125, created_at, injected_at=injected_at)
 
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
@@ -129,9 +129,7 @@ class TestPhaseBReconciliation:
         """Phase B 应该检测超过 45 分钟已注入但未消费的文件"""
         created_at = datetime.now(UTC) - timedelta(minutes=55)
         injected_at = datetime.now(UTC) - timedelta(minutes=50)
-        create_pending_ci_file(
-            temp_locks_dir, 126, created_at, injected_at=injected_at
-        )
+        create_pending_ci_file(temp_locks_dir, 126, created_at, injected_at=injected_at)
 
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)
@@ -146,16 +144,18 @@ class TestPhaseBReconciliation:
             timeout=30,
         )
 
-        assert "Phase B" in result.stdout or "PR #126" in result.stdout or \
-               "not merged" in result.stdout or "spawning fallback" in result.stdout
+        assert (
+            "Phase B" in result.stdout
+            or "PR #126" in result.stdout
+            or "not merged" in result.stdout
+            or "spawning fallback" in result.stdout
+        )
 
     def test_phase_b_ignores_recent_injected_file(self, temp_locks_dir, watchdog_script):
         """Phase B 不应该处理 45 分钟内注入的文件"""
         created_at = datetime.now(UTC) - timedelta(minutes=40)
         injected_at = datetime.now(UTC) - timedelta(minutes=30)
-        file_path = create_pending_ci_file(
-            temp_locks_dir, 127, created_at, injected_at=injected_at
-        )
+        file_path = create_pending_ci_file(temp_locks_dir, 127, created_at, injected_at=injected_at)
 
         env = os.environ.copy()
         env["LOCKS_DIR"] = str(temp_locks_dir)

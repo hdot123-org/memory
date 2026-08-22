@@ -199,9 +199,7 @@ class TestClassifyTruthRefPriority:
 
         # Verify: exact match should win
         result = resolver._classify_truth_ref(legal_core_path)
-        assert result == "legal-core", (
-            f"Exact match should win over global_canonical, got {result}"
-        )
+        assert result == "legal-core", f"Exact match should win over global_canonical, got {result}"
 
     def test_global_canonical_wins_over_path_containment(self, tmp_path: Path) -> None:
         """When a path is in global_canonical AND under a path containment table,
@@ -224,9 +222,7 @@ class TestClassifyTruthRefPriority:
 
         # Verify: global_canonical should win over path containment
         result = resolver._classify_truth_ref(kb_path)
-        assert result == "global-canonical", (
-            f"global_canonical should win over path containment, got {result}"
-        )
+        assert result == "global-canonical", f"global_canonical should win over path containment, got {result}"
 
     def test_path_containment_wins_over_other(self, tmp_path: Path) -> None:
         """When a path is under a path containment table entry,
@@ -244,9 +240,7 @@ class TestClassifyTruthRefPriority:
 
         # Verify: path containment should classify as "docs", not "other"
         result = resolver._classify_truth_ref(docs_path)
-        assert result == "docs", (
-            f"Path under docs should be classified as 'docs', got {result}"
-        )
+        assert result == "docs", f"Path under docs should be classified as 'docs', got {result}"
 
     def test_unmatched_path_returns_other(self, tmp_path: Path) -> None:
         """When a path doesn't match any rule, it should return 'other'."""
@@ -263,6 +257,4 @@ class TestClassifyTruthRefPriority:
 
         # Verify: unmatched path should return "other"
         result = resolver._classify_truth_ref(random_path)
-        assert result == "other", (
-            f"Unmatched path should return 'other', got {result}"
-        )
+        assert result == "other", f"Unmatched path should return 'other', got {result}"

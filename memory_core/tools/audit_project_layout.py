@@ -16,7 +16,6 @@ Output:
     JSON with findings array containing severity, kind, path, message, suggested_bucket
 """
 
-
 import argparse
 import fnmatch
 import json
@@ -263,9 +262,7 @@ MEMORY_STRUCTURE_PATTERNS = {
 
 def _is_allowed_root_file(name: str) -> bool:
     """Check if a root file is allowed/expected."""
-    return name in ALLOWED_ROOT_FILES or any(
-        fnmatch.fnmatch(name, pattern) for pattern in ALLOWED_ROOT_PATTERNS
-    )
+    return name in ALLOWED_ROOT_FILES or any(fnmatch.fnmatch(name, pattern) for pattern in ALLOWED_ROOT_PATTERNS)
 
 
 def _check_root_pollution(root: Path, result: AuditResult) -> None:
@@ -604,6 +601,7 @@ def _check_ownership_findings(root: Path, result: AuditResult) -> None:
         # Try to load and validate ownership
         try:
             from memory_core.ownership import validate_ownership_schema
+
             ownership = load_memory_ownership(root)
             schema_errors = validate_ownership_schema(ownership)
             for error in schema_errors:
@@ -650,6 +648,7 @@ def _check_ownership_findings(root: Path, result: AuditResult) -> None:
                 content = full_path.read_text(encoding="utf-8")
                 # Check for broken internal references
                 import re
+
                 refs = re.findall(r"\[.*?\]\((.*?)\)", content)
                 for ref in refs:
                     if not ref.startswith("http") and not ref.startswith("#"):
@@ -875,7 +874,11 @@ def _generate_backup_plan(findings: list[Finding], target: Path) -> dict[str, An
     files_to_backup: list[str] = []
 
     for finding in findings:
-        if finding.kind in ("dot_memory", "legacy_memory", "project_map") or finding.kind in ("agents_md_marked", "agents_md_unmarked") or finding.kind == "index_md_business":
+        if (
+            finding.kind in ("dot_memory", "legacy_memory", "project_map")
+            or finding.kind in ("agents_md_marked", "agents_md_unmarked")
+            or finding.kind == "index_md_business"
+        ):
             files_to_backup.append(finding.path)
 
     return {
@@ -901,7 +904,15 @@ def _generate_rollback_plan(findings: list[Finding], target: Path) -> dict[str, 
                     "command": f"cp -r $BACKUP_DIR/{finding.path} {finding.path}",
                 }
             )
-        elif finding.kind in ("root_report", "root_audit", "root_plan", "root_dump", "root_now", "root_docs_dir", "root_docs_symlink"):
+        elif finding.kind in (
+            "root_report",
+            "root_audit",
+            "root_plan",
+            "root_dump",
+            "root_now",
+            "root_docs_dir",
+            "root_docs_symlink",
+        ):
             destination = f"{ROOT_POLLUTION_DEST}/{Path(finding.path).name}"
             rollback_steps.append(
                 {
@@ -1167,7 +1178,9 @@ def plan_residue_migration(
         requires_human_confirmation=requires_confirmation,
         backup_plan=backup_plan,
         rollback_plan=rollback_plan,
-        forbidden_overwrites=forbidden_overwrites if forbidden_overwrites else LEGACY_FORBIDDEN_OVERWRITE_PATTERNS.copy(),
+        forbidden_overwrites=forbidden_overwrites
+        if forbidden_overwrites
+        else LEGACY_FORBIDDEN_OVERWRITE_PATTERNS.copy(),
         must_commit_together=must_commit_together,
         total_items=total_items,
     )

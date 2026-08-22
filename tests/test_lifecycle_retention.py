@@ -163,6 +163,7 @@ def test_cleanup_throttled_via_sentinel(tmp_path: Path, monkeypatch) -> None:
 
     # Second event on the same day should NOT update sentinel
     import time
+
     time.sleep(0.1)  # Small delay to ensure mtime would change if written
 
     record_project_lifecycle(
@@ -211,8 +212,8 @@ def test_retention_days_env_var_override(tmp_path: Path, monkeypatch) -> None:
     # Create files at different ages
     files_to_create = [
         ("2026-07-20.jsonl", 12, False),  # 12 days ago, should be deleted
-        ("2026-07-25.jsonl", 7, True),    # 7 days ago, should be preserved (boundary)
-        ("2026-07-30.jsonl", 2, True),    # 2 days ago, should be preserved
+        ("2026-07-25.jsonl", 7, True),  # 7 days ago, should be preserved (boundary)
+        ("2026-07-30.jsonl", 2, True),  # 2 days ago, should be preserved
     ]
 
     for date_str, age_days, _should_preserve in files_to_create:
@@ -269,8 +270,8 @@ def test_default_retention_is_30_days(tmp_path: Path, monkeypatch) -> None:
     # Create files at boundary of default 30-day retention
     files_to_create = [
         ("2026-07-01.jsonl", 31, False),  # 31 days ago, should be deleted
-        ("2026-07-02.jsonl", 30, True),   # 30 days ago, should be preserved (boundary)
-        ("2026-07-15.jsonl", 17, True),   # 17 days ago, should be preserved
+        ("2026-07-02.jsonl", 30, True),  # 30 days ago, should be preserved (boundary)
+        ("2026-07-15.jsonl", 17, True),  # 17 days ago, should be preserved
     ]
 
     for date_str, _age_days, _should_preserve in files_to_create:

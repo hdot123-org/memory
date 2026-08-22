@@ -107,16 +107,19 @@ class TestGetSourceRepoMode:
     def test_default_is_readonly(self, source_repo: Path) -> None:
         """Without ownership.toml, mode is readonly."""
         from memory_core.ownership import get_source_repo_mode
+
         assert get_source_repo_mode(source_repo) == "readonly"
 
     def test_develop_mode_from_toml(self, source_repo_with_develop: Path) -> None:
         """With develop mode in ownership.toml, returns develop."""
         from memory_core.ownership import get_source_repo_mode
+
         assert get_source_repo_mode(source_repo_with_develop) == "develop"
 
     def test_non_source_repo_returns_readonly(self, tmp_path: Path) -> None:
         """Non-source-repo always returns readonly."""
         from memory_core.ownership import get_source_repo_mode
+
         assert get_source_repo_mode(tmp_path) == "readonly"
 
     def test_invalid_mode_falls_back_to_readonly(self, source_repo: Path) -> None:
@@ -131,6 +134,7 @@ mode = "invalid_mode"
 """
         (memory_dir / "ownership.toml").write_text(ownership_content, encoding="utf-8")
         from memory_core.ownership import get_source_repo_mode
+
         assert get_source_repo_mode(source_repo) == "readonly"
 
     def test_empty_mode_falls_back_to_readonly(self, source_repo: Path) -> None:
@@ -145,6 +149,7 @@ mode = ""
 """
         (memory_dir / "ownership.toml").write_text(ownership_content, encoding="utf-8")
         from memory_core.ownership import get_source_repo_mode
+
         assert get_source_repo_mode(source_repo) == "readonly"
 
 
@@ -154,6 +159,7 @@ class TestGatewayDevelopMode:
     def test_readonly_mode_returns_readonly_package(self, source_repo: Path) -> None:
         """Readonly source repo still gets readonly context-package."""
         from memory_core.tools.memory_hook_gateway import _build_readonly_source_repo_package
+
         pkg = _build_readonly_source_repo_package(source_repo, "factory", "session-start")
         assert pkg["mode"] == "read-only"
         assert pkg["allowed_writes"] == {}
@@ -161,6 +167,7 @@ class TestGatewayDevelopMode:
     def test_develop_mode_does_not_return_readonly_package(self, source_repo_with_develop: Path) -> None:
         """Develop mode source repo should not get readonly context-package from _build_readonly."""
         from memory_core.ownership import get_source_repo_mode
+
         mode = get_source_repo_mode(source_repo_with_develop)
         assert mode == "develop"
 
@@ -198,6 +205,7 @@ class TestOwnershipCliSourceRepoMode:
 
         # Verify mode is persisted
         from memory_core.ownership import get_source_repo_mode
+
         assert get_source_repo_mode(source_repo) == "develop"
 
     def test_switch_to_readonly(self, source_repo_with_develop: Path) -> None:
@@ -212,6 +220,7 @@ class TestOwnershipCliSourceRepoMode:
         assert rc == 0
 
         from memory_core.ownership import get_source_repo_mode
+
         assert get_source_repo_mode(source_repo_with_develop) == "readonly"
 
     def test_non_source_repo_rejected(self, tmp_path: Path) -> None:
@@ -243,6 +252,7 @@ class TestPretooluseGuardInDevelopMode:
     def test_protects_memory_docs(self, source_repo_with_develop: Path) -> None:
         """memory/docs/ is still protected in develop mode."""
         from memory_core.ownership import classify_owned_path, load_memory_ownership
+
         ownership = load_memory_ownership(source_repo_with_develop)
         result = classify_owned_path("memory/docs/some_file.md", ownership, source_repo_with_develop)
         assert hasattr(result, "level"), "memory/docs should be owned/protected"
@@ -250,6 +260,7 @@ class TestPretooluseGuardInDevelopMode:
     def test_protects_memory_kb(self, source_repo_with_develop: Path) -> None:
         """memory/kb/ is still protected in develop mode."""
         from memory_core.ownership import classify_owned_path, load_memory_ownership
+
         ownership = load_memory_ownership(source_repo_with_develop)
         result = classify_owned_path("memory/kb/some_file.md", ownership, source_repo_with_develop)
         assert hasattr(result, "level"), "memory/kb should be owned/protected"
@@ -257,6 +268,7 @@ class TestPretooluseGuardInDevelopMode:
     def test_protects_dot_memory(self, source_repo_with_develop: Path) -> None:
         """memory/kb/ is still protected in develop mode."""
         from memory_core.ownership import classify_owned_path, load_memory_ownership
+
         ownership = load_memory_ownership(source_repo_with_develop)
         result = classify_owned_path("memory/system/memory.lock", ownership, source_repo_with_develop)
         assert hasattr(result, "level"), "memory/system/memory.lock should be owned/protected"
@@ -264,6 +276,7 @@ class TestPretooluseGuardInDevelopMode:
     def test_allows_code_files(self, source_repo_with_develop: Path) -> None:
         """Code files (memory_core/tools/*.py) are NOT protected."""
         from memory_core.ownership import classify_owned_path, load_memory_ownership
+
         ownership = load_memory_ownership(source_repo_with_develop)
         result = classify_owned_path("memory_core/tools/some_tool.py", ownership, source_repo_with_develop)
         assert not hasattr(result, "level"), "Code files should not be owned/protected"
@@ -271,6 +284,7 @@ class TestPretooluseGuardInDevelopMode:
     def test_allows_tests(self, source_repo_with_develop: Path) -> None:
         """Test files are NOT protected."""
         from memory_core.ownership import classify_owned_path, load_memory_ownership
+
         ownership = load_memory_ownership(source_repo_with_develop)
         result = classify_owned_path("tests/test_something.py", ownership, source_repo_with_develop)
         assert not hasattr(result, "level"), "Test files should not be owned/protected"

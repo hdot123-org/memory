@@ -8,7 +8,6 @@ This module defines the core interfaces for the M2 refactoring:
 - IF-4: ArtifactSink / ErrorSink
 """
 
-
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -18,8 +17,10 @@ from typing import Any, TypedDict
 # TypedDict for dict key contracts
 # ---------------------------------------------------------------------------
 
+
 class TruthBasis(TypedDict, total=False):
     """Typed contract for truth-basis packages returned by truth_basis_for_scope."""
+
     refs: list[str]
     errors: list[str]
     validation: str
@@ -34,6 +35,7 @@ class TruthBasis(TypedDict, total=False):
 
 class RegistrationCommitGate(TypedDict, total=False):
     """Typed contract for registration commit gate probes."""
+
     phase: str
     enforced: bool
     gate_event: str
@@ -45,6 +47,7 @@ class RegistrationCommitGate(TypedDict, total=False):
 # ---------------------------------------------------------------------------
 # IF-1: HostDelegate
 # ---------------------------------------------------------------------------
+
 
 class HostDelegate(ABC):
     """Interface for delegating hook events to host runtime."""
@@ -90,6 +93,7 @@ class HostDelegate(ABC):
 # IF-2: PolicyRegistry
 # ---------------------------------------------------------------------------
 
+
 class PolicyRegistry(ABC):
     """Interface for policy lookups and validation."""
 
@@ -132,7 +136,6 @@ class PolicyRegistry(ABC):
             ValueError: If conflict cannot be resolved
         """
         pass
-
 
     # Validation and scope lookup methods
 
@@ -182,13 +185,10 @@ class PolicyRegistry(ABC):
         pass
 
 
-
-
-
-
 # ---------------------------------------------------------------------------
 # IF-3: RouteTargetPolicy / WriteTargetPolicy
 # ---------------------------------------------------------------------------
+
 
 class RouteTargetPolicy(ABC):
     """Interface for route target resolution."""
@@ -233,8 +233,6 @@ class GatewayBusinessPolicy(ABC):
     def get_project_runtime_root(self) -> dict[str, Path]:
         """Return project runtime root mapping."""
         pass
-
-
 
     @abstractmethod
     def get_required_canonical(self) -> list[Path]:
@@ -296,6 +294,7 @@ class GatewayBusinessPolicy(ABC):
 # IF-4: ArtifactSink / ErrorSink
 # ---------------------------------------------------------------------------
 
+
 class ArtifactSink(ABC):
     """Interface for artifact output."""
 
@@ -326,6 +325,7 @@ class ErrorSink(ABC):
 # ---------------------------------------------------------------------------
 # IF-6: PathUtils
 # ---------------------------------------------------------------------------
+
 
 class PathUtils(ABC):
     """Path-related utility callbacks used by core assembly."""

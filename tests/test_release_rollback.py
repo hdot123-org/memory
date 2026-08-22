@@ -135,9 +135,7 @@ def test_no_args_exits_2():
     exit_code, stdout, stderr = run_script()
 
     assert exit_code == 2, f"Expected exit 2, got {exit_code}. stderr: {stderr}"
-    assert "Usage:" in stderr or "usage:" in stderr.lower(), (
-        f"Expected usage message in stderr, got: {stderr}"
-    )
+    assert "Usage:" in stderr or "usage:" in stderr.lower(), f"Expected usage message in stderr, got: {stderr}"
 
 
 # ============================================================================
@@ -169,9 +167,7 @@ def test_dry_run_no_mutation(tmp_path: Path):
 
     assert exit_code == 0, f"Expected exit 0, got {exit_code}. stderr: {stderr}"
     assert "DRY RUN" in stdout, f"Expected 'DRY RUN' in output, got: {stdout}"
-    assert "Would revert commit:" in stdout, (
-        f"Expected 'Would revert commit:' in output, got: {stdout}"
-    )
+    assert "Would revert commit:" in stdout, f"Expected 'Would revert commit:' in output, got: {stdout}"
     assert "Would move tag" in stdout, f"Expected 'Would move tag' in output, got: {stdout}"
     assert "Would push" in stdout, f"Expected 'Would push' in output, got: {stdout}"
 

@@ -363,9 +363,7 @@ class TestRobustness:
         """Correctly parse files with UTF-8 BOM."""
         test_file = tmp_path / "bom.py"
         # Write with BOM
-        test_file.write_bytes(
-            b'\xef\xbb\xbfx = 1\n\ntry:\n    pass\nexcept:\n    pass\n'
-        )
+        test_file.write_bytes(b"\xef\xbb\xbfx = 1\n\ntry:\n    pass\nexcept:\n    pass\n")
 
         findings = audit_file(test_file, tmp_path)
         assert len(findings) == 1
@@ -434,6 +432,7 @@ except:
             ]
 
             import io
+
             old_stdout = sys.stdout
             sys.stdout = io.StringIO()
 
@@ -509,9 +508,7 @@ class VeryLongClassNameThatMakesThePathVeryLong:
         test_file.write_text(code)
 
         tree = compile(code, str(test_file), "exec", ast.PyCF_ONLY_AST)
-        visitor = SwallowVisitor(
-            str(test_file), "path/to/module.py"
-        )
+        visitor = SwallowVisitor(str(test_file), "path/to/module.py")
         visitor.visit(tree)
 
         if visitor.findings:

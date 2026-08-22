@@ -55,6 +55,7 @@ LIFECYCLE_INDEX = Path.home() / ".memory-core" / "project-lifecycle" / "path-ind
 # CLI 参数
 # ---------------------------------------------------------------------------
 
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="每日工作日志总结生成器")
     parser.add_argument("--date", type=str, help="目标日期 (YYYY-MM-DD)")
@@ -62,8 +63,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--project", type=str, help="项目根目录路径")
     parser.add_argument("--all-projects", action="store_true", help="扫描所有已知消费项目")
     parser.add_argument("--dry-run", action="store_true", help="只打印不写文件")
-    parser.add_argument("--fallback-days", type=int, default=3,
-                        help="兜底检查前 N 天未生成的日志（默认 3）")
+    parser.add_argument("--fallback-days", type=int, default=3, help="兜底检查前 N 天未生成的日志（默认 3）")
     return parser.parse_args(argv)
 
 
@@ -74,7 +74,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 import re
 
 # 正则：匹配 session 标题行（### 后接 8 位 hex 字符）
-_SESSION_HEADER_RE = re.compile(r'^### ([0-9a-f]{8})$')
+_SESSION_HEADER_RE = re.compile(r"^### ([0-9a-f]{8})$")
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +185,7 @@ def _read_a_layer(project_root: Path, target_date: str) -> list[dict[str, Any]] 
 # ---------------------------------------------------------------------------
 # Step 2: 读取 B 层数据 (session transcript)
 # ---------------------------------------------------------------------------
+
 
 def _find_session_jsonl(session_id: str) -> Path | None:
     """在 ~/.factory/sessions/ 下搜索所有已知 session 目录，找到对应 jsonl。
@@ -321,12 +322,10 @@ def _extract_text_blocks(content: Any) -> list[str]:
     return texts
 
 
-
-
-
 # ---------------------------------------------------------------------------
 # Step 4: 写入最终日志
 # ---------------------------------------------------------------------------
+
 
 def _try_sign_file(project_root: Path, rel_path: str) -> None:
     """F5: 尝试对指定文件进行增量签名，失败不阻塞主流程。"""
@@ -341,14 +340,15 @@ def _try_sign_file(project_root: Path, rel_path: str) -> None:
         # 签名失败 warning 但不阻塞
         try:
             import logging
+
             _logger = logging.getLogger(__name__)
             _logger.warning("daily_summary_generator: sign_project_incremental failed: %s", exc)
         except Exception as log_exc:
             print(
-                f"[daily_summary_generator] sign_project_incremental failed: {exc}; "
-                f"logging also failed: {log_exc}",
+                f"[daily_summary_generator] sign_project_incremental failed: {exc}; logging also failed: {log_exc}",
                 file=sys.stderr,
             )
+
 
 def _generate_data_report(session_data_list: list[dict[str, Any]], target_date: str) -> str:
     """生成结构化数据报告，包含 A+B 层完整数据。
@@ -431,11 +431,11 @@ def _write_daily_log(
     content += f"\n---\n*由 daily_summary_generator.py 自动生成于 {timestamp}*\n"
 
     if dry_run:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"[DRY RUN] 将写入: {output_path}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(content)
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
     else:
         try:
             output_path.write_text(content, encoding="utf-8")
@@ -458,6 +458,7 @@ def _write_daily_log(
 # ---------------------------------------------------------------------------
 # Step 5: 兜底检查
 # ---------------------------------------------------------------------------
+
 
 def _fallback_check(
     project_root: Path,
@@ -493,6 +494,7 @@ def _fallback_check(
 # ---------------------------------------------------------------------------
 # 核心流程编排
 # ---------------------------------------------------------------------------
+
 
 def _enrich_with_b_layer(a_sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """为每个 A 层 session 补充 B 层 transcript 数据。"""
@@ -567,10 +569,10 @@ def process_project(
     fallback_days: int = 3,
 ) -> bool:
     """处理单个项目的每日总结生成。返回是否成功。"""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"项目: {project_root}")
     print(f"日期: {target_date}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Step 1: 读取 A 层
     a_sessions = _read_a_layer(project_root, target_date)
@@ -608,6 +610,7 @@ def process_project(
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main(argv: list[str] | None = None) -> int:
     try:

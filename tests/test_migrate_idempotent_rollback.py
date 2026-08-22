@@ -30,6 +30,7 @@ from tests.migrate_helpers import (
 # 1. Idempotent: already at target → noop
 # ---------------------------------------------------------------------------
 
+
 def test_migrate_already_at_target_is_noop(tmp_path: Path) -> None:
     """current=0.2.0, from=0.1.0, to=0.2.0 应返回 noop（不报错），migrations.log 不增条."""
     project_root = _create_memory_skeleton(tmp_path, version=CURRENT_MEMORY_VERSION)
@@ -47,6 +48,7 @@ def test_migrate_already_at_target_is_noop(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 2. Migration creates backup before write
 # ---------------------------------------------------------------------------
+
 
 def test_migrate_creates_backup_before_write(tmp_path: Path) -> None:
     """成功迁移后 .memory/backups/<ts>/BACKUP_MANIFEST.json 存在."""
@@ -83,11 +85,15 @@ def test_migrate_creates_backup_before_write(tmp_path: Path) -> None:
 # 3. Dry-run does not create backup
 # ---------------------------------------------------------------------------
 
+
 def test_dry_run_does_not_create_backup(tmp_path: Path) -> None:
     project_root = _create_memory_skeleton(tmp_path, version="0.1.0")
 
     result = migrate_project_memory(
-        project_root, "0.1.0", CURRENT_MEMORY_VERSION, dry_run=True,
+        project_root,
+        "0.1.0",
+        CURRENT_MEMORY_VERSION,
+        dry_run=True,
     )
 
     assert result["success"] is True
@@ -98,6 +104,7 @@ def test_dry_run_does_not_create_backup(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 4. plan_rollback returns can_rollback=True after migration
 # ---------------------------------------------------------------------------
+
 
 def test_plan_rollback_returns_can_rollback_true_after_migration(tmp_path: Path) -> None:
     project_root = _create_memory_skeleton(tmp_path, version="0.1.0")
@@ -117,6 +124,7 @@ def test_plan_rollback_returns_can_rollback_true_after_migration(tmp_path: Path)
 # 5. plan_rollback returns False when no backup
 # ---------------------------------------------------------------------------
 
+
 def test_plan_rollback_returns_false_when_no_backup(tmp_path: Path) -> None:
     project_root = _create_memory_skeleton(tmp_path, version=CURRENT_MEMORY_VERSION)
     memory_root = project_root / ".memory"
@@ -129,6 +137,7 @@ def test_plan_rollback_returns_false_when_no_backup(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 6. execute_rollback restores state
 # ---------------------------------------------------------------------------
+
 
 def test_execute_rollback_restores_state(tmp_path: Path) -> None:
     """迁移后改 .memory 某文件，rollback 后内容恢复."""
@@ -156,6 +165,7 @@ def test_execute_rollback_restores_state(tmp_path: Path) -> None:
 # 7. Migration failure triggers auto-rollback
 # ---------------------------------------------------------------------------
 
+
 def test_migration_failure_triggers_auto_rollback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """monkeypatch 使迁移中段抛异常，确认 .memory 状态被恢复 + migrations.log 含 failed_rolled_back."""
     project_root = _create_memory_skeleton(tmp_path, version="0.1.0")
@@ -166,9 +176,14 @@ def test_migration_failure_triggers_auto_rollback(tmp_path: Path, monkeypatch: p
 
     # Patch the migration function to fail
     from memory_core.tools import migrate_project_memory as mod
-    monkeypatch.setattr(mod, "MIGRATION_REGISTRY", {
-        f"0.1.0->{CURRENT_MEMORY_VERSION}": _failing_mig,
-    })
+
+    monkeypatch.setattr(
+        mod,
+        "MIGRATION_REGISTRY",
+        {
+            f"0.1.0->{CURRENT_MEMORY_VERSION}": _failing_mig,
+        },
+    )
 
     result = migrate_project_memory(project_root, "0.1.0", CURRENT_MEMORY_VERSION)
 
@@ -192,6 +207,7 @@ def test_migration_failure_triggers_auto_rollback(tmp_path: Path, monkeypatch: p
 # 8. migrations.log concurrent append — no corruption
 # ---------------------------------------------------------------------------
 
+
 def _worker_append(log_path_str: str, start: int, count: int) -> None:
     """Worker process that appends lines to migrations.log."""
     log_path = Path(log_path_str)
@@ -210,6 +226,7 @@ def _worker_append(log_path_str: str, start: int, count: int) -> None:
                     f.write(line + "\n")
                     f.flush()
                     import os
+
                     os.fsync(f.fileno())
                 finally:
                     fcntl.flock(f.fileno(), fcntl.LOCK_UN)
@@ -251,6 +268,7 @@ def test_migrations_log_concurrent_append_no_corruption(tmp_path: Path) -> None:
 # 9. Idempotent rerun — same direction
 # ---------------------------------------------------------------------------
 
+
 def test_idempotent_rerun_same_direction(tmp_path: Path) -> None:
     """跑两次相同 from→to，第一次 success，第二次 noop（不抛、不写盘）."""
     project_root = _create_memory_skeleton(tmp_path, version="0.1.0")
@@ -275,6 +293,7 @@ def test_idempotent_rerun_same_direction(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 10. Backup failure returns structured error (S3 fix)
 # ---------------------------------------------------------------------------
+
 
 def test_backup_failure_returns_structured_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """monkeypatch _create_backup 抛 OSError，断言 result["success"] is False + result["error"] == "backup_failed" + 错误消息含异常文本."""
@@ -304,6 +323,7 @@ def test_backup_failure_returns_structured_error(tmp_path: Path, monkeypatch: py
 # 11. Rollback failure during auto-rollback (S2 fix)
 # ---------------------------------------------------------------------------
 
+
 def test_rollback_failure_during_auto_rollback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """monkeypatch 让 migration 失败 + execute_rollback 也抛错，断言 result["rollback_attempted"] is True + result["rollback_succeeded"] is False + log 记录 failed_rollback_failed."""
     project_root = _create_memory_skeleton(tmp_path, version="0.1.0")
@@ -314,9 +334,13 @@ def test_rollback_failure_during_auto_rollback(tmp_path: Path, monkeypatch: pyte
     def _failing_mig(_root: Path) -> dict[str, Any]:
         raise RuntimeError("simulated migration failure")
 
-    monkeypatch.setattr(mod, "MIGRATION_REGISTRY", {
-        f"0.1.0->{CURRENT_MEMORY_VERSION}": _failing_mig,
-    })
+    monkeypatch.setattr(
+        mod,
+        "MIGRATION_REGISTRY",
+        {
+            f"0.1.0->{CURRENT_MEMORY_VERSION}": _failing_mig,
+        },
+    )
 
     def _failing_rollback(_root: Path, *, backup_dir=None) -> dict[str, Any]:
         raise RuntimeError("rollback also failed: backup corrupted")
@@ -340,6 +364,7 @@ def test_rollback_failure_during_auto_rollback(tmp_path: Path, monkeypatch: pyte
 # 12. Rollback success during auto-rollback (S2 fix)
 # ---------------------------------------------------------------------------
 
+
 def test_rollback_success_during_auto_rollback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """monkeypatch 让 migration 失败但 rollback 成功，断言 result["rollback_succeeded"] is True."""
     project_root = _create_memory_skeleton(tmp_path, version="0.1.0")
@@ -350,9 +375,13 @@ def test_rollback_success_during_auto_rollback(tmp_path: Path, monkeypatch: pyte
     def _failing_mig(_root: Path) -> dict[str, Any]:
         raise RuntimeError("simulated migration failure")
 
-    monkeypatch.setattr(mod, "MIGRATION_REGISTRY", {
-        f"0.1.0->{CURRENT_MEMORY_VERSION}": _failing_mig,
-    })
+    monkeypatch.setattr(
+        mod,
+        "MIGRATION_REGISTRY",
+        {
+            f"0.1.0->{CURRENT_MEMORY_VERSION}": _failing_mig,
+        },
+    )
 
     result = migrate_project_memory(project_root, "0.1.0", CURRENT_MEMORY_VERSION)
 

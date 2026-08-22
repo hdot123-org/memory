@@ -168,7 +168,10 @@ Gateway 使用模块级全局变量 + 惰性初始化模式管理核心组件：
 
 ```python
 _ADAPTER_REGISTRY = {
-    "workbot": (".memory_hook_adapters.workbot_runtime_profile", "build_workbot_runtime_profile"),  # workbot 适配器已归档
+    "workbot": (
+        ".memory_hook_adapters.workbot_runtime_profile",
+        "build_workbot_runtime_profile",
+    ),  # workbot 适配器已归档
 }
 ```
 
@@ -391,7 +394,11 @@ CLI 入口函数。执行流程：
 ### 7.1 分派入口（main() 行 943-944）
 
 ```python
-proc = delegate_codex(args.event, raw_payload) if args.host == "codex" else delegate_claude(args.event, raw_payload, payload)
+proc = (
+    delegate_codex(args.event, raw_payload)
+    if args.host == "codex"
+    else delegate_claude(args.event, raw_payload, payload)
+)
 ```
 
 ### 7.2 Delegate 获取（行 204-224）

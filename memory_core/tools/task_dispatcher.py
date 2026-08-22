@@ -48,8 +48,7 @@ class TaskDispatcher:
             return self._dispatch_file_based(prompt, task_id, char_count)
         elif char_count > WARNING_THRESHOLD:
             # Log warning but still try inline
-            print(f"[WARN] Task '{task_id}' prompt is {char_count} chars "
-                  f"(near limit of {MAX_INLINE_CHARS})")
+            print(f"[WARN] Task '{task_id}' prompt is {char_count} chars (near limit of {MAX_INLINE_CHARS})")
             return self._dispatch_inline(prompt, task_id, char_count)
         else:
             return self._dispatch_inline(prompt, task_id, char_count)
@@ -147,6 +146,5 @@ class TaskDispatcher:
             f"  Total tasks: {len(self.results)}\n"
             f"  Inline: {inline_count}, File-based: {file_count}\n"
             f"  Total prompt chars dispatched: {total_chars}\n"
-            f"  Failed: {len(failed)}\n"
-            + (f"  Errors: {[r.error for r in failed]}" if failed else "")
+            f"  Failed: {len(failed)}\n" + (f"  Errors: {[r.error for r in failed]}" if failed else "")
         )

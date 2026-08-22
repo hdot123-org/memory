@@ -23,9 +23,7 @@ class TestGatewayExcepthookSilentSwallow:
 
     def test_except_binds_exception(self):
         body = _func_body(SOURCE_PATH.read_text(), "_gateway_excepthook")
-        assert "except Exception as exc:" in body, (
-            "_gateway_excepthook except must bind the exception as `exc`"
-        )
+        assert "except Exception as exc:" in body, "_gateway_excepthook except must bind the exception as `exc`"
 
     def test_except_logs_debug(self):
         body = _func_body(SOURCE_PATH.read_text(), "_gateway_excepthook")
@@ -37,9 +35,7 @@ class TestHandlePretooluseGuardSilentSwallow:
 
     def test_except_binds_exception(self):
         body = _func_body(SOURCE_PATH.read_text(), "_handle_pretooluse_guard")
-        assert "except Exception as exc:" in body, (
-            "_handle_pretooluse_guard except must bind the exception as `exc`"
-        )
+        assert "except Exception as exc:" in body, "_handle_pretooluse_guard except must bind the exception as `exc`"
 
     def test_except_logs_debug(self):
         body = _func_body(SOURCE_PATH.read_text(), "_handle_pretooluse_guard")

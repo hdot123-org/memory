@@ -5,6 +5,7 @@
 拒绝全部 class → "no modules found in coverage XML" → gap json 不产出。
 回归测试：两种 filename 形式都必须被解析。
 """
+
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -16,6 +17,7 @@ def _load_module():
     sys.path.insert(0, str(SCRIPT_PATH.parent))
     try:
         import coverage_gap_finder as mod  # noqa: PLC0415
+
         return mod
     finally:
         sys.path.pop(0)
@@ -28,10 +30,17 @@ def _write_xml(tmp_path: Path, filenames: list[str]) -> Path:
     p = ET.SubElement(pkg, "package", {"name": "memory_core", "line-rate": "0.5", "branch-rate": "0.4"})
     cls_elem = ET.SubElement(p, "classes")
     for fn in filenames:
-        c = ET.SubElement(cls_elem, "class", {
-            "filename": fn, "name": Path(fn).stem,
-            "line-rate": "0.5", "branch-rate": "0.4", "complexity": "1",
-        })
+        c = ET.SubElement(
+            cls_elem,
+            "class",
+            {
+                "filename": fn,
+                "name": Path(fn).stem,
+                "line-rate": "0.5",
+                "branch-rate": "0.4",
+                "complexity": "1",
+            },
+        )
         for lineno, hits in ((1, "1"), (2, "0")):
             ET.SubElement(c, "line", {"number": str(lineno), "hits": hits, "branch": "False"})
     out = tmp_path / "coverage_gap.xml"

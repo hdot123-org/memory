@@ -16,6 +16,7 @@ Strictly read-only: only issues gh pr view and gh issue view commands.
 Usage:
     python3 scripts/check_pr_ref_consistency.py <PR_NUMBER>
 """
+
 import json
 import re
 import subprocess
@@ -101,7 +102,7 @@ def extract_linkback_from_comments(comments_text: str) -> str | None:
         return None
 
     # Tier 1: inline HTML comment format <!-- linear-linkback INFRA-xxx -->
-    pattern = r'<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->'
+    pattern = r"<!--\s*linear-linkback\s+(INFRA-\d+)\s*-->"
     match = re.search(pattern, linkback_block)
     if match:
         return match.group(1)
@@ -113,7 +114,7 @@ def extract_linkback_from_comments(comments_text: str) -> str | None:
         return match.group(1)
 
     # Tier 2b: anchor text (<a ...>INFRA-xxx</a>)
-    anchor_pattern = r'<a[^>]*>\s*([A-Z]+-\d+)\s*</a>'
+    anchor_pattern = r"<a[^>]*>\s*([A-Z]+-\d+)\s*</a>"
     match = re.search(anchor_pattern, linkback_block)
     if match:
         return match.group(1)
@@ -133,12 +134,7 @@ def _resolve_repo_owner_name() -> tuple[str, str]:
     Raises:
         RuntimeError: if origin URL is missing or unparseable
     """
-    result = subprocess.run(
-        ["git", "remote", "get-url", "origin"],
-        capture_output=True,
-        text=True,
-        check=True
-    )
+    result = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True, check=True)
     url = result.stdout.strip()
     # SSH form: git@github.com:OWNER/REPO.git
     # HTTPS form: https://github.com/OWNER/REPO.git
@@ -175,15 +171,21 @@ def fetch_pr_data(pr_number: int) -> dict[str, Any]:
     )
     result = subprocess.run(
         [
-            "gh", "api", "graphql",
-            "-f", f"query={query}",
-            "-f", f"owner={owner}",
-            "-f", f"repo={repo}",
-            "-F", f"num={pr_number}",
+            "gh",
+            "api",
+            "graphql",
+            "-f",
+            f"query={query}",
+            "-f",
+            f"owner={owner}",
+            "-f",
+            f"repo={repo}",
+            "-F",
+            f"num={pr_number}",
         ],
         capture_output=True,
         text=True,
-        check=True
+        check=True,
     )
     payload = cast(dict[str, Any], json.loads(result.stdout))
     pr = payload.get("data", {}).get("repository", {}).get("pullRequest")
@@ -207,14 +209,10 @@ def fetch_issue_comments(issue_number: int) -> str:
         Combined comment bodies as string
     """
     result = subprocess.run(
-        [
-            "gh", "issue", "view", str(issue_number),
-            "--json", "comments",
-            "--jq", ".comments[].body"
-        ],
+        ["gh", "issue", "view", str(issue_number), "--json", "comments", "--jq", ".comments[].body"],
         capture_output=True,
         text=True,
-        check=True
+        check=True,
     )
     return result.stdout
 

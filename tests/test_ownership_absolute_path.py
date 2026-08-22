@@ -35,9 +35,7 @@ class TestAbsolutePathsBlockedByNormalClassifier:
         ],
         ids=["kb", "docs", "system", "log"],
     )
-    def test_write_absolute_path_blocks(
-        self, tmp_path: Path, marker: str
-    ) -> None:
+    def test_write_absolute_path_blocks(self, tmp_path: Path, marker: str) -> None:
         """Write with absolute path to protected domain is blocked."""
         # Create memory/system to make it a memory-managed project
         (tmp_path / "memory" / "system").mkdir(parents=True)
@@ -107,9 +105,7 @@ class TestAbsolutePathsBlockedByNormalClassifier:
         assert result.matched is True
         assert result.detail["decision"] == "block"
 
-    def test_all_four_markers_block_with_absolute_paths(
-        self, tmp_path: Path
-    ) -> None:
+    def test_all_four_markers_block_with_absolute_paths(self, tmp_path: Path) -> None:
         """Comprehensive: all 4 markers block with absolute paths in one project."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
         (tmp_path / "memory" / "kb").mkdir(parents=True)
@@ -183,9 +179,7 @@ class TestAbsolutePathOutsideProjectNotAffected:
         assert result.matched is False
         assert result.detail["decision"] == "allow"
 
-    def test_absolute_path_outside_project_with_memory_string_allowed(
-        self, tmp_path: Path
-    ) -> None:
+    def test_absolute_path_outside_project_with_memory_string_allowed(self, tmp_path: Path) -> None:
         """Absolute path outside project containing 'memory/' string is allowed."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
 

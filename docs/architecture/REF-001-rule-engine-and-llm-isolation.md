@@ -121,6 +121,7 @@ memory_core/tools/
 # memory_hook_impls.py 中的 GatewayBusinessPolicyImpl
 # 改为内部委托 business_policy_checks.* 的类
 
+
 class GatewayBusinessPolicyImpl(GatewayBusinessPolicy):
     """生产路径 — 委托给 business_policy_checks 实现。"""
 
@@ -146,6 +147,7 @@ class GatewayBusinessPolicyImpl(GatewayBusinessPolicy):
 ```python
 # memory_core/tools/_rule_helpers.py
 
+
 def path_is_under(path: Path, root: Path) -> bool: ...
 def path_is_under_lexical(path: str, root: str) -> bool: ...
 def section_bullets(content: str, section_header: str) -> list[str]: ...
@@ -170,9 +172,11 @@ def _truth_basis_errors_for(self, scope: str) -> list[str]:
     content = path.read_text()  # I/O 内嵌
     return self._check_markers(content)
 
+
 # 之后
 def _check_markers(self, content: str, scope: str) -> list[str]:  # 纯函数
     return [...]
+
 
 # I/O 由调用方负责
 content = path.read_text()
@@ -253,9 +257,10 @@ from typing import Any, Protocol
 @dataclass(frozen=True)
 class RuleResult:
     """所有规则求值的统一返回类型。"""
-    matched: bool                    # 规则是否命中
-    severity: str = "info"           # info | warning | error | block
-    message: str = ""                # 人可读描述
+
+    matched: bool  # 规则是否命中
+    severity: str = "info"  # info | warning | error | block
+    message: str = ""  # 人可读描述
     detail: dict[str, Any] = field(default_factory=dict)  # 机器可读补充
 
 
@@ -265,11 +270,12 @@ class RuleContext:
 
     调用方按需填充字段，规则函数只读自己需要的字段。
     """
-    path: Path | None = None         # 路径类规则（ownership/denylist/guard）
-    content: str | None = None       # 内容类规则（business_policy/consistency）
-    tool_name: str | None = None     # 工具拦截规则（pretooluse_guard）
-    event_type: str | None = None    # 事件映射规则（hook_event）
-    project_root: Path | None = None # 项目上下文
+
+    path: Path | None = None  # 路径类规则（ownership/denylist/guard）
+    content: str | None = None  # 内容类规则（business_policy/consistency）
+    tool_name: str | None = None  # 工具拦截规则（pretooluse_guard）
+    event_type: str | None = None  # 事件映射规则（hook_event）
+    project_root: Path | None = None  # 项目上下文
     extra: dict[str, Any] = field(default_factory=dict)  # 扩展槽
 
 
@@ -321,6 +327,7 @@ class RuleEvaluator(Protocol):
 ```python
 # business_policy_checks.py 中的 ProjectMapValidator 演进
 
+
 class ProjectMapValidator:
     """同时满足：现有 GatewayBusinessPolicy 调用方 + RuleEvaluator 协议。"""
 
@@ -361,11 +368,14 @@ def build_rule_chain(config) -> list[RuleEvaluator]:
     if config.enable_denylist:
         rules.append(PatternRule(config.denylist_patterns))
     if config.enable_guard:
-        rules.extend([
-            KeywordRule("forbidden_suffix", config.forbidden_suffixes),
-            KeywordRule("forbidden_dir", config.forbidden_dirs),
-        ])
+        rules.extend(
+            [
+                KeywordRule("forbidden_suffix", config.forbidden_suffixes),
+                KeywordRule("forbidden_dir", config.forbidden_dirs),
+            ]
+        )
     return rules
+
 
 # 批量求值
 def evaluate_rules(rules: list[RuleEvaluator], ctx: RuleContext) -> list[RuleResult]:
@@ -395,6 +405,7 @@ def evaluate_rules(rules: list[RuleEvaluator], ctx: RuleContext) -> list[RuleRes
 ```python
 # memory_core/tools/_rule_errors.py （新文件）
 
+
 class MemoryCoreError(Exception):
     """所有 memory-core 领域异常的基类。
 
@@ -404,8 +415,10 @@ class MemoryCoreError(Exception):
 
 # --- 规则域异常 ---
 
+
 class RuleViolationError(MemoryCoreError):
     """规则校验失败（对应 RuleResult.severity='block'）。"""
+
     def __init__(self, rule_name: str, message: str, detail: dict | None = None):
         self.rule_name = rule_name
         self.detail = detail or {}
@@ -418,6 +431,7 @@ class OwnershipError(MemoryCoreError):
 
 class GuardBlockError(MemoryCoreError):
     """工具拦截（pretooluse_guard 拒绝操作）。"""
+
     def __init__(self, tool: str, reason: str, path: str = ""):
         self.tool = tool
         self.path = path
@@ -429,6 +443,7 @@ class PolicyViolationError(MemoryCoreError):
 
 
 # --- 配置域异常 ---
+
 
 class UnsupportedScopeError(MemoryCoreError):
     """不支持的 scope（替代 ValueError）。"""
@@ -470,6 +485,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import IO
 
+
 @contextmanager
 def exclusive_lock(file_obj: IO, *, label: str = ""):
     """POSIX 独占文件锁上下文管理器。
@@ -491,6 +507,7 @@ def exclusive_lock(file_obj: IO, *, label: str = ""):
 def now_iso() -> str:
     """统一的 ISO 时间戳（解决 8 处 _now_iso 复制）。"""
     from datetime import datetime
+
     return datetime.now().astimezone().isoformat(timespec="seconds")
 ```
 
@@ -515,6 +532,7 @@ def process_project(project_root: Path, error_sink: ErrorSink | None = None):
         else:
             # 无 sink 时降级到 stderr（不静默吞掉）
             import sys
+
             print(f"[ERROR] daily_summary: {e}", file=sys.stderr)
 ```
 

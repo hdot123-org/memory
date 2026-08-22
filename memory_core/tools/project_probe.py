@@ -14,9 +14,19 @@ logger = logging.getLogger(__name__)
 
 # 需要跳过的目录
 _SKIP_DIRS = {
-    ".git", "node_modules", "__pycache__", ".venv", "venv", "env",
-    ".tox", ".mypy_cache", ".pytest_cache", "dist", "build",
-    ".eggs", "*.egg-info",
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "env",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    "dist",
+    "build",
+    ".eggs",
+    "*.egg-info",
 }
 
 # 语言检测的文件 -> 语言映射
@@ -124,16 +134,34 @@ _FRAMEWORK_KEYWORDS: dict[str, str] = {
 
 # 数据库关键词
 _DB_KEYWORDS = [
-    "postgres", "postgresql", "mysql", "sqlite", "mongo", "mongodb",
-    "redis", "cassandra", "dynamodb", "mariadb", "oracle", "mssql",
-    "sqlserver", "neo4j", "elasticsearch", "couchdb", "influxdb",
-    "prisma", "typeorm", "sequelize", "sqlalchemy",
+    "postgres",
+    "postgresql",
+    "mysql",
+    "sqlite",
+    "mongo",
+    "mongodb",
+    "redis",
+    "cassandra",
+    "dynamodb",
+    "mariadb",
+    "oracle",
+    "mssql",
+    "sqlserver",
+    "neo4j",
+    "elasticsearch",
+    "couchdb",
+    "influxdb",
+    "prisma",
+    "typeorm",
+    "sequelize",
+    "sqlalchemy",
 ]
 
 
 @dataclass
 class ProjectInfo:
     """探测到的项目元信息。"""
+
     primary_language: str = ""
     framework: str = ""
     project_type: str = ""
@@ -268,9 +296,16 @@ class ProjectProbe:
 
         # 搜索配置文件
         config_files = [
-            "pyproject.toml", "requirements.txt", "package.json",
-            "Cargo.toml", "Gemfile", "composer.json", "pom.xml",
-            "build.gradle", "build.gradle.kts", "go.mod",
+            "pyproject.toml",
+            "requirements.txt",
+            "package.json",
+            "Cargo.toml",
+            "Gemfile",
+            "composer.json",
+            "pom.xml",
+            "build.gradle",
+            "build.gradle.kts",
+            "go.mod",
         ]
 
         for cf in config_files:
@@ -289,6 +324,7 @@ class ProjectProbe:
         if frameworks_found:
             # 返回出现次数最多的框架
             from collections import Counter
+
             counter = Counter(frameworks_found)
             return counter.most_common(1)[0][0]
 
@@ -297,8 +333,7 @@ class ProjectProbe:
     def _detect_web_api_markers(self) -> int:
         """检测 Web/API 项目标记数量。"""
         count = 0
-        for pattern in ["app.py", "main.py", "index.js", "server.js",
-                        "app.js", "index.ts", "server.ts"]:
+        for pattern in ["app.py", "main.py", "index.js", "server.js", "app.js", "index.ts", "server.ts"]:
             if self._find_files(pattern):
                 count += 1
         return count
@@ -312,10 +347,9 @@ class ProjectProbe:
     def _detect_library_markers(self) -> int:
         """检测库/包项目标记数量。"""
         if (
-            self._find_files("setup.py") or self._find_files("pyproject.toml")
-        ) and self._find_files("src") and any(
-            d.is_dir() for d in (self.target / "src").iterdir()
-            if (self.target / "src").exists()
+            (self._find_files("setup.py") or self._find_files("pyproject.toml"))
+            and self._find_files("src")
+            and any(d.is_dir() for d in (self.target / "src").iterdir() if (self.target / "src").exists())
         ):
             return 1
         return 0
@@ -325,9 +359,15 @@ class ProjectProbe:
         if not self._find_files("package.json"):
             return 0
         count = 0
-        for pattern in ["src/components", "src/pages", "public/index.html",
-                        "vite.config.js", "vite.config.ts",
-                        "webpack.config.js", "next.config.js"]:
+        for pattern in [
+            "src/components",
+            "src/pages",
+            "public/index.html",
+            "vite.config.js",
+            "vite.config.ts",
+            "webpack.config.js",
+            "next.config.js",
+        ]:
             if self._find_files(pattern.split("/")[-1]):
                 count += 1
         return count
@@ -405,12 +445,20 @@ class ProjectProbe:
 
         # 搜索的文件
         search_files = [
-            "docker-compose.yml", "docker-compose.yaml",
-            ".env", ".env.example", ".env.local",
-            "pyproject.toml", "package.json",
-            "config.yml", "config.yaml", "config.json",
-            "settings.py", "database.yml",
-            "appsettings.json", "application.yml",
+            "docker-compose.yml",
+            "docker-compose.yaml",
+            ".env",
+            ".env.example",
+            ".env.local",
+            "pyproject.toml",
+            "package.json",
+            "config.yml",
+            "config.yaml",
+            "config.json",
+            "settings.py",
+            "database.yml",
+            "appsettings.json",
+            "application.yml",
         ]
 
         for sf in search_files:
@@ -466,11 +514,13 @@ class ProjectProbe:
                 matched = self._find_files(config_file)
                 if matched:
                     seen_names.add(name)
-                    tools.append({
-                        "name": name,
-                        "config": config_file,
-                        "category": category,
-                    })
+                    tools.append(
+                        {
+                            "name": name,
+                            "config": config_file,
+                            "category": category,
+                        }
+                    )
 
         # CI 工具
         _add_tool("GitHub Actions", "ci.yml", "ci")
@@ -525,7 +575,9 @@ class ProjectProbe:
         try:
             result = subprocess.run(
                 ["git", "-C", str(self.target), "remote", "get-url", "origin"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if result.returncode == 0 and result.stdout.strip():
                 remote_url = result.stdout.strip()
@@ -535,7 +587,9 @@ class ProjectProbe:
         try:
             result = subprocess.run(
                 ["git", "-C", str(self.target), "branch", "--show-current"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if result.returncode == 0 and result.stdout.strip():
                 branch = result.stdout.strip()
@@ -546,11 +600,7 @@ class ProjectProbe:
 
     def _extract_readme_summary(self) -> str:
         """从 README.md 提取第一段非标题文本作为项目概述。"""
-        readme_paths = (
-            self._find_files("README.md")
-            or self._find_files("readme.md")
-            or self._find_files("README")
-        )
+        readme_paths = self._find_files("README.md") or self._find_files("readme.md") or self._find_files("README")
 
         if not readme_paths:
             return ""

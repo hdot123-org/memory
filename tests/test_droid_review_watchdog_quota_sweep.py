@@ -9,6 +9,7 @@ session transcript 里；且配额未恢复时立即 rerun 无意义。quota-swe
 这些断言防止自愈逻辑被静默移除或弱化（如去掉恢复窗口导致 rerun
 风暴、去掉 attempt 限界导致无限重试）。
 """
+
 from pathlib import Path
 
 import yaml
@@ -72,7 +73,7 @@ class TestQuotaSweepDetectionLogic:
         # 默认值回退
         assert "1800" in run
         # 使用变量而非硬编码
-        assert "-lt \"$QUOTA_RECOVERY_WINDOW_SECONDS\"" in run or "-lt ${QUOTA_RECOVERY_WINDOW_SECONDS}" in run
+        assert '-lt "$QUOTA_RECOVERY_WINDOW_SECONDS"' in run or "-lt ${QUOTA_RECOVERY_WINDOW_SECONDS}" in run
 
     def test_attempt_limit_uses_vars(self):
         """run_attempt 限界通过 WATCHDOG_MAX_ATTEMPT 变量配置（默认 3）。"""

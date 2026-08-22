@@ -52,6 +52,7 @@ from memory_core.tools.daily_kb_audit import (
 # Utility / Helper Tests
 # ---------------------------------------------------------------------------
 
+
 class TestNowIsoLocal:
     def test_returns_string(self):
         result = _now_iso_local()
@@ -156,6 +157,7 @@ class TestShellQuote:
 # Load Registered Projects
 # ---------------------------------------------------------------------------
 
+
 class TestLoadRegisteredProjects:
     def test_returns_empty_when_no_index(self, tmp_path: Path):
         with patch(
@@ -168,9 +170,7 @@ class TestLoadRegisteredProjects:
     def test_returns_empty_on_invalid_json(self, tmp_path: Path):
         idx = tmp_path / "path-index.json"
         idx.write_text("NOT JSON", encoding="utf-8")
-        with patch(
-            "memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx
-        ):
+        with patch("memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx):
             assert load_registered_projects() == []
 
     def test_parses_valid_index(self, tmp_path: Path):
@@ -181,9 +181,7 @@ class TestLoadRegisteredProjects:
             json.dumps({"paths": {str(project_dir): {"project_name": "test-proj"}}}),
             encoding="utf-8",
         )
-        with patch(
-            "memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx
-        ):
+        with patch("memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx):
             result = load_registered_projects()
             assert len(result) == 1
             assert result[0][0] == "test-proj"
@@ -195,9 +193,7 @@ class TestLoadRegisteredProjects:
             json.dumps({"paths": {str(factory_dir): {"project_name": "factory"}}}),
             encoding="utf-8",
         )
-        with patch(
-            "memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx
-        ):
+        with patch("memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx):
             result = load_registered_projects()
             assert result == []
 
@@ -209,9 +205,7 @@ class TestLoadRegisteredProjects:
             json.dumps({"paths": {str(project_dir): {}}}),
             encoding="utf-8",
         )
-        with patch(
-            "memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx
-        ):
+        with patch("memory_core.tools.daily_kb_audit.LIFECYCLE_INDEX", idx):
             result = load_registered_projects()
             assert result[0][0] == "cool-name"
 
@@ -219,6 +213,7 @@ class TestLoadRegisteredProjects:
 # ---------------------------------------------------------------------------
 # Build Global KB Fingerprints
 # ---------------------------------------------------------------------------
+
 
 class TestBuildGlobalKbFingerprints:
     def test_empty_when_no_root(self, tmp_path: Path):
@@ -233,9 +228,7 @@ class TestBuildGlobalKbFingerprints:
         domain_dir.mkdir()
         f = domain_dir / "test.md"
         f.write_text("some content here", encoding="utf-8")
-        with patch(
-            "memory_core.tools.daily_kb_audit.GLOBAL_KB_ROOT", tmp_path
-        ):
+        with patch("memory_core.tools.daily_kb_audit.GLOBAL_KB_ROOT", tmp_path):
             fps = build_global_kb_fingerprints()
             assert len(fps) >= 1
 
@@ -244,9 +237,7 @@ class TestBuildGlobalKbFingerprints:
         domain_dir.mkdir()
         (domain_dir / "README.md").write_text("skip me", encoding="utf-8")
         (domain_dir / ".keep").write_text("", encoding="utf-8")
-        with patch(
-            "memory_core.tools.daily_kb_audit.GLOBAL_KB_ROOT", tmp_path
-        ):
+        with patch("memory_core.tools.daily_kb_audit.GLOBAL_KB_ROOT", tmp_path):
             fps = build_global_kb_fingerprints()
             assert len(fps) == 0
 
@@ -254,6 +245,7 @@ class TestBuildGlobalKbFingerprints:
 # ---------------------------------------------------------------------------
 # Check 1: Manifest Integrity
 # ---------------------------------------------------------------------------
+
 
 class TestCheckManifestIntegrity:
     def test_missing_manifest(self, tmp_path: Path):
@@ -273,9 +265,7 @@ class TestCheckManifestIntegrity:
     def test_bad_entries_field(self, tmp_path: Path):
         manifest_dir = tmp_path / "memory" / "system"
         manifest_dir.mkdir(parents=True)
-        (manifest_dir / MANIFEST_FILENAME).write_text(
-            '{"entries": "not-a-list"}', encoding="utf-8"
-        )
+        (manifest_dir / MANIFEST_FILENAME).write_text('{"entries": "not-a-list"}', encoding="utf-8")
         violations = check_manifest_integrity(tmp_path)
         assert len(violations) == 1
         assert "格式错误" in violations[0]["detail"]
@@ -288,9 +278,7 @@ class TestCheckManifestIntegrity:
         content_file.write_text("test content", encoding="utf-8")
         sha = hashlib.sha256(b"test content").hexdigest()
         manifest = {"entries": [{"rel_path": "memory/kb/test.md", "sha256": sha}]}
-        (manifest_dir / MANIFEST_FILENAME).write_text(
-            json.dumps(manifest), encoding="utf-8"
-        )
+        (manifest_dir / MANIFEST_FILENAME).write_text(json.dumps(manifest), encoding="utf-8")
         violations = check_manifest_integrity(tmp_path)
         assert len(violations) == 0
 
@@ -301,9 +289,7 @@ class TestCheckManifestIntegrity:
         content_file.parent.mkdir(parents=True)
         content_file.write_text("actual content", encoding="utf-8")
         manifest = {"entries": [{"rel_path": "memory/kb/test.md", "sha256": "wrong"}]}
-        (manifest_dir / MANIFEST_FILENAME).write_text(
-            json.dumps(manifest), encoding="utf-8"
-        )
+        (manifest_dir / MANIFEST_FILENAME).write_text(json.dumps(manifest), encoding="utf-8")
         violations = check_manifest_integrity(tmp_path)
         assert len(violations) == 1
         assert "不匹配" in violations[0]["detail"]
@@ -312,9 +298,7 @@ class TestCheckManifestIntegrity:
         manifest_dir = tmp_path / "memory" / "system"
         manifest_dir.mkdir(parents=True)
         manifest = {"entries": [{"rel_path": "memory/kb/gone.md", "sha256": "abc"}]}
-        (manifest_dir / MANIFEST_FILENAME).write_text(
-            json.dumps(manifest), encoding="utf-8"
-        )
+        (manifest_dir / MANIFEST_FILENAME).write_text(json.dumps(manifest), encoding="utf-8")
         violations = check_manifest_integrity(tmp_path)
         assert len(violations) == 1
         assert "已缺失" in violations[0]["detail"]
@@ -323,6 +307,7 @@ class TestCheckManifestIntegrity:
 # ---------------------------------------------------------------------------
 # Check 2: Unsigned Files
 # ---------------------------------------------------------------------------
+
 
 class TestCheckUnsignedFiles:
     def test_no_kb_dir(self, tmp_path: Path):
@@ -350,9 +335,7 @@ class TestCheckUnsignedFiles:
         manifest_dir = tmp_path / "memory" / "system"
         manifest_dir.mkdir(parents=True)
         manifest = {"entries": [{"rel_path": "memory/kb/signed.md", "sha256": "x"}]}
-        (manifest_dir / MANIFEST_FILENAME).write_text(
-            json.dumps(manifest), encoding="utf-8"
-        )
+        (manifest_dir / MANIFEST_FILENAME).write_text(json.dumps(manifest), encoding="utf-8")
         violations = check_unsigned_files(tmp_path)
         assert len(violations) == 0
 
@@ -360,6 +343,7 @@ class TestCheckUnsignedFiles:
 # ---------------------------------------------------------------------------
 # Check 3: Global Residue
 # ---------------------------------------------------------------------------
+
 
 class TestCheckGlobalResidue:
     def test_empty_fingerprints_no_violations(self, tmp_path: Path):
@@ -388,6 +372,7 @@ class TestCheckGlobalResidue:
 # ---------------------------------------------------------------------------
 # Check 4: Large/DB Files
 # ---------------------------------------------------------------------------
+
 
 class TestCheckLargeOrDbFiles:
     def test_clean_project(self, tmp_path: Path):
@@ -431,6 +416,7 @@ class TestCheckLargeOrDbFiles:
 # Check 5: Version Consistency
 # ---------------------------------------------------------------------------
 
+
 class TestExtractVersionFromToml:
     def test_memory_lock_style(self):
         text = '[memory]\nmemory_version = "0.8.1"\n'
@@ -455,9 +441,7 @@ class TestCheckVersionConsistency:
         sys_dir = tmp_path / SYSTEM_DIR
         sys_dir.mkdir(parents=True)
         for fname in ["memory.lock", "adapter.toml", "ownership.toml"]:
-            (sys_dir / fname).write_text(
-                f'memory_version = "{CURRENT_MEMORY_VERSION}"\n', encoding="utf-8"
-            )
+            (sys_dir / fname).write_text(f'memory_version = "{CURRENT_MEMORY_VERSION}"\n', encoding="utf-8")
         violations = check_version_consistency(tmp_path)
         # All match CURRENT_MEMORY_VERSION, and all three agree → no violations
         assert len(violations) == 0
@@ -465,30 +449,18 @@ class TestCheckVersionConsistency:
     def test_mismatched_version(self, tmp_path: Path):
         sys_dir = tmp_path / "memory" / "system"
         sys_dir.mkdir(parents=True)
-        (sys_dir / "memory.lock").write_text(
-            'memory_version = "9.9.9"\n', encoding="utf-8"
-        )
-        (sys_dir / "adapter.toml").write_text(
-            'memory_version = "9.9.9"\n', encoding="utf-8"
-        )
-        (sys_dir / "ownership.toml").write_text(
-            'memory_version = "9.9.9"\n', encoding="utf-8"
-        )
+        (sys_dir / "memory.lock").write_text('memory_version = "9.9.9"\n', encoding="utf-8")
+        (sys_dir / "adapter.toml").write_text('memory_version = "9.9.9"\n', encoding="utf-8")
+        (sys_dir / "ownership.toml").write_text('memory_version = "9.9.9"\n', encoding="utf-8")
         violations = check_version_consistency(tmp_path)
         assert any("不一致" in v["detail"] for v in violations)
 
     def test_inconsistent_versions(self, tmp_path: Path):
         sys_dir = tmp_path / "memory" / "system"
         sys_dir.mkdir(parents=True)
-        (sys_dir / "memory.lock").write_text(
-            'memory_version = "1.0.0"\n', encoding="utf-8"
-        )
-        (sys_dir / "adapter.toml").write_text(
-            'memory_version = "2.0.0"\n', encoding="utf-8"
-        )
-        (sys_dir / "ownership.toml").write_text(
-            'memory_version = "3.0.0"\n', encoding="utf-8"
-        )
+        (sys_dir / "memory.lock").write_text('memory_version = "1.0.0"\n', encoding="utf-8")
+        (sys_dir / "adapter.toml").write_text('memory_version = "2.0.0"\n', encoding="utf-8")
+        (sys_dir / "ownership.toml").write_text('memory_version = "3.0.0"\n', encoding="utf-8")
         violations = check_version_consistency(tmp_path)
         assert any("三文件版本不一致" in v["detail"] for v in violations)
 
@@ -496,6 +468,7 @@ class TestCheckVersionConsistency:
 # ---------------------------------------------------------------------------
 # Check 6: Infrastructure helpers
 # ---------------------------------------------------------------------------
+
 
 class TestTcpConnectOk:
     def test_connection_refused(self):
@@ -526,16 +499,17 @@ class TestCheckDiskSpace:
     def test_disk_ok(self, mock_run):
         mock_run.return_value = (
             0,
-            "Filesystem      Size  Used Avail Use% Mounted on\n"
-            "/dev/sda1        50G   35G   12G  70% /\n",
+            "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        50G   35G   12G  70% /\n",
             "",
         )
         global_v: list[dict] = []
         record_v: list[dict] = []
         result = check_disk_space(
-            "alias", "server1",
+            "alias",
+            "server1",
             [{"mount": "/", "warn_pct": 80, "crit_pct": 90}],
-            global_v, record_v,
+            global_v,
+            record_v,
         )
         assert "/" in result
         assert result["/"]["status"] == "ok"
@@ -545,16 +519,17 @@ class TestCheckDiskSpace:
     def test_disk_warning(self, mock_run):
         mock_run.return_value = (
             0,
-            "Filesystem      Size  Used Avail Use% Mounted on\n"
-            "/dev/sda1        50G   42G    8G  85% /\n",
+            "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        50G   42G    8G  85% /\n",
             "",
         )
         global_v: list[dict] = []
         record_v: list[dict] = []
         result = check_disk_space(
-            "alias", "server1",
+            "alias",
+            "server1",
             [{"mount": "/", "warn_pct": 80, "crit_pct": 90}],
-            global_v, record_v,
+            global_v,
+            record_v,
         )
         assert result["/"]["status"] == "warning"
         assert len(global_v) == 1
@@ -563,16 +538,17 @@ class TestCheckDiskSpace:
     def test_disk_critical(self, mock_run):
         mock_run.return_value = (
             0,
-            "Filesystem      Size  Used Avail Use% Mounted on\n"
-            "/dev/sda1        50G   47G    3G  95% /\n",
+            "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        50G   47G    3G  95% /\n",
             "",
         )
         global_v: list[dict] = []
         record_v: list[dict] = []
         result = check_disk_space(
-            "alias", "server1",
+            "alias",
+            "server1",
             [{"mount": "/", "warn_pct": 80, "crit_pct": 90}],
-            global_v, record_v,
+            global_v,
+            record_v,
         )
         assert result["/"]["status"] == "critical"
         assert len(global_v) == 1
@@ -590,16 +566,17 @@ class TestCheckDiskSpace:
     def test_pattern_matching(self, mock_run):
         mock_run.return_value = (
             0,
-            "Filesystem      Size  Used Avail Use% Mounted on\n"
-            "overlay          50G   30G   20G  60% /var/lib/docker\n",
+            "Filesystem      Size  Used Avail Use% Mounted on\noverlay          50G   30G   20G  60% /var/lib/docker\n",
             "",
         )
         global_v: list[dict] = []
         record_v: list[dict] = []
         result = check_disk_space(
-            "alias", "srv",
+            "alias",
+            "srv",
             [{"pattern": "docker", "warn_pct": 80, "crit_pct": 90}],
-            global_v, record_v,
+            global_v,
+            record_v,
         )
         assert "/var/lib/docker" in result
 
@@ -715,9 +692,7 @@ class TestCheckInfrastructure:
     @patch("memory_core.tools.daily_kb_audit.check_database")
     @patch("memory_core.tools.daily_kb_audit.check_server")
     @patch("memory_core.tools.daily_kb_audit._load_infra_inventory")
-    def test_processes_servers_and_dbs(
-        self, mock_load, mock_server, mock_db
-    ):
+    def test_processes_servers_and_dbs(self, mock_load, mock_server, mock_db):
         mock_load.return_value = {
             "servers": [{"name": "srv1", "host": "10.0.0.1"}],
             "databases": [{"name": "db1", "host": "10.0.0.2", "port": 3306}],
@@ -732,6 +707,7 @@ class TestCheckInfrastructure:
 # ---------------------------------------------------------------------------
 # Audit Project
 # ---------------------------------------------------------------------------
+
 
 class TestAuditProject:
     def test_nonexistent_path(self, tmp_path: Path):
@@ -761,6 +737,7 @@ class TestAuditProject:
 # ---------------------------------------------------------------------------
 # Report Building & Writing
 # ---------------------------------------------------------------------------
+
 
 class TestBuildReport:
     def test_basic_report(self):
@@ -799,6 +776,7 @@ class TestWriteReport:
 # Summary Generation
 # ---------------------------------------------------------------------------
 
+
 class TestSummarizeReport:
     def test_no_violations(self):
         report = {
@@ -831,10 +809,7 @@ class TestSummarizeReport:
         assert "proj1" in summary
 
     def test_many_violations_truncated(self):
-        violations = [
-            {"type": "t", "severity": "warning", "file": f"f{i}.md", "detail": f"d{i}"}
-            for i in range(10)
-        ]
+        violations = [{"type": "t", "severity": "warning", "file": f"f{i}.md", "detail": f"d{i}"} for i in range(10)]
         report = {
             "audit_date": "2026-07-12",
             "projects_checked": 1,
@@ -904,18 +879,15 @@ class TestAppendInfraSummary:
 # Count helpers
 # ---------------------------------------------------------------------------
 
+
 class TestCountHelpers:
     def test_count_critical_infra_none(self):
         assert _count_critical_infra(None) == 0
 
     def test_count_critical_infra(self):
         infra = {
-            "servers": {
-                "s1": {"violations": [{"severity": "critical"}, {"severity": "warning"}]}
-            },
-            "databases": {
-                "d1": {"violations": [{"severity": "critical"}]}
-            },
+            "servers": {"s1": {"violations": [{"severity": "critical"}, {"severity": "warning"}]}},
+            "databases": {"d1": {"violations": [{"severity": "critical"}]}},
         }
         assert _count_critical_infra(infra) == 2
 
@@ -924,9 +896,7 @@ class TestCountHelpers:
 
     def test_count_warning_infra(self):
         infra = {
-            "servers": {
-                "s1": {"violations": [{"severity": "warning"}, {"severity": "warning"}]}
-            },
+            "servers": {"s1": {"violations": [{"severity": "warning"}, {"severity": "warning"}]}},
             "databases": {},
         }
         assert _count_warning_infra(infra) == 2
@@ -935,6 +905,7 @@ class TestCountHelpers:
 # ---------------------------------------------------------------------------
 # Notify via Lark
 # ---------------------------------------------------------------------------
+
 
 class TestNotifyViaLark:
     def test_no_env_var(self):
@@ -967,6 +938,7 @@ class TestNotifyViaLark:
 # ---------------------------------------------------------------------------
 # CLI Parsing
 # ---------------------------------------------------------------------------
+
 
 class TestParseArgs:
     def test_defaults(self):
@@ -1004,6 +976,7 @@ class TestParseArgs:
 # main() function
 # ---------------------------------------------------------------------------
 
+
 class TestMain:
     @patch("memory_core.tools.daily_kb_audit.check_infrastructure")
     @patch("memory_core.tools.daily_kb_audit.load_registered_projects")
@@ -1021,9 +994,7 @@ class TestMain:
     def test_infra_critical_returns_one(self, mock_write, mock_load, mock_infra, tmp_path: Path):
         mock_load.return_value = []
         mock_infra.return_value = {
-            "servers": {
-                "s1": {"violations": [{"severity": "critical"}]}
-            },
+            "servers": {"s1": {"violations": [{"severity": "critical"}]}},
             "databases": {},
             "violations": [{"severity": "critical"}],
         }
@@ -1037,7 +1008,12 @@ class TestMain:
     @patch("memory_core.tools.daily_kb_audit.load_registered_projects")
     @patch("memory_core.tools.daily_kb_audit.write_report")
     def test_with_projects(
-        self, mock_write, mock_load, mock_infra, mock_audit, mock_fps,
+        self,
+        mock_write,
+        mock_load,
+        mock_infra,
+        mock_audit,
+        mock_fps,
         tmp_path: Path,
     ):
         mock_load.return_value = [("proj1", tmp_path)]
@@ -1055,7 +1031,12 @@ class TestMain:
     @patch("memory_core.tools.daily_kb_audit.load_registered_projects")
     @patch("memory_core.tools.daily_kb_audit.write_report")
     def test_critical_violations_return_one(
-        self, mock_write, mock_load, mock_infra, mock_audit, mock_fps,
+        self,
+        mock_write,
+        mock_load,
+        mock_infra,
+        mock_audit,
+        mock_fps,
         tmp_path: Path,
     ):
         mock_load.return_value = [("proj1", tmp_path)]
@@ -1075,8 +1056,14 @@ class TestMain:
     @patch("memory_core.tools.daily_kb_audit.load_registered_projects")
     @patch("memory_core.tools.daily_kb_audit.write_report")
     def test_json_output(
-        self, mock_write, mock_load, mock_infra, mock_audit, mock_fps,
-        tmp_path: Path, capsys,
+        self,
+        mock_write,
+        mock_load,
+        mock_infra,
+        mock_audit,
+        mock_fps,
+        tmp_path: Path,
+        capsys,
     ):
         mock_load.return_value = [("proj1", tmp_path)]
         mock_infra.return_value = {"servers": {}, "databases": {}, "violations": []}
@@ -1096,8 +1083,14 @@ class TestMain:
     @patch("memory_core.tools.daily_kb_audit.load_registered_projects")
     @patch("memory_core.tools.daily_kb_audit.write_report")
     def test_notify_called(
-        self, mock_write, mock_load, mock_infra, mock_audit, mock_fps,
-        mock_notify, tmp_path: Path,
+        self,
+        mock_write,
+        mock_load,
+        mock_infra,
+        mock_audit,
+        mock_fps,
+        mock_notify,
+        tmp_path: Path,
     ):
         mock_load.return_value = [("proj1", tmp_path)]
         mock_infra.return_value = {"servers": {}, "databases": {}, "violations": []}
@@ -1113,7 +1106,11 @@ class TestMain:
     @patch("memory_core.tools.daily_kb_audit.load_registered_projects")
     @patch("memory_core.tools.daily_kb_audit.write_report")
     def test_infra_exception_degrades_gracefully(
-        self, mock_write, mock_load, mock_infra, tmp_path: Path,
+        self,
+        mock_write,
+        mock_load,
+        mock_infra,
+        tmp_path: Path,
     ):
         mock_load.return_value = []
         mock_infra.side_effect = RuntimeError("boom")

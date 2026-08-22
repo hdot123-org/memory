@@ -1,6 +1,5 @@
 """Tests for memory_hook_provider_probe module."""
 
-
 import json
 from unittest.mock import MagicMock, patch
 
@@ -31,9 +30,7 @@ class TestProbeProviderAvailability:
         """Test that status is 'passed' when legacy provider is available."""
         from memory_core.tools.memory_hook_provider_probe import probe_provider_availability
 
-        with patch(
-            "memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder"
-        ) as mock_resolve:
+        with patch("memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder") as mock_resolve:
             mock_resolve.side_effect = [
                 ("external-core", MagicMock(), ["some error"]),  # external fails
                 ("legacy", MagicMock(), []),  # legacy succeeds
@@ -49,9 +46,7 @@ class TestProbeProviderAvailability:
         """Test that status is 'failed' when legacy provider fails."""
         from memory_core.tools.memory_hook_provider_probe import probe_provider_availability
 
-        with patch(
-            "memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder"
-        ) as mock_resolve:
+        with patch("memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder") as mock_resolve:
             mock_resolve.side_effect = [
                 ("external-core", MagicMock(), ["external error"]),
                 ("legacy", MagicMock(), ["legacy error"]),
@@ -67,9 +62,7 @@ class TestProbeProviderAvailability:
         """Test external probe success scenario."""
         from memory_core.tools.memory_hook_provider_probe import probe_provider_availability
 
-        with patch(
-            "memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder"
-        ) as mock_resolve:
+        with patch("memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder") as mock_resolve:
             mock_resolve.side_effect = [
                 ("external-core", MagicMock(), []),  # external succeeds
                 ("legacy", MagicMock(), []),  # legacy succeeds
@@ -84,9 +77,7 @@ class TestProbeProviderAvailability:
         """Test external probe failure with exception."""
         from memory_core.tools.memory_hook_provider_probe import probe_provider_availability
 
-        with patch(
-            "memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder"
-        ) as mock_resolve:
+        with patch("memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder") as mock_resolve:
             mock_resolve.side_effect = [
                 Exception("external provider crashed"),  # external raises exception
                 ("legacy", MagicMock(), []),  # legacy succeeds
@@ -101,9 +92,7 @@ class TestProbeProviderAvailability:
         """Test legacy probe failure with exception."""
         from memory_core.tools.memory_hook_provider_probe import probe_provider_availability
 
-        with patch(
-            "memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder"
-        ) as mock_resolve:
+        with patch("memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder") as mock_resolve:
             mock_resolve.side_effect = [
                 ("external-core", MagicMock(), ["external error"]),
                 Exception("legacy provider crashed"),  # legacy raises exception
@@ -121,9 +110,7 @@ class TestProbeProviderAvailability:
 
         monkeypatch.setenv("MEMORY_HOOK_CORE_PROVIDER", "external-core")
 
-        with patch(
-            "memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder"
-        ) as mock_resolve:
+        with patch("memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder") as mock_resolve:
             mock_resolve.side_effect = [
                 ("external-core", MagicMock(), []),
                 ("legacy", MagicMock(), []),
@@ -139,9 +126,7 @@ class TestProbeProviderAvailability:
 
         monkeypatch.delenv("MEMORY_HOOK_CORE_PROVIDER", raising=False)
 
-        with patch(
-            "memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder"
-        ) as mock_resolve:
+        with patch("memory_core.tools.memory_hook_provider_probe.gateway._resolve_core_builder") as mock_resolve:
             mock_resolve.side_effect = [
                 ("external-core", MagicMock(), []),
                 ("legacy", MagicMock(), []),
@@ -180,9 +165,7 @@ class TestMain:
         """Test main returns 0 when probe status is passed."""
         from memory_core.tools.memory_hook_provider_probe import main
 
-        with patch(
-            "memory_core.tools.memory_hook_provider_probe.probe_provider_availability"
-        ) as mock_probe:
+        with patch("memory_core.tools.memory_hook_provider_probe.probe_provider_availability") as mock_probe:
             mock_probe.return_value = {"status": "passed"}
 
             result = main()
@@ -193,9 +176,7 @@ class TestMain:
         """Test main returns 1 when probe status is failed."""
         from memory_core.tools.memory_hook_provider_probe import main
 
-        with patch(
-            "memory_core.tools.memory_hook_provider_probe.probe_provider_availability"
-        ) as mock_probe:
+        with patch("memory_core.tools.memory_hook_provider_probe.probe_provider_availability") as mock_probe:
             mock_probe.return_value = {"status": "failed"}
 
             result = main()
@@ -206,9 +187,7 @@ class TestMain:
         """Test main prints JSON output."""
         from memory_core.tools.memory_hook_provider_probe import main
 
-        with patch(
-            "memory_core.tools.memory_hook_provider_probe.probe_provider_availability"
-        ) as mock_probe:
+        with patch("memory_core.tools.memory_hook_provider_probe.probe_provider_availability") as mock_probe:
             mock_probe.return_value = {
                 "status": "passed",
                 "requested_provider": "legacy",

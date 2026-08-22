@@ -52,8 +52,8 @@ def main(argv: list[str] | None = None) -> int:
         prog="memory-promote",
         description="Promote knowledge items from pending/ to formal domains in global KB.",
         epilog="Examples:\n"
-               "  memory-promote                                    # List pending candidates\n"
-               "  memory-promote <file> --to operations             # Promote to operations domain\n",
+        "  memory-promote                                    # List pending candidates\n"
+        "  memory-promote <file> --to operations             # Promote to operations domain\n",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
@@ -118,10 +118,7 @@ def _interactive_mode(pending_dir: Path) -> int:
         return 1
 
     # List all files in pending/ (excluding README.md)
-    candidates = [
-        f for f in pending_dir.iterdir()
-        if f.is_file() and f.name != "README.md"
-    ]
+    candidates = [f for f in pending_dir.iterdir() if f.is_file() and f.name != "README.md"]
 
     if not candidates:
         print("无候选知识点 (No pending candidates)")

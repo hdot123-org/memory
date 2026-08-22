@@ -14,6 +14,7 @@ The global KB contains cross-project reusable knowledge organized into four doma
 
 This structure is created once and shared across all projects that enable global KB.
 """
+
 from pathlib import Path
 from typing import Any
 
@@ -146,36 +147,42 @@ def _generate_domain_readme(domain: str) -> str:
 
     # Add examples section if domain has examples
     if definition["examples"]:
-        lines.extend([
-            "## 示例知识点",
-            "",
-        ])
+        lines.extend(
+            [
+                "## 示例知识点",
+                "",
+            ]
+        )
         for example in definition["examples"]:
             lines.append(f"- {example}")
         lines.append("")
 
     # Add special note for pending domain
     if domain == "pending":
-        lines.extend([
-            "## 提升流程",
-            "",
-            "`pending/` 目录中的知识点是自动捕获的候选内容,需要通过 `memory-promote` 命令进行人工确认后才能进入正式分类:",
-            "",
-            "1. 查看待确认知识点: `memory-promote --list`",
-            "2. 提升到指定域: `memory-promote <file> --to operations|engineering|collaboration`",
-            "3. 确认后知识点会被移动到对应的正式分类目录",
-            "",
-            "**注意**: 只有经过人工确认的知识点才会进入全局知识库的正式分类,自动捕获的内容不会直接写入 operations/engineering/collaboration 目录。",
-            "",
-        ])
+        lines.extend(
+            [
+                "## 提升流程",
+                "",
+                "`pending/` 目录中的知识点是自动捕获的候选内容,需要通过 `memory-promote` 命令进行人工确认后才能进入正式分类:",
+                "",
+                "1. 查看待确认知识点: `memory-promote --list`",
+                "2. 提升到指定域: `memory-promote <file> --to operations|engineering|collaboration`",
+                "3. 确认后知识点会被移动到对应的正式分类目录",
+                "",
+                "**注意**: 只有经过人工确认的知识点才会进入全局知识库的正式分类,自动捕获的内容不会直接写入 operations/engineering/collaboration 目录。",
+                "",
+            ]
+        )
     else:
-        lines.extend([
-            "## 写入方式",
-            "",
-            "本目录的内容通过 `memory-promote` 命令从 `pending/` 目录提升而来,",
-            "不允许自动捕获直接写入。",
-            "",
-        ])
+        lines.extend(
+            [
+                "## 写入方式",
+                "",
+                "本目录的内容通过 `memory-promote` 命令从 `pending/` 目录提升而来,",
+                "不允许自动捕获直接写入。",
+                "",
+            ]
+        )
 
     return "\n".join(lines)
 
@@ -207,43 +214,47 @@ def _generate_index_md() -> str:
     # Add domain sections
     for domain in ["operations", "engineering", "collaboration", "pending"]:
         definition = DOMAIN_DEFINITIONS[domain]
-        lines.extend([
-            f"### [{domain}/](./{domain}/)",
-            "",
-            f"**{definition['title']}**",
-            "",
-            definition["description"],
-            "",
-        ])
+        lines.extend(
+            [
+                f"### [{domain}/](./{domain}/)",
+                "",
+                f"**{definition['title']}**",
+                "",
+                definition["description"],
+                "",
+            ]
+        )
 
     # Add usage instructions
-    lines.extend([
-        "## 使用方式",
-        "",
-        "### 读取知识",
-        "",
-        "项目启用全局知识库后,路由会自动 fallback 到全局知识库查找缺失的知识:",
-        "",
-        "1. 项目层优先: 先查找 `<project>/memory/kb/`",
-        "2. 全局 fallback: 项目层缺失时,查找 `~/.memory/global-kb/` 对应域",
-        "",
-        "### 贡献知识",
-        "",
-        "1. 项目产生经验后,自动捕获到 `pending/` 目录",
-        "2. 使用 `memory-promote` 命令人工确认并提升到正式分类",
-        "3. 提升后的知识对所有启用全局知识库的项目可见",
-        "",
-        "### 配置",
-        "",
-        "在项目的 `memory/system/adapter.toml` 中配置:",
-        "",
-        "```toml",
-        "[global_kb]",
-        "enabled = true",
-        "root = \"~/.memory/global-kb\"",
-        "```",
-        "",
-    ])
+    lines.extend(
+        [
+            "## 使用方式",
+            "",
+            "### 读取知识",
+            "",
+            "项目启用全局知识库后,路由会自动 fallback 到全局知识库查找缺失的知识:",
+            "",
+            "1. 项目层优先: 先查找 `<project>/memory/kb/`",
+            "2. 全局 fallback: 项目层缺失时,查找 `~/.memory/global-kb/` 对应域",
+            "",
+            "### 贡献知识",
+            "",
+            "1. 项目产生经验后,自动捕获到 `pending/` 目录",
+            "2. 使用 `memory-promote` 命令人工确认并提升到正式分类",
+            "3. 提升后的知识对所有启用全局知识库的项目可见",
+            "",
+            "### 配置",
+            "",
+            "在项目的 `memory/system/adapter.toml` 中配置:",
+            "",
+            "```toml",
+            "[global_kb]",
+            "enabled = true",
+            'root = "~/.memory/global-kb"',
+            "```",
+            "",
+        ]
+    )
 
     return "\n".join(lines)
 

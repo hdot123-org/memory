@@ -66,7 +66,7 @@ def test_format_kv_serializes_nested_structures():
     rendered = ErrorSinkImpl._format_kv({"context": {"a": 1, "b": [1, 2]}})
     assert "context=" in rendered
     # Nested JSON contains whitespace, so the whole value is re-quoted with escapes.
-    assert "\\\"a\\\": 1" in rendered or '"a": 1' in rendered
+    assert '\\"a\\": 1' in rendered or '"a": 1' in rendered
 
 
 def test_format_kv_handles_empty_dict():

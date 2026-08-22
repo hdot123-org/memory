@@ -237,10 +237,7 @@ class TestFixtureCurrentMemoryOnly:
         plan = plan_residue_migration(audit_result, current_memory_project)
 
         # Current memory should be in direct_manage bucket
-        current_items = [
-            item for item in plan.buckets.get("direct_manage", [])
-            if item.get("path") == "memory"
-        ]
+        current_items = [item for item in plan.buckets.get("direct_manage", []) if item.get("path") == "memory"]
         assert len(current_items) == 1
         # Plan should recommend adopt/current, not legacy
         assert plan.risk_level != "critical"
@@ -308,8 +305,7 @@ class TestFixtureWorkspaceMemoryOnly:
 
         # Workspace memory should trigger legacy_readonly action
         legacy_actions = [
-            a for a in plan.actions
-            if a.kind == "workspace_memory" and a.action == "mark_legacy_readonly"
+            a for a in plan.actions if a.kind == "workspace_memory" and a.action == "mark_legacy_readonly"
         ]
         assert len(legacy_actions) >= 1
 
@@ -321,9 +317,7 @@ class TestFixtureMemorySystemOnly:
     def memory_system_project(self, tmp_path: Path) -> Path:
         """Create a project with only memory/system/ structure."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        (tmp_path / "memory" / "system" / "memory.lock").write_text(
-            '[memory]\nproject = "test"\n'
-        )
+        (tmp_path / "memory" / "system" / "memory.lock").write_text('[memory]\nproject = "test"\n')
         return tmp_path
 
     def test_audit_detects_memory_system(self, memory_system_project: Path) -> None:
@@ -347,10 +341,7 @@ class TestFixtureMemorySystemOnly:
         plan = plan_residue_migration(audit_result, memory_system_project)
 
         # memory should be in direct_manage bucket
-        memory_items = [
-            item for item in plan.buckets.get("direct_manage", [])
-            if item.get("path") == "memory"
-        ]
+        memory_items = [item for item in plan.buckets.get("direct_manage", []) if item.get("path") == "memory"]
         assert len(memory_items) >= 1
 
     def test_init_skips_existing_files_by_default(self, memory_system_project: Path) -> None:
@@ -367,8 +358,7 @@ class TestFixtureMemorySystemOnly:
         # File should be preserved
         current_content = (memory_system_project / "memory" / "system" / "memory.lock").read_text()
         assert current_content == original_content
-        assert any("skip" in item.lower() or "already exists" in item.lower()
-                   for item in result.get("skipped", []))
+        assert any("skip" in item.lower() or "already exists" in item.lower() for item in result.get("skipped", []))
 
 
 class TestFixtureCurrentLayout:
@@ -379,7 +369,7 @@ class TestFixtureCurrentLayout:
         """Create a project with current layout: .memory + memory + project-map."""
         # Modern .memory/
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        (tmp_path / "memory" / "system" / "memory.lock").write_text('[memory]\n')
+        (tmp_path / "memory" / "system" / "memory.lock").write_text("[memory]\n")
 
         # Current memory/ (parent already exists from memory/system)
         (tmp_path / "memory" / "inbox.md").write_text("# Inbox\n")
@@ -452,7 +442,7 @@ class TestFixtureMultiGenerationMemory:
         """Create a project with multiple memory structures."""
         # Modern memory/system/
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        (tmp_path / "memory" / "system" / "memory.lock").write_text('[memory]\n')
+        (tmp_path / "memory" / "system" / "memory.lock").write_text("[memory]\n")
 
         # Current memory/ (parent already exists)
         (tmp_path / "memory" / "inbox.md").write_text("# Current\n")
@@ -491,7 +481,8 @@ class TestFixtureMultiGenerationMemory:
 
         # Multi-generation conflict should be in needs_human_decision
         conflict_items = [
-            item for item in plan.buckets.get("needs_human_decision", [])
+            item
+            for item in plan.buckets.get("needs_human_decision", [])
             if item.get("kind") == "multi_generation_conflict"
         ]
         assert len(conflict_items) == 1
@@ -665,9 +656,7 @@ class TestFixtureManifestRuntimePollution:
                 {"path": "/project/.memory/memory.lock", "rel_path": "memory.lock"},
             ],
         }
-        (tmp_path / "memory" / "system" / "manifest.json").write_text(
-            json.dumps(manifest)
-        )
+        (tmp_path / "memory" / "system" / "manifest.json").write_text(json.dumps(manifest))
 
         return tmp_path
 

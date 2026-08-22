@@ -21,7 +21,6 @@ Codex event names are already in the canonical form (--event CLI arg).
 Factory passes canonical event names via ``--event`` (same path as Codex).
 """
 
-
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,6 +55,7 @@ _VALID_EVENT_TYPES = {"session-start", "prompt-submit", "notification", "stop"}
 # ---------------------------------------------------------------------------
 # HookEvent dataclass
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class HookEvent:
@@ -107,6 +107,7 @@ def _is_valid_event_type(event_type: str) -> bool:
 # ---------------------------------------------------------------------------
 # Public constructors
 # ---------------------------------------------------------------------------
+
 
 def from_codex_payload(raw: str, event: str = "", cwd: Path | None = None, source: str = "codex") -> HookEvent:
     """Parse a Codex-like hook invocation into a HookEvent.
@@ -164,6 +165,7 @@ def from_claude_payload(raw: str, cwd: Path | None = None) -> HookEvent:
 # Output conversion
 # ---------------------------------------------------------------------------
 
+
 def to_context_package_input(event: HookEvent) -> dict[str, Any]:
     """Convert a HookEvent into the (host, event, payload) dict for gateway calls.
 
@@ -183,6 +185,7 @@ def to_context_package_input(event: HookEvent) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Unified entry point
 # ---------------------------------------------------------------------------
+
 
 def parse_hook_event(host: str, event: str, raw_payload: str) -> HookEvent:
     """Parse a raw hook invocation into a HookEvent.

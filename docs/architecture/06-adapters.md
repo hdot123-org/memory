@@ -209,6 +209,7 @@ globals().update(_fn(REPO_ROOT, WORKSPACE_ROOT))
 from pathlib import Path
 from typing import Any
 
+
 def build_newproject_runtime_profile(repo_root: Path, workspace_root: Path) -> dict[str, Any]:
     # 1. 定义项目路径配置
     project_map_root = workspace_root / "project-map"
@@ -245,13 +246,20 @@ ADAPTER_POLICIES: dict[str, str] = {
     # "registration_commit": "...",
 }
 
+
 class NewprojectGatewayBusinessPolicy(NeutralGatewayBusinessPolicy):
-    def __init__(self, config: GatewayBusinessPolicyConfig, scope_config_path: Path | None = None, policy_pack_path: Path | None = None):
+    def __init__(
+        self,
+        config: GatewayBusinessPolicyConfig,
+        scope_config_path: Path | None = None,
+        policy_pack_path: Path | None = None,
+    ):
         # 可选：自定义 policy-pack 解析逻辑
         super().__init__(config=config, scope_config_path=scope_config_path)
 
     def resolve_policies(self) -> dict[str, str]:
         from workspace.tools.memory_hook_impls import PolicyRegistryImpl
+
         base = dict(PolicyRegistryImpl.DEFAULT_POLICIES)
         base.update(ADAPTER_POLICIES)
         return base

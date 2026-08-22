@@ -65,13 +65,18 @@ def _resolve_core_builder(provider: str, *, allow_fallback: bool = True) -> tupl
         except Exception as exc:
             if not allow_fallback:
                 raise
-            return "legacy", build_context_package_from_config, [f"external-core load failed, fallback to legacy: {exc}"]
+            return (
+                "legacy",
+                build_context_package_from_config,
+                [f"external-core load failed, fallback to legacy: {exc}"],
+            )
     return "legacy", build_context_package_from_config, []
 
 
 # ---------------------------------------------------------------------------
 # 业务策略函数
 # ---------------------------------------------------------------------------
+
 
 def determine_project_scope(cwd: Path) -> str:
     """确定项目 scope。"""
@@ -127,6 +132,7 @@ def resolve_route_target(kind: str) -> str:
         return _resolve_route_target_via_policy(kind)
     except (KeyError, AttributeError, TypeError) as exc:
         from ._gateway_config import _logger
+
         _logger.warning("route target fallback triggered: %s", exc)
         targets = write_targets()
         project_runtime_root = _get_gateway_business_policy().get_project_runtime_root()
@@ -184,6 +190,7 @@ def _extract_excerpt(path: Path, max_lines: int = 12) -> list[str]:
 # ---------------------------------------------------------------------------
 # Git Registration Probe
 # ---------------------------------------------------------------------------
+
 
 def _normalize_repo_scope_entry(value: str | Path) -> str | None:
     """规范化 repo scope entry。"""
@@ -272,8 +279,7 @@ def _git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, An
         for item in head_touched
     )
     registration_touched = any(
-        any(_path_matches_scope(item, scope) for scope in registration_paths)
-        for item in head_touched
+        any(_path_matches_scope(item, scope) for scope in registration_paths) for item in head_touched
     )
 
     if entries:
@@ -309,6 +315,7 @@ def _git_registration_probe(event: str, payload: dict[str, Any]) -> dict[str, An
 # 上下文包构建
 # ---------------------------------------------------------------------------
 
+
 def build_context_package(
     host: str,
     event: str,
@@ -322,9 +329,7 @@ def build_context_package(
     cwd = _discover_cwd(payload)
 
     if lifecycle_record is None:
-        lifecycle_record = _record_project_lifecycle_event(
-            host=host, event=event, payload=payload, cwd=cwd
-        )
+        lifecycle_record = _record_project_lifecycle_event(host=host, event=event, payload=payload, cwd=cwd)
 
     project_scope = determine_project_scope(cwd)
     business_policy = _get_gateway_business_policy()
@@ -370,9 +375,7 @@ def build_context_package(
     )
 
     requested_provider = os.environ.get("MEMORY_HOOK_CORE_PROVIDER", "legacy").strip() or "legacy"
-    provider_name, provider_builder, provider_errors = _resolve_core_builder(
-        requested_provider, allow_fallback=True
-    )
+    provider_name, provider_builder, provider_errors = _resolve_core_builder(requested_provider, allow_fallback=True)
     package = provider_builder(config) if provider_builder is not None else build_context_package_from_config(config)
 
     # Bug 3 fix: Source-repo in develop mode should not get consumer-project
@@ -457,8 +460,14 @@ def _apply_artifact_compaction(package: dict[str, Any]) -> None:
     policy = _adapter_config.get("ARTIFACT_COMPACTION")
     if not isinstance(policy, dict):
         return
-    for key in ("system_context", "project_context", "task_context",
-                "evidence_refs", "allowed_reads", "allowed_writes"):
+    for key in (
+        "system_context",
+        "project_context",
+        "task_context",
+        "evidence_refs",
+        "allowed_reads",
+        "allowed_writes",
+    ):
         if not policy.get(f"include_{key}", True):
             package.pop(key, None)
 
@@ -466,6 +475,7 @@ def _apply_artifact_compaction(package: dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 # IF-5 Sink 适配器
 # ---------------------------------------------------------------------------
+
 
 def _write_artifacts_via_sink(package: dict[str, Any]) -> dict[str, str]:
     """IF-5: Write artifacts via Sink facade."""
@@ -475,4 +485,3 @@ def _write_artifacts_via_sink(package: dict[str, Any]) -> dict[str, str]:
 def _append_error_log_via_sink(component: str, message: str, context: dict[str, Any]) -> None:
     """IF-5: Log error via Sink facade."""
     _get_error_sink().log(component, message, context)
-

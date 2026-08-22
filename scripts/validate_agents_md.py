@@ -6,6 +6,7 @@ Checks:
 2. File references in AGENTS.md exist in the repository.
 3. Version references match pyproject.toml.
 """
+
 import re
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 
 def get_pyproject_version() -> str:
     import tomllib
+
     with PYPROJECT.open("rb") as f:
         data: dict[str, Any] = tomllib.load(f)
         version: str = data["project"]["version"]

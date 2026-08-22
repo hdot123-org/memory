@@ -9,7 +9,6 @@ Usage:
   python3 workspace/tools/memory_hook_provider_probe.py
 """
 
-
 import json
 import os
 import sys

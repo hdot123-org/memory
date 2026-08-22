@@ -14,6 +14,7 @@ import pytest
 # F1: memory_hook_gateway._read_payload JSON decode error logging
 # ---------------------------------------------------------------------------
 
+
 class TestF1ReadPayloadWarning:
     """F1: _read_payload should log a warning on JSON parse failure."""
 
@@ -24,10 +25,7 @@ class TestF1ReadPayloadWarning:
         result = _read_payload("not json at all{{{")
 
         assert result == {}
-        assert any(
-            "payload JSON parse failed" in record.message
-            for record in caplog.records
-        )
+        assert any("payload JSON parse failed" in record.message for record in caplog.records)
 
     def test_valid_json_no_warning(self, caplog):
         from memory_core.tools.memory_hook_gateway import _read_payload
@@ -36,10 +34,7 @@ class TestF1ReadPayloadWarning:
         result = _read_payload('{"key": "value"}')
 
         assert result == {"key": "value"}
-        assert not any(
-            "payload JSON parse failed" in record.message
-            for record in caplog.records
-        )
+        assert not any("payload JSON parse failed" in record.message for record in caplog.records)
 
     def test_empty_string_no_warning(self, caplog):
         from memory_core.tools.memory_hook_gateway import _read_payload
@@ -54,6 +49,7 @@ class TestF1ReadPayloadWarning:
 # ---------------------------------------------------------------------------
 # F2: resolve_route_target exception narrowing
 # ---------------------------------------------------------------------------
+
 
 class TestF2ResolveRouteTargetNarrowException:
     """F2: resolve_route_target should only catch narrow exceptions and re-raise others."""
@@ -70,7 +66,8 @@ class TestF2ResolveRouteTargetNarrowException:
         )
         # Also mock the fallback dependencies to avoid side effects
         monkeypatch.setattr(
-            gw, "write_targets",
+            gw,
+            "write_targets",
             lambda: {"fact": "/tmp/fact", "system_error": "/tmp/err", "invalid_memory": "/tmp/inv"},
         )
         # Use monkeypatch.setitem on _adapter_config instead of module attributes
@@ -84,10 +81,7 @@ class TestF2ResolveRouteTargetNarrowException:
 
         result = gw.resolve_route_target("fact")
         assert result == "/tmp/fact"
-        assert any(
-            "route target fallback triggered" in record.message
-            for record in caplog.records
-        )
+        assert any("route target fallback triggered" in record.message for record in caplog.records)
 
     def test_valueerror_is_reraised(self, monkeypatch, caplog):
         """ValueError should NOT be caught and must be re-raised."""
@@ -104,10 +98,7 @@ class TestF2ResolveRouteTargetNarrowException:
             gw.resolve_route_target("fact")
 
         # No warning should be logged since the exception is re-raised
-        assert not any(
-            "route target fallback triggered" in record.message
-            for record in caplog.records
-        )
+        assert not any("route target fallback triggered" in record.message for record in caplog.records)
 
     def test_runtimeerror_is_reraised(self, monkeypatch):
         """RuntimeError should NOT be caught and must be re-raised."""
@@ -126,6 +117,7 @@ class TestF2ResolveRouteTargetNarrowException:
 # ---------------------------------------------------------------------------
 # F3: is_lossless unknown schema pair returns False
 # ---------------------------------------------------------------------------
+
 
 class TestF3IsLosslessUnknownSchema:
     """F3: is_lossless should return (False, [...]) for unknown schema pairs."""
@@ -163,6 +155,7 @@ class TestF3IsLosslessUnknownSchema:
 # ---------------------------------------------------------------------------
 # F4: adapter_toml_schema project_name cascade warning
 # ---------------------------------------------------------------------------
+
 
 class TestF4ProjectNameCascadeWarning:
     """F4: _load_new_format should warn or raise on missing project_name."""
@@ -240,6 +233,7 @@ canonical_files = []
 # F5: template functions include RENDERING-INCOMPLETE in fallback
 # ---------------------------------------------------------------------------
 
+
 class TestF5TemplateRenderingIncompleteComment:
     """F5: Template fallback content must start with RENDERING-INCOMPLETE comment."""
 
@@ -251,6 +245,7 @@ class TestF5TemplateRenderingIncompleteComment:
         import inspect
 
         from memory_core.tools.init_project_memory import template_memory_lock
+
         source = inspect.getsource(template_memory_lock)
         assert "RENDERING-INCOMPLETE" in source
 
@@ -258,6 +253,7 @@ class TestF5TemplateRenderingIncompleteComment:
         import inspect
 
         from memory_core.tools.init_project_memory import template_adapter_toml
+
         source = inspect.getsource(template_adapter_toml)
         assert "RENDERING-INCOMPLETE" in source
 
@@ -265,6 +261,7 @@ class TestF5TemplateRenderingIncompleteComment:
         import inspect
 
         from memory_core.tools.init_project_memory import template_canonical_md
+
         source = inspect.getsource(template_canonical_md)
         assert "RENDERING-INCOMPLETE" in source
 
@@ -272,6 +269,7 @@ class TestF5TemplateRenderingIncompleteComment:
         import inspect
 
         from memory_core.tools.init_project_memory import template_plan_md
+
         source = inspect.getsource(template_plan_md)
         assert "RENDERING-INCOMPLETE" in source
 
@@ -279,6 +277,7 @@ class TestF5TemplateRenderingIncompleteComment:
         import inspect
 
         from memory_core.tools.init_project_memory import template_state_md
+
         source = inspect.getsource(template_state_md)
         assert "RENDERING-INCOMPLETE" in source
 
@@ -286,6 +285,7 @@ class TestF5TemplateRenderingIncompleteComment:
         import inspect
 
         from memory_core.tools.init_project_memory import template_tasks_md
+
         source = inspect.getsource(template_tasks_md)
         assert "RENDERING-INCOMPLETE" in source
 
@@ -293,6 +293,7 @@ class TestF5TemplateRenderingIncompleteComment:
         import inspect
 
         from memory_core.tools.init_project_memory import template_migrations_log
+
         source = inspect.getsource(template_migrations_log)
         assert "RENDERING-INCOMPLETE" in source
 
@@ -301,6 +302,7 @@ class TestF5TemplateRenderingIncompleteComment:
         import inspect
 
         from memory_core.tools.init_project_memory import template_memory_lock
+
         source = inspect.getsource(template_memory_lock)
         assert "RENDERING-INCOMPLETE: 见 warnings 列表 / FAILED_RENDER" in source
 
@@ -308,6 +310,7 @@ class TestF5TemplateRenderingIncompleteComment:
 # ---------------------------------------------------------------------------
 # F6: hooks.json parse anomaly adds warning to result
 # ---------------------------------------------------------------------------
+
 
 class TestF6HooksJsonCorruptWarning:
     """F6: generate_hooks_json should warn when hooks.json is corrupt."""

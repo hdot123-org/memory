@@ -5,14 +5,11 @@ Extracted from test_memory_hook_core.py and test_core_config_path.py
 to eliminate 98% AST duplicate _make_minimal_kwargs blocks (issue #673).
 """
 
-
 from pathlib import Path
 from typing import Any
 
 
-def _make_minimal_kwargs(
-    tmp_path: Path, *, create_project_file: bool = False
-) -> dict[str, Any]:
+def _make_minimal_kwargs(tmp_path: Path, *, create_project_file: bool = False) -> dict[str, Any]:
     """Build minimal kwargs for build_context_package_core.
 
     Args:
@@ -32,9 +29,7 @@ def _make_minimal_kwargs(
     (base / "memory" / "kb").mkdir(exist_ok=True)
     (base / "memory" / "kb" / "INDEX.md").write_text("# KB Index\n", encoding="utf-8")
     (base / "memory" / "docs").mkdir(exist_ok=True)
-    (base / "memory" / "docs" / "INDEX.md").write_text(
-        "# Docs Index\n", encoding="utf-8"
-    )
+    (base / "memory" / "docs" / "INDEX.md").write_text("# Docs Index\n", encoding="utf-8")
     (base / "projects").mkdir(exist_ok=True)
     (base / "projects" / "workbot").mkdir(exist_ok=True)
 

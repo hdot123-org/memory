@@ -57,12 +57,18 @@ def test_fix_with_tests_passes(tmp_path):
     repo = _create_fixture_repo(tmp_path)
     _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
     subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
-    _add_commit(repo, "fix: correct null pointer dereference", {
-        "src/foo.py": "def foo(): pass",
-        "tests/test_foo.py": "def test_foo(): pass",
-    })
+    _add_commit(
+        repo,
+        "fix: correct null pointer dereference",
+        {
+            "src/foo.py": "def foo(): pass",
+            "tests/test_foo.py": "def test_foo(): pass",
+        },
+    )
     result = _run_script(["--base", "base"], cwd=repo)
-    assert result.returncode == 0, f"Expected exit 0, got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    assert result.returncode == 0, (
+        f"Expected exit 0, got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    )
 
 
 # ============================================================================
@@ -83,12 +89,12 @@ def test_get_pr_data_retries_on_503(monkeypatch):
     def fake_run_503_then_ok(cmd, **kwargs):
         calls.append(cmd)
         if len(calls) == 1:
-            raise _make_called_process_error(
-                "gh pr view failed: HTTP 503: No server is currently available"
-            )
+            raise _make_called_process_error("gh pr view failed: HTTP 503: No server is currently available")
+
         class R:
             stdout = json.dumps({"commits": [], "files": [], "author": "x"})
             stderr = ""
+
         return R()
 
     monkeypatch.setattr(mod, "_run", fake_run_503_then_ok)
@@ -143,11 +149,17 @@ def test_fix_without_tests_fails(tmp_path):
     repo = _create_fixture_repo(tmp_path)
     _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
     subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
-    _add_commit(repo, "fix: correct null pointer dereference", {
-        "src/foo.py": "def foo(): pass",
-    })
+    _add_commit(
+        repo,
+        "fix: correct null pointer dereference",
+        {
+            "src/foo.py": "def foo(): pass",
+        },
+    )
     result = _run_script(["--base", "base"], cwd=repo)
-    assert result.returncode == 1, f"Expected exit 1, got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    assert result.returncode == 1, (
+        f"Expected exit 1, got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    )
     assert "fix" in result.stdout.lower() or "fix" in result.stderr.lower()
 
 
@@ -159,9 +171,13 @@ def test_hotfix_prefix_detected(tmp_path):
     repo = _create_fixture_repo(tmp_path)
     _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
     subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
-    _add_commit(repo, "hotfix: patch security hole", {
-        "src/security.py": "def secure(): pass",
-    })
+    _add_commit(
+        repo,
+        "hotfix: patch security hole",
+        {
+            "src/security.py": "def secure(): pass",
+        },
+    )
     result = _run_script(["--base", "base"], cwd=repo)
     assert result.returncode == 1, f"Expected exit 1 for hotfix:, got {result.returncode}"
 
@@ -174,9 +190,13 @@ def test_bugfix_prefix_detected(tmp_path):
     repo = _create_fixture_repo(tmp_path)
     _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
     subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
-    _add_commit(repo, "bugfix: resolve race condition", {
-        "src/concurrent.py": "def sync(): pass",
-    })
+    _add_commit(
+        repo,
+        "bugfix: resolve race condition",
+        {
+            "src/concurrent.py": "def sync(): pass",
+        },
+    )
     result = _run_script(["--base", "base"], cwd=repo)
     assert result.returncode == 1, f"Expected exit 1 for bugfix:, got {result.returncode}"
 
@@ -189,9 +209,13 @@ def test_fix_with_scope_detected(tmp_path):
     repo = _create_fixture_repo(tmp_path)
     _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
     subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
-    _add_commit(repo, "fix(api): handle empty response", {
-        "src/api.py": "def api(): pass",
-    })
+    _add_commit(
+        repo,
+        "fix(api): handle empty response",
+        {
+            "src/api.py": "def api(): pass",
+        },
+    )
     result = _run_script(["--base", "base"], cwd=repo)
     assert result.returncode == 1, f"Expected exit 1 for fix(scope):, got {result.returncode}"
 
@@ -204,9 +228,13 @@ def test_feat_commit_passes(tmp_path):
     repo = _create_fixture_repo(tmp_path)
     _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
     subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
-    _add_commit(repo, "feat: add new endpoint", {
-        "src/endpoint.py": "def endpoint(): pass",
-    })
+    _add_commit(
+        repo,
+        "feat: add new endpoint",
+        {
+            "src/endpoint.py": "def endpoint(): pass",
+        },
+    )
     result = _run_script(["--base", "base"], cwd=repo)
     assert result.returncode == 0, f"Expected exit 0 for feat:, got {result.returncode}"
 
@@ -219,9 +247,13 @@ def test_chore_commit_passes(tmp_path):
     repo = _create_fixture_repo(tmp_path)
     _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
     subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
-    _add_commit(repo, "chore: update dependencies", {
-        "requirements.txt": "pytest>=7.0",
-    })
+    _add_commit(
+        repo,
+        "chore: update dependencies",
+        {
+            "requirements.txt": "pytest>=7.0",
+        },
+    )
     result = _run_script(["--base", "base"], cwd=repo)
     assert result.returncode == 0, f"Expected exit 0 for chore:, got {result.returncode}"
 
@@ -258,9 +290,13 @@ def test_fix_breaking_change_detected(tmp_path):
     repo = _create_fixture_repo(tmp_path)
     _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
     subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
-    _add_commit(repo, "fix!: redesign error handling", {
-        "src/errors.py": "def error(): pass",
-    })
+    _add_commit(
+        repo,
+        "fix!: redesign error handling",
+        {
+            "src/errors.py": "def error(): pass",
+        },
+    )
     result = _run_script(["--base", "base"], cwd=repo)
     assert result.returncode == 1, f"Expected exit 1 for fix!:, got {result.returncode}"
 
@@ -313,10 +349,14 @@ def test_mixed_doc_code_not_exempted(tmp_path):
     repo = _create_fixture_repo(tmp_path)
     _add_commit(repo, "chore: initial commit", {"README.md": "# Test"})
     subprocess.run(["git", "tag", "base"], cwd=repo, check=True, capture_output=True)
-    _add_commit(repo, "fix: correct bug", {
-        "docs/guide.md": "Updated guide",
-        "src/foo.py": "def foo(): pass",
-    })
+    _add_commit(
+        repo,
+        "fix: correct bug",
+        {
+            "docs/guide.md": "Updated guide",
+            "src/foo.py": "def foo(): pass",
+        },
+    )
     result = _run_script(["--base", "base"], cwd=repo)
     assert result.returncode == 1, f"Expected exit 1 for mixed docs+code, got {result.returncode}"
 
@@ -421,6 +461,5 @@ def test_live_repo_does_not_violate():
     """Current repository state does not violate the guard."""
     result = _run_script([])
     assert result.returncode == 0, (
-        f"Live repo should be clean (no fix commits without tests).\n"
-        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        f"Live repo should be clean (no fix commits without tests).\nstdout: {result.stdout}\nstderr: {result.stderr}"
     )

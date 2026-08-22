@@ -4,7 +4,6 @@ This module contains common functions that were previously duplicated
 across multiple modules (DRY principle).
 """
 
-
 import hashlib
 from pathlib import Path
 
@@ -23,7 +22,7 @@ def sha256_file(path: Path) -> str | None:
     """
     try:
         hasher = hashlib.sha256()
-        with Path(path).open('rb') as f:
+        with Path(path).open("rb") as f:
             while chunk := f.read(8192):
                 hasher.update(chunk)
         return hasher.hexdigest()

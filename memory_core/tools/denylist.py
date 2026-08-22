@@ -31,6 +31,7 @@ class DenylistResult:
         rule: The rule that triggered denial (e.g., "tmpdir", "factory", "home_root", "junk_pattern", "non_git")
         message: Human-readable error message explaining the denial and available overrides
     """
+
     denied: bool
     rule: str | None = None
     message: str | None = None
@@ -48,12 +49,12 @@ class DenylistResult:
 
 # Junk directory name patterns that should be rejected
 JUNK_DIR_PATTERNS = [
-    re.compile(r"^tmp\..*"),           # tmp.*
-    re.compile(r"^demo-.*"),           # demo-*
-    re.compile(r"^test-.*"),           # test-*
-    re.compile(r"^smoke-test-.*"),     # smoke-test-*
-    re.compile(r"^restart-.*"),        # restart-*
-    re.compile(r"^file-list-.*"),      # file-list-*
+    re.compile(r"^tmp\..*"),  # tmp.*
+    re.compile(r"^demo-.*"),  # demo-*
+    re.compile(r"^test-.*"),  # test-*
+    re.compile(r"^smoke-test-.*"),  # smoke-test-*
+    re.compile(r"^restart-.*"),  # restart-*
+    re.compile(r"^file-list-.*"),  # file-list-*
 ]
 
 
@@ -89,8 +90,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
         if target_resolved == tmpdir_path or str(target_resolved).startswith(str(tmpdir_path) + os.sep):
             return DenylistResult.make_denied(
                 "tmpdir",
-                f"Path is under $TMPDIR ({tmpdir_path}). "
-                f"Temporary directories are not suitable for project memory."
+                f"Path is under $TMPDIR ({tmpdir_path}). Temporary directories are not suitable for project memory.",
             )
 
     # 2. Check /tmp (and /private/tmp on macOS where /tmp is a symlink)
@@ -102,8 +102,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
         or target_str.startswith("/private/tmp/")
     ):
         return DenylistResult.make_denied(
-            "tmpdir",
-            "Path is under /tmp. Temporary directories are not suitable for project memory."
+            "tmpdir", "Path is under /tmp. Temporary directories are not suitable for project memory."
         )
 
     # 3. Check ~/.factory
@@ -111,8 +110,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
     if target_resolved == factory_path or str(target_resolved).startswith(str(factory_path) + os.sep):
         return DenylistResult.make_denied(
             "factory",
-            f"Path is under ~/.factory ({factory_path}). "
-            f"Factory internal directories should not have project memory."
+            f"Path is under ~/.factory ({factory_path}). Factory internal directories should not have project memory.",
         )
 
     # 4. Check $HOME root (exact match)
@@ -120,8 +118,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
     if target_resolved == home_path:
         return DenylistResult.make_denied(
             "home_root",
-            f"Path is $HOME ({home_path}). "
-            f"Initialize memory in a specific project directory, not the home root."
+            f"Path is $HOME ({home_path}). Initialize memory in a specific project directory, not the home root.",
         )
 
     # 5. Check junk directory name patterns
@@ -130,7 +127,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
             return DenylistResult.make_denied(
                 "junk_pattern",
                 f"Directory name '{target_name}' matches junk pattern '{pattern.pattern}'. "
-                f"These directories are typically temporary or test artifacts."
+                f"These directories are typically temporary or test artifacts.",
             )
 
     # 6. Check non-git directories
@@ -140,7 +137,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
             return DenylistResult.make_denied(
                 "non_git",
                 "Path is not a git repository (no .git directory found). "
-                "Use --allow-non-git to override this check if the directory is a valid project."
+                "Use --allow-non-git to override this check if the directory is a valid project.",
             )
 
     return DenylistResult.denied_ok()

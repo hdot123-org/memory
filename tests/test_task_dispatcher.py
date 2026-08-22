@@ -82,9 +82,6 @@ class TestTaskDispatcher:
         d = _MockDispatcher()
         prompt = "x" * (MAX_INLINE_CHARS + 1)
         d.dispatch(prompt, task_name="filetest")
-        found = any(
-            (Path(root) / "instructions.md").is_file()
-            for root, _dirs, _files in Path(d.workspace).walk()
-        )
+        found = any((Path(root) / "instructions.md").is_file() for root, _dirs, _files in Path(d.workspace).walk())
         assert found is True
         d.cleanup()

@@ -71,6 +71,7 @@ def _prevent_lifecycle_writes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
 # Read-only tool tests (no filesystem writes)
 # ---------------------------------------------------------------------------
 
+
 class TestLoadContext:
     def test_load_context(self) -> None:
         payload = _invoke("load_context", {"cwd": SOURCE_REPO_CWD})
@@ -80,9 +81,7 @@ class TestLoadContext:
 
 class TestSearchMemory:
     def test_search_memory(self) -> None:
-        payload = _invoke(
-            "search_memory", {"query": "hook", "cwd": SOURCE_REPO_CWD}
-        )
+        payload = _invoke("search_memory", {"query": "hook", "cwd": SOURCE_REPO_CWD})
         assert isinstance(payload, list)
         assert len(payload) >= 1
         first = payload[0]
@@ -93,9 +92,7 @@ class TestSearchMemory:
 
     def test_search_memory_returns_project_source(self) -> None:
         """Project-layer results must have source='project'."""
-        payload = _invoke(
-            "search_memory", {"query": "hook", "cwd": SOURCE_REPO_CWD}
-        )
+        payload = _invoke("search_memory", {"query": "hook", "cwd": SOURCE_REPO_CWD})
         project_hits = [r for r in payload if r.get("source") == "project"]
         assert len(project_hits) >= 1
 
@@ -109,9 +106,7 @@ class TestSearchMemory:
         fake_global = fake_home / ".memory" / "global-kb" / "operations"
         fake_global.mkdir(parents=True)
         marker = "BaiduOCRUniqueMarkerKeyword"
-        (fake_global / "baidu-ocr.md").write_text(
-            f"# Baidu OCR\n\n{marker} line here\n", encoding="utf-8"
-        )
+        (fake_global / "baidu-ocr.md").write_text(f"# Baidu OCR\n\n{marker} line here\n", encoding="utf-8")
 
         with patch.object(Path, "home", return_value=fake_home):
             payload = _invoke(
@@ -162,6 +157,7 @@ class TestResolveDocPath:
 # save_memory guard tests (no actual writes)
 # ---------------------------------------------------------------------------
 
+
 class TestSaveMemoryGuards:
     def test_save_memory_home_guard(self) -> None:
         home = str(Path("~").expanduser())
@@ -202,10 +198,7 @@ class TestSaveMemoryGuards:
             },
         )
         assert payload["status"] == "error"
-        assert (
-            "traversal" in payload["message"].lower()
-            or "invalid" in payload["message"].lower()
-        )
+        assert "traversal" in payload["message"].lower() or "invalid" in payload["message"].lower()
 
     def test_save_memory_absolute_path(self) -> None:
         payload = _invoke(
@@ -223,6 +216,7 @@ class TestSaveMemoryGuards:
 # ---------------------------------------------------------------------------
 # save_memory positive write test (tmp_path isolated)
 # ---------------------------------------------------------------------------
+
 
 class TestSaveMemorySuccess:
     def test_save_memory_writes_file(self, tmp_path: Path) -> None:
@@ -249,6 +243,7 @@ class TestSaveMemorySuccess:
 # validate_write (read-only)
 # ---------------------------------------------------------------------------
 
+
 class TestValidateWrite:
     def test_validate_write(self) -> None:
         payload = _invoke(
@@ -265,6 +260,7 @@ class TestValidateWrite:
 # ---------------------------------------------------------------------------
 # record_event tests (lifecycle writes mocked)
 # ---------------------------------------------------------------------------
+
 
 class TestRecordEvent:
     def test_record_event_success(self, tmp_path: Path) -> None:
@@ -295,6 +291,7 @@ class TestRecordEvent:
 # get_health tests
 # ---------------------------------------------------------------------------
 
+
 class TestGetHealth:
     def test_get_health_no_report(self, tmp_path: Path) -> None:
         payload = _invoke("get_health", {"cwd": str(tmp_path)})
@@ -309,9 +306,7 @@ class TestGetHealth:
             "checks": {"hooks": "pass", "context": "pass"},
             "score": 100,
         }
-        (health_dir / "health-report.json").write_text(
-            json.dumps(report), encoding="utf-8"
-        )
+        (health_dir / "health-report.json").write_text(json.dumps(report), encoding="utf-8")
         payload = _invoke("get_health", {"cwd": str(tmp_path)})
         assert payload["status"] == "ok"
         assert payload["score"] == 100
@@ -322,6 +317,7 @@ class TestGetHealth:
 # list_projects (read-only)
 # ---------------------------------------------------------------------------
 
+
 class TestListProjects:
     def test_list_projects(self) -> None:
         payload = _invoke("list_projects", {})
@@ -331,6 +327,7 @@ class TestListProjects:
 # ---------------------------------------------------------------------------
 # get_daily_summary tests
 # ---------------------------------------------------------------------------
+
 
 class TestGetDailySummary:
     def test_get_daily_summary_not_found(self, tmp_path: Path) -> None:
@@ -345,9 +342,7 @@ class TestGetDailySummary:
         log_dir = tmp_path / "memory" / "log"
         log_dir.mkdir(parents=True)
         log_content = "# 2025-06-15 Sessions\n\n- session 1\n- session 2\n"
-        (log_dir / "2025-06-15-sessions.md").write_text(
-            log_content, encoding="utf-8"
-        )
+        (log_dir / "2025-06-15-sessions.md").write_text(log_content, encoding="utf-8")
         payload = _invoke(
             "get_daily_summary",
             {"date": "2025-06-15", "cwd": str(tmp_path)},
@@ -369,6 +364,7 @@ class TestGetDailySummary:
 # ---------------------------------------------------------------------------
 # Tool filtering and unknown tool tests
 # ---------------------------------------------------------------------------
+
 
 class TestToolFiltering:
     def test_tool_filtering_list(self) -> None:
@@ -407,6 +403,7 @@ class TestUnknownTool:
 # ---------------------------------------------------------------------------
 # main_sync --tools CLI argument parsing
 # ---------------------------------------------------------------------------
+
 
 class TestMainSyncCLI:
     def test_tools_no_value_fails(self) -> None:

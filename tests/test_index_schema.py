@@ -79,22 +79,14 @@ def test_strip_headers_preserves_other_comments():
 
 
 def test_parse_headers_extracts_known_fields():
-    raw = (
-        f"<!-- {PROJECT_VERSION_MARKER}: 1.2.3 -->\n"
-        f"<!-- {SCHEMA_VERSION_MARKER}: 1.0 -->\n"
-        "# body\n"
-    )
+    raw = f"<!-- {PROJECT_VERSION_MARKER}: 1.2.3 -->\n<!-- {SCHEMA_VERSION_MARKER}: 1.0 -->\n# body\n"
     parsed = parse_headers(raw)
     assert parsed[PROJECT_VERSION_MARKER] == "1.2.3"
     assert parsed[SCHEMA_VERSION_MARKER] == "1.0"
 
 
 def test_parse_headers_stops_at_first_body_line():
-    raw = (
-        f"<!-- {PROJECT_VERSION_MARKER}: 1.2.3 -->\n"
-        "# body\n"
-        f"<!-- {SCHEMA_VERSION_MARKER}: 99.0 -->\n"
-    )
+    raw = f"<!-- {PROJECT_VERSION_MARKER}: 1.2.3 -->\n# body\n<!-- {SCHEMA_VERSION_MARKER}: 99.0 -->\n"
     parsed = parse_headers(raw)
     assert parsed[PROJECT_VERSION_MARKER] == "1.2.3"
     # schema header buried in body must not be picked up

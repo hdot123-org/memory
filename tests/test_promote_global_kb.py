@@ -8,6 +8,7 @@ Tests cover VAL-PROMOTE-001 through VAL-PROMOTE-006:
 - Empty pending shows no candidates
 - File not exist error
 """
+
 import subprocess
 import sys
 
@@ -241,7 +242,11 @@ class TestPromoteFileNotExist:
         )
         assert result.returncode != 0
         # Error message mentions file not found or not exist
-        assert "not found" in result.stderr.lower() or "not exist" in result.stderr.lower() or "no such file" in result.stderr.lower()
+        assert (
+            "not found" in result.stderr.lower()
+            or "not exist" in result.stderr.lower()
+            or "no such file" in result.stderr.lower()
+        )
 
 
 class TestPromoteInteractiveMode:

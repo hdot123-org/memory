@@ -1,6 +1,5 @@
 """Schema conversion: wb-hook-v2 → context-package-v1."""
 
-
 import json
 import logging
 import os
@@ -15,30 +14,36 @@ V1_VERSION = "context-package-v1"
 V2_VERSION = "wb-hook-v2"
 
 # Top-level keys carried forward as-is from v2 to v1
-_KEEP_KEYS = frozenset({
-    "generated_at",
-    "host",
-    "event",
-    "status",
-    "project_scope",
-    "allowed_reads",
-    "allowed_writes",
-    "evidence_refs",
-    "validation_errors",
-})
+_KEEP_KEYS = frozenset(
+    {
+        "generated_at",
+        "host",
+        "event",
+        "status",
+        "project_scope",
+        "allowed_reads",
+        "allowed_writes",
+        "evidence_refs",
+        "validation_errors",
+    }
+)
 
 # v2 keys that are dropped (diagnostic info → stderr/logs)
-_DROP_KEYS = frozenset({
-    "system_context",
-    "missing_paths",
-})
+_DROP_KEYS = frozenset(
+    {
+        "system_context",
+        "missing_paths",
+    }
+)
 
 # project sub-keys that are dropped during v1 → memory-v1 conversion
-_DROP_PROJECT_KEYS = frozenset({
-    "name",
-    "description",
-    "tech_stack",
-})
+_DROP_PROJECT_KEYS = frozenset(
+    {
+        "name",
+        "description",
+        "tech_stack",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -193,8 +198,11 @@ def convert_to_v1(package: dict[str, Any]) -> dict[str, Any]:
         _, dropped = _check_lossless_v2_to_v1(package)
         if dropped:
             _write_audit_log(
-                V2_VERSION, V1_VERSION, dropped,
-                len(package), len(result),
+                V2_VERSION,
+                V1_VERSION,
+                dropped,
+                len(package),
+                len(result),
             )
 
     return result
@@ -264,8 +272,11 @@ def convert_to_memory_v1(package: dict[str, Any]) -> dict[str, Any]:
         _, dropped = _check_lossless_v2_to_memory_v1(package)
         if dropped:
             _write_audit_log(
-                V2_VERSION, MEMORY_V1_VERSION, dropped,
-                len(package), len(result),
+                V2_VERSION,
+                MEMORY_V1_VERSION,
+                dropped,
+                len(package),
+                len(result),
             )
 
     return result
@@ -311,8 +322,11 @@ def _convert_v1_to_memory_v1(package: dict[str, Any]) -> dict[str, Any]:
         _, dropped = _check_lossless_v1_to_memory_v1(package)
         if dropped:
             _write_audit_log(
-                V1_VERSION, MEMORY_V1_VERSION, dropped,
-                len(package), len(result),
+                V1_VERSION,
+                MEMORY_V1_VERSION,
+                dropped,
+                len(package),
+                len(result),
             )
 
     return result
@@ -383,7 +397,7 @@ def is_lossless(
     # Detect schema-aware calling convention (2nd arg is a version string)
     if isinstance(input_data, dict) and isinstance(output_data, str):
         schema_from = output_data
-        schema_to = (expected_keys if isinstance(expected_keys, str) else "")
+        schema_to = expected_keys if isinstance(expected_keys, str) else ""
         return _is_lossless_schema_aware(input_data, schema_from, schema_to)
 
     # Generic dict comparison
@@ -408,5 +422,3 @@ def _is_lossless_schema_aware(
     if schema_from == V2_VERSION and schema_to == MEMORY_V1_VERSION:
         return _check_lossless_v2_to_memory_v1(package)
     return (False, [f"unknown_schema_pair: {schema_from}->{schema_to}"])
-
-

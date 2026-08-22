@@ -253,12 +253,8 @@ class TestGenerateDataReport:
 class TestTrySignFile:
     def test_no_integrity_modules(self, monkeypatch):
         """When integrity modules not available, does nothing."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._integrity", None
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._integrity_keys", None
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator._integrity", None)
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator._integrity_keys", None)
         # Should not raise
         _try_sign_file(Path("/tmp"), "test.md")
 
@@ -399,10 +395,7 @@ class TestFindSessionJsonl:
         jsonl_file = session_dir / "session-12345678.jsonl"
         jsonl_file.write_text('{"type": "message"}', encoding="utf-8")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator.SESSIONS_HOME",
-            tmp_path
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator.SESSIONS_HOME", tmp_path)
 
         result = _find_session_jsonl("session-12345678")
         assert result == jsonl_file
@@ -414,20 +407,14 @@ class TestFindSessionJsonl:
         jsonl_file = session_dir / "abc123-def.jsonl"
         jsonl_file.write_text('{"type": "message"}', encoding="utf-8")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator.SESSIONS_HOME",
-            tmp_path
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator.SESSIONS_HOME", tmp_path)
 
         result = _find_session_jsonl("abc123")
         assert result == jsonl_file
 
     def test_not_found(self, tmp_path, monkeypatch):
         """Return None when session not found."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator.SESSIONS_HOME",
-            tmp_path
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator.SESSIONS_HOME", tmp_path)
 
         result = _find_session_jsonl("nonexistent")
         assert result is None
@@ -442,11 +429,7 @@ class TestReadJsonl:
     def test_read_full_jsonl(self, tmp_path):
         """Read complete JSONL file."""
         jsonl_file = tmp_path / "test.jsonl"
-        jsonl_file.write_text(
-            '{"type": "message", "data": 1}\n'
-            '{"type": "message", "data": 2}\n',
-            encoding="utf-8"
-        )
+        jsonl_file.write_text('{"type": "message", "data": 1}\n{"type": "message", "data": 2}\n', encoding="utf-8")
 
         result = _read_full_jsonl(jsonl_file)
         assert len(result) == 2
@@ -457,7 +440,7 @@ class TestReadJsonl:
         """Read first and last N lines from JSONL."""
         jsonl_file = tmp_path / "test.jsonl"
         lines = [f'{{"type": "message", "line": {i}}}' for i in range(10)]
-        jsonl_file.write_text('\n'.join(lines), encoding="utf-8")
+        jsonl_file.write_text("\n".join(lines), encoding="utf-8")
 
         result = _read_partial_jsonl(jsonl_file, first_n=2, last_n=2)
         assert len(result) >= 2
@@ -476,7 +459,7 @@ class TestExtractTranscriptSummary:
         jsonl_file.write_text(
             '{"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "Hello"}]}}\n'
             '{"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "Hi there"}]}}\n',
-            encoding="utf-8"
+            encoding="utf-8",
         )
 
         result = _extract_transcript_summary(jsonl_file)
@@ -490,7 +473,7 @@ class TestExtractTranscriptSummary:
         jsonl_file.write_text(
             '{"type": "message", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "read_file"}]}}\n'
             '{"type": "message", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "write_file"}]}}\n',
-            encoding="utf-8"
+            encoding="utf-8",
         )
 
         result = _extract_transcript_summary(jsonl_file)
@@ -513,13 +496,10 @@ class TestEnrichWithBLayerExtended:
         jsonl_file.write_text(
             '{"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "Test input"}]}}\n'
             '{"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "Test output"}]}}\n',
-            encoding="utf-8"
+            encoding="utf-8",
         )
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator.SESSIONS_HOME",
-            tmp_path / "sessions"
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator.SESSIONS_HOME", tmp_path / "sessions")
 
         a_sessions = [{"full_session_id": "abc12345", "title": "Test"}]
         result = _enrich_with_b_layer(a_sessions)
@@ -544,10 +524,7 @@ class TestFallbackCheck:
         log_dir = tmp_path / "memory" / "log"
         log_dir.mkdir(parents=True)
         a_layer_file = log_dir / f"{two_days_ago}-sessions.md"
-        a_layer_file.write_text(
-            "### abc12345\n- 标题: Test\n- 模型: Test\n- 输入: 0\n- 输出: 0\n",
-            encoding="utf-8"
-        )
+        a_layer_file.write_text("### abc12345\n- 标题: Test\n- 模型: Test\n- 输入: 0\n- 输出: 0\n", encoding="utf-8")
 
         result = _fallback_check(tmp_path, fallback_days=3)
 
@@ -583,19 +560,18 @@ class TestResolveProjectsExtended:
         """Resolve all projects from lifecycle index."""
         index_file = tmp_path / "path-index.json"
         index_file.write_text(
-            json.dumps({
-                "paths": {
-                    str(tmp_path / "project1"): {"project_name": "proj1"},
-                    str(tmp_path / "project2"): {"project_name": "proj2"},
+            json.dumps(
+                {
+                    "paths": {
+                        str(tmp_path / "project1"): {"project_name": "proj1"},
+                        str(tmp_path / "project2"): {"project_name": "proj2"},
+                    }
                 }
-            }),
-            encoding="utf-8"
+            ),
+            encoding="utf-8",
         )
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator.LIFECYCLE_INDEX",
-            index_file
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator.LIFECYCLE_INDEX", index_file)
 
         args = _parse_args(["--all-projects"])
         result = _resolve_projects(args)
@@ -604,14 +580,8 @@ class TestResolveProjectsExtended:
 
     def test_all_projects_fallback_to_home(self, tmp_path, monkeypatch):
         """When lifecycle index doesn't exist, fallback to home directory scan."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator.LIFECYCLE_INDEX",
-            tmp_path / "nonexistent.json"
-        )
-        monkeypatch.setattr(
-            "pathlib.Path.home",
-            lambda: tmp_path
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator.LIFECYCLE_INDEX", tmp_path / "nonexistent.json")
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
         # Create a project directory
         proj_dir = tmp_path / "test_project"
         proj_dir.mkdir()
@@ -693,25 +663,33 @@ class TestExtractTranscriptSummaryLargeFile:
         """Large JSONL file (>5MB) uses partial read."""
         jsonl_file = tmp_path / "large.jsonl"
         # Create a file with many lines to simulate large file
-        lines = [f'{{"type": "message", "message": {{"role": "user", "content": [{{"type": "text", "text": "msg{i}"}}]}}}}'
-                 for i in range(100)]
-        jsonl_file.write_text('\n'.join(lines), encoding="utf-8")
+        lines = [
+            f'{{"type": "message", "message": {{"role": "user", "content": [{{"type": "text", "text": "msg{i}"}}]}}}}'
+            for i in range(100)
+        ]
+        jsonl_file.write_text("\n".join(lines), encoding="utf-8")
 
         # Mock _extract_transcript_summary's internal stat check by monkeypatching
         # the Path.stat method to return a large size
         import os
+
         original_stat = os.stat
+
         def mock_stat(path, *args, **kwargs):
             result = original_stat(path, *args, **kwargs)
+
             # Create a wrapper that overrides st_size
             class StatResult:
                 def __init__(self, real_stat):
                     self._real = real_stat
+
                 def __getattr__(self, name):
                     if name == "st_size":
                         return 6 * 1024 * 1024  # 6MB
                     return getattr(self._real, name)
+
             return StatResult(result)
+
         monkeypatch.setattr(os, "stat", mock_stat)
 
         result = _extract_transcript_summary(jsonl_file)
@@ -730,7 +708,7 @@ class TestExtractTranscriptSummaryLargeFile:
         jsonl_file.write_text(
             '{"type": "other", "data": "ignored"}\n'
             '{"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "Hello"}]}}\n',
-            encoding="utf-8"
+            encoding="utf-8",
         )
         result = _extract_transcript_summary(jsonl_file)
         assert "Hello" in result["user_messages"]
@@ -748,12 +726,7 @@ def _write_jsonl_with_invalid_line(tmp_path: Path) -> Path:
     (CODE_HYGIENE_DUPLICATE_BLOCK fix, INFRA-331).
     """
     jsonl_file = tmp_path / "test.jsonl"
-    jsonl_file.write_text(
-        '{"line": 1}\n'
-        'invalid json\n'
-        '{"line": 2}\n',
-        encoding="utf-8"
-    )
+    jsonl_file.write_text('{"line": 1}\ninvalid json\n{"line": 2}\n', encoding="utf-8")
     return jsonl_file
 
 
@@ -762,7 +735,7 @@ class TestReadPartialJsonl:
         """Deduplicate when first_n and last_n overlap."""
         jsonl_file = tmp_path / "test.jsonl"
         lines = [f'{{"line": {i}}}' for i in range(5)]
-        jsonl_file.write_text('\n'.join(lines), encoding="utf-8")
+        jsonl_file.write_text("\n".join(lines), encoding="utf-8")
 
         result = _read_partial_jsonl(jsonl_file, first_n=3, last_n=3)
         # Should deduplicate overlapping lines
@@ -799,14 +772,8 @@ class TestTrySignFileExtended:
         mock_key = MagicMock()
         mock_key.load_key = MagicMock(return_value="test-key")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._integrity_keys",
-            mock_key
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._integrity",
-            MagicMock()
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator._integrity_keys", mock_key)
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator._integrity", MagicMock())
 
         # Should not raise
         _try_sign_file(tmp_path, "test.md")
@@ -816,14 +783,8 @@ class TestTrySignFileExtended:
         mock_key = MagicMock()
         mock_key.load_key = MagicMock(return_value=None)
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._integrity_keys",
-            mock_key
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._integrity",
-            MagicMock()
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator._integrity_keys", mock_key)
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator._integrity", MagicMock())
 
         # Should not raise
         _try_sign_file(tmp_path, "test.md")
@@ -831,21 +792,13 @@ class TestTrySignFileExtended:
     def test_sign_exception_caught(self, tmp_path, monkeypatch):
         """When signing raises exception, it's caught gracefully."""
         mock_integrity = MagicMock()
-        mock_integrity.sign_project_incremental = MagicMock(
-            side_effect=RuntimeError("Sign failed")
-        )
+        mock_integrity.sign_project_incremental = MagicMock(side_effect=RuntimeError("Sign failed"))
 
         mock_keys = MagicMock()
         mock_keys.load_key = MagicMock(return_value="test-key")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._integrity",
-            mock_integrity
-        )
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._integrity_keys",
-            mock_keys
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator._integrity", mock_integrity)
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator._integrity_keys", mock_keys)
 
         # Should not raise
         _try_sign_file(tmp_path, "test.md")
@@ -860,6 +813,7 @@ class TestWriteDailyLogError:
     def test_write_os_error(self, tmp_path, monkeypatch):
         """When file write fails, OSError is raised."""
         sessions = [{"input_tokens": 100, "output_tokens": 200}]
+
         # Mock Path.write_text to raise OSError
         def mock_write_text(*args, **kwargs):
             raise OSError("Permission denied")
@@ -914,19 +868,13 @@ class TestEnrichWithBLayerException:
         jsonl_file = session_dir / "abc12345.jsonl"
         jsonl_file.write_text("invalid json", encoding="utf-8")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator.SESSIONS_HOME",
-            tmp_path / "sessions"
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator.SESSIONS_HOME", tmp_path / "sessions")
 
         # Mock _extract_transcript_summary to raise
         def bad_extract(*args, **kwargs):
             raise RuntimeError("Extract failed")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._extract_transcript_summary",
-            bad_extract
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator._extract_transcript_summary", bad_extract)
 
         a_sessions = [{"full_session_id": "abc12345", "title": "Test"}]
         result = _enrich_with_b_layer(a_sessions)
@@ -948,10 +896,7 @@ class TestResolveProjectsError:
         index_file = tmp_path / "path-index.json"
         index_file.write_text("invalid json", encoding="utf-8")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator.LIFECYCLE_INDEX",
-            index_file
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator.LIFECYCLE_INDEX", index_file)
 
         args = _parse_args(["--all-projects"])
         result = _resolve_projects(args)
@@ -983,13 +928,10 @@ class TestProcessProjectWithBLayer:
         jsonl_file = session_dir / "abcd1234.jsonl"
         jsonl_file.write_text(
             '{"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "Test input"}]}}\n',
-            encoding="utf-8"
+            encoding="utf-8",
         )
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator.SESSIONS_HOME",
-            tmp_path / "sessions"
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator.SESSIONS_HOME", tmp_path / "sessions")
 
         result = process_project(tmp_path, "2026-07-12", dry_run=True, fallback_days=0)
         assert result is True
@@ -1012,10 +954,7 @@ class TestMainAllProjects:
             sessions_file = log_dir / "2026-07-12-sessions.md"
             sessions_file.write_text("### abcd1234\n- **标题**: Test\n", encoding="utf-8")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._resolve_projects",
-            lambda args: [proj1, proj2]
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator._resolve_projects", lambda args: [proj1, proj2])
 
         result = main(["--date", "2026-07-12", "--dry-run", "--fallback-days", "0"])
         assert result == 0
@@ -1039,10 +978,7 @@ class TestMainFallbackCheck:
         a_layer = log_dir / f"{yesterday}-sessions.md"
         a_layer.write_text("### abc12345\n- **标题**: Test\n", encoding="utf-8")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._resolve_projects",
-            lambda args: [tmp_path]
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator._resolve_projects", lambda args: [tmp_path])
 
         result = main(["--date", "2026-07-12", "--dry-run", "--fallback-days", "3"])
         assert result == 0
@@ -1059,18 +995,12 @@ class TestMainFallbackCheck:
 class TestMainErrorHandling:
     def test_project_processing_exception(self, tmp_path, monkeypatch, capsys):
         """When project processing raises, it's caught gracefully."""
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator._resolve_projects",
-            lambda args: [tmp_path]
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator._resolve_projects", lambda args: [tmp_path])
 
         def bad_process(*args, **kwargs):
             raise RuntimeError("Processing failed")
 
-        monkeypatch.setattr(
-            "memory_core.tools.daily_summary_generator.process_project",
-            bad_process
-        )
+        monkeypatch.setattr("memory_core.tools.daily_summary_generator.process_project", bad_process)
 
         result = main(["--date", "2026-07-12", "--dry-run", "--fallback-days", "0"])
         # Should not crash, error is caught
@@ -1088,10 +1018,12 @@ class TestMainErrorHandling:
 # Lines 143: _find_session_jsonl when SESSIONS_HOME doesn't exist
 # ---------------------------------------------------------------------------
 
+
 class TestFindSessionJsonlNoSessionsHome:
     def test_sessions_home_not_exists(self, monkeypatch, tmp_path):
         """_find_session_jsonl returns None when SESSIONS_HOME doesn't exist."""
         from memory_core.tools import daily_summary_generator
+
         fake_path = tmp_path / "nonexistent"
         monkeypatch.setattr(daily_summary_generator, "SESSIONS_HOME", fake_path)
         result = daily_summary_generator._find_session_jsonl("abc123")
@@ -1101,6 +1033,7 @@ class TestFindSessionJsonlNoSessionsHome:
 # ---------------------------------------------------------------------------
 # Lines 443-444: _try_sign_file exception handling
 # ---------------------------------------------------------------------------
+
 
 class TestTrySignFileException:
     def test_sign_exception(self, monkeypatch, tmp_path, capsys):
@@ -1131,6 +1064,7 @@ class TestTrySignFileException:
 # ---------------------------------------------------------------------------
 # Lines 578: _fallback_check when daily_path exists
 # ---------------------------------------------------------------------------
+
 
 class TestFallbackCheckDailyExists:
     def test_daily_already_exists(self, monkeypatch, tmp_path, capsys):
@@ -1163,6 +1097,7 @@ class TestFallbackCheckDailyExists:
 # Lines 691, 700-702: main() fallback processing
 # ---------------------------------------------------------------------------
 
+
 class TestMainFallbackProcessing:
     def test_fallback_days_zero(self, monkeypatch, tmp_path, capsys):
         """main() handles fallback_days=0."""
@@ -1175,9 +1110,7 @@ class TestMainFallbackProcessing:
 
         monkeypatch.setattr(daily_summary_generator, "process_project", mock_process)
 
-        result = daily_summary_generator.main(
-            ["--date", "2024-01-15", "--fallback-days", "0"]
-        )
+        result = daily_summary_generator.main(["--date", "2024-01-15", "--fallback-days", "0"])
 
         assert result == 0
         captured = capsys.readouterr()
@@ -1187,6 +1120,7 @@ class TestMainFallbackProcessing:
 # ---------------------------------------------------------------------------
 # Lines 745-748: main() exception handling
 # ---------------------------------------------------------------------------
+
 
 class TestMainExceptionHandling:
     def test_process_project_exception(self, monkeypatch, tmp_path, capsys):
@@ -1212,6 +1146,7 @@ class TestMainExceptionHandling:
 # Lines 336, 375, 392, 402, 412: write_error_log calls
 # ---------------------------------------------------------------------------
 
+
 class TestWriteErrorLogCalls:
     """Test that write_error_log is called when available and errors occur."""
 
@@ -1227,6 +1162,7 @@ class TestWriteErrorLogCalls:
 
         # Mock Path.write_text to raise OSError
         original_write_text = Path.write_text
+
         def mock_write_text(self, *args, **kwargs):
             if str(self).endswith("2026-07-12.md"):
                 raise OSError("Permission denied")

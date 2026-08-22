@@ -8,6 +8,7 @@
    用 _compute_quota_deferred_keys 的 per-finding 结果
 3. reopen 上限抑制：合法防 churn 抑制 → 归入 SUPPRESSED，而非 GHOST
 """
+
 import json
 import sys
 from pathlib import Path
@@ -25,8 +26,7 @@ from evolution_scanner import (  # noqa: E402
 from evolution_utils import forward_drift_watch  # noqa: E402
 
 
-def _make_finding(rule_id="RULE_A", location="src/a.py::L10",
-                  severity="warning", category="code_quality") -> Finding:
+def _make_finding(rule_id="RULE_A", location="src/a.py::L10", severity="warning", category="code_quality") -> Finding:
     return Finding(
         rule_id=rule_id,
         severity=severity,
@@ -37,8 +37,7 @@ def _make_finding(rule_id="RULE_A", location="src/a.py::L10",
     )
 
 
-def _make_config(max_issues=10, self_audit=5, code_hygiene=5,
-                 severity_order=("critical", "warning", "info")) -> dict:
+def _make_config(max_issues=10, self_audit=5, code_hygiene=5, severity_order=("critical", "warning", "info")) -> dict:
     return {
         "max_issues_per_tick": max_issues,
         "max_self_audit_issues_per_tick": self_audit,
@@ -91,9 +90,13 @@ class TestIssuedKeysSameTick:
         issued: set = set()
         with patch("evolution_scanner.create_issue", return_value=True) as mock_create:
             created = _process_findings_with_reopen(
-                findings, quota=10, resolved_keys=set(),
-                dedup_label="evolution-found", history_path=history_path,
-                open_issues=[], issued_keys=issued,
+                findings,
+                quota=10,
+                resolved_keys=set(),
+                dedup_label="evolution-found",
+                history_path=history_path,
+                open_issues=[],
+                issued_keys=issued,
             )
         assert created == 2
         assert mock_create.call_count == 2
@@ -102,28 +105,41 @@ class TestIssuedKeysSameTick:
     def test_process_findings_records_reopen_success(self, tmp_path):
         """reopen 成功的 finding 也计入 issued_keys（它同样有 open issue）。"""
         history_path = tmp_path / "findings_over_time.json"
-        history_path.write_text(json.dumps({
-            "snapshots": [],
-            "resolved_findings": [
-                {"rule_id": "R1", "location": "a.py::L1",
-                 "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 0},
-            ],
-        }))
+        history_path.write_text(
+            json.dumps(
+                {
+                    "snapshots": [],
+                    "resolved_findings": [
+                        {
+                            "rule_id": "R1",
+                            "location": "a.py::L1",
+                            "resolved_at": "2026-01-01T00:00:00Z",
+                            "reopen_count": 0,
+                        },
+                    ],
+                }
+            )
+        )
         closed_issues = [{"number": 42, "body": "**Rule ID**: R1\n**Location**: a.py::L1"}]
 
         finding = _make_finding("R1", "a.py::L1", severity="critical")
         issued: set = set()
-        with patch("evolution_scanner.subprocess.run") as mock_run, \
-             patch("evolution_scanner.create_issue") as mock_create:
+        with (
+            patch("evolution_scanner.subprocess.run") as mock_run,
+            patch("evolution_scanner.create_issue") as mock_create,
+        ):
             mock_run.side_effect = [
                 MagicMock(returncode=0, stdout=json.dumps(closed_issues), stderr=""),
                 MagicMock(returncode=0, stdout="", stderr=""),
             ]
             created = _process_findings_with_reopen(
-                [finding], quota=10,
+                [finding],
+                quota=10,
                 resolved_keys={("R1", "a.py::L1")},
-                dedup_label="evolution-found", history_path=history_path,
-                open_issues=[], issued_keys=issued,
+                dedup_label="evolution-found",
+                history_path=history_path,
+                open_issues=[],
+                issued_keys=issued,
             )
         assert created == 0  # reopen not counted as create
         assert not mock_create.called
@@ -155,10 +171,9 @@ class TestPoolQuotaSemantics:
         """红证据：旧 _compute_quota_exhausted 的类别计数在此场景返回空 dict。"""
         # Same scenario: 6 catA + 6 catB, quota=10 → each category count (6) <= 10
         # → category-level dict would be {} (no deferral detected)
-        deduped = (
-            [_make_finding(f"A{i}", f"a.py::L{i}", category="catA") for i in range(6)]
-            + [_make_finding(f"B{i}", f"b.py::L{i}", category="catB") for i in range(6)]
-        )
+        deduped = [_make_finding(f"A{i}", f"a.py::L{i}", category="catA") for i in range(6)] + [
+            _make_finding(f"B{i}", f"b.py::L{i}", category="catB") for i in range(6)
+        ]
         # The real pool semantics catches it:
         config = _make_config(max_issues=10)
         deferred = _compute_quota_deferred_keys(deduped, [], config, gh_failed=False)
@@ -167,19 +182,16 @@ class TestPoolQuotaSemantics:
     def test_critical_regression_slice_counts_separately(self):
         """critical_regressions 是独立切片（同样 max_issues_per_tick），溢出进 defer。"""
         config = _make_config(max_issues=2)
-        criticals = [
-            _make_finding(f"C{i}", f"c.py::L{i}", severity="critical") for i in range(4)
-        ]
+        criticals = [_make_finding(f"C{i}", f"c.py::L{i}", severity="critical") for i in range(4)]
         deferred = _compute_quota_deferred_keys([], criticals, config, gh_failed=False)
         assert deferred == {("C2", "c.py::L2"), ("C3", "c.py::L3")}
 
     def test_self_audit_pool_independent(self):
         """self_audit 池独立配额：regular 溢出不影响 self_audit。"""
         config = _make_config(max_issues=2, self_audit=5)
-        deduped = (
-            [_make_finding(f"A{i}", f"a.py::L{i}", category="code_quality") for i in range(4)]
-            + [_make_finding(f"S{i}", f"s.py::L{i}", category="evolution_self_audit") for i in range(3)]
-        )
+        deduped = [_make_finding(f"A{i}", f"a.py::L{i}", category="code_quality") for i in range(4)] + [
+            _make_finding(f"S{i}", f"s.py::L{i}", category="evolution_self_audit") for i in range(3)
+        ]
         deferred = _compute_quota_deferred_keys(deduped, [], config, gh_failed=False)
         # regular pool: 4 findings, quota=2 → 2 deferred (all code_quality)
         # self_audit pool: 3 <= 5 → none deferred
@@ -229,22 +241,33 @@ class TestReopenLimitSuppression:
     def test_process_findings_records_suppressed_reopen_keys(self, tmp_path):
         """reopen 上限抑制路径记录到 suppressed_reopen_keys out-param。"""
         history_path = tmp_path / "findings_over_time.json"
-        history_path.write_text(json.dumps({
-            "snapshots": [],
-            "resolved_findings": [
-                {"rule_id": "R1", "location": "a.py::L1",
-                 "resolved_at": "2026-01-01T00:00:00Z", "reopen_count": 3},
-            ],
-        }))
+        history_path.write_text(
+            json.dumps(
+                {
+                    "snapshots": [],
+                    "resolved_findings": [
+                        {
+                            "rule_id": "R1",
+                            "location": "a.py::L1",
+                            "resolved_at": "2026-01-01T00:00:00Z",
+                            "reopen_count": 3,
+                        },
+                    ],
+                }
+            )
+        )
         finding = _make_finding("R1", "a.py::L1", severity="critical")
         issued: set = set()
         suppressed: set = set()
         with patch("evolution_scanner.create_issue") as mock_create:
             created = _process_findings_with_reopen(
-                [finding], quota=10,
+                [finding],
+                quota=10,
                 resolved_keys={("R1", "a.py::L1")},
-                dedup_label="evolution-found", history_path=history_path,
-                open_issues=[], issued_keys=issued,
+                dedup_label="evolution-found",
+                history_path=history_path,
+                open_issues=[],
+                issued_keys=issued,
                 suppressed_reopen_keys=suppressed,
             )
         assert created == 0

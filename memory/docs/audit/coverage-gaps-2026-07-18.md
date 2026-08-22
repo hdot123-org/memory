@@ -121,7 +121,9 @@ for file_path_str in plan.get("files_to_backup", []):
 new_content, count = re.subn(
     r'^(memory_version\s*=\s*)"[^"]+"',
     rf'\g<1>"{target_version}"',
-    content, count=1, flags=re.MULTILINE,
+    content,
+    count=1,
+    flags=re.MULTILINE,
 )
 ...
 ownership_path.write_text(new_content, encoding="utf-8")  # 无备份写入

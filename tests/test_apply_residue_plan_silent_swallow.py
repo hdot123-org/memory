@@ -43,6 +43,7 @@ MODULE_PATH = Path(__file__).parent.parent / "memory_core" / "tools" / "apply_re
 # Code-inspection tests
 # ---------------------------------------------------------------------------
 
+
 class TestIsForbiddenPathSilentSwallow:
     """Regression guard: _is_forbidden_path except block logs at debug (INFRA-242)."""
 
@@ -51,17 +52,13 @@ class TestIsForbiddenPathSilentSwallow:
         content = MODULE_PATH.read_text()
         func_body = _function_body(content, "_is_forbidden_path")
         positions = _except_positions(func_body)
-        assert len(positions) >= 1, (
-            "_is_forbidden_path must have an except Exception block"
-        )
-        except_block = func_body[positions[0]:positions[0] + 300]
+        assert len(positions) >= 1, "_is_forbidden_path must have an except Exception block"
+        except_block = func_body[positions[0] : positions[0] + 300]
         assert "logger.debug" in except_block, (
             "_is_forbidden_path except block must call logger.debug — "
             "bare pass silently swallows ownership classification failures"
         )
-        assert "exc_info=True" in except_block, (
-            "logger.debug must include exc_info=True so the traceback is captured"
-        )
+        assert "exc_info=True" in except_block, "logger.debug must include exc_info=True so the traceback is captured"
 
     def test_no_bare_pass_in_function_scope(self):
         """The function must not contain a bare `except Exception: pass` swallow."""
@@ -79,17 +76,13 @@ class TestValidatePlanSilentSwallow:
         content = MODULE_PATH.read_text()
         func_body = _function_body(content, "_validate_plan")
         positions = _except_positions(func_body)
-        assert len(positions) >= 1, (
-            "_validate_plan must have an except Exception block"
-        )
-        except_block = func_body[positions[0]:positions[0] + 300]
+        assert len(positions) >= 1, "_validate_plan must have an except Exception block"
+        except_block = func_body[positions[0] : positions[0] + 300]
         assert "logger.debug" in except_block, (
             "_validate_plan except block must call logger.debug — "
             "bare pass silently swallows forbidden-path scan failures"
         )
-        assert "exc_info=True" in except_block, (
-            "logger.debug must include exc_info=True so the traceback is captured"
-        )
+        assert "exc_info=True" in except_block, "logger.debug must include exc_info=True so the traceback is captured"
 
     def test_no_bare_exception_pass_in_scan_scope(self):
         """The outer forbidden-path-scan except must not be a bare pass swallow.
@@ -106,6 +99,7 @@ class TestValidatePlanSilentSwallow:
 # ---------------------------------------------------------------------------
 # Runtime tests (patch load_memory_ownership to raise)
 # ---------------------------------------------------------------------------
+
 
 def _run_under_ownership_failure(
     call: Callable[[], object],
@@ -125,9 +119,7 @@ def _run_under_ownership_failure(
         call()
 
     assert any(
-        expected_fragment in record.message
-        and "legacy" in record.message
-        and record.levelno == logging.DEBUG
+        expected_fragment in record.message and "legacy" in record.message and record.levelno == logging.DEBUG
         for record in caplog.records
     ), [r.message for r in caplog.records]
 
@@ -137,8 +129,10 @@ class TestIsForbiddenPathRuntimeLogsAndDegrades:
 
     def test_logs_and_falls_through_to_legacy(self, tmp_path: Path):
         """A failure must emit a debug log and still return the legacy result."""
-        with mock.patch(f"{MODULE}.load_memory_ownership", side_effect=RuntimeError("boom")) as \
-                mocked_load, mock.patch(f"{MODULE}.logger") as mocked_logger:
+        with (
+            mock.patch(f"{MODULE}.load_memory_ownership", side_effect=RuntimeError("boom")) as mocked_load,
+            mock.patch(f"{MODULE}.logger") as mocked_logger,
+        ):
             # AGENTS.md is caught by the legacy fallback.
             result = _is_forbidden_path("AGENTS.md", target=tmp_path)
 
@@ -152,8 +146,10 @@ class TestIsForbiddenPathRuntimeLogsAndDegrades:
 
     def test_logs_and_returns_false_for_non_forbidden(self, tmp_path: Path):
         """A non-forbidden path must return False (legacy) while still logging."""
-        with mock.patch(f"{MODULE}.load_memory_ownership", side_effect=RuntimeError("boom")), \
-                mock.patch(f"{MODULE}.logger") as mocked_logger:
+        with (
+            mock.patch(f"{MODULE}.load_memory_ownership", side_effect=RuntimeError("boom")),
+            mock.patch(f"{MODULE}.logger") as mocked_logger,
+        ):
             # README.md is NOT forbidden by the legacy check.
             result = _is_forbidden_path("README.md", target=tmp_path)
 
@@ -184,8 +180,10 @@ class TestValidatePlanRuntimeLogsAndDegrades:
             "risk_level": "medium",
             "requires_human_confirmation": False,
         }
-        with mock.patch(f"{MODULE}.load_memory_ownership", side_effect=RuntimeError("boom")) as \
-                mocked_load, mock.patch(f"{MODULE}.logger") as mocked_logger:
+        with (
+            mock.patch(f"{MODULE}.load_memory_ownership", side_effect=RuntimeError("boom")) as mocked_load,
+            mock.patch(f"{MODULE}.logger") as mocked_logger,
+        ):
             is_valid, errors = _validate_plan(plan, target=tmp_path)
 
         assert mocked_load.called

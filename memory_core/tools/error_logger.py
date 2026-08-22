@@ -46,16 +46,18 @@ except ImportError:
 MAX_MSG_LENGTH = 500
 
 # 支持的错误类型枚举
-VALID_ERROR_TYPES = frozenset({
-    "transcript_missing",
-    "hook_timeout",
-    "json_parse_error",
-    "directory_creation_failed",
-    "file_write_failed",
-    "llm_api_error",
-    "llm_timeout",
-    "settings_read_failed",
-})
+VALID_ERROR_TYPES = frozenset(
+    {
+        "transcript_missing",
+        "hook_timeout",
+        "json_parse_error",
+        "directory_creation_failed",
+        "file_write_failed",
+        "llm_api_error",
+        "llm_timeout",
+        "settings_read_failed",
+    }
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +100,10 @@ def _redact_context(ctx: dict[str, Any]) -> dict[str, Any]:
             result[key] = _redact_context(value)
         elif isinstance(value, list):
             result[key] = [
-                _redact_api_keys(item) if isinstance(item, str)
-                else _redact_context(item) if isinstance(item, dict)
+                _redact_api_keys(item)
+                if isinstance(item, str)
+                else _redact_context(item)
+                if isinstance(item, dict)
                 else item
                 for item in value
             ]
@@ -123,9 +127,9 @@ def _try_sign_file(project_root: Path, rel_path: str) -> None:
             logger.warning("error_logger: sign_project_incremental failed: %s", exc)
         except Exception as log_exc:
             import sys
+
             print(
-                f"[error_logger] sign_project_incremental failed: {exc}; "
-                f"logging also failed: {log_exc}",
+                f"[error_logger] sign_project_incremental failed: {exc}; logging also failed: {log_exc}",
                 file=sys.stderr,
             )
 

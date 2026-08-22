@@ -19,13 +19,15 @@ DOC_CATEGORIES: dict[str, str] = {
     "draft": "memory/docs/drafts/",
 }
 
-EXCEPTION_DIRS: frozenset[str] = frozenset({
-    "memory/docs/archive/",
-    "memory/docs/system/",
-    "memory/kb/projects/",
-    "memory/kb/patterns/",
-    "memory/kb/global/",
-})
+EXCEPTION_DIRS: frozenset[str] = frozenset(
+    {
+        "memory/docs/archive/",
+        "memory/docs/system/",
+        "memory/kb/projects/",
+        "memory/kb/patterns/",
+        "memory/kb/global/",
+    }
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

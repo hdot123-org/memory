@@ -23,9 +23,7 @@ class TestWriteSessionMetricsSilentSwallow:
 
     def test_except_binds_exception(self):
         body = _func_body(SOURCE_PATH.read_text(), "_write_session_metrics")
-        assert "except Exception as exc:" in body, (
-            "_write_session_metrics except must bind the exception as `exc`"
-        )
+        assert "except Exception as exc:" in body, "_write_session_metrics except must bind the exception as `exc`"
 
     def test_except_logs_debug(self):
         body = _func_body(SOURCE_PATH.read_text(), "_write_session_metrics")

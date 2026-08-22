@@ -229,9 +229,7 @@ class TestGatewayFailClosed:
 
         # Mock subprocess.run to raise TimeoutExpired
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="guard", timeout=5)):
-            exit_code = memory_hook_gateway._handle_pretooluse_guard(
-                args, raw_payload, tmp_path, time.time()
-            )
+            exit_code = memory_hook_gateway._handle_pretooluse_guard(args, raw_payload, tmp_path, time.time())
 
         assert exit_code == 2
         # Check stdout for block decision
@@ -251,9 +249,7 @@ class TestGatewayFailClosed:
 
         # Mock subprocess.run to raise Exception
         with patch("subprocess.run", side_effect=Exception("Guard crashed")):
-            exit_code = memory_hook_gateway._handle_pretooluse_guard(
-                args, raw_payload, tmp_path, time.time()
-            )
+            exit_code = memory_hook_gateway._handle_pretooluse_guard(args, raw_payload, tmp_path, time.time())
 
         assert exit_code == 2
 
@@ -270,9 +266,7 @@ class TestGatewayFailClosed:
 
         # Mock subprocess.run to raise TimeoutExpired
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="guard", timeout=5)):
-            exit_code = memory_hook_gateway._handle_pretooluse_guard(
-                args, raw_payload, tmp_path, time.time()
-            )
+            exit_code = memory_hook_gateway._handle_pretooluse_guard(args, raw_payload, tmp_path, time.time())
 
         assert exit_code == 0
 
@@ -289,9 +283,7 @@ class TestGatewayFailClosed:
 
         # Mock subprocess.run to raise Exception
         with patch("subprocess.run", side_effect=Exception("Guard crashed")):
-            exit_code = memory_hook_gateway._handle_pretooluse_guard(
-                args, raw_payload, tmp_path, time.time()
-            )
+            exit_code = memory_hook_gateway._handle_pretooluse_guard(args, raw_payload, tmp_path, time.time())
 
         assert exit_code == 0
 

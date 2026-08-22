@@ -5,7 +5,6 @@ Each class handles one responsibility group and keeps method signatures
 compatible with the original GatewayBusinessPolicyImpl interface.
 """
 
-
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +95,7 @@ except ImportError:
 # 0. PolicyValidatorBase — 共享 evaluate() 模板
 # ---------------------------------------------------------------------------
 
+
 class PolicyValidatorBase:
     """Base class for policy validators with shared evaluate() template.
 
@@ -126,13 +126,14 @@ class PolicyValidatorBase:
             matched=len(errors) > 0,
             severity="error" if errors else "info",
             message=f"Found {len(errors)} {self._error_type} errors" if errors else self._pass_label,
-            detail={"errors": errors}
+            detail={"errors": errors},
         )
 
 
 # ---------------------------------------------------------------------------
 # 1. ProjectMapValidator — project-map 校验相关方法
 # ---------------------------------------------------------------------------
+
 
 class ProjectMapValidator(PolicyValidatorBase):
     """Validates project-map contract files and related legal-system contracts."""
@@ -240,6 +241,7 @@ class ProjectMapValidator(PolicyValidatorBase):
 # 3. FrozenTupleChecker — frozen tuple 校验
 # ---------------------------------------------------------------------------
 
+
 class FrozenTupleChecker(PolicyValidatorBase):
     """Checks governance frozen tuple markers."""
 
@@ -281,6 +283,7 @@ class FrozenTupleChecker(PolicyValidatorBase):
 # 4. EventContractChecker — event contract blocker 校验
 # ---------------------------------------------------------------------------
 
+
 class EventContractChecker(PolicyValidatorBase):
     """Checks event contract files for formal/informal consistency."""
 
@@ -314,21 +317,26 @@ class EventContractChecker(PolicyValidatorBase):
         formal_sets = {
             "upstream_standard": {
                 "source_types": sorted(
-                    _markdown_code_tokens(_section_body(upstream_standard, "## 3. 正式输入源")) & cfg.formal_source_types
+                    _markdown_code_tokens(_section_body(upstream_standard, "## 3. 正式输入源"))
+                    & cfg.formal_source_types
                 ),
                 "event_types": sorted(
-                    _markdown_code_tokens(_section_body(upstream_standard, "## 4. 正式事件类型")) & cfg.formal_event_types
+                    _markdown_code_tokens(_section_body(upstream_standard, "## 4. 正式事件类型"))
+                    & cfg.formal_event_types
                 ),
                 "event_statuses": sorted(
-                    _markdown_code_tokens(_section_body(upstream_standard, "## 6. event_status 标准")) & cfg.formal_event_statuses
+                    _markdown_code_tokens(_section_body(upstream_standard, "## 6. event_status 标准"))
+                    & cfg.formal_event_statuses
                 ),
             },
             "upstream_mapping": {
                 "source_types": sorted(
-                    _markdown_code_tokens(_section_body(upstream_mapping, "## 2. 正式输入源范围")) & cfg.formal_source_types
+                    _markdown_code_tokens(_section_body(upstream_mapping, "## 2. 正式输入源范围"))
+                    & cfg.formal_source_types
                 ),
                 "event_types": sorted(
-                    _markdown_code_tokens(_section_body(upstream_mapping, "## 3. 输入源到正式事件的映射主表")) & cfg.formal_event_types
+                    _markdown_code_tokens(_section_body(upstream_mapping, "## 3. 输入源到正式事件的映射主表"))
+                    & cfg.formal_event_types
                 ),
                 "event_statuses": sorted(
                     (
@@ -340,13 +348,16 @@ class EventContractChecker(PolicyValidatorBase):
             },
             "formal_contract": {
                 "source_types": sorted(
-                    _markdown_code_tokens(_section_body(formal_contract, "## 3. source_type 正式白名单")) & cfg.formal_source_types
+                    _markdown_code_tokens(_section_body(formal_contract, "## 3. source_type 正式白名单"))
+                    & cfg.formal_source_types
                 ),
                 "event_types": sorted(
-                    _markdown_code_tokens(_section_body(formal_contract, "## 4. event_type 正式清单")) & cfg.formal_event_types
+                    _markdown_code_tokens(_section_body(formal_contract, "## 4. event_type 正式清单"))
+                    & cfg.formal_event_types
                 ),
                 "event_statuses": sorted(
-                    _markdown_code_tokens(_section_body(formal_contract, "## 6. event_status 正式取值")) & cfg.formal_event_statuses
+                    _markdown_code_tokens(_section_body(formal_contract, "## 6. event_status 正式取值"))
+                    & cfg.formal_event_statuses
                 ),
             },
         }
@@ -367,13 +378,17 @@ class EventContractChecker(PolicyValidatorBase):
                 "source_types": sorted(_json_string_values(upstream_samples, "source_type")),
                 "event_types": sorted(_json_string_values(upstream_samples, "event_type")),
                 "event_statuses": sorted(_json_string_values(upstream_samples, "event_status")),
-                "field_keys": sorted(_json_object_keys(upstream_samples) & (cfg.formal_field_keys | cfg.legacy_field_keys)),
+                "field_keys": sorted(
+                    _json_object_keys(upstream_samples) & (cfg.formal_field_keys | cfg.legacy_field_keys)
+                ),
             },
             "downstream_samples": {
                 "source_types": sorted(_json_string_values(downstream_samples, "source_type")),
                 "event_types": sorted(_json_string_values(downstream_samples, "event_type")),
                 "event_statuses": sorted(_json_string_values(downstream_samples, "event_status")),
-                "field_keys": sorted(_json_object_keys(downstream_samples) & (cfg.formal_field_keys | cfg.legacy_field_keys)),
+                "field_keys": sorted(
+                    _json_object_keys(downstream_samples) & (cfg.formal_field_keys | cfg.legacy_field_keys)
+                ),
             },
         }
         for doc_name, observed in sample_sets.items():
@@ -383,11 +398,17 @@ class EventContractChecker(PolicyValidatorBase):
             missing_formal_fields = sorted(cfg.formal_field_keys - set(observed["field_keys"]))
             legacy_fields = sorted(set(observed["field_keys"]) & cfg.legacy_field_keys)
             if unknown_source_types:
-                errors.append(f"{doc_name} contains out-of-contract source_type values: " + ", ".join(unknown_source_types))
+                errors.append(
+                    f"{doc_name} contains out-of-contract source_type values: " + ", ".join(unknown_source_types)
+                )
             if unknown_event_types:
-                errors.append(f"{doc_name} contains out-of-contract event_type values: " + ", ".join(unknown_event_types))
+                errors.append(
+                    f"{doc_name} contains out-of-contract event_type values: " + ", ".join(unknown_event_types)
+                )
             if unknown_event_statuses:
-                errors.append(f"{doc_name} contains out-of-contract event_status values: " + ", ".join(unknown_event_statuses))
+                errors.append(
+                    f"{doc_name} contains out-of-contract event_status values: " + ", ".join(unknown_event_statuses)
+                )
             if missing_formal_fields:
                 errors.append(f"{doc_name} sample JSON missing formal field keys: " + ", ".join(missing_formal_fields))
             if legacy_fields:
@@ -398,6 +419,7 @@ class EventContractChecker(PolicyValidatorBase):
 # ---------------------------------------------------------------------------
 # 5. TruthBasisResolver — truth-basis 校验
 # ---------------------------------------------------------------------------
+
 
 class TruthBasisResolver:
     """Resolves and validates truth-basis for a given project scope."""
@@ -420,10 +442,7 @@ class TruthBasisResolver:
         project_scope = ctx.extra.get("project_scope", "")
         if not project_scope:
             return RuleResult(
-                matched=False,
-                severity="info",
-                message="No project_scope provided",
-                detail={"truth_basis": None}
+                matched=False, severity="info", message="No project_scope provided", detail={"truth_basis": None}
             )
 
         truth_basis = self.truth_basis_for_scope(project_scope)
@@ -432,7 +451,7 @@ class TruthBasisResolver:
             matched=len(errors) > 0,
             severity="error" if errors else "info",
             message=f"Truth basis validation {'failed' if errors else 'passed'}",
-            detail={"truth_basis": truth_basis}
+            detail={"truth_basis": truth_basis},
         )
 
     def _read_text_if_exists(self, path: Path) -> str:
@@ -539,7 +558,9 @@ class TruthBasisResolver:
                 errors.append(f"truth ref missing on disk: {ref_path}")
         return errors
 
-    def _validate_no_overlaps(self, source_refs: list[str], authority_refs: list[str], evidence_refs: list[str], path: Path) -> list[str]:
+    def _validate_no_overlaps(
+        self, source_refs: list[str], authority_refs: list[str], evidence_refs: list[str], path: Path
+    ) -> list[str]:
         """Validate that ref types don't overlap."""
         errors: list[str] = []
         if set(source_refs) == set(evidence_refs):
@@ -667,6 +688,7 @@ class TruthBasisResolver:
 # ---------------------------------------------------------------------------
 # 6. ScopeResolver — scope 解析
 # ---------------------------------------------------------------------------
+
 
 class ScopeResolver(ScopeResolverBase):
     """Resolves project scope from cwd and manages scope overrides."""

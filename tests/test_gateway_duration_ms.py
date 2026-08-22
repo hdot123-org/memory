@@ -57,6 +57,7 @@ def _setup_gateway_mocks(gw, monkeypatch, tmp_path, build_fn=None):
 
     # Patch emit_metrics to capture calls
     from memory_core.tools import memory_hook_metrics
+
     captured = []
 
     def capturing_emit(artifact_root, host, event, package, duration_ms=0):
@@ -79,9 +80,7 @@ def test_gateway_main_records_nonzero_duration_ms(tmp_path, monkeypatch):
 
     # If emit_metrics was called, verify duration_ms > 0
     if captured:
-        assert captured[0]["duration_ms"] > 0, (
-            f"duration_ms should be > 0, got {captured[0]['duration_ms']}"
-        )
+        assert captured[0]["duration_ms"] > 0, f"duration_ms should be > 0, got {captured[0]['duration_ms']}"
     else:
         # emit_metrics not called due to test isolation issues in CI.
         # Verify the timing logic directly: max(1, int(elapsed * 1000)) always >= 1
@@ -110,9 +109,7 @@ def test_gateway_duration_ms_reflects_actual_time(tmp_path, monkeypatch):
         time.sleep(0.15)
         duration2 = max(1, int((time.time() - start2) * 1000))
 
-        assert duration2 > duration1, (
-            f"Longer execution should produce larger duration_ms: {duration2} vs {duration1}"
-        )
+        assert duration2 > duration1, f"Longer execution should produce larger duration_ms: {duration2} vs {duration1}"
         assert duration2 >= 100
 
 

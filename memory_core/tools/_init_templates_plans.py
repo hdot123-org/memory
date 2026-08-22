@@ -5,9 +5,11 @@ from datetime import UTC
 
 logger = logging.getLogger(__name__)
 
+
 def _now_iso() -> str:
     """Return current date in ISO format (YYYY-MM-DD)."""
     from datetime import datetime
+
     return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
@@ -296,5 +298,3 @@ def template_now_md(project_name: str) -> tuple[str, list[str]]:
 - {{BLOCKERS}}
 """
     return content, warnings
-
-

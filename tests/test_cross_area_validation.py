@@ -38,6 +38,7 @@ GATEWAY_MODULE = "memory_core.tools.memory_hook_gateway"
 
 # ─── VAL-CROSS-001: Full hook chain under SIGINT ─────────────────────────────
 
+
 class TestFullHookChainSigint:
     """Full SessionEnd hook chain (gateway + logger) completes within 10s under SIGINT."""
 
@@ -66,15 +67,9 @@ class TestFullHookChainSigint:
             pytest.fail("Gateway did not exit within 10s after SIGINT")
 
         stderr = proc.stderr.read()
-        assert proc.returncode == 0, (
-            f"Gateway exit {proc.returncode}, stderr: {stderr.decode()}"
-        )
-        assert b"Traceback" not in stderr, (
-            f"Traceback in stderr: {stderr.decode()}"
-        )
-        assert b"KeyboardInterrupt" not in stderr, (
-            f"KeyboardInterrupt in stderr: {stderr.decode()}"
-        )
+        assert proc.returncode == 0, f"Gateway exit {proc.returncode}, stderr: {stderr.decode()}"
+        assert b"Traceback" not in stderr, f"Traceback in stderr: {stderr.decode()}"
+        assert b"KeyboardInterrupt" not in stderr, f"KeyboardInterrupt in stderr: {stderr.decode()}"
 
     def test_logger_exits_zero_under_sigint_within_timeout(self):
         """Logger -m path exits 0 within timeout when SIGINT sent."""
@@ -107,12 +102,8 @@ class TestFullHookChainSigint:
             pytest.fail("Logger did not exit within 5s after SIGINT")
 
         stderr = proc.stderr.read()
-        assert proc.returncode == 0, (
-            f"Logger exit {proc.returncode}, stderr: {stderr.decode()}"
-        )
-        assert b"Traceback" not in stderr, (
-            f"Traceback in stderr: {stderr.decode()}"
-        )
+        assert proc.returncode == 0, f"Logger exit {proc.returncode}, stderr: {stderr.decode()}"
+        assert b"Traceback" not in stderr, f"Traceback in stderr: {stderr.decode()}"
 
     def test_both_gateway_and_logger_exit_zero_under_sigint(self):
         """Both gateway and logger can run sequentially and both exit 0 under SIGINT."""
@@ -175,6 +166,7 @@ class TestFullHookChainSigint:
 
 # ─── VAL-CROSS-003: MEMORY_HOOK_FORCE=1 + SIGINT ────────────────────────────
 
+
 class TestForceHookSigint:
     """MEMORY_HOOK_FORCE=1: hooks exit cleanly under SIGINT."""
 
@@ -203,9 +195,7 @@ class TestForceHookSigint:
             pytest.fail("Gateway with FORCE=1 did not exit within 10s")
 
         stderr = proc.stderr.read()
-        assert proc.returncode == 0, (
-            f"Gateway FORCE=1 exit {proc.returncode}, stderr: {stderr.decode()}"
-        )
+        assert proc.returncode == 0, f"Gateway FORCE=1 exit {proc.returncode}, stderr: {stderr.decode()}"
         assert b"Traceback" not in stderr
         assert b"KeyboardInterrupt" not in stderr
 
@@ -240,13 +230,12 @@ class TestForceHookSigint:
             pytest.fail("Logger with FORCE=1 did not exit within 5s")
 
         stderr = proc.stderr.read()
-        assert proc.returncode == 0, (
-            f"Logger FORCE=1 exit {proc.returncode}, stderr: {stderr.decode()}"
-        )
+        assert proc.returncode == 0, f"Logger FORCE=1 exit {proc.returncode}, stderr: {stderr.decode()}"
         assert b"Traceback" not in stderr
 
 
 # ─── VAL-CROSS-004: MEMORY_HOOK_FORCE unset + source-repo cwd ────────────────
+
 
 class TestSourceRepoNoopSigint:
     """MEMORY_HOOK_FORCE unset + source-repo cwd: hooks noop but exit 0 under SIGINT."""
@@ -281,12 +270,8 @@ class TestSourceRepoNoopSigint:
             pytest.fail("Gateway noop path did not exit within 10s")
 
         stderr = proc.stderr.read()
-        assert proc.returncode == 0, (
-            f"Gateway noop exit {proc.returncode}, stderr: {stderr.decode()}"
-        )
-        assert b"Traceback" not in stderr, (
-            f"Traceback in noop stderr: {stderr.decode()}"
-        )
+        assert proc.returncode == 0, f"Gateway noop exit {proc.returncode}, stderr: {stderr.decode()}"
+        assert b"Traceback" not in stderr, f"Traceback in noop stderr: {stderr.decode()}"
         assert b"KeyboardInterrupt" not in stderr
 
     def test_logger_no_force_source_repo_sigint_exit_zero(self):
@@ -324,13 +309,12 @@ class TestSourceRepoNoopSigint:
             pytest.fail("Logger noop path did not exit within 5s")
 
         stderr = proc.stderr.read()
-        assert proc.returncode == 0, (
-            f"Logger noop exit {proc.returncode}, stderr: {stderr.decode()}"
-        )
+        assert proc.returncode == 0, f"Logger noop exit {proc.returncode}, stderr: {stderr.decode()}"
         assert b"Traceback" not in stderr
 
 
 # ─── VAL-GIT-004 (scrutiny gap): Env var without marker files ────────────────
+
 
 class TestEnvVarWithoutMarkers:
     """Scrutiny-identified gap: env var code path was masked by marker files.
@@ -350,9 +334,7 @@ class TestEnvVarWithoutMarkers:
         test_dir.mkdir()
 
         # Set env var to match the resolved path
-        env_patch = patch.dict(
-            os.environ, {"MEMORY_HOOK_PROJECT_CWD": str(test_dir)}
-        )
+        env_patch = patch.dict(os.environ, {"MEMORY_HOOK_PROJECT_CWD": str(test_dir)})
         env_patch.start()
 
         try:
@@ -367,10 +349,7 @@ class TestEnvVarWithoutMarkers:
                 )
 
                 # Should return False (no markers at this path)
-                assert result is False, (
-                    "Should return False when no markers exist, "
-                    "even though env var skipped git"
-                )
+                assert result is False, "Should return False when no markers exist, even though env var skipped git"
         finally:
             env_patch.stop()
 
@@ -384,9 +363,7 @@ class TestEnvVarWithoutMarkers:
         # Use a path that resolves to the same directory
         env_path = str(test_dir) + "/"  # trailing slash, resolves same
 
-        env_patch = patch.dict(
-            os.environ, {"MEMORY_HOOK_PROJECT_CWD": env_path}
-        )
+        env_patch = patch.dict(os.environ, {"MEMORY_HOOK_PROJECT_CWD": env_path})
         env_patch.start()
 
         try:
@@ -394,10 +371,7 @@ class TestEnvVarWithoutMarkers:
                 result = is_memory_core_source_repo(test_dir)
 
                 # Env var should match after resolve(), skipping git
-                assert not mock_run.called, (
-                    "Git subprocess should NOT be called when env var "
-                    "resolves to same path"
-                )
+                assert not mock_run.called, "Git subprocess should NOT be called when env var resolves to same path"
                 assert result is False
         finally:
             env_patch.stop()
@@ -412,9 +386,7 @@ class TestEnvVarWithoutMarkers:
         other_dir.mkdir()
 
         # Set env var to a DIFFERENT path
-        env_patch = patch.dict(
-            os.environ, {"MEMORY_HOOK_PROJECT_CWD": str(other_dir)}
-        )
+        env_patch = patch.dict(os.environ, {"MEMORY_HOOK_PROJECT_CWD": str(other_dir)})
         env_patch.start()
 
         try:
@@ -425,15 +397,14 @@ class TestEnvVarWithoutMarkers:
                 result = is_memory_core_source_repo(test_dir)
 
                 # Env var doesn't match → git subprocess should be called
-                assert mock_run.called, (
-                    "Git subprocess SHOULD be called when env var doesn't match"
-                )
+                assert mock_run.called, "Git subprocess SHOULD be called when env var doesn't match"
                 assert result is False
         finally:
             env_patch.stop()
 
 
 # ─── VAL-NR-005: mypy --strict for touched files ─────────────────────────────
+
 
 @pytest.mark.skipif(not HAS_MYPY, reason="mypy not installed in this environment")
 class TestMypyStrictTouchedFiles:
@@ -461,13 +432,10 @@ class TestMypyStrictTouchedFiles:
         )
         # Filter out errors from transitively imported files
         errors_in_our_file = [
-            line
-            for line in result.stdout.splitlines()
-            if "hook_runtime_guard.py" in line and "error:" in line
+            line for line in result.stdout.splitlines() if "hook_runtime_guard.py" in line and "error:" in line
         ]
-        assert not errors_in_our_file, (
-            "mypy --strict errors in hook_runtime_guard.py:\n"
-            + "\n".join(errors_in_our_file)
+        assert not errors_in_our_file, "mypy --strict errors in hook_runtime_guard.py:\n" + "\n".join(
+            errors_in_our_file
         )
 
     def test_ownership_passes_mypy_strict(self):
@@ -486,14 +454,9 @@ class TestMypyStrictTouchedFiles:
             cwd=str(REPO_ROOT),
         )
         errors_in_our_file = [
-            line
-            for line in result.stdout.splitlines()
-            if "ownership.py" in line and "error:" in line
+            line for line in result.stdout.splitlines() if "ownership.py" in line and "error:" in line
         ]
-        assert not errors_in_our_file, (
-            "mypy --strict errors in ownership.py:\n"
-            + "\n".join(errors_in_our_file)
-        )
+        assert not errors_in_our_file, "mypy --strict errors in ownership.py:\n" + "\n".join(errors_in_our_file)
 
     def test_session_end_logger_passes_mypy_strict(self):
         """session_end_logger.py passes mypy --strict."""
@@ -511,13 +474,10 @@ class TestMypyStrictTouchedFiles:
             cwd=str(REPO_ROOT),
         )
         errors_in_our_file = [
-            line
-            for line in result.stdout.splitlines()
-            if "session_end_logger.py" in line and "error:" in line
+            line for line in result.stdout.splitlines() if "session_end_logger.py" in line and "error:" in line
         ]
-        assert not errors_in_our_file, (
-            "mypy --strict errors in session_end_logger.py:\n"
-            + "\n".join(errors_in_our_file)
+        assert not errors_in_our_file, "mypy --strict errors in session_end_logger.py:\n" + "\n".join(
+            errors_in_our_file
         )
 
     def test_memory_hook_gateway_passes_mypy_strict(self):
@@ -536,17 +496,15 @@ class TestMypyStrictTouchedFiles:
             cwd=str(REPO_ROOT),
         )
         errors_in_our_file = [
-            line
-            for line in result.stdout.splitlines()
-            if "memory_hook_gateway.py" in line and "error:" in line
+            line for line in result.stdout.splitlines() if "memory_hook_gateway.py" in line and "error:" in line
         ]
-        assert not errors_in_our_file, (
-            "mypy --strict errors in memory_hook_gateway.py:\n"
-            + "\n".join(errors_in_our_file)
+        assert not errors_in_our_file, "mypy --strict errors in memory_hook_gateway.py:\n" + "\n".join(
+            errors_in_our_file
         )
 
 
 # ─── VAL-NR-006: ruff check clean ───────────────────────────────────────────
+
 
 @pytest.mark.skipif(not HAS_RUFF, reason="ruff not installed in this environment")
 class TestRuffCheckClean:
@@ -567,9 +525,7 @@ class TestRuffCheckClean:
             text=True,
             cwd=str(REPO_ROOT),
         )
-        assert result.returncode == 0, (
-            f"ruff check failed:\n{result.stdout}\n{result.stderr}"
-        )
+        assert result.returncode == 0, f"ruff check failed:\n{result.stdout}\n{result.stderr}"
 
     def test_ruff_check_test_files(self):
         """ruff check passes for the cross-area test file."""
@@ -579,12 +535,11 @@ class TestRuffCheckClean:
             text=True,
             cwd=str(REPO_ROOT),
         )
-        assert result.returncode == 0, (
-            f"ruff check failed on test file:\n{result.stdout}\n{result.stderr}"
-        )
+        assert result.returncode == 0, f"ruff check failed on test file:\n{result.stdout}\n{result.stderr}"
 
 
 # ─── VAL-NR-002: Full pytest suite passes ────────────────────────────────────
+
 
 class TestFullPytestSuite:
     """Full pytest suite must pass with no new failures.
@@ -601,12 +556,8 @@ class TestFullPytestSuite:
             text=True,
             cwd=str(REPO_ROOT),
         )
-        assert result.returncode == 0, (
-            f"pytest --collect-only failed:\n{result.stdout}\n{result.stderr}"
-        )
-        assert "INTERNALERROR" not in result.stderr, (
-            f"INTERNALERROR during collection:\n{result.stderr}"
-        )
+        assert result.returncode == 0, f"pytest --collect-only failed:\n{result.stdout}\n{result.stderr}"
+        assert "INTERNALERROR" not in result.stderr, f"INTERNALERROR during collection:\n{result.stderr}"
 
     def test_cross_area_tests_collectible(self):
         """This test file itself is collectible by pytest."""
@@ -624,15 +575,7 @@ class TestFullPytestSuite:
             text=True,
             cwd=str(REPO_ROOT),
         )
-        assert result.returncode == 0, (
-            f"Collection of cross-area tests failed:\n{result.stdout}"
-        )
+        assert result.returncode == 0, f"Collection of cross-area tests failed:\n{result.stdout}"
         # Verify test count — should have at least 15 tests
-        lines = [
-            line
-            for line in result.stdout.splitlines()
-            if "::test_" in line
-        ]
-        assert len(lines) >= 15, (
-            f"Expected at least 15 tests, found {len(lines)}"
-        )
+        lines = [line for line in result.stdout.splitlines() if "::test_" in line]
+        assert len(lines) >= 15, f"Expected at least 15 tests, found {len(lines)}"

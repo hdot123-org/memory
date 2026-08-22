@@ -112,10 +112,10 @@ read_first = true
         # [core] version changed
         assert re.search(r'^version\s*=\s*"0\.9\.1"', patched, re.MULTILINE)
         # Other sections preserved
-        assert '[hooks]' in patched
-        assert 'enabled = true' in patched
-        assert '[policy]' in patched
-        assert 'read_first = true' in patched
+        assert "[hooks]" in patched
+        assert "enabled = true" in patched
+        assert "[policy]" in patched
+        assert "read_first = true" in patched
 
     def test_patch_adapter_toml_already_up_to_date(self, tmp_path: Path) -> None:
         """patch_adapter_toml_version returns False when version already matches."""
@@ -155,9 +155,7 @@ class TestGateVersionBump:
             ("0.10.2", "1.0.0", True, "blocked:schema_changed"),
         ],
     )
-    def test_gate_version_bump(
-        self, current: str, target: str, schema_changed: bool, expected: str
-    ) -> None:
+    def test_gate_version_bump(self, current: str, target: str, schema_changed: bool, expected: str) -> None:
         """_gate_version_bump returns correct allowed/blocked status."""
         result = _gate_version_bump(current, target, schema_changed)
         assert result == expected
@@ -187,9 +185,7 @@ class TestTryResignAll:
         assert result["resigned"] is False
         assert "boom" in result["reason"]
 
-    def test_try_resign_all_accepts_changed_paths(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_try_resign_all_accepts_changed_paths(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """VAL-RESIGN-002: _try_resign_all passes changed_paths to sign_project_incremental."""
         import memory_core.tools.version_sync as vs
 
@@ -276,9 +272,7 @@ def _make_project(tmp_path: Path, memory_version: str = "0.9.0") -> Path:
 class TestSyncSingleProject:
     """VAL-SYNC-003: sync_single_project patches three files when gate allows."""
 
-    def test_sync_single_project_patches_three_files(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_sync_single_project_patches_three_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """sync_single_project patches ownership.toml + memory.lock + adapter.toml."""
         import memory_core.tools.version_sync as vs
 
@@ -347,9 +341,7 @@ def _make_lifecycle_root(tmp_path: Path, projects: list[str]) -> Path:
     # Write path-index.json at lifecycle_root/project-lifecycle/path-index.json
     pl = lifecycle / "project-lifecycle"
     pl.mkdir()
-    (pl / "path-index.json").write_text(
-        json.dumps({"paths": paths}), encoding="utf-8"
-    )
+    (pl / "path-index.json").write_text(json.dumps({"paths": paths}), encoding="utf-8")
 
     return lifecycle
 
@@ -357,9 +349,7 @@ def _make_lifecycle_root(tmp_path: Path, projects: list[str]) -> Path:
 class TestSyncAllKnownProjects:
     """VAL-SYNC-004: sync_all_known_projects patches three files in batch."""
 
-    def test_sync_all_known_projects_patches_three_files(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_sync_all_known_projects_patches_three_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """sync_all_known_projects patches all three files for each project."""
         import memory_core.tools.version_sync as vs
 
@@ -417,9 +407,7 @@ class TestBlockedScenarios:
         # Result indicates blocked
         assert result.get("gate_blocked") is True or "blocked" in str(result).lower()
 
-    def test_schema_change_blocks_lock_adapter(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_schema_change_blocks_lock_adapter(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """VAL-GATE-003: Schema change blocks lock/adapter patch."""
         import memory_core.tools.version_sync as vs
 
@@ -475,15 +463,11 @@ class TestBlockedScenarios:
 class TestResignErrorPropagation:
     """VAL-RESIGN-003: Callers check resign return and write to result['errors']."""
 
-    def test_sync_single_project_records_resign_error(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_sync_single_project_records_resign_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """sync_single_project records resign failure in result."""
         import memory_core.tools.version_sync as vs
 
-        mock_resign = MagicMock(
-            return_value={"resigned": False, "reason": "signing failed"}
-        )
+        mock_resign = MagicMock(return_value={"resigned": False, "reason": "signing failed"})
         monkeypatch.setattr(vs, "_try_resign_all", mock_resign)
 
         project = _make_project(tmp_path, "0.9.0")
@@ -498,9 +482,7 @@ class TestResignErrorPropagation:
         """sync_all_known_projects records resign failure in result['errors']."""
         import memory_core.tools.version_sync as vs
 
-        mock_resign = MagicMock(
-            return_value={"resigned": False, "reason": "key missing"}
-        )
+        mock_resign = MagicMock(return_value={"resigned": False, "reason": "key missing"})
         monkeypatch.setattr(vs, "_try_resign_all", mock_resign)
 
         lifecycle = _make_lifecycle_root(tmp_path, ["proj-x"])

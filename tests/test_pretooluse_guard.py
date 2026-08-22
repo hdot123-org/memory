@@ -44,7 +44,6 @@ def _expand_invisible_ranges():
         yield from range(_start, _end + 1)
 
 
-
 class _GuardRunnerMixin:
     """Shared subprocess runner for the pretooluse guard (INFRA-314 dedup).
 
@@ -77,7 +76,6 @@ class _GuardRunnerMixin:
             output = {"raw_stdout": result.stdout, "stderr": result.stderr}
 
         return result.returncode, output
-
 
 
 class TestPreToolUseGuard(_GuardRunnerMixin):
@@ -428,7 +426,7 @@ class TestPreToolUseGuard(_GuardRunnerMixin):
 
         payload = {
             "tool_name": "Execute",
-            "command": "python -c 'open(\"memory/docs/INDEX.md\", \"w\").write(\"test\")'",
+            "command": 'python -c \'open("memory/docs/INDEX.md", "w").write("test")\'',
         }
 
         exit_code, result = self._run_guard(payload, tmp_path)
@@ -774,9 +772,7 @@ class TestPreToolUseGuard(_GuardRunnerMixin):
 
     # ========== stdin IO 异常处理测试 (INFRA-141) ==========
 
-    def test_stdin_read_oserror_treated_as_empty(
-        self, tmp_path: Path, monkeypatch, capsys
-    ) -> None:
+    def test_stdin_read_oserror_treated_as_empty(self, tmp_path: Path, monkeypatch, capsys) -> None:
         """sys.stdin.read() raising OSError must be treated as empty stdin (allow, no error).
 
         Regression test for INFRA-141: previously the generic ``except Exception``
@@ -802,9 +798,7 @@ class TestPreToolUseGuard(_GuardRunnerMixin):
         assert result["decision"] == "allow"
         assert "empty stdin" in result["reason"].lower()
 
-    def test_stdin_read_oserror_does_not_write_error_log(
-        self, tmp_path: Path, monkeypatch, capsys
-    ) -> None:
+    def test_stdin_read_oserror_does_not_write_error_log(self, tmp_path: Path, monkeypatch, capsys) -> None:
         """sys.stdin.read() OSError must NOT write a json_parse_error log.
 
         Mirrors ``test_empty_stdin_does_not_write_error_log`` for the IO-failure
@@ -829,9 +823,7 @@ class TestPreToolUseGuard(_GuardRunnerMixin):
             error_files = list(error_log_dir.glob("*-errors.jsonl"))
             assert not error_files, f"Expected no error log, found: {error_files}"
 
-    def test_malformed_nonempty_json_still_logs_json_parse_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_malformed_nonempty_json_still_logs_json_parse_error(self, tmp_path: Path) -> None:
         """Regression guard: non-empty malformed JSON must still fail-closed AND write a json_parse_error log.
 
         Confirms the INFRA-141 fix did not break the legitimate json_parse_error
@@ -897,9 +889,7 @@ class TestPreToolUseGuard(_GuardRunnerMixin):
         (tmp_path / "memory" / "system").mkdir(parents=True)
 
         payload = {"tool_name": "Read", "tool_input": {"file_path": "/tmp/test.txt"}}
-        exit_code, result = self._run_guard_raw(
-            "\ufeff" + json.dumps(payload), tmp_path
-        )
+        exit_code, result = self._run_guard_raw("\ufeff" + json.dumps(payload), tmp_path)
 
         # Should NOT hit empty-stdin or fail-closed paths
         assert "empty stdin" not in result.get("reason", "").lower()
@@ -930,9 +920,7 @@ class TestInvisibleUnicodeStdin:
     """Regression tests for INFRA-145: invisible Unicode characters that
     survive str.strip() and cause false json_parse_error."""
 
-    def test_zero_width_space_only_stdin_allows_without_error(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_zero_width_space_only_stdin_allows_without_error(self, monkeypatch, tmp_path, capsys) -> None:
         """\\u200b (zero-width space) only on stdin should allow, not error."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -944,9 +932,7 @@ class TestInvisibleUnicodeStdin:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_zero_width_non_joiner_only_stdin_allows(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_zero_width_non_joiner_only_stdin_allows(self, monkeypatch, tmp_path, capsys) -> None:
         """\\u200c (ZWNJ) only on stdin should allow."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -958,9 +944,7 @@ class TestInvisibleUnicodeStdin:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_zero_width_joiner_only_stdin_allows(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_zero_width_joiner_only_stdin_allows(self, monkeypatch, tmp_path, capsys) -> None:
         """\\u200d (ZWJ) only on stdin should allow."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -972,9 +956,7 @@ class TestInvisibleUnicodeStdin:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_word_joiner_only_stdin_allows(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_word_joiner_only_stdin_allows(self, monkeypatch, tmp_path, capsys) -> None:
         """\\u2060 (word joiner) only on stdin should allow."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -986,9 +968,7 @@ class TestInvisibleUnicodeStdin:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_multiple_invisible_chars_mix_allows(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_multiple_invisible_chars_mix_allows(self, monkeypatch, tmp_path, capsys) -> None:
         """Mix of invisible chars + whitespace should allow."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1000,9 +980,7 @@ class TestInvisibleUnicodeStdin:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_double_bom_allows_without_error(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_double_bom_allows_without_error(self, monkeypatch, tmp_path, capsys) -> None:
         """Double BOM \\ufeff\\ufeff should allow (INFRA-145 regression)."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1014,9 +992,7 @@ class TestInvisibleUnicodeStdin:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_bom_with_invisible_chars_allows(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_bom_with_invisible_chars_allows(self, monkeypatch, tmp_path, capsys) -> None:
         """BOM + invisible chars should allow."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1028,9 +1004,7 @@ class TestInvisibleUnicodeStdin:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_invisible_chars_with_valid_json_parses_correctly(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_invisible_chars_with_valid_json_parses_correctly(self, monkeypatch, tmp_path, capsys) -> None:
         """Invisible chars prefixed to valid JSON should still parse."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1045,9 +1019,7 @@ class TestInvisibleUnicodeStdin:
         json.loads(captured.out)  # parse to confirm valid JSON output
         assert exit_code == 0
 
-    def test_zero_width_space_only_does_not_write_error_log(
-        self, monkeypatch, tmp_path
-    ) -> None:
+    def test_zero_width_space_only_does_not_write_error_log(self, monkeypatch, tmp_path) -> None:
         """\\u200b only should NOT write any error log."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1058,13 +1030,9 @@ class TestInvisibleUnicodeStdin:
         if log_dir.exists():
             for f in log_dir.glob("*-errors.jsonl"):
                 content = f.read_text()
-                assert (
-                    "json_parse_error" not in content
-                ), f"False json_parse_error logged for \\u200b stdin: {content}"
+                assert "json_parse_error" not in content, f"False json_parse_error logged for \\u200b stdin: {content}"
 
-    def test_multiple_bom_does_not_write_error_log(
-        self, monkeypatch, tmp_path
-    ) -> None:
+    def test_multiple_bom_does_not_write_error_log(self, monkeypatch, tmp_path) -> None:
         """Double BOM should NOT write any error log."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1075,15 +1043,13 @@ class TestInvisibleUnicodeStdin:
         if log_dir.exists():
             for f in log_dir.glob("*-errors.jsonl"):
                 content = f.read_text()
-                assert (
-                    "json_parse_error" not in content
-                ), f"False json_parse_error logged for double BOM stdin: {content}"
+                assert "json_parse_error" not in content, (
+                    f"False json_parse_error logged for double BOM stdin: {content}"
+                )
 
     # ========== 非空白 Cc/Cf 类别全量修复回归测试 (INFRA-149) ==========
 
-    def test_bidi_isolate_only_stdin_allows(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_bidi_isolate_only_stdin_allows(self, monkeypatch, tmp_path, capsys) -> None:
         """U+2066 (LRI) only on stdin should allow (INFRA-149).
 
         U+2066 LEFT-TO-RIGHT ISOLATE is the key case the prior hardcoded
@@ -1100,9 +1066,7 @@ class TestInvisibleUnicodeStdin:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_bidi_isolates_mix_allows(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_bidi_isolates_mix_allows(self, monkeypatch, tmp_path, capsys) -> None:
         """All bidi isolates U+2066-U+2069 should allow (INFRA-149)."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1114,25 +1078,19 @@ class TestInvisibleUnicodeStdin:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_deprecated_bidi_format_chars_allows(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_deprecated_bidi_format_chars_allows(self, monkeypatch, tmp_path, capsys) -> None:
         """Deprecated bidi format chars U+206A-U+206F should allow (INFRA-149)."""
         from memory_core.tools.pretooluse_guard import main
 
         monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
-        monkeypatch.setattr(
-            "sys.stdin", _make_fake_stdin("\u206a\u206b\u206c\u206d\u206e\u206f")
-        )
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\u206a\u206b\u206c\u206d\u206e\u206f"))
         exit_code = main()
         captured = capsys.readouterr()
         result = json.loads(captured.out)
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_arabic_format_chars_allows(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_arabic_format_chars_allows(self, monkeypatch, tmp_path, capsys) -> None:
         """Arabic format chars U+0600/U+0601 should allow (INFRA-149)."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1144,9 +1102,7 @@ class TestInvisibleUnicodeStdin:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_language_tag_char_allows(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_language_tag_char_allows(self, monkeypatch, tmp_path, capsys) -> None:
         """A char from the U+E0020-E007F tag range should allow (INFRA-149)."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1158,9 +1114,7 @@ class TestInvisibleUnicodeStdin:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_high_plane_invisible_allows(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_high_plane_invisible_allows(self, monkeypatch, tmp_path, capsys) -> None:
         """U+1BCA0 (shorthand formatting) should allow (INFRA-149)."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1172,9 +1126,7 @@ class TestInvisibleUnicodeStdin:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_invisible_prefixed_valid_json_parses_infra149(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_invisible_prefixed_valid_json_parses_infra149(self, monkeypatch, tmp_path, capsys) -> None:
         """Invisible chars (U+2066 LRI + U+200b) prefixed to valid JSON should still parse (INFRA-149)."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1184,9 +1136,7 @@ class TestInvisibleUnicodeStdin:
             "tool_name": "Write",
             "tool_input": {"file_path": str(tmp_path / "test.txt"), "content": "hi"},
         }
-        monkeypatch.setattr(
-            "sys.stdin", _make_fake_stdin("\u2066\u200b" + json.dumps(payload))
-        )
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\u2066\u200b" + json.dumps(payload)))
         exit_code = main()
         captured = capsys.readouterr()
         json.loads(captured.out)  # confirm valid JSON output
@@ -1196,9 +1146,7 @@ class TestInvisibleUnicodeStdin:
         assert "guard failure" not in result.get("reason", "").lower()
 
     @pytest.mark.parametrize("codepoint", list(_expand_invisible_ranges()))
-    def test_every_invisible_char_only_stdin_allows(
-        self, codepoint, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_every_invisible_char_only_stdin_allows(self, codepoint, monkeypatch, tmp_path, capsys) -> None:
         """Every non-whitespace Cc/Cf character, as the sole stdin content,
         must allow without a false json_parse_error (INFRA-149 class fix)."""
         from memory_core.tools.pretooluse_guard import _CC_CF_RANGES, main
@@ -1215,9 +1163,7 @@ class TestInvisibleUnicodeStdin:
 
     # ========== Cs/Co 类别扩展回归测试 (INFRA-191) ==========
 
-    def test_surrogate_chars_stripped_before_json_parse(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_surrogate_chars_stripped_before_json_parse(self, monkeypatch, tmp_path, capsys) -> None:
         """Lone surrogate characters (Cs category) are stripped before JSON
         parsing, preventing false json_parse_error (INFRA-191).
 
@@ -1236,9 +1182,7 @@ class TestInvisibleUnicodeStdin:
         assert result["decision"] == "allow"
         assert "empty stdin" in result["reason"].lower()
 
-    def test_surrogate_range_chars_all_allow(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_surrogate_range_chars_all_allow(self, monkeypatch, tmp_path, capsys) -> None:
         """Representative lone surrogates across U+D800-U+DFFF should allow (INFRA-191)."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1250,9 +1194,7 @@ class TestInvisibleUnicodeStdin:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_private_use_area_chars_all_allow(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_private_use_area_chars_all_allow(self, monkeypatch, tmp_path, capsys) -> None:
         """Private-use area characters (Co category) are stripped before JSON
         parsing, preventing false json_parse_error (INFRA-191).
 
@@ -1263,9 +1205,7 @@ class TestInvisibleUnicodeStdin:
         from memory_core.tools.pretooluse_guard import main
 
         monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
-        monkeypatch.setattr(
-            "sys.stdin", _make_fake_stdin("\ue000\U000f0000\U00100000")
-        )
+        monkeypatch.setattr("sys.stdin", _make_fake_stdin("\ue000\U000f0000\U00100000"))
         exit_code = main()
         captured = capsys.readouterr()
         result = json.loads(captured.out)
@@ -1273,9 +1213,7 @@ class TestInvisibleUnicodeStdin:
         assert result["decision"] == "allow"
         assert "empty stdin" in result["reason"].lower()
 
-    def test_surrogate_chars_do_not_write_error_log(
-        self, monkeypatch, tmp_path
-    ) -> None:
+    def test_surrogate_chars_do_not_write_error_log(self, monkeypatch, tmp_path) -> None:
         """Lone surrogate chars should NOT write any error log (INFRA-191)."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1286,9 +1224,9 @@ class TestInvisibleUnicodeStdin:
         if log_dir.exists():
             for f in log_dir.glob("*-errors.jsonl"):
                 content = f.read_text()
-                assert (
-                    "json_parse_error" not in content
-                ), f"False json_parse_error logged for surrogate stdin: {content}"
+                assert "json_parse_error" not in content, (
+                    f"False json_parse_error logged for surrogate stdin: {content}"
+                )
 
 
 class TestEmptyPreviewSkipsErrorLog:
@@ -1303,9 +1241,7 @@ class TestEmptyPreviewSkipsErrorLog:
         monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
 
         write_called = []
-        with patch(
-            "memory_core.tools.error_logger.write_error_log"
-        ) as mock_write:
+        with patch("memory_core.tools.error_logger.write_error_log") as mock_write:
             mock_write.side_effect = lambda **kw: write_called.append(kw) or True
             exit_code, result = _fail_closed_with_raw_check("", "test reason")
 
@@ -1321,22 +1257,17 @@ class TestEmptyPreviewSkipsErrorLog:
         monkeypatch.setenv("FACTORY_PROJECT_DIR", str(tmp_path))
 
         write_called = []
-        with patch(
-            "memory_core.tools.error_logger.write_error_log"
-        ) as mock_write:
+        with patch("memory_core.tools.error_logger.write_error_log") as mock_write:
             mock_write.side_effect = lambda **kw: write_called.append(kw) or True
-            exit_code, result = _fail_closed_with_raw_check(
-                "{not valid json", "test reason"
-            )
+            exit_code, result = _fail_closed_with_raw_check("{not valid json", "test reason")
 
         assert exit_code == 0  # non-protected → allow
         assert result["decision"] == "allow"
         assert len(write_called) == 1  # error log still written for non-empty input
+
     """Regression tests for INFRA-145: UnicodeDecodeError from stdin read."""
 
-    def test_unicode_decode_error_treated_as_empty(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_unicode_decode_error_treated_as_empty(self, monkeypatch, tmp_path, capsys) -> None:
         """sys.stdin.read() raising UnicodeDecodeError should allow, not crash."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1344,9 +1275,7 @@ class TestEmptyPreviewSkipsErrorLog:
 
         class _BadStdin:
             def read(self):
-                raise UnicodeDecodeError(
-                    "utf-8", b"\xff\xfe", 0, 1, "invalid start byte"
-                )
+                raise UnicodeDecodeError("utf-8", b"\xff\xfe", 0, 1, "invalid start byte")
 
             def __getattr__(self, name):
                 raise AttributeError(name)
@@ -1358,9 +1287,7 @@ class TestEmptyPreviewSkipsErrorLog:
         assert exit_code == 0
         assert result["decision"] == "allow"
 
-    def test_value_error_treated_as_empty(
-        self, monkeypatch, tmp_path, capsys
-    ) -> None:
+    def test_value_error_treated_as_empty(self, monkeypatch, tmp_path, capsys) -> None:
         """sys.stdin.read() raising ValueError should allow, not crash."""
         from memory_core.tools.pretooluse_guard import main
 
@@ -1646,7 +1573,7 @@ class TestExecuteP1(_GuardRunnerMixin):
 
         payload = {
             "tool_name": "Execute",
-            "command": "node -e 'require(\"fs\").writeFileSync(\"memory/docs/INDEX.md\", \"test\")'",
+            "command": 'node -e \'require("fs").writeFileSync("memory/docs/INDEX.md", "test")\'',
         }
 
         exit_code, result = self._run_guard(payload, tmp_path)
@@ -1660,7 +1587,7 @@ class TestExecuteP1(_GuardRunnerMixin):
 
         payload = {
             "tool_name": "Execute",
-            "command": "node -e 'require(\"fs\").writeFileSync(\"output.txt\", \"test\")'",
+            "command": 'node -e \'require("fs").writeFileSync("output.txt", "test")\'',
         }
 
         exit_code, result = self._run_guard(payload, tmp_path)
@@ -1794,9 +1721,7 @@ class TestAgentsMdDiffAware(_GuardRunnerMixin):
     def test_multiedit_agents_md_diff_aware_blocks(self, tmp_path: Path) -> None:
         """Test that MultiEdit with AGENTS.md item uses diff-aware classification."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        (tmp_path / "AGENTS.md").write_text(
-            "<!-- ownership:block:start -->\nProtected\n<!-- ownership:block:end -->\n"
-        )
+        (tmp_path / "AGENTS.md").write_text("<!-- ownership:block:start -->\nProtected\n<!-- ownership:block:end -->\n")
 
         payload = {
             "tool_name": "MultiEdit",
@@ -1926,9 +1851,7 @@ class TestMultiEditPerItem(_GuardRunnerMixin):
     def test_multiedit_mixed_agents_md_and_regular(self, tmp_path: Path) -> None:
         """Test MultiEdit with mix of AGENTS.md and regular owned paths."""
         (tmp_path / "memory" / "system").mkdir(parents=True)
-        (tmp_path / "AGENTS.md").write_text(
-            "<!-- ownership:block:start -->\nProtected\n<!-- ownership:block:end -->\n"
-        )
+        (tmp_path / "AGENTS.md").write_text("<!-- ownership:block:start -->\nProtected\n<!-- ownership:block:end -->\n")
 
         payload = {
             "tool_name": "MultiEdit",
@@ -1982,7 +1905,6 @@ class TestNoopHostDelegate:
         data = json.loads(response.stdout)
         assert "policy_decision" in data
         assert data["policy_decision"] == "no_host"
-
 
     def test_delegate_interface_has_host_unavailable_property(self) -> None:
         """Test that HostDelegate interface defines host_unavailable property."""

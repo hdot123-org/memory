@@ -87,9 +87,9 @@ related: [D-003-audit-verification-refactor-basis, audit-verification-methodolog
 ```python
 # pretooluse_guard.py 顶部加常量
 ROOT_DENY_PATTERNS = [
-    re.compile(r'^[^/]+\.(py|json|sh)$'),       # 根目录散落脚本
-    re.compile(r'^artifacts/'),                   # 根目录 artifacts/
-    re.compile(r'^(scan|kimi|tmp)_.*\.(py|json)$'),  # 已知违规前缀
+    re.compile(r"^[^/]+\.(py|json|sh)$"),  # 根目录散落脚本
+    re.compile(r"^artifacts/"),  # 根目录 artifacts/
+    re.compile(r"^(scan|kimi|tmp)_.*\.(py|json)$"),  # 已知违规前缀
 ]
 
 # classify_tool_use 开头加（在 ownership 加载前）
@@ -98,9 +98,10 @@ if is_memory_core_source_repo(project_root):
     for pattern in ROOT_DENY_PATTERNS:
         if pattern.match(rel):
             return RuleResult(
-                matched=True, severity="error",
+                matched=True,
+                severity="error",
                 message=f"根目录污染：源仓库禁止散落文件 ({rel})",
-                detail={"decision": "block", "scenario": "root_pollution"}
+                detail={"decision": "block", "scenario": "root_pollution"},
             )
 ```
 

@@ -46,5 +46,6 @@ def test_runs_without_crash():
     assert stdout, "Script produced no stdout output"
 
     # Should contain expected section markers
-    assert "validate_memory_system" in stdout or "CI" in stdout or "health" in stdout.lower(), \
+    assert "validate_memory_system" in stdout or "CI" in stdout or "health" in stdout.lower(), (
         f"Unexpected output format. stdout: {stdout[:500]}"
+    )

@@ -36,10 +36,13 @@ except ImportError:
     try:
         from _file_utils import now_iso as _now_iso_impl  # type: ignore[no-redef]
     except ImportError:
+
         def _now_iso_impl() -> str:
             """Fallback now_iso if _file_utils unavailable."""
             from datetime import datetime
+
             return datetime.now().astimezone().isoformat(timespec="seconds")
+
 
 def now_iso() -> str:
     """Wrapper for now_iso implementation."""
@@ -141,14 +144,26 @@ def compute_fingerprint(error_type: str, script: str, normalized_msg: str) -> st
 # Session ID prefixes that indicate manual testing, not production sessions.
 # Real Factory session IDs are UUIDs or 8-char hex strings.
 _TEST_SESSION_ID_PREFIXES = (
-    "test", "debug", "dummy", "fake", "example", "sample", "placeholder",
-    "foobar", "xxx", "yyy",
+    "test",
+    "debug",
+    "dummy",
+    "fake",
+    "example",
+    "sample",
+    "placeholder",
+    "foobar",
+    "xxx",
+    "yyy",
 )
 
 # Directory prefixes for temporary/system paths that indicate non-production
 # data (manual CLI testing with temp paths).
 _TEMP_PATH_PREFIXES = (
-    "/tmp/", "/private/tmp/", "/var/tmp/", "/dev/shm/", "/temp/",
+    "/tmp/",
+    "/private/tmp/",
+    "/var/tmp/",
+    "/dev/shm/",
+    "/temp/",
 )
 
 
@@ -321,12 +336,25 @@ def evaluate_threshold(group: PatternGroup) -> str | None:
 # ---------------------------------------------------------------------------
 
 # Required fields for every registry line
-REGISTRY_REQUIRED_FIELDS = frozenset({
-    "fingerprint", "type", "script", "normalized_msg", "status",
-    "first_seen", "last_seen", "first_detected", "last_updated",
-    "distinct_days", "total_count", "projects", "threshold_met",
-    "sample_first", "sample_last",
-})
+REGISTRY_REQUIRED_FIELDS = frozenset(
+    {
+        "fingerprint",
+        "type",
+        "script",
+        "normalized_msg",
+        "status",
+        "first_seen",
+        "last_seen",
+        "first_detected",
+        "last_updated",
+        "distinct_days",
+        "total_count",
+        "projects",
+        "threshold_met",
+        "sample_first",
+        "sample_last",
+    }
+)
 
 
 def read_registry(path: Path) -> dict[str, dict[str, Any]]:
@@ -697,8 +725,7 @@ def run_pipeline(
     excluded_count = len(all_entries) - len(filtered_entries)
     if verbose and excluded_count > 0:
         print(
-            f"[filter] excluded {excluded_count} test artifact(s) "
-            f"from pattern detection",
+            f"[filter] excluded {excluded_count} test artifact(s) from pattern detection",
             file=sys.stderr,
         )
 

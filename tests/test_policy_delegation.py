@@ -107,53 +107,37 @@ def base_config_kwargs() -> dict:
 class TestPolicyRegistryDelegation:
     """Verify PolicyRegistryImpl delegation methods return correct types."""
 
-    def test_validate_project_map_returns_list(
-        self, registry: PolicyRegistryImpl
-    ) -> None:
+    def test_validate_project_map_returns_list(self, registry: PolicyRegistryImpl) -> None:
         result = registry.validate_project_map()
         assert isinstance(result, list)
 
-    def test_validate_legal_contract_returns_list(
-        self, registry: PolicyRegistryImpl
-    ) -> None:
+    def test_validate_legal_contract_returns_list(self, registry: PolicyRegistryImpl) -> None:
         result = registry.validate_unique_legal_system_contract()
         assert isinstance(result, list)
 
-    def test_governance_errors_returns_list(
-        self, registry: PolicyRegistryImpl
-    ) -> None:
+    def test_governance_errors_returns_list(self, registry: PolicyRegistryImpl) -> None:
         result = registry.governance_frozen_tuple_errors()
         assert isinstance(result, list)
 
-    def test_event_contract_errors_returns_list(
-        self, registry: PolicyRegistryImpl
-    ) -> None:
+    def test_event_contract_errors_returns_list(self, registry: PolicyRegistryImpl) -> None:
         result = registry.event_contract_blocker_errors()
         assert isinstance(result, list)
 
-    def test_git_registration_probe_returns_dict(
-        self, registry: PolicyRegistryImpl
-    ) -> None:
+    def test_git_registration_probe_returns_dict(self, registry: PolicyRegistryImpl) -> None:
         result = registry.git_registration_probe("test-event", {"key": "value"})
         assert isinstance(result, dict)
 
-    def test_truth_basis_returns_dict(
-        self, registry: PolicyRegistryImpl
-    ) -> None:
+    def test_truth_basis_returns_dict(self, registry: PolicyRegistryImpl) -> None:
         result = registry.truth_basis_for_scope("test-scope")
         assert isinstance(result, dict)
 
-    def test_scope_refs_return_lists(
-        self, registry: PolicyRegistryImpl
-    ) -> None:
+    def test_scope_refs_return_lists(self, registry: PolicyRegistryImpl) -> None:
         """decision, lesson, and docs refs must all return lists."""
         assert isinstance(registry.decision_refs_for_scope("scope"), list)
         assert isinstance(registry.lesson_refs_for_scope("scope"), list)
         assert isinstance(registry.docs_refs_for_scope("scope"), list)
 
-    def test_is_instance_of_policy_registry(
-        self, registry: PolicyRegistryImpl
-    ) -> None:
+    def test_is_instance_of_policy_registry(self, registry: PolicyRegistryImpl) -> None:
         assert isinstance(registry, PolicyRegistry)
 
 
@@ -165,9 +149,7 @@ class TestPolicyRegistryDelegation:
 class TestInterfaceCoreConfig:
     """Verify CoreConfig accepts and correctly handles PolicyRegistry."""
 
-    def test_config_accepts_policy_registry(
-        self, base_config_kwargs: dict, registry: PolicyRegistryImpl
-    ) -> None:
+    def test_config_accepts_policy_registry(self, base_config_kwargs: dict, registry: PolicyRegistryImpl) -> None:
         config = CoreConfig(**base_config_kwargs, policy_registry=registry)
         assert config.policy_registry is registry
 

@@ -69,6 +69,7 @@ from memory_core.tools.memory_hook_impls import GatewayBusinessPolicyConfig
 # Fixtures — minimal config builder
 # ---------------------------------------------------------------------------
 
+
 def _noop_read(path: Path) -> str:
     return ""
 
@@ -96,7 +97,11 @@ def make_minimal_config(tmp_path: Path, **overrides: Any) -> GatewayBusinessPoli
         "repo_root": repo,
         "workspace_root": workspace,
         "project_map_root": pm_root,
-        "project_map_files": [pm_root / "INDEX.md", pm_root / "legal-core-map.md", pm_root / "ingestion-registry-map.md"],
+        "project_map_files": [
+            pm_root / "INDEX.md",
+            pm_root / "legal-core-map.md",
+            pm_root / "ingestion-registry-map.md",
+        ],
         "project_map_governance": pm_root / "governance.md",
         "truth_model": workspace / "truth.md",
         "global_canonical": [workspace / "global.md"],
@@ -215,6 +220,7 @@ def valid_config_with_files(tmp_path: Path) -> GatewayBusinessPolicyConfig:
 # 1. GatewayBusinessPolicyConfig schema tests
 # ---------------------------------------------------------------------------
 
+
 class TestGatewayBusinessPolicyConfigSchema:
     """Schema-level tests for the config dataclass."""
 
@@ -222,22 +228,43 @@ class TestGatewayBusinessPolicyConfigSchema:
         """All 37 fields must be defined on the dataclass."""
         field_names = {f.name for f in fields(GatewayBusinessPolicyConfig)}
         expected = {
-            "repo_root", "workspace_root", "project_map_root",
-            "project_map_files", "project_map_governance", "truth_model",
-            "global_canonical", "authority_allowed_paths", "lower_evidence_roots",
-            "legal_core_markers", "required_registry_scopes",
-            "project_canonical", "project_runtime_root",
-            "project_doc_refs", "default_decision_refs", "project_decision_refs",
-            "default_lesson_refs", "project_lesson_refs",
-            "governance_frozen_tuple_files", "event_contract_files",
-            "frozen_tuple_expected", "frozen_tuple_legacy_markers",
-            "formal_source_types", "formal_event_types", "formal_event_statuses",
-            "formal_field_keys", "legacy_field_keys",
+            "repo_root",
+            "workspace_root",
+            "project_map_root",
+            "project_map_files",
+            "project_map_governance",
+            "truth_model",
+            "global_canonical",
+            "authority_allowed_paths",
+            "lower_evidence_roots",
+            "legal_core_markers",
+            "required_registry_scopes",
+            "project_canonical",
+            "project_runtime_root",
+            "project_doc_refs",
+            "default_decision_refs",
+            "project_decision_refs",
+            "default_lesson_refs",
+            "project_lesson_refs",
+            "governance_frozen_tuple_files",
+            "event_contract_files",
+            "frozen_tuple_expected",
+            "frozen_tuple_legacy_markers",
+            "formal_source_types",
+            "formal_event_types",
+            "formal_event_statuses",
+            "formal_field_keys",
+            "legacy_field_keys",
             "required_canonical",
-            "workspace_index_path", "docs_index_path",
-            "overview_doc_path", "global_index_path", "hook_contract_path",
-            "default_project_scope", "scope_match_hints",
-            "read_text_if_exists_fn", "policy_pack_path",
+            "workspace_index_path",
+            "docs_index_path",
+            "overview_doc_path",
+            "global_index_path",
+            "hook_contract_path",
+            "default_project_scope",
+            "scope_match_hints",
+            "read_text_if_exists_fn",
+            "policy_pack_path",
         }
         assert field_names == expected
 
@@ -307,6 +334,7 @@ class TestGatewayBusinessPolicyConfigSchema:
 # ---------------------------------------------------------------------------
 # 2. Helper function tests
 # ---------------------------------------------------------------------------
+
 
 class TestHelperFunctions:
     """Tests for the shared helper functions."""
@@ -410,6 +438,7 @@ class TestHelperFunctions:
 # 3. ProjectMapValidator tests
 # ---------------------------------------------------------------------------
 
+
 class TestProjectMapValidator:
     """Tests for ProjectMapValidator schema parsing and validation."""
 
@@ -507,6 +536,7 @@ class TestProjectMapValidator:
 # 5. FrozenTupleChecker tests
 # ---------------------------------------------------------------------------
 
+
 class TestFrozenTupleChecker:
     """Tests for FrozenTupleChecker schema validation."""
 
@@ -586,6 +616,7 @@ class TestFrozenTupleChecker:
 # 6. EventContractChecker tests
 # ---------------------------------------------------------------------------
 
+
 class TestEventContractChecker:
     """Tests for EventContractChecker schema validation."""
 
@@ -617,9 +648,13 @@ class TestEventContractChecker:
         us = tmp_path / "us.md"
         us.write_text("## 3. 正式输入源\n`wrong_type`\n")
         um = tmp_path / "um.md"
-        um.write_text("## 2. 正式输入源范围\n`wrong_type`\n## 3. 输入源到正式事件的映射主表\n`wrong_evt`\n## 4. 主路由规则\n## 5. 错误码与原因码\n")
+        um.write_text(
+            "## 2. 正式输入源范围\n`wrong_type`\n## 3. 输入源到正式事件的映射主表\n`wrong_evt`\n## 4. 主路由规则\n## 5. 错误码与原因码\n"
+        )
         fc = tmp_path / "fc.md"
-        fc.write_text("## 3. source_type 正式白名单\n`wrong_type`\n## 4. event_type 正式清单\n## 6. event_status 正式取值\n")
+        fc.write_text(
+            "## 3. source_type 正式白名单\n`wrong_type`\n## 4. event_type 正式清单\n## 6. event_status 正式取值\n"
+        )
         us_json = tmp_path / "us.json"
         us_json.write_text('{"source_type": "valid"}')
         ds_json = tmp_path / "ds.json"
@@ -696,9 +731,13 @@ class TestEventContractChecker:
         us = tmp_path / "us.md"
         us.write_text("## 3. 正式输入源\n`valid`\n## 4. 正式事件类型\n`evt`\n## 6. event_status 标准\n`ok`\n")
         um = tmp_path / "um.md"
-        um.write_text("## 2. 正式输入源范围\n`valid`\n## 3. 输入源到正式事件的映射主表\n`evt`\n## 4. 主路由规则\n`ok`\n## 5. 错误码与原因码\n")
+        um.write_text(
+            "## 2. 正式输入源范围\n`valid`\n## 3. 输入源到正式事件的映射主表\n`evt`\n## 4. 主路由规则\n`ok`\n## 5. 错误码与原因码\n"
+        )
         fc = tmp_path / "fc.md"
-        fc.write_text("## 3. source_type 正式白名单\n`valid`\n## 4. event_type 正式清单\n`evt`\n## 6. event_status 正式取值\n`ok`\n")
+        fc.write_text(
+            "## 3. source_type 正式白名单\n`valid`\n## 4. event_type 正式清单\n`evt`\n## 6. event_status 正式取值\n`ok`\n"
+        )
         us_json = tmp_path / "us.json"
         us_json.write_text('{"source_type": "unknown_type"}')
         ds_json = tmp_path / "ds.json"
@@ -726,9 +765,13 @@ class TestEventContractChecker:
         us = tmp_path / "us.md"
         us.write_text("## 3. 正式输入源\n`v`\n## 4. 正式事件类型\n`e`\n## 6. event_status 标准\n`s`\n")
         um = tmp_path / "um.md"
-        um.write_text("## 2. 正式输入源范围\n`v`\n## 3. 输入源到正式事件的映射主表\n`e`\n## 4. 主路由规则\n`s`\n## 5. 错误码与原因码\n")
+        um.write_text(
+            "## 2. 正式输入源范围\n`v`\n## 3. 输入源到正式事件的映射主表\n`e`\n## 4. 主路由规则\n`s`\n## 5. 错误码与原因码\n"
+        )
         fc = tmp_path / "fc.md"
-        fc.write_text("## 3. source_type 正式白名单\n`v`\n## 4. event_type 正式清单\n`e`\n## 6. event_status 正式取值\n`s`\n")
+        fc.write_text(
+            "## 3. source_type 正式白名单\n`v`\n## 4. event_type 正式清单\n`e`\n## 6. event_status 正式取值\n`s`\n"
+        )
         us_json = tmp_path / "us.json"
         us_json.write_text('{"source_type": "v", "event_type": "e", "event_status": "s", "old_field": "x"}')
         ds_json = tmp_path / "ds.json"
@@ -757,6 +800,7 @@ class TestEventContractChecker:
 # ---------------------------------------------------------------------------
 # 7. TruthBasisResolver tests
 # ---------------------------------------------------------------------------
+
 
 class TestTruthBasisResolver:
     """Tests for TruthBasisResolver truth-basis parsing and validation."""
@@ -937,6 +981,7 @@ class TestTruthBasisResolver:
 # 8. ScopeResolver tests
 # ---------------------------------------------------------------------------
 
+
 class TestScopeResolver:
     """Tests for ScopeResolver scope resolution and overrides."""
 
@@ -989,9 +1034,13 @@ class TestScopeResolver:
         """Scope config overrides should merge into project_canonical."""
         workspace = _ensure_dir(tmp_path / "workspace")
         scope_cfg = tmp_path / "scope.json"
-        scope_cfg.write_text(json.dumps({
-            "project_canonical": {"override-scope": "relative/path.md"},
-        }))
+        scope_cfg.write_text(
+            json.dumps(
+                {
+                    "project_canonical": {"override-scope": "relative/path.md"},
+                }
+            )
+        )
         cfg = make_minimal_config(
             tmp_path,
             workspace_root=workspace,
@@ -1018,9 +1067,13 @@ class TestScopeResolver:
         """Scope config overrides should merge into project_runtime_root."""
         workspace = _ensure_dir(tmp_path / "workspace")
         scope_cfg = tmp_path / "scope.json"
-        scope_cfg.write_text(json.dumps({
-            "project_runtime_root": {"scope1": "new_runtime"},
-        }))
+        scope_cfg.write_text(
+            json.dumps(
+                {
+                    "project_runtime_root": {"scope1": "new_runtime"},
+                }
+            )
+        )
         cfg = make_minimal_config(
             tmp_path,
             workspace_root=workspace,
@@ -1189,6 +1242,7 @@ class TestScopeResolver:
 # 9. Integration — multiple valid config variants
 # ---------------------------------------------------------------------------
 
+
 class TestValidConfigVariants:
     """Tests that multiple valid config shapes are accepted."""
 
@@ -1253,6 +1307,7 @@ class TestValidConfigVariants:
 # ---------------------------------------------------------------------------
 # 10. Edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestEdgeCases:
     """Edge-case tests for schema validation."""

@@ -75,12 +75,14 @@ def _capture_to_pending(
                     f.write("\n".join(metadata_lines))
                     f.write(content)
 
-                candidates.append({
-                    "source_file": str(file_path.relative_to(project_root)),
-                    "source_project": str(project_root),
-                    "captured_at": captured_at,
-                    "pending_path": str(pending_path),
-                })
+                candidates.append(
+                    {
+                        "source_file": str(file_path.relative_to(project_root)),
+                        "source_project": str(project_root),
+                        "captured_at": captured_at,
+                        "pending_path": str(pending_path),
+                    }
+                )
             except OSError:
                 pass
 
@@ -191,9 +193,7 @@ class TestVALCross003SedimentationFullFlow:
     4. New project can read via fallback routing
     """
 
-    def test_capture_creates_pending_candidate(
-        self, project_a: Path, shared_global_kb: Path
-    ):
+    def test_capture_creates_pending_candidate(self, project_a: Path, shared_global_kb: Path):
         """Step 1: Auto-capture creates pending candidate from today's changes."""
         # Create a lesson modified today
         today_ts = datetime.now().timestamp()
@@ -217,9 +217,7 @@ class TestVALCross003SedimentationFullFlow:
         assert len(pending_files) == 1
         assert "ssh-pitfall" in pending_files[0].name
 
-    def test_promote_moves_to_formal_category(
-        self, project_a: Path, shared_global_kb: Path
-    ):
+    def test_promote_moves_to_formal_category(self, project_a: Path, shared_global_kb: Path):
         """Step 2: Promote moves file from pending/ to formal category."""
         from memory_core.tools.promote_global_kb import main as promote_main
 
@@ -241,10 +239,15 @@ class TestVALCross003SedimentationFullFlow:
         pending_file = pending_files[0]
 
         # Step 2b: Promote to engineering/
-        exit_code = promote_main([
-            str(pending_file), "--to", "engineering",
-            "--global-kb-root", str(shared_global_kb),
-        ])
+        exit_code = promote_main(
+            [
+                str(pending_file),
+                "--to",
+                "engineering",
+                "--global-kb-root",
+                str(shared_global_kb),
+            ]
+        )
         assert exit_code == 0
 
         # Verify file moved from pending/ to engineering/
@@ -256,9 +259,7 @@ class TestVALCross003SedimentationFullFlow:
         assert len(engineering_files) == 1
         assert "ci-cache" in engineering_files[0].name
 
-    def test_new_project_can_read_promoted_knowledge(
-        self, project_a: Path, project_b: Path, shared_global_kb: Path
-    ):
+    def test_new_project_can_read_promoted_knowledge(self, project_a: Path, project_b: Path, shared_global_kb: Path):
         """Step 3: New project (B) can read promoted knowledge via fallback."""
         from memory_core.tools.memory_hook_impls import RouteTargetPolicyImpl
         from memory_core.tools.promote_global_kb import main as promote_main
@@ -278,10 +279,15 @@ class TestVALCross003SedimentationFullFlow:
         pending_file = list(pending_dir.glob("*.md"))[0]
 
         # Promote to operations/
-        exit_code = promote_main([
-            str(pending_file), "--to", "operations",
-            "--global-kb-root", str(shared_global_kb),
-        ])
+        exit_code = promote_main(
+            [
+                str(pending_file),
+                "--to",
+                "operations",
+                "--global-kb-root",
+                str(shared_global_kb),
+            ]
+        )
         assert exit_code == 0
 
         # Step 3b: Project B (new project) can read via fallback
@@ -304,9 +310,7 @@ class TestVALCross003SedimentationFullFlow:
         assert "Docker Tips" in content
         assert "multi-stage" in content
 
-    def test_full_sedimentation_flow_end_to_end(
-        self, project_a: Path, project_b: Path, shared_global_kb: Path
-    ):
+    def test_full_sedimentation_flow_end_to_end(self, project_a: Path, project_b: Path, shared_global_kb: Path):
         """Complete end-to-end test of sedimentation flow."""
         from memory_core.tools.memory_hook_adapters.default_runtime_profile import (
             build_default_runtime_profile,
@@ -331,10 +335,15 @@ class TestVALCross003SedimentationFullFlow:
         # 3. Promote to formal category
         pending_dir = shared_global_kb / "pending"
         pending_file = list(pending_dir.glob("*.md"))[0]
-        exit_code = promote_main([
-            str(pending_file), "--to", "engineering",
-            "--global-kb-root", str(shared_global_kb),
-        ])
+        exit_code = promote_main(
+            [
+                str(pending_file),
+                "--to",
+                "engineering",
+                "--global-kb-root",
+                str(shared_global_kb),
+            ]
+        )
         assert exit_code == 0
 
         # 4. Verify Project B's runtime profile has global KB enabled
@@ -367,9 +376,7 @@ class TestVALCross004MultiProjectSharing:
     and A's promoted knowledge is readable by B.
     """
 
-    def test_both_projects_use_same_global_kb_root(
-        self, project_a: Path, project_b: Path, shared_global_kb: Path
-    ):
+    def test_both_projects_use_same_global_kb_root(self, project_a: Path, project_b: Path, shared_global_kb: Path):
         """Both projects should reference the same global KB root."""
         from memory_core.tools.memory_hook_adapters.default_runtime_profile import (
             build_default_runtime_profile,
@@ -409,10 +416,15 @@ class TestVALCross004MultiProjectSharing:
         pending_file = list(pending_dir.glob("*.md"))[0]
 
         # Promote to engineering/
-        exit_code = promote_main([
-            str(pending_file), "--to", "engineering",
-            "--global-kb-root", str(shared_global_kb),
-        ])
+        exit_code = promote_main(
+            [
+                str(pending_file),
+                "--to",
+                "engineering",
+                "--global-kb-root",
+                str(shared_global_kb),
+            ]
+        )
         assert exit_code == 0
 
         # Project B can route to it
@@ -467,14 +479,30 @@ class TestVALCross004MultiProjectSharing:
         ssh_pending = [f for f in pending_files if "ssh" in f.name][0]
         ci_pending = [f for f in pending_files if "ci" in f.name][0]
 
-        assert promote_main([
-            str(ssh_pending), "--to", "operations",
-            "--global-kb-root", str(shared_global_kb),
-        ]) == 0
-        assert promote_main([
-            str(ci_pending), "--to", "engineering",
-            "--global-kb-root", str(shared_global_kb),
-        ]) == 0
+        assert (
+            promote_main(
+                [
+                    str(ssh_pending),
+                    "--to",
+                    "operations",
+                    "--global-kb-root",
+                    str(shared_global_kb),
+                ]
+            )
+            == 0
+        )
+        assert (
+            promote_main(
+                [
+                    str(ci_pending),
+                    "--to",
+                    "engineering",
+                    "--global-kb-root",
+                    str(shared_global_kb),
+                ]
+            )
+            == 0
+        )
 
         # Project B can access both
         route_policy_b = RouteTargetPolicyImpl(
@@ -496,9 +524,7 @@ class TestVALCross004MultiProjectSharing:
         assert "ci-optimization" in resolved_ci.name
         assert "CI Optimization" in resolved_ci.read_text()
 
-    def test_project_priority_over_global_still_holds(
-        self, project_a: Path, project_b: Path, shared_global_kb: Path
-    ):
+    def test_project_priority_over_global_still_holds(self, project_a: Path, project_b: Path, shared_global_kb: Path):
         """Project-specific knowledge still takes priority over global KB."""
         from memory_core.tools.memory_hook_impls import RouteTargetPolicyImpl
         from memory_core.tools.promote_global_kb import main as promote_main
@@ -516,10 +542,15 @@ class TestVALCross004MultiProjectSharing:
 
         pending_dir = shared_global_kb / "pending"
         pending_file = list(pending_dir.glob("*.md"))[0]
-        promote_main([
-            str(pending_file), "--to", "operations",
-            "--global-kb-root", str(shared_global_kb),
-        ])
+        promote_main(
+            [
+                str(pending_file),
+                "--to",
+                "operations",
+                "--global-kb-root",
+                str(shared_global_kb),
+            ]
+        )
 
         # Project B has its own SSH guide
         project_b_ssh = project_b / "memory" / "kb" / "operations" / pending_file.name

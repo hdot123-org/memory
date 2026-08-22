@@ -86,12 +86,14 @@ tags: [migration,idempotent,rollback,logging]
 
 Idempotent: safe to run multiple times.
 """
+
 import sys
 import json
 from pathlib import Path
 
 MIGRATION_ID = "002"
 MIGRATION_DESC = "schema_v1_to_v2"
+
 
 def run(project_root: Path) -> dict:
     """Execute migration. Returns result dict."""
@@ -101,6 +103,7 @@ def run(project_root: Path) -> dict:
 
     # Parse current lock
     import tomllib
+
     with open(lock_path, "rb") as f:
         lock_data = tomllib.load(f)
 
@@ -115,10 +118,12 @@ def run(project_root: Path) -> dict:
         lock_data["memory"]["schema_version"] = "context-package-v1"
         with open(lock_path, "w") as f:
             import tomli_w
+
             tomli_w.dump(lock_data, f)
         return {"status": "applied", "from": "wb-hook-v2", "to": "context-package-v1"}
 
     return {"status": "error", "reason": f"unknown schema: {current_schema}"}
+
 
 if __name__ == "__main__":
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.cwd()

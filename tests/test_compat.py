@@ -17,6 +17,7 @@ from memory_core.constants import CURRENT_MEMORY_VERSION
 # Unit tests for check helpers
 # ---------------------------------------------------------------------------
 
+
 class TestCheckVersionRegistered:
     def test_known_version(self) -> None:
         result = _check_version_registered("0.4.0")
@@ -72,6 +73,7 @@ class TestCheckNewerThanKnown:
 # check_compatibility tests
 # ---------------------------------------------------------------------------
 
+
 class TestCheckCompatibility:
     def test_current_version_clean(self) -> None:
         """Current version should pass all checks."""
@@ -100,9 +102,7 @@ class TestCheckCompatibility:
             actual_ownership_schema="memory-ownership-v1",
         )
         # Should have matching component check
-        ownership_checks = [
-            c for c in report.checks if "ownership_schema" in c.get("check", "")
-        ]
+        ownership_checks = [c for c in report.checks if "ownership_schema" in c.get("check", "")]
         assert len(ownership_checks) > 0
 
     def test_report_has_dict(self) -> None:
@@ -129,6 +129,7 @@ class TestCheckCompatibility:
 # format_report tests
 # ---------------------------------------------------------------------------
 
+
 class TestFormatReport:
     def test_format_clean_report(self) -> None:
         report = check_compatibility(CURRENT_MEMORY_VERSION)
@@ -149,6 +150,7 @@ class TestFormatReport:
 # Compat matrix integrity tests
 # ---------------------------------------------------------------------------
 
+
 class TestCompatMatrix:
     def test_all_versions_have_required_fields(self) -> None:
         required_fields = [
@@ -160,9 +162,7 @@ class TestCompatMatrix:
         ]
         for version, entry in _COMPAT_MATRIX.items():
             for field in required_fields:
-                assert field in entry, (
-                    f"Version {version} missing field {field}"
-                )
+                assert field in entry, f"Version {version} missing field {field}"
 
     def test_current_version_has_compat_entry(self) -> None:
         """CURRENT_MEMORY_VERSION must have a compat entry (via matrix or fallback)."""

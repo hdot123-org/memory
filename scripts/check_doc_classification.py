@@ -36,16 +36,20 @@ SCAN_ROOTS: tuple[Path, ...] = (
 )
 
 # File name patterns to skip entirely
-SKIP_FILES: frozenset[str] = frozenset({
-    ".DS_Store",
-})
+SKIP_FILES: frozenset[str] = frozenset(
+    {
+        ".DS_Store",
+    }
+)
 
 # Specific files allowed at the top level of scan roots
-TOP_LEVEL_EXCEPTIONS: frozenset[str] = frozenset({
-    "memory/docs/INDEX.md",
-    "memory/kb/INDEX.md",
-    "memory/docs/记忆系统全景文档.md",
-})
+TOP_LEVEL_EXCEPTIONS: frozenset[str] = frozenset(
+    {
+        "memory/docs/INDEX.md",
+        "memory/kb/INDEX.md",
+        "memory/docs/记忆系统全景文档.md",
+    }
+)
 
 
 def _is_in_registered_dir(file_path: Path) -> bool:
@@ -78,34 +82,35 @@ def scan_doc_classification() -> list[dict[str, str]]:
                 continue
             if _is_in_registered_dir(path):
                 continue
-            findings.append({
-                "kind": "unregistered-doc-dir",
-                "path": str(path.relative_to(REPO_ROOT)),
-                "rule": (
-                    "File is not in any DOC_CATEGORIES directory or EXCEPTION_DIRS. "
-                    "See memory_core/tools/doc_router.py for the routing table."
-                ),
-            })
+            findings.append(
+                {
+                    "kind": "unregistered-doc-dir",
+                    "path": str(path.relative_to(REPO_ROOT)),
+                    "rule": (
+                        "File is not in any DOC_CATEGORIES directory or EXCEPTION_DIRS. "
+                        "See memory_core/tools/doc_router.py for the routing table."
+                    ),
+                }
+            )
 
     return findings
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Document classification directory guard"
-    )
-    parser.add_argument(
-        "--json", action="store_true", help="Output findings as JSON"
-    )
+    parser = argparse.ArgumentParser(description="Document classification directory guard")
+    parser.add_argument("--json", action="store_true", help="Output findings as JSON")
     args = parser.parse_args()
 
     findings = scan_doc_classification()
 
     if args.json:
-        print(json.dumps(
-            {"findings": findings, "count": len(findings)},
-            ensure_ascii=False, indent=2,
-        ))
+        print(
+            json.dumps(
+                {"findings": findings, "count": len(findings)},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     else:
         if not findings:
             print("doc classification guard: clean (0 findings)")

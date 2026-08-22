@@ -18,9 +18,7 @@ def test_no_globals_update_in_load_adapter_config():
     from memory_core.tools.memory_hook_gateway import load_adapter_config
 
     source = inspect.getsource(load_adapter_config)
-    assert "globals().update" not in source, (
-        "load_adapter_config should not contain globals().update"
-    )
+    assert "globals().update" not in source, "load_adapter_config should not contain globals().update"
 
 
 def test_no_globals_update_in_reload_adapter():
@@ -30,9 +28,7 @@ def test_no_globals_update_in_reload_adapter():
     from memory_core.tools.memory_hook_gateway import reload_adapter
 
     source = inspect.getsource(reload_adapter)
-    assert "globals().update" not in source, (
-        "reload_adapter should not contain globals().update"
-    )
+    assert "globals().update" not in source, "reload_adapter should not contain globals().update"
 
 
 def test_get_config_returns_new_value_after_reload():
@@ -55,9 +51,7 @@ def test_get_config_returns_new_value_after_reload():
 
     # Verify get_config returns new value
     new_value = gw.get_config("PROJECT_MAP_ROOT")
-    assert new_value == test_value, (
-        f"get_config should return new value after reload, got {new_value}"
-    )
+    assert new_value == test_value, f"get_config should return new value after reload, got {new_value}"
 
     # Restore original
     with patch.object(gw, "_load_adapter_profile", return_value=original_profile):
@@ -65,9 +59,7 @@ def test_get_config_returns_new_value_after_reload():
 
     # Verify fallback to original
     restored_value = gw.get_config("PROJECT_MAP_ROOT")
-    assert restored_value == original_value, (
-        "get_config should return original value after second reload"
-    )
+    assert restored_value == original_value, "get_config should return original value after second reload"
 
 
 def test_adapter_hot_switch_semantics():
@@ -89,9 +81,7 @@ def test_adapter_hot_switch_semantics():
 
     # Verify immediate propagation
     current_canonical = gw.get_config("PROJECT_CANONICAL")
-    assert current_canonical == test_canonical, (
-        "Hot-switch should immediately propagate config changes"
-    )
+    assert current_canonical == test_canonical, "Hot-switch should immediately propagate config changes"
 
     # Restore
     with patch.object(gw, "_load_adapter_profile", return_value=gw._adapter_profile):
@@ -107,9 +97,7 @@ def test_get_config_dict_returns_shallow_copy():
 
     # Modify the copy should not affect original
     config_dict["TEST_KEY"] = "test_value"
-    assert gw.get_config("TEST_KEY") is None, (
-        "Modifying get_config_dict result should not affect original config"
-    )
+    assert gw.get_config("TEST_KEY") is None, "Modifying get_config_dict result should not affect original config"
 
 
 def test_config_lock_thread_safety():

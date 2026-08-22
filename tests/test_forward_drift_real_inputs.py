@@ -6,6 +6,7 @@ Three bugs fixed:
 3. Classification must use pre-dedup actionable findings (not post-dedup where ISSUE_EXISTS=0)
 4. open_issues snapshot must be refreshed after issue creation (prevents false GHOST)
 """
+
 import sys
 from pathlib import Path
 
@@ -15,8 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from evolution_scanner import Finding, _integrate_forward_drift_watch  # noqa: E402
 
 
-def _make_finding(rule_id="RULE_A", location="src/a.py::L10",
-                  severity="warning", category="code_quality") -> Finding:
+def _make_finding(rule_id="RULE_A", location="src/a.py::L10", severity="warning", category="code_quality") -> Finding:
     return Finding(
         rule_id=rule_id,
         severity=severity,
@@ -79,10 +79,7 @@ class TestQuotaExhaustedRealInput:
         """When a category has more findings than quota allows,
         excess findings should be classified as QUOTA_PENDING, not GHOST."""
         # Create 5 findings in code_quality category
-        findings = [
-            _make_finding(f"R{i}", f"a.py::L{i}", category="code_quality")
-            for i in range(5)
-        ]
+        findings = [_make_finding(f"R{i}", f"a.py::L{i}", category="code_quality") for i in range(5)]
         open_issues = []
         # Simulate quota exhaustion: code_quality has quota=3, but 5 findings
         # (the function should detect 5 > 3 → quota exhausted)
@@ -227,10 +224,7 @@ class TestP1GlobalQuotaMisapply:
         """self_audit findings should use max_self_audit_issues_per_tick,
         not the global max_issues_per_tick."""
         # 3 self_audit findings; global quota=1 but self_audit quota=5
-        findings = [
-            _make_finding(f"R{i}", f"a.py::L{i}", category="evolution_self_audit")
-            for i in range(3)
-        ]
+        findings = [_make_finding(f"R{i}", f"a.py::L{i}", category="evolution_self_audit") for i in range(3)]
         open_issues = []
 
         # P1 FIX: main() pre-computes quota_exhausted with per-category quotas
@@ -246,17 +240,15 @@ class TestP1GlobalQuotaMisapply:
         captured = capsys.readouterr()
         # quota_exhausted empty → NOT quota exhausted → GHOST (no issue, no reason)
         # BUG: old code uses max_issues_per_tick=1 → 3 > 1 → wrongly QUOTA_PENDING
-        assert "QUOTA_PENDING=0" in captured.out, \
+        assert "QUOTA_PENDING=0" in captured.out, (
             f"self_audit should NOT be quota-pending when count(3) <= self_audit_quota(5). Got: {captured.out}"
+        )
 
     def test_code_hygiene_uses_code_hygiene_quota_not_global(self, capsys):
         """code_hygiene findings should use max_code_hygiene_issues_per_tick,
         not the global max_issues_per_tick."""
         # 4 code_hygiene findings; global quota=1 but code_hygiene quota=10
-        findings = [
-            _make_finding(f"R{i}", f"a.py::L{i}", category="code_hygiene")
-            for i in range(4)
-        ]
+        findings = [_make_finding(f"R{i}", f"a.py::L{i}", category="code_hygiene") for i in range(4)]
         open_issues = []
 
         # P1 FIX: main() pre-computes quota_exhausted with per-category quotas
@@ -272,16 +264,14 @@ class TestP1GlobalQuotaMisapply:
         captured = capsys.readouterr()
         # quota_exhausted empty → NOT quota exhausted → GHOST
         # BUG: old code uses max_issues_per_tick=1 → 4 > 1 → wrongly QUOTA_PENDING
-        assert "QUOTA_PENDING=0" in captured.out, \
+        assert "QUOTA_PENDING=0" in captured.out, (
             f"code_hygiene should NOT be quota-pending when count(4) <= hygiene_quota(10). Got: {captured.out}"
+        )
 
     def test_regular_category_still_uses_global_quota(self, capsys):
         """Regular (non-self-audit, non-code-hygiene) categories still use max_issues_per_tick."""
         # 3 code_quality findings; global quota=2
-        findings = [
-            _make_finding(f"R{i}", f"a.py::L{i}", category="code_quality")
-            for i in range(3)
-        ]
+        findings = [_make_finding(f"R{i}", f"a.py::L{i}", category="code_quality") for i in range(3)]
         open_issues = []
 
         # P1 FIX: main() pre-computes quota_exhausted with per-category quotas
@@ -296,8 +286,9 @@ class TestP1GlobalQuotaMisapply:
         )
         captured = capsys.readouterr()
         # quota_exhausted has code_quality → quota exhausted → QUOTA_PENDING
-        assert "QUOTA_PENDING=3" in captured.out, \
+        assert "QUOTA_PENDING=3" in captured.out, (
             f"code_quality should be quota-pending when count(3) > global_quota(2). Got: {captured.out}"
+        )
 
 
 class TestP1PreDedupCountMismatch:
@@ -336,8 +327,9 @@ class TestP1PreDedupCountMismatch:
         captured = capsys.readouterr()
         # quota_exhausted empty → NOT quota exhausted → GHOST (no issue, no reason)
         # BUG: if using all_findings count=5 > 3 → wrongly QUOTA_PENDING
-        assert "QUOTA_PENDING=0" in captured.out, \
+        assert "QUOTA_PENDING=0" in captured.out, (
             f"deduped count(2) <= quota(3) → no QUOTA_PENDING. Got: {captured.out}"
+        )
 
 
 class TestIntegrateSignatureBackwardCompat:
@@ -363,10 +355,7 @@ class TestIntegrateSignatureBackwardCompat:
 
     def test_caller_with_quota_exhausted(self, capsys):
         """Callers passing quota_exhausted should work correctly."""
-        findings = [
-            _make_finding(f"R{i}", f"a.py::L{i}", category="code_quality")
-            for i in range(5)
-        ]
+        findings = [_make_finding(f"R{i}", f"a.py::L{i}", category="code_quality") for i in range(5)]
         open_issues = []
 
         # P1 FIX: main() pre-computes quota_exhausted

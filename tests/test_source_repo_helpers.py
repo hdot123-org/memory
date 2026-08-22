@@ -23,9 +23,7 @@ class TestMakeSourceRepoDefault:
         assert (tools / "memory_hook_gateway.py").exists()
         assert (tools / "factory_global_hooks.py").exists()
         assert (tools / "codex_global_hooks.py").exists()
-        assert not (tools / "ownership.py").exists(), (
-            "ownership.py should NOT exist when extra_marker_files is empty"
-        )
+        assert not (tools / "ownership.py").exists(), "ownership.py should NOT exist when extra_marker_files is empty"
 
 
 class TestMakeSourceRepoExtraMarkers:
@@ -37,9 +35,7 @@ class TestMakeSourceRepoExtraMarkers:
         tools = repo / "memory_core" / "tools"
 
         # Extra marker must exist
-        assert (tools / "ownership.py").exists(), (
-            "ownership.py must exist when passed via extra_marker_files"
-        )
+        assert (tools / "ownership.py").exists(), "ownership.py must exist when passed via extra_marker_files"
         # All three base markers must still exist (append, not replace)
         assert (tools / "memory_hook_gateway.py").exists()
         assert (tools / "factory_global_hooks.py").exists()

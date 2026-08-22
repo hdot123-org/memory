@@ -22,6 +22,7 @@ class TestVersionConsistency:
     def test_constants_matches_pyproject(self) -> None:
         """constants.py CURRENT_MEMORY_VERSION must match pyproject.toml version."""
         from memory_core.constants import CURRENT_MEMORY_VERSION
+
         pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
         with pyproject_path.open("rb") as f:
             config = tomllib.load(f)
@@ -47,7 +48,7 @@ class TestVersionConsistency:
                 break
             if in_project_section and stripped.startswith("version"):
                 assert CURRENT_MEMORY_VERSION in stripped, (
-                    f"Expected version = \"{CURRENT_MEMORY_VERSION}\" in pyproject.toml, got: {stripped}"
+                    f'Expected version = "{CURRENT_MEMORY_VERSION}" in pyproject.toml, got: {stripped}'
                 )
                 found = True
                 break
@@ -56,6 +57,7 @@ class TestVersionConsistency:
     def test_compat_entry_for_current_version(self) -> None:
         """CURRENT_MEMORY_VERSION must resolve to a compat entry (matrix or fallback)."""
         from memory_core.compat import _get_compat_entry
+
         entry = _get_compat_entry(CURRENT_MEMORY_VERSION)
         required_keys = {
             "ownership_schema",
@@ -65,13 +67,12 @@ class TestVersionConsistency:
             "memory_lock_schema",
         }
         missing = required_keys - set(entry.keys())
-        assert not missing, (
-            f"compat entry for '{CURRENT_MEMORY_VERSION}' missing keys: {missing}"
-        )
+        assert not missing, f"compat entry for '{CURRENT_MEMORY_VERSION}' missing keys: {missing}"
 
     def test_compat_entry_has_required_fields(self) -> None:
         """compat entry for CURRENT_MEMORY_VERSION must have all required component keys."""
         from memory_core.compat import _get_compat_entry
+
         entry = _get_compat_entry(CURRENT_MEMORY_VERSION)
         required_keys = {
             "ownership_schema",
@@ -86,6 +87,7 @@ class TestVersionConsistency:
     def test_compat_entry_min_installer_matches(self) -> None:
         """compat entry['min_installer_version'] for CURRENT_MEMORY_VERSION must equal CURRENT_MEMORY_VERSION."""
         from memory_core.compat import _get_compat_entry
+
         entry = _get_compat_entry(CURRENT_MEMORY_VERSION)
         assert entry["min_installer_version"] == CURRENT_MEMORY_VERSION
 
@@ -140,10 +142,10 @@ class TestAdapterTomlSchemaVersion:
     def test_adapter_config_default_version(self) -> None:
         """AdapterConfig default adapter_version must be CURRENT_MEMORY_VERSION."""
         from memory_core.tools.adapter_toml_schema import AdapterConfig
+
         config = AdapterConfig(project_name="test", project_scope="test")
         assert config.adapter_version == CURRENT_MEMORY_VERSION, (
-            f"Expected AdapterConfig default adapter_version='{CURRENT_MEMORY_VERSION}', "
-            f"got '{config.adapter_version}'"
+            f"Expected AdapterConfig default adapter_version='{CURRENT_MEMORY_VERSION}', got '{config.adapter_version}'"
         )
 
 
@@ -158,6 +160,7 @@ class TestCompatFallback:
     def test_unknown_version_returns_default_entry(self) -> None:
         """A version not in _COMPAT_MATRIX should still return a valid compat entry."""
         from memory_core.compat import _get_compat_entry
+
         entry = _get_compat_entry("99.99.99")
         required_keys = {
             "ownership_schema",
@@ -171,5 +174,6 @@ class TestCompatFallback:
     def test_current_version_compat_entry_works(self) -> None:
         """CURRENT_MEMORY_VERSION should produce a valid compat entry (via matrix or fallback)."""
         from memory_core.compat import _get_compat_entry
+
         entry = _get_compat_entry(CURRENT_MEMORY_VERSION)
         assert entry["min_installer_version"] == CURRENT_MEMORY_VERSION

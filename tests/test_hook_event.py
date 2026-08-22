@@ -35,41 +35,48 @@ from hook_event import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def sample_codex_payload(repo_root) -> str:
-    return json.dumps({
-        "session_id": "codex-session-001",
-        "cwd": str(repo_root),
-        "message": "Hello world",
-    })
+    return json.dumps(
+        {
+            "session_id": "codex-session-001",
+            "cwd": str(repo_root),
+            "message": "Hello world",
+        }
+    )
 
 
 @pytest.fixture
 def sample_claude_session_start(repo_root) -> str:
-    return json.dumps({
-        "event": "SessionStart",
-        "session_id": "claude-session-001",
-        "cwd": str(repo_root),
-        "model": "claude-sonnet-4-20250514",
-    })
+    return json.dumps(
+        {
+            "event": "SessionStart",
+            "session_id": "claude-session-001",
+            "cwd": str(repo_root),
+            "model": "claude-sonnet-4-20250514",
+        }
+    )
 
 
 @pytest.fixture
 def sample_claude_prompt_submit() -> str:
-    return json.dumps({
-        "event": "UserPromptSubmit",
-        "session_id": "claude-session-002",
-        "cwd": "/Users/busiji/project",
-        "user_message": "Fix the bug",
-    })
+    return json.dumps(
+        {
+            "event": "UserPromptSubmit",
+            "session_id": "claude-session-002",
+            "cwd": "/Users/busiji/project",
+            "user_message": "Fix the bug",
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
 # 1. from_codex_payload tests
 # ---------------------------------------------------------------------------
 
-class TestFromCodexPayload:
 
+class TestFromCodexPayload:
     def test_basic_parse(self, sample_codex_payload, repo_root):
         event = from_codex_payload(sample_codex_payload, event="session-start")
         assert event.source == "codex"
@@ -122,6 +129,7 @@ class TestFromCodexPayload:
         assert event.timestamp
         # Should be parseable as ISO
         from datetime import datetime
+
         datetime.fromisoformat(event.timestamp)
 
     def test_all_event_types(self):
@@ -134,8 +142,8 @@ class TestFromCodexPayload:
 # 2. from_claude_payload tests
 # ---------------------------------------------------------------------------
 
-class TestFromClaudePayload:
 
+class TestFromClaudePayload:
     def test_session_start_mapping(self, sample_claude_session_start):
         event = from_claude_payload(sample_claude_session_start)
         assert event.source == "claude"
@@ -190,6 +198,7 @@ class TestFromClaudePayload:
     def test_timestamp_is_iso(self, sample_claude_session_start):
         event = from_claude_payload(sample_claude_session_start)
         from datetime import datetime
+
         datetime.fromisoformat(event.timestamp)
 
 
@@ -197,8 +206,8 @@ class TestFromClaudePayload:
 # 3. Claude event mapping completeness
 # ---------------------------------------------------------------------------
 
-class TestClaudeEventMapping:
 
+class TestClaudeEventMapping:
     def test_all_mappings_present(self):
         assert "SessionStart" in _CLAUDE_EVENT_MAP
         assert "UserPromptSubmit" in _CLAUDE_EVENT_MAP
@@ -214,8 +223,8 @@ class TestClaudeEventMapping:
 # 4. to_context_package_input tests
 # ---------------------------------------------------------------------------
 
-class TestToContextPackageInput:
 
+class TestToContextPackageInput:
     def test_codex_output_structure(self):
         event = HookEvent(
             source="codex",
@@ -288,8 +297,8 @@ class TestToContextPackageInput:
 # 5. parse_hook_event tests
 # ---------------------------------------------------------------------------
 
-class TestParseHookEvent:
 
+class TestParseHookEvent:
     def test_factory_dispatch(self):
         raw = json.dumps({"cwd": "/test", "hook_event_name": "SessionStart"})
         event = parse_hook_event("factory", "session-start", raw)
@@ -327,8 +336,8 @@ class TestParseHookEvent:
 # 6. Cross-host normalization
 # ---------------------------------------------------------------------------
 
-class TestCrossHostNormalization:
 
+class TestCrossHostNormalization:
     def test_same_event_type_after_normalization(self):
         """Cross-host normalization: Claude and Codex session-start map to the same event type (factory host shares the Codex path)."""
         claude_raw = json.dumps({"event": "SessionStart", "cwd": "/repo"})
@@ -341,15 +350,19 @@ class TestCrossHostNormalization:
 
     def test_both_produce_compatible_context_input(self):
         """Both hosts produce structurally compatible context package input."""
-        claude_raw = json.dumps({
-            "event": "UserPromptSubmit",
-            "session_id": "s1",
-            "cwd": "/repo",
-        })
-        codex_raw = json.dumps({
-            "session_id": "s2",
-            "cwd": "/repo",
-        })
+        claude_raw = json.dumps(
+            {
+                "event": "UserPromptSubmit",
+                "session_id": "s1",
+                "cwd": "/repo",
+            }
+        )
+        codex_raw = json.dumps(
+            {
+                "session_id": "s2",
+                "cwd": "/repo",
+            }
+        )
 
         claude_event = from_claude_payload(claude_raw)
         codex_event = from_codex_payload(codex_raw, event="prompt-submit")

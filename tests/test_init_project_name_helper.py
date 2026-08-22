@@ -5,7 +5,6 @@ Covers the silent-except fix: narrowed exception types + debug logging,
 while preserving the fallback-to-directory-name behaviour.
 """
 
-
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -61,9 +60,7 @@ class TestProjectNameFallbackLoggedAtDebug:
 
         # Check that a debug message mentioning git remote failure exists
         assert any(
-            "git remote query failed" in record.message
-            for record in caplog.records
-            if record.levelname == "DEBUG"
+            "git remote query failed" in record.message for record in caplog.records if record.levelname == "DEBUG"
         )
 
     def test_project_name_no_log_on_success(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
@@ -78,7 +75,4 @@ class TestProjectNameFallbackLoggedAtDebug:
             result = _project_name(tmp_path)
 
         assert result == "my_repo"
-        assert not any(
-            "git remote query failed" in record.message
-            for record in caplog.records
-        )
+        assert not any("git remote query failed" in record.message for record in caplog.records)

@@ -35,7 +35,7 @@ def _extract_jq_expression():
     # The jq expression is between the single-quoted delimiters in the
     # STATUS=$(echo "$CHECKS" | jq -r '...') block
     # We search for the block that starts after 'STATUS=$(echo "$CHECKS" | jq -r'
-    start_marker = "STATUS=$(echo \"$CHECKS\" | jq -r '"
+    start_marker = 'STATUS=$(echo "$CHECKS" | jq -r \''
     start_idx = script_text.find(start_marker)
     assert start_idx != -1, "Could not find STATUS jq block in script"
     start_idx += len(start_marker)
@@ -234,14 +234,12 @@ class TestActiveCheckGuardStructure:
             "before reading conclusions (stale-check race guard)"
         )
         assert "completed" in jq_expr, (
-            "Script must compare .status against 'completed' to identify "
-            "active (in-progress/queued) check runs"
+            "Script must compare .status against 'completed' to identify active (in-progress/queued) check runs"
         )
 
     def test_script_preserves_cancelled_exclusion(self):
         """The cancelled exclusion must remain for dual-trigger handling."""
         jq_expr = _extract_jq_expression()
         assert "cancelled" in jq_expr, (
-            "Script must still exclude 'cancelled' conclusions for "
-            "dual-trigger race handling"
+            "Script must still exclude 'cancelled' conclusions for dual-trigger race handling"
         )

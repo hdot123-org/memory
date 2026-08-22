@@ -61,9 +61,12 @@ def _project_name(target: Path, scope: str | None = None) -> str:
     # Try git remote
     try:
         import subprocess
+
         result = subprocess.run(
             ["git", "-C", str(target), "remote", "get-url", "origin"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.returncode == 0 and result.stdout.strip():
             url = result.stdout.strip().rstrip("/")
@@ -276,5 +279,3 @@ def template_canonical_md(project_name: str) -> tuple[str, list[str]]:
 | {{DATE}} | 初始化 | {{AUTHOR}} |
 """
     return content, warnings
-
-

@@ -8,7 +8,6 @@ Verifies that health report includes layout_audit field with:
 - recommended_mode (fresh/adopt/update/repair/manual)
 """
 
-
 import json
 import subprocess
 import sys
@@ -346,14 +345,28 @@ def test_determine_recommended_mode_logic():
     # Test fresh mode
     assert (
         health_module._determine_recommended_mode(
-            total=0, p0=0, p1=0, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_system_memory=False
+            total=0,
+            p0=0,
+            p1=0,
+            p2=0,
+            root_pollution_count=0,
+            multi_generation_conflict=False,
+            has_real_workspace_conflict=False,
+            has_system_memory=False,
         )
         == "fresh"
     )
 
     assert (
         health_module._determine_recommended_mode(
-            total=0, p0=0, p1=0, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_system_memory=True
+            total=0,
+            p0=0,
+            p1=0,
+            p2=0,
+            root_pollution_count=0,
+            multi_generation_conflict=False,
+            has_real_workspace_conflict=False,
+            has_system_memory=True,
         )
         == "update"
     )
@@ -361,7 +374,14 @@ def test_determine_recommended_mode_logic():
     # Test manual mode for real workspace conflict
     assert (
         health_module._determine_recommended_mode(
-            total=5, p0=1, p1=2, p2=2, root_pollution_count=1, multi_generation_conflict=True, has_real_workspace_conflict=True, has_system_memory=True
+            total=5,
+            p0=1,
+            p1=2,
+            p2=2,
+            root_pollution_count=1,
+            multi_generation_conflict=True,
+            has_real_workspace_conflict=True,
+            has_system_memory=True,
         )
         == "manual"
     )
@@ -369,7 +389,14 @@ def test_determine_recommended_mode_logic():
     # Test NOT manual for multi_generation_conflict without workspace (compatibility)
     assert (
         health_module._determine_recommended_mode(
-            total=5, p0=1, p1=2, p2=2, root_pollution_count=1, multi_generation_conflict=True, has_real_workspace_conflict=False, has_system_memory=True
+            total=5,
+            p0=1,
+            p1=2,
+            p2=2,
+            root_pollution_count=1,
+            multi_generation_conflict=True,
+            has_real_workspace_conflict=False,
+            has_system_memory=True,
         )
         == "repair"
     )
@@ -377,7 +404,14 @@ def test_determine_recommended_mode_logic():
     # Test adopt mode for legacy without .memory
     assert (
         health_module._determine_recommended_mode(
-            total=1, p0=0, p1=1, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_system_memory=False
+            total=1,
+            p0=0,
+            p1=1,
+            p2=0,
+            root_pollution_count=0,
+            multi_generation_conflict=False,
+            has_real_workspace_conflict=False,
+            has_system_memory=False,
         )
         == "adopt"
     )
@@ -385,14 +419,28 @@ def test_determine_recommended_mode_logic():
     # Test repair mode for .memory with issues
     assert (
         health_module._determine_recommended_mode(
-            total=2, p0=1, p1=0, p2=1, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_system_memory=True
+            total=2,
+            p0=1,
+            p1=0,
+            p2=1,
+            root_pollution_count=0,
+            multi_generation_conflict=False,
+            has_real_workspace_conflict=False,
+            has_system_memory=True,
         )
         == "repair"
     )
 
     assert (
         health_module._determine_recommended_mode(
-            total=1, p0=0, p1=1, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_system_memory=True
+            total=1,
+            p0=0,
+            p1=1,
+            p2=0,
+            root_pollution_count=0,
+            multi_generation_conflict=False,
+            has_real_workspace_conflict=False,
+            has_system_memory=True,
         )
         == "repair"
     )
@@ -400,7 +448,14 @@ def test_determine_recommended_mode_logic():
     # Test update mode for clean .memory
     assert (
         health_module._determine_recommended_mode(
-            total=0, p0=0, p1=0, p2=0, root_pollution_count=0, multi_generation_conflict=False, has_real_workspace_conflict=False, has_system_memory=True
+            total=0,
+            p0=0,
+            p1=0,
+            p2=0,
+            root_pollution_count=0,
+            multi_generation_conflict=False,
+            has_real_workspace_conflict=False,
+            has_system_memory=True,
         )
         == "update"
     )

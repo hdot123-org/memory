@@ -24,7 +24,9 @@ from ._gateway_config import _FORCE_HOOK, ARTIFACT_ROOT, EVENT_LOG, PROJECT_LIFE
 def _get_host_delegate(host: str) -> Any:
     """Get host delegate (delegates to memory_hook_impls.resolve_host_delegate)."""
     from .memory_hook_impls import resolve_host_delegate
+
     return resolve_host_delegate(host)
+
 
 try:
     from ._file_utils import now_iso
@@ -110,11 +112,21 @@ def _parse_args() -> argparse.Namespace:
     """解析命令行参数。"""
     parser = argparse.ArgumentParser(description="Workbot memory hook gateway.")
     parser.add_argument("--host", required=True, choices=("factory",))
-    parser.add_argument("--event", required=True, choices=(
-        "session-start", "prompt-submit", "stop", "notification",
-        "pre-tool-use", "post-tool-use", "subagent-stop",
-        "pre-compact", "session-end",
-    ))
+    parser.add_argument(
+        "--event",
+        required=True,
+        choices=(
+            "session-start",
+            "prompt-submit",
+            "stop",
+            "notification",
+            "pre-tool-use",
+            "post-tool-use",
+            "subagent-stop",
+            "pre-compact",
+            "session-end",
+        ),
+    )
     parser.add_argument("--no-delegate", action="store_true", help="Generate gateway artifacts only.")
     return parser.parse_args()
 
@@ -172,9 +184,7 @@ def _delegate_codex(event: str, raw_payload: str) -> subprocess.CompletedProcess
     return _execute_delegate_via_facade("codex", event, raw_payload, {})
 
 
-def _delegate_claude(
-    event: str, raw_payload: str, payload: dict[str, Any]
-) -> subprocess.CompletedProcess[str]:
+def _delegate_claude(event: str, raw_payload: str, payload: dict[str, Any]) -> subprocess.CompletedProcess[str]:
     """Claude delegate 执行。"""
     return _execute_delegate_via_facade("claude", event, raw_payload, payload)
 
@@ -387,6 +397,7 @@ def _emit_fast_path_metrics(args: argparse.Namespace, start_time: float) -> None
     """
     try:
         from .memory_hook_metrics import _resolve_metrics_path, append_metrics_record
+
         duration_ms = max(1, int((time.time() - start_time) * 1000))
         record = {
             "timestamp": now_iso(),

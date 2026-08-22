@@ -40,11 +40,16 @@ class TestMainPathResolution:
     def test_transcript_from_stdin(self, tmp_path: Path) -> None:
         """session_id and cwd from stdin payload, transcript_path resolved."""
         jsonl = tmp_path / "session.jsonl"
-        jsonl.write_text(json.dumps({
-            "type": "session_start",
-            "title": "test",
-            "timestamp": "2025-01-01T00:00:00Z",
-        }) + "\n")
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "session_start",
+                    "title": "test",
+                    "timestamp": "2025-01-01T00:00:00Z",
+                }
+            )
+            + "\n"
+        )
 
         stdin_payload = {
             "session_id": "test-session-id",
@@ -65,18 +70,28 @@ class TestMainPathResolution:
         factory_sessions = tmp_path / ".factory" / "sessions" / "proj"
         factory_sessions.mkdir(parents=True)
         jsonl = factory_sessions / "my-session.jsonl"
-        jsonl.write_text(json.dumps({
-            "type": "session_start",
-            "title": "test",
-            "timestamp": "2025-01-01T00:00:00Z",
-        }) + "\n")
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "session_start",
+                    "title": "test",
+                    "timestamp": "2025-01-01T00:00:00Z",
+                }
+            )
+            + "\n"
+        )
 
         # Use session-dir arg directly
-        rc = main([
-            "--session-id", "my-session",
-            "--session-dir", str(factory_sessions),
-            "--project-root", str(tmp_path),
-        ])
+        rc = main(
+            [
+                "--session-id",
+                "my-session",
+                "--session-dir",
+                str(factory_sessions),
+                "--project-root",
+                str(tmp_path),
+            ]
+        )
         assert rc == 0
 
     def test_jsonl_not_found_returns_zero(self, tmp_path: Path) -> None:
@@ -144,8 +159,16 @@ class TestMainErrorLogBranches:
         jsonl = tmp_path / "session.jsonl"
         lines = [
             {"type": "session_start", "title": "Test Session", "timestamp": "2025-01-01T00:00:00Z"},
-            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "Hello"}]}, "timestamp": "2025-01-01T00:01:00Z"},
-            {"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "Hi there"}]}, "timestamp": "2025-01-01T00:02:00Z"},
+            {
+                "type": "message",
+                "message": {"role": "user", "content": [{"type": "text", "text": "Hello"}]},
+                "timestamp": "2025-01-01T00:01:00Z",
+            },
+            {
+                "type": "message",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "Hi there"}]},
+                "timestamp": "2025-01-01T00:02:00Z",
+            },
         ]
         jsonl.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
 
@@ -169,27 +192,42 @@ class TestMainSessionIdFallback:
     def test_session_id_from_args(self, tmp_path: Path) -> None:
         """session_id from --session-id arg takes precedence."""
         jsonl = tmp_path / "my-session.jsonl"
-        jsonl.write_text(json.dumps({
-            "type": "session_start",
-            "title": "test",
-            "timestamp": "2025-01-01T00:00:00Z",
-        }) + "\n")
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "session_start",
+                    "title": "test",
+                    "timestamp": "2025-01-01T00:00:00Z",
+                }
+            )
+            + "\n"
+        )
 
-        rc = main([
-            "--session-id", "my-session",
-            "--session-dir", str(tmp_path),
-            "--project-root", str(tmp_path),
-        ])
+        rc = main(
+            [
+                "--session-id",
+                "my-session",
+                "--session-dir",
+                str(tmp_path),
+                "--project-root",
+                str(tmp_path),
+            ]
+        )
         assert rc == 0
 
     def test_session_id_from_stdin(self, tmp_path: Path) -> None:
         """session_id from stdin when not in args."""
         jsonl = tmp_path / "stdin-session.jsonl"
-        jsonl.write_text(json.dumps({
-            "type": "session_start",
-            "title": "test",
-            "timestamp": "2025-01-01T00:00:00Z",
-        }) + "\n")
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "session_start",
+                    "title": "test",
+                    "timestamp": "2025-01-01T00:00:00Z",
+                }
+            )
+            + "\n"
+        )
 
         stdin_payload = {
             "session_id": "stdin-session",
@@ -211,11 +249,16 @@ class TestMainSettingsRead:
     def test_settings_file_missing_is_ok(self, tmp_path: Path) -> None:
         """Missing settings.json should not break the flow."""
         jsonl = tmp_path / "session.jsonl"
-        jsonl.write_text(json.dumps({
-            "type": "session_start",
-            "title": "test",
-            "timestamp": "2025-01-01T00:00:00Z",
-        }) + "\n")
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "session_start",
+                    "title": "test",
+                    "timestamp": "2025-01-01T00:00:00Z",
+                }
+            )
+            + "\n"
+        )
         # No settings file created
 
         stdin_payload = {
@@ -234,11 +277,16 @@ class TestMainSettingsRead:
     def test_settings_file_malformed_is_ok(self, tmp_path: Path) -> None:
         """Malformed settings.json should not break the flow."""
         jsonl = tmp_path / "session.jsonl"
-        jsonl.write_text(json.dumps({
-            "type": "session_start",
-            "title": "test",
-            "timestamp": "2025-01-01T00:00:00Z",
-        }) + "\n")
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "type": "session_start",
+                    "title": "test",
+                    "timestamp": "2025-01-01T00:00:00Z",
+                }
+            )
+            + "\n"
+        )
 
         # Create malformed settings
         settings_path = tmp_path / "session.settings.json"
@@ -271,7 +319,11 @@ class TestReadJsonlChunksOSError:
         jsonl = tmp_path / "session.jsonl"
         lines = [
             {"type": "session_start", "title": "test", "timestamp": "2025-01-01T00:00:00Z"},
-            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "Hello"}]}, "timestamp": "2025-01-01T00:01:00Z"},
+            {
+                "type": "message",
+                "message": {"role": "user", "content": [{"type": "text", "text": "Hello"}]},
+                "timestamp": "2025-01-01T00:01:00Z",
+            },
         ]
         jsonl.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
 

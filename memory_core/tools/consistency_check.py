@@ -31,6 +31,7 @@ def _load_constants() -> dict[str, Any]:
     # First try to import it directly (handles both assignment and import patterns)
     try:
         from memory_core.constants import CURRENT_MEMORY_VERSION
+
         result["CURRENT_MEMORY_VERSION"] = CURRENT_MEMORY_VERSION
     except ImportError:
         # Fallback: try regex parsing for legacy format
@@ -38,12 +39,10 @@ def _load_constants() -> dict[str, Any]:
         if m:
             result["CURRENT_MEMORY_VERSION"] = m.group(1)
     # Extract SUPPORTED_HOSTS
-    m = re.search(r'SUPPORTED_HOSTS\s*=\s*\(([^)]+)\)', content)
+    m = re.search(r"SUPPORTED_HOSTS\s*=\s*\(([^)]+)\)", content)
     if m:
         hosts_str = m.group(1)
-        result["SUPPORTED_HOSTS"] = tuple(
-            h.strip().strip('"\'') for h in hosts_str.split(",") if h.strip()
-        )
+        result["SUPPORTED_HOSTS"] = tuple(h.strip().strip("\"'") for h in hosts_str.split(",") if h.strip())
     return result
 
 
@@ -111,9 +110,7 @@ def check_host_enum_coverage() -> tuple[list[str], list[str]]:
                 for host in supported_hosts:
                     # Only report if at least one supported host IS present
                     # (partial match)
-                    if host not in unique_conditions and any(
-                        h in supported_hosts for h in unique_conditions
-                    ):
+                    if host not in unique_conditions and any(h in supported_hosts for h in unique_conditions):
                         errors.append(f"{py_file}: if/elif chain missing host '{host}'")
                         break
 
@@ -123,12 +120,12 @@ def check_host_enum_coverage() -> tuple[list[str], list[str]]:
                 errors.append(f"{py_file}: hardcoded tuple ('codex', 'claude') missing 'factory'")
 
             # Check choices= parameter in argparse
-            choices_match = re.search(r'choices\s*=\s*\(([^)]+)\)', content)
+            choices_match = re.search(r"choices\s*=\s*\(([^)]+)\)", content)
             if choices_match:
                 choices_str = choices_match.group(1)
                 # Check if this looks like a host choices
                 if "codex" in choices_str or "claude" in choices_str:
-                    choices = [c.strip().strip('"\'') for c in choices_str.split(",")]
+                    choices = [c.strip().strip("\"'") for c in choices_str.split(",")]
                     for host in supported_hosts:
                         if host not in choices:
                             errors.append(f"{py_file}: choices= missing host '{host}'")
@@ -166,7 +163,7 @@ def check_no_duplicate_version_definitions() -> tuple[list[str], list[str]]:
             content = py_file.read_text(encoding="utf-8")
 
             # Check for CURRENT_MEMORY_VERSION definition
-            if re.search(r'^\s*CURRENT_MEMORY_VERSION\s*=', content, re.MULTILINE):
+            if re.search(r"^\s*CURRENT_MEMORY_VERSION\s*=", content, re.MULTILINE):
                 errors.append(f"{py_file}: defines CURRENT_MEMORY_VERSION (should import from constants)")
 
             # Check for version = "x.y.z" where x.y.z matches CURRENT_MEMORY_VERSION
@@ -175,8 +172,7 @@ def check_no_duplicate_version_definitions() -> tuple[list[str], list[str]]:
             # Only report if it's not part of a template string generation;
             # version literals inside template functions are expected.
             if re.search(pattern, content, re.MULTILINE) and (
-                content.find(const_version) <= 0
-                or "def template_" not in content[: content.find(const_version)][:1000]
+                content.find(const_version) <= 0 or "def template_" not in content[: content.find(const_version)][:1000]
             ):
                 pass  # This is actually expected in template functions
         except Exception as exc:
@@ -204,9 +200,16 @@ def check_init_validate_roundtrip() -> tuple[list[str], list[str]]:
             # the evolution scanner runs consistency_check.py standalone.
             child_env = {**os.environ, "MEMORY_CORE_BYPASS_DENYLIST": "1"}
             result = subprocess.run(
-                [sys.executable, "-m", "memory_core.tools.init_project_memory",
-                 "--target", str(tmp_path), "--host", "factory",
-                 "--allow-non-git"],
+                [
+                    sys.executable,
+                    "-m",
+                    "memory_core.tools.init_project_memory",
+                    "--target",
+                    str(tmp_path),
+                    "--host",
+                    "factory",
+                    "--allow-non-git",
+                ],
                 capture_output=True,
                 text=True,
                 cwd=str(REPO_ROOT),
@@ -253,8 +256,7 @@ def check_init_validate_roundtrip() -> tuple[list[str], list[str]]:
         # Run validate
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "memory_core.tools.validate_project_memory",
-                 "--target", str(tmp_path)],
+                [sys.executable, "-m", "memory_core.tools.validate_project_memory", "--target", str(tmp_path)],
                 capture_output=True,
                 text=True,
                 cwd=str(REPO_ROOT),
@@ -295,7 +297,11 @@ def check_required_imports_from_constants() -> tuple[list[str], list[str]]:
 
             # Check for import from constants
             has_import = False
-            if "from memory_core.constants import" in content or "from constants import" in content or "import memory_core.constants" in content:
+            if (
+                "from memory_core.constants import" in content
+                or "from constants import" in content
+                or "import memory_core.constants" in content
+            ):
                 has_import = True
 
             if not has_import:
@@ -366,10 +372,10 @@ def check_no_handwritten_toml_parser() -> tuple[list[str], list[str]]:
                 # Get function body (simplified)
                 func_match = re.search(r'def _parse_adapter_toml\([^)]*\):\s*"""(.*?)"""', content, re.DOTALL)
                 if not func_match:
-                    func_match = re.search(r'def _parse_adapter_toml\([^)]*\):(.*?)(?=\ndef |\Z)', content, re.DOTALL)
+                    func_match = re.search(r"def _parse_adapter_toml\([^)]*\):(.*?)(?=\ndef |\Z)", content, re.DOTALL)
 
                 if func_match:
-                    func_body = content[content.find("_parse_adapter_toml"):]
+                    func_body = content[content.find("_parse_adapter_toml") :]
                     # Check if using tomllib; handwritten parsers rely on
                     # split() plus an in_section flag within the first ~1500 chars
                     if (
@@ -399,7 +405,7 @@ def check_adapter_registry_complete() -> tuple[list[str], list[str]]:
         content = gateway_file.read_text(encoding="utf-8")
 
         # Find _ADAPTER_REGISTRY
-        registry_match = re.search(r'_ADAPTER_REGISTRY\s*=\s*\{([^}]+)\}', content, re.DOTALL)
+        registry_match = re.search(r"_ADAPTER_REGISTRY\s*=\s*\{([^}]+)\}", content, re.DOTALL)
         if not registry_match:
             errors.append("_gateway_config.py: _ADAPTER_REGISTRY not found")
             return errors, warnings
@@ -427,7 +433,7 @@ def check_ruff_config_not_conflicting() -> tuple[list[str], list[str]]:
     pyproject_content = PYPROJECT_PATH.read_text(encoding="utf-8")
 
     # Extract [tool.ruff] from pyproject.toml
-    pyproject_ruff_match = re.search(r'\[tool\.ruff\](.*?)(?=\[|$)', pyproject_content, re.DOTALL)
+    pyproject_ruff_match = re.search(r"\[tool\.ruff\](.*?)(?=\[|$)", pyproject_content, re.DOTALL)
     ruff_toml_content = ruff_toml_path.read_text(encoding="utf-8")
 
     # Check if both have [tool.ruff] config
@@ -436,11 +442,12 @@ def check_ruff_config_not_conflicting() -> tuple[list[str], list[str]]:
 
     if has_pyproject_ruff and has_ruff_toml_ruff:
         assert pyproject_ruff_match is not None
+
         # Extract ignore lists from both
         def extract_ignores(content: str) -> set[str]:
             ignores: set[str] = set()
             # Match ignore = [...] or ignore = ["..."]
-            ignore_match = re.search(r'ignore\s*=\s*\[(.*?)\]', content, re.DOTALL)
+            ignore_match = re.search(r"ignore\s*=\s*\[(.*?)\]", content, re.DOTALL)
             if ignore_match:
                 items = ignore_match.group(1)
                 # Extract quoted strings
@@ -550,18 +557,10 @@ def check_package_data_coverage() -> tuple[list[str], list[str]]:
     pyproject_content = PYPROJECT_PATH.read_text(encoding="utf-8")
 
     # Extract package-data packages
-    package_data_match = re.search(
-        r'\[tool\.setuptools\.package-data\](.*?)(?=\[|$)',
-        pyproject_content,
-        re.DOTALL
-    )
+    package_data_match = re.search(r"\[tool\.setuptools\.package-data\](.*?)(?=\[|$)", pyproject_content, re.DOTALL)
 
     # Extract find include packages
-    find_match = re.search(
-        r'\[tool\.setuptools\.packages\.find\](.*?)(?=\[|$)',
-        pyproject_content,
-        re.DOTALL
-    )
+    find_match = re.search(r"\[tool\.setuptools\.packages\.find\](.*?)(?=\[|$)", pyproject_content, re.DOTALL)
 
     if package_data_match and find_match:
         # Extract package names from package-data
@@ -572,11 +571,11 @@ def check_package_data_coverage() -> tuple[list[str], list[str]]:
                 # Match "package_name" = [...] or package_name = [...]
                 pkg_match = re.match(r'^(["\']?[\w_]+["\']?)\s*=', line)
                 if pkg_match:
-                    pkg_name = pkg_match.group(1).strip('"\'')
+                    pkg_name = pkg_match.group(1).strip("\"'")
                     package_names.add(pkg_name)
 
         # Extract include list
-        include_match = re.search(r'include\s*=\s*\[(.*?)\]', find_match.group(1), re.DOTALL)
+        include_match = re.search(r"include\s*=\s*\[(.*?)\]", find_match.group(1), re.DOTALL)
         if include_match:
             include_list = include_match.group(1)
             includes: set[str] = set()
@@ -589,8 +588,8 @@ def check_package_data_coverage() -> tuple[list[str], list[str]]:
                 covered = False
                 for inc in includes:
                     # Simple pattern matching: "memory_core*" should cover "memory_core"
-                    if inc.endswith('*'):
-                        if pkg.startswith(inc.rstrip('*')):
+                    if inc.endswith("*"):
+                        if pkg.startswith(inc.rstrip("*")):
                             covered = True
                             break
                     elif pkg == inc:
@@ -598,9 +597,7 @@ def check_package_data_coverage() -> tuple[list[str], list[str]]:
                         break
 
                 if not covered:
-                    errors.append(
-                        f"package-data references '{pkg}' but it's not in find include list: {includes}"
-                    )
+                    errors.append(f"package-data references '{pkg}' but it's not in find include list: {includes}")
 
     return errors, warnings
 
@@ -623,16 +620,10 @@ def check_adapter_schema_host_validation() -> tuple[list[str], list[str]]:
         return errors, warnings
 
     # Find load_adapter_toml function and _load_new_format function
-    func_match = re.search(
-        r'def load_adapter_toml\([^)]+\)(?:\s*->\s*[^:]+)?:(.*?)(?=\ndef |\Z)',
-        content,
-        re.DOTALL
-    )
+    func_match = re.search(r"def load_adapter_toml\([^)]+\)(?:\s*->\s*[^:]+)?:(.*?)(?=\ndef |\Z)", content, re.DOTALL)
 
     new_format_match = re.search(
-        r'def _load_new_format\([^)]+\)(?:\s*->\s*[^:]+)?:(.*?)(?=\ndef |\Z)',
-        content,
-        re.DOTALL
+        r"def _load_new_format\([^)]+\)(?:\s*->\s*[^:]+)?:(.*?)(?=\ndef |\Z)", content, re.DOTALL
     )
 
     if not func_match:
@@ -646,25 +637,19 @@ def check_adapter_schema_host_validation() -> tuple[list[str], list[str]]:
     # Check if host validation against SUPPORTED_HOSTS exists
     # Look for host validation patterns - checking both functions
     host_check_patterns = [
-        r'host\s+in\s+SUPPORTED_HOSTS',
-        r'SUPPORTED_HOSTS.*host',
-        r'if.*host.*not in',
-        r'raise.*[Hh]ost',
-        r'host.*validate',
-        r'validate.*host',
+        r"host\s+in\s+SUPPORTED_HOSTS",
+        r"SUPPORTED_HOSTS.*host",
+        r"if.*host.*not in",
+        r"raise.*[Hh]ost",
+        r"host.*validate",
+        r"validate.*host",
     ]
 
-    has_explicit_validation = any(
-        re.search(pattern, combined_body, re.IGNORECASE)
-        for pattern in host_check_patterns
-    )
+    has_explicit_validation = any(re.search(pattern, combined_body, re.IGNORECASE) for pattern in host_check_patterns)
 
     # Also check if SUPPORTED_HOSTS is used anywhere for validation (not just default)
     # If it's only used for default values like SUPPORTED_HOSTS[0], that's not validation
-    has_only_default_usage = (
-        "SUPPORTED_HOSTS[0]" in combined_body and
-        not has_explicit_validation
-    )
+    has_only_default_usage = "SUPPORTED_HOSTS[0]" in combined_body and not has_explicit_validation
 
     if has_only_default_usage:
         errors.append(
@@ -693,11 +678,7 @@ def check_lock_parser_strict_toml() -> tuple[list[str], list[str]]:
         return errors, warnings
 
     # Find _parse_lock_file function - handle type annotations in signature
-    func_match = re.search(
-        r'def _parse_lock_file\([^)]+\)(?:\s*->\s*[^:]+)?:(.*?)(?=\ndef |\Z)',
-        content,
-        re.DOTALL
-    )
+    func_match = re.search(r"def _parse_lock_file\([^)]+\)(?:\s*->\s*[^:]+)?:(.*?)(?=\ndef |\Z)", content, re.DOTALL)
 
     if not func_match:
         errors.append("validate_project_memory.py: _parse_lock_file function body not found")
@@ -707,7 +688,7 @@ def check_lock_parser_strict_toml() -> tuple[list[str], list[str]]:
 
     # Check for except clause that falls back to key=value parsing
     # This would indicate non-strict TOML handling
-    except_blocks = re.findall(r'except.*?:(.*?)(?=\n\n|\n    def|\Z)', func_body, re.DOTALL | re.IGNORECASE)
+    except_blocks = re.findall(r"except.*?:(.*?)(?=\n\n|\n    def|\Z)", func_body, re.DOTALL | re.IGNORECASE)
 
     for block in except_blocks:
         # If except block contains key=value parsing (not just raising error)
@@ -750,8 +731,8 @@ def check_provider_builder_called() -> tuple[list[str], list[str]]:
 
     # Check for provider_builder assignment pattern
     # Looking for: provider_builder = ... followed by provider_builder(config) or similar
-    provider_pattern = r'provider_builder\s*=\s*([^\n]+)'
-    shadow_pattern = r'shadow_builder\s*=\s*([^\n]+)'
+    provider_pattern = r"provider_builder\s*=\s*([^\n]+)"
+    shadow_pattern = r"shadow_builder\s*=\s*([^\n]+)"
 
     provider_match = re.search(provider_pattern, content)
 
@@ -761,7 +742,7 @@ def check_provider_builder_called() -> tuple[list[str], list[str]]:
         assignment_pos = provider_match.start()
 
         # Get code after assignment
-        after_assignment = content[assignment_pos:assignment_pos + 500]
+        after_assignment = content[assignment_pos : assignment_pos + 500]
 
         # Check if it's assigned to build_context_package_from_config but that function is called directly
         # (i.e. the variable is unused and a direct call follows the assignment)
@@ -779,7 +760,7 @@ def check_provider_builder_called() -> tuple[list[str], list[str]]:
     shadow_match = re.search(shadow_pattern, content)
     if shadow_match:
         shadow_pos = shadow_match.start()
-        after_shadow = content[shadow_pos:shadow_pos + 500]
+        after_shadow = content[shadow_pos : shadow_pos + 500]
 
         if (
             "shadow_builder" in shadow_match.group(1)
@@ -814,15 +795,14 @@ def check_test_version_hardcoding() -> tuple[list[str], list[str]]:
             if f'"{current_version}"' in content or f"'{current_version}'" in content:
                 # Check if file imports from constants
                 has_constants_import = (
-                    "from memory_core.constants import" in content or
-                    "import memory_core.constants" in content or
-                    "from constants import" in content
+                    "from memory_core.constants import" in content
+                    or "import memory_core.constants" in content
+                    or "from constants import" in content
                 )
 
                 if not has_constants_import:
                     warnings.append(
-                        f"{py_file.name}: hardcoded version '{current_version}' "
-                        f"without importing from constants"
+                        f"{py_file.name}: hardcoded version '{current_version}' without importing from constants"
                     )
         except Exception as exc:
             warnings.append(f"check_test_version_hardcoding: check raised {exc}")
@@ -849,14 +829,10 @@ def check_docs_version_references() -> tuple[list[str], list[str]]:
 
             # Check for old version references
             if "0.1.0" in content:
-                warnings.append(
-                    f"{md_file.name}: contains reference to old version '0.1.0'"
-                )
+                warnings.append(f"{md_file.name}: contains reference to old version '0.1.0'")
 
             if "wb-hook-v2" in content:
-                warnings.append(
-                    f"{md_file.name}: contains reference to old schema 'wb-hook-v2'"
-                )
+                warnings.append(f"{md_file.name}: contains reference to old schema 'wb-hook-v2'")
         except Exception as exc:
             warnings.append(f"check_docs_version_references: check raised {exc}")
 
@@ -877,9 +853,7 @@ def check_validate_dry_run_coverage() -> tuple[list[str], list[str]]:
 
     # Find dry_run branch
     dry_run_match = re.search(
-        r'if dry_run:(.*?)(?=\n    memory_root|\n    result\.record\("memory_root"|\Z)',
-        content,
-        re.DOTALL
+        r'if dry_run:(.*?)(?=\n    memory_root|\n    result\.record\("memory_root"|\Z)', content, re.DOTALL
     )
 
     if not dry_run_match:
@@ -901,17 +875,13 @@ def check_validate_dry_run_coverage() -> tuple[list[str], list[str]]:
             missing_checks.append(check)
 
     if missing_checks:
-        warnings.append(
-            f"validate_project_memory.py: dry_run branch missing checks: {missing_checks}"
-        )
+        warnings.append(f"validate_project_memory.py: dry_run branch missing checks: {missing_checks}")
 
     return errors, warnings
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Consistency checker for memory-core internal invariants."
-    )
+    parser = argparse.ArgumentParser(description="Consistency checker for memory-core internal invariants.")
     parser.add_argument("--json", action="store_true", help="Output results as JSON")
     args = parser.parse_args()
 
@@ -942,12 +912,14 @@ def main() -> int:
 
     for check_name, check_func in checks:
         errors, warnings = check_func()
-        check_results.append({
-            "name": check_name,
-            "errors": errors,
-            "warnings": warnings,
-            "passed": len(errors) == 0,
-        })
+        check_results.append(
+            {
+                "name": check_name,
+                "errors": errors,
+                "warnings": warnings,
+                "passed": len(errors) == 0,
+            }
+        )
         all_errors.extend([f"[{check_name}] {e}" for e in errors])
         all_warnings.extend([f"[{check_name}] {w}" for w in warnings])
 

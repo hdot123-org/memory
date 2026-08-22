@@ -15,6 +15,7 @@ Returns:
 
 Architecture reference: docs/architecture/issue-flow.md §9.4/§10.3（镜像定位锚点）
 """
+
 import subprocess
 import sys
 from pathlib import Path
@@ -35,19 +36,9 @@ def fetch_comments(target_type: str, number: str, repo: str) -> tuple[int, str]:
         comments_text: joined comment bodies, or empty string
     """
     if target_type == "issue":
-        cmd = [
-            "gh", "issue", "view", number,
-            "--repo", repo,
-            "--json", "comments",
-            "--jq", ".comments[].body"
-        ]
+        cmd = ["gh", "issue", "view", number, "--repo", repo, "--json", "comments", "--jq", ".comments[].body"]
     elif target_type == "pr":
-        cmd = [
-            "gh", "pr", "view", number,
-            "--repo", repo,
-            "--json", "comments",
-            "--jq", ".comments[].body"
-        ]
+        cmd = ["gh", "pr", "view", number, "--repo", repo, "--json", "comments", "--jq", ".comments[].body"]
     else:
         print(f"Error: unknown target type '{target_type}'", file=sys.stderr)
         return 1, ""

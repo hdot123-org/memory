@@ -53,6 +53,7 @@ def append_error_log(component: str, message: str, context: dict[str, Any]) -> N
 def write_artifacts(package: dict[str, Any]) -> dict[str, str]:
     """Write context package artifacts with fallback to direct file write."""
     from ._gateway_policy import _write_artifacts_via_sink
+
     try:
         return _write_artifacts_via_sink(package)
     except RuntimeError:
@@ -118,22 +119,24 @@ def _build_readonly_source_repo_package(cwd: Path, host: str, event: str) -> dic
     ]
 
     # Source-repo-specific domains (not in DEFAULT_OWNERSHIP_DOMAINS)
-    ownership_domains.extend([
-        {
-            "name": "source_repo_docs",
-            "path": "docs",
-            "level": "critical",
-            "recursive": True,
-            "description": "Source repo documentation domain (source-repo-readonly only)",
-        },
-        {
-            "name": "source_repo_factory",
-            "path": ".factory",
-            "level": "critical",
-            "recursive": True,
-            "description": "Source repo Factory config domain (source-repo-readonly only)",
-        },
-    ])
+    ownership_domains.extend(
+        [
+            {
+                "name": "source_repo_docs",
+                "path": "docs",
+                "level": "critical",
+                "recursive": True,
+                "description": "Source repo documentation domain (source-repo-readonly only)",
+            },
+            {
+                "name": "source_repo_factory",
+                "path": ".factory",
+                "level": "critical",
+                "recursive": True,
+                "description": "Source repo Factory config domain (source-repo-readonly only)",
+            },
+        ]
+    )
     return {
         "package_kind": "source-repo-rules",
         "mode": "read-only",
@@ -172,7 +175,10 @@ def _update_state_dynamic_fields(project_root: Path, scope: str) -> None:
         # Gather git info — fail gracefully if not a git repo
         branch_proc = subprocess.run(
             ["git", "-C", str(project_root), "branch", "--show-current"],
-            capture_output=True, text=True, timeout=5, check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         )
         if branch_proc.returncode != 0:
             return
@@ -182,7 +188,10 @@ def _update_state_dynamic_fields(project_root: Path, scope: str) -> None:
 
         commit_proc = subprocess.run(
             ["git", "-C", str(project_root), "log", "-1", "--format=%h %s"],
-            capture_output=True, text=True, timeout=5, check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         )
         commit_info = commit_proc.stdout.strip() if commit_proc.returncode == 0 else ""
 
@@ -195,16 +204,16 @@ def _update_state_dynamic_fields(project_root: Path, scope: str) -> None:
 
         # Pattern 1: placeholder (未填写) — init has not filled yet
         new_content = re.sub(
-            r'(## 当前工作区\n\n)（待填写[^\n]*）',
-            rf'\g<1>{workspace_line}',
+            r"(## 当前工作区\n\n)（待填写[^\n]*）",
+            rf"\g<1>{workspace_line}",
             content,
         )
 
         # Pattern 2: already filled — idempotent refresh
         # Matches lines after "## 当前工作区\n\n" that start with "当前分支:"
         new_content = re.sub(
-            r'(## 当前工作区\n\n)当前分支: [^\n]+',
-            rf'\g<1>{workspace_line}',
+            r"(## 当前工作区\n\n)当前分支: [^\n]+",
+            rf"\g<1>{workspace_line}",
             new_content,
         )
 
@@ -226,6 +235,7 @@ def _launch_async_health_check(cwd: Path) -> None:
     with launch_status=failed for observability.
     """
     import sys
+
     report_path = cwd / "memory" / "system" / "health-report.json"
     try:
         health_script = str((Path(__file__).parent / "memory_health_report.py").resolve())
@@ -240,7 +250,7 @@ def _launch_async_health_check(cwd: Path) -> None:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,  # Detach from parent
-            cwd=str(cwd),            # Set working directory
+            cwd=str(cwd),  # Set working directory
         )
 
         _logger.info("Launched async health check for %s", cwd)

@@ -37,17 +37,11 @@ def _assert_warning_and_stderr(rel_path: str, needle: str, window: int = 400) ->
     (CODE_HYGIENE_DUPLICATE_BLOCK fix, INFRA-333).
     """
     block = _except_block(_read_source(rel_path), needle, window)
-    assert "warning" in block.lower(), (
-        f"{rel_path}: except block at {needle!r} must emit a logger.warning"
-    )
-    assert "sys.stderr" in block, (
-        f"{rel_path}: except block at {needle!r} must have a stderr fallback"
-    )
+    assert "warning" in block.lower(), f"{rel_path}: except block at {needle!r} must emit a logger.warning"
+    assert "sys.stderr" in block, f"{rel_path}: except block at {needle!r} must have a stderr fallback"
 
 
-def _assert_binds_exception(
-    rel_path: str, needle: str, expected_except: str, window: int = 300
-) -> None:
+def _assert_binds_exception(rel_path: str, needle: str, expected_except: str, window: int = 300) -> None:
     """Assert the except block near *needle* binds the expected exception type.
 
     Shared checker for the ``test_binds_exception`` family
@@ -55,9 +49,7 @@ def _assert_binds_exception(
     """
     content = _read_source(rel_path)
     block = _except_block(content, needle, window)
-    assert expected_except in block, (
-        f"{rel_path}: except block near {needle!r} must contain {expected_except!r}"
-    )
+    assert expected_except in block, f"{rel_path}: except block near {needle!r} must contain {expected_except!r}"
 
 
 class _WarnsAndStderrMixin:
@@ -88,29 +80,21 @@ class TestMemoryHookSchemaAuditLog:
     def test_no_silent_pass(self):
         content = _read_source(self.PATH)
         block = _except_block(content, "except OSError as exc")
-        assert "pass" not in block.split("\n")[1], (
-            "audit log write except must not use bare pass (silent swallow)"
-        )
+        assert "pass" not in block.split("\n")[1], "audit log write except must not use bare pass (silent swallow)"
 
     def test_has_warning(self):
         content = _read_source(self.PATH)
         block = _except_block(content, "except OSError as exc")
-        assert "warning" in block.lower(), (
-            "audit log write except must emit a logger.warning"
-        )
+        assert "warning" in block.lower(), "audit log write except must emit a logger.warning"
 
     def test_has_stderr_fallback(self):
         content = _read_source(self.PATH)
         block = _except_block(content, "except OSError as exc")
-        assert "sys.stderr" in block, (
-            "audit log write except must have stderr fallback"
-        )
+        assert "sys.stderr" in block, "audit log write except must have stderr fallback"
 
     def test_binds_exception(self):
         content = _read_source(self.PATH)
-        assert "except OSError as exc" in content, (
-            "audit log write except must bind the exception as exc"
-        )
+        assert "except OSError as exc" in content, "audit log write except must bind the exception as exc"
 
 
 # ---------------------------------------------------------------------------
@@ -126,12 +110,12 @@ class TestGatewaySyncStatusWrite(_WarnsAndStderrMixin):
     """
 
     PATH = "memory_core/tools/_gateway_telemetry.py"
-    WARN_NEEDLE = 'status_file.write_text(json.dumps(status'
+    WARN_NEEDLE = "status_file.write_text(json.dumps(status"
 
     def test_binds_exception(self):
         _assert_binds_exception(
             self.PATH,
-            'status_file.write_text(json.dumps(status',
+            "status_file.write_text(json.dumps(status",
             "except OSError as exc",
         )
 
@@ -197,9 +181,7 @@ class TestTelemetryPathSanitization(_WarnsAndStderrMixin):
         content = _read_source(self.PATH)
         pos = content.find("except (OSError, ValueError) as exc")
         block = content[pos : pos + 300]
-        assert "sanitiz" in block.lower(), (
-            "warning should mention sanitization since raw paths may leak to telemetry"
-        )
+        assert "sanitiz" in block.lower(), "warning should mention sanitization since raw paths may leak to telemetry"
 
 
 # ---------------------------------------------------------------------------

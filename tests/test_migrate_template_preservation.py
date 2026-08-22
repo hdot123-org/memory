@@ -85,9 +85,7 @@ def _create_v040_project(
 
     # Create adapter.toml
     if adapter_content is None:
-        adapter_content = (
-            _V040_ADAPTER_CONTENT.replace("test-scope", scope) if scope else _V040_ADAPTER_NO_SCOPE
-        )
+        adapter_content = _V040_ADAPTER_CONTENT.replace("test-scope", scope) if scope else _V040_ADAPTER_NO_SCOPE
 
     (memory_root / "adapter.toml").write_text(adapter_content, encoding="utf-8")
 
@@ -128,6 +126,7 @@ def _create_v040_project(
 # 1. Scope resolution from adapter.toml
 # ---------------------------------------------------------------------------
 
+
 def test_scope_from_adapter_toml(tmp_path: Path) -> None:
     """Migration reads scope from adapter.toml routing.project_scope."""
     project_root = _create_v040_project(tmp_path, scope="my-project")
@@ -151,6 +150,7 @@ def test_scope_from_adapter_toml(tmp_path: Path) -> None:
 # 2. Template files moved to correct scope directory
 # ---------------------------------------------------------------------------
 
+
 def test_templates_moved_to_scope_dir(tmp_path: Path) -> None:
     """CANONICAL.md, STATE.md, PLAN.md, TASKS.md moved to memory/kb/projects/{scope}/."""
     project_root = _create_v040_project(tmp_path, scope="workbot")
@@ -170,6 +170,7 @@ def test_templates_moved_to_scope_dir(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 3. Existing destination not overwritten
 # ---------------------------------------------------------------------------
+
 
 def test_existing_destination_not_overwritten(tmp_path: Path) -> None:
     """If destination file already exists, migration skips (doesn't overwrite)."""
@@ -202,6 +203,7 @@ def test_existing_destination_not_overwritten(tmp_path: Path) -> None:
 # 4. NOW.md moved from .memory/ to project root
 # ---------------------------------------------------------------------------
 
+
 def test_now_md_moved_to_root(tmp_path: Path) -> None:
     """NOW.md moved from .memory/ to project root."""
     project_root = _create_v040_project(tmp_path, scope="test-scope", with_now_md=True)
@@ -220,6 +222,7 @@ def test_now_md_moved_to_root(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 5. No scope raises error
 # ---------------------------------------------------------------------------
+
 
 def test_no_scope_raises_error(tmp_path: Path) -> None:
     """Migration fails gracefully when project_scope is missing from adapter.toml."""
@@ -253,6 +256,7 @@ def test_empty_scope_raises_error(tmp_path: Path) -> None:
 # 6. Idempotent second run
 # ---------------------------------------------------------------------------
 
+
 def test_idempotent_second_run(tmp_path: Path) -> None:
     """Second migration run is a noop (already migrated)."""
     project_root = _create_v040_project(tmp_path, scope="test-scope")
@@ -270,6 +274,7 @@ def test_idempotent_second_run(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 7. Backup created before migration
 # ---------------------------------------------------------------------------
+
 
 def test_backup_created_before_migration(tmp_path: Path) -> None:
     """Backup exists at memory/system/backups/pre-0.5/ with template files."""
@@ -298,6 +303,7 @@ def test_backup_created_before_migration(tmp_path: Path) -> None:
 # 8. Content preservation - template files retain content
 # ---------------------------------------------------------------------------
 
+
 def test_template_content_preserved(tmp_path: Path) -> None:
     """Template file content is preserved during migration (not regenerated)."""
     project_root = _create_v040_project(tmp_path, scope="test-scope")
@@ -316,6 +322,4 @@ def test_template_content_preserved(tmp_path: Path) -> None:
     scope_dir = project_root / "memory" / "kb" / "projects" / "test-scope"
     for filename in _TEMPLATE_FILES:
         migrated_content = (scope_dir / filename).read_text(encoding="utf-8")
-        assert migrated_content == original_content[filename], (
-            f"{filename} content not preserved"
-        )
+        assert migrated_content == original_content[filename], f"{filename} content not preserved"

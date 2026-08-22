@@ -33,8 +33,7 @@ related: [DES-001, DES-002, DES-010]
 ### 2.1 函数签名
 
 ```python
-def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dict[str, Any]:
-    ...
+def build_context_package(host: str, event: str, payload: dict[str, Any]) -> dict[str, Any]: ...
 ```
 
 ### 2.2 参数说明
@@ -75,7 +74,7 @@ package = build_context_package("codex", "session-start", {})
     "generated_at": "2026-04-26T12:00:00+08:00",
     "host": "codex",
     "event": "session-start",
-    "status": "ok",                    # "ok" | "degraded"
+    "status": "ok",  # "ok" | "degraded"
     "paths": {
         "repo_root": "<consumer-repo>",
         "workspace_root": "<consumer-repo>/workspace",
@@ -92,10 +91,14 @@ package = build_context_package("codex", "session-start", {})
     "allowed_reads": ["/path/to/file1"],
     "allowed_writes": {
         "fact": "...",
-        "kb_policy": {"mode": "read-first-CRUD", "overwrite_allowed": False, "conflict_strategy": "preserve-and-escalate"},
+        "kb_policy": {
+            "mode": "read-first-CRUD",
+            "overwrite_allowed": False,
+            "conflict_strategy": "preserve-and-escalate",
+        },
     },
     "evidence_refs": ["/path/to/evidence1"],
-    "validation_errors": [],           # status=degraded 时非空
+    "validation_errors": [],  # status=degraded 时非空
     "project": {
         "scope": "workbot",
         "truth_status": "truth-ready",  # "truth-ready" | "truth-incomplete"

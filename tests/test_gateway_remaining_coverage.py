@@ -4,7 +4,6 @@ This file systematically covers all major functions to achieve 95%+ coverage.
 Tests execute actual source code functions rather than simulating logic.
 """
 
-
 import argparse
 import hashlib
 import json
@@ -23,10 +22,12 @@ from memory_core.tools._rule_errors import UnknownRouteKindError
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def gw():
     """Import gateway module."""
     from memory_core.tools import memory_hook_gateway as gw_mod
+
     return gw_mod
 
 
@@ -38,8 +39,7 @@ def tmp_artifact(tmp_path):
     return artifact_root
 
 
-def _setup_sync_env(tmp_path, *, metrics_lines=None, offset=0,
-                    last_sync_success=0.0, last_sync_attempt=0.0):
+def _setup_sync_env(tmp_path, *, metrics_lines=None, offset=0, last_sync_success=0.0, last_sync_attempt=0.0):
     """Set up artifact root with all sync sidecar files."""
     artifact_root = tmp_path / "artifacts"
     artifact_root.mkdir(exist_ok=True)
@@ -65,6 +65,7 @@ def _setup_sync_env(tmp_path, *, metrics_lines=None, offset=0,
 # ===========================================================================
 # _load_external_core_builder (lines 389-392)
 # ===========================================================================
+
 
 class TestLoadExternalCoreBuilder:
     """Test _load_external_core_builder with custom module paths.
@@ -110,6 +111,7 @@ class TestLoadExternalCoreBuilder:
 # _apply_artifact_compaction (lines 996-1000)
 # ===========================================================================
 
+
 class TestApplyArtifactCompaction:
     """Test _apply_artifact_compaction with various compaction policies.
 
@@ -122,9 +124,7 @@ class TestApplyArtifactCompaction:
         Executes lines 996-1000: actual _apply_artifact_compaction call
         """
         # Set _adapter_config to trigger compaction
-        monkeypatch.setattr(gw, "_adapter_config", {
-            "ARTIFACT_COMPACTION": {"include_system_context": False}
-        })
+        monkeypatch.setattr(gw, "_adapter_config", {"ARTIFACT_COMPACTION": {"include_system_context": False}})
         package = {"system_context": {"key": "val"}, "project_context": {"x": 1}}
 
         # Actually call the function - executes source lines 996-1000
@@ -135,9 +135,7 @@ class TestApplyArtifactCompaction:
 
     def test_compaction_strips_project_context(self, gw, monkeypatch):
         """When include_project_context is False, project_context is stripped."""
-        monkeypatch.setattr(gw, "_adapter_config", {
-            "ARTIFACT_COMPACTION": {"include_project_context": False}
-        })
+        monkeypatch.setattr(gw, "_adapter_config", {"ARTIFACT_COMPACTION": {"include_project_context": False}})
         package = {"system_context": {"a": 1}, "project_context": {"b": 2}}
 
         # Actually call the function
@@ -148,13 +146,17 @@ class TestApplyArtifactCompaction:
 
     def test_compaction_strips_multiple_keys(self, gw, monkeypatch):
         """Multiple compaction keys at once."""
-        monkeypatch.setattr(gw, "_adapter_config", {
-            "ARTIFACT_COMPACTION": {
-                "include_system_context": False,
-                "include_project_context": False,
-                "include_task_context": False,
-            }
-        })
+        monkeypatch.setattr(
+            gw,
+            "_adapter_config",
+            {
+                "ARTIFACT_COMPACTION": {
+                    "include_system_context": False,
+                    "include_project_context": False,
+                    "include_task_context": False,
+                }
+            },
+        )
         package = {
             "system_context": {"a": 1},
             "project_context": {"b": 2},
@@ -174,6 +176,7 @@ class TestApplyArtifactCompaction:
 # ===========================================================================
 # provider_errors handling (lines 1063-1068)
 # ===========================================================================
+
 
 class TestProviderErrorsHandling:
     """Test provider_errors handling logic (lines 1063-1068).
@@ -238,6 +241,7 @@ class TestProviderErrorsHandling:
 # _execute_delegate noop for factory hosts (lines 1310-1318)
 # ===========================================================================
 
+
 class TestExecuteDelegateNoop:
     """Test _execute_delegate when host is factory (no delegate process).
 
@@ -283,6 +287,7 @@ class TestExecuteDelegateNoop:
 # HookTimeoutError / signal handler (line 1604)
 # ===========================================================================
 
+
 class TestHookTimeoutError:
     """Test HookTimeoutError exception class and signal handler path.
 
@@ -314,6 +319,7 @@ class TestHookTimeoutError:
         def slow_flock(fd, operation):
             # Simulate hanging by sleeping longer than alarm timeout
             import time
+
             time.sleep(3)
 
         monkeypatch.setattr(fcntl, "flock", slow_flock)
@@ -328,6 +334,7 @@ class TestHookTimeoutError:
 # ===========================================================================
 # posthog hostname extraction (line 1746)
 # ===========================================================================
+
 
 class TestPosthogHostnameExtraction:
     """Test posthog hostname extraction from POSTHOG_HOST env var.
@@ -402,6 +409,7 @@ class TestPosthogHostnameExtraction:
 # ===========================================================================
 # Telemetry sync record processing (lines 1779-1791, 1823)
 # ===========================================================================
+
 
 class TestTelemetrySyncRecordProcessing:
     """Test telemetry sync: reading records, building events, successful sync + compaction.
@@ -488,6 +496,7 @@ class TestTelemetrySyncRecordProcessing:
 # main() execution chain (lines 2002-2031, 2026-2031, 2067)
 # ===========================================================================
 
+
 class TestMainExecutionChain:
     """Test main() function covering full execution paths.
 
@@ -499,12 +508,9 @@ class TestMainExecutionChain:
 
         Executes lines 2002-2031: actual main() execution
         """
-        monkeypatch.setattr(sys, "argv", [
-            "memory-hook-gateway",
-            "--host", "factory",
-            "--event", "session-start",
-            "--no-delegate"
-        ])
+        monkeypatch.setattr(
+            sys, "argv", ["memory-hook-gateway", "--host", "factory", "--event", "session-start", "--no-delegate"]
+        )
         monkeypatch.setattr(sys.stdin, "read", lambda: json.dumps({"cwd": str(tmp_path)}))
 
         # Mock all dependencies
@@ -536,12 +542,9 @@ class TestMainExecutionChain:
 
         Executes lines 2026-2031: exit code 1 path
         """
-        monkeypatch.setattr(sys, "argv", [
-            "memory-hook-gateway",
-            "--host", "factory",
-            "--event", "session-start",
-            "--no-delegate"
-        ])
+        monkeypatch.setattr(
+            sys, "argv", ["memory-hook-gateway", "--host", "factory", "--event", "session-start", "--no-delegate"]
+        )
         monkeypatch.setattr(sys.stdin, "read", lambda: json.dumps({"cwd": str(tmp_path)}))
 
         pkg = {
@@ -579,6 +582,7 @@ class TestMainExecutionChain:
 # _gateway_excepthook (lines 2041-2042, 2067)
 # ===========================================================================
 
+
 class TestGatewayExcepthook:
     """Test _gateway_excepthook captures crashes to JSONL.
 
@@ -614,15 +618,16 @@ class TestGatewayExcepthook:
 # Extended Coverage Tests - Additional Functions
 # ===========================================================================
 
+
 class TestIntegrityFunctions:
     """Test integrity sign/verify functions."""
 
     def test_integrity_sign_success(self, gw, tmp_path, monkeypatch):
         """_integrity_sign signs project manifest."""
         # Mock the integrity modules
-        monkeypatch.setattr(sys.modules["memory_core.tools.memory_hook_gateway"],
-                           "_integrity_sign",
-                           lambda project_root: None)
+        monkeypatch.setattr(
+            sys.modules["memory_core.tools.memory_hook_gateway"], "_integrity_sign", lambda project_root: None
+        )
 
         # Actually call - should not raise
         result = gw._integrity_sign(tmp_path)
@@ -659,11 +664,7 @@ class TestCollectChangedPaths:
 
     def test_collect_changed_paths_file_deleted(self, gw, tmp_path):
         """_collect_changed_paths detects deleted files."""
-        manifest = {
-            "entries": [
-                {"rel_path": "deleted.txt", "sha256": "abc123"}
-            ]
-        }
+        manifest = {"entries": [{"rel_path": "deleted.txt", "sha256": "abc123"}]}
         result = gw._collect_changed_paths(tmp_path, manifest)
         assert "deleted.txt" in result
 
@@ -673,11 +674,7 @@ class TestCollectChangedPaths:
         test_file = tmp_path / "changed.txt"
         test_file.write_text("new content")
 
-        manifest = {
-            "entries": [
-                {"rel_path": "changed.txt", "sha256": "different_sha"}
-            ]
-        }
+        manifest = {"entries": [{"rel_path": "changed.txt", "sha256": "different_sha"}]}
         result = gw._collect_changed_paths(tmp_path, manifest)
         assert "changed.txt" in result
 
@@ -689,11 +686,7 @@ class TestCollectChangedPaths:
         test_file.write_bytes(content)
         actual_sha = hashlib.sha256(content).hexdigest()
 
-        manifest = {
-            "entries": [
-                {"rel_path": "unchanged.txt", "sha256": actual_sha}
-            ]
-        }
+        manifest = {"entries": [{"rel_path": "unchanged.txt", "sha256": actual_sha}]}
         result = gw._collect_changed_paths(tmp_path, manifest)
         assert "unchanged.txt" not in result
 
@@ -895,7 +888,7 @@ class TestGetPolicyPackViaRegistry:
         try:
             # Try to get policy pack with empty scope first to see what's valid
             registry = gw._get_policy_registry()
-            if hasattr(registry, '_allowed_scopes') and registry._allowed_scopes:
+            if hasattr(registry, "_allowed_scopes") and registry._allowed_scopes:
                 valid_scope = list(registry._allowed_scopes)[0]
                 result = gw._get_policy_pack_via_registry(valid_scope)
                 assert isinstance(result, dict)
@@ -1016,9 +1009,7 @@ class TestBuildDegradedPackageWithError:
 
     def test_build_degraded_package_with_error(self, gw, tmp_path):
         """_build_degraded_package_with_error returns degraded package."""
-        result = gw._build_degraded_package_with_error(
-            "factory", "test", tmp_path, "test error", error_type="test"
-        )
+        result = gw._build_degraded_package_with_error("factory", "test", tmp_path, "test error", error_type="test")
         assert isinstance(result, dict)
         assert result.get("status") == "degraded"
         assert "error" in result
@@ -1054,7 +1045,9 @@ class TestLaunchAsyncHealthCheck:
     def test_launch_async_health_check_failure(self, gw, tmp_path, monkeypatch):
         """_launch_async_health_check handles launch failure."""
         # Mock subprocess.Popen to raise exception
-        monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: (_ for _ in ()).throw(Exception("Launch failed")))
+        monkeypatch.setattr(
+            subprocess, "Popen", lambda *args, **kwargs: (_ for _ in ()).throw(Exception("Launch failed"))
+        )
 
         # This should not raise, should write failure report
         gw._launch_async_health_check(tmp_path)
@@ -1109,10 +1102,7 @@ class TestLogPromptSubmit:
 
     def test_log_prompt_submit(self, gw, tmp_path):
         """_log_prompt_submit logs prompt."""
-        payload = {
-            "session_id": "test-session-12345678",
-            "prompt": "test prompt"
-        }
+        payload = {"session_id": "test-session-12345678", "prompt": "test prompt"}
 
         # This should not raise
         gw._log_prompt_submit(tmp_path, payload)
@@ -1424,11 +1414,7 @@ class TestWriteArtifacts:
 
     def test_write_artifacts(self, gw):
         """write_artifacts writes artifacts."""
-        package = {
-            "host": "factory",
-            "event": "test",
-            "status": "ok"
-        }
+        package = {"host": "factory", "event": "test", "status": "ok"}
         result = gw.write_artifacts(package)
         assert isinstance(result, dict)
 
@@ -1436,6 +1422,7 @@ class TestWriteArtifacts:
 # ===========================================================================
 # Helper function tests (lines 100-981)
 # ===========================================================================
+
 
 class TestHelperFunctions:
     """Test helper functions to increase coverage.
@@ -1578,6 +1565,7 @@ Content line 2
 # Policy and registration tests (lines 800-981)
 # ===========================================================================
 
+
 class TestPolicyAndRegistration:
     """Test policy and git registration functions."""
 
@@ -1640,6 +1628,7 @@ class TestPolicyAndRegistration:
 # Delegate tests (lines 1200-1320)
 # ===========================================================================
 
+
 class TestDelegateFunctions:
     """Test delegate execution functions."""
 
@@ -1695,7 +1684,9 @@ class TestDelegateFunctions:
         """_execute_delegate handles preflight RuntimeError."""
         args = argparse.Namespace(host="codex", event="session-start")
 
-        monkeypatch.setattr(gw, "_delegate_codex", lambda event, payload: (_ for _ in ()).throw(RuntimeError("preflight failed")))
+        monkeypatch.setattr(
+            gw, "_delegate_codex", lambda event, payload: (_ for _ in ()).throw(RuntimeError("preflight failed"))
+        )
         monkeypatch.setattr(gw, "append_error_log", lambda *args, **kwargs: None)
 
         mock_degraded = {"status": "degraded", "error": "preflight failed"}
@@ -1712,17 +1703,15 @@ class TestDelegateFunctions:
 # Main function extended tests (lines 1900-2067)
 # ===========================================================================
 
+
 class TestMainExtended:
     """Extended main() tests for additional coverage."""
 
     def test_main_prompt_submit_event(self, gw, monkeypatch, tmp_path, capsys):
         """main() with prompt-submit event calls _log_prompt_submit."""
-        monkeypatch.setattr(sys, "argv", [
-            "memory-hook-gateway",
-            "--host", "factory",
-            "--event", "prompt-submit",
-            "--no-delegate"
-        ])
+        monkeypatch.setattr(
+            sys, "argv", ["memory-hook-gateway", "--host", "factory", "--event", "prompt-submit", "--no-delegate"]
+        )
         monkeypatch.setattr(sys.stdin, "read", lambda: json.dumps({"cwd": str(tmp_path)}))
 
         pkg = {
@@ -1750,12 +1739,9 @@ class TestMainExtended:
 
     def test_main_source_repo_readonly_mode(self, gw, monkeypatch, tmp_path, capsys):
         """main() for source repo in readonly mode returns readonly package."""
-        monkeypatch.setattr(sys, "argv", [
-            "memory-hook-gateway",
-            "--host", "factory",
-            "--event", "session-start",
-            "--no-delegate"
-        ])
+        monkeypatch.setattr(
+            sys, "argv", ["memory-hook-gateway", "--host", "factory", "--event", "session-start", "--no-delegate"]
+        )
         monkeypatch.setattr(sys.stdin, "read", lambda: json.dumps({"cwd": str(tmp_path)}))
 
         monkeypatch.setattr(gw, "is_memory_core_source_repo", lambda cwd: True)
@@ -1777,12 +1763,9 @@ class TestMainExtended:
 
     def test_main_denied_project_returns_empty(self, gw, monkeypatch, tmp_path, capsys):
         """main() for denied project returns empty JSON."""
-        monkeypatch.setattr(sys, "argv", [
-            "memory-hook-gateway",
-            "--host", "factory",
-            "--event", "session-start",
-            "--no-delegate"
-        ])
+        monkeypatch.setattr(
+            sys, "argv", ["memory-hook-gateway", "--host", "factory", "--event", "session-start", "--no-delegate"]
+        )
         monkeypatch.setattr(sys.stdin, "read", lambda: json.dumps({"cwd": str(tmp_path)}))
 
         monkeypatch.setattr(gw, "is_memory_core_source_repo", lambda cwd: False)
@@ -1796,12 +1779,9 @@ class TestMainExtended:
 
     def test_main_external_context_noop(self, gw, monkeypatch, tmp_path):
         """main() returns noop for external context."""
-        monkeypatch.setattr(sys, "argv", [
-            "memory-hook-gateway",
-            "--host", "factory",
-            "--event", "session-start",
-            "--no-delegate"
-        ])
+        monkeypatch.setattr(
+            sys, "argv", ["memory-hook-gateway", "--host", "factory", "--event", "session-start", "--no-delegate"]
+        )
         monkeypatch.setattr(sys.stdin, "read", lambda: json.dumps({"cwd": str(tmp_path)}))
 
         monkeypatch.setattr(gw, "is_memory_core_source_repo", lambda cwd: False)
@@ -1815,12 +1795,9 @@ class TestMainExtended:
 
     def test_main_write_failure_logs_error(self, gw, monkeypatch, tmp_path, capsys):
         """main() logs error when artifact write fails."""
-        monkeypatch.setattr(sys, "argv", [
-            "memory-hook-gateway",
-            "--host", "factory",
-            "--event", "session-start",
-            "--no-delegate"
-        ])
+        monkeypatch.setattr(
+            sys, "argv", ["memory-hook-gateway", "--host", "factory", "--event", "session-start", "--no-delegate"]
+        )
         monkeypatch.setattr(sys.stdin, "read", lambda: json.dumps({"cwd": str(tmp_path)}))
 
         pkg = {
@@ -1861,6 +1838,7 @@ class TestMainExtended:
 # ===========================================================================
 # Telemetry sync extended tests (lines 1700-1860)
 # ===========================================================================
+
 
 class TestTelemetrySyncExtended:
     """Extended telemetry sync tests for additional coverage."""
@@ -1999,21 +1977,26 @@ class TestTelemetrySyncExtended:
 # Additional coverage tests to reach 95%+
 # ===========================================================================
 
+
 class TestApplyArtifactCompactionExtended:
     """Extended tests for _apply_artifact_compaction."""
 
     def test_compaction_strips_all_fields(self, gw, monkeypatch):
         """Test stripping all compactable fields."""
-        monkeypatch.setattr(gw, "_adapter_config", {
-            "ARTIFACT_COMPACTION": {
-                "include_system_context": False,
-                "include_project_context": False,
-                "include_task_context": False,
-                "include_evidence_refs": False,
-                "include_allowed_reads": False,
-                "include_allowed_writes": False,
-            }
-        })
+        monkeypatch.setattr(
+            gw,
+            "_adapter_config",
+            {
+                "ARTIFACT_COMPACTION": {
+                    "include_system_context": False,
+                    "include_project_context": False,
+                    "include_task_context": False,
+                    "include_evidence_refs": False,
+                    "include_allowed_reads": False,
+                    "include_allowed_writes": False,
+                }
+            },
+        )
         package = {
             "system_context": {"a": 1},
             "project_context": {"b": 2},
@@ -2041,11 +2024,15 @@ class TestApplyArtifactCompactionExtended:
 
     def test_compaction_missing_fields(self, gw, monkeypatch):
         """Test compaction when fields don't exist."""
-        monkeypatch.setattr(gw, "_adapter_config", {
-            "ARTIFACT_COMPACTION": {
-                "include_system_context": False,
-            }
-        })
+        monkeypatch.setattr(
+            gw,
+            "_adapter_config",
+            {
+                "ARTIFACT_COMPACTION": {
+                    "include_system_context": False,
+                }
+            },
+        )
         package = {"host": "test"}  # No system_context
         gw._apply_artifact_compaction(package)
         assert "system_context" not in package
@@ -2125,12 +2112,9 @@ class TestMainExecutionExtended:
 
     def test_main_session_start_full_path(self, gw, monkeypatch, tmp_path, capsys):
         """Test main() with session-start event covering full path."""
-        monkeypatch.setattr(sys, "argv", [
-            "memory-hook-gateway",
-            "--host", "factory",
-            "--event", "session-start",
-            "--no-delegate"
-        ])
+        monkeypatch.setattr(
+            sys, "argv", ["memory-hook-gateway", "--host", "factory", "--event", "session-start", "--no-delegate"]
+        )
         monkeypatch.setattr(sys.stdin, "read", lambda: json.dumps({"cwd": str(tmp_path)}))
 
         monkeypatch.setattr(gw, "is_memory_core_source_repo", lambda cwd: False)
@@ -2164,11 +2148,7 @@ class TestMainExecutionExtended:
 
     def test_main_with_delegate(self, gw, monkeypatch, tmp_path, capsys):
         """Test main() without --no-delegate flag."""
-        monkeypatch.setattr(sys, "argv", [
-            "memory-hook-gateway",
-            "--host", "factory",
-            "--event", "session-start"
-        ])
+        monkeypatch.setattr(sys, "argv", ["memory-hook-gateway", "--host", "factory", "--event", "session-start"])
         monkeypatch.setattr(sys.stdin, "read", lambda: json.dumps({"cwd": str(tmp_path)}))
 
         monkeypatch.setattr(gw, "is_memory_core_source_repo", lambda cwd: False)
@@ -2210,6 +2190,7 @@ class TestExcepthookExtended:
 
         # Set start time
         import sys
+
         sys._gateway_start_time = time.time() - 1.0
 
         try:
@@ -2246,11 +2227,7 @@ class TestWriteArtifactsExtended:
         monkeypatch.setattr(gw, "CONTEXT_ROOT", tmp_path / "contexts")
         monkeypatch.setattr(gw, "EVENT_LOG", tmp_path / "events.jsonl")
 
-        package = {
-            "host": "factory",
-            "event": "custom-event",
-            "status": "ok"
-        }
+        package = {"host": "factory", "event": "custom-event", "status": "ok"}
 
         result = gw.write_artifacts(package)
         assert isinstance(result, dict)
@@ -2277,12 +2254,16 @@ class TestReadLastUserMessageExtended:
     def test_read_last_user_message_no_user_messages(self, gw, tmp_path):
         """Test when transcript has no user messages."""
         transcript_file = tmp_path / "transcript.json"
-        transcript_file.write_text(json.dumps({
-            "messages": [
-                {"role": "assistant", "content": "Response 1"},
-                {"role": "assistant", "content": "Response 2"}
-            ]
-        }))
+        transcript_file.write_text(
+            json.dumps(
+                {
+                    "messages": [
+                        {"role": "assistant", "content": "Response 1"},
+                        {"role": "assistant", "content": "Response 2"},
+                    ]
+                }
+            )
+        )
 
         result = gw._read_last_user_message_from_transcript(str(transcript_file))
         assert result is None
@@ -2296,10 +2277,7 @@ class TestLogPromptSubmitTimeout:
         log_dir = tmp_path / "memory" / "log"
         log_dir.mkdir(parents=True)
 
-        payload = {
-            "session_id": "test-session-999",
-            "prompt": "Existing log test"
-        }
+        payload = {"session_id": "test-session-999", "prompt": "Existing log test"}
 
         # Should not raise
         gw._log_prompt_submit(tmp_path, payload)
@@ -2311,6 +2289,7 @@ class TestLogPromptSubmitTimeout:
 
 class TestMainHealthReportInjection:
     """Test main() health report injection (lines 1965-1968)."""
+
     # Note: This test is currently disabled due to mocking complexity
     # The health report injection code is covered by integration tests
     pass
@@ -2321,12 +2300,9 @@ class TestIntegrityVerifyFailure:
 
     def test_main_with_integrity_failure(self, gw, monkeypatch, tmp_path, capsys):
         """Test main() when integrity verify fails."""
-        monkeypatch.setattr(sys, "argv", [
-            "memory-hook-gateway",
-            "--host", "factory",
-            "--event", "session-start",
-            "--no-delegate"
-        ])
+        monkeypatch.setattr(
+            sys, "argv", ["memory-hook-gateway", "--host", "factory", "--event", "session-start", "--no-delegate"]
+        )
         monkeypatch.setattr(sys.stdin, "read", lambda: json.dumps({"cwd": str(tmp_path)}))
 
         monkeypatch.setattr(gw, "is_memory_core_source_repo", lambda cwd: False)
@@ -2346,10 +2322,9 @@ class TestIntegrityVerifyFailure:
         monkeypatch.setattr(gw, "_integrity_sign", lambda *args: None)
 
         # Mock integrity verify to fail
-        monkeypatch.setattr(gw, "_integrity_verify", lambda *args: {
-            "ok": False,
-            "errors": [{"detail": "integrity check failed"}]
-        })
+        monkeypatch.setattr(
+            gw, "_integrity_verify", lambda *args: {"ok": False, "errors": [{"detail": "integrity check failed"}]}
+        )
 
         monkeypatch.setattr(gw, "_launch_async_health_check", lambda *args: None)
         monkeypatch.setattr(gw, "_update_state_dynamic_fields", lambda *args: None)
@@ -2365,4 +2340,3 @@ class TestIntegrityVerifyFailure:
         assert pkg["status"] == "blocked"
         assert "integrity-check-failed" in pkg["validation_errors"]
         assert exit_code == 1
-

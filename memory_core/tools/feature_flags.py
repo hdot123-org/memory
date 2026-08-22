@@ -47,6 +47,7 @@ def _parse_value(raw: str | None) -> bool | None:
 @dataclass(frozen=True)
 class FeatureFlag:
     """A registered feature flag definition."""
+
     name: str
     default: bool = False
     description: str = ""
@@ -83,9 +84,7 @@ class FeatureFlagRegistry:
         """
         upper = name.upper()
         if not _FLAG_NAME_RE.match(upper):
-            raise ValueError(
-                f"Invalid flag name {name!r}: must match {_FLAG_NAME_RE.pattern}"
-            )
+            raise ValueError(f"Invalid flag name {name!r}: must match {_FLAG_NAME_RE.pattern}")
         if upper in self._flags:
             logger.debug("feature_flags: overriding existing flag %s", upper)
         flag = FeatureFlag(name=upper, default=default, description=description)

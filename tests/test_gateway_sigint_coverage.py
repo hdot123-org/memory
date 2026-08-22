@@ -20,6 +20,7 @@ Covers:
 - VAL-CROSS-005: stdin.read() blocked + SIGINT → clean exit
 - VAL-CROSS-008: install_guard independently callable
 """
+
 import json
 import os
 import shutil
@@ -80,15 +81,9 @@ class TestConsoleScriptSigint:
             pytest.fail("Console-script did not exit within 5s after SIGINT")
 
         stderr_text = stderr.decode("utf-8", errors="replace")
-        assert proc.returncode == 0, (
-            f"Console-script exit code {proc.returncode} != 0\nstderr: {stderr_text}"
-        )
-        assert "Traceback" not in stderr_text, (
-            f"Traceback found in stderr:\n{stderr_text}"
-        )
-        assert "KeyboardInterrupt" not in stderr_text, (
-            f"KeyboardInterrupt found in stderr:\n{stderr_text}"
-        )
+        assert proc.returncode == 0, f"Console-script exit code {proc.returncode} != 0\nstderr: {stderr_text}"
+        assert "Traceback" not in stderr_text, f"Traceback found in stderr:\n{stderr_text}"
+        assert "KeyboardInterrupt" not in stderr_text, f"KeyboardInterrupt found in stderr:\n{stderr_text}"
 
     def test_console_script_sigint_during_import_phase(self) -> None:
         """VAL-GW-002: Console-script exits 0 on SIGINT during import phase."""
@@ -122,9 +117,7 @@ class TestConsoleScriptSigint:
         assert proc.returncode == 0, (
             f"Console-script early SIGINT exit code {proc.returncode} != 0\nstderr: {stderr_text}"
         )
-        assert "Traceback" not in stderr_text, (
-            f"Traceback found in stderr during early SIGINT:\n{stderr_text}"
-        )
+        assert "Traceback" not in stderr_text, f"Traceback found in stderr during early SIGINT:\n{stderr_text}"
 
 
 class TestMPathSigint:
@@ -161,12 +154,8 @@ class TestMPathSigint:
             pytest.fail("-m path did not exit within 5s after SIGINT")
 
         stderr_text = stderr.decode("utf-8", errors="replace")
-        assert proc.returncode == 0, (
-            f"-m path exit code {proc.returncode} != 0\nstderr: {stderr_text}"
-        )
-        assert "Traceback" not in stderr_text, (
-            f"Traceback in -m path stderr:\n{stderr_text}"
-        )
+        assert proc.returncode == 0, f"-m path exit code {proc.returncode} != 0\nstderr: {stderr_text}"
+        assert "Traceback" not in stderr_text, f"Traceback in -m path stderr:\n{stderr_text}"
 
 
 class TestNoSignalExecution:
@@ -194,9 +183,7 @@ class TestNoSignalExecution:
             pytest.fail("Gateway did not complete within 10s without signals")
 
         stderr_text = stderr.decode("utf-8", errors="replace")
-        assert proc.returncode == 0, (
-            f"Normal execution exit code {proc.returncode} != 0\nstderr: {stderr_text}"
-        )
+        assert proc.returncode == 0, f"Normal execution exit code {proc.returncode} != 0\nstderr: {stderr_text}"
 
         # stdout should contain valid JSON (or be empty for session-end)
         stdout_text = stdout.decode("utf-8", errors="replace").strip()
@@ -238,12 +225,8 @@ class TestSigalmSelfFire:
             pytest.fail("SIGALRM did not fire within 9s — process hung")
 
         stderr_text = stderr.decode("utf-8", errors="replace")
-        assert proc.returncode == 0, (
-            f"SIGALRM exit code {proc.returncode} != 0\nstderr: {stderr_text}"
-        )
-        assert "Traceback" not in stderr_text, (
-            f"Traceback after SIGALRM:\n{stderr_text}"
-        )
+        assert proc.returncode == 0, f"SIGALRM exit code {proc.returncode} != 0\nstderr: {stderr_text}"
+        assert "Traceback" not in stderr_text, f"Traceback after SIGALRM:\n{stderr_text}"
 
 
 class TestPytestCollectionSafety:
@@ -271,12 +254,8 @@ class TestPytestCollectionSafety:
             f"pytest --collect-only exit code {result.returncode} != 0\n"
             f"stdout: {result.stdout}\nstderr: {result.stderr}"
         )
-        assert "INTERNALERROR" not in result.stderr, (
-            f"INTERNALERROR in pytest collection:\n{result.stderr}"
-        )
-        assert "SystemExit" not in result.stderr, (
-            f"SystemExit in pytest collection:\n{result.stderr}"
-        )
+        assert "INTERNALERROR" not in result.stderr, f"INTERNALERROR in pytest collection:\n{result.stderr}"
+        assert "SystemExit" not in result.stderr, f"SystemExit in pytest collection:\n{result.stderr}"
 
 
 class TestInProcessMainSafety:
@@ -288,9 +267,7 @@ class TestInProcessMainSafety:
 
         # Check no pending alarm
         pending_alarm = signal.alarm(0)  # Returns 0 if no pending alarm
-        assert pending_alarm == 0, (
-            f"Importing gateway armed SIGALRM: pending={pending_alarm}"
-        )
+        assert pending_alarm == 0, f"Importing gateway armed SIGALRM: pending={pending_alarm}"
 
     def test_gateway_main_callable(self) -> None:
         """VAL-CROSS-008: gateway_main is callable."""
@@ -351,12 +328,8 @@ class TestCodeInspection:
         # Extract the block (next ~500 chars should contain signal setup)
         main_block = content[main_block_start : main_block_start + 1000]
 
-        assert "signal.signal(signal.SIGALRM" in main_block, (
-            "SIGALRM handler not in __main__ block"
-        )
-        assert "signal.signal(signal.SIGINT" in main_block, (
-            "SIGINT handler not in __main__ block"
-        )
+        assert "signal.signal(signal.SIGALRM" in main_block, "SIGALRM handler not in __main__ block"
+        assert "signal.signal(signal.SIGINT" in main_block, "SIGINT handler not in __main__ block"
         assert "signal.alarm" in main_block, "signal.alarm not in __main__ block"
 
     def test_git_registration_probe_timeout_5(self) -> None:
@@ -371,9 +344,8 @@ class TestCodeInspection:
         func_body = content[func_start : func_start + 5000]
 
         # Check for timeout=5 in subprocess.run calls
-        assert "timeout=5" in func_body, (
-            "_git_registration_probe does not have timeout=5"
-        )
+        assert "timeout=5" in func_body, "_git_registration_probe does not have timeout=5"
+
     def test_hook_runtime_guard_structure(self) -> None:
         """VAL-GW-005: hook_runtime_guard.py has correct structure."""
         assert HOOK_RUNTIME_GUARD_PATH.exists(), "hook_runtime_guard.py does not exist"
@@ -429,9 +401,7 @@ class TestEntryPathMatrix:
             proc.communicate()
             pytest.fail("Console-script + SIGINT did not exit within 5s")
 
-        assert proc.returncode == 0, (
-            f"Console-script + SIGINT exit code {proc.returncode} != 0"
-        )
+        assert proc.returncode == 0, f"Console-script + SIGINT exit code {proc.returncode} != 0"
 
     def test_m_path_sigint_path(self) -> None:
         """VAL-CROSS-002: -m path + SIGINT → exit 0."""
@@ -463,9 +433,7 @@ class TestEntryPathMatrix:
             proc.communicate()
             pytest.fail("-m path + SIGINT did not exit within 5s")
 
-        assert proc.returncode == 0, (
-            f"-m path + SIGINT exit code {proc.returncode} != 0"
-        )
+        assert proc.returncode == 0, f"-m path + SIGINT exit code {proc.returncode} != 0"
 
     def test_pytest_import_no_guard(self) -> None:
         """VAL-CROSS-002: pytest import → guard NOT active."""
@@ -486,6 +454,5 @@ class TestEntryPathMatrix:
         )
 
         assert result.returncode == 0, (
-            f"pytest collection failed: exit {result.returncode}\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+            f"pytest collection failed: exit {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )

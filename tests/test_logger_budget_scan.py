@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 # ─── VAL-LOG-009: Budget constants defined and positive ───────────────────────
 
+
 class TestBudgetConstants:
     """All four budget constants must be defined and positive."""
 
@@ -82,9 +83,17 @@ class TestBudgetConstants:
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 EXPECTED_FIELDS = {
-    "session_id", "full_session_id", "title", "model",
-    "duration", "duration_seconds", "input_tokens", "output_tokens",
-    "tool_calls", "total_tool_calls", "user_prompt_preview",
+    "session_id",
+    "full_session_id",
+    "title",
+    "model",
+    "duration",
+    "duration_seconds",
+    "input_tokens",
+    "output_tokens",
+    "tool_calls",
+    "total_tool_calls",
+    "user_prompt_preview",
     "assistant_summary_preview",
 }
 
@@ -128,19 +137,26 @@ def _append_jsonl(path: Path, lines: list[dict]) -> None:
 
 # ─── VAL-LOG-002: Normal JSONL → correct output ─────────────────────────────
 
+
 class TestNormalJsonl:
     """Normal-sized JSONL should produce correct session info with all 13 fields."""
 
     def test_all_13_fields_present(self, tmp_path: Path):
         jsonl = tmp_path / "session.jsonl"
-        _write_jsonl(jsonl, [
-            _make_session_start("Normal Session"),
-            _make_user_msg("Help me fix this bug"),
-            _make_assistant_msg("I fixed the bug", [
-                {"type": "tool_use", "name": "Read", "input": {}},
-                {"type": "tool_use", "name": "Edit", "input": {}},
-            ]),
-        ])
+        _write_jsonl(
+            jsonl,
+            [
+                _make_session_start("Normal Session"),
+                _make_user_msg("Help me fix this bug"),
+                _make_assistant_msg(
+                    "I fixed the bug",
+                    [
+                        {"type": "tool_use", "name": "Read", "input": {}},
+                        {"type": "tool_use", "name": "Edit", "input": {}},
+                    ],
+                ),
+            ],
+        )
 
         settings = {"model": "claude-3-opus", "inclusiveTokenUsage": {"inputTokens": 500, "outputTokens": 200}}
         result = _extract_session_info_streaming(jsonl, settings, "abc12345-def6-7890")
@@ -167,6 +183,7 @@ class TestNormalJsonl:
 
 
 # ─── VAL-LOG-003: Huge JSONL (50MB+) → completes within budget ──────────────
+
 
 class TestHugeJsonl:
     """Very large JSONL should complete within time budget with truncated=True."""
@@ -206,6 +223,7 @@ class TestHugeJsonl:
 
 # ─── VAL-LOG-004: Single oversized line → skipped ────────────────────────────
 
+
 class TestOversizedLine:
     """Single line > MAX_LINE should be skipped, other lines processed."""
 
@@ -239,6 +257,7 @@ class TestOversizedLine:
 
 # ─── VAL-LOG-005: Empty file → handled ────────────────────────────────────────
 
+
 class TestEmptyFile:
     """Empty JSONL file should be handled without error."""
 
@@ -271,6 +290,7 @@ class TestEmptyFile:
 
 # ─── VAL-LOG-006: All-malformed JSON → default dict ──────────────────────────
 
+
 class TestAllMalformedJson:
     """All-malformed JSON → dict with empty/default fields, no crash."""
 
@@ -302,6 +322,7 @@ class TestAllMalformedJson:
 
 
 # ─── VAL-LOG-007: Byte budget truncation ──────────────────────────────────────
+
 
 class TestByteBudgetTruncation:
     """When JSONL exceeds BYTE_BUDGET, truncated=True is set."""
@@ -347,6 +368,7 @@ class TestByteBudgetTruncation:
 
 # ─── VAL-LOG-008: Time budget truncation ──────────────────────────────────────
 
+
 class TestTimeBudgetTruncation:
     """When processing exceeds TIME_BUDGET, truncated=True is set."""
 
@@ -380,6 +402,7 @@ class TestTimeBudgetTruncation:
 
 # ─── VAL-LOG-010: _set_timeout outer SIGALRM still works ─────────────────────
 
+
 class TestOuterSigalmWorks:
     """The _set_timeout(TIMEOUT_SECONDS) SIGALRM safety net must still work."""
 
@@ -390,6 +413,7 @@ class TestOuterSigalmWorks:
 
         # Verify it calls signal.alarm by checking the implementation
         import inspect
+
         source = inspect.getsource(_set_timeout)
         assert "signal.signal" in source
         assert "signal.SIGALRM" in source
@@ -402,12 +426,14 @@ class TestOuterSigalmWorks:
 
 # ─── VAL-NR-008: if __name__=='__main__' block preserved ─────────────────────
 
+
 class TestMainGuardPreserved:
     """The if __name__=='__main__' block must still exist and install handlers."""
 
     def test_main_guard_exists(self):
         """Source code contains if __name__ == '__main__' block."""
         import memory_core.tools.session_end_logger as mod
+
         source_file = Path(mod.__file__)
         source = source_file.read_text()
         assert 'if __name__ == "__main__":' in source
@@ -415,19 +441,21 @@ class TestMainGuardPreserved:
     def test_main_guard_installs_signal_handlers(self):
         """The __main__ block installs SIGALRM and SIGINT handlers."""
         import memory_core.tools.session_end_logger as mod
+
         source_file = Path(mod.__file__)
         source = source_file.read_text()
 
         # Find the __main__ block
         main_guard_idx = source.index('if __name__ == "__main__":')
         # The block should contain signal handler installations
-        main_block = source[main_guard_idx:main_guard_idx + 500]
+        main_block = source[main_guard_idx : main_guard_idx + 500]
         assert "signal.signal" in main_block
         assert "SIGALRM" in main_block
         assert "SIGINT" in main_block
 
 
 # ─── VAL-CROSS-006: Large JSONL + SIGINT → exit 0 ────────────────────────────
+
 
 class TestLargeJsonlWithSigint:
     """Large JSONL + SIGINT → whichever fires first, exit 0."""
@@ -444,11 +472,13 @@ class TestLargeJsonlWithSigint:
                 f.write(line)
 
         # Write stdin payload
-        stdin_payload = json.dumps({
-            "session_id": "sigint-session",
-            "cwd": str(tmp_path),
-            "transcript_path": str(jsonl),
-        })
+        stdin_payload = json.dumps(
+            {
+                "session_id": "sigint-session",
+                "cwd": str(tmp_path),
+                "transcript_path": str(jsonl),
+            }
+        )
 
         proc = subprocess.Popen(
             [sys.executable, "-m", "memory_core.tools.session_end_logger"],
@@ -483,6 +513,7 @@ class TestLargeJsonlWithSigint:
 
 # ─── VAL-CROSS-009: Truncated output still valid ─────────────────────────────
 
+
 class TestTruncatedOutputValid:
     """When truncated, output must still be valid with all 13 fields."""
 
@@ -493,9 +524,17 @@ class TestTruncatedOutputValid:
         with jsonl.open("w", encoding="utf-8") as f:
             f.write(json.dumps(_make_session_start("Truncated Session")) + "\n")
             f.write(json.dumps(_make_user_msg("Original user intent")) + "\n")
-            f.write(json.dumps(_make_assistant_msg("Original reply", [
-                {"type": "tool_use", "name": "Read", "input": {}},
-            ])) + "\n")
+            f.write(
+                json.dumps(
+                    _make_assistant_msg(
+                        "Original reply",
+                        [
+                            {"type": "tool_use", "name": "Read", "input": {}},
+                        ],
+                    )
+                )
+                + "\n"
+            )
             # Fill beyond budget
             padding = _make_assistant_msg("Padding " * 200)
             line = json.dumps(padding) + "\n"
@@ -528,11 +567,13 @@ class TestTruncatedOutputValid:
             while f.tell() < BYTE_BUDGET + 1024:
                 f.write(line)
 
-        stdin_payload = json.dumps({
-            "session_id": "trunc-log-session",
-            "cwd": str(tmp_path),
-            "transcript_path": str(jsonl),
-        })
+        stdin_payload = json.dumps(
+            {
+                "session_id": "trunc-log-session",
+                "cwd": str(tmp_path),
+                "transcript_path": str(jsonl),
+            }
+        )
 
         with patch("sys.stdin") as mock_stdin:
             mock_stdin.isatty.return_value = False
@@ -549,6 +590,7 @@ class TestTruncatedOutputValid:
 
 # ─── File not found ────────────────────────────────────────────────────────────
 
+
 class TestFileNotFound:
     """Non-existent file should return None."""
 
@@ -560,6 +602,7 @@ class TestFileNotFound:
 
 # ─── Cross-chunk line handling ────────────────────────────────────────────────
 
+
 class TestCrossChunkLines:
     """Lines that span chunk boundaries should be handled correctly."""
 
@@ -567,11 +610,14 @@ class TestCrossChunkLines:
         """A JSONL line split at a chunk boundary should still be parsed."""
         jsonl = tmp_path / "session.jsonl"
         # Write a single valid JSONL line
-        _write_jsonl(jsonl, [
-            _make_session_start("Cross-Chunk"),
-            _make_user_msg("Test message"),
-            _make_assistant_msg("Response"),
-        ])
+        _write_jsonl(
+            jsonl,
+            [
+                _make_session_start("Cross-Chunk"),
+                _make_user_msg("Test message"),
+                _make_assistant_msg("Response"),
+            ],
+        )
 
         # Even with small chunk reads (which we can't control directly),
         # the buffer logic should handle this

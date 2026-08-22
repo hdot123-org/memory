@@ -22,8 +22,6 @@ class TestNoopHostDelegateAvailability:
         assert delegate.can_handle() is True
 
 
-
-
 class TestNoopHostDelegateResponse:
     """Test that NoopHostDelegate responses carry host_unavailable + policy_decision."""
 

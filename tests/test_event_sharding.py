@@ -224,15 +224,17 @@ def test_per_project_isolation(tmp_path: Path) -> None:
     for daily_file in events_dir_a.glob("*.jsonl"):
         for line in daily_file.read_text(encoding="utf-8").strip().split("\n"):
             event_data = json.loads(line)
-            assert event_data["project_id"] == project_id_a, \
+            assert event_data["project_id"] == project_id_a, (
                 f"Project B event found in A's directory: {event_data['project_id']}"
+            )
 
     # Check B's events
     for daily_file in events_dir_b.glob("*.jsonl"):
         for line in daily_file.read_text(encoding="utf-8").strip().split("\n"):
             event_data = json.loads(line)
-            assert event_data["project_id"] == project_id_b, \
+            assert event_data["project_id"] == project_id_b, (
                 f"Project A event found in B's directory: {event_data['project_id']}"
+            )
 
 
 # ── VAL-SHARDING-06: State file path unchanged ─────────────────────────────────────
@@ -347,10 +349,11 @@ def test_return_dict_event_log_path_correct(tmp_path: Path) -> None:
     # Verify path matches pattern: projects/{project_id}/events/{YYYY-MM-DD}.jsonl
     project_id = result["project_id"]
     expected_pattern = f"projects/{project_id}/events/2026-08-01.jsonl"
-    assert str(event_log_path).endswith(expected_pattern), \
+    assert str(event_log_path).endswith(expected_pattern), (
         f"event_log path does not match expected pattern: {event_log_path}"
+    )
 
     # Verify it's NOT pointing to global events.jsonl
-    assert not str(event_log_path).endswith("events.jsonl") or \
-           "projects" in str(event_log_path), \
-           "event_log should not point to global events.jsonl"
+    assert not str(event_log_path).endswith("events.jsonl") or "projects" in str(event_log_path), (
+        "event_log should not point to global events.jsonl"
+    )

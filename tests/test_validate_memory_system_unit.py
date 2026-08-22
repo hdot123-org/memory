@@ -1,6 +1,5 @@
 """Tests for validate_memory_system module."""
 
-
 from memory_core.tools.validate_memory_system import (
     REQUIRED_PACKAGE_KEYS,
     REQUIRED_SYSTEM_CONTEXT_KEYS,

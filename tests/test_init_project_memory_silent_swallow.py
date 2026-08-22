@@ -35,9 +35,7 @@ class TestDetectFromPackageJsonSilentSwallow:
 
     def test_except_binds_exception(self):
         body = _func_body(_combined_source(), "_detect_from_package_json")
-        assert "except Exception as exc:" in body, (
-            "_detect_from_package_json except must bind the exception as `exc`"
-        )
+        assert "except Exception as exc:" in body, "_detect_from_package_json except must bind the exception as `exc`"
 
     def test_except_logs_debug(self):
         body = _func_body(_combined_source(), "_detect_from_package_json")
@@ -49,9 +47,7 @@ class TestDetectFromPyprojectSilentSwallow:
 
     def test_except_binds_exception(self):
         body = _func_body(_combined_source(), "_detect_from_pyproject")
-        assert "except Exception as exc:" in body, (
-            "_detect_from_pyproject except must bind the exception as `exc`"
-        )
+        assert "except Exception as exc:" in body, "_detect_from_pyproject except must bind the exception as `exc`"
 
     def test_except_logs_debug(self):
         body = _func_body(_combined_source(), "_detect_from_pyproject")

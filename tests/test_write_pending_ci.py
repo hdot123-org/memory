@@ -50,11 +50,7 @@ def test_delegates_arguments(tmp_path: Path):
 
     # Create mock global script that echoes args to a file
     mock_script = mock_script_dir / "write-pending-ci.sh"
-    mock_script.write_text(
-        f'#!/usr/bin/env bash\n'
-        f'echo "$@" > "{args_file}"\n'
-        f'exit 0\n'
-    )
+    mock_script.write_text(f'#!/usr/bin/env bash\necho "$@" > "{args_file}"\nexit 0\n')
     mock_script.chmod(stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
 
     # Run the wrapper with test arguments, overriding HOME
@@ -69,8 +65,7 @@ def test_delegates_arguments(tmp_path: Path):
     # Verify the mock received the arguments
     assert args_file.is_file(), "Mock script should have been called and created args file"
     received = args_file.read_text().strip()
-    assert received == "42 test-session-abc", \
-        f"Expected '42 test-session-abc', got {received!r}"
+    assert received == "42 test-session-abc", f"Expected '42 test-session-abc', got {received!r}"
 
 
 # ============================================================================
@@ -91,5 +86,4 @@ def test_missing_global_script_fails(tmp_path: Path):
         env={"HOME": str(mock_home)},
     )
 
-    assert exit_code != 0, \
-        f"Expected non-zero exit when global script is missing, got {exit_code}"
+    assert exit_code != 0, f"Expected non-zero exit when global script is missing, got {exit_code}"

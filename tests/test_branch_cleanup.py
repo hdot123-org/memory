@@ -219,7 +219,7 @@ case "$BRANCH" in
     for branch_name, prs in branch_pr_map.items():
         pr_json = json.dumps(prs)
         script_content += f'    "{branch_name}")\n'
-        script_content += f'        echo \'{pr_json}\'\n'
+        script_content += f"        echo '{pr_json}'\n"
         script_content += "        ;;\n"
 
     script_content += """    *)
@@ -305,11 +305,14 @@ def test_immediate_mode_only_processes_specified_branch(tmp_path: Path):
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
     # Mock gh to return no open PRs for any branch
-    mock_gh = create_gh_mock(tmp_path, {
-        "feature-A": [],
-        "feature-B": [],
-        "feature-C": [],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "feature-A": [],
+            "feature-B": [],
+            "feature-C": [],
+        },
+    )
 
     # Run with --immediate feature-A
     env_overrides = {
@@ -371,9 +374,12 @@ def test_immediate_mode_skips_branch_with_open_pr(tmp_path: Path):
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
     # Mock gh to return an open PR for this branch
-    mock_gh = create_gh_mock(tmp_path, {
-        "feature-with-pr": [{"number": 123, "state": "OPEN"}],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "feature-with-pr": [{"number": 123, "state": "OPEN"}],
+        },
+    )
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -403,10 +409,13 @@ def test_merged_pr_recent_branch_preserved(tmp_path: Path):
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
     # Merge content into main so guard doesn't protect the branch
-    subprocess.run(["git", "merge", "--no-ff", "merged-recent", "-m", "Merge merged-recent"],
-                   cwd=clone_dir, check=True, capture_output=True)
-    subprocess.run(["git", "push", "origin", "main"],
-                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "merge", "--no-ff", "merged-recent", "-m", "Merge merged-recent"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
 
     mock_gh = create_gh_mock(tmp_path, {"merged-recent": [{"number": 101, "state": "MERGED"}]})
 
@@ -438,10 +447,13 @@ def test_merged_pr_old_branch_deleted(tmp_path: Path):
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
     # Merge merged-old into main so content is equivalent (bypass guard after expansion)
-    subprocess.run(["git", "merge", "--no-ff", "merged-old", "-m", "Merge merged-old"],
-                   cwd=clone_dir, check=True, capture_output=True)
-    subprocess.run(["git", "push", "origin", "main"],
-                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "merge", "--no-ff", "merged-old", "-m", "Merge merged-old"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
 
     mock_gh = create_gh_mock(tmp_path, {"merged-old": [{"number": 102, "state": "MERGED"}]})
 
@@ -470,10 +482,13 @@ def test_closed_pr_recent_branch_preserved(tmp_path: Path):
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
     # Merge closed-recent into main so content is equivalent (bypass protection)
-    subprocess.run(["git", "merge", "--no-ff", "closed-recent", "-m", "Merge closed-recent"],
-                   cwd=clone_dir, check=True, capture_output=True)
-    subprocess.run(["git", "push", "origin", "main"],
-                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "merge", "--no-ff", "closed-recent", "-m", "Merge closed-recent"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
 
     mock_gh = create_gh_mock(tmp_path, {"closed-recent": [{"number": 201, "state": "CLOSED"}]})
 
@@ -502,10 +517,13 @@ def test_closed_pr_old_branch_deleted(tmp_path: Path):
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
     # Merge closed-old into main so content is equivalent (bypass protection)
-    subprocess.run(["git", "merge", "--no-ff", "closed-old", "-m", "Merge closed-old"],
-                   cwd=clone_dir, check=True, capture_output=True)
-    subprocess.run(["git", "push", "origin", "main"],
-                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "merge", "--no-ff", "closed-old", "-m", "Merge closed-old"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
 
     mock_gh = create_gh_mock(tmp_path, {"closed-old": [{"number": 202, "state": "CLOSED"}]})
 
@@ -594,21 +612,22 @@ def test_merged_pr_reverted_branch_protected(tmp_path: Path):
     subprocess.run(["git", "checkout", "main"], cwd=clone_dir, check=True, capture_output=True)
     (clone_dir / "reverted-feature.txt").write_text("Content for reverted-feature\n")
     subprocess.run(["git", "add", "."], cwd=clone_dir, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Squash merge reverted-feature"],
-                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Squash merge reverted-feature"], cwd=clone_dir, check=True, capture_output=True
+    )
 
     # Simulate revert: remove the content from main
-    subprocess.run(["git", "rm", "reverted-feature.txt"],
-                   cwd=clone_dir, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Revert 'Squash merge reverted-feature'"],
-                   cwd=clone_dir, check=True, capture_output=True)
-    subprocess.run(["git", "push", "origin", "main"],
-                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(["git", "rm", "reverted-feature.txt"], cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Revert 'Squash merge reverted-feature'"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
 
     # Branch has MERGED PR but content is no longer in main
-    mock_gh = create_gh_mock(tmp_path, {
-        "reverted-feature": [{"number": 601, "state": "MERGED"}]
-    })
+    mock_gh = create_gh_mock(tmp_path, {"reverted-feature": [{"number": 601, "state": "MERGED"}]})
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -641,14 +660,15 @@ def test_branch_age_zero_falls_back_to_default(tmp_path: Path):
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
     # Merge content so guard doesn't block
-    subprocess.run(["git", "merge", "--no-ff", "test-zero", "-m", "Merge test-zero"],
-                   cwd=clone_dir, check=True, capture_output=True)
-    subprocess.run(["git", "push", "origin", "main"],
-                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "merge", "--no-ff", "test-zero", "-m", "Merge test-zero"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
 
-    mock_gh = create_gh_mock(tmp_path, {
-        "test-zero": [{"number": 701, "state": "MERGED"}]
-    })
+    mock_gh = create_gh_mock(tmp_path, {"test-zero": [{"number": 701, "state": "MERGED"}]})
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -675,14 +695,15 @@ def test_branch_age_negative_falls_back_to_default(tmp_path: Path):
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
     # Merge content so guard doesn't block
-    subprocess.run(["git", "merge", "--no-ff", "test-negative", "-m", "Merge test-negative"],
-                   cwd=clone_dir, check=True, capture_output=True)
-    subprocess.run(["git", "push", "origin", "main"],
-                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "merge", "--no-ff", "test-negative", "-m", "Merge test-negative"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
 
-    mock_gh = create_gh_mock(tmp_path, {
-        "test-negative": [{"number": 702, "state": "CLOSED"}]
-    })
+    mock_gh = create_gh_mock(tmp_path, {"test-negative": [{"number": 702, "state": "CLOSED"}]})
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -713,14 +734,15 @@ def test_env_override_changes_behavior(tmp_path: Path):
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
     # Merge content so guard doesn't block
-    subprocess.run(["git", "merge", "--no-ff", "test-override", "-m", "Merge test-override"],
-                   cwd=clone_dir, check=True, capture_output=True)
-    subprocess.run(["git", "push", "origin", "main"],
-                   cwd=clone_dir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "merge", "--no-ff", "test-override", "-m", "Merge test-override"],
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
 
-    mock_gh = create_gh_mock(tmp_path, {
-        "test-override": [{"number": 703, "state": "MERGED"}]
-    })
+    mock_gh = create_gh_mock(tmp_path, {"test-override": [{"number": 703, "state": "MERGED"}]})
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -751,9 +773,12 @@ def test_scheduled_mode_skips_branch_with_open_pr(tmp_path: Path):
     branches = [("feature-with-pr", old_date, True)]
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
-    mock_gh = create_gh_mock(tmp_path, {
-        "feature-with-pr": [{"number": 456, "state": "OPEN"}],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "feature-with-pr": [{"number": 456, "state": "OPEN"}],
+        },
+    )
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -855,10 +880,13 @@ def test_deleted_branches_tracked_in_output(tmp_path: Path):
     ]
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
-    mock_gh = create_gh_mock(tmp_path, {
-        "orphan-1": [],
-        "orphan-2": [],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "orphan-1": [],
+            "orphan-2": [],
+        },
+    )
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -1034,13 +1062,16 @@ def test_scheduled_mode_multiple_orphans(tmp_path: Path):
     ]
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
-    mock_gh = create_gh_mock(tmp_path, {
-        "orphan-old-1": [],
-        "orphan-old-2": [],
-        "orphan-old-3": [],
-        "orphan-fresh": [],
-        "has-pr": [{"number": 789, "state": "OPEN"}],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "orphan-old-1": [],
+            "orphan-old-2": [],
+            "orphan-old-3": [],
+            "orphan-fresh": [],
+            "has-pr": [{"number": 789, "state": "OPEN"}],
+        },
+    )
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -1196,10 +1227,13 @@ def test_cross_immediate_mode_only_specified_branch(tmp_path: Path):
     ]
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
-    mock_gh = create_gh_mock(tmp_path, {
-        "branch-A": [],
-        "branch-B": [],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "branch-A": [],
+            "branch-B": [],
+        },
+    )
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -1256,9 +1290,12 @@ def test_cross_immediate_mode_skips_branch_with_pr(tmp_path: Path):
     branches = [("protected-branch", old_date, True)]
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
-    mock_gh = create_gh_mock(tmp_path, {
-        "protected-branch": [{"number": 999, "state": "OPEN"}],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "protected-branch": [{"number": 999, "state": "OPEN"}],
+        },
+    )
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -1316,11 +1353,14 @@ def test_cross_scheduled_mode_criteria_enforced(tmp_path: Path):
     ]
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
-    mock_gh = create_gh_mock(tmp_path, {
-        "stale-orphan": [],
-        "fresh-branch": [],
-        "pr-branch": [{"number": 111, "state": "OPEN"}],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "stale-orphan": [],
+            "fresh-branch": [],
+            "pr-branch": [{"number": 111, "state": "OPEN"}],
+        },
+    )
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -1405,7 +1445,9 @@ def test_fully_merged_branch_not_falsely_protected(tmp_path: Path):
     subprocess.run(["git", "checkout", "main"], cwd=clone_dir, check=True, capture_output=True)
     subprocess.run(
         ["git", "merge", "--no-ff", "-m", "Merge feature into main", "origin/merged-feature"],
-        cwd=clone_dir, check=True, capture_output=True,
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
     )
     # Advance main with two additional commits
     for i in range(2):
@@ -1413,14 +1455,18 @@ def test_fully_merged_branch_not_falsely_protected(tmp_path: Path):
         subprocess.run(["git", "add", "."], cwd=clone_dir, check=True, capture_output=True)
         subprocess.run(
             ["git", "commit", "-m", f"Advance main {i}"],
-            cwd=clone_dir, check=True, capture_output=True,
+            cwd=clone_dir,
+            check=True,
+            capture_output=True,
         )
     subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
 
     # Sanity: the branch should have 0 commits not in main (2-dot range)
     check = subprocess.run(
         ["git", "rev-list", "--count", "origin/main..origin/merged-feature"],
-        cwd=clone_dir, capture_output=True, text=True,
+        cwd=clone_dir,
+        capture_output=True,
+        text=True,
     )
     assert check.stdout.strip() == "0", (
         f"Fixture setup wrong: branch should have 0 unique commits, got {check.stdout.strip()}"
@@ -1429,9 +1475,12 @@ def test_fully_merged_branch_not_falsely_protected(tmp_path: Path):
     # Mock gh: branch has a CLOSED (not merged) PR — the condition that triggers
     # the protection check. With the bug, the 3-dot range would see main's extra
     # commits and falsely protect. With the fix, 2-dot sees 0 and does NOT protect.
-    mock_gh = create_gh_mock(tmp_path, {
-        "merged-feature": [{"number": 200, "state": "CLOSED"}],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "merged-feature": [{"number": 200, "state": "CLOSED"}],
+        },
+    )
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -1445,8 +1494,7 @@ def test_fully_merged_branch_not_falsely_protected(tmp_path: Path):
 
     remaining_branches = get_remote_branches(bare_repo)
     assert "merged-feature" not in remaining_branches, (
-        "Fully-merged branch (0 unique commits) must NOT be protected — "
-        "it should be deleted. stdout:\n" + stdout
+        "Fully-merged branch (0 unique commits) must NOT be protected — it should be deleted. stdout:\n" + stdout
     )
     # The protection path was NOT taken; verify no PROTECTED marker for this branch
     assert "PROTECTED" not in stdout or "merged-feature" not in stdout.split("PROTECTED")[-1].split("\n")[0], (
@@ -1476,14 +1524,19 @@ def test_immediate_mode_deletes_merged_pr_branch(tmp_path: Path):
     subprocess.run(["git", "checkout", "main"], cwd=clone_dir, check=True, capture_output=True)
     subprocess.run(
         ["git", "merge", "--no-ff", "-m", "Merge merged-feature", "origin/merged-feature"],
-        cwd=clone_dir, check=True, capture_output=True,
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
     )
     subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
 
     # Mock gh to return a MERGED PR for this branch
-    mock_gh = create_gh_mock(tmp_path, {
-        "merged-feature": [{"number": 200, "state": "MERGED"}],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "merged-feature": [{"number": 200, "state": "MERGED"}],
+        },
+    )
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -1522,9 +1575,12 @@ def test_scheduled_mode_protects_closed_not_merged_with_unique_commits(tmp_path:
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
     # Mock gh to return a CLOSED (not merged) PR for this branch
-    mock_gh = create_gh_mock(tmp_path, {
-        "closed-unmerged": [{"number": 300, "state": "CLOSED"}],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "closed-unmerged": [{"number": 300, "state": "CLOSED"}],
+        },
+    )
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{subprocess.os.environ['PATH']}",
@@ -1540,9 +1596,7 @@ def test_scheduled_mode_protects_closed_not_merged_with_unique_commits(tmp_path:
     assert "closed-unmerged" in remaining_branches, (
         "Branch with CLOSED-not-merged PR and unique commits should be PROTECTED"
     )
-    assert "PROTECTED" in stdout.upper(), (
-        f"Output should contain 'PROTECTED' for protected branch. stdout: {stdout}"
-    )
+    assert "PROTECTED" in stdout.upper(), f"Output should contain 'PROTECTED' for protected branch. stdout: {stdout}"
 
 
 # ============================================================================
@@ -1578,7 +1632,9 @@ def test_squash_merged_branch_not_falsely_protected(tmp_path: Path) -> None:
     # Create feature branch from initial main, add feature.txt, push.
     subprocess.run(
         ["git", "checkout", "-b", "squashed-feature"],
-        cwd=clone_dir, check=True, capture_output=True,
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
     )
     (clone_dir / "feature.txt").write_text("feature content\n")
     subprocess.run(["git", "add", "."], cwd=clone_dir, check=True, capture_output=True)
@@ -1591,11 +1647,16 @@ def test_squash_merged_branch_not_falsely_protected(tmp_path: Path) -> None:
     }
     subprocess.run(
         ["git", "commit", "-m", "Add feature"],
-        cwd=clone_dir, check=True, capture_output=True, env=env,
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
+        env=env,
     )
     subprocess.run(
         ["git", "push", "-u", "origin", "squashed-feature"],
-        cwd=clone_dir, check=True, capture_output=True,
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
     )
 
     # Squash-merge equivalent: on main, create a NEW commit with the same content.
@@ -1604,35 +1665,46 @@ def test_squash_merged_branch_not_falsely_protected(tmp_path: Path) -> None:
     subprocess.run(["git", "add", "."], cwd=clone_dir, check=True, capture_output=True)
     subprocess.run(
         ["git", "commit", "-m", "Squash merge of feature (content only)"],
-        cwd=clone_dir, check=True, capture_output=True,
+        cwd=clone_dir,
+        check=True,
+        capture_output=True,
     )
     subprocess.run(["git", "push", "origin", "main"], cwd=clone_dir, check=True, capture_output=True)
 
     # Sanity: branch has commits not in main by SHA (squash ⇒ 2-dot > 0) ...
     check = subprocess.run(
         ["git", "rev-list", "--count", "origin/main..origin/squashed-feature"],
-        cwd=clone_dir, capture_output=True, text=True,
+        cwd=clone_dir,
+        capture_output=True,
+        text=True,
     )
-    assert check.stdout.strip() != "0", (
-        "Fixture setup wrong: branch should have SHA-unique commits after squash merge"
-    )
+    assert check.stdout.strip() != "0", "Fixture setup wrong: branch should have SHA-unique commits after squash merge"
     # ... but merging the branch into main is a content no-op.
     main_tree = subprocess.run(
         ["git", "rev-parse", "origin/main^{tree}"],
-        cwd=clone_dir, capture_output=True, text=True,
+        cwd=clone_dir,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
-    merge_tree = subprocess.run(
-        ["git", "merge-tree", "--write-tree", "origin/main", "origin/squashed-feature"],
-        cwd=clone_dir, capture_output=True, text=True,
-    ).stdout.strip().split("\n")[0]
-    assert main_tree == merge_tree, (
-        "Fixture setup wrong: branch content should be fully contained in main"
+    merge_tree = (
+        subprocess.run(
+            ["git", "merge-tree", "--write-tree", "origin/main", "origin/squashed-feature"],
+            cwd=clone_dir,
+            capture_output=True,
+            text=True,
+        )
+        .stdout.strip()
+        .split("\n")[0]
     )
+    assert main_tree == merge_tree, "Fixture setup wrong: branch content should be fully contained in main"
 
     # Mock gh: branch has a CLOSED (not merged) PR — the protection trigger.
-    mock_gh = create_gh_mock(tmp_path, {
-        "squashed-feature": [{"number": 400, "state": "CLOSED"}],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "squashed-feature": [{"number": 400, "state": "CLOSED"}],
+        },
+    )
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{os.environ['PATH']}",
@@ -1646,8 +1718,7 @@ def test_squash_merged_branch_not_falsely_protected(tmp_path: Path) -> None:
 
     remaining_branches = get_remote_branches(bare_repo)
     assert "squashed-feature" not in remaining_branches, (
-        "Squash-merged branch (content fully in main) must NOT be protected — "
-        "it should be deleted. stdout:\n" + stdout
+        "Squash-merged branch (content fully in main) must NOT be protected — it should be deleted. stdout:\n" + stdout
     )
     # The branch must not be listed as protected (check only the protected-list
     # section at the end, not the "Checking branches:" enumeration).
@@ -1678,9 +1749,12 @@ def test_closed_branch_with_unique_content_still_protected(tmp_path: Path) -> No
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
     # Mock gh: branch has a CLOSED (not merged) PR — protection trigger.
-    mock_gh = create_gh_mock(tmp_path, {
-        "unique-content": [{"number": 401, "state": "CLOSED"}],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "unique-content": [{"number": 401, "state": "CLOSED"}],
+        },
+    )
 
     env_overrides = {
         "PATH": f"{mock_gh.parent}:{os.environ['PATH']}",
@@ -1696,9 +1770,7 @@ def test_closed_branch_with_unique_content_still_protected(tmp_path: Path) -> No
     assert "unique-content" in remaining_branches, (
         "Branch with genuinely unique content must stay protected. stdout:\n" + stdout
     )
-    assert "PROTECTED" in stdout.upper(), (
-        f"Output should contain 'PROTECTED' for protected branch. stdout: {stdout}"
-    )
+    assert "PROTECTED" in stdout.upper(), f"Output should contain 'PROTECTED' for protected branch. stdout: {stdout}"
 
 
 # ============================================================================
@@ -1730,9 +1802,12 @@ def test_retired_branch_not_falsely_protected(tmp_path: Path) -> None:
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
     # Mock gh: branch has a CLOSED (not merged) PR — protection trigger.
-    mock_gh = create_gh_mock(tmp_path, {
-        "superseded-feature": [{"number": 500, "state": "CLOSED"}],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "superseded-feature": [{"number": 500, "state": "CLOSED"}],
+        },
+    )
 
     # Use a dedicated retirement file instead of the checked-in one so the
     # test does not depend on (or mutate) repository state.
@@ -1752,8 +1827,7 @@ def test_retired_branch_not_falsely_protected(tmp_path: Path) -> None:
 
     remaining_branches = get_remote_branches(bare_repo)
     assert "superseded-feature" not in remaining_branches, (
-        "Retired branch (superseded work, closed PR) must NOT be protected — "
-        "it should be deleted. stdout:\n" + stdout
+        "Retired branch (superseded work, closed PR) must NOT be protected — it should be deleted. stdout:\n" + stdout
     )
     assert exit_code == 0, f"Expected exit 0, got {exit_code}. stderr: {stderr}"
 
@@ -1770,9 +1844,12 @@ def test_retired_branch_with_open_pr_still_skipped(tmp_path: Path) -> None:
     branches = [("retired-open-pr", fresh_date, False)]
     bare_repo, clone_dir = create_fixture_repo(tmp_path, branches)
 
-    mock_gh = create_gh_mock(tmp_path, {
-        "retired-open-pr": [{"number": 501, "state": "OPEN"}],
-    })
+    mock_gh = create_gh_mock(
+        tmp_path,
+        {
+            "retired-open-pr": [{"number": 501, "state": "OPEN"}],
+        },
+    )
 
     retired_file = tmp_path / "branch_cleanup_retired.txt"
     retired_file.write_text("retired-open-pr\n")
@@ -1826,8 +1903,7 @@ def test_retired_branch_within_24h_threshold_skipped(tmp_path: Path) -> None:
 
     remaining_branches = get_remote_branches(bare_repo)
     assert "retired-fresh" in remaining_branches, (
-        "Retired branch with a fresh (<24h) tip must be age-gated, not deleted. "
-        f"stdout:\n{stdout}"
+        f"Retired branch with a fresh (<24h) tip must be age-gated, not deleted. stdout:\n{stdout}"
     )
     assert exit_code == 0, f"Expected exit 0, got {exit_code}. stderr: {stderr}"
 
@@ -1845,9 +1921,7 @@ def test_retirement_list_tracks_infra_382() -> None:
     retired = repo_root() / "scripts" / "branch_cleanup_retired.txt"
     assert retired.is_file(), "scripts/branch_cleanup_retired.txt must exist"
     content = retired.read_text()
-    assert "factory/infra-382-dedup-side-effect" in content, (
-        "infra-382 superseded branch must be listed for retirement"
-    )
+    assert "factory/infra-382-dedup-side-effect" in content, "infra-382 superseded branch must be listed for retirement"
 
 
 # ============================================================================
@@ -1865,12 +1939,8 @@ def test_retirement_list_tracks_infra_391() -> None:
     retired = repo_root() / "scripts" / "branch_cleanup_retired.txt"
     assert retired.is_file(), "scripts/branch_cleanup_retired.txt must exist"
     content = retired.read_text()
-    assert "feat/pr-ref-gate-ci-wiring" in content, (
-        "infra-391 superseded branch must be listed for retirement"
-    )
-    assert "INFRA-391" in content, (
-        "the infra-391 entry must carry its INFRA reference"
-    )
+    assert "feat/pr-ref-gate-ci-wiring" in content, "infra-391 superseded branch must be listed for retirement"
+    assert "INFRA-391" in content, "the infra-391 entry must carry its INFRA reference"
 
 
 # ============================================================================
@@ -1897,15 +1967,11 @@ def test_retirement_list_tracks_infra_401() -> None:
     retired = repo_root() / "scripts" / "branch_cleanup_retired.txt"
     assert retired.is_file(), "scripts/branch_cleanup_retired.txt must exist"
     content = retired.read_text()
-    assert "fix/pr-ref-regex-robustness" in content, (
-        "infra-401 superseded branch must be listed for retirement"
-    )
+    assert "fix/pr-ref-regex-robustness" in content, "infra-401 superseded branch must be listed for retirement"
     assert "fix/infra-398-branch-cleanup-tracking" in content, (
         "infra-398's superseded branch (closed PR #806) must be listed for retirement"
     )
-    assert "INFRA-401" in content, (
-        "the infra-401 entries must carry their INFRA reference"
-    )
+    assert "INFRA-401" in content, "the infra-401 entries must carry their INFRA reference"
 
 
 # ============================================================================
@@ -1915,9 +1981,5 @@ def test_script_documents_retirement_list() -> None:
     """branch_cleanup.sh references the retirement list and its env override
     so the mechanism is discoverable from the script itself."""
     content = get_script_path().read_text()
-    assert "branch_cleanup_retired.txt" in content, (
-        "branch_cleanup.sh must document the checked-in retirement list"
-    )
-    assert "BRANCH_RETIREMENT_FILE" in content, (
-        "branch_cleanup.sh must support the BRANCH_RETIREMENT_FILE override"
-    )
+    assert "branch_cleanup_retired.txt" in content, "branch_cleanup.sh must document the checked-in retirement list"
+    assert "BRANCH_RETIREMENT_FILE" in content, "branch_cleanup.sh must support the BRANCH_RETIREMENT_FILE override"

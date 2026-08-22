@@ -11,7 +11,6 @@ Covers validation assertions:
 - VAL-WRITE-002: Global formal categories only written by promote
 """
 
-
 from pathlib import Path
 
 import pytest
@@ -56,10 +55,7 @@ enabled = true
 root = "{global_kb_root}"
 """)
 
-    return {
-        "project_root": project_root,
-        "global_kb_root": global_kb_root
-    }
+    return {"project_root": project_root, "global_kb_root": global_kb_root}
 
 
 def test_val_routing_001_project_priority_over_global(test_env):

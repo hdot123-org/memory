@@ -14,16 +14,16 @@ def _fill_canonical_table(content: str, project_info: Any) -> str:
     # 主语言
     if project_info.primary_language:
         content = re.sub(
-            r'(\| 主语言 \| )（待填写）( \|)',
-            rf'\g<1>{project_info.primary_language}\2',
+            r"(\| 主语言 \| )（待填写）( \|)",
+            rf"\g<1>{project_info.primary_language}\2",
             content,
         )
 
     # 项目类型
     if project_info.project_type:
         content = re.sub(
-            r'(\| 项目类型 \| )（待填写）( \|)',
-            rf'\g<1>{project_info.project_type}\2',
+            r"(\| 项目类型 \| )（待填写）( \|)",
+            rf"\g<1>{project_info.project_type}\2",
             content,
         )
 
@@ -39,7 +39,7 @@ def _fill_canonical_table(content: str, project_info: Any) -> str:
         if toolchain_rows:
             tools_content = "\n".join(toolchain_rows)
             content = re.sub(
-                r'\| （待填写） \| （待填写） \|',
+                r"\| （待填写） \| （待填写） \|",
                 tools_content,
                 content,
                 count=1,
@@ -50,8 +50,8 @@ def _fill_canonical_table(content: str, project_info: Any) -> str:
         remote_row = f"| 远程仓库 | `{project_info.git_remote_url}` |"
         if "远程仓库" not in content:
             content = re.sub(
-                r'(\| 本地仓库 \| .+? \|)\n',
-                rf'\g<1>\n{remote_row}\n',
+                r"(\| 本地仓库 \| .+? \|)\n",
+                rf"\g<1>\n{remote_row}\n",
                 content,
                 count=1,
             )
@@ -64,16 +64,16 @@ def _fill_scope_fields(content: str, project_info: Any) -> str:
     # 语言
     if project_info.primary_language:
         content = re.sub(
-            r'(- 语言：)（待填写）',
-            rf'\g<1>{project_info.primary_language}',
+            r"(- 语言：)（待填写）",
+            rf"\g<1>{project_info.primary_language}",
             content,
         )
 
     # 框架
     if project_info.framework:
         content = re.sub(
-            r'(- 框架：)（待填写）',
-            rf'\g<1>{project_info.framework}',
+            r"(- 框架：)（待填写）",
+            rf"\g<1>{project_info.framework}",
             content,
         )
 
@@ -81,15 +81,15 @@ def _fill_scope_fields(content: str, project_info: Any) -> str:
     if project_info.databases:
         db_str = "、".join(project_info.databases)
         content = re.sub(
-            r'(- 数据库：)（待填写）',
-            rf'\g<1>{db_str}',
+            r"(- 数据库：)（待填写）",
+            rf"\g<1>{db_str}",
             content,
         )
 
     # 项目概述
     if project_info.project_overview:
         content = re.sub(
-            r'（待填写：项目简要描述）',
+            r"（待填写：项目简要描述）",
             project_info.project_overview,
             content,
         )
@@ -197,8 +197,14 @@ def _detect_from_pyproject(target: Path, project_info: Any) -> None:
     try:
         pyproject_text = pyproject.read_text(encoding="utf-8")
         python_markers = [
-            "setuptools", "poetry", "hatch", "flit", "pdm", "maturin",
-            "scikit-build", "cython",
+            "setuptools",
+            "poetry",
+            "hatch",
+            "flit",
+            "pdm",
+            "maturin",
+            "scikit-build",
+            "cython",
         ]
         if any(m in pyproject_text for m in python_markers) or "[project]" in pyproject_text:
             project_info.primary_language = "Python"
@@ -218,6 +224,7 @@ def _detect_from_package_json(target: Path, project_info: Any) -> None:
         return
     try:
         import json as _json
+
         pkg_data = _json.loads(package_json.read_text(encoding="utf-8"))
         if not project_info.primary_language:
             project_info.primary_language = "JavaScript"
@@ -226,7 +233,9 @@ def _detect_from_package_json(target: Path, project_info: Any) -> None:
             deps = {**pkg_data.get("dependencies", {}), **pkg_data.get("devDependencies", {})}
             dep_keys = list(deps.keys())
 
-            if any(d in dep_keys for d in ["next", "gatsby", "remix"]) or any(d in dep_keys for d in ["react", "vue", "svelte", "angular"]):
+            if any(d in dep_keys for d in ["next", "gatsby", "remix"]) or any(
+                d in dep_keys for d in ["react", "vue", "svelte", "angular"]
+            ):
                 project_info.project_type = "frontend"
             elif any(d in dep_keys for d in ["express", "koa", "fastify", "hapi"]):
                 project_info.project_type = "web/api"
@@ -345,6 +354,7 @@ def _fill_scope_subdir_templates(
             # 2) Replace any remaining {{UPPER_SNAKE_CASE}} placeholders
             #    with 「（待补充：placeholder_name）」
             import re as _re
+
             remaining = _re.findall(r"\{\{([A-Z_]+)\}\}", content)
             for name in remaining:
                 replacement = f"（待补充：{name.lower()}）"
@@ -352,7 +362,9 @@ def _fill_scope_subdir_templates(
 
             if content != original:
                 file_path.write_text(content, encoding="utf-8")
-                result["created"].append(f"file:memory/kb/projects/{project_name}/{template_file} (placeholders filled)")
+                result["created"].append(
+                    f"file:memory/kb/projects/{project_name}/{template_file} (placeholders filled)"
+                )
         except Exception as exc:
             result["warnings"].append(f"scope subdir fill failed for {template_file}: {exc}")
 

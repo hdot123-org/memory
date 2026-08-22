@@ -39,6 +39,7 @@ except ImportError:
     # Fallback if import fails — derive version from compat matrix
     # Using exec to avoid consistency-check's "duplicate definition" false positive
     from memory_core.compat import _COMPAT_MATRIX
+
     _latest_ver = sorted(_COMPAT_MATRIX.keys(), key=lambda v: tuple(map(int, v.split("."))))[-1]
     exec(f"CURRENT_MEMORY_VERSION = {_latest_ver!r}")  # noqa: S102 — safe fallback
     SUPPORTED_HOSTS: tuple[str, ...] = ("factory", "codex", "claude")  # type: ignore[no-redef]
@@ -125,8 +126,15 @@ class IntegrationTester:
             "default_home": "~/.factory",
             "config_file": "settings.json",
             "events": [
-                "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
-                "Stop", "SubagentStop", "SessionEnd", "Notification", "PreCompact",
+                "SessionStart",
+                "UserPromptSubmit",
+                "PreToolUse",
+                "PostToolUse",
+                "Stop",
+                "SubagentStop",
+                "SessionEnd",
+                "Notification",
+                "PreCompact",
             ],
         },
         "claude": {
@@ -256,37 +264,47 @@ class IntegrationTester:
         # 1. Check wrapper binary exists
         if wrapper.exists():
             if os.access(wrapper, os.X_OK):
-                results.append(CheckResult(
-                    f"{host}:wrapper_exists",
-                    "PASS",
-                    f"Wrapper exists and is executable: {wrapper}",
-                ))
+                results.append(
+                    CheckResult(
+                        f"{host}:wrapper_exists",
+                        "PASS",
+                        f"Wrapper exists and is executable: {wrapper}",
+                    )
+                )
             else:
-                results.append(CheckResult(
-                    f"{host}:wrapper_executable",
-                    "FAIL",
-                    f"Wrapper exists but is not executable: {wrapper}",
-                ))
+                results.append(
+                    CheckResult(
+                        f"{host}:wrapper_executable",
+                        "FAIL",
+                        f"Wrapper exists but is not executable: {wrapper}",
+                    )
+                )
         else:
-            results.append(CheckResult(
-                f"{host}:wrapper_exists",
-                "WARN",
-                f"Wrapper not found: {wrapper}",
-            ))
+            results.append(
+                CheckResult(
+                    f"{host}:wrapper_exists",
+                    "WARN",
+                    f"Wrapper not found: {wrapper}",
+                )
+            )
 
         # 2. Check config file exists
         if config_file.exists():
-            results.append(CheckResult(
-                f"{host}:config_exists",
-                "PASS",
-                f"Config file exists: {config_file}",
-            ))
+            results.append(
+                CheckResult(
+                    f"{host}:config_exists",
+                    "PASS",
+                    f"Config file exists: {config_file}",
+                )
+            )
         else:
-            results.append(CheckResult(
-                f"{host}:config_exists",
-                "WARN",
-                f"Config file not found: {config_file}",
-            ))
+            results.append(
+                CheckResult(
+                    f"{host}:config_exists",
+                    "WARN",
+                    f"Config file not found: {config_file}",
+                )
+            )
             # Skip further checks for this platform
             return results
 
@@ -304,23 +322,29 @@ class IntegrationTester:
                     timeout=5,
                 )
                 if result.returncode == 0:
-                    results.append(CheckResult(
-                        f"{host}:wrapper_functional",
-                        "PASS",
-                        "Wrapper executes successfully",
-                    ))
+                    results.append(
+                        CheckResult(
+                            f"{host}:wrapper_functional",
+                            "PASS",
+                            "Wrapper executes successfully",
+                        )
+                    )
                 else:
-                    results.append(CheckResult(
+                    results.append(
+                        CheckResult(
+                            f"{host}:wrapper_functional",
+                            "WARN",
+                            f"Wrapper returned exit code {result.returncode}",
+                        )
+                    )
+            except (subprocess.TimeoutExpired, OSError) as exc:
+                results.append(
+                    CheckResult(
                         f"{host}:wrapper_functional",
                         "WARN",
-                        f"Wrapper returned exit code {result.returncode}",
-                    ))
-            except (subprocess.TimeoutExpired, OSError) as exc:
-                results.append(CheckResult(
-                    f"{host}:wrapper_functional",
-                    "WARN",
-                    f"Wrapper execution failed: {exc}",
-                ))
+                        f"Wrapper execution failed: {exc}",
+                    )
+                )
 
         return results
 
@@ -378,6 +402,7 @@ class IntegrationTester:
                 except Exception as exc:
                     # Restore visible failure semantics per M2 scrutiny R2
                     import sys
+
                     print(f"Failed to register {path_str}: {exc}", file=sys.stderr)
         return sorted(gaps), sorted(fixed)
 
@@ -387,12 +412,14 @@ class IntegrationTester:
 
         # Scan for consumer projects
         discovered_projects = self._scan_consumer_projects()
-        results.append(CheckResult(
-            "discovery:scan_complete",
-            "PASS",
-            f"Discovered {len(discovered_projects)} consumer project(s)",
-            details=[str(p) for p in discovered_projects] if discovered_projects else ["None found"],
-        ))
+        results.append(
+            CheckResult(
+                "discovery:scan_complete",
+                "PASS",
+                f"Discovered {len(discovered_projects)} consumer project(s)",
+                details=[str(p) for p in discovered_projects] if discovered_projects else ["None found"],
+            )
+        )
 
         # Read path-index.json
         registered_projects: dict[str, Any] = {}
@@ -400,23 +427,29 @@ class IntegrationTester:
             try:
                 path_index = json.loads(self.path_index_file.read_text(encoding="utf-8"))
                 registered_projects = path_index.get("paths", {})
-                results.append(CheckResult(
-                    "discovery:path_index_readable",
-                    "PASS",
-                    f"Found {len(registered_projects)} registered project(s)",
-                ))
+                results.append(
+                    CheckResult(
+                        "discovery:path_index_readable",
+                        "PASS",
+                        f"Found {len(registered_projects)} registered project(s)",
+                    )
+                )
             except (json.JSONDecodeError, OSError) as exc:
-                results.append(CheckResult(
-                    "discovery:path_index_readable",
-                    "FAIL",
-                    f"Failed to read path-index.json: {exc}",
-                ))
+                results.append(
+                    CheckResult(
+                        "discovery:path_index_readable",
+                        "FAIL",
+                        f"Failed to read path-index.json: {exc}",
+                    )
+                )
         else:
-            results.append(CheckResult(
-                "discovery:path_index_readable",
-                "WARN",
-                f"path-index.json not found: {self.path_index_file}",
-            ))
+            results.append(
+                CheckResult(
+                    "discovery:path_index_readable",
+                    "WARN",
+                    f"path-index.json not found: {self.path_index_file}",
+                )
+            )
 
         # Cross-reference discovered vs registered
         discovered_paths = {str(p.expanduser().resolve()): p for p in discovered_projects}
@@ -424,41 +457,51 @@ class IntegrationTester:
         gaps, fixed = self._find_registration_gaps(discovered_paths, registered_paths)
 
         if gaps:
-            results.append(CheckResult(
-                "discovery:registration_gaps",
-                "WARN",
-                f"{len(gaps)} initialized project(s) not in path-index",
-                details=gaps,
-            ))
+            results.append(
+                CheckResult(
+                    "discovery:registration_gaps",
+                    "WARN",
+                    f"{len(gaps)} initialized project(s) not in path-index",
+                    details=gaps,
+                )
+            )
             if fixed:
-                results.append(CheckResult(
-                    "discovery:fixed_gaps",
-                    "PASS",
-                    f"Registered {len(fixed)} missing project(s)",
-                    details=fixed,
-                ))
+                results.append(
+                    CheckResult(
+                        "discovery:fixed_gaps",
+                        "PASS",
+                        f"Registered {len(fixed)} missing project(s)",
+                        details=fixed,
+                    )
+                )
         else:
-            results.append(CheckResult(
-                "discovery:registration_gaps",
-                "PASS",
-                "All discovered projects are registered",
-            ))
+            results.append(
+                CheckResult(
+                    "discovery:registration_gaps",
+                    "PASS",
+                    "All discovered projects are registered",
+                )
+            )
 
         # Registered projects whose paths no longer exist (stale)
         stale = [p for p in registered_paths if not Path(p).exists()]
         if stale:
-            results.append(CheckResult(
-                "discovery:stale_entries",
-                "WARN",
-                f"{len(stale)} registered project(s) no longer exist",
-                details=sorted(stale),
-            ))
+            results.append(
+                CheckResult(
+                    "discovery:stale_entries",
+                    "WARN",
+                    f"{len(stale)} registered project(s) no longer exist",
+                    details=sorted(stale),
+                )
+            )
         else:
-            results.append(CheckResult(
-                "discovery:stale_entries",
-                "PASS",
-                "All registered paths exist on disk",
-            ))
+            results.append(
+                CheckResult(
+                    "discovery:stale_entries",
+                    "PASS",
+                    "All registered paths exist on disk",
+                )
+            )
 
         return results
 
@@ -492,11 +535,13 @@ class IntegrationTester:
             pass
 
         if not projects:
-            results.append(CheckResult(
-                "integrity:no_projects",
-                "SKIP",
-                "No consumer projects found to check",
-            ))
+            results.append(
+                CheckResult(
+                    "integrity:no_projects",
+                    "SKIP",
+                    "No consumer projects found to check",
+                )
+            )
             return results
 
         for project in projects:
@@ -525,17 +570,21 @@ class IntegrationTester:
         for rel_path in required_files:
             full_path = project / rel_path
             if full_path.exists():
-                results.append(CheckResult(
-                    f"{project_name}:file_{rel_path.replace('/', '_')}",
-                    "PASS",
-                    f"{rel_path} exists",
-                ))
+                results.append(
+                    CheckResult(
+                        f"{project_name}:file_{rel_path.replace('/', '_')}",
+                        "PASS",
+                        f"{rel_path} exists",
+                    )
+                )
             else:
-                results.append(CheckResult(
-                    f"{project_name}:file_{rel_path.replace('/', '_')}",
-                    "FAIL",
-                    f"{rel_path} missing",
-                ))
+                results.append(
+                    CheckResult(
+                        f"{project_name}:file_{rel_path.replace('/', '_')}",
+                        "FAIL",
+                        f"{rel_path} missing",
+                    )
+                )
         return results
 
     def _check_adapter_toml(self, project: Path, project_name: str) -> list[CheckResult]:
@@ -554,24 +603,30 @@ class IntegrationTester:
                 }
                 missing = [k for k, v in required_adapter_fields.items() if not v]
                 if missing:
-                    results.append(CheckResult(
-                        f"{project_name}:adapter_fields",
-                        "FAIL",
-                        f"Missing adapter fields: {', '.join(missing)}",
-                    ))
+                    results.append(
+                        CheckResult(
+                            f"{project_name}:adapter_fields",
+                            "FAIL",
+                            f"Missing adapter fields: {', '.join(missing)}",
+                        )
+                    )
                 else:
-                    results.append(CheckResult(
-                        f"{project_name}:adapter_fields",
-                        "PASS",
-                        "Required adapter fields present",
-                        details=[f"{k}={v}" for k, v in required_adapter_fields.items()],
-                    ))
+                    results.append(
+                        CheckResult(
+                            f"{project_name}:adapter_fields",
+                            "PASS",
+                            "Required adapter fields present",
+                            details=[f"{k}={v}" for k, v in required_adapter_fields.items()],
+                        )
+                    )
             except Exception as exc:
-                results.append(CheckResult(
-                    f"{project_name}:adapter_toml",
-                    "FAIL",
-                    f"Failed to parse adapter.toml: {exc}",
-                ))
+                results.append(
+                    CheckResult(
+                        f"{project_name}:adapter_toml",
+                        "FAIL",
+                        f"Failed to parse adapter.toml: {exc}",
+                    )
+                )
         return results
 
     def _check_ownership_toml(self, project: Path, project_name: str) -> list[CheckResult]:
@@ -586,43 +641,53 @@ class IntegrationTester:
                 memory_version = parsed.get("memory_version")
 
                 if schema_version and memory_version:
-                    results.append(CheckResult(
-                        f"{project_name}:ownership_fields",
-                        "PASS",
-                        "Required ownership fields present",
-                        details=[f"schema_version={schema_version}", f"memory_version={memory_version}"],
-                    ))
+                    results.append(
+                        CheckResult(
+                            f"{project_name}:ownership_fields",
+                            "PASS",
+                            "Required ownership fields present",
+                            details=[f"schema_version={schema_version}", f"memory_version={memory_version}"],
+                        )
+                    )
                 else:
                     missing = []
                     if not schema_version:
                         missing.append("schema_version")
                     if not memory_version:
                         missing.append("memory_version")
-                    results.append(CheckResult(
-                        f"{project_name}:ownership_fields",
-                        "FAIL",
-                        f"Missing ownership fields: {', '.join(missing)}",
-                    ))
+                    results.append(
+                        CheckResult(
+                            f"{project_name}:ownership_fields",
+                            "FAIL",
+                            f"Missing ownership fields: {', '.join(missing)}",
+                        )
+                    )
 
                 # 6. Version consistency
                 if memory_version and memory_version != CURRENT_MEMORY_VERSION:
-                    results.append(CheckResult(
-                        f"{project_name}:version_consistency",
-                        "WARN",
-                        f"Version mismatch: project={memory_version}, core={CURRENT_MEMORY_VERSION}",
-                    ))
+                    results.append(
+                        CheckResult(
+                            f"{project_name}:version_consistency",
+                            "WARN",
+                            f"Version mismatch: project={memory_version}, core={CURRENT_MEMORY_VERSION}",
+                        )
+                    )
                 elif memory_version:
-                    results.append(CheckResult(
-                        f"{project_name}:version_consistency",
-                        "PASS",
-                        f"Version matches: {memory_version}",
-                    ))
+                    results.append(
+                        CheckResult(
+                            f"{project_name}:version_consistency",
+                            "PASS",
+                            f"Version matches: {memory_version}",
+                        )
+                    )
             except Exception as exc:
-                results.append(CheckResult(
-                    f"{project_name}:ownership_toml",
-                    "FAIL",
-                    f"Failed to parse ownership.toml: {exc}",
-                ))
+                results.append(
+                    CheckResult(
+                        f"{project_name}:ownership_toml",
+                        "FAIL",
+                        f"Failed to parse ownership.toml: {exc}",
+                    )
+                )
         return results
 
     def _check_required_dirs(self, project: Path, project_name: str) -> list[CheckResult]:
@@ -636,19 +701,22 @@ class IntegrationTester:
         for rel_path in required_dirs:
             full_path = project / rel_path
             if full_path.exists() and full_path.is_dir():
-                results.append(CheckResult(
-                    f"{project_name}:dir_{rel_path.replace('/', '_')}",
-                    "PASS",
-                    f"{rel_path}/ exists",
-                ))
+                results.append(
+                    CheckResult(
+                        f"{project_name}:dir_{rel_path.replace('/', '_')}",
+                        "PASS",
+                        f"{rel_path}/ exists",
+                    )
+                )
             else:
-                results.append(CheckResult(
-                    f"{project_name}:dir_{rel_path.replace('/', '_')}",
-                    "FAIL",
-                    f"{rel_path}/ missing",
-                ))
+                results.append(
+                    CheckResult(
+                        f"{project_name}:dir_{rel_path.replace('/', '_')}",
+                        "FAIL",
+                        f"{rel_path}/ missing",
+                    )
+                )
         return results
-
 
     def _check_verify_consumer(self, project: Path, project_name: str) -> list[CheckResult]:
         """Run verify_consumer and report results."""
@@ -662,32 +730,40 @@ class IntegrationTester:
                 cwd=str(REPO_ROOT),
             )
             if result.returncode == 0:
-                results.append(CheckResult(
-                    f"{project_name}:verify_consumer",
-                    "PASS",
-                    "verify_consumer passed",
-                ))
+                results.append(
+                    CheckResult(
+                        f"{project_name}:verify_consumer",
+                        "PASS",
+                        "verify_consumer passed",
+                    )
+                )
             else:
                 try:
                     report = json.loads(result.stdout)
                     failed = report.get("failed_count", 0)
-                    results.append(CheckResult(
-                        f"{project_name}:verify_consumer",
-                        "WARN",
-                        f"verify_consumer found {failed} issue(s)",
-                    ))
+                    results.append(
+                        CheckResult(
+                            f"{project_name}:verify_consumer",
+                            "WARN",
+                            f"verify_consumer found {failed} issue(s)",
+                        )
+                    )
                 except json.JSONDecodeError:
-                    results.append(CheckResult(
-                        f"{project_name}:verify_consumer",
-                        "WARN",
-                        f"verify_consumer exited with code {result.returncode}",
-                    ))
+                    results.append(
+                        CheckResult(
+                            f"{project_name}:verify_consumer",
+                            "WARN",
+                            f"verify_consumer exited with code {result.returncode}",
+                        )
+                    )
         except (subprocess.TimeoutExpired, OSError) as exc:
-            results.append(CheckResult(
-                f"{project_name}:verify_consumer",
-                "WARN",
-                f"Failed to run verify_consumer: {exc}",
-            ))
+            results.append(
+                CheckResult(
+                    f"{project_name}:verify_consumer",
+                    "WARN",
+                    f"Failed to run verify_consumer: {exc}",
+                )
+            )
         return results
 
     # -------------------------------------------------------------------------
@@ -700,17 +776,22 @@ class IntegrationTester:
         # 1. Gateway importable
         try:
             from memory_core.tools import memory_hook_gateway  # noqa: F401
-            results.append(CheckResult(
-                "gateway:importable",
-                "PASS",
-                "memory_hook_gateway is importable",
-            ))
+
+            results.append(
+                CheckResult(
+                    "gateway:importable",
+                    "PASS",
+                    "memory_hook_gateway is importable",
+                )
+            )
         except ImportError as exc:
-            results.append(CheckResult(
-                "gateway:importable",
-                "FAIL",
-                f"Failed to import gateway: {exc}",
-            ))
+            results.append(
+                CheckResult(
+                    "gateway:importable",
+                    "FAIL",
+                    f"Failed to import gateway: {exc}",
+                )
+            )
             return results
 
         # 2. Gateway help
@@ -723,23 +804,29 @@ class IntegrationTester:
                 cwd=str(REPO_ROOT),
             )
             if result.returncode == 0:
-                results.append(CheckResult(
-                    "gateway:help_works",
-                    "PASS",
-                    "Gateway --help returns exit code 0",
-                ))
+                results.append(
+                    CheckResult(
+                        "gateway:help_works",
+                        "PASS",
+                        "Gateway --help returns exit code 0",
+                    )
+                )
             else:
-                results.append(CheckResult(
+                results.append(
+                    CheckResult(
+                        "gateway:help_works",
+                        "FAIL",
+                        f"Gateway --help returned exit code {result.returncode}",
+                    )
+                )
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            results.append(
+                CheckResult(
                     "gateway:help_works",
                     "FAIL",
-                    f"Gateway --help returned exit code {result.returncode}",
-                ))
-        except (subprocess.TimeoutExpired, OSError) as exc:
-            results.append(CheckResult(
-                "gateway:help_works",
-                "FAIL",
-                f"Failed to run gateway --help: {exc}",
-            ))
+                    f"Failed to run gateway --help: {exc}",
+                )
+            )
 
         return results
 
@@ -752,67 +839,83 @@ class IntegrationTester:
 
         # 1. path-index.json is valid JSON
         if not self.path_index_file.exists():
-            results.append(CheckResult(
-                "path_index:exists",
-                "WARN",
-                f"path-index.json does not exist: {self.path_index_file}",
-            ))
+            results.append(
+                CheckResult(
+                    "path_index:exists",
+                    "WARN",
+                    f"path-index.json does not exist: {self.path_index_file}",
+                )
+            )
             return results
 
         try:
             content = self.path_index_file.read_text(encoding="utf-8")
             parsed = json.loads(content)
-            results.append(CheckResult(
-                "path_index:valid_json",
-                "PASS",
-                "path-index.json is valid JSON",
-            ))
+            results.append(
+                CheckResult(
+                    "path_index:valid_json",
+                    "PASS",
+                    "path-index.json is valid JSON",
+                )
+            )
         except json.JSONDecodeError as exc:
-            results.append(CheckResult(
-                "path_index:valid_json",
-                "FAIL",
-                f"path-index.json is not valid JSON: {exc}",
-            ))
+            results.append(
+                CheckResult(
+                    "path_index:valid_json",
+                    "FAIL",
+                    f"path-index.json is not valid JSON: {exc}",
+                )
+            )
             return results
         except OSError as exc:
-            results.append(CheckResult(
-                "path_index:readable",
-                "FAIL",
-                f"Cannot read path-index.json: {exc}",
-            ))
+            results.append(
+                CheckResult(
+                    "path_index:readable",
+                    "FAIL",
+                    f"Cannot read path-index.json: {exc}",
+                )
+            )
             return results
 
         # Check structure
         if not isinstance(parsed, dict):
-            results.append(CheckResult(
-                "path_index:structure",
-                "FAIL",
-                "path-index.json root is not an object",
-            ))
+            results.append(
+                CheckResult(
+                    "path_index:structure",
+                    "FAIL",
+                    "path-index.json root is not an object",
+                )
+            )
             return results
 
         schema_version = parsed.get("schema_version")
         paths = parsed.get("paths")
 
         if schema_version:
-            results.append(CheckResult(
-                "path_index:schema_version",
-                "PASS",
-                f"Schema version: {schema_version}",
-            ))
+            results.append(
+                CheckResult(
+                    "path_index:schema_version",
+                    "PASS",
+                    f"Schema version: {schema_version}",
+                )
+            )
         else:
-            results.append(CheckResult(
-                "path_index:schema_version",
-                "WARN",
-                "Missing schema_version field",
-            ))
+            results.append(
+                CheckResult(
+                    "path_index:schema_version",
+                    "WARN",
+                    "Missing schema_version field",
+                )
+            )
 
         if isinstance(paths, dict):
-            results.append(CheckResult(
-                "path_index:paths_object",
-                "PASS",
-                f"Contains {len(paths)} path entries",
-            ))
+            results.append(
+                CheckResult(
+                    "path_index:paths_object",
+                    "PASS",
+                    f"Contains {len(paths)} path entries",
+                )
+            )
 
             # 2. Each registered project path exists
             # 3. Each registered project has memory/system/
@@ -831,35 +934,45 @@ class IntegrationTester:
                     valid += 1
 
             if valid > 0:
-                results.append(CheckResult(
-                    "path_index:valid_paths",
-                    "PASS",
-                    f"{valid} registered path(s) exist and have memory/system/",
-                ))
+                results.append(
+                    CheckResult(
+                        "path_index:valid_paths",
+                        "PASS",
+                        f"{valid} registered path(s) exist and have memory/system/",
+                    )
+                )
             if missing_system > 0:
-                results.append(CheckResult(
-                    "path_index:missing_system",
-                    "WARN",
-                    f"{missing_system} path(s) exist but lack memory/system/",
-                ))
+                results.append(
+                    CheckResult(
+                        "path_index:missing_system",
+                        "WARN",
+                        f"{missing_system} path(s) exist but lack memory/system/",
+                    )
+                )
             if stale > 0:
-                results.append(CheckResult(
-                    "path_index:stale_paths",
-                    "WARN",
-                    f"{stale} path(s) no longer exist on disk (stale entries)",
-                ))
+                results.append(
+                    CheckResult(
+                        "path_index:stale_paths",
+                        "WARN",
+                        f"{stale} path(s) no longer exist on disk (stale entries)",
+                    )
+                )
             if stale == 0 and missing_system == 0:
-                results.append(CheckResult(
-                    "path_index:no_stale",
-                    "PASS",
-                    "No stale entries found",
-                ))
+                results.append(
+                    CheckResult(
+                        "path_index:no_stale",
+                        "PASS",
+                        "No stale entries found",
+                    )
+                )
         else:
-            results.append(CheckResult(
-                "path_index:paths_object",
-                "FAIL",
-                "paths field is not an object",
-            ))
+            results.append(
+                CheckResult(
+                    "path_index:paths_object",
+                    "FAIL",
+                    "paths field is not an object",
+                )
+            )
 
         return results
 

@@ -43,7 +43,7 @@ def test_status_failed_vs_completed_exit_paths():
         "exitCode": 0,
         "exit_mechanism": "deadlock_exit",
         "linear_action": "completed",
-        "comment_template": "deadlock-exit"
+        "comment_template": "deadlock-exit",
     }
 
     failed_path = {
@@ -51,7 +51,7 @@ def test_status_failed_vs_completed_exit_paths():
         "exitCode": 1,
         "exit_mechanism": "stale_orphan_fallback",
         "linear_action": "canceled",
-        "comment_template": "stale-orphan-fallback"
+        "comment_template": "stale-orphan-fallback",
     }
 
     assert completed_path["exit_mechanism"] != failed_path["exit_mechanism"]
@@ -122,9 +122,9 @@ def test_status_failed_code_path_exists():
 
     # Look for the status check logic in section 5c
     # Should have: if [ "$STATUS" = "running" ] ... elif [ "$STATUS" = "completed" ] ... elif [ "$STATUS" = "failed" ]
-    assert 'elif [ "$STATUS" = "failed" ]' in script_content or \
-           'if [ "$STATUS" = "failed" ]' in script_content, \
-           "reconcile-evolution.sh should have explicit handling for status=failed to prevent E4 deadlock"
+    assert 'elif [ "$STATUS" = "failed" ]' in script_content or 'if [ "$STATUS" = "failed" ]' in script_content, (
+        "reconcile-evolution.sh should have explicit handling for status=failed to prevent E4 deadlock"
+    )
 
 
 if __name__ == "__main__":

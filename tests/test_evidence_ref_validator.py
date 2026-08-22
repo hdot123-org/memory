@@ -11,6 +11,7 @@ from memory_core.tools.evidence_ref_validator import (
 # extract_section_bullets
 # ---------------------------------------------------------------------------
 
+
 class TestExtractSectionBullets:
     def test_extracts_evidence_refs(self):
         text = """\
@@ -57,6 +58,7 @@ class TestExtractSectionBullets:
 # validate_evidence_refs_on_disk
 # ---------------------------------------------------------------------------
 
+
 class TestValidateEvidenceRefsOnDisk:
     def test_all_refs_exist(self, tmp_path: Path):
         # Create KB file with valid refs
@@ -68,10 +70,7 @@ class TestValidateEvidenceRefsOnDisk:
         (tmp_path / "tools" / "gateway.py").write_text("# ok")
 
         kb_file = kb_dir / "truth-model.md"
-        kb_file.write_text(
-            "### Evidence Refs\n"
-            "- `tools/gateway.py`\n"
-        )
+        kb_file.write_text("### Evidence Refs\n- `tools/gateway.py`\n")
 
         errors = validate_evidence_refs_on_disk(tmp_path)
         assert errors == []
@@ -81,11 +80,7 @@ class TestValidateEvidenceRefsOnDisk:
         kb_dir.mkdir(parents=True)
 
         kb_file = kb_dir / "truth-model.md"
-        kb_file.write_text(
-            "### Evidence Refs\n"
-            "- `tools/nonexistent.py`\n"
-            "- `tools/also_missing.py`\n"
-        )
+        kb_file.write_text("### Evidence Refs\n- `tools/nonexistent.py`\n- `tools/also_missing.py`\n")
 
         errors = validate_evidence_refs_on_disk(tmp_path)
         assert len(errors) == 1
@@ -98,11 +93,7 @@ class TestValidateEvidenceRefsOnDisk:
         kb_dir.mkdir(parents=True)
 
         kb_file = kb_dir / "test.md"
-        kb_file.write_text(
-            "### Evidence Refs\n"
-            "- https://example.com/doc\n"
-            "- http://example.com/other\n"
-        )
+        kb_file.write_text("### Evidence Refs\n- https://example.com/doc\n- http://example.com/other\n")
 
         errors = validate_evidence_refs_on_disk(tmp_path)
         assert errors == []
@@ -112,10 +103,7 @@ class TestValidateEvidenceRefsOnDisk:
         kb_dir.mkdir(parents=True)
 
         kb_file = kb_dir / "test.md"
-        kb_file.write_text(
-            "### Evidence Refs\n"
-            "- `tools/*.py`\n"
-        )
+        kb_file.write_text("### Evidence Refs\n- `tools/*.py`\n")
 
         errors = validate_evidence_refs_on_disk(tmp_path)
         assert errors == []
@@ -142,11 +130,7 @@ class TestValidateEvidenceRefsOnDisk:
         (tmp_path / "tools" / "exists.py").write_text("# ok")
 
         kb_file = kb_dir / "test.md"
-        kb_file.write_text(
-            "### Evidence Refs\n"
-            "- `tools/exists.py`\n"
-            "- `tools/missing.py`\n"
-        )
+        kb_file.write_text("### Evidence Refs\n- `tools/exists.py`\n- `tools/missing.py`\n")
 
         errors = validate_evidence_refs_on_disk(tmp_path)
         assert len(errors) == 1
@@ -157,10 +141,7 @@ class TestValidateEvidenceRefsOnDisk:
         kb_dir.mkdir(parents=True)
 
         kb_file = kb_dir / "project.md"
-        kb_file.write_text(
-            "### Evidence Refs\n"
-            "- `nonexistent/file.py`\n"
-        )
+        kb_file.write_text("### Evidence Refs\n- `nonexistent/file.py`\n")
 
         errors = validate_evidence_refs_on_disk(tmp_path)
         assert len(errors) == 1
@@ -169,6 +150,7 @@ class TestValidateEvidenceRefsOnDisk:
 # ---------------------------------------------------------------------------
 # New test cases for extract_section_bullets bug fix
 # ---------------------------------------------------------------------------
+
 
 class TestExtractSectionBulletsBugFix:
     """Tests for VAL-BUG-001 and VAL-BUG-002: sub-heading termination bug."""
@@ -216,6 +198,7 @@ class TestExtractSectionBulletsBugFix:
 # New test cases for validate_evidence_refs_on_disk coverage
 # ---------------------------------------------------------------------------
 
+
 class TestValidateEvidenceRefsCoverage:
     """Tests for VAL-TEST-001 through VAL-TEST-005."""
 
@@ -225,11 +208,7 @@ class TestValidateEvidenceRefsCoverage:
         kb_dir.mkdir(parents=True)
 
         kb_file = kb_dir / "test.md"
-        kb_file.write_text(
-            "### Evidence Refs\n"
-            "- `../../etc/passwd`\n"
-            "- `/etc/shadow`\n"
-        )
+        kb_file.write_text("### Evidence Refs\n- `../../etc/passwd`\n- `/etc/shadow`\n")
 
         errors = validate_evidence_refs_on_disk(tmp_path)
         assert errors == []
@@ -239,18 +218,14 @@ class TestValidateEvidenceRefsCoverage:
         # Create default kb dir (should be ignored)
         default_kb = tmp_path / "memory" / "kb" / "global"
         default_kb.mkdir(parents=True)
-        (default_kb / "default.md").write_text(
-            "### Evidence Refs\n- `nonexistent/default.py`\n"
-        )
+        (default_kb / "default.md").write_text("### Evidence Refs\n- `nonexistent/default.py`\n")
 
         # Create custom kb dir
         custom_kb = tmp_path / "custom" / "kb"
         custom_kb.mkdir(parents=True)
         (tmp_path / "tools").mkdir()
         (tmp_path / "tools" / "exists.py").write_text("# ok")
-        (custom_kb / "custom.md").write_text(
-            "### Evidence Refs\n- `tools/exists.py`\n"
-        )
+        (custom_kb / "custom.md").write_text("### Evidence Refs\n- `tools/exists.py`\n")
 
         # Only scan custom_kb, not default dirs
         errors = validate_evidence_refs_on_disk(tmp_path, kb_dirs=[custom_kb])
@@ -266,12 +241,7 @@ class TestValidateEvidenceRefsCoverage:
 
         # Section is at EOF with no following heading
         kb_file = kb_dir / "test.md"
-        kb_file.write_text(
-            "## Overview\n"
-            "Some content here.\n\n"
-            "### Evidence Refs\n"
-            "- `tools/exists.py`\n"
-        )
+        kb_file.write_text("## Overview\nSome content here.\n\n### Evidence Refs\n- `tools/exists.py`\n")
 
         errors = validate_evidence_refs_on_disk(tmp_path)
         assert errors == []
@@ -282,12 +252,7 @@ class TestValidateEvidenceRefsCoverage:
         kb_dir.mkdir(parents=True)
 
         kb_file = kb_dir / "test.md"
-        kb_file.write_text(
-            "### Evidence Refs\n"
-            "- `*.py`\n"
-            "- `**/config.py`\n"
-            "- `??.py`\n"
-        )
+        kb_file.write_text("### Evidence Refs\n- `*.py`\n- `**/config.py`\n- `??.py`\n")
 
         errors = validate_evidence_refs_on_disk(tmp_path)
         assert errors == []

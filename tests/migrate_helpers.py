@@ -31,10 +31,7 @@ def count_log_lines(log_path: Path) -> int:
     if not log_path.is_file():
         return 0
     text = log_path.read_text(encoding="utf-8")
-    return sum(
-        1 for line in text.splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    )
+    return sum(1 for line in text.splitlines() if line.strip() and not line.strip().startswith("#"))
 
 
 def create_memory_skeleton(

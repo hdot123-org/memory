@@ -3,6 +3,7 @@ TD-DR-01 单路径 Shard Pipeline 测试套件（26 用例）。
 
 三契约防线 + planner 不变量。先于 workflow 改造编写（TDD）。
 """
+
 import sys
 from pathlib import Path
 
@@ -18,6 +19,7 @@ WORKFLOW_PATH = REPO_ROOT / ".github/workflows/droid-review.yml"
 
 # ── helpers ──────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def workflow_data():
     return yaml.safe_load(WORKFLOW_PATH.read_text())
@@ -31,6 +33,7 @@ def workflow_raw():
 def _plan(files, max_files=25, max_count=6):
     """Invoke plan_shards.plan_shards with defaults; import fresh each call."""
     from droid_review.plan_shards import plan_shards
+
     return plan_shards(
         files,
         max_files=max_files,
@@ -41,6 +44,7 @@ def _plan(files, max_files=25, max_count=6):
 # ══════════════════════════════════════════════════════════════════════
 # Part A: Workflow structure (10 tests) — three-contract guardians
 # ══════════════════════════════════════════════════════════════════════
+
 
 class TestWorkflowStructure:
     """三契约 + 结构安全：workflow 名/job 名/artifact 前缀/触发器/concurrency/checkout。"""
@@ -100,8 +104,9 @@ class TestWorkflowStructure:
         # Must have steps for publishing findings
         steps = jobs["droid-review"].get("steps", [])
         step_names = [s.get("name", "") for s in steps]
-        assert any("publish" in n.lower() or "finding" in n.lower() for n in step_names), \
+        assert any("publish" in n.lower() or "finding" in n.lower() for n in step_names), (
             "droid-review job must have a publish/findings step"
+        )
 
     def test_09_max_parallel_from_vars(self, workflow_raw):
         """VAL-VARS-002/VAL-SHARD-003: max-parallel 读自 vars.SHARD_MAX_PARALLEL。"""
@@ -123,7 +128,8 @@ class TestWorkflowStructure:
         ${{ needs.<job>.outputs.<name> }} 形式的表达式。
         """
         import re
-        pattern = re.compile(r'\$\{\{\s*needs\.\S+\.outputs\.\S+\s*\}\}')
+
+        pattern = re.compile(r"\$\{\{\s*needs\.\S+\.outputs\.\S+\s*\}\}")
         violations = []
         for job_name, job in workflow_data.get("jobs", {}).items():
             for idx, step in enumerate(job.get("steps", [])):
@@ -132,14 +138,10 @@ class TestWorkflowStructure:
                     continue
                 matches = pattern.findall(run_text)
                 if matches:
-                    violations.append(
-                        f"job={job_name!r} step[{idx}] ({step.get('name', '?')}): "
-                        f"{matches}"
-                    )
+                    violations.append(f"job={job_name!r} step[{idx}] ({step.get('name', '?')}): {matches}")
         assert not violations, (
             "run: blocks must NOT interpolate needs.*.outputs (injection risk). "
-            "Move such values to the step's env: mapping. Violations:\n"
-            + "\n".join(violations)
+            "Move such values to the step's env: mapping. Violations:\n" + "\n".join(violations)
         )
 
     def test_10c_shard_env_uses_setup_outputs_for_workflow_dispatch(self, workflow_data):
@@ -182,18 +184,14 @@ class TestWorkflowStructure:
         PR 上返回空（shallow graft 阻断历史遍历）。必须完整 fetch 才能正确计算 merge-base。
         """
         import re
+
         # Find the shard_env step's run block
-        pattern = re.compile(
-            r'git fetch origin "\$BASE_SHA"(\s*--depth=1)?',
-            re.MULTILINE
-        )
+        pattern = re.compile(r'git fetch origin "\$BASE_SHA"(\s*--depth=1)?', re.MULTILINE)
         matches = pattern.findall(workflow_raw)
-        assert matches, "git fetch origin \"$BASE_SHA\" not found in workflow"
+        assert matches, 'git fetch origin "$BASE_SHA" not found in workflow'
         # Ensure no --depth=1 flag
         for depth_flag in matches:
-            assert depth_flag.strip() == "", (
-                "git fetch must NOT use --depth=1 (breaks merge-base computation)"
-            )
+            assert depth_flag.strip() == "", "git fetch must NOT use --depth=1 (breaks merge-base computation)"
 
     def test_10e_artifact_includes_debug_transcripts_and_error_logs(self, workflow_data):
         """VAL-SHARD-012: debug artifact 必须包含 session transcripts 和执行错误日志。
@@ -260,6 +258,7 @@ class TestWorkflowStructure:
 # Part B: Planner invariants (16 tests)
 # ══════════════════════════════════════════════════════════════════════
 
+
 class TestPlannerInvariants:
     """plan_shards.py 不变量：覆盖完整性、目录亲和、溢出处理。"""
 
@@ -293,8 +292,9 @@ class TestPlannerInvariants:
         shard_sets = [set(s["files"]) for s in result["shards"]]
         for i in range(len(shard_sets)):
             for j in range(i + 1, len(shard_sets)):
-                assert shard_sets[i] & shard_sets[j] == set(), \
+                assert shard_sets[i] & shard_sets[j] == set(), (
                     f"Shard {i} and {j} overlap: {shard_sets[i] & shard_sets[j]}"
+                )
 
     def test_15_union_equals_full_set(self):
         """并集 = 全集：plan_shards 永不丢文件。"""
@@ -327,8 +327,9 @@ class TestPlannerInvariants:
             all_planned.update(s["files"])
         assert all_planned == set(files), "overflow must not lose files"
         # 告警标记
-        assert result.get("overflow_warning") is True or result.get("overflow") is True, \
+        assert result.get("overflow_warning") is True or result.get("overflow") is True, (
             "overflow must set a warning flag"
+        )
 
     def test_18_max_count_cap_respected_with_overflow(self):
         """max_count 上限：分片数不超上限，除非溢出放大。"""
@@ -402,6 +403,7 @@ class TestPlannerInvariants:
     def test_25_plan_shards_exits_nonzero_on_bad_input(self):
         """planner 异常输入 → 非零退出（fail-closed）。"""
         from droid_review.plan_shards import plan_shards
+
         # Invalid: negative max_files
         with pytest.raises((ValueError, SystemExit)):
             plan_shards(["a.py"], max_files=-1)
@@ -409,21 +411,18 @@ class TestPlannerInvariants:
     def test_26_findings_schema_validation(self):
         """VAL-SHARD-014: 非法 findings JSON schema 被拒绝。"""
         from droid_review.publish_findings import validate_findings
+
         # Valid findings
         valid = {
             "shard_id": 0,
-            "findings": [
-                {"severity": "P1", "file": "a.py", "line": 10, "message": "bug"}
-            ],
+            "findings": [{"severity": "P1", "file": "a.py", "line": 10, "message": "bug"}],
         }
         assert validate_findings(valid) is True
 
         # Invalid: missing required field
         invalid_missing_severity = {
             "shard_id": 0,
-            "findings": [
-                {"file": "a.py", "line": 10, "message": "bug"}
-            ],
+            "findings": [{"file": "a.py", "line": 10, "message": "bug"}],
         }
         assert validate_findings(invalid_missing_severity) is False
 
@@ -439,6 +438,7 @@ class TestPlannerInvariants:
 # Part C: Seam Integration Tests (3 tests) — workflow→script data flow
 # ══════════════════════════════════════════════════════════════════════
 
+
 class TestSeamIntegration:
     """workflow→script 接缝集成测试：真实 source GITHUB_ENV 文件 + fixture git repo。"""
 
@@ -446,6 +446,7 @@ class TestSeamIntegration:
     def fixture_git_repo(self, tmp_path):
         """创建 fixture git repo（含 base + head 分支）。"""
         import subprocess
+
         repo = tmp_path / "fixture-repo"
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
@@ -491,7 +492,7 @@ class TestSeamIntegration:
         shard_files_json = json.dumps(shard_files)
 
         # Write GITHUB_ENV file with multi-line delimiter (runner reads literally)
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.env') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".env") as f:
             f.write("SHARD_ID=0\n")
             f.write(f"SHARD_FILES<<EOF_SHARD\n{shard_files_json}\nEOF_SHARD\n")
             f.write("BASE_REF=abc123\n")
@@ -507,27 +508,28 @@ class TestSeamIntegration:
 
             i = 0
             while i < len(lines):
-                line = lines[i].rstrip('\n')
-                if '<<' in line:
-                    key, delimiter = line.split('<<', 1)
+                line = lines[i].rstrip("\n")
+                if "<<" in line:
+                    key, delimiter = line.split("<<", 1)
                     value_lines = []
                     i += 1
-                    while i < len(lines) and lines[i].rstrip('\n') != delimiter:
-                        value_lines.append(lines[i].rstrip('\n'))
+                    while i < len(lines) and lines[i].rstrip("\n") != delimiter:
+                        value_lines.append(lines[i].rstrip("\n"))
                         i += 1
-                    env_vars[key] = '\n'.join(value_lines)
-                elif '=' in line:
-                    key, value = line.split('=', 1)
+                    env_vars[key] = "\n".join(value_lines)
+                elif "=" in line:
+                    key, value = line.split("=", 1)
                     env_vars[key] = value
                 i += 1
 
             # Validate that SHARD_FILES contains valid JSON (literal value, no quote stripping)
-            shard_files_value = env_vars.get('SHARD_FILES', '')
+            shard_files_value = env_vars.get("SHARD_FILES", "")
             parsed = json.loads(shard_files_value)
             assert parsed == shard_files, f"Parsed {parsed} != expected {shard_files}"
 
             # Verify jq can parse it (simulating run_shard.sh validation)
             import subprocess
+
             result = subprocess.run(
                 ["jq", "-c", "."],
                 input=shard_files_value,
@@ -545,7 +547,7 @@ class TestSeamIntegration:
         import tempfile
 
         # Write invalid JSON to GITHUB_ENV with multi-line delimiter
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.env') as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".env") as f:
             f.write("SHARD_ID=0\n")
             f.write("SHARD_FILES<<EOF_SHARD\n{invalid json\nEOF_SHARD\n")
             f.write("BASE_REF=abc\n")
@@ -560,22 +562,22 @@ class TestSeamIntegration:
 
             i = 0
             while i < len(lines):
-                line = lines[i].rstrip('\n')
-                if '<<' in line:
-                    key, delimiter = line.split('<<', 1)
+                line = lines[i].rstrip("\n")
+                if "<<" in line:
+                    key, delimiter = line.split("<<", 1)
                     value_lines = []
                     i += 1
-                    while i < len(lines) and lines[i].rstrip('\n') != delimiter:
-                        value_lines.append(lines[i].rstrip('\n'))
+                    while i < len(lines) and lines[i].rstrip("\n") != delimiter:
+                        value_lines.append(lines[i].rstrip("\n"))
                         i += 1
-                    env_vars[key] = '\n'.join(value_lines)
-                elif '=' in line:
-                    key, value = line.split('=', 1)
+                    env_vars[key] = "\n".join(value_lines)
+                elif "=" in line:
+                    key, value = line.split("=", 1)
                     env_vars[key] = value
                 i += 1
 
             # Validate that jq fails on invalid JSON
-            shard_files_value = env_vars.get('SHARD_FILES', '')
+            shard_files_value = env_vars.get("SHARD_FILES", "")
             result = subprocess.run(
                 ["jq", "empty"],
                 input=shard_files_value,
@@ -662,33 +664,32 @@ rm -rf "$BASE_DIR" "$HEAD_DIR"
 
         # 查找 droid exec 调用及其 --cwd 参数
         # 匹配模式：droid exec ... --cwd <path>
-        droid_exec_pattern = r'droid\s+exec\s+([^|]*?)(?=\||$)'
+        droid_exec_pattern = r"droid\s+exec\s+([^|]*?)(?=\||$)"
         matches = re.findall(droid_exec_pattern, content, re.DOTALL)
 
         assert len(matches) > 0, "run_shard.sh must contain at least one droid exec call"
 
         for match in matches:
             # 检查是否包含 --cwd 参数
-            cwd_pattern = r'--cwd\s+(\S+)'
+            cwd_pattern = r"--cwd\s+(\S+)"
             cwd_matches = re.findall(cwd_pattern, match)
 
             if cwd_matches:
                 for cwd_value in cwd_matches:
                     # 验证 --cwd 值是绝对路径（包含 ${GITHUB_WORKSPACE} 或 ${PWD}）
-                    assert '${GITHUB_WORKSPACE' in cwd_value or '${PWD' in cwd_value, (
-                        f"--cwd must use absolute path with ${{GITHUB_WORKSPACE}} or ${{PWD}}, "
-                        f"but got: {cwd_value}"
+                    assert "${GITHUB_WORKSPACE" in cwd_value or "${PWD" in cwd_value, (
+                        f"--cwd must use absolute path with ${{GITHUB_WORKSPACE}} or ${{PWD}}, but got: {cwd_value}"
                     )
                     # 确保不是相对路径
-                    assert not cwd_value.startswith('head-src'), (
-                        "--cwd must not use relative path 'head-src', "
-                        "it causes droid CLI 0.200.0 to silently crash"
+                    assert not cwd_value.startswith("head-src"), (
+                        "--cwd must not use relative path 'head-src', it causes droid CLI 0.200.0 to silently crash"
                     )
 
 
 # ══════════════════════════════════════════════════════════════════════
 # Part D: publish_findings Integration (1 test) — mock gh CLI
 # ══════════════════════════════════════════════════════════════════════
+
 
 class TestPublishFindingsIntegration:
     """publish_findings.py 集成测试：mock gh CLI 验证 inline/422 降级路径。"""

@@ -13,6 +13,7 @@ from memory_core.tools.template_sync import generate_skill_memory_init_fill_yaml
 # generate_skill_memory_init_fill_yaml tests (VAL-SKILL-001, VAL-SKILL-002)
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateSkillMemoryInitFillYaml:
     """Tests for generate_skill_memory_init_fill_yaml() function."""
 
@@ -49,15 +50,22 @@ class TestGenerateSkillMemoryInitFillYaml:
     def test_contains_probe_steps(self) -> None:
         """YAML contains all probe step definitions."""
         result = generate_skill_memory_init_fill_yaml("test_project")
-        for step in ["git_info", "primary_language", "framework",
-                     "project_type", "database", "toolchain", "readme_summary"]:
+        for step in [
+            "git_info",
+            "primary_language",
+            "framework",
+            "project_type",
+            "database",
+            "toolchain",
+            "readme_summary",
+        ]:
             assert step in result
 
     def test_contains_fill_rules(self) -> None:
         """YAML contains fill template rules with confidence levels."""
         result = generate_skill_memory_init_fill_yaml("test_project")
-        assert "confidence: \"high\"" in result
-        assert "confidence: \"low\"" in result
+        assert 'confidence: "high"' in result
+        assert 'confidence: "low"' in result
         assert "auto_fill" in result
         assert "keep_placeholder" in result
 

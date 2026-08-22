@@ -9,7 +9,6 @@ Covers:
 - Regression scenarios: core business flows remain intact after changes
 """
 
-
 import json
 import sys
 from dataclasses import replace
@@ -64,6 +63,7 @@ from memory_core.tools._validation_constants import (
 # ---------------------------------------------------------------------------
 # Fixture helper — build GatewayBusinessPolicyConfig via constructor
 # ---------------------------------------------------------------------------
+
 
 def _default_read_text(path: Path) -> str:
     if path.exists():
@@ -161,6 +161,7 @@ def _make_config(tmp_path: Path, **overrides: Any):
 # 1. Complete flow: config load -> policy check -> result return
 # ---------------------------------------------------------------------------
 
+
 class TestCompleteFlow:
     """Verify end-to-end policy check workflows."""
 
@@ -181,14 +182,11 @@ class TestCompleteFlow:
             encoding="utf-8",
         )
         cfg.project_map_governance.write_text(
-            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n"
-            f"{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
+            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
             encoding="utf-8",
         )
 
-    def test_project_map_validator_returns_empty_errors_for_valid_markers(
-        self, tmp_path: Path
-    ) -> None:
+    def test_project_map_validator_returns_empty_errors_for_valid_markers(self, tmp_path: Path) -> None:
         from memory_core.tools.business_policy_checks import ProjectMapValidator
 
         cfg = _make_config(tmp_path)
@@ -198,9 +196,7 @@ class TestCompleteFlow:
         errors = validator.validate_project_map_files()
         assert errors == []
 
-    def test_project_map_validator_detects_missing_markers(
-        self, tmp_path: Path
-    ) -> None:
+    def test_project_map_validator_detects_missing_markers(self, tmp_path: Path) -> None:
         from memory_core.tools.business_policy_checks import ProjectMapValidator
 
         cfg = _make_config(tmp_path)
@@ -218,8 +214,7 @@ class TestCompleteFlow:
         cfg = _make_config(tmp_path)
         index_md = cfg.project_map_files[0]
         index_md.write_text(
-            f"{MKR_UNIQUE_LEGAL_ENTRY}\n{MKR_ACTIVE_LEGAL_MAP_ONLY}\n"
-            f"{MKR_GIT_COMMIT_GATE}\nold round-1 reference\n",
+            f"{MKR_UNIQUE_LEGAL_ENTRY}\n{MKR_ACTIVE_LEGAL_MAP_ONLY}\n{MKR_GIT_COMMIT_GATE}\nold round-1 reference\n",
             encoding="utf-8",
         )
         cfg.project_map_files[1].write_text(
@@ -233,8 +228,7 @@ class TestCompleteFlow:
             encoding="utf-8",
         )
         cfg.project_map_governance.write_text(
-            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n"
-            f"{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
+            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
             encoding="utf-8",
         )
 
@@ -242,9 +236,7 @@ class TestCompleteFlow:
         errors = validator.validate_project_map_files()
         assert any("transition round" in e for e in errors)
 
-    def test_truth_basis_resolver_returns_fail_for_unknown_scope(
-        self, tmp_path: Path
-    ) -> None:
+    def test_truth_basis_resolver_returns_fail_for_unknown_scope(self, tmp_path: Path) -> None:
         from memory_core.tools.business_policy_checks import TruthBasisResolver
 
         cfg = _make_config(tmp_path)
@@ -280,9 +272,13 @@ class TestCompleteFlow:
         global_md.touch()
         override_file = tmp_path / "scope-overrides.json"
         override_file.write_text(
-            json.dumps({
-                "project_canonical": {"workbot": str(tmp_path / "workspace" / "memory" / "kb" / "global" / "workbot-canonical.md")},
-            }),
+            json.dumps(
+                {
+                    "project_canonical": {
+                        "workbot": str(tmp_path / "workspace" / "memory" / "kb" / "global" / "workbot-canonical.md")
+                    },
+                }
+            ),
             encoding="utf-8",
         )
         cfg = _make_config(tmp_path, project_canonical={"global": global_md})
@@ -294,6 +290,7 @@ class TestCompleteFlow:
 # ---------------------------------------------------------------------------
 # 2. Gateway integration: simulated gateway calling policy checks
 # ---------------------------------------------------------------------------
+
 
 class TestGatewayIntegration:
     """Simulate how memory_hook_gateway invokes business policy checks."""
@@ -317,8 +314,7 @@ class TestGatewayIntegration:
             encoding="utf-8",
         )
         cfg.project_map_governance.write_text(
-            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n"
-            f"{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
+            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
             encoding="utf-8",
         )
 
@@ -361,7 +357,16 @@ class TestGatewayIntegration:
         refs = resolver.decision_refs_for_scope(scope)
         assert isinstance(refs, list)
 
-    def _make_event_contract_dir(self, tmp_path: Path, name: str, upstream_standard: str, upstream_mapping: str, formal_contract: str, upstream_samples: str, downstream_samples: str) -> dict[str, Path]:
+    def _make_event_contract_dir(
+        self,
+        tmp_path: Path,
+        name: str,
+        upstream_standard: str,
+        upstream_mapping: str,
+        formal_contract: str,
+        upstream_samples: str,
+        downstream_samples: str,
+    ) -> dict[str, Path]:
         """Create a directory of event contract files and return the mapping."""
         contract_dir = tmp_path / name
         contract_dir.mkdir()
@@ -388,7 +393,9 @@ class TestGatewayIntegration:
         from memory_core.tools.business_policy_checks import EventContractChecker
 
         formal_sources = "\n".join([SEC_UPSTREAM_STANDARD_SOURCES, "`lark-im`", "`cmux-event`", "`git-hook`"])
-        formal_events = "\n".join([SEC_UPSTREAM_STANDARD_EVENTS, "`message.create`", "`event.dispatch`", "`commit.push`"])
+        formal_events = "\n".join(
+            [SEC_UPSTREAM_STANDARD_EVENTS, "`message.create`", "`event.dispatch`", "`commit.push`"]
+        )
         formal_statuses = "\n".join([SEC_UPSTREAM_STANDARD_STATUSES, "`processed`", "`rejected`", "`pending`"])
 
         upstream_standard = f"{formal_sources}\n\n{formal_events}\n\n{formal_statuses}\n"
@@ -403,17 +410,26 @@ class TestGatewayIntegration:
             f"{SEC_FORMAL_CONTRACT_EVENTS}\n`message.create`\n`event.dispatch`\n`commit.push`\n\n"
             f"{SEC_FORMAL_CONTRACT_STATUSES}\n`processed`\n`rejected`\n`pending`\n"
         )
-        upstream_samples = json.dumps([
-            {"source_type": "lark-im", "event_type": "message.create", "event_status": "processed"},
-            {"source_type": "cmux-event", "event_type": "event.dispatch", "event_status": "pending"},
-        ])
-        downstream_samples = json.dumps([
-            {"source_type": "git-hook", "event_type": "commit.push", "event_status": "rejected"},
-        ])
+        upstream_samples = json.dumps(
+            [
+                {"source_type": "lark-im", "event_type": "message.create", "event_status": "processed"},
+                {"source_type": "cmux-event", "event_type": "event.dispatch", "event_status": "pending"},
+            ]
+        )
+        downstream_samples = json.dumps(
+            [
+                {"source_type": "git-hook", "event_type": "commit.push", "event_status": "rejected"},
+            ]
+        )
 
         ec_files = self._make_event_contract_dir(
-            tmp_path, "ec-valid", upstream_standard, upstream_mapping,
-            formal_contract_text, upstream_samples, downstream_samples,
+            tmp_path,
+            "ec-valid",
+            upstream_standard,
+            upstream_mapping,
+            formal_contract_text,
+            upstream_samples,
+            downstream_samples,
         )
         cfg = _make_config(tmp_path, event_contract_files=ec_files)
 
@@ -443,6 +459,7 @@ class TestGatewayIntegration:
 # 3. Adapter config integration: different adapter configs produce different behaviors
 # ---------------------------------------------------------------------------
 
+
 class TestAdapterConfigIntegration:
     """Different adapter configurations should produce different policy behaviors."""
 
@@ -465,8 +482,7 @@ class TestAdapterConfigIntegration:
             encoding="utf-8",
         )
         cfg.project_map_governance.write_text(
-            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n"
-            f"{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
+            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
             encoding="utf-8",
         )
 
@@ -512,9 +528,11 @@ class TestAdapterConfigIntegration:
         global_md.touch()
         override_file = tmp_path / "env-overrides.json"
         override_file.write_text(
-            json.dumps({
-                "project_canonical": {"env-scope": "custom-path.md"},
-            }),
+            json.dumps(
+                {
+                    "project_canonical": {"env-scope": "custom-path.md"},
+                }
+            ),
             encoding="utf-8",
         )
         cfg = _make_config(tmp_path, project_canonical={"global": global_md})
@@ -528,6 +546,7 @@ class TestAdapterConfigIntegration:
 # ---------------------------------------------------------------------------
 # 4. Multi-policy interaction: multiple strategies active simultaneously
 # ---------------------------------------------------------------------------
+
 
 class TestMultiPolicyInteraction:
     """Test that multiple checkers can run together and produce combined results."""
@@ -548,8 +567,7 @@ class TestMultiPolicyInteraction:
             encoding="utf-8",
         )
         cfg.global_index_path.write_text(
-            f"{MKR_NON_LEGAL_MATERIAL}\n{MKR_INGESTION_REGISTRY_REF}\n"
-            f"{cfg.truth_model.name}\n",
+            f"{MKR_NON_LEGAL_MATERIAL}\n{MKR_INGESTION_REGISTRY_REF}\n{cfg.truth_model.name}\n",
             encoding="utf-8",
         )
         cfg.hook_contract_path.write_text(
@@ -578,8 +596,7 @@ class TestMultiPolicyInteraction:
             encoding="utf-8",
         )
         cfg.project_map_governance.write_text(
-            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n"
-            f"{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
+            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
             encoding="utf-8",
         )
         self._write_full_legal_docs(cfg)
@@ -638,8 +655,12 @@ class TestMultiPolicyInteraction:
         upstream_mapping = f"{SEC_UPSTREAM_MAPPING_SOURCES}\n`lark-im`\n`unknown-type`\n"
         formal_contract_text = f"{SEC_FORMAL_CONTRACT_SOURCES}\n`lark-im`\n`unknown-type`\n"
 
-        upstream_samples = json.dumps([{"source_type": "unknown-type", "event_type": "unknown", "event_status": "unknown"}])
-        downstream_samples = json.dumps([{"source_type": "unknown-type", "event_type": "unknown", "event_status": "unknown"}])
+        upstream_samples = json.dumps(
+            [{"source_type": "unknown-type", "event_type": "unknown", "event_status": "unknown"}]
+        )
+        downstream_samples = json.dumps(
+            [{"source_type": "unknown-type", "event_type": "unknown", "event_status": "unknown"}]
+        )
 
         contract_dir = tmp_path / "ec-mismatch"
         contract_dir.mkdir()
@@ -687,8 +708,7 @@ class TestMultiPolicyInteraction:
             encoding="utf-8",
         )
         cfg.project_map_governance.write_text(
-            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n"
-            f"{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
+            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
             encoding="utf-8",
         )
 
@@ -704,7 +724,9 @@ class TestMultiPolicyInteraction:
 
         # -- Event contracts --
         formal_sources = "\n".join([SEC_UPSTREAM_STANDARD_SOURCES, "`lark-im`", "`cmux-event`", "`git-hook`"])
-        formal_events = "\n".join([SEC_UPSTREAM_STANDARD_EVENTS, "`message.create`", "`event.dispatch`", "`commit.push`"])
+        formal_events = "\n".join(
+            [SEC_UPSTREAM_STANDARD_EVENTS, "`message.create`", "`event.dispatch`", "`commit.push`"]
+        )
         formal_statuses = "\n".join([SEC_UPSTREAM_STANDARD_STATUSES, "`processed`", "`rejected`", "`pending`"])
         upstream_standard = f"{formal_sources}\n\n{formal_events}\n\n{formal_statuses}\n"
 
@@ -719,12 +741,16 @@ class TestMultiPolicyInteraction:
             f"{SEC_FORMAL_CONTRACT_EVENTS}\n`message.create`\n`event.dispatch`\n`commit.push`\n\n"
             f"{SEC_FORMAL_CONTRACT_STATUSES}\n`processed`\n`rejected`\n`pending`\n"
         )
-        upstream_samples = json.dumps([
-            {"source_type": "lark-im", "event_type": "message.create", "event_status": "processed"},
-        ])
-        downstream_samples = json.dumps([
-            {"source_type": "git-hook", "event_type": "commit.push", "event_status": "rejected"},
-        ])
+        upstream_samples = json.dumps(
+            [
+                {"source_type": "lark-im", "event_type": "message.create", "event_status": "processed"},
+            ]
+        )
+        downstream_samples = json.dumps(
+            [
+                {"source_type": "git-hook", "event_type": "commit.push", "event_status": "rejected"},
+            ]
+        )
 
         contract_dir = tmp_path / "ec-combined"
         contract_dir.mkdir()
@@ -755,6 +781,7 @@ class TestMultiPolicyInteraction:
 # 5. Regression scenarios: core business flows remain intact
 # ---------------------------------------------------------------------------
 
+
 class TestRegressionScenarios:
     """Ensure core business flows do not break after changes."""
 
@@ -779,8 +806,7 @@ class TestRegressionScenarios:
             encoding="utf-8",
         )
         cfg.project_map_governance.write_text(
-            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n"
-            f"{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
+            f"{MKR_UNWASHED_NOT_LEGAL}\n{MKR_GOVERNANCE_MAP_GRANTS_LEGALITY}\n{MKR_ATOMIC_REGISTRATION_GIT_COMMIT}\n",
             encoding="utf-8",
         )
 
@@ -858,27 +884,14 @@ class TestRegressionScenarios:
     def test_section_bullets_extracts_list_items(self, tmp_path: Path) -> None:
         from memory_core.tools.business_policy_checks import _section_bullets
 
-        text = (
-            "## Some Heading\n"
-            "- item one\n"
-            "- `item two`\n"
-            "- item three\n"
-            "## Next Heading\n"
-            "- should not appear\n"
-        )
+        text = "## Some Heading\n- item one\n- `item two`\n- item three\n## Next Heading\n- should not appear\n"
         bullets = _section_bullets(text, "## Some Heading")
         assert bullets == ["item one", "item two", "item three"]
 
     def test_section_body_extracts_text_between_headings(self, tmp_path: Path) -> None:
         from memory_core.tools.business_policy_checks import _section_body
 
-        text = (
-            "## Target Heading\n"
-            "line one\n"
-            "line two\n"
-            "## Next Heading\n"
-            "should not be included\n"
-        )
+        text = "## Target Heading\nline one\nline two\n## Next Heading\nshould not be included\n"
         body = _section_body(text, "## Target Heading")
         assert "line one" in body
         assert "line two" in body
@@ -894,10 +907,12 @@ class TestRegressionScenarios:
     def test_json_string_values_extracts_values_by_key(self, tmp_path: Path) -> None:
         from memory_core.tools.business_policy_checks import _json_string_values
 
-        text = json.dumps([
-            {"source_type": "lark-im", "event_type": "msg"},
-            {"source_type": "git-hook", "event_type": "push"},
-        ])
+        text = json.dumps(
+            [
+                {"source_type": "lark-im", "event_type": "msg"},
+                {"source_type": "git-hook", "event_type": "push"},
+            ]
+        )
         values = _json_string_values(text, "source_type")
         assert values == {"lark-im", "git-hook"}
 
@@ -939,9 +954,11 @@ class TestRegressionScenarios:
         runtime_global.mkdir(parents=True, exist_ok=True)
         override_file = tmp_path / "rt-overrides.json"
         override_file.write_text(
-            json.dumps({
-                "project_runtime_root": {"workbot": str(tmp_path / "workspace" / "runtime-workbot")},
-            }),
+            json.dumps(
+                {
+                    "project_runtime_root": {"workbot": str(tmp_path / "workspace" / "runtime-workbot")},
+                }
+            ),
             encoding="utf-8",
         )
         cfg = _make_config(tmp_path, project_runtime_root={"global": runtime_global})

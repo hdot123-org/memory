@@ -39,7 +39,9 @@ def _call_build_readonly_package(cwd: Path, host: str = "factory", event: str = 
     return _build_readonly_source_repo_package(cwd, host, event)
 
 
-def _run_gateway_subprocess(cwd: Path, host: str = "factory", event: str = "session-start") -> subprocess.CompletedProcess[str]:
+def _run_gateway_subprocess(
+    cwd: Path, host: str = "factory", event: str = "session-start"
+) -> subprocess.CompletedProcess[str]:
     """Run gateway via subprocess with explicit PYTHONPATH to avoid cwd import pollution."""
     payload = json.dumps({"cwd": str(cwd)})
     env = dict(os.environ)
@@ -191,10 +193,12 @@ class TestSourceRepoIsMemoryCoreDetection:
 
     def test_detects_source_repo(self, source_repo: Path) -> None:
         from memory_core.ownership import is_memory_core_source_repo
+
         assert is_memory_core_source_repo(source_repo) is True
 
     def test_normal_project_not_detected(self, tmp_path: Path) -> None:
         from memory_core.ownership import is_memory_core_source_repo
+
         normal = tmp_path / "normal-project"
         normal.mkdir()
         subprocess.run(["git", "init"], cwd=normal, check=True, capture_output=True, text=True)
@@ -202,12 +206,14 @@ class TestSourceRepoIsMemoryCoreDetection:
 
     def test_subdirectory_detected(self, source_repo: Path) -> None:
         from memory_core.ownership import is_memory_core_source_repo
+
         subdir = source_repo / "subdir"
         subdir.mkdir()
         assert is_memory_core_source_repo(subdir) is True
 
     def test_detects_by_factory_hooks_marker(self, tmp_path: Path) -> None:
         from memory_core.ownership import is_memory_core_source_repo
+
         repo = tmp_path / "repo"
         nested = repo / "memory_core" / "tools"
         nested.mkdir(parents=True)
@@ -217,6 +223,7 @@ class TestSourceRepoIsMemoryCoreDetection:
 
     def test_detects_by_ownership_module(self, tmp_path: Path) -> None:
         from memory_core.ownership import is_memory_core_source_repo
+
         repo = tmp_path / "repo"
         nested = repo / "memory_core"
         nested.mkdir(parents=True)
@@ -226,6 +233,7 @@ class TestSourceRepoIsMemoryCoreDetection:
 
     def test_detects_by_gateway_marker(self, tmp_path: Path) -> None:
         from memory_core.ownership import is_memory_core_source_repo
+
         repo = tmp_path / "repo"
         nested = repo / "memory_core" / "tools"
         nested.mkdir(parents=True)

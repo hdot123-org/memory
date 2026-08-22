@@ -48,9 +48,11 @@ def _current_version() -> str:
     """Get current memory version from constants or fallback."""
     try:
         from memory_core.constants import CURRENT_MEMORY_VERSION
+
         return CURRENT_MEMORY_VERSION
     except ImportError:
         return "0.2.0"
+
 
 TOOLS_DIR = Path(__file__).resolve().parents[1] / "memory_core" / "tools"
 INIT_SCRIPT = TOOLS_DIR / "init_project_memory.py"
@@ -58,9 +60,7 @@ VALIDATE_SCRIPT = TOOLS_DIR / "validate_project_memory.py"
 MIGRATE_SCRIPT = TOOLS_DIR / "migrate_project_memory.py"
 
 
-def _run_script(
-    script: Path, args: list[str], *, cwd: Path | None = None
-) -> subprocess.CompletedProcess[str]:
+def _run_script(script: Path, args: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     """Run a tool script and return the result."""
     env = dict(os.environ)
     # Set PYTHONPATH to memory_core/ so imports like 'memory_core.constants' work
@@ -86,6 +86,7 @@ def _make_temp_project() -> Path:
 # Happy path: init + validate
 # ---------------------------------------------------------------------------
 
+
 class TestHappyPathInitAndValidate:
     """Full flow: init creates skeleton, validate passes."""
 
@@ -108,6 +109,7 @@ class TestHappyPathInitAndValidate:
                 assert (memory_root / dname).is_dir(), f"dir {dname} not created"
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_validate_passes_after_init(self) -> None:
@@ -125,6 +127,7 @@ class TestHappyPathInitAndValidate:
             assert data["all_passed"] is True, f"Checks failed: {data}"
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_init_dry_run(self) -> None:
@@ -140,6 +143,7 @@ class TestHappyPathInitAndValidate:
             assert not (proj / "memory" / "system").exists()
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_validate_dry_run(self) -> None:
@@ -153,12 +157,14 @@ class TestHappyPathInitAndValidate:
             assert any(c["name"].startswith("dry_run") for c in data["checks"])
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
 # Missing file detection
 # ---------------------------------------------------------------------------
+
 
 class TestMissingFileDetection:
     """Validator must fail when required files are missing."""
@@ -176,6 +182,7 @@ class TestMissingFileDetection:
             assert any(not c["passed"] for c in lock_checks)
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_missing_all_required(self) -> None:
@@ -189,12 +196,14 @@ class TestMissingFileDetection:
             assert any(not c["passed"] for c in root_checks)
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
 # Pollution guard
 # ---------------------------------------------------------------------------
+
 
 class TestPollutionGuard:
     """Validator must detect business-state pollution in memory repo."""
@@ -216,6 +225,7 @@ class TestPollutionGuard:
             assert any(not c["passed"] for c in pollution_checks)
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_pollution_in_content(self) -> None:
@@ -226,7 +236,7 @@ class TestPollutionGuard:
             # Write pollution into adapter.toml
             adapter = proj / "memory" / "system" / "adapter.toml"
             text = adapter.read_text(encoding="utf-8")
-            text += '\n# Path reference: /some/project/__pycache__/module.pyc\n'
+            text += "\n# Path reference: /some/project/__pycache__/module.pyc\n"
             adapter.write_text(text, encoding="utf-8")
 
             result = _run_script(VALIDATE_SCRIPT, ["--target", str(proj), "--json"])
@@ -234,6 +244,7 @@ class TestPollutionGuard:
             assert data["all_passed"] is False
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_clean_project_passes(self) -> None:
@@ -247,6 +258,7 @@ class TestPollutionGuard:
             assert all(c["passed"] for c in pollution_checks), "Unexpected pollution detected"
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
 
@@ -257,6 +269,7 @@ class TestPollutionGuard:
 # ---------------------------------------------------------------------------
 # Version check failure
 # ---------------------------------------------------------------------------
+
 
 class TestVersionCheckFailure:
     """Validator must fail when versions don't match."""
@@ -283,6 +296,7 @@ class TestVersionCheckFailure:
             assert any(c["passed"] for c in version_checks)
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_wrong_adapter_version(self) -> None:
@@ -301,12 +315,14 @@ class TestVersionCheckFailure:
             assert data_out["all_passed"] is True
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
 # Frontmatter validation
 # ---------------------------------------------------------------------------
+
 
 # NOTE: _parse_frontmatter exists in validate_project_memory.py but is not
 # wired into any validation check. This test class remains skipped until
@@ -330,12 +346,14 @@ class TestFrontmatterValidation:
             assert any(not c["passed"] for c in fm_checks)
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
 # Scope and project name discovery
 # ---------------------------------------------------------------------------
+
 
 class TestScopeAndProjectName:
     """Test --scope parameter and project name discovery logic."""
@@ -353,6 +371,7 @@ class TestScopeAndProjectName:
             assert 'project_scope = "my_project"' in adapter
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_scope_with_hyphens_is_slugified(self) -> None:
@@ -368,6 +387,7 @@ class TestScopeAndProjectName:
             assert 'project_scope = "my_project"' in adapter
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_fallback_to_dirname_lowercase(self) -> None:
@@ -383,6 +403,7 @@ class TestScopeAndProjectName:
             assert 'project_scope = "project"' not in adapter
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_git_remote_origin_discovery(self) -> None:
@@ -391,11 +412,14 @@ class TestScopeAndProjectName:
         try:
             # Set up a git remote
             subprocess.run(
-                ["git", "init"], cwd=str(proj), capture_output=True,
+                ["git", "init"],
+                cwd=str(proj),
+                capture_output=True,
             )
             subprocess.run(
                 ["git", "remote", "add", "origin", "git@github.com:busiji/my-awesome-project.git"],
-                cwd=str(proj), capture_output=True,
+                cwd=str(proj),
+                capture_output=True,
             )
             result = _run_script(INIT_SCRIPT, ["--target", str(proj), "--json"])
             assert result.returncode == 0
@@ -403,6 +427,7 @@ class TestScopeAndProjectName:
             assert 'project_scope = "my_awesome_project"' in adapter
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     @pytest.mark.flaky(reruns=2)
@@ -411,11 +436,14 @@ class TestScopeAndProjectName:
         proj = _make_temp_project()
         try:
             subprocess.run(
-                ["git", "init"], cwd=str(proj), capture_output=True,
+                ["git", "init"],
+                cwd=str(proj),
+                capture_output=True,
             )
             subprocess.run(
                 ["git", "remote", "add", "origin", "https://github.com/org/some-repo.git"],
-                cwd=str(proj), capture_output=True,
+                cwd=str(proj),
+                capture_output=True,
             )
             result = _run_script(INIT_SCRIPT, ["--target", str(proj), "--json"])
             assert result.returncode == 0
@@ -423,6 +451,7 @@ class TestScopeAndProjectName:
             assert 'project_scope = "some_repo"' in adapter
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_scope_takes_priority_over_git_remote(self) -> None:
@@ -430,11 +459,14 @@ class TestScopeAndProjectName:
         proj = _make_temp_project()
         try:
             subprocess.run(
-                ["git", "init"], cwd=str(proj), capture_output=True,
+                ["git", "init"],
+                cwd=str(proj),
+                capture_output=True,
             )
             subprocess.run(
                 ["git", "remote", "add", "origin", "https://github.com/org/remote-name.git"],
-                cwd=str(proj), capture_output=True,
+                cwd=str(proj),
+                capture_output=True,
             )
             result = _run_script(
                 INIT_SCRIPT,
@@ -445,12 +477,14 @@ class TestScopeAndProjectName:
             assert 'project_scope = "explicit_scope"' in adapter
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
 # Hooks and AGENTS.md generation
 # ---------------------------------------------------------------------------
+
 
 class TestHooksAndAgentsMdGeneration:
     """Test AGENTS.md generation during init. Note: hooks.json is no longer created (INV-6)."""
@@ -475,6 +509,7 @@ class TestHooksAndAgentsMdGeneration:
             assert "factory" in content
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_hooks_json_not_created(self) -> None:
@@ -488,6 +523,7 @@ class TestHooksAndAgentsMdGeneration:
             assert not hooks_path.exists(), "hooks.json should not be created"
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_agents_md_idempotent_no_duplicate(self) -> None:
@@ -510,6 +546,7 @@ class TestHooksAndAgentsMdGeneration:
             assert content1 == content2
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_agents_md_preserves_existing_content(self) -> None:
@@ -527,6 +564,7 @@ class TestHooksAndAgentsMdGeneration:
             assert "<!-- MEMORY_HOOK_END -->" in content
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_default_host_is_factory(self) -> None:
@@ -539,12 +577,14 @@ class TestHooksAndAgentsMdGeneration:
             assert "--host factory" in content
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
 # Factory host support
 # ---------------------------------------------------------------------------
+
 
 class TestFactoryHost:
     """Tests for --host factory support."""
@@ -558,6 +598,7 @@ class TestFactoryHost:
             assert 'host = "factory"' in adapter
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_init_factory_validate_passes(self) -> None:
@@ -570,6 +611,7 @@ class TestFactoryHost:
             assert data["all_passed"] is True
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_init_factory_agents_md_command(self) -> None:
@@ -581,12 +623,14 @@ class TestFactoryHost:
             assert "--host factory" in agents
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
 # Validator enhanced checks
 # ---------------------------------------------------------------------------
+
 
 class TestValidatorEnhancedChecks:
     """Tests for enhanced validator checks."""
@@ -608,6 +652,7 @@ class TestValidatorEnhancedChecks:
             assert any(not c["passed"] for c in host_checks)
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_reject_codex_host(self) -> None:
@@ -627,6 +672,7 @@ class TestValidatorEnhancedChecks:
             assert any(not c["passed"] for c in host_checks)
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_reject_claude_host(self) -> None:
@@ -646,6 +692,7 @@ class TestValidatorEnhancedChecks:
             assert any(not c["passed"] for c in host_checks)
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     # NOTE: status_enum validation is now wired into validate_project_memory.py
@@ -671,6 +718,7 @@ class TestValidatorEnhancedChecks:
             assert any(not c["passed"] for c in enum_checks)
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)
 
     def test_reject_invalid_semver(self) -> None:
@@ -690,4 +738,5 @@ class TestValidatorEnhancedChecks:
             assert any(not c["passed"] for c in semver_checks)
         finally:
             import shutil
+
             shutil.rmtree(proj, ignore_errors=True)

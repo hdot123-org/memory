@@ -103,15 +103,15 @@
 
 ```python
 # Before
-REQUIRED_MEMORY_FILES = [
-    "memory.lock", "adapter.toml", "CANONICAL.md", ...
-]
+REQUIRED_MEMORY_FILES = ["memory.lock", "adapter.toml", "CANONICAL.md", ...]
 
 # After
 SYSTEM_DIR = "memory/system"
 
 REQUIRED_SYSTEM_FILES = [
-    "memory.lock", "adapter.toml", "migrations.log",
+    "memory.lock",
+    "adapter.toml",
+    "migrations.log",
 ]
 
 # CANONICAL.md, STATE.md, PLAN.md, TASKS.md, NOW.md: REMOVED

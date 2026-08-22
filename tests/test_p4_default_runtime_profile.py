@@ -1,6 +1,5 @@
 """Tests for default_runtime_profile (P4b)."""
 
-
 import textwrap
 from pathlib import Path
 
@@ -144,6 +143,7 @@ class TestBuildDefaultRuntimeProfile:
     def test_no_host_specific_literals(self, tmp_path: Path) -> None:
         """Profile dict values must not reference host-specific projects."""
         import re
+
         self._make_adapter_toml(tmp_path)
         profile = build_default_runtime_profile(tmp_path)
         forbidden = re.compile(r"workbot|AEdu", re.IGNORECASE)

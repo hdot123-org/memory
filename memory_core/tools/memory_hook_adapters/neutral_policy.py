@@ -1,7 +1,6 @@
 #!/usr/bin/env python3.12
 """Host-neutral gateway business policy layer."""
 
-
 from pathlib import Path
 
 try:

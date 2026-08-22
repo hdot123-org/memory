@@ -41,7 +41,7 @@ from memory_core.tools.telemetry_bridge import telemetry
 telemetry.safe_capture(
     event_name="hook_triggered",
     properties={"hook_type": "session_start", "cwd": "/Users/alice/project"},
-    cwd="/Users/alice/project"
+    cwd="/Users/alice/project",
 )
 # Sends: {event: "memory.hook_triggered", properties: {hook_type: "session_start", cwd: "project", ...}}
 ```

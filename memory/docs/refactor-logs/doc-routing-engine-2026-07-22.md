@@ -27,16 +27,16 @@
 
 ```python
 DOC_CATEGORIES = {
-    "decision":     "memory/kb/decisions/",
-    "lesson":       "memory/kb/lessons/",
+    "decision": "memory/kb/decisions/",
+    "lesson": "memory/kb/lessons/",
     "refactor-log": "memory/docs/refactor-logs/",
-    "plan":         "memory/docs/plans/",
-    "runbook":      "memory/docs/runbooks/",
-    "bug-report":   "memory/docs/bug-reports/",
-    "audit":        "memory/docs/audit/",
-    "rfc":          "memory/docs/rfcs/",
-    "note":         "memory/docs/notes/",
-    "draft":        "memory/docs/drafts/",   # fallback
+    "plan": "memory/docs/plans/",
+    "runbook": "memory/docs/runbooks/",
+    "bug-report": "memory/docs/bug-reports/",
+    "audit": "memory/docs/audit/",
+    "rfc": "memory/docs/rfcs/",
+    "note": "memory/docs/notes/",
+    "draft": "memory/docs/drafts/",  # fallback
 }
 ```
 

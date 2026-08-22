@@ -251,7 +251,7 @@ def validate(self, context: dict[str, Any]) -> list[str]:
     "policies": dict[str, str],
     "conflict_strategies": dict[str, str],
     "default_strategy": str,
-    "inherits": str,        # 可选，仅当 scope_inherits 存在时
+    "inherits": str,  # 可选，仅当 scope_inherits 存在时
 }
 ```
 
@@ -286,7 +286,7 @@ class GatewayBusinessPolicyConfig:
 ```python
 {
     "policy": "source-authority-evidence-conflict",
-    "refs": list[str],           # 全局 canonical + 项目文件
+    "refs": list[str],  # 全局 canonical + 项目文件
     "global_refs": list[str],
     "project_ref": str,
     "source_refs": list[str],

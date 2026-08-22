@@ -33,6 +33,7 @@ from memory_hook_interfaces import (
 # 1. TypedDict structure validation
 # ---------------------------------------------------------------------------
 
+
 class TestTruthBasisTypedDict:
     """TruthBasis all-optional fields can be set correctly."""
 
@@ -92,21 +93,33 @@ class TestRegistrationCommitGateTypedDict:
 # 2. TypedDict __annotations__ field completeness
 # ---------------------------------------------------------------------------
 
+
 class TestTypedDictAnnotations:
     """Each TypedDict's __annotations__ contains the expected fields."""
 
     def test_truth_basis_annotations(self):
         expected = {
-            "refs", "errors", "validation", "policy", "project_ref",
-            "source_refs", "authority_refs", "evidence_refs",
-            "global_refs", "conflict_status",
+            "refs",
+            "errors",
+            "validation",
+            "policy",
+            "project_ref",
+            "source_refs",
+            "authority_refs",
+            "evidence_refs",
+            "global_refs",
+            "conflict_status",
         }
         assert set(TruthBasis.__annotations__.keys()) == expected
 
     def test_registration_commit_gate_annotations(self):
         expected = {
-            "phase", "enforced", "gate_event",
-            "triggered_on_current_event", "enforcement_result", "status",
+            "phase",
+            "enforced",
+            "gate_event",
+            "triggered_on_current_event",
+            "enforcement_result",
+            "status",
         }
         assert set(RegistrationCommitGate.__annotations__.keys()) == expected
 
@@ -115,19 +128,23 @@ class TestTypedDictAnnotations:
 # 3. ABC cannot be instantiated directly
 # ---------------------------------------------------------------------------
 
+
 class TestABCInstantiation:
     """Each ABC raises TypeError when instantiated directly."""
 
-    @pytest.mark.parametrize("cls", [
-        HostDelegate,
-        PolicyRegistry,
-        RouteTargetPolicy,
-        WriteTargetPolicy,
-        GatewayBusinessPolicy,
-        ArtifactSink,
-        ErrorSink,
-        PathUtils,
-    ])
+    @pytest.mark.parametrize(
+        "cls",
+        [
+            HostDelegate,
+            PolicyRegistry,
+            RouteTargetPolicy,
+            WriteTargetPolicy,
+            GatewayBusinessPolicy,
+            ArtifactSink,
+            ErrorSink,
+            PathUtils,
+        ],
+    )
     def test_cannot_instantiate_abc(self, cls):
         with pytest.raises(TypeError):
             cls()
@@ -137,23 +154,37 @@ class TestABCInstantiation:
 # 4. Abstract method existence checks via __abstractmethods__
 # ---------------------------------------------------------------------------
 
+
 class TestAbstractMethods:
     """Each ABC declares the correct set of abstract methods."""
 
     def test_host_delegate_abstract_methods(self):
-        assert HostDelegate.__abstractmethods__ == frozenset({
-            "can_handle", "execute", "noop_response",
-        })
+        assert HostDelegate.__abstractmethods__ == frozenset(
+            {
+                "can_handle",
+                "execute",
+                "noop_response",
+            }
+        )
 
     def test_policy_registry_abstract_methods(self):
-        assert PolicyRegistry.__abstractmethods__ == frozenset({
-            "get_policy", "validate", "get_policy_pack", "resolve_conflict",
-            "validate_project_map", "validate_unique_legal_system_contract",
-            "governance_frozen_tuple_errors", "event_contract_blocker_errors",
-            "git_registration_probe", "truth_basis_for_scope",
-            "decision_refs_for_scope", "lesson_refs_for_scope",
-            "docs_refs_for_scope",
-        })
+        assert PolicyRegistry.__abstractmethods__ == frozenset(
+            {
+                "get_policy",
+                "validate",
+                "get_policy_pack",
+                "resolve_conflict",
+                "validate_project_map",
+                "validate_unique_legal_system_contract",
+                "governance_frozen_tuple_errors",
+                "event_contract_blocker_errors",
+                "git_registration_probe",
+                "truth_basis_for_scope",
+                "decision_refs_for_scope",
+                "lesson_refs_for_scope",
+                "docs_refs_for_scope",
+            }
+        )
 
     def test_route_target_policy_abstract_methods(self):
         assert RouteTargetPolicy.__abstractmethods__ == frozenset({"resolve"})
@@ -162,25 +193,40 @@ class TestAbstractMethods:
         assert WriteTargetPolicy.__abstractmethods__ == frozenset({"get_targets"})
 
     def test_gateway_business_policy_abstract_methods(self):
-        assert GatewayBusinessPolicy.__abstractmethods__ == frozenset({
-            "determine_project_scope", "get_project_canonical",
-            "get_project_runtime_root", "get_required_canonical",
-            "get_global_canonical", "project_map_refs",
-            "validate_project_map_files", "validate_unique_legal_system_contract",
-            "governance_frozen_tuple_blocker_errors", "event_contract_blocker_errors",
-            "decision_refs_for_scope", "lesson_refs_for_scope",
-            "docs_refs_for_scope", "truth_basis_for_scope",
-        })
+        assert GatewayBusinessPolicy.__abstractmethods__ == frozenset(
+            {
+                "determine_project_scope",
+                "get_project_canonical",
+                "get_project_runtime_root",
+                "get_required_canonical",
+                "get_global_canonical",
+                "project_map_refs",
+                "validate_project_map_files",
+                "validate_unique_legal_system_contract",
+                "governance_frozen_tuple_blocker_errors",
+                "event_contract_blocker_errors",
+                "decision_refs_for_scope",
+                "lesson_refs_for_scope",
+                "docs_refs_for_scope",
+                "truth_basis_for_scope",
+            }
+        )
 
     def test_artifact_sink_abstract_methods(self):
-        assert ArtifactSink.__abstractmethods__ == frozenset({
-            "write", "ensure_dirs",
-        })
+        assert ArtifactSink.__abstractmethods__ == frozenset(
+            {
+                "write",
+                "ensure_dirs",
+            }
+        )
 
     def test_error_sink_abstract_methods(self):
         assert ErrorSink.__abstractmethods__ == frozenset({"log"})
 
     def test_path_utils_abstract_methods(self):
-        assert PathUtils.__abstractmethods__ == frozenset({
-            "extract_excerpt", "write_targets",
-        })
+        assert PathUtils.__abstractmethods__ == frozenset(
+            {
+                "extract_excerpt",
+                "write_targets",
+            }
+        )

@@ -12,6 +12,7 @@ Testing approach: sandbox stub method (library/script-testing.md)
 - Stub shellcheck and any external dependencies
 - Verify behavior through file checksums, directory listings, exit codes
 """
+
 import shutil
 import subprocess
 import time
@@ -194,15 +195,11 @@ def test_sync_idempotent_two_runs(sandbox_env):
 
     # Verify checksum unchanged
     prod_checksum_2 = compute_file_checksum(sandbox_env["prod_script"])
-    assert (
-        prod_checksum_2 == prod_checksum_1
-    ), f"Checksum changed: {prod_checksum_1} -> {prod_checksum_2}"
+    assert prod_checksum_2 == prod_checksum_1, f"Checksum changed: {prod_checksum_1} -> {prod_checksum_2}"
 
     # Verify new backup created
     backup_count_2 = len(list(sandbox_env["backup_dir"].iterdir()))
-    assert backup_count_2 > backup_count_1, (
-        f"No new backup created: {backup_count_1} -> {backup_count_2}"
-    )
+    assert backup_count_2 > backup_count_1, f"No new backup created: {backup_count_1} -> {backup_count_2}"
 
 
 def test_sync_backup_not_overwritten(sandbox_env):
@@ -218,7 +215,7 @@ def test_sync_backup_not_overwritten(sandbox_env):
     # Run sync multiple times
     for i in range(3):
         rc, stdout, stderr = run_sync_script(env=env)
-        assert rc == 0, f"Sync run {i+1} failed:\n{stderr}"
+        assert rc == 0, f"Sync run {i + 1} failed:\n{stderr}"
         time.sleep(1.1)  # Ensure different timestamps
 
     # Verify multiple backups exist
@@ -256,15 +253,11 @@ def test_sync_check_mode_readonly(sandbox_env):
 
     # Verify no changes to production
     prod_checksum_after = compute_file_checksum(sandbox_env["prod_script"])
-    assert (
-        prod_checksum_after == prod_checksum_before
-    ), "Production modified in --check mode"
+    assert prod_checksum_after == prod_checksum_before, "Production modified in --check mode"
 
     # Verify no backups created
     backup_count_after = len(list(sandbox_env["backup_dir"].iterdir()))
-    assert (
-        backup_count_after == backup_count_before
-    ), "Backups created in --check mode"
+    assert backup_count_after == backup_count_before, "Backups created in --check mode"
 
 
 def test_sync_validation_failure_rollback(sandbox_env):
@@ -294,9 +287,7 @@ def test_sync_validation_failure_rollback(sandbox_env):
 
     # Verify production unchanged (rollback)
     prod_checksum_after = compute_file_checksum(sandbox_env["prod_script"])
-    assert (
-        prod_checksum_after == prod_checksum_before
-    ), "Production modified despite validation failure"
+    assert prod_checksum_after == prod_checksum_before, "Production modified despite validation failure"
 
     # Verify backup was created (before sync attempt)
     backup_files = list(sandbox_env["backup_dir"].iterdir())
@@ -351,9 +342,7 @@ ENV_DIFF_LINES=(
     )
 
     # Add the declared difference to production
-    sandbox_env["prod_script"].write_text(
-        "#!/bin/bash\nline 1: expected difference\necho 'test'\n"
-    )
+    sandbox_env["prod_script"].write_text("#!/bin/bash\nline 1: expected difference\necho 'test'\n")
 
     # Run sync
     rc, stdout, stderr = run_sync_script(env=env)
@@ -672,7 +661,7 @@ def test_cross_dir_empty_mapping_backward_compat(tmp_path):
         webhook_scripts = repo_dir / "webhook-scripts"
         webhook_scripts.mkdir()
         (webhook_scripts / "test-script.sh").write_text("#!/bin/bash\necho 'test'\n")
-        manifest = "#!/bin/bash\nMANAGED_FILES=(\n    \"test-script.sh\"\n)\n"
+        manifest = '#!/bin/bash\nMANAGED_FILES=(\n    "test-script.sh"\n)\n'
         if manifest_extra:
             manifest += manifest_extra
         manifest += "ENV_DIFF_LINES=()\n"

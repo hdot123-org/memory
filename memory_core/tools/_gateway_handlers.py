@@ -76,6 +76,7 @@ NON_INJECTION_EVENTS = (
 
 class HookTimeoutError(Exception):
     """Hook 执行超时异常。"""
+
     pass
 
 
@@ -88,6 +89,7 @@ def _emit_pretooluse_metrics(host: str, event: str, status: str, start_time: flo
     """Emit metrics for pre-tool-use events before returning."""
     try:
         from .memory_hook_metrics import emit_metrics
+
         duration_ms = max(1, int((time.time() - start_time) * 1000))
         minimal_package = {"status": status}
         emit_metrics(ARTIFACT_ROOT, host, event, minimal_package, duration_ms=duration_ms)
@@ -111,9 +113,7 @@ def _handle_source_repo_check(cwd: Path, host: str, event: str) -> int | None:
     return None
 
 
-def _handle_pretooluse_guard(
-    args: argparse.Namespace, raw_payload: str, cwd: Path, start_time: float
-) -> int | None:
+def _handle_pretooluse_guard(args: argparse.Namespace, raw_payload: str, cwd: Path, start_time: float) -> int | None:
     """Handle pre-tool-use event: intercept write operations via guard script.
 
     Returns exit code if handled, None to continue to normal flow.
@@ -234,9 +234,7 @@ def _handle_prompt_submit_logging(cwd: Path, payload: dict[str, Any]) -> None:
         _logger.warning("_log_prompt_submit failed: %s", exc)
 
 
-def _handle_integrity_check(
-    cwd: Path, package: dict[str, Any], host: str, event: str
-) -> None:
+def _handle_integrity_check(cwd: Path, package: dict[str, Any], host: str, event: str) -> None:
     """Verify project integrity on session-start. May set package status to 'blocked'."""
     integrity_result = _integrity_verify(cwd)
     if not integrity_result or integrity_result.get("ok", True):
@@ -278,9 +276,11 @@ def _write_artifacts_and_emit_metrics(
         print(f"[memory-hook-gateway] artifact write failed: {writer.last_error}", file=sys.stderr)
     if write_ok:
         from ._gateway_config import _integrity_sign
+
         _integrity_sign(cwd)
     try:
         from .memory_hook_metrics import emit_metrics
+
         duration_ms = max(1, int((time.time() - start_time) * 1000))
         emit_metrics(ARTIFACT_ROOT, args.host, args.event, package, duration_ms=duration_ms)
     except Exception as exc:
@@ -311,9 +311,14 @@ def _compute_exit_code(args: argparse.Namespace, package: dict[str, Any]) -> int
     return 0
 
 
-def _dispatch_output(args: argparse.Namespace, package: dict[str, Any],
-                     raw_payload: str, payload: dict[str, Any], cwd: Path,
-                     exit_code: int) -> int:
+def _dispatch_output(
+    args: argparse.Namespace,
+    package: dict[str, Any],
+    raw_payload: str,
+    payload: dict[str, Any],
+    cwd: Path,
+    exit_code: int,
+) -> int:
     """Handle final output dispatch: no-delegate JSON or delegate execution."""
     if args.no_delegate:
         sys.stdout.write(json.dumps(package, ensure_ascii=False) + "\n")
@@ -425,7 +430,7 @@ def _gateway_excepthook(exc_type: type[BaseException], exc_value: BaseException,
         # Calculate duration_ms if we have a start_time (from main())
         # Otherwise use 0 for unexpected crashes before main() starts
         duration_ms = 0
-        if hasattr(sys, '_gateway_start_time'):
+        if hasattr(sys, "_gateway_start_time"):
             duration_ms = int((time.time() - sys._gateway_start_time) * 1000)
         record = {
             "event": "hook_error",

@@ -60,11 +60,13 @@ class TestSigningInvocationAtInit:
 
         import memory_core.tools.memory_hook_integrity_keys as _keys
         import memory_core.tools.memory_hook_integrity_manifest as _manifest
+
         mock_sign = MagicMock(return_value={"schema_version": "integrity-manifest-v2", "entries": []})
         monkeypatch.setattr(_manifest, "sign_project_incremental", mock_sign)
         monkeypatch.setattr(_keys, "load_or_create_key", lambda *a, **kw: b"test-key")
 
         from memory_core.tools.init_project_memory import init_project_memory
+
         result = init_project_memory(target, host="factory")
 
         assert result["success"], f"init failed: {result['errors']}"
@@ -86,11 +88,15 @@ class TestSigningInvocationAtInit:
             call_order.append("sign")
             return {"schema_version": "integrity-manifest-v2", "entries": []}
 
-        with patch(_KEY_PATCH, return_value=b"test-key"), patch(
-            _SIGNER_PATCH,
-            side_effect=track_sign,
+        with (
+            patch(_KEY_PATCH, return_value=b"test-key"),
+            patch(
+                _SIGNER_PATCH,
+                side_effect=track_sign,
+            ),
         ):
             from memory_core.tools.init_project_memory import init_project_memory
+
             result = init_project_memory(target, host="factory")
 
         assert result["success"]
@@ -105,12 +111,15 @@ class TestSigningInvocationAtInit:
 class TestAuditLogReason:
     """VAL-F2-002: Audit log records baseline signing with reason: 'memory-init baseline'."""
 
-    def test_audit_log_contains_memory_init_baseline_reason(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_audit_log_contains_memory_init_baseline_reason(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Read audit log after init -> assert latest entry contains reason 'memory-init baseline'."""
         _mock_source_repo(monkeypatch)
         target = _make_target(tmp_path)
 
         from memory_core.tools.init_project_memory import init_project_memory
+
         result = init_project_memory(target, host="factory")
 
         assert result["success"]
@@ -144,12 +153,14 @@ class TestSigningFailureNonBlocking:
             side_effect=RuntimeError("signing failed"),
         ):
             from memory_core.tools.init_project_memory import init_project_memory
+
             result = init_project_memory(target, host="factory")
 
         assert result["success"], f"init should succeed even when signing fails: {result['errors']}"
         # Check that a warning was recorded in result["warnings"]
-        assert any("integrity signing" in w.lower() or "signing" in w.lower() for w in result.get("warnings", [])), \
+        assert any("integrity signing" in w.lower() or "signing" in w.lower() for w in result.get("warnings", [])), (
             f"Expected warning about signing failure in result, got: {result.get('warnings', [])}"
+        )
 
     def test_init_exit_code_zero_on_sign_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Verify that the CLI main() returns 0 when signing fails."""
@@ -167,6 +178,7 @@ class TestSigningFailureNonBlocking:
                 side_effect=RuntimeError("signing failed"),
             ):
                 from memory_core.tools.init_project_memory import main
+
                 exit_code = main(["--target", str(target), "--json"])
         finally:
             sys.stdout = old_stdout
@@ -186,6 +198,7 @@ class TestManifestCreated:
         target = _make_target(tmp_path)
 
         from memory_core.tools.init_project_memory import init_project_memory
+
         result = init_project_memory(target, host="factory")
 
         assert result["success"]
@@ -198,6 +211,7 @@ class TestManifestCreated:
         target = _make_target(tmp_path)
 
         from memory_core.tools.init_project_memory import init_project_memory
+
         result = init_project_memory(target, host="factory")
 
         assert result["success"]
@@ -222,6 +236,7 @@ class TestManifestPopulated:
         target = _make_target(tmp_path)
 
         from memory_core.tools.init_project_memory import init_project_memory
+
         result = init_project_memory(target, host="factory")
 
         assert result["success"]
@@ -235,8 +250,9 @@ class TestManifestPopulated:
         # Check that some expected init-created files are present
         expected_files = ["adapter.toml", "memory.lock"]
         for expected in expected_files:
-            assert any(expected in rp for rp in entry_rel_paths), \
+            assert any(expected in rp for rp in entry_rel_paths), (
                 f"Expected {expected} in manifest entries, got: {entry_rel_paths}"
+            )
 
     def test_manifest_entries_have_sha256_digests(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Assert all SHA-256 digests are 64-char hex strings."""
@@ -246,6 +262,7 @@ class TestManifestPopulated:
         target = _make_target(tmp_path)
 
         from memory_core.tools.init_project_memory import init_project_memory
+
         result = init_project_memory(target, host="factory")
 
         assert result["success"]
@@ -255,5 +272,6 @@ class TestManifestPopulated:
         sha256_pattern = re.compile(r"^[0-9a-f]{64}$")
         for entry in manifest.get("entries", []):
             assert "sha256" in entry, f"Entry {entry['rel_path']} missing sha256"
-            assert sha256_pattern.match(entry["sha256"]), \
+            assert sha256_pattern.match(entry["sha256"]), (
                 f"Entry {entry['rel_path']} has invalid sha256: {entry['sha256']}"
+            )

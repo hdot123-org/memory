@@ -1,4 +1,5 @@
 """Tests for PostHog client."""
+
 import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -10,6 +11,7 @@ def test_posthog_client_exists():
     assert client_file.exists(), "posthog_client.py must exist"
 
     from memory_core.tools import posthog_client
+
     assert posthog_client is not None
 
 
@@ -294,9 +296,7 @@ def test_no_hardcoded_phc_in_python_files():
     )
 
     # grep returns 1 if no matches, which is what we want
-    assert result.returncode == 1, (
-        f"No .py files should contain hardcoded phc_ keys, found:\n{result.stdout}"
-    )
+    assert result.returncode == 1, f"No .py files should contain hardcoded phc_ keys, found:\n{result.stdout}"
 
 
 def test_sentinel_no_sdk_graceful_degradation():

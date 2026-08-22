@@ -9,7 +9,6 @@ Covers:
 - Edge cases: missing files, corrupt JSON, bad payload, concurrent writes
 """
 
-
 import json
 import sys
 import threading
@@ -205,9 +204,7 @@ class TestRecordHookEvent:
         state = load_hook_state(path)
         assert state["surfaces"]["codex-main"]["session_start_count"] == 2
 
-    def test_record_hook_event_tracks_different_event_types(
-        self, tmp_path: Path
-    ) -> None:
+    def test_record_hook_event_tracks_different_event_types(self, tmp_path: Path) -> None:
         path = tmp_path / "state.json"
         record_hook_event(path, **EVENT_KWARGS)
         record_hook_event(
@@ -287,9 +284,7 @@ class TestConcurrentWrites:
     def test_concurrent_writes_no_data_loss(self, tmp_path: Path) -> None:
         path = tmp_path / "state.json"
         # Seed initial state
-        write_hook_state(
-            path, {"runtime": "cmux", "updated_at": "", "surfaces": {}}
-        )
+        write_hook_state(path, {"runtime": "cmux", "updated_at": "", "surfaces": {}})
         errors: list[Exception] = []
 
         def writer(n: int) -> None:

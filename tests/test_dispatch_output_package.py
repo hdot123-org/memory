@@ -18,6 +18,7 @@ import pytest
 def gw():
     """Import gateway module."""
     from memory_core.tools import memory_hook_gateway as gw_mod
+
     return gw_mod
 
 
@@ -25,21 +26,22 @@ def gw():
 # VAL-TRANSPORT-007: _execute_delegate signature accepts package parameter
 # ===========================================================================
 
+
 class TestExecuteDelegateSignature:
     """_execute_delegate must accept package as a parameter."""
 
     def test_execute_delegate_accepts_package(self, gw):
         """_execute_delegate signature includes package parameter."""
         import inspect
+
         sig = inspect.signature(gw._execute_delegate)
-        assert "package" in sig.parameters, (
-            "_execute_delegate must accept 'package' parameter"
-        )
+        assert "package" in sig.parameters, "_execute_delegate must accept 'package' parameter"
 
 
 # ===========================================================================
 # VAL-TRANSPORT-001: Factory host session-start emits non-empty context-package
 # ===========================================================================
+
 
 class TestFactoryHostOutputsPackage:
     """Factory host (proc=None) outputs Factory JSON Output format."""
@@ -115,26 +117,27 @@ class TestFactoryHostOutputsPackage:
 # VAL-TRANSPORT-003: PreToolUse guard path NOT affected
 # ===========================================================================
 
+
 class TestPreToolUseUnaffected:
     """PreToolUse events return via _handle_pretooluse_guard, never reaching _execute_delegate."""
 
     def test_pretooluse_guard_returns_before_execute_delegate(self, gw):
         """_handle_pretooluse_guard is called before _execute_delegate in main()."""
         import inspect
+
         source = inspect.getsource(gw.main)
         # _handle_pretooluse_guard must appear before _dispatch_output/_execute_delegate
         guard_pos = source.find("_handle_pretooluse_guard")
         dispatch_pos = source.find("_dispatch_output")
         assert guard_pos != -1, "_handle_pretooluse_guard must be in main()"
         assert dispatch_pos != -1, "_dispatch_output must be in main()"
-        assert guard_pos < dispatch_pos, (
-            "_handle_pretooluse_guard must be called before _dispatch_output"
-        )
+        assert guard_pos < dispatch_pos, "_handle_pretooluse_guard must be called before _dispatch_output"
 
 
 # ===========================================================================
 # VAL-TRANSPORT-005: Degraded/error path NOT affected
 # ===========================================================================
+
 
 class TestDegradedPathUnaffected:
     """When delegate preflight raises RuntimeError, degraded package is emitted."""
@@ -161,6 +164,7 @@ class TestDegradedPathUnaffected:
 # VAL-TRANSPORT-006: --no-delegate mode still outputs complete package
 # ===========================================================================
 
+
 class TestNoDelegateUnaffected:
     """--no-delegate branch already outputs full package. Must remain unchanged."""
 
@@ -184,6 +188,7 @@ class TestNoDelegateUnaffected:
 # ===========================================================================
 # VAL-TRANSPORT-007: _dispatch_output forwards package to _execute_delegate
 # ===========================================================================
+
 
 class TestDispatchOutputForwardsPackage:
     """_dispatch_output must pass package to _execute_delegate."""
@@ -216,6 +221,7 @@ class TestDispatchOutputForwardsPackage:
 # VAL-TRANSPORT-008: Real delegate subprocess branch NOT affected
 # ===========================================================================
 
+
 class TestRealDelegateUnaffected:
     """When proc is not None (real codex/claude delegate, unlike factory's proc=None path), behavior is unchanged."""
 
@@ -246,9 +252,7 @@ class TestRealDelegateUnaffected:
         mock_proc.stdout = '{"claude": "response"}\n'
         mock_proc.stderr = ""
 
-        monkeypatch.setattr(
-            gw, "_delegate_claude", lambda event, raw, payload: mock_proc
-        )
+        monkeypatch.setattr(gw, "_delegate_claude", lambda event, raw, payload: mock_proc)
 
         package = {"package_kind": "context-package"}
         exit_code = gw._execute_delegate(args, "{}", {}, tmp_path, package=package)

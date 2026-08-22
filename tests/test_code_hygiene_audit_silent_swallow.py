@@ -79,8 +79,7 @@ class TestExtractEvidenceSilentSwallow:
             "uses print(..., file=sys.stderr) matching the audit_file pattern."
         )
         assert "Warning" in except_block, (
-            "_extract_evidence warning message must include 'Warning' so the "
-            "failure is observable in stderr output"
+            "_extract_evidence warning message must include 'Warning' so the failure is observable in stderr output"
         )
 
     def test_no_bare_pass_in_method_scope(self):

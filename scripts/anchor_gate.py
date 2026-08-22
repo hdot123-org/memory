@@ -24,6 +24,7 @@ Exit code: 0 for gate decisions (empty output = do not close);
 
 Architecture reference: docs/architecture/issue-flow.md §9.4/§9.4.1（INFRA-357）
 """
+
 import json
 import os
 import subprocess
@@ -57,16 +58,12 @@ def log_extract_err(target: str, number: int, result: subprocess.CompletedProces
     try:
         with Path(_extract_log_path).open("a") as f:
             err = (result.stderr or "").strip().replace("\n", " | ")[:500]
-            f.write(
-                f"[{_ts_extract()}] anchor-extract {target}#{number} "
-                f"rc={result.returncode}: {err}\n"
-            )
+            f.write(f"[{_ts_extract()}] anchor-extract {target}#{number} rc={result.returncode}: {err}\n")
     except Exception as exc:
         # INFRA-359: never silently swallow the log failure -- warn on
         # stderr, but keep it best effort so the gate decision is unchanged.
         print(
-            f"anchor_gate: extract log write failed ({target}#{number} "
-            f"rc={result.returncode}): {exc}",
+            f"anchor_gate: extract log write failed ({target}#{number} rc={result.returncode}): {exc}",
             file=sys.stderr,
         )
 
@@ -75,15 +72,12 @@ def log_drift(target_ref: str, number: int, reason: str) -> None:
     """Record a skipped close to anchor-drift.log, §4b format (best effort)."""
     try:
         with Path(_drift_log_path).open("a") as f:
-            f.write(
-                f"[{_ts_drift()}] DRIFT: {target_ref} GitHub Issue #{number} {reason}\n"
-            )
+            f.write(f"[{_ts_drift()}] DRIFT: {target_ref} GitHub Issue #{number} {reason}\n")
     except Exception as exc:
         # INFRA-359: never silently swallow the log failure -- warn on
         # stderr, but keep it best effort so the gate decision is unchanged.
         print(
-            f"anchor_gate: drift log write failed ({target_ref} GitHub Issue "
-            f"#{number} {reason}): {exc}",
+            f"anchor_gate: drift log write failed ({target_ref} GitHub Issue #{number} {reason}): {exc}",
             file=sys.stderr,
         )
 

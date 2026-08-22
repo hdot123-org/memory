@@ -4,6 +4,7 @@ Notification issues (label: automation,branch-cleanup) are auto-closed by
 the pipeline after NOTIFICATION_TTL_DAYS (7 days). Non-notification issues
 are not affected.
 """
+
 import json
 import sys
 from datetime import UTC, datetime, timedelta
@@ -55,13 +56,13 @@ class TestCloseExpiredNotifications:
 
             # Check the third call was a close
             close_call_args = mock_run.call_args_list[2][0][0]
-            assert "issue" in close_call_args and "close" in close_call_args, \
-                "Third call should be issue close"
+            assert "issue" in close_call_args and "close" in close_call_args, "Third call should be issue close"
 
             # Check the second call was a comment
             comment_call_args = mock_run.call_args_list[1][0][0]
-            assert "issue" in comment_call_args and "comment" in comment_call_args, \
+            assert "issue" in comment_call_args and "comment" in comment_call_args, (
                 "Second call should be issue comment"
+            )
 
     def test_ttl_not_expired_does_not_close(self):
         """VAL-NTF-002: Notification issue within TTL is NOT closed."""
@@ -168,12 +169,12 @@ class TestCloseExpiredNotifications:
             # Check the comment call contains TTL information
             assert mock_run.call_count == 3, "Should make 3 calls: list, comment, close"
             comment_call_args = mock_run.call_args_list[1][0][0]
-            assert "issue" in comment_call_args and "comment" in comment_call_args, \
+            assert "issue" in comment_call_args and "comment" in comment_call_args, (
                 "Second call should be issue comment"
+            )
             # Check comment body contains TTL marker
             comment_body = " ".join(str(arg) for arg in comment_call_args)
-            assert "TTL" in comment_body or "7d" in comment_body, \
-                "Close comment should reference TTL for traceability"
+            assert "TTL" in comment_body or "7d" in comment_body, "Close comment should reference TTL for traceability"
 
     def test_no_notification_issues_no_action(self):
         """No notification issues → no close calls."""
@@ -214,8 +215,7 @@ class TestCloseExpiredNotifications:
             # Verify the query includes state:open
             call_args = mock_run.call_args[0][0]
             call_str = " ".join(str(arg) for arg in call_args)
-            assert "--state open" in call_str or "state=open" in call_str, \
-                "Should only query open issues"
+            assert "--state open" in call_str or "state=open" in call_str, "Should only query open issues"
 
     def test_boundary_exact_ttl_days(self):
         """Issue exactly at TTL boundary (7 days) is closed."""

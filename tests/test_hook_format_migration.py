@@ -242,9 +242,7 @@ class TestEndToEndAllowFlow:
     @patch("memory_core.tools.pretooluse_guard._load_project_root")
     @patch("memory_core.tools.pretooluse_guard.classify_tool_use")
     @patch("memory_core.tools.pretooluse_guard._write_metrics_jsonl")
-    def test_allow_flow_produces_dual_format(
-        self, mock_metrics, mock_classify, mock_root, tmp_path
-    ):
+    def test_allow_flow_produces_dual_format(self, mock_metrics, mock_classify, mock_root, tmp_path):
         """VAL-CROSS-002: Valid non-protected path produces both legacy and new format"""
         # Setup
         project_root = tmp_path / "test_project"
@@ -297,9 +295,7 @@ class TestEndToEndDenyFlow:
     @patch("memory_core.tools.pretooluse_guard._load_project_root")
     @patch("memory_core.tools.pretooluse_guard.classify_tool_use")
     @patch("memory_core.tools.pretooluse_guard._write_metrics_jsonl")
-    def test_deny_flow_produces_dual_format(
-        self, mock_metrics, mock_classify, mock_root, tmp_path
-    ):
+    def test_deny_flow_produces_dual_format(self, mock_metrics, mock_classify, mock_root, tmp_path):
         """VAL-CROSS-003: Protected path produces both legacy and new format with deny"""
         # Setup
         project_root = tmp_path / "test_project"
@@ -353,9 +349,7 @@ class TestGatewayTransparentForwarding:
     @patch("memory_core.tools.pretooluse_guard._load_project_root")
     @patch("memory_core.tools.pretooluse_guard.classify_tool_use")
     @patch("memory_core.tools.pretooluse_guard._write_metrics_jsonl")
-    def test_gateway_preserves_hook_specific_output(
-        self, mock_metrics, mock_classify, mock_root, tmp_path
-    ):
+    def test_gateway_preserves_hook_specific_output(self, mock_metrics, mock_classify, mock_root, tmp_path):
         """VAL-CROSS-004: Guard output includes all hookSpecificOutput fields for gateway forwarding"""
         # Setup
         project_root = tmp_path / "test_project"
@@ -406,9 +400,7 @@ class TestFailClosedDenyOutput:
 
     @patch("memory_core.tools.pretooluse_guard._load_project_root")
     @patch("memory_core.tools.error_logger.write_error_log")
-    def test_fail_closed_deny_has_hook_specific_output(
-        self, mock_error_log, mock_root, tmp_path
-    ):
+    def test_fail_closed_deny_has_hook_specific_output(self, mock_error_log, mock_root, tmp_path):
         """VAL-CROSS-005: Fail-closed deny (protected path) includes hookSpecificOutput"""
         from memory_core.tools.pretooluse_guard import _fail_closed_with_raw_check
 
@@ -421,9 +413,7 @@ class TestFailClosedDenyOutput:
         raw_input = '{"tool_input": {"file_path": "/project/memory/kb/test.md"}}'
 
         # Execute
-        exit_code, result = _fail_closed_with_raw_check(
-            raw_input, "JSON parse error"
-        )
+        exit_code, result = _fail_closed_with_raw_check(raw_input, "JSON parse error")
 
         # Verify
         assert exit_code == 2

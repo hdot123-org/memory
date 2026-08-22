@@ -282,7 +282,9 @@ class TestEndToEndFactoryHost:
         assert not any("pending" in r for r in reads), f"pending found in {reads}"
 
         # Verify INDEX.md from global_kb_root is excluded (workspace INDEX.md is OK)
-        assert not any(str(global_kb_root) in r and "INDEX.md" in r for r in reads), f"INDEX.md from global_kb found in {reads}"
+        assert not any(str(global_kb_root) in r and "INDEX.md" in r for r in reads), (
+            f"INDEX.md from global_kb found in {reads}"
+        )
 
         # Verify standard domains are included
         assert any("operations" in r for r in reads)

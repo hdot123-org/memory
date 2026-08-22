@@ -59,9 +59,7 @@ class TestProjectProbeBasic:
         """A Python project with pyproject.toml should detect Python."""
         from memory_core.tools.project_probe import ProjectProbe
 
-        (tmp_path / "pyproject.toml").write_text(
-            '[project]\nname = "myapp"\n\n[tool.ruff]\n'
-        )
+        (tmp_path / "pyproject.toml").write_text('[project]\nname = "myapp"\n\n[tool.ruff]\n')
         (tmp_path / "requirements.txt").write_text("fastapi>=0.100\nuvicorn\n")
         (tmp_path / "README.md").write_text("# MyApp\n\nA fast web API service.\n")
 
@@ -76,11 +74,13 @@ class TestProjectProbeBasic:
         from memory_core.tools.project_probe import ProjectProbe
 
         (tmp_path / "package.json").write_text(
-            json.dumps({
-                "name": "my-web-app",
-                "dependencies": {"express": "^4.0", "react": "^18.0"},
-                "devDependencies": {"jest": "^29.0"}
-            })
+            json.dumps(
+                {
+                    "name": "my-web-app",
+                    "dependencies": {"express": "^4.0", "react": "^18.0"},
+                    "devDependencies": {"jest": "^29.0"},
+                }
+            )
         )
 
         probe = ProjectProbe(tmp_path)
@@ -94,7 +94,7 @@ class TestProjectProbeBasic:
         from memory_core.tools.project_probe import ProjectProbe
 
         (tmp_path / "go.mod").write_text("module example.com/app\n\ngo 1.21\n")
-        (tmp_path / "main.go").write_text('package main\n\nfunc main() {}')
+        (tmp_path / "main.go").write_text("package main\n\nfunc main() {}")
 
         probe = ProjectProbe(tmp_path)
         info = probe.probe()
@@ -105,9 +105,7 @@ class TestProjectProbeBasic:
         """A Rust project with Cargo.toml should detect Rust."""
         from memory_core.tools.project_probe import ProjectProbe
 
-        (tmp_path / "Cargo.toml").write_text(
-            '[package]\nname = "myapp"\nversion = "0.1.0"\nedition = "2021"\n'
-        )
+        (tmp_path / "Cargo.toml").write_text('[package]\nname = "myapp"\nversion = "0.1.0"\nedition = "2021"\n')
 
         probe = ProjectProbe(tmp_path)
         info = probe.probe()
@@ -119,12 +117,10 @@ class TestProjectProbeBasic:
         from memory_core.tools.project_probe import ProjectProbe
 
         (tmp_path / "pyproject.toml").write_text('[project]\nname = "mixed"\n')
-        (tmp_path / "package.json").write_text(
-            json.dumps({"name": "mixed", "dependencies": {"react": "^18.0"}})
-        )
+        (tmp_path / "package.json").write_text(json.dumps({"name": "mixed", "dependencies": {"react": "^18.0"}}))
         # More Python config files should make Python win
         (tmp_path / "requirements.txt").write_text("fastapi\n")
-        (tmp_path / "setup.py").write_text('from setuptools import setup\n')
+        (tmp_path / "setup.py").write_text("from setuptools import setup\n")
 
         probe = ProjectProbe(tmp_path)
         info = probe.probe()
@@ -187,15 +183,18 @@ services:
         subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
         subprocess.run(
             ["git", "config", "user.email", "test@test.com"],
-            cwd=tmp_path, capture_output=True,
+            cwd=tmp_path,
+            capture_output=True,
         )
         subprocess.run(
             ["git", "config", "user.name", "Test"],
-            cwd=tmp_path, capture_output=True,
+            cwd=tmp_path,
+            capture_output=True,
         )
         subprocess.run(
             ["git", "remote", "add", "origin", "https://github.com/org/test-repo.git"],
-            cwd=tmp_path, capture_output=True,
+            cwd=tmp_path,
+            capture_output=True,
         )
         # Create initial commit to have a branch
         (tmp_path / "README.md").write_text("# test")
@@ -246,7 +245,7 @@ class TestProjectProbeErrorTolerance:
         from memory_core.tools.project_probe import ProjectProbe
 
         # Create a binary file that looks like a config file
-        (tmp_path / "pyproject.toml").write_bytes(b'\x00\x01\x02\x03\xff\xfe')
+        (tmp_path / "pyproject.toml").write_bytes(b"\x00\x01\x02\x03\xff\xfe")
 
         probe = ProjectProbe(tmp_path)
         info = probe.probe()
@@ -262,6 +261,7 @@ class TestFillTemplateFields:
         content, _ = template_project_scope_md("test-proj")
 
         from memory_core.tools.project_probe import ProjectInfo
+
         info = ProjectInfo(
             primary_language="Python",
             framework="FastAPI",
@@ -282,6 +282,7 @@ class TestFillTemplateFields:
         content, _ = template_project_scope_md("test-proj")
         filled = fill_template_fields(content, None)
         assert filled == content
+
 
 class TestAutoFillIntegration:
     """Integration tests for auto-fill in init_project_memory."""

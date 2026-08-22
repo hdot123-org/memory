@@ -1,4 +1,5 @@
 """Unit tests for _guard_patterns.py extracted module."""
+
 from memory_core.tools._guard_patterns import (
     FORBIDDEN_DIRS,
     FORBIDDEN_SUFFIXES,
@@ -163,11 +164,24 @@ def test_uncertain_path_patterns_content():
 def test_all_regex_patterns_are_compiled():
     """All RE_* constants are compiled regex objects."""
     patterns = [
-        RE_MV, RE_RM, RE_CP, RE_MKDIR, RE_TOUCH,
-        RE_PYTHON_C, RE_REDIRECT, RE_TEE, RE_DD,
-        RE_INSTALL, RE_LN, RE_PYTHON_OPEN, RE_PYTHON_PATH,
-        RE_NODE_FS_WRITE, RE_NODE_REQUIRE_FS, RE_HEREDOC,
-        RE_RSYNC, RE_NODE_E,
+        RE_MV,
+        RE_RM,
+        RE_CP,
+        RE_MKDIR,
+        RE_TOUCH,
+        RE_PYTHON_C,
+        RE_REDIRECT,
+        RE_TEE,
+        RE_DD,
+        RE_INSTALL,
+        RE_LN,
+        RE_PYTHON_OPEN,
+        RE_PYTHON_PATH,
+        RE_NODE_FS_WRITE,
+        RE_NODE_REQUIRE_FS,
+        RE_HEREDOC,
+        RE_RSYNC,
+        RE_NODE_E,
     ]
     for p in patterns:
         assert hasattr(p, "match") or hasattr(p, "search")

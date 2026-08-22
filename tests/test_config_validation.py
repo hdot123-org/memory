@@ -9,7 +9,6 @@ Covers validation that is NOT already tested in test_refactoring.py:
 - Valid construction sanity check
 """
 
-
 from pathlib import Path
 from typing import Any
 
@@ -172,8 +171,7 @@ class TestStringValidation:
 
     @pytest.mark.parametrize(
         "field_name",
-        ["project_scope", "legality_source_policy",
-         "registration_commit_policy", "registration_commit_phase"],
+        ["project_scope", "legality_source_policy", "registration_commit_policy", "registration_commit_phase"],
     )
     def test_string_field_rejects_empty(self, tmp_path, field_name):
         """Empty string for a required non-empty string field raises ValueError."""

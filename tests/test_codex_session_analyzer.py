@@ -1,4 +1,3 @@
-
 import json
 from pathlib import Path
 
@@ -35,17 +34,19 @@ class TestSessionAnalyzer:
         analyzer = SessionAnalyzer()
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "session_meta",
-                "timestamp": "2026-01-15T10:00:00Z",
-                "payload": {
-                    "id": "test-session-123",
-                    "cwd": "/home/test/project",
-                    "model_provider": "openai",
-                    "cli_version": "1.0.0",
+            json.dumps(
+                {
+                    "type": "session_meta",
                     "timestamp": "2026-01-15T10:00:00Z",
-                },
-            })
+                    "payload": {
+                        "id": "test-session-123",
+                        "cwd": "/home/test/project",
+                        "model_provider": "openai",
+                        "cli_version": "1.0.0",
+                        "timestamp": "2026-01-15T10:00:00Z",
+                    },
+                }
+            )
         )
 
         analyzer.parse_file(jsonl_file)
@@ -61,14 +62,16 @@ class TestSessionAnalyzer:
         analyzer = SessionAnalyzer()
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "event_msg",
-                "timestamp": "2026-01-15T10:00:00Z",
-                "payload": {
-                    "type": "user_message",
-                    "message": "Hello world",
-                },
-            })
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-01-15T10:00:00Z",
+                    "payload": {
+                        "type": "user_message",
+                        "message": "Hello world",
+                    },
+                }
+            )
         )
 
         analyzer.parse_file(jsonl_file)
@@ -82,14 +85,16 @@ class TestSessionAnalyzer:
         analyzer = SessionAnalyzer()
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "event_msg",
-                "timestamp": "2026-01-15T10:00:00Z",
-                "payload": {
-                    "type": "agent_message",
-                    "message": "I can help you",
-                },
-            })
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-01-15T10:00:00Z",
+                    "payload": {
+                        "type": "agent_message",
+                        "message": "I can help you",
+                    },
+                }
+            )
         )
 
         analyzer.parse_file(jsonl_file)
@@ -102,15 +107,17 @@ class TestSessionAnalyzer:
         analyzer = SessionAnalyzer()
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "event_msg",
-                "timestamp": "2026-01-15T10:00:00Z",
-                "payload": {
-                    "type": "agent_message",
-                    "message": "Internal message",
-                    "phase": "planning",
-                },
-            })
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-01-15T10:00:00Z",
+                    "payload": {
+                        "type": "agent_message",
+                        "message": "Internal message",
+                        "phase": "planning",
+                    },
+                }
+            )
         )
 
         analyzer.parse_file(jsonl_file)
@@ -122,14 +129,16 @@ class TestSessionAnalyzer:
         analyzer = SessionAnalyzer()
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "event_msg",
-                "timestamp": "2026-01-15T10:00:00Z",
-                "payload": {
-                    "type": "agent_reasoning",
-                    "text": "Thinking about this...",
-                },
-            })
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-01-15T10:00:00Z",
+                    "payload": {
+                        "type": "agent_reasoning",
+                        "text": "Thinking about this...",
+                    },
+                }
+            )
         )
 
         analyzer.parse_file(jsonl_file)
@@ -142,20 +151,22 @@ class TestSessionAnalyzer:
         analyzer = SessionAnalyzer()
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "event_msg",
-                "timestamp": "2026-01-15T10:00:00Z",
-                "payload": {
-                    "type": "token_count",
-                    "info": {
-                        "total_token_usage": {
-                            "input_tokens": 100,
-                            "output_tokens": 50,
-                            "total_tokens": 150,
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-01-15T10:00:00Z",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "total_token_usage": {
+                                "input_tokens": 100,
+                                "output_tokens": 50,
+                                "total_tokens": 150,
+                            },
                         },
                     },
-                },
-            })
+                }
+            )
         )
 
         analyzer.parse_file(jsonl_file)
@@ -170,15 +181,17 @@ class TestSessionAnalyzer:
         analyzer = SessionAnalyzer()
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "response_item",
-                "timestamp": "2026-01-15T10:00:00Z",
-                "payload": {
-                    "type": "function_call",
-                    "name": "test_tool",
-                    "arguments": '{"arg1": "value1"}',
-                },
-            })
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "timestamp": "2026-01-15T10:00:00Z",
+                    "payload": {
+                        "type": "function_call",
+                        "name": "test_tool",
+                        "arguments": '{"arg1": "value1"}',
+                    },
+                }
+            )
         )
 
         analyzer.parse_file(jsonl_file)
@@ -193,10 +206,12 @@ class TestSessionAnalyzer:
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
             "not valid json\n"
-            + json.dumps({
-                "type": "session_meta",
-                "payload": {"id": "test"},
-            })
+            + json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {"id": "test"},
+                }
+            )
         )
 
         analyzer.parse_file(jsonl_file)
@@ -209,10 +224,12 @@ class TestSessionAnalyzer:
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
             "\n\n"
-            + json.dumps({
-                "type": "session_meta",
-                "payload": {"id": "test"},
-            })
+            + json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {"id": "test"},
+                }
+            )
             + "\n\n"
         )
 
@@ -427,16 +444,18 @@ class TestMain:
         """Test main with valid rollout file."""
         jsonl_file = tmp_path / "rollout-test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "session_meta",
-                "payload": {
-                    "id": "test",
-                    "cwd": "/home",
-                    "model_provider": "openai",
-                    "cli_version": "1.0",
-                    "timestamp": "2026-01-15T10:00:00Z",
-                },
-            })
+            json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {
+                        "id": "test",
+                        "cwd": "/home",
+                        "model_provider": "openai",
+                        "cli_version": "1.0",
+                        "timestamp": "2026-01-15T10:00:00Z",
+                    },
+                }
+            )
         )
 
         exit_code = main(["--rollout", str(jsonl_file)])
@@ -449,16 +468,18 @@ class TestMain:
         """Test main with JSON output."""
         jsonl_file = tmp_path / "rollout-test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "session_meta",
-                "payload": {
-                    "id": "test-session",
-                    "cwd": "/home",
-                    "model_provider": "openai",
-                    "cli_version": "1.0",
-                    "timestamp": "2026-01-15T10:00:00Z",
-                },
-            })
+            json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {
+                        "id": "test-session",
+                        "cwd": "/home",
+                        "model_provider": "openai",
+                        "cli_version": "1.0",
+                        "timestamp": "2026-01-15T10:00:00Z",
+                    },
+                }
+            )
         )
 
         exit_code = main(["--rollout", str(jsonl_file), "--json"])
@@ -472,14 +493,16 @@ class TestMain:
         """Test main with --no-conversation flag."""
         jsonl_file = tmp_path / "rollout-test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "event_msg",
-                "timestamp": "2026-01-15T10:00:00Z",
-                "payload": {
-                    "type": "user_message",
-                    "message": "Hello",
-                },
-            })
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-01-15T10:00:00Z",
+                    "payload": {
+                        "type": "user_message",
+                        "message": "Hello",
+                    },
+                }
+            )
         )
 
         exit_code = main(["--rollout", str(jsonl_file), "--no-conversation"])
@@ -492,14 +515,16 @@ class TestMain:
         """Test main with custom --max-len."""
         jsonl_file = tmp_path / "rollout-test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "event_msg",
-                "timestamp": "2026-01-15T10:00:00Z",
-                "payload": {
-                    "type": "user_message",
-                    "message": "a" * 100,
-                },
-            })
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-01-15T10:00:00Z",
+                    "payload": {
+                        "type": "user_message",
+                        "message": "a" * 100,
+                    },
+                }
+            )
         )
 
         exit_code = main(["--rollout", str(jsonl_file), "--max-len", "10"])
@@ -513,16 +538,32 @@ class TestMain:
         jsonl_file1 = tmp_path / "rollout-1.jsonl"
         jsonl_file2 = tmp_path / "rollout-2.jsonl"
         jsonl_file1.write_text(
-            json.dumps({
-                "type": "session_meta",
-                "payload": {"id": "session-1", "cwd": "/home", "model_provider": "openai", "cli_version": "1.0", "timestamp": "2026-01-15T10:00:00Z"},
-            })
+            json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {
+                        "id": "session-1",
+                        "cwd": "/home",
+                        "model_provider": "openai",
+                        "cli_version": "1.0",
+                        "timestamp": "2026-01-15T10:00:00Z",
+                    },
+                }
+            )
         )
         jsonl_file2.write_text(
-            json.dumps({
-                "type": "session_meta",
-                "payload": {"id": "session-2", "cwd": "/home", "model_provider": "openai", "cli_version": "1.0", "timestamp": "2026-01-15T10:00:00Z"},
-            })
+            json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {
+                        "id": "session-2",
+                        "cwd": "/home",
+                        "model_provider": "openai",
+                        "cli_version": "1.0",
+                        "timestamp": "2026-01-15T10:00:00Z",
+                    },
+                }
+            )
         )
 
         exit_code = main(["--rollout", str(tmp_path / "rollout-*.jsonl")])
@@ -541,14 +582,16 @@ class TestEdgeCases:
         analyzer = SessionAnalyzer()
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "event_msg",
-                "timestamp": "2026-01-15T10:00:00Z",
-                "payload": {
-                    "type": "user_message",
-                    "message": "   ",  # whitespace only
-                },
-            })
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-01-15T10:00:00Z",
+                    "payload": {
+                        "type": "user_message",
+                        "message": "   ",  # whitespace only
+                    },
+                }
+            )
         )
 
         analyzer.parse_file(jsonl_file)
@@ -559,14 +602,16 @@ class TestEdgeCases:
         analyzer = SessionAnalyzer()
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "event_msg",
-                "timestamp": "2026-01-15T10:00:00Z",
-                "payload": {
-                    "type": "agent_message",
-                    "message": "   ",  # whitespace only
-                },
-            })
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-01-15T10:00:00Z",
+                    "payload": {
+                        "type": "agent_message",
+                        "message": "   ",  # whitespace only
+                    },
+                }
+            )
         )
 
         analyzer.parse_file(jsonl_file)
@@ -577,14 +622,16 @@ class TestEdgeCases:
         analyzer = SessionAnalyzer()
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "event_msg",
-                "timestamp": "2026-01-15T10:00:00Z",
-                "payload": {
-                    "type": "agent_reasoning",
-                    "text": "   ",  # whitespace only
-                },
-            })
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-01-15T10:00:00Z",
+                    "payload": {
+                        "type": "agent_reasoning",
+                        "text": "   ",  # whitespace only
+                    },
+                }
+            )
         )
 
         analyzer.parse_file(jsonl_file)
@@ -595,10 +642,12 @@ class TestEdgeCases:
         analyzer = SessionAnalyzer()
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "unknown_type",
-                "payload": {"data": "test"},
-            })
+            json.dumps(
+                {
+                    "type": "unknown_type",
+                    "payload": {"data": "test"},
+                }
+            )
         )
 
         analyzer.parse_file(jsonl_file)
@@ -610,14 +659,16 @@ class TestEdgeCases:
         analyzer = SessionAnalyzer()
         jsonl_file = tmp_path / "test.jsonl"
         jsonl_file.write_text(
-            json.dumps({
-                "type": "event_msg",
-                "timestamp": "2026-01-15T10:00:00Z",
-                "payload": {
-                    "type": "user_message",
-                    "message": "Hello 世界 🌍",
-                },
-            })
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-01-15T10:00:00Z",
+                    "payload": {
+                        "type": "user_message",
+                        "message": "Hello 世界 🌍",
+                    },
+                }
+            )
         )
 
         analyzer.parse_file(jsonl_file)

@@ -62,6 +62,7 @@ POLLUTION_PATTERNS = [
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _parse_frontmatter(text: str) -> dict[str, str]:
     """Extract YAML frontmatter as a flat dict.
 
@@ -116,7 +117,7 @@ def _is_json_like(text: str) -> bool:
         # Check if it looks like a TOML section header: [word] or [word.subword]
         # TOML section: [identifier] where identifier is alphanumeric/underscore/hyphen/dot
         # JSON array: [{ or [" or [1 or [...] where content is not just an identifier
-        match = re.match(r'^\[([a-zA-Z_][a-zA-Z0-9_\-\.]*)\]', stripped)
+        match = re.match(r"^\[([a-zA-Z_][a-zA-Z0-9_\-\.]*)\]", stripped)
         # A match is a TOML section header, not JSON; otherwise treat as JSON array
         return match is None
     return False
@@ -180,15 +181,14 @@ def _check_pollution(memory_root: Path) -> list[str]:
             for line_no, line in enumerate(content.splitlines(), 1):
                 for pat in POLLUTION_PATTERNS:
                     if pat.search(line):
-                        violations.append(
-                            f"pollution: {rel}:{line_no} contains '{pat.pattern}'"
-                        )
+                        violations.append(f"pollution: {rel}:{line_no} contains '{pat.pattern}'")
     return violations
 
 
 # ---------------------------------------------------------------------------
 # Check classes
 # ---------------------------------------------------------------------------
+
 
 class CheckResult:
     """Collects individual check results and produces structured output."""
@@ -233,6 +233,7 @@ class CheckResult:
 # ---------------------------------------------------------------------------
 # Individual checks
 # ---------------------------------------------------------------------------
+
 
 def check_required_files(memory_root: Path, result: CheckResult) -> bool:
     """Verify all required files exist inside memory/system/."""
@@ -293,6 +294,7 @@ def check_lock_version(memory_root: Path, result: CheckResult) -> bool:
 
     # Backward compatibility: accept any known version from compat matrix
     from memory_core.compat import _COMPAT_MATRIX
+
     if version in _COMPAT_MATRIX:
         result.record("lock_version", True, f"version={version} (known version)")
         return True
@@ -332,6 +334,7 @@ def check_adapter_version(memory_root: Path, result: CheckResult) -> bool:
 
     # Backward compatibility: accept any known version from compat matrix
     from memory_core.compat import _COMPAT_MATRIX
+
     if version in _COMPAT_MATRIX:
         result.record("adapter_version", True, f"version={version} (known version)")
         return True
@@ -568,12 +571,7 @@ def check_document_paths(memory_root: Path, result: CheckResult) -> bool:
             for ref in referenced_files:
                 ref_path = project_root / ref
                 # Skip if it looks like a pattern (not a literal path) or an external URL
-                if (
-                    not ref_path.exists()
-                    and not ref.startswith("http")
-                    and "*" not in ref
-                    and "?" not in ref
-                ):
+                if not ref_path.exists() and not ref.startswith("http") and "*" not in ref and "?" not in ref:
                     missing_refs.append(ref)
 
             if missing_refs:
@@ -739,26 +737,20 @@ def check_status_enum(target: Path, result: CheckResult) -> bool:
         try:
             text = state_path.read_text(encoding="utf-8")
         except Exception as exc:
-            result.record(
-                f"status_enum:{project_name}", False, f"read error: {exc}"
-            )
+            result.record(f"status_enum:{project_name}", False, f"read error: {exc}")
             all_ok = False
             continue
 
         try:
             frontmatter = _parse_frontmatter(text)
         except Exception as exc:
-            result.record(
-                f"status_enum:{project_name}", False, f"frontmatter parse error: {exc}"
-            )
+            result.record(f"status_enum:{project_name}", False, f"frontmatter parse error: {exc}")
             all_ok = False
             continue
 
         # LENIENT: only validate when a status key is present.
         if "status" not in frontmatter:
-            result.record(
-                f"status_enum:{project_name}", True, "no status key in frontmatter (skipped)"
-            )
+            result.record(f"status_enum:{project_name}", True, "no status key in frontmatter (skipped)")
             continue
 
         value = frontmatter["status"]
@@ -778,6 +770,7 @@ def check_status_enum(target: Path, result: CheckResult) -> bool:
 # ---------------------------------------------------------------------------
 # Main validation entry point
 # ---------------------------------------------------------------------------
+
 
 def validate_project_memory(
     target: Path,
@@ -844,6 +837,7 @@ def validate_project_memory(
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(

@@ -5,6 +5,7 @@ Fulfills VAL-SUPPRESS-001/002/003:
 - VAL-SUPPRESS-002: CI schema guard: bad structure → hard fail; missing expires → warn only; real file passes
 - VAL-SUPPRESS-003: Existing semantics preserved (covered by tests/test_suppression_expiry.py)
 """
+
 import json
 import sys
 from datetime import date
@@ -19,9 +20,7 @@ sys.path.insert(0, str(scripts_dir))
 from evolution_scanner import Finding, _matches_suppression, apply_suppressions, load_suppressions
 
 
-def test_missing_expires_triggers_deprecation_warning(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_missing_expires_triggers_deprecation_warning(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """VAL-SUPPRESS-001a: load_suppressions prints one-time deprecation warning for entry missing expires."""
     evolution_dir = tmp_path / ".evolution"
     evolution_dir.mkdir()
@@ -33,9 +32,7 @@ def test_missing_expires_triggers_deprecation_warning(
         "location": "legacy/file.py",
         # No 'expires' key
     }
-    suppress_path.write_text(
-        json.dumps({"suppressed": [legacy_entry]}), encoding="utf-8"
-    )
+    suppress_path.write_text(json.dumps({"suppressed": [legacy_entry]}), encoding="utf-8")
 
     # Load suppressions
     suppressions = load_suppressions(tmp_path)
@@ -47,18 +44,17 @@ def test_missing_expires_triggers_deprecation_warning(
     # Deprecation warning should be printed
     captured = capsys.readouterr()
     # Warning should mention the rule_id and location
-    assert "LEGACY_RULE_001" in captured.err or "LEGACY_RULE_001" in captured.out, \
+    assert "LEGACY_RULE_001" in captured.err or "LEGACY_RULE_001" in captured.out, (
         "Deprecation warning should mention rule_id"
-    assert "legacy/file.py" in captured.err or "legacy/file.py" in captured.out, \
+    )
+    assert "legacy/file.py" in captured.err or "legacy/file.py" in captured.out, (
         "Deprecation warning should mention location"
+    )
     # Warning should indicate deprecation
-    assert "deprecat" in (captured.err + captured.out).lower(), \
-        "Warning should indicate deprecation"
+    assert "deprecat" in (captured.err + captured.out).lower(), "Warning should indicate deprecation"
 
 
-def test_missing_expires_entry_still_suppresses(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_missing_expires_entry_still_suppresses(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """VAL-SUPPRESS-001b: Entry without expires still suppresses matching finding (backward compat)."""
     evolution_dir = tmp_path / ".evolution"
     evolution_dir.mkdir()
@@ -69,9 +65,7 @@ def test_missing_expires_entry_still_suppresses(
         "rule_id": "LEGACY_RULE_002",
         "location": "legacy/file2.py",
     }
-    suppress_path.write_text(
-        json.dumps({"suppressed": [legacy_entry]}), encoding="utf-8"
-    )
+    suppress_path.write_text(json.dumps({"suppressed": [legacy_entry]}), encoding="utf-8")
 
     suppressions = load_suppressions(tmp_path)
     assert len(suppressions) == 1
@@ -87,13 +81,12 @@ def test_missing_expires_entry_still_suppresses(
     )
 
     # Entry should still suppress (backward compat)
-    assert _matches_suppression(finding, suppressions[0]), \
+    assert _matches_suppression(finding, suppressions[0]), (
         "Entry without expires should still suppress matching finding"
+    )
 
 
-def test_missing_expires_warning_is_one_time(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_missing_expires_warning_is_one_time(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Deprecation warning for missing expires is emitted once during load, not per-finding."""
     evolution_dir = tmp_path / ".evolution"
     evolution_dir.mkdir()
@@ -103,9 +96,7 @@ def test_missing_expires_warning_is_one_time(
         "rule_id": "LEGACY_RULE_003",
         "location": "legacy/file3.py",
     }
-    suppress_path.write_text(
-        json.dumps({"suppressed": [legacy_entry]}), encoding="utf-8"
-    )
+    suppress_path.write_text(json.dumps({"suppressed": [legacy_entry]}), encoding="utf-8")
 
     suppressions = load_suppressions(tmp_path)
     # Clear captured output from load
@@ -130,8 +121,9 @@ def test_missing_expires_warning_is_one_time(
 
     # Verify no additional warnings were printed during matching
     captured = capsys.readouterr()
-    assert "LEGACY_RULE_003" not in (captured.err + captured.out), \
+    assert "LEGACY_RULE_003" not in (captured.err + captured.out), (
         "No additional deprecation warnings should be emitted during matching"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -182,9 +174,7 @@ def test_schema_guard_expires_must_be_iso_date(tmp_path: Path) -> None:
         "location": "test.py",
         "expires": "not-a-valid-date",
     }
-    suppress_path.write_text(
-        json.dumps({"suppressed": [invalid_entry]}), encoding="utf-8"
-    )
+    suppress_path.write_text(json.dumps({"suppressed": [invalid_entry]}), encoding="utf-8")
 
     # load_suppressions should handle gracefully (entry still loaded, but marked as expired)
     suppressions = load_suppressions(tmp_path)
@@ -199,13 +189,10 @@ def test_schema_guard_expires_must_be_iso_date(tmp_path: Path) -> None:
         location="test.py",
         evidence="test",
     )
-    assert not _matches_suppression(finding, suppressions[0]), \
-        "Malformed expires should fail open"
+    assert not _matches_suppression(finding, suppressions[0]), "Malformed expires should fail open"
 
 
-def test_schema_guard_missing_expires_warns_but_passes(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_schema_guard_missing_expires_warns_but_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """VAL-SUPPRESS-002d: Missing expires field triggers warning but does not fail validation."""
     evolution_dir = tmp_path / ".evolution"
     evolution_dir.mkdir()
@@ -216,9 +203,7 @@ def test_schema_guard_missing_expires_warns_but_passes(
         "rule_id": "LEGACY",
         "location": "legacy.py",
     }
-    suppress_path.write_text(
-        json.dumps({"suppressed": [legacy_entry]}), encoding="utf-8"
-    )
+    suppress_path.write_text(json.dumps({"suppressed": [legacy_entry]}), encoding="utf-8")
 
     # Should load successfully (with warning)
     suppressions = load_suppressions(tmp_path)
@@ -226,8 +211,7 @@ def test_schema_guard_missing_expires_warns_but_passes(
 
     # Warning should be printed
     captured = capsys.readouterr()
-    assert "LEGACY" in (captured.err + captured.out), \
-        "Missing expires should trigger deprecation warning"
+    assert "LEGACY" in (captured.err + captured.out), "Missing expires should trigger deprecation warning"
 
 
 def _validate_suppress_json_raw(suppress_path: Path) -> None:
@@ -241,21 +225,13 @@ def _validate_suppress_json_raw(suppress_path: Path) -> None:
 
     assert isinstance(data, dict), f"suppress.json root must be a dict, got {type(data).__name__}"
     assert "suppressed" in data, "suppress.json must contain 'suppressed' key"
-    assert isinstance(data["suppressed"], list), (
-        f"'suppressed' must be a list, got {type(data['suppressed']).__name__}"
-    )
+    assert isinstance(data["suppressed"], list), f"'suppressed' must be a list, got {type(data['suppressed']).__name__}"
 
     for idx, entry in enumerate(data["suppressed"]):
-        assert isinstance(entry, dict), (
-            f"suppressed[{idx}] must be a dict, got {type(entry).__name__}: {entry!r}"
-        )
+        assert isinstance(entry, dict), f"suppressed[{idx}] must be a dict, got {type(entry).__name__}: {entry!r}"
         # P3 polish: check required keys exist (rule_id, location)
-        assert "rule_id" in entry, (
-            f"suppressed[{idx}] must contain 'rule_id' key: {entry!r}"
-        )
-        assert "location" in entry, (
-            f"suppressed[{idx}] must contain 'location' key: {entry!r}"
-        )
+        assert "rule_id" in entry, f"suppressed[{idx}] must contain 'rule_id' key: {entry!r}"
+        assert "location" in entry, f"suppressed[{idx}] must contain 'location' key: {entry!r}"
         # If expires is present, it must be valid ISO date
         if "expires" in entry and entry["expires"] is not None:
             try:
@@ -305,9 +281,7 @@ def test_schema_guard_negative_entry_not_dict(tmp_path: Path) -> None:
     load_suppressions would silently skip the entry, but the raw guard catches it.
     """
     suppress_path = tmp_path / "suppress.json"
-    suppress_path.write_text(
-        json.dumps({"suppressed": ["not a dict"]}), encoding="utf-8"
-    )
+    suppress_path.write_text(json.dumps({"suppressed": ["not a dict"]}), encoding="utf-8")
 
     with pytest.raises(AssertionError, match="must be a dict"):
         _validate_suppress_json_raw(suppress_path)
@@ -328,18 +302,14 @@ def test_schema_guard_negative_entry_not_dict(tmp_path: Path) -> None:
         ),
     ],
 )
-def test_schema_guard_negative_entry_missing_required_keys(
-    tmp_path: Path, bad_entry: dict, match_pattern: str
-) -> None:
+def test_schema_guard_negative_entry_missing_required_keys(tmp_path: Path, bad_entry: dict, match_pattern: str) -> None:
     """Negative proof: _validate_suppress_json_raw rejects entries missing rule_id or location.
 
     Proves the key-existence assertions (PR #688) are not vacuous —
     each missing-key case triggers a hard AssertionError.
     """
     suppress_path = tmp_path / "suppress.json"
-    suppress_path.write_text(
-        json.dumps({"suppressed": [bad_entry]}), encoding="utf-8"
-    )
+    suppress_path.write_text(json.dumps({"suppressed": [bad_entry]}), encoding="utf-8")
 
     with pytest.raises(AssertionError, match=match_pattern):
         _validate_suppress_json_raw(suppress_path)
@@ -353,9 +323,7 @@ def test_schema_guard_negative_entry_non_iso_expires(tmp_path: Path) -> None:
     """
     bad_entry = {"rule_id": "R001", "location": "file.py", "expires": "not-a-date"}
     suppress_path = tmp_path / "suppress.json"
-    suppress_path.write_text(
-        json.dumps({"suppressed": [bad_entry]}), encoding="utf-8"
-    )
+    suppress_path.write_text(json.dumps({"suppressed": [bad_entry]}), encoding="utf-8")
 
     with pytest.raises(pytest.fail.Exception, match="invalid expires format"):
         _validate_suppress_json_raw(suppress_path)
@@ -366,9 +334,7 @@ def test_schema_guard_negative_entry_non_iso_expires(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_apply_suppressions_with_mixed_expires(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_apply_suppressions_with_mixed_expires(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Integration test: apply_suppressions handles mix of entries with/without expires."""
     evolution_dir = tmp_path / ".evolution"
     evolution_dir.mkdir()

@@ -89,29 +89,45 @@ _logger = logging.getLogger(__name__)
 # iterate over the small ~225-char Cc/Cf set without exploding to the
 # ~21000-char Cs/Co set. The Cs/Co ranges are covered by dedicated tests.
 _CC_CF_RANGES: tuple[tuple[int, int], ...] = (
-    (0x0000, 0x0008), (0x000E, 0x001B), (0x007F, 0x0084), (0x0086, 0x009F),
-    (0x00AD, 0x00AD), (0x0600, 0x0605), (0x061C, 0x061C), (0x06DD, 0x06DD),
-    (0x070F, 0x070F), (0x0890, 0x0891), (0x08E2, 0x08E2), (0x180E, 0x180E),
-    (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x2064), (0x2066, 0x206F),
-    (0xFEFF, 0xFEFF), (0xFFF9, 0xFFFB), (0x110BD, 0x110BD), (0x110CD, 0x110CD),
-    (0x13430, 0x1343F), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A),
-    (0xE0001, 0xE0001), (0xE0020, 0xE007F),
+    (0x0000, 0x0008),
+    (0x000E, 0x001B),
+    (0x007F, 0x0084),
+    (0x0086, 0x009F),
+    (0x00AD, 0x00AD),
+    (0x0600, 0x0605),
+    (0x061C, 0x061C),
+    (0x06DD, 0x06DD),
+    (0x070F, 0x070F),
+    (0x0890, 0x0891),
+    (0x08E2, 0x08E2),
+    (0x180E, 0x180E),
+    (0x200B, 0x200F),
+    (0x202A, 0x202E),
+    (0x2060, 0x2064),
+    (0x2066, 0x206F),
+    (0xFEFF, 0xFEFF),
+    (0xFFF9, 0xFFFB),
+    (0x110BD, 0x110BD),
+    (0x110CD, 0x110CD),
+    (0x13430, 0x1343F),
+    (0x1BCA0, 0x1BCA3),
+    (0x1D173, 0x1D17A),
+    (0xE0001, 0xE0001),
+    (0xE0020, 0xE007F),
 )
 # Cs (Surrogate): lone surrogates that should never appear in valid JSON.
 # Co (Private Use Area): private-use characters that aren't valid JSON content.
 _CS_CO_RANGES: tuple[tuple[int, int], ...] = (
     (0xD800, 0xDFFF),
-    (0xE000, 0xF8FF), (0xF0000, 0xFFFFD), (0x100000, 0x10FFFD),
+    (0xE000, 0xF8FF),
+    (0xF0000, 0xFFFFD),
+    (0x100000, 0x10FFFD),
 )
 _INVISIBLE_UNICODE_RANGES: tuple[tuple[int, int], ...] = _CC_CF_RANGES + _CS_CO_RANGES
 _INVISIBLE_CHARS = str.maketrans(
     "",
     "",
-    "".join(
-        chr(cp)
-        for _start, _end in _INVISIBLE_UNICODE_RANGES
-        for cp in range(_start, _end + 1)
-    ),
+    "".join(chr(cp) for _start, _end in _INVISIBLE_UNICODE_RANGES for cp in range(_start, _end + 1)),
 )
 
 
@@ -266,6 +282,7 @@ def _write_metrics_jsonl(project_root: Path, record: dict[str, Any]) -> None:
         append_metrics_record(metrics_path, record)
     except Exception as exc:
         import logging
+
         logging.getLogger(__name__).warning("metrics write failed: %s", exc)
 
 
@@ -360,15 +377,19 @@ def main() -> int:
     # without a tool_use payload), not an error — skip error logging.
     if not raw_stdin.strip():
         reason_text = "Empty stdin, no tool use to guard"
-        print(json.dumps({
-            "decision": "allow",
-            "reason": reason_text,
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
-                "permissionDecisionReason": reason_text,
-            },
-        }))
+        print(
+            json.dumps(
+                {
+                    "decision": "allow",
+                    "reason": reason_text,
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "allow",
+                        "permissionDecisionReason": reason_text,
+                    },
+                }
+            )
+        )
         return 0
 
     try:
@@ -390,26 +411,26 @@ def main() -> int:
     project_root = _load_project_root()
     if project_root is None:
         # Fail-closed: check payload for protected path
-        exit_code, result = _fail_closed_log_and_output(
-            payload,
-            "Cannot determine project root",
-            project_root=None
-        )
+        exit_code, result = _fail_closed_log_and_output(payload, "Cannot determine project root", project_root=None)
         print(json.dumps(result))
         return exit_code
 
     # Check if memory/system exists (if not, this isn't a memory-managed project)
     if not (project_root / "memory" / "system").exists():
         reason_text = "Not a memory-managed project (no memory/system directory)"
-        print(json.dumps({
-            "decision": "allow",
-            "reason": reason_text,
-            "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
-                "permissionDecisionReason": reason_text,
-            },
-        }))
+        print(
+            json.dumps(
+                {
+                    "decision": "allow",
+                    "reason": reason_text,
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "allow",
+                        "permissionDecisionReason": reason_text,
+                    },
+                }
+            )
+        )
         return 0
 
     # Classify the tool use
@@ -430,6 +451,7 @@ def main() -> int:
         _write_metrics_jsonl(project_root, metrics_record)
     except Exception as exc:
         import logging
+
         logging.getLogger(__name__).warning("metrics write failed in main: %s", exc)
 
     # Output JSON result

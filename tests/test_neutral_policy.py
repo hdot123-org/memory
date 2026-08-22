@@ -41,9 +41,7 @@ class TestNeutralGatewayBusinessPolicy:
 
     def test_init_with_scope_config_path(self, mock_config, tmp_path):
         scope_path = tmp_path / "scope.json"
-        policy = NeutralGatewayBusinessPolicy(
-            mock_config, scope_config_path=scope_path
-        )
+        policy = NeutralGatewayBusinessPolicy(mock_config, scope_config_path=scope_path)
         assert policy is not None
 
     def test_init_without_scope_config_path(self, mock_config):

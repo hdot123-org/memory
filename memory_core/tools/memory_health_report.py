@@ -1,7 +1,6 @@
 #!/usr/bin/env python3.12
 """Deep project memory health checker — runs asynchronously and writes a report."""
 
-
 import argparse
 import json
 import os
@@ -227,9 +226,10 @@ def main() -> int:
         if layout_audit.get("degraded"):
             if report["status"] != "error":
                 report["status"] = "degraded"
-        elif (layout_audit.get("p0", 0) > 0 or layout_audit.get("p1", 0) > 0) and report[
-            "status"
-        ] not in ("error", "degraded"):
+        elif (layout_audit.get("p0", 0) > 0 or layout_audit.get("p1", 0) > 0) and report["status"] not in (
+            "error",
+            "degraded",
+        ):
             report["status"] = "degraded"
 
     output_path = Path(args.output) if args.output else (target / "memory" / "system" / "health-report.json")

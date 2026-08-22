@@ -81,10 +81,10 @@ class TestGlobalKBPhysicalStructure:
         content_lower = content.lower()
 
         # Must mention "promote" and manual confirmation
-        assert "promote" in content_lower or "提升" in content, \
-            "pending/README.md must mention 'promote' or '提升'"
-        assert "确认" in content or "人工" in content or "manual" in content_lower, \
+        assert "promote" in content_lower or "提升" in content, "pending/README.md must mention 'promote' or '提升'"
+        assert "确认" in content or "人工" in content or "manual" in content_lower, (
             "pending/README.md must mention manual confirmation (确认/人工/manual)"
+        )
 
     def test_idempotent_does_not_overwrite_existing_index(self, tmp_path: Path) -> None:
         """VAL-STRUCT-002: 已存在时不覆盖 INDEX.md(幂等)"""
@@ -103,8 +103,7 @@ class TestGlobalKBPhysicalStructure:
 
         # Verify INDEX.md was NOT overwritten
         actual_content = index_path.read_text(encoding="utf-8")
-        assert actual_content == custom_index_content, \
-            "INDEX.md was overwritten (idempotency violated)"
+        assert actual_content == custom_index_content, "INDEX.md was overwritten (idempotency violated)"
 
     def test_idempotent_creates_missing_structure(self, tmp_path: Path) -> None:
         """If global-kb exists partially, create missing parts without error"""
@@ -139,7 +138,9 @@ class TestGlobalKBPhysicalStructure:
 
         assert isinstance(result, dict), "Result should be a dict"
         assert result.get("success") is True, "Result should have success=True"
-        assert "created_paths" in result or "skipped_paths" in result, "Result should have 'created_paths' or 'skipped_paths' key"
+        assert "created_paths" in result or "skipped_paths" in result, (
+            "Result should have 'created_paths' or 'skipped_paths' key"
+        )
 
     def test_creates_parent_directories(self, tmp_path: Path) -> None:
         """Function should create parent directories if they don't exist"""
@@ -159,15 +160,18 @@ class TestGlobalKBPhysicalStructure:
 
         # Operations domain should mention operations-related topics
         ops_readme = (global_kb_root / "operations" / "README.md").read_text(encoding="utf-8").lower()
-        assert any(keyword in ops_readme for keyword in ["运维", "服务器", "部署", "operation", "server", "deploy"]), \
+        assert any(keyword in ops_readme for keyword in ["运维", "服务器", "部署", "operation", "server", "deploy"]), (
             "operations/README.md should describe operations-related topics"
+        )
 
         # Engineering domain should mention engineering-related topics
         eng_readme = (global_kb_root / "engineering" / "README.md").read_text(encoding="utf-8").lower()
-        assert any(keyword in eng_readme for keyword in ["工程", "ci", "工具链", "engineering", "toolchain", "ci/cd"]), \
-            "engineering/README.md should describe engineering-related topics"
+        assert any(
+            keyword in eng_readme for keyword in ["工程", "ci", "工具链", "engineering", "toolchain", "ci/cd"]
+        ), "engineering/README.md should describe engineering-related topics"
 
         # Collaboration domain should mention collaboration-related topics
         collab_readme = (global_kb_root / "collaboration" / "README.md").read_text(encoding="utf-8").lower()
-        assert any(keyword in collab_readme for keyword in ["协作", "agent", "团队", "collaboration", "team"]), \
+        assert any(keyword in collab_readme for keyword in ["协作", "agent", "团队", "collaboration", "team"]), (
             "collaboration/README.md should describe collaboration-related topics"
+        )

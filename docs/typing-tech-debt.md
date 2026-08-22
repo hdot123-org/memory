@@ -107,6 +107,7 @@ def process(items: list[str]) -> None:
 def get_config() -> dict:
     return json.loads(data)  # mypy: no-any-return
 
+
 # 修复
 def get_config() -> dict:
     result = json.loads(data)

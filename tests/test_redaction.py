@@ -260,33 +260,20 @@ class TestRedactDict:
         assert result["list"] == [1, 2, 3]
 
     def test_redacts_nested_dicts(self):
-        d = {
-            "outer": {
-                "inner": _SK_TOKEN,
-                "another": "password=hidden_value"
-            }
-        }
+        d = {"outer": {"inner": _SK_TOKEN, "another": "password=hidden_value"}}
         result = redact_dict(d)
         assert _SK_TOKEN not in result["outer"]["inner"]
         assert "hidden_value" not in result["outer"]["another"]
 
     def test_redacts_strings_in_lists(self):
-        d = {
-            "tokens": [_SK_TOKEN, _GHP_TOKEN],
-            "plain": ["normal", "text"]
-        }
+        d = {"tokens": [_SK_TOKEN, _GHP_TOKEN], "plain": ["normal", "text"]}
         result = redact_dict(d)
         assert _SK_TOKEN not in result["tokens"][0]
         assert _GHP_TOKEN not in result["tokens"][1]
         assert result["plain"] == ["normal", "text"]
 
     def test_redacts_dicts_in_lists(self):
-        d = {
-            "items": [
-                {"api_key": _SK_TOKEN},
-                {"password": "password=hidden_value"}
-            ]
-        }
+        d = {"items": [{"api_key": _SK_TOKEN}, {"password": "password=hidden_value"}]}
         result = redact_dict(d)
         assert _SK_TOKEN not in result["items"][0]["api_key"]
         assert "hidden_value" not in result["items"][1]["password"]
@@ -308,6 +295,7 @@ class TestConsumerIntegration:
         import inspect
 
         from memory_core.tools import log_utils
+
         source = inspect.getsource(log_utils)
         assert "_redaction" in source or "redact" in source
 
@@ -315,6 +303,7 @@ class TestConsumerIntegration:
         import inspect
 
         from memory_core.tools import error_logger
+
         source = inspect.getsource(error_logger)
         assert "_redaction" in source or "redact" in source
 
@@ -322,6 +311,7 @@ class TestConsumerIntegration:
         import inspect
 
         from memory_core.tools import telemetry_bridge
+
         source = inspect.getsource(telemetry_bridge)
         assert "_redaction" in source or "redact" in source
 
@@ -329,5 +319,6 @@ class TestConsumerIntegration:
         import inspect
 
         from memory_core.tools import memory_hook_gateway
+
         source = inspect.getsource(memory_hook_gateway)
         assert "_redaction" in source or "redact" in source

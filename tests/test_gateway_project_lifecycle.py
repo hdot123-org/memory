@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 from memory_core.tools import memory_hook_gateway as gw
@@ -80,6 +79,7 @@ def test_global_state_root_preserves_project_memory_write_targets(monkeypatch, t
     assert targets["hook_lifecycle"] == str(global_state_root / "project-lifecycle")
     assert Path(targets["artifacts"]).is_relative_to(project)
     assert Path(targets["system_error"]).is_relative_to(project_memory)
+
 
 def test_artifact_and_error_logs_are_date_partitioned(monkeypatch, tmp_path: Path) -> None:
     import json

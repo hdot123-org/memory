@@ -5,7 +5,6 @@ This module keeps policy-driven registration gate evaluation in one place
 so gateway wiring can stay thin without changing external behavior.
 """
 
-
 from collections.abc import Callable, Collection
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -235,12 +234,14 @@ def _derive_status(
     blocker_errors: list[str],
 ) -> str:
     """Derive overall context package status from error lists."""
-    if (not missing_paths
-            and not project_map_errors
-            and not contract_errors
-            and not policy_errors
-            and not truth_basis_errors
-            and not blocker_errors):
+    if (
+        not missing_paths
+        and not project_map_errors
+        and not contract_errors
+        and not policy_errors
+        and not truth_basis_errors
+        and not blocker_errors
+    ):
         return "ok"
     return "degraded"
 
@@ -415,13 +416,21 @@ def build_context_package_core(
     truth_basis = truth_basis_for_scope_fn(project_scope)
 
     truth_basis_refs, truth_basis_errors, reads = _compute_truth_basis_errors(
-        truth_basis, decisions, lessons, docs_refs,
-        workspace_root, project_map_refs, global_kb_root, global_kb_enabled,
+        truth_basis,
+        decisions,
+        lessons,
+        docs_refs,
+        workspace_root,
+        project_map_refs,
+        global_kb_root,
+        global_kb_enabled,
     )
 
     # Phase 5: status + assembly
     blocker_errors = [*governance_tuple_errors, *event_contract_errors, *registration_gate_errors]
-    status = _derive_status(missing_paths, project_map_errors, contract_errors, policy_errors, truth_basis_errors, blocker_errors)
+    status = _derive_status(
+        missing_paths, project_map_errors, contract_errors, policy_errors, truth_basis_errors, blocker_errors
+    )
     project_truth_status = _derive_project_truth_status(truth_basis, truth_basis_errors)
     runtime_root = project_runtime_root.get(project_scope, workspace_root / "projects" / project_scope)
     evidence_refs = [

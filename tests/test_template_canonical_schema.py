@@ -37,6 +37,7 @@ def _read_template_raw() -> str:
 # Tests: Template file uses canonical layout
 # ---------------------------------------------------------------------------
 
+
 class TestTemplateCanonicalLayout:
     """Step 3 Test 1: Template file contains canonical sections, no legacy."""
 
@@ -54,9 +55,7 @@ class TestTemplateCanonicalLayout:
         # Match exactly [adapter] but not [adapter.policy] etc.
         for line in raw.splitlines():
             stripped = line.strip()
-            assert stripped != "[adapter]", (
-                "Template still contains legacy [adapter] section header"
-            )
+            assert stripped != "[adapter]", "Template still contains legacy [adapter] section header"
 
         # Legacy field names must NOT be present anywhere
         assert "read_scope" not in raw, "Template contains legacy read_scope field"
@@ -74,9 +73,7 @@ class TestTemplatePlaceholder:
         and must NOT contain a hardcoded version number like '0.2.0'."""
         raw = _read_template_raw()
 
-        assert "{{memory_version}}" in raw, (
-            "Template must use {{memory_version}} placeholder"
-        )
+        assert "{{memory_version}}" in raw, "Template must use {{memory_version}} placeholder"
 
         # The version line should be the placeholder, not a concrete version
         # Check that the [core] section doesn't have a hardcoded version
@@ -84,20 +81,20 @@ class TestTemplatePlaceholder:
             stripped = line.strip()
             if stripped.startswith("version = "):
                 # Should be the placeholder form, not a quoted version number
-                assert "{{memory_version}}" in stripped, (
-                    f"Version should use placeholder, found: {stripped}"
-                )
+                assert "{{memory_version}}" in stripped, f"Version should use placeholder, found: {stripped}"
 
 
 # ---------------------------------------------------------------------------
 # Tests: init writes correct values into adapter.toml
 # ---------------------------------------------------------------------------
 
+
 class TestInitWritesAdapterToml:
     """Step 3 Tests 3-6: init_project_memory renders correct values."""
 
     def test_init_writes_current_memory_version_into_adapter_toml(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """After init, adapter.toml core.version == CURRENT_MEMORY_VERSION."""
         result = init_project_memory(tmp_path, scope="version-test")
@@ -111,7 +108,8 @@ class TestInitWritesAdapterToml:
         assert f'version = "{CURRENT_MEMORY_VERSION}"' in content
 
     def test_init_writes_user_scope_into_adapter_toml(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Init with --scope my-test-proj should set routing.project_scope."""
         result = init_project_memory(tmp_path, scope="my-test-proj")
@@ -126,7 +124,8 @@ class TestInitWritesAdapterToml:
         assert 'project_name = "my_test_proj"' in content
 
     def test_init_writes_user_host_into_adapter_toml(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """Init with --host factory should set routing.host = factory."""
         result = init_project_memory(tmp_path, scope="host-test", host="factory")
@@ -139,7 +138,8 @@ class TestInitWritesAdapterToml:
         assert 'host = "factory"' in content
 
     def test_init_default_host_is_factory_when_unspecified(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """When --host is not provided, host should default to factory."""
         result = init_project_memory(tmp_path, scope="default-host-test")

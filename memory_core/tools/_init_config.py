@@ -51,7 +51,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "- 只有出现在合法目录地图中并被标为 `active-legal` 的条目或目录，才是合法资料。\n"
         "- 同次 `git commit` 提交后才生效\n"
         "- project-map/legal-core-map.md: active-legal\n",
-        []
+        [],
     ),
     "project-map/legal-core-map.md": lambda scope: (
         "# 合法核心地图\n\n"
@@ -60,7 +60,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "- project-map/INDEX.md: active-legal\n"
         "- truth-model.md: active-legal\n"
         "- memory-system.md: active-legal\n",
-        []
+        [],
     ),
     "project-map/ingestion-registry-map.md": lambda scope: (
         "# 摄入登记地图\n\n"
@@ -74,7 +74,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "- tests/**: compatibility-only\n"
         "- 状态：`absorbed`，`retired`\n"
         "- 同次 `git commit` 提交后才生效\n",
-        []
+        [],
     ),
     # VAL-INIT-001: Governance stubs at memory/kb/global/ (system-level)
     "memory/kb/global/truth-model.md": lambda scope: (
@@ -91,7 +91,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "- tools/health-check.sh\n\n"
         "### Conflict Status\n\n"
         "- resolved\n",
-        []
+        [],
     ),
     "memory/kb/global/memory-system.md": lambda scope: (
         "# 记忆系统规则\n\n"
@@ -106,7 +106,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "- tests/.memory-anchor.md\n\n"
         "### Conflict Status\n\n"
         "- resolved\n",
-        []
+        [],
     ),
     "memory/kb/global/memory-routing.md": lambda scope: (
         "# 记忆路由规则\n\n"
@@ -121,7 +121,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "- tests/.memory-anchor.md\n\n"
         "### Conflict Status\n\n"
         "- resolved\n",
-        []
+        [],
     ),
     "memory/kb/global/hook-contract.md": lambda scope: (
         "# Hook 契约\n\n"
@@ -136,7 +136,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "- tests/.memory-anchor.md\n\n"
         "### Conflict Status\n\n"
         "- resolved\n",
-        []
+        [],
     ),
     "memory/kb/global/project-map-governance.md": lambda scope: (
         "# 项目地图治理\n\n"
@@ -153,7 +153,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "- tests/.memory-anchor.md\n\n"
         "### Conflict Status\n\n"
         "- resolved\n",
-        []
+        [],
     ),
     "memory/kb/INDEX.md": lambda scope: (
         "# 知识库索引\n\n"
@@ -169,7 +169,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "## 使用说明\n\n"
         "- 只有被地图标为 `active-legal` 的条目或目录，才是合法资料\n"
         "- 目录登记和状态迁移必须与相关文件同次 `git commit` 才生效\n",
-        []
+        [],
     ),
     "memory/kb/global/INDEX.md": lambda scope: (
         "# 全局知识库索引\n\n"
@@ -184,7 +184,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "## 使用说明\n\n"
         "- 只有被地图标为 `active-legal` 的条目或目录，才是合法资料\n"
         "- 目录登记和状态迁移必须与相关文件同次 `git commit` 才生效\n",
-        []
+        [],
     ),
     "INDEX.md": lambda scope: (
         "# 工作区索引\n\n"
@@ -192,14 +192,9 @@ KB_TEMPLATES: dict[str, Any] = {
         "- 只有被地图标为 `active-legal` 的条目或目录，才是合法资料；仅进入登记册不授予合法性。\n"
         "- 目录登记和目录状态迁移必须与相关文件同次 `git commit` 才生效。\n"
         "- memory/kb/global/truth-model.md\n",
-        []
+        [],
     ),
-    "memory/docs/INDEX.md": lambda scope: (
-        "# 文档索引\n\n"
-        "- incoming-raw\n"
-        "- 未被地图明确吸收\n",
-        []
-    ),
+    "memory/docs/INDEX.md": lambda scope: ("# 文档索引\n\n- incoming-raw\n- 未被地图明确吸收\n", []),
     # I-F: Overview doc referenced by ProjectMapValidator.validate_unique_legal_system_contract
     "memory/docs/记忆系统全景文档.md": lambda scope: (
         "# 记忆系统全景文档\n\n"
@@ -214,7 +209,7 @@ KB_TEMPLATES: dict[str, Any] = {
         "- memory/system/ — 系统配置\n"
         "- project-map/ — 项目地图\n"
         "- tests/ — 测试锚点\n",
-        []
+        [],
     ),
 }
 

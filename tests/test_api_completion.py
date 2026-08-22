@@ -8,6 +8,7 @@ import pytest
 # Schema conversion tests
 # ---------------------------------------------------------------------------
 
+
 class TestSchemaConversion:
     """Tests for convert_to_v1, is_v1, is_v2 in memory_hook_schema."""
 
@@ -97,27 +98,32 @@ class TestSchemaConversion:
 # Package API tests
 # ---------------------------------------------------------------------------
 
+
 class TestPackageAPI:
     """Tests for memory_core.tools lazy exports."""
 
     def test_lazy_import_build_context_package(self):
         """from memory_core.tools import build_context_package works."""
         from memory_core.tools import build_context_package
+
         assert callable(build_context_package)
 
     def test_lazy_import_core_config(self):
         """from memory_core.tools import CoreConfig works."""
         from memory_core.tools import CoreConfig
+
         assert isinstance(CoreConfig, type)
 
     def test_lazy_import_build_simple(self):
         """from memory_core.tools import build_context_package_simple works."""
         from memory_core.tools import build_context_package_simple
+
         assert callable(build_context_package_simple)
 
     def test_lazy_import_unknown_raises(self):
         """from memory_core.tools import nonexistent raises AttributeError."""
         import memory_core.tools
+
         with pytest.raises(AttributeError):
             _ = memory_core.tools.nonexistent_symbol_xyz
 
@@ -126,11 +132,13 @@ class TestPackageAPI:
 # Extended PolicyRegistry tests
 # ---------------------------------------------------------------------------
 
+
 class TestExtendedPolicyRegistry:
     """Tests for PolicyRegistryImpl extended stub methods."""
 
     def _make_registry(self) -> Any:
         from memory_core.tools.memory_hook_impls import PolicyRegistryImpl
+
         return PolicyRegistryImpl()
 
     def test_validate_project_map_returns_list(self):

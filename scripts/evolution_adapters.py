@@ -1,4 +1,5 @@
 """Adapter functions for converting audit tool output to Finding-compatible dicts."""
+
 import hashlib
 import re
 from datetime import UTC
@@ -26,7 +27,7 @@ def normalize_location(location: str) -> str:
     for marker in ("/memory-core/", "/memory/"):
         idx = location.rfind(marker)  # Use rfind to get the LAST occurrence
         if idx != -1:
-            relative = location[idx + len(marker):]
+            relative = location[idx + len(marker) :]
             return relative.removeprefix("./")
     # No known marker found; return original value as safe fallback
     return location
@@ -59,7 +60,7 @@ def sanitize_text(text: str, max_len: int = 500) -> str:
         Sanitized text
     """
     # ReDoS prevention: pre-truncate to 4× max_len before regex processing
-    text = text[:max_len * 4]
+    text = text[: max_len * 4]
 
     # Phase 1: Fixed-point loop for character removal (max 3 iterations)
     # This must run BEFORE pattern defenses so that removable characters
@@ -67,33 +68,33 @@ def sanitize_text(text: str, max_len: int = 500) -> str:
     for _iteration in range(3):
         previous = text
         # Strip Unicode bidi override / zero-width characters
-        text = re.sub(r'[\u200b-\u200f\u202a-\u202e\u2066-\u2069]', '', text)
+        text = re.sub(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069]", "", text)
         # Strip control characters (keep \t and \n which are legitimate in descriptions)
-        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\r]', '', text)
+        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\r]", "", text)
         # Strip inline links [text](url) → text and inline images ![alt](url) → alt
-        text = re.sub(r'!?\[([^\]]{0,500})\]\([^)]{0,500}\)', r'\1', text)
+        text = re.sub(r"!?\[([^\]]{0,500})\]\([^)]{0,500}\)", r"\1", text)
         # Strip HTML comments <!--...--> (prevent hidden instruction injection)
-        text = re.sub(r'<!--.{0,2000}?>', '', text, flags=re.DOTALL)
+        text = re.sub(r"<!--.{0,2000}?>", "", text, flags=re.DOTALL)
         # Strip unclosed HTML comment <!--...$ (prevent partial marker forgery)
-        text = re.sub(r'<!--.{0,2000}$', '', text, flags=re.DOTALL)
+        text = re.sub(r"<!--.{0,2000}$", "", text, flags=re.DOTALL)
         if text == previous:
             break  # Fixed point reached
 
     # Phase 2: Pattern defenses (run AFTER character removal)
     # Redact common credential patterns
     # GitHub tokens (ghp_, github_pat_)
-    text = re.sub(r'ghp_[A-Za-z0-9]{20,}', '***REDACTED***', text)
-    text = re.sub(r'github_pat_[A-Za-z0-9_]+', '***REDACTED***', text)
+    text = re.sub(r"ghp_[A-Za-z0-9]{20,}", "***REDACTED***", text)
+    text = re.sub(r"github_pat_[A-Za-z0-9_]+", "***REDACTED***", text)
     # AWS access keys (AKIA...)
-    text = re.sub(r'AKIA[A-Z0-9]{16}', '***REDACTED***', text)
+    text = re.sub(r"AKIA[A-Z0-9]{16}", "***REDACTED***", text)
     # Slack tokens (xoxb-, xoxp-, xoxo-, xoxa-)
-    text = re.sub(r'xox[bpoa]-[A-Za-z0-9-]+', '***REDACTED***', text)
+    text = re.sub(r"xox[bpoa]-[A-Za-z0-9-]+", "***REDACTED***", text)
     # OpenAI keys (sk-...)
-    text = re.sub(r'sk-[A-Za-z0-9]{20,}', '***REDACTED***', text)
+    text = re.sub(r"sk-[A-Za-z0-9]{20,}", "***REDACTED***", text)
     # Remove @ mentions (use @+ to strip multi-@ like @@droid → droid)
-    text = re.sub(r'@+(\w+)', r'\1', text)
+    text = re.sub(r"@+(\w+)", r"\1", text)
     # Remove markdown headings, code fences, list markers at line start (including ~ for ~~~ fences)
-    text = re.sub(r'^[#`>~-]+\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^[#`>~-]+\s*", "", text, flags=re.MULTILINE)
     # Truncate
     if len(text) > max_len:
         text = text[:max_len] + "..."
@@ -115,15 +116,15 @@ def sanitize_structured_field(text: str, max_len: int = 100) -> str:
         Sanitized field with control characters removed and whitespace stripped
     """
     # Remove all control characters (newlines, tabs, etc.) including Unicode line/paragraph separators
-    text = re.sub(r'[\x00-\x1f\x7f\u0085\u2028\u2029]', '', text)
+    text = re.sub(r"[\x00-\x1f\x7f\u0085\u2028\u2029]", "", text)
     # Strip bidi override/formatting characters (prevent dedup asymmetry attacks)
-    text = re.sub(r'[\u200b-\u200f\u202a-\u202e\u2066-\u2069]', '', text)
+    text = re.sub(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069]", "", text)
     # Strip leading/trailing whitespace
     text = text.strip()
     # Truncate with hash suffix to prevent collision of different long values
     if len(text) > max_len:
         hash_suffix = hashlib.md5(text.encode()).hexdigest()[:8]
-        text = text[:max_len - 9] + "." + hash_suffix
+        text = text[: max_len - 9] + "." + hash_suffix
     return text
 
 
@@ -138,14 +139,16 @@ def adapt_daily_audit(raw: dict[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(project_data, dict):
             continue
         for violation in project_data.get("violations", []):
-            findings.append({
-                "rule_id": violation.get("type", "UNKNOWN").upper(),
-                "severity": violation.get("severity", "info"),
-                "category": "daily_audit",
-                "description": violation.get("detail", ""),
-                "location": normalize_location(violation.get("file", "")),
-                "evidence": f"Project: {project_name}, Detail: {violation.get('detail', '')}",
-            })
+            findings.append(
+                {
+                    "rule_id": violation.get("type", "UNKNOWN").upper(),
+                    "severity": violation.get("severity", "info"),
+                    "category": "daily_audit",
+                    "description": violation.get("detail", ""),
+                    "location": normalize_location(violation.get("file", "")),
+                    "evidence": f"Project: {project_name}, Detail: {violation.get('detail', '')}",
+                }
+            )
     # Infrastructure servers and databases carry the same violations schema
     infra = raw.get("infrastructure", {})
     for kind in ("servers", "databases"):
@@ -154,14 +157,16 @@ def adapt_daily_audit(raw: dict[str, Any]) -> list[dict[str, Any]]:
                 continue
             for violation in data.get("violations", []):
                 label = "Server" if kind == "servers" else "Database"
-                findings.append({
-                    "rule_id": violation.get("type", "UNKNOWN").upper(),
-                    "severity": violation.get("severity", "info"),
-                    "category": "daily_audit",
-                    "description": violation.get("detail", ""),
-                    "location": normalize_location(violation.get("file", "")),
-                    "evidence": f"{label}: {name}, Detail: {violation.get('detail', '')}",
-                })
+                findings.append(
+                    {
+                        "rule_id": violation.get("type", "UNKNOWN").upper(),
+                        "severity": violation.get("severity", "info"),
+                        "category": "daily_audit",
+                        "description": violation.get("detail", ""),
+                        "location": normalize_location(violation.get("file", "")),
+                        "evidence": f"{label}: {name}, Detail: {violation.get('detail', '')}",
+                    }
+                )
     return findings
 
 
@@ -223,7 +228,7 @@ def adapt_consistency_check(raw: dict[str, Any]) -> list[dict[str, str]]:
 def _extract_rule_id(text: str) -> str:
     """Extract rule/check name from bracket-prefixed string like '[check_name] ...'."""
     if text.startswith("[") and "]" in text:
-        return text[1:text.index("]")].upper()
+        return text[1 : text.index("]")].upper()
     return "CONSISTENCY_ERROR"
 
 
@@ -236,7 +241,7 @@ def _extract_location(text: str) -> str:
     Otherwise returns empty string to prevent message text from being treated as location.
     """
     if "]" in text:
-        rest = text[text.index("]") + 1:].strip()
+        rest = text[text.index("]") + 1 :].strip()
         if ":" in rest:
             candidate = rest.split(":")[0].strip()
             # Validate: must have extension or be absolute path
@@ -259,18 +264,20 @@ def adapt_error_patterns(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
         threshold = entry.get("threshold_met")
         if not threshold:
             continue
-        findings.append({
-            "rule_id": f"ERROR_PATTERN_{entry.get('type', 'UNKNOWN').upper()}",
-            "severity": "critical" if threshold == "both" else "warning",
-            "category": "error_pattern",
-            "description": entry.get("normalized_msg", ""),
-            "location": normalize_location(f"{entry.get('script', 'unknown')}"),
-            "evidence": (
-                f"fingerprint={entry.get('fingerprint', '')}, "
-                f"count={entry.get('total_count', 0)}, "
-                f"threshold={threshold}"
-            ),
-        })
+        findings.append(
+            {
+                "rule_id": f"ERROR_PATTERN_{entry.get('type', 'UNKNOWN').upper()}",
+                "severity": "critical" if threshold == "both" else "warning",
+                "category": "error_pattern",
+                "description": entry.get("normalized_msg", ""),
+                "location": normalize_location(f"{entry.get('script', 'unknown')}"),
+                "evidence": (
+                    f"fingerprint={entry.get('fingerprint', '')}, "
+                    f"count={entry.get('total_count', 0)}, "
+                    f"threshold={threshold}"
+                ),
+            }
+        )
     return findings
 
 
@@ -284,14 +291,16 @@ def adapt_audit_layout(raw: dict[str, Any]) -> list[dict[str, str]]:
 
     findings = []
     for violation in data.get("violations", []):
-        findings.append({
-            "rule_id": violation.get("type", "UNKNOWN").upper(),
-            "severity": violation.get("severity", "info"),
-            "category": "audit_layout",
-            "description": violation.get("detail", ""),
-            "location": normalize_location(violation.get("file", "")),
-            "evidence": f"Detail: {violation.get('detail', '')}",
-        })
+        findings.append(
+            {
+                "rule_id": violation.get("type", "UNKNOWN").upper(),
+                "severity": violation.get("severity", "info"),
+                "category": "audit_layout",
+                "description": violation.get("detail", ""),
+                "location": normalize_location(violation.get("file", "")),
+                "evidence": f"Detail: {violation.get('detail', '')}",
+            }
+        )
     return findings
 
 
@@ -305,14 +314,16 @@ def adapt_validate_project(raw: dict[str, Any]) -> list[dict[str, str]]:
 
     findings = []
     for violation in data.get("violations", []):
-        findings.append({
-            "rule_id": violation.get("type", "UNKNOWN").upper(),
-            "severity": violation.get("severity", "info"),
-            "category": "validate_project",
-            "description": violation.get("detail", ""),
-            "location": normalize_location(violation.get("file", "")),
-            "evidence": f"Detail: {violation.get('detail', '')}",
-        })
+        findings.append(
+            {
+                "rule_id": violation.get("type", "UNKNOWN").upper(),
+                "severity": violation.get("severity", "info"),
+                "category": "validate_project",
+                "description": violation.get("detail", ""),
+                "location": normalize_location(violation.get("file", "")),
+                "evidence": f"Detail: {violation.get('detail', '')}",
+            }
+        )
     return findings
 
 
@@ -337,14 +348,16 @@ def adapt_evolution_self_audit(raw: dict[str, Any] | list[dict[str, Any]]) -> li
         # Normalize location to repo-relative path
         location = normalize_location(finding.get("location", ""))
 
-        findings.append({
-            "rule_id": finding.get("rule_id", "UNKNOWN"),
-            "severity": finding.get("severity", "info"),
-            "category": finding.get("category", "evolution_self_audit"),
-            "description": finding.get("description", ""),
-            "location": location,
-            "evidence": finding.get("evidence", ""),
-        })
+        findings.append(
+            {
+                "rule_id": finding.get("rule_id", "UNKNOWN"),
+                "severity": finding.get("severity", "info"),
+                "category": finding.get("category", "evolution_self_audit"),
+                "description": finding.get("description", ""),
+                "location": location,
+                "evidence": finding.get("evidence", ""),
+            }
+        )
     return findings
 
 
@@ -373,6 +386,7 @@ TOOL_TO_CATEGORIES = {
 def quarantine_corrupted_file(history_path: Path) -> None:
     """Rename corrupted history file to quarantine path with timestamp."""
     from datetime import datetime
+
     if not history_path.exists():
         return
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")

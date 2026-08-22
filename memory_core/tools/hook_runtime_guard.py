@@ -4,6 +4,7 @@ Installs SIGALRM + SIGINT handlers BEFORE heavy imports to ensure
 clean exit under Factory's 10s timeout. Console-script entry point
 only — pytest collection and in-process main() calls are unaffected.
 """
+
 import os
 import signal
 
@@ -35,4 +36,5 @@ def gateway_main() -> int:
     """Console-script entry: guard first, then gateway main()."""
     install_guard()
     from memory_core.tools.memory_hook_gateway import main
+
     return main()

@@ -18,18 +18,14 @@ def _make_initialized_target(tmp_path: Path) -> Path:
     target = tmp_path / "project"
     memory = target / "memory" / "system"
     memory.mkdir(parents=True)
-    (memory / "adapter.toml").write_text("schema_version = \"adapter-v1\"\n", encoding="utf-8")
-    (memory / "ownership.toml").write_text("schema_version = \"memory-ownership-v1\"\n", encoding="utf-8")
+    (memory / "adapter.toml").write_text('schema_version = "adapter-v1"\n', encoding="utf-8")
+    (memory / "ownership.toml").write_text('schema_version = "memory-ownership-v1"\n', encoding="utf-8")
     headers = build_headers("0.4.0")
     (target / "INDEX.md").write_text(inject_headers("# Workspace\n", headers), encoding="utf-8")
     (target / "memory" / "kb").mkdir(parents=True)
-    (target / "memory" / "kb" / "INDEX.md").write_text(
-        inject_headers("# KB\n", headers), encoding="utf-8"
-    )
+    (target / "memory" / "kb" / "INDEX.md").write_text(inject_headers("# KB\n", headers), encoding="utf-8")
     (target / "memory" / "docs").mkdir(parents=True)
-    (target / "memory" / "docs" / "INDEX.md").write_text(
-        inject_headers("# Docs\n", headers), encoding="utf-8"
-    )
+    (target / "memory" / "docs" / "INDEX.md").write_text(inject_headers("# Docs\n", headers), encoding="utf-8")
     return target
 
 

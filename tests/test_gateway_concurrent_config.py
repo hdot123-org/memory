@@ -38,7 +38,8 @@ def _reload_gateway(**env_overrides: str) -> Any:
     clean_env = {
         k: v
         for k, v in os.environ.items()
-        if k not in (
+        if k
+        not in (
             "MEMORY_HOOK_ADAPTER",
             "MEMORY_HOOK_FORCE",
             "WORKBOT_FORCE_HOOK",

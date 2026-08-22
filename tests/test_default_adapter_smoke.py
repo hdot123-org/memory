@@ -7,7 +7,6 @@ Covers:
 - graceful handling when paths are missing (ci environment)
 """
 
-
 import os
 import sys
 from pathlib import Path
@@ -98,6 +97,4 @@ class TestDefaultAdapterNoCrash:
             )
         else:
             # CI: workspace incomplete — adapter must degrade gracefully
-            assert pkg["status"] in ("ok", "degraded"), (
-                f"host=factory status={pkg['status']} — unexpected failure"
-            )
+            assert pkg["status"] in ("ok", "degraded"), f"host=factory status={pkg['status']} — unexpected failure"
