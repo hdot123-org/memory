@@ -98,6 +98,7 @@ get_factory_token() {
     local OP_FIELD_LABEL="api"
     local OP_VAULT_SEVER="ozqqpvh5yvvxvyu64npq62a3ti"
     
+    # shellcheck source=/dev/null
     source "${SCRIPT_DIR}/lib/op-mcp.sh"
     local token
     token=$(op_get_field "$OP_VAULT_SEVER" "$OP_ITEM_ID" "$OP_FIELD_LABEL" 2>/dev/null || true)
