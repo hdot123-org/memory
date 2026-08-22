@@ -43,9 +43,7 @@ def test_find_repo_root_uses_subprocess():
     assert "subprocess.run" in source or "subprocess" in source, (
         "_find_repo_root should use subprocess to call git rev-parse --show-toplevel"
     )
-    assert "git" in source and "rev-parse" in source, (
-        "_find_repo_root should call git rev-parse --show-toplevel"
-    )
+    assert "git" in source and "rev-parse" in source, "_find_repo_root should call git rev-parse --show-toplevel"
 
 
 def test_is_memory_repo_uses_gateway_marker():
@@ -54,9 +52,7 @@ def test_is_memory_repo_uses_gateway_marker():
 
     source = inspect.getsource(_is_memory_repo)
     # The authoritative implementation checks for the gateway marker file
-    assert "memory_hook_gateway.py" in source, (
-        "_is_memory_repo should check for memory_hook_gateway.py marker file"
-    )
+    assert "memory_hook_gateway.py" in source, "_is_memory_repo should check for memory_hook_gateway.py marker file"
 
 
 def test_functions_are_callable():
