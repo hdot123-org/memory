@@ -325,6 +325,93 @@ class TestGuards:
 
 
 # ============================================================================
+# BLK-M3-R1-1: mtime-scan probe rc 捕获（死代码修复验证）
+# ============================================================================
+class TestMtimeScanProbeRC:
+    """验证 mtime-scan 分支的 probe rc 在分支前正确捕获。
+
+    BLK-M3-R1-1 修复前：`if ! probe_session ...; then PROBE_EXIT=$?` 捕获的是
+    `! probe_session` 的 rc（恒 0），而非 probe_session 真实 rc，导致 404 场景
+    不触发 fail-fast，继续写入死会话 pending。
+
+    修复后：先调用 `probe_session`，再 `$?` 捕获真实 rc，再分支判断。
+    """
+
+    def test_mtime_scan_dead_session_no_pending_written(self, stub_api_server, tmp_path):
+        """mtime-scan 找到唯一候选但 404 → fail-fast，不写 pending 文件。
+
+        构造场景：
+        - sessions-index.json 存在但无匹配候选（强制走 mtime-scan fallback 分支）
+        - 沙箱 sessions 目录含一个 .jsonl 文件，session_id 含 "nonexistent"
+          （stub API 返回 404）
+        - 预期：exit 1，无 pending-ci-{PR}.json 生成
+        """
+        env = _make_env(stub_api_server, tmp_path)
+        home = Path(env["HOME"])
+
+        # 创建 sessions-index.json 但无匹配候选（空 entries 数组）
+        # 这会触发 mtime-scan fallback 分支
+        sessions_index = home / ".factory" / "sessions-index.json"
+        sessions_index.write_text('{"entries": []}')
+
+        # 构造沙箱 sessions 目录 + .jsonl 文件（session_id 含 "nonexistent"）
+        sessions_dir = home / ".factory" / "sessions" / "-Users-busiji-memory"
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        fake_session_file = sessions_dir / "mtime-nonexistent-session.jsonl"
+        fake_session_file.write_text('{"event":"test"}\n')
+
+        # 运行脚本（无显式 SESSION_ID，强制 mtime-scan）
+        code, stdout, stderr = _run_script(SCRIPT_PATH, "9501", env=env)
+        combined = stdout + stderr
+
+        # 断言：fail-fast 退出
+        assert code != 0, "mtime-scan dead session must fail fast"
+        assert "dead (404)" in combined or "No candidates left" in combined, (
+            f"Expected 404 error message, got: {combined}"
+        )
+
+        # 断言：不写 pending 文件
+        pending = _read_pending(home, 9501)
+        assert pending is None, "No pending file should be written for dead mtime-scanned session"
+
+        # 断言：PostHog 事件（DRY_RUN 模式下为日志行）
+        assert "POSTHOG_DRY_RUN" in combined or "ci_write_all_sessions_dead" in combined, (
+            "Expected PostHog event for dead mtime session"
+        )
+
+    def test_mtime_scan_alive_session_writes_pending(self, stub_api_server, tmp_path):
+        """mtime-scan 找到唯一候选且存活 → 写入 pending 文件。
+
+        构造场景：
+        - sessions-index.json 存在但无匹配候选（强制 mtime-scan fallback）
+        - .jsonl session_id 含 "alive"（stub 返回 200）
+        - 预期：exit 0，pending-ci-{PR}.json 生成
+        """
+        env = _make_env(stub_api_server, tmp_path)
+        home = Path(env["HOME"])
+
+        # 创建 sessions-index.json 但无匹配候选（空 entries 数组）
+        sessions_index = home / ".factory" / "sessions-index.json"
+        sessions_index.write_text('{"entries": []}')
+
+        # 构造存活会话
+        sessions_dir = home / ".factory" / "sessions" / "-Users-busiji-memory"
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        alive_session_file = sessions_dir / "mtime-alive-session.jsonl"
+        alive_session_file.write_text('{"event":"test"}\n')
+
+        # 运行脚本
+        code, stdout, stderr = _run_script(SCRIPT_PATH, "9502", env=env)
+        assert code == 0, f"mtime-scan alive session should succeed, stderr: {stderr}"
+
+        # 断言：写入 pending 文件
+        pending = _read_pending(home, 9502)
+        assert pending is not None, "Pending file should be written for alive mtime session"
+        assert pending["session_id"] == "mtime-alive-session"
+        assert pending["pr_number"] == "9502"
+
+
+# ============================================================================
 # 生产一致性：受管副本与生产脚本字节一致（回填完整性快照）
 # ============================================================================
 class TestProdSync:

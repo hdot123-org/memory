@@ -262,19 +262,22 @@ for c in candidates:
     SESSION_ID=$(basename "$LATEST_JSONL" .jsonl)
 
     # Probe the mtime-scanned session if token available
+    # BLK-M3-R1-1 fix: capture rc BEFORE branching.
+    # Old pattern: `if ! probe_session ...; then PROBE_EXIT=$?` captures the negated
+    # rc (always 0) — dead code.
+    # Use `cmd || PROBE_EXIT=$?` to capture real rc without triggering set -e exit.
     if [ -n "$FACTORY_TOKEN" ]; then
-      if ! probe_session "$SESSION_ID" "$FACTORY_TOKEN"; then
-        PROBE_EXIT=$?
-        if [ "$PROBE_EXIT" = "1" ]; then
-          echo "ERROR: mtime-scanned session $SESSION_ID is dead (404). No candidates left. Refusing to write dead-session pending." >&2
-          send_posthog_event "ci_write_all_sessions_dead" "$PR_NUMBER" "write_probe" "mtime_scan_session_404"
-          exit 1
-        else
-          echo "WARN: Probe unreachable for mtime-scanned session $SESSION_ID. Proceeding with caution." >&2
-          send_posthog_event "ci_write_probe_unreachable" "$PR_NUMBER" "write_probe" "mtime_scan_unreachable:$SESSION_ID"
-        fi
-      else
+      PROBE_EXIT=0
+      probe_session "$SESSION_ID" "$FACTORY_TOKEN" || PROBE_EXIT=$?
+      if [ "$PROBE_EXIT" = "0" ]; then
         echo "Probe OK: mtime-scanned session $SESSION_ID is alive" >&2
+      elif [ "$PROBE_EXIT" = "1" ]; then
+        echo "ERROR: mtime-scanned session $SESSION_ID is dead (404). No candidates left. Refusing to write dead-session pending." >&2
+        send_posthog_event "ci_write_all_sessions_dead" "$PR_NUMBER" "write_probe" "mtime_scan_session_404"
+        exit 1
+      else
+        echo "WARN: Probe unreachable for mtime-scanned session $SESSION_ID. Proceeding with caution." >&2
+        send_posthog_event "ci_write_probe_unreachable" "$PR_NUMBER" "write_probe" "mtime_scan_unreachable:$SESSION_ID"
       fi
     fi
   fi
