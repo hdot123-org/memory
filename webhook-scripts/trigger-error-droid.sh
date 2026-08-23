@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2034
 # trigger-error-droid.sh — PostHog webhook → droid exec 异步触发器
 # 由 adnanh/webhook 调用，立即返回 accepted，后台执行 droid + error-gateway skill
 #
@@ -58,36 +59,11 @@ with_timeout() {
     cat "$tmp_output"; rm -f "$tmp_output"; return "$rc"
 }
 
-# === M-ERR-5: PostHog 事件上报 ===
-send_posthog_event() {
-    local event_type="$1"
-    local identifier="$2"
-    local stage="$3"
-    local detail="$4"
-    # M4: PostHog key from environment; skip if not set
-    if [[ -z "${POSTHOG_API_KEY:-}" ]]; then
-        echo "[POSTHOG] Skipping event (no POSTHOG_API_KEY): $event_type" >&2
-        return 0
-    fi
-    local timestamp
-    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    curl -s -X POST "https://us.posthog.com/batch/" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"api_key\": \"${POSTHOG_API_KEY}\",
-            \"batch\": [{
-                \"event\": \"error_webhook_failure\",
-                \"properties\": {
-                    \"error_type\": \"$event_type\",
-                    \"identifier\": \"$identifier\",
-                    \"stage\": \"$stage\",
-                    \"detail\": \"$detail\",
-                    \"distinct_id\": \"error-webhook\"
-                },
-                \"timestamp\": \"$timestamp\"
-            }]
-        }" >> "$LOG_FILE" 2>&1 || true
-}
+# === PostHog 事件上报 (lib/posthog.sh 统一实现) ===
+POSTHOG_EVENT_NAME="error_webhook_failure"
+POSTHOG_DISTINCT_ID="error-webhook"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/posthog.sh"
 
 # === 仓库路由 (error 5 fix: no hardcoded paths) ===
 route_repo() {

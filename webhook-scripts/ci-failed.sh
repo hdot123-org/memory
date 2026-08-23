@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
 # CI failed webhook handler
 set -uo pipefail
 
@@ -11,36 +12,11 @@ log() {
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" >> "$LOG_FILE"
 }
 
-# === PostHog 事件上报 (distinct_id=ci-webhook) ===
-send_posthog_event() {
-    local event_type="$1"
-    local identifier="$2"
-    local stage="$3"
-    local detail="$4"
-    # M4: PostHog key from environment; skip if not set
-    if [[ -z "${POSTHOG_API_KEY:-}" ]]; then
-        echo "[POSTHOG] Skipping event (no POSTHOG_API_KEY): $event_type" >&2
-        return 0
-    fi
-    local timestamp
-    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    curl -s -X POST "https://us.posthog.com/batch/" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"api_key\": \"${POSTHOG_API_KEY}\",
-            \"batch\": [{
-                \"event\": \"ci_failed_mcp_failure\",
-                \"properties\": {
-                    \"error_type\": \"$event_type\",
-                    \"identifier\": \"$identifier\",
-                    \"stage\": \"$stage\",
-                    \"detail\": \"$detail\",
-                    \"distinct_id\": \"ci-webhook\"
-                },
-                \"timestamp\": \"$timestamp\"
-            }]
-        }" >> "$LOG_FILE" 2>&1 || true
-}
+# === PostHog 事件上报 (lib/posthog.sh 统一实现) ===
+POSTHOG_EVENT_NAME="ci_failed_mcp_failure"
+POSTHOG_DISTINCT_ID="ci-webhook"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/posthog.sh"
 
 log "CI failed hook triggered: pipeline=$CI_PIPELINE_ID project=$CI_PROJECT branch=$CI_BRANCH sha=$CI_SHA"
 

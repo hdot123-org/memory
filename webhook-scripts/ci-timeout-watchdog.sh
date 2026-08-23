@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2034
 # ci-timeout-watchdog.sh - TTL watchdog for pending CI notifications
 # Scans ~/.factory/webhook/locks/pending-ci-*.json
 # Phase A: If created_at > 30 minutes without injected_at, sends PostHog event and deletes file
@@ -15,41 +16,11 @@ LOCKS_DIR="${LOCKS_DIR:-$HOME/.factory/webhook/locks}"
 TTL_SECONDS=1800          # 30 minutes (Phase A)
 INJECTION_TTL_SECONDS=2700 # 45 minutes (Phase B)
 
-# === PostHog event reporting ===
-send_posthog_event() {
-  # POSTHOG_DRY_RUN=1: print only, do not send (test isolation guard)
-  if [[ "${POSTHOG_DRY_RUN:-0}" == "1" ]]; then
-    echo "[POSTHOG_DRY_RUN] Would send: event=$1 pr=$2 stage=$3 detail=$4"
-    return 0
-  fi
-  local event_type="$1"
-  local pr_number="$2"
-  local stage="$3"
-  local detail="$4"
-  # M4: PostHog key from environment; skip if not set
-  if [[ -z "${POSTHOG_API_KEY:-}" ]]; then
-    echo "[POSTHOG] Skipping event (no POSTHOG_API_KEY): $event_type" >&2
-    return 0
-  fi
-  local timestamp
-  timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  curl -s -X POST "https://us.posthog.com/batch/" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"api_key\": \"${POSTHOG_API_KEY}\",
-      \"batch\": [{
-        \"event\": \"ci_webhook_failure\",
-        \"properties\": {
-          \"error_type\": \"$event_type\",
-          \"pr_number\": \"$pr_number\",
-          \"stage\": \"$stage\",
-          \"detail\": \"$detail\",
-          \"distinct_id\": \"ci-webhook\"
-        },
-        \"timestamp\": \"$timestamp\"
-      }]
-    }" || true
-}
+# === PostHog 事件上报 (lib/posthog.sh 统一实现) ===
+POSTHOG_EVENT_NAME="ci_webhook_failure"
+POSTHOG_DISTINCT_ID="ci-webhook"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/posthog.sh"
 
 # Cross-platform mtime (macOS stat -f %m / GNU stat -c %Y)
 # Conditional assignment avoids GNU stdout leak into $() capture

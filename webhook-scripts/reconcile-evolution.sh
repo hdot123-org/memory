@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
 # reconcile-evolution.sh — 拉取式对账，发现孤立的 evolution finding 并补触发
 # 设计：push(webhook) + pull(本脚本) = 最终一致
 #
@@ -887,27 +888,15 @@ except:
                 INFRA_FAILED_MARKER="${LOCK_DIR}/infra-failed-${LINEAR_REF}.marker"
                 echo "exitCode=${STATUS_EXIT_CODE}" > "$INFRA_FAILED_MARKER"
                 
-                # PostHog 事件（DRY_RUN 模式下只打日志）
+                # PostHog 事件（通过 lib/posthog.sh 统一实现）
                 if [ "$DRY_RUN" = "1" ]; then
                     log "  ${LINEAR_REF}: [DRY_RUN] would send PostHog event ci_infra_failure_blocked_cancel (exitCode=${STATUS_EXIT_CODE})"
                 else
-                    # 实际发 PostHog 事件（复用既有上报机制，M5 会收敛到 lib/posthog.sh）
-                    if [ -n "${POSTHOG_API_KEY:-}" ]; then
-                        curl -s -X POST https://us.posthog.com/capture/ \
-                            -H "Content-Type: application/json" \
-                            -d "{
-                                \"api_key\": \"${POSTHOG_API_KEY}\",
-                                \"event\": \"ci_infra_failure_blocked_cancel\",
-                                \"properties\": {
-                                    \"distinct_id\": \"reconcile-evolution\",
-                                    \"linear_ref\": \"${LINEAR_REF}\",
-                                    \"exit_code\": ${STATUS_EXIT_CODE},
-                                    \"status_file\": \"${STATUS_FILE}\"
-                                }
-                            }" >/dev/null 2>&1 || true
-                    else
-                        log "  ${LINEAR_REF}: WARNING POSTHOG_API_KEY not set, skipping ci_infra_failure_blocked_cancel event"
-                    fi
+                    POSTHOG_EVENT_NAME="ci_infra_failure_blocked_cancel"
+                    POSTHOG_DISTINCT_ID="reconcile-evolution"
+                    # shellcheck source=/dev/null
+                    source "${SCRIPT_DIR}/lib/posthog.sh"
+                    send_posthog_event "infra_failure_${STATUS_EXIT_CODE}" "$LINEAR_REF" "${STATUS_FILE}" "exitCode=${STATUS_EXIT_CODE}"
                 fi
                 
                 # 跳过计数器递增，直接 continue
