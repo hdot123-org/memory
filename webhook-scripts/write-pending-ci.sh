@@ -85,6 +85,17 @@ probe_session() {
   fi
 }
 
+# Cross-platform mtime (macOS stat -f %m / GNU stat -c %Y)
+# Conditional assignment avoids GNU stdout leak into $() capture
+# (GNU stat treats -f as --file-system, leaking fs-listing stdout)
+_portable_mtime() {
+  local _f="$1" _ts
+  if ! _ts=$(stat -f %m "$_f" 2>/dev/null); then
+    _ts=$(stat -c %Y "$_f" 2>/dev/null || echo 0)
+  fi
+  printf '%s' "$_ts"
+}
+
 # Get Factory token from 1Password MCP (reuses lib/op-mcp.sh pattern from trigger-ci-droid.sh)
 get_factory_token() {
   if [ -n "${FACTORY_TOKEN:-}" ]; then
@@ -249,7 +260,7 @@ for c in candidates:
     latest_time=0
     for f in "$SESSIONS_DIR"/*.jsonl; do
       [ -f "$f" ] || continue
-      t=$(stat -f '%m' "$f" 2>/dev/null || echo 0)
+      t=$(_portable_mtime "$f")
       if [ "$t" -gt "$latest_time" ]; then
         latest_time=$t
         LATEST_JSONL="$f"
@@ -262,19 +273,22 @@ for c in candidates:
     SESSION_ID=$(basename "$LATEST_JSONL" .jsonl)
 
     # Probe the mtime-scanned session if token available
+    # BLK-M3-R1-1 fix: capture rc BEFORE branching.
+    # Old pattern: `if ! probe_session ...; then PROBE_EXIT=$?` captures the negated
+    # rc (always 0) — dead code.
+    # Use `cmd || PROBE_EXIT=$?` to capture real rc without triggering set -e exit.
     if [ -n "$FACTORY_TOKEN" ]; then
-      if ! probe_session "$SESSION_ID" "$FACTORY_TOKEN"; then
-        PROBE_EXIT=$?
-        if [ "$PROBE_EXIT" = "1" ]; then
-          echo "ERROR: mtime-scanned session $SESSION_ID is dead (404). No candidates left. Refusing to write dead-session pending." >&2
-          send_posthog_event "ci_write_all_sessions_dead" "$PR_NUMBER" "write_probe" "mtime_scan_session_404"
-          exit 1
-        else
-          echo "WARN: Probe unreachable for mtime-scanned session $SESSION_ID. Proceeding with caution." >&2
-          send_posthog_event "ci_write_probe_unreachable" "$PR_NUMBER" "write_probe" "mtime_scan_unreachable:$SESSION_ID"
-        fi
-      else
+      PROBE_EXIT=0
+      probe_session "$SESSION_ID" "$FACTORY_TOKEN" || PROBE_EXIT=$?
+      if [ "$PROBE_EXIT" = "0" ]; then
         echo "Probe OK: mtime-scanned session $SESSION_ID is alive" >&2
+      elif [ "$PROBE_EXIT" = "1" ]; then
+        echo "ERROR: mtime-scanned session $SESSION_ID is dead (404). No candidates left. Refusing to write dead-session pending." >&2
+        send_posthog_event "ci_write_all_sessions_dead" "$PR_NUMBER" "write_probe" "mtime_scan_session_404"
+        exit 1
+      else
+        echo "WARN: Probe unreachable for mtime-scanned session $SESSION_ID. Proceeding with caution." >&2
+        send_posthog_event "ci_write_probe_unreachable" "$PR_NUMBER" "write_probe" "mtime_scan_unreachable:$SESSION_ID"
       fi
     fi
   fi
