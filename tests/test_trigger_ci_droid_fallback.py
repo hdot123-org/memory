@@ -450,15 +450,22 @@ class TestVAL_INJ_003_BranchA_Probe404ButIndexFresh:
         # Create sessions-index.json with this session marked as fresh (mtime = now)
         sessions_index = tmp_path / "sessions-index.json"
         import time
-        sessions_index.write_text(json.dumps({
-            "entries": [{
-                "sessionId": session_id,
-                "cwd": "/test/repo",
-                "mtime": time.time(),  # Fresh: just now
-                "tags": [{"name": "mission-session", "metadata": {"role": "orchestrator"}}],
-                "callingSessionId": None
-            }]
-        }))
+
+        sessions_index.write_text(
+            json.dumps(
+                {
+                    "entries": [
+                        {
+                            "sessionId": session_id,
+                            "cwd": "/test/repo",
+                            "mtime": time.time(),  # Fresh: just now
+                            "tags": [{"name": "mission-session", "metadata": {"role": "orchestrator"}}],
+                            "callingSessionId": None,
+                        }
+                    ]
+                }
+            )
+        )
         temp_env["SESSIONS_INDEX"] = str(sessions_index)
 
         result = subprocess.run(
@@ -472,16 +479,18 @@ class TestVAL_INJ_003_BranchA_Probe404ButIndexFresh:
         combined_output = result.stdout + result.stderr
 
         # Branch A: should attempt POST despite 404 probe (index fresh)
-        assert "WARN: Probe 404 but sessions-index shows recent activity" in combined_output or \
-               "attempting POST anyway" in combined_output, \
-               "Should attempt POST when sessions-index is fresh"
+        assert (
+            "WARN: Probe 404 but sessions-index shows recent activity" in combined_output
+            or "attempting POST anyway" in combined_output
+        ), "Should attempt POST when sessions-index is fresh"
 
         # Should NOT spawn fallback (because we attempt POST)
         # Actually, the POST will fail because stub returns 404 for this session_id
         # But the point is we ATTEMPTED POST, not skipped it
-        assert "PROBE FAILED: Session does not exist (404 JSON)" not in combined_output or \
-               "attempting POST anyway" in combined_output, \
-               "Should not immediately judge death on 404 when index is fresh"
+        assert (
+            "PROBE FAILED: Session does not exist (404 JSON)" not in combined_output
+            or "attempting POST anyway" in combined_output
+        ), "Should not immediately judge death on 404 when index is fresh"
 
 
 class TestVAL_INJ_004_SessionSelectionExcludesDecoys:
@@ -494,60 +503,69 @@ class TestVAL_INJ_004_SessionSelectionExcludesDecoys:
 
         # Create pending-ci file (M5 schema: no session_id)
         pending_file = locks_dir / f"pending-ci-{pr_number}.json"
-        pending_file.write_text(json.dumps({
-            "pr_number": str(pr_number),
-            "cwd": "/test/repo",
-            "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        }))
+        pending_file.write_text(
+            json.dumps(
+                {
+                    "pr_number": str(pr_number),
+                    "cwd": "/test/repo",
+                    "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                }
+            )
+        )
 
         # Create sessions-index with decoy entries + one valid entry
         import time
+
         now = time.time()
         sessions_index = tmp_path / "sessions-index.json"
-        sessions_index.write_text(json.dumps({
-            "entries": [
-                # Decoy 1: non-null callingSessionId (worker session)
+        sessions_index.write_text(
+            json.dumps(
                 {
-                    "sessionId": "decoy-1-calling-session",
-                    "cwd": "/test/repo",
-                    "mtime": now,
-                    "tags": [{"name": "mission-session", "metadata": {"role": "orchestrator"}}],
-                    "callingSessionId": "parent-session-id"
-                },
-                # Decoy 2: cwd mismatch
-                {
-                    "sessionId": "decoy-2-wrong-cwd",
-                    "cwd": "/wrong/repo",
-                    "mtime": now,
-                    "tags": [{"name": "mission-session", "metadata": {"role": "orchestrator"}}],
-                    "callingSessionId": None
-                },
-                # Decoy 3: role=worker (not orchestrator)
-                {
-                    "sessionId": "decoy-3-worker-role",
-                    "cwd": "/test/repo",
-                    "mtime": now,
-                    "tags": [{"name": "mission-session", "metadata": {"role": "worker"}}],
-                    "callingSessionId": None
-                },
-                # Decoy 4: old mtime (not the most recent)
-                {
-                    "sessionId": "decoy-4-old-mtime",
-                    "cwd": "/test/repo",
-                    "mtime": now - 86400,  # 1 day old
-                    "tags": [{"name": "mission-session", "metadata": {"role": "orchestrator"}}],
-                    "callingSessionId": None
-                },
-                # Valid entry: most recent, correct criteria
-                {
-                    "sessionId": "valid-session-most-recent",
-                    "cwd": "/test/repo",
-                    "mtime": now - 10,  # 10 seconds ago (most recent valid)
-                    "tags": [{"name": "mission-session", "metadata": {"role": "orchestrator"}}],
-                    "callingSessionId": None
+                    "entries": [
+                        # Decoy 1: non-null callingSessionId (worker session)
+                        {
+                            "sessionId": "decoy-1-calling-session",
+                            "cwd": "/test/repo",
+                            "mtime": now,
+                            "tags": [{"name": "mission-session", "metadata": {"role": "orchestrator"}}],
+                            "callingSessionId": "parent-session-id",
+                        },
+                        # Decoy 2: cwd mismatch
+                        {
+                            "sessionId": "decoy-2-wrong-cwd",
+                            "cwd": "/wrong/repo",
+                            "mtime": now,
+                            "tags": [{"name": "mission-session", "metadata": {"role": "orchestrator"}}],
+                            "callingSessionId": None,
+                        },
+                        # Decoy 3: role=worker (not orchestrator)
+                        {
+                            "sessionId": "decoy-3-worker-role",
+                            "cwd": "/test/repo",
+                            "mtime": now,
+                            "tags": [{"name": "mission-session", "metadata": {"role": "worker"}}],
+                            "callingSessionId": None,
+                        },
+                        # Decoy 4: old mtime (not the most recent)
+                        {
+                            "sessionId": "decoy-4-old-mtime",
+                            "cwd": "/test/repo",
+                            "mtime": now - 86400,  # 1 day old
+                            "tags": [{"name": "mission-session", "metadata": {"role": "orchestrator"}}],
+                            "callingSessionId": None,
+                        },
+                        # Valid entry: most recent, correct criteria
+                        {
+                            "sessionId": "valid-session-most-recent",
+                            "cwd": "/test/repo",
+                            "mtime": now - 10,  # 10 seconds ago (most recent valid)
+                            "tags": [{"name": "mission-session", "metadata": {"role": "orchestrator"}}],
+                            "callingSessionId": None,
+                        },
+                    ]
                 }
-            ]
-        }))
+            )
+        )
         temp_env["SESSIONS_INDEX"] = str(sessions_index)
 
         # Stub will return 200 for valid-session-most-recent (default behavior)
@@ -562,23 +580,28 @@ class TestVAL_INJ_004_SessionSelectionExcludesDecoys:
         combined_output = result.stdout + result.stderr
 
         # Should select the valid session (most recent with correct criteria)
-        assert "Selected session via event-time rebinding: valid-session-most-recent" in combined_output or \
-               "valid-session-most-recent" in combined_output, \
-               "Should select the valid session, not any decoy"
+        assert (
+            "Selected session via event-time rebinding: valid-session-most-recent" in combined_output
+            or "valid-session-most-recent" in combined_output
+        ), "Should select the valid session, not any decoy"
 
         # Should NOT select any decoy
-        assert "decoy-1-calling-session" not in combined_output or \
-               "Selected session via event-time rebinding: decoy-1" not in combined_output, \
-               "Should not select decoy 1 (non-null callingSessionId)"
-        assert "decoy-2-wrong-cwd" not in combined_output or \
-               "Selected session via event-time rebinding: decoy-2" not in combined_output, \
-               "Should not select decoy 2 (cwd mismatch)"
-        assert "decoy-3-worker-role" not in combined_output or \
-               "Selected session via event-time rebinding: decoy-3" not in combined_output, \
-               "Should not select decoy 3 (role=worker)"
-        assert "decoy-4-old-mtime" not in combined_output or \
-               "Selected session via event-time rebinding: decoy-4" not in combined_output, \
-               "Should not select decoy 4 (old mtime)"
+        assert (
+            "decoy-1-calling-session" not in combined_output
+            or "Selected session via event-time rebinding: decoy-1" not in combined_output
+        ), "Should not select decoy 1 (non-null callingSessionId)"
+        assert (
+            "decoy-2-wrong-cwd" not in combined_output
+            or "Selected session via event-time rebinding: decoy-2" not in combined_output
+        ), "Should not select decoy 2 (cwd mismatch)"
+        assert (
+            "decoy-3-worker-role" not in combined_output
+            or "Selected session via event-time rebinding: decoy-3" not in combined_output
+        ), "Should not select decoy 3 (role=worker)"
+        assert (
+            "decoy-4-old-mtime" not in combined_output
+            or "Selected session via event-time rebinding: decoy-4" not in combined_output
+        ), "Should not select decoy 4 (old mtime)"
 
 
 class TestVAL_INJ_005_FallbackPromptContainsGhPrView:
@@ -591,11 +614,15 @@ class TestVAL_INJ_005_FallbackPromptContainsGhPrView:
 
         # Create pending-ci file
         pending_file = locks_dir / f"pending-ci-{pr_number}.json"
-        pending_file.write_text(json.dumps({
-            "pr_number": str(pr_number),
-            "cwd": str(tmp_path),
-            "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        }))
+        pending_file.write_text(
+            json.dumps(
+                {
+                    "pr_number": str(pr_number),
+                    "cwd": str(tmp_path),
+                    "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                }
+            )
+        )
 
         # Empty sessions-index → no candidates → fallback
         sessions_index = tmp_path / "sessions-index.json"
@@ -626,8 +653,9 @@ class TestVAL_INJ_005_FallbackPromptContainsGhPrView:
         assert str(pr_number) in log_content, f"Fallback prompt must contain PR #{pr_number}"
 
         # PROMPT should guide fallback to fetch PR context first
-        assert "--json" in log_content or "state" in log_content or "statusCheckRollup" in log_content, \
+        assert "--json" in log_content or "state" in log_content or "statusCheckRollup" in log_content, (
             "Prompt should suggest fetching PR context (state/checks)"
+        )
 
 
 class TestVAL_INJ_012_ProbeUnavailableStillInjects:
@@ -656,10 +684,11 @@ class TestVAL_INJ_012_ProbeUnavailableStillInjects:
 
         # Probe returns 200 for this session (no "nonexistent" in name)
         # Verify the session was used (not rejected)
-        assert "is alive (probe HTTP 200)" in combined_output or \
-               "probe unavailable" in combined_output or \
-               "Session test-probe-500-active is alive" in combined_output, \
-               "Should either succeed probe or log unavailability and still use session"
+        assert (
+            "is alive (probe HTTP 200)" in combined_output
+            or "probe unavailable" in combined_output
+            or "Session test-probe-500-active is alive" in combined_output
+        ), "Should either succeed probe or log unavailability and still use session"
 
     def test_probe_connection_refused_still_injects(self, temp_env, tmp_path):
         """Probe connection refused (000) → still attempt POST injection"""
@@ -684,17 +713,19 @@ class TestVAL_INJ_012_ProbeUnavailableStillInjects:
 
         # Probe should fail with 000 (connection refused)
         # Script logs "probe unavailable (probe HTTP $PROBE_CODE)" for non-404 errors
-        assert "probe unavailable" in combined_output or \
-               "Probe HTTP Response Code: 000" in combined_output or \
-               "HTTP 000" in combined_output, \
-               "Probe should fail with 000 (connection refused)"
+        assert (
+            "probe unavailable" in combined_output
+            or "Probe HTTP Response Code: 000" in combined_output
+            or "HTTP 000" in combined_output
+        ), "Probe should fail with 000 (connection refused)"
 
         # Should still attempt to use session (not go directly to fallback)
         # Check that we see "using it anyway" (not "dead" or "fallback")
-        assert "using it anyway" in combined_output or \
-               "is alive" in combined_output or \
-               "attempting POST" in combined_output, \
-               "Should still attempt POST when probe is unavailable (not fallback)"
+        assert (
+            "using it anyway" in combined_output
+            or "is alive" in combined_output
+            or "attempting POST" in combined_output
+        ), "Should still attempt POST when probe is unavailable (not fallback)"
 
     def test_probe_404_json_stale_index_goes_fallback(self, temp_env, tmp_path):
         """Probe 404 JSON + stale/missing sessions-index → go to fallback"""
@@ -721,15 +752,16 @@ class TestVAL_INJ_012_ProbeUnavailableStillInjects:
 
         # Probe 404 + no fresh index → should mark session as dead
         # Script logs "is dead (probe HTTP 404, index stale/missing)"
-        assert "is dead (probe HTTP 404" in combined_output or \
-               "index stale/missing" in combined_output, \
-               "Should detect session death on 404 with stale index"
+        assert "is dead (probe HTTP 404" in combined_output or "index stale/missing" in combined_output, (
+            "Should detect session death on 404 with stale index"
+        )
 
         # Should eventually go to fallback (after rebinding attempts fail)
-        assert "FALLBACK: Spawning droid exec" in combined_output or \
-               "No live session available" in combined_output or \
-               "Created fallback lock" in combined_output, \
-               "Should spawn fallback when probe 404 and index stale"
+        assert (
+            "FALLBACK: Spawning droid exec" in combined_output
+            or "No live session available" in combined_output
+            or "Created fallback lock" in combined_output
+        ), "Should spawn fallback when probe 404 and index stale"
 
 
 class TestVAL_INJ_013_FallbackTTLLockThreePhases:
@@ -741,11 +773,15 @@ class TestVAL_INJ_013_FallbackTTLLockThreePhases:
         pr_number = 4256
 
         pending_file = locks_dir / f"pending-ci-{pr_number}.json"
-        pending_file.write_text(json.dumps({
-            "pr_number": str(pr_number),
-            "cwd": str(tmp_path),
-            "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        }))
+        pending_file.write_text(
+            json.dumps(
+                {
+                    "pr_number": str(pr_number),
+                    "cwd": str(tmp_path),
+                    "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                }
+            )
+        )
 
         # Empty sessions-index → fallback
         sessions_index = tmp_path / "sessions-index.json"
@@ -770,11 +806,15 @@ class TestVAL_INJ_013_FallbackTTLLockThreePhases:
         pr_number = 4257
 
         pending_file = locks_dir / f"pending-ci-{pr_number}.json"
-        pending_file.write_text(json.dumps({
-            "pr_number": str(pr_number),
-            "cwd": str(tmp_path),
-            "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        }))
+        pending_file.write_text(
+            json.dumps(
+                {
+                    "pr_number": str(pr_number),
+                    "cwd": str(tmp_path),
+                    "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                }
+            )
+        )
 
         # Pre-create a fresh fallback lock (< 60min old)
         fallback_lock = locks_dir / f"ci-fallback-{pr_number}.lock"
@@ -796,9 +836,9 @@ class TestVAL_INJ_013_FallbackTTLLockThreePhases:
         combined_output = result.stdout + result.stderr
 
         # Should skip duplicate spawn (lock age < 60min)
-        assert "SKIP: Fallback already triggered" in combined_output or \
-               "lock age" in combined_output, \
-               "Should skip duplicate spawn when lock < 60min"
+        assert "SKIP: Fallback already triggered" in combined_output or "lock age" in combined_output, (
+            "Should skip duplicate spawn when lock < 60min"
+        )
 
     def test_fallback_lock_rebuild_over_60min(self, temp_env, tmp_path):
         """Phase 3: Lock age > 60min → remove stale lock and spawn again"""
@@ -806,17 +846,22 @@ class TestVAL_INJ_013_FallbackTTLLockThreePhases:
         pr_number = 4258
 
         pending_file = locks_dir / f"pending-ci-{pr_number}.json"
-        pending_file.write_text(json.dumps({
-            "pr_number": str(pr_number),
-            "cwd": str(tmp_path),
-            "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        }))
+        pending_file.write_text(
+            json.dumps(
+                {
+                    "pr_number": str(pr_number),
+                    "cwd": str(tmp_path),
+                    "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                }
+            )
+        )
 
         # Pre-create a stale fallback lock (> 60min old)
         fallback_lock = locks_dir / f"ci-fallback-{pr_number}.lock"
         fallback_lock.write_text("stale")
         # Set mtime to 61 minutes ago
         import time
+
         stale_time = time.time() - (61 * 60)
         os.utime(fallback_lock, (stale_time, stale_time))
 
@@ -836,12 +881,12 @@ class TestVAL_INJ_013_FallbackTTLLockThreePhases:
         combined_output = result.stdout + result.stderr
 
         # Should detect stale lock and spawn again
-        assert "Stale fallback lock" in combined_output or \
-               "> 60min" in combined_output, \
-               "Should detect stale lock > 60min"
-        assert "FALLBACK: Spawning droid exec" in combined_output or \
-               "Created fallback lock" in combined_output, \
-               "Should spawn fallback after removing stale lock"
+        assert "Stale fallback lock" in combined_output or "> 60min" in combined_output, (
+            "Should detect stale lock > 60min"
+        )
+        assert "FALLBACK: Spawning droid exec" in combined_output or "Created fallback lock" in combined_output, (
+            "Should spawn fallback after removing stale lock"
+        )
 
 
 if __name__ == "__main__":

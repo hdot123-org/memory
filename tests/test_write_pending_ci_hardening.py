@@ -322,9 +322,7 @@ class TestSourceScanner:
         """VAL-REG-003: --source scanner 写入成功，不得拒绝"""
         repo, toplevel = _init_sandbox_repo(tmp_path)
         env = _make_env(stub_api_server, tmp_path, cwd=repo)
-        code, stdout, stderr = _run_script(
-            SCRIPT_PATH, "--source", "scanner", "4244", env=env
-        )
+        code, stdout, stderr = _run_script(SCRIPT_PATH, "--source", "scanner", "4244", env=env)
         assert code == 0, f"Expected success, stderr: {stderr}"
         pending = _read_pending(Path(env["HOME"]), 4244)
         assert pending is not None
@@ -343,18 +341,14 @@ class TestInvalidSource:
         repo, _ = _init_sandbox_repo(tmp_path)
         env = _make_env(stub_api_server, tmp_path, cwd=repo)
         # 变体 1: --source foo
-        code1, stdout1, stderr1 = _run_script(
-            SCRIPT_PATH, "--source", "foo", "4245", env=env
-        )
+        code1, stdout1, stderr1 = _run_script(SCRIPT_PATH, "--source", "foo", "4245", env=env)
         assert code1 != 0, "Expected non-zero exit for --source foo"
         assert "source" in (stdout1 + stderr1).lower() or "invalid" in (stdout1 + stderr1).lower()
         pending1 = _read_pending(Path(env["HOME"]), 4245)
         assert pending1 is None, "No file should be created for invalid source"
 
         # 变体 2: --source ""
-        code2, stdout2, stderr2 = _run_script(
-            SCRIPT_PATH, "--source", "", "4245", env=env
-        )
+        code2, stdout2, stderr2 = _run_script(SCRIPT_PATH, "--source", "", "4245", env=env)
         assert code2 != 0, "Expected non-zero exit for --source ''"
         pending2 = _read_pending(Path(env["HOME"]), 4245)
         assert pending2 is None, "No file should be created for empty source"
@@ -368,10 +362,8 @@ class TestContextBoundary:
         """VAL-REG-017a: 含单双引号与反引号"""
         repo, _ = _init_sandbox_repo(tmp_path)
         env = _make_env(stub_api_server, tmp_path, cwd=repo)
-        test_context = '修复 "权宜" 之\'计\'并 `echo hi`'
-        code, _, stderr = _run_script(
-            SCRIPT_PATH, "--source", "session", "--context", test_context, "4246", env=env
-        )
+        test_context = "修复 \"权宜\" 之'计'并 `echo hi`"
+        code, _, stderr = _run_script(SCRIPT_PATH, "--source", "session", "--context", test_context, "4246", env=env)
         assert code == 0, f"Expected success, stderr: {stderr}"
         pending = _read_pending(Path(env["HOME"]), 4246)
         assert pending is not None
@@ -382,9 +374,7 @@ class TestContextBoundary:
         repo, _ = _init_sandbox_repo(tmp_path)
         env = _make_env(stub_api_server, tmp_path, cwd=repo)
         test_context = "特殊 $ ` \\ ! ; & | 字符与中文混排"
-        code, _, stderr = _run_script(
-            SCRIPT_PATH, "--source", "session", "--context", test_context, "4247", env=env
-        )
+        code, _, stderr = _run_script(SCRIPT_PATH, "--source", "session", "--context", test_context, "4247", env=env)
         assert code == 0, f"Expected success, stderr: {stderr}"
         pending = _read_pending(Path(env["HOME"]), 4247)
         assert pending is not None
@@ -395,9 +385,7 @@ class TestContextBoundary:
         repo, _ = _init_sandbox_repo(tmp_path)
         env = _make_env(stub_api_server, tmp_path, cwd=repo)
         test_context = "A" * 4000
-        code, _, stderr = _run_script(
-            SCRIPT_PATH, "--source", "session", "--context", test_context, "4248", env=env
-        )
+        code, _, stderr = _run_script(SCRIPT_PATH, "--source", "session", "--context", test_context, "4248", env=env)
         assert code == 0, f"Expected success, stderr: {stderr}"
         pending = _read_pending(Path(env["HOME"]), 4248)
         assert pending is not None
@@ -409,9 +397,7 @@ class TestContextBoundary:
         repo, _ = _init_sandbox_repo(tmp_path)
         env = _make_env(stub_api_server, tmp_path, cwd=repo)
         test_context = "第一行\n第二行\n第三行"
-        code, _, stderr = _run_script(
-            SCRIPT_PATH, "--source", "session", "--context", test_context, "4249", env=env
-        )
+        code, _, stderr = _run_script(SCRIPT_PATH, "--source", "session", "--context", test_context, "4249", env=env)
         assert code == 0, f"Expected success, stderr: {stderr}"
         pending = _read_pending(Path(env["HOME"]), 4249)
         assert pending is not None
@@ -427,9 +413,7 @@ class TestDuplicateRegistration:
         repo, _ = _init_sandbox_repo(tmp_path)
         env = _make_env(stub_api_server, tmp_path, cwd=repo)
         # 第一次注册
-        code1, _, _ = _run_script(
-            SCRIPT_PATH, "--source", "session", "--context", "第一次意图", "4250", env=env
-        )
+        code1, _, _ = _run_script(SCRIPT_PATH, "--source", "session", "--context", "第一次意图", "4250", env=env)
         assert code1 == 0
         pending1 = _read_pending(Path(env["HOME"]), 4250)
         assert pending1 is not None
@@ -438,12 +422,11 @@ class TestDuplicateRegistration:
 
         # 等待 1 秒确保 created_at 可区分
         import time
+
         time.sleep(1)
 
         # 第二次注册（不同 context）
-        code2, _, _ = _run_script(
-            SCRIPT_PATH, "--source", "session", "--context", "第二次意图", "4250", env=env
-        )
+        code2, _, _ = _run_script(SCRIPT_PATH, "--source", "session", "--context", "第二次意图", "4250", env=env)
         assert code2 == 0
         pending2 = _read_pending(Path(env["HOME"]), 4250)
         assert pending2 is not None

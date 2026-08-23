@@ -67,7 +67,9 @@ def _install_fake_gh_scanner(tmp_path: Path, env: dict) -> None:
     fake_gh_dir = tmp_path / "fake_gh_bin"
     fake_gh_dir.mkdir(exist_ok=True)
     fake_gh = fake_gh_dir / "gh"
-    fake_gh.write_text('#!/bin/bash\necho \'{"author": {"login": "evolution-scanner[bot]"}, "labels": [{"name": "evolution-found"}]}\'\n')
+    fake_gh.write_text(
+        '#!/bin/bash\necho \'{"author": {"login": "evolution-scanner[bot]"}, "labels": [{"name": "evolution-found"}]}\'\n'
+    )
     fake_gh.chmod(0o755)
     env["PATH"] = f"{fake_gh_dir}:{env.get('PATH', '')}"
 
@@ -82,8 +84,9 @@ def _install_fake_gh_human(tmp_path: Path, env: dict) -> None:
     env["PATH"] = f"{fake_gh_dir}:{env.get('PATH', '')}"
 
 
-def _create_pending_file(locks_dir: Path, pr_number: int, source: str | None = None,
-                         created_at: str | None = None) -> Path:
+def _create_pending_file(
+    locks_dir: Path, pr_number: int, source: str | None = None, created_at: str | None = None
+) -> Path:
     """创建 pending-ci 测试文件"""
     data = {
         "pr_number": str(pr_number),
@@ -178,14 +181,11 @@ class TestVAL_REG_006_Scanner_Zero_PostHog:
         # 验证：日志中无 PostHog 事件发送记录
         combined_output = result.stdout + result.stderr
         # PostHog dry-run 模式会打印 "[DRY-RUN] Would send PostHog event: <event_name>"
-        assert "Would send PostHog event" not in combined_output, \
-            "Scanner path should not trigger any PostHog events"
+        assert "Would send PostHog event" not in combined_output, "Scanner path should not trigger any PostHog events"
 
         # 验证：无 ci_ 前缀事件（保守路径的 anomaly 事件除外，但 scanner 通过时不应触发）
-        ci_events = [line for line in combined_output.split("\n")
-                     if "ci_" in line and "PostHog" in line]
-        assert len(ci_events) == 0, \
-            f"Scanner path should not trigger ci_* events, found: {ci_events}"
+        ci_events = [line for line in combined_output.split("\n") if "ci_" in line and "PostHog" in line]
+        assert len(ci_events) == 0, f"Scanner path should not trigger ci_* events, found: {ci_events}"
 
 
 class TestVAL_REG_007_Scanner_Cross_Validation_Mismatch:
@@ -228,8 +228,9 @@ echo '{"author": {"login": "human-user"}, "labels": []}'
 
         # 验证：anomaly 事件被记录（日志包含 ci_scanner_source_mismatch）
         combined_output = result.stdout + result.stderr
-        assert "ci_scanner_source_mismatch" in combined_output or "cross-validation failed" in combined_output.lower(), \
-            "Should log anomaly event on cross-validation mismatch"
+        assert (
+            "ci_scanner_source_mismatch" in combined_output or "cross-validation failed" in combined_output.lower()
+        ), "Should log anomaly event on cross-validation mismatch"
 
         # 验证：无 fallback spawn
         assert "spawn_fallback" not in combined_output, "Should not spawn fallback on mismatch"
@@ -268,8 +269,10 @@ echo '{"author": {"login": "human-user"}, "labels": []}'
 
         # 验证：anomaly 事件被记录
         combined_output = result.stdout + result.stderr
-        assert "ci_scanner_source_unverifiable" in combined_output or "cross-validation unexecutable" in combined_output.lower(), \
-            "Should log anomaly event when gh unavailable (conservative path)"
+        assert (
+            "ci_scanner_source_unverifiable" in combined_output
+            or "cross-validation unexecutable" in combined_output.lower()
+        ), "Should log anomaly event when gh unavailable (conservative path)"
 
         # 验证：无 fallback spawn
         assert "spawn_fallback" not in combined_output, "Should not spawn fallback when gh unavailable"
@@ -297,10 +300,10 @@ class TestVAL_REG_008_Missing_Source_Default_Session:
 
         # 验证：日志记录 default 信息
         combined_output = result.stdout + result.stderr
-        default_logs = [line for line in combined_output.split("\n")
-                        if "unknown-source defaulted to session" in line]
-        assert len(default_logs) == 1, \
+        default_logs = [line for line in combined_output.split("\n") if "unknown-source defaulted to session" in line]
+        assert len(default_logs) == 1, (
             f"Should log 'unknown-source defaulted to session' exactly once, found {len(default_logs)} times"
+        )
 
         # 验证：继续走既有 session 路径（不删除文件，尝试注入）
         pending_file = locks_dir / f"pending-ci-{pr_number}.json"
@@ -332,8 +335,9 @@ class TestVAL_REG_009_Session_Source_Reaches_Injection:
 
         # 验证：日志不包含 scanner 清理信息
         combined_output = result.stdout + result.stderr
-        assert "silent cleanup" not in combined_output.lower(), \
+        assert "silent cleanup" not in combined_output.lower(), (
             "Session source should not enter scanner silent cleanup path"
+        )
 
         # 验证：尝试注入（由于闭端口会失败，但应有注入相关日志）
         # 此处不验证注入成功，只验证未进入 scanner 路径
@@ -368,12 +372,12 @@ class TestVAL_REG_010_Expired_Scanner_Silent_Cleanup:
 
         # 验证：无 expiry fallback 事件（不进入过期路径）
         combined_output = result.stdout + result.stderr
-        assert "ci_expired_pending_ci" not in combined_output, \
+        assert "ci_expired_pending_ci" not in combined_output, (
             "Expired scanner file should not trigger expiry fallback event"
+        )
 
         # 验证：无 fallback spawn
-        assert "spawn_fallback" not in combined_output, \
-            "Expired scanner file should not spawn fallback"
+        assert "spawn_fallback" not in combined_output, "Expired scanner file should not spawn fallback"
 
 
 if __name__ == "__main__":
