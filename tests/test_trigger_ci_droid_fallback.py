@@ -392,9 +392,15 @@ class TestVAL_INJECT_007_Probe_Failure_Direct_Fallback:
         combined_output = result.stdout + result.stderr
 
         # 验证：探活失败后直接走 fallback
-        assert "PROBE FAILED" in combined_output or "Session does not exist" in combined_output, (
-            "Expected probe failure log"
+        # M5 流程：probe 失败 → 尝试事件时重绑定 → 无候选 → fallback
+        # 检查旧的探测失败消息或新的重绑定流程消息
+        probe_or_rebind_failed = (
+            "PROBE FAILED" in combined_output
+            or "Session does not exist" in combined_output
+            or "is dead (probe HTTP" in combined_output
+            or "No live session available" in combined_output
         )
+        assert probe_or_rebind_failed, "Expected probe failure or rebinding failure log"
 
         # 验证：触发了 fallback
         assert "FALLBACK: Spawning droid exec" in combined_output or "FALLBACK: droid exec" in combined_output, (
