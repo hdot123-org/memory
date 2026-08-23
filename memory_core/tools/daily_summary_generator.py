@@ -328,26 +328,23 @@ def _extract_text_blocks(content: Any) -> list[str]:
 
 
 def _try_sign_file(project_root: Path, rel_path: str) -> None:
-    """F5: 尝试对指定文件进行增量签名，失败不阻塞主流程。"""
-    if _integrity is None or _integrity_keys is None:
-        return
-    try:
-        key = _integrity_keys.load_key()
-        if key is None:
-            return
-        _integrity.sign_project_incremental(project_root, key, changed_paths=[rel_path])
-    except Exception as exc:
-        # 签名失败 warning 但不阻塞
-        try:
-            import logging
+    """F5: 尝试对指定文件进行增量签名，失败不阻塞主流程。
 
-            _logger = logging.getLogger(__name__)
-            _logger.warning("daily_summary_generator: sign_project_incremental failed: %s", exc)
-        except Exception as log_exc:
-            print(
-                f"[daily_summary_generator] sign_project_incremental failed: {exc}; logging also failed: {log_exc}",
-                file=sys.stderr,
-            )
+    委托 error_logger 的参数化共享实现（INFRA-909 去重）：
+    传入本模块级 _integrity/_integrity_keys（调用时读取，monkeypatch
+    本模块属性仍然生效）、本模块 logger 名与消息前缀，保持既有
+    日志与 stderr 兜底行为不变。
+    """
+    from memory_core.tools.error_logger import _try_sign_file as _shared_try_sign_file
+
+    _shared_try_sign_file(
+        project_root,
+        rel_path,
+        integrity=_integrity,
+        integrity_keys=_integrity_keys,
+        logger_name=__name__,
+        label="daily_summary_generator",
+    )
 
 
 def _generate_data_report(session_data_list: list[dict[str, Any]], target_date: str) -> str:
