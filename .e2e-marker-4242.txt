@@ -1,0 +1,1 @@
+# E2E test marker - VAL-CROSS-002 session flow
