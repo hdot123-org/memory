@@ -48,6 +48,37 @@ from memory_core.tools.daily_kb_audit import (
     notify_via_lark,
 )
 
+
+def _patch_relative_to_raise(monkeypatch, target_path):
+    """Patch pathlib.Path.relative_to so only target_path raises ValueError.
+
+    Shared by check_unsigned_files / check_large_or_db_files ValueError
+    fallback tests (dedup INFRA-469).
+    """
+    original_relative_to = target_path.__class__.relative_to
+
+    def mock_relative_to(self, *args, **kwargs):
+        if self == target_path:
+            raise ValueError("different root")
+        return original_relative_to(self, *args, **kwargs)
+
+    monkeypatch.setattr("pathlib.Path.relative_to", mock_relative_to)
+
+
+def _assert_yaml_parse_error_returns_none(monkeypatch, tmp_path, malformed_yaml: str) -> None:
+    """Write malformed inventory.yaml and assert _load_infra_inventory returns None.
+
+    Shared by both _load_infra_inventory YAML-parse-error tests (dedup INFRA-472).
+    """
+    pytest.importorskip("yaml")
+    monkeypatch.setattr("memory_core.tools.daily_kb_audit._HAS_YAML", True)
+    inv = tmp_path / "inventory.yaml"
+    inv.write_text(malformed_yaml, encoding="utf-8")
+    monkeypatch.setattr("memory_core.tools.daily_kb_audit.INFRA_INVENTORY", inv)
+    result = _load_infra_inventory()
+    assert result is None
+
+
 # ---------------------------------------------------------------------------
 # load_registered_projects edge cases
 # ---------------------------------------------------------------------------
@@ -256,14 +287,8 @@ class TestCheckVersionConsistencyEdgeCases:
 
 class TestLoadInfraInventoryEdgeCases:
     def test_yaml_parse_error(self, tmp_path, monkeypatch):
-        pytest.importorskip("yaml")
         """When YAML file is malformed, returns None."""
-        monkeypatch.setattr("memory_core.tools.daily_kb_audit._HAS_YAML", True)
-        inv = tmp_path / "inventory.yaml"
-        inv.write_text("{{invalid yaml: [", encoding="utf-8")
-        monkeypatch.setattr("memory_core.tools.daily_kb_audit.INFRA_INVENTORY", inv)
-        result = _load_infra_inventory()
-        assert result is None
+        _assert_yaml_parse_error_returns_none(monkeypatch, tmp_path, "{{invalid yaml: [")
 
     def test_not_mapping(self, tmp_path, monkeypatch):
         """When YAML top-level is not a dict, returns None."""
@@ -2024,17 +2049,7 @@ class TestLoadInfraInventoryYamlErrors:
 
     def test_yaml_parse_error(self, tmp_path, monkeypatch):
         """YAML parse error returns None."""
-        pytest.importorskip("yaml")
-        from memory_core.tools.daily_kb_audit import _load_infra_inventory
-
-        monkeypatch.setattr("memory_core.tools.daily_kb_audit._HAS_YAML", True)
-        inv = tmp_path / "inventory.yaml"
-        inv.write_text("{{invalid yaml", encoding="utf-8")
-
-        monkeypatch.setattr("memory_core.tools.daily_kb_audit.INFRA_INVENTORY", inv)
-
-        result = _load_infra_inventory()
-        assert result is None
+        _assert_yaml_parse_error_returns_none(monkeypatch, tmp_path, "{{invalid yaml")
 
 
 class TestTcpConnectOkEdgeCases:
@@ -2476,17 +2491,11 @@ class TestCheckUnsignedFilesValueError:
         """relative_to ValueError is handled."""
         kb_dir = tmp_path / "memory" / "kb"
         kb_dir.mkdir(parents=True)
-        (kb_dir / "test.md").write_text("content", encoding="utf-8")
+        md_path = kb_dir / "test.md"
+        md_path.write_text("content", encoding="utf-8")
 
-        # Mock relative_to to raise ValueError
-        original_relative_to = tmp_path.__class__.relative_to
-
-        def mock_relative_to(self, *args, **kwargs):
-            if self == kb_dir / "test.md":
-                raise ValueError("different root")
-            return original_relative_to(self, *args, **kwargs)
-
-        monkeypatch.setattr("pathlib.Path.relative_to", mock_relative_to)
+        # Mock relative_to to raise ValueError only for the target file
+        _patch_relative_to_raise(monkeypatch, md_path)
 
         from memory_core.tools.daily_kb_audit import check_unsigned_files
 
@@ -2503,14 +2512,7 @@ class TestCheckLargeOrDbFilesValueError:
         sql_file = tmp_path / "large.sql"
         sql_file.write_bytes(b"\x00" * (1024 * 1024 + 100))
 
-        original_relative_to = tmp_path.__class__.relative_to
-
-        def mock_relative_to(self, *args, **kwargs):
-            if self == sql_file:
-                raise ValueError("different root")
-            return original_relative_to(self, *args, **kwargs)
-
-        monkeypatch.setattr("pathlib.Path.relative_to", mock_relative_to)
+        _patch_relative_to_raise(monkeypatch, sql_file)
 
         from memory_core.tools.daily_kb_audit import check_large_or_db_files
 

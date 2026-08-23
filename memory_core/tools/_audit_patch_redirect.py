@@ -7,8 +7,9 @@ _audit_checks / _audit_infra / _audit_server / _audit_report / _audit_cli）。
 ``monkeypatch.setattr("memory_core.tools.daily_kb_audit.X", ...)`` 打桩，
 但拆分后运行时在各子模块自己的命名空间查找符号，直接改门面属性不再生效。
 
-方案：将门面模块的类替换为 ``_RedirectModule``，其 ``__setattr__`` 会把
-「拆分后仍被子模块本地引用的符号」写入到所有消费它的子模块命名空间，
+方案（机制实现收敛于 _patch_redirect_shared，本文件只维护 audit 特有的
+目标表）：将门面模块的类替换为 ``_RedirectModule``，其 ``__setattr__``
+会把「拆分后仍被子模块本地引用的符号」写入到所有消费它的子模块命名空间，
 使旧的打桩目标语义保持不变（不改测试、不改断言）。
 
 与 _gateway_patch_redirect 同构，仅目标表不同：
@@ -18,10 +19,9 @@ _audit_checks / _audit_infra / _audit_server / _audit_report / _audit_cli）。
 
 from __future__ import annotations
 
-import contextlib
-import sys
 import types
-from typing import Any
+
+from ._patch_redirect_shared import install_redirect as _install_redirect_shared
 
 # 符号 → 拆分后运行时实际查找该符号的模块（可多个）。
 # 维护规则：新增子模块消费某符号时，在此登记。
@@ -89,72 +89,9 @@ _MODULE_ANCHORS: dict[str, tuple[str, ...]] = {
 }
 
 
-class _RedirectModule(types.ModuleType):
-    """把符号写入同步到拆分子模块的模块类。"""
-
-    def __setattr__(self, name: str, value: object) -> None:
-        super().__setattr__(name, value)
-        self._redirect_set(name, value)
-
-    def __delattr__(self, name: str) -> None:
-        super().__delattr__(name)
-        self._redirect_del(name)
-
-    def _redirect_set(self, name: str, value: object) -> None:
-        targets = _REDIRECT_TARGETS.get(name)
-        if targets is None:
-            return
-        parent = __name__.rsplit(".", 1)[0]
-        for mod_name in targets:
-            for ns in _resolve_target_dicts(self, parent, mod_name):
-                if ns.get(name) is not value:
-                    ns[name] = value
-
-    def _redirect_del(self, name: str) -> None:
-        targets = _REDIRECT_TARGETS.get(name)
-        if targets is None:
-            return
-        parent = __name__.rsplit(".", 1)[0]
-        for mod_name in targets:
-            for ns in _resolve_target_dicts(self, parent, mod_name):
-                if name in ns:
-                    with contextlib.suppress(KeyError):
-                        del ns[name]
-
-
-def _resolve_target_dicts(gateway_module: types.ModuleType, parent: str, mod_name: str) -> list[dict[str, Any]]:
-    """解析目标模块命名空间的所有存活实例（sys.modules + 孤儿模块）。
-
-    返回可直接写入的命名空间 dict：
-    - sys.modules 中登记的模块 ``__dict__``
-    - 孤儿模块：已从 sys.modules 移除、但旧门面仍持有其函数引用的模块。
-      通过门面属性（或 sys.modules 模块）中锚点函数的 ``__globals__`` 定位。
-    """
-    full = f"{parent}.{mod_name}"
-    dicts: list[dict[str, Any]] = []
-    seen: set[int] = set()
-
-    def _try_add(ns: Any) -> None:
-        if isinstance(ns, dict) and ns.get("__name__") == full and id(ns) not in seen:
-            dicts.append(ns)
-            seen.add(id(ns))
-
-    mod = sys.modules.get(full)
-    if mod is not None:
-        _try_add(mod.__dict__)
-
-    for anchor_name in _MODULE_ANCHORS.get(mod_name, ()):
-        # 门面自身属性（可能是孤儿模块的函数）与 sys.modules 模块的属性
-        for holder in (gateway_module, mod):
-            anchor_fn = getattr(holder, anchor_name, None)
-            if anchor_fn is not None:
-                _try_add(getattr(anchor_fn, "__globals__", None))
-    return dicts
-
-
 def install_redirect(gateway_module: types.ModuleType) -> None:
     """把门面模块的类替换为重定向模块类（幂等）。"""
-    gateway_module.__class__ = _RedirectModule
+    _install_redirect_shared(gateway_module, _REDIRECT_TARGETS, _MODULE_ANCHORS)
 
 
 __all__ = ["install_redirect", "_REDIRECT_TARGETS", "_HANDLED_ATTRS"]

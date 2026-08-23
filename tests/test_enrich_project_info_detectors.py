@@ -18,6 +18,20 @@ def project_info() -> ProjectInfo:
     return ProjectInfo()
 
 
+def _assert_toolchain_not_overwritten(tmp_path: Path, config_name: str, config_content: str) -> None:
+    """Write a detector config file and assert enrichment keeps the existing toolchain.
+
+    Shared by package.json / tsconfig.json variants (dedup INFRA-483).
+    """
+    info = ProjectInfo(toolchain=[{"name": "make", "config": "Makefile"}])
+    (tmp_path / config_name).write_text(config_content, encoding="utf-8")
+    from memory_core.tools.init_project_memory import _enrich_project_info_from_config
+
+    _enrich_project_info_from_config(tmp_path, info)
+    assert len(info.toolchain) == 1
+    assert info.toolchain[0]["name"] == "make"
+
+
 # ===================================================================
 # _detect_pyproject tests
 # ===================================================================
@@ -224,15 +238,10 @@ class TestDetectPackageJson:
         assert project_info.project_type == "frontend"
 
     def test_does_not_overwrite_toolchain(self, tmp_path: Path):
-        info = ProjectInfo(toolchain=[{"name": "make", "config": "Makefile"}])
-        (tmp_path / "package.json").write_text(
-            json.dumps({"name": "app", "scripts": {"build": "tsc"}}), encoding="utf-8"
+        """package.json 检测不得覆盖既有 toolchain（dedup INFRA-483）。"""
+        _assert_toolchain_not_overwritten(
+            tmp_path, "package.json", json.dumps({"name": "app", "scripts": {"build": "tsc"}})
         )
-        from memory_core.tools.init_project_memory import _enrich_project_info_from_config
-
-        _enrich_project_info_from_config(tmp_path, info)
-        assert len(info.toolchain) == 1
-        assert info.toolchain[0]["name"] == "make"
 
 
 # ===================================================================
@@ -268,13 +277,8 @@ class TestDetectTsconfig:
         assert info.primary_language == "Python"
 
     def test_does_not_overwrite_toolchain(self, tmp_path: Path):
-        info = ProjectInfo(toolchain=[{"name": "make", "config": "Makefile"}])
-        (tmp_path / "tsconfig.json").write_text(json.dumps({"compilerOptions": {}}), encoding="utf-8")
-        from memory_core.tools.init_project_memory import _enrich_project_info_from_config
-
-        _enrich_project_info_from_config(tmp_path, info)
-        assert len(info.toolchain) == 1
-        assert info.toolchain[0]["name"] == "make"
+        """tsconfig.json 检测不得覆盖既有 toolchain（dedup INFRA-483）。"""
+        _assert_toolchain_not_overwritten(tmp_path, "tsconfig.json", json.dumps({"compilerOptions": {}}))
 
 
 # ===================================================================
