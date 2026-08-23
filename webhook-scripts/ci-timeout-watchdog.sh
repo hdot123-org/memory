@@ -26,12 +26,17 @@ send_posthog_event() {
   local pr_number="$2"
   local stage="$3"
   local detail="$4"
+  # M4: PostHog key from environment; skip if not set
+  if [[ -z "${POSTHOG_API_KEY:-}" ]]; then
+    echo "[POSTHOG] Skipping event (no POSTHOG_API_KEY): $event_type" >&2
+    return 0
+  fi
   local timestamp
   timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   curl -s -X POST "https://us.posthog.com/batch/" \
     -H "Content-Type: application/json" \
     -d "{
-      \"api_key\": \"phc_o963uzVAku9jd4SB4tgV598LUu2oJQHKFBy3RKjtgAVs\",
+      \"api_key\": \"${POSTHOG_API_KEY}\",
       \"batch\": [{
         \"event\": \"ci_webhook_failure\",
         \"properties\": {

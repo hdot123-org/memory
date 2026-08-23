@@ -121,6 +121,13 @@ get_factory_token() {
   return 1
 }
 
+# PR_NUMBER must be a positive integer (mirror trigger-ci-droid.sh consumer guard)
+if [[ ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Invalid PR_NUMBER='$PR_NUMBER' (must match ^[1-9][0-9]*$)"
+  send_posthog_event "ci_invalid_pr_number" "${PR_NUMBER:-empty}" "validation" "format_error"
+  exit 1
+fi
+
 # Create locks directory if it doesn't exist
 mkdir -p "$LOCKS_DIR"
 
