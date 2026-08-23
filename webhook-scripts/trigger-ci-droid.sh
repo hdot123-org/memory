@@ -162,23 +162,34 @@ log "Reading pending-ci-${PR_NUMBER}.json..."
 # 读取 session_id、pr_number、created_at 和 cwd（从 pending-ci-{PR_NUMBER}.json）
 # M5: session_id is now optional (new schema: {pr_number, cwd, created_at})
 # Old schema with session_id still works (backward compat)
+#
+# INFRA-527 修复：空 session_id 占位符
+# 旧实现按 `{session_id} {pr_number} ...` 单行拼接，session_id 为空时 python 输出
+# 前导空格，bash read 的 IFS 默认剥离所有空白，导致字段整体左移错位：
+# SESSION_ID=pr_number、PENDING_PR=created_at —— 新 schema 100% 误报 ci_pr_mismatch。
+# 占位符 "-" 保证 read 永远对齐 4 个字段，随后归一化为空字符串。
 read -r SESSION_ID PENDING_PR CREATED_AT PENDING_CWD < <($PYTHON_BIN -c "
 import json, sys
 try:
     with open('$PENDING_CI_FILE') as f:
         data = json.load(f)
-    session_id = data.get('session_id') or ''  # M5: null/missing → empty
-    pr_number = data.get('pr_number', '')
-    created_at = data.get('created_at', '')
-    cwd = data.get('cwd', '')
+    session_id = data.get('session_id') or '-'  # M5: null/missing → placeholder keeps read aligned
+    pr_number = data.get('pr_number', '-')
+    created_at = data.get('created_at', '-')
+    cwd = data.get('cwd', '-')
     print(f'{session_id} {pr_number} {created_at} {cwd}')
 except Exception as e:
     print(f'ERROR: {e}', file=sys.stderr)
-    print('    ')
+    print('- - - -')
 " 2>>"$LOG_FILE")
 
+# Normalize placeholders to empty (missing optional fields keep legacy behavior)
+[ "$SESSION_ID" = "-" ] && SESSION_ID=""
+[ "$CREATED_AT" = "-" ] && CREATED_AT=""
+[ "$PENDING_CWD" = "-" ] && PENDING_CWD=""
+
 # Check for corrupted JSON (parser failed to extract any fields)
-if [ -z "$PENDING_PR" ]; then
+if [ -z "$PENDING_PR" ] || [ "$PENDING_PR" = "-" ]; then
     log "ERROR: Failed to parse pending-ci JSON — quarantining corrupted file"
     mv "$PENDING_CI_FILE" "${PENDING_CI_FILE}.corrupted.$(date +%s)"
     send_posthog_event "ci_corrupted_json" "$PR_NUMBER" "parse" "JSON parse failed"
