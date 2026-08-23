@@ -19,6 +19,7 @@ MANAGED_FILES=(
     "trigger-error-droid.sh"
     "wiki-refresh.sh"
     "write-pending-ci.sh"
+    "ci-failed.sh"
 )
 
 # ============================================================================
