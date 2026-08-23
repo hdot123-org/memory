@@ -371,6 +371,34 @@ heartbeat 告警自愈（`resolve_cleared_alerts()`）在本轮 tick 中异常�
 
 完整的 GitHub↔Linear Issue 流转链路与职责约定见 [Issue 流转链路文档](docs/architecture/issue-flow.md)。
 
+## webhook-scripts/（CI 通知与治理脚本镜像）
+
+`webhook-scripts/` 是 `~/.factory/webhook/scripts/` 生产脚本的受管镜像。生产侧是 single source of truth；本目录经 PR 回填保持与生产侧 sha256 一致，作为审计与回滚依据。
+
+**同步机制：** `scripts/sync-webhook-scripts.sh` 负责正向同步（repo → 生产），`--check` 模式执行漂移检查。受管文件清单定义在 `webhook-scripts/MANIFEST.sh`（`MANAGED_FILES` + `MANAGED_LIB_FILES`，另含跨目录同步映射 `CROSS_DIR_MAPPINGS`）。
+
+**脚本清单：**
+
+| 脚本 | 职责 |
+|------|------|
+| `trigger-ci-droid.sh` | CI 完成后注入消息；事件时重绑定 session |
+| `write-pending-ci.sh` | PR 注册路由；M5 schema `{pr_number, cwd, created_at}` |
+| `ci-timeout-watchdog.sh` | CI 超时兜底派发 |
+| `reconcile-evolution.sh` | 治理对账：DRY_RUN 守卫 + 127/126 分流 + E4 marker 豁免 |
+| `trigger-droid.sh` / `trigger-error-droid.sh` | Linear / PostHog 错误触发器 |
+| `wiki-refresh.sh` | wiki 刷新（双臂 token 验证） |
+| `ci-failed.sh` | CI 失败通知 |
+| `webhook-hygiene.sh` | 每日 04:30 TTL 清理 |
+| `local_branch_cleanup.sh` | 本地分支清理 |
+| `lib/posthog.sh` | 统一 PostHog 上报（`POSTHOG_API_KEY` 走 env） |
+| `lib/op-mcp.sh` | 1Password 凭据链 |
+
+**质量门禁：** CI 对本目录执行 `bash -n` + shellcheck（≥0.11）；`tests/` 下有行为回归测试（`test_write_pending_ci_hardening.py`、`test_m5_rebinding.py` 等）。
+
+**关键约束：** `POSTHOG_API_KEY` 仅通过环境变量注入（plist `EnvironmentVariables`），脚本内禁止出现 `phc_` 字面量。
+
+**修改纪律：** 先改生产侧（原子落盘：install + mv）→ 回填本目录 → 提 PR。
+
 ## 文档
 
 - [文档索引](docs/INDEX.md)
