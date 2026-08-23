@@ -112,24 +112,49 @@ def _redact_context(ctx: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _try_sign_file(project_root: Path, rel_path: str) -> None:
-    """F5: 尝试对指定文件进行增量签名，失败不阻塞主流程。"""
-    if _integrity is None or _integrity_keys is None:
+# 哨兵：区分「调用方未提供 integrity 模块」（回退读模块级符号）与
+# 「调用方显式传 None」（表示不可用，直接跳过签名）。
+_UNSET: Any = object()
+
+
+def _try_sign_file(
+    project_root: Path,
+    rel_path: str,
+    *,
+    integrity: Any = _UNSET,
+    integrity_keys: Any = _UNSET,
+    logger_name: str = __name__,
+    label: str = "error_logger",
+) -> None:
+    """F5: 尝试对指定文件进行增量签名，失败不阻塞主流程。
+
+    参数化共享实现（INFRA-909 去重）：daily_summary_generator 以自身
+    模块级 _integrity/_integrity_keys、logger 名与 label 委托本函数，
+    两个模块的原有行为（日志名/消息前缀/stderr 兜底）保持不变。
+    integrity/integrity_keys 缺省（_UNSET）时读本模块级同名符号；
+    显式传 None 表示不可用，直接跳过。
+    """
+    if integrity is _UNSET:
+        integrity = _integrity
+    if integrity_keys is _UNSET:
+        integrity_keys = _integrity_keys
+    if integrity is None or integrity_keys is None:
         return
     try:
-        key = _integrity_keys.load_key()
+        key = integrity_keys.load_key()
         if key is None:
             return
-        _integrity.sign_project_incremental(project_root, key, changed_paths=[rel_path])
+        integrity.sign_project_incremental(project_root, key, changed_paths=[rel_path])
     except Exception as exc:
         # 签名失败 warning 但不阻塞主流程
         try:
-            logger.warning("error_logger: sign_project_incremental failed: %s", exc)
+            logger = logging.getLogger(logger_name)
+            logger.warning("%s: sign_project_incremental failed: %s", label, exc)
         except Exception as log_exc:
             import sys
 
             print(
-                f"[error_logger] sign_project_incremental failed: {exc}; logging also failed: {log_exc}",
+                f"[{label}] sign_project_incremental failed: {exc}; logging also failed: {log_exc}",
                 file=sys.stderr,
             )
 

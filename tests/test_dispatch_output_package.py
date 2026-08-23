@@ -13,6 +13,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.dispatch_output_helpers import assert_no_delegate_outputs_full_package
+
 
 @pytest.fixture()
 def gw():
@@ -170,19 +172,12 @@ class TestNoDelegateUnaffected:
 
     def test_no_delegate_outputs_full_package(self, gw, tmp_path, capsys):
         """--no-delegate branch outputs json.dumps(package) directly."""
-        args = argparse.Namespace(host="factory", event="session-start", no_delegate=True)
         package = {
             "package_kind": "context-package",
             "allowed_reads": ["/a", "/b"],
             "system_context": {"key": "value"},
         }
-
-        gw._dispatch_output(args, package, "{}", {}, tmp_path, 0)
-
-        captured = capsys.readouterr()
-        output = json.loads(captured.out.strip())
-        assert output == package
-        assert "allowed_reads" in output
+        assert_no_delegate_outputs_full_package(gw, tmp_path, capsys, package)
 
 
 # ===========================================================================
