@@ -994,6 +994,7 @@ print(json.dumps({
 - PR title 必须包含 ${p_ref}
 - PR body 必须包含 Fixes ${p_ref}
 - 不要手动设置 Linear issue 状态为 Done
+- **CI 反馈注册**: 该类会话创建 PR 后跳过 pending-ci 注册（不要执行 write-pending-ci.sh），scanner 类型 source 的 CI 反馈由 trigger-ci-droid.sh 自动处理
 "
 
         log "Launching droid exec for $p_ref..."

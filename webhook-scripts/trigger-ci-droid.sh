@@ -80,7 +80,15 @@ spawn_fallback() {
   local ci_status="$2"
   local repo_path="${3:-$SCRIPT_CWD}"
 
-  local PROMPT="CI 完成通知：PR #${pr_num} 状态为 ${ci_status}。如果 CI 通过请检查并合并此 PR。"
+  # F3 VAL-INJ-005: Fallback prompt includes gh pr view step for context retrieval
+  # This ensures the fallback session fetches PR state/checks before acting,
+  # rather than being triggered with bare context.
+  local PROMPT="CI 完成通知（fallback 路径）：PR #${pr_num} 状态为 ${ci_status}。
+1. 先执行 \`gh pr view ${pr_num} --json state,statusCheckRollup\` 获取 PR 上下文
+2. 若 CI 全绿（state=OPEN, statusCheckRollup 全部 success）→ 合并 PR
+3. 若 CI 红 → 分析失败原因，修复后 push 重跑
+4. 若 PR 已关闭 → 清理分支
+铁律：禁止静默关 PR——关闭前必须写评论说明原因，评论失败则本轮不关"
   local TAG="{\"name\":\"ci-gateway\",\"metadata\":{\"pr_number\":\"${pr_num}\",\"status\":\"${ci_status}\"}}"
 
   log "FALLBACK: Spawning droid exec for PR #${pr_num} (repo: ${repo_path})"
@@ -204,6 +212,147 @@ if [ "$PENDING_PR" != "$PR_NUMBER" ]; then
     exit 0
 fi
 
+# === F1: Extract source field for routing ===
+PENDING_SOURCE=$($PYTHON_BIN -c "
+import json, sys
+try:
+    with open('$PENDING_CI_FILE') as f:
+        data = json.load(f)
+    print(data.get('source', ''))
+except Exception as e:
+    print('', file=sys.stderr)
+    print('')
+" 2>>"$LOG_FILE")
+
+# === F1: Weak cross-validation for scanner source ===
+# VAL-REG-007: Verify scanner identity via gh pr view (author/labels)
+# Returns: 0=pass, 1=mismatch, 2=unexecutable (gh unavailable/failed)
+verify_scanner_identity() {
+    local pr_num="$1"
+
+    # Check if gh CLI is available
+    if ! command -v gh &>/dev/null; then
+        log "WARN: gh CLI not available for scanner cross-validation"
+        return 2
+    fi
+
+    # Fetch PR metadata (author + labels)
+    local pr_data
+    if ! pr_data=$(gh pr view "$pr_num" --json author,labels 2>&1); then
+        log "WARN: gh pr view failed for PR #$pr_num: $pr_data"
+        return 2
+    fi
+
+    # Extract author login
+    local author
+    author=$($PYTHON_BIN -c "
+import json, sys
+try:
+    data = json.loads('''$pr_data''')
+    print(data.get('author', {}).get('login', ''))
+except:
+    print('')
+" 2>>"$LOG_FILE")
+
+    # Check for scanner-related labels (e.g., "scanner", "evolution-scanner")
+    local has_scanner_label
+    has_scanner_label=$($PYTHON_BIN -c "
+import json, sys
+try:
+    data = json.loads('''$pr_data''')
+    labels = [l.get('name', '').lower() for l in data.get('labels', [])]
+    print('yes' if any('scanner' in l for l in labels) else 'no')
+except:
+    print('no')
+" 2>>"$LOG_FILE")
+
+    # Heuristic: author must be a bot/automation account OR PR must have scanner label
+    # For now, accept any PR that either has scanner label or is authored by known bot accounts
+    if [ "$has_scanner_label" = "yes" ]; then
+        log "Scanner identity verified: PR #$pr_num has scanner-related label"
+        return 0
+    fi
+
+    # Check for known scanner/bot accounts (placeholder - expand as needed)
+    case "$author" in
+        *scanner*|*bot*|*automation*|github-actions|evolution[bot])
+            log "Scanner identity verified: PR #$pr_num authored by $author (bot account)"
+            return 0
+            ;;
+    esac
+
+    # Mismatch: PR doesn't look like it came from scanner
+    log "WARN: Scanner cross-validation failed for PR #$pr_num (author=$author, scanner_label=$has_scanner_label)"
+    return 1
+}
+
+# === F1: Source-based routing ===
+# VAL-REG-005/006/007/008/010: Scanner source gets silent cleanup
+if [ "$PENDING_SOURCE" = "scanner" ]; then
+    # Check if expired first (VAL-REG-010: expired scanner also silent cleanup)
+    if [ -n "$CREATED_AT" ]; then
+        IS_EXPIRED=$($PYTHON_BIN -c "
+from datetime import datetime, timezone, timedelta
+import sys
+try:
+    created_at = '$CREATED_AT'
+    if created_at.endswith('Z'):
+        created_at = created_at[:-1] + '+00:00'
+    created_time = datetime.fromisoformat(created_at)
+    now = datetime.now(timezone.utc)
+    age = now - created_time
+    if age > timedelta(hours=2):
+        print('yes')
+    else:
+        print('no')
+except Exception as e:
+    print('no', file=sys.stderr)
+    print('no')
+" 2>>"$LOG_FILE")
+    else
+        IS_EXPIRED="no"
+    fi
+
+    # VAL-REG-010: Expired scanner files skip cross-validation and go straight to silent cleanup
+    if [ "$IS_EXPIRED" = "yes" ]; then
+        log "Source=scanner detected (expired), performing silent cleanup (no cross-validation needed)"
+        rm -f "$PENDING_CI_FILE"
+        exit 0
+    fi
+
+    # Weak cross-validation (VAL-REG-007) - only for non-expired scanner files
+    verify_scanner_identity "$PR_NUMBER"
+    CROSS_VALIDATION_RC=$?
+
+    if [ "$CROSS_VALIDATION_RC" -eq 1 ]; then
+        # VAL-REG-007: Positive evidence of mismatch, conservative path
+        log "ERROR: Source=scanner but cross-validation failed for PR #$PR_NUMBER — conservative path (keep file, no fallback)"
+        send_posthog_event "ci_scanner_source_mismatch" "$PR_NUMBER" "cross_validation" "PR #$PR_NUMBER does not match scanner identity"
+        # Keep the file, don't spawn fallback, exit cleanly
+        exit 0
+    elif [ "$CROSS_VALIDATION_RC" -eq 2 ]; then
+        # VAL-REG-007b (D2 ruling): gh unavailable → conservative path
+        # Rationale: session file mislabeled as scanner + gh恰好不可用时，
+        # 静默清理会删除 session PR 救援通道，违背不变量 2。
+        # 保守代价仅为文件滞留 ≤2h，由过期路径 VAL-REG-010 兜底。
+        log "ERROR: Source=scanner but cross-validation unexecutable (gh unavailable) for PR #$PR_NUMBER — conservative path (keep file, anomaly event, no fallback)"
+        send_posthog_event "ci_scanner_source_unverifiable" "$PR_NUMBER" "cross_validation" "gh unavailable for PR #$PR_NUMBER"
+        # Keep the file, don't spawn fallback, exit cleanly
+        exit 0
+    else
+        # VAL-REG-005/006: Validation passed, silent cleanup
+        log "Source=scanner detected, cross-validation passed, performing silent cleanup (no fallback/events)"
+        rm -f "$PENDING_CI_FILE"
+        exit 0
+    fi
+fi
+
+# VAL-REG-008: Missing source field → default to session + log once
+if [ -z "$PENDING_SOURCE" ]; then
+    log "unknown-source defaulted to session (legacy M5 schema)"
+    # Record event exactly once (no idempotency lock needed — this log line runs once per invocation)
+fi
+
 # Check if pending-ci-{PR_NUMBER}.json is expired (older than 2 hours)
 if [ -n "$CREATED_AT" ]; then
     EXPIRED=$($PYTHON_BIN -c "
@@ -310,6 +459,47 @@ if ! echo "$TIMESTAMP:$$" >&200; then
     exit 1
 fi
 log "Created lock file: $LOCK_FILE"
+
+# === F3 Branch A: Check sessions-index freshness ===
+# Cross-verifies if a session is actually alive despite probe 404.
+# Returns "1" if session exists in index with mtime < max_age_hours, "0" otherwise.
+# Rationale: Factory API may return 404 for sessions that are alive in sessions-index
+# (daemon idle/timeout/platform delay). Probe 404 ≠ session death.
+check_sessions_index_fresh() {
+    local session_id="$1"
+    local index_file="$2"
+    local max_age_hours="${3:-72}"
+    
+    if [ ! -f "$index_file" ]; then
+        echo "0"
+        return
+    fi
+    
+    # Pass variables as sys.argv to avoid quoting issues
+    $PYTHON_BIN -c "
+import json, sys, time
+try:
+    index_file = sys.argv[1]
+    target_session_id = sys.argv[2]
+    max_age_sec = float(sys.argv[3]) * 3600
+    with open(index_file) as f:
+        data = json.load(f)
+    now = time.time()
+    for entry in data.get('entries', []):
+        if entry.get('sessionId') == target_session_id:
+            mtime = entry.get('mtime', 0)
+            age = now - mtime
+            if age < max_age_sec:
+                print('1')  # fresh
+                sys.exit(0)
+            else:
+                print('0')  # stale
+                sys.exit(0)
+    print('0')  # not found
+except Exception as e:
+    print('0')  # error = treat as stale
+" "$index_file" "$session_id" "$max_age_hours" 2>>"$LOG_FILE"
+}
 
 # === M5: Event-time session selection function ===
 # Queries sessions-index.json to find active orchestrator sessions for the given cwd.
@@ -418,9 +608,22 @@ if [ -n "$SESSION_ID" ]; then
     if [[ "$PROBE_CODE" =~ ^2 ]]; then
         log "Session $SESSION_ID is alive (probe HTTP $PROBE_CODE), using it"
         SESSION_PROBED="1"
+    elif [ "$PROBE_CODE" = "404" ]; then
+        # F3 Branch A: 404 ≠ death — cross-check sessions-index freshness
+        INDEX_FRESH=$(check_sessions_index_fresh "$SESSION_ID" "$SESSIONS_INDEX" 72)
+        if [ "$INDEX_FRESH" = "1" ]; then
+            log "WARN: Probe 404 but sessions-index shows recent activity for $SESSION_ID, attempting POST anyway"
+            SESSION_PROBED="1"
+            PROBE_CODE="200"  # Treat as alive for downstream flow
+        else
+            log "Session $SESSION_ID is dead (probe HTTP $PROBE_CODE, index stale/missing), attempting event-time rebinding"
+            SESSION_ID=""  # Clear for rebinding
+        fi
     else
-        log "Session $SESSION_ID is dead (probe HTTP $PROBE_CODE), attempting event-time rebinding"
-        SESSION_ID=""  # Clear for rebinding
+        # 5xx/000 — probe unavailable ≠ death; still treat as candidate
+        log "Session $SESSION_ID probe unavailable (probe HTTP $PROBE_CODE), using it anyway"
+        SESSION_PROBED="1"
+        PROBE_CODE="200"  # Treat as alive for downstream flow
     fi
 fi
 
@@ -442,8 +645,20 @@ if [ -z "$SESSION_ID" ]; then
             log "Selected session $SELECTED_SESSION is alive (probe HTTP $PROBE_CODE)"
             SESSION_ID="$SELECTED_SESSION"
             SESSION_PROBED="1"
+        elif [ "$PROBE_CODE" = "404" ]; then
+            # F3 Branch A: 404 ≠ death — cross-check sessions-index freshness
+            INDEX_FRESH=$(check_sessions_index_fresh "$SELECTED_SESSION" "$SESSIONS_INDEX" 72)
+            if [ "$INDEX_FRESH" = "1" ]; then
+                log "WARN: Probe 404 but sessions-index shows recent activity for $SELECTED_SESSION, attempting POST anyway"
+                SESSION_ID="$SELECTED_SESSION"
+                SESSION_PROBED="1"
+            else
+                log "Selected session $SELECTED_SESSION is dead (probe HTTP $PROBE_CODE, index stale/missing), marking rebinding_failed"
+            fi
         else
-            log "Selected session $SELECTED_SESSION is dead (probe HTTP $PROBE_CODE), marking rebinding_failed"
+            log "Selected session $SELECTED_SESSION probe unavailable (probe HTTP $PROBE_CODE), attempting POST anyway"
+            SESSION_ID="$SELECTED_SESSION"
+            SESSION_PROBED="1"
         fi
     else
         log "No candidates found in sessions-index for cwd=$PENDING_CWD"
@@ -543,12 +758,22 @@ else
 fi
 
 # 探活失败判定：
-# - 404 JSON 响应（Session does not exist）→ 会话不存在，直接走 fallback
+# - 404 JSON 响应（Session does not exist）→ 检查 sessions-index 新鲜度（F3 Branch A）
+#   - 若 index 显示 72h 内活跃 → 仍尝试 POST（API 暂时不可达 ≠ 会话死亡）
+#   - 若 index 过期/缺失 → 走 fallback
 # - 5xx 或 000（连接失败）→ 探活不可用，仍尝试 POST（不阻塞注入）
 # - 200 或其他 → 会话存在，继续 POST 注入
 if [ "$PROBE_CODE" = "404" ]; then
-    # 检查是否为 API 级别的 404（JSON 响应含 "Session does not exist"）
-    echo "$PROBE_BODY" | $PYTHON_BIN -c "
+    # F3 Branch A: Cross-check sessions-index before judging death
+    INDEX_FRESH=$(check_sessions_index_fresh "$SESSION_ID" "$SESSIONS_INDEX" 72)
+    
+    if [ "$INDEX_FRESH" = "1" ]; then
+        # Index shows recent activity → attempt POST despite 404
+        log "WARN: Probe 404 but sessions-index shows recent activity for $SESSION_ID, attempting POST anyway"
+        # Continue to POST injection (same as 5xx/000 path)
+    else
+        # Index stale/missing → check if this is API-level 404
+        echo "$PROBE_BODY" | $PYTHON_BIN -c "
 import json, sys
 try:
     input_data = sys.stdin.read()
@@ -560,37 +785,37 @@ try:
 except Exception as e:
     sys.exit(1)
 " 2>>"$LOG_FILE"
-    PROBE_CHECK_EXIT=$?
-    if [ "$PROBE_CHECK_EXIT" = "0" ]; then
-        log "PROBE FAILED: Session does not exist (404 JSON), skipping POST retries and going directly to fallback"
-        send_posthog_event "ci_probe_failed_session_not_found" "$PR_NUMBER" "probe" "session_id=$SESSION_ID"
-        
-        # 直接走 fallback，不烧 POST 重试
-        rm -f "$LOCK_FILE"
-        exec 200>&-
-        FALLBACK_LOCK="${LOCK_DIR}/ci-fallback-${PR_NUMBER}.lock"
-        if [ -f "$FALLBACK_LOCK" ]; then
-            FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(_portable_mtime "$FALLBACK_LOCK") ))
-            if [ "$FALLBACK_LOCK_AGE_SEC" -lt 0 ]; then FALLBACK_LOCK_AGE_SEC=0; fi
-            FALLBACK_LOCK_AGE=$(( FALLBACK_LOCK_AGE_SEC / 60 ))
-            if [ "$FALLBACK_LOCK_AGE" -gt 1440 ]; then FALLBACK_LOCK_AGE=1440; fi
-            if [ "$FALLBACK_LOCK_AGE" -lt 60 ]; then
-                log "SKIP: Fallback already triggered for PR #${PR_NUMBER} (probe dedup, lock age: ${FALLBACK_LOCK_AGE}min < 60min)"
-                exit 0
-            else
-                log "WARN: Stale fallback lock (${FALLBACK_LOCK_AGE}min > 60min), removing and proceeding"
-                rm -f "$FALLBACK_LOCK"
+        PROBE_CHECK_EXIT=$?
+        if [ "$PROBE_CHECK_EXIT" = "0" ]; then
+            log "PROBE FAILED: Session does not exist (404 JSON, index stale/missing), going to fallback"
+            send_posthog_event "ci_probe_failed_session_not_found" "$PR_NUMBER" "probe" "session_id=$SESSION_ID"
+            
+            # 直接走 fallback，不烧 POST 重试
+            rm -f "$LOCK_FILE"
+            exec 200>&-
+            FALLBACK_LOCK="${LOCK_DIR}/ci-fallback-${PR_NUMBER}.lock"
+            if [ -f "$FALLBACK_LOCK" ]; then
+                FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(_portable_mtime "$FALLBACK_LOCK") ))
+                if [ "$FALLBACK_LOCK_AGE_SEC" -lt 0 ]; then FALLBACK_LOCK_AGE_SEC=0; fi
+                FALLBACK_LOCK_AGE=$(( FALLBACK_LOCK_AGE_SEC / 60 ))
+                if [ "$FALLBACK_LOCK_AGE" -gt 1440 ]; then FALLBACK_LOCK_AGE=1440; fi
+                if [ "$FALLBACK_LOCK_AGE" -lt 60 ]; then
+                    log "SKIP: Fallback already triggered for PR #${PR_NUMBER} (probe dedup, lock age: ${FALLBACK_LOCK_AGE}min < 60min)"
+                    exit 0
+                else
+                    log "WARN: Stale fallback lock (${FALLBACK_LOCK_AGE}min > 60min), removing and proceeding"
+                    rm -f "$FALLBACK_LOCK"
+                fi
             fi
-        fi
-        echo "$TIMESTAMP" > "$FALLBACK_LOCK" || {
-            log "ERROR: Failed to write fallback lock $FALLBACK_LOCK"
-            send_posthog_event "ci_fallback_lock_write_failed" "$PR_NUMBER" "fallback_lock" "probe path"
-        }
-        log "Created fallback lock: $FALLBACK_LOCK"
-        FALLBACK_REPO="${PENDING_CWD:-$SCRIPT_CWD}"
-        # M1: 标记 pending 文件（不删除，保留审计轨迹）
-        if [ -f "$PENDING_CI_FILE" ]; then
-            $PYTHON_BIN -c "
+            echo "$TIMESTAMP" > "$FALLBACK_LOCK" || {
+                log "ERROR: Failed to write fallback lock $FALLBACK_LOCK"
+                send_posthog_event "ci_fallback_lock_write_failed" "$PR_NUMBER" "fallback_lock" "probe path"
+            }
+            log "Created fallback lock: $FALLBACK_LOCK"
+            FALLBACK_REPO="${PENDING_CWD:-$SCRIPT_CWD}"
+            # M1: 标记 pending 文件（不删除，保留审计轨迹）
+            if [ -f "$PENDING_CI_FILE" ]; then
+                $PYTHON_BIN -c "
 import json
 try:
     with open('$PENDING_CI_FILE', 'r') as f:
@@ -602,9 +827,10 @@ try:
 except Exception as e:
     print(f'Failed to mark pending file: {e}')
 " 2>>"$LOG_FILE" || true
+            fi
+            spawn_fallback "$PR_NUMBER" "${STATUS:-probe_failed}" "$FALLBACK_REPO"
+            exit 0
         fi
-        spawn_fallback "$PR_NUMBER" "${STATUS:-probe_failed}" "$FALLBACK_REPO"
-        exit 0
     fi
 fi
 

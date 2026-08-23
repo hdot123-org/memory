@@ -140,6 +140,15 @@ except:
     print('')
 " 2>/dev/null)
   
+  SOURCE=$($PYTHON_BIN -c "
+import json
+try:
+    with open('$pending_file') as f:
+        print(json.load(f).get('source', ''))
+except:
+    print('')
+" 2>/dev/null)
+  
   # Skip if parsing failed or fields are empty
   if [ -z "$PR_NUMBER" ] || [ -z "$CREATED_AT" ]; then
     continue
@@ -252,6 +261,13 @@ except Exception as e:
   # === Phase A: Check if created but not injected ===
   if [ "$CREATED_AGE_SECONDS" -gt "$TTL_SECONDS" ]; then
     AGE_MINUTES=$((CREATED_AGE_SECONDS / 60))
+    
+    # F1: Skip scanner source — no fallback, silent cleanup only (VAL-REG-011)
+    if [ "$SOURCE" = "scanner" ]; then
+      echo "Phase A: PR #$PR_NUMBER is scanner source, silent cleanup only (no fallback)"
+      rm -f "$pending_file"
+      continue
+    fi
     
     # Send PostHog timeout event
     send_posthog_event "ci_notification_timeout" "$PR_NUMBER" "watchdog_phase_a" "age=${AGE_MINUTES}min, not injected"

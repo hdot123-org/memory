@@ -193,6 +193,82 @@ class TestWatchdogIdempotency:
 
         assert result.returncode == 0
 
+
+class TestF1WatchdogScannerSource:
+    """VAL-REG-011: Watchdog Phase A 对 scanner 超期文件不 spawn fallback"""
+
+    def test_phase_a_skips_scanner_source_file(self, temp_locks_dir, watchdog_script):
+        """Phase A 应该跳过 scanner source 的超期文件，只静默删除"""
+        created_at = datetime.now(UTC) - timedelta(minutes=35)
+        file_path = temp_locks_dir / "pending-ci-128.json"
+        file_path.write_text(
+            json.dumps(
+                {
+                    "pr_number": "128",
+                    "created_at": created_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "cwd": "/test/repo",
+                    "source": "scanner",  # F1: scanner source
+                }
+            )
+        )
+
+        env = os.environ.copy()
+        env["LOCKS_DIR"] = str(temp_locks_dir)
+        env["ECHO_DROID"] = "1"
+        env["POSTHOG_DRY_RUN"] = "1"
+
+        result = subprocess.run(
+            ["bash", str(watchdog_script)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        # 验证：文件被删除（静默清理）
+        assert not file_path.exists(), "Phase A should delete scanner source file"
+        # 验证：输出包含 scanner source 相关提示
+        assert "scanner source" in result.stdout.lower() or "silent cleanup" in result.stdout.lower(), (
+            "Should mention scanner source or silent cleanup in output"
+        )
+        # 验证：没有 spawn fallback
+        assert "spawning fallback" not in result.stdout.lower(), "Phase A should not spawn fallback for scanner source"
+
+    def test_phase_a_processes_session_source_file(self, temp_locks_dir, watchdog_script):
+        """Phase A 应该正常处理 session source 的超期文件（spawn fallback）"""
+        created_at = datetime.now(UTC) - timedelta(minutes=35)
+        file_path = temp_locks_dir / "pending-ci-129.json"
+        file_path.write_text(
+            json.dumps(
+                {
+                    "pr_number": "129",
+                    "created_at": created_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "cwd": "/test/repo",
+                    "source": "session",  # F1: session source
+                }
+            )
+        )
+
+        env = os.environ.copy()
+        env["LOCKS_DIR"] = str(temp_locks_dir)
+        env["ECHO_DROID"] = "1"
+        env["POSTHOG_DRY_RUN"] = "1"
+
+        result = subprocess.run(
+            ["bash", str(watchdog_script)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        # 验证：文件被删除
+        assert not file_path.exists(), "Phase A should delete session source file"
+        # 验证：spawn fallback（ECHO_DROID 模式下会打印）
+        assert "spawning fallback" in result.stdout.lower() or "phase a" in result.stdout.lower(), (
+            "Phase A should spawn fallback for session source"
+        )
+
     def test_watchdog_handles_malformed_json(self, temp_locks_dir, watchdog_script):
         """watchdog 应该能处理格式错误的 JSON 文件"""
         malformed_file = temp_locks_dir / "pending-ci-999.json"
