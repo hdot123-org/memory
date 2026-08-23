@@ -393,7 +393,7 @@ heartbeat 告警自愈（`resolve_cleared_alerts()`）在本轮 tick 中异常�
 | `lib/posthog.sh` | 统一 PostHog 上报（`POSTHOG_API_KEY` 走 env） |
 | `lib/op-mcp.sh` | 1Password 凭据链 |
 
-**质量门禁：** CI 对本目录执行 `bash -n` + shellcheck（≥0.11）；`tests/` 下有行为回归测试（`test_write_pending_ci_hardening.py`、`test_m5_rebinding.py` 等）。
+**质量门禁：** CI 对全仓 `*.sh` 执行 shellcheck（以 runner 预装工具链为准，不强制最低版本）；`sync-webhook-scripts.sh` 在同步落盘前对每个受管文件执行 `bash -n` + shellcheck（shell）/ `py_compile`（Python）校验，失败即 fail-closed 回滚；`tests/` 下有行为回归测试（`test_write_pending_ci_hardening.py`、`test_m5_rebinding.py`、`test_sync_webhook_scripts.py` 等）。
 
 **关键约束：** `POSTHOG_API_KEY` 仅通过环境变量注入（plist `EnvironmentVariables`），脚本内禁止出现 `phc_` 字面量。
 
