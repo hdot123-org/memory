@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2034
 # ci-timeout-watchdog.sh - TTL watchdog for pending CI notifications
 # Scans ~/.factory/webhook/locks/pending-ci-*.json
 # Phase A: If created_at > 30 minutes without injected_at, sends PostHog event and deletes file

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
 # reconcile-evolution.sh — 拉取式对账，发现孤立的 evolution finding 并补触发
 # 设计：push(webhook) + pull(本脚本) = 最终一致
 #

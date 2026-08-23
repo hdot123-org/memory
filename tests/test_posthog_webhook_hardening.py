@@ -35,11 +35,19 @@ def test_no_hardcoded_phc_in_webhook_scripts():
 def test_webhook_scripts_posthog_guard():
     """VAL-PH-WH-002: 每个 PostHog 上报脚本必须有 POSTHOG_API_KEY 守卫。
 
-    webhook-scripts/*.sh 中凡 posthog.com 的脚本，上报前必须检查
-    POSTHOG_API_KEY，未设时跳过而非发送无效 payload（与 #982 既有
+    webhook-scripts/*.sh 和 webhook-scripts/lib/*.sh 中凡 posthog.com 的脚本，
+    上报前必须检查 POSTHOG_API_KEY，未设时跳过而非发送无效 payload（与 #982 既有
     缺失即跳过语义一致）。
     """
-    senders = [p for p in WEBHOOK_SCRIPTS_DIR.glob("*.sh") if "posthog.com" in p.read_text(encoding="utf-8")]
+    # Scan both *.sh in root and lib/*.sh (posthog.sh is in lib/)
+    senders = []
+    for p in WEBHOOK_SCRIPTS_DIR.glob("*.sh"):
+        if "posthog.com" in p.read_text(encoding="utf-8"):
+            senders.append(p)
+    for p in (WEBHOOK_SCRIPTS_DIR / "lib").glob("*.sh"):
+        if "posthog.com" in p.read_text(encoding="utf-8"):
+            senders.append(p)
+
     assert senders, "Expected at least one webhook script reporting to PostHog"
 
     missing_guard = [p.name for p in senders if "POSTHOG_API_KEY" not in p.read_text(encoding="utf-8")]

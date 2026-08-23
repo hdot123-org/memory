@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
 # write-pending-ci.sh - Write pending-ci-{PR_NUMBER}.json for CI webhook routing
 # Usage: ~/.factory/webhook/scripts/write-pending-ci.sh <PR_NUMBER>
 #

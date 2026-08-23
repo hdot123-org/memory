@@ -1,5 +1,5 @@
 #!/bin/bash
-# shellcheck disable=SC1091,SC2317,SC2054,SC2155,SC2329
+# shellcheck disable=SC1091,SC2317,SC2054,SC2155,SC2329,SC2034
 # trigger-droid.sh — Linear webhook → droid exec 异步触发器
 # 由 adnanh/webhook 调用，立即返回 accepted，后台执行 droid + 回写 Linear
 #

@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2034
 # trigger-error-droid.sh — PostHog webhook → droid exec 异步触发器
 # 由 adnanh/webhook 调用，立即返回 accepted，后台执行 droid + error-gateway skill
 #

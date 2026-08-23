@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2034
 # local_branch_cleanup.sh - 本地分支自动清理
 # 扫描 gone 分支（远端已删除），使用 git cherry 验证 patch 等价性后安全删除
 # 

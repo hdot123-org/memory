@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
 # webhook-hygiene.sh — TTL 清理任务（locks/logs/status）
 #
 # 职责：

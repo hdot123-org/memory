@@ -20,6 +20,14 @@ MANAGED_FILES=(
     "wiki-refresh.sh"
     "write-pending-ci.sh"
     "ci-failed.sh"
+    "webhook-hygiene.sh"
+    "local_branch_cleanup.sh"
+)
+
+# lib/ 子目录下的受管文件（source 依赖，非独立脚本）
+MANAGED_LIB_FILES=(
+    "lib/posthog.sh"
+    "lib/op-mcp.sh"
 )
 
 # ============================================================================
@@ -96,7 +104,14 @@ get_cross_dir_mappings() {
 # 检查文件是否在受管清单中
 is_managed_file() {
     local file="$1"
+    # 检查主脚本清单
     for managed in "${MANAGED_FILES[@]}"; do
+        if [[ "$managed" == "$file" ]]; then
+            return 0
+        fi
+    done
+    # 检查 lib/ 子目录清单
+    for managed in "${MANAGED_LIB_FILES[@]}"; do
         if [[ "$managed" == "$file" ]]; then
             return 0
         fi

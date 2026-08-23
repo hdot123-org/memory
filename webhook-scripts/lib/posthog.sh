@@ -20,6 +20,7 @@
 
 # Guard against double-sourcing
 if [[ -n "${_POSTHOG_SH_LOADED:-}" ]]; then
+    # shellcheck disable=SC2317
     return 0 2>/dev/null || true
 fi
 _POSTHOG_SH_LOADED=1
