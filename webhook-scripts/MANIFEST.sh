@@ -47,7 +47,6 @@ CROSS_DIR_MAPPINGS=(
     "scripts/evolution_utils.py:evolution_utils.py"
     "scripts/evolution_adapters.py:evolution_adapters.py"
     "scripts/anchor_gate.py:anchor_gate.py"
-    "scripts/local_branch_cleanup.sh:local_branch_cleanup.sh"
 )
 
 # ============================================================================
