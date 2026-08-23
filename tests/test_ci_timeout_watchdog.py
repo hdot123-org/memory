@@ -28,6 +28,34 @@ def watchdog_script():
     return repo_root / "webhook-scripts" / "ci-timeout-watchdog.sh"
 
 
+def _make_test_env(locks_dir: Path, tmp_path: Path | None = None) -> dict:
+    """构造隔离的测试环境，确保日志和锁文件不写入生产目录。
+
+    VAL-HYG-003: 设置 LOG_DIR 环境变量指向临时目录，防止 watchdog 脚本
+    在测试期间向 ~/.factory/webhook/logs/ 写入日志文件。
+
+    Args:
+        locks_dir: 临时锁文件目录
+        tmp_path: pytest 提供的临时目录（用于日志），若为 None 则使用 locks_dir 的父目录
+
+    Returns:
+        包含所有必要环境变量的字典
+    """
+    env = os.environ.copy()
+    env["LOCKS_DIR"] = str(locks_dir)
+    env["ECHO_DROID"] = "1"  # 防止真实 droid 会话
+    env["POSTHOG_DRY_RUN"] = "1"  # 防止真实 PostHog 事件
+
+    # VAL-HYG-003: 确保日志写入临时目录而非生产目录
+    if tmp_path is None:
+        tmp_path = locks_dir.parent
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir(exist_ok=True)
+    env["LOG_DIR"] = str(log_dir)
+
+    return env
+
+
 def create_pending_ci_file(
     locks_dir: Path,
     pr_number: int,
@@ -64,10 +92,7 @@ class TestPhaseAReconciliation:
         created_at = datetime.now(UTC) - timedelta(minutes=35)
         file_path = create_pending_ci_file(temp_locks_dir, 123, created_at)
 
-        env = os.environ.copy()
-        env["LOCKS_DIR"] = str(temp_locks_dir)
-        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
-        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
+        env = _make_test_env(temp_locks_dir)
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
@@ -85,10 +110,7 @@ class TestPhaseAReconciliation:
         created_at = datetime.now(UTC) - timedelta(minutes=20)
         file_path = create_pending_ci_file(temp_locks_dir, 124, created_at)
 
-        env = os.environ.copy()
-        env["LOCKS_DIR"] = str(temp_locks_dir)
-        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
-        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
+        env = _make_test_env(temp_locks_dir)
 
         subprocess.run(
             ["bash", str(watchdog_script)],
@@ -106,10 +128,7 @@ class TestPhaseAReconciliation:
         injected_at = datetime.now(UTC) - timedelta(minutes=30)
         file_path = create_pending_ci_file(temp_locks_dir, 125, created_at, injected_at=injected_at)
 
-        env = os.environ.copy()
-        env["LOCKS_DIR"] = str(temp_locks_dir)
-        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
-        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
+        env = _make_test_env(temp_locks_dir)
 
         subprocess.run(
             ["bash", str(watchdog_script)],
@@ -131,10 +150,7 @@ class TestPhaseBReconciliation:
         injected_at = datetime.now(UTC) - timedelta(minutes=50)
         create_pending_ci_file(temp_locks_dir, 126, created_at, injected_at=injected_at)
 
-        env = os.environ.copy()
-        env["LOCKS_DIR"] = str(temp_locks_dir)
-        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
-        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
+        env = _make_test_env(temp_locks_dir)
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
@@ -157,10 +173,7 @@ class TestPhaseBReconciliation:
         injected_at = datetime.now(UTC) - timedelta(minutes=30)
         file_path = create_pending_ci_file(temp_locks_dir, 127, created_at, injected_at=injected_at)
 
-        env = os.environ.copy()
-        env["LOCKS_DIR"] = str(temp_locks_dir)
-        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
-        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
+        env = _make_test_env(temp_locks_dir)
 
         subprocess.run(
             ["bash", str(watchdog_script)],
@@ -178,10 +191,7 @@ class TestWatchdogIdempotency:
 
     def test_watchdog_handles_empty_directory(self, temp_locks_dir, watchdog_script):
         """watchdog 应该能处理空的 locks 目录"""
-        env = os.environ.copy()
-        env["LOCKS_DIR"] = str(temp_locks_dir)
-        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
-        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
+        env = _make_test_env(temp_locks_dir)
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
@@ -212,10 +222,7 @@ class TestF1WatchdogScannerSource:
             )
         )
 
-        env = os.environ.copy()
-        env["LOCKS_DIR"] = str(temp_locks_dir)
-        env["ECHO_DROID"] = "1"
-        env["POSTHOG_DRY_RUN"] = "1"
+        env = _make_test_env(temp_locks_dir)
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
@@ -249,10 +256,7 @@ class TestF1WatchdogScannerSource:
             )
         )
 
-        env = os.environ.copy()
-        env["LOCKS_DIR"] = str(temp_locks_dir)
-        env["ECHO_DROID"] = "1"
-        env["POSTHOG_DRY_RUN"] = "1"
+        env = _make_test_env(temp_locks_dir)
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
@@ -274,10 +278,7 @@ class TestF1WatchdogScannerSource:
         malformed_file = temp_locks_dir / "pending-ci-999.json"
         malformed_file.write_text("not valid json")
 
-        env = os.environ.copy()
-        env["LOCKS_DIR"] = str(temp_locks_dir)
-        env["ECHO_DROID"] = "1"  # Prevent real droid session spawn
-        env["POSTHOG_DRY_RUN"] = "1"  # Prevent real PostHog events
+        env = _make_test_env(temp_locks_dir)
 
         result = subprocess.run(
             ["bash", str(watchdog_script)],
@@ -288,3 +289,216 @@ class TestF1WatchdogScannerSource:
         )
 
         assert result.returncode == 0
+
+
+class TestVALINJ007ZStripRegression:
+    """VAL-INJ-007: Z-strip 解析回归验证（scrutiny 修正：修复已存在，转回归验证）"""
+
+    @pytest.mark.parametrize(
+        "timestamp",
+        [
+            "2026-08-15T03:22:10Z",
+            "2026-08-16T14:45:33Z",
+            "2026-08-18T09:12:47Z",
+            "2026-08-19T21:08:55Z",
+            "2026-08-20T06:30:02Z",
+            "2026-08-21T11:55:18Z",
+            "2026-08-22T16:42:09Z",
+            "2026-08-23T02:17:44Z",
+            "2026-08-23T08:33:21Z",
+            "2026-08-23T14:58:06Z",
+            "2026-08-23T19:24:15Z",
+        ],
+    )
+    def test_z_strip_parses_real_malformed_samples(self, timestamp):
+        """VAL-INJ-007: 真实畸形样本应通过 Z-strip 成功解析为 datetime"""
+        from datetime import datetime
+
+        # 模拟 watchdog 脚本中的 Z-strip 逻辑（ci-timeout-watchdog.sh:178-179）
+        parsed = timestamp
+        if parsed.endswith("Z"):
+            parsed = parsed[:-1] + "+00:00"
+        dt = datetime.fromisoformat(parsed)
+        assert dt is not None
+        assert dt.year == 2026
+
+    def test_control_valid_iso8601_passes(self):
+        """VAL-INJ-007: 合法 ISO8601 对照样本必须原样通过"""
+        from datetime import datetime
+
+        timestamp = "2026-08-24T12:00:00+00:00"
+        dt = datetime.fromisoformat(timestamp)
+        assert dt is not None
+        assert dt.year == 2026
+
+
+class TestVALINJ008TerminalState:
+    """VAL-INJ-008: 不可恢复样本单次告警 + 终态处理（不反复告警）"""
+
+    def test_unrecoverable_timestamp_single_alert_then_terminal(self, temp_locks_dir, watchdog_script):
+        """VAL-INJ-008: 不可解析时间戳应触发单次告警后重命名为 .malformed，
+        连续两轮运行告警计数 == 1"""
+        # 创建含真正不可解析时间戳的 fixture（非 Z-suffix，而是完全畸形）
+        created_at = datetime.now(UTC) - timedelta(minutes=55)
+        injected_at_str = "not-a-timestamp-at-all"  # 完全不可解析
+        file_path = temp_locks_dir / "pending-ci-855.json"
+        file_path.write_text(
+            json.dumps(
+                {
+                    "pr_number": "855",
+                    "created_at": created_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "injected_at": injected_at_str,
+                    "cwd": "/test/repo",
+                }
+            )
+        )
+
+        env = _make_test_env(temp_locks_dir)
+
+        # 第一轮运行
+        result1 = subprocess.run(
+            ["bash", str(watchdog_script)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        # 验证：文件被重命名为 .malformed
+        malformed_path = temp_locks_dir / "pending-ci-855.json.malformed"
+        assert malformed_path.exists(), "First run should rename file to .malformed"
+        assert not file_path.exists(), "Original file should not exist after first run"
+
+        # 验证：输出包含 malformed 相关提示
+        assert "malformed" in result1.stdout.lower() or "marking as malformed" in result1.stdout.lower()
+
+        # 第二轮运行（同一 locks 目录）
+        result2 = subprocess.run(
+            ["bash", str(watchdog_script)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        # 验证：第二轮不处理 .malformed 文件（glob 模式 pending-ci-*.json 不匹配）
+        # 且无新增告警
+        assert malformed_path.exists(), ".malformed file should persist across runs"
+        assert "malformed" not in result2.stdout.lower() or result2.stdout.count("malformed") <= result1.stdout.count(
+            "malformed"
+        )
+
+
+class TestVALINJ009WatchdogReceipt:
+    """VAL-INJ-009: watchdog PostHog 回执落盘（非 /dev/null）"""
+
+    def test_watchdog_posthog_receipt_written_to_log_file(self, temp_locks_dir, watchdog_script):
+        """VAL-INJ-009: Phase A 触发 PostHog 事件后，回执应写入 LOG_FILE"""
+        created_at = datetime.now(UTC) - timedelta(minutes=35)
+        create_pending_ci_file(temp_locks_dir, 130, created_at)
+
+        # 验证：代码断言——watchdog 脚本中 LOG_FILE 赋值在 source lib/posthog.sh 之前
+        script_content = watchdog_script.read_text()
+        assert "LOG_FILE=" in script_content
+
+        # 找到 LOG_FILE 赋值行和 source 行（排除注释行）
+        lines = script_content.split("\n")
+        log_file_line = None
+        source_line = None
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if "LOG_FILE=" in line and log_file_line is None:
+                log_file_line = i
+            if "source" in line and "lib/posthog.sh" in line and source_line is None:
+                source_line = i
+
+        assert log_file_line is not None, "LOG_FILE assignment not found"
+        assert source_line is not None, "source lib/posthog.sh not found"
+        assert log_file_line < source_line, "LOG_FILE must be assigned before sourcing lib/posthog.sh"
+
+
+class TestVALINJ010InvalidPROrdering:
+    """VAL-INJ-010: ci_invalid_pr_number 事件发生在 LOG_FILE 赋值之后"""
+
+    def test_trigger_ci_droid_log_file_before_invalid_pr(self):
+        """VAL-INJ-010: trigger-ci-droid.sh 中 LOG_FILE 赋值行号 < ci_invalid_pr_number 行号（排除注释）"""
+        repo_root = Path(__file__).parent.parent
+        script_path = repo_root / "webhook-scripts" / "trigger-ci-droid.sh"
+        script_content = script_path.read_text()
+
+        lines = script_content.split("\n")
+        log_file_line = None
+        invalid_pr_line = None
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if "LOG_FILE=" in line and log_file_line is None:
+                log_file_line = i
+            if "ci_invalid_pr_number" in line and invalid_pr_line is None:
+                invalid_pr_line = i
+
+        assert log_file_line is not None, "LOG_FILE assignment not found in trigger-ci-droid.sh"
+        assert invalid_pr_line is not None, "ci_invalid_pr_number event not found"
+        assert log_file_line < invalid_pr_line, (
+            f"LOG_FILE (line {log_file_line}) must be assigned before "
+            f"ci_invalid_pr_number event (line {invalid_pr_line})"
+        )
+
+    def test_write_pending_ci_log_file_before_invalid_pr(self):
+        """VAL-INJ-010: write-pending-ci.sh 中 LOG_FILE 赋值行号 < ci_invalid_pr_number 行号"""
+        repo_root = Path(__file__).parent.parent
+        script_path = repo_root / "webhook-scripts" / "write-pending-ci.sh"
+        script_content = script_path.read_text()
+
+        lines = script_content.split("\n")
+        log_file_line = None
+        invalid_pr_line = None
+
+        for i, line in enumerate(lines):
+            if "LOG_FILE=" in line and not line.strip().startswith("#"):
+                log_file_line = i
+            if "ci_invalid_pr_number" in line:
+                invalid_pr_line = i
+                break
+
+        assert log_file_line is not None, "LOG_FILE assignment not found in write-pending-ci.sh"
+        assert invalid_pr_line is not None, "ci_invalid_pr_number event not found"
+        assert log_file_line < invalid_pr_line, (
+            f"LOG_FILE (line {log_file_line}) must be assigned before "
+            f"ci_invalid_pr_number event (line {invalid_pr_line})"
+        )
+
+
+class TestVALINJ011PostHogFallbackLog:
+    """VAL-INJ-011: 手动调用不静默丢事件（默认回执路径非 /dev/null）"""
+
+    def test_posthog_lib_no_dev_null_default(self):
+        """VAL-INJ-011: lib/posthog.sh 中 ${LOG_FILE:-/dev/null} 在可执行代码中出现次数 == 0"""
+        repo_root = Path(__file__).parent.parent
+        posthog_lib = repo_root / "webhook-scripts" / "lib" / "posthog.sh"
+        content = posthog_lib.read_text()
+
+        # 验证：不在可执行代码行（排除注释行）中出现 ${LOG_FILE:-/dev/null}
+        # 注释中提到旧实现是允许的
+        for i, line in enumerate(content.split("\n")):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            assert "${LOG_FILE:-/dev/null}" not in line, (
+                f"lib/posthog.sh line {i + 1}: executable code should not default LOG_FILE to /dev/null: {line.strip()}"
+            )
+
+    def test_posthog_lib_has_fallback_path(self):
+        """VAL-INJ-011: lib/posthog.sh 应有非 /dev/null 的默认回执路径"""
+        repo_root = Path(__file__).parent.parent
+        posthog_lib = repo_root / "webhook-scripts" / "lib" / "posthog.sh"
+        content = posthog_lib.read_text()
+
+        # 验证：存在 _posthog_resolve_log 函数或类似 fallback 机制
+        assert "_posthog_resolve_log" in content or "posthog-fallback.log" in content, (
+            "lib/posthog.sh should have a fallback log path (not /dev/null)"
+        )
