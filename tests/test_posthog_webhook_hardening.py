@@ -29,9 +29,7 @@ def test_no_hardcoded_phc_in_webhook_scripts():
     )
 
     # grep returns 1 if no matches, which is what we want
-    assert result.returncode == 1, (
-        f"No webhook-scripts should contain hardcoded phc_ keys, found:\n{result.stdout}"
-    )
+    assert result.returncode == 1, f"No webhook-scripts should contain hardcoded phc_ keys, found:\n{result.stdout}"
 
 
 def test_webhook_scripts_posthog_guard():
@@ -41,18 +39,8 @@ def test_webhook_scripts_posthog_guard():
     POSTHOG_API_KEY，未设时跳过而非发送无效 payload（与 #982 既有
     缺失即跳过语义一致）。
     """
-    senders = [
-        p
-        for p in WEBHOOK_SCRIPTS_DIR.glob("*.sh")
-        if "posthog.com" in p.read_text(encoding="utf-8")
-    ]
+    senders = [p for p in WEBHOOK_SCRIPTS_DIR.glob("*.sh") if "posthog.com" in p.read_text(encoding="utf-8")]
     assert senders, "Expected at least one webhook script reporting to PostHog"
 
-    missing_guard = [
-        p.name
-        for p in senders
-        if "POSTHOG_API_KEY" not in p.read_text(encoding="utf-8")
-    ]
-    assert not missing_guard, (
-        f"PostHog senders missing POSTHOG_API_KEY guard: {', '.join(sorted(missing_guard))}"
-    )
+    missing_guard = [p.name for p in senders if "POSTHOG_API_KEY" not in p.read_text(encoding="utf-8")]
+    assert not missing_guard, f"PostHog senders missing POSTHOG_API_KEY guard: {', '.join(sorted(missing_guard))}"
