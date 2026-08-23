@@ -19,12 +19,13 @@ import json
 import os
 import subprocess
 import sys
-import threading
 from datetime import UTC, datetime
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 import pytest
+
+from tests.stub_api_helpers import run_stub_api_server
 
 REPO_ROOT = Path(__file__).parent.parent
 SCRIPT_PATH = REPO_ROOT / "webhook-scripts" / "write-pending-ci.sh"
@@ -71,12 +72,7 @@ class StubSessionsAPIHandler(BaseHTTPRequestHandler):
 
 @pytest.fixture(scope="module")
 def stub_api_server():
-    server = HTTPServer(("127.0.0.1", 0), StubSessionsAPIHandler)
-    port = server.server_address[1]
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    yield f"http://127.0.0.1:{port}/api/v0"
-    server.shutdown()
+    yield from run_stub_api_server(StubSessionsAPIHandler, url_prefix="/api/v0")
 
 
 def _run_script(script: Path, *args: str, env: dict) -> tuple[int, str, str]:
