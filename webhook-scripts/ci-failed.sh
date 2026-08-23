@@ -46,6 +46,7 @@ log "CI failed hook triggered: pipeline=$CI_PIPELINE_ID project=$CI_PROJECT bran
 
 # Write comment to Linear issue about CI failure (triggers Droid via Linear webhook)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
 source "${SCRIPT_DIR}/lib/op-mcp.sh"
 LINEAR_API_KEY=$(op_get_field "$OP_VAULT_SEVER" "elgcm2nzfza2hjb3yffpkijj7y" "凭据" || true)
 
