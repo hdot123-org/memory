@@ -131,8 +131,17 @@ except:
     fi
     
     # Check CI status - must have failed checks
+    # gh pr checks exit-code semantics (gh help exit-codes): 0=all passed,
+    # 1=some failed, 8=pending. A failing PR exits 1 while still printing
+    # valid JSON on stdout — the old `|| echo "[]"` fallback appended "[]"
+    # AFTER that JSON, corrupting it so has_failure always parsed as 0 and
+    # the sweeper never fired on real red PRs (INFRA-534). Fall back to []
+    # only when stdout is empty (genuine fetch failure).
     local checks_json
-    checks_json=$(gh pr checks "$pr_number" --repo "$REPO" --json name,status,conclusion 2>/dev/null || echo "[]")
+    checks_json=$(gh pr checks "$pr_number" --repo "$REPO" --json name,status,conclusion 2>/dev/null || true)
+    if [ -z "$checks_json" ]; then
+        checks_json="[]"
+    fi
     
     local has_failure
     has_failure=$(echo "$checks_json" | "${PYTHON_BIN:-/opt/homebrew/bin/python3}" -c "
@@ -611,14 +620,13 @@ except:
         PR_NUMBERS=$(gh pr list --repo "$REPO" --search "${LINEAR_REF}" --state open --limit 5 --json number --jq '.[].number' 2>/dev/null || echo "")
         
         for pr_number in $PR_NUMBERS; do
-            # Call sweeper function
-            sweep_red_pr "$pr_number" "$LINEAR_REF"
-            sweep_result=$?
-            
-            if [ $sweep_result -eq 0 ]; then
-                log "  ${LINEAR_REF}: Red PR #${pr_number} was closed by sweeper"
-            else
+            # Call sweeper function; guarded so a "no action / debounce"
+            # return code (1) does not abort the whole reconcile loop
+            # under `set -e` (INFRA-534). Only a real exit (crash) propagates.
+            if ! sweep_red_pr "$pr_number" "$LINEAR_REF"; then
                 log "  ${LINEAR_REF}: Red PR #${pr_number} check completed (no action or debounce)"
+            else
+                log "  ${LINEAR_REF}: Red PR #${pr_number} was closed by sweeper"
             fi
         done
         
