@@ -491,7 +491,6 @@ class TestVAL_INJ_004_SessionSelectionExcludesDecoys:
         """select_session_at_event_time must reject: non-null callingSessionId, cwd mismatch, role=worker, old mtime"""
         locks_dir = Path(temp_env["LOCK_DIR"])
         pr_number = 4251
-        session_id = ""  # M5 schema: no session_id in pending file
 
         # Create pending-ci file (M5 schema: no session_id)
         pending_file = locks_dir / f"pending-ci-{pr_number}.json"
@@ -589,7 +588,6 @@ class TestVAL_INJ_005_FallbackPromptContainsGhPrView:
         """ECHO_DROID dry-run: PROMPT must contain 'gh pr view' and PR number"""
         locks_dir = Path(temp_env["LOCK_DIR"])
         pr_number = 4252
-        session_id = ""  # M5 schema
 
         # Create pending-ci file
         pending_file = locks_dir / f"pending-ci-{pr_number}.json"
@@ -604,15 +602,13 @@ class TestVAL_INJ_005_FallbackPromptContainsGhPrView:
         sessions_index.write_text(json.dumps({"entries": []}))
         temp_env["SESSIONS_INDEX"] = str(sessions_index)
 
-        result = subprocess.run(
+        subprocess.run(
             ["bash", str(TRIGGER_SCRIPT), str(pr_number), "test-branch", "abc123", "passed"],
             env=temp_env,
             capture_output=True,
             text=True,
             timeout=60,
         )
-
-        combined_output = result.stdout + result.stderr
 
         # ECHO_DROID mode writes the PROMPT to LOG_FILE (not stdout)
         # The script sets LOG_DIR = WEBHOOK_BASE/logs (overrides env var)
@@ -728,7 +724,7 @@ class TestVAL_INJ_012_ProbeUnavailableStillInjects:
         assert "is dead (probe HTTP 404" in combined_output or \
                "index stale/missing" in combined_output, \
                "Should detect session death on 404 with stale index"
-        
+
         # Should eventually go to fallback (after rebinding attempts fail)
         assert "FALLBACK: Spawning droid exec" in combined_output or \
                "No live session available" in combined_output or \
@@ -743,7 +739,6 @@ class TestVAL_INJ_013_FallbackTTLLockThreePhases:
         """Phase 1: Fallback trigger writes ci-fallback-<PR>.lock"""
         locks_dir = Path(temp_env["LOCK_DIR"])
         pr_number = 4256
-        session_id = ""  # M5 schema
 
         pending_file = locks_dir / f"pending-ci-{pr_number}.json"
         pending_file.write_text(json.dumps({
@@ -757,7 +752,7 @@ class TestVAL_INJ_013_FallbackTTLLockThreePhases:
         sessions_index.write_text(json.dumps({"entries": []}))
         temp_env["SESSIONS_INDEX"] = str(sessions_index)
 
-        result = subprocess.run(
+        subprocess.run(
             ["bash", str(TRIGGER_SCRIPT), str(pr_number), "test-branch", "abc123", "passed"],
             env=temp_env,
             capture_output=True,
@@ -773,7 +768,6 @@ class TestVAL_INJ_013_FallbackTTLLockThreePhases:
         """Phase 2: Lock age < 60min → skip duplicate spawn"""
         locks_dir = Path(temp_env["LOCK_DIR"])
         pr_number = 4257
-        session_id = ""
 
         pending_file = locks_dir / f"pending-ci-{pr_number}.json"
         pending_file.write_text(json.dumps({
@@ -810,7 +804,6 @@ class TestVAL_INJ_013_FallbackTTLLockThreePhases:
         """Phase 3: Lock age > 60min → remove stale lock and spawn again"""
         locks_dir = Path(temp_env["LOCK_DIR"])
         pr_number = 4258
-        session_id = ""
 
         pending_file = locks_dir / f"pending-ci-{pr_number}.json"
         pending_file.write_text(json.dumps({
