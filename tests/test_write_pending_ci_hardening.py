@@ -350,7 +350,7 @@ class TestInvalidSource:
         assert "source" in (stdout1 + stderr1).lower() or "invalid" in (stdout1 + stderr1).lower()
         pending1 = _read_pending(Path(env["HOME"]), 4245)
         assert pending1 is None, "No file should be created for invalid source"
-        
+
         # 变体 2: --source ""
         code2, stdout2, stderr2 = _run_script(
             SCRIPT_PATH, "--source", "", "4245", env=env
@@ -435,11 +435,11 @@ class TestDuplicateRegistration:
         assert pending1 is not None
         assert pending1["context"] == "第一次意图"
         created_at1 = pending1["created_at"]
-        
+
         # 等待 1 秒确保 created_at 可区分
         import time
         time.sleep(1)
-        
+
         # 第二次注册（不同 context）
         code2, _, _ = _run_script(
             SCRIPT_PATH, "--source", "session", "--context", "第二次意图", "4250", env=env
@@ -449,7 +449,7 @@ class TestDuplicateRegistration:
         assert pending2 is not None
         assert pending2["context"] == "第二次意图"
         assert pending2["created_at"] > created_at1  # 覆盖为新记录
-        
+
         # 恰一份合法 JSON（无副本）
         locks_dir = Path(env["HOME"]) / ".factory" / "webhook" / "locks"
         matching_files = list(locks_dir.glob("pending-ci-4250.json*"))
