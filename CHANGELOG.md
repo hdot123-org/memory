@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.39.5](https://github.com/hdot123-org/memory/compare/v0.39.4...v0.39.5) (2026-08-23)
+
+
+### Bug Fixes
+
+* 修复 M5 新 schema pending 文件解析错位致重绑定失效（INFRA-527） ([#988](https://github.com/hdot123-org/memory/issues/988)) ([63ff6e9](https://github.com/hdot123-org/memory/commit/63ff6e9641e028c04b20d3a17d1af318ebf47857))
+* 消除 conftest 网关重置 fixture 的静默异常吞没（INFRA-531） ([#993](https://github.com/hdot123-org/memory/issues/993)) ([a8f8676](https://github.com/hdot123-org/memory/commit/a8f86769830852978a4f11bb3e5cd07b6e61c1d3))
+* 移除 MANIFEST 重复 local_branch_cleanup.sh 跨目录映射 ([#987](https://github.com/hdot123-org/memory/issues/987)) ([ece1dd8](https://github.com/hdot123-org/memory/commit/ece1dd8debcd50e7231d32acb1b574f6efa160ee))
+
+
+### Documentation
+
+* README 补充 webhook-scripts 子系统章节（镜像定位、同步机制、脚本清单、质量门禁） ([#991](https://github.com/hdot123-org/memory/issues/991)) ([bca4807](https://github.com/hdot123-org/memory/commit/bca4807b791427a7373237b4282c2337998977bb))
+* 修正 webhook-scripts 质量门禁描述与实际 CI 机制一致（INFRA-530） ([#992](https://github.com/hdot123-org/memory/issues/992)) ([a9661d8](https://github.com/hdot123-org/memory/commit/a9661d85322b82f61442f9a91ed2f766bb4431b1))
+
 ## [0.39.4](https://github.com/hdot123-org/memory/compare/v0.39.3...v0.39.4) (2026-08-23)
 
 
