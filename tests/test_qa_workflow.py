@@ -17,18 +17,22 @@ import yaml
 REPO_ROOT = Path(__file__).parent.parent
 
 
+@pytest.fixture
+def qa_data():
+    """Load qa.yml workflow (shared across classes; dedup INFRA-455).
+
+    读取 qa.yml 并断言基础结构完整（非 None 且含 jobs 键）。
+    """
+    workflow_path = REPO_ROOT / ".github/workflows/qa.yml"
+    content = workflow_path.read_text()
+    data = yaml.safe_load(content)
+    assert data is not None
+    assert "jobs" in data
+    return data
+
+
 class TestCoverageAuditScheduleGate:
     """coverage-audit job 事件门：仅 schedule/workflow_dispatch 运行。"""
-
-    @pytest.fixture
-    def qa_data(self):
-        """Load qa.yml workflow."""
-        workflow_path = REPO_ROOT / ".github/workflows/qa.yml"
-        content = workflow_path.read_text()
-        data = yaml.safe_load(content)
-        assert data is not None
-        assert "jobs" in data
-        return data
 
     @pytest.fixture
     def coverage_audit_job(self, qa_data):
@@ -79,14 +83,6 @@ class TestQaOkSkippedHandling:
     当 coverage-audit 被 if 门跳过时，needs.coverage-audit.result == 'skipped'。
     qa-ok 的 fail 分支必须同时接受 'success' 和 'skipped'，否则误报失败。
     """
-
-    @pytest.fixture
-    def qa_data(self):
-        """Load qa.yml workflow."""
-        workflow_path = REPO_ROOT / ".github/workflows/qa.yml"
-        content = workflow_path.read_text()
-        data = yaml.safe_load(content)
-        return data
 
     @pytest.fixture
     def qa_ok_job(self, qa_data):
@@ -156,16 +152,6 @@ class TestSubsetJobsNoCovGuard:
         "schema-migration",
         "boundary-security",
     ]
-
-    @pytest.fixture
-    def qa_data(self):
-        """Load qa.yml workflow."""
-        workflow_path = REPO_ROOT / ".github/workflows/qa.yml"
-        content = workflow_path.read_text()
-        data = yaml.safe_load(content)
-        assert data is not None
-        assert "jobs" in data
-        return data
 
     @staticmethod
     def _extract_pytest_steps(job_def):
