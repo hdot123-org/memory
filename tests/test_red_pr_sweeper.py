@@ -149,6 +149,12 @@ print(data.get(field, ''))
                         *) shift ;;
                     esac
                 done
+                # .stdout fixture (if present) overrides .json — used to
+                # simulate genuine fetch failures (empty stdout + exit != 0)
+                if [ -f "{fixtures_dir}/pr_checks_${{pr_num}}.stdout" ]; then
+                    cat "{fixtures_dir}/pr_checks_${{pr_num}}.stdout"
+                    exit $(cat "{fixtures_dir}/pr_checks_${{pr_num}}.exit" 2>/dev/null || echo 0)
+                fi
                 if [ -f "{fixtures_dir}/pr_checks_${{pr_num}}.json" ]; then
                     cat "{fixtures_dir}/pr_checks_${{pr_num}}.json"
                     exit $(cat "{fixtures_dir}/pr_checks_${{pr_num}}.exit" 2>/dev/null || echo 0)
@@ -251,6 +257,196 @@ def _get_gh_calls(tmp_path: Path) -> str:
     if log_path.exists():
         return log_path.read_text()
     return ""
+
+
+# ============================================================================
+# INFRA-534 regression: gh pr checks exit-code semantics
+# ============================================================================
+
+
+class TestChecksExitCodeSemantics:
+    """gh pr checks exits 1 on failing checks while still printing valid JSON.
+
+    The pre-INFRA-534 code used `|| echo "[]"` which appended "[]" after the
+    JSON on stdout, corrupting it so has_failure always parsed as 0 — the
+    sweeper never fired on real red PRs.
+    """
+
+    def test_failing_exit_code_with_valid_json_triggers(self, tmp_path):
+        """gh pr checks exit=1 (failing PR) + valid JSON on stdout → trigger.
+
+        This mirrors real gh behaviour: exit 1 means "some checks failed",
+        stdout still carries the JSON array.
+        """
+        now = datetime.now(UTC)
+        created_at = now - timedelta(minutes=600)
+
+        gh_responses = {
+            "pr_view_4270": {
+                "json": {
+                    "createdAt": created_at.isoformat(),
+                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                },
+                "exit": 0,
+            },
+            "pr_checks_4270": {
+                "json": [
+                    {"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"},
+                ],
+                "exit": 1,  # real gh behaviour on failing checks
+            },
+            "pr_comment_4270": {"exit": 0},
+            "pr_close_4270": {"exit": 0},
+        }
+
+        gh_shim = _make_gh_shim(tmp_path, gh_responses)
+        lock_dir = tmp_path / "locks"
+        lock_dir.mkdir()
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        wrapper = _make_wrapper(tmp_path, gh_shim, lock_dir, log_dir)
+
+        exit_code, stdout, stderr = _run_sweep(tmp_path, wrapper, gh_shim, 4270, "INFRA-999")
+
+        calls = _get_gh_calls(tmp_path)
+
+        assert "comment" in calls, (
+            f"gh pr comment must be called for failing PR (exit=1 + FAILURE json). Calls: {calls}"
+        )
+        assert "close" in calls, f"gh pr close must be called for failing PR. Calls: {calls}"
+
+    def test_pending_exit_code_with_valid_json_no_trigger(self, tmp_path):
+        """gh pr checks exit=8 (pending) + no FAILURE conclusion → no trigger."""
+        now = datetime.now(UTC)
+        created_at = now - timedelta(minutes=600)
+
+        gh_responses = {
+            "pr_view_4271": {
+                "json": {
+                    "createdAt": created_at.isoformat(),
+                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                },
+                "exit": 0,
+            },
+            "pr_checks_4271": {
+                "json": [
+                    {"name": "ci", "status": "IN_PROGRESS", "conclusion": ""},
+                ],
+                "exit": 8,  # pending
+            },
+        }
+
+        gh_shim = _make_gh_shim(tmp_path, gh_responses)
+        lock_dir = tmp_path / "locks"
+        lock_dir.mkdir()
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        wrapper = _make_wrapper(tmp_path, gh_shim, lock_dir, log_dir)
+
+        exit_code, stdout, stderr = _run_sweep(tmp_path, wrapper, gh_shim, 4271, "INFRA-999")
+
+        calls = _get_gh_calls(tmp_path)
+
+        assert "comment" not in calls, "gh pr comment must NOT be called for pending checks (exit=8)"
+        assert "close" not in calls, "gh pr close must NOT be called for pending checks (exit=8)"
+
+    def test_empty_stdout_falls_back_to_empty_list(self, tmp_path):
+        """Genuine fetch failure (empty stdout, non-zero exit) → treated as no checks, skip."""
+        now = datetime.now(UTC)
+        created_at = now - timedelta(minutes=600)
+
+        gh_responses = {
+            "pr_view_4272": {
+                "json": {
+                    "createdAt": created_at.isoformat(),
+                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                },
+                "exit": 0,
+            },
+            # No pr_checks_4272 fixture: shim echoes "[]" itself, but simulate
+            # a hard failure by fixture returning empty stdout + exit 1.
+            "pr_checks_4272": {
+                "json": [],
+                "stdout": "",
+                "exit": 1,
+            },
+        }
+
+        gh_shim = _make_gh_shim(tmp_path, gh_responses)
+        lock_dir = tmp_path / "locks"
+        lock_dir.mkdir()
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        wrapper = _make_wrapper(tmp_path, gh_shim, lock_dir, log_dir)
+
+        exit_code, stdout, stderr = _run_sweep(tmp_path, wrapper, gh_shim, 4272, "INFRA-999")
+
+        calls = _get_gh_calls(tmp_path)
+
+        assert "comment" not in calls, "gh pr comment must NOT be called when checks unavailable"
+        assert "close" not in calls, "gh pr close must NOT be called when checks unavailable"
+
+
+# ============================================================================
+# INFRA-534 regression: sweep_red_pr bare call under `set -e`
+# ============================================================================
+
+
+class TestBareCallSetEGuard:
+    """The main loop calls sweep_red_pr bare; its return-1 (skip/debounce paths)
+    must not abort reconcile-evolution.sh under `set -euo pipefail`.
+
+    Pre-INFRA-534 code called the function bare, so any open PR for a Linear
+    issue killed the whole reconciliation mid-run.
+    """
+
+    def test_main_loop_call_is_set_e_safe(self):
+        """The main-loop invocation must be guarded (if ! / || true style)."""
+        script_content = SCRIPT_PATH.read_text()
+
+        # Find every sweep_red_pr call site that is not the definition
+        call_sites = []
+        for i, line in enumerate(script_content.split("\n")):
+            stripped = line.strip()
+            if "sweep_red_pr" in stripped and "sweep_red_pr()" not in stripped:
+                if stripped.startswith("#"):
+                    continue
+                call_sites.append((i + 1, stripped))
+
+        assert call_sites, "sweep_red_pr must be called from the main loop"
+
+        for line_no, line in call_sites:
+            guarded = line.startswith("if !") or "|| true" in line or "sweep_result=" in line and "$(" in line
+            assert guarded, f"Line {line_no}: sweep_red_pr call must be set -e safe (if ! / || true): {line!r}"
+
+    def test_bare_call_with_return_1_does_not_abort_loop(self, tmp_path):
+        """Integration: wrapper runs with set -euo pipefail; a skip-path
+        sweep_red_pr (return 1) must let the caller script continue."""
+        wrapper_path = tmp_path / "set_e_probe.sh"
+        wrapper_path.write_text(
+            """#!/usr/bin/env bash
+set -euo pipefail
+sweep_red_pr() { return 1; }
+for pr_number in 123 456; do
+    if ! sweep_red_pr "$pr_number" "INFRA-999"; then
+        echo "continued after $pr_number"
+    fi
+done
+echo "LOOP_COMPLETED"
+"""
+        )
+        wrapper_path.chmod(0o755)
+
+        result = subprocess.run(
+            ["bash", str(wrapper_path)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        assert result.returncode == 0, f"guarded loop must exit 0, got {result.returncode}: {result.stderr}"
+        assert "LOOP_COMPLETED" in result.stdout, "loop must complete after return-1 calls"
+        assert result.stdout.count("continued after") == 2
 
 
 # ============================================================================
