@@ -20,6 +20,19 @@ BRANCH="${2:-}"
 SHA="${3:-}"
 STATUS="${4:-}"
 
+# === 配置（VAL-INJ-010: LOG_FILE 赋值先于任何 send_posthog_event）===
+WEBHOOK_BASE="${WEBHOOK_BASE:-/Users/busiji/.factory/webhook}"
+LOG_DIR="${WEBHOOK_BASE}/logs"
+LOCK_DIR="${LOCK_DIR:-${WEBHOOK_BASE}/locks}"
+SESSIONS_INDEX="${SESSIONS_INDEX:-${HOME}/.factory/sessions-index.json}"
+PYTHON_BIN="${PYTHON_BIN:-/opt/homebrew/bin/python3}"
+FLOCK_BIN="${FLOCK_BIN:-/opt/homebrew/bin/flock}"
+
+# VAL-INJ-010: 提前赋值 LOG_FILE，确保 ci_invalid_pr_number 事件回执落盘
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+LOG_FILE="${LOG_DIR}/ci-complete-pr${PR_NUMBER:-unknown}-${TIMESTAMP}.log"
+mkdir -p "$LOG_DIR" 2>/dev/null
+
 # PR_NUMBER 前置校验（必须在路径拼接前）
 if [[ ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Invalid PR_NUMBER='$PR_NUMBER' (must match ^[1-9][0-9]*$)"
@@ -27,14 +40,8 @@ if [[ ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
   exit 0
 fi
 
-# === 配置 ===
-WEBHOOK_BASE="${WEBHOOK_BASE:-/Users/busiji/.factory/webhook}"
-LOG_DIR="${WEBHOOK_BASE}/logs"
-LOCK_DIR="${LOCK_DIR:-${WEBHOOK_BASE}/locks}"
-SESSIONS_INDEX="${SESSIONS_INDEX:-${HOME}/.factory/sessions-index.json}"
+# === 配置（后续字段依赖 PR_NUMBER 合法性）===
 PENDING_CI_FILE="${LOCK_DIR}/pending-ci-${PR_NUMBER}.json"
-PYTHON_BIN="${PYTHON_BIN:-/opt/homebrew/bin/python3}"
-FLOCK_BIN="${FLOCK_BIN:-/opt/homebrew/bin/flock}"
 
 # Cross-platform mtime (macOS stat -f %m / GNU stat -c %Y)
 # Conditional assignment avoids GNU stdout leak into $() capture
@@ -114,8 +121,8 @@ FACTORY_API_BASE="${FACTORY_API_BASE:-https://api.factory.ai/api/v0}"
 COMPUTER_ID="d6cf2cd1-a7b8-4aad-a71f-ca89c90d2c33"
 
 # === 日志 ===
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-LOG_FILE="${LOG_DIR}/ci-complete-pr${PR_NUMBER:-unknown}-${TIMESTAMP}.log"
+# VAL-INJ-010: LOG_FILE 已在文件顶部提前赋值（在 PR_NUMBER 校验之前）
+# 这里只定义 log 函数
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
