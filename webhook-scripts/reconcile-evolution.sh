@@ -33,6 +33,18 @@ DEADLOCK_EXIT_SENTINEL_PREFIX="<!-- deadlock-exit "
 # N=5 对应 ~2.5h（30min/tick × 5）
 STALE_ORPHAN_FALLBACK_TICKS=5
 
+# Red PR Sweeper threshold (F2, VAL-SWEEP-002)
+# Data source: artifacts/red-pr-sweep/distribution.json (P90 = 506.7 min)
+# Rounded up: ⌈506.7⌉ = 507 min (8.45 hours)
+# Rationale: 90% of red PRs are resolved within this time. Only the slowest 10%
+# (typically PRs with droid-review failures or multi-fail cascades) exceed it.
+# See stats.md §6.1 for nearest-rank derivation.
+SWEEP_RED_PR_THRESHOLD_MINUTES=507
+
+# New commit debounce window (VAL-SWEEP-006)
+# Skip PRs with commits in the last 30 minutes (someone may be fixing)
+SWEEP_NEW_COMMIT_WINDOW_MINUTES=30
+
 # DRY_RUN=1 guard (M1 hemostasis, VAL-M1-001):
 # When set, both cancel paths (failed-session + stale-orphan) only log intent
 # and skip all GraphQL issueUpdate(cancel) calls.
@@ -54,6 +66,132 @@ log_anchor_extract_err() {
         [ -z "$line" ] && continue
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] anchor-extract ${target}: ${line}" >> "${LOG_DIR}/anchor-extract.log"
     done <<< "$err_text"
+}
+
+# Red PR Sweeper function (F2, VAL-SWEEP-003~014)
+# Checks if an open PR should be closed due to prolonged CI failure
+# Returns 0 if sweeper took action, 1 otherwise
+sweep_red_pr() {
+    local pr_number="$1"
+    local linear_ref="$2"
+    
+    # Debounce 1: Check if l2d-INFRA-*.lock exists
+    local lock_file="${LOCK_DIR}/l2d-${linear_ref}.lock"
+    if [ -f "$lock_file" ]; then
+        log "  [SWEEP] PR #${pr_number}: l2d lock exists, skip (debounce)"
+        return 1
+    fi
+    
+    # Check PR age (created_at from GitHub)
+    local pr_created_at
+    pr_created_at=$(gh pr view "$pr_number" --repo "$REPO" --json createdAt --jq '.createdAt' 2>/dev/null || echo "")
+    if [ -z "$pr_created_at" ]; then
+        log "  [SWEEP] PR #${pr_number}: failed to fetch created_at, skip"
+        return 1
+    fi
+    
+    local pr_age_minutes
+    pr_age_minutes=$("${PYTHON_BIN:-/opt/homebrew/bin/python3}" -c "
+from datetime import datetime, timezone
+try:
+    created = datetime.fromisoformat('${pr_created_at}'.replace('Z', '+00:00'))
+    now = datetime.now(timezone.utc)
+    age_min = int((now - created).total_seconds() / 60)
+    print(age_min)
+except:
+    print(0)
+" 2>/dev/null || echo "0")
+    
+    # Check if PR age exceeds threshold
+    if [ "$pr_age_minutes" -lt "$SWEEP_RED_PR_THRESHOLD_MINUTES" ]; then
+        log "  [SWEEP] PR #${pr_number}: age ${pr_age_minutes}min < threshold ${SWEEP_RED_PR_THRESHOLD_MINUTES}min, skip"
+        return 1
+    fi
+    
+    # Debounce 2: Check if last commit is recent (< 30 min)
+    local last_commit_at
+    last_commit_at=$(gh pr view "$pr_number" --repo "$REPO" --json pushedAt --jq '.pushedAt' 2>/dev/null || echo "")
+    if [ -n "$last_commit_at" ]; then
+        local commit_age_minutes
+        commit_age_minutes=$("${PYTHON_BIN:-/opt/homebrew/bin/python3}" -c "
+from datetime import datetime, timezone
+try:
+    pushed = datetime.fromisoformat('${last_commit_at}'.replace('Z', '+00:00'))
+    now = datetime.now(timezone.utc)
+    age_min = int((now - pushed).total_seconds() / 60)
+    print(age_min)
+except:
+    print(9999)
+" 2>/dev/null || echo "9999")
+        
+        if [ "$commit_age_minutes" -lt "$SWEEP_NEW_COMMIT_WINDOW_MINUTES" ]; then
+            log "  [SWEEP] PR #${pr_number}: last commit ${commit_age_minutes}min ago (< ${SWEEP_NEW_COMMIT_WINDOW_MINUTES}min), skip (debounce)"
+            return 1
+        fi
+    fi
+    
+    # Check CI status - must have failed checks
+    local checks_json
+    checks_json=$(gh pr checks "$pr_number" --repo "$REPO" --json name,status,conclusion 2>/dev/null || echo "[]")
+    
+    local has_failure
+    has_failure=$(echo "$checks_json" | "${PYTHON_BIN:-/opt/homebrew/bin/python3}" -c "
+import json, sys
+try:
+    checks = json.load(sys.stdin)
+    # Check if any check has conclusion=FAILURE
+    has_failure = any(c.get('conclusion') == 'FAILURE' for c in checks)
+    print('1' if has_failure else '0')
+except:
+    print('0')
+" 2>/dev/null || echo "0")
+    
+    if [ "$has_failure" != "1" ]; then
+        log "  [SWEEP] PR #${pr_number}: no FAILURE checks, skip"
+        return 1
+    fi
+    
+    # All conditions met: comment first, then close if comment succeeds
+    log "  [SWEEP] PR #${pr_number}: red PR detected (age=${pr_age_minutes}min, has FAILURE checks)"
+    
+    # Prepare comment body
+    local comment_body="Red PR Sweeper (F2): This PR has been open for ${pr_age_minutes} minutes with CI failures.
+Reference: ${linear_ref}
+Threshold: ${SWEEP_RED_PR_THRESHOLD_MINUTES} minutes (P90 of red PR survival time)
+Last commit: ${last_commit_at:-unknown}
+Action: Closing to trigger re-dispatch by scanner.
+Note: This is an automated cleanup. The issue will be re-discovered by the scanner and a new PR may be created."
+    
+    if [ "${DRY_RUN:-0}" = "1" ]; then
+        log "  [SWEEP] [DRY_RUN] Would comment on PR #${pr_number}"
+        log "  [SWEEP] [DRY_RUN] Would close PR #${pr_number}"
+        return 0
+    fi
+    
+    # Step 1: Comment on PR
+    if ! gh pr comment "$pr_number" --repo "$REPO" --body "$comment_body" >> "$LOG_FILE" 2>&1; then
+        log "  [SWEEP] PR #${pr_number}: comment failed, skip close (preserve for next tick)"
+        return 1
+    fi
+    
+    log "  [SWEEP] PR #${pr_number}: comment succeeded"
+    
+    # Step 2: Close PR
+    if ! gh pr close "$pr_number" --repo "$REPO" >> "$LOG_FILE" 2>&1; then
+        log "  [SWEEP] PR #${pr_number}: close failed"
+        return 1
+    fi
+    
+    log "  [SWEEP] PR #${pr_number}: closed successfully"
+    
+    # Step 3: Cleanup pending-ci file if exists (VAL-SWEEP-014)
+    local pending_file="${LOCK_DIR}/pending-ci-${pr_number}.json"
+    if [ -f "$pending_file" ]; then
+        rm -f "$pending_file"
+        log "  [SWEEP] PR #${pr_number}: cleaned up pending-ci file"
+    fi
+    
+    return 0
 }
 
 # === 1. 解析 LINEAR_API_KEY（复用 trigger-droid.sh 的 op-mcp 机制）===
@@ -463,6 +601,27 @@ except:
 
     if [ "$PR_FOUND" -gt 0 ]; then
         log "  ${LINEAR_REF}: PR exists, skip"
+        
+        # === Red PR Sweeper (F2, VAL-SWEEP-002~014) ===
+        # Check each open PR for this Linear ref to see if it's a "red PR"
+        # (open + CI failure + age > threshold). If so, comment and close.
+        log "  ${LINEAR_REF}: Running Red PR Sweeper check..."
+        
+        # Get list of open PR numbers
+        PR_NUMBERS=$(gh pr list --repo "$REPO" --search "${LINEAR_REF}" --state open --limit 5 --json number --jq '.[].number' 2>/dev/null || echo "")
+        
+        for pr_number in $PR_NUMBERS; do
+            # Call sweeper function
+            sweep_red_pr "$pr_number" "$LINEAR_REF"
+            sweep_result=$?
+            
+            if [ $sweep_result -eq 0 ]; then
+                log "  ${LINEAR_REF}: Red PR #${pr_number} was closed by sweeper"
+            else
+                log "  ${LINEAR_REF}: Red PR #${pr_number} check completed (no action or debounce)"
+            fi
+        done
+        
         continue
     fi
 
