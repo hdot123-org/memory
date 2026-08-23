@@ -8,40 +8,11 @@
 
 set -uo pipefail
 
-# === PostHog 事件上报 ===
-send_posthog_event() {
-  # POSTHOG_DRY_RUN=1: print only, do not send (test isolation guard)
-  if [[ "${POSTHOG_DRY_RUN:-0}" == "1" ]]; then
-    echo "[POSTHOG_DRY_RUN] Would send: event=$1 pr=$2 stage=$3 detail=$4"
-    return 0
-  fi
-  local event_type="$1"
-  local pr_number="$2"
-  local stage="$3"
-  local detail="$4"
-  # M4: PostHog key from environment; skip if not set
-  if [[ -z "${POSTHOG_API_KEY:-}" ]]; then
-    echo "[POSTHOG] Skipping event (no POSTHOG_API_KEY): $event_type" >&2
-    return 0
-  fi
-  local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  curl -s -X POST "https://us.posthog.com/batch/" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"api_key\": \"${POSTHOG_API_KEY}\",
-      \"batch\": [{
-        \"event\": \"ci_webhook_failure\",
-        \"properties\": {
-          \"error_type\": \"$event_type\",
-          \"pr_number\": \"$pr_number\",
-          \"stage\": \"$stage\",
-          \"detail\": \"$detail\",
-          \"distinct_id\": \"ci-webhook\"
-        },
-        \"timestamp\": \"$timestamp\"
-      }]
-    }" || true
-}
+# === PostHog 事件上报 (lib/posthog.sh 统一实现) ===
+POSTHOG_EVENT_NAME="ci_webhook_failure"
+POSTHOG_DISTINCT_ID="ci-webhook"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/posthog.sh"
 
 # === 参数 ===
 PR_NUMBER="${1:-}"
@@ -60,6 +31,7 @@ fi
 WEBHOOK_BASE="${WEBHOOK_BASE:-/Users/busiji/.factory/webhook}"
 LOG_DIR="${WEBHOOK_BASE}/logs"
 LOCK_DIR="${LOCK_DIR:-${WEBHOOK_BASE}/locks}"
+SESSIONS_INDEX="${SESSIONS_INDEX:-${HOME}/.factory/sessions-index.json}"
 PENDING_CI_FILE="${LOCK_DIR}/pending-ci-${PR_NUMBER}.json"
 PYTHON_BIN="${PYTHON_BIN:-/opt/homebrew/bin/python3}"
 FLOCK_BIN="${FLOCK_BIN:-/opt/homebrew/bin/flock}"
@@ -188,12 +160,14 @@ fi
 log "Reading pending-ci-${PR_NUMBER}.json..."
 
 # 读取 session_id、pr_number、created_at 和 cwd（从 pending-ci-{PR_NUMBER}.json）
+# M5: session_id is now optional (new schema: {pr_number, cwd, created_at})
+# Old schema with session_id still works (backward compat)
 read -r SESSION_ID PENDING_PR CREATED_AT PENDING_CWD < <($PYTHON_BIN -c "
 import json, sys
 try:
     with open('$PENDING_CI_FILE') as f:
         data = json.load(f)
-    session_id = data.get('session_id', '')
+    session_id = data.get('session_id') or ''  # M5: null/missing → empty
     pr_number = data.get('pr_number', '')
     created_at = data.get('created_at', '')
     cwd = data.get('cwd', '')
@@ -204,7 +178,7 @@ except Exception as e:
 " 2>>"$LOG_FILE")
 
 # Check for corrupted JSON (parser failed to extract any fields)
-if [ -z "$SESSION_ID" ] && [ -z "$PENDING_PR" ]; then
+if [ -z "$PENDING_PR" ]; then
     log "ERROR: Failed to parse pending-ci JSON — quarantining corrupted file"
     mv "$PENDING_CI_FILE" "${PENDING_CI_FILE}.corrupted.$(date +%s)"
     send_posthog_event "ci_corrupted_json" "$PR_NUMBER" "parse" "JSON parse failed"
@@ -277,17 +251,23 @@ else
     log "WARNING: pending-ci-${PR_NUMBER}.json missing created_at field (legacy format)"
 fi
 
-if [ -z "$SESSION_ID" ]; then
-    log "ERROR: Failed to extract session_id from pending-ci-${PR_NUMBER}.json"
-    send_posthog_event "ci_session_id_empty" "$PR_NUMBER" "parse" "session_id empty"
-    exit 0
-fi
-
-log "Extracted session_id: $SESSION_ID"
 log "Pending PR from file: $PENDING_PR"
 
+# === M5: Event-time session rebinding ===
+# If SESSION_ID is present (old schema), probe it first.
+# If missing or dead, do event-time rebinding from sessions-index.json.
+if [ -n "$SESSION_ID" ]; then
+    log "Extracted session_id (old schema): $SESSION_ID — probing..."
+    # We'll probe this session below; if probe fails we'll rebind.
+    : # probe happens after token retrieval (line ~361)
+else
+    log "No session_id in pending file (M5 schema) — will do event-time rebinding"
+fi
+
 # === 幂等保护：fingerprint lock ===
-FINGERPRINT="${SESSION_ID}:${PR_NUMBER}"
+# M5: Use resolved session_id (from rebinding) or PR-based key to avoid null collision
+FINGERPRINT_KEY="${SESSION_ID:-rebinding}:${PR_NUMBER}"
+FINGERPRINT="$FINGERPRINT_KEY"
 LOCK_FILE="${LOCK_DIR}/ci-complete-$(echo "$FINGERPRINT" | /usr/bin/sed 's/[^a-zA-Z0-9]/-/g').lock"
 
 mkdir -p "$LOCK_DIR" 2>/dev/null
@@ -320,6 +300,62 @@ if ! echo "$TIMESTAMP:$$" >&200; then
 fi
 log "Created lock file: $LOCK_FILE"
 
+# === M5: Event-time session selection function ===
+# Queries sessions-index.json to find active orchestrator sessions for the given cwd.
+# Returns the most recent session_id (by mtime) that matches the criteria.
+# Criteria: cwd exact match + mission-session tag with role=orchestrator + callingSessionId=null
+select_session_at_event_time() {
+    local target_cwd="$1"
+    local index_file="$2"
+
+    if [ ! -f "$index_file" ]; then
+        log "ERROR: sessions-index.json not found at $index_file"
+        return 1
+    fi
+
+    $PYTHON_BIN -c "
+import json, sys
+try:
+    with open('$index_file') as f:
+        data = json.load(f)
+    target_cwd = '$target_cwd'
+    candidates = []
+    for entry in data.get('entries', []):
+        # Filter: exact cwd match
+        if entry.get('cwd') != target_cwd:
+            continue
+        # Filter: callingSessionId must be null (orchestrator sessions)
+        if entry.get('callingSessionId') is not None:
+            continue
+        # Filter: must have mission-session tag with role=orchestrator
+        has_orch_tag = False
+        for tag in entry.get('tags', []):
+            if tag.get('name') == 'mission-session':
+                metadata = tag.get('metadata', {})
+                if metadata.get('role') == 'orchestrator':
+                    has_orch_tag = True
+                    break
+        if not has_orch_tag:
+            continue
+        # Collect candidate
+        candidates.append({
+            'sessionId': entry.get('sessionId'),
+            'mtime': entry.get('mtime', 0)
+        })
+    # Sort by mtime descending (most recent first)
+    candidates.sort(key=lambda x: x['mtime'], reverse=True)
+    # Return top candidate's sessionId
+    if candidates:
+        print(candidates[0]['sessionId'])
+        sys.exit(0)
+    else:
+        sys.exit(1)
+except Exception as e:
+    print(f'ERROR in select_session_at_event_time: {e}', file=sys.stderr)
+    sys.exit(2)
+" 2>>"$LOG_FILE"
+}
+
 # === 从 1Password MCP 读取 Factory token ===
 if [ -z "${FACTORY_TOKEN:-}" ]; then
     log "Reading Factory token from 1Password MCP..."
@@ -351,23 +387,149 @@ fi
 
 log "Factory token retrieved successfully (prefix: ${FACTORY_TOKEN:0:10}...)"
 
-# === 探活：GET /api/v0/sessions/{id} 检查会话是否活跃 ===
-# 实测结论（2026-08-20）：
-# - GET /api/v0/sessions/{id} 端点存在，返回 JSON 格式错误（非 HTML 404 页面）
-# - 不存在的会话返回 {"detail":"Session does not exist","status":404,...}
-# - 不存在的路由返回 HTML 404 页面（Next.js 默认）
-# - 结论：端点可用，可用于注入前探活，避免向挂起的 daemon 烧重试
-PROBE_URL="${FACTORY_API_BASE}/sessions/${SESSION_ID}"
-log "Probing session liveness: GET $PROBE_URL"
+# === M5: Event-time session selection ===
+# Determine which session to target:
+# 1. If SESSION_ID is present (old schema), probe it first. If dead, do event-time rebinding.
+# 2. If SESSION_ID is empty (new schema), do event-time rebinding immediately.
+# 3. If rebinding finds a live session, skip to injection (no redundant probe).
+# 4. If all candidates fail, mark rebinding_failed and fallback.
 
-PROBE_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "$PROBE_URL" \
-    -H "Authorization: Bearer $FACTORY_TOKEN" \
-    --connect-timeout 10 --max-time 15 2>>"$LOG_FILE") || PROBE_RESPONSE=$'\n000'
+SESSION_PROBED=""  # Track if we've already probed the final SESSION_ID
 
-PROBE_BODY=$(echo "$PROBE_RESPONSE" | sed '$ d')
-PROBE_CODE=$(echo "$PROBE_RESPONSE" | tail -n1)
+if [ -n "$SESSION_ID" ]; then
+    log "Old schema detected (session_id present): $SESSION_ID — probing first"
+    PROBE_URL="${FACTORY_API_BASE}/sessions/${SESSION_ID}"
+    PROBE_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "$PROBE_URL" \
+        -H "Authorization: Bearer $FACTORY_TOKEN" \
+        --connect-timeout 10 --max-time 15 2>>"$LOG_FILE") || PROBE_RESPONSE=$'\n000'
+    PROBE_CODE=$(echo "$PROBE_RESPONSE" | tail -n1)
+    
+    if [[ "$PROBE_CODE" =~ ^2 ]]; then
+        log "Session $SESSION_ID is alive (probe HTTP $PROBE_CODE), using it"
+        SESSION_PROBED="1"
+    else
+        log "Session $SESSION_ID is dead (probe HTTP $PROBE_CODE), attempting event-time rebinding"
+        SESSION_ID=""  # Clear for rebinding
+    fi
+fi
 
-log "Probe HTTP Response Code: $PROBE_CODE"
+if [ -z "$SESSION_ID" ]; then
+    log "Attempting event-time session selection for cwd=$PENDING_CWD"
+    SELECTED_SESSION=$(select_session_at_event_time "$PENDING_CWD" "$SESSIONS_INDEX" 2>>"$LOG_FILE")
+    SELECT_RC=$?
+    
+    if [ $SELECT_RC -eq 0 ] && [ -n "$SELECTED_SESSION" ]; then
+        log "Selected session via event-time rebinding: $SELECTED_SESSION"
+        # Probe the selected session
+        PROBE_URL="${FACTORY_API_BASE}/sessions/${SELECTED_SESSION}"
+        PROBE_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "$PROBE_URL" \
+            -H "Authorization: Bearer $FACTORY_TOKEN" \
+            --connect-timeout 10 --max-time 15 2>>"$LOG_FILE") || PROBE_RESPONSE=$'\n000'
+        PROBE_CODE=$(echo "$PROBE_RESPONSE" | tail -n1)
+        
+        if [[ "$PROBE_CODE" =~ ^2 ]]; then
+            log "Selected session $SELECTED_SESSION is alive (probe HTTP $PROBE_CODE)"
+            SESSION_ID="$SELECTED_SESSION"
+            SESSION_PROBED="1"
+        else
+            log "Selected session $SELECTED_SESSION is dead (probe HTTP $PROBE_CODE), marking rebinding_failed"
+        fi
+    else
+        log "No candidates found in sessions-index for cwd=$PENDING_CWD"
+    fi
+fi
+
+# If no live session found after rebinding, go directly to fallback
+if [ -z "$SESSION_ID" ]; then
+    log "ERROR: No live session available (event-time rebinding exhausted), going to fallback"
+    
+    # Mark pending file with rebinding_failed
+    if [ -f "$PENDING_CI_FILE" ]; then
+        log "Marking pending file with rebinding_failed"
+        $PYTHON_BIN -c "
+import json
+try:
+    with open('$PENDING_CI_FILE', 'r') as f:
+        data = json.load(f)
+    data['rebinding_failed'] = '$(date -u +"%Y-%m-%dT%H:%M:%SZ")'
+    data['rebinding_reason'] = 'all_candidates_dead'
+    with open('$PENDING_CI_FILE', 'w') as f:
+        json.dump(data, f)
+except Exception as e:
+    print(f'Failed to mark pending file: {e}')
+" 2>>"$LOG_FILE" || true
+    fi
+    
+    # Go to fallback
+    send_posthog_event "ci_probe_failed_session_not_found" "$PR_NUMBER" "probe" "all_rebinding_candidates_dead"
+    rm -f "$LOCK_FILE"
+    exec 200>&-
+    FALLBACK_LOCK="${LOCK_DIR}/ci-fallback-${PR_NUMBER}.lock"
+    if [ -f "$FALLBACK_LOCK" ]; then
+        FALLBACK_LOCK_AGE_SEC=$(( $(date +%s) - $(_portable_mtime "$FALLBACK_LOCK") ))
+        if [ "$FALLBACK_LOCK_AGE_SEC" -lt 0 ]; then FALLBACK_LOCK_AGE_SEC=0; fi
+        FALLBACK_LOCK_AGE=$(( FALLBACK_LOCK_AGE_SEC / 60 ))
+        if [ "$FALLBACK_LOCK_AGE" -gt 1440 ]; then FALLBACK_LOCK_AGE=1440; fi
+        if [ "$FALLBACK_LOCK_AGE" -lt 60 ]; then
+            log "SKIP: Fallback already triggered for PR #${PR_NUMBER} (rebinding dedup, lock age: ${FALLBACK_LOCK_AGE}min < 60min)"
+            exit 0
+        else
+            log "WARN: Stale fallback lock (${FALLBACK_LOCK_AGE}min > 60min), removing and proceeding"
+            rm -f "$FALLBACK_LOCK"
+        fi
+    fi
+    echo "$TIMESTAMP" > "$FALLBACK_LOCK" || {
+        log "ERROR: Failed to write fallback lock $FALLBACK_LOCK"
+        send_posthog_event "ci_fallback_lock_write_failed" "$PR_NUMBER" "fallback_lock" "rebinding path"
+    }
+    log "Created fallback lock: $FALLBACK_LOCK"
+    FALLBACK_REPO="${PENDING_CWD:-$SCRIPT_CWD}"
+    # Mark pending file with fallback_dispatched
+    if [ -f "$PENDING_CI_FILE" ]; then
+        $PYTHON_BIN -c "
+import json
+try:
+    with open('$PENDING_CI_FILE', 'r') as f:
+        data = json.load(f)
+    data['fallback_dispatched_at'] = '$(date -u +"%Y-%m-%dT%H:%M:%SZ")'
+    data['fallback_reason'] = 'rebinding_exhausted'
+    with open('$PENDING_CI_FILE', 'w') as f:
+        json.dump(data, f)
+except Exception as e:
+    print(f'Failed to mark pending file: {e}')
+" 2>>"$LOG_FILE" || true
+    fi
+    spawn_fallback "$PR_NUMBER" "${STATUS:-rebinding_failed}" "$FALLBACK_REPO"
+    exit 0
+fi
+
+# Update fingerprint lock with resolved session_id
+FINGERPRINT_KEY="${SESSION_ID}:${PR_NUMBER}"
+log "Final fingerprint key: $FINGERPRINT_KEY (SESSION_ID=$SESSION_ID)"
+
+# Skip redundant probe if we already probed during rebinding
+if [ "$SESSION_PROBED" != "1" ]; then
+    # === 探活：GET /api/v0/sessions/{id} 检查会话是否活跃 ===
+    # 实测结论（2026-08-20）：
+    # - GET /api/v0/sessions/{id} 端点存在，返回 JSON 格式错误（非 HTML 404 页面）
+    # - 不存在的会话返回 {"detail":"Session does not exist","status":404,...}
+    # - 不存在的路由返回 HTML 404 页面（Next.js 默认）
+    # - 结论：端点可用，可用于注入前探活，避免向挂起的 daemon 烧重试
+    PROBE_URL="${FACTORY_API_BASE}/sessions/${SESSION_ID}"
+    log "Probing session liveness: GET $PROBE_URL"
+    
+    PROBE_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "$PROBE_URL" \
+        -H "Authorization: Bearer $FACTORY_TOKEN" \
+        --connect-timeout 10 --max-time 15 2>>"$LOG_FILE") || PROBE_RESPONSE=$'\n000'
+    
+    PROBE_BODY=$(echo "$PROBE_RESPONSE" | sed '$ d')
+    PROBE_CODE=$(echo "$PROBE_RESPONSE" | tail -n1)
+    
+    log "Probe HTTP Response Code: $PROBE_CODE"
+else
+    log "Skipping redundant probe (already probed during rebinding)"
+    PROBE_CODE="200"  # Pretend probe succeeded to skip the 404 check below
+fi
 
 # 探活失败判定：
 # - 404 JSON 响应（Session does not exist）→ 会话不存在，直接走 fallback
@@ -391,6 +553,7 @@ except Exception as e:
     if [ "$PROBE_CHECK_EXIT" = "0" ]; then
         log "PROBE FAILED: Session does not exist (404 JSON), skipping POST retries and going directly to fallback"
         send_posthog_event "ci_probe_failed_session_not_found" "$PR_NUMBER" "probe" "session_id=$SESSION_ID"
+        
         # 直接走 fallback，不烧 POST 重试
         rm -f "$LOCK_FILE"
         exec 200>&-
