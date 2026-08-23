@@ -270,6 +270,193 @@ class TestGuards:
 
 
 # ============================================================================
+# VAL-REG-001: --source session --context 写全字段且保真
+# ============================================================================
+class TestSourceSessionContext:
+    def test_source_session_context_roundtrip(self, stub_api_server, tmp_path):
+        """VAL-REG-001: --source session --context 写全字段且 context 逐字符保真"""
+        repo, toplevel = _init_sandbox_repo(tmp_path)
+        env = _make_env(stub_api_server, tmp_path, cwd=repo)
+        test_context = "修复 \"权宜\" 之'计'并 `echo hi`"
+        code, stdout, stderr = _run_script(
+            SCRIPT_PATH, "--source", "session", "--context", test_context, "4242", env=env
+        )
+        assert code == 0, f"Expected success, stderr: {stderr}"
+        pending = _read_pending(Path(env["HOME"]), 4242)
+        assert pending is not None
+        # M5 三字段 + source + context
+        assert pending["pr_number"] == "4242"
+        assert pending["cwd"] == toplevel
+        assert pending["created_at"]
+        assert pending["source"] == "session"
+        assert pending["context"] == test_context
+        # 不含 session_id（M5 语义不回归）
+        assert "session_id" not in pending
+        # 无 .tmp 残留
+        locks_dir = Path(env["HOME"]) / ".factory" / "webhook" / "locks"
+        tmp_files = list(locks_dir.glob("pending-ci-4242.json.tmp.*"))
+        assert not tmp_files
+
+
+# ============================================================================
+# VAL-REG-002: 旧式无参调用保持 M5 schema（缺 source 键）
+# ============================================================================
+class TestLegacyCallSchema:
+    def test_legacy_call_no_source_key(self, stub_api_server, tmp_path):
+        """VAL-REG-002: 不带选项调用，文件字段恰为 M5 三件套，无 source 键、无 context 键"""
+        repo, toplevel = _init_sandbox_repo(tmp_path)
+        env = _make_env(stub_api_server, tmp_path, cwd=repo)
+        code, stdout, stderr = _run_script(SCRIPT_PATH, "4243", env=env)
+        assert code == 0, f"Expected success, stderr: {stderr}"
+        pending = _read_pending(Path(env["HOME"]), 4243)
+        assert pending is not None
+        # 键必须缺失（出现 "source": null 或空串也算 FAIL）
+        assert set(pending.keys()) == {"pr_number", "cwd", "created_at"}
+
+
+# ============================================================================
+# VAL-REG-003: --source scanner 写入成功（D1）
+# ============================================================================
+class TestSourceScanner:
+    def test_source_scanner_write_success(self, stub_api_server, tmp_path):
+        """VAL-REG-003: --source scanner 写入成功，不得拒绝"""
+        repo, toplevel = _init_sandbox_repo(tmp_path)
+        env = _make_env(stub_api_server, tmp_path, cwd=repo)
+        code, stdout, stderr = _run_script(
+            SCRIPT_PATH, "--source", "scanner", "4244", env=env
+        )
+        assert code == 0, f"Expected success, stderr: {stderr}"
+        pending = _read_pending(Path(env["HOME"]), 4244)
+        assert pending is not None
+        assert pending["source"] == "scanner"
+        assert pending["pr_number"] == "4244"
+        assert pending["cwd"] == toplevel
+        assert pending["created_at"]
+
+
+# ============================================================================
+# VAL-REG-004: 非法 source 值 fail-fast
+# ============================================================================
+class TestInvalidSource:
+    def test_invalid_source_fail_fast(self, stub_api_server, tmp_path):
+        """VAL-REG-004: 非法 source 值 fail-fast，不产生任何文件"""
+        repo, _ = _init_sandbox_repo(tmp_path)
+        env = _make_env(stub_api_server, tmp_path, cwd=repo)
+        # 变体 1: --source foo
+        code1, stdout1, stderr1 = _run_script(
+            SCRIPT_PATH, "--source", "foo", "4245", env=env
+        )
+        assert code1 != 0, "Expected non-zero exit for --source foo"
+        assert "source" in (stdout1 + stderr1).lower() or "invalid" in (stdout1 + stderr1).lower()
+        pending1 = _read_pending(Path(env["HOME"]), 4245)
+        assert pending1 is None, "No file should be created for invalid source"
+        
+        # 变体 2: --source ""
+        code2, stdout2, stderr2 = _run_script(
+            SCRIPT_PATH, "--source", "", "4245", env=env
+        )
+        assert code2 != 0, "Expected non-zero exit for --source ''"
+        pending2 = _read_pending(Path(env["HOME"]), 4245)
+        assert pending2 is None, "No file should be created for empty source"
+
+
+# ============================================================================
+# VAL-REG-017: --context 边界值鲁棒性
+# ============================================================================
+class TestContextBoundary:
+    def test_context_boundary_quotes(self, stub_api_server, tmp_path):
+        """VAL-REG-017a: 含单双引号与反引号"""
+        repo, _ = _init_sandbox_repo(tmp_path)
+        env = _make_env(stub_api_server, tmp_path, cwd=repo)
+        test_context = '修复 "权宜" 之\'计\'并 `echo hi`'
+        code, _, stderr = _run_script(
+            SCRIPT_PATH, "--source", "session", "--context", test_context, "4246", env=env
+        )
+        assert code == 0, f"Expected success, stderr: {stderr}"
+        pending = _read_pending(Path(env["HOME"]), 4246)
+        assert pending is not None
+        assert pending["context"] == test_context
+
+    def test_context_boundary_special_chars(self, stub_api_server, tmp_path):
+        """VAL-REG-017b: 特殊字符与中文混排"""
+        repo, _ = _init_sandbox_repo(tmp_path)
+        env = _make_env(stub_api_server, tmp_path, cwd=repo)
+        test_context = "特殊 $ ` \\ ! ; & | 字符与中文混排"
+        code, _, stderr = _run_script(
+            SCRIPT_PATH, "--source", "session", "--context", test_context, "4247", env=env
+        )
+        assert code == 0, f"Expected success, stderr: {stderr}"
+        pending = _read_pending(Path(env["HOME"]), 4247)
+        assert pending is not None
+        assert pending["context"] == test_context
+
+    def test_context_boundary_long_string(self, stub_api_server, tmp_path):
+        """VAL-REG-017c: ≥4000 字符"""
+        repo, _ = _init_sandbox_repo(tmp_path)
+        env = _make_env(stub_api_server, tmp_path, cwd=repo)
+        test_context = "A" * 4000
+        code, _, stderr = _run_script(
+            SCRIPT_PATH, "--source", "session", "--context", test_context, "4248", env=env
+        )
+        assert code == 0, f"Expected success, stderr: {stderr}"
+        pending = _read_pending(Path(env["HOME"]), 4248)
+        assert pending is not None
+        assert pending["context"] == test_context
+        assert len(pending["context"]) == 4000
+
+    def test_context_boundary_multiline(self, stub_api_server, tmp_path):
+        """VAL-REG-017d: 多行串"""
+        repo, _ = _init_sandbox_repo(tmp_path)
+        env = _make_env(stub_api_server, tmp_path, cwd=repo)
+        test_context = "第一行\n第二行\n第三行"
+        code, _, stderr = _run_script(
+            SCRIPT_PATH, "--source", "session", "--context", test_context, "4249", env=env
+        )
+        assert code == 0, f"Expected success, stderr: {stderr}"
+        pending = _read_pending(Path(env["HOME"]), 4249)
+        assert pending is not None
+        assert pending["context"] == test_context
+
+
+# ============================================================================
+# VAL-REG-018: 同 PR 重复注册（并发/覆盖语义）
+# ============================================================================
+class TestDuplicateRegistration:
+    def test_same_pr_duplicate_registration(self, stub_api_server, tmp_path):
+        """VAL-REG-018: 同 PR 两次注册，last-write-wins 幂等"""
+        repo, _ = _init_sandbox_repo(tmp_path)
+        env = _make_env(stub_api_server, tmp_path, cwd=repo)
+        # 第一次注册
+        code1, _, _ = _run_script(
+            SCRIPT_PATH, "--source", "session", "--context", "第一次意图", "4250", env=env
+        )
+        assert code1 == 0
+        pending1 = _read_pending(Path(env["HOME"]), 4250)
+        assert pending1 is not None
+        assert pending1["context"] == "第一次意图"
+        created_at1 = pending1["created_at"]
+        
+        # 等待 1 秒确保 created_at 可区分
+        import time
+        time.sleep(1)
+        
+        # 第二次注册（不同 context）
+        code2, _, _ = _run_script(
+            SCRIPT_PATH, "--source", "session", "--context", "第二次意图", "4250", env=env
+        )
+        assert code2 == 0
+        pending2 = _read_pending(Path(env["HOME"]), 4250)
+        assert pending2 is not None
+        assert pending2["context"] == "第二次意图"
+        assert pending2["created_at"] > created_at1  # 覆盖为新记录
+        
+        # 恰一份合法 JSON（无副本）
+        locks_dir = Path(env["HOME"]) / ".factory" / "webhook" / "locks"
+        matching_files = list(locks_dir.glob("pending-ci-4250.json*"))
+        assert len(matching_files) == 1, f"Expected exactly 1 file, found {len(matching_files)}"
+
+
+# ============================================================================
 # 生产一致性：受管副本与生产脚本字节一致（回填完整性快照）
 # ============================================================================
 class TestProdSync:

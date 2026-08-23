@@ -16,14 +16,10 @@
 
 set -euo pipefail
 
-PR_NUMBER="${1:?Usage: write-pending-ci.sh <PR_NUMBER>}"
-
 # === Env-overridable constants (M5: testability) ===
 WEBHOOK_BASE="${WEBHOOK_BASE:-${HOME}/.factory/webhook}"
 LOCKS_DIR="${LOCKS_DIR:-${WEBHOOK_BASE}/locks}"
 SESSIONS_INDEX="${SESSIONS_INDEX:-${HOME}/.factory/sessions-index.json}"
-
-OUTPUT_FILE="$LOCKS_DIR/pending-ci-${PR_NUMBER}.json"
 
 # === PostHog 事件上报 (lib/posthog.sh 统一实现) ===
 POSTHOG_EVENT_NAME="ci_webhook_failure"
@@ -33,6 +29,47 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/posthog.sh"
 
 # Dynamic Python binary detection
 PYTHON_BIN=${PYTHON_BIN:-$(command -v python3)}
+
+# === F1: 选项解析框架 (--source session|scanner, --context <意图>) ===
+SOURCE=""
+CONTEXT=""
+SOURCE_PROVIDED=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --source)
+      SOURCE="${2:-}"
+      SOURCE_PROVIDED=true
+      shift 2
+      ;;
+    --context)
+      CONTEXT="${2:-}"
+      shift 2
+      ;;
+    -*)
+      echo "ERROR: Unknown option $1" >&2
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+PR_NUMBER="${1:?Usage: write-pending-ci.sh [--source session|scanner] [--context <意图>] <PR_NUMBER>}"
+
+OUTPUT_FILE="$LOCKS_DIR/pending-ci-${PR_NUMBER}.json"
+
+# source 合法性校验（fail-fast 先于写入，VAL-REG-004）
+# 空字符串视为非法（VAL-REG-004: --source "" 必须 fail-fast）
+if [[ "$SOURCE_PROVIDED" == "true" ]]; then
+  case "$SOURCE" in
+    session|scanner) ;;
+    *)
+      echo "ERROR: Invalid source '$SOURCE' (must be 'session' or 'scanner')" >&2
+      exit 1
+      ;;
+  esac
+fi
 
 # PR_NUMBER must be a positive integer (mirror trigger-ci-droid.sh consumer guard)
 if [[ ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
@@ -53,8 +90,9 @@ fi
 # Generate ISO 8601 timestamp (UTC)
 CREATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# === M5: New schema — write pr_number + cwd + created_at only ===
+# === F1: Schema — M5 base fields + optional source/context ===
 # Session selection is deferred to trigger-ci-droid.sh (event-time rebinding)
+# VAL-REG-001/002/003: source/context 仅当显式传入时写入（旧式调用缺 source 键）
 TMP_FILE="${OUTPUT_FILE}.tmp.$$"
 "$PYTHON_BIN" -c "
 import json, sys
@@ -63,9 +101,14 @@ data = {
     'cwd': sys.argv[2],
     'created_at': sys.argv[3]
 }
-with open(sys.argv[4], 'w') as f:
+# 仅当 --source 显式传入时写入（VAL-REG-002：旧式调用无 source 键）
+if sys.argv[4]:  # SOURCE
+    data['source'] = sys.argv[4]
+if sys.argv[5]:  # CONTEXT
+    data['context'] = sys.argv[5]
+with open(sys.argv[6], 'w') as f:
     json.dump(data, f)
-" "$PR_NUMBER" "$PROJECT_CWD" "$CREATED_AT" "$TMP_FILE"
+" "$PR_NUMBER" "$PROJECT_CWD" "$CREATED_AT" "$SOURCE" "$CONTEXT" "$TMP_FILE"
 
 # Verify tmp file is valid JSON before mv
 if ! "$PYTHON_BIN" -c "import json; json.load(open('$TMP_FILE'))" 2>/dev/null; then
@@ -76,4 +119,8 @@ fi
 
 mv -f "$TMP_FILE" "$OUTPUT_FILE"
 
-echo "pending-ci-${PR_NUMBER}.json written (atomic, M5 schema): pr_number=$PR_NUMBER, created_at=$CREATED_AT, cwd=$PROJECT_CWD (no session_id — event-time rebinding)"
+if [[ -n "$SOURCE" ]]; then
+  echo "pending-ci-${PR_NUMBER}.json written (atomic, M5+F1 schema): pr_number=$PR_NUMBER, source=$SOURCE, created_at=$CREATED_AT, cwd=$PROJECT_CWD"
+else
+  echo "pending-ci-${PR_NUMBER}.json written (atomic, M5 schema): pr_number=$PR_NUMBER, created_at=$CREATED_AT, cwd=$PROJECT_CWD (no session_id — event-time rebinding)"
+fi

@@ -204,6 +204,147 @@ if [ "$PENDING_PR" != "$PR_NUMBER" ]; then
     exit 0
 fi
 
+# === F1: Extract source field for routing ===
+PENDING_SOURCE=$($PYTHON_BIN -c "
+import json, sys
+try:
+    with open('$PENDING_CI_FILE') as f:
+        data = json.load(f)
+    print(data.get('source', ''))
+except Exception as e:
+    print('', file=sys.stderr)
+    print('')
+" 2>>"$LOG_FILE")
+
+# === F1: Weak cross-validation for scanner source ===
+# VAL-REG-007: Verify scanner identity via gh pr view (author/labels)
+# Returns: 0=pass, 1=mismatch, 2=unexecutable (gh unavailable/failed)
+verify_scanner_identity() {
+    local pr_num="$1"
+
+    # Check if gh CLI is available
+    if ! command -v gh &>/dev/null; then
+        log "WARN: gh CLI not available for scanner cross-validation"
+        return 2
+    fi
+
+    # Fetch PR metadata (author + labels)
+    local pr_data
+    if ! pr_data=$(gh pr view "$pr_num" --json author,labels 2>&1); then
+        log "WARN: gh pr view failed for PR #$pr_num: $pr_data"
+        return 2
+    fi
+
+    # Extract author login
+    local author
+    author=$($PYTHON_BIN -c "
+import json, sys
+try:
+    data = json.loads('''$pr_data''')
+    print(data.get('author', {}).get('login', ''))
+except:
+    print('')
+" 2>>"$LOG_FILE")
+
+    # Check for scanner-related labels (e.g., "scanner", "evolution-scanner")
+    local has_scanner_label
+    has_scanner_label=$($PYTHON_BIN -c "
+import json, sys
+try:
+    data = json.loads('''$pr_data''')
+    labels = [l.get('name', '').lower() for l in data.get('labels', [])]
+    print('yes' if any('scanner' in l for l in labels) else 'no')
+except:
+    print('no')
+" 2>>"$LOG_FILE")
+
+    # Heuristic: author must be a bot/automation account OR PR must have scanner label
+    # For now, accept any PR that either has scanner label or is authored by known bot accounts
+    if [ "$has_scanner_label" = "yes" ]; then
+        log "Scanner identity verified: PR #$pr_num has scanner-related label"
+        return 0
+    fi
+
+    # Check for known scanner/bot accounts (placeholder - expand as needed)
+    case "$author" in
+        *scanner*|*bot*|*automation*|github-actions|evolution[bot])
+            log "Scanner identity verified: PR #$pr_num authored by $author (bot account)"
+            return 0
+            ;;
+    esac
+
+    # Mismatch: PR doesn't look like it came from scanner
+    log "WARN: Scanner cross-validation failed for PR #$pr_num (author=$author, scanner_label=$has_scanner_label)"
+    return 1
+}
+
+# === F1: Source-based routing ===
+# VAL-REG-005/006/007/008/010: Scanner source gets silent cleanup
+if [ "$PENDING_SOURCE" = "scanner" ]; then
+    # Check if expired first (VAL-REG-010: expired scanner also silent cleanup)
+    if [ -n "$CREATED_AT" ]; then
+        IS_EXPIRED=$($PYTHON_BIN -c "
+from datetime import datetime, timezone, timedelta
+import sys
+try:
+    created_at = '$CREATED_AT'
+    if created_at.endswith('Z'):
+        created_at = created_at[:-1] + '+00:00'
+    created_time = datetime.fromisoformat(created_at)
+    now = datetime.now(timezone.utc)
+    age = now - created_time
+    if age > timedelta(hours=2):
+        print('yes')
+    else:
+        print('no')
+except Exception as e:
+    print('no', file=sys.stderr)
+    print('no')
+" 2>>"$LOG_FILE")
+    else
+        IS_EXPIRED="no"
+    fi
+
+    # VAL-REG-010: Expired scanner files skip cross-validation and go straight to silent cleanup
+    if [ "$IS_EXPIRED" = "yes" ]; then
+        log "Source=scanner detected (expired), performing silent cleanup (no cross-validation needed)"
+        rm -f "$PENDING_CI_FILE"
+        exit 0
+    fi
+
+    # Weak cross-validation (VAL-REG-007) - only for non-expired scanner files
+    verify_scanner_identity "$PR_NUMBER"
+    CROSS_VALIDATION_RC=$?
+
+    if [ "$CROSS_VALIDATION_RC" -eq 1 ]; then
+        # VAL-REG-007: Positive evidence of mismatch, conservative path
+        log "ERROR: Source=scanner but cross-validation failed for PR #$PR_NUMBER — conservative path (keep file, no fallback)"
+        send_posthog_event "ci_scanner_source_mismatch" "$PR_NUMBER" "cross_validation" "PR #$PR_NUMBER does not match scanner identity"
+        # Keep the file, don't spawn fallback, exit cleanly
+        exit 0
+    elif [ "$CROSS_VALIDATION_RC" -eq 2 ]; then
+        # VAL-REG-007b (D2 ruling): gh unavailable → conservative path
+        # Rationale: session file mislabeled as scanner + gh恰好不可用时，
+        # 静默清理会删除 session PR 救援通道，违背不变量 2。
+        # 保守代价仅为文件滞留 ≤2h，由过期路径 VAL-REG-010 兜底。
+        log "ERROR: Source=scanner but cross-validation unexecutable (gh unavailable) for PR #$PR_NUMBER — conservative path (keep file, anomaly event, no fallback)"
+        send_posthog_event "ci_scanner_source_unverifiable" "$PR_NUMBER" "cross_validation" "gh unavailable for PR #$PR_NUMBER"
+        # Keep the file, don't spawn fallback, exit cleanly
+        exit 0
+    else
+        # VAL-REG-005/006: Validation passed, silent cleanup
+        log "Source=scanner detected, cross-validation passed, performing silent cleanup (no fallback/events)"
+        rm -f "$PENDING_CI_FILE"
+        exit 0
+    fi
+fi
+
+# VAL-REG-008: Missing source field → default to session + log once
+if [ -z "$PENDING_SOURCE" ]; then
+    log "unknown-source defaulted to session (legacy M5 schema)"
+    # Record event exactly once (no idempotency lock needed — this log line runs once per invocation)
+fi
+
 # Check if pending-ci-{PR_NUMBER}.json is expired (older than 2 hours)
 if [ -n "$CREATED_AT" ]; then
     EXPIRED=$($PYTHON_BIN -c "
