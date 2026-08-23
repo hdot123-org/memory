@@ -1,5 +1,6 @@
 # No workbot deprecation filter needed — workbot adapter has been archived.
 
+import logging
 
 import pytest
 
@@ -94,6 +95,33 @@ def _guard_load_key_not_patched():
         )
 
 
+def _do_reset_gateway_adapter_config() -> None:
+    """Reset gateway adapter config and singletons (teardown body).
+
+    Extracted from the autouse fixture below so tests can exercise the
+    degraded path directly (pytest 8 forbids calling fixtures by hand).
+    """
+    try:
+        from memory_core.tools import memory_hook_gateway as gw
+
+        # Reload default adapter profile to restore _adapter_config
+        gw.reload_adapter("default")
+        # Reset singleton caches so next access rebuilds with fresh config
+        gw._default_route_policy = None
+        gw._default_policy_registry = None
+        gw._default_write_policy = None
+    except Exception as exc:
+        # If gateway import fails (e.g., in minimal test environments),
+        # skip the reset rather than breaking the test suite.
+        # INFRA-531 (SILENT_SWALLOW): degraded teardown must leave an audit
+        # trail — DEBUG record with traceback replaces the former bare pass.
+        logging.getLogger(__name__).debug(
+            "conftest: gateway adapter reset skipped (import/config failure in minimal test env): %s",
+            exc,
+            exc_info=True,
+        )
+
+
 @pytest.fixture(autouse=True)
 def _reset_gateway_adapter_config():
     """Reset gateway adapter config and singleton caches after each test.
@@ -111,16 +139,4 @@ def _reset_gateway_adapter_config():
     singleton caches, following the pattern of _reset_tick_tracker above.
     """
     yield
-    try:
-        from memory_core.tools import memory_hook_gateway as gw
-
-        # Reload default adapter profile to restore _adapter_config
-        gw.reload_adapter("default")
-        # Reset singleton caches so next access rebuilds with fresh config
-        gw._default_route_policy = None
-        gw._default_policy_registry = None
-        gw._default_write_policy = None
-    except Exception:
-        # If gateway import fails (e.g., in minimal test environments),
-        # skip the reset silently rather than breaking the test suite
-        pass
+    _do_reset_gateway_adapter_config()
