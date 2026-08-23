@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.39.4](https://github.com/hdot123-org/memory/compare/v0.39.3...v0.39.4) (2026-08-23)
+
+
+### Bug Fixes
+
+* M2 回填 webhook 生产脚本修复并扩容 MANIFEST 受管清单 ([#973](https://github.com/hdot123-org/memory/issues/973)) ([a370912](https://github.com/hdot123-org/memory/commit/a370912e62e5280bd9beea051c54d2245a2b8f96))
+* 修复 write-pending-ci.sh mtime-scan 分支 probe rc 死代码（BLK-M3-R1-1） ([#981](https://github.com/hdot123-org/memory/issues/981)) ([faf8e73](https://github.com/hdot123-org/memory/commit/faf8e730473d60a260dd2b5564b192b34ef50157))
+* 守卫新增非代码路径豁免 ([#974](https://github.com/hdot123-org/memory/issues/974)) ([31cc766](https://github.com/hdot123-org/memory/commit/31cc7669b77808240856e72e18cf966a44ec500d))
+* 将 ci-failed.sh 加入 MANAGED_FILES 受管清单 ([#983](https://github.com/hdot123-org/memory/issues/983)) ([0bf138a](https://github.com/hdot123-org/memory/commit/0bf138af568f22def2acee8d352dd939e24111ff))
+* 补 write-pending-ci.sh M3 硬化语义回归测试与文档记录（INFRA-521） ([#979](https://github.com/hdot123-org/memory/issues/979)) ([465a622](https://github.com/hdot123-org/memory/commit/465a6225631003bbdd5d3c6f5074f425c989ab13))
+
+
+### Documentation
+
+* 补 200→^2 修复记录的误判失败机制说明（INFRA-520） ([#977](https://github.com/hdot123-org/memory/issues/977)) ([6d2c1ec](https://github.com/hdot123-org/memory/commit/6d2c1ec108851ddc771ea02cd737eb85abd7d7b6))
+* 补 trigger-ci-droid.sh 200→^2 修复记录（VAL-M2-005） ([#976](https://github.com/hdot123-org/memory/issues/976)) ([3def225](https://github.com/hdot123-org/memory/commit/3def2252f4c43013dd9d943b2651d4d5ccaa6e30))
+* 补充 fix-has-test 门禁非代码路径豁免说明（INFRA-518） ([#975](https://github.com/hdot123-org/memory/issues/975)) ([508c0bf](https://github.com/hdot123-org/memory/commit/508c0bf6f104f24e6818a91fb5d174c407613b36))
+
 ## [0.39.3](https://github.com/hdot123-org/memory/compare/v0.39.2...v0.39.3) (2026-08-22)
 
 
