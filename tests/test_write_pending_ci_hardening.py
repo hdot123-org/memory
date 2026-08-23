@@ -210,6 +210,7 @@ class TestCandidateIteration:
     原测试覆盖的 mtime 排序、worker 过滤、cwd 匹配等逻辑现在由
     test_trigger_ci_droid_fallback.py 覆盖（见 VAL-TRIGCI-003）。
     """
+
     pass
 
 
