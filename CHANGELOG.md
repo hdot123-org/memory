@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.40.1](https://github.com/hdot123-org/memory/compare/v0.40.0...v0.40.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* GATE A §4.6 sync-origin 移除 evolution-found 标签过滤（锚点统一方案），修复 heartbeat 自愈 close 被误判回滚导致的 [#1000](https://github.com/hdot123-org/memory/issues/1000) close→reopen 振荡 ([#1016](https://github.com/hdot123-org/memory/issues/1016)) ([ef269d0](https://github.com/hdot123-org/memory/commit/ef269d0a3b4db5cd520ab18aa4d27eea884d2886))
+* **m2-sweep-011:** 补齐 VAL-SWEEP-011 守则文档 + 落盘 HYG-003 测试用例 ([#1011](https://github.com/hdot123-org/memory/issues/1011)) ([3c395ee](https://github.com/hdot123-org/memory/commit/3c395ee36425e9d6b8d74efe874620d4ed959685))
+
+
+### Documentation
+
+* 更新 README webhook-scripts 章节反映来源分流架构（重提 [#1014](https://github.com/hdot123-org/memory/issues/1014)） ([#1015](https://github.com/hdot123-org/memory/issues/1015)) ([8511564](https://github.com/hdot123-org/memory/commit/85115641b9155a33cebce1cb75fe1f3cb938db14))
+
 ## [0.40.0](https://github.com/hdot123-org/memory/compare/v0.39.5...v0.40.0) (2026-08-24)
 
 
