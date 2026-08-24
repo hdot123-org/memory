@@ -561,3 +561,226 @@ class TestVALHYG003ZeroProductionLogWrites:
             f"VAL-HYG-003: 测试期间向生产日志目录写入了 {after_count - before_count} 个 "
             f"ci-complete-pr* 文件（before={before_count}, after={after_count}）"
         )
+
+
+# === INFRA-542: CI watchdog 测试不写生产日志 —— 显式守卫 ===
+# 交付物编号 INFRA-GUARD-001~004：
+#   INFRA-GUARD-001: watchdog 全路径 dry-run 扫描后，生产 logs/ 的 ci-complete-pr* 文件名集合不变
+#   INFRA-GUARD-002: trigger-ci-droid.sh 沙箱运行后，ci-complete-pr* 只出现在沙箱、不出现在生产目录
+#                    （正向对照：证明「计数不变」不是 fixture 未触发写路径的假阴性）
+#   INFRA-GUARD-003: 生产路径常量守卫（静态断言，不依赖运行环境）
+#   INFRA-GUARD-004: 测试环境构造函数不得指向生产目录（防 fixture 漂移）
+
+
+def _sandbox_env_for_scripts(base_dir: Path) -> dict:
+    """构造 trigger-ci-droid.sh / watchdog 共用的沙箱环境。
+
+    trigger-ci-droid.sh 的 LOG_DIR 不读 LOG_DIR 环境变量，而是从
+    WEBHOOK_BASE/logs 派生（webhook-scripts/trigger-ci-droid.sh:24-25），
+    因此沙箱必须设置 WEBHOOK_BASE（与 test_trigger_ci_droid_fallback.py
+    的 temp_env 同口径）。
+    """
+    env = os.environ.copy()
+    webhook_base = base_dir / "webhook"
+    locks_dir = base_dir / "locks"
+    logs_dir = base_dir / "logs"
+    webhook_base.mkdir()
+    locks_dir.mkdir()
+    logs_dir.mkdir()
+    env["WEBHOOK_BASE"] = str(webhook_base)
+    env["LOCKS_DIR"] = str(locks_dir)
+    env["LOCK_DIR"] = str(locks_dir)
+    env["LOG_DIR"] = str(logs_dir)
+    env["ECHO_DROID"] = "1"
+    env["POSTHOG_DRY_RUN"] = "1"
+    return env
+
+
+def _ci_complete_pr_names() -> set[str]:
+    """枚举生产 logs/ 下当前全部 ci-complete-pr* 文件名（目录缺失视为空集）。"""
+    production_logs = Path.home() / ".factory" / "webhook" / "logs"
+    if not production_logs.is_dir():
+        return set()
+    return {p.name for p in production_logs.glob("ci-complete-pr*")}
+
+
+def _make_phase_fixtures(locks_dir: Path, base_dir: Path) -> None:
+    """构造覆盖 watchdog Phase A / Phase B / 畸形样本 / scanner 分流的 pending-ci fixtures。"""
+    stale_a = datetime.now(UTC) - timedelta(minutes=35)
+    stale_b_created = datetime.now(UTC) - timedelta(minutes=55)
+    stale_b_injected = datetime.now(UTC) - timedelta(minutes=50)
+    cwd = str(base_dir)
+
+    fixtures = [
+        # Phase A：超期未注入（session 来源，走 fallback spawn dry-run）
+        {
+            "pr_number": "5311",
+            "created_at": stale_a.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "cwd": cwd,
+        },
+        # Phase A：scanner 来源（静默清理路径）
+        {
+            "pr_number": "5312",
+            "created_at": stale_a.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "cwd": cwd,
+            "source": "scanner",
+        },
+        # Phase B：已注入超期（PR 状态查询返回 UNKNOWN → 仅告警）
+        {
+            "pr_number": "5313",
+            "created_at": stale_b_created.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "injected_at": stale_b_injected.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "cwd": cwd,
+        },
+    ]
+    for fixture in fixtures:
+        (locks_dir / f"pending-ci-{fixture['pr_number']}.json").write_text(json.dumps(fixture))
+
+    # 畸形时间戳样本（触发 VAL-INJ-008 终态重命名路径）
+    (locks_dir / "pending-ci-5314.json").write_text(
+        json.dumps(
+            {
+                "pr_number": "5314",
+                "created_at": stale_b_created.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "injected_at": "not-a-timestamp-at-all",
+                "cwd": cwd,
+            }
+        )
+    )
+
+    # 畸形 JSON 样本（解析失败 continue 路径）
+    (locks_dir / "pending-ci-5315.json").write_text("not valid json")
+
+
+class TestINFRAG542ZeroProductionLogWrites:
+    """INFRA-542: CI watchdog dry-run 测试不向生产日志目录写任何 ci-complete-pr* 文件"""
+
+    def test_infra_guard_001_watchdog_full_path_no_production_writes(self, tmp_path, watchdog_script):
+        """INFRA-GUARD-001: 全路径 watchdog dry-run（Phase A/B/畸形/scanner）后，
+        生产 logs/ 的 ci-complete-pr* 文件名集合与运行前完全一致。
+
+        VAL-HYG-003 基线用例仅覆盖单一 Phase A fixture 且只对比计数；本守卫
+        升级为文件名集合精确对比——任何新增、删除或改名都会被捕获。
+        """
+        before = _ci_complete_pr_names()
+
+        env = _sandbox_env_for_scripts(tmp_path)
+        locks_dir = Path(env["LOCKS_DIR"])
+        _make_phase_fixtures(locks_dir, tmp_path)
+
+        result = subprocess.run(
+            ["bash", str(watchdog_script)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        # fixture 有效性自检（非守卫本体）：确认 dry-run 确实执行了处理路径
+        assert "Phase A" in result.stdout, "Phase A fixture should have been processed"
+        assert "Phase B" in result.stdout, "Phase B fixture should have been processed"
+        assert "malformed" in result.stdout.lower(), "malformed fixture should have been processed"
+
+        after = _ci_complete_pr_names()
+        assert after == before, (
+            f"INFRA-GUARD-001: watchdog dry-run 期间生产日志目录 ci-complete-pr* 集合发生变化\n"
+            f"  新增: {sorted(after - before)}\n"
+            f"  消失: {sorted(before - after)}\n"
+            f"沙箱 LOG_DIR={env['LOG_DIR']}，生产目录应零写入"
+        )
+
+    def test_infra_guard_002_trigger_sandbox_isolates_ci_complete_logs(self, tmp_path):
+        """INFRA-GUARD-002: trigger-ci-droid.sh（ci-complete-pr* 的实际生产者）在
+        WEBHOOK_BASE 沙箱下运行后，日志只落在沙箱 logs/，生产目录集合不变。
+
+        正向对照用例：证明 INFRA-GUARD-001 的「集合不变」不是 fixture
+        未触发写路径导致的假阴性——同口径沙箱下 ci-complete-pr* 确实会被创建。
+        """
+        before = _ci_complete_pr_names()
+
+        env = _sandbox_env_for_scripts(tmp_path)
+        locks_dir = Path(env["LOCKS_DIR"])
+        sessions_index = tmp_path / "sessions-index.json"
+        sessions_index.write_text(json.dumps({"entries": []}))
+        env["SESSIONS_INDEX"] = str(sessions_index)
+
+        # pending-ci 条目 + 空 sessions-index → 注入路径降级为 ECHO_DROID fallback
+        pending_file = locks_dir / "pending-ci-5321.json"
+        pending_file.write_text(
+            json.dumps(
+                {
+                    "pr_number": "5321",
+                    "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "cwd": str(tmp_path),
+                }
+            )
+        )
+
+        repo_root = Path(__file__).parent.parent
+        trigger_script = repo_root / "webhook-scripts" / "trigger-ci-droid.sh"
+        subprocess.run(
+            ["bash", str(trigger_script), "5321", "test-branch", "abc123", "passed"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        # 沙箱内确实产生了 ci-complete-pr* 日志（写路径已触发，守卫非空转）
+        sandbox_logs = Path(env["WEBHOOK_BASE"]) / "logs"
+        sandbox_ci_complete = list(sandbox_logs.glob("ci-complete-pr*"))
+        assert sandbox_ci_complete, (
+            "INFRA-GUARD-002 自检失败：沙箱内未产生 ci-complete-pr* 日志，"
+            "dry-run 未触发写路径（假阴性风险），请检查 fixture"
+        )
+
+        # 生产目录集合不变
+        after = _ci_complete_pr_names()
+        assert after == before, (
+            f"INFRA-GUARD-002: trigger dry-run 期间生产日志目录 ci-complete-pr* 集合发生变化\n"
+            f"  新增: {sorted(after - before)}\n"
+            f"  消失: {sorted(before - after)}\n"
+            f"沙箱 WEBHOOK_BASE={env['WEBHOOK_BASE']}，生产目录应零写入"
+        )
+
+    def test_infra_guard_003_production_paths_are_not_sandboxed(self):
+        """INFRA-GUARD-003: 两个脚本的生产回退路径必须指向 ~/.factory（静态断言）。
+
+        防止未来重构把 WEBHOOK_BASE / LOG_DIR 默认值改成相对路径或占位目录，
+        导致守卫的「生产目录」探测点失效（守卫失效即测试静默变绿）。
+        """
+        repo_root = Path(__file__).parent.parent
+
+        trigger = (repo_root / "webhook-scripts" / "trigger-ci-droid.sh").read_text()
+        assert "WEBHOOK_BASE:-" in trigger and ".factory/webhook" in trigger, (
+            "trigger-ci-droid.sh 的 WEBHOOK_BASE 生产默认值必须是 ~/.factory/webhook，"
+            "否则 INFRA-GUARD-001/002 的生产探测点将失准"
+        )
+
+        watchdog = (repo_root / "webhook-scripts" / "ci-timeout-watchdog.sh").read_text()
+        assert "LOG_DIR:-" in watchdog and ".factory/webhook/logs" in watchdog, (
+            "ci-timeout-watchdog.sh 的 LOG_DIR 生产默认值必须是 ~/.factory/webhook/logs，"
+            "否则 VAL-HYG-003 / INFRA-GUARD-001 的生产探测点将失准"
+        )
+
+    def test_infra_guard_004_test_env_helpers_never_point_to_production(self):
+        """INFRA-GUARD-004: 测试环境构造函数不得把日志/锁目录指回生产目录（防 fixture 漂移）。
+
+        若 _make_test_env / _sandbox_env_for_scripts 被改成继承生产 LOG_DIR，
+        本守卫先于干跑用例失败，给出明确指向。
+        """
+        source = Path(__file__).read_text()
+
+        for helper in ("_make_test_env", "_sandbox_env_for_scripts"):
+            assert helper in source, f"测试环境构造函数 {helper} 应存在于本文件"
+            # 提取函数体（从 def 到下一个顶层 def/class），断言其中显式覆盖沙箱变量
+            start = source.index(f"def {helper}")
+            end = source.find("\ndef ", start + 1)
+            if end == -1:
+                end = source.find("\nclass ", start + 1)
+            body = source[start:end]
+            for var in ("LOG_DIR",):
+                assert f'env["{var}"] = str(' in body, (
+                    f"{helper} 必须显式覆盖 env['{var}'] 指向沙箱临时目录，"
+                    f"防止 dry-run 写入生产 ~/.factory/webhook/logs"
+                )
