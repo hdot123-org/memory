@@ -236,9 +236,25 @@ verify_scanner_identity() {
         return 2
     fi
 
+    # Derive owner/repo from PENDING_CWD for -R flag (VAL-REG-007 fix: without -R,
+    # gh falls back to CWD which is not the PR's repo, so verification always fails)
+    local repo_slug=""
+    if [[ -n "$PENDING_CWD" && -d "$PENDING_CWD/.git" ]]; then
+        repo_slug=$(git -C "$PENDING_CWD" remote get-url origin 2>/dev/null | \
+            sed -E 's#^https://[^/]+/##; s#^git@[^:]+:##; s#\.git$##' || true)
+    fi
+    local repo_flag=""
+    if [[ -n "$repo_slug" ]]; then
+        repo_flag="-R $repo_slug"
+        log "DEBUG: verify_scanner_identity using repo=$repo_slug (from PENDING_CWD)"
+    else
+        log "WARN: Could not derive repo from PENDING_CWD='$PENDING_CWD', gh pr view may fail"
+    fi
+
     # Fetch PR metadata (author + labels)
     local pr_data
-    if ! pr_data=$(gh pr view "$pr_num" --json author,labels 2>&1); then
+    # shellcheck disable=SC2086  # repo_flag is intentionally unquoted (empty or "-R owner/repo")
+    if ! pr_data=$(gh pr view "$pr_num" $repo_flag --json author,labels 2>&1); then
         log "WARN: gh pr view failed for PR #$pr_num: $pr_data"
         return 2
     fi
@@ -488,6 +504,9 @@ try:
     for entry in data.get('entries', []):
         if entry.get('sessionId') == target_session_id:
             mtime = entry.get('mtime', 0)
+            # Normalize: if mtime is in milliseconds (> 1e12), convert to seconds
+            if mtime > 1e12:
+                mtime = mtime / 1000.0
             age = now - mtime
             if age < max_age_sec:
                 print('1')  # fresh

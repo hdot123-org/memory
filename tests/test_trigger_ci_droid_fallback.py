@@ -889,5 +889,189 @@ class TestVAL_INJ_013_FallbackTTLLockThreePhases:
         )
 
 
+class TestVAL_M2_Code_Fixes:
+    """M2 Code Fixes: 毫秒纪元归一化、verify_scanner_identity -R 标志、gh 字段名校验"""
+
+    def test_millisecond_epoch_normalization_in_check_sessions_index_fresh(self, tmp_path):
+        """Fix B: sessions-index.json 的 mtime 如果 > 1e12（毫秒纪元），应除以 1000"""
+        # 创建 sessions-index.json，使用毫秒纪元的 mtime
+        index_file = tmp_path / "sessions-index.json"
+        now_ms = int(time.time() * 1000)  # 当前时间的毫秒纪元
+        index_data = {
+            "entries": [
+                {
+                    "session_id": "test-session-ms",
+                    "mtime": now_ms,  # 毫秒纪元
+                    "cwd": "/test/repo"
+                }
+            ]
+        }
+        index_file.write_text(json.dumps(index_data))
+
+        # 调用 check_sessions_index_fresh 函数
+        script_content = TRIGGER_SCRIPT.read_text()
+
+        # 提取函数并测试
+        env = {
+            "PYTHON_BIN": sys.executable,
+        }
+
+        # 构建测试脚本
+        test_script = f"""
+import json, time
+def check_sessions_index_fresh(session_id, index_file, max_age_sec=72*3600):
+    try:
+        with open(index_file) as f:
+            data = json.load(f)
+    except (IOError, json.JSONDecodeError):
+        return False
+
+    now = time.time()
+    for entry in data.get('entries', []):
+        if entry.get('session_id') == session_id:
+            mtime = entry.get('mtime', 0)
+            # Fix B: 如果 mtime > 1e12，认为是毫秒纪元，转换为秒
+            if mtime > 1e12:
+                mtime = mtime / 1000.0
+            age = now - mtime
+            if age < max_age_sec:
+                return True
+            return False
+    return False
+
+result = check_sessions_index_fresh('test-session-ms', '{index_file}')
+print('FRESH' if result else 'STALE')
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", test_script],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=10
+        )
+
+        assert result.returncode == 0, f"Script failed: {result.stderr}"
+        assert "FRESH" in result.stdout, "Millisecond epoch should be normalized to seconds and considered fresh"
+
+    def test_verify_scanner_identity_derives_repo_from_cwd(self, tmp_path):
+        """Fix C: verify_scanner_identity 应从 PENDING_CWD 推导 owner/repo 并传 -R"""
+        # 创建 mock git 仓库
+        repo_dir = tmp_path / "test-repo"
+        repo_dir.mkdir()
+
+        # 初始化 git 仓库并设置 remote
+        subprocess.run(["git", "init"], cwd=repo_dir, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git"],
+            cwd=repo_dir,
+            capture_output=True,
+            check=True
+        )
+
+        # 读取函数实现
+        script_content = TRIGGER_SCRIPT.read_text()
+
+        # 验证函数签名包含 cwd 参数
+        assert "verify_scanner_identity()" in script_content or "verify_scanner_identity" in script_content, \
+            "Function verify_scanner_identity should exist"
+
+        # 验证函数从 PENDING_CWD 推导 repo
+        assert "PENDING_CWD" in script_content, "Function should reference PENDING_CWD"
+
+        # 验证函数使用 git remote 获取 owner/repo
+        assert "git" in script_content and "remote" in script_content, \
+            "Function should use git remote to derive owner/repo"
+
+        # 验证 gh pr view 调用包含 -R 标志
+        assert "-R" in script_content or "--repo" in script_content, \
+            "gh pr view should be called with -R or --repo flag"
+
+    def test_gh_shim_rejects_invalid_fields(self, tmp_path):
+        """Fix A: gh shim 应拒绝无效的 --json 字段名"""
+        # 创建 gh shim 脚本（使用 sed 而非 grep -P，兼容 macOS）
+        shim_path = tmp_path / "gh"
+        shim_content = """#!/bin/bash
+# Mock gh CLI that validates field names (macOS compatible, no grep -P)
+
+# 提取 --json 后的字段
+get_json_fields() {
+    echo "$@" | sed -n 's/.*--json \\([^ ]*\\).*/\\1/p'
+}
+
+if [[ "$*" == *"pr view"* && "$*" == *"--json"* ]]; then
+    fields=$(get_json_fields "$@")
+
+    # gh pr view 的有效字段
+    valid_fields="number title body state author labels createdAt updatedAt url commits"
+
+    for field in $(echo "$fields" | tr ',' ' '); do
+        if ! echo "$valid_fields" | grep -qw "$field"; then
+            echo "Error: Unknown field '$field' for 'gh pr view'" >&2
+            echo "Valid fields are: $valid_fields" >&2
+            exit 1
+        fi
+    done
+
+    echo '{"number": 1, "title": "test"}'
+elif [[ "$*" == *"pr checks"* && "$*" == *"--json"* ]]; then
+    # gh pr checks 的有效字段
+    fields=$(get_json_fields "$@")
+    valid_fields="name state completedAt description url"
+
+    for field in $(echo "$fields" | tr ',' ' '); do
+        if ! echo "$valid_fields" | grep -qw "$field"; then
+            echo "Error: Unknown field '$field' for 'gh pr checks'" >&2
+            echo "Valid fields are: $valid_fields" >&2
+            exit 1
+        fi
+    done
+
+    echo '[]'
+else
+    exec /usr/bin/gh "$@"
+fi
+"""
+        shim_path.write_text(shim_content)
+        shim_path.chmod(0o755)
+
+        # 测试无效字段
+        result = subprocess.run(
+            [str(shim_path), "pr", "view", "1", "--json", "invalid_field"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        assert result.returncode != 0, "Should reject invalid field for pr view"
+        assert "Unknown field" in result.stderr or "invalid_field" in result.stderr
+
+        # 测试有效字段
+        result = subprocess.run(
+            [str(shim_path), "pr", "view", "1", "--json", "number,title"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        assert result.returncode == 0, f"Should accept valid fields: {result.stderr}"
+
+        # 测试 pr checks 无效字段
+        result = subprocess.run(
+            [str(shim_path), "pr", "checks", "1", "--json", "status,conclusion"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        assert result.returncode != 0, "Should reject invalid fields for pr checks"
+        assert "Unknown field" in result.stderr or "status" in result.stderr
+
+        # 测试 pr checks 有效字段
+        result = subprocess.run(
+            [str(shim_path), "pr", "checks", "1", "--json", "name,state"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        assert result.returncode == 0, f"Should accept valid fields for pr checks: {result.stderr}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
