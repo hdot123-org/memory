@@ -13,6 +13,7 @@ This index is the public entry point for memory-core documentation. Normal users
 - [`.memory/` directory specification](DOT_MEMORY_SPEC.md) — canonical project memory layout, generated runtime files, validation expectations, and layout governance behavior.
 - [`memory.lock` specification](MEMORY_LOCK_SPEC.md) — version lock schema and compatibility rules.
 - [Repository boundary](BOUNDARY.md) — what belongs in memory-core versus a consumer project.
+- [`path-index` cwd-key limitations](PATH_INDEX_SPEC.md) — path-index stale-entry/missing-registration pitfalls and the sync mode rule (gateway must use `sync_single_project`).
 
 ## Migration docs
 
@@ -44,6 +45,7 @@ Plans and milestones documents are instance-specific and live in `memory/docs/pl
 ## Specifications (extended)
 
 - [Multi-project scan](MULTI_PROJECT_SCAN_SPEC.md) — multi-project upgrade scan registry pointer spec (SPEC-012).
+- [path-index cwd-key limitations](PATH_INDEX_SPEC.md) — path-index key design pitfalls and version-sync mode selection rule (SPEC-013).
 
 ## Engineering notes
 

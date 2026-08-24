@@ -404,6 +404,7 @@ heartbeat 告警自愈（`resolve_cleared_alerts()`）在本轮 tick 中异常�
 - [文档索引](docs/INDEX.md)
 - [`.memory/` 规范](docs/specs/DOT_MEMORY_SPEC.md)
 - [`memory.lock` 规范](docs/specs/MEMORY_LOCK_SPEC.md)
+- [`path-index` cwd 键局限规范](docs/specs/PATH_INDEX_SPEC.md)
 - [仓库边界](docs/specs/BOUNDARY.md)
 - [架构设计文档](docs/architecture/INDEX.md)
 - [更新日志](CHANGELOG.md)
