@@ -6,6 +6,22 @@ M1: Gateway session-start probe added (probe_version_and_sync).
 Called from _gateway_handlers.py session-start chain to auto-sync consumer versions.
 INFRA-545: .sync.lock best-effort concurrency guard added around the
 three-file patch + resign critical section (O_CREAT|O_EXCL, stale ~10s ignored).
+
+Design note — path-index key limitation (M3):
+    The path-index (``~/.memory-core/project-lifecycle/path-index.json``) uses
+    the project's *cwd* as its key. This means:
+
+    - **Stale entries**: directories that no longer exist (e.g. ``/tmp``
+      sandboxes from validation runs, or deleted project folders) remain
+      registered in the index and will be hit by ``sync_all_known_projects``.
+    - **Missing registrations**: if a project is moved or its cwd changes,
+      the old entry persists and the new location is not auto-registered.
+
+    For these reasons, the gateway session-start probe **must use
+    ``sync_single_project`` (single-project mode)** and must **never call
+    ``sync_all_known_projects``**. Single-project mode bypasses the path-index
+    entirely and operates only on the project whose hook is firing, avoiding
+    stale/missing directory issues.
 """
 
 import argparse
