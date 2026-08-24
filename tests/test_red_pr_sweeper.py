@@ -77,7 +77,7 @@ def _make_gh_shim(tmp_path: Path, responses: dict) -> Path:
     Args:
         tmp_path: pytest tmp_path for isolation
         responses: dict mapping command patterns to responses.
-            Keys: "pr_view_<NUM>" for view responses (JSON with createdAt/pushedAt),
+            Keys: "pr_view_<NUM>" for view responses (JSON with createdAt/commits),
                   "pr_checks_<NUM>" for checks responses (JSON array of check objects),
                   "pr_comment_<NUM>" for comment exit codes,
                   "pr_close_<NUM>" for close exit codes.
@@ -123,14 +123,34 @@ case "$cmd" in
                         *) shift ;;
                     esac
                 done
+                # Field validation: reject nonexistent fields (like real gh CLI)
+                valid_view_fields="createdAt commits author labels state title"
+                for f in $(echo "$json_field" | tr ',' ' '); do
+                    if ! echo "$valid_view_fields" | grep -qw "$f"; then
+                        echo "Unknown JSON field: \\"$f\\"" >&2
+                        echo "Available fields:" >&2
+                        echo "  $valid_view_fields" >&2
+                        exit 1
+                    fi
+                done
                 if [ -f "{fixtures_dir}/pr_view_${{pr_num}}.json" ]; then
                     if [ -n "$jq_expr" ]; then
-                        # Extract field using Python (simple jq substitute)
+                        # Extract field using Python (supports nested access like .commits[-1].committedDate)
                         {sys.executable} -c "
-import json, sys
+import json, sys, re
 data = json.load(open('{fixtures_dir}/pr_view_${{pr_num}}.json'))
-field = '$jq_expr'.lstrip('.')
-print(data.get(field, ''))
+expr = '$jq_expr'.lstrip('.')
+# Handle nested access: commits[-1].committedDate
+parts = re.split(r'\\.', expr)
+val = data
+for part in parts:
+    m = re.match(r'(\\w+)\\[(-?\\d+)\\]', part)
+    if m:
+        val = val.get(m.group(1), [])
+        val = val[int(m.group(2))]
+    else:
+        val = val.get(part, '')
+print(val)
 "
                     else
                         cat "{fixtures_dir}/pr_view_${{pr_num}}.json"
@@ -141,13 +161,24 @@ print(data.get(field, ''))
                 ;;
             checks)
                 pr_num="$1"; shift
-                # Parse remaining args
+                # Parse --json fields
+                json_field=""
                 while [[ $# -gt 0 ]]; do
                     case "$1" in
                         --repo) shift 2 ;;
-                        --json) shift 2 ;;
+                        --json) json_field="$2"; shift 2 ;;
                         *) shift ;;
                     esac
+                done
+                # Field validation: reject nonexistent fields (like real gh CLI)
+                valid_checks_fields="bucket completedAt description event link name startedAt state workflow"
+                for f in $(echo "$json_field" | tr ',' ' '); do
+                    if ! echo "$valid_checks_fields" | grep -qw "$f"; then
+                        echo "Unknown JSON field: \\"$f\\"" >&2
+                        echo "Available fields:" >&2
+                        echo "  $valid_checks_fields" >&2
+                        exit 1
+                    fi
                 done
                 # .stdout fixture (if present) overrides .json — used to
                 # simulate genuine fetch failures (empty stdout + exit != 0)
@@ -285,13 +316,13 @@ class TestChecksExitCodeSemantics:
             "pr_view_4270": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4270": {
                 "json": [
-                    {"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"},
+                    {"name": "ci", "state": "FAILURE", "completedAt": now.isoformat()},
                 ],
                 "exit": 1,  # real gh behaviour on failing checks
             },
@@ -324,13 +355,13 @@ class TestChecksExitCodeSemantics:
             "pr_view_4271": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4271": {
                 "json": [
-                    {"name": "ci", "status": "IN_PROGRESS", "conclusion": ""},
+                    {"name": "ci", "state": "IN_PROGRESS", "completedAt": None},
                 ],
                 "exit": 8,  # pending
             },
@@ -359,7 +390,7 @@ class TestChecksExitCodeSemantics:
             "pr_view_4272": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
@@ -534,14 +565,14 @@ class TestThreeConditionsTrigger:
             "pr_view_4242": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             # gh pr checks 4242 --json ... returns FAILURE
             "pr_checks_4242": {
                 "json": [
-                    {"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"},
+                    {"name": "ci", "state": "FAILURE", "completedAt": now.isoformat()},
                 ],
                 "exit": 0,
             },
@@ -584,13 +615,13 @@ class TestNegativeGuards:
             "pr_view_4243": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4243": {
                 "json": [
-                    {"name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"},
+                    {"name": "ci", "state": "SUCCESS", "completedAt": now.isoformat()},
                 ],
                 "exit": 0,
             },
@@ -619,13 +650,13 @@ class TestNegativeGuards:
             "pr_view_4244": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4244": {
                 "json": [
-                    {"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"},
+                    {"name": "ci", "state": "FAILURE", "completedAt": now.isoformat()},
                 ],
                 "exit": 0,
             },
@@ -654,7 +685,7 @@ class TestNegativeGuards:
             "pr_view_4245": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
@@ -694,13 +725,13 @@ class TestDebounceLock:
             "pr_view_4246": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4246": {
                 "json": [
-                    {"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"},
+                    {"name": "ci", "state": "FAILURE", "completedAt": now.isoformat()},
                 ],
                 "exit": 0,
             },
@@ -745,13 +776,13 @@ class TestDebounceNewCommit:
             "pr_view_4247": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": last_commit_at.isoformat(),
+                    "commits": [{"committedDate": last_commit_at.isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4247": {
                 "json": [
-                    {"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"},
+                    {"name": "ci", "state": "FAILURE", "completedAt": now.isoformat()},
                 ],
                 "exit": 0,
             },
@@ -781,13 +812,13 @@ class TestDebounceNewCommit:
             "pr_view_4248": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": last_commit_at.isoformat(),
+                    "commits": [{"committedDate": last_commit_at.isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4248": {
                 "json": [
-                    {"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"},
+                    {"name": "ci", "state": "FAILURE", "completedAt": now.isoformat()},
                 ],
                 "exit": 0,
             },
@@ -825,13 +856,13 @@ class TestCommentFailureNoClose:
             "pr_view_4249": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4249": {
                 "json": [
-                    {"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"},
+                    {"name": "ci", "state": "FAILURE", "completedAt": now.isoformat()},
                 ],
                 "exit": 0,
             },
@@ -869,13 +900,13 @@ class TestCommentSuccessClose:
             "pr_view_4250": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4250": {
                 "json": [
-                    {"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"},
+                    {"name": "ci", "state": "FAILURE", "completedAt": now.isoformat()},
                 ],
                 "exit": 0,
             },
@@ -918,13 +949,13 @@ class TestDryRunMode:
             "pr_view_4251": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4251": {
                 "json": [
-                    {"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"},
+                    {"name": "ci", "state": "FAILURE", "completedAt": now.isoformat()},
                 ],
                 "exit": 0,
             },
@@ -993,13 +1024,13 @@ class TestChecksPendingQueued:
             "pr_view_4252": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4252": {
                 "json": [
-                    {"name": "ci", "status": "IN_PROGRESS", "conclusion": ""},
+                    {"name": "ci", "state": "IN_PROGRESS", "completedAt": None},
                 ],
                 "exit": 0,
             },
@@ -1028,13 +1059,13 @@ class TestChecksPendingQueued:
             "pr_view_4253": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4253": {
                 "json": [
-                    {"name": "ci", "status": "QUEUED", "conclusion": ""},
+                    {"name": "ci", "state": "QUEUED", "completedAt": None},
                 ],
                 "exit": 0,
             },
@@ -1070,13 +1101,13 @@ class TestPendingCiCleanup:
             "pr_view_4254": {
                 "json": {
                     "createdAt": created_at.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4254": {
                 "json": [
-                    {"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"},
+                    {"name": "ci", "state": "FAILURE", "completedAt": now.isoformat()},
                 ],
                 "exit": 0,
             },
@@ -1129,13 +1160,13 @@ class TestMultiPRIndependent:
             "pr_view_4260": {
                 "json": {
                     "createdAt": created_a.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4260": {
                 "json": [
-                    {"name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"},
+                    {"name": "ci", "state": "FAILURE", "completedAt": now.isoformat()},
                 ],
                 "exit": 0,
             },
@@ -1156,13 +1187,13 @@ class TestMultiPRIndependent:
             "pr_view_4261": {
                 "json": {
                     "createdAt": created_b.isoformat(),
-                    "pushedAt": (now - timedelta(hours=24)).isoformat(),
+                    "commits": [{"committedDate": (now - timedelta(hours=24)).isoformat()}],
                 },
                 "exit": 0,
             },
             "pr_checks_4261": {
                 "json": [
-                    {"name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"},
+                    {"name": "ci", "state": "SUCCESS", "completedAt": now.isoformat()},
                 ],
                 "exit": 0,
             },

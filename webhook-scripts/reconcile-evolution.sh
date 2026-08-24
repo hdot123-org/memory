@@ -109,8 +109,9 @@ except:
     fi
     
     # Debounce 2: Check if last commit is recent (< 30 min)
+    # Fix: pushedAt doesn't exist, use commits[-1].committedDate instead
     local last_commit_at
-    last_commit_at=$(gh pr view "$pr_number" --repo "$REPO" --json pushedAt --jq '.pushedAt' 2>/dev/null || echo "")
+    last_commit_at=$(gh pr view "$pr_number" --repo "$REPO" --json commits --jq '.commits[-1].committedDate' 2>/dev/null || echo "")
     if [ -n "$last_commit_at" ]; then
         local commit_age_minutes
         commit_age_minutes=$("${PYTHON_BIN:-/opt/homebrew/bin/python3}" -c "
@@ -137,8 +138,9 @@ except:
     # AFTER that JSON, corrupting it so has_failure always parsed as 0 and
     # the sweeper never fired on real red PRs (INFRA-534). Fall back to []
     # only when stdout is empty (genuine fetch failure).
+    # Fix: Use valid fields name,state,completedAt (not name,status,conclusion which don't exist)
     local checks_json
-    checks_json=$(gh pr checks "$pr_number" --repo "$REPO" --json name,status,conclusion 2>/dev/null || true)
+    checks_json=$(gh pr checks "$pr_number" --repo "$REPO" --json name,state,completedAt 2>/dev/null || true)
     if [ -z "$checks_json" ]; then
         checks_json="[]"
     fi
@@ -148,8 +150,8 @@ except:
 import json, sys
 try:
     checks = json.load(sys.stdin)
-    # Check if any check has conclusion=FAILURE
-    has_failure = any(c.get('conclusion') == 'FAILURE' for c in checks)
+    # Check if any check has state=='FAILURE' (not conclusion, which doesn't exist)
+    has_failure = any(c.get('state') == 'FAILURE' for c in checks)
     print('1' if has_failure else '0')
 except:
     print('0')
