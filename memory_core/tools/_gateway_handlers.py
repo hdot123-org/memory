@@ -216,7 +216,7 @@ def _handle_pretooluse_guard(args: argparse.Namespace, raw_payload: str, cwd: Pa
 
 
 def _handle_session_start_setup(cwd: Path) -> None:
-    """Handle session-start side effects: health check, state update, telemetry sync."""
+    """Handle session-start side effects: health check, state update, telemetry sync, version probe."""
     _launch_async_health_check(cwd)
     project_scope = determine_project_scope(cwd)
     _update_state_dynamic_fields(cwd, project_scope)
@@ -224,6 +224,16 @@ def _handle_session_start_setup(cwd: Path) -> None:
         _maybe_sync_telemetry(ARTIFACT_ROOT)
     except Exception as exc:
         _logger.debug("telemetry sync skipped: %s", exc)
+
+    # M1: Auto-version-follow probe
+    # Detect version mismatch and auto-sync consumer projects
+    try:
+        from memory_core.tools.version_sync import probe_version_and_sync
+
+        probe_version_and_sync(cwd)
+    except Exception as exc:
+        # Fail-safe: any exception must not block hook main chain
+        _logger.debug("version probe skipped: %s", exc)
 
 
 def _handle_prompt_submit_logging(cwd: Path, payload: dict[str, Any]) -> None:

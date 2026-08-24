@@ -1,11 +1,15 @@
 """Version synchronization: patch ownership.toml memory_version across known projects.
 
-Manual CLI tool invoked via `memory-sync-versions`. Currently there is no hook
-auto-trigger; version_sync is not called from the session-start handler.
+Manual CLI tool invoked via `memory-sync-versions`.
+
+M1: Gateway session-start probe added (probe_version_and_sync).
+Called from _gateway_handlers.py session-start chain to auto-sync consumer versions.
 """
 
 import argparse
 import json
+import logging
+import os
 import re
 import sys
 from datetime import UTC, datetime
@@ -42,6 +46,7 @@ def patch_ownership_memory_version(ownership_path: Path, target_version: str) ->
     """Patch memory_version in ownership.toml without rewriting the entire file.
 
     Returns True if patched, False if already up-to-date or skipped.
+    M1: Atomic write with tmp + os.replace.
     """
     if not ownership_path.exists():
         return False
@@ -59,7 +64,17 @@ def patch_ownership_memory_version(ownership_path: Path, target_version: str) ->
     )
     if count == 0 or new_content == content:
         return False
-    ownership_path.write_text(new_content, encoding="utf-8")
+
+    # Atomic write: tmp + os.replace
+    tmp_path = ownership_path.with_suffix(".tmp")
+    try:
+        tmp_path.write_text(new_content, encoding="utf-8")
+        os.replace(tmp_path, ownership_path)  # noqa: PTH105 - intentional atomic operation
+    except OSError:
+        # Clean up tmp on failure
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
     return True
 
 
@@ -67,6 +82,7 @@ def patch_memory_lock(lock_path: Path, target_version: str) -> bool:
     """Patch memory_version and locked_at in memory.lock without rewriting the entire file.
 
     Returns True if patched, False if already up-to-date or skipped.
+    M1: Atomic write with tmp + os.replace.
     """
     if not lock_path.exists():
         return False
@@ -104,7 +120,16 @@ def patch_memory_lock(lock_path: Path, target_version: str) -> bool:
         # locked_at field missing or couldn't be patched
         return False
 
-    lock_path.write_text(new_content, encoding="utf-8")
+    # Atomic write: tmp + os.replace
+    tmp_path = lock_path.with_suffix(".tmp")
+    try:
+        tmp_path.write_text(new_content, encoding="utf-8")
+        os.replace(tmp_path, lock_path)  # noqa: PTH105 - intentional atomic operation
+    except OSError:
+        # Clean up tmp on failure
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
     return True
 
 
@@ -112,6 +137,7 @@ def patch_adapter_toml_version(adapter_path: Path, target_version: str) -> bool:
     """Patch version under [core] section in adapter.toml without rewriting the entire file.
 
     Returns True if patched, False if already up-to-date or skipped.
+    M1: Atomic write with tmp + os.replace.
     """
     if not adapter_path.exists():
         return False
@@ -155,7 +181,17 @@ def patch_adapter_toml_version(adapter_path: Path, target_version: str) -> bool:
         return False
 
     new_content = "".join(patched_lines)
-    adapter_path.write_text(new_content, encoding="utf-8")
+
+    # Atomic write: tmp + os.replace
+    tmp_path = adapter_path.with_suffix(".tmp")
+    try:
+        tmp_path.write_text(new_content, encoding="utf-8")
+        os.replace(tmp_path, adapter_path)  # noqa: PTH105 - intentional atomic operation
+    except OSError:
+        # Clean up tmp on failure
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
     return True
 
 
@@ -163,7 +199,7 @@ def _gate_version_bump(current_version: str, target_version: str, schema_changed
     """Gate check for version upgrade.
 
     Returns "allowed" if upgrade is safe (patch/minor + schema unchanged).
-    Returns "blocked:<reason>" if upgrade requires migration.
+    Returns "blocked:<reason>" if upgrade requires migration or is a downgrade.
 
     Args:
         current_version: Current memory_version
@@ -171,7 +207,7 @@ def _gate_version_bump(current_version: str, target_version: str, schema_changed
         schema_changed: Whether schema_version differs between current and target
 
     Returns:
-        "allowed" or "blocked:major" or "blocked:schema_changed"
+        "allowed" or "blocked:major" or "blocked:schema_changed" or "blocked:downgrade"
     """
     # Check schema change first (highest priority)
     if schema_changed:
@@ -187,11 +223,16 @@ def _gate_version_bump(current_version: str, target_version: str, schema_changed
         # Fallback: simple string comparison if packaging unavailable
         if current_version == target_version:
             return "allowed"
+        # Conservative: block if we can't parse
         return "blocked:major"
 
     # Major version bump -> blocked
     if target.major > current.major:
         return "blocked:major"
+
+    # Downgrade (target < current) -> blocked
+    if target < current:
+        return "blocked:downgrade"
 
     # Minor/patch bump -> allowed
     return "allowed"
@@ -322,7 +363,8 @@ def sync_single_project(
 ) -> dict[str, Any]:
     """Patch ownership.toml, memory.lock, and adapter.toml for a single project.
 
-    Gate logic prevents automatic major/schema upgrades.
+    Gate logic prevents automatic major/schema upgrades and downgrades.
+    M1: Write failures caught and returned in errors list, never raise.
 
     Returns a result dict with patched/blocked/errors.
     """
@@ -353,7 +395,7 @@ def sync_single_project(
     # Read schema_version from lock to detect schema change
     current_schema = _read_lock_schema_version(lock_path)
     # Compare with target schema - if different, mark as changed
-    # Use canonical schema schema version as the target
+    # Use canonical memory lock schema as the target
     from memory_core.constants import CANONICAL_MEMORY_LOCK_SCHEMA
 
     schema_changed = current_schema is not None and current_schema != CANONICAL_MEMORY_LOCK_SCHEMA
@@ -362,38 +404,39 @@ def sync_single_project(
     gate_result = _gate_version_bump(current_version, target_version, schema_changed)
 
     if gate_result.startswith("blocked"):
-        # Gate blocked: only patch ownership.toml (backward compatibility)
-        if patch_ownership_memory_version(ownership_path, target_version):
-            result["patched"] = True
-            result["from"] = current_version
-            result["to"] = target_version
-            result["gate_blocked"] = True
-            result["gate_reason"] = gate_result
-
-            # Resign ownership.toml only
-            resign_result = _try_resign_all(project_path, ["memory/system/ownership.toml"])
-            if not resign_result["resigned"]:
-                result["errors"].append(
-                    {
-                        "step": "resign",
-                        "reason": resign_result["reason"],
-                    }
-                )
-        else:
-            result["reason"] = "patch failed"
+        # Gate blocked: log warning and do NOT write any files
+        # This applies to: major version bump, downgrade, schema change
+        logging.warning(
+            f"Version sync blocked: {gate_result} (current={current_version}, target={target_version})"
+        )
+        result["patched"] = False
+        result["from"] = current_version
+        result["to"] = target_version
+        result["gate_blocked"] = True
+        result["gate_reason"] = gate_result
+        result["reason"] = f"gate blocked: {gate_result}"
         return result
 
     # Gate allowed: patch all three files
     changed_paths = []
 
-    if patch_ownership_memory_version(ownership_path, target_version):
-        changed_paths.append("memory/system/ownership.toml")
+    try:
+        if patch_ownership_memory_version(ownership_path, target_version):
+            changed_paths.append("memory/system/ownership.toml")
+    except OSError as exc:
+        result["errors"].append({"step": "patch_ownership", "reason": str(exc)})
 
-    if lock_path.exists() and patch_memory_lock(lock_path, target_version):
-        changed_paths.append("memory/system/memory.lock")
+    try:
+        if lock_path.exists() and patch_memory_lock(lock_path, target_version):
+            changed_paths.append("memory/system/memory.lock")
+    except OSError as exc:
+        result["errors"].append({"step": "patch_lock", "reason": str(exc)})
 
-    if adapter_path.exists() and patch_adapter_toml_version(adapter_path, target_version):
-        changed_paths.append("memory/system/adapter.toml")
+    try:
+        if adapter_path.exists() and patch_adapter_toml_version(adapter_path, target_version):
+            changed_paths.append("memory/system/adapter.toml")
+    except OSError as exc:
+        result["errors"].append({"step": "patch_adapter", "reason": str(exc)})
 
     if changed_paths:
         result["patched"] = True
@@ -414,6 +457,52 @@ def sync_single_project(
         result["reason"] = "no files changed"
 
     return result
+
+
+def probe_version_and_sync(project_path: Path) -> dict[str, Any] | None:
+    """Gateway session-start probe: detect version mismatch and auto-sync.
+
+    M1: Called from _gateway_handlers.py session-start chain.
+    Reads memory/system/memory.lock, compares with CURRENT_MEMORY_VERSION,
+    and calls sync_single_project if mismatch detected.
+
+    Fail-safe: any exception returns None, never blocks hook main chain.
+
+    Returns:
+        None if memory/system doesn't exist (skip)
+        Dict with result if sync attempted
+    """
+    try:
+        lock_path = project_path / "memory" / "system" / "memory.lock"
+        if not lock_path.exists():
+            # memory/system doesn't exist or no lock file: skip
+            return None
+
+        # Regex read memory_version from lock
+        try:
+            content = lock_path.read_text(encoding="utf-8")
+        except OSError:
+            # Can't read lock: skip
+            return None
+
+        match = re.search(r'^memory_version\s*=\s*"([^"]+)"', content, re.MULTILINE)
+        if not match:
+            # Can't parse lock: skip
+            return None
+
+        lock_version = match.group(1)
+        if lock_version == CURRENT_MEMORY_VERSION:
+            # Already at target: skip
+            return None
+
+        # Version mismatch: call sync_single_project
+        return sync_single_project(project_path, CURRENT_MEMORY_VERSION)
+
+    except Exception as exc:
+        # Fail-safe: any exception returns None
+        # Log for debugging but don't block hook main chain
+        logging.debug("probe_version_and_sync failed: %s", exc)
+        return None
 
 
 def _try_resign_all(project_path: Path, changed_paths: list[str]) -> dict[str, Any]:
