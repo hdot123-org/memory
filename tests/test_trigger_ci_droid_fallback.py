@@ -902,14 +902,11 @@ class TestVAL_M2_Code_Fixes:
                 {
                     "session_id": "test-session-ms",
                     "mtime": now_ms,  # 毫秒纪元
-                    "cwd": "/test/repo"
+                    "cwd": "/test/repo",
                 }
             ]
         }
         index_file.write_text(json.dumps(index_data))
-
-        # 调用 check_sessions_index_fresh 函数
-        script_content = TRIGGER_SCRIPT.read_text()
 
         # 提取函数并测试
         env = {
@@ -943,11 +940,7 @@ result = check_sessions_index_fresh('test-session-ms', '{index_file}')
 print('FRESH' if result else 'STALE')
 """
         result = subprocess.run(
-            [sys.executable, "-c", test_script],
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=10
+            [sys.executable, "-c", test_script], capture_output=True, text=True, env=env, timeout=10
         )
 
         assert result.returncode == 0, f"Script failed: {result.stderr}"
@@ -965,26 +958,29 @@ print('FRESH' if result else 'STALE')
             ["git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git"],
             cwd=repo_dir,
             capture_output=True,
-            check=True
+            check=True,
         )
 
         # 读取函数实现
         script_content = TRIGGER_SCRIPT.read_text()
 
         # 验证函数签名包含 cwd 参数
-        assert "verify_scanner_identity()" in script_content or "verify_scanner_identity" in script_content, \
+        assert "verify_scanner_identity()" in script_content or "verify_scanner_identity" in script_content, (
             "Function verify_scanner_identity should exist"
+        )
 
         # 验证函数从 PENDING_CWD 推导 repo
         assert "PENDING_CWD" in script_content, "Function should reference PENDING_CWD"
 
         # 验证函数使用 git remote 获取 owner/repo
-        assert "git" in script_content and "remote" in script_content, \
+        assert "git" in script_content and "remote" in script_content, (
             "Function should use git remote to derive owner/repo"
+        )
 
         # 验证 gh pr view 调用包含 -R 标志
-        assert "-R" in script_content or "--repo" in script_content, \
+        assert "-R" in script_content or "--repo" in script_content, (
             "gh pr view should be called with -R or --repo flag"
+        )
 
     def test_gh_shim_rejects_invalid_fields(self, tmp_path):
         """Fix A: gh shim 应拒绝无效的 --json 字段名"""
@@ -1036,20 +1032,14 @@ fi
 
         # 测试无效字段
         result = subprocess.run(
-            [str(shim_path), "pr", "view", "1", "--json", "invalid_field"],
-            capture_output=True,
-            text=True,
-            timeout=5
+            [str(shim_path), "pr", "view", "1", "--json", "invalid_field"], capture_output=True, text=True, timeout=5
         )
         assert result.returncode != 0, "Should reject invalid field for pr view"
         assert "Unknown field" in result.stderr or "invalid_field" in result.stderr
 
         # 测试有效字段
         result = subprocess.run(
-            [str(shim_path), "pr", "view", "1", "--json", "number,title"],
-            capture_output=True,
-            text=True,
-            timeout=5
+            [str(shim_path), "pr", "view", "1", "--json", "number,title"], capture_output=True, text=True, timeout=5
         )
         assert result.returncode == 0, f"Should accept valid fields: {result.stderr}"
 
@@ -1058,17 +1048,14 @@ fi
             [str(shim_path), "pr", "checks", "1", "--json", "status,conclusion"],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
         )
         assert result.returncode != 0, "Should reject invalid fields for pr checks"
         assert "Unknown field" in result.stderr or "status" in result.stderr
 
         # 测试 pr checks 有效字段
         result = subprocess.run(
-            [str(shim_path), "pr", "checks", "1", "--json", "name,state"],
-            capture_output=True,
-            text=True,
-            timeout=5
+            [str(shim_path), "pr", "checks", "1", "--json", "name,state"], capture_output=True, text=True, timeout=5
         )
         assert result.returncode == 0, f"Should accept valid fields for pr checks: {result.stderr}"
 

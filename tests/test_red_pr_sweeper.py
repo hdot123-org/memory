@@ -141,10 +141,10 @@ import json, sys, re
 data = json.load(open('{fixtures_dir}/pr_view_${{pr_num}}.json'))
 expr = '$jq_expr'.lstrip('.')
 # Handle nested access: commits[-1].committedDate
-parts = re.split(r'\.', expr)
+parts = re.split(r'\\.', expr)
 val = data
 for part in parts:
-    m = re.match(r'(\w+)\[(-?\d+)\]', part)
+    m = re.match(r'(\\w+)\\[(-?\\d+)\\]', part)
     if m:
         val = val.get(m.group(1), [])
         val = val[int(m.group(2))]
