@@ -502,3 +502,62 @@ class TestVALINJ011PostHogFallbackLog:
         assert "_posthog_resolve_log" in content or "posthog-fallback.log" in content, (
             "lib/posthog.sh should have a fallback log path (not /dev/null)"
         )
+
+
+class TestVALHYG003ZeroProductionLogWrites:
+    """VAL-HYG-003: pytest 日志分离——测试执行期间不向生产日志目录写入文件"""
+
+    def test_pytest_zero_production_log_writes(self):
+        """VAL-HYG-003: 跑一组 dry-run watchdog 测试前后，生产 logs/ 的 ci-complete-pr* 计数不变。
+        行为已由 _make_test_env() 的 LOG_DIR 沙箱化强制（见 :28-58），本用例为对齐设计清单口径的显式守卫。
+        """
+        production_logs = Path.home() / ".factory" / "webhook" / "logs"
+
+        # 记录测试前的生产日志 ci-complete-pr* 文件计数
+        before_count = len(list(production_logs.glob("ci-complete-pr*"))) if production_logs.exists() else 0
+
+        # 跑一个最小 watchdog dry-run（使用隔离环境）
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            locks_dir = tmpdir_path / "locks"
+            logs_dir = tmpdir_path / "logs"
+            locks_dir.mkdir()
+            logs_dir.mkdir()
+
+            env = os.environ.copy()
+            env["LOCKS_DIR"] = str(locks_dir)
+            env["LOG_DIR"] = str(logs_dir)
+            env["ECHO_DROID"] = "1"
+            env["POSTHOG_DRY_RUN"] = "1"
+
+            # 创建一个过期的 pending-ci 文件触发 Phase A
+            stale_time = datetime.now(UTC) - timedelta(minutes=35)
+            pending_file = locks_dir / "pending-ci-4242.json"
+            pending_file.write_text(
+                json.dumps(
+                    {
+                        "pr_number": "4242",
+                        "created_at": stale_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        "cwd": str(tmpdir_path),
+                    }
+                )
+            )
+
+            repo_root = Path(__file__).parent.parent
+            watchdog = repo_root / "webhook-scripts" / "ci-timeout-watchdog.sh"
+            subprocess.run(
+                ["bash", str(watchdog)],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+        # 记录测试后的生产日志 ci-complete-pr* 文件计数
+        after_count = len(list(production_logs.glob("ci-complete-pr*"))) if production_logs.exists() else 0
+
+        # 断言：测试期间零新增 ci-complete-pr* 文件写入生产目录
+        assert after_count == before_count, (
+            f"VAL-HYG-003: 测试期间向生产日志目录写入了 {after_count - before_count} 个 "
+            f"ci-complete-pr* 文件（before={before_count}, after={after_count}）"
+        )
