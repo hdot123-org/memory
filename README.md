@@ -375,25 +375,25 @@ heartbeat 告警自愈（`resolve_cleared_alerts()`）在本轮 tick 中异常�
 
 `webhook-scripts/` 是 `~/.factory/webhook/scripts/` 生产脚本的受管镜像。生产侧是 single source of truth；本目录经 PR 回填保持与生产侧 sha256 一致，作为审计与回滚依据。
 
-**同步机制：** `scripts/sync-webhook-scripts.sh` 负责正向同步（repo → 生产），`--check` 模式执行漂移检查。受管文件清单定义在 `webhook-scripts/MANIFEST.sh`（`MANAGED_FILES` + `MANAGED_LIB_FILES`，另含跨目录同步映射 `CROSS_DIR_MAPPINGS`）。
+**同步机制：** `scripts/sync-webhook-scripts.sh` 负责正向同步（repo → 生产），`--check` 模式执行漂移检查。受管文件清单定义在 `webhook-scripts/MANIFEST.sh`（`MANAGED_FILES` + `MANAGED_LIB_FILES`，`lib/` 目录整体纳管，另含跨目录同步映射 `CROSS_DIR_MAPPINGS`）。
 
 **脚本清单：**
 
 | 脚本 | 职责 |
 |------|------|
-| `trigger-ci-droid.sh` | CI 完成后注入消息；事件时重绑定 session |
-| `write-pending-ci.sh` | PR 注册路由；M5 schema `{pr_number, cwd, created_at}` |
-| `ci-timeout-watchdog.sh` | CI 超时兜底派发 |
-| `reconcile-evolution.sh` | 治理对账：DRY_RUN 守卫 + 127/126 分流 + E4 marker 豁免 |
+| `trigger-ci-droid.sh` | CI 完成后注入消息；事件时重绑定 session；读取端按 `source` 分流 —— scanner 来源静默清理（gh 不可用走保守路径），session 来源探活 404 时交叉校验 sessions-index，fallback prompt 附带 `gh pr view` 上下文 |
+| `write-pending-ci.sh` | PR 注册路由；支持 `--source session\|scanner` 与 `--context <意图>`（旧位置参数兼容，缺省默认 session） |
+| `ci-timeout-watchdog.sh` | CI 超时兜底派发；scanner 超期文件 Phase A 跳过，畸形时间戳终态走 Phase B 处理 |
+| `reconcile-evolution.sh` | 治理对账：DRY_RUN 守卫 + 127/126 分流 + E4 marker 豁免；红 PR 清道夫（open + CI 红 + 超 507min 阈值 → comment-then-close，双防抖，守则禁止静默关 PR） |
 | `trigger-droid.sh` / `trigger-error-droid.sh` | Linear / PostHog 错误触发器 |
 | `wiki-refresh.sh` | wiki 刷新（双臂 token 验证） |
 | `ci-failed.sh` | CI 失败通知 |
 | `webhook-hygiene.sh` | 每日 04:30 TTL 清理 |
 | `local_branch_cleanup.sh` | 本地分支清理 |
-| `lib/posthog.sh` | 统一 PostHog 上报（`POSTHOG_API_KEY` 走 env） |
-| `lib/op-mcp.sh` | 1Password 凭据链 |
+| `lib/posthog.sh` | 统一 PostHog 上报（`POSTHOG_API_KEY` 走 env），回执写日志不再落 `/dev/null` |
+| `lib/op-mcp.sh` | 1Password 凭据链（已入仓纳管） |
 
-**质量门禁：** CI 对全仓 `*.sh` 执行 shellcheck（以 runner 预装工具链为准，不强制最低版本）；`sync-webhook-scripts.sh` 在同步落盘前对每个受管文件执行 `bash -n` + shellcheck（shell）/ `py_compile`（Python）校验，失败即 fail-closed 回滚；`tests/` 下有行为回归测试（`test_write_pending_ci_hardening.py`、`test_m5_rebinding.py`、`test_sync_webhook_scripts.py` 等）。
+**质量门禁：** CI 对全仓 `*.sh` 执行 shellcheck（以 runner 预装工具链为准，不强制最低版本）；`sync-webhook-scripts.sh` 在同步落盘前对每个受管文件执行 `bash -n` + shellcheck（shell）/ `py_compile`（Python）校验，失败即 fail-closed 回滚；`tests/` 下有行为回归测试（`test_write_pending_ci_hardening.py`、`test_m5_rebinding.py`、`test_sync_webhook_scripts.py`、`test_red_pr_sweeper.py` 等，覆盖来源分流 / 红 PR 清道夫 / lib 漂移等场景）。
 
 **关键约束：** `POSTHOG_API_KEY` 仅通过环境变量注入（plist `EnvironmentVariables`），脚本内禁止出现 `phc_` 字面量。
 
