@@ -31,6 +31,7 @@ memory-core 协议规格文档，定义 .memory/ 协议的行为规范。
 | [DOT_MEMORY_SPEC.md](specs/DOT_MEMORY_SPEC.md) | .memory/ 协议规格 |
 | [MEMORY_LOCK_SPEC.md](specs/MEMORY_LOCK_SPEC.md) | 内存锁规格 |
 | [MULTI_PROJECT_SCAN_SPEC.md](specs/MULTI_PROJECT_SCAN_SPEC.md) | 多项目扫描规格 |
+| [PATH_INDEX_SPEC.md](specs/PATH_INDEX_SPEC.md) | path-index cwd 键局限与同步模式选择规格（SPEC-013） |
 
 ### infrastructure/ — 基础设施
 服务器资产、网络拓扑、凭证架构等基础设施文档。
