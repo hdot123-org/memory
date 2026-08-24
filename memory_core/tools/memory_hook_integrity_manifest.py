@@ -101,6 +101,7 @@ VOLATILE_PATTERNS = [
     "memory/system/errors-readable.log",
     "memory/system/health-report.json",
     "memory/system/errors/",  # date-partitioned error logs
+    "memory/system/.sync.lock",  # INFRA-545: ephemeral version-sync concurrency lock
 ]
 
 
