@@ -18,6 +18,7 @@ from memory_core.constants import CURRENT_MEMORY_VERSION
 # Helpers: build a fake consumer project in tmp_path
 # ---------------------------------------------------------------------------
 
+
 def _make_fake_consumer(
     base: Path,
     lock_version: str,
@@ -68,6 +69,7 @@ adapter_name = "test"
 # Test 1: Version match → no write (zero side effects)
 # ---------------------------------------------------------------------------
 
+
 class TestVersionMatchNoWrite:
     """VAL-M1-001: When versions already match, zero side effects."""
 
@@ -97,6 +99,7 @@ class TestVersionMatchNoWrite:
 # ---------------------------------------------------------------------------
 # Test 2: Minor bump → allowed, three files updated
 # ---------------------------------------------------------------------------
+
 
 class TestMinorBumpSyncsThreeFiles:
     """VAL-M1-002: Minor version bump is allowed and updates all three files."""
@@ -128,6 +131,7 @@ class TestMinorBumpSyncsThreeFiles:
 # Test 3: Major bump → blocked, no write
 # ---------------------------------------------------------------------------
 
+
 class TestMajorBumpBlocked:
     """VAL-M1-004: Major version bump is blocked by gate."""
 
@@ -148,6 +152,7 @@ class TestMajorBumpBlocked:
 # ---------------------------------------------------------------------------
 # Test 4: Downgrade → blocked, no write
 # ---------------------------------------------------------------------------
+
 
 class TestDowngradeBlocked:
     """VAL-M1-003: Downgrade (target < current) is blocked by gate."""
@@ -187,6 +192,7 @@ class TestDowngradeBlocked:
 # Test 5: Corrupt lock → no crash (fail-safe)
 # ---------------------------------------------------------------------------
 
+
 class TestCorruptLockNoCrash:
     """VAL-M1-005: Corrupt memory.lock should not crash the sync."""
 
@@ -206,6 +212,7 @@ class TestCorruptLockNoCrash:
 # ---------------------------------------------------------------------------
 # Test 6: Write failure → no raise, main chain continues
 # ---------------------------------------------------------------------------
+
 
 class TestWriteFailureDoesNotRaise:
     """VAL-M1-006: Write failures should not raise, main chain continues."""
@@ -240,54 +247,63 @@ class TestWriteFailureDoesNotRaise:
 # Test: Gate version bump downgrade logic
 # ---------------------------------------------------------------------------
 
+
 class TestGateVersionBumpDowngrade:
     """Unit tests for _gate_version_bump downgrade detection."""
 
     def test_downgrade_minor_detected(self) -> None:
         """0.40.0 → 0.39.0 is a downgrade."""
         from memory_core.tools.version_sync import _gate_version_bump
+
         result = _gate_version_bump("0.40.0", "0.39.0", False)
         assert result == "blocked:downgrade"
 
     def test_downgrade_patch_detected(self) -> None:
         """0.40.1 → 0.40.0 is a downgrade."""
         from memory_core.tools.version_sync import _gate_version_bump
+
         result = _gate_version_bump("0.40.1", "0.40.0", False)
         assert result == "blocked:downgrade"
 
     def test_upgrade_minor_allowed(self) -> None:
         """0.9.1 → 0.40.0 is a minor upgrade (allowed)."""
         from memory_core.tools.version_sync import _gate_version_bump
+
         result = _gate_version_bump("0.9.1", "0.40.0", False)
         assert result == "allowed"
 
     def test_upgrade_patch_allowed(self) -> None:
         """0.40.0 → 0.40.1 is a patch upgrade (allowed)."""
         from memory_core.tools.version_sync import _gate_version_bump
+
         result = _gate_version_bump("0.40.0", "0.40.1", False)
         assert result == "allowed"
 
     def test_same_version_allowed(self) -> None:
         """Same version should be allowed (idempotent check handles skip)."""
         from memory_core.tools.version_sync import _gate_version_bump
+
         result = _gate_version_bump("0.40.0", "0.40.0", False)
         assert result == "allowed"
 
     def test_major_upgrade_blocked(self) -> None:
         """Major version upgrade should be blocked."""
         from memory_core.tools.version_sync import _gate_version_bump
+
         result = _gate_version_bump("0.40.0", "1.0.0", False)
         assert result == "blocked:major"
 
     def test_schema_changed_blocked(self) -> None:
         """Schema change should always be blocked."""
         from memory_core.tools.version_sync import _gate_version_bump
+
         result = _gate_version_bump("0.40.0", "0.41.0", True)
         assert result == "blocked:schema_changed"
 
     def test_invalid_version_fallback_conservative(self) -> None:
         """Invalid version strings should conservatively block."""
         from memory_core.tools.version_sync import _gate_version_bump
+
         # With packaging available, invalid versions should still block conservatively
         result = _gate_version_bump("not_a_version", "0.40.0", False)
         assert result.startswith("blocked")
@@ -297,12 +313,14 @@ class TestGateVersionBumpDowngrade:
 # Test: Gateway version detection (session-start probe)
 # ---------------------------------------------------------------------------
 
+
 class TestGatewayVersionDetection:
     """Test the gateway session-start version detection integration."""
 
     def test_detect_version_probe_function_exists(self) -> None:
         """The _probe_version_and_sync function should exist in version_sync."""
         from memory_core.tools.version_sync import probe_version_and_sync
+
         assert callable(probe_version_and_sync)
 
     def test_probe_skips_when_no_memory_system(self, tmp_path: Path) -> None:

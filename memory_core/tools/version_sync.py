@@ -406,9 +406,7 @@ def sync_single_project(
     if gate_result.startswith("blocked"):
         # Gate blocked: log warning and do NOT write any files
         # This applies to: major version bump, downgrade, schema change
-        logging.warning(
-            f"Version sync blocked: {gate_result} (current={current_version}, target={target_version})"
-        )
+        logging.warning(f"Version sync blocked: {gate_result} (current={current_version}, target={target_version})")
         result["patched"] = False
         result["from"] = current_version
         result["to"] = target_version

@@ -379,9 +379,7 @@ class TestSyncAllKnownProjects:
 class TestBlockedScenarios:
     """VAL-GATE-002..004: Blocked scenarios still patch ownership.toml."""
 
-    def test_major_bump_blocks_all_writes(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_major_bump_blocks_all_writes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """VAL-GATE-002 + VAL-GATE-004: Major bump blocks ALL writes (including ownership)."""
         import memory_core.tools.version_sync as vs
 
