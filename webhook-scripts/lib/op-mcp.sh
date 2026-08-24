@@ -4,6 +4,9 @@
 # Eliminates Touch ID dependency in launchd environment
 
 OP_MCP_URL="http://192.168.88.11:9080/mcp/1password"
+# OP_VAULT_SEVER is consumed by sourcing scripts (reconcile-evolution.sh,
+# ci-failed.sh, trigger-ci-droid.sh, trigger-droid.sh) after `source lib/op-mcp.sh`.
+# shellcheck disable=SC2034
 OP_VAULT_SEVER="ozqqpvh5yvvxvyu64npq62a3ti"
 
 _op_mcp_read_key() {
