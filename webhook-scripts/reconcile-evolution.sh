@@ -8,6 +8,10 @@
 #
 # 调度：launchd 每小时的 :15 和 :45 运行（与 scanner cron :00/:30 错开 15 分钟）
 # 串行：每次只补触发一个 Issue（per-team 锁保证串行，下一个 tick 再补）
+#
+# 守则（与 ci-gateway skill 同文）：
+# - 禁止静默关 PR：任何 close 前必须先 comment 且评论成功
+# - comment 失败则本轮放弃不 close
 set -euo pipefail
 
 # === 配置 ===
