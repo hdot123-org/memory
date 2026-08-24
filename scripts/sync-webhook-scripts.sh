@@ -101,6 +101,7 @@ fi
 # === 加载 manifest ===
 # 预定义可选数组，防止 MANIFEST 未声明时 set -u 报 unbound variable
 CROSS_DIR_MAPPINGS=()
+MANAGED_LIB_FILES=()
 # shellcheck source=/dev/null disable=SC1091
 source "$MANIFEST"
 
@@ -154,6 +155,32 @@ if [[ "$CHECK_MODE" -eq 1 ]]; then
 
         if [[ ! -f "$repo_file" ]]; then
             log "ERROR: ${file} listed in MANIFEST but missing from repo"
+            drift_found=1
+            continue
+        fi
+
+        if [[ ! -f "$prod_file" ]]; then
+            log "DRIFT: ${file} exists in repo but not in production"
+            drift_found=1
+            continue
+        fi
+
+        if ! diff -q "$repo_file" "$prod_file" >/dev/null 2>&1; then
+            log "DRIFT: ${file} differs between repo and production"
+            drift_found=1
+        else
+            log "OK: ${file} in sync"
+        fi
+    done
+
+    # Check MANAGED_LIB_FILES (lib/ subdirectory files, m2-sync-lib-blindspot)
+    for file in "${MANAGED_LIB_FILES[@]:-}"; do
+    [[ -z "$file" ]] && continue
+        repo_file="${REPO_WEBHOOK}/${file}"
+        prod_file="${PROD_ROOT}/${file}"
+
+        if [[ ! -f "$repo_file" ]]; then
+            log "ERROR: ${file} listed in MANAGED_LIB_FILES but missing from repo"
             drift_found=1
             continue
         fi
@@ -248,6 +275,23 @@ for file in "${MANAGED_FILES[@]}"; do
     fi
 done
 
+# MANAGED_LIB_FILES 备份（m2-sync-lib-blindspot）
+for file in "${MANAGED_LIB_FILES[@]:-}"; do
+    [[ -z "$file" ]] && continue
+    prod_file="${PROD_ROOT}/${file}"
+    if [[ -f "$prod_file" ]]; then
+        backup_file="${BACKUP_ROOT}/${file}.bak.${TIMESTAMP}"
+        if [[ -f "$backup_file" ]]; then
+            log "  Backup exists: ${file}.bak.${TIMESTAMP}, skipping"
+        else
+            # 确保备份目录存在
+            mkdir -p "$(dirname "$backup_file")"
+            cp -p "$prod_file" "$backup_file"
+            log "  Backed up: ${file} -> ${file}.bak.${TIMESTAMP}"
+        fi
+    fi
+done
+
 # 跨目录映射目标备份（INFRA-357）
 for mapping in "${CROSS_DIR_MAPPINGS[@]:-}"; do
     [[ -z "$mapping" ]] && continue
@@ -277,6 +321,20 @@ for file in "${MANAGED_FILES[@]}"; do
         log "WARN: ${file} listed in MANIFEST but missing from repo, skipping"
         continue
     fi
+    cp -p "$repo_file" "${sync_tmp}/${file}"
+    log "  Staged: ${file}"
+done
+
+# MANAGED_LIB_FILES 同步（m2-sync-lib-blindspot）
+for file in "${MANAGED_LIB_FILES[@]:-}"; do
+    [[ -z "$file" ]] && continue
+    repo_file="${REPO_WEBHOOK}/${file}"
+    if [[ ! -f "$repo_file" ]]; then
+        log "WARN: ${file} listed in MANAGED_LIB_FILES but missing from repo, skipping"
+        continue
+    fi
+    # 确保临时目录中有 lib/ 子目录
+    mkdir -p "${sync_tmp}/$(dirname "$file")"
     cp -p "$repo_file" "${sync_tmp}/${file}"
     log "  Staged: ${file}"
 done
@@ -317,6 +375,11 @@ for file in "${MANAGED_FILES[@]}"; do
     validate_staged_file "$file"
 done
 
+for file in "${MANAGED_LIB_FILES[@]:-}"; do
+    [[ -z "$file" ]] && continue
+    validate_staged_file "$file"
+done
+
 for mapping in "${CROSS_DIR_MAPPINGS[@]:-}"; do
     [[ -z "$mapping" ]] && continue
     validate_staged_file "${mapping##*:}"
@@ -343,6 +406,13 @@ commit_staged_file() {
 }
 
 for file in "${MANAGED_FILES[@]}"; do
+    commit_staged_file "$file"
+done
+
+for file in "${MANAGED_LIB_FILES[@]:-}"; do
+    [[ -z "$file" ]] && continue
+    # 确保生产目录中有 lib/ 子目录
+    mkdir -p "$(dirname "${PROD_ROOT}/${file}")"
     commit_staged_file "$file"
 done
 
