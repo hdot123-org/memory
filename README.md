@@ -224,6 +224,22 @@ memory-sync-versions --target /path/to/project    # 单项目
 memory-sync-versions --dry-run --json
 ```
 
+##### 自动版本跟随（auto version follow）
+
+自 v0.40.1 起，hook gateway 在 `session-start` 事件自动探测消费者版本：regex 读取项目 `memory/system/memory.lock` 的 `memory_version`，与 `CURRENT_MEMORY_VERSION` 不一致时进程内调用 `sync_single_project`（单项目模式），无需人工触发。
+
+升级门禁 `_gate_version_bump` 规则：
+
+| 场景 | 行为 |
+|------|------|
+| minor / patch 且 `schema_version` 一致 | 放行，自动同步三文件（`memory.lock`、`adapter.toml`、`ownership.toml`；tmp + `os.replace` 原子写，`.sync.lock` 并发防护） |
+| major 跳变 / Schema 变更 | 拦截，仅记警告 |
+| 降级（target < current） | 拦截，仅记警告 |
+
+- **失败安全**：探测或同步链路的任何异常均不阻塞 hook 主链（`exit 0` 语义）
+- **手动 CLI**：`memory-sync-versions --target <项目>` 仍可用（推荐单项目模式；全局模式的 path-index 以 cwd 为键存在错配，详见 [`path-index` 规范](docs/specs/PATH_INDEX_SPEC.md)）
+- **测试**：`tests/test_auto_version_follow.py`，17 用例覆盖六分支
+
 #### `memory-lifecycle-rebuild`
 
 从 `projects/*.json` 生命周期记录重建 `path-index.json`。当索引过期、缺失条目或与磁盘上的 `projects/` 目录不一致时使用。过滤非活跃和缺失记录，按 `local_path` 去重（保留 `observed_at` 最新的记录），原子写入结果。
