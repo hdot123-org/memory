@@ -161,28 +161,44 @@ class TestPath2_GateA_45_PRMergedOverride:
 
 
 class TestPath3_GateA_46_SyncOriginOverride:
-    """Path 3: GATE A 4.6 sync-origin override uses --label evolution-found.
+    """Path 3: GATE A 4.6 sync-origin override relies on anchor validation.
 
-    trigger-droid.sh GATE A 4.6 queries:
-        gh issue list --label evolution-found --state all --limit 10
-    Notification issues lack the evolution-found label.
+    2026-08-24（INFRA-536 / #1000 振荡修复）：4.6 查询已移除 --label evolution-found
+    过滤（锚点统一方案，与 4.5 一致）。heartbeat 自愈 close（evolution-heartbeat
+    标签）此前对 4.6 不可见，导致合法 Done 被 GATE A 回滚、GitHub issue 每 2h
+    close→reopen 振荡。通知 issue 隔离改由锚点一致性判别承担（本文件
+    TestAnchorGate_Replay724 已验证标签过滤被绕过时锚点仍拒绝 #724）。
     """
 
-    def test_gate_a_46_query_requires_evolution_found_label(self) -> None:
-        """VAL-NTF-005 GATE A 4.6: Script source contains --label evolution-found in sync section."""
+    def test_gate_a_46_query_drops_label_filter(self) -> None:
+        """VAL-NTF-005 GATE A 4.6: Script source must NOT filter by --label in sync section."""
         trigger_script = Path(__file__).parent.parent / "webhook-scripts" / "trigger-droid.sh"
         content = trigger_script.read_text()
-        # Count occurrences — GATE A 4.6 and other sections still use this filter
-        # (4.5 was changed to use --search + anchor validation in PR #794)
-        count = content.count("--label evolution-found")
-        assert count >= 2, f"Expected at least 2 uses of --label evolution-found (4.6 + other), got {count}"
+        # Locate 4.6 section
+        start = content.find("4.6. Sync-origin override")
+        end = content.find("4.7. Session-completed override")
+        assert start != -1 and end != -1, "GATE A 4.6/4.7 sections must exist"
+        section = content[start:end]
+        assert "--label" not in section, (
+            "GATE A 4.6 禁止用 --label 过滤候选（锚点统一方案）：标签盲区曾导致 "
+            "heartbeat 自愈 close 被误判回滚（#1000/INFRA-536 close→reopen 振荡）"
+        )
+        assert "extract_anchor.py" in section, "4.6 必须保留锚点一致性校验"
 
-    def test_sync_origin_excludes_notification_issues(self) -> None:
-        """VAL-NTF-005 GATE A 4.6: Notification issues excluded from sync-origin check."""
-        # Simulate gh issue list --label evolution-found --state all
+    def test_sync_origin_selects_by_anchor_not_label(self) -> None:
+        """VAL-NTF-005 GATE A 4.6: Candidate selection is anchor-based, label-free.
+
+        Simulate gh issue list --state all（无标签过滤）: notification #724 与
+        真实镜像 #999 同时进入候选。锚点判别必须只选中 #999。
+        """
+        # Simulate unfiltered candidate list
         issues = [NOTIFICATION_ISSUE_724, REAL_MIRROR_ISSUE_999]
-        filtered = [issue for issue in issues if _has_evolution_found(issue)]
-        selected_numbers = {issue["number"] for issue in filtered}
+        selected = [
+            issue
+            for issue in issues
+            if _has_linear_linkback_marker(issue["body"]) and extract_linkback_anchor(issue["body"]) == "INFRA-346"
+        ]
+        selected_numbers = {issue["number"] for issue in selected}
         assert 724 not in selected_numbers, "Notification issue #724 must NOT be selected by GATE A 4.6"
         assert 999 in selected_numbers, "Real mirror #999 must be selected by GATE A 4.6"
 

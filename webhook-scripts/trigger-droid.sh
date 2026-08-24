@@ -475,9 +475,13 @@ for pr in candidates:
 
     # 4.6. Sync-origin override (P0-3): GitHub close → Linear Done 同步（锚点化）
     # 场景：GitHub issue 被 PR 合并后自动关闭，Linear 同步触发 Done 转换
+    # 场景扩展：heartbeat 自愈关闭（evolution-heartbeat 标签）与 scanner auto_close_resolved
+    #           （evolution-found 标签）都是合法 close 来源，Done 均为下游同步
     # 检测：gh issue 已 closed 且 closed_at ≤ 10 分钟
     # 逻辑：证明 Done 是 GitHub close 的下游同步，非人工 Done → PASS
     # 锚点化：提取 issue 评论中的 linear-linkback，一致性校验通过才放行（issue-flow.md §10.3）
+    #         标签不作为信任边界（锚点统一方案，与 §4.5 一致）：标签过滤曾导致 heartbeat
+    #         自愈 close 被 GATE A 误判回滚（#1000 close→reopen 振荡，INFRA-536 循环）
     # 失败处理：gh 查询失败 → fall through 到 BLOCK（fail-closed）
     # 提取失败留痕 anchor-extract.log（INFRA-357），fail-closed 语义不变
     local _sync_repo_path
@@ -487,7 +491,7 @@ for pr in candidates:
         _sync_gh_repo=$(git -C "$_sync_repo_path" remote get-url origin 2>/dev/null | sed 's/.*github.com[:/]//' | sed 's/.git$//')
         if [ -n "$_sync_gh_repo" ]; then
             local _sync_check_result
-            _sync_check_result=$(gh issue list --repo "$_sync_gh_repo" --label evolution-found --state all --limit 10 --json number,state,closedAt 2>/dev/null | /opt/homebrew/bin/python3 -c "
+            _sync_check_result=$(gh issue list --repo "$_sync_gh_repo" --state all --limit 10 --json number,state,closedAt 2>/dev/null | /opt/homebrew/bin/python3 -c "
 import json, sys, subprocess
 from datetime import datetime, timezone
 
