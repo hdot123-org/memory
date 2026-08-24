@@ -10,7 +10,7 @@
 #   POSTHOG_DRY_RUN=1    — Print event JSON to stdout, do NOT send
 #   POSTHOG_API_KEY      — API key from environment (skip if empty/unset)
 #   PYTHON_BIN            — python3 binary path (auto-detected)
-#   LOG_FILE              — Log output destination (default: /dev/null for curl)
+#   LOG_FILE              — Log output destination (default: ~/.factory/webhook/logs/posthog-fallback.log)
 #
 # Usage:
 #   send_posthog_event <error_type> <identifier> <stage> <detail>
@@ -27,6 +27,15 @@ _POSTHOG_SH_LOADED=1
 
 # Dynamic Python binary detection (macOS: /opt/homebrew/bin/python3, Linux: python3)
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 2>/dev/null || echo /opt/homebrew/bin/python3)}"
+
+# VAL-INJ-011: Resolve PostHog receipt log destination with deterministic fallback
+# Ensures parent directory exists (idempotent mkdir). Replaces the old ${LOG_FILE:-/dev/null}
+# default that silently dropped events when callers didn't set LOG_FILE.
+_posthog_resolve_log() {
+    local dest="${LOG_FILE:-${HOME}/.factory/webhook/logs/posthog-fallback.log}"
+    mkdir -p "$(dirname "$dest")" 2>/dev/null || true
+    printf '%s' "$dest"
+}
 
 send_posthog_event() {
     local event_type="${1:-}"
@@ -85,7 +94,7 @@ print(json.dumps({
 
     curl -s -X POST "https://us.posthog.com/batch/" \
         -H "Content-Type: application/json" \
-        -d "$payload" >> "${LOG_FILE:-/dev/null}" 2>&1 || true
+        -d "$payload" >> "$(_posthog_resolve_log)" 2>&1 || true
 }
 
 # Variant: send_posthog_event_named — per-call event name override
@@ -172,5 +181,5 @@ print(json.dumps({
 
     curl -s -X POST "https://us.posthog.com/batch/" \
         -H "Content-Type: application/json" \
-        -d "$payload" >> "${LOG_FILE:-/dev/null}" 2>&1 || true
+        -d "$payload" >> "$(_posthog_resolve_log)" 2>&1 || true
 }
