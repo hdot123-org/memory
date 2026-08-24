@@ -19,6 +19,11 @@ INJECTION_TTL_SECONDS=2700 # 45 minutes (Phase B)
 # === PostHog 事件上报 (lib/posthog.sh 统一实现) ===
 POSTHOG_EVENT_NAME="ci_webhook_failure"
 POSTHOG_DISTINCT_ID="ci-webhook"
+# VAL-INJ-009: 回执落盘——LOG_FILE 赋值先于 source lib/posthog.sh
+# 确保 send_posthog_event 的 curl 回执写入真实日志文件，非 /dev/null
+LOG_DIR="${LOG_DIR:-${HOME}/.factory/webhook/logs}"
+mkdir -p "$LOG_DIR" 2>/dev/null
+LOG_FILE="${LOG_DIR}/ci-timeout-watchdog-posthog.log"
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/posthog.sh"
 
@@ -194,7 +199,11 @@ except Exception as e:
 " 2>/dev/null)
     
     if [ "$INJECTED_EPOCH" = "0" ]; then
-      echo "Warning: Could not parse injected_at timestamp for PR #$PR_NUMBER, skipping Phase B"
+      # VAL-INJ-008: 不可恢复样本单次告警 + 终态处理（重命名 .malformed，防重复扫描）
+      # 不再每 5 分钟重复告警（基线 :188-190 裸 continue 缺陷）
+      echo "Warning: Could not parse injected_at timestamp for PR #$PR_NUMBER — marking as malformed (terminal)"
+      send_posthog_event "ci_malformed_timestamp" "$PR_NUMBER" "watchdog_phase_b" "unrecoverable_format"
+      mv "$pending_file" "${pending_file}.malformed"
       continue
     fi
     

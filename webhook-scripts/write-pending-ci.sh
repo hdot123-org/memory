@@ -21,6 +21,12 @@ WEBHOOK_BASE="${WEBHOOK_BASE:-${HOME}/.factory/webhook}"
 LOCKS_DIR="${LOCKS_DIR:-${WEBHOOK_BASE}/locks}"
 SESSIONS_INDEX="${SESSIONS_INDEX:-${HOME}/.factory/sessions-index.json}"
 
+# === 日志配置（VAL-INJ-010: LOG_FILE 赋值先于任何 send_posthog_event）===
+LOG_DIR="${WEBHOOK_BASE}/logs"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+LOG_FILE="${LOG_DIR}/write-pending-ci-${TIMESTAMP}.log"
+mkdir -p "$LOG_DIR" 2>/dev/null
+
 # === PostHog 事件上报 (lib/posthog.sh 统一实现) ===
 POSTHOG_EVENT_NAME="ci_webhook_failure"
 POSTHOG_DISTINCT_ID="ci-webhook"
