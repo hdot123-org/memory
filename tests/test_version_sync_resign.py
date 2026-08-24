@@ -379,10 +379,8 @@ class TestSyncAllKnownProjects:
 class TestBlockedScenarios:
     """VAL-GATE-002..004: Blocked scenarios still patch ownership.toml."""
 
-    def test_major_bump_blocks_lock_adapter_but_patches_ownership(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """VAL-GATE-002 + VAL-GATE-004: Major bump blocks lock/adapter but patches ownership."""
+    def test_major_bump_blocks_all_writes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """VAL-GATE-002 + VAL-GATE-004: Major bump blocks ALL writes (including ownership)."""
         import memory_core.tools.version_sync as vs
 
         mock_resign = MagicMock(return_value={"resigned": True, "paths": []})
@@ -392,9 +390,9 @@ class TestBlockedScenarios:
         # Target is 1.0.0 -> major bump -> blocked
         result = sync_single_project(project, "1.0.0")
 
-        # ownership.toml patched (backward compat)
+        # ownership.toml NOT patched (M1: gate blocked means no writes)
         own = (project / "memory" / "system" / "ownership.toml").read_text()
-        assert 'memory_version = "1.0.0"' in own
+        assert 'memory_version = "0.10.2"' in own
 
         # memory.lock NOT patched
         lock = (project / "memory" / "system" / "memory.lock").read_text()
@@ -405,7 +403,8 @@ class TestBlockedScenarios:
         assert re.search(r'^version\s*=\s*"0\.10\.2"', adapter, re.MULTILINE)
 
         # Result indicates blocked
-        assert result.get("gate_blocked") is True or "blocked" in str(result).lower()
+        assert result.get("gate_blocked") is True
+        assert result.get("gate_reason") == "blocked:major"
 
     def test_schema_change_blocks_lock_adapter(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """VAL-GATE-003: Schema change blocks lock/adapter patch."""
@@ -444,15 +443,19 @@ class TestBlockedScenarios:
 
         result = sync_single_project(project, "0.9.1")
 
-        # ownership.toml still patched (backward compat)
+        # ownership.toml NOT patched (M1: gate blocked means no writes)
         own = (project / "memory" / "system" / "ownership.toml").read_text()
-        assert 'memory_version = "0.9.1"' in own
+        assert 'memory_version = "0.9.0"' in own
 
         # memory.lock NOT patched (schema change blocked)
         lock_after = (project / "memory" / "system" / "memory.lock").read_text()
         assert re.search(r'^memory_version\s*=\s*"0\.9\.0"', lock_after, re.MULTILINE)
+        # adapter.toml NOT patched
+        adapter_after = (project / "memory" / "system" / "adapter.toml").read_text()
+        assert re.search(r'^version\s*=\s*"0\.9\.0"', adapter_after, re.MULTILINE)
         # Gate was blocked
         assert result.get("gate_blocked") is True
+        assert result.get("gate_reason") == "blocked:schema_changed"
 
 
 # ─────────────────────────────────────────────────────────────
