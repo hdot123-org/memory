@@ -879,7 +879,9 @@ def test_lib_check_green_after_sync(lib_files_env):
     # Then --check
     rc, stdout, stderr = run_sync_script("--check", env=env)
     assert rc == 0, f"--check should be green after deploy:\n{stdout}\n{stderr}"
-    assert "lib/posthog.sh" in stdout or "in sync" in stdout
+    # Require the per-file OK line so this test fails if lib files are merely
+    # unreported (old pre-fix script ignored lib/ entirely and would pass vacuously).
+    assert "OK: lib/posthog.sh" in stdout, f"lib/posthog.sh not reported as in sync:\n{stdout}\n{stderr}"
 
 
 def test_lib_check_detects_tampered_production_lib_file(lib_files_env):
