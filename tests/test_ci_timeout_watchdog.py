@@ -514,10 +514,7 @@ class TestVALHYG003ZeroProductionLogWrites:
         production_logs = Path.home() / ".factory" / "webhook" / "logs"
 
         # 记录测试前的生产日志 ci-complete-pr* 文件计数
-        if production_logs.exists():
-            before_count = len(list(production_logs.glob("ci-complete-pr*")))
-        else:
-            before_count = 0
+        before_count = len(list(production_logs.glob("ci-complete-pr*"))) if production_logs.exists() else 0
 
         # 跑一个最小 watchdog dry-run（使用隔离环境）
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -557,10 +554,7 @@ class TestVALHYG003ZeroProductionLogWrites:
             )
 
         # 记录测试后的生产日志 ci-complete-pr* 文件计数
-        if production_logs.exists():
-            after_count = len(list(production_logs.glob("ci-complete-pr*")))
-        else:
-            after_count = 0
+        after_count = len(list(production_logs.glob("ci-complete-pr*"))) if production_logs.exists() else 0
 
         # 断言：测试期间零新增 ci-complete-pr* 文件写入生产目录
         assert after_count == before_count, (
