@@ -708,3 +708,209 @@ def test_cross_dir_validation_failure_rolls_back(cross_dir_env):
         if (cross_dir_env["prod_dir"] / name).exists()
     }
     assert prod_after == prod_before, "Production modified despite validation failure"
+
+
+# ============================================================================
+# m2-sync-lib-blindspot: MANAGED_LIB_FILES consumption in all 4 paths
+# ============================================================================
+
+
+@pytest.fixture
+def lib_files_env(tmp_path):
+    """
+    Sandbox with MANAGED_LIB_FILES in MANIFEST.sh.
+
+    Layout mirrors sandbox_env but the manifest additionally declares
+    MANAGED_LIB_FILES with lib/posthog.sh. Production initially LACKS
+    the lib file (the blindspot scenario).
+    """
+    repo_dir = tmp_path / "repo"
+    prod_dir = tmp_path / "production"
+    backup_dir = tmp_path / "backups"
+
+    repo_dir.mkdir()
+    prod_dir.mkdir()
+    backup_dir.mkdir()
+
+    webhook_scripts = repo_dir / "webhook-scripts"
+    webhook_scripts.mkdir()
+    (webhook_scripts / "test-script.sh").write_text("#!/bin/bash\necho 'test'\n")
+
+    # Create lib/ subdirectory with posthog.sh
+    lib_dir = webhook_scripts / "lib"
+    lib_dir.mkdir()
+    lib_posthog = lib_dir / "posthog.sh"
+    lib_posthog.write_text("#!/bin/bash\n# lib/posthog.sh with _posthog_resolve_log\necho 'lib v2'\n")
+
+    manifest = webhook_scripts / "MANIFEST.sh"
+    manifest.write_text(
+        """#!/bin/bash
+MANAGED_FILES=(
+    "test-script.sh"
+)
+
+MANAGED_LIB_FILES=(
+    "lib/posthog.sh"
+)
+
+CROSS_DIR_MAPPINGS=()
+ENV_DIFF_LINES=()
+"""
+    )
+
+    # Production has the main script but LACKS lib/ (blindspot scenario)
+    (prod_dir / "test-script.sh").write_text("#!/bin/bash\necho 'old'\n")
+
+    env = {
+        "REPO_ROOT": str(repo_dir),
+        "PROD_ROOT": str(prod_dir),
+        "BACKUP_ROOT": str(backup_dir),
+        "PATH": "/usr/bin:/bin",
+    }
+
+    return {
+        "env": env,
+        "repo_dir": repo_dir,
+        "prod_dir": prod_dir,
+        "backup_dir": backup_dir,
+        "webhook_scripts": webhook_scripts,
+        "lib_dir": lib_dir,
+        "lib_posthog": lib_posthog,
+    }
+
+
+def test_lib_check_detects_missing_lib_file_as_drift(lib_files_env):
+    """
+    m2-sync-lib-blindspot: --check detects missing lib/ file as DRIFT.
+
+    Production lacks lib/posthog.sh (the blindspot scenario where
+    MANAGED_LIB_FILES was declared but never consumed).
+    Expected: --check exits non-zero and reports drift for lib/posthog.sh.
+    """
+    env = lib_files_env["env"]
+
+    # Production lacks lib/ directory
+    assert not (lib_files_env["prod_dir"] / "lib").exists()
+
+    rc, stdout, stderr = run_sync_script("--check", env=env)
+    output = stdout + stderr
+
+    assert rc != 0, "--check should exit non-zero when lib file missing in production"
+    assert "lib/posthog.sh" in output, f"lib file not reported as drift:\n{output}"
+    assert "DRIFT" in output, f"DRIFT signature missing:\n{output}"
+
+
+def test_lib_sync_copies_lib_file_to_production(lib_files_env):
+    """
+    m2-sync-lib-blindspot: sync mode copies lib/ file to production.
+
+    Expected:
+    - lib/posthog.sh deployed to production/lib/posthog.sh
+    - Content matches repo (sha256)
+    - Exit code 0
+    """
+    env = lib_files_env["env"]
+
+    rc, stdout, stderr = run_sync_script(env=env)
+    assert rc == 0, f"Sync failed:\nstdout: {stdout}\nstderr: {stderr}"
+
+    prod_lib_file = lib_files_env["prod_dir"] / "lib" / "posthog.sh"
+    assert prod_lib_file.exists(), "lib/posthog.sh not deployed to production"
+
+    repo_checksum = compute_file_checksum(lib_files_env["lib_posthog"])
+    prod_checksum = compute_file_checksum(prod_lib_file)
+    assert prod_checksum == repo_checksum, "lib/posthog.sh deployed content differs from repo"
+
+
+def test_lib_backup_creates_backup_for_lib_file(lib_files_env):
+    """
+    m2-sync-lib-blindspot: backup phase creates backup for lib/ file.
+
+    Pre-populate production lib/posthog.sh with old version, then sync.
+    Expected: backup created for lib/posthog.sh with timestamp.
+    """
+    env = lib_files_env["env"]
+    prod_dir = lib_files_env["prod_dir"]
+
+    # Pre-populate production lib/ with old version
+    prod_lib_dir = prod_dir / "lib"
+    prod_lib_dir.mkdir()
+    prod_lib_file = prod_lib_dir / "posthog.sh"
+    prod_lib_file.write_text("#!/bin/bash\n# old lib version\necho 'lib v1'\n")
+
+    rc, stdout, stderr = run_sync_script(env=env)
+    assert rc == 0, f"Sync failed:\n{stderr}"
+
+    # Verify backup was created for lib/posthog.sh (may be nested in lib/ subdir)
+    all_backups = list(lib_files_env["backup_dir"].rglob("*"))
+    lib_backups = [b for b in all_backups if b.is_file() and "posthog" in b.name and "bak" in b.name]
+    assert len(lib_backups) > 0, (
+        f"No backup created for lib/posthog.sh: {[str(b) for b in all_backups if b.is_file()]}"
+    )
+
+
+def test_lib_validation_runs_on_lib_file(lib_files_env):
+    """
+    m2-sync-lib-blindspot: validation phase runs on lib/ file.
+
+    Break lib/posthog.sh in repo (shell syntax error), then sync.
+    Expected: validation fails, exit non-zero, production unchanged.
+    """
+    env = lib_files_env["env"]
+
+    # Break lib/posthog.sh in repo (shell syntax error)
+    lib_files_env["lib_posthog"].write_text("#!/bin/bash\nif\n")  # Syntax error
+
+    rc, stdout, stderr = run_sync_script(env=env)
+    assert rc != 0, "Sync should fail on lib file validation error"
+
+    # Production lib/ should still not exist (validation failed before commit)
+    assert not (lib_files_env["prod_dir"] / "lib").exists(), (
+        "Production lib/ created despite validation failure"
+    )
+
+
+def test_lib_check_green_after_sync(lib_files_env):
+    """
+    m2-sync-lib-blindspot: after sync, --check is green for lib/ file.
+    """
+    env = lib_files_env["env"]
+
+    # Sync first
+    rc, _, stderr = run_sync_script(env=env)
+    assert rc == 0, f"Deploy failed: {stderr}"
+
+    # Then --check
+    rc, stdout, stderr = run_sync_script("--check", env=env)
+    assert rc == 0, f"--check should be green after deploy:\n{stdout}\n{stderr}"
+    assert "lib/posthog.sh" in stdout or "in sync" in stdout
+
+
+def test_lib_check_detects_tampered_production_lib_file(lib_files_env):
+    """
+    m2-sync-lib-blindspot: --check detects tampered production lib file.
+
+    Sync lib/posthog.sh to production, then tamper with the production copy.
+    Expected: --check exits non-zero and reports drift.
+    This is the critical drift detection test required by the feature.
+    """
+    env = lib_files_env["env"]
+
+    # Sync first
+    rc, _, stderr = run_sync_script(env=env)
+    assert rc == 0, f"Deploy failed: {stderr}"
+
+    # Tamper with production lib/posthog.sh
+    prod_lib_file = lib_files_env["prod_dir"] / "lib" / "posthog.sh"
+    assert prod_lib_file.exists()
+    prod_lib_file.write_text("#!/bin/bash\n# tampered version\necho 'tampered'\n")
+
+    # --check should detect drift
+    rc, stdout, stderr = run_sync_script("--check", env=env)
+    output = stdout + stderr
+
+    assert rc != 0, "--check should exit non-zero when lib file tampered"
+    assert "lib/posthog.sh" in output, f"Tampered lib file not reported:\n{output}"
+    assert "DRIFT" in output or "differs" in output.lower(), (
+        f"Drift signature missing:\n{output}"
+    )
