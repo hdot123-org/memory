@@ -844,9 +844,7 @@ def test_lib_backup_creates_backup_for_lib_file(lib_files_env):
     # Verify backup was created for lib/posthog.sh (may be nested in lib/ subdir)
     all_backups = list(lib_files_env["backup_dir"].rglob("*"))
     lib_backups = [b for b in all_backups if b.is_file() and "posthog" in b.name and "bak" in b.name]
-    assert len(lib_backups) > 0, (
-        f"No backup created for lib/posthog.sh: {[str(b) for b in all_backups if b.is_file()]}"
-    )
+    assert len(lib_backups) > 0, f"No backup created for lib/posthog.sh: {[str(b) for b in all_backups if b.is_file()]}"
 
 
 def test_lib_validation_runs_on_lib_file(lib_files_env):
@@ -865,9 +863,7 @@ def test_lib_validation_runs_on_lib_file(lib_files_env):
     assert rc != 0, "Sync should fail on lib file validation error"
 
     # Production lib/ should still not exist (validation failed before commit)
-    assert not (lib_files_env["prod_dir"] / "lib").exists(), (
-        "Production lib/ created despite validation failure"
-    )
+    assert not (lib_files_env["prod_dir"] / "lib").exists(), "Production lib/ created despite validation failure"
 
 
 def test_lib_check_green_after_sync(lib_files_env):
@@ -911,6 +907,4 @@ def test_lib_check_detects_tampered_production_lib_file(lib_files_env):
 
     assert rc != 0, "--check should exit non-zero when lib file tampered"
     assert "lib/posthog.sh" in output, f"Tampered lib file not reported:\n{output}"
-    assert "DRIFT" in output or "differs" in output.lower(), (
-        f"Drift signature missing:\n{output}"
-    )
+    assert "DRIFT" in output or "differs" in output.lower(), f"Drift signature missing:\n{output}"
