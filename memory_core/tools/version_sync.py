@@ -4,19 +4,31 @@ Manual CLI tool invoked via `memory-sync-versions`.
 
 M1: Gateway session-start probe added (probe_version_and_sync).
 Called from _gateway_handlers.py session-start chain to auto-sync consumer versions.
+INFRA-545: .sync.lock best-effort concurrency guard added around the
+three-file patch + resign critical section (O_CREAT|O_EXCL, stale ~10s ignored).
 """
 
 import argparse
+import contextlib
 import json
 import logging
 import os
 import re
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from memory_core.constants import CURRENT_MEMORY_VERSION
+
+# Stale lock threshold (seconds): a .sync.lock older than this is considered
+# abandoned (e.g. process crashed while holding it) and is ignored/broken.
+SYNC_LOCK_STALE_SECONDS = 10.0
+
+# Lock acquisition retry budget (seconds): give concurrent holders a short
+# window to finish instead of failing fast on the first EEXIST.
+SYNC_LOCK_WAIT_SECONDS = 2.0
 
 # Re-sign modules (ImportError 时静默跳过，不阻塞版本同步)
 try:
@@ -357,6 +369,146 @@ def sync_all_known_projects(
     return report
 
 
+@contextlib.contextmanager
+def _sync_lock(project_path: Path) -> Any:
+    """Best-effort per-project concurrency guard for version sync (INFRA-545).
+
+    Acquires ``memory/system/.sync.lock`` via ``O_CREAT|O_EXCL``. Never blocks
+    the caller indefinitely and never raises:
+
+    - Lock acquired → yield ``True`` (caller owns the critical section).
+    - Lock held by a live holder → retry briefly, then yield ``False``
+      (caller should skip; the concurrent holder is syncing the same files).
+    - Lock held but stale (mtime older than SYNC_LOCK_STALE_SECONDS) → break
+      the stale lock and re-acquire → yield ``True``.
+    - Any OSError (read-only fs, permission, dangling parent dir) → yield
+      ``False`` (fail-safe: sync is skipped, main chain continues).
+
+    Always releases the lock on exit if we own it.
+    """
+    lock_path = project_path / "memory" / "system" / ".sync.lock"
+    owned = False
+    deadline = time.monotonic() + SYNC_LOCK_WAIT_SECONDS
+
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            # Lock exists: stale (abandoned) or held by a concurrent sync.
+            try:
+                age = time.time() - lock_path.stat().st_mtime
+            except OSError:
+                age = 0.0
+            if age > SYNC_LOCK_STALE_SECONDS:
+                # Stale lock: unlink and retry immediately (best-effort break;
+                # a concurrent breaker may win the race, in which case the
+                # next O_EXCL attempt by either party resolves ownership).
+                with contextlib.suppress(OSError):
+                    lock_path.unlink()
+                continue
+            if time.monotonic() >= deadline:
+                break  # Live holder did not finish in time: skip
+            time.sleep(0.05)
+            continue
+        except OSError:
+            # Filesystem-level failure (read-only, permissions, missing dir):
+            # fail-safe skip, never raise into the hook chain.
+            break
+        else:
+            with contextlib.suppress(OSError):
+                os.write(fd, f"{os.getpid()}".encode())
+            os.close(fd)
+            owned = True
+            break
+
+    try:
+        yield owned
+    finally:
+        if owned:
+            with contextlib.suppress(OSError):
+                lock_path.unlink()
+
+
+def _patch_three_files_under_lock(
+    project_path: Path,
+    ownership_path: Path,
+    lock_path: Path,
+    adapter_path: Path,
+    current_version: str,
+    target_version: str,
+) -> dict[str, Any]:
+    """INFRA-545: run the three-file patch + resign critical section under .sync.lock.
+
+    Mutates and returns the caller's ``result`` dict. Handles:
+    - lock contention → ``lock_skipped`` (no writes)
+    - concurrent winner re-read → idempotent skip
+    - external mid-flight edit → conservative skip
+    - patch failures → recorded in ``errors``, never raised
+    """
+    result: dict[str, Any] = {"patched": False, "errors": []}
+
+    with _sync_lock(project_path) as lock_acquired:
+        if not lock_acquired:
+            result["from"] = current_version
+            result["to"] = target_version
+            result["lock_skipped"] = True
+            result["reason"] = "sync lock held by concurrent holder"
+            return result
+
+        # Re-read under lock: the concurrent winner may have already patched.
+        locked_version = read_ownership_memory_version(ownership_path)
+        if locked_version == target_version:
+            result["reason"] = "already up-to-date"
+            return result
+        if locked_version is not None and locked_version != current_version:
+            # State changed mid-flight (external edit): conservative skip
+            result["from"] = current_version
+            result["to"] = locked_version
+            result["reason"] = "version changed concurrently; skipping"
+            return result
+
+        # Gate allowed: patch all three files
+        changed_paths = []
+
+        try:
+            if patch_ownership_memory_version(ownership_path, target_version):
+                changed_paths.append("memory/system/ownership.toml")
+        except OSError as exc:
+            result["errors"].append({"step": "patch_ownership", "reason": str(exc)})
+
+        try:
+            if lock_path.exists() and patch_memory_lock(lock_path, target_version):
+                changed_paths.append("memory/system/memory.lock")
+        except OSError as exc:
+            result["errors"].append({"step": "patch_lock", "reason": str(exc)})
+
+        try:
+            if adapter_path.exists() and patch_adapter_toml_version(adapter_path, target_version):
+                changed_paths.append("memory/system/adapter.toml")
+        except OSError as exc:
+            result["errors"].append({"step": "patch_adapter", "reason": str(exc)})
+
+        if changed_paths:
+            result["patched"] = True
+            result["from"] = current_version
+            result["to"] = target_version
+            result["files_changed"] = changed_paths
+
+            # Resign all changed files
+            resign_result = _try_resign_all(project_path, changed_paths)
+            if not resign_result["resigned"]:
+                result["errors"].append(
+                    {
+                        "step": "resign",
+                        "reason": resign_result["reason"],
+                    }
+                )
+        else:
+            result["reason"] = "no files changed"
+
+    return result
+
+
 def sync_single_project(
     project_path: Path,
     target_version: str = CURRENT_MEMORY_VERSION,
@@ -365,6 +517,9 @@ def sync_single_project(
 
     Gate logic prevents automatic major/schema upgrades and downgrades.
     M1: Write failures caught and returned in errors list, never raise.
+    INFRA-545: The three-file patch + resign critical section is guarded by a
+    best-effort ``.sync.lock``; concurrent syncs on the same project are
+    skipped (lock contention) instead of racing on the same files.
 
     Returns a result dict with patched/blocked/errors.
     """
@@ -415,46 +570,17 @@ def sync_single_project(
         result["reason"] = f"gate blocked: {gate_result}"
         return result
 
-    # Gate allowed: patch all three files
-    changed_paths = []
-
-    try:
-        if patch_ownership_memory_version(ownership_path, target_version):
-            changed_paths.append("memory/system/ownership.toml")
-    except OSError as exc:
-        result["errors"].append({"step": "patch_ownership", "reason": str(exc)})
-
-    try:
-        if lock_path.exists() and patch_memory_lock(lock_path, target_version):
-            changed_paths.append("memory/system/memory.lock")
-    except OSError as exc:
-        result["errors"].append({"step": "patch_lock", "reason": str(exc)})
-
-    try:
-        if adapter_path.exists() and patch_adapter_toml_version(adapter_path, target_version):
-            changed_paths.append("memory/system/adapter.toml")
-    except OSError as exc:
-        result["errors"].append({"step": "patch_adapter", "reason": str(exc)})
-
-    if changed_paths:
-        result["patched"] = True
-        result["from"] = current_version
-        result["to"] = target_version
-        result["files_changed"] = changed_paths
-
-        # Resign all changed files
-        resign_result = _try_resign_all(project_path, changed_paths)
-        if not resign_result["resigned"]:
-            result["errors"].append(
-                {
-                    "step": "resign",
-                    "reason": resign_result["reason"],
-                }
-            )
-    else:
-        result["reason"] = "no files changed"
-
-    return result
+    # INFRA-545: best-effort concurrency guard around the write section.
+    # On lock contention (concurrent session-start syncing the same project)
+    # we skip entirely: the winner performs the identical patch.
+    return _patch_three_files_under_lock(
+        project_path,
+        ownership_path,
+        lock_path,
+        adapter_path,
+        current_version,
+        target_version,
+    )
 
 
 def probe_version_and_sync(project_path: Path) -> dict[str, Any] | None:
