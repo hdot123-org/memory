@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.40.0](https://github.com/hdot123-org/memory/compare/v0.39.5...v0.40.0) (2026-08-24)
+
+
+### Features
+
+* **f1-routing:** 实现 CI 反馈链路的 source 分流 + D2 语义修正（含 F3 注入修复，Fixes INFRA-522, INFRA-535） ([#997](https://github.com/hdot123-org/memory/issues/997)) ([e14b60c](https://github.com/hdot123-org/memory/commit/e14b60c8552024a938f853f71234f56bdf63e6e3))
+* **F2:** 红 PR 清道夫 — reconcile-evolution.sh 新增 sweep_red_prs 检测分支 ([#996](https://github.com/hdot123-org/memory/issues/996)) ([b94afba](https://github.com/hdot123-org/memory/commit/b94afbac95ec3f847d8e0bd5f37330a2b52a5ff0))
+
+
+### Bug Fixes
+
+* **F4:** 重投递 watchdog Phase B 终态处理 + PostHog 盲区修复（INFRA-537） ([#1006](https://github.com/hdot123-org/memory/issues/1006)) ([23c2d47](https://github.com/hdot123-org/memory/commit/23c2d472bbb688e75f4c94b9c8d6eae1c4634d36))
+* M2 blocking 代码修复批（scrutiny R1 三项代码缺陷 + 两项 ride-along） ([#1005](https://github.com/hdot123-org/memory/issues/1005)) ([47e0522](https://github.com/hdot123-org/memory/commit/47e052291ab5ebbc7f609486e3127a6bc8952c32))
+* **sync:** 修复 lib/ 盲区 — sync 脚本消费 MANAGED_LIB_FILES + 纳入 op-mcp.sh 托管 ([#1008](https://github.com/hdot123-org/memory/issues/1008)) ([ee1f6f9](https://github.com/hdot123-org/memory/commit/ee1f6f9adac8fca0d33078883f6b4806bd7bdea6))
+* 修复 Red PR Sweeper 两个 P0 缺陷并部署到生产（INFRA-534） ([#998](https://github.com/hdot123-org/memory/issues/998)) ([55cd51b](https://github.com/hdot123-org/memory/commit/55cd51b8eeec607cd028e586a8b51356750b0489))
+
+
+### Documentation
+
+* INFRA-538 闭环记录 — M2 三项代码修复经 PR [#1005](https://github.com/hdot123-org/memory/issues/1005) 落地 main 的核查结论 ([#1007](https://github.com/hdot123-org/memory/issues/1007)) ([c8cc5ae](https://github.com/hdot123-org/memory/commit/c8cc5ae5a6666a794821292cb8edbac4e9d2a100))
+
 ## [0.39.5](https://github.com/hdot123-org/memory/compare/v0.39.4...v0.39.5) (2026-08-23)
 
 
