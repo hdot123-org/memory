@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from memory_core.ownership import (
+    _normalize_to_project_relative,
     classify_agents_md_block,
     classify_owned_path,
     load_memory_ownership,
@@ -261,15 +262,22 @@ def _extract_path_from_execute(command: str) -> list[str]:
     return []
 
 
-def _check_doc_routing(file_path: str) -> dict[str, str] | None:
+def _check_doc_routing(file_path: str, project_root: Path | None = None) -> dict[str, str] | None:
     """检查文件路径是否在注册的文档目录中。
 
     当路径匹配 memory/docs/ 或 memory/kb/ 前缀时，校验是否在注册目录。
     返回 block 结果 dict 表示被拦截，返回 None 表示放行。
+
+    绝对路径先归一化为 project-relative（复用 _normalize_to_project_relative
+    单一真源），避免仓库根目录名恰好为 "memory" 等协议目录名时误判。
     """
-    p = Path(file_path)
+    # 归一化：绝对路径转 project-relative，避免根目录名碰巧为协议目录名
+    # （如 /Users/busiji/memory/docs/specs/x.md 中的 "memory"）导致 parts 误匹配
+    normalized_path = _normalize_to_project_relative(file_path, project_root) if project_root is not None else file_path
+    p = Path(normalized_path)
 
     # 检查是否是 memory/docs/ 或 memory/kb/ 下的路径
+    # 归一化后 "docs" 或 "kb" 必须不在首位（首位是 "memory"）才视为协议路径
     is_doc_path = False
     for i, part in enumerate(p.parts):
         if part in ("docs", "kb") and i > 0 and p.parts[i - 1] == "memory":
@@ -436,7 +444,7 @@ def _classify_write_edit(payload: dict[str, Any], project_root: Path, ownership:
         )
 
     # 文档路由校验（memory/docs/ 或 memory/kb/ 下必须使用注册目录）
-    dr_block = _check_doc_routing(file_path)
+    dr_block = _check_doc_routing(file_path, project_root)
     if dr_block is not None:
         decision = dr_block["decision"]
         return RuleResult(
@@ -503,7 +511,7 @@ def _classify_multiedit(payload: dict[str, Any], project_root: Path, ownership: 
             continue
 
         # 文档路由校验（memory/docs/ 或 memory/kb/ 下必须使用注册目录）
-        dr_block = _check_doc_routing(path)
+        dr_block = _check_doc_routing(path, project_root)
         if dr_block is not None:
             item_results.append(
                 {
@@ -578,6 +586,20 @@ def _classify_notebook(payload: dict[str, Any], project_root: Path, ownership: A
     return RuleResult(matched=False, severity="info", message=result.reason, detail={"decision": "allow"})
 
 
+def _handle_quote_state(ch: str, in_quote: str | None) -> str | None:
+    """Update quote state based on current character.
+
+    Returns the new in_quote state (None if quote closed, the quote char if opened/continuing).
+    """
+    if in_quote:
+        # Inside a quote - check if it closes
+        return None if ch == in_quote else in_quote
+    elif ch in ('"', "'"):
+        # Opening a quote
+        return ch
+    return in_quote
+
+
 def _split_command_segments(command: str) -> list[str]:
     """Split command by shell operators respecting quote boundaries.
 
@@ -596,15 +618,16 @@ def _split_command_segments(command: str) -> list[str]:
         ch = command[i]
 
         # Handle quote state
-        if in_quote:
+        new_in_quote = _handle_quote_state(ch, in_quote)
+        if in_quote or ch in ('"', "'"):
             current.append(ch)
-            if ch == in_quote:
-                in_quote = None
-        elif ch in ('"', "'"):
-            in_quote = ch
-            current.append(ch)
+            if new_in_quote != in_quote:
+                in_quote = new_in_quote
+            i += 1
+            continue
+
         # Check for operators
-        elif ch == "&" and i + 1 < n and command[i + 1] == "&":
+        if ch == "&" and i + 1 < n and command[i + 1] == "&":
             # && (two-char operator, NOT background)
             if current:
                 segments.append("".join(current).strip())
@@ -700,9 +723,8 @@ def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
 
     if first_word in readonly_commands:
         # R3-4: sort with -o/--output= is write operation
-        if first_word == "sort":
-            if any(w == "-o" or w.startswith("--output=") for w in segment.split()[1:]):
-                return True
+        if first_word == "sort" and any(w == "-o" or w.startswith("--output=") for w in segment.split()[1:]):
+            return True
 
         # Readonly commands only have write intent if redirecting to owned paths
         # R3-1: Use updated redirect pattern that handles &>/>&

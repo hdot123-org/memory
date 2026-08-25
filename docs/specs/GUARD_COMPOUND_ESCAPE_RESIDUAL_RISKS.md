@@ -105,6 +105,39 @@ cat $(find . -name "*.tmp" -delete)
 - 普通变量引用（`$VAR`）不在此规则范围内（变量拆散属残余类别）
 - 命令替换检测优先于 readonly_commands 判定，确保 `echo $(rm ...)` 不被 echo 的只读属性放行
 
+**读语义例外（NB-1，R3 收尾补记）**：
+
+当前一刀切 block 策略存在已知过度拦截：命令替换内为只读命令且重定向目标非受保护域的场景被误拦。
+
+**示例**（当前 block，属已知过度拦截）：
+```bash
+echo "built $(date) for memory/kb" > /tmp/out.txt
+echo "$(cat memory/docs/README.md)" > /tmp/note.txt
+```
+
+**为何当前拦截**：
+- `_segment_has_write_intent` 检测到 `$(` 即返回 True，不评估命令替换内容
+- 后续路径提取发现 `memory/kb` 字面量，触发 fail-closed 拦截
+- 即使重定向目标 `/tmp/out.txt` 完全在受保护域外
+
+**放行条件**（架构上可行但当前未实现）：
+- 命令替换内为只读命令（`date`/`cat`/`echo`/`grep`/`head`/`tail`/`wc`/`awk`/`sed -n` 等）
+- 重定向目标非受保护域（`/tmp/`、`/var/log/`、`~/Downloads/` 等）
+- 无写意图段（整个命令仅为输出/日志记录）
+
+**为何当前接受残余**：
+- 静态分析命令替换内容需 shell 语法解析（嵌套引号、变量展开、多行命令）
+- 边界案例复杂：`$(grep -l "pattern" memory/kb/*)` 的 `-l` 输出路径可能被后续命令使用
+- 纵深防御（manifest + 审计）可事后检测异常，当前 fail-closed 策略安全性足够
+- 读语义误拦频率低（真实场景多为写操作），优先级低于其他残余修复
+
+**未来改进方向**（可选，非阻塞）：
+- 命令替换内容白名单：仅允许已知只读命令（`date`/`cat`/`echo` 等）放行
+- 重定向目标白名单：`/tmp/`、`/var/log/` 等非受保护域自动放行
+- 需评估安全风险：攻击者可能构造 `$(cat /etc/passwd) > /tmp/out` 等绕过场景
+
+**当前策略**：接受过度拦截残余，文档化例外场景，优先级低。
+
 ---
 
 ## 读语义放行说明
