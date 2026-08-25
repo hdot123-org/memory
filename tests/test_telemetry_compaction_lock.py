@@ -138,17 +138,23 @@ class TestConcurrentAppendNeverLosesRecords:
 
     Monkeypatch Path.open to inject sleep(0.5s) when opening metrics.jsonl in 'w' mode.
     - PRE-FIX code (272e6e9): uses open("w") to truncate → triggers sleep → writer appends
-      during sleep → truncate destroys records → silent loss → RED
+      during sleep → truncate destroys records without sending them → silent loss → RED
     - FIXED code: uses open("r+") with exclusive_lock → no 'w' mode → no sleep → writer's
       flock fails (lock held) → returns False → explicit drop → GREEN
 
     This widens the TOCTOU window from sub-millisecond to 0.5s, making it deterministic.
+
+    Accounting note: a returned-True record is conserved if it was read+sent by the sync
+    (possible when the writer appends before the sync reads pending records — e.g. under
+    fork start-method on Linux CI), retained in file after compaction, or explicitly
+    dropped (returned False). The conservation assertion is
+    returned_F ∪ present ∪ sent == all_written.
     """
 
     def test_concurrent_append_no_silent_loss(self, tmp_path):
         """Deterministic time injection: monkeypatch Path.open to widen TOCTOU window.
 
-        Records that returned True must be present in file (no silent loss).
+        Records that returned True must be sent or present in file (no silent loss).
         """
         initial_lines = [_make_metric_line(i) for i in range(10)]
         artifact_root = setup_sync_artifacts(
@@ -162,6 +168,7 @@ class TestConcurrentAppendNeverLosesRecords:
 
         manager = mp.Manager()
         writer_results = manager.list()
+        sent_records = manager.list()  # Track which records are sent via batch_capture
         start_event = mp.Event()
         stop_event = mp.Event()
 
@@ -188,6 +195,21 @@ class TestConcurrentAppendNeverLosesRecords:
             return original_path_open(self_path, mode, *args, **kwargs)
 
         mock_tel_module, ctx = _patch_network_and_telem(batch_capture_return=True)
+
+        # Track which records are sent by intercepting batch_capture.
+        # On fork start-method platforms (Linux CI), the writer appends fast enough that
+        # its records are read and sent by the sync itself (legal path, not loss);
+        # on spawn platforms (macOS), the writer may not append before sync finishes.
+        # Sent-accounting makes the conservation assertion correct on both.
+        def tracking_batch_capture(events):
+            for event in events:
+                if event.get("properties", {}).get("event") == "writer_event":
+                    seq = event["properties"].get("seq")
+                    if seq is not None:
+                        sent_records.append(seq)
+            return True
+
+        mock_tel_module.telemetry.batch_capture.side_effect = tracking_batch_capture
 
         with (
             patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
@@ -226,22 +248,22 @@ class TestConcurrentAppendNeverLosesRecords:
             else:
                 returned_false_seqs.add(idx)
 
-        # Key assertion: records that returned True must be in file (no silent loss)
-        # PRE-FIX: records written during sleep are truncated → silent loss → FAIL
-        # FIXED: records either written before lock (in file) or flock fails (return False) → PASS
-        silently_lost = returned_true_seqs - in_file_seqs
+        # Key assertion: records that returned True must be sent or in file (no silent loss)
+        # PRE-FIX: records written during sleep are truncated without being sent → FAIL
+        # FIXED: records are either read+sent by the sync, retained in file after compaction,
+        # or the writer's flock fails (return False) → PASS
+        sent_seqs = set(sent_records)
+        silently_lost = returned_true_seqs - sent_seqs - in_file_seqs
         assert len(silently_lost) == 0, (
-            f"Silent loss detected: {len(silently_lost)} records returned True but absent from file. "
-            f"Lost seqs: {sorted(silently_lost)[:10]}..."
+            f"Silent loss detected: {len(silently_lost)} records returned True but were "
+            f"neither sent nor retained in file. Lost seqs: {sorted(silently_lost)[:10]}..."
         )
 
-        # Two-quadrant invariant: returned_F ∪ present == all_written
-        # (On FIXED code, sent_records tracking is not needed because no records are sent
-        # during compaction - all are either in file or explicitly dropped)
+        # Two-quadrant invariant: returned_F ∪ present ∪ sent == all_written
         all_written = set(range(len(writer_results)))
-        union = returned_false_seqs | in_file_seqs
+        union = returned_false_seqs | in_file_seqs | sent_seqs
         assert union == all_written, (
-            f"Two-quadrant assertion failed: returned_F ∪ present != all_written. "
+            f"Two-quadrant assertion failed: returned_F ∪ present ∪ sent != all_written. "
             f"Missing: {len(all_written - union)} records"
         )
 
