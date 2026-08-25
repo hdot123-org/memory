@@ -746,7 +746,7 @@ class TestSyncStatusAtomicity:
             stop_flag[0] = True
             reader_future.result()
 
-        assert len(errors) == 0, f"Got {len(errors)} JSONDecodeError(s): {errors[:3]}"
+        assert len(errors) == 0, f"Got {len(errors)} JSONDecodeError(s): {errors[:3]}\nNote: Reader now uses shared lock (LOCK_SH) for atomic reads matching production code locking"
 
         status_file = artifact_root / ".sync_status.json"
         if status_file.exists():

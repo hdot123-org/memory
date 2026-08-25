@@ -1,0 +1,7 @@
+SHARD_ID=0
+BASE_REF=272e6e97c357afc96c5aa3c4edd790337ce6a66a
+HEAD_REF=28dd834a919b41ead7ce8b66ed504a499bf294a7
+MERGE_BASE=272e6e97c357afc96c5aa3c4edd790337ce6a66a
+RUN_ID=32824025683
+FILES_COUNT=3
+FILES=memory_core/tools/_guard_classify.py memory_core/tools/_guard_patterns.py tests/test_guard_infra551.py

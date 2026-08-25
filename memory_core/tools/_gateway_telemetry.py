@@ -149,8 +149,14 @@ def _batch_send_records(
         last_synced_line = chunk[-1][0]
 
         # Write offset with exclusive lock (single-handle pattern)
-        # Use "a+" mode to create the file if it doesn't exist (fresh artifact root)
-        with offset_file.open("a+", encoding="utf-8") as f, exclusive_lock(f):
+        # Ensure file exists before opening in r+ mode (fresh artifact root)
+        if not offset_file.exists():
+            try:
+                offset_file.write_text("", encoding="utf-8")
+            except OSError:
+                # Another process may have created it; that's OK
+                pass
+        with offset_file.open("r+", encoding="utf-8") as f, exclusive_lock(f):
             f.seek(0)
             f.truncate()
             f.write(str(last_synced_line))
@@ -183,8 +189,14 @@ def _compact_metrics_jsonl(metrics_file: Path, last_synced_line: int, offset_fil
             os.fsync(f.fileno())
 
             # Reset offset to "0" in the same critical section
-            # Use "a+" mode to create the file if it doesn't exist (fresh artifact root)
-            with offset_file.open("a+", encoding="utf-8") as offset_f, exclusive_lock(offset_f):
+            # Ensure offset file exists before opening in r+ mode (fresh artifact root)
+            if not offset_file.exists():
+                try:
+                    offset_file.write_text("", encoding="utf-8")
+                except OSError:
+                    # Another process may have created it; that's OK
+                    pass
+            with offset_file.open("r+", encoding="utf-8") as offset_f, exclusive_lock(offset_f):
                 offset_f.seek(0)
                 offset_f.truncate()
                 offset_f.write("0")
@@ -202,16 +214,23 @@ def _compact_metrics_jsonl(metrics_file: Path, last_synced_line: int, offset_fil
 def _write_sync_status(artifact_root: Path, success: bool, pending_count: int) -> None:
     """Write .sync_status.json with lifecycle tracking fields.
 
-    Uses single-handle a+ mode with exclusive lock for atomic read-modify-write
+    Uses single-handle r+ mode with exclusive lock for atomic read-modify-write
     to prevent TOCTOU races during concurrent access.
     """
     status_file = artifact_root / ".sync_status.json"
     now_iso_val = now_iso()
 
     try:
-        # Use "a+" mode to create file if it doesn't exist (fresh artifact root)
-        # This is lock-safe unlike the previous write_text pre-creation
-        with status_file.open("a+", encoding="utf-8") as f, exclusive_lock(f):
+        # Ensure file exists before opening in r+ mode (fresh artifact root)
+        # This must happen outside the lock to avoid deadlock
+        if not status_file.exists():
+            try:
+                status_file.write_text("{}", encoding="utf-8")
+            except OSError:
+                # Another process may have created it; that's OK
+                pass
+        
+        with status_file.open("r+", encoding="utf-8") as f, exclusive_lock(f):
             # Read existing content
             f.seek(0)
             content = f.read()
