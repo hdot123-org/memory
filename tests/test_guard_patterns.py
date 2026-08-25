@@ -70,10 +70,11 @@ def test_re_rm_matches():
 
 
 def test_re_cp_matches():
-    """RE_CP matches 'cp -r src dest'."""
+    """RE_CP matches 'cp -r src dest' (flags preserved for -t detection)."""
     m = RE_CP.match("cp -r src dest")
     assert m is not None
-    assert m.group(1) == "src dest"
+    # RE_CP no longer strips flags — _extract_cp_path handles flag parsing
+    assert m.group(1) == "-r src dest"
 
 
 def test_re_mkdir_matches():

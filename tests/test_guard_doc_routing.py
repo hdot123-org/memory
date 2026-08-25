@@ -192,3 +192,72 @@ def test_guard_exception_dirs_registered():
         test_file = f"{exc_dir}test.md"
         result = _check_doc_routing(test_file)
         assert result is None, f"Exception dir {exc_dir} should be allowed"
+
+
+# --- R3 收尾：绝对路径归一化回归测试 ---
+# 修复根因：_check_doc_routing 用 parts 匹配 'memory'+'docs'，当仓库根目录名
+# 恰好为 'memory' 时，绝对路径 /path/to/memory/docs/specs/x.md 的 parts 包含
+# [..., 'memory', 'docs', ...] 导致误判为协议路径。归一化后 'docs' 在首位
+# （i==0）不再触发 'memory' 前缀检测。
+
+
+def test_check_doc_routing_absolute_path_project_named_memory(tmp_path: Path):
+    """绝对路径项目根名为 memory 时，仓库级 docs/specs/ 应放行（非协议路径）。"""
+    project_root = tmp_path / "memory"
+    project_root.mkdir()
+    # 注册目录 docs/specs 下的文件应放行
+    result = _check_doc_routing(
+        str(project_root / "docs" / "specs" / "test.md"),
+        project_root=project_root,
+    )
+    assert result is None, "绝对路径归一化后 docs/specs 应放行"
+
+
+def test_check_doc_routing_absolute_path_real_memory_docs_unregistered(tmp_path: Path):
+    """真实 memory/docs/ 下未注册目录仍应被拦截（负例防走样）。"""
+    project_root = tmp_path / "myproject"
+    project_root.mkdir()
+    # memory/docs/unknown_cat 是未注册目录
+    result = _check_doc_routing(
+        str(project_root / "memory" / "docs" / "unknown_cat" / "test.md"),
+        project_root=project_root,
+    )
+    assert result is not None, "memory/docs/unknown_cat 应被拦截"
+    assert result["decision"] == "block"
+
+
+def test_check_doc_routing_relative_path_behavior_unchanged():
+    """相对路径行为不变：memory/docs/registered 放行，memory/docs/unknown 拦截。"""
+    # 注册目录放行
+    result = _check_doc_routing("memory/docs/plans/test.md")
+    assert result is None
+
+    # 未注册目录拦截
+    result = _check_doc_routing("memory/docs/unknown/test.md")
+    assert result is not None
+    assert result["decision"] == "block"
+
+
+def test_guard_write_absolute_path_project_memory_docs_specs(tmp_path: Path):
+    """Write 工具：项目根名为 memory 时，绝对路径到 docs/specs/ 应放行。"""
+    project_root = tmp_path / "memory"
+    project_root.mkdir()
+    abs_path = str(project_root / "docs" / "specs" / "TEST.md")
+    payload = {
+        "tool_name": "Write",
+        "file_path": abs_path,
+        "content": "# Test",
+    }
+    result = classify_tool_use(payload, project_root)
+    # doc routing 不应拦截（可能被 ownership 拦，但不应因'未注册'而拦）
+    if result.matched and result.detail.get("decision") == "block":
+        assert "未注册" not in result.message, f"绝对路径 {abs_path} 不应被 doc routing 误拦"
+
+
+def test_check_doc_routing_backward_compat_no_project_root():
+    """向后兼容：不传 project_root 时相对路径行为不变。"""
+    result = _check_doc_routing("memory/docs/plans/test.md")
+    assert result is None
+    result = _check_doc_routing("memory/docs/unknown/test.md")
+    assert result is not None
+    assert result["decision"] == "block"
