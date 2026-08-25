@@ -11,6 +11,11 @@ from pathlib import Path
 
 from memory_core.constants import CURRENT_MEMORY_VERSION
 
+# 子进程 CLI 测试必须固定 cwd=REPO_ROOT：`python -m` 会把 cwd 加入 sys.path 首位，
+# 显式指向仓库根可确保解析仓库内 memory_core 而非环境残留副本（自建 runner 上
+# site-packages 存在旧版本遮蔽，PR #1030 CI 事故实证；先例见 test_integration_cli.py）
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 # ---------------------------------------------------------------------------
 # VAL-VERSION-001: Version numbers are globally consistent
 # ---------------------------------------------------------------------------
@@ -109,6 +114,7 @@ class TestCLIVersionFlag:
             [sys.executable, "-m", "memory_core.tools.init_project_memory", "--version"],
             capture_output=True,
             text=True,
+            cwd=REPO_ROOT,
         )
         assert result.returncode == 0, f"memory-init --version failed: {result.stderr}"
         assert CURRENT_MEMORY_VERSION in result.stdout, (
@@ -124,6 +130,7 @@ class TestCLIVersionFlag:
             [sys.executable, "-m", "memory_core.tools.migrate_project_memory", "--version"],
             capture_output=True,
             text=True,
+            cwd=REPO_ROOT,
         )
         assert result.returncode == 0, f"memory-migrate --version failed: {result.stderr}"
         assert CURRENT_MEMORY_VERSION in result.stdout, (
