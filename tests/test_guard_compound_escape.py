@@ -653,3 +653,152 @@ class TestForceBypass:
         exit_code, output = run_guard(payload, fake_project)
         assert exit_code == 0
         assert output.get("decision") == "allow"
+
+
+# ============================================================================
+# Round 3: Scrutiny Round-2 Blocking Escapes (R3-1 ~ R3-6)
+# ============================================================================
+
+
+class TestRound3Escapes:
+    """Round 3: 6 blocking escapes from scrutiny round-2"""
+
+    @pytest.fixture
+    def fake_project(self, tmp_path):
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        (tmp_path / "memory" / "kb").mkdir(parents=True)
+        (tmp_path / "backups").mkdir()
+        return tmp_path
+
+    # R3-1: &>/>& redirect operators not detected
+    R3_REDIRECT_VARIANTS = [
+        ("echo hi &> memory/kb/x", "&> redirect to owned"),
+        ("git log &> memory/kb/out.txt", "&> redirect with git"),
+        ("cat src/a.py &> memory/kb/out.txt", "&> redirect with cat"),
+        ("echo hi >& memory/kb/x", ">& redirect to owned"),
+        ("sort data.csv >& memory/kb/out.txt", ">& redirect with sort"),
+    ]
+
+    @pytest.mark.parametrize("command,desc", R3_REDIRECT_VARIANTS)
+    def test_r3_1_ampersand_redirect_blocked(self, fake_project, command, desc):
+        """R3-1: &>/>& redirect to owned paths should block"""
+        payload = {"tool_name": "Execute", "tool_input": {"command": command}}
+        exit_code, output = run_guard(payload, fake_project)
+        assert exit_code == 2, f"{desc}: should block"
+        assert output.get("decision") == "block", f"{desc}: decision should be block"
+
+    # R3-2: git stash in readonly set
+    R3_STASH_VARIANTS = [
+        ("git stash push memory/kb/x", "stash push owned"),
+        ("git stash push -m wip memory/kb", "stash push -m owned"),
+        ("git stash pop memory/kb", "stash pop with owned arg"),
+    ]
+
+    @pytest.mark.parametrize("command,desc", R3_STASH_VARIANTS)
+    def test_r3_2_git_stash_blocked(self, fake_project, command, desc):
+        """R3-2: git stash should not be in readonly set"""
+        payload = {"tool_name": "Execute", "tool_input": {"command": command}}
+        exit_code, output = run_guard(payload, fake_project)
+        assert exit_code == 2, f"{desc}: should block"
+        assert output.get("decision") == "block", f"{desc}: decision should be block"
+
+    # R3-3: sed --in-place long flag not detected
+    R3_SED_INPLACE_VARIANTS = [
+        ("sed --in-place 's/a/b/' memory/kb/README.md", "--in-place long flag"),
+        ("sed --in-place=.bak 's/a/b/' memory/kb/README.md", "--in-place=EXT long flag"),
+        ("sed -i 's/a/b/' memory/kb/README.md", "-i short flag (baseline)"),
+        ("sed -in 's/a/b/' memory/kb/README.md", "-in combined short flags"),
+    ]
+
+    @pytest.mark.parametrize("command,desc", R3_SED_INPLACE_VARIANTS)
+    def test_r3_3_sed_inplace_blocked(self, fake_project, command, desc):
+        """R3-3: sed --in-place and variants should block"""
+        payload = {"tool_name": "Execute", "tool_input": {"command": command}}
+        exit_code, output = run_guard(payload, fake_project)
+        assert exit_code == 2, f"{desc}: should block"
+        assert output.get("decision") == "block", f"{desc}: decision should be block"
+
+    # R3-4: sort -o/--output= not handled
+    R3_SORT_OUTPUT_VARIANTS = [
+        ("sort -o memory/kb/out.txt data.csv", "sort -o owned target"),
+        ("sort --output=memory/kb/out.txt data.csv", "sort --output= owned target"),
+        ("sort -o /tmp/out.txt data.csv", "sort -o /tmp (control, should allow)"),
+    ]
+
+    @pytest.mark.parametrize("command,desc", R3_SORT_OUTPUT_VARIANTS[:2])
+    def test_r3_4_sort_output_blocked(self, fake_project, command, desc):
+        """R3-4: sort -o/--output= to owned paths should block"""
+        payload = {"tool_name": "Execute", "tool_input": {"command": command}}
+        exit_code, output = run_guard(payload, fake_project)
+        assert exit_code == 2, f"{desc}: should block"
+        assert output.get("decision") == "block", f"{desc}: decision should be block"
+
+    def test_r3_4_sort_output_tmp_allowed(self, fake_project):
+        """R3-4 control: sort -o /tmp should allow"""
+        payload = {"tool_name": "Execute", "tool_input": {"command": "sort -o /tmp/out.txt data.csv"}}
+        exit_code, output = run_guard(payload, fake_project)
+        assert exit_code == 0, "sort -o /tmp should allow"
+        assert output.get("decision") == "allow"
+
+    # R3-5: _has_redirect_to_owned missing file type blacklist
+    R3_REDIRECT_BLACKLIST_VARIANTS = [
+        ("git show HEAD > backups/y.sql", "git show to backups/.sql"),
+        ("git diff > backups/x.bak", "git diff to backups/.bak"),
+        ("git status > backups/s.sql", "git status to backups/.sql"),
+        ("sed -n '1p' input.txt > backups/y.sql", "sed -n to backups/.sql"),
+        ("echo data > backups/dump.sqlite", "echo to backups/.sqlite"),
+    ]
+
+    @pytest.mark.parametrize("command,desc", R3_REDIRECT_BLACKLIST_VARIANTS)
+    def test_r3_5_redirect_file_type_blacklist_blocked(self, fake_project, command, desc):
+        """R3-5: redirect to file-type-blacklisted targets should block"""
+        payload = {"tool_name": "Execute", "tool_input": {"command": command}}
+        exit_code, output = run_guard(payload, fake_project)
+        assert exit_code == 2, f"{desc}: should block"
+        assert output.get("decision") == "block", f"{desc}: decision should be block"
+
+    # R3-6: ruff format / ruff check --fix not handled
+    R3_RUFF_WRITE_VARIANTS = [
+        ("ruff format memory/kb/", "ruff format owned"),
+        ("ruff check --fix memory/kb/x.py", "ruff check --fix owned"),
+        ("ruff check memory/kb/", "ruff check readonly (control, should allow)"),
+    ]
+
+    @pytest.mark.parametrize("command,desc", R3_RUFF_WRITE_VARIANTS[:2])
+    def test_r3_6_ruff_write_blocked(self, fake_project, command, desc):
+        """R3-6: ruff format and ruff check --fix should block"""
+        payload = {"tool_name": "Execute", "tool_input": {"command": command}}
+        exit_code, output = run_guard(payload, fake_project)
+        assert exit_code == 2, f"{desc}: should block"
+        assert output.get("decision") == "block", f"{desc}: decision should be block"
+
+    def test_r3_6_ruff_check_readonly_allowed(self, fake_project):
+        """R3-6 control: ruff check (readonly) should allow"""
+        payload = {"tool_name": "Execute", "tool_input": {"command": "ruff check memory/kb/"}}
+        exit_code, output = run_guard(payload, fake_project)
+        assert exit_code == 0, "ruff check (readonly) should allow"
+        assert output.get("decision") == "allow"
+
+
+# ============================================================================
+# Round 3: Non-blocking items (NB-1, NB-2)
+# ============================================================================
+
+
+class TestRound3NonBlocking:
+    """Round 3: Non-blocking items to document or fix"""
+
+    @pytest.fixture
+    def fake_project(self, tmp_path):
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        (tmp_path / "memory" / "kb").mkdir(parents=True)
+        return tmp_path
+
+    def test_nb_2_2to1_redirect_not_split(self, fake_project):
+        """NB-2: 2>&1 should not be split by command splitter"""
+        # Command with 2>&1 and owned literal should still work correctly
+        payload = {"tool_name": "Execute", "tool_input": {"command": "grep memory/kb src/ 2>&1 > /tmp/out.txt"}}
+        exit_code, output = run_guard(payload, fake_project)
+        # Should allow (grep is readonly, > /tmp is safe)
+        assert exit_code == 0, "grep with 2>&1 to /tmp should allow"
+        assert output.get("decision") == "allow"

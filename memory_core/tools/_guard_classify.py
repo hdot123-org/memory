@@ -615,7 +615,11 @@ def _split_command_segments(command: str) -> list[str]:
             current.append(ch)
         elif ch == "&":
             # Single & (background operator) — B4 fix: split here
-            if current:
+            # NB-2: But don't split if it's part of >& (fd duplication like 2>&1)
+            if current and current[-1] == ">":
+                # Part of >& pattern, don't split
+                current.append(ch)
+            elif current:
                 segments.append("".join(current).strip())
                 current = []
         elif ch == "|" and i + 1 < n and command[i + 1] == "|":
@@ -680,10 +684,55 @@ def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
         "ruff",
         "mypy",
     }
+    # R3-6: ruff format / ruff check --fix are write operations
+    if first_word == "ruff":
+        words = segment.split()
+        if len(words) >= 2:
+            ruff_subcmd = words[1]
+            # format subcommand is always write
+            if ruff_subcmd == "format":
+                return True
+            # check with --fix is write
+            if ruff_subcmd == "check" and any(w == "--fix" for w in words[2:]):
+                return True
+            # Other ruff subcommands (check without --fix) are readonly
+        return False
+
     if first_word in readonly_commands:
+        # R3-4: sort with -o/--output= is write operation
+        if first_word == "sort":
+            if any(w == "-o" or w.startswith("--output=") for w in segment.split()[1:]):
+                return True
+
         # Readonly commands only have write intent if redirecting to owned paths
-        # Use substring matching (like _has_redirect_to_owned) to catch paths like $HOME/memory/...
-        redirect_pattern = re.compile(r"(?<!&)[12]?>[>]?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+        # R3-1: Use updated redirect pattern that handles &>/>&
+        # First check &> redirects (bash combined stdout+stderr)
+        amp_redirect_pattern = re.compile(r"&>>?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+        for match in amp_redirect_pattern.finditer(segment):
+            target = match.group(1)
+            target_lower = target.lower()
+            if any(ind in target_lower for ind in ["memory/", "memory\\", "agents.md"]):
+                return True
+            ft_block = _check_file_type_block(target)
+            if ft_block is not None:
+                return True
+
+        # Check >& redirects (but not >&N fd duplication)
+        gt_amp_redirect_pattern = re.compile(r">&>?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+        for match in gt_amp_redirect_pattern.finditer(segment):
+            target = match.group(1)
+            # Skip fd duplication targets (digits like 1, 2)
+            if target.isdigit():
+                continue
+            target_lower = target.lower()
+            if any(ind in target_lower for ind in ["memory/", "memory\\", "agents.md"]):
+                return True
+            ft_block = _check_file_type_block(target)
+            if ft_block is not None:
+                return True
+
+        # Then standard redirects (> >>, but not &> or >& which are handled above)
+        redirect_pattern = re.compile(r"(?<![&>])[12]?>[>]?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
         for match in redirect_pattern.finditer(segment):
             target = match.group(1)
             target_lower = target.lower()
@@ -696,7 +745,7 @@ def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
                 return True
         return False
 
-    # B3: sed with -n/--quiet is read-only; sed -i is write
+    # B3 + R3-3: sed with -n/--quiet is read-only; sed -i/--in-place is write
     if first_word == "sed":
         words = segment.split()
         has_inplace = any(
@@ -707,11 +756,16 @@ def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
             if w.startswith("-") and not w.startswith("--") and "i" in w[1:]:
                 has_inplace = True
                 break
+        # R3-3: Check --in-place long flag (with optional =SUFFIX)
+        for w in words[1:]:
+            if w == "--in-place" or w.startswith("--in-place="):
+                has_inplace = True
+                break
         if has_inplace:
-            return True  # sed -i is write
+            return True  # sed -i / --in-place is write
         return _has_redirect_to_owned(segment)  # sed -n etc. is readonly
 
-    # git subcommand check: B2 — narrow readonly to explicitly safe set
+    # git subcommand check: B2 + R3-2 — narrow readonly to explicitly safe set
     if first_word == "git":
         words = segment.split()
         if len(words) >= 2:
@@ -734,7 +788,7 @@ def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
                 "remote",
                 "shortlog",
                 "whatchanged",
-                "stash",  # stash list/show are readonly; stash push/pop handled by owned refs
+                # R3-2: stash removed from readonly - stash push/pop write to working tree
             }
             if git_subcmd in git_readonly_subcmds:
                 return _has_redirect_to_owned(segment)
@@ -742,7 +796,7 @@ def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
             if git_subcmd == "commit":
                 return _has_redirect_to_owned(segment)
             # All other git subcommands (add/clean/apply/checkout/restore/
-            # push/pull/merge/rebase/reset/init/clone etc.) are write
+            # push/pull/merge/rebase/reset/init/clone/stash etc.) are write
             return True
         return False  # bare 'git' with no subcommand
 
@@ -819,20 +873,53 @@ def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
     return True
 
 
-def _has_redirect_to_owned(segment: str) -> bool:
-    """Check if segment has redirects targeting owned paths.
+def _has_redirect_to_owned(segment: str) -> bool:  # noqa: C901
+    """Check if segment has redirects targeting owned paths or forbidden types.
 
     Used by _segment_has_write_intent for readonly commands.
-    Extracts redirect targets and checks if any contain owned indicators.
+    Extracts redirect targets and checks if any contain owned indicators or hit file-type blacklist.
+
+    R3-1: Handles &>/>& redirect operators (not just >/>>)
+    R3-5: Checks file-type blacklist (FORBIDDEN_DIRS/FORBIDDEN_SUFFIXES) for redirect targets
     """
-    # Match redirect operators: >, >>, 1>, 2>, etc.
-    # Skip &> (combined redirect) which should not be split
-    redirect_pattern = re.compile(r"(?<!&)[12]?>[>]?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
-    for match in redirect_pattern.finditer(segment):
+    # R3-1: Handle &> and >& (bash combined stdout+stderr redirect)
+    # &> or &>> : combined redirect (bash)
+    amp_redirect = re.compile(r"&>>?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+    for match in amp_redirect.finditer(segment):
         target = match.group(1)
-        # Check if redirect target contains owned indicators
+        target_lower = target.lower()
+        # Check owned indicators
+        if any(ind in target_lower for ind in ["memory/", "memory\\", "agents.md"]):
+            return True
+        # R3-5: Check file-type blacklist
+        if _check_file_type_block(target) is not None:
+            return True
+
+    # >& or >&> : combined redirect (bash alternative syntax)
+    # But NOT >&N (fd duplication like 2>&1 where N is a digit)
+    gt_amp_redirect = re.compile(r">&>?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+    for match in gt_amp_redirect.finditer(segment):
+        target = match.group(1)
+        # Skip fd duplication targets (digits like 1, 2)
+        if target.isdigit():
+            continue
         target_lower = target.lower()
         if any(ind in target_lower for ind in ["memory/", "memory\\", "agents.md"]):
+            return True
+        if _check_file_type_block(target) is not None:
+            return True
+
+    # Standard redirects: >, >>, 1>, 2>, 1>>, 2>>
+    # Exclude &> and >& which are handled above
+    redirect_pattern = re.compile(r"(?<![&>])[12]?>[>]?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+    for match in redirect_pattern.finditer(segment):
+        target = match.group(1)
+        target_lower = target.lower()
+        # Check if redirect target contains owned indicators
+        if any(ind in target_lower for ind in ["memory/", "memory\\", "agents.md"]):
+            return True
+        # R3-5: Check file-type blacklist (backups/.sql/.bak etc.)
+        if _check_file_type_block(target) is not None:
             return True
     return False
 
