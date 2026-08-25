@@ -8,7 +8,10 @@
 # BYOM: Bailian Qwen 3.7 Plus via Kong Proxy
 #
 # Budget layers (VAL-SHARD-011):
-#   Layer 1: shard job timeout-minutes (default 30)
+#   Layer 1: shard job timeout = SHARD_TIMEOUT_MINUTES repo variable (default 45)
+#            2026-08-25 PR #1027 实证：BYOM 链路（Qwen 3.7 Plus）单轮 1-8min、
+#            完整审查 13-15 轮，硬编码 30min 三次确定性超时（模型被杀时仍在
+#            活跃产出，非卡死），改为变量驱动与其他 Layer 一致，可在线调参
 #   Layer 2: aggregation path timeout = DROID_REVIEW_TIMEOUT_MINUTES (default 90)
 #   Layer 3: shard size cap (SHARD_MAX_FILES / SHARD_MAX_LINES)
 #   Layer 4: concurrency cap (SHARD_MAX_PARALLEL)
@@ -173,7 +176,7 @@ jobs:
       needs.plan-shards.outputs.shards != '[]' &&
       needs.plan-shards.outputs.shards != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ fromJSON(vars.SHARD_TIMEOUT_MINUTES || '45') }}
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJSON(vars.SHARD_MAX_PARALLEL || '3') }}
