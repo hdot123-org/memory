@@ -13,6 +13,9 @@ from memory_core.tools._guard_classify import _extract_cp_path, _extract_mv_path
 from memory_core.tools._guard_patterns import RE_CP, RE_MV
 from tests.guard_helpers import run_guard
 
+# Anchor to repo root so tests work regardless of cwd (CI compat)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 # ============================================================================
 # VAL-GUARD-016: Residual spec doc exists and covers 3 categories
 # ============================================================================
@@ -23,7 +26,7 @@ class TestResidualSpecDoc:
 
     def test_residual_doc_exists(self):
         """docs/specs/ must contain a residual risk spec document"""
-        specs_dir = Path("docs/specs")
+        specs_dir = REPO_ROOT / "docs" / "specs"
         assert specs_dir.exists(), "docs/specs/ directory must exist"
 
         # Find residual risk doc (any .md with residual keywords)
@@ -47,7 +50,7 @@ class TestResidualSpecDoc:
 
     def test_residual_doc_mentions_sha256(self):
         """Residual doc must mention SHA-256 manifest integrity check (deep defense)"""
-        specs_dir = Path("docs/specs")
+        specs_dir = REPO_ROOT / "docs" / "specs"
         found_sha256 = False
 
         for doc in specs_dir.glob("*.md"):
@@ -62,7 +65,7 @@ class TestResidualSpecDoc:
 
     def test_residual_doc_mentions_command_substitution(self):
         """N2: Residual doc must mention command substitution $( ) / backtick category"""
-        specs_dir = Path("docs/specs")
+        specs_dir = REPO_ROOT / "docs" / "specs"
         found_cmd_sub = False
 
         for doc in specs_dir.glob("*.md"):
