@@ -35,8 +35,8 @@ RE_MV = re.compile(r"^(?:git\s+)?mv\s+(.+)$", re.IGNORECASE)
 # rm
 RE_RM = re.compile(r"^rm\s+(?:-[a-zA-Z]+\s+)?(.+)$", re.IGNORECASE)
 
-# cp
-RE_CP = re.compile(r"^cp\s+(?:-[a-zA-Z]+\s+)?(.+)$", re.IGNORECASE)
+# cp — do NOT strip flags (needed for -t/--target-directory detection)
+RE_CP = re.compile(r"^cp\s+(.+)$", re.IGNORECASE)
 
 # rsync
 RE_RSYNC = re.compile(r"^rsync\s+(?:-[a-zA-Z]+\s+)*(.+)$", re.IGNORECASE)
@@ -59,7 +59,7 @@ RE_NODE_E = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
-# shell redirect (> >>)
+# shell redirect (> >>) — used with findall() for multi-redirect coverage
 RE_REDIRECT = re.compile(r"[12]?>[>]?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
 
 # tee
