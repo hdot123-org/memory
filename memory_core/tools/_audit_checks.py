@@ -35,7 +35,6 @@ __all__ = [
     "check_version_consistency",
     "_is_excludable_path",
     "_check_single_file",
-    "_check_backups_dir",
     "_extract_version_from_toml",
     "_EXCLUDED_DIR_SEGMENTS",
 ]
@@ -166,7 +165,9 @@ def check_unsigned_files(project_root: Path) -> list[dict[str, Any]]:
             pass
 
     for md_path in sorted(kb_dir.rglob("*.md")):
-        if md_path.name in KB_UNSIGNED_WHITELIST:
+        # VAL-AUDIT-011/012: 仅顶层 README.md/INDEX.md 豁免，深层同名不再豁免
+        is_top_level = md_path.parent == kb_dir
+        if is_top_level and md_path.name in KB_UNSIGNED_WHITELIST:
             continue
         try:
             rel_path = str(md_path.relative_to(project_root))
@@ -198,7 +199,7 @@ def check_global_residue(
 ) -> list[dict[str, Any]]:
     """检测项目 kb/lessons|decisions 下是否有全局 KB 内容残留。
 
-    比较规则：项目文件去 frontmatter、去空白、取前 200 字符后，
+    比较规则：项目文件去 frontmatter、去空白、全文归一化后，
     如果和全局 KB 某文件指纹完全相同 → 疑似残留。warning 级别。
     """
     violations: list[dict[str, Any]] = []
@@ -299,33 +300,6 @@ def _check_single_file(item: Path, project_root: Path) -> dict[str, Any] | None:
     return None
 
 
-def _check_backups_dir(base: Path, project_root: Path) -> dict[str, Any] | None:
-    """检查 backups/ 目录是否存在且非空。
-
-    Returns:
-        violation dict if violated, None otherwise.
-    """
-    backups_dir = base / "backups"
-    if not backups_dir.is_dir():
-        return None
-    try:
-        files = list(backups_dir.iterdir())
-    except OSError:
-        files = []
-    if not files:
-        return None
-    try:
-        rel = str(backups_dir.relative_to(project_root)).replace("\\", "/")
-    except ValueError:
-        rel = str(backups_dir)
-    return _make_violation(
-        "large_file",
-        "critical",
-        rel,
-        "backups/ 目录非空：数据库备份应放外部存储，不入仓库",
-    )
-
-
 def check_large_or_db_files(project_root: Path) -> list[dict[str, Any]]:
     """扫描项目根目录和 memory/kb/ 下的数据库/备份大文件。
 
@@ -334,9 +308,13 @@ def check_large_or_db_files(project_root: Path) -> list[dict[str, Any]]:
 
     Note: 项目根 rglob 已覆盖 memory/kb/，此处显式列出 memory/kb/ 是
     按任务规格强调扫描范围；通过 seen 集合去重避免重复计数。
+
+    backups 目录检测：递归任意段（VAL-AUDIT-013/014）——遍历时检查路径任意段
+    为 "backups"，与 guard 侧 FORBIDDEN_DIRS 语义对齐。
     """
     violations: list[dict[str, Any]] = []
     seen: set[Path] = set()
+    seen_backups_dirs: set[Path] = set()
 
     scan_roots: list[Path] = []
     if project_root.is_dir():
@@ -347,20 +325,46 @@ def check_large_or_db_files(project_root: Path) -> list[dict[str, Any]]:
 
     for root in scan_roots:
         for item in root.rglob("*"):
-            if not item.is_file() or item in seen:
+            if item in seen:
                 continue
             seen.add(item)
             if _is_excludable_path(item, project_root):
                 continue
+
+            # VAL-AUDIT-013/014: 任意段为 "backups" 的目录非空即报
+            if item.is_dir():
+                try:
+                    rel_path = item.relative_to(project_root)
+                    parts = rel_path.parts
+                except (ValueError, OSError):
+                    parts = item.parts
+                if "backups" in parts and item not in seen_backups_dirs:
+                    seen_backups_dirs.add(item)
+                    try:
+                        contents = list(item.iterdir())
+                    except OSError:
+                        contents = []
+                    if contents:
+                        try:
+                            rel = str(item.relative_to(project_root)).replace("\\", "/")
+                        except (ValueError, OSError):
+                            rel = str(item).replace("\\", "/")
+                        violations.append(
+                            _make_violation(
+                                "large_file",
+                                "critical",
+                                rel,
+                                "backups/ 目录非空：数据库备份应放外部存储，不入仓库",
+                            )
+                        )
+                continue
+
+            if not item.is_file():
+                continue
+
             v = _check_single_file(item, project_root)
             if v is not None:
                 violations.append(v)
-
-    # backups/ 目录存在（在项目根或 memory/kb 下）
-    for base in (project_root, kb_dir):
-        v = _check_backups_dir(base, project_root)
-        if v is not None:
-            violations.append(v)
 
     return violations
 
@@ -373,16 +377,61 @@ def check_large_or_db_files(project_root: Path) -> list[dict[str, Any]]:
 def _extract_version_from_toml(text: str) -> str | None:
     """从 TOML 文本里抽 memory_version / version 字段。
 
-    优先 [memory].memory_version（memory.lock 风格），
-    其次 [core].version（adapter.toml 风格），
-    再次顶层 memory_version（ownership.toml 风格）。
+    优先级序（权威语义，表位置优先）：
+    1. [memory].memory_version（memory.lock 风格）
+    2. [core].version（adapter.toml 风格）
+    3. 顶层 memory_version（ownership.toml 风格）
+    4. 顶层 version（兜底，仅当前三者未命中）
+
+    任意其他 table 的 version/memory_version 键不参与匹配。
+    解析失败时回退正则保持健壮性。
     """
-    # memory.lock: [memory] memory_version = "x"
-    m = re.search(r'^\s*memory_version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    import tomllib
+
+    # Try tomllib parsing first
+    try:
+        data = tomllib.loads(text)
+    except Exception:
+        # Fallback to regex for malformed TOML
+        data = None
+
+    if data is not None:
+        # Priority 1: [memory].memory_version
+        memory_table = data.get("memory")
+        if isinstance(memory_table, dict):
+            mv = memory_table.get("memory_version")
+            if isinstance(mv, str):
+                return mv
+
+        # Priority 2: [core].version
+        core_table = data.get("core")
+        if isinstance(core_table, dict):
+            cv = core_table.get("version")
+            if isinstance(cv, str):
+                return cv
+
+        # Priority 3: top-level memory_version
+        top_mv = data.get("memory_version")
+        if isinstance(top_mv, str):
+            return top_mv
+
+        # Priority 4: top-level version (fallback)
+        top_v = data.get("version")
+        if isinstance(top_v, str):
+            return top_v
+
+        return None
+
+    # C6: Fallback: regex for malformed TOML
+    # 弱保证：正则仅覆盖最常见的两种格式（memory.lock 和 adapter.toml），
+    # 不保证能正确解析所有畸形 TOML。优先级序在回退路径下不可靠，
+    # 仅用于避免崩溃并提供基本的健壮性。
+    # memory.lock: [memory] memory_version = "x" or 'x'
+    m = re.search(r'^\s*memory_version\s*=\s*["\']([^"\']+)["\']', text, re.MULTILINE)
     if m:
         return m.group(1)
-    # adapter.toml: [core] version = "x"
-    m = re.search(r'^\s*version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    # adapter.toml: [core] version = "x" or 'x'
+    m = re.search(r'^\s*version\s*=\s*["\']([^"\']+)["\']', text, re.MULTILINE)
     if m:
         return m.group(1)
     return None

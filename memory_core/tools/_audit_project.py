@@ -33,7 +33,6 @@ __all__ = [
     "MANIFEST_PATH_REL",
     "KB_UNSIGNED_WHITELIST",
     "GLOBAL_KB_SKIP",
-    "RESIDUE_COMPARE_CHARS",
     "LARGE_SQL_THRESHOLD",
     "DATABASE_FILE_SUFFIXES",
     "LARK_NOTIFY_ENV",
@@ -78,9 +77,6 @@ KB_UNSIGNED_WHITELIST = {".keep", "README.md", "INDEX.md"}
 
 # 全局 KB 跳过的非知识文件
 GLOBAL_KB_SKIP = {".keep", "README.md", "INDEX.md"}
-
-# 残留检测时去 frontmatter / 去空白后比较的字符数
-RESIDUE_COMPARE_CHARS = 200
 
 # 数据库/大文件违规规则（参考 no-database-files-in-repo.md）
 LARGE_SQL_THRESHOLD = 1024 * 1024  # 1MB
@@ -129,10 +125,13 @@ def _strip_frontmatter(text: str) -> str:
 
 
 def _normalize_for_compare(text: str) -> str:
-    """去 frontmatter → 取前 N 字符 → 去所有空白 → 小写。"""
+    """去 frontmatter → 全文归一化 → 去所有空白 → 小写。
+
+    修复指纹碰撞：原实现仅取前 200 字符，导致共享模板头但正文不同的文档假阳性。
+    现改为全文归一化，确保区分性。
+    """
     body = _strip_frontmatter(text)
-    head = body[:RESIDUE_COMPARE_CHARS]
-    no_ws = re.sub(r"\s+", "", head)
+    no_ws = re.sub(r"\s+", "", body)
     return no_ws.lower()
 
 

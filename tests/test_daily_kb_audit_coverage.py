@@ -109,10 +109,10 @@ class TestNormalizeForCompare:
         assert result == "helloworldfoo"
         assert " " not in result
 
-    def test_truncates_to_200_chars(self):
+    def test_full_text_no_truncation(self):
         text = "A" * 500
         result = _normalize_for_compare(text)
-        assert len(result) == 200
+        assert len(result) == 500
 
 
 class TestReadTextSafe:
