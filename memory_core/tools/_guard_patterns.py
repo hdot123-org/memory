@@ -59,6 +59,11 @@ RE_NODE_E = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
+# sort command args (INFRA-551: output flag target extraction).
+# Captures the argument list only; -o/--output semantics live in
+# _extract_sort_output_path (single semantic parser, no regex fork).
+RE_SORT_OUTPUT = re.compile(r"^sort\s+(.+)$", re.IGNORECASE)
+
 # shell redirect (> >>) — used with findall() for multi-redirect coverage
 RE_REDIRECT = re.compile(r"[12]?>[>]?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
 

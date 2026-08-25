@@ -38,6 +38,7 @@ from ._guard_patterns import (
     RE_REDIRECT,
     RE_RM,
     RE_RSYNC,
+    RE_SORT_OUTPUT,
     RE_TEE,
     RE_TOUCH,
     UNCERTAIN_PATH_PATTERNS,
@@ -226,10 +227,77 @@ def _extract_ln_path(match: re.Match[str]) -> list[str]:
     return [args[-1]] if len(args) >= 2 else []
 
 
+def _extract_sort_output_path(match: re.Match[str], include_redirects: bool = True) -> list[str]:
+    """Extract output target path from sort -o/--output command.
+
+    INFRA-551: parse sort output flags with a single semantic parser shared
+    with ``_segment_has_write_intent`` (architecture fact #10: regex fork is
+    the root cause factory for guard regressions).
+
+    Handles:
+    - Exact ``-o FILE`` and combined short flags ending with 'o' (``-ro FILE``)
+    - GNU attached-value forms ``-oFILE`` / ``-roFILE``
+    - ``--output=FILE`` long form
+    - ``--output FILE`` space-separated GNU form
+
+    Args:
+        match: RE_SORT_OUTPUT match (group 1 = argument list).
+        include_redirects: when True (default, for the extraction pipeline),
+            also union redirect targets found in the segment — ``sort -o A > B``
+            writes BOTH A and B. When False (for write-intent detection),
+            only the output-flag target counts; plain redirects are handled
+            separately by ``_check_redirect_targets``.
+    """
+    args = _split_shell_args(match.group(1))
+    targets: list[str] = []
+    for idx, arg in enumerate(args):
+        if arg == "-o":
+            if idx + 1 < len(args):
+                targets.append(args[idx + 1])
+            break
+        # GNU attached value: -oFILE (flag char 'o' immediately followed by value)
+        if arg.startswith("-o") and len(arg) > 2 and not arg.startswith("--"):
+            targets.append(arg[2:])
+            break
+        # GNU attached value after combined flags: -roFILE / -nruoFILE
+        # (leading flags pure alphabetic, SHORTEST flag run ending at the first
+        # 'o' flag char — lazy quantifier so -roout.txt splits as r|o|out.txt,
+        # not roo|ut.txt)
+        if arg.startswith("-") and not arg.startswith("--") and len(arg) > 2:
+            m = re.match(r"^-([a-zA-Z]*?o)([a-zA-Z0-9_./-]+)$", arg)
+            if m and m.group(1) and m.group(2):
+                targets.append(m.group(2))
+                break
+        if arg.startswith("--output="):
+            targets.append(arg.split("=", 1)[1])
+            break
+        if arg == "--output":
+            if idx + 1 < len(args):
+                targets.append(args[idx + 1])
+            break
+        # Combined short flags ending with 'o' (mirror R4-3 rules: pure
+        # alphabetic tokens only, excluding value-carrying forms like
+        # -T/tmp/work, -S1Go, -k1,1)
+        if arg.startswith("-") and not arg.startswith("--") and len(arg) > 1:
+            flag_part = arg[1:]
+            if not any(c in flag_part for c in "/=%0123456789") and flag_part.endswith("o"):
+                # Bare combined flag (-ro): value is the next arg
+                if idx + 1 < len(args):
+                    targets.append(args[idx + 1])
+                break
+    # Union with redirect targets in the same segment (sort -o A > B writes BOTH).
+    # NB: use a strict findall (not _extract_redirect_path) — its fallback
+    # `return [match.group(1)]` would fabricate targets when no redirect exists.
+    if include_redirects:
+        redirect_pattern = re.compile(r"(?<![&>])[12]?>[>]?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+        targets.extend(redirect_pattern.findall(match.string))
+    return targets
+
+
 def _extract_path_from_execute(command: str) -> list[str]:
     """Extract target paths from Execute command.
 
-    Dispatch table: 14 command patterns → path extraction handlers.
+    Dispatch table: 15 command patterns → path extraction handlers.
     """
     command = command.strip()
     if not command:
@@ -246,6 +314,9 @@ def _extract_path_from_execute(command: str) -> list[str]:
         (RE_TOUCH, _extract_touch_path, False),
         (RE_PYTHON_C, _extract_python_path, False),
         (RE_NODE_E, _extract_node_path, False),
+        # RE_SORT_OUTPUT before RE_REDIRECT: its handler unions sort output
+        # targets WITH redirect targets (sort -o A > B must extract both)
+        (RE_SORT_OUTPUT, _extract_sort_output_path, False),
         (RE_REDIRECT, _extract_redirect_path, True),  # uses search()
         (RE_TEE, _extract_tee_path, False),
         (RE_HEREDOC, _extract_heredoc_path, False),
@@ -723,6 +794,34 @@ def _check_redirect_targets(segment: str) -> bool:
     return False
 
 
+# Known safe read-only commands (architecture §2.2 safe set + common tools)
+# INFRA-551: module-level so the coarse gate can recognize readonly
+# vocabulary segments (owned strings there are usually INPUT references)
+READONLY_COMMANDS = {
+    "cat",
+    "ls",
+    "grep",
+    "rg",  # B3: rg is read-only (architecture §2.2 lists grep/rg)
+    "head",
+    "tail",
+    "echo",
+    "printf",
+    "stat",
+    "wc",
+    "diff",
+    "awk",
+    "sort",  # B3: sort is read-only
+    "pytest",
+    "ruff",
+    "mypy",
+}
+
+# INFRA-551: readonly vocabulary for the coarse gate skip decision —
+# readonly commands plus commands with readonly subcommand handling
+# (ruff check / sed -n / git log etc. handled in _segment_has_write_intent)
+_READONLY_VOCAB = READONLY_COMMANDS | {"sed", "git"}
+
+
 def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
     """Determine if a command segment has write intent.
 
@@ -744,25 +843,7 @@ def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
     # Get first command word
     first_word = segment.split()[0] if segment.split() else ""
 
-    # Known safe read-only commands (architecture §2.2 safe set + common tools)
-    readonly_commands = {
-        "cat",
-        "ls",
-        "grep",
-        "rg",  # B3: rg is read-only (architecture §2.2 lists grep/rg)
-        "head",
-        "tail",
-        "echo",
-        "printf",
-        "stat",
-        "wc",
-        "diff",
-        "awk",
-        "sort",  # B3: sort is read-only
-        "pytest",
-        "ruff",
-        "mypy",
-    }
+    readonly_commands = READONLY_COMMANDS
     # R3-6: ruff format / ruff check --fix are write operations
     if first_word == "ruff":
         words = segment.split()
@@ -780,29 +861,17 @@ def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
         return _check_redirect_targets(segment)
 
     if first_word in readonly_commands:
-        # R3-4 + R4-2 + R4-3: sort with -o/--output is write operation
+        # R3-4 + R4-2 + R4-3 + INFRA-551: sort with -o/--output is write operation
         # Handles: -o, combined flags like -ro/-nro/-uo, --output=, --output (space form)
         # R4-3 fix: exclude value-carrying forms like -T/tmp/work, -S1Go, -k1,1
+        # INFRA-551: extraction shares one semantic parser with the legacy
+        # path extractor (single source of truth for sort output flags)
         if first_word == "sort":
-            words = segment.split()
-            for idx, w in enumerate(words[1:], 1):
-                # Exact -o flag
-                if w == "-o":
-                    return True
-                # Combined short flags ending with 'o' (e.g. -ro, -nro, -uo)
-                # R4-3: must be pure alphabetic flags, no value indicators
-                if w.startswith("-") and not w.startswith("--") and len(w) > 1:
-                    flag_part = w[1:]
-                    # Skip value-carrying forms: -T/tmp/work, -S1Go, -k1,1, etc.
-                    # Pure alphabetic flags ending with 'o'
-                    if not any(c in flag_part for c in "/=%0123456789") and flag_part.endswith("o"):
-                        return True
-                # --output=VALUE form
-                if w.startswith("--output="):
-                    return True
-                # --output VALUE (space-separated GNU form)
-                if w == "--output" and idx + 1 < len(words):
-                    return True
+            sort_match = RE_SORT_OUTPUT.match(segment)
+            if sort_match is not None and _extract_sort_output_path(sort_match, include_redirects=False):
+                # Write form: -o FILE / -ro FILE / -oFILE / --output[= ]FILE
+                return True
+            # Fall through: readonly sort still checks redirect targets below
 
         # Readonly commands only have write intent if redirecting to owned paths
         # R4-0: Use unified _check_redirect_targets helper
@@ -979,12 +1048,29 @@ def _classify_execute(payload: dict[str, Any], project_root: Path, ownership: An
     # Fix-2: Split into segments
     segments = _split_command_segments(command)
 
-    # Check segments and track write intent
-    segment_result, any_write_intent = _check_command_segments(segments)
+    # INFRA-551: precise extraction is authoritative over the coarse string
+    # heuristic. When a segment has extractable write targets (redirect
+    # targets, sort output flag targets), classify those targets precisely
+    # BEFORE the coarse gate runs, so that:
+    # - audit/ / review/ owned-domain escapes are caught (heuristic blind)
+    # - owned INPUT files with safe OUTPUT targets are not false-blocked
+    #   (e.g. sort -o /tmp/out memory/kb/data.csv)
+    for segment in segments:
+        if _extract_path_from_execute(segment):
+            legacy_result = _legacy_path_extraction(segment, ownership, project_root, full_command_context=command)
+            if legacy_result.matched:
+                return legacy_result
+
+    # Check segments and track write intent.
+    # INFRA-551: the coarse gate is a fallback — when a segment's write
+    # targets were precisely extracted and classified as safe (allow), the
+    # coarse string heuristic must not re-block it (fixes owned-INPUT +
+    # safe-OUTPUT false positives, e.g. sort -o /tmp/out memory/kb/data.csv).
+    segment_result = _check_command_segments(segments, ownership, project_root)
     if segment_result is not None:
         return segment_result
 
-    # B1 fix: Run legacy extraction per segment with write intent
+    # B1 fix: run legacy extraction per segment with write intent
     # This catches file-type blacklists, uncertain paths, and owned paths
     # that segment-level write intent gate doesn't detect
     for segment in segments:
@@ -1003,14 +1089,24 @@ def _classify_execute(payload: dict[str, Any], project_root: Path, ownership: An
     )
 
 
-def _check_command_segments(segments: list[str]) -> tuple[RuleResult | None, bool]:
+def _check_command_segments(
+    segments: list[str],
+    ownership: Any,
+    project_root: Path,
+) -> RuleResult | None:  # noqa: ARG001
     """Check command segments for owned resource references.
 
-    Returns:
-        tuple: (RuleResult if a segment triggers block decision, else None),
-               (bool indicating if any segment had write intent)
+    Returns RuleResult if a segment triggers block decision, else None.
+
+    INFRA-551: when a segment's write targets are precisely extractable and
+    already classified (by the authoritative pre-pass in _classify_execute),
+    the coarse string gate skips that segment — precision wins over the
+    heuristic to avoid false positives.
+
+    ownership/project_root are accepted for signature symmetry with the
+    authoritative classification pass; the coarse gate itself needs no
+    ownership context.
     """
-    any_write_intent = False
     for i, segment in enumerate(segments):
         parts = segment.split()
         if not parts:
@@ -1022,30 +1118,35 @@ def _check_command_segments(segments: list[str]) -> tuple[RuleResult | None, boo
         if first_word == "cd" and len(parts) >= 2:
             cd_result = _handle_cd_segment(segment, parts, i, segments)
             if cd_result is not None:
-                return cd_result, any_write_intent
+                return cd_result
+            continue
+
+        # INFRA-551: segments whose first word is in the readonly vocabulary
+        # (cat/grep/sort/ruff/sed/git/...) were already classified precisely
+        # by the authoritative pre-pass — owned strings in such segments are
+        # usually INPUTS (e.g. sort -o /tmp/out memory/kb/data.csv), so the
+        # coarse string gate must skip them to avoid false positives.
+        # Write commands (mv/rm/install/rsync/...) keep the coarse gate
+        # (defense-in-depth for extractor gaps like install -t).
+        if first_word in _READONLY_VOCAB and _extract_path_from_execute(segment):
             continue
 
         # Check for write intent
         has_write_intent = _segment_has_write_intent(segment)
-        if has_write_intent:
-            any_write_intent = True
 
         # Check if segment has owned references
         has_owned_refs = _check_owned_in_segment(segment)
 
         # If this segment has write intent and owned refs, block
         if has_write_intent and has_owned_refs:
-            return (
-                RuleResult(
-                    matched=True,
-                    severity="error",
-                    message=f"Command segment has write intent targeting owned resources: {segment[:50]}...",
-                    detail={"decision": "block"},
-                ),
-                any_write_intent,
+            return RuleResult(
+                matched=True,
+                severity="error",
+                message=f"Command segment has write intent targeting owned resources: {segment[:50]}...",
+                detail={"decision": "block"},
             )
 
-    return None, any_write_intent
+    return None
 
 
 def _handle_cd_segment(segment: str, parts: list[str], i: int, segments: list[str]) -> RuleResult | None:
