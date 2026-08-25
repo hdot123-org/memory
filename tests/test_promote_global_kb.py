@@ -11,11 +11,16 @@ Tests cover VAL-PROMOTE-001 through VAL-PROMOTE-006:
 
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 from memory_core.constants import CURRENT_MEMORY_VERSION
 from memory_core.tools.global_kb_init import create_global_kb_structure
+
+# 子进程 CLI 测试固定 cwd=REPO_ROOT，确保解析仓库内 memory_core 而非环境残留副本
+# （自建 runner site-packages 遮蔽问题，见 PR #1030 CI 事故；先例 test_integration_cli.py）
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
@@ -67,6 +72,7 @@ class TestPromoteCLIRegistration:
             [sys.executable, "-m", "memory_core.tools.promote_global_kb", "--version"],
             capture_output=True,
             text=True,
+            cwd=REPO_ROOT,
         )
         assert result.returncode == 0
         assert CURRENT_MEMORY_VERSION in result.stdout
