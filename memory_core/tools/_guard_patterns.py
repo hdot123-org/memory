@@ -59,7 +59,7 @@ RE_NODE_E = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
-# shell redirect (> >>)
+# shell redirect (> >>) — used with findall() for multi-redirect coverage
 RE_REDIRECT = re.compile(r"[12]?>[>]?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
 
 # tee
