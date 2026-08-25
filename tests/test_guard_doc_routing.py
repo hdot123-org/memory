@@ -200,6 +200,7 @@ def test_guard_exception_dirs_registered():
 # [..., 'memory', 'docs', ...] 导致误判为协议路径。归一化后 'docs' 在首位
 # （i==0）不再触发 'memory' 前缀检测。
 
+
 def test_check_doc_routing_absolute_path_project_named_memory(tmp_path: Path):
     """绝对路径项目根名为 memory 时，仓库级 docs/specs/ 应放行（非协议路径）。"""
     project_root = tmp_path / "memory"
@@ -250,8 +251,7 @@ def test_guard_write_absolute_path_project_memory_docs_specs(tmp_path: Path):
     result = classify_tool_use(payload, project_root)
     # doc routing 不应拦截（可能被 ownership 拦，但不应因'未注册'而拦）
     if result.matched and result.detail.get("decision") == "block":
-        assert "未注册" not in result.message, \
-            f"绝对路径 {abs_path} 不应被 doc routing 误拦"
+        assert "未注册" not in result.message, f"绝对路径 {abs_path} 不应被 doc routing 误拦"
 
 
 def test_check_doc_routing_backward_compat_no_project_root():
