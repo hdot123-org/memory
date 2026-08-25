@@ -84,6 +84,29 @@ python3 -c "import base64,os; os.remove(base64.b64decode('bWVtb3J5L3N5c3RlbQ==')
 
 ---
 
+## 命令替换拦截说明（N2）
+
+**设计原则**：命令替换 `$(...)` 或反引号 `` `...` `` 内含的动态内容无法静态分析，按 fail-closed 原则拦截。
+
+**示例**（均 block）：
+```bash
+echo $(rm -rf memory/kb)
+echo `touch memory/system/pwned`
+cat $(find . -name "*.tmp" -delete)
+```
+
+**实现机制**：
+- `_segment_has_write_intent` 在检查 readonly_commands 之前，先检测段中是否包含 `$(` 或反引号
+- 若检测到命令替换模式，直接返回 True（有写意图），触发后续路径提取与分类
+- 这是 fail-closed 策略：无法静态确定命令替换内容的安全性时，保守拦截
+
+**边界**：
+- 仅当段中包含命令替换语法时拦截
+- 普通变量引用（`$VAR`）不在此规则范围内（变量拆散属残余类别）
+- 命令替换检测优先于 readonly_commands 判定，确保 `echo $(rm ...)` 不被 echo 的只读属性放行
+
+---
+
 ## 读语义放行说明
 
 **设计原则**：只读命令提及 owned 字面量属于防误拦设计，非逃逸。
