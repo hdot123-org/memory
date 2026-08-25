@@ -11,7 +11,6 @@ Covers:
 """
 
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -230,12 +229,15 @@ class TestPathIsUnderLexical:
         child.touch()
         assert _path_is_under_lexical(child, root) is True
 
-    def test_relative_vs_absolute(self, tmp_path: Path) -> None:
+    def test_relative_vs_absolute(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Both relative and absolute forms are handled via .absolute()."""
         root = tmp_path / "root"
         root.mkdir()
         # Construct a relative path and check
-        os.chdir(str(root))
+        # monkeypatch.chdir 确保测试结束后恢复原 cwd —— 裸 os.chdir 会把 cwd 留在
+        # tmp 目录，导致后续 python -m 子进程（--version 等）sys.path[0] 落在 tmp，
+        # 从 site-packages 解析到残留安装而非 workspace 源码（CI PR #1024 事故）
+        monkeypatch.chdir(root)
         rel = Path("subdir")
         rel.mkdir()
         assert _path_is_under_lexical(rel, root) is True
@@ -619,21 +621,21 @@ class TestPathEdgeCases:
         empty = Path()
         assert _path_is_under(empty, root) is False
 
-    def test_path_is_under_dot_vs_root(self, tmp_path: Path) -> None:
+    def test_path_is_under_dot_vs_root(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Dot resolves to cwd; if cwd is root, it passes."""
         root = tmp_path / "root"
         root.mkdir()
-        os.chdir(str(root))
+        monkeypatch.chdir(root)
         dot = Path()
         assert _path_is_under(dot, root) is True
 
-    def test_path_is_under_dotdot_outside(self, tmp_path: Path) -> None:
+    def test_path_is_under_dotdot_outside(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Double dot should escape root."""
         root = tmp_path / "root"
         root.mkdir()
         child = root / "child"
         child.mkdir()
-        os.chdir(str(child))
+        monkeypatch.chdir(child)
         dd = Path("..")
         assert _path_is_under(dd, root) is True  # .. resolves to root itself
 
