@@ -149,6 +149,10 @@ def _batch_send_records(
         last_synced_line = chunk[-1][0]
 
         # Write offset with exclusive lock (single-handle pattern)
+        # Ensure file exists before opening in r+ mode (fresh artifact root)
+        if not offset_file.exists():
+            with contextlib.suppress(OSError):
+                offset_file.write_text("", encoding="utf-8")
         with offset_file.open("r+", encoding="utf-8") as f, exclusive_lock(f):
             f.seek(0)
             f.truncate()
@@ -182,6 +186,10 @@ def _compact_metrics_jsonl(metrics_file: Path, last_synced_line: int, offset_fil
             os.fsync(f.fileno())
 
             # Reset offset to "0" in the same critical section
+            # Ensure offset file exists before opening in r+ mode (fresh artifact root)
+            if not offset_file.exists():
+                with contextlib.suppress(OSError):
+                    offset_file.write_text("", encoding="utf-8")
             with offset_file.open("r+", encoding="utf-8") as offset_f, exclusive_lock(offset_f):
                 offset_f.seek(0)
                 offset_f.truncate()
@@ -207,12 +215,15 @@ def _write_sync_status(artifact_root: Path, success: bool, pending_count: int) -
     now_iso_val = now_iso()
 
     try:
-        # Create file if it doesn't exist
+        # Ensure file exists before opening in r+ mode (fresh artifact root)
+        # This must happen outside the lock to avoid deadlock
         if not status_file.exists():
-            status_file.write_text("{}", encoding="utf-8")
+            with contextlib.suppress(OSError):
+                status_file.write_text("{}", encoding="utf-8")
 
         with status_file.open("r+", encoding="utf-8") as f, exclusive_lock(f):
             # Read existing content
+            f.seek(0)
             content = f.read()
             status = {}
             if content:
