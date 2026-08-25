@@ -25,15 +25,15 @@ from memory_core.tools._audit_project import _normalize_for_compare
 # ---------------------------------------------------------------------------
 class TestValAudit001FourPriorityDoubleQuote:
     @pytest.mark.parametrize(
-        ("toml_text", "expected"),
+        "toml_text",
         [
-            ('[memory]\nmemory_version = "X"', "X"),  # (a) memory.lock style
-            ('[core]\nversion = "X"', "X"),  # (b) adapter.toml style
-            ('memory_version = "X"', "X"),  # (c) ownership.toml style (top-level)
-            ('version = "X"', "X"),  # (d) fallback (top-level)
+            '[memory]\nmemory_version = "X"',  # (a) memory.lock style
+            '[core]\nversion = "X"',  # (b) adapter.toml style
+            'memory_version = "X"',  # (c) ownership.toml style (top-level)
+            'version = "X"',  # (d) fallback (top-level)
         ],
     )
-    def test_four_priority_keys_double_quote(self, toml_text: str, expected: str) -> None:
+    def test_four_priority_keys_double_quote(self, toml_text: str) -> None:
         result = _extract_version_from_toml(toml_text.replace("X", CURRENT_MEMORY_VERSION))
         assert result == CURRENT_MEMORY_VERSION
 
@@ -91,7 +91,8 @@ class TestValAudit004PriorityOrder:
         assert _extract_version_from_toml(text) == CURRENT_MEMORY_VERSION
 
     def test_core_version_priority_over_top_level_memory_version(self) -> None:
-        text = f'[core]\nversion = "8.8.8"\n\nmemory_version = "{CURRENT_MEMORY_VERSION}"'
+        # C2 修复：memory_version 必须在 [core] 头之前，否则 tomllib 会将其归入 [core] table
+        text = f'memory_version = "{CURRENT_MEMORY_VERSION}"\n\n[core]\nversion = "8.8.8"'
         assert _extract_version_from_toml(text) == "8.8.8"
 
     def test_memory_version_priority_over_core_version(self) -> None:
@@ -299,6 +300,31 @@ class TestValAudit010RealResidueDetected:
         assert violations[0]["type"] == "residue"
         assert violations[0]["severity"] == "warning"
 
+    # C3：补充 frontmatter-differs 变体（契约要求两变体参数化）
+    def test_identical_content_different_frontmatter_detected(self, tmp_path: Path) -> None:
+        """即使 frontmatter 不同，正文相同仍应检出为残留"""
+        # 全局 KB 文档无 frontmatter
+        global_text = "# Main content\n\nThis is the body."
+        global_fp = _normalize_for_compare(global_text)
+
+        # 项目文档有 frontmatter 但正文相同
+        project_text_with_frontmatter = """---
+title: Project Lesson
+date: 2026-08-25
+---
+# Main content
+
+This is the body."""
+
+        lessons_dir = tmp_path / "memory" / "kb" / "lessons"
+        lessons_dir.mkdir(parents=True)
+        (lessons_dir / "lesson.md").write_text(project_text_with_frontmatter)
+
+        global_fingerprints = {global_fp: "operations/global-doc.md"}
+        violations = check_global_residue(tmp_path, global_fingerprints)
+        assert len(violations) == 1
+        assert violations[0]["type"] == "residue"
+
 
 # ---------------------------------------------------------------------------
 # VAL-AUDIT-011: 顶层 README/INDEX 豁免保持
@@ -389,6 +415,26 @@ class TestValAudit014BackupsNoRegression:
         violations = check_large_or_db_files(tmp_path)
         dir_violations = [v for v in violations if "backups" in v["file"]]
         assert len(dir_violations) == 0
+
+    # C4：补充两处 backups 并存恰 2 条（去重）用例
+    def test_two_backups_dirs_exactly_two_violations(self, tmp_path: Path) -> None:
+        """两处 backups 目录并存时，应报恰 2 条违规（去重后）"""
+        # 根目录 backups
+        root_backups = tmp_path / "backups"
+        root_backups.mkdir()
+        (root_backups / "dump1.sql").write_text("x")
+
+        # memory/kb/backups
+        kb_backups = tmp_path / "memory" / "kb" / "backups"
+        kb_backups.mkdir(parents=True)
+        (kb_backups / "dump2.sql").write_text("y")
+
+        violations = check_large_or_db_files(tmp_path)
+        dir_violations = [v for v in violations if "backups" in v["file"]]
+        assert len(dir_violations) == 2
+        files = {v["file"] for v in dir_violations}
+        assert "backups" in files
+        assert "memory/kb/backups" in files
 
 
 # ---------------------------------------------------------------------------

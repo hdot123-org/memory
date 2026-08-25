@@ -33,7 +33,6 @@ __all__ = [
     "MANIFEST_PATH_REL",
     "KB_UNSIGNED_WHITELIST",
     "GLOBAL_KB_SKIP",
-    "RESIDUE_COMPARE_CHARS",
     "LARGE_SQL_THRESHOLD",
     "DATABASE_FILE_SUFFIXES",
     "LARK_NOTIFY_ENV",
@@ -78,9 +77,6 @@ KB_UNSIGNED_WHITELIST = {".keep", "README.md", "INDEX.md"}
 
 # 全局 KB 跳过的非知识文件
 GLOBAL_KB_SKIP = {".keep", "README.md", "INDEX.md"}
-
-# 残留检测时去 frontmatter / 去空白后比较的字符数
-RESIDUE_COMPARE_CHARS = 200
 
 # 数据库/大文件违规规则（参考 no-database-files-in-repo.md）
 LARGE_SQL_THRESHOLD = 1024 * 1024  # 1MB

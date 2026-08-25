@@ -35,7 +35,6 @@ __all__ = [
     "check_version_consistency",
     "_is_excludable_path",
     "_check_single_file",
-    "_check_backups_dir",
     "_extract_version_from_toml",
     "_EXCLUDED_DIR_SEGMENTS",
 ]
@@ -200,7 +199,7 @@ def check_global_residue(
 ) -> list[dict[str, Any]]:
     """检测项目 kb/lessons|decisions 下是否有全局 KB 内容残留。
 
-    比较规则：项目文件去 frontmatter、去空白、取前 200 字符后，
+    比较规则：项目文件去 frontmatter、去空白、全文归一化后，
     如果和全局 KB 某文件指纹完全相同 → 疑似残留。warning 级别。
     """
     violations: list[dict[str, Any]] = []
@@ -299,33 +298,6 @@ def _check_single_file(item: Path, project_root: Path) -> dict[str, Any] | None:
         )
 
     return None
-
-
-def _check_backups_dir(base: Path, project_root: Path) -> dict[str, Any] | None:
-    """检查 backups/ 目录是否存在且非空。
-
-    Returns:
-        violation dict if violated, None otherwise.
-    """
-    backups_dir = base / "backups"
-    if not backups_dir.is_dir():
-        return None
-    try:
-        files = list(backups_dir.iterdir())
-    except OSError:
-        files = []
-    if not files:
-        return None
-    try:
-        rel = str(backups_dir.relative_to(project_root)).replace("\\", "/")
-    except ValueError:
-        rel = str(backups_dir)
-    return _make_violation(
-        "large_file",
-        "critical",
-        rel,
-        "backups/ 目录非空：数据库备份应放外部存储，不入仓库",
-    )
 
 
 def check_large_or_db_files(project_root: Path) -> list[dict[str, Any]]:
@@ -450,7 +422,10 @@ def _extract_version_from_toml(text: str) -> str | None:
 
         return None
 
-    # Fallback: regex for malformed TOML
+    # C6: Fallback: regex for malformed TOML
+    # 弱保证：正则仅覆盖最常见的两种格式（memory.lock 和 adapter.toml），
+    # 不保证能正确解析所有畸形 TOML。优先级序在回退路径下不可靠，
+    # 仅用于避免崩溃并提供基本的健壮性。
     # memory.lock: [memory] memory_version = "x" or 'x'
     m = re.search(r'^\s*memory_version\s*=\s*["\']([^"\']+)["\']', text, re.MULTILINE)
     if m:
