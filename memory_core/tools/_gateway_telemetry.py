@@ -150,9 +150,10 @@ def _batch_send_records(
 
         # Write offset with exclusive lock (single-handle pattern)
         # Ensure file exists before opening in r+ mode (fresh artifact root)
+        # Use touch() instead of write_text("") to avoid O_TRUNC race window
         if not offset_file.exists():
             with contextlib.suppress(OSError):
-                offset_file.write_text("", encoding="utf-8")
+                offset_file.touch()
         with offset_file.open("r+", encoding="utf-8") as f, exclusive_lock(f):
             f.seek(0)
             f.truncate()
@@ -187,9 +188,10 @@ def _compact_metrics_jsonl(metrics_file: Path, last_synced_line: int, offset_fil
 
             # Reset offset to "0" in the same critical section
             # Ensure offset file exists before opening in r+ mode (fresh artifact root)
+            # Use touch() instead of write_text("") to avoid O_TRUNC race window
             if not offset_file.exists():
                 with contextlib.suppress(OSError):
-                    offset_file.write_text("", encoding="utf-8")
+                    offset_file.touch()
             with offset_file.open("r+", encoding="utf-8") as offset_f, exclusive_lock(offset_f):
                 offset_f.seek(0)
                 offset_f.truncate()
@@ -217,9 +219,10 @@ def _write_sync_status(artifact_root: Path, success: bool, pending_count: int) -
     try:
         # Ensure file exists before opening in r+ mode (fresh artifact root)
         # This must happen outside the lock to avoid deadlock
+        # Use touch() instead of write_text("{}") to avoid O_TRUNC race window
         if not status_file.exists():
             with contextlib.suppress(OSError):
-                status_file.write_text("{}", encoding="utf-8")
+                status_file.touch()
 
         with status_file.open("r+", encoding="utf-8") as f, exclusive_lock(f):
             # Read existing content
