@@ -187,8 +187,7 @@ class TestConcurrentAppendNeverLosesRecords:
         all_sent = set(range(n_writer_records))
         union = returned_false_seqs | writer_seqs_in_file
         assert union == all_sent, (
-            f"Two-quadrant assertion failed: returned_F ∪ present != all_sent. "
-            f"Missing: {all_sent - union}"
+            f"Two-quadrant assertion failed: returned_F ∪ present != all_sent. Missing: {all_sent - union}"
         )
 
         manager.shutdown()
@@ -273,8 +272,6 @@ class TestSuccessfulCompactionInvariants:
 
         # Simulate partial sync: first batch succeeds, second fails
         # BATCH_SIZE=500 by default, so we patch it to 3 to force multiple batches
-        from memory_core.tools._gateway_telemetry import BATCH_SIZE
-
         with patch("memory_core.tools._gateway_telemetry.BATCH_SIZE", 3):
             # First batch (lines 0-2) succeeds, second batch (lines 3-5) fails
             mock_tel_module, ctx = _patch_network_and_telem(batch_capture_return=[True, False])
@@ -294,7 +291,9 @@ class TestSuccessfulCompactionInvariants:
         remaining_lines = [line for line in remaining_content.split("\n") if line]
 
         # N4: Non-empty residual tail assertion
-        assert len(remaining_lines) == 10, f"Expected all 10 lines to remain after partial failure, got {len(remaining_lines)}"
+        assert len(remaining_lines) == 10, (
+            f"Expected all 10 lines to remain after partial failure, got {len(remaining_lines)}"
+        )
         assert remaining_content != "", "Residual tail must not be empty"
 
         # Verify the remaining lines are valid JSON
@@ -421,10 +420,9 @@ class TestFileIntegrityAfterCompaction:
             patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
             patch("socket.create_connection", ctx["mock_socket"].create_connection),
             patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": mock_tel_module}),
+            patch("memory_core.tools._gateway_telemetry.BATCH_SIZE", 5),
         ):
-            # Patch BATCH_SIZE to 5 to force multiple batches
-            with patch("memory_core.tools._gateway_telemetry.BATCH_SIZE", 5):
-                gw._maybe_sync_telemetry(artifact_root)
+            gw._maybe_sync_telemetry(artifact_root)
 
         metrics_file = artifact_root / "metrics.jsonl"
         content = metrics_file.read_text(encoding="utf-8")
@@ -435,7 +433,9 @@ class TestFileIntegrityAfterCompaction:
         lines_in_file = [line for line in content.split("\n") if line]
         # Actually, with partial failure, no compaction happens per VAL-TELE-004
         # So all 10 lines remain, offset=7
-        assert len(lines_in_file) == 10, f"Expected 10 lines (no compaction on partial failure), got {len(lines_in_file)}"
+        assert len(lines_in_file) == 10, (
+            f"Expected 10 lines (no compaction on partial failure), got {len(lines_in_file)}"
+        )
 
         for i, line in enumerate(lines_in_file):
             try:
@@ -746,7 +746,9 @@ class TestSyncStatusAtomicity:
             stop_flag[0] = True
             reader_future.result()
 
-        assert len(errors) == 0, f"Got {len(errors)} JSONDecodeError(s): {errors[:3]}\nNote: Reader now uses shared lock (LOCK_SH) for atomic reads matching production code locking"
+        assert len(errors) == 0, (
+            f"Got {len(errors)} JSONDecodeError(s): {errors[:3]}\nNote: Reader now uses shared lock (LOCK_SH) for atomic reads matching production code locking"
+        )
 
         status_file = artifact_root / ".sync_status.json"
         if status_file.exists():
@@ -989,7 +991,6 @@ class TestDualProcessFullCycle:
 
         # N3: Line conservation: all initial lines must be accounted for
         # (either synced and compacted away, or preserved in file)
-        initial_seqs = set(range(n_lines))
         # After sync, lines should either be compacted (if synced) or preserved
         # The union of final lines + synced lines should equal initial lines
         # Since both processes sync all lines, final file should be empty or have very few lines
