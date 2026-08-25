@@ -740,7 +740,7 @@ class TestRound3Escapes:
         assert exit_code == 0, "sort -o /tmp should allow"
         assert output.get("decision") == "allow"
 
-    # R3-5: _has_redirect_to_owned missing file type blacklist
+    # R3-5: _check_redirect_targets (unified helper) missing file type blacklist
     R3_REDIRECT_BLACKLIST_VARIANTS = [
         ("git show HEAD > backups/y.sql", "git show to backups/.sql"),
         ("git diff > backups/x.bak", "git diff to backups/.bak"),
