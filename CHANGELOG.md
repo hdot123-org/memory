@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.41.0](https://github.com/hdot123-org/memory/compare/v0.40.1...v0.41.0) (2026-08-25)
+
+
+### Features
+
+* INFRA-545 版本同步 .sync.lock 并发防护 — O_CREAT|O_EXCL 最佳努力锁 + stale 破锁 + volatile 豁免 ([#1019](https://github.com/hdot123-org/memory/issues/1019)) ([e3eab40](https://github.com/hdot123-org/memory/commit/e3eab402ea15f8560e910aeef84f8a5e6af0634c))
+* M1 自动版本跟随机制 — 降级门禁 + 原子写 + gateway session-start 探测 ([#1018](https://github.com/hdot123-org/memory/issues/1018)) ([52b8791](https://github.com/hdot123-org/memory/commit/52b879106efbe31421f2b8e5392213819d8fc44a))
+
+
+### Documentation
+
+* INFRA-546 新增 path-index cwd 键局限规范（SPEC-013） ([#1021](https://github.com/hdot123-org/memory/issues/1021)) ([1a57f09](https://github.com/hdot123-org/memory/commit/1a57f0998c173b486e7095b10656045cf1d1295f))
+* README 补写自动版本跟随章节（auto version follow） ([#1022](https://github.com/hdot123-org/memory/issues/1022)) ([05732e6](https://github.com/hdot123-org/memory/commit/05732e6f373b395bb33c529d481a3ea2a821f3ef))
+* 补充 path-index cwd 键设计局限说明（M3 标注） ([#1020](https://github.com/hdot123-org/memory/issues/1020)) ([21d79f7](https://github.com/hdot123-org/memory/commit/21d79f71f04c3031e13e39e114dbad7ea7830532))
+
 ## [0.40.1](https://github.com/hdot123-org/memory/compare/v0.40.0...v0.40.1) (2026-08-24)
 
 
