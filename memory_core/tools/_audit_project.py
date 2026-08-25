@@ -129,10 +129,13 @@ def _strip_frontmatter(text: str) -> str:
 
 
 def _normalize_for_compare(text: str) -> str:
-    """去 frontmatter → 取前 N 字符 → 去所有空白 → 小写。"""
+    """去 frontmatter → 全文归一化 → 去所有空白 → 小写。
+
+    修复指纹碰撞：原实现仅取前 200 字符，导致共享模板头但正文不同的文档假阳性。
+    现改为全文归一化，确保区分性。
+    """
     body = _strip_frontmatter(text)
-    head = body[:RESIDUE_COMPARE_CHARS]
-    no_ws = re.sub(r"\s+", "", head)
+    no_ws = re.sub(r"\s+", "", body)
     return no_ws.lower()
 
 
