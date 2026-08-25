@@ -105,24 +105,52 @@ def _writer_child(
     done_event.set()
 
 
+def _writer_child_continuous(
+    metrics_path_str: str,
+    max_records: int,
+    start_event,
+    stop_event,
+    results_list,
+) -> None:
+    """Child process: continuously append records until stop_event is set.
+
+    Runs in a tight loop, writing records as fast as possible to maximize
+    the probability of hitting the TOCTOU window between unlocked read and truncate.
+    """
+    from pathlib import Path as _Path
+
+    from memory_core.tools.memory_hook_metrics import append_metrics_record
+
+    start_event.wait(timeout=10)
+    path = _Path(metrics_path_str)
+    seq = 0
+    while seq < max_records and not stop_event.is_set():
+        record = {"event": "writer_event", "seq": seq, "pid": os.getpid()}
+        ok = append_metrics_record(path, record)
+        results_list.append(ok)
+        seq += 1
+
+
 class TestConcurrentAppendNeverLosesRecords:
-    """VAL-TELE-001: compression window concurrent append never silently lost.
+    """VAL-TELE-001: Concurrent append during compaction never silently loses records.
 
-    Discrimination form: lock-wrapper hook with slowed read phase (form 3 from
-    library/concurrency-test-discrimination.md). We monkeypatch _read_pending_records
-    to add a 10ms delay, forcing the compaction's read phase to be long enough for
-    the cross-process writer to attempt an append during it.
+    Discrimination strategy: deterministic time injection via monkeypatch.
 
-    - FIXED code: read happens under exclusive_lock → writer's flock(LOCK_EX|LOCK_NB)
-      fails → append returns False → explicit drop → two-quadrant assertion holds.
-    - PRE-FIX code (272e6e9): read happens WITHOUT lock → writer's append succeeds
-      during the delay → then truncate (open "w") destroys the record → silent loss
-      → returned_true_seqs contains records not in file → assertion FAILS.
+    Monkeypatch Path.open to inject sleep(0.5s) when opening metrics.jsonl in 'w' mode.
+    - PRE-FIX code (272e6e9): uses open("w") to truncate → triggers sleep → writer appends
+      during sleep → truncate destroys records → silent loss → RED
+    - FIXED code: uses open("r+") with exclusive_lock → no 'w' mode → no sleep → writer's
+      flock fails (lock held) → returns False → explicit drop → GREEN
+
+    This widens the TOCTOU window from sub-millisecond to 0.5s, making it deterministic.
     """
 
     def test_concurrent_append_no_silent_loss(self, tmp_path):
-        """Records appended during compaction are either preserved or explicitly dropped."""
-        initial_lines = [_make_metric_line(i) for i in range(5)]
+        """Deterministic time injection: monkeypatch Path.open to widen TOCTOU window.
+
+        Records that returned True must be present in file (no silent loss).
+        """
+        initial_lines = [_make_metric_line(i) for i in range(10)]
         artifact_root = setup_sync_artifacts(
             tmp_path,
             metrics_lines=initial_lines,
@@ -135,30 +163,29 @@ class TestConcurrentAppendNeverLosesRecords:
         manager = mp.Manager()
         writer_results = manager.list()
         start_event = mp.Event()
-        done_event = mp.Event()
+        stop_event = mp.Event()
 
         n_writer_records = 50
 
-        # Writer starts immediately (writer-driven form) — no signal from main thread
+        # Writer starts immediately and writes continuously
         writer_proc = mp.Process(
-            target=_writer_child,
-            args=(str(metrics_file), n_writer_records, start_event, done_event, writer_results),
+            target=_writer_child_continuous,
+            args=(str(metrics_file), n_writer_records, start_event, stop_event, writer_results),
         )
-        # Signal writer to start immediately (before sync)
         start_event.set()
         writer_proc.start()
 
-        # Give writer a head start so it's actively appending when sync begins
+        # Small delay to let writer start
         time.sleep(0.01)
 
-        # Monkeypatch _read_pending_records to add a delay, forcing the compaction
-        # read phase to be long enough for the writer to attempt appends during it
-        original_read = tele._read_pending_records
+        # Monkeypatch Path.open to inject delay before 'w' mode opens
+        original_path_open = Path.open
 
-        def slowed_read(metrics_path, offset):
-            result = original_read(metrics_path, offset)
-            time.sleep(0.010)  # 10ms delay — forces writer to overlap with compaction
-            return result
+        def patched_path_open(self_path, mode="r", *args, **kwargs):
+            # Inject delay only for 'w' mode on metrics.jsonl
+            if "w" in mode and "metrics.jsonl" in str(self_path):
+                time.sleep(0.5)  # Deterministic 0.5s delay
+            return original_path_open(self_path, mode, *args, **kwargs)
 
         mock_tel_module, ctx = _patch_network_and_telem(batch_capture_return=True)
 
@@ -166,48 +193,56 @@ class TestConcurrentAppendNeverLosesRecords:
             patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
             patch("socket.create_connection", ctx["mock_socket"].create_connection),
             patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": mock_tel_module}),
-            patch.object(tele, "_read_pending_records", side_effect=slowed_read),
+            patch.object(Path, "open", patched_path_open),
         ):
             gw._maybe_sync_telemetry(artifact_root)
 
+        # Signal writer to stop
+        stop_event.set()
         # Wait for writer to complete
         writer_proc.join(timeout=15)
         assert not writer_proc.is_alive(), "Writer process did not finish"
         writer_proc.close()
 
-        # Two-quadrant assertion: returns_F ∪ present == all_sent
+        # Build sets for comparison
+        in_file_seqs = set()
+
         final_lines = metrics_file.read_text(encoding="utf-8").strip().split("\n")
-        final_lines = [line for line in final_lines if line]
-
-        writer_seqs_in_file: set[int] = set()
         for line in final_lines:
-            try:
-                record = json.loads(line)
-                if record.get("event") == "writer_event":
-                    writer_seqs_in_file.add(record.get("seq"))
-            except json.JSONDecodeError:
-                pytest.fail(f"Invalid JSON in final file: {line!r}")
+            if line:
+                try:
+                    record = json.loads(line)
+                    if record.get("event") == "writer_event":
+                        in_file_seqs.add(record.get("seq"))
+                except json.JSONDecodeError:
+                    pytest.fail(f"Invalid JSON in final file: {line!r}")
 
-        returned_true_seqs: set[int] = set()
-        returned_false_seqs: set[int] = set()
+        # Build writer result tracking
+        returned_true_seqs = set()
+        returned_false_seqs = set()
         for idx, ok in enumerate(writer_results):
             if ok:
                 returned_true_seqs.add(idx)
             else:
                 returned_false_seqs.add(idx)
 
-        # Quadrant 1: records that returned True must be in file
-        silently_lost = returned_true_seqs - writer_seqs_in_file
+        # Key assertion: records that returned True must be in file (no silent loss)
+        # PRE-FIX: records written during sleep are truncated → silent loss → FAIL
+        # FIXED: records either written before lock (in file) or flock fails (return False) → PASS
+        silently_lost = returned_true_seqs - in_file_seqs
         assert len(silently_lost) == 0, (
-            f"Silent loss detected: records {silently_lost} returned True but absent from file. "
-            f"In-file writer seqs: {writer_seqs_in_file}"
+            f"Silent loss detected: {len(silently_lost)} records returned True but absent from file. "
+            f"Lost seqs: {sorted(silently_lost)[:10]}..."
         )
 
-        # Quadrant 2: records that returned False may or may not be in file (contention drop)
-        all_sent = set(range(n_writer_records))
-        union = returned_false_seqs | writer_seqs_in_file
-        assert union == all_sent, (
-            f"Two-quadrant assertion failed: returned_F ∪ present != all_sent. Missing: {all_sent - union}"
+        # Two-quadrant invariant: returned_F ∪ present == all_written
+        # (On FIXED code, sent_records tracking is not needed because no records are sent
+        # during compaction - all are either in file or explicitly dropped)
+        all_written = set(range(len(writer_results)))
+        union = returned_false_seqs | in_file_seqs
+        assert union == all_written, (
+            f"Two-quadrant assertion failed: returned_F ∪ present != all_written. "
+            f"Missing: {len(all_written - union)} records"
         )
 
         manager.shutdown()
