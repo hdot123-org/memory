@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.41.1](https://github.com/hdot123-org/memory/compare/v0.41.0...v0.41.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **guard:** 修复 round-4 scrutiny 误拦与补齐测试覆盖 ([#1026](https://github.com/hdot123-org/memory/issues/1026)) ([272e6e9](https://github.com/hdot123-org/memory/commit/272e6e97c357afc96c5aa3c4edd790337ce6a66a))
+* 修复遥测压缩 TOCTOU 竞态条件 ([#1028](https://github.com/hdot123-org/memory/issues/1028)) ([d5990fb](https://github.com/hdot123-org/memory/commit/d5990fb6c6e0320665802a198051fc35046ac5ac))
+
 ## [0.41.0](https://github.com/hdot123-org/memory/compare/v0.40.1...v0.41.0) (2026-08-25)
 
 
