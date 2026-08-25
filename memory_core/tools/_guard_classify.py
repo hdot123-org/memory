@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from memory_core.ownership import (
+    _normalize_to_project_relative,
     classify_agents_md_block,
     classify_owned_path,
     load_memory_ownership,
@@ -111,8 +112,18 @@ def _split_shell_args(arg_string: str) -> list[str]:
 
 
 def _extract_mv_path(match: re.Match[str]) -> list[str]:
-    """Extract path from mv/git mv command."""
+    """Extract path from mv/git mv command.
+
+    N3: Handle -t/--target-directory= flag (destination is the target, not last arg)
+    """
     args = _split_shell_args(match.group(1))
+    # Check for -t or --target-directory= flag
+    for i, arg in enumerate(args):
+        if arg == "-t" and i + 1 < len(args):
+            return [args[i + 1]]  # destination is after -t
+        if arg.startswith("--target-directory="):
+            return [arg.split("=", 1)[1]]  # destination is in the flag
+    # Default: last argument is destination
     return [args[-1]] if len(args) >= 2 else []
 
 
@@ -123,8 +134,18 @@ def _extract_rm_path(match: re.Match[str]) -> list[str]:
 
 
 def _extract_cp_path(match: re.Match[str]) -> list[str]:
-    """Extract destination path from cp command."""
+    """Extract path from cp command.
+
+    N3: Handle -t/--target-directory= flag (destination is the target, not last arg)
+    """
     args = _split_shell_args(match.group(1))
+    # Check for -t or --target-directory= flag
+    for i, arg in enumerate(args):
+        if arg == "-t" and i + 1 < len(args):
+            return [args[i + 1]]  # destination is after -t
+        if arg.startswith("--target-directory="):
+            return [arg.split("=", 1)[1]]  # destination is in the flag
+    # Default: last argument is destination
     return [args[-1]] if len(args) >= 2 else []
 
 
@@ -165,8 +186,15 @@ def _extract_node_path(match: re.Match[str]) -> list[str]:
 
 
 def _extract_redirect_path(match: re.Match[str]) -> list[str]:
-    """Extract path from shell redirect."""
-    return [match.group(1)]
+    """Extract all redirect targets from command.
+
+    N3: Use findall to capture all redirects (not just first)
+    Returns list of all redirect targets found.
+    """
+    # Find all redirect operators in the command
+    redirect_pattern = re.compile(r"(?<!&)[12]?>[>]?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+    targets = redirect_pattern.findall(match.string)
+    return targets if targets else [match.group(1)]
 
 
 def _extract_tee_path(match: re.Match[str]) -> list[str]:
@@ -234,15 +262,22 @@ def _extract_path_from_execute(command: str) -> list[str]:
     return []
 
 
-def _check_doc_routing(file_path: str) -> dict[str, str] | None:
+def _check_doc_routing(file_path: str, project_root: Path | None = None) -> dict[str, str] | None:
     """检查文件路径是否在注册的文档目录中。
 
     当路径匹配 memory/docs/ 或 memory/kb/ 前缀时，校验是否在注册目录。
     返回 block 结果 dict 表示被拦截，返回 None 表示放行。
+
+    绝对路径先归一化为 project-relative（复用 _normalize_to_project_relative
+    单一真源），避免仓库根目录名恰好为 "memory" 等协议目录名时误判。
     """
-    p = Path(file_path)
+    # 归一化：绝对路径转 project-relative，避免根目录名碰巧为协议目录名
+    # （如 /Users/busiji/memory/docs/specs/x.md 中的 "memory"）导致 parts 误匹配
+    normalized_path = _normalize_to_project_relative(file_path, project_root) if project_root is not None else file_path
+    p = Path(normalized_path)
 
     # 检查是否是 memory/docs/ 或 memory/kb/ 下的路径
+    # 归一化后 "docs" 或 "kb" 必须不在首位（首位是 "memory"）才视为协议路径
     is_doc_path = False
     for i, part in enumerate(p.parts):
         if part in ("docs", "kb") and i > 0 and p.parts[i - 1] == "memory":
@@ -409,7 +444,7 @@ def _classify_write_edit(payload: dict[str, Any], project_root: Path, ownership:
         )
 
     # 文档路由校验（memory/docs/ 或 memory/kb/ 下必须使用注册目录）
-    dr_block = _check_doc_routing(file_path)
+    dr_block = _check_doc_routing(file_path, project_root)
     if dr_block is not None:
         decision = dr_block["decision"]
         return RuleResult(
@@ -476,7 +511,7 @@ def _classify_multiedit(payload: dict[str, Any], project_root: Path, ownership: 
             continue
 
         # 文档路由校验（memory/docs/ 或 memory/kb/ 下必须使用注册目录）
-        dr_block = _check_doc_routing(path)
+        dr_block = _check_doc_routing(path, project_root)
         if dr_block is not None:
             item_results.append(
                 {
@@ -551,55 +586,536 @@ def _classify_notebook(payload: dict[str, Any], project_root: Path, ownership: A
     return RuleResult(matched=False, severity="info", message=result.reason, detail={"decision": "allow"})
 
 
+def _handle_quote_state(ch: str, in_quote: str | None) -> str | None:
+    """Update quote state based on current character.
+
+    Returns the new in_quote state (None if quote closed, the quote char if opened/continuing).
+    """
+    if in_quote:
+        # Inside a quote - check if it closes
+        return None if ch == in_quote else in_quote
+    elif ch in ('"', "'"):
+        # Opening a quote
+        return ch
+    return in_quote
+
+
+def _split_command_segments(command: str) -> list[str]:
+    """Split command by shell operators respecting quote boundaries.
+
+    Fix-2: Splits by &&, ||, ;, |, &, and newlines, but NOT inside quotes.
+    B4: Single '&' (background operator) now also splits, while '&&' and '&>'
+    are preserved (&& = two-char operator, &> = redirect not split point).
+    Returns list of command segments.
+    """
+    segments = []
+    current = []
+    in_quote = None
+    i = 0
+    n = len(command)
+
+    while i < n:
+        ch = command[i]
+
+        # Handle quote state
+        new_in_quote = _handle_quote_state(ch, in_quote)
+        if in_quote or ch in ('"', "'"):
+            current.append(ch)
+            if new_in_quote != in_quote:
+                in_quote = new_in_quote
+            i += 1
+            continue
+
+        # Check for operators
+        if ch == "&" and i + 1 < n and command[i + 1] == "&":
+            # && (two-char operator, NOT background)
+            if current:
+                segments.append("".join(current).strip())
+                current = []
+            i += 1  # skip second &
+        elif ch == "&" and i + 1 < n and command[i + 1] == ">":
+            # &> redirect — NOT a split point, append as-is
+            current.append(ch)
+        elif ch == "&":
+            # Single & (background operator) — B4 fix: split here
+            # NB-2: But don't split if it's part of >& (fd duplication like 2>&1)
+            if current and current[-1] == ">":
+                # Part of >& pattern, don't split
+                current.append(ch)
+            elif current:
+                segments.append("".join(current).strip())
+                current = []
+        elif ch == "|" and i + 1 < n and command[i + 1] == "|":
+            # ||
+            if current:
+                segments.append("".join(current).strip())
+                current = []
+            i += 1  # skip second |
+        elif ch in ("|", ";", "\n"):
+            # Single | or ; or newline
+            if current:
+                segments.append("".join(current).strip())
+                current = []
+        else:
+            current.append(ch)
+
+        i += 1
+
+    if current:
+        segments.append("".join(current).strip())
+
+    return [s for s in segments if s]
+
+
+def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
+    """Determine if a command segment has write intent.
+
+    Fix-1: Returns True if segment contains:
+    - Write commands as first word (mv, rm, cp, etc.)
+    - Write verbs (Fix-3 vocabulary)
+    - Readonly commands with redirects to owned paths
+    - Unknown commands (fail-closed)
+
+    Readonly commands (grep, cat, echo, git, etc.) without redirects to owned
+    paths always return False, even if they mention owned strings.
+    """
+    # N2: Command substitution detection — $(...) or backticks indicate dynamic content
+    # Must check BEFORE readonly commands to catch echo $(rm ...) etc.
+    # Use regex to match actual command substitution patterns, not just substring matches
+    if re.search(r"\$\([^)]+\)|`[^`]+`", segment):
+        return True
+
+    # Get first command word
+    first_word = segment.split()[0] if segment.split() else ""
+
+    # Known safe read-only commands (architecture §2.2 safe set + common tools)
+    readonly_commands = {
+        "cat",
+        "ls",
+        "grep",
+        "rg",  # B3: rg is read-only (architecture §2.2 lists grep/rg)
+        "head",
+        "tail",
+        "echo",
+        "printf",
+        "stat",
+        "wc",
+        "diff",
+        "awk",
+        "sort",  # B3: sort is read-only
+        "pytest",
+        "ruff",
+        "mypy",
+    }
+    # R3-6: ruff format / ruff check --fix are write operations
+    if first_word == "ruff":
+        words = segment.split()
+        if len(words) >= 2:
+            ruff_subcmd = words[1]
+            # format subcommand is always write
+            if ruff_subcmd == "format":
+                return True
+            # check with --fix is write
+            if ruff_subcmd == "check" and any(w == "--fix" for w in words[2:]):
+                return True
+            # Other ruff subcommands (check without --fix) are readonly
+        return False
+
+    if first_word in readonly_commands:
+        # R3-4: sort with -o/--output= is write operation
+        if first_word == "sort" and any(w == "-o" or w.startswith("--output=") for w in segment.split()[1:]):
+            return True
+
+        # Readonly commands only have write intent if redirecting to owned paths
+        # R3-1: Use updated redirect pattern that handles &>/>&
+        # First check &> redirects (bash combined stdout+stderr)
+        amp_redirect_pattern = re.compile(r"&>>?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+        for match in amp_redirect_pattern.finditer(segment):
+            target = match.group(1)
+            target_lower = target.lower()
+            if any(ind in target_lower for ind in ["memory/", "memory\\", "agents.md"]):
+                return True
+            ft_block = _check_file_type_block(target)
+            if ft_block is not None:
+                return True
+
+        # Check >& redirects (but not >&N fd duplication)
+        gt_amp_redirect_pattern = re.compile(r">&>?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+        for match in gt_amp_redirect_pattern.finditer(segment):
+            target = match.group(1)
+            # Skip fd duplication targets (digits like 1, 2)
+            if target.isdigit():
+                continue
+            target_lower = target.lower()
+            if any(ind in target_lower for ind in ["memory/", "memory\\", "agents.md"]):
+                return True
+            ft_block = _check_file_type_block(target)
+            if ft_block is not None:
+                return True
+
+        # Then standard redirects (> >>, but not &> or >& which are handled above)
+        redirect_pattern = re.compile(r"(?<![&>])[12]?>[>]?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+        for match in redirect_pattern.finditer(segment):
+            target = match.group(1)
+            target_lower = target.lower()
+            # Check if redirect target contains owned indicators (substring match)
+            if any(ind in target_lower for ind in ["memory/", "memory\\", "agents.md"]):
+                return True
+            # Also check file-type blacklist (backups dir, .sql suffix etc.)
+            ft_block = _check_file_type_block(target)
+            if ft_block is not None:
+                return True
+        return False
+
+    # B3 + R3-3: sed with -n/--quiet is read-only; sed -i/--in-place is write
+    if first_word == "sed":
+        words = segment.split()
+        has_inplace = any(
+            w == "-i" or w.startswith("-i") and len(w) > 2 and "i" in w[1:] for w in words[1:] if w.startswith("-")
+        )
+        # Also check combined short flags like -in, -ni etc.
+        for w in words[1:]:
+            if w.startswith("-") and not w.startswith("--") and "i" in w[1:]:
+                has_inplace = True
+                break
+        # R3-3: Check --in-place long flag (with optional =SUFFIX)
+        for w in words[1:]:
+            if w == "--in-place" or w.startswith("--in-place="):
+                has_inplace = True
+                break
+        if has_inplace:
+            return True  # sed -i / --in-place is write
+        return _has_redirect_to_owned(segment)  # sed -n etc. is readonly
+
+    # git subcommand check: B2 + R3-2 — narrow readonly to explicitly safe set
+    if first_word == "git":
+        words = segment.split()
+        if len(words) >= 2:
+            git_subcmd = words[1]
+            # Explicitly safe read-only git subcommands
+            git_readonly_subcmds = {
+                "status",
+                "log",
+                "show",
+                "diff",
+                "blame",
+                "cat-file",
+                "rev-parse",
+                "ls-files",
+                "grep",
+                "config",
+                "describe",
+                "tag",
+                "branch",
+                "remote",
+                "shortlog",
+                "whatchanged",
+                # R3-2: stash removed from readonly - stash push/pop write to working tree
+            }
+            if git_subcmd in git_readonly_subcmds:
+                return _has_redirect_to_owned(segment)
+            # commit message containing owned strings is readonly
+            if git_subcmd == "commit":
+                return _has_redirect_to_owned(segment)
+            # All other git subcommands (add/clean/apply/checkout/restore/
+            # push/pull/merge/rebase/reset/init/clone/stash etc.) are write
+            return True
+        return False  # bare 'git' with no subcommand
+
+    # Check for redirect operators (only relevant for non-readonly commands)
+    if re.search(r"[12]?>[>]?", segment):
+        return True
+
+    # Write command set (sed removed — handled specially above for -i vs -n)
+    write_commands = {
+        "mv",
+        "rm",
+        "cp",
+        "rsync",
+        "mkdir",
+        "touch",
+        "dd",
+        "install",
+        "ln",
+        "tee",
+        "tar",
+        "find",
+        "chmod",
+        "chown",
+        "truncate",
+        "cd",  # cd to owned directories is suspicious
+    }
+
+    # Check if first word is a write command
+    if first_word in write_commands:
+        return True
+
+    # Check for interpreters (opaque, can't analyze further)
+    interpreters = {"python", "python3", "node", "sh", "bash"}
+    if first_word in interpreters:
+        return True
+
+    # N4: Token-aware write verb matching
+    # Commands that support -t/--target-directory= for destination
+    t_flag_commands = {"mv", "cp", "install", "rsync"}
+    # Check for -t / --target-directory= only when first word supports it
+    if first_word in t_flag_commands and re.search(r"(?:^|\s)(?:-t\s|--target-directory=)", segment):
+        return True
+
+    # find -delete / -fprintf are write verbs only in find context
+    if first_word == "find" and ("-delete" in segment or "-fprintf" in segment):
+        return True
+
+    # Python/node API write verbs (always suspicious regardless of command)
+    api_write_verbs = [
+        "os.replace",
+        "os.rename",
+        "shutil.move",
+        "shutil.copy",
+        "shutil.rmtree",
+        "os.remove",
+        "os.unlink",
+        "unlinkSync",
+        "rmSync",
+        "rmdirSync",
+        "renameSync",
+        "cpSync",
+        ".write_text",
+        ".write_bytes",
+    ]
+    for verb in api_write_verbs:
+        if verb in segment:
+            return True
+
+    # N2: Command substitution detection — $(...) or backticks contain write intent
+    if "$(" in segment or "`" in segment:
+        return True
+
+    # Unknown command: fail-closed
+    return True
+
+
+def _has_redirect_to_owned(segment: str) -> bool:  # noqa: C901
+    """Check if segment has redirects targeting owned paths or forbidden types.
+
+    Used by _segment_has_write_intent for readonly commands.
+    Extracts redirect targets and checks if any contain owned indicators or hit file-type blacklist.
+
+    R3-1: Handles &>/>& redirect operators (not just >/>>)
+    R3-5: Checks file-type blacklist (FORBIDDEN_DIRS/FORBIDDEN_SUFFIXES) for redirect targets
+    """
+    # R3-1: Handle &> and >& (bash combined stdout+stderr redirect)
+    # &> or &>> : combined redirect (bash)
+    amp_redirect = re.compile(r"&>>?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+    for match in amp_redirect.finditer(segment):
+        target = match.group(1)
+        target_lower = target.lower()
+        # Check owned indicators
+        if any(ind in target_lower for ind in ["memory/", "memory\\", "agents.md"]):
+            return True
+        # R3-5: Check file-type blacklist
+        if _check_file_type_block(target) is not None:
+            return True
+
+    # >& or >&> : combined redirect (bash alternative syntax)
+    # But NOT >&N (fd duplication like 2>&1 where N is a digit)
+    gt_amp_redirect = re.compile(r">&>?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+    for match in gt_amp_redirect.finditer(segment):
+        target = match.group(1)
+        # Skip fd duplication targets (digits like 1, 2)
+        if target.isdigit():
+            continue
+        target_lower = target.lower()
+        if any(ind in target_lower for ind in ["memory/", "memory\\", "agents.md"]):
+            return True
+        if _check_file_type_block(target) is not None:
+            return True
+
+    # Standard redirects: >, >>, 1>, 2>, 1>>, 2>>
+    # Exclude &> and >& which are handled above
+    redirect_pattern = re.compile(r"(?<![&>])[12]?>[>]?\s*['\"]?([^\s;|&<>'\"]+)['\"]?")
+    for match in redirect_pattern.finditer(segment):
+        target = match.group(1)
+        target_lower = target.lower()
+        # Check if redirect target contains owned indicators
+        if any(ind in target_lower for ind in ["memory/", "memory\\", "agents.md"]):
+            return True
+        # R3-5: Check file-type blacklist (backups/.sql/.bak etc.)
+        if _check_file_type_block(target) is not None:
+            return True
+    return False
+
+
+def _check_owned_in_segment(segment: str) -> bool:
+    """Check if segment contains owned resource references.
+
+    Fix-1: Returns True if segment contains any owned indicator string.
+    Special handling for `cd` segments: bare `memory` argument also matches.
+    """
+    # All indicators must be lowercased to match segment_lower
+    indicators = ["memory/", "memory\\", "agents.md"]
+    segment_lower = segment.lower()
+    if any(ind in segment_lower for ind in indicators):
+        return True
+
+    # cd special case: `cd memory` should be detected even without trailing slash
+    parts = segment.split()
+    if parts and parts[0] == "cd" and len(parts) >= 2:
+        cd_target = parts[1].lower()
+        # Check if cd target matches owned directory names
+        if cd_target == "memory" or cd_target.startswith("memory/") or cd_target.startswith("memory\\"):
+            return True
+        # Check if target contains agents.md
+        if "agents.md" in cd_target:
+            return True
+
+    return False
+
+
 def _classify_execute(payload: dict[str, Any], project_root: Path, ownership: Any) -> RuleResult:
-    """Handle Execute tool classification."""
+    """Handle Execute tool classification with compound command handling.
+
+    Fix-1: Segment-level write intent gate (unconditional)
+    Fix-2: Split compound commands by operators respecting quotes
+    Fix-3: Extended vocabulary (GNU -t, python/node APIs, cd, find -delete, etc.)
+    B1: Run legacy extraction per write-intent segment (not just single-segment commands)
+    """
     command = payload.get("command", "")
     if not command:
         return RuleResult(
             matched=False, severity="info", message="Execute without command", detail={"decision": "allow"}
         )
 
-    paths = _extract_path_from_execute(command)
+    # Fix-2: Split into segments
+    segments = _split_command_segments(command)
 
-    if paths:
-        for path in paths:
-            if _is_uncertain_path(path):
-                if _contains_owned_root_string(command):
-                    return RuleResult(
-                        matched=True,
-                        severity="error",
-                        message=f"Uncertain path '{path}' targeting owned resources",
-                        detail={"decision": "block"},
-                    )
-                continue
+    # Check segments and track write intent
+    segment_result, any_write_intent = _check_command_segments(segments)
+    if segment_result is not None:
+        return segment_result
 
-            expanded = _expand_env_vars(path)
+    # B1 fix: Run legacy extraction per segment with write intent
+    # This catches file-type blacklists, uncertain paths, and owned paths
+    # that segment-level write intent gate doesn't detect
+    for segment in segments:
+        if _segment_has_write_intent(segment):
+            # Pass full command for context (needed for uncertain path checks)
+            legacy_result = _legacy_path_extraction(segment, ownership, project_root, full_command_context=command)
+            if legacy_result.matched:
+                return legacy_result
 
-            ft_block = _check_file_type_block(expanded)
-            if ft_block is not None:
-                decision = ft_block["decision"]
-                return RuleResult(
-                    matched=(decision == "block"),
-                    severity="error" if decision == "block" else "info",
-                    message=ft_block["reason"],
-                    detail={"decision": decision},
-                )
+    # All segments passed both write intent gate and legacy extraction
+    return RuleResult(
+        matched=False,
+        severity="info",
+        message="All command segments passed write intent gate",
+        detail={"decision": "allow"},
+    )
 
-            # classify_owned_path normalizes absolute paths to project-relative
-            # internally via _normalize_to_project_relative (single source of truth).
-            result = classify_owned_path(expanded, ownership, project_root)
-            if hasattr(result, "level"):
-                return RuleResult(
+
+def _check_command_segments(segments: list[str]) -> tuple[RuleResult | None, bool]:
+    """Check command segments for owned resource references.
+
+    Returns:
+        tuple: (RuleResult if a segment triggers block decision, else None),
+               (bool indicating if any segment had write intent)
+    """
+    any_write_intent = False
+    for i, segment in enumerate(segments):
+        parts = segment.split()
+        if not parts:
+            continue
+
+        first_word = parts[0]
+
+        # Special handling for cd commands
+        if first_word == "cd" and len(parts) >= 2:
+            cd_result = _handle_cd_segment(segment, parts, i, segments)
+            if cd_result is not None:
+                return cd_result, any_write_intent
+            continue
+
+        # Check for write intent
+        has_write_intent = _segment_has_write_intent(segment)
+        if has_write_intent:
+            any_write_intent = True
+
+        # Check if segment has owned references
+        has_owned_refs = _check_owned_in_segment(segment)
+
+        # If this segment has write intent and owned refs, block
+        if has_write_intent and has_owned_refs:
+            return (
+                RuleResult(
                     matched=True,
                     severity="error",
-                    message=f"Execute targets protected path '{path}': {result.reason}",
+                    message=f"Command segment has write intent targeting owned resources: {segment[:50]}...",
                     detail={"decision": "block"},
-                )
+                ),
+                any_write_intent,
+            )
+
+    return None, any_write_intent
+
+
+def _handle_cd_segment(segment: str, parts: list[str], i: int, segments: list[str]) -> RuleResult | None:
+    """Handle cd command segment with owned directory check.
+
+    N1: Skip no-op cd (cd . / cd ./) in look-ahead to prevent bypass
+    Returns RuleResult if cd targets owned directory, None otherwise.
+    """
+    cd_target = parts[1]
+
+    # N1: Detect no-op cd (cd . or cd ./)
+    is_noop_cd = cd_target in (".", "./")
+
+    # Check if cd target is an owned directory
+    if _check_owned_in_segment(segment):
+        # Look ahead: if next segment is also a cd command, allow this one
+        # (because the cwd will change, so this is a residual case)
+        if i + 1 < len(segments):
+            next_parts = segments[i + 1].split()
+            # N1: Don't skip if next cd is no-op (cd . / cd ./)
+            if next_parts and next_parts[0] == "cd" and len(next_parts) >= 2:
+                next_cd_target = next_parts[1]
+                # If next cd is no-op, don't skip this owned cd
+                if next_cd_target not in (".", "./"):
+                    # Next segment is a real cd, so allow this cd (residual case)
+                    return None
+        # Otherwise, block this cd command
         return RuleResult(
-            matched=False, severity="info", message="No owned paths in Execute targets", detail={"decision": "allow"}
+            matched=True,
+            severity="error",
+            message=f"cd to owned directory: {cd_target}",
+            detail={"decision": "block"},
         )
-    else:
-        if _contains_owned_root_string(command):
+    # N1: If this is no-op cd, don't mark as write intent
+    if is_noop_cd:
+        return None
+    return None
+
+
+def _legacy_path_extraction(
+    command: str, ownership: Any, project_root: Path, full_command_context: str | None = None
+) -> RuleResult:
+    """Legacy path extraction for single-segment commands.
+
+    Handles uncertain paths, file type blocking, and owned path classification.
+
+    Args:
+        command: The segment or command to analyze
+        ownership: Ownership policy
+        project_root: Project root path
+        full_command_context: Optional full command for context (used when checking
+            uncertain paths in multi-segment commands — if owned strings appear
+            anywhere in the full command, uncertain paths are more suspicious)
+    """
+    # Use full command context for owned string checks if provided
+    context_for_owned_check = full_command_context if full_command_context is not None else command
+
+    paths = _extract_path_from_execute(command)
+    if not paths:
+        if _contains_owned_root_string(context_for_owned_check):
             return RuleResult(
                 matched=True,
                 severity="error",
@@ -609,6 +1125,42 @@ def _classify_execute(payload: dict[str, Any], project_root: Path, ownership: An
         return RuleResult(
             matched=False, severity="info", message="No owned paths detected in Execute", detail={"decision": "allow"}
         )
+
+    for path in paths:
+        if _is_uncertain_path(path):
+            # B1: Check full command context for owned strings when uncertain path detected
+            if _contains_owned_root_string(context_for_owned_check):
+                return RuleResult(
+                    matched=True,
+                    severity="error",
+                    message=f"Uncertain path '{path}' targeting owned resources",
+                    detail={"decision": "block"},
+                )
+            continue
+
+        expanded = _expand_env_vars(path)
+        ft_block = _check_file_type_block(expanded)
+        if ft_block is not None:
+            decision = ft_block["decision"]
+            return RuleResult(
+                matched=(decision == "block"),
+                severity="error" if decision == "block" else "info",
+                message=ft_block["reason"],
+                detail={"decision": decision},
+            )
+
+        result = classify_owned_path(expanded, ownership, project_root)
+        if hasattr(result, "level"):
+            return RuleResult(
+                matched=True,
+                severity="error",
+                message=f"Execute targets protected path '{path}': {result.reason}",
+                detail={"decision": "block"},
+            )
+
+    return RuleResult(
+        matched=False, severity="info", message="No owned paths in Execute targets", detail={"decision": "allow"}
+    )
 
 
 def _classify_task(payload: dict[str, Any], project_root: Path, ownership: Any) -> RuleResult:
