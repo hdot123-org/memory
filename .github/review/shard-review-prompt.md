@@ -51,7 +51,7 @@ If any self-validation fails, you MUST correct the output before responding.
 You are operating under a fixed review budget. Adhere to the following constraints:
 
 1. **Output budget**: Return at most 20 findings per shard. Prioritize by severity (P0 > P1 > P2 > P3).
-2. **Time budget**: This shard has a 30-minute execution timeout. Focus on the most critical findings first — if you are running low, wrap up with what you have.
+2. **Time budget**: This shard runs under a fixed execution timeout (SHARD_TIMEOUT_MINUTES, see workflow config). Focus on the most critical findings first — if you are running long, wrap up with what you have.
 3. **Scope budget**: Review ONLY the diff and files provided in this shard. Do not chase references outside the provided context.
 4. **Convergence**: Prefer fewer, high-quality findings over many speculative ones. Each finding must be actionable.
 
