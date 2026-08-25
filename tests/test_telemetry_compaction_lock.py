@@ -7,6 +7,7 @@ _write_sync_status, and _maybe_sync_telemetry.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import multiprocessing as mp
 import os
@@ -105,7 +106,19 @@ def _writer_child(
 
 
 class TestConcurrentAppendNeverLosesRecords:
-    """VAL-TELE-001: compression window concurrent append never silently lost."""
+    """VAL-TELE-001: compression window concurrent append never silently lost.
+
+    Discrimination form: lock-wrapper hook with slowed read phase (form 3 from
+    library/concurrency-test-discrimination.md). We monkeypatch _read_pending_records
+    to add a 10ms delay, forcing the compaction's read phase to be long enough for
+    the cross-process writer to attempt an append during it.
+
+    - FIXED code: read happens under exclusive_lock → writer's flock(LOCK_EX|LOCK_NB)
+      fails → append returns False → explicit drop → two-quadrant assertion holds.
+    - PRE-FIX code (272e6e9): read happens WITHOUT lock → writer's append succeeds
+      during the delay → then truncate (open "w") destroys the record → silent loss
+      → returned_true_seqs contains records not in file → assertion FAILS.
+    """
 
     def test_concurrent_append_no_silent_loss(self, tmp_path):
         """Records appended during compaction are either preserved or explicitly dropped."""
@@ -124,32 +137,40 @@ class TestConcurrentAppendNeverLosesRecords:
         start_event = mp.Event()
         done_event = mp.Event()
 
-        n_writer_records = 20
+        n_writer_records = 50
 
+        # Writer starts immediately (writer-driven form) — no signal from main thread
         writer_proc = mp.Process(
             target=_writer_child,
             args=(str(metrics_file), n_writer_records, start_event, done_event, writer_results),
         )
+        # Signal writer to start immediately (before sync)
+        start_event.set()
         writer_proc.start()
 
-        def on_batch_capture(events):
-            # Signal-and-return pattern: signal writer to start, then return immediately
-            # This opens the TOCTOU window for real concurrency testing
-            start_event.set()
+        # Give writer a head start so it's actively appending when sync begins
+        time.sleep(0.01)
 
-        mock_tel_module, ctx = _patch_network_and_telem(
-            batch_capture_return=True,
-            batch_capture_callback=on_batch_capture,
-        )
+        # Monkeypatch _read_pending_records to add a delay, forcing the compaction
+        # read phase to be long enough for the writer to attempt appends during it
+        original_read = tele._read_pending_records
+
+        def slowed_read(metrics_path, offset):
+            result = original_read(metrics_path, offset)
+            time.sleep(0.010)  # 10ms delay — forces writer to overlap with compaction
+            return result
+
+        mock_tel_module, ctx = _patch_network_and_telem(batch_capture_return=True)
 
         with (
             patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
             patch("socket.create_connection", ctx["mock_socket"].create_connection),
             patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": mock_tel_module}),
+            patch.object(tele, "_read_pending_records", side_effect=slowed_read),
         ):
             gw._maybe_sync_telemetry(artifact_root)
 
-        # Wait for writer to complete after sync returns
+        # Wait for writer to complete
         writer_proc.join(timeout=15)
         assert not writer_proc.is_alive(), "Writer process did not finish"
         writer_proc.close()
@@ -183,7 +204,6 @@ class TestConcurrentAppendNeverLosesRecords:
         )
 
         # Quadrant 2: records that returned False may or may not be in file (contention drop)
-        # The union of returned_F and present should cover all_sent
         all_sent = set(range(n_writer_records))
         union = returned_false_seqs | writer_seqs_in_file
         assert union == all_sent, (
@@ -261,7 +281,10 @@ class TestSuccessfulCompactionInvariants:
 
     def test_compaction_preserves_nonempty_residual_tail(self, tmp_path):
         """N4: When sync partially fails, unsent lines remain as non-empty tail."""
-        initial_lines = [_make_metric_line(i) for i in range(10)]
+        # Use enough lines to force multiple batches even if BATCH_SIZE patch doesn't take effect
+        # BATCH_SIZE=500 default, so use 600 lines to ensure at least 2 batches
+        n_lines = 600
+        initial_lines = [_make_metric_line(i) for i in range(n_lines)]
         artifact_root = setup_sync_artifacts(
             tmp_path,
             metrics_lines=initial_lines,
@@ -271,28 +294,27 @@ class TestSuccessfulCompactionInvariants:
         )
 
         # Simulate partial sync: first batch succeeds, second fails
-        # BATCH_SIZE=500 by default, so we patch it to 3 to force multiple batches
-        with patch("memory_core.tools._gateway_telemetry.BATCH_SIZE", 3):
-            # First batch (lines 0-2) succeeds, second batch (lines 3-5) fails
-            mock_tel_module, ctx = _patch_network_and_telem(batch_capture_return=[True, False])
+        # With 600 lines, we get at least 2 batches regardless of BATCH_SIZE patch
+        # First batch (lines 0-499) succeeds, second batch (lines 500-599) fails
+        mock_tel_module, ctx = _patch_network_and_telem(batch_capture_return=[True, False])
 
-            with (
-                patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
-                patch("socket.create_connection", ctx["mock_socket"].create_connection),
-                patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": mock_tel_module}),
-            ):
-                gw._maybe_sync_telemetry(artifact_root)
+        with (
+            patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
+            patch("socket.create_connection", ctx["mock_socket"].create_connection),
+            patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": mock_tel_module}),
+        ):
+            gw._maybe_sync_telemetry(artifact_root)
 
         metrics_file = artifact_root / "metrics.jsonl"
         offset_file = artifact_root / ".offset"
 
-        # After partial sync failure, all 10 lines should remain (no compaction on failure)
+        # After partial sync failure, all lines should remain (no compaction on failure)
         remaining_content = metrics_file.read_text(encoding="utf-8")
         remaining_lines = [line for line in remaining_content.split("\n") if line]
 
         # N4: Non-empty residual tail assertion
-        assert len(remaining_lines) == 10, (
-            f"Expected all 10 lines to remain after partial failure, got {len(remaining_lines)}"
+        assert len(remaining_lines) == n_lines, (
+            f"Expected all {n_lines} lines to remain after partial failure, got {len(remaining_lines)}"
         )
         assert remaining_content != "", "Residual tail must not be empty"
 
@@ -303,9 +325,9 @@ class TestSuccessfulCompactionInvariants:
             except json.JSONDecodeError as e:
                 pytest.fail(f"Remaining line {i} is not valid JSON: {line!r} -- {e}")
 
-        # Offset should be updated to 3 (first batch succeeded)
+        # Offset should be updated to BATCH_SIZE (first batch succeeded)
         offset_val = int(offset_file.read_text(encoding="utf-8").strip())
-        assert offset_val == 3, f"Expected offset=3 (first batch), got {offset_val}"
+        assert offset_val == tele.BATCH_SIZE, f"Expected offset={tele.BATCH_SIZE} (first batch), got {offset_val}"
 
     def test_fresh_root_offset_creation_no_duplicate_send(self, tmp_path):
         """B1 regression: fresh artifact root (no .offset) syncs successfully and creates .offset."""
@@ -400,10 +422,12 @@ class TestFileIntegrityAfterCompaction:
 
     def test_file_is_valid_jsonl_after_compaction(self, tmp_path):
         """Each line in the compacted file is valid JSON, file ends with newline."""
-        # Setup: 10 lines, offset=2 means lines 1-2 already synced, lines 3-10 pending
-        # After syncing lines 3-7 (partial sync), last_synced_line=7
-        # Compaction keeps lines after line 7 = lines 8-10 (3 lines remain)
-        initial_lines = [_make_metric_line(i) for i in range(10)]
+        # Setup: 600 lines, offset=2 means lines 1-2 already synced, lines 3-600 pending
+        # With 600 lines, we ensure at least 2 batches even if BATCH_SIZE patch doesn't take effect
+        # After syncing first batch (lines 3-502) successfully, second batch fails
+        # No compaction happens on partial failure, so all 600 lines remain
+        n_lines = 600
+        initial_lines = [_make_metric_line(i) for i in range(n_lines)]
         artifact_root = setup_sync_artifacts(
             tmp_path,
             metrics_lines=initial_lines,
@@ -412,29 +436,25 @@ class TestFileIntegrityAfterCompaction:
             last_sync_attempt=time.time() - 600,
         )
 
-        # Mock to return True for first batch (lines 3-7, 5 lines), then False for second batch
-        # This forces a partial sync where lines 3-7 are synced but 8-10 remain
+        # Mock to return True for first batch, then False for second batch
+        # This forces a partial sync where first batch succeeds but second fails
         mock_tel_module, ctx = _patch_network_and_telem(batch_capture_return=[True, False])
 
         with (
             patch.dict("os.environ", {"POSTHOG_HOST": "https://us.posthog.com"}),
             patch("socket.create_connection", ctx["mock_socket"].create_connection),
             patch.dict("sys.modules", {"memory_core.tools.telemetry_bridge": mock_tel_module}),
-            patch("memory_core.tools._gateway_telemetry.BATCH_SIZE", 5),
         ):
             gw._maybe_sync_telemetry(artifact_root)
 
         metrics_file = artifact_root / "metrics.jsonl"
         content = metrics_file.read_text(encoding="utf-8")
 
-        # After partial sync (lines 3-7 synced, lines 8-10 remain), file should have 3 lines
-        # Note: lines 1-2 are still in the file (offset=2 means they were previously synced but not compacted)
-        # So total lines = 2 (old synced) + 3 (new unsynced) = 5 lines, but only lines 8-10 are unsynced
+        # With partial failure, no compaction happens per VAL-TELE-004
+        # So all n_lines remain in the file
         lines_in_file = [line for line in content.split("\n") if line]
-        # Actually, with partial failure, no compaction happens per VAL-TELE-004
-        # So all 10 lines remain, offset=7
-        assert len(lines_in_file) == 10, (
-            f"Expected 10 lines (no compaction on partial failure), got {len(lines_in_file)}"
+        assert len(lines_in_file) == n_lines, (
+            f"Expected {n_lines} lines (no compaction on partial failure), got {len(lines_in_file)}"
         )
 
         for i, line in enumerate(lines_in_file):
@@ -656,8 +676,11 @@ class TestOffsetMonotonicity:
     """VAL-TELE-006: .offset value never regresses under concurrent access."""
 
     def test_offset_monotonic_under_concurrent_sync(self, tmp_path):
-        """N2: Concurrent sync operations: offset values sampled are monotonically non-decreasing."""
-        n_lines = 10
+        """N2: >BATCH_SIZE lines + real concurrent writer + multi-sample monotonicity assertion."""
+        from memory_core.tools._gateway_telemetry import BATCH_SIZE
+
+        # Use >BATCH_SIZE lines to force multiple batches and real concurrent pressure
+        n_lines = BATCH_SIZE + 100
         initial_lines = [_make_metric_line(i) for i in range(n_lines)]
         artifact_root = setup_sync_artifacts(
             tmp_path,
@@ -666,16 +689,39 @@ class TestOffsetMonotonicity:
             last_sync_success=time.time() - 7200,
             last_sync_attempt=time.time() - 600,
         )
+        metrics_file = artifact_root / "metrics.jsonl"
 
+        # Real concurrent writer process that continuously appends during sync
+        manager = mp.Manager()
+        writer_results = manager.list()
+        start_event = mp.Event()
+        done_event = mp.Event()
+
+        n_writer_records = 50
+        writer_proc = mp.Process(
+            target=_writer_child,
+            args=(str(metrics_file), n_writer_records, start_event, done_event, writer_results),
+        )
+        writer_proc.start()
+
+        # Signal writer to start immediately
+        start_event.set()
+
+        # Sample offset at multiple points during sync
         offset_samples: list[int] = []
 
-        def capture_offset(events):
-            offset_val = int((artifact_root / ".offset").read_text(encoding="utf-8").strip() or "0")
-            offset_samples.append(offset_val)
+        def capture_offset_and_continue(events):
+            """Sample offset after each batch_capture call."""
+            try:
+                offset_val = int((artifact_root / ".offset").read_text(encoding="utf-8").strip() or "0")
+                offset_samples.append(offset_val)
+            except (OSError, ValueError):
+                offset_samples.append(0)
+            return True
 
         mock_tel_module, ctx = _patch_network_and_telem(
             batch_capture_return=True,
-            batch_capture_callback=capture_offset,
+            batch_capture_callback=capture_offset_and_continue,
         )
 
         with (
@@ -685,8 +731,15 @@ class TestOffsetMonotonicity:
         ):
             gw._maybe_sync_telemetry(artifact_root)
 
-        # N2: Assert offset samples were collected and are monotonic
-        assert len(offset_samples) > 0, "No offset samples were collected during sync"
+        # Wait for writer to complete
+        writer_proc.join(timeout=15)
+        assert not writer_proc.is_alive(), "Writer process did not finish"
+        writer_proc.close()
+
+        # N2: Assert multiple offset samples were collected (not just 1)
+        assert len(offset_samples) >= 2, (
+            f"Expected >=2 offset samples during multi-batch sync, got {len(offset_samples)}"
+        )
 
         # Check monotonicity (with allowance for "0" at end from compaction)
         for i in range(len(offset_samples) - 1):
@@ -699,6 +752,8 @@ class TestOffsetMonotonicity:
 
         final_offset = int((artifact_root / ".offset").read_text(encoding="utf-8").strip())
         assert final_offset == 0
+
+        manager.shutdown()
 
 
 # ---------------------------------------------------------------------------
@@ -724,7 +779,14 @@ class TestSyncStatusAtomicity:
                     break
                 try:
                     if status_file.exists():
-                        content = status_file.read_text(encoding="utf-8")
+                        # Reader must hold LOCK_SH to read atomically
+                        # This prevents reading partial writes during concurrent updates
+                        with status_file.open("r", encoding="utf-8") as f:
+                            try:
+                                fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+                                content = f.read()
+                            finally:
+                                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
                         if content:
                             json.loads(content)
                 except json.JSONDecodeError as e:
@@ -900,7 +962,11 @@ def _sync_worker(
     barrier,
     result_dict,
 ) -> None:
-    """Worker process: trigger _maybe_sync_telemetry after barrier sync."""
+    """Worker process: trigger _maybe_sync_telemetry after barrier sync.
+
+    Captures sent event seqs and whether this process actually performed the sync
+    (vs skipped due to sync_cycle.lock held by another process).
+    """
     from pathlib import Path as _Path
     from unittest.mock import MagicMock as _MagicMock
     from unittest.mock import patch as _patch
@@ -911,7 +977,19 @@ def _sync_worker(
     barrier.wait(timeout=10)
 
     mock_telemetry = _MagicMock()
-    mock_telemetry.batch_capture.return_value = True
+
+    # Track sent events
+    sent_seqs: list[int] = []
+
+    def capture_and_track(events):
+        for ev in events:
+            props = ev.get("properties", {})
+            seq = props.get("seq")
+            if seq is not None:
+                sent_seqs.append(seq)
+        return True
+
+    mock_telemetry.batch_capture.side_effect = capture_and_track
 
     mock_tel_module = _MagicMock()
     mock_tel_module.telemetry = mock_telemetry
@@ -930,15 +1008,20 @@ def _sync_worker(
     metrics_file = artifact_root / "metrics.jsonl"
     offset_file = artifact_root / ".offset"
 
+    # Determine if this worker actually did the sync (sent events) or skipped
+    actually_synced = len(sent_seqs) > 0
+
     result_dict["metrics_content"] = metrics_file.read_text(encoding="utf-8") if metrics_file.exists() else ""
     result_dict["offset"] = offset_file.read_text(encoding="utf-8").strip() if offset_file.exists() else "0"
+    result_dict["sent_seqs"] = list(sent_seqs)
+    result_dict["actually_synced"] = actually_synced
 
 
 class TestDualProcessFullCycle:
     """VAL-TELE-010: Two processes triggering sync simultaneously -- no silent loss."""
 
     def test_dual_process_no_silent_loss(self, tmp_path):
-        """Two processes trigger _maybe_sync_telemetry; one skips, no records lost."""
+        """N3: Two processes trigger sync; workers capture sent events; assert sent ∪ retained == all."""
         n_lines = 10
         initial_lines = [_make_metric_line(i) for i in range(n_lines)]
         artifact_root = setup_sync_artifacts(
@@ -974,27 +1057,52 @@ class TestDualProcessFullCycle:
         proc_1.close()
         proc_2.close()
 
-        # N3: Assert results were captured and line conservation holds
+        # N3: Assert results were captured
         assert len(result_1) > 0, "Process 1 did not capture results"
         assert len(result_2) > 0, "Process 2 did not capture results"
 
+        # N3: One process should have done the sync, the other should have skipped
+        # (due to sync_cycle.lock preventing concurrent sync)
+        synced_count = sum([result_1.get("actually_synced", False), result_2.get("actually_synced", False)])
+        assert synced_count == 1, (
+            f"Expected exactly 1 process to sync, got {synced_count}. "
+            f"Process 1 synced: {result_1.get('actually_synced')}, "
+            f"Process 2 synced: {result_2.get('actually_synced')}"
+        )
+
+        # N3: Conservation assertion - sent ∪ retained == all
+        # Get all initial seqs
+        all_initial_seqs = set(range(n_lines))
+
+        # Get sent seqs from the process that actually synced
+        sent_seqs = set()
+        if result_1.get("actually_synced"):
+            sent_seqs = set(result_1.get("sent_seqs", []))
+        elif result_2.get("actually_synced"):
+            sent_seqs = set(result_2.get("sent_seqs", []))
+
+        # Get retained seqs from final metrics file
         metrics_file = artifact_root / "metrics.jsonl"
         final_content = metrics_file.read_text(encoding="utf-8")
-
-        # Parse final file lines
-        final_lines = set()
+        retained_seqs = set()
         if final_content.strip():
             for line in final_content.strip().split("\n"):
                 if line:
                     record = json.loads(line)
-                    final_lines.add(record.get("seq"))
+                    retained_seqs.add(record.get("seq"))
 
-        # N3: Line conservation: all initial lines must be accounted for
-        # (either synced and compacted away, or preserved in file)
-        # After sync, lines should either be compacted (if synced) or preserved
-        # The union of final lines + synced lines should equal initial lines
-        # Since both processes sync all lines, final file should be empty or have very few lines
-        assert len(final_lines) <= n_lines, f"More lines in file than expected: {len(final_lines)} > {n_lines}"
+        # N3: Conservation - every initial line is either sent or retained
+        union = sent_seqs | retained_seqs
+        assert union == all_initial_seqs, (
+            f"Conservation violated: sent ∪ retained != all. "
+            f"Sent: {sent_seqs}, Retained: {retained_seqs}, All: {all_initial_seqs}. "
+            f"Missing: {all_initial_seqs - union}"
+        )
+
+        # N3: No duplicates in sent
+        assert len(sent_seqs) == len(list(result_1.get("sent_seqs", []) or result_2.get("sent_seqs", []))), (
+            "Duplicate events detected in sent seqs"
+        )
 
         manager.shutdown()
 
