@@ -110,12 +110,12 @@ class TestGatewaySyncStatusWrite(_WarnsAndStderrMixin):
     """
 
     PATH = "memory_core/tools/_gateway_telemetry.py"
-    WARN_NEEDLE = "status_file.write_text(json.dumps(status"
+    WARN_NEEDLE = "f.write(json.dumps(status"
 
     def test_binds_exception(self):
         _assert_binds_exception(
             self.PATH,
-            "status_file.write_text(json.dumps(status",
+            "f.write(json.dumps(status",
             "except OSError as exc",
         )
 
