@@ -23,11 +23,10 @@ repo_root = Path(__file__).resolve().parent.parent
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
+from memory_core.tools import _gateway_telemetry as tele
 from memory_core.tools import memory_hook_gateway as gw
 from memory_core.tools import memory_hook_metrics as metrics
-from memory_core.tools import _gateway_telemetry as tele
 from tests.sync_artifacts_helpers import setup_sync_artifacts
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -58,11 +57,7 @@ def _patch_network_and_telem(
         original_return = batch_capture_return
 
         def capture_with_callback(events):
-            result = (
-                original_return.pop(0)
-                if isinstance(original_return, list)
-                else original_return
-            )
+            result = original_return.pop(0) if isinstance(original_return, list) else original_return
             if result:
                 batch_capture_callback(events)
             return result
@@ -331,14 +326,10 @@ class TestPartialBatchFailure:
 
         file_lines = metrics_file.read_text(encoding="utf-8").strip().split("\n")
         file_lines = [line for line in file_lines if line]
-        assert len(file_lines) == n_lines, (
-            f"Expected {n_lines} lines (no compaction), got {len(file_lines)}"
-        )
+        assert len(file_lines) == n_lines, f"Expected {n_lines} lines (no compaction), got {len(file_lines)}"
 
         offset_val = int(offset_file.read_text(encoding="utf-8").strip())
-        assert offset_val == BATCH_SIZE, (
-            f"Expected offset={BATCH_SIZE} (first chunk end), got {offset_val}"
-        )
+        assert offset_val == BATCH_SIZE, f"Expected offset={BATCH_SIZE} (first chunk end), got {offset_val}"
 
         status_file = artifact_root / ".sync_status.json"
         if status_file.exists():
@@ -395,9 +386,7 @@ class TestPartialBatchFailure:
                 sent_seqs.add(seq)
 
         expected_seqs = set(range(BATCH_SIZE, n_lines))
-        assert sent_seqs == expected_seqs, (
-            f"Expected seqs {expected_seqs}, got {sent_seqs}"
-        )
+        assert sent_seqs == expected_seqs, f"Expected seqs {expected_seqs}, got {sent_seqs}"
 
 
 # ---------------------------------------------------------------------------
@@ -575,11 +564,7 @@ class TestSyncStatusAtomicity:
             writer_futures = []
             for i in range(50):
                 success = i % 2 == 0
-                writer_futures.append(
-                    executor.submit(
-                        gw._write_sync_status, artifact_root, success, i
-                    )
-                )
+                writer_futures.append(executor.submit(gw._write_sync_status, artifact_root, success, i))
 
             for f in writer_futures:
                 f.result()
@@ -610,21 +595,17 @@ class TestWriterLossyTolerantSemantics:
         metrics_file = tmp_path / "metrics.jsonl"
         metrics_file.touch()
 
-        with open(metrics_file, "a") as lock_holder:
+        with metrics_file.open("a") as lock_holder:
             fcntl.flock(lock_holder.fileno(), fcntl.LOCK_EX)
 
             start_time = time.time()
-            result = metrics.append_metrics_record(
-                metrics_file, {"event": "contended_write"}
-            )
+            result = metrics.append_metrics_record(metrics_file, {"event": "contended_write"})
             elapsed = time.time() - start_time
 
             assert result is False, "append should return False under contention"
             assert elapsed < 2.0, f"append took {elapsed:.2f}s (should be < 2s)"
 
-        result = metrics.append_metrics_record(
-            metrics_file, {"event": "after_release"}
-        )
+        result = metrics.append_metrics_record(metrics_file, {"event": "after_release"})
         assert result is True, "append should succeed after lock released"
 
         content = metrics_file.read_text(encoding="utf-8")
@@ -773,12 +754,8 @@ def _sync_worker(
     metrics_file = artifact_root / "metrics.jsonl"
     offset_file = artifact_root / ".offset"
 
-    result_dict["metrics_content"] = (
-        metrics_file.read_text(encoding="utf-8") if metrics_file.exists() else ""
-    )
-    result_dict["offset"] = (
-        offset_file.read_text(encoding="utf-8").strip() if offset_file.exists() else "0"
-    )
+    result_dict["metrics_content"] = metrics_file.read_text(encoding="utf-8") if metrics_file.exists() else ""
+    result_dict["offset"] = offset_file.read_text(encoding="utf-8").strip() if offset_file.exists() else "0"
 
 
 class TestDualProcessFullCycle:
@@ -865,9 +842,7 @@ class TestExistingTelemetryZeroRegression:
         offset_val = (artifact_root / ".offset").read_text(encoding="utf-8").strip()
         assert offset_val == "0"
 
-        sync_status = json.loads(
-            (artifact_root / ".sync_status.json").read_text(encoding="utf-8")
-        )
+        sync_status = json.loads((artifact_root / ".sync_status.json").read_text(encoding="utf-8"))
         assert sync_status["failure_count"] == 0
         assert sync_status["pending_count"] == 0
 
@@ -898,7 +873,5 @@ class TestExistingTelemetryZeroRegression:
         offset_content = (artifact_root / ".offset").read_text(encoding="utf-8").strip()
         assert offset_content == "0"
 
-        attempt_content = float(
-            (artifact_root / ".last_sync_attempt").read_text(encoding="utf-8").strip()
-        )
+        attempt_content = float((artifact_root / ".last_sync_attempt").read_text(encoding="utf-8").strip())
         assert attempt_content > time.time() - 10

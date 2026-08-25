@@ -460,6 +460,8 @@ class TestMaybeSyncTelemetry:
         with metrics_file.open("w") as f:
             for r in records:
                 f.write(json.dumps(r) + "\n")
+        # Initialize .offset for new locking implementation
+        (artifact_dir / ".offset").write_text("0")
 
         mock_telemetry = MagicMock()
         mock_telemetry.batch_capture.return_value = True
@@ -1575,6 +1577,8 @@ class TestMaybeSyncTelemetryCompaction:
         with metrics_file.open("w") as f:
             for r in records:
                 f.write(json.dumps(r) + "\n")
+        # Initialize .offset for new locking implementation
+        (artifact_dir / ".offset").write_text("0")
 
         mock_telemetry = MagicMock()
         mock_telemetry.batch_capture.return_value = True

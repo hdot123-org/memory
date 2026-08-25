@@ -126,7 +126,7 @@ def _batch_send_records(
     offset_file: Path,
 ) -> tuple[int, int]:
     """Batch send records via telemetry_bridge. Returns (synced_count, last_synced_line).
-    
+
     Uses single-handle locking for offset writes to prevent TOCTOU.
     """
     from memory_core.tools.telemetry_bridge import telemetry
@@ -147,50 +147,47 @@ def _batch_send_records(
 
         synced_records += len(chunk)
         last_synced_line = chunk[-1][0]
-        
+
         # Write offset with exclusive lock (single-handle pattern)
-        with offset_file.open("r+", encoding="utf-8") as f:
-            with exclusive_lock(f):
-                f.seek(0)
-                f.truncate()
-                f.write(str(last_synced_line))
-                f.flush()
-                os.fsync(f.fileno())
+        with offset_file.open("r+", encoding="utf-8") as f, exclusive_lock(f):
+            f.seek(0)
+            f.truncate()
+            f.write(str(last_synced_line))
+            f.flush()
+            os.fsync(f.fileno())
 
     return synced_records, last_synced_line
 
 
 def _compact_metrics_jsonl(metrics_file: Path, last_synced_line: int, offset_file: Path) -> None:
     """Compact metrics.jsonl after successful sync, keeping only unsent records.
-    
+
     Uses single-handle r+ mode with exclusive lock to prevent TOCTOU:
     read -> truncate -> write -> fsync all happen within the same lock hold.
     Offset reset to "0" happens in the same critical section.
     """
     try:
-        with metrics_file.open("r+", encoding="utf-8") as f:
-            with exclusive_lock(f):
-                # Read all lines
-                all_lines = f.readlines()
-                
-                # Keep only lines after last_synced_line
-                remaining_lines = all_lines[last_synced_line:]
-                
-                # Truncate and rewrite in the same lock hold
-                f.seek(0)
-                f.truncate()
-                f.writelines(remaining_lines)
-                f.flush()
-                os.fsync(f.fileno())
-                
-                # Reset offset to "0" in the same critical section
-                with offset_file.open("r+", encoding="utf-8") as offset_f:
-                    with exclusive_lock(offset_f):
-                        offset_f.seek(0)
-                        offset_f.truncate()
-                        offset_f.write("0")
-                        offset_f.flush()
-                        os.fsync(offset_f.fileno())
+        with metrics_file.open("r+", encoding="utf-8") as f, exclusive_lock(f):
+            # Read all lines
+            all_lines = f.readlines()
+
+            # Keep only lines after last_synced_line
+            remaining_lines = all_lines[last_synced_line:]
+
+            # Truncate and rewrite in the same lock hold
+            f.seek(0)
+            f.truncate()
+            f.writelines(remaining_lines)
+            f.flush()
+            os.fsync(f.fileno())
+
+            # Reset offset to "0" in the same critical section
+            with offset_file.open("r+", encoding="utf-8") as offset_f, exclusive_lock(offset_f):
+                offset_f.seek(0)
+                offset_f.truncate()
+                offset_f.write("0")
+                offset_f.flush()
+                os.fsync(offset_f.fileno())
     except OSError as exc:
         _logger.debug("metrics.jsonl compaction failed: %s", exc)
 
@@ -202,7 +199,7 @@ def _compact_metrics_jsonl(metrics_file: Path, last_synced_line: int, offset_fil
 
 def _write_sync_status(artifact_root: Path, success: bool, pending_count: int) -> None:
     """Write .sync_status.json with lifecycle tracking fields.
-    
+
     Uses single-handle r+ mode with exclusive lock for atomic read-modify-write
     to prevent TOCTOU races during concurrent access.
     """
@@ -213,34 +210,33 @@ def _write_sync_status(artifact_root: Path, success: bool, pending_count: int) -
         # Create file if it doesn't exist
         if not status_file.exists():
             status_file.write_text("{}", encoding="utf-8")
-        
-        with status_file.open("r+", encoding="utf-8") as f:
-            with exclusive_lock(f):
-                # Read existing content
-                content = f.read()
-                status = {}
-                if content:
-                    try:
-                        status = json.loads(content)
-                    except json.JSONDecodeError:
-                        status = {}
-                
-                # Update status
-                if success:
-                    status["last_success_ts"] = now_iso_val
-                    status["failure_count"] = 0
-                else:
-                    status["last_failure_ts"] = now_iso_val
-                    status["failure_count"] = int(status.get("failure_count", 0)) + 1
-                
-                status["pending_count"] = pending_count
-                
-                # Write back in the same lock hold
-                f.seek(0)
-                f.truncate()
-                f.write(json.dumps(status, ensure_ascii=False))
-                f.flush()
-                os.fsync(f.fileno())
+
+        with status_file.open("r+", encoding="utf-8") as f, exclusive_lock(f):
+            # Read existing content
+            content = f.read()
+            status = {}
+            if content:
+                try:
+                    status = json.loads(content)
+                except json.JSONDecodeError:
+                    status = {}
+
+            # Update status
+            if success:
+                status["last_success_ts"] = now_iso_val
+                status["failure_count"] = 0
+            else:
+                status["last_failure_ts"] = now_iso_val
+                status["failure_count"] = int(status.get("failure_count", 0)) + 1
+
+            status["pending_count"] = pending_count
+
+            # Write back in the same lock hold
+            f.seek(0)
+            f.truncate()
+            f.write(json.dumps(status, ensure_ascii=False))
+            f.flush()
+            os.fsync(f.fileno())
     except OSError as exc:
         _logger.warning("Failed to write sync status to %s: %s", status_file, exc)
         print(
@@ -286,7 +282,7 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
        On failure: update .last_sync_attempt (not .offset, retry next time)
     8. Write .sync_status.json with lifecycle tracking fields
     9. All operations wrapped in try/except (exceptions never propagate)
-    
+
     Uses .sync_cycle.lock to serialize the entire "read pending → send → compact" cycle
     across processes. If lock acquisition fails (another process is syncing), this
     round is skipped to prevent TOCTOU races.
@@ -329,7 +325,7 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
                     # Lock is held by another process, skip this sync round
                     _logger.debug("Another process is syncing, skipping this round")
                     return
-                
+
                 try:
                     # Read offset inside the lock
                     offset = 0
@@ -347,7 +343,9 @@ def _maybe_sync_telemetry(artifact_root: Path) -> None:
 
                     # Step 5-8: Batch send and handle outcome (all within lock hold)
                     try:
-                        synced_count, last_synced_line = _batch_send_records(records_with_lines, BATCH_SIZE, offset_file)
+                        synced_count, last_synced_line = _batch_send_records(
+                            records_with_lines, BATCH_SIZE, offset_file
+                        )
 
                         all_synced = synced_count == len(records_with_lines)
                         if all_synced:
