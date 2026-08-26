@@ -9,6 +9,9 @@
 #
 # Contract:
 #   * Zero actionable items  -> auto-close the tracking issue (resolved)
+#   * Protected-only run with no open tracker -> CREATE the single reusable
+#     tracking issue (INFRA-557): residual protected branches must be visible
+#     to humans instead of exiting silently
 #   * Same actionable items  -> NO new issue, NO duplicate comment
 #   * Changed actionable items -> update the single tracking issue in place
 #       - added items   -> comment on the existing issue
