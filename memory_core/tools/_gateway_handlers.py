@@ -237,9 +237,7 @@ def _handle_session_start_setup(cwd: Path) -> None:
         from memory_core.constants import CURRENT_MEMORY_VERSION
 
         # Inject memory-core's resign wrapper
-        def _memory_core_resign_wrapper(
-            project_path: Path, changed_paths: list[str]
-        ) -> dict[str, Any]:
+        def _memory_core_resign_wrapper(project_path: Path, changed_paths: list[str]) -> dict[str, Any]:
             """Wrap memory-core's load_key + sign_project_incremental."""
             try:
                 from memory_core.tools.memory_hook_integrity_keys import load_key
@@ -250,9 +248,7 @@ def _handle_session_start_setup(cwd: Path) -> None:
                 key = load_key()
                 if key is None:
                     return {"resigned": False, "reason": "no signing key"}
-                sign_project_incremental(
-                    project_path, key, changed_paths=changed_paths
-                )
+                sign_project_incremental(project_path, key, changed_paths=changed_paths)
                 return {"resigned": True, "paths": changed_paths}
             except Exception as exc:
                 return {"resigned": False, "reason": str(exc)}
