@@ -11,12 +11,11 @@ import json
 from pathlib import Path
 
 import pytest
-
 from infra_core.packs.memory.ownership_reader import (
     classify_owned_path as infra_classify,
 )
-from memory_core.ownership import classify_owned_path as memory_classify
 
+from memory_core.ownership import classify_owned_path as memory_classify
 
 # Shared test corpus: list of (rel_path, expected_is_owned, expected_reason_contains)
 # Note: This corpus focuses on standard domain-based classification where both
@@ -80,9 +79,7 @@ recursive = true
 
 
 @pytest.mark.parametrize("rel_path,expected_owned,reason_hint", TEST_CORPUS)
-def test_ownership_classification_parity(
-    tmp_path: Path, rel_path: str, expected_owned: bool, reason_hint: str
-):
+def test_ownership_classification_parity(tmp_path: Path, rel_path: str, expected_owned: bool, reason_hint: str):
     """VAL-SEAM-007: infra-core and memory-core classify paths identically."""
     project = _create_test_project(tmp_path)
 
@@ -98,8 +95,7 @@ def test_ownership_classification_parity(
 
     # Both must agree on ownership status
     assert infra_is_owned == memory_is_owned == expected_owned, (
-        f"Path {rel_path}: infra={infra_is_owned}, memory={memory_is_owned}, "
-        f"expected={expected_owned}"
+        f"Path {rel_path}: infra={infra_is_owned}, memory={memory_is_owned}, expected={expected_owned}"
     )
 
     # If expected to be owned and has reason hint, check reason
