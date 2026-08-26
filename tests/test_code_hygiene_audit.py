@@ -406,6 +406,48 @@ class TestRobustness:
         """Skip .venv directories."""
         assert should_skip_dir(Path(".venv")) is True
 
+    def test_artifacts_dir_skip(self, tmp_path: Path) -> None:
+        """Skip artifacts directories (INFRA-559).
+
+        artifacts/ holds gitignored mission run snapshots (full working
+        copies of past sessions); they are not source code.
+        """
+        assert should_skip_dir(Path("artifacts")) is True
+
+    def test_scan_skips_artifacts_dir(self, tmp_path: Path) -> None:
+        """Scan must not descend into artifacts/ (INFRA-559).
+
+        Regression test: mission snapshots under artifacts/runs/ are full
+        working copies of this repo, so duplicate detection compared
+        snapshot-vs-snapshot and snapshot-vs-live-tree function pairs,
+        producing thousands of CODE_HYGIENE_DUPLICATE_BLOCK false positives.
+        """
+        # Two identical large functions: one in artifacts/, one in src/
+        dup_fn = (
+            "def _reset_gateway_adapter_config():\n"
+            "    import logging\n"
+            "    try:\n"
+            "        from memory_core.tools import memory_hook_gateway as gw\n"
+            "        gw.reload_adapter('default')\n"
+            "        gw._default_route_policy = None\n"
+            "        gw._default_policy_registry = None\n"
+            "        gw._default_write_policy = None\n"
+            "    except Exception as exc:\n"
+            "        logging.getLogger(__name__).debug('reset skipped: %s', exc)\n"
+        )
+        artifacts_dir = tmp_path / "artifacts" / "runs" / "INFRA-999"
+        artifacts_dir.mkdir(parents=True)
+        (artifacts_dir / "conftest.py").write_text(dup_fn)
+        src_dir = tmp_path / "src"
+        src_dir.mkdir()
+        (src_dir / "conftest.py").write_text(dup_fn)
+
+        findings = scan_directory(tmp_path, tmp_path)
+        duplicate_findings = [f for f in findings if f["rule_id"] == "CODE_HYGIENE_DUPLICATE_BLOCK"]
+        assert duplicate_findings == [], (
+            f"artifacts/ snapshots must not participate in duplicate detection; got: {duplicate_findings}"
+        )
+
 
 class TestOutputFormat:
     """Tests for output format compliance."""

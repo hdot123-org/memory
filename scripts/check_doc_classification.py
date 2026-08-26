@@ -18,8 +18,6 @@
 
 from __future__ import annotations
 
-import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -97,30 +95,23 @@ def scan_doc_classification() -> list[dict[str, str]]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Document classification directory guard")
-    parser.add_argument("--json", action="store_true", help="Output findings as JSON")
-    args = parser.parse_args()
+    # CLI skeleton shared with check_boundary.py (INFRA-559).
+    # Restore script dir to sys.path (PYTHONSAFEPATH blocks auto-insert;
+    # same P1-A pattern as evolution_scanner.py).
+    _script_dir = str(Path(__file__).resolve().parent)
+    if _script_dir not in sys.path:
+        sys.path.insert(0, _script_dir)
+    from guard_cli import run_cli
 
-    findings = scan_doc_classification()
+    def _format(f: dict[str, str]) -> str:
+        return f"  [{f['kind']}] {f['path']}\n    rule: {f['rule']}"
 
-    if args.json:
-        print(
-            json.dumps(
-                {"findings": findings, "count": len(findings)},
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
-    else:
-        if not findings:
-            print("doc classification guard: clean (0 findings)")
-        else:
-            print(f"doc classification guard: {len(findings)} finding(s)")
-            for f in findings:
-                print(f"  [{f['kind']}] {f['path']}")
-                print(f"    rule: {f['rule']}")
-
-    return 1 if findings else 0
+    return run_cli(
+        label="doc classification guard",
+        description="Document classification directory guard",
+        collect_findings=scan_doc_classification,
+        format_finding=_format,
+    )
 
 
 if __name__ == "__main__":
