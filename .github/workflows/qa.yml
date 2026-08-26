@@ -44,26 +44,20 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     # pytest 全量 + 覆盖率统计是 CI 最重 job，切自建 runner（ce-01）
     runs-on: [self-hosted, pve-linux]
-    env:
-      PIP_BREAK_SYSTEM_PACKAGES: 1
+    # INFRA-569：防挂死占位（夜间全量 pytest + 覆盖率，45min 上限）
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1  # 浅克隆，加速 checkout（自建 runner 走代理隧道，全量历史拉取慢）
-      # 自建 runner：扩展 PATH 包含 ~/.local/bin（pip 安装 console scripts 的位置）
-      - name: Extend PATH for self-hosted runner
-        run: echo "/home/runner/.local/bin" >> "$GITHUB_PATH"
-      # 自建 runner：系统已预装 Python 3.12 + pytest 全家桶，直接用系统解释器。
-      # 不能保留 if 恒假的 setup-python 引用：runner 启动阶段预下载所有 action，慢网络下超时杀死 job。
-      - name: Use system Python (self-hosted)
-        run: |
-          python3 --version
-          echo "/usr/bin" >> "$GITHUB_PATH"
+      # INFRA-569：按运行隔离 venv（pip 不再装进 ~/.local 跨 run 残留，
+      # rerun 从零解析；系统 site-packages 旧副本不再遮蔽安装）
+      - uses: ./.github/actions/setup-venv
       - name: Install package and test deps
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install pytest pytest-cov pytest-rerunfailures pytest-xdist
+          python -m pip install --upgrade pip --disable-pip-version-check
+          python -m pip install --disable-pip-version-check -e .
+          python -m pip install --disable-pip-version-check pytest pytest-cov pytest-rerunfailures pytest-xdist
       - name: Run pytest with coverage (gated at current threshold)
         # 门禁 pytest 在前：生成权威 coverage.xml（也是 gap 分析的数据源）
         env:
@@ -201,21 +195,23 @@ jobs:
 
   full-regression:
     name: Full Regression (Nightly only)
-    runs-on: ubuntu-latest
+    # INFRA-569：夜间最重 job 从 ubuntu-latest 切自建 runner（与 coverage-audit
+    # 对齐，消除 GitHub-hosted 配额/rerun 卡死面），60min 上限防挂死占位
+    runs-on: [self-hosted, pve-linux]
+    timeout-minutes: 60
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
-          cache: 'pip'
+          fetch-depth: 1
+      - uses: ./.github/actions/setup-venv
       - name: Install package and all deps
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install --upgrade pip --disable-pip-version-check
+          python -m pip install --disable-pip-version-check -e ".[dev]"
           # pip-audit 不在 dev extras 中，需单独安装（对齐 ci.yml advisory-security 先例）；
           # 缺失时下方 Dependency security scan 步骤 exit 127（2026-08-22 夜间连续 5 晚复现）
-          python -m pip install pip-audit
+          python -m pip install --disable-pip-version-check pip-audit
       - name: Full test suite with coverage
         # 加 xml 报告：供下方 gap 分析复用（--reuse-xml），避免内部再串行重跑全量
         env:

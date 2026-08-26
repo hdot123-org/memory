@@ -1,0 +1,34 @@
+# INFRA-569：自建 runner 的 jq 兜底安装（composite action）
+#
+# Ubuntu 默认不含 jq；ci-ok（check_droid_review.sh 的两阶段结论解析）与
+# notify-ci-complete（webhook payload 组装）依赖它。已装则跳过；缺失则下载
+# 静态二进制到 RUNNER_TEMP/bin，chmod +x 后前置 PATH，job 结束由 runner
+# 自动清理，不污染 runner 系统。curl/wget 择优（对齐 ci.yml shellcheck
+# 安装步骤先例）。脚本无 GitHub 表达式内联，shellcheck 洁净。
+name: "Ensure jq available"
+description: "Install jq into RUNNER_TEMP if missing (INFRA-569)"
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+        set -eu
+        if command -v jq >/dev/null; then
+          jq --version
+          exit 0
+        fi
+        echo "::notice::jq not found, downloading static binary to RUNNER_TEMP"
+        JQ_BIN="$RUNNER_TEMP/bin"
+        mkdir -p "$JQ_BIN"
+        if command -v curl >/dev/null; then
+          curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL \
+            -o "$JQ_BIN/jq" https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-amd64
+        elif command -v wget >/dev/null; then
+          wget -q -O "$JQ_BIN/jq" https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-amd64
+        else
+          echo "::error::Neither curl nor wget available to fetch jq"
+          exit 1
+        fi
+        chmod +x "$JQ_BIN/jq"
+        echo "$JQ_BIN" >> "$GITHUB_PATH"
+        "$JQ_BIN/jq" --version

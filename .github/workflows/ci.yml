@@ -24,35 +24,34 @@ concurrency:
 
 jobs:
   test:
-    # 重计算 job 走自建 runner（ce-01, 8C/19G）：测试全量跑 + 缓存复用，速度与额度双收益
+    # INFRA-569：CI 全量切自建 runner（pve-linux）。GitHub-hosted 在配额耗尽/
+    # rerun 场景会 queued 无作业而永久卡死（实证：run 32215817674 六 job 挂 7 天）；
+    # pve 2 台 runner 常时在线，concurrency 已消除同 PR 堆叠。
     runs-on: [self-hosted, pve-linux]
     strategy:
       matrix:
         python-version: ["3.12"]
-    env:
-      PIP_BREAK_SYSTEM_PACKAGES: 1
+    # INFRA-569：防挂死占位——全量测试 + 覆盖率历史上限 ~30min，45min 上限
+    # 给慢隧道下载留余量；无超时的挂死 job 会永久占用自建 runner 槽位
+    # （GitHub-hosted 的 queued 卡死正是本 issue 要消除的故障模式）。
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1  # 浅克隆，加速 checkout（自建 runner 走代理隧道，全量历史拉取慢）
-      # 自建 runner：扩展 PATH 包含 ~/.local/bin（pip 安装 console scripts 的位置）
-      - name: Extend PATH for self-hosted runner
-        run: echo "/home/runner/.local/bin" >> "$GITHUB_PATH"
-      # 自建 runner：系统已预装 Python 3.12 + 全套工具链（pytest/ruff/mypy/shellcheck/actionlint），
-      # 直接用系统解释器。注意：不能保留 if 恒假的 setup-python 引用——runner 在 job 启动阶段
-      # 会预下载 workflow 引用的所有 action（不管 if 条件），慢网络下 tarball 下载超时直接杀死 job。
-      - name: Use system Python (self-hosted)
-        run: |
-          python3 --version
-          echo "/usr/bin" >> "$GITHUB_PATH"
+      # INFRA-569：按运行隔离 venv。旧模式 pip 装进 ~/.local（跨 run 残留，
+      # rerun 时旧包毒化新 run）且系统 site-packages 存在 pip install -e 管不到
+      # 的旧副本（2026-08-25 版本遮蔽教训）。venv 按 run_id+attempt 放 RUNNER_TEMP，
+      # job 结束自动清理，rerun 从零解析。
+      - uses: ./.github/actions/setup-venv
       - name: Timestamp - build start
         run: |
           echo "Build started at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
       - name: Install package and test deps
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install pytest pytest-cov pytest-xdist
+          python -m pip install --upgrade pip --disable-pip-version-check
+          python -m pip install --disable-pip-version-check -e .
+          python -m pip install --disable-pip-version-check pytest pytest-cov pytest-xdist
       - name: Gateway import smoke test
         run: |
           # 验证 gateway 门面可导入（拆分后符号完整性检查）
@@ -62,7 +61,7 @@ jobs:
           echo "Install completed at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
       - name: Lint with ruff
         run: |
-          pip install ruff==0.16.1
+          pip install --disable-pip-version-check ruff==0.16.1
           ruff check .
       - name: Format check with ruff
         run: |
@@ -176,56 +175,63 @@ jobs:
           echo "=== TODO/FIXME scan complete ==="
       - name: Check dependency usage with deptry
         run: |
-          pip install deptry
+          pip install --disable-pip-version-check deptry
           deptry .
       - name: Generate API documentation with pdoc (advisory)
         continue-on-error: true
         run: |
-          pip install pdoc
+          pip install --disable-pip-version-check pdoc
           pdoc -o docs/api memory_core
           test -n "$(find docs/api -type f \( -name '*.html' -o -name '*.md' \) -print -quit)" && echo "PDOC_OUTPUT_OK" || echo "FAIL"
 
+  # INFRA-569：以下 job 全部从 ubuntu-latest 切到自建 runner。GitHub-hosted
+  # 在配额/rerun 场景 queued 无作业卡死（run 32215817674 实证）；安全敏感的
+  # pull_request_target 工作流（droid-review / evolution-governance）不在此列，
+  # 必须保持 GitHub-hosted（不受 PR 内容影响的受信定义 + secrets 边界）。
   advisory-security:
     name: Advisory dependency security scan
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, pve-linux]
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
-          cache: 'pip'
+          fetch-depth: 1
+      - uses: ./.github/actions/setup-venv
       - name: Install package and pip-audit
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install pip-audit
+          python -m pip install --upgrade pip --disable-pip-version-check
+          python -m pip install --disable-pip-version-check -e .
+          python -m pip install --disable-pip-version-check pip-audit
       - name: Dependency audit
         run: pip-audit --progress-spinner off
 
   advisory-telemetry-audit:
     name: Advisory telemetry coverage audit
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, pve-linux]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
       - name: Telemetry coverage audit
         run: bash scripts/audit_telemetry_coverage.sh
 
   mypy-strict-memory-core:
     name: Enforce mypy --strict (memory_core/)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, pve-linux]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
-          cache: 'pip'
+          fetch-depth: 1
+      - uses: ./.github/actions/setup-venv
       - name: Install package and mypy
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install mypy==2.3.0
+          python -m pip install --upgrade pip --disable-pip-version-check
+          python -m pip install --disable-pip-version-check -e .
+          python -m pip install --disable-pip-version-check mypy==2.3.0
       - name: Run mypy --strict (memory_core/)
         shell: bash
         run: |
@@ -238,27 +244,31 @@ jobs:
   # 改动 test 的 Python 矩阵时无需同步调整 protection 配置
   mypy-strict-scripts:
     name: Enforce mypy --strict (scripts/)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, pve-linux]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
-          cache: 'pip'
+          fetch-depth: 1
+      - uses: ./.github/actions/setup-venv
       - name: Install package and mypy
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install mypy==2.3.0
+          python -m pip install --upgrade pip --disable-pip-version-check
+          python -m pip install --disable-pip-version-check -e .
+          python -m pip install --disable-pip-version-check mypy==2.3.0
       - name: Run mypy --strict on scripts/
         run: python -m mypy --strict scripts/
 
   ci-ok:
     name: ci-ok
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, pve-linux]
+    timeout-minutes: 90
     needs: [test, advisory-security, advisory-telemetry-audit, mypy-strict-scripts, mypy-strict-memory-core]
     if: always()
     steps:
+      # INFRA-569：check_droid_review.sh 的两阶段结论解析依赖 jq，
+      # 自建 runner 不保证预装，兜底装进 RUNNER_TEMP（job 结束自动清理）
+      - uses: ./.github/actions/ensure-jq
       - name: Verify all required jobs succeeded
         run: |
           echo "test: ${{ needs.test.result }}"
@@ -298,10 +308,13 @@ jobs:
 
   notify-ci-complete:
     name: Notify CI complete to n8n
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, pve-linux]
+    timeout-minutes: 10
     needs: ci-ok
     if: always() && github.event_name == 'pull_request'
     steps:
+      # INFRA-569：webhook payload 组装依赖 jq，自建 runner 不保证预装，兜底安装
+      - uses: ./.github/actions/ensure-jq
       - name: Verify webhook secrets
         run: |
           if [ -z "$WEBHOOK_URL" ]; then
