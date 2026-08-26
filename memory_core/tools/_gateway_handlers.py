@@ -233,12 +233,13 @@ def _handle_session_start_setup(cwd: Path) -> None:
             probe_version_and_sync,
             set_resign_hook,
         )
+
         from memory_core.constants import CURRENT_MEMORY_VERSION
 
         # Inject memory-core's resign wrapper
         def _memory_core_resign_wrapper(
             project_path: Path, changed_paths: list[str]
-        ) -> dict:
+        ) -> dict[str, Any]:
             """Wrap memory-core's load_key + sign_project_incremental."""
             try:
                 from memory_core.tools.memory_hook_integrity_keys import load_key
