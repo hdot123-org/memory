@@ -6251,7 +6251,10 @@ def test_heartbeat_detects_stale_and_creates_alert():
 
         with patch("evolution_heartbeat.subprocess.run") as mock_run:
             # Mock: no open issues, no existing alert, then create alert
+            # INFRA-578: stale path now dispatches the scanner first (workflow run)
             mock_run.side_effect = [
+                # INFRA-578 self-heal: gh workflow run (dispatch stale scanner)
+                subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
                 # check_pr_coverage: list issues (none)
                 subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
                 # resolve_cleared_alerts → list_open_alert_issues: no open alerts
@@ -6277,8 +6280,11 @@ def test_heartbeat_detects_stale_and_creates_alert():
 
             # Should exit 1 (anomaly detected)
             assert exit_code == 1, "Should exit 1 when anomaly detected"
-            # Verify alert was created (pr list + open alert list + alert dedup check + create)
-            assert mock_run.call_count == 4, "Should call gh 4 times (pr list + open alert list + alert check + create)"
+            # INFRA-578: stale path adds a self-heal workflow dispatch before the alert flow
+            # (dispatch + pr list + open alert list + alert check + create)
+            assert mock_run.call_count == 5, (
+                "Should call gh 5 times (self-heal dispatch + pr list + open alert list + alert check + create)"
+            )
 
 
 # ============================================================================
@@ -6898,7 +6904,9 @@ def test_main_dedup_skips_duplicate_alert(tmp_path):
         patch("evolution_heartbeat.check_scanner_liveness", return_value={"alive": False, "message": "Scanner stale"}),
     ):
         # check_pr_coverage list -> no issues; resolve_cleared_alerts → list_open_alert_issues -> no open alerts; alert_issue_exists -> one open alert
+        # INFRA-578: stale path first dispatches the scanner (gh workflow run)
         mock_run.side_effect = [
+            subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
             subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
             subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr=""),
             subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps([{"number": 7}]), stderr=""),

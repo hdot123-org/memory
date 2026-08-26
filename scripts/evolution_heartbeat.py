@@ -282,6 +282,35 @@ def check_scanner_liveness(
     return result
 
 
+def trigger_scanner_dispatch() -> bool:
+    """Self-heal: trigger evolution-scan via workflow_dispatch (INFRA-578).
+
+    GitHub-hosted scheduled runs are load-shed at peak minutes (cron slots on
+    :00/:30 can be dropped entirely, not queued). When the heartbeat detects a
+    stale scanner, it re-triggers the scan immediately instead of waiting for
+    the next cron slot that may be dropped again.
+
+    Returns True if the dispatch was accepted by the GitHub API.
+    """
+    try:
+        proc = subprocess.run(
+            ["gh", "workflow", "run", SCANNER_WORKFLOW],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"[heartbeat] Scanner dispatch failed: {exc}")
+        return False
+
+    if proc.returncode != 0:
+        print(f"[heartbeat] Scanner dispatch failed: {proc.stderr.strip()}")
+        return False
+
+    print(f"[heartbeat] Self-heal: dispatched {SCANNER_WORKFLOW} via workflow_dispatch")
+    return True
+
+
 def check_heartbeat_marker(max_age_hours: int = FRESHNESS_THRESHOLD_HOURS) -> dict[str, Any]:
     """Check dedicated heartbeat.json marker freshness (INFRA-204).
 
@@ -624,6 +653,11 @@ def main(history_path: Path = HISTORY_PATH) -> int:
         print(f"[heartbeat] {liveness['message']}")
     else:
         print(f"[heartbeat] ALERT: {liveness['message']}")
+        # INFRA-578: self-heal first — re-trigger the scanner instead of
+        # waiting for the next cron slot (peak-minute slots get load-shed).
+        # Dispatch failure does NOT suppress the alert below; the alert issue
+        # still gets created so the pipeline stays observable.
+        trigger_scanner_dispatch()
 
     # Advisory: file-based checks (may show stale if cache missed — NOT an alert basis)
     heartbeat = check_heartbeat_marker()

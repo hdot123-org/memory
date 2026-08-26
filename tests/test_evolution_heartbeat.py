@@ -4,6 +4,7 @@ INFRA-213: Tests the scanner liveness check (gh run list) and main() orchestrati
 """
 
 import json
+import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -665,3 +666,174 @@ def test_resolve_cleared_alerts_skips_duplicate_comment_close_fails():
     # Verify no duplicate comment was posted
     comment_calls = [c for c in mock_run.call_args_list if "comment" in c.args[0]]
     assert len(comment_calls) == 0, "Should not post duplicate self-heal comment"
+
+
+# ---------------------------------------------------------------------------
+# INFRA-578: scanner stale self-heal via workflow_dispatch
+# ---------------------------------------------------------------------------
+
+
+def test_infra578_trigger_scanner_dispatch_success():
+    """INFRA-578: dispatch succeeds → True, correct gh workflow run command."""
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(returncode=0)
+        result = evolution_heartbeat.trigger_scanner_dispatch()
+
+    assert result is True
+    mock_run.assert_called_once()
+    args = mock_run.call_args[0][0]
+    assert args == ["gh", "workflow", "run", evolution_heartbeat.SCANNER_WORKFLOW]
+
+
+def test_infra578_trigger_scanner_dispatch_failure():
+    """INFRA-578: gh workflow run fails → False (alert still raised by main)."""
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(returncode=1, stderr="workflow not found")
+        result = evolution_heartbeat.trigger_scanner_dispatch()
+
+    assert result is False
+
+
+def test_infra578_trigger_scanner_dispatch_timeout():
+    """INFRA-578: subprocess timeout → False, no exception escapes."""
+    with patch("evolution_heartbeat.subprocess.run", side_effect=subprocess.TimeoutExpired("gh", 30)):
+        result = evolution_heartbeat.trigger_scanner_dispatch()
+
+    assert result is False
+
+
+def test_infra578_main_stale_scanner_triggers_dispatch():
+    """INFRA-578: main() with stale scanner must attempt self-heal dispatch before alerting."""
+    runs = [_recent_run(5.0, "success")]  # stale
+    with (
+        patch("evolution_heartbeat.subprocess.run") as mock_run,
+        patch("evolution_heartbeat.check_heartbeat_marker") as mock_hb,
+        patch("evolution_heartbeat.check_history_freshness") as mock_hist,
+        patch("evolution_heartbeat.check_pr_coverage") as mock_cov,
+        patch("evolution_heartbeat.alert_issue_exists", return_value=False),
+        patch("evolution_heartbeat.create_alert_issue") as mock_create,
+        patch("evolution_heartbeat.write_monitor_heartbeat"),
+        patch("evolution_heartbeat.trigger_scanner_dispatch") as mock_dispatch,
+    ):
+        mock_run.return_value = _gh_result(json.dumps(runs))
+        mock_hb.return_value = {"stale": True, "message": "advisory"}
+        mock_hist.return_value = {"stale": True, "message": "advisory"}
+        mock_cov.return_value = {
+            "issues_without_pr": 0,
+            "total_issues": 0,
+            "missing": [],
+        }
+        rc = evolution_heartbeat.main()
+
+    assert rc == 1
+    mock_dispatch.assert_called_once()
+    # Alert must still be created even though dispatch was attempted
+    mock_create.assert_called_once_with(scanner_stale=True, issues_without_pr=0)
+
+
+def test_infra578_main_alive_scanner_skips_dispatch():
+    """INFRA-578: main() with alive scanner must NOT dispatch (no spurious triggers)."""
+    runs = [_recent_run(0.5, "success")]  # alive
+    with (
+        patch("evolution_heartbeat.subprocess.run") as mock_run,
+        patch("evolution_heartbeat.check_heartbeat_marker") as mock_hb,
+        patch("evolution_heartbeat.check_history_freshness") as mock_hist,
+        patch("evolution_heartbeat.check_pr_coverage") as mock_cov,
+        patch("evolution_heartbeat.write_monitor_heartbeat"),
+        patch("evolution_heartbeat.trigger_scanner_dispatch") as mock_dispatch,
+    ):
+        mock_run.return_value = _gh_result(json.dumps(runs))
+        mock_hb.return_value = {"stale": True, "message": "advisory"}
+        mock_hist.return_value = {"stale": True, "message": "advisory"}
+        mock_cov.return_value = {
+            "issues_without_pr": 0,
+            "total_issues": 0,
+            "missing": [],
+        }
+        rc = evolution_heartbeat.main()
+
+    assert rc == 0
+    mock_dispatch.assert_not_called()
+
+
+def test_infra578_main_dispatch_failure_still_alerts():
+    """INFRA-578: dispatch fails → alert still created, exit 1 (observability preserved)."""
+    runs = [_recent_run(5.0, "success")]  # stale
+    with (
+        patch("evolution_heartbeat.subprocess.run") as mock_run,
+        patch("evolution_heartbeat.check_heartbeat_marker") as mock_hb,
+        patch("evolution_heartbeat.check_history_freshness") as mock_hist,
+        patch("evolution_heartbeat.check_pr_coverage") as mock_cov,
+        patch("evolution_heartbeat.alert_issue_exists", return_value=False),
+        patch("evolution_heartbeat.create_alert_issue") as mock_create,
+        patch("evolution_heartbeat.write_monitor_heartbeat"),
+        patch("evolution_heartbeat.trigger_scanner_dispatch", return_value=False),
+    ):
+        mock_run.return_value = _gh_result(json.dumps(runs))
+        mock_hb.return_value = {"stale": True, "message": "advisory"}
+        mock_hist.return_value = {"stale": True, "message": "advisory"}
+        mock_cov.return_value = {
+            "issues_without_pr": 0,
+            "total_issues": 0,
+            "missing": [],
+        }
+        rc = evolution_heartbeat.main()
+
+    assert rc == 1
+    mock_create.assert_called_once_with(scanner_stale=True, issues_without_pr=0)
+
+
+# ---------------------------------------------------------------------------
+# INFRA-578: off-peak cron minutes (GitHub load-shed avoidance)
+# ---------------------------------------------------------------------------
+
+
+def test_infra578_scan_cron_uses_offpeak_minutes():
+    """INFRA-578: evolution-scan cron minutes must avoid :00/:30 peak windows.
+
+    GitHub-hosted scheduled runs at peak minutes get load-shed (dropped, not
+    queued). Evidence 2026-08-26: */30 drifted to 55m-139m gaps with whole
+    slots dropped after 20:32Z.
+    """
+    import yaml
+
+    workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-scan.yml"
+    with workflow_path.open() as f:
+        data = yaml.safe_load(f)
+
+    on_triggers = data.get("on") or data.get(True)
+    cron_entry = on_triggers["schedule"][0].get("cron", "")
+    assert cron_entry, "scan workflow must define a cron"
+
+    minute_field = cron_entry.split()[0]
+    minutes = {int(m) for part in minute_field.split(",") for m in _expand_cron_part(part)}
+    assert minutes, "cron minute field must expand to at least one minute"
+    assert not (minutes & {0, 30}), f"Cron minutes must avoid :00/:30 (GitHub peak load-shed), got: {sorted(minutes)}"
+
+
+def test_infra578_heartbeat_cron_uses_offpeak_minutes():
+    """INFRA-578: evolution-heartbeat cron minute must avoid :00 peak window."""
+    import yaml
+
+    workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-heartbeat.yml"
+    with workflow_path.open() as f:
+        data = yaml.safe_load(f)
+
+    on_triggers = data.get("on") or data.get(True)
+    cron_entry = on_triggers["schedule"][0].get("cron", "")
+    assert cron_entry, "heartbeat workflow must define a cron"
+
+    minute_field = cron_entry.split()[0]
+    minutes = {int(m) for part in minute_field.split(",") for m in _expand_cron_part(part)}
+    assert minutes, "cron minute field must expand to at least one minute"
+    assert 0 not in minutes, f"Cron minute must avoid :00 (GitHub peak load-shed), got: {sorted(minutes)}"
+
+
+def _expand_cron_part(part: str) -> list[int]:
+    """Expand a single cron minute field component (N, */S, or N-M) to minutes."""
+    if "-" in part:
+        lo, hi = part.split("-", 1)
+        return list(range(int(lo), int(hi) + 1))
+    if part.startswith("*/"):
+        return list(range(0, 60, int(part[2:])))
+    return [int(part)]
