@@ -109,6 +109,12 @@ def test_cli_returns_nonzero_on_findings(tmp_path):
         f"REPO_ROOT = Path({str(fake_repo)!r})",
     )
     fake_script.write_text(src, encoding="utf-8")
+    # INFRA-559: main() imports the shared CLI skeleton from guard_cli.py;
+    # copy it next to the relocated script so the copy stays runnable.
+    (fake_repo / "guard_cli.py").write_text(
+        (SCRIPT_PATH.parent / "guard_cli.py").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
 
     result = subprocess.run(
         [sys.executable, str(fake_script)],

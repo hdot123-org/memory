@@ -16,8 +16,6 @@
 
 from __future__ import annotations
 
-import argparse
-import json
 import os
 import re
 import subprocess
@@ -220,25 +218,24 @@ def scan_runtime_leaks() -> list[dict[str, str]]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="memory-core BOUNDARY pollution guard")
-    parser.add_argument("--json", action="store_true", help="Output findings as JSON")
-    args = parser.parse_args()
+    # CLI skeleton shared with check_doc_classification.py (INFRA-559).
+    # Restore script dir to sys.path (PYTHONSAFEPATH blocks auto-insert;
+    # same P1-A pattern as evolution_scanner.py).
+    _script_dir = str(Path(__file__).resolve().parent)
+    if _script_dir not in sys.path:
+        sys.path.insert(0, _script_dir)
+    from guard_cli import run_cli
 
-    findings = scan_business_kb_files() + scan_runtime_leaks()
+    def _format(f: dict[str, str]) -> str:
+        loc = f"{f['path']}:{f.get('line', '-')}"
+        return f"  [{f['kind']}] {loc}  matched={f['matched']!r}\n    rule: {f['rule']}"
 
-    if args.json:
-        print(json.dumps({"findings": findings, "count": len(findings)}, ensure_ascii=False, indent=2))
-    else:
-        if not findings:
-            print("BOUNDARY guard: clean (0 findings)")
-        else:
-            print(f"BOUNDARY guard: {len(findings)} finding(s)")
-            for f in findings:
-                loc = f"{f['path']}:{f.get('line', '-')}"
-                print(f"  [{f['kind']}] {loc}  matched={f['matched']!r}")
-                print(f"    rule: {f['rule']}")
-
-    return 1 if findings else 0
+    return run_cli(
+        label="BOUNDARY guard",
+        description="memory-core BOUNDARY pollution guard",
+        collect_findings=lambda: scan_business_kb_files() + scan_runtime_leaks(),
+        format_finding=_format,
+    )
 
 
 if __name__ == "__main__":
