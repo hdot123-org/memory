@@ -383,6 +383,19 @@ scanner 每次运行时会调用 `_reopen_closed_issue()`（`scripts/evolution_s
 - `--scheduled` — 定时任务模式，扫描所有远程分支，删除无 open PR 且最后 commit 超过 24 小时的孤立分支
 - `--immediate <branch>` — 立即删除指定分支（用于 PR 合并后清理）
 
+#### 退役清单人工裁决通道
+
+`scripts/branch_cleanup_retired.txt`（INFRA-388）为被 `branch_cleanup.sh` unique-commits 守卫永久保护的分支提供人工裁决退出通道。清单格式为 `<branch> | <INFRA ref> | <evidence>`（三栏 `|` 分隔，每栏非空），每行记录分支名、关联 INFRA 引用与退役证据链。合法用途分两类：
+
+1. **被 main 等价实现取代**：分支 PR 已 MERGED/CLOSED，其内容通过另一 PR 以等价实现落入 main，content-containment 检查无法识别跨实现等价性
+2. **一次性验证 fixture 分支**：PR body 显式声明 Do-NOT-merge（如 "Do NOT merge" 或 "此 PR 不应被合并"），验证完成后即废弃（如 PR #921、#922）
+
+退役清单经 PR review 合并，即完成人工审批。清单上的分支在下一轮 hourly scheduled cleanup 中被豁免 unique-commits 保护、落入删除路径（MERGED 1h / CLOSED 4h / ORPHAN 24h 分层阈值自动生效）。
+
+#### Tracker 播报行为（每周脉搏）
+
+`scripts/branch_cleanup_issue.sh` 管理单例 tracker issue（打 `automation,branch-cleanup` 双标签）。当 protected 分支列表非空且当前无 open tracker 时，自动创建 tracker issue 列出所有残留分支；集合变化时原位更新已有 issue（增删项以 comment 记录）；零 actionable 时自动关闭。配合 VAL-NTF-002 的 7 天 TTL（evolution scanner `close_expired_notifications()` 强关过期 tracker），若残分支在 TTL 关闭后仍然存在，下一小时 cron 将重建 tracker，构成「每周脉搏」循环——人/agent 看到 tracker 后核实证据并喂入退役清单，合并后分支即在下一次 cleanup 中自动删除。
+
 heartbeat 告警自愈（`resolve_cleared_alerts()`）在本轮 tick 中异常类型全部消失时自动关闭告警 issue 并附中文自愈评论；info 级持续 finding 经 `check_persistent_info_findings()` 连续 ≥10 次快照出现后输出 `suppress.json` 条目提案（只打印不写盘，过期自动解除）。管道全链路（含 GATE A 三条放行路径与单向同步决策）见 [Issue 流转链路文档 §10](docs/architecture/issue-flow.md)。
 
 完整的 GitHub↔Linear Issue 流转链路与职责约定见 [Issue 流转链路文档](docs/architecture/issue-flow.md)。
