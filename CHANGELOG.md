@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.41.2](https://github.com/hdot123-org/memory/compare/v0.41.1...v0.41.2) (2026-08-26)
+
+
+### Bug Fixes
+
+* **branch-cleanup:** VAL-NTF-001 播报线修复——删除 protected-only 静默退出 guard ([#1036](https://github.com/hdot123-org/memory/issues/1036)) ([eed9903](https://github.com/hdot123-org/memory/commit/eed990300c9f7f9e5c278be0e1f196a70342c677))
+* **ci:** review-shard 超时改为 SHARD_TIMEOUT_MINUTES 变量驱动，修复 PR [#1027](https://github.com/hdot123-org/memory/issues/1027) 三连超时 ([#1032](https://github.com/hdot123-org/memory/issues/1032)) ([de76e88](https://github.com/hdot123-org/memory/commit/de76e8894f04f78390a7b14a1ad140c287d15fb9))
+* M3 audit robustness (tomllib + P3 fixes) ([#1034](https://github.com/hdot123-org/memory/issues/1034)) ([2224217](https://github.com/hdot123-org/memory/commit/22242172bae04113dc70360c5d50a6c54d13ecd2))
+* **tests:** VAL-VERSION-002 子进程版本测试封闭化——固定 cwd=REPO_ROOT 消除自建 runner 环境遮蔽 ([#1031](https://github.com/hdot123-org/memory/issues/1031)) ([84d49c6](https://github.com/hdot123-org/memory/commit/84d49c6b060596ba95e0c45192aed03fcd84325a))
+
+
+### Documentation
+
+* **branch-cleanup:** INFRA-557 同步脚本契约注释——补记 protected-only 无 tracker 建单条款 ([#1037](https://github.com/hdot123-org/memory/issues/1037)) ([699c7a7](https://github.com/hdot123-org/memory/commit/699c7a7539bdd141f20c24c6c1b276269067d524))
+* 补充分支清理章节——退役清单通道与每周脉搏播报 ([#1038](https://github.com/hdot123-org/memory/issues/1038)) ([7f8e1c9](https://github.com/hdot123-org/memory/commit/7f8e1c939e8c8ae9f404fd2e4fab10d185d47091))
+
 ## [0.41.1](https://github.com/hdot123-org/memory/compare/v0.41.0...v0.41.1) (2026-08-25)
 
 
