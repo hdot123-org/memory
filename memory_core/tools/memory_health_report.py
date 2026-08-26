@@ -30,8 +30,8 @@ def _run_layout_audit(target: Path) -> dict[str, Any] | None:
     This is a read-only operation that does not modify any files.
     """
     try:
-        # Import audit module - may not be available
-        from memory_core.tools.audit_project_layout import audit_project_layout
+        # Import from infra_core memory pack (M3 seam)
+        from infra_core.packs.memory.layout_audit import audit_project_layout
 
         result = audit_project_layout(target)
         summary = result.to_dict().get("summary", {})

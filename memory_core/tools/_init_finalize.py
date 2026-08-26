@@ -146,9 +146,13 @@ def _finalize_ownership_toml(
         elif ownership_path.exists():
             if mode == "update":
                 try:
-                    from .version_sync import patch_ownership_memory_version
+                    # M3 seam: use migrated version_sync from infra_core
+                    from infra_core.engine.version_sync import (
+                        patch_ownership_memory_version,
+                    )
                 except ImportError:
-                    from memory_core.tools.version_sync import patch_ownership_memory_version
+                    # Fallback to local copy if infra_core not available
+                    from .version_sync import patch_ownership_memory_version
                 if patch_ownership_memory_version(ownership_path, CURRENT_MEMORY_VERSION):
                     result["created"].append(
                         f"file:ownership.toml (memory_version patched to {CURRENT_MEMORY_VERSION})"
@@ -185,7 +189,7 @@ def _finalize_post_audit(
 ) -> None:
     """Run post-initialization audit and collect P1 findings."""
     try:
-        from .audit_project_layout import audit_project_layout
+        from infra_core.packs.memory.layout_audit import audit_project_layout
 
         audit_result = audit_project_layout(target)
         for finding in audit_result.findings:

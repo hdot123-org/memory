@@ -227,10 +227,36 @@ def _handle_session_start_setup(cwd: Path) -> None:
 
     # M1: Auto-version-follow probe
     # Detect version mismatch and auto-sync consumer projects
+    # M3 seam: inject resign hook and pass current_version parameter
     try:
-        from memory_core.tools.version_sync import probe_version_and_sync
+        from infra_core.engine.version_sync import (
+            probe_version_and_sync,
+            set_resign_hook,
+        )
 
-        probe_version_and_sync(cwd)
+        from memory_core.constants import CURRENT_MEMORY_VERSION
+
+        # Inject memory-core's resign wrapper
+        def _memory_core_resign_wrapper(project_path: Path, changed_paths: list[str]) -> dict[str, Any]:
+            """Wrap memory-core's load_key + sign_project_incremental."""
+            try:
+                from memory_core.tools.memory_hook_integrity_keys import load_key
+                from memory_core.tools.memory_hook_integrity_manifest import (
+                    sign_project_incremental,
+                )
+
+                key = load_key()
+                if key is None:
+                    return {"resigned": False, "reason": "no signing key"}
+                sign_project_incremental(project_path, key, changed_paths=changed_paths)
+                return {"resigned": True, "paths": changed_paths}
+            except Exception as exc:
+                return {"resigned": False, "reason": str(exc)}
+
+        set_resign_hook(_memory_core_resign_wrapper)
+
+        # Pass current_version parameter (no longer hardcoded in infra-core)
+        probe_version_and_sync(cwd, CURRENT_MEMORY_VERSION)
     except Exception as exc:
         # Fail-safe: any exception must not block hook main chain
         _logger.debug("version probe skipped: %s", exc)
