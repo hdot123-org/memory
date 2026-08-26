@@ -7,8 +7,8 @@ Contract under test:
 - protected set shrunk-> update body + comment; auto-close when empty
 - nothing actionable  -> close the tracking issue as resolved
 - pre-INFRA-385 duplicate open issues are closed pointing to the active one
-- VAL-NTF-001: issue creation requires deleted_count > 0; protected-only runs
-  must NOT create a new issue (may comment on existing tracker if one exists)
+- VAL-NTF-001 (removed): protected-only runs with no open tracker now CREATE
+  a tracker (weekly pulse); existing tracker is updated in place as before
 """
 
 from __future__ import annotations
@@ -424,21 +424,68 @@ def test_shellcheck_clean():
 
 
 # ============================================================================
-# VAL-NTF-001a: protected-only run with no existing tracker creates NO issue
+# VAL-NTF-001a (reversed): protected-only run with no tracker creates one
 # ============================================================================
-def test_protected_only_no_tracker_creates_nothing(tmp_path: Path):
-    """When deleted_count == 0 and no tracker exists, protected-only run must
-    NOT create a new tracking issue. It may log the event but must not touch
-    GitHub issues."""
+def test_protected_only_no_tracker_creates_tracker(tmp_path: Path):
+    """When deleted_count == 0, protected_count > 0, and no tracker exists,
+    the script must CREATE a new tracking issue. This is the weekly pulse
+    behavior: protected-only runs now create a tracker so residual branches
+    are visible to humans.
+
+    Assertions:
+    - exit code 0
+    - stdout contains 'issue_action=created'
+    - exactly 1 gh issue create call with --label 'automation,branch-cleanup'
+    - issue body contains the protected branch name
+    - open_issue_numbers() has exactly 1 issue
+    """
     harness = GhMockHarness(tmp_path)
 
-    exit_code, stdout, _ = harness.run_script(protected=["fix/pr-ref-consistency-gate (4 unique commits)"])
+    protected_branch = "fix/pr-ref-consistency-gate (4 unique commits)"
+    exit_code, stdout, _ = harness.run_script(protected=[protected_branch])
 
-    assert exit_code == 0, stdout
-    assert "issue_action=none" in stdout or "protected_only" in stdout.lower()
+    assert exit_code == 0, f"Script must exit successfully, got {exit_code}. stdout: {stdout}"
+    assert "issue_action=created" in stdout, (
+        f"stdout must contain 'issue_action=created', got: {stdout}"
+    )
+
     calls = harness.read_calls()
-    assert calls_matching(calls, ["issue", "create"]) == [], "protected-only run must NOT create an issue"
-    assert harness.open_issue_numbers() == [], "no issue should be created"
+    create_calls = calls_matching(calls, ["issue", "create"])
+    assert len(create_calls) == 1, (
+        f"Expected exactly 1 'gh issue create' call, got {len(create_calls)}. "
+        f"Create calls: {create_calls}"
+    )
+
+    # Verify --label value is 'automation,branch-cleanup'
+    create_call = create_calls[0]
+    label_idx = None
+    for i, arg in enumerate(create_call.args):
+        if arg == "--label":
+            label_idx = i + 1
+            break
+    assert label_idx is not None, f"--label not found in create call args: {create_call.args}"
+    assert create_call.args[label_idx] == "automation,branch-cleanup", (
+        f"--label must be 'automation,branch-cleanup', got '{create_call.args[label_idx]}'"
+    )
+
+    # Verify --body contains the protected branch name
+    body_idx = None
+    for i, arg in enumerate(create_call.args):
+        if arg == "--body":
+            body_idx = i + 1
+            break
+    assert body_idx is not None, f"--body not found in create call args: {create_call.args}"
+    issue_body = create_call.args[body_idx]
+    assert protected_branch in issue_body, (
+        f"Issue body must contain protected branch name '{protected_branch}'. "
+        f"Body: {issue_body}"
+    )
+
+    # Verify exactly 1 open issue exists
+    open_issues = harness.open_issue_numbers()
+    assert len(open_issues) == 1, (
+        f"Expected exactly 1 open issue, got {len(open_issues)}: {open_issues}"
+    )
 
 
 # ============================================================================

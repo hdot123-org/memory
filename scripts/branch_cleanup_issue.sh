@@ -222,17 +222,7 @@ get_protected_from_body() {
 }
 
 if [[ -z "$TRACKER_URL" ]]; then
-  # -----------------------------------------------------------------------
-  # No open tracking issue: create the single reusable one ONLY if there
-  # were actual deletions (VAL-NTF-001). Protected-only runs do not create
-  # a new issue.
-  # -----------------------------------------------------------------------
-  if [[ "$DELETED_COUNT" -eq 0 ]]; then
-    echo "Protected-only run with no existing tracker: logging but not creating issue (VAL-NTF-001)"
-    echo "issue_action=none"
-    exit 0
-  fi
-
+  # No open tracking issue: create the single reusable one.
   echo "Creating tracking issue"
   BODY="## Automated Branch Cleanup (tracking)
 
