@@ -18,8 +18,7 @@ import time
 from pathlib import Path
 
 import pytest
-
-from memory_core.tools.version_sync import (
+from infra_core.engine.version_sync import (
     SYNC_LOCK_STALE_SECONDS,
     _sync_lock,
     sync_single_project,
@@ -53,9 +52,9 @@ class TestSyncLockLifecycle:
     """Lock created during sync, removed after; no residue on any path."""
 
     def test_lock_removed_after_successful_sync(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        import memory_core.tools.version_sync as vs
+        import infra_core.engine.version_sync as vs  # implementation module (M3)
 
-        monkeypatch.setattr(vs, "_try_resign_all", lambda p, c: {"resigned": True, "paths": c})
+        monkeypatch.setattr(vs, "_resign_hook", lambda p, c: {"resigned": True, "paths": c})
 
         project = _make_consumer(tmp_path)
         lock_file = project / "memory" / "system" / ".sync.lock"
@@ -89,7 +88,7 @@ class TestConcurrentHolderSkips:
     """A fresh lock held by another process → sync skips without writes."""
 
     def test_fresh_lock_blocks_sync(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("memory_core.tools.version_sync.SYNC_LOCK_WAIT_SECONDS", 0.0)
+        monkeypatch.setattr("infra_core.engine.version_sync.SYNC_LOCK_WAIT_SECONDS", 0.0)
 
         project = _make_consumer(tmp_path)
         lock_file = project / "memory" / "system" / ".sync.lock"
@@ -121,9 +120,9 @@ class TestStaleLockBroken:
     """A stale lock (older than SYNC_LOCK_STALE_SECONDS) is broken and sync proceeds."""
 
     def test_stale_lock_is_broken_and_sync_runs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        import memory_core.tools.version_sync as vs
+        import infra_core.engine.version_sync as vs  # implementation module (M3)
 
-        monkeypatch.setattr(vs, "_try_resign_all", lambda p, c: {"resigned": True, "paths": c})
+        monkeypatch.setattr(vs, "_resign_hook", lambda p, c: {"resigned": True, "paths": c})
 
         project = _make_consumer(tmp_path)
         lock_file = project / "memory" / "system" / ".sync.lock"
@@ -176,7 +175,7 @@ class TestWaitBudget:
     """Truncated wait budget skips promptly; expired-wait path covered."""
 
     def test_zero_wait_budget_immediate_skip(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("memory_core.tools.version_sync.SYNC_LOCK_WAIT_SECONDS", 0.0)
+        monkeypatch.setattr("infra_core.engine.version_sync.SYNC_LOCK_WAIT_SECONDS", 0.0)
 
         project = _make_consumer(tmp_path)
         (project / "memory" / "system" / ".sync.lock").write_text("1", encoding="utf-8")
@@ -187,7 +186,7 @@ class TestWaitBudget:
         assert time.monotonic() - start < 1.0
 
     def test_short_budget_times_out_then_skips(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("memory_core.tools.version_sync.SYNC_LOCK_WAIT_SECONDS", 0.15)
+        monkeypatch.setattr("infra_core.engine.version_sync.SYNC_LOCK_WAIT_SECONDS", 0.15)
 
         project = _make_consumer(tmp_path)
         (project / "memory" / "system" / ".sync.lock").write_text("1", encoding="utf-8")
@@ -204,7 +203,7 @@ class TestThreadLevelConcurrency:
     """Two threads race on the same project: exactly one patches, files stay consistent."""
 
     def test_two_threads_one_winner(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        import memory_core.tools.version_sync as vs
+        import infra_core.engine.version_sync as vs  # implementation module (M3)
 
         # Track resign calls to detect double-execution of the critical section
         resign_calls: list[list[str]] = []
@@ -215,7 +214,7 @@ class TestThreadLevelConcurrency:
                 resign_calls.append(list(changed_paths))
             return {"resigned": True, "paths": changed_paths}
 
-        monkeypatch.setattr(vs, "_try_resign_all", fake_resign)
+        monkeypatch.setattr(vs, "_resign_hook", fake_resign)
         # Short wait budget so the loser skips fast instead of retrying long
         monkeypatch.setattr(vs, "SYNC_LOCK_WAIT_SECONDS", 0.3)
 
@@ -262,7 +261,7 @@ class TestThreadLevelConcurrency:
 
     def test_reread_under_lock_detects_concurrent_patch(self, tmp_path: Path) -> None:
         """Simulate: gate passed pre-lock, winner patched while we waited, re-read catches it."""
-        import memory_core.tools.version_sync as vs
+        import infra_core.engine.version_sync as vs  # implementation module (M3)
 
         project = _make_consumer(tmp_path, version="0.39.0")
         sys_dir = project / "memory" / "system"
@@ -343,9 +342,9 @@ class TestM1BehaviourPreserved:
     """M1 gate and patch semantics unchanged under the new lock."""
 
     def test_minor_bump_still_patches(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        import memory_core.tools.version_sync as vs
+        import infra_core.engine.version_sync as vs
 
-        monkeypatch.setattr(vs, "_try_resign_all", lambda p, c: {"resigned": True, "paths": c})
+        monkeypatch.setattr(vs, "_resign_hook", lambda p, c: {"resigned": True, "paths": c})
         project = _make_consumer(tmp_path, version="0.39.0")
 
         result = sync_single_project(project, "0.40.0")

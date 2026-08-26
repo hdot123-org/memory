@@ -145,14 +145,9 @@ def _finalize_ownership_toml(
             result["warnings"].extend(warnings)
         elif ownership_path.exists():
             if mode == "update":
-                try:
-                    # M3 seam: use migrated version_sync from infra_core
-                    from infra_core.engine.version_sync import (
-                        patch_ownership_memory_version,
-                    )
-                except ImportError:
-                    # Fallback to local copy if infra_core not available
-                    from .version_sync import patch_ownership_memory_version
+                # M3 (INFRA-576): version_sync 已迁移到 infra-core，本地副本已删除
+                from infra_core.engine.version_sync import patch_ownership_memory_version
+
                 if patch_ownership_memory_version(ownership_path, CURRENT_MEMORY_VERSION):
                     result["created"].append(
                         f"file:ownership.toml (memory_version patched to {CURRENT_MEMORY_VERSION})"
