@@ -442,7 +442,6 @@ source = { editable = "." }
 dependencies = [
     { name = "infra-core" },
     { name = "mcp" },
-    { name = "packaging" },
     { name = "posthog" },
     { name = "pyyaml" },
 ]
@@ -472,7 +471,6 @@ requires-dist = [
     { name = "mcp", marker = "extra == 'dev'", specifier = ">=1.0,<2.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0,<2.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "packaging", specifier = ">=24.0" },
     { name = "pdoc", marker = "extra == 'dev'", specifier = ">=14.0" },
     { name = "pip-tools", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "posthog", specifier = ">=3.0,<8.0" },
