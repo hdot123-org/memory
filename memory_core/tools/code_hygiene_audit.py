@@ -26,6 +26,11 @@ EXCLUDE_DIRS = frozenset(
         ".eggs",
         ".git",
         "archive",
+        # INFRA-559: artifacts/ holds gitignored mission run snapshots
+        # (full working copies of past sessions). Scanning them produced
+        # thousands of cross-snapshot duplicate-block false positives
+        # (snapshot-vs-snapshot and snapshot-vs-live-tree pairs).
+        "artifacts",
     }
 )
 MAX_FILE_SIZE = 1_048_576  # 1MB
