@@ -466,16 +466,16 @@ def test_run_layout_audit_returns_none_on_import_error(tmp_path: Path, monkeypat
     # Mock import to fail by hiding the module and patching __import__
     import builtins
 
-    # Remove the audit module if it's loaded
-    saved_module = sys.modules.get("memory_core.tools.audit_project_layout")
-    if "memory_core.tools.audit_project_layout" in sys.modules:
-        del sys.modules["memory_core.tools.audit_project_layout"]
+    # Remove the audit module if it's loaded (now imports from infra_core)
+    saved_module = sys.modules.get("infra_core.packs.memory.layout_audit")
+    if "infra_core.packs.memory.layout_audit" in sys.modules:
+        del sys.modules["infra_core.packs.memory.layout_audit"]
 
-    # Patch builtins.__import__ to fail for audit_project_layout
+    # Patch builtins.__import__ to fail for infra_core.packs.memory.layout_audit
     original_import = builtins.__import__
 
     def failing_import(name, *args, **kwargs):
-        if "audit_project_layout" in name:
+        if "infra_core.packs.memory.layout_audit" in name:
             raise ImportError(f"No module named '{name}'")
         return original_import(name, *args, **kwargs)
 
@@ -488,13 +488,13 @@ def test_run_layout_audit_returns_none_on_import_error(tmp_path: Path, monkeypat
 
     # Restore module
     if saved_module:
-        sys.modules["memory_core.tools.audit_project_layout"] = saved_module
+        sys.modules["infra_core.packs.memory.layout_audit"] = saved_module
 
 
 def test_run_layout_audit_returns_degraded_on_exception(tmp_path: Path, monkeypatch):
     """When audit fails with exception, should return degraded info."""
     # Mock audit_project_layout to raise
-    import memory_core.tools.audit_project_layout as audit_module
+    import infra_core.packs.memory.layout_audit as audit_module
 
     def failing_audit(*args, **kwargs):
         raise RuntimeError("Disk read error")
