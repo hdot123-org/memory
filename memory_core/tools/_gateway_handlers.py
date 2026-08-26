@@ -227,7 +227,7 @@ def _handle_session_start_setup(cwd: Path) -> None:
 
     # M1: Auto-version-follow probe
     # Detect version mismatch and auto-sync consumer projects
-    # M3 seam: inject resign hook and pass current_version parameter
+    # M3 (INFRA-576): version_sync 已迁移到 infra-core，本地副本已删除
     try:
         from infra_core.engine.version_sync import (
             probe_version_and_sync,
@@ -255,7 +255,7 @@ def _handle_session_start_setup(cwd: Path) -> None:
 
         set_resign_hook(_memory_core_resign_wrapper)
 
-        # Pass current_version parameter (no longer hardcoded in infra-core)
+        # Pass current_version parameter (infra-core does not hardcode it)
         probe_version_and_sync(cwd, CURRENT_MEMORY_VERSION)
     except Exception as exc:
         # Fail-safe: any exception must not block hook main chain

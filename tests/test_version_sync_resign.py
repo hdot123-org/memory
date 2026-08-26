@@ -18,11 +18,10 @@ Covers validation contract assertions:
 import json
 import re
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
-from memory_core.tools.version_sync import (
+from memory_core.tools.version_sync import (  # re-exports from infra_core
     _gate_version_bump,
     _try_resign_all,
     patch_adapter_toml_version,
@@ -167,18 +166,23 @@ class TestGateVersionBump:
 
 
 class TestTryResignAll:
-    """VAL-RESIGN-001..003: _try_resign_all accepts changed_paths, returns errors."""
+    """VAL-RESIGN-001..003: _try_resign_all accepts changed_paths, returns errors.
+
+    M3 (INFRA-576): the implementation now lives in infra_core and uses the
+    injected resign hook (set_resign_hook) instead of module-level
+    sign_project_incremental/load_key. Tests below exercise the hook protocol.
+    """
 
     def test_try_resign_all_returns_error_on_signing_failure(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """VAL-RESIGN-001: _try_resign_all returns error dict when signing fails."""
-        import memory_core.tools.version_sync as vs
+        """VAL-RESIGN-001: _try_resign_all returns error dict when the hook raises."""
+        import infra_core.engine.version_sync as vs
 
-        mock_sign = MagicMock(side_effect=RuntimeError("boom"))
-        mock_load_key = MagicMock(return_value=b"\x00" * 32)
-        monkeypatch.setattr(vs, "sign_project_incremental", mock_sign)
-        monkeypatch.setattr(vs, "load_key", mock_load_key)
+        def failing_hook(project_path: Path, changed_paths: list[str]) -> dict[str, object]:
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(vs, "_resign_hook", failing_hook)
 
         result = _try_resign_all(tmp_path, ["memory/system/ownership.toml"])
 
@@ -186,13 +190,16 @@ class TestTryResignAll:
         assert "boom" in result["reason"]
 
     def test_try_resign_all_accepts_changed_paths(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """VAL-RESIGN-002: _try_resign_all passes changed_paths to sign_project_incremental."""
-        import memory_core.tools.version_sync as vs
+        """VAL-RESIGN-002: _try_resign_all passes changed_paths to the injected hook."""
+        import infra_core.engine.version_sync as vs
 
-        mock_sign = MagicMock(return_value={"ok": True})
-        mock_load_key = MagicMock(return_value=b"\x00" * 32)
-        monkeypatch.setattr(vs, "sign_project_incremental", mock_sign)
-        monkeypatch.setattr(vs, "load_key", mock_load_key)
+        received: dict[str, object] = {}
+
+        def recording_hook(project_path: Path, changed_paths: list[str]) -> dict[str, object]:
+            received["changed_paths"] = changed_paths
+            return {"resigned": True, "paths": changed_paths}
+
+        monkeypatch.setattr(vs, "_resign_hook", recording_hook)
 
         changed = [
             "memory/system/ownership.toml",
@@ -201,20 +208,18 @@ class TestTryResignAll:
         ]
         _try_resign_all(tmp_path, changed)
 
-        mock_sign.assert_called_once()
-        call_kwargs = mock_sign.call_args
-        assert call_kwargs[1]["changed_paths"] == changed or call_kwargs[0][2] == changed
+        assert received["changed_paths"] == changed
 
     def test_try_resign_all_returns_error_when_key_unavailable(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """_try_resign_all returns error when load_key returns None."""
-        import memory_core.tools.version_sync as vs
+        """Hook returning no-key failure surfaces the reason."""
+        import infra_core.engine.version_sync as vs
 
-        mock_sign = MagicMock()
-        mock_load_key = MagicMock(return_value=None)
-        monkeypatch.setattr(vs, "sign_project_incremental", mock_sign)
-        monkeypatch.setattr(vs, "load_key", mock_load_key)
+        def no_key_hook(project_path: Path, changed_paths: list[str]) -> dict[str, object]:
+            return {"resigned": False, "reason": "no signing key available"}
+
+        monkeypatch.setattr(vs, "_resign_hook", no_key_hook)
 
         result = _try_resign_all(tmp_path, ["memory/system/ownership.toml"])
         assert result["resigned"] is False
@@ -223,15 +228,14 @@ class TestTryResignAll:
     def test_try_resign_all_returns_error_when_module_unavailable(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """_try_resign_all returns error when signing module is None."""
-        import memory_core.tools.version_sync as vs
+        """No hook injected → default no-op reports resign hook not injected."""
+        import infra_core.engine.version_sync as vs
 
-        monkeypatch.setattr(vs, "sign_project_incremental", None)
-        monkeypatch.setattr(vs, "load_key", None)
+        monkeypatch.setattr(vs, "_resign_hook", None)
 
         result = _try_resign_all(tmp_path, ["memory/system/ownership.toml"])
         assert result["resigned"] is False
-        assert "unavailable" in result["reason"].lower()
+        assert "not injected" in result["reason"].lower()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -274,11 +278,10 @@ class TestSyncSingleProject:
 
     def test_sync_single_project_patches_three_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """sync_single_project patches ownership.toml + memory.lock + adapter.toml."""
-        import memory_core.tools.version_sync as vs
+        import infra_core.engine.version_sync as vs
 
-        # Mock resign to avoid real signing
-        mock_resign = MagicMock(return_value={"resigned": True, "paths": []})
-        monkeypatch.setattr(vs, "_try_resign_all", mock_resign)
+        # Inject a successful resign hook (avoids real signing)
+        monkeypatch.setattr(vs, "_resign_hook", lambda p, c: {"resigned": True, "paths": c})
 
         project = _make_project(tmp_path, "0.9.0")
         result = sync_single_project(project, "0.9.1")
@@ -351,10 +354,9 @@ class TestSyncAllKnownProjects:
 
     def test_sync_all_known_projects_patches_three_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """sync_all_known_projects patches all three files for each project."""
-        import memory_core.tools.version_sync as vs
+        import infra_core.engine.version_sync as vs
 
-        mock_resign = MagicMock(return_value={"resigned": True, "paths": []})
-        monkeypatch.setattr(vs, "_try_resign_all", mock_resign)
+        monkeypatch.setattr(vs, "_resign_hook", lambda p, c: {"resigned": True, "paths": c})
 
         lifecycle = _make_lifecycle_root(tmp_path, ["proj-a", "proj-b", "proj-c"])
         result = sync_all_known_projects(lifecycle, "0.9.1")
@@ -381,10 +383,9 @@ class TestBlockedScenarios:
 
     def test_major_bump_blocks_all_writes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """VAL-GATE-002 + VAL-GATE-004: Major bump blocks ALL writes (including ownership)."""
-        import memory_core.tools.version_sync as vs
+        import infra_core.engine.version_sync as vs
 
-        mock_resign = MagicMock(return_value={"resigned": True, "paths": []})
-        monkeypatch.setattr(vs, "_try_resign_all", mock_resign)
+        monkeypatch.setattr(vs, "_resign_hook", lambda p, c: {"resigned": True, "paths": c})
 
         project = _make_project(tmp_path, "0.10.2")
         # Target is 1.0.0 -> major bump -> blocked
@@ -408,10 +409,9 @@ class TestBlockedScenarios:
 
     def test_schema_change_blocks_lock_adapter(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """VAL-GATE-003: Schema change blocks lock/adapter patch."""
-        import memory_core.tools.version_sync as vs
+        import infra_core.engine.version_sync as vs
 
-        mock_resign = MagicMock(return_value={"resigned": True, "paths": []})
-        monkeypatch.setattr(vs, "_try_resign_all", mock_resign)
+        monkeypatch.setattr(vs, "_resign_hook", lambda p, c: {"resigned": True, "paths": c})
 
         # Create project with a DIFFERENT schema_version in lock file
         # CANONICAL_MEMORY_LOCK_SCHEMA = "context-package-v1"
@@ -468,10 +468,9 @@ class TestResignErrorPropagation:
 
     def test_sync_single_project_records_resign_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """sync_single_project records resign failure in result."""
-        import memory_core.tools.version_sync as vs
+        import infra_core.engine.version_sync as vs
 
-        mock_resign = MagicMock(return_value={"resigned": False, "reason": "signing failed"})
-        monkeypatch.setattr(vs, "_try_resign_all", mock_resign)
+        monkeypatch.setattr(vs, "_resign_hook", lambda p, c: {"resigned": False, "reason": "signing failed"})
 
         project = _make_project(tmp_path, "0.9.0")
         result = sync_single_project(project, "0.9.1")
@@ -483,10 +482,9 @@ class TestResignErrorPropagation:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """sync_all_known_projects records resign failure in result['errors']."""
-        import memory_core.tools.version_sync as vs
+        import infra_core.engine.version_sync as vs
 
-        mock_resign = MagicMock(return_value={"resigned": False, "reason": "key missing"})
-        monkeypatch.setattr(vs, "_try_resign_all", mock_resign)
+        monkeypatch.setattr(vs, "_resign_hook", lambda p, c: {"resigned": False, "reason": "key missing"})
 
         lifecycle = _make_lifecycle_root(tmp_path, ["proj-x"])
         result = sync_all_known_projects(lifecycle, "0.9.1")
