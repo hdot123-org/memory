@@ -19,7 +19,12 @@ name: Evolution Scan
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    # INFRA-578: 分钟位避开 :00/:30（GitHub Actions 高峰负载削减窗口）。
+    # 实证 2026-08-26：*/30 名义 30min 间隔实际漂移到 55m→84m→117m→139m，
+    # 20:32Z 后连续 slot 被 drop（不排队，直接丢弃），scanner 停摆 2h+ 触发告警。
+    # 非高峰分钟显著降低被 drop 概率；即使再被 drop，heartbeat 会
+    # workflow_dispatch 自愈拉起（见 evolution-heartbeat.yml）。
+    - cron: '13,43 * * * *'
   workflow_dispatch: {}
 
 concurrency:
