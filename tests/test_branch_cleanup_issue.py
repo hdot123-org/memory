@@ -445,15 +445,12 @@ def test_protected_only_no_tracker_creates_tracker(tmp_path: Path):
     exit_code, stdout, _ = harness.run_script(protected=[protected_branch])
 
     assert exit_code == 0, f"Script must exit successfully, got {exit_code}. stdout: {stdout}"
-    assert "issue_action=created" in stdout, (
-        f"stdout must contain 'issue_action=created', got: {stdout}"
-    )
+    assert "issue_action=created" in stdout, f"stdout must contain 'issue_action=created', got: {stdout}"
 
     calls = harness.read_calls()
     create_calls = calls_matching(calls, ["issue", "create"])
     assert len(create_calls) == 1, (
-        f"Expected exactly 1 'gh issue create' call, got {len(create_calls)}. "
-        f"Create calls: {create_calls}"
+        f"Expected exactly 1 'gh issue create' call, got {len(create_calls)}. Create calls: {create_calls}"
     )
 
     # Verify --label value is 'automation,branch-cleanup'
@@ -477,15 +474,12 @@ def test_protected_only_no_tracker_creates_tracker(tmp_path: Path):
     assert body_idx is not None, f"--body not found in create call args: {create_call.args}"
     issue_body = create_call.args[body_idx]
     assert protected_branch in issue_body, (
-        f"Issue body must contain protected branch name '{protected_branch}'. "
-        f"Body: {issue_body}"
+        f"Issue body must contain protected branch name '{protected_branch}'. Body: {issue_body}"
     )
 
     # Verify exactly 1 open issue exists
     open_issues = harness.open_issue_numbers()
-    assert len(open_issues) == 1, (
-        f"Expected exactly 1 open issue, got {len(open_issues)}: {open_issues}"
-    )
+    assert len(open_issues) == 1, f"Expected exactly 1 open issue, got {len(open_issues)}: {open_issues}"
 
 
 # ============================================================================
