@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.42.0](https://github.com/hdot123-org/memory/compare/v0.41.2...v0.42.0) (2026-08-27)
+
+
+### Features
+
+* **ci:** INFRA-569 CI 全量切自建 runner 并按运行隔离 venv 防卡死 ([#1043](https://github.com/hdot123-org/memory/issues/1043)) ([12ebcf9](https://github.com/hdot123-org/memory/commit/12ebcf9f279778368d6767480336cfcffb39b09e))
+* M4 branch-cleanup thin caller 支持 workflow_dispatch inputs ([#1048](https://github.com/hdot123-org/memory/issues/1048)) ([393ee09](https://github.com/hdot123-org/memory/commit/393ee09e34953694e5156b6680dd798eb5faf477))
+* **M4:** 切换 setup-labels 与 governance 为 thin caller ([#1050](https://github.com/hdot123-org/memory/issues/1050)) ([225abbf](https://github.com/hdot123-org/memory/commit/225abbfe2d205ab098dd08867901242fa9d347e8))
+
+
+### Bug Fixes
+
+* branch-cleanup thin caller 转发 vars.BRANCH_AGE_* 修复 composite action vars context 缺陷 ([#1049](https://github.com/hdot123-org/memory/issues/1049)) ([ccc5669](https://github.com/hdot123-org/memory/commit/ccc56695b04a48d5811638ae03c2b1e5f70c01a8))
+* INFRA-578 evolution-scan 高峰 cron 被 drop 后心跳自愈拉起 ([#1047](https://github.com/hdot123-org/memory/issues/1047)) ([54e5ba4](https://github.com/hdot123-org/memory/commit/54e5ba45a93bd882e8d686403bf33b0b7ce21637))
+
 ## [0.41.2](https://github.com/hdot123-org/memory/compare/v0.41.1...v0.41.2) (2026-08-26)
 
 
