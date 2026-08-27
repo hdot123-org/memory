@@ -604,3 +604,91 @@ class TestRepoVarsReferences:
 
     # branch-cleanup.yml 中将来 F4 会添加的 vars 引用
     # （本测试只验证已外置的变量，BRANCH_AGE_* 由 F4 处理）
+
+
+class TestBranchCleanupNamingContract:
+    """M4-GATE-001: Branch Cleanup 命名契约测试
+
+    验证 thin caller 保持原有命名，确保：
+    1. workflow 名 'Branch Cleanup' 不变（auto-merge/workflow_run 依赖）
+    2. job key 'cleanup' 不变（check 名契约）
+    3. 调用 infra-core composite action
+    4. 保留原有 triggers 和 permissions
+    """
+
+    @pytest.fixture
+    def branch_cleanup_data(self):
+        """加载 branch-cleanup.yml workflow"""
+        workflow_path = REPO_ROOT / ".github/workflows/branch-cleanup.yml"
+        return yaml.safe_load(workflow_path.read_text())
+
+    def test_workflow_name_exact(self, branch_cleanup_data):
+        """workflow 名必须精确为 'Branch Cleanup'"""
+        assert branch_cleanup_data["name"] == "Branch Cleanup", f"workflow 名被修改: {branch_cleanup_data['name']}"
+
+    def test_job_key_cleanup(self, branch_cleanup_data):
+        """job key 必须为 'cleanup'"""
+        jobs = branch_cleanup_data["jobs"]
+        assert "cleanup" in jobs, "job key 'cleanup' 缺失"
+        assert len(jobs) == 1, f"期望只有一个 job，实际: {list(jobs.keys())}"
+
+    def test_calls_infra_core_composite_action(self, branch_cleanup_data):
+        """必须调用 infra-core composite action"""
+        job = branch_cleanup_data["jobs"]["cleanup"]
+        steps = job.get("steps", [])
+
+        # 找到 uses step
+        uses_steps = [s for s in steps if "uses" in s]
+        assert len(uses_steps) > 0, "未找到 uses step"
+
+        uses_value = uses_steps[0]["uses"]
+        assert "hdot123-org/infra-core/actions/branch-cleanup@" in uses_value, (
+            f"未调用正确的 composite action: {uses_value}"
+        )
+
+    def test_triggers_preserved(self, branch_cleanup_data):
+        """必须保留原有 triggers: schedule + pull_request + workflow_dispatch"""
+        # YAML 解析时 "on:" 会变成 True: (YAML 关键字)
+        triggers = branch_cleanup_data.get(True, {}) or branch_cleanup_data.get("on", {})
+        assert "schedule" in triggers, "schedule trigger 缺失"
+        assert "pull_request" in triggers, "pull_request trigger 缺失"
+        assert "workflow_dispatch" in triggers, "workflow_dispatch trigger 缺失"
+
+        # 验证 schedule cron
+        schedule_list = triggers["schedule"]
+        assert isinstance(schedule_list, list) and len(schedule_list) > 0
+        assert schedule_list[0].get("cron") == "0 * * * *", f"cron 表达式被修改: {schedule_list[0].get('cron')}"
+
+    def test_permissions_preserved(self, branch_cleanup_data):
+        """必须保留原有 permissions"""
+        perms = branch_cleanup_data.get("permissions", {})
+        assert perms.get("contents") == "write"
+        assert perms.get("issues") == "write"
+        assert perms.get("pull-requests") == "read"
+
+    def test_dispatch_token_forwarded(self, branch_cleanup_data):
+        """DISPATCH_TOKEN 必须通过 inputs 转发"""
+        job = branch_cleanup_data["jobs"]["cleanup"]
+        steps = job.get("steps", [])
+
+        # 找到 uses step
+        uses_step = next((s for s in steps if "uses" in s), None)
+        assert uses_step is not None, "未找到 uses step"
+
+        with_block = uses_step.get("with", {})
+        assert "dispatch-token" in with_block, "dispatch-token input 缺失"
+        assert "secrets.DISPATCH_TOKEN" in with_block["dispatch-token"], "dispatch-token 未引用 secrets.DISPATCH_TOKEN"
+
+    def test_workflow_dispatch_inputs(self, branch_cleanup_data):
+        """workflow_dispatch 必须提供 mode 和 branch inputs"""
+        triggers = branch_cleanup_data.get(True, {}) or branch_cleanup_data.get("on", {})
+        wd = triggers.get("workflow_dispatch", {})
+        inputs = wd.get("inputs", {})
+
+        assert "mode" in inputs, "workflow_dispatch 缺少 mode input"
+        assert inputs["mode"].get("type") == "choice", "mode input 应为 choice 类型"
+        assert "scheduled" in inputs["mode"].get("options", []), "mode 选项必须包含 scheduled"
+        assert "immediate" in inputs["mode"].get("options", []), "mode 选项必须包含 immediate"
+
+        assert "branch" in inputs, "workflow_dispatch 缺少 branch input"
+        assert inputs["branch"].get("type") == "string", "branch input 应为 string 类型"
