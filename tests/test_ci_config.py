@@ -14,6 +14,96 @@ import yaml
 REPO_ROOT = Path(__file__).parent.parent
 
 
+class TestGateSetupLabelsGovernance:
+    """VAL-GATE-102/115: setup-labels 与 governance 切换契约"""
+
+    def test_setup_labels_is_thin_caller(self):
+        """setup-labels.yml 是 thin caller（workflow_dispatch 触发，uses infra-core）"""
+        path = REPO_ROOT / ".github/workflows/setup-labels.yml"
+        data = yaml.safe_load(path.read_text())
+
+        # 名字节级为 "Setup Labels"
+        assert data["name"] == "Setup Labels"
+
+        # 触发器为 workflow_dispatch
+        triggers = data.get(True, {})  # YAML parses 'on:' as True key
+        assert "workflow_dispatch" in triggers
+
+        # 只有一个 job，且 uses infra-core reusable workflow
+        jobs = data.get("jobs", {})
+        assert len(jobs) == 1
+        job = list(jobs.values())[0]
+        uses_str = job.get("uses", "")
+        assert "hdot123-org/infra-core/.github/workflows/setup-labels.yml@main" in uses_str
+
+    def test_governance_thin_caller_name(self):
+        """governance thin caller 名字节级为 'Evolution Governance'"""
+        path = REPO_ROOT / ".github/workflows/evolution-governance.yml"
+        data = yaml.safe_load(path.read_text())
+        assert data["name"] == "Evolution Governance"
+
+    def test_governance_job_display_name(self):
+        """governance job 显示名字节级为 'Block non-owner governance modifications'
+
+        这是 branch protection 第三个 required check。
+        """
+        path = REPO_ROOT / ".github/workflows/evolution-governance.yml"
+        data = yaml.safe_load(path.read_text())
+        jobs = data.get("jobs", {})
+        assert len(jobs) == 1
+        job = list(jobs.values())[0]
+        assert job["name"] == "Block non-owner governance modifications"
+
+    def test_governance_uses_infra_core_composite_action(self):
+        """governance thin caller 使用 infra-core composite action"""
+        path = REPO_ROOT / ".github/workflows/evolution-governance.yml"
+        data = yaml.safe_load(path.read_text())
+        jobs = data.get("jobs", {})
+        job = list(jobs.values())[0]
+        steps = job.get("steps", [])
+        assert len(steps) == 1
+        step = steps[0]
+        uses_str = step.get("uses", "")
+        assert "hdot123-org/infra-core/actions/governance-check@main" in uses_str
+
+    def test_governance_protected_patterns_parity(self):
+        """governance thin caller 保护路径与切换前内联 grep 全集对等
+
+        五类保护路径：
+        1. .evolution/**
+        2. scripts/evolution_*.py
+        3. scripts/** (整个目录，防模块投毒)
+        4. .github/workflows/evolution-*.yml
+        5. .github/CODEOWNERS
+        """
+        path = REPO_ROOT / ".github/workflows/evolution-governance.yml"
+        data = yaml.safe_load(path.read_text())
+        jobs = data.get("jobs", {})
+        job = list(jobs.values())[0]
+        steps = job.get("steps", [])
+        step = steps[0]
+        with_block = step.get("with", {})
+        patterns = with_block.get("protected-patterns", "")
+
+        # 验证五类模式全部存在
+        assert ".evolution/**" in patterns
+        assert "scripts/evolution_*.py" in patterns
+        assert "scripts/**" in patterns
+        assert ".github/workflows/evolution-*.yml" in patterns
+        assert ".github/CODEOWNERS" in patterns
+
+    def test_governance_owner_login_is_hdot123(self):
+        """governance thin caller owner-login 为 hdot123"""
+        path = REPO_ROOT / ".github/workflows/evolution-governance.yml"
+        data = yaml.safe_load(path.read_text())
+        jobs = data.get("jobs", {})
+        job = list(jobs.values())[0]
+        steps = job.get("steps", [])
+        step = steps[0]
+        with_block = step.get("with", {})
+        assert with_block.get("owner-login") == "hdot123"
+
+
 class TestAuditGate:
     """VAL-GATE-* assertions: security configuration validation.
 

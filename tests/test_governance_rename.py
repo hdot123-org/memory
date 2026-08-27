@@ -134,16 +134,31 @@ class TestGovernanceWorkflowConsistency:
     """Validate that test patterns match actual workflow patterns."""
 
     def test_patterns_match_workflow(self):
-        """Ensure PROTECTED_PATTERNS match the patterns in evolution-governance.yml."""
+        """Ensure PROTECTED_PATTERNS match the protected-patterns input of the thin caller.
+
+        M4 切换后 evolution-governance.yml 是 thin caller，不再内联 grep 正则：
+        - 保护路径经 protected-patterns 输入传给 infra-core composite action
+        - rename 跟踪（previous_filename）职责迁至 composite action 内部实现
+        - 本文件顶部的正则集与该输入保持行为对等（glob 子串与正则语义一一对应）
+        """
         from pathlib import Path
 
-        workflow = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-governance.yml"
-        content = workflow.read_text()
+        import yaml
 
-        # The workflow must still check these patterns
-        assert ".evolution/" in content, "Workflow must check .evolution/ paths"
-        assert "scripts/evolution_.*\\.py" in content, "Workflow must check evolution scripts"
-        assert "evolution-.*\\.yml" in content, "Workflow must check evolution workflows"
-        assert "CODEOWNERS" in content, "Workflow must check CODEOWNERS"
-        # Must track renames
-        assert "previous_filename" in content, "Workflow must track file renames"
+        workflow = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-governance.yml"
+        data = yaml.safe_load(workflow.read_text())
+
+        job = data["jobs"]["governance-check"]
+        step = job["steps"][0]
+        assert "hdot123-org/infra-core/actions/governance-check" in step["uses"], (
+            "Thin caller must invoke the infra-core governance-check action"
+        )
+        patterns = step["with"]["protected-patterns"]
+
+        # The workflow must still declare these patterns
+        # （glob 子串断言，与 PROTECTED_PATTERNS 正则集对等）
+        assert ".evolution/**" in patterns, "Workflow must protect .evolution/ paths"
+        assert "scripts/evolution_*.py" in patterns, "Workflow must protect evolution scripts"
+        assert "scripts/**" in patterns, "Workflow must protect scripts/ dir (module poisoning)"
+        assert ".github/workflows/evolution-*.yml" in patterns, "Workflow must protect evolution workflows"
+        assert ".github/CODEOWNERS" in patterns, "Workflow must protect CODEOWNERS"

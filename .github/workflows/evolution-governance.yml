@@ -1,6 +1,8 @@
-# Evolution Governance CI Check
-# Blocks PRs that modify evolution governance paths unless authored by @hdot123.
-# This prevents bots (including Droid) from modifying their own governance rules.
+# Evolution Governance - Thin Caller
+# Calls infra-core composite action for governance check.
+# Naming contract: workflow name must be exactly "Evolution Governance".
+# Job display name must be exactly "Block non-owner governance modifications"
+# (branch protection required check — third context).
 
 name: Evolution Governance
 
@@ -15,90 +17,14 @@ permissions:
 jobs:
   governance-check:
     name: Block non-owner governance modifications
+    # INFRA-569 安全边界：pull_request_target + secrets 的 job 必须保持 GitHub-hosted，
+    # 自建 runner 对 PR 代码是持久化多租户环境，会扩大攻击面。
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Governance check
+        uses: hdot123-org/infra-core/actions/governance-check@main
         with:
-          fetch-depth: 0
-
-      - name: Check for protected path modifications
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          REPO: ${{ github.repository }}
-        run: |
-          # Get list of changed files via GitHub API (not git diff, which is empty with pull_request_target)
-          # Fail-closed: if API call fails, exit with error instead of silently passing governance
-          # --method GET is explicit because --field would switch gh api to POST (which 404s on this endpoint)
-          # per_page goes in the URL query string, NOT as --field (which also triggers POST)
-          # P2-4: Also get previous_filename to detect file renames
-          # Capture stderr separately to prevent mixing error/warning text into $CHANGED
-          # which is used for protected path pattern matching
-          ERR_BUF=$(mktemp)
-          if ! CHANGED=$(gh api --method GET "repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100" --paginate --jq '.[] | .filename, (.previous_filename // empty)' 2>"$ERR_BUF"); then
-            echo "ERROR: Failed to fetch PR changed files via API:" >&2
-            cat "$ERR_BUF" >&2
-            rm -f "$ERR_BUF"
-            exit 1
-          fi
-          rm -f "$ERR_BUF"
-
-          if [ -z "$CHANGED" ]; then
-            echo "No changed files detected, skipping governance check"
-            exit 0
-          fi
-
-          echo "Changed files:"
-          echo "$CHANGED"
-
-          # Check if PR touches protected paths
-          TOUCHED_PROTECTED=false
-
-          # Check entire .evolution/ directory (config, kill switch, history, etc.)
-          if echo "$CHANGED" | grep -q "^\.evolution/"; then
-            echo "PROTECTED: .evolution/ directory modified"
-            TOUCHED_PROTECTED=true
-          fi
-
-          # Check scripts/evolution_*.py (all evolution scripts)
-          if echo "$CHANGED" | grep -q "^scripts/evolution_.*\.py$"; then
-            echo "PROTECTED: evolution scanner script modified"
-            TOUCHED_PROTECTED=true
-          fi
-
-          # P1-A: Protect entire scripts/ directory to prevent module poisoning
-          # The scanner runs with scripts/ on sys.path, so any new file (e.g. yaml.py)
-          # can shadow stdlib/PyPI modules and execute code with DISPATCH_TOKEN.
-          if echo "$CHANGED" | grep -q "^scripts/"; then
-            echo "PROTECTED: scripts/ directory modified (module poisoning protection)"
-            TOUCHED_PROTECTED=true
-          fi
-
-          # Check .github/workflows/evolution-*.yml
-          if echo "$CHANGED" | grep -q "^\.github/workflows/evolution-.*\.yml$"; then
-            echo "PROTECTED: evolution workflow file modified"
-            TOUCHED_PROTECTED=true
-          fi
-
-          # Check .github/CODEOWNERS (defines who can review governance changes)
-          if echo "$CHANGED" | grep -q "^\.github/CODEOWNERS$"; then
-            echo "PROTECTED: CODEOWNERS file modified"
-            TOUCHED_PROTECTED=true
-          fi
-
-          if [ "$TOUCHED_PROTECTED" = "true" ]; then
-            echo ""
-            echo "PR author: $PR_AUTHOR"
-            if [ "$PR_AUTHOR" != "hdot123" ]; then
-              echo ""
-              echo "ERROR: Non-owner ($PR_AUTHOR) cannot modify evolution governance paths."
-              echo "Protected paths: .evolution/ (all files), scripts/evolution_*.py, .github/workflows/evolution-*.yml, .github/CODEOWNERS"
-              echo "Only @hdot123 is authorized to modify these files."
-              exit 1
-            else
-              echo "OK: Owner (@hdot123) modifying governance paths"
-            fi
-          else
-            echo "No protected paths modified, governance check passed"
-          fi
+          owner-login: hdot123
+          # memory-core 五类保护路径（与切换前内联 grep 模式全集对等）
+          protected-patterns: '.evolution/**,scripts/evolution_*.py,scripts/**,.github/workflows/evolution-*.yml,.github/CODEOWNERS'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
