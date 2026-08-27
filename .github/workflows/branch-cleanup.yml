@@ -47,3 +47,5 @@ jobs:
           branch-age-merged-hours: ${{ vars.BRANCH_AGE_MERGED_HOURS }}
           branch-age-closed-hours: ${{ vars.BRANCH_AGE_CLOSED_HOURS }}
           branch-age-orphan-hours: ${{ vars.BRANCH_AGE_ORPHAN_HOURS }}
+          linear-api-key: ${{ secrets.LINEAR_API_KEY }}
+          linear-project-id: ${{ vars.LINEAR_PROJECT_MEMORY_CORE_ID }}

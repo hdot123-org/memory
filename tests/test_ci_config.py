@@ -807,3 +807,27 @@ class TestBranchCleanupNamingContract:
         assert "vars.BRANCH_AGE_ORPHAN_HOURS" in with_block["branch-age-orphan-hours"], (
             "branch-age-orphan-hours 未引用 vars.BRANCH_AGE_ORPHAN_HOURS"
         )
+
+    def test_linear_forwarding(self, branch_cleanup_data):
+        """VAL-GATE-118/INFRA-586: thin caller 必须转发 Linear credentials 给 composite action
+
+        composite action 的 branch_cleanup_issue.sh 依赖 LINEAR_API_KEY +
+        LINEAR_PROJECT_ID 环境变量把 tracking issue 同步到正确 Linear project；
+        caller 不转发则同步静默跳过（project 字段保持 null）。
+        """
+        job = branch_cleanup_data["jobs"]["cleanup"]
+        steps = job.get("steps", [])
+
+        # 找到 uses step
+        uses_step = next((s for s in steps if "uses" in s), None)
+        assert uses_step is not None, "未找到 uses step"
+
+        with_block = uses_step.get("with", {})
+        assert "linear-api-key" in with_block, "linear-api-key input 缺失"
+        assert with_block["linear-api-key"] == "${{ secrets.LINEAR_API_KEY }}", (
+            f"linear-api-key 应引用 secrets.LINEAR_API_KEY，实际: {with_block.get('linear-api-key')}"
+        )
+        assert "linear-project-id" in with_block, "linear-project-id input 缺失"
+        assert with_block["linear-project-id"] == "${{ vars.LINEAR_PROJECT_MEMORY_CORE_ID }}", (
+            f"linear-project-id 应引用 vars.LINEAR_PROJECT_MEMORY_CORE_ID，实际: {with_block.get('linear-project-id')}"
+        )
