@@ -5,6 +5,8 @@ on:
     # INFRA-578: 分钟位避开 :00（GitHub Actions 高峰负载削减窗口）。
     # 实证 2026-08-26：整点触发的 cron 间隔从 2h 名义值漂移到 2h18m+，
     # 非高峰分钟显著降低被 drop 概率。
+    # INFRA-588: 本 workflow 自身被 drop 时由 evolution-scan 的
+    # watch_heartbeat_channel 反向 workflow_dispatch 拉起（双向自愈）。
     - cron: '47 */2 * * *'  # Every 2 hours at minute 47 (off-peak)
   workflow_dispatch: {}
 

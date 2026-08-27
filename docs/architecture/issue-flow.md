@@ -318,6 +318,17 @@ Linear Issue。两条平台原生路径任一失败时，都会产生状态漂�
 - **执行动作** — 通过 `gh issue close` 关闭告警，附带中文自愈评论（🩺/🩹 标记区分诊断/治愈）
 - **Fail-safe** — 当 `check_pr_coverage` 数据获取失败（`data_ok=False`）时，零关闭跳过自愈；同时包含重复评论防护，避免同一告警被重复关闭
 
+#### 10.1.1 双向自愈链（INFRA-588）
+
+INFRA-578 建立的自愈是**单向**的（heartbeat 检测 scanner 停摆 → `workflow_dispatch` 拉起）。2026-08-27 实证：heartbeat 在 10:35Z 治愈 scanner 后，自身的 cron slot 从 12:47Z 起被 GitHub 高峰负载削减连续丢弃 20+ 小时，自愈链的执行者本身成了单点故障——scanner 于 15:32Z 后同样停摆，整个管道（含告警自愈 `resolve_cleared_alerts`）无人执行。
+
+修复为**双向**（`watch_heartbeat_channel`，`scripts/evolution_scanner.py`）：
+
+- **探针** — 每个 scanner tick 成功写完 heartbeat marker（`write_heartbeat`）后，查询 `evolution-heartbeat.yml` 的最近运行记录（`check_heartbeat_workflow_liveness`，阈值 3h = 2h cron + 1h 漂移余量）
+- **反向拉起** — heartbeat 停摆时由 scanner 调用 `trigger_heartbeat_dispatch()`（`workflow_dispatch`）将其拉起，形成互为守望的双向自愈环
+- **Fail-safe** — 探针失败（gh 不可用、API 错误、模块导入失败）静默跳过，绝不杀死本 tick；scanner 自身停摆仍由 heartbeat 正向守护（INFRA-578）
+- **位置约束** — 与 `write_heartbeat` 同位于 P1-2/P2-A 硬退出之前，保证硬退出路径上反向守望也已执行
+
 ### 10.2 Info 级 Suppress 提案链
 
 `scripts/evolution_scanner.py` 的 `check_persistent_info_findings()` 对 info 级 finding 进行持续存在检测：

@@ -790,6 +790,37 @@ def write_heartbeat(repo_root: Path, issues_created: int, findings_count: int) -
     tmp_path.replace(heartbeat_path)
 
 
+def watch_heartbeat_channel() -> None:
+    """INFRA-588: Reverse self-heal — the scanner watches the heartbeat monitor.
+
+    INFRA-578's self-heal is one-directional (heartbeat → scanner dispatch).
+    On 2026-08-27 the heartbeat's own cron slots were load-shed for 20+ hours
+    right AFTER it had healed the scanner, leaving the pipeline unwatched and
+    the stale alert (#1051 / INFRA-588) unable to self-close. This closes the
+    loop: each successful scanner tick probes the heartbeat workflow's run
+    history; when it looks stopped, the scanner re-triggers it via
+    workflow_dispatch (trigger_heartbeat_dispatch, implemented in
+    evolution_heartbeat for single-source gh handling).
+
+    Fail-safe: any probe failure (gh unavailable, API error) is silent — a
+    dead probe must never kill the tick, and a dead scanner is already
+    covered by the heartbeat's forward watch (INFRA-578).
+    """
+    try:
+        # Local import: scripts/ dir is on sys.path (P1-A block re-added it);
+        # keeps the dependency lazy so scanner tests without the module stay isolated.
+        from evolution_heartbeat import check_heartbeat_workflow_liveness, trigger_heartbeat_dispatch
+
+        liveness = check_heartbeat_workflow_liveness()
+        if liveness.get("alive"):
+            return
+        print(f"[scanner] ALERT: {liveness.get('message', 'heartbeat workflow stale')}")
+        trigger_heartbeat_dispatch()
+    except Exception as e:
+        # Reverse-watch is best-effort hardening, never a tick-killer.
+        print(f"[scanner] Warning: heartbeat reverse-watch failed: {e}")
+
+
 def check_persistent_info_findings(
     history_path: Path,
     repo_root: Path,
@@ -1260,6 +1291,10 @@ def main() -> None:
     # INFRA-204: Write heartbeat marker after a successful tick (after history saved).
     # Must come BEFORE P1-2/P2-A hard-exit checks so the marker is always written.
     write_heartbeat(repo_root, issues_created, len(all_findings))
+    # INFRA-588: Reverse self-heal — watch the heartbeat monitor itself so a
+    # load-shedded heartbeat gets re-dispatched by the next scanner tick.
+    # Runs before P1-2/P2-A hard exits for the same reason as write_heartbeat.
+    watch_heartbeat_channel()
     # P2 降噪：检测持续 info 级 finding，输出 suppress.json 提案（仅打印，不写盘）
     # 按 check_isolation 惯例加 try/except 守护，避免提案检查异常炸整个 tick
     try:
