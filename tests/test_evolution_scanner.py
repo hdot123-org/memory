@@ -9772,3 +9772,118 @@ def test_evolution_self_audit_main_rejects_unknown_flag():
     with pytest.raises(SystemExit) as exc_info:
         main(["--definitely-not-a-real-flag"])
     assert exc_info.value.code != 0
+
+
+# ============================================================================
+# INFRA-588: Reverse self-heal (scanner watches the heartbeat monitor)
+# ============================================================================
+
+
+def test_infra588_watch_heartbeat_channel_alive_skips_dispatch():
+    """INFRA-588: heartbeat alive → no dispatch, no alert print."""
+    from evolution_scanner import watch_heartbeat_channel
+
+    with (
+        patch("evolution_scanner.sys.modules", evolution_scanner.sys.modules),
+        patch("evolution_heartbeat.check_heartbeat_workflow_liveness", return_value={"alive": True, "message": "ok"}),
+        patch("evolution_heartbeat.trigger_heartbeat_dispatch") as mock_dispatch,
+    ):
+        watch_heartbeat_channel()
+
+    mock_dispatch.assert_not_called()
+
+
+def test_infra588_watch_heartbeat_channel_stale_dispatches():
+    """INFRA-588: heartbeat stale → scanner re-dispatches it (reverse self-heal).
+
+    2026-08-27 scenario: heartbeat cron slots load-shed for 20+ hours after
+    healing the scanner — the one-directional INFRA-578 heal left the pipeline
+    unwatched. The scanner must now pull the heartbeat back up.
+    """
+    from evolution_scanner import watch_heartbeat_channel
+
+    with (
+        patch(
+            "evolution_heartbeat.check_heartbeat_workflow_liveness", return_value={"alive": False, "message": "stale"}
+        ),
+        patch("evolution_heartbeat.trigger_heartbeat_dispatch") as mock_dispatch,
+    ):
+        watch_heartbeat_channel()
+
+    mock_dispatch.assert_called_once()
+
+
+def test_infra588_watch_heartbeat_channel_probe_failure_never_crashes():
+    """INFRA-588: reverse-watch is best-effort hardening — probe crash must not kill the tick."""
+    from evolution_scanner import watch_heartbeat_channel
+
+    with (
+        patch("evolution_heartbeat.check_heartbeat_workflow_liveness", side_effect=RuntimeError("gh exploded")),
+        patch("evolution_heartbeat.trigger_heartbeat_dispatch") as mock_dispatch,
+    ):
+        # Must not raise
+        watch_heartbeat_channel()
+
+    mock_dispatch.assert_not_called()
+
+
+def test_infra588_watch_heartbeat_channel_import_failure_never_crashes(monkeypatch):
+    """INFRA-588: even an ImportError from the lazy dependency must not kill the tick."""
+    import builtins
+
+    from evolution_scanner import watch_heartbeat_channel
+
+    real_import = builtins.__import__
+
+    def _broken_import(name, *args, **kwargs):
+        if name == "evolution_heartbeat":
+            raise ImportError("module gone")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _broken_import)
+    # Must not raise despite the import failing
+    watch_heartbeat_channel()
+
+
+def test_infra588_main_calls_watch_after_write_heartbeat(capsys):
+    """INFRA-588: main() must run the reverse-watch every tick, after the heartbeat marker.
+
+    Ordering matters: write_heartbeat first (INFRA-204 marker always lands),
+    then the reverse-watch, both before P1-2/P2-A hard exits.
+    """
+    from evolution_scanner import main
+
+    config = {
+        "audit_tools": [{"name": "test_tool", "command": 'echo "[]"'}],
+        "severity_order": ["critical", "warning", "info"],
+        "dedup_label": "evolution-found",
+        "isolation_threshold": 3,
+        "failure_label": "evolution-isolated",
+        "max_issues_per_tick": 3,
+        "max_self_audit_issues_per_tick": 1,
+        "max_code_hygiene_issues_per_tick": 1,
+        "snapshot_limit": 100,
+    }
+
+    order: list[str] = []
+
+    with (
+        patch("evolution_scanner.check_kill_switch", return_value=False),
+        patch("evolution_scanner.load_config", return_value=config),
+        patch("evolution_scanner.run_audit_tool", return_value=[]),
+        patch("evolution_scanner.detect_regressions", return_value=[]),
+        patch("evolution_scanner.get_open_issues", return_value=[]),
+        patch("evolution_scanner.update_history"),
+        patch("evolution_scanner.write_heartbeat", side_effect=lambda *a, **k: order.append("write_heartbeat")),
+        patch(
+            "evolution_scanner.watch_heartbeat_channel", side_effect=lambda: order.append("watch_heartbeat")
+        ) as mock_watch,
+        patch("evolution_scanner.check_isolation"),
+        patch("evolution_scanner.auto_close_resolved"),
+    ):
+        main()
+
+    mock_watch.assert_called_once()
+    assert order == ["write_heartbeat", "watch_heartbeat"], (
+        f"Reverse-watch must run after write_heartbeat, got: {order}"
+    )

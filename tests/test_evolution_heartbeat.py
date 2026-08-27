@@ -837,3 +837,128 @@ def _expand_cron_part(part: str) -> list[int]:
     if part.startswith("*/"):
         return list(range(0, 60, int(part[2:])))
     return [int(part)]
+
+
+# ---------------------------------------------------------------------------
+# INFRA-588: heartbeat reverse-watch (scanner → heartbeat self-heal)
+# ---------------------------------------------------------------------------
+
+
+def test_infra588_check_heartbeat_workflow_liveness_alive():
+    """INFRA-588: heartbeat ran 1h ago (cron is 2h, threshold 3h) → alive."""
+    runs = [_recent_run(1.0, "success")]
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(json.dumps(runs))
+        result = evolution_heartbeat.check_heartbeat_workflow_liveness()
+
+    assert result["alive"] is True
+
+
+def test_infra588_check_heartbeat_workflow_liveness_stale():
+    """INFRA-588: heartbeat last ran 5h ago (> 3h threshold) → stale.
+
+    This is the 2026-08-27 scenario: heartbeat cron slots load-shed for 20+ h
+    after healing the scanner, leaving the pipeline unwatched.
+    """
+    runs = [_recent_run(5.0, "success")]
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(json.dumps(runs))
+        result = evolution_heartbeat.check_heartbeat_workflow_liveness()
+
+    assert result["alive"] is False
+    assert "stale" in result["message"].lower()
+
+
+def test_infra588_check_heartbeat_workflow_liveness_gh_failure():
+    """INFRA-588: gh query fails → not alive (fail-safe, no exception)."""
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(returncode=1, stderr="auth error")
+        result = evolution_heartbeat.check_heartbeat_workflow_liveness()
+
+    assert result["alive"] is False
+    assert "Cannot query" in result["message"]
+
+
+def test_infra588_liveness_probe_queries_heartbeat_workflow():
+    """INFRA-588: the heartbeat probe must query evolution-heartbeat.yml, not the scan workflow."""
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(json.dumps([_recent_run(0.5, "success")]))
+        evolution_heartbeat.check_heartbeat_workflow_liveness()
+
+    cmd = mock_run.call_args[0][0]
+    assert "evolution-heartbeat.yml" in cmd, f"Probe must target heartbeat workflow, got: {cmd}"
+    assert "evolution-scan.yml" not in cmd
+
+
+def test_infra588_scanner_liveness_queries_scan_workflow():
+    """INFRA-588 regression: shared _check_workflow_liveness must not break scanner probe target."""
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(json.dumps([_recent_run(0.5, "success")]))
+        evolution_heartbeat.check_scanner_liveness()
+
+    cmd = mock_run.call_args[0][0]
+    assert "evolution-scan.yml" in cmd, f"Scanner probe must target scan workflow, got: {cmd}"
+    assert "evolution-heartbeat.yml" not in cmd
+
+
+def test_infra588_trigger_heartbeat_dispatch_success():
+    """INFRA-588: dispatch succeeds → True, correct gh workflow run command."""
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(stdout="", returncode=0)
+        ok = evolution_heartbeat.trigger_heartbeat_dispatch()
+
+    assert ok is True
+    cmd = mock_run.call_args[0][0]
+    assert cmd == ["gh", "workflow", "run", "evolution-heartbeat.yml"]
+
+
+def test_infra588_trigger_heartbeat_dispatch_failure():
+    """INFRA-588: gh workflow run fails → False, no exception escapes."""
+    with patch("evolution_heartbeat.subprocess.run") as mock_run:
+        mock_run.return_value = _gh_result(returncode=1, stderr="workflow disabled")
+        ok = evolution_heartbeat.trigger_heartbeat_dispatch()
+
+    assert ok is False
+
+
+def test_infra588_trigger_heartbeat_dispatch_timeout():
+    """INFRA-588: subprocess timeout → False, no exception escapes."""
+    with patch("evolution_heartbeat.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="gh", timeout=30)):
+        ok = evolution_heartbeat.trigger_heartbeat_dispatch()
+
+    assert ok is False
+
+
+def test_infra588_threshold_covers_cron_drift():
+    """INFRA-588: 2h cron + 1h slack threshold (3h) tolerates the observed 2h18m+ drift.
+
+    Locks HEARTBEAT_LIVENESS_THRESHOLD_HOURS so a future edit cannot silently
+    shrink it below the cron interval (which would cause perpetual re-dispatch
+    loops) or inflate it so far that a dead heartbeat goes unnoticed.
+    """
+    cron_hours = 2  # evolution-heartbeat.yml: cron '47 */2 * * *'
+    threshold = evolution_heartbeat.HEARTBEAT_LIVENESS_THRESHOLD_HOURS
+    assert threshold >= cron_hours + 1, f"Threshold must cover cron + 1h drift slack, got {threshold}h"
+    assert threshold <= cron_hours * 3, f"Threshold too loose for a 2h cron, got {threshold}h"
+
+
+def test_infra588_heartbeat_cron_interval_is_two_hours():
+    """INFRA-588: heartbeat cron hour field must stay */2 (threshold coupling).
+
+    HEARTBEAT_LIVENESS_THRESHOLD_HOURS=3 assumes a 2h schedule. If the cron
+    interval changes, the threshold must be re-derived — this test forces that
+    review instead of silently breaking the reverse-watch contract.
+    """
+    import yaml
+
+    workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-heartbeat.yml"
+    with workflow_path.open() as f:
+        data = yaml.safe_load(f)
+
+    on_triggers = data.get("on") or data.get(True)
+    cron_entry = on_triggers["schedule"][0].get("cron", "")
+    fields = cron_entry.split()
+    assert fields[1] == "*/2", (
+        f"Heartbeat cron hour field is '{fields[1]}', expected '*/2'. "
+        "HEARTBEAT_LIVENESS_THRESHOLD_HOURS (3h) assumes a 2h interval — update both together."
+    )

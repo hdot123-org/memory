@@ -27,6 +27,8 @@ HEARTBEAT_MARKER_PATH = Path(".evolution/heartbeat.json")
 MONITOR_HEARTBEAT_PATH = Path(".evolution/monitor_heartbeat.json")
 SCANNER_WORKFLOW = "evolution-scan.yml"
 SCANNER_LIVENESS_THRESHOLD_HOURS = 2  # Alert if scanner hasn't run in 2 hours
+HEARTBEAT_WORKFLOW = "evolution-heartbeat.yml"
+HEARTBEAT_LIVENESS_THRESHOLD_HOURS = 3  # Cron is 2h; alert if no run within 3h
 
 # --- Shared anomaly markers (producer ↔ consumer coupling) ---
 # These strings are written by create_alert_issue/_build_alert_body and parsed by
@@ -221,6 +223,31 @@ def check_scanner_liveness(
       - last_status (str): conclusion of the most recent run
       - message (str): human-readable status
     """
+    return _check_workflow_liveness(SCANNER_WORKFLOW, threshold_hours)
+
+
+def check_heartbeat_workflow_liveness(
+    threshold_hours: int = HEARTBEAT_LIVENESS_THRESHOLD_HOURS,
+) -> dict[str, Any]:
+    """INFRA-588: Check if the heartbeat workflow itself has run recently.
+
+    INFRA-578 self-heal is one-directional (heartbeat → scanner). On 2026-08-27
+    the heartbeat's own cron slots were load-shed for 20+ hours AFTER it had
+    healed the scanner, leaving the whole pipeline unwatched. The scanner now
+    reverse-watches the heartbeat (see evolution_scanner.watch_heartbeat_channel);
+    this function provides the liveness probe it queries.
+
+    Returns the same shape as check_scanner_liveness.
+    """
+    return _check_workflow_liveness(HEARTBEAT_WORKFLOW, threshold_hours)
+
+
+def _check_workflow_liveness(workflow: str, threshold_hours: int) -> dict[str, Any]:
+    """Stateless workflow liveness probe via gh run list (shared implementation).
+
+    Used by both check_scanner_liveness (scanner) and
+    check_heartbeat_workflow_liveness (heartbeat reverse-watch, INFRA-588).
+    """
     result: dict[str, Any] = {
         "alive": True,
         "hours_since_last_run": float("inf"),
@@ -234,7 +261,7 @@ def check_scanner_liveness(
                 "run",
                 "list",
                 "--workflow",
-                SCANNER_WORKFLOW,
+                workflow,
                 "--limit",
                 "5",
                 "--json",
@@ -308,6 +335,36 @@ def trigger_scanner_dispatch() -> bool:
         return False
 
     print(f"[heartbeat] Self-heal: dispatched {SCANNER_WORKFLOW} via workflow_dispatch")
+    return True
+
+
+def trigger_heartbeat_dispatch() -> bool:
+    """INFRA-588: Reverse self-heal — re-trigger evolution-heartbeat via workflow_dispatch.
+
+    Called by the scanner's watch_heartbeat_channel() when it detects the
+    heartbeat workflow's cron slots have been load-shed. Mirrors
+    trigger_scanner_dispatch (INFRA-578): dispatch failure must not crash the
+    calling tick — observability of the failure is preserved via the returned
+    flag and caller-side print.
+
+    Returns True if the dispatch was accepted by the GitHub API.
+    """
+    try:
+        proc = subprocess.run(
+            ["gh", "workflow", "run", HEARTBEAT_WORKFLOW],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"[scanner] Heartbeat dispatch failed: {exc}")
+        return False
+
+    if proc.returncode != 0:
+        print(f"[scanner] Heartbeat dispatch failed: {proc.stderr.strip()}")
+        return False
+
+    print(f"[scanner] Self-heal: dispatched {HEARTBEAT_WORKFLOW} via workflow_dispatch")
     return True
 
 
