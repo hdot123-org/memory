@@ -692,3 +692,28 @@ class TestBranchCleanupNamingContract:
 
         assert "branch" in inputs, "workflow_dispatch 缺少 branch input"
         assert inputs["branch"].get("type") == "string", "branch input 应为 string 类型"
+
+    def test_branch_age_vars_forwarded(self, branch_cleanup_data):
+        """VAL-GATE-113: thin caller 必须通过 with: 转发三个 vars.BRANCH_AGE_*（2026-08-27 vars context 修复）"""
+        job = branch_cleanup_data["jobs"]["cleanup"]
+        steps = job.get("steps", [])
+
+        # 找到 uses step
+        uses_step = next((s for s in steps if "uses" in s), None)
+        assert uses_step is not None, "未找到 uses step"
+
+        with_block = uses_step.get("with", {})
+        # 三个 vars 转发必须存在
+        assert "branch-age-merged-hours" in with_block, "branch-age-merged-hours input 缺失"
+        assert "branch-age-closed-hours" in with_block, "branch-age-closed-hours input 缺失"
+        assert "branch-age-orphan-hours" in with_block, "branch-age-orphan-hours input 缺失"
+        # 验证引用 vars context（workflow 层合法）
+        assert "vars.BRANCH_AGE_MERGED_HOURS" in with_block["branch-age-merged-hours"], (
+            "branch-age-merged-hours 未引用 vars.BRANCH_AGE_MERGED_HOURS"
+        )
+        assert "vars.BRANCH_AGE_CLOSED_HOURS" in with_block["branch-age-closed-hours"], (
+            "branch-age-closed-hours 未引用 vars.BRANCH_AGE_CLOSED_HOURS"
+        )
+        assert "vars.BRANCH_AGE_ORPHAN_HOURS" in with_block["branch-age-orphan-hours"], (
+            "branch-age-orphan-hours 未引用 vars.BRANCH_AGE_ORPHAN_HOURS"
+        )
