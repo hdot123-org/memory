@@ -166,6 +166,7 @@ DEP001 = [
     "tomllib",
     "evolution_adapters",
     "evolution_utils",
+    "evolution_heartbeat",  # scripts/ 本地模块：scanner 反向守护 heartbeat（INFRA-588）
     "guard_cli",  # scripts/ 本地模块：check_boundary / check_doc_classification 共享 CLI 骨架 (INFRA-559)
     "_init_autofill",
     "_init_config",
