@@ -564,19 +564,24 @@ def test_double_run_idempotent(tmp_path: Path):
 
 
 # ============================================================================
-# VAL-BCI-013: workflow calls the tracking-issue script (wiring contract)
+# VAL-BCI-013: workflow delegates to infra-core composite action (M4)
 # ============================================================================
 def test_workflow_calls_tracking_issue_script():
-    """branch-cleanup.yml invokes scripts/branch_cleanup_issue.sh with the
-    documented arguments and always() condition."""
+    """branch-cleanup.yml delegates to the infra-core composite action.
+
+    Since M4 (branch-cleanup thin caller), the INFRA-385 tracking-issue wiring
+    (scripts/branch_cleanup_issue.sh invocation, always() condition, --deleted
+    / --protected / --run-url / --run-date args, GH_REPO_KEY) is encapsulated
+    inside hdot123-org/infra-core/actions/branch-cleanup. The thin caller only
+    needs to reference the composite action.
+    """
     workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "branch-cleanup.yml"
     content = workflow_path.read_text()
 
-    assert "scripts/branch_cleanup_issue.sh" in content, "Workflow must call the INFRA-385 tracking-issue script"
-    assert "if: always()" in content, "Step must run always so resolved tracking issues get closed"
-    for arg in ("--deleted", "--protected", "--run-url", "--run-date"):
-        assert arg in content, f"Workflow must pass {arg}"
-    assert "GH_REPO_KEY" in content, "Workflow must pass the repository key for gh search"
+    assert "hdot123-org/infra-core/actions/branch-cleanup@" in content, (
+        "Workflow must call the infra-core branch-cleanup composite action "
+        "(which encapsulates the INFRA-385 tracking-issue wiring)"
+    )
 
 
 # ============================================================================
