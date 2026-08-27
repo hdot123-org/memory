@@ -17,7 +17,9 @@ permissions:
 jobs:
   governance-check:
     name: Block non-owner governance modifications
-    runs-on: [self-hosted, pve-linux]
+    # INFRA-569 安全边界：pull_request_target + secrets 的 job 必须保持 GitHub-hosted，
+    # 自建 runner 对 PR 代码是持久化多租户环境，会扩大攻击面。
+    runs-on: ubuntu-latest
     steps:
       - name: Governance check
         uses: hdot123-org/infra-core/actions/governance-check@main
