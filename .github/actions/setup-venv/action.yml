@@ -1,21 +1,23 @@
-# INFRA-569：按运行隔离的 venv 引导（composite action）
+# Layer 1+2: 宿主工具 + 缓存锁定（2026-08-28 runner-hardening）
 #
-# 动机（2026-08-25 教训 selfhosted-runner-env-shadowing）：
-# 1. 自建 runner 的 site-packages 存在 pip install -e 管不到的旧包残留
-#    （部署链路/快照预装来源），环境遮蔽导致 CI 版本断言假失败；
-# 2. pip --user 装进 ~/.local 会跨 run 残留半装状态，rerun 时毒化新 run。
+# 动机（2026-08-27 裁定 Pin & Freeze）：
+# 1. Layer 1: 三台 pve runner（ce-01 上 actions-runner/02/03）全局路径锁定固定版本工具二进制
+#    （uv/ruff/mypy/actionlint/shellcheck/jq），CI 按 PATH 优先原则调用宿主预装二进制
+# 2. Layer 2: UV_CACHE_DIR=/var/cache/uv、PIP_CACHE_DIR=/var/cache/pip（runner 服务用户属主），
+#    依赖版本经两仓 lockfile 锁定保证缓存命中，per-run venv 从缓存硬链秒级建
+# 3. 护栏铁律：只锁工具二进制，被测包的 per-run venv 独立安装不动（2026-08-25 环境遮蔽教训）
 #
-# 本 action 在 $RUNNER_TEMP 下按 run_id + run_attempt 创建一次性 venv 并
-# 前置到 PATH（含 VIRTUAL_ENV），job 结束由 runner 自动清理——每次运行
-# 从零解析依赖，rerun 不共享旧状态。
+# 本 action 在 $RUNNER_TEMP 下按 run_id + run_attempt 创建一次性 venv 并前置到 PATH
+# （含 VIRTUAL_ENV），job 结束由 runner 自动清理——每次运行从零解析依赖，rerun 不共享旧状态。
+# 工具二进制走 PATH 优先级：宿主预装 > RUNNER_TEMP fallback 下载。
+# 缓存目录走 runner 全局：/var/cache/uv、/var/cache/pip（首次预热后常驻 NVMe）。
 #
 # 前置要求：调用 job 已 checkout（本 action 不读仓库文件）；系统 python3 为 3.12
 #（pyproject requires-python ==3.12.*，pve runner 预装）。
 # 回退分支：镜像缺 python3-venv（ensurepip）时 --without-pip + get-pip 引导。
-# 本地 action 无 marketplace 下载——慢隧道下 job 启动阶段零额外开销。
 # shellcheck 洁净：GitHub 表达式经 env 传入（SC2296：${{ }}} 不能进脚本内联）。
-name: "Setup isolated venv (per-run)"
-description: "Create a per-run isolated venv under RUNNER_TEMP and prepend it to PATH (INFRA-569)"
+name: "Setup isolated venv with host tools (per-run)"
+description: "Create a per-run isolated venv with host toolchain priority and shared cache (INFRA-589)"
 runs:
   using: "composite"
   steps:
@@ -25,6 +27,24 @@ runs:
         RUN_ATTEMPT: ${{ github.run_attempt }}
       run: |
         set -eu
+
+        # Layer 2: 共享缓存目录（runner 全局，首次预热后常驻 NVMe）
+        export UV_CACHE_DIR="/var/cache/uv"
+        export PIP_CACHE_DIR="/var/cache/pip"
+
+        # Layer 1: 宿主工具二进制探测（PATH 优先原则）
+        echo "::group::Host toolchain detection"
+        for tool in uv ruff mypy actionlint shellcheck jq; do
+          if command -v "$tool" >/dev/null; then
+            ver="$($tool --version 2>/dev/null | head -1 || echo 'unknown')"
+            echo "  $tool: $(which $tool) ($ver)"
+          else
+            echo "::warning::$tool not found on host PATH (will fallback if needed)"
+          fi
+        done
+        echo "::endgroup::"
+
+        # Per-run venv 隔离（被测包依赖，不锁宿主工具）
         VENV="$RUNNER_TEMP/venv-${RUN_ID}-${RUN_ATTEMPT}"
         rm -rf "$VENV"
         if ! python3 -m venv "$VENV" 2>"$RUNNER_TEMP/venv-err.log"; then
@@ -40,7 +60,12 @@ runs:
           fi
           "$VENV/bin/python" "$RUNNER_TEMP/get-pip.py" --disable-pip-version-check
         fi
+
+        # venv 前置到 PATH（宿主工具仍可通过绝对路径或 fallback 调用）
         echo "$VENV/bin" >> "$GITHUB_PATH"
         echo "VIRTUAL_ENV=$VENV" >> "$GITHUB_ENV"
+        echo "UV_CACHE_DIR=$UV_CACHE_DIR" >> "$GITHUB_ENV"
+        echo "PIP_CACHE_DIR=$PIP_CACHE_DIR" >> "$GITHUB_ENV"
+
         "$VENV/bin/python" --version
         "$VENV/bin/python" -m pip --version
