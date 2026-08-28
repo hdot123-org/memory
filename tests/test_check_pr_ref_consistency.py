@@ -180,6 +180,64 @@ def _run_check(pr_number: int, side_effect_fn=None):
 
 
 # ===========================================================================
+# gh issue view 显式 --repo：self-hosted runner 宿主级 git URL 重写
+# （共享缓存/代理隧道）会让 gh 基于 workspace remote 推断仓库并误判
+# "no known GitHub host"（2026-08-28 INFRA-597 CI 事故）。
+# GITHUB_REPOSITORY 已设置时必须显式传 --repo，未设置时保持原命令形态。
+# ===========================================================================
+
+
+def _load_mod():
+    """Import the check script module the same way _run_check does."""
+    import importlib
+
+    sys.path.insert(0, str(SCRIPT_PATH.parent))
+    try:
+        mod = importlib.import_module("check_pr_ref_consistency")
+        importlib.reload(mod)
+    finally:
+        sys.path.pop(0)
+    return mod
+
+
+def test_fetch_issue_comments_uses_repo_flag_from_github_repository_env(monkeypatch):
+    """GITHUB_REPOSITORY 已设置（CI）→ gh issue view 必须显式 --repo。"""
+    mod = _load_mod()
+    captured = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = list(args)
+        return _mock_gh_issue_comments("hello")
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "hdot123-org/memory")
+    with patch("subprocess.run", side_effect=fake_run):
+        text = mod.fetch_issue_comments(800)
+    assert text == "hello"
+    args = captured["args"]
+    assert args[:3] == ["gh", "issue", "view"]
+    assert "--repo" in args
+    assert args[args.index("--repo") + 1] == "hdot123-org/memory"
+
+
+def test_fetch_issue_comments_no_repo_flag_without_github_repository_env(monkeypatch):
+    """GITHUB_REPOSITORY 未设置（本地调试）→ 保持原命令形态（无 --repo）。"""
+    mod = _load_mod()
+    captured = []
+
+    def fake_run(args, **kwargs):
+        captured.append(list(args))
+        if "remote get-url" in " ".join(args):
+            return _mock_ok("https://github.com/hdot123-org/memory.git")
+        return _mock_gh_issue_comments("hello")
+
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    with patch("subprocess.run", side_effect=fake_run):
+        mod.fetch_issue_comments(800)
+    issue_cmd = next(a for a in captured if a[:3] == ["gh", "issue", "view"])
+    assert "--repo" not in issue_cmd
+
+
+# ===========================================================================
 # VAL-GATE-201: #729 mismatch form must be caught
 # ===========================================================================
 
