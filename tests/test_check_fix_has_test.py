@@ -141,6 +141,63 @@ def test_get_pr_data_no_retry_on_404(monkeypatch):
     assert len(calls) == 1
 
 
+def test_get_pr_data_uses_repo_flag_from_github_repository_env(monkeypatch):
+    """CI 环境（GITHUB_REPOSITORY 已设置）→ gh pr view 显式 --repo。
+
+    self-hosted runner 配置 git url.<mirror>.insteadOf 全局重写后，gh 基于
+    workspace remote 的仓库推断误判 "no known GitHub host"，guard 以 exit 2
+    阻塞一切 PR（2026-08-28 INFRA-597 CI 事故，两台 pve runner 复现）。
+    GITHUB_REPOSITORY（Actions 运行器默认注入）显式指定 OWNER/REPO，
+    仓库解析不再依赖 workspace remote。
+    """
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+
+        class R:
+            stdout = json.dumps({"commits": [], "files": [], "author": "x"})
+            stderr = ""
+
+        return R()
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "hdot123-org/memory")
+    monkeypatch.setattr(mod, "_run", fake_run)
+    data = mod.get_pr_data(42)
+    assert data == {"commits": [], "files": [], "author": "x"}
+    assert captured["cmd"] == [
+        "gh",
+        "pr",
+        "view",
+        "42",
+        "--repo",
+        "hdot123-org/memory",
+        "--json",
+        "commits,files,author",
+    ]
+
+
+def test_get_pr_data_no_repo_flag_without_github_repository_env(monkeypatch):
+    """GITHUB_REPOSITORY 未设置（本地调试）→ 保持原命令形态（无 --repo）。"""
+    mod = load_script_module(SCRIPT_PATH, "check_fix_has_test")
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = list(cmd)
+
+        class R:
+            stdout = json.dumps({"commits": [], "files": [], "author": "x"})
+            stderr = ""
+
+        return R()
+
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    monkeypatch.setattr(mod, "_run", fake_run)
+    mod.get_pr_data(42)
+    assert captured["cmd"] == ["gh", "pr", "view", "42", "--json", "commits,files,author"]
+
+
 # ============================================================================
 # VAL-GUARD-002: Fix commit without test files → exit 1
 # ============================================================================

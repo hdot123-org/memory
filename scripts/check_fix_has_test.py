@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -36,7 +37,12 @@ FIX_PATTERN = re.compile(r"^(fix|hotfix|bugfix)(\(.+\))?!?:", re.IGNORECASE)
 RELEASE_PLEASE_PATTERN = re.compile(r"^chore\(main\):\s*release", re.IGNORECASE)
 
 
-def _run(cmd: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    cmd: list[str],
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     """Run a subprocess command, raising on failure."""
     return subprocess.run(
         cmd,
@@ -44,16 +50,34 @@ def _run(cmd: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProc
         text=True,
         check=True,
         cwd=cwd,
+        env=env,
     )
 
 
 def get_pr_data(pr_number: int) -> dict[str, Any]:
-    """Fetch PR data via gh CLI with bounded retry on transient 5xx (TD-503-02)."""
+    """Fetch PR data via gh CLI with bounded retry on transient 5xx (TD-503-02).
+
+    仓库上下文双重防线（2026-08-28，PR #1060 双 runner 实证）：自建 runner
+    配置 git url.<mirror>.insteadOf 全局重写后，gh 基于 workspace remote 的
+    仓库推断误判 "no known GitHub host"，guard 以 exit 2 阻塞一切 PR。
+    1. GITHUB_REPOSITORY env（Actions 运行器默认注入）→ 追加显式 --repo，
+       仓库解析完全不依赖 remote；
+    2. GH_REPO env（若 CI 显式注入）→ _run 透传完整 env，gh 原生识别。
+    两者均未设置时保持原命令形态（本地调试）。
+    """
     max_attempts = 3
     last_err = ""
+    github_repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    view_cmd: list[str] = ["gh", "pr", "view", str(pr_number)]
+    if github_repository:
+        view_cmd += ["--repo", github_repository]
+    view_cmd += ["--json", "commits,files,author"]
+    env: dict[str, str] | None = None
+    if os.environ.get("GH_REPO"):
+        env = dict(os.environ)
     for attempt in range(1, max_attempts + 1):
         try:
-            result = _run(["gh", "pr", "view", str(pr_number), "--json", "commits,files,author"])
+            result = _run(view_cmd, env=env)
             data: dict[str, Any] = json.loads(result.stdout)
             return data
         except FileNotFoundError:
