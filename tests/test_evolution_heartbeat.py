@@ -850,7 +850,8 @@ def test_infra597_suppression_heals_prior_alert():
     treats the scanner as recovered, so resolve_cleared_alerts closes it with
     the standard self-heal comment instead of waiting for the next scan run.
     """
-    runs = [_recent_run(5.0, "success")]  # stale but non-severe
+    # stale but non-severe (5.0h < 8h)：liveness 数据经 mock 的 check_scanner_liveness
+    # 注入（hours_since_last_run=5.0），无需 gh run list 桩数据
     open_alerts = [{"number": 1059, "body": _ALERT_BODY_SCANNER_STALE}]
 
     with (
@@ -871,6 +872,7 @@ def test_infra597_suppression_heals_prior_alert():
             "last_status": "success",
             "message": "Scanner stale: last run 5.0h ago",
         }
+
         # _issue_has_self_heal_comment (gh issue view) → no prior comment;
         # self-heal comment + close succeed
         def side_effect(args, **kwargs):
