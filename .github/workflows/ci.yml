@@ -69,23 +69,30 @@ jobs:
       - name: Install shellcheck and actionlint
         shell: bash
         run: |
-          # 优先用 PATH 里已存在的（自建 runner 已预装）；否则下载到 job 本地目录。
+          # Layer 1: 优先使用宿主预装的工具（runner-tools.toml 锁定版本）
+          # 仅在宿主未预装时才 fallback 下载到 job 本地目录（2026-08-28 runner-hardening）
           # 不用 sudo：自建 runner 刻意无 NOPASSWD，工具装进 workspace 即可。
-          if ! command -v shellcheck >/dev/null; then
-            wget -q https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz
-            tar -xf shellcheck-v0.10.0.linux.x86_64.tar.xz -C "$RUNNER_TEMP"
-            export PATH="$RUNNER_TEMP/shellcheck-v0.10.0:$PATH"
-            echo "$RUNNER_TEMP/shellcheck-v0.10.0" >> "$GITHUB_PATH"
-            rm -f shellcheck-v0.10.0.linux.x86_64.tar.xz
+          if command -v shellcheck >/dev/null 2>&1; then
+            echo "✓ Using host shellcheck: $(shellcheck --version | head -2)"
+          else
+            echo "::warning::shellcheck not found on host, falling back to download"
+            wget -q https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+            tar -xf shellcheck-v0.11.0.linux.x86_64.tar.xz -C "$RUNNER_TEMP"
+            export PATH="$RUNNER_TEMP/shellcheck-v0.11.0:$PATH"
+            echo "$RUNNER_TEMP/shellcheck-v0.11.0" >> "$GITHUB_PATH"
+            rm -f shellcheck-v0.11.0.linux.x86_64.tar.xz
+            shellcheck --version | head -2
           fi
-          if ! command -v actionlint >/dev/null; then
-            wget -q https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
-            tar -xzf actionlint_1.7.7_linux_amd64.tar.gz -C "$RUNNER_TEMP"
+          if command -v actionlint >/dev/null 2>&1; then
+            echo "✓ Using host actionlint: $(actionlint --version)"
+          else
+            echo "::warning::actionlint not found on host, falling back to download"
+            wget -q https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+            tar -xzf actionlint_1.7.12_linux_amd64.tar.gz -C "$RUNNER_TEMP"
             echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-            rm -f actionlint_1.7.7_linux_amd64.tar.gz
+            rm -f actionlint_1.7.12_linux_amd64.tar.gz
+            actionlint --version | head -1
           fi
-          shellcheck --version | head -2; actionlint --version | head -1
-          rm -f shellcheck-v0.10.0.linux.x86_64.tar.xz actionlint_1.7.7_linux_amd64.tar.gz
       - name: Shell lint
         shell: bash
         run: |
