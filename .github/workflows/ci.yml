@@ -76,21 +76,23 @@ jobs:
             echo "✓ Using host shellcheck: $(shellcheck --version | head -2)"
           else
             echo "::warning::shellcheck not found on host, falling back to download"
-            wget -q https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
-            tar -xf shellcheck-v0.11.0.linux.x86_64.tar.xz -C "$RUNNER_TEMP"
-            export PATH="$RUNNER_TEMP/shellcheck-v0.11.0:$PATH"
-            echo "$RUNNER_TEMP/shellcheck-v0.11.0" >> "$GITHUB_PATH"
-            rm -f shellcheck-v0.11.0.linux.x86_64.tar.xz
+            # fallback 版本对齐 runner-tools.toml [tools]（宿主实测，test_runner_toolchain_contract 钉住）
+            wget -q https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz
+            tar -xf shellcheck-v0.10.0.linux.x86_64.tar.xz -C "$RUNNER_TEMP"
+            export PATH="$RUNNER_TEMP/shellcheck-v0.10.0:$PATH"
+            echo "$RUNNER_TEMP/shellcheck-v0.10.0" >> "$GITHUB_PATH"
+            rm -f shellcheck-v0.10.0.linux.x86_64.tar.xz
             shellcheck --version | head -2
           fi
           if command -v actionlint >/dev/null 2>&1; then
             echo "✓ Using host actionlint: $(actionlint --version)"
           else
             echo "::warning::actionlint not found on host, falling back to download"
-            wget -q https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
-            tar -xzf actionlint_1.7.12_linux_amd64.tar.gz -C "$RUNNER_TEMP"
+            # fallback 版本对齐 runner-tools.toml [tools]（宿主实测，test_runner_toolchain_contract 钉住）
+            wget -q https://github.com/rhysd/actionlint/releases/download/v1.7.11/actionlint_1.7.11_linux_amd64.tar.gz
+            tar -xzf actionlint_1.7.11_linux_amd64.tar.gz -C "$RUNNER_TEMP"
             echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-            rm -f actionlint_1.7.12_linux_amd64.tar.gz
+            rm -f actionlint_1.7.11_linux_amd64.tar.gz
             actionlint --version | head -1
           fi
       - name: Shell lint
