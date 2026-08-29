@@ -181,25 +181,29 @@ class TestAuditGate:
         assert result.returncode == 0, f"actionlint failed:\n{result.stdout}\n{result.stderr}"
 
     def test_val_gate_006_auto_merge_no_bypass(self):
-        """VAL-GATE-006: auto-merge.yml respects droid-review check (no bypass)."""
+        """VAL-GATE-006: auto-merge.yml respects droid-review check (M4 切换后).
+
+        thin caller 零内联 run block——bypass token 结构性不存在（未来新增本地
+        step 仍被本扫描覆盖）；执行体委托 infra-core reusable，shared-workflows
+        pin 与零红判定由引擎仓 test_auto_merge_workflow_contract 锁定。
+        """
         workflow_path = REPO_ROOT / ".github/workflows/auto-merge.yml"
         content = workflow_path.read_text()
         data = yaml.safe_load(content)
 
-        # Must not contain bypass commands in any step's run block
-        all_steps = []
+        # Must not contain bypass commands in any local run block
         for _job_name, job_data in data.get("jobs", {}).items():
-            all_steps.extend(job_data.get("steps", []))
-        run_blocks = [s.get("run", "") for s in all_steps if s.get("run")]
-        for run_block in run_blocks:
-            assert "--admin" not in run_block, f"Bypass --admin found in run block: {run_block}"
-            assert "--force" not in run_block, f"Bypass --force found in run block: {run_block}"
+            for step in job_data.get("steps") or []:
+                run_block = step.get("run", "")
+                assert "--admin" not in run_block, f"Bypass --admin found: {run_block}"
+                assert "--force" not in run_block, f"Bypass --force found: {run_block}"
 
-        # Must use shared-workflows/auto-merge (respects check status)
-        steps = data["jobs"]["auto-merge"]["steps"]
-        auto_merge_step = next((s for s in steps if "auto-merge" in s.get("uses", "")), None)
-        assert auto_merge_step is not None, "auto-merge step using shared-workflows/auto-merge not found"
-        assert "shared-workflows/auto-merge" in auto_merge_step["uses"]
+        # 执行体必须委托 infra-core reusable workflow
+        jobs = data["jobs"]
+        assert list(jobs.keys()) == ["auto-merge"], f"thin caller 单 job 拓扑漂移: {list(jobs.keys())}"
+        assert jobs["auto-merge"].get("uses") == (
+            "hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@main"
+        )
 
         # Must have correct triggers
         triggers = data[True]  # YAML parses 'on:' as True key
@@ -247,27 +251,28 @@ class TestCrossAreaAuditGate:
         )
 
     def test_val_cross_030_failed_review_blocks_merge(self):
-        """VAL-CROSS-030: Failed droid-review blocks auto-merge (integration test)."""
-        # This is an integration test that verifies the workflow structure.
-        # Actual runtime behavior is tested via GitHub Actions.
+        """VAL-CROSS-030（M4 切换后）：失败 droid-review 阻断 auto-merge（结构等价）。
+
+        caller 锁定：唯一 job 是 uses 委托 + 事件门控 if（workflow_run 仅
+        conclusion==success 才进流水）；零红判定（statusCheckRollup 全绿才
+        merge，含 advisory）在 infra-core reusable 执行体内实施并由其契约
+        测试锁定（test_auto_merge_workflow_contract.py）。"""
         auto_merge_path = REPO_ROOT / ".github/workflows/auto-merge.yml"
         content = auto_merge_path.read_text()
 
-        # Verify no bypass mechanisms in any run block
+        # Verify no bypass mechanisms in any local run block
         data = yaml.safe_load(content)
-        all_steps = []
         for _job_name, job_data in data.get("jobs", {}).items():
-            all_steps.extend(job_data.get("steps", []))
-        run_blocks = [s.get("run", "") for s in all_steps if s.get("run")]
-        for run_block in run_blocks:
-            assert "--admin" not in run_block
-            assert "merge --force" not in run_block
+            for step in job_data.get("steps") or []:
+                run_block = step.get("run", "")
+                assert "--admin" not in run_block
+                assert "merge --force" not in run_block
 
-        # Verify auto-merge uses shared workflow that respects checks
-        steps = data["jobs"]["auto-merge"]["steps"]
-        merge_step = next((s for s in steps if "auto-merge" in s.get("uses", "")), None)
-        assert merge_step is not None
-        # Shared workflow respects check status by design
+        # caller 单 job 委托 + workflow_run 仅 success 才尝试合并（快路径门控）
+        calling = data["jobs"]["auto-merge"]
+        assert ".github/workflows/auto-merge-pipeline.yml@" in calling.get("uses", "")
+        job_if = str(calling.get("if", ""))
+        assert "github.event.workflow_run.conclusion == 'success'" in job_if
 
     def test_val_cross_031_findings_schema_validation_exists(self):
         """VAL-CROSS-031: publish_findings.py must validate schema."""
@@ -287,39 +292,115 @@ class TestCrossAreaAuditGate:
 
 
 class TestAutoMergeDispatchTokenGuard:
-    """回归防护：auto-merge.yml 的合并步骤禁止回退到 GITHUB_TOKEN。
+    """回归防护：auto-merge 的合并凭证禁止回退到 GITHUB_TOKEN（M4 切换后）。
 
     根因（2026-08-15 两次事故，v0.29.0 / v0.30.0）：GitHub 的递归防护机制会
     抑制由 GITHUB_TOKEN 触发的 push 事件，导致 release-please 监听的
     push(paths: .release-please-manifest.json) 触发器失效，release PR
     合并后 tag/Release 不创建，发版链路断裂，只能靠手动 workflow_dispatch
-    补救。修复方式是把 auto-merge 步骤的 GITHUB_TOKEN env 换成
-    DISPATCH_TOKEN（PAT，不受该抑制机制影响）。本测试防止该改动被静默回退。
+    补救。M4 切换后 caller 将 DISPATCH_TOKEN 经 workflow_call secrets 显式
+    传给 infra-core reusable（引擎仓模板测试锁定 merge 步 env 接线），本测试
+    防止 caller 侧转发被静默移除或改绑 GITHUB_TOKEN。
     """
 
     @pytest.fixture
-    def auto_merge_step(self):
-        """Load auto-merge.yml and return the shared-workflows/auto-merge step."""
+    def auto_merge_calling_job(self):
+        """Load auto-merge.yml and return the single calling job."""
         workflow_path = REPO_ROOT / ".github/workflows/auto-merge.yml"
         data = yaml.safe_load(workflow_path.read_text())
-        steps = data["jobs"]["auto-merge"]["steps"]
-        step = next(
-            (s for s in steps if "shared-workflows/auto-merge" in s.get("uses", "")),
-            None,
+        jobs = data["jobs"]
+        assert list(jobs.keys()) == ["auto-merge"], f"thin caller 单 job 拓扑漂移: {list(jobs.keys())}"
+        return jobs["auto-merge"]
+
+    def test_auto_merge_caller_is_reusable_delegation(self, auto_merge_calling_job):
+        """caller 是纯 uses 委托（执行体在 infra-core，含 shared-workflows merge 步）。"""
+        assert auto_merge_calling_job.get("uses") == (
+            "hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@main"
         )
-        assert step is not None, "shared-workflows/auto-merge step not found"
-        return step
+        assert auto_merge_calling_job.get("steps") is None, "thin caller 不得保留内联 step"
 
-    def test_auto_merge_uses_dispatch_token(self, auto_merge_step):
-        """合并步骤的 GITHUB_TOKEN env 必须是 secrets.DISPATCH_TOKEN。"""
-        env = auto_merge_step.get("env", {})
-        assert "GITHUB_TOKEN" in env
-        assert env["GITHUB_TOKEN"] == "${{ secrets.DISPATCH_TOKEN }}"
+    def test_auto_merge_uses_dispatch_token(self, auto_merge_calling_job):
+        """DISPATCH_TOKEN 必须经 secrets.dispatch-token 显式转发给 reusable。"""
+        secrets_block = auto_merge_calling_job.get("secrets", {})
+        assert secrets_block.get("dispatch-token") == "${{ secrets.DISPATCH_TOKEN }}"
 
-    def test_auto_merge_does_not_use_github_token_secret(self, auto_merge_step):
-        """明确防止回退：GITHUB_TOKEN env 的值不能等于 secrets.GITHUB_TOKEN。"""
-        env = auto_merge_step.get("env", {})
-        assert env.get("GITHUB_TOKEN") != "${{ secrets.GITHUB_TOKEN }}"
+    def test_auto_merge_does_not_use_github_token_secret(self, auto_merge_calling_job):
+        """明确防止回退：转发的不能是 secrets.GITHUB_TOKEN，且禁止 secrets: inherit。"""
+        secrets_block = auto_merge_calling_job.get("secrets", {})
+        assert secrets_block.get("dispatch-token") != "${{ secrets.GITHUB_TOKEN }}"
+        raw = (REPO_ROOT / ".github/workflows/auto-merge.yml").read_text()
+        assert "secrets: inherit" not in raw, "禁止 secrets: inherit（凭证显式传入，防漂移）"
+
+
+class TestAutoMergeThinCallerContract:
+    """VAL-GATE-106（M4 gate-watchdog-automerge）：auto-merge thin caller 契约。
+
+    触发面（四名单 workflow_run / pull_request_target / schedule / dispatch）、
+    事件门控（workflow_run 仅 conclusion==success）、concurrency 留在 caller
+    （github 事件上下文只在 caller 求值）；resolve+triage+merge 执行体委托
+    infra-core auto-merge-pipeline.yml——shared-workflows@5a0fc1b merge pin
+    冻结不动（M6 才合并），由引擎仓 TestReusablePipelineTemplateContract 锁定。
+    """
+
+    @pytest.fixture
+    def auto_merge_data(self):
+        workflow_path = REPO_ROOT / ".github/workflows/auto-merge.yml"
+        return yaml.safe_load(workflow_path.read_text())
+
+    def test_workflow_name_byte_exact(self, auto_merge_data):
+        """VAL-GATE-106: workflow 名字节级为 'Auto Merge'。"""
+        assert auto_merge_data["name"] == "Auto Merge"
+
+    def test_workflow_run_listener_four_names_exact(self, auto_merge_data):
+        """workflow_run 名单留在 caller 文件且字节级精确（四触发名 + completed）。"""
+        triggers = auto_merge_data.get(True, {}) or auto_merge_data.get("on", {})
+        wr = triggers["workflow_run"]
+        assert wr["workflows"] == ["CI", "QA", "Droid Auto Review", "Evolution Governance"], (
+            f"四名单漂移: {wr['workflows']}"
+        )
+        assert wr["types"] == ["completed"]
+
+    def test_other_triggers_exact(self, auto_merge_data):
+        """pull_request_target 三类 + schedule */10 + workflow_dispatch pr_number 原样。"""
+        triggers = auto_merge_data.get(True, {}) or auto_merge_data.get("on", {})
+        assert triggers["pull_request_target"]["types"] == ["opened", "synchronize", "reopened"]
+        assert triggers["schedule"] == [{"cron": "*/10 * * * *"}]
+        wd = triggers["workflow_dispatch"]["inputs"]["pr_number"]
+        assert wd["required"] is False
+        assert wd["type"] == "string"
+
+    def test_concurrency_group_preserved(self, auto_merge_data):
+        conc = auto_merge_data["concurrency"]
+        assert conc["group"] == "auto-merge-pipeline"
+        assert conc["cancel-in-progress"] is False
+
+    def test_permissions_preserved(self, auto_merge_data):
+        perms = auto_merge_data.get("permissions", {})
+        assert perms == {"contents": "write", "pull-requests": "write", "checks": "read"}
+
+    def test_single_job_delegation_with_event_guard(self, auto_merge_data):
+        """单 job uses 委托 + 事件门控 if 留在 caller（workflow_run 仅 success 才进流水）。"""
+        jobs = auto_merge_data["jobs"]
+        assert list(jobs.keys()) == ["auto-merge"]
+        job = jobs["auto-merge"]
+        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@main"
+        assert job.get("steps") is None
+        job_if = str(job.get("if", ""))
+        assert "github.event_name == 'pull_request_target'" in job_if
+        assert "github.event_name == 'schedule'" in job_if
+        assert "github.event_name == 'workflow_dispatch'" in job_if
+        assert "(github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')" in job_if, (
+            "workflow_run 快路径门控（仅 success 尝试合并）必须留在 caller"
+        )
+
+    def test_calling_job_permissions_match_callee_needs(self, auto_merge_data):
+        """调用 job 权限 = callee 所需集合（startup 子集校验，INFRA-613 教训）。"""
+        job = auto_merge_data["jobs"]["auto-merge"]
+        assert job.get("permissions") == {
+            "contents": "write",
+            "pull-requests": "write",
+            "checks": "read",
+        }
 
 
 class TestYAMLValidity:

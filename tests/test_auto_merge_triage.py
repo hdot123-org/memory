@@ -42,6 +42,16 @@ def _run_triage(prs: list, *extra_args: str) -> dict:
     return json.loads(result.stdout)
 
 
+def _assert_caller_delegates(data: dict) -> None:
+    """thin caller 委托断言（M4 切换后）：硬化不变量已随执行体迁入 infra-core
+    auto-merge-pipeline.yml（引擎仓 test_auto_merge_pipeline_hardening.py 锁定），
+    caller 只需保持单 job uses 委托。"""
+    job = data["jobs"]["auto-merge"]
+    assert ".github/workflows/auto-merge-pipeline.yml@" in job.get("uses", ""), (
+        "执行体必须委托 infra-core auto-merge-pipeline.yml"
+    )
+
+
 class TestAutoMergeTriage:
     """Triage classification tests."""
 
@@ -261,51 +271,43 @@ class TestAutoMergeTriageActions:
 
 
 class TestAutoMergeTriageWorkflow:
-    """Workflow integration tests (YAML structure)."""
+    """Workflow integration tests (YAML structure)——M4 切换后为 thin caller 委托断言。
 
-    def test_auto_merge_yaml_has_triage_step(self):
-        """auto-merge.yml includes triage step in schedule path."""
+    triage/notify/behind/stalled 执行体迁入 infra-core auto-merge-pipeline.yml
+    （reusable）；硬化不变量（sentinel 幂等、NotFound 降级、UNKNOWN 重试、
+    timeout、stalled 标志等）由引擎仓 test_auto_merge_pipeline_hardening.py
+    在 reusable 载体上逐条锁定。caller 只锁委托关系与事件门控。
+    """
+
+    def test_auto_merge_yaml_delegates_to_infra_core_pipeline(self):
+        """auto-merge.yml 是 thin caller：单 job 委托 infra-core reusable（triage 执行体所在）。"""
         import yaml
 
         workflow_path = Path(__file__).parent.parent / ".github/workflows/auto-merge.yml"
         data = yaml.safe_load(workflow_path.read_text())
 
-        # Find the auto-merge job
         assert "jobs" in data
-        assert "auto-merge" in data["jobs"]
-
-        # Check for triage-related steps or comments
-        steps = data["jobs"]["auto-merge"].get("steps", [])
-        step_names = [s.get("name", "") for s in steps]
-
-        # At least one step should mention triage, conflicting, or behind
-        has_triage = any(
-            "triage" in name.lower() or "conflict" in name.lower() or "behind" in name.lower() for name in step_names
+        jobs = data["jobs"]
+        assert list(jobs.keys()) == ["auto-merge"], f"thin caller 单 job 拓扑漂移: {list(jobs.keys())}"
+        job = jobs["auto-merge"]
+        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@main", (
+            "执行体必须委托 infra-core auto-merge-pipeline.yml"
         )
-        # Or the workflow uses the triage script
-        uses_triage = any("auto_merge_triage" in str(s) for s in steps)
-
-        assert has_triage or uses_triage, f"auto-merge.yml lacks triage logic. Steps: {step_names}"
+        assert job.get("steps") is None, "thin caller 不得保留内联 step"
 
     def test_auto_merge_yaml_schedule_not_just_resolve(self):
-        """Schedule path does more than just resolve (has triage/self-heal)."""
+        """Schedule 路径有完整 triage/self-heal 语义（M4 切换后：由委托的
+        infra-core reusable 承载——其模板测试锁定 resolve+triage+merge 拓扑）。"""
         import yaml
 
         workflow_path = Path(__file__).parent.parent / ".github/workflows/auto-merge.yml"
         data = yaml.safe_load(workflow_path.read_text())
-
-        # The workflow should have logic beyond just resolve → merge
-        # Either a triage job or triage steps in auto-merge job
-        jobs = data.get("jobs", {})
-
-        # Check if there's a dedicated triage job
-        has_triage_job = any("triage" in job_name.lower() for job_name in jobs)
-
-        # Or check if auto-merge job has triage steps
-        auto_merge_steps = jobs.get("auto-merge", {}).get("steps", [])
-        has_triage_steps = any("triage" in str(s).lower() or "auto_merge_triage" in str(s) for s in auto_merge_steps)
-
-        assert has_triage_job or has_triage_steps, "auto-merge.yml schedule path lacks triage/self-heal logic"
+        job = data["jobs"]["auto-merge"]
+        # 委托关系即语义承载证明：reusable 内含 resolve + auto-merge(triage) 双 job
+        assert ".github/workflows/auto-merge-pipeline.yml@" in job.get("uses", "")
+        # 事件门控留在 caller：schedule 事件允许进入流水
+        job_if = str(job.get("if", ""))
+        assert "github.event_name == 'schedule'" in job_if
 
 
 class TestAutoMergeTriageHardeningInfra416:
@@ -329,53 +331,28 @@ class TestAutoMergeTriageHardeningInfra416:
         workflow_path = Path(__file__).parent.parent / ".github/workflows/auto-merge.yml"
         return yaml.safe_load(workflow_path.read_text())
 
-    def _triage_step(self, data: dict) -> dict:
-        steps = data["jobs"]["auto-merge"]["steps"]
-        return next(s for s in steps if s.get("name") == "Triage PR mergeable state")
-
-    def _notify_step(self, data: dict) -> dict:
-        steps = data["jobs"]["auto-merge"]["steps"]
-        return next(s for s in steps if s.get("name") == "Handle CONFLICTING PR (notify)")
-
-    # ----- VAL-T416-001/002：CONFLICTING 通知幂等 -----
+    # ----- VAL-T416-001/002：CONFLICTING 通知幂等（执行体在 reusable，
+    # 引擎仓 test_auto_merge_pipeline_hardening.py::TestNotifyStepIdempotency 锁定） -----
 
     def test_notify_step_has_sentinel_dedup(self):
-        """VAL-T416-001：notify 步骤按 head SHA sentinel 去重评论。"""
-        data = self._load_workflow()
-        run_block = self._notify_step(data)["run"]
-        assert "auto-merge-conflict-" in run_block, "notify 步骤必须包含 head SHA sentinel（幂等去重）"
-        assert "--json comments" in run_block or "--json headRefOid" in run_block, (
-            "notify 步骤必须查询既有评论/head SHA"
-        )
+        """VAL-T416-001（M4 切换后）：caller 保持委托，sentinel 幂等在 reusable 锁定。"""
+        _assert_caller_delegates(self._load_workflow())
 
     def test_notify_skip_branch_does_not_comment(self):
-        """VAL-T416-002：已有同 SHA sentinel 时跳过评论（INFRA-428 起命中分支 exit 0，见 VAL-428-003）。"""
-        data = self._load_workflow()
-        run_block = self._notify_step(data)["run"]
-        assert "Skipping duplicate notification" in run_block, "去重命中分支必须显式跳过且不调 gh pr comment"
-        # 去重分支在 gh pr comment 之前短路
-        assert run_block.index("Skipping duplicate notification") < run_block.index("gh pr comment")
+        """VAL-T416-002（M4 切换后）：caller 保持委托，去重短路语义在 reusable 锁定。"""
+        _assert_caller_delegates(self._load_workflow())
 
-    # ----- VAL-T416-003：resolve/triage 竞态守卫 -----
+    # ----- VAL-T416-003：resolve/triage 竞态守卫（reusable 锁定） -----
 
     def test_triage_step_handles_pr_not_found(self):
-        """VAL-T416-003：PR 被并行腿合并后 gh pr view NotFound → skip 而非红腿。"""
-        data = self._load_workflow()
-        run_block = self._triage_step(data)["run"]
-        assert "not found" in run_block or "Could not resolve" in run_block, (
-            "triage 步骤必须识别 NotFound 并降级 skip（竞态守卫）"
-        )
-        assert "action=skip" in run_block
+        """VAL-T416-003（M4 切换后）：caller 保持委托，NotFound→skip 在 reusable 锁定。"""
+        _assert_caller_delegates(self._load_workflow())
 
-    # ----- VAL-T416-004：UNKNOWN 重试 -----
+    # ----- VAL-T416-004：UNKNOWN 重试（reusable 锁定） -----
 
     def test_triage_step_retries_unknown_state(self):
-        """VAL-T416-004：mergeable=UNKNOWN 时等待重取一次，仍未知交 schedule 兜底。"""
-        data = self._load_workflow()
-        run_block = self._triage_step(data)["run"]
-        assert '"$MERGEABLE" = "UNKNOWN"' in run_block, "triage 步骤必须对 UNKNOWN 状态做一次重取"
-        # UNKNOWN 路径最终动作只能是 skip（脚本分类保证），workflow 不猜测
-        assert "UNKNOWN retry" in run_block
+        """VAL-T416-004（M4 切换后）：caller 保持委托，UNKNOWN 重取在 reusable 锁定。"""
+        _assert_caller_delegates(self._load_workflow())
 
     # ----- VAL-T416-005：分类互斥（DIRTY 优先于 BEHIND） -----
 
@@ -434,12 +411,11 @@ class TestAutoMergeTriageHardeningInfra416:
         assert result.returncode == 0
         assert result.stdout.strip() == "skip"
 
-    # ----- VAL-T416-006：job 超时 -----
+    # ----- VAL-T416-006：job 超时（执行体在 reusable，引擎仓锁定 timeout=10） -----
 
     def test_auto_merge_job_has_timeout(self):
-        """VAL-T416-006：auto-merge job 限时 10 分钟，防 gh/网络挂死堆叠。"""
-        data = self._load_workflow()
-        assert data["jobs"]["auto-merge"].get("timeout-minutes") == 10
+        """VAL-T416-006（M4 切换后）：caller 保持委托，timeout-minutes: 10 在 reusable 锁定。"""
+        _assert_caller_delegates(self._load_workflow())
 
 
 class TestAutoMergeTriageHardeningInfra428:
@@ -615,43 +591,21 @@ class TestAutoMergeTriageHardeningInfra428:
         assert output["unknown"][0]["number"] == 13
 
     def test_workflow_triage_fetches_rollup_and_draft(self):
-        """VAL-428-002g：workflow 取数必须包含 isDraft + statusCheckRollup。"""
-        data = self._load_workflow()
-        steps = data["jobs"]["auto-merge"]["steps"]
-        triage_step = next(s for s in steps if s.get("name") == "Triage PR mergeable state")
-        fetch_line = next(
-            (ln for ln in triage_step["run"].splitlines() if "--json" in ln and "gh pr view" in ln),
-            None,
-        )
-        assert fetch_line is not None, "triage 步骤未找到 gh pr view --json 取数行"
-        assert "statusCheckRollup" in fetch_line, "取数缺少 statusCheckRollup（early-fire 防护失效）"
-        assert "isDraft" in fetch_line, "取数缺少 isDraft（draft 盲合并防护失效）"
+        """VAL-428-002g（M4 切换后）：caller 保持委托，取数字段（isDraft +
+        statusCheckRollup）在引擎仓 test_auto_merge_pipeline_hardening.py 锁定。"""
+        _assert_caller_delegates(self._load_workflow())
 
-    # ----- VAL-428-003：notify 去重命中 exit 0（红腿治理） -----
+    # ----- VAL-428-003：notify 去重命中 exit 0（红腿治理，reusable 锁定） -----
 
     def test_notify_dedup_hit_exits_zero(self):
-        """VAL-428-003：去重命中分支必须 exit 0（通知已送达=职责完成）。"""
-        data = self._load_workflow()
-        steps = data["jobs"]["auto-merge"]["steps"]
-        notify_step = next(s for s in steps if s.get("name") == "Handle CONFLICTING PR (notify)")
-        run_block = notify_step["run"]
-        assert "Skipping duplicate notification" in run_block
-        segment = run_block.split("Skipping duplicate notification", 1)[1]
-        segment_before_comment = segment.split("gh pr comment", 1)[0]
-        assert "exit 0" in segment_before_comment, "去重命中必须 exit 0，否则未解决冲突每 10 分钟产生永久红腿"
-        assert "exit 1" not in segment_before_comment
+        """VAL-428-003（M4 切换后）：caller 保持委托，去重命中 exit 0 在 reusable 锁定。"""
+        _assert_caller_delegates(self._load_workflow())
 
-    # ----- VAL-428-004：update-branch 竞态守卫 -----
+    # ----- VAL-428-004：update-branch 竞态守卫（reusable 锁定） -----
 
     def test_update_branch_race_guard(self):
-        """VAL-428-004：update-branch 失败降级绿腿（并行腿竞态正常收敛）。"""
-        data = self._load_workflow()
-        steps = data["jobs"]["auto-merge"]["steps"]
-        behind_step = next(s for s in steps if s.get("name") == "Handle BEHIND PR (update-branch self-heal)")
-        run_block = behind_step["run"]
-        assert "if ! gh pr update-branch" in run_block or (
-            "gh pr update-branch" in run_block and "exit 0" in run_block
-        ), "update-branch 必须有失败降级分支（竞态守卫），不允许裸 exit 1"
+        """VAL-428-004（M4 切换后）：caller 保持委托，update-branch 降级守卫在 reusable 锁定。"""
+        _assert_caller_delegates(self._load_workflow())
 
     # ----- VAL-428-005：stalled 类别 -----
 
@@ -675,35 +629,23 @@ class TestAutoMergeTriageHardeningInfra428:
         assert output["mergeable"] == [], "存在失败 check 时不得 merge"
 
     def test_workflow_has_stalled_step_with_sentinel(self):
-        """VAL-428-005b：workflow 必须有 stalled 处理步骤且幂等（sentinel 去重）。"""
-        data = self._load_workflow()
-        steps = data["jobs"]["auto-merge"]["steps"]
-        stalled_step = next(
-            (s for s in steps if s.get("name") and "stalled" in s.get("name", "").lower()),
-            None,
-        )
-        assert stalled_step is not None, "缺少 stalled 处理步骤"
-        run_block = stalled_step["run"]
-        assert "auto-merge-stalled-" in run_block, "stalled 步骤必须按 head SHA sentinel 幂等"
-        assert "gh pr comment" in run_block
+        """VAL-428-005b（M4 切换后）：caller 保持委托，stalled sentinel 幂等在 reusable 锁定。"""
+        _assert_caller_delegates(self._load_workflow())
 
     def test_workflow_triage_outputs_stalled_flag(self):
-        """VAL-428-005c：triage 步骤输出 stalled 标志供 stalled 步骤门控。"""
-        data = self._load_workflow()
-        steps = data["jobs"]["auto-merge"]["steps"]
-        triage_step = next(s for s in steps if s.get("name") == "Triage PR mergeable state")
-        assert "stalled=" in triage_step["run"], "triage 步骤未输出 stalled 标志"
-        stalled_step = next(s for s in steps if s.get("name") and "stalled" in s.get("name", "").lower())
-        assert "steps.triage.outputs.stalled" in stalled_step.get("if", ""), "stalled 步骤的 if 条件未消费 stalled 标志"
+        """VAL-428-005c（M4 切换后）：caller 保持委托，stalled 标志输出/消费在 reusable 锁定。"""
+        _assert_caller_delegates(self._load_workflow())
 
-    # ----- VAL-428-006：workflow 级并发控制 -----
+    # ----- VAL-428-006：workflow 级并发控制（concurrency 留在 caller） -----
 
     def test_workflow_has_concurrency_group(self):
-        """VAL-428-006：workflow 必须有 concurrency 组（消除跨 run 竞态窗口）。"""
+        """VAL-428-006：caller 保留 workflow 级 concurrency（消除跨 run 竞态窗口）。"""
         data = self._load_workflow()
         concurrency = data.get("concurrency")
         assert concurrency is not None, "缺少 workflow 级 concurrency（评论 TOCTOU/update-branch 双发）"
         assert "group" in concurrency
+        assert concurrency["group"] == "auto-merge-pipeline"
+        assert concurrency["cancel-in-progress"] is False
 
     # ----- --get-category 模式 -----
 

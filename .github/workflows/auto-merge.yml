@@ -1,5 +1,10 @@
 name: Auto Merge
 
+# M4 门禁切换（gate-watchdog-automerge）：本文件为 thin caller——触发面 + 事件门控
+# + concurrency 留在本地（github 事件上下文只在 caller 求值，VAL-GATE-106 契约），
+# resolve + triage + merge 执行体委托 infra-core reusable workflow
+# （auto-merge-pipeline.yml@main，shared-workflows merge pin 在引擎仓冻结不动）。
+#
 # 为什么用 workflow_run + schedule 而非 check_run（INFRA-212）
 # ----------------------------------------------------------------
 # GitHub 为防止递归调用，不会把 check_run / check_suite 事件投递给其他
@@ -13,6 +18,11 @@ name: Auto Merge
 #   2. schedule           —— 每 10 分钟扫描兜底，保证任何遗漏事件都能收敛
 #   3. pull_request_target —— PR 打开/更新时立即尝试一次
 #   4. workflow_dispatch   —— 手动触发（不指定 PR 号则扫描全部 open PR）
+#
+# 零红铁律（2026-08-28 用户裁定，执行体在 infra-core reusable 内实施）：
+#   全绿判定 = PR head 全部 check-runs 零 fail（含 advisory 层）。
+#   triage 的 statusCheckRollup 全 SUCCESS/SKIPPED/NEUTRAL 判定 + shared-workflows
+#   auto-merge action 的全 check-runs 扫描双层保证。不得只查 required contexts。
 on:
   workflow_run:
     workflows: ["CI", "QA", "Droid Auto Review", "Evolution Governance"]
@@ -42,244 +52,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  resolve:
-    name: Resolve candidate PRs
-    runs-on: ubuntu-latest
-    # workflow_run 只有在结论为 success 时才尝试合并；其余事件各自自行门控。
+  auto-merge:
+    # 事件门控归 caller：workflow_run 只有在结论为 success 时才尝试合并；
+    # 其余事件各自自行门控。执行体（resolve/triage/behind/conflicting/stalled/
+    # merge）在 infra-core auto-merge-pipeline.yml（其模板测试锁定 shared-workflows
+    # pin 与零红判定；防毒：零 checkout + RUNNER_TEMP heredoc triage）。
+    # 调用 job 权限 = callee 所需集合（contents/pull-requests/checks，startup
+    # 子集校验，缺声明即 startup_failure 零 job——INFRA-613 教训）。
     if: |
       github.event_name == 'pull_request_target' ||
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
-    outputs:
-      pr_numbers: ${{ steps.resolve.outputs.pr_numbers }}
-    steps:
-      - id: resolve
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          WR_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          MANUAL_PR: ${{ github.event.inputs.pr_number }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -eu
-          echo "Event: $EVENT_NAME"
-          case "$EVENT_NAME" in
-            pull_request_target)
-              if [ -n "$PR_NUMBER" ]; then
-                echo "pr_numbers=[\"$PR_NUMBER\"]" >> "$GITHUB_OUTPUT"
-              fi
-              ;;
-            workflow_dispatch)
-              if [ -n "$MANUAL_PR" ]; then
-                echo "pr_numbers=[\"$MANUAL_PR\"]" >> "$GITHUB_OUTPUT"
-              else
-                # 未指定 PR 号：扫描所有 open PR
-                PRS=$(gh pr list --repo "$REPO" --state open --json number --jq '[.[].number]')
-                echo "pr_numbers=$PRS" >> "$GITHUB_OUTPUT"
-              fi
-              ;;
-            workflow_run)
-              # 按完成工作流的 head SHA 反查关联的 open PR
-              PRS=$(gh pr list --repo "$REPO" --state open --json number,headRefOid \
-                    --jq "[.[] | select(.headRefOid == \"$WR_HEAD_SHA\") | .number]")
-              echo "pr_numbers=$PRS" >> "$GITHUB_OUTPUT"
-              ;;
-            schedule)
-              PRS=$(gh pr list --repo "$REPO" --state open --json number --jq '[.[].number]')
-              echo "pr_numbers=$PRS" >> "$GITHUB_OUTPUT"
-              ;;
-          esac
-
-  auto-merge:
-    name: Auto-merge PR
-    needs: resolve
-    if: needs.resolve.outputs.pr_numbers != '' && needs.resolve.outputs.pr_numbers != '[]'
-    runs-on: ubuntu-latest
-    # INFRA-416：限定单腿时长。triage 各分支都是有界 API 调用，10 分钟
-    # 足够；防止 gh/网络挂死导致 matrix 腿永久占位（schedule 每 10 分钟
-    # 一轮，旧腿不退出会与新腿堆叠）。
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      max-parallel: 5
-      matrix:
-        pr_number: ${{ fromJSON(needs.resolve.outputs.pr_numbers) }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            scripts/auto_merge_triage.sh
-          sparse-checkout-cone-mode: false
-
-      - name: Triage PR mergeable state
-        id: triage
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ matrix.pr_number }}
-        run: |
-          set -eu
-          # 获取 PR 的 mergeable 状态。
-          # mergeable 由 GitHub 异步计算：push 后短暂为 UNKNOWN 属正常。
-          # INFRA-416 竞态守卫：resolve 与本步之间 PR 可能已被并行腿合并
-          # （matrix max-parallel=5），gh pr view 失败（NotFound）时降级为
-          # skip 而非红腿；仅凭状态取不到（非 NotFound 的 API 故障）才 fail。
-          PR_DATA=""
-          for attempt in 1 2 3; do
-            if PR_DATA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json number,mergeable,mergeStateStatus,isDraft,statusCheckRollup 2>&1); then
-              break
-            fi
-            if echo "$PR_DATA" | grep -q "not found\|Could not resolve"; then
-              echo "PR #$PR_NUMBER no longer accessible (merged/closed by a parallel leg). Skipping."
-              echo "action=skip" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            echo "gh pr view attempt $attempt failed: $PR_DATA"
-            PR_DATA=""
-            sleep 5
-          done
-          if [ -z "$PR_DATA" ]; then
-            echo "::error::Could not fetch PR #$PR_NUMBER state after 3 attempts"
-            exit 1
-          fi
-          echo "PR data: $PR_DATA"
-
-          # mergeable=UNKNOWN：GitHub 尚未算完。等待后重取一次（通常几秒
-          # 内出结果）；仍 UNKNOWN 则 skip，交给 schedule 兜底收敛，
-          # 绝不在未知状态猜测动作。
-          MERGEABLE=$(echo "$PR_DATA" | jq -r '.mergeable')
-          if [ "$MERGEABLE" = "UNKNOWN" ]; then
-            sleep 10
-            PR_DATA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json number,mergeable,mergeStateStatus,isDraft,statusCheckRollup)
-            echo "PR data after UNKNOWN retry: $PR_DATA"
-          fi
-
-          # 分类并提取该 PR 的类别与动作（单 PR 输入，--get-category 即其
-          # 类别，workflow 内再映射为 action）。
-          # INFRA-428：取数扩展 isDraft + statusCheckRollup，分类新增
-          # pending（draft/blocked/checks 未报齐）与 stalled（有 check 失败），
-          # action=merge 仅在 rollup 全绿时发出，杜绝 early-fire 盲合并。
-          CATEGORY=$(echo "$PR_DATA" | jq -s '.[0:1]' | bash scripts/auto_merge_triage.sh --get-category "$PR_NUMBER")
-          case "$CATEGORY" in
-            behind) ACTION="update-branch" ;;
-            conflicting) ACTION="notify" ;;
-            pending|stalled) ACTION="wait" ;;
-            mergeable) ACTION="merge" ;;
-            *) ACTION="skip" ;;
-          esac
-          STALLED="false"
-          if [ "$CATEGORY" = "stalled" ]; then STALLED="true"; fi
-          {
-            echo "action=$ACTION"
-            echo "category=$CATEGORY"
-            echo "stalled=$STALLED"
-          } >> "$GITHUB_OUTPUT"
-          echo "Action: $ACTION (category: $CATEGORY)"
-
-      - name: Handle BEHIND PR (update-branch self-heal)
-        if: steps.triage.outputs.action == 'update-branch'
-        env:
-          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ matrix.pr_number }}
-        run: |
-          set -eu
-          echo "::warning::PR #$PR_NUMBER is BEHIND main, attempting update-branch self-heal"
-          # 幂等操作：更新 PR 分支以包含最新 main
-          # INFRA-428 竞态守卫：并发腿可能刚完成 update-branch（或 main 又
-          # 前进使分支重新 BEHIND）。本腿观察到 BEHIND 但 GitHub 侧已变化
-          # 时，gh pr update-branch 会以错误退出（如 "not behind"）——这是
-          # 竞态的正常收敛而非故障，降级为绿腿 skip，交给下一轮 sweep。
-          if ! gh pr update-branch "$PR_NUMBER" --repo "$REPO"; then
-            echo "::warning::update-branch failed for PR #$PR_NUMBER (likely raced with a parallel leg or main moved again). Skipping; next sweep will retry."
-            exit 0
-          fi
-          echo "PR #$PR_NUMBER branch updated, CI will re-run and trigger new workflow_run event"
-
-      - name: Handle CONFLICTING PR (notify)
-        if: steps.triage.outputs.action == 'notify'
-        env:
-          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ matrix.pr_number }}
-        run: |
-          set -eu
-          echo "::error::PR #$PR_NUMBER has merge conflicts (CONFLICTING state)"
-          # 幂等通知（INFRA-416）：按 head SHA 粒度去重——同一 head SHA 只发
-          # 一次冲突评论，避免 schedule 每 10 分钟重复刷屏（INFRA-292 教训）。
-          # sentinel 随冲突解决后的新 push 自然轮换，无需人工清理。
-          # INFRA-428：去重命中后 exit 0——通知已送达即本腿职责完成；此前
-          # 的 exit 1 会让未解决冲突的 PR 每 10 分钟产生一条永久红腿
-          # （失败 run + 注解噪音，且失败 check 落在 head SHA 上持续毒化
-          # shared action 的全绿判定）。首次评论失败仍保持 exit 1 红色告警。
-          HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')
-          SENTINEL="<!-- auto-merge-conflict-${HEAD_SHA} -->"
-          EXISTING=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json comments --jq '[.comments[].body | select(contains("'"$SENTINEL"'"))] | length')
-          if [ "$EXISTING" -gt 0 ]; then
-            echo "::warning::Conflict comment already posted for $HEAD_SHA (count: $EXISTING). Skipping duplicate notification."
-            exit 0
-          fi
-          # 添加评论通知 PR 作者（用 heredoc 避免多行中文字符串破坏 YAML）
-          read -r -d '' COMMENT_BODY <<'COMMENT_EOF' || true
-          ⚠️ **Auto-merge: PR 存在合并冲突（CONFLICTING 状态）**
-
-          此 PR 无法自动合并，需要手动解决冲突：
-          1. 拉取最新 main 并合并
-          2. 解决冲突并推送
-          3. 推送后 auto-merge 会自动重试
-
-          COMMENT_EOF
-          COMMENT_BODY="${COMMENT_BODY}${SENTINEL}"
-          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$COMMENT_BODY"
-          # 评论送达后仍以非零退出，让 workflow 显示一次红色告警（仅首次；
-          # 后续 sweep 由上方去重分支短路为绿腿）
-          exit 1
-
-      - name: Handle stalled PR (checks reported non-success)
-        if: steps.triage.outputs.action == 'wait' && steps.triage.outputs.stalled == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ matrix.pr_number }}
-        run: |
-          set -eu
-          # INFRA-428：rollup 已报齐但存在非 SUCCESS 结论（典型：某个 check
-          # 失败/取消，或 shared action 自身毒化的 check 卡住 head SHA）。
-          # 首次发现时以 head SHA sentinel 幂等留一条评论（可见、可追溯、
-          # 天然随新 push 轮换），绿腿退出——修复由 PR 作者/droid-review
-          # 流程负责，auto-merge 不反复重试也不产生红腿噪音。
-          echo "::warning::PR #$PR_NUMBER checks are not all successful (stalled). Not attempting merge."
-          HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')
-          SENTINEL="<!-- auto-merge-stalled-${HEAD_SHA} -->"
-          EXISTING=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json comments --jq '[.comments[].body | select(contains("'"$SENTINEL"'"))] | length')
-          if [ "$EXISTING" -gt 0 ]; then
-            echo "Stalled comment already posted for $HEAD_SHA (count: $EXISTING). Skipping duplicate notification."
-            exit 0
-          fi
-          read -r -d '' COMMENT_BODY <<'COMMENT_EOF' || true
-          ⏸️ **Auto-merge: PR 的检查未全部通过（stalled）**
-
-          此 PR 的 check rollup 存在非 SUCCESS 结论，auto-merge 暂停合并并等待：
-          - 若 CI/droid-review 失败：请修复后推送，auto-merge 会自动重试
-          - 若你认为是残留的失败 check 卡住（如历史毒化）：推送新 commit 或重跑失败 check 即可解除
-
-          COMMENT_EOF
-          COMMENT_BODY="${COMMENT_BODY}${SENTINEL}"
-          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$COMMENT_BODY"
-          exit 0
-
-      - name: Run auto-merge
-        if: steps.triage.outputs.action == 'merge'
-        uses: hdot123-org/shared-workflows/auto-merge@5a0fc1b8946a170a12687d8614d56189e1f8dab5
-        with:
-          pr-number: ${{ matrix.pr_number }}
-        env:
-          # 铁律：合并必须用 DISPATCH_TOKEN，不能用 GITHUB_TOKEN。
-          # GitHub 递归防护会抑制 GITHUB_TOKEN 操作产生的 push 事件，
-          # 导致 release-please 的 push(paths: .release-please-manifest.json)
-          # 触发器失效 → release PR 合并后 tag/Release 不创建、Release Pipeline 断链。
-          # 2026-08-15 两次事故（v0.29.0 / v0.30.0 均靠手动 dispatch 补救）。
-          GITHUB_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+    uses: hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+    secrets:
+      # 铁律：合并必须用 DISPATCH_TOKEN（PAT，不受 GitHub 递归防护抑制），
+      # 不能用 GITHUB_TOKEN——GITHUB_TOKEN 触发的 push 事件被抑制会导致
+      # release-please 监听的 push(paths: .release-please-manifest.json) 失效，
+      # release PR 合并后 tag/Release 不创建（2026-08-15 两次事故 v0.29.0/v0.30.0）。
+      dispatch-token: ${{ secrets.DISPATCH_TOKEN }}
