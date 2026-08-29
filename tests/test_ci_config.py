@@ -5,6 +5,9 @@ Tests for VAL-GATE-* assertions (Audit Gate) and VAL-CROSS-029/030/031/032.
 Validates YAML structure of droid-review.yml, auto-merge.yml, and ci.yml.
 """
 
+import functools
+import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -12,6 +15,81 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).parent.parent
+
+# ---------------------------------------------------------------------------
+# M4 门禁切换收尾契约（gate-contract-tests，VAL-GATE-101/110/111/112）
+# ---------------------------------------------------------------------------
+
+# 七步切换（风险升序）实际落地为 6 个原子 PR：setup-labels 与 governance 合并为
+# #1050（同属 governance 域、共用同一 composite action），scan 与 heartbeat 合并
+# 为 #1071（同属 per-repo 定时 thin caller 对）。PR 号是 M4 收尾时刻的既成历史
+# 事实，可与 squash commit 尾注交叉验证（git log --format='%s' -- <workflow 文件>）。
+M4_SWITCH_PRS = {
+    1048: {"steps": ("branch-cleanup",), "workflows": ("branch-cleanup.yml",)},
+    1050: {"steps": ("setup-labels", "governance"), "workflows": ("setup-labels.yml", "evolution-governance.yml")},
+    1066: {"steps": ("droid-review",), "workflows": ("droid-review.yml",)},
+    1069: {"steps": ("watchdog",), "workflows": ("droid-review-watchdog.yml",)},
+    1070: {"steps": ("auto-merge",), "workflows": ("auto-merge.yml",)},
+    1071: {
+        "steps": ("evolution-scan", "evolution-heartbeat"),
+        "workflows": ("evolution-scan.yml", "evolution-heartbeat.yml"),
+    },
+}
+
+# 不抽取 workflows（architecture §6：memory-core 自有代码测试与发版）——任何
+# 切换 PR 触碰即 VAL-GATE-112 范围纪律违规。
+M4_NEVER_SWITCHED_WORKFLOWS = ("ci.yml", "qa.yml", "release-please.yml", "release-and-dispatch.yml")
+
+
+@functools.lru_cache(maxsize=1)
+def _gh_memory_api_available() -> bool:
+    """gh CLI 存在且能只读访问 hdot123-org/memory（公开仓，任意有效 token 即可）。"""
+    if shutil.which("gh") is None:
+        return False
+    probe = subprocess.run(
+        ["gh", "api", "repos/hdot123-org/memory", "--jq", ".full_name"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    return probe.returncode == 0
+
+
+@functools.cache
+def _m4_switch_pr_merged_at(pr_number: int) -> str:
+    """切换 PR 的合并时间戳（ISO8601 Zulu，同格式字符串可按字典序比较时间）。"""
+    result = subprocess.run(
+        [
+            "gh",
+            "pr",
+            "view",
+            str(pr_number),
+            "--repo",
+            "hdot123-org/memory",
+            "--json",
+            "mergedAt",
+            "--jq",
+            ".mergedAt",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, f"gh pr view {pr_number}（mergedAt）失败: {result.stderr.strip()}"
+    return result.stdout.strip()
+
+
+@functools.cache
+def _m4_switch_pr_changed_files(pr_number: int) -> tuple[str, ...]:
+    """切换 PR 的变更文件清单（gh pr diff --name-only，VAL-GATE-112 契约证据面）。"""
+    result = subprocess.run(
+        ["gh", "pr", "diff", str(pr_number), "--repo", "hdot123-org/memory", "--name-only"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, f"gh pr diff {pr_number} --name-only 失败: {result.stderr.strip()}"
+    return tuple(line.strip() for line in result.stdout.splitlines() if line.strip())
 
 
 class TestGateSetupLabelsGovernance:
@@ -1214,3 +1292,147 @@ class TestSetupVenvFastFail:
         assert "checkout 残缺" in run
         assert "exit 1" in run
         assert "::error::" in run
+
+
+class TestM4NamingContractNet:
+    """VAL-GATE-101/111（gate-contract-tests）：M4 全集 workflow 名 ⇄ 文件路径契约网。
+
+    architecture §3：workflow 名 + check 名 + artifact 前缀 + 文件名构成隐式契约
+    网，任何一处静默改名会杀死 auto-merge/watchdog/branch protection。各 thin
+    caller 的细节契约由各切换 PR 落地的专项类锁定；本类把 M4 全集（8 个切换
+    workflow + 2 个不抽取 + 2 个发版）的字节级 name ⇄ path 表收敛到单一视图——
+    单点改名（含 GitHub 回退到路径派生显示名）立即红。
+    """
+
+    EXPECTED_WORKFLOW_NAMES = {
+        "branch-cleanup.yml": "Branch Cleanup",
+        "setup-labels.yml": "Setup Labels",
+        "evolution-governance.yml": "Evolution Governance",
+        "droid-review.yml": "Droid Auto Review",
+        "droid-review-watchdog.yml": "Droid Review Watchdog",
+        "auto-merge.yml": "Auto Merge",
+        "evolution-scan.yml": "Evolution Scan",
+        "evolution-heartbeat.yml": "Evolution Heartbeat",
+        "ci.yml": "CI",
+        "qa.yml": "QA",
+        "release-please.yml": "Release Please",
+        "release-and-dispatch.yml": "Release Pipeline",
+    }
+
+    @pytest.mark.parametrize(("filename", "expected_name"), sorted(EXPECTED_WORKFLOW_NAMES.items()))
+    def test_workflow_name_byte_exact(self, filename: str, expected_name: str):
+        data = yaml.safe_load((REPO_ROOT / ".github/workflows" / filename).read_text())
+        assert data["name"] == expected_name, (
+            f"{filename} workflow 名漂移（契约网单点改名会静默杀死 auto-merge/watchdog）："
+            f"{data['name']!r} != {expected_name!r}"
+        )
+
+
+class TestM4SwitchoverDiscipline:
+    """VAL-GATE-110/112（gate-contract-tests）：M4 七步切换的顺序、范围与保护面纪律。
+
+    **顺序（VAL-GATE-112）**：7 步按风险升序落地为 6 个原子 PR，合并时间戳必须
+    风险升序非降。唯一例外（编排器注 2026-08-29，已记录）：#1070（auto-merge
+    thin caller）18:36:01Z 由**旧** auto-merge 流水线 bootstrap 合并——旧 caller
+    合并了"切换它自己"的 PR；晚 13 分钟的 #1069（watchdog）18:49:08Z 由**新**
+    caller 合并，属正确引导、功能无损（run 33268692153 / 33269255927 实证，
+    详见 mission library gate-watchdog-automerge-facts.md）。断言把该例外作为
+    显式记录处理：除该对外任何倒置都红；例外对若不再倒置（时间线被重写）也红。
+
+    **范围（VAL-GATE-112）**：每个切换 PR 的 workflow 改动恰好是自己那一步的
+    文件（爆炸半径纪律：坏切换 = 单文件 revert）；并集绝不触碰不抽取的
+    ci.yml/qa.yml/release-*。非 workflow 伴生文件限白名单（测试伴生 +
+    pyproject.toml；#1071 另含已记录的 memory_core/tools/version_sync.py
+    mypy redundant-cast 清理——infra-core v0.5.1 标注精确返回类型使历史 cast
+    冗余，随 pin bump v0.2.0→v0.5.1 同 PR 收敛）。
+
+    **保护面（VAL-GATE-110）**：branch protection 全程零修改——切换的安全性
+    恰恰建立在"名字保持所以保护规则无需改动"之上。M4 期间各切换 worker 的
+    只读快照与本断言同源（gh api .../branches/main/protection）；本断言在 M4
+    收尾时刻把终态钉进测试套。
+
+    gh 依赖：三类断言均为 gh CLI 只读查询（契约证据面即 gh CLI）；gh 缺失、
+    未认证或凭证无 protection 读权限时跳过（CI 浅克隆/无凭证环境不误报）。
+    """
+
+    # 已记录的顺序例外对（earlier_pr, later_pr)：auto-merge(#1070) bootstrap 早于
+    # watchdog(#1069)——除该对外任何倒置即违规。
+    DOCUMENTED_ORDER_INVERSIONS = frozenset({(1069, 1070)})
+
+    @staticmethod
+    def _require_gh() -> None:
+        if not _gh_memory_api_available():
+            pytest.skip("gh CLI 不可用或无法只读访问 hdot123-org/memory（跳过 gh 契约断言）")
+
+    def test_switch_prs_merge_order_risk_ascending(self):
+        """7 步切换（6 PR）合并时间戳风险升序非降，唯一例外 = 已记录的 bootstrap 对。"""
+        self._require_gh()
+        # PR 号升序 == 风险升序落地序（branch-cleanup → setup-labels+governance
+        # → droid-review → watchdog → auto-merge → scan/heartbeat）
+        ordered = sorted(M4_SWITCH_PRS)
+        merged_at = {pr: _m4_switch_pr_merged_at(pr) for pr in ordered}
+        for earlier, later in zip(ordered, ordered[1:], strict=False):
+            if (earlier, later) in self.DOCUMENTED_ORDER_INVERSIONS:
+                # 例外必须真的处于倒置方向，否则例外记录失效（时间线被重写的信号）
+                assert merged_at[later] <= merged_at[earlier], (
+                    f"已记录例外对 #{earlier}→#{later} 不再倒置"
+                    f"（{merged_at[earlier]} vs {merged_at[later]}）——"
+                    "例外记录已失效，应从 DOCUMENTED_ORDER_INVERSIONS 移除并复核时间线"
+                )
+                continue
+            assert merged_at[earlier] <= merged_at[later], (
+                f"切换序倒置：#{earlier}（{merged_at[earlier]}）晚于 #{later}（{merged_at[later]}）——"
+                f"风险升序契约违反（已记录例外：{sorted(self.DOCUMENTED_ORDER_INVERSIONS)}）"
+            )
+
+    @pytest.mark.parametrize("pr_number", sorted(M4_SWITCH_PRS))
+    def test_switch_pr_workflow_scope_exact(self, pr_number: int):
+        """每个切换 PR 的 workflow 改动恰好是本步文件集，伴生文件限白名单。"""
+        self._require_gh()
+        expected_wf = {f".github/workflows/{name}" for name in M4_SWITCH_PRS[pr_number]["workflows"]}
+        files = set(_m4_switch_pr_changed_files(pr_number))
+        actual_wf = {f for f in files if f.startswith(".github/workflows/")}
+        assert actual_wf == expected_wf, (
+            f"PR #{pr_number} workflow 改动越集（爆炸半径纪律）：{sorted(actual_wf)} != 本步集合 {sorted(expected_wf)}"
+        )
+        extra = files - expected_wf
+        for path in sorted(extra):
+            allowed = (
+                path.startswith("tests/")
+                or path == "pyproject.toml"
+                or (pr_number == 1071 and path == "memory_core/tools/version_sync.py")
+            )
+            assert allowed, f"PR #{pr_number} 含白名单外伴生文件: {path}"
+
+    def test_switch_prs_never_touch_unextracted_workflows(self):
+        """切换 PR 并集绝不触碰 ci.yml/qa.yml/release-*（architecture §6 不抽取）。"""
+        self._require_gh()
+        forbidden = {f".github/workflows/{name}" for name in M4_NEVER_SWITCHED_WORKFLOWS}
+        union: set[str] = set()
+        for pr_number in M4_SWITCH_PRS:
+            union.update(_m4_switch_pr_changed_files(pr_number))
+        hit = sorted(union & forbidden)
+        assert not hit, f"切换 PR 触碰不抽取 workflows（architecture §6）：{hit}"
+
+    def test_branch_protection_required_contexts_unchanged(self):
+        """VAL-GATE-110：required contexts 与 admin 强制在 M4 全程字节级不变。"""
+        self._require_gh()
+        result = subprocess.run(
+            ["gh", "api", "repos/hdot123-org/memory/branches/main/protection"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            if "HTTP 403" in stderr or "HTTP 404" in stderr:
+                pytest.skip(f"当前 gh 凭证无 branch protection 只读权（admin 域），跳过: {stderr}")
+            pytest.fail(f"branch protection 只读查询失败: {stderr}")
+        protection = json.loads(result.stdout)
+        contexts = set(protection["required_status_checks"]["contexts"])
+        assert contexts == {"ci-ok", "droid-review", "Block non-owner governance modifications"}, (
+            f"required contexts 漂移（VAL-GATE-110 基线：三 required check 精确名）：{sorted(contexts)}"
+        )
+        assert protection["enforce_admins"]["enabled"] is True, (
+            "enforce_admins 必须保持开启（--admin 旁路在 GitHub 层面堵死，铁律）"
+        )
