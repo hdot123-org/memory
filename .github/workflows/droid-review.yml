@@ -42,8 +42,16 @@ concurrency:
 
 jobs:
   # ── 分片流水线（setup / plan-shards / review-shard matrix → infra-core 引擎）──
+  # permissions：被调 workflow 的 job 只能获得调用 job 权限的子集（GitHub startup
+  # 校验，缺失即 run startup_failure 零 job——PR #1068 实测）。授权集与切换前本仓
+  # review-shard job 逐项等价（行为等价移植）：contents: read + actions: write +
+  # id-token: write。
   shards:
     uses: hdot123-org/infra-core/.github/workflows/droid-review-shards.yml@main
+    permissions:
+      contents: read
+      actions: write
+      id-token: write
     with:
       pr_number: ${{ inputs.pr_number }}
       head_sha: ${{ inputs.head_sha }}

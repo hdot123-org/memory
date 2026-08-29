@@ -135,6 +135,22 @@ class TestAuditGate:
             f"shards job 必须调用 infra-core reusable workflow，实际: {uses_str}"
         )
 
+    def test_val_gate_shards_calling_job_grants_callee_permissions(self, droid_review_data):
+        """shards 调用 job 的 permissions 必须覆盖 callee review-shard 的请求集。
+
+        GitHub 约束：被调 workflow 的 job 只能获得调用 job 权限的子集（startup
+        校验，不满足即 run startup_failure、零 job——2026-08-29 PR #1068 实测
+        "nested job 'review-shard' is requesting 'actions: write, id-token: write',
+        but is only allowed 'actions: none, id-token: none'"）。授权集与切换前
+        本仓 review-shard job（851df10 L187-190）逐项等价：contents: read +
+        actions: write + id-token: write（行为等价移植）。"""
+        perms = droid_review_data["jobs"]["shards"].get("permissions")
+        assert perms == {
+            "contents": "read",
+            "actions": "write",
+            "id-token": "write",
+        }, f"shards 调用 job 权限漂移（ callee 需要其超集语义）: {perms}"
+
     def test_val_gate_003_droid_exec_in_run_shard_script(self):
         """VAL-GATE-003: run_shard.sh calls droid exec with correct flags."""
         script_path = REPO_ROOT / "scripts/droid_review/run_shard.sh"
