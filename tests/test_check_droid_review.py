@@ -16,6 +16,8 @@ it read the latest non-cancelled conclusion.
 """
 
 import json
+import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -243,3 +245,196 @@ class TestActiveCheckGuardStructure:
         assert "cancelled" in jq_expr, (
             "Script must still exclude 'cancelled' conclusions for dual-trigger race handling"
         )
+
+
+# ---------------------------------------------------------------------------
+# Network resilience (droid-review P1/P2 findings on infra-core PR #44,
+# 2026-08-29; both repos' copies share the bug).
+#
+# P1: under `set -e`, a curl-level failure (timeout/DNS/refused) inside the
+#     polling loop exits the whole script, breaking the 120-retry mechanism —
+#     a single transient network blip turns ci-ok red.
+# P2: is_dependabot_pr() has no guard on curl/jq failure — a transient API
+#     error silently misjudges the PR author.
+#
+# Contract after the fix: transient curl/jq failures are retried inside the
+# loop; the Dependabot probe fails CLOSED (never fail-open); loop exhaustion
+# exits 1 (never falls through with curl's exit code or exit 0).
+# ---------------------------------------------------------------------------
+
+SUCCESS_BODY = json.dumps(
+    {
+        "total_count": 1,
+        "check_runs": [
+            {
+                "status": "completed",
+                "conclusion": "success",
+                "started_at": "2026-08-29T00:00:00Z",
+            },
+        ],
+    }
+)
+SKIPPED_BODY = json.dumps(
+    {
+        "total_count": 1,
+        "check_runs": [
+            {
+                "status": "completed",
+                "conclusion": "skipped",
+                "started_at": "2026-08-29T00:00:00Z",
+            },
+        ],
+    }
+)
+RATE_LIMIT_BODY = json.dumps(
+    {
+        "message": "API rate limit exceeded for installation.",
+        "documentation_url": "https://docs.github.com/rest/overview/resources-in-the-rest-api",
+    }
+)
+
+# Fake curl driven by $FAKE_CURL_BEHAVIORS (JSON: kind -> [(exit_code, body)]).
+# The Nth call of a kind uses behaviors[N-1]; the last entry repeats. Call
+# counts persist in $FAKE_CURL_STATE_DIR so recovery sequences are possible.
+FAKE_CURL_TEMPLATE = """#!/usr/bin/env python3
+import json
+import os
+import sys
+
+url = sys.argv[-1]
+kind = "checkruns" if "check-runs" in url else "pulls"
+behaviors = json.loads(os.environ["FAKE_CURL_BEHAVIORS"])[kind]
+state_dir = os.environ["FAKE_CURL_STATE_DIR"]
+count_file = os.path.join(state_dir, kind + ".count")
+try:
+    count = int(open(count_file).read().strip())
+except Exception:
+    count = 0
+count += 1
+with open(count_file, "w") as fh:
+    fh.write(str(count))
+exit_code, body = behaviors[min(count - 1, len(behaviors) - 1)]
+sys.stdout.write(body)
+sys.exit(exit_code)
+"""
+
+
+class TestNetworkResilience:
+    """Poll-loop and Dependabot-probe network resilience (P1/P2)."""
+
+    @pytest.fixture
+    def fake_bin(self, tmp_path):
+        """PATH shim: instant sleep (skip the 30s backoff) + scripted curl."""
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        sleep = bin_dir / "sleep"
+        sleep.write_text("#!/bin/bash\nexit 0\n")
+        sleep.chmod(0o755)
+        curl = bin_dir / "curl"
+        curl.write_text(FAKE_CURL_TEMPLATE)
+        curl.chmod(0o755)
+        return bin_dir
+
+    def _run_poller(self, script_path, fake_bin, behaviors):
+        state_dir = fake_bin.parent / "state"
+        state_dir.mkdir(exist_ok=True)
+        env = os.environ.copy()
+        env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+        env["FAKE_CURL_BEHAVIORS"] = json.dumps(behaviors)
+        env["FAKE_CURL_STATE_DIR"] = str(state_dir)
+        return subprocess.run(
+            [
+                "bash",
+                str(script_path),
+                "pull_request",
+                "hdot123-org/memory",
+                "deadbeefcafe",
+                "fake-token",
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=120,
+        )
+
+    def test_transient_curl_failure_retries_and_succeeds(self, fake_bin):
+        """Two network-level curl failures must be absorbed; third succeeds."""
+        behaviors = {
+            "checkruns": [(7, ""), (7, ""), (0, SUCCESS_BODY)],
+            "pulls": [(0, "[]")],
+        }
+        result = self._run_poller(SCRIPT_PATH, fake_bin, behaviors)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.stdout.count("transient network error") == 2
+        assert "✓ droid-review passed" in result.stdout
+
+    def test_persistent_curl_failure_exhausts_attempts_fail_closed(self, fake_bin):
+        """120 consecutive curl failures: keep retrying, then exit 1.
+
+        Pre-fix behavior: the script dies on attempt 1 with curl's exit
+        code (7) — the P1 bug. Post-fix: all 120 attempts run, then the
+        fail-closed exhaustion handler exits 1 (never curl's code, never 0).
+        """
+        behaviors = {"checkruns": [(7, "")], "pulls": [(0, "[]")]}
+        result = self._run_poller(SCRIPT_PATH, fake_bin, behaviors)
+        assert result.returncode == 1
+        assert "Attempt 120/120" in result.stdout, "poller must keep retrying, not die on the first transient failure"
+        assert "exhausted 120 attempts" in result.stdout
+
+    def test_rate_limit_body_is_transient_not_fatal(self, fake_bin):
+        """A rate-limit body (no .check_runs) makes jq exit 5 — retry, not die."""
+        behaviors = {
+            "checkruns": [(0, RATE_LIMIT_BODY), (0, SUCCESS_BODY)],
+            "pulls": [(0, "[]")],
+        }
+        result = self._run_poller(SCRIPT_PATH, fake_bin, behaviors)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "transient API error" in result.stdout
+        assert "✓ droid-review passed" in result.stdout
+
+    def test_dependabot_probe_failure_is_fail_closed(self, fake_bin):
+        """API failure probing the PR author: BLOCK (exit 1), never fail-open."""
+        behaviors = {"checkruns": [(0, SKIPPED_BODY)], "pulls": [(7, "")]}
+        result = self._run_poller(SCRIPT_PATH, fake_bin, behaviors)
+        assert result.returncode == 1
+        assert "treating as non-Dependabot" in result.stdout
+        assert "BLOCK" in result.stdout
+
+    def test_dependabot_skipped_review_still_allows_merge(self, fake_bin):
+        """Control: the Dependabot exception survives the guard refactor."""
+        behaviors = {
+            "checkruns": [(0, SKIPPED_BODY)],
+            "pulls": [(0, json.dumps([{"user": {"login": "dependabot[bot]"}}]))],
+        }
+        result = self._run_poller(SCRIPT_PATH, fake_bin, behaviors)
+        assert result.returncode == 0
+        assert "allowing merge" in result.stdout
+
+
+class TestNetworkResilienceStructure:
+    """Belt-and-suspenders: the guard patterns must stay in the script."""
+
+    def test_poll_loop_curl_has_transient_guard(self):
+        text = SCRIPT_PATH.read_text()
+        assert re.search(r'check-runs\?check_name=droid-review"\)\s*\\\n\s*\|\| \{', text), (
+            "poll-loop curl needs a || { ... continue; } transient guard"
+        )
+
+    def test_status_jq_has_transient_guard(self):
+        text = SCRIPT_PATH.read_text()
+        assert re.search(r"'\)\s*\|\| \{", text), "STATUS jq assignment needs a transient-retry guard"
+
+    def test_loop_exhaustion_fails_closed(self):
+        text = SCRIPT_PATH.read_text()
+        tail = text[text.rindex("\ndone") :]
+        assert "exit 1" in tail, (
+            "loop exhaustion must fail closed (exit 1), never fall through "
+            "with exit 0 — ci-ok would read that as droid-review passed"
+        )
+
+    def test_dependabot_probe_has_fail_closed_guards(self):
+        text = SCRIPT_PATH.read_text()
+        start = text.index("is_dependabot_pr() {")
+        body = text[start : text.index("\n}", start)]
+        assert body.count("|| {") == 2, "is_dependabot_pr must guard both its curl and its jq call"
+        assert body.count("return 1") >= 3, "guards must return 1 (non-Dependabot) — fail-closed, never fail-open"
