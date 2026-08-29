@@ -121,14 +121,23 @@ class TestQaNightlyHeavyJobs:
 
 
 class TestSecurityBoundaryWorkflowsStayHosted:
-    """pull_request_target + secrets 的安全边界工作流必须保持 GitHub-hosted。
+    """pull_request_target + secrets 的安全边界工作流 runner 归属。
 
-    自建 runner 对 PR 代码所在 job 是持久化多租户环境；pull_request_target
-    授予 secrets 的 job 跑在不受信机器上会扩大攻击面。这是 INFRA-569 裁决中
-    明确排除的范围，不得随「全量切自建」误迁。
+    INFRA-569（2026-08-27）原裁决：droid-review / evolution-governance 保持
+    GitHub-hosted（自建 runner 对 PR 代码 job 是持久化多租户环境）。
+
+    2026-08-29 更新（M4 gate-droid-review）：droid-review 从本边界移出——
+    (1) 共享 runner 池落地（memory-runnerz 同时服务 memory-core 与 infra-core），
+        infra-core 自仓 droid-review（同为 pull_request_target + FACTORY_API_KEY，
+        PR 上下文执行面更大）自 #43 起即生产运行在同一批 pve 机器上并被牺牲 PR
+        端到端验证，"GitHub-hosted 才隔离" 的边界已不存在；
+    (2) 分片流水线引擎唯一活体在 infra-core reusable workflow
+        （[self-hosted, pve-linux]），caller 侧改 runs-on 无法改变实际执行面；
+    (3) INFRA-569 自身背景记录了 GitHub-hosted 的 queued-deadlock 可靠性问题。
+    evolution-governance 仍保持 GitHub-hosted（无 PR 内容执行，低成本维持原边界）。
     """
 
-    PROTECTED_WORKFLOWS = ["droid-review.yml", "evolution-governance.yml"]
+    PROTECTED_WORKFLOWS = ["evolution-governance.yml"]
 
     def test_pr_target_workflows_not_self_hosted(self) -> None:
         for wf_name in self.PROTECTED_WORKFLOWS:
@@ -145,3 +154,14 @@ class TestSecurityBoundaryWorkflowsStayHosted:
                     f"pull_request_target + secrets on a self-hosted runner "
                     f"widens the attack surface (INFRA-569 boundary)"
                 )
+
+    def test_droid_review_aggregate_job_runner_alignment(self) -> None:
+        """droid-review 聚合 job 与引擎流水线一致跑共享池（runner 铁律），
+        且聚合 job 本身无 PR 内容执行面（composite 只做 artifact 下载 + gh 发布）。"""
+        path = REPO_ROOT / ".github/workflows/droid-review.yml"
+        data = yaml.safe_load(path.read_text())
+        aggregate_job = data["jobs"]["droid-review"]
+        runs_on = _runs_on(aggregate_job)
+        assert "self-hosted" in runs_on and "pve-linux" in runs_on, (
+            f"droid-review aggregate job must run on [self-hosted, pve-linux], got: {runs_on}"
+        )

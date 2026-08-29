@@ -119,18 +119,21 @@ class TestAuditGate:
         return yaml.safe_load(workflow_path.read_text())
 
     def test_val_gate_001_three_job_architecture(self, droid_review_data):
-        """VAL-GATE-001: 3-job architecture exists (plan-shards, review-shard, droid-review)."""
+        """VAL-GATE-001（M4 切换后）：thin caller 双 job 拓扑——shards 调 reusable +
+        本地 droid-review 聚合。原 3-job 流水线（setup/plan-shards/review-shard）迁入
+        infra-core droid-review-shards.yml（其结构由引擎仓模板测试锁定）。"""
         jobs = droid_review_data["jobs"]
-        assert "plan-shards" in jobs, "plan-shards job missing"
-        assert "review-shard" in jobs, "review-shard job missing"
+        assert "shards" in jobs, "shards call job missing"
         assert "droid-review" in jobs, "droid-review job missing"
 
     def test_val_gate_002_review_shard_uses_matrix(self, droid_review_data):
-        """VAL-GATE-002: review-shard uses matrix strategy for parallel execution."""
-        job = droid_review_data["jobs"]["review-shard"]
-        assert "strategy" in job, "review-shard missing strategy"
-        assert "matrix" in job["strategy"], "review-shard missing matrix"
-        assert "shard" in job["strategy"]["matrix"], "matrix missing shard dimension"
+        """VAL-GATE-002（M4 切换后）：分片 matrix 迁入 infra-core reusable workflow，
+        caller 必须委托该 workflow（uses 字节级指向 droid-review-shards.yml@main）。"""
+        shards_job = droid_review_data["jobs"]["shards"]
+        uses_str = shards_job.get("uses", "")
+        assert uses_str == "hdot123-org/infra-core/.github/workflows/droid-review-shards.yml@main", (
+            f"shards job 必须调用 infra-core reusable workflow，实际: {uses_str}"
+        )
 
     def test_val_gate_003_droid_exec_in_run_shard_script(self):
         """VAL-GATE-003: run_shard.sh calls droid exec with correct flags."""
@@ -217,11 +220,15 @@ class TestCrossAreaAuditGate:
         return yaml.safe_load(workflow_path.read_text())
 
     def test_val_cross_029_review_shard_job_exists(self, droid_review_data):
-        """VAL-CROSS-029: review-shard job must exist with matrix strategy."""
-        assert "review-shard" in droid_review_data["jobs"]
-        review_job = droid_review_data["jobs"]["review-shard"]
-        assert "strategy" in review_job
-        assert "matrix" in review_job["strategy"]
+        """VAL-CROSS-029（M4 切换后）：分片流水线经 shards call job 委托 infra-core，
+        聚合 job 本地保留（check 名 `droid-review` 精确契约）。"""
+        jobs = droid_review_data["jobs"]
+        shards_job = jobs["shards"]
+        assert ".github/workflows/droid-review-shards.yml@" in shards_job.get("uses", "")
+        aggregate_job = jobs["droid-review"]
+        assert aggregate_job.get("uses") is None, (
+            "聚合 job 必须是本地 job（不得整体 uses reusable workflow，那会嵌套 check 名）"
+        )
 
     def test_val_cross_030_failed_review_blocks_merge(self):
         """VAL-CROSS-030: Failed droid-review blocks auto-merge (integration test)."""
@@ -255,18 +262,12 @@ class TestCrossAreaAuditGate:
         assert "severity" in content and "file" in content and "line" in content
 
     def test_val_cross_032_artifact_prefix_preserved(self, droid_review_data):
-        """VAL-CROSS-032: artifact prefix must be 'droid-review-debug-'."""
-        # Check in review-shard job upload step
-        review_job = droid_review_data["jobs"]["review-shard"]
-        upload_step = None
-        for step in review_job["steps"]:
-            if step.get("uses", "").startswith("actions/upload-artifact"):
-                upload_step = step
-                break
-
-        assert upload_step is not None
-        artifact_name = upload_step.get("with", {}).get("name", "")
-        assert artifact_name.startswith("droid-review-debug-")
+        """VAL-CROSS-032（M4 切换后）：artifact 前缀 `droid-review-debug-` 由
+        infra-core reusable workflow 的 review-shard 上传（引擎仓模板测试
+        test_droid_review_shards_workflow 锁定字节级前缀）；caller 侧锁定委托关系——
+        分片 artifact 生产者必须仍是 droid-review-shards.yml。"""
+        shards_job = droid_review_data["jobs"]["shards"]
+        assert "droid-review-shards.yml@" in shards_job.get("uses", "")
 
 
 class TestAutoMergeDispatchTokenGuard:
@@ -336,78 +337,143 @@ class TestYAMLValidity:
 
 
 class TestDroidReviewDocsOnlySkip:
-    """VAL-DRSKIP-*：droid-review docs-only 快速通过回归防护。
+    """VAL-DRSKIP-*：droid-review docs-only 快速通过回归防护（M4 切换后）。
 
-    2026-08-17 CI 异步化配套：纯文档 PR（全部变更文件为 *.md）跳过模型 review，
-    全程从 ~17 min 降到 ~4 min。关键约束：docs-only 检测在 plan-shards job 中，
-    review-shard 和 droid-review 通过 job-level if 自然跳过。
-    检测必须 fail-closed：文件列表为空/API 失败一律走完整 review。
+    2026-08-17 CI 异步化配套：纯文档 PR（全部变更文件为 *.md）跳过模型 review。
+    M4 起 docs-only 检测与 review-shard 门控迁入 infra-core
+    droid-review-shards.yml（引擎仓 test_droid_review_shards_workflow.
+    TestDocsOnlyDetection 锁定 fail-closed 语义与 *.md 规则）；caller 侧锁定
+    跳过决策信息（docs_only/shards 输出）必须转发给本地聚合 job。
+    关键约束不变：docs-only PR 仍产出结论 success 的 `droid-review` check
+    （VAL-DRSKIP-005），检测 fail-closed（引擎仓锁定）。
     """
 
     @pytest.fixture
-    def plan_shards_steps(self):
-        """Load plan-shards job steps."""
+    def droid_review_data(self):
         workflow_path = REPO_ROOT / ".github/workflows/droid-review.yml"
-        data = yaml.safe_load(workflow_path.read_text())
-        return data["jobs"]["plan-shards"]["steps"]
+        return yaml.safe_load(workflow_path.read_text())
 
     @pytest.fixture
-    def review_shard_steps(self):
-        """Load review-shard job steps."""
+    def aggregate_step(self, droid_review_data):
+        """本地 droid-review job 的聚合 composite step。"""
+        steps = droid_review_data["jobs"]["droid-review"]["steps"]
+        step = next((s for s in steps if "droid-review-aggregate" in s.get("uses", "")), None)
+        assert step is not None, "droid-review job 缺少 droid-review-aggregate composite step"
+        return step
+
+    def test_docs_only_and_shards_forwarded_to_aggregate(self, aggregate_step):
+        """VAL-DRSKIP-001/002/003/004（caller 等价）：docs_only 与 shards 输出
+        必须转发给聚合 composite——发布端据此跳过 docs-only/空分片（check 仍 success）。"""
+        with_block = aggregate_step.get("with", {})
+        assert with_block.get("docs-only") == "${{ needs.shards.outputs.docs_only }}"
+        assert with_block.get("shards") == "${{ needs.shards.outputs.shards }}"
+
+    def test_droid_review_job_not_skipped_for_docs(self, droid_review_data):
+        """VAL-DRSKIP-005: droid-review job 级 if 不含 docs 跳过（保证 check run 结论为 success）。
+
+        job 级 if 门只允许 plan-shards 结果语义（plan_shards_ok），绝不允许按
+        docs-only 跳过——check_droid_review.sh 对非 dependabot 的 skipped 判 BLOCK。
+        """
+        job_if = str(droid_review_data["jobs"]["droid-review"].get("if", ""))
+        assert "always()" in job_if, "job-level if 必须含 always()"
+        assert "plan_shards_ok" in job_if, "job-level if 必须挂 plan-shards 结果语义"
+        assert "docs_only" not in job_if, "job-level if 不得按 docs-only 跳过（docs-only 必须产出 success check）"
+
+
+class TestDroidReviewThinCallerContract:
+    """VAL-GATE-101/103/111/113（M4 gate-droid-review）：droid-review thin caller 契约。
+
+    check 名嵌套陷阱：reusable workflow 内部 job 的 check 名为 `外层/内层` 嵌套
+    格式，branch protection / ci-ok（check_droid_review.sh 精确名查询）按
+    `droid-review` 精确匹配。聚合 job 必须留在本地跑 composite action。
+    """
+
+    @pytest.fixture
+    def droid_review_data(self):
         workflow_path = REPO_ROOT / ".github/workflows/droid-review.yml"
-        data = yaml.safe_load(workflow_path.read_text())
-        return data["jobs"]["review-shard"]["steps"]
+        return yaml.safe_load(workflow_path.read_text())
 
-    def test_docs_only_detect_step_exists(self, plan_shards_steps):
-        """VAL-DRSKIP-001: Detect docs-only PR step 存在于 plan-shards job 且输出 skip。"""
-        detect_step = next(
-            (s for s in plan_shards_steps if s.get("name") == "Detect docs-only PR"),
-            None,
+    def test_workflow_name_byte_exact(self, droid_review_data):
+        """VAL-GATE-101: workflow 名字节级为 'Droid Auto Review'。"""
+        assert droid_review_data["name"] == "Droid Auto Review"
+
+    def test_trigger_surface_preserved(self, droid_review_data):
+        """VAL-GATE-113: pull_request_target 四类事件 + workflow_dispatch 输入原样。"""
+        triggers = droid_review_data.get(True, {}) or droid_review_data.get("on", {})
+        prt = triggers["pull_request_target"]
+        assert prt["types"] == ["opened", "ready_for_review", "reopened", "synchronize"]
+        wd_inputs = triggers["workflow_dispatch"]["inputs"]
+        assert wd_inputs["pr_number"]["type"] == "number"
+        assert wd_inputs["pr_number"]["required"] is True
+        assert wd_inputs["head_sha"]["type"] == "string"
+
+    def test_concurrency_preserved(self, droid_review_data):
+        """concurrency group 字节级保持（github.workflow 仍解析为 Droid Auto Review）。"""
+        conc = droid_review_data["concurrency"]
+        assert "${{ github.workflow }}-" in conc["group"]
+        assert conc["cancel-in-progress"] is True
+
+    def test_job_topology_exactly_two_jobs(self, droid_review_data):
+        """caller 恰好两个 job：shards（call）+ droid-review（本地聚合）。"""
+        jobs = set(droid_review_data["jobs"].keys())
+        assert jobs == {"shards", "droid-review"}
+
+    def test_shards_job_forwards_budget_vars(self, droid_review_data):
+        """VAL-GATE-113: 四个预算 vars 必须以 with: 转发（含默认值回退）。"""
+        with_block = droid_review_data["jobs"]["shards"].get("with", {})
+        assert with_block.get("shard-max-files") == "${{ vars.SHARD_MAX_FILES || '25' }}"
+        assert with_block.get("shard-max-count") == "${{ vars.SHARD_MAX_COUNT || '6' }}"
+        assert with_block.get("shard-timeout-minutes") == "${{ vars.SHARD_TIMEOUT_MINUTES || '45' }}"
+        assert with_block.get("shard-max-parallel") == "${{ vars.SHARD_MAX_PARALLEL || '3' }}"
+
+    def test_shards_job_forwards_dispatch_inputs(self, droid_review_data):
+        """workflow_dispatch 的 pr_number/head_sha 必须透传给 reusable workflow。"""
+        with_block = droid_review_data["jobs"]["shards"].get("with", {})
+        assert with_block.get("pr_number") == "${{ inputs.pr_number }}"
+        assert with_block.get("head_sha") == "${{ inputs.head_sha }}"
+
+    def test_secrets_explicitly_forwarded(self, droid_review_data):
+        """VAL-GATE-113: secrets 必须显式转发（reusable 不隐式继承 caller secrets）。"""
+        secrets_block = droid_review_data["jobs"]["shards"].get("secrets", {})
+        assert secrets_block.get("FACTORY_API_KEY") == "${{ secrets.FACTORY_API_KEY }}"
+        assert secrets_block.get("NVIDIA_KONG_PROXY_KEY") == "${{ secrets.NVIDIA_KONG_PROXY_KEY }}"
+
+    def test_aggregate_job_is_local_with_composite(self, droid_review_data):
+        """VAL-GATE-103 核心断言：聚合 job key `droid-review` 本地存在、无 name
+        覆盖、步骤 uses 以 hdot123-org/infra-core/actions/ 开头、绝不调用
+        reusable workflow（嵌套 check 名）。"""
+        jobs = droid_review_data["jobs"]
+        assert "droid-review" in jobs
+        aggregate_job = jobs["droid-review"]
+        # 无 name 属性（或精确 droid-review）——check 名必须保持 `droid-review`
+        assert "name" not in aggregate_job or aggregate_job["name"] == "droid-review"
+        # 本地 job（非整体 reusable 调用）
+        assert "uses" not in aggregate_job
+        assert aggregate_job.get("runs-on") == ["self-hosted", "pve-linux"]
+        # 步骤调用 infra-core composite action
+        steps = aggregate_job.get("steps", [])
+        assert len(steps) == 1
+        uses_str = steps[0].get("uses", "")
+        assert uses_str.startswith("hdot123-org/infra-core/actions/"), (
+            f"聚合步骤必须 uses infra-core composite action，实际: {uses_str}"
         )
-        assert detect_step is not None, "Detect docs-only PR step not found in plan-shards"
-        assert "skip=true" in detect_step["run"]
-        assert "skip=false" in detect_step["run"]
+        # 嵌套守卫：聚合 job 的任何 uses 不得指向 .github/workflows/
+        for step in steps:
+            assert ".github/workflows/" not in step.get("uses", ""), (
+                "聚合 job 不得调用 reusable workflow（check 名会嵌套为 droid-review / <inner>）"
+            )
 
-    def test_docs_only_detect_fail_closed(self, plan_shards_steps):
-        """VAL-DRSKIP-002: 空文件列表/API 失败时 fail-closed（skip=false）。"""
-        detect_step = next(
-            (s for s in plan_shards_steps if s.get("name") == "Detect docs-only PR"),
-            None,
-        )
-        assert detect_step is not None
-        # 空列表分支必须输出 skip=false（走完整 review），绝不能 skip=true
-        empty_branch = detect_step["run"]
-        assert "fail-closed" in empty_branch
+    def test_aggregate_job_if_keeps_plan_success_semantics(self, droid_review_data):
+        """VAL-GATE-103: 聚合 job if 保持 `always() && plan-shards 成功` 语义。"""
+        job_if = str(droid_review_data["jobs"]["droid-review"].get("if", ""))
+        assert "always()" in job_if
+        assert "needs.shards.outputs.plan_shards_ok == 'true'" in job_if
 
-    def test_docs_only_detect_md_suffix_rule(self, plan_shards_steps):
-        """VAL-DRSKIP-003: 判定规则为 *.md 后缀（非 md 文件即全量 review）。"""
-        detect_step = next(
-            (s for s in plan_shards_steps if s.get("name") == "Detect docs-only PR"),
-            None,
-        )
-        assert detect_step is not None
-        assert "grep -v '\\.md$'" in detect_step["run"]
-
-    def test_review_shard_gated_on_docs_only(self, review_shard_steps):
-        """VAL-DRSKIP-004: review-shard job 的 if 条件排除 docs-only PR。"""
-        # In the new architecture, the review-shard job itself is gated at job level
-        # via the `if` condition, not step-level gating
-        workflow_path = REPO_ROOT / ".github/workflows/droid-review.yml"
-        data = yaml.safe_load(workflow_path.read_text())
-        job_if = str(data["jobs"]["review-shard"].get("if", ""))
-        assert (
-            "docs_only" in job_if or "docs-only" in job_if.lower() or "needs.plan-shards.outputs.docs_only" in job_if
-        ), "review-shard job must be gated on docs_only output"
-
-    def test_droid_review_job_not_skipped_for_docs(self):
-        """VAL-DRSKIP-005: droid-review job 级 if 不含 docs 跳过（保证 check run 结论为 success）。"""
-        workflow_path = REPO_ROOT / ".github/workflows/droid-review.yml"
-        data = yaml.safe_load(workflow_path.read_text())
-        job_if = str(data["jobs"]["droid-review"].get("if", ""))
-        # The droid-review job uses always() to ensure it runs and reports success
-        assert "always()" in job_if or "docs" not in job_if.lower(), (
-            "job-level if must not skip docs PRs (check_droid_review.sh BLOCKs skipped)"
-        )
+    def test_aggregate_job_github_token_input(self, droid_review_data):
+        """composite 内 secrets context 不可用：token 必须经 with 传入。"""
+        steps = droid_review_data["jobs"]["droid-review"]["steps"]
+        with_block = steps[0].get("with", {})
+        assert with_block.get("github-token") == "${{ secrets.GITHUB_TOKEN }}"
 
 
 class TestCiConcurrencyGuard:

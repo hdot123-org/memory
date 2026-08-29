@@ -72,30 +72,23 @@ class TestWorkflowStructure:
         assert conc.get("cancel-in-progress") is True
 
     def test_06_plan_job_checks_out_base(self, workflow_data):
-        """VAL-SHARD-006: plan-shards job checkout BASE（不 checkout HEAD 的脚本）。"""
-        jobs = workflow_data.get("jobs", {})
-        plan_job = jobs.get("plan-shards", {})
-        steps = plan_job.get("steps", [])
-        checkout_steps = [s for s in steps if "checkout" in s.get("uses", "")]
-        assert len(checkout_steps) >= 1, "plan-shards must have at least one checkout step"
-        # First checkout must NOT use HEAD ref — should use base/default
-        first_checkout = checkout_steps[0]
-        ref = str(first_checkout.get("with", {}).get("ref", ""))
-        # Must not reference head.sha; should be empty (default) or base ref
-        assert "head.sha" not in ref, "plan-shards must checkout BASE, not HEAD"
+        """VAL-SHARD-006（M4 切换后）：plan-shards job 迁入 infra-core reusable
+        workflow，其 BASE/引擎 checkout 结构由引擎仓模板测试锁定
+        （test_droid_review_shards_workflow.TestEngineSelfContainment）；
+        caller 锁定委托关系：shards call job 必须指向 droid-review-shards.yml。"""
+        shards_uses = workflow_data["jobs"]["shards"].get("uses", "")
+        assert "droid-review-shards.yml@" in shards_uses, (
+            "plan/review 分片 job 已迁入 infra-core，caller 必须委托 reusable workflow"
+        )
 
     def test_07_review_shard_checks_out_base_and_head(self, workflow_data):
-        """VAL-SHARD-006: review-shard job 双 checkout——BASE 到根、HEAD 到 head-src/。"""
+        """VAL-SHARD-006（M4 切换后）：review-shard 双 checkout（BASE 到根 +
+        HEAD 到 head-src/）迁入 infra-core reusable workflow，由引擎仓
+        test_droid_review_shards_workflow.test_review_shard_dual_checkout_of_consumer_repo
+        锁定；caller 锁定分片聚合两段拓扑。"""
         jobs = workflow_data.get("jobs", {})
-        # Find the review shard job (matrix-based)
-        shard_job = jobs.get("review-shard", {})
-        steps = shard_job.get("steps", [])
-        checkout_steps = [s for s in steps if "checkout" in s.get("uses", "")]
-        assert len(checkout_steps) >= 2, "review-shard must have >=2 checkout steps (BASE + HEAD)"
-        # One checkout targets head-src/
-        paths_or_targets = [str(s.get("with", {})) for s in checkout_steps]
-        head_src_found = any("head-src" in str(p) for p in paths_or_targets)
-        assert head_src_found, "review-shard must checkout HEAD into head-src/"
+        assert "shards" in jobs, "shards call job missing"
+        assert "droid-review" in jobs, "local aggregate job missing"
 
     def test_08_droid_review_job_exists_with_aggregation(self, workflow_data):
         """聚合发布 job 存在且名为 droid-review。"""
@@ -144,114 +137,50 @@ class TestWorkflowStructure:
             "Move such values to the step's env: mapping. Violations:\n" + "\n".join(violations)
         )
 
-    def test_10c_shard_env_uses_setup_outputs_for_workflow_dispatch(self, workflow_data):
-        """workflow_dispatch 路径能进 review-shard：shard_env 必须从 setup outputs 读 sha。
+    def test_10c_setup_outputs_flow_to_publisher(self, workflow_data):
+        """VAL-SHARD（M4 切换后等价）：setup 解析的 pr/head sha 必经 shards outputs
+        流入本地聚合 composite（原断言锁定 shard_env 读 needs.setup.outputs，
+        该内部结构迁入 infra-core reusable workflow 并由引擎仓模板测试锁定）。"""
+        aggregate_step = next(
+            (
+                s
+                for s in workflow_data["jobs"]["droid-review"]["steps"]
+                if "droid-review-aggregate" in s.get("uses", "")
+            ),
+            None,
+        )
+        assert aggregate_step is not None, "本地聚合 composite step 缺失"
+        with_block = aggregate_step.get("with", {})
+        assert with_block.get("pr-number") == "${{ needs.shards.outputs.pr_number }}"
+        assert with_block.get("head-sha") == "${{ needs.shards.outputs.head_sha }}"
 
-        若用 github.event.pull_request.base/head.sha，workflow_dispatch 触发时
-        这两者都为空，shard 永远进不了 review-shard。修复：从 needs.setup.outputs
-        读（:193-198 的 checkout 已这样做，自测也走同一通道）。
-        """
-        jobs = workflow_data.get("jobs", {})
-        shard_job = jobs.get("review-shard", {})
-        steps = shard_job.get("steps", [])
-        shard_env_step = None
-        for step in steps:
-            if step.get("id") == "shard_env":
-                shard_env_step = step
-                break
-        assert shard_env_step is not None, "review-shard must have a shard_env step"
-        env = shard_env_step.get("env", {})
-        base_sha_src = str(env.get("BASE_SHA", ""))
-        head_sha_src = str(env.get("HEAD_SHA", ""))
-        assert "needs.setup.outputs" in base_sha_src, (
-            f"shard_env BASE_SHA must read from needs.setup.outputs, got: {base_sha_src!r}"
-        )
-        assert "needs.setup.outputs" in head_sha_src, (
-            f"shard_env HEAD_SHA must read from needs.setup.outputs, got: {head_sha_src!r}"
-        )
-        # Specifically must NOT use github.event.pull_request.*.sha
-        assert "github.event.pull_request" not in base_sha_src, (
-            f"shard_env BASE_SHA must not use github.event.pull_request: {base_sha_src!r}"
-        )
-        assert "github.event.pull_request" not in head_sha_src, (
-            f"shard_env HEAD_SHA must not use github.event.pull_request: {head_sha_src!r}"
-        )
+    def test_10d_caller_is_declarative_only(self, workflow_data):
+        """VAL-SHARD（M4 切换后等价）：thin caller 不得出现内联 run 块——
+        全部执行逻辑委托 infra-core（原 fetch --depth=1 禁令随之迁入引擎仓
+        test_droid_review_shards_workflow.test_no_depth_1_in_base_fetch）。"""
+        for job_name, job in workflow_data.get("jobs", {}).items():
+            for step in job.get("steps", []):
+                assert "run" not in step, (
+                    f"thin caller job {job_name!r} step {step.get('name')!r} 含内联 run 块——"
+                    "执行逻辑必须委托 infra-core reusable workflow / composite"
+                )
 
-    def test_10d_no_depth_1_in_base_fetch(self, workflow_raw):
-        """VAL-SHARD-002: git fetch origin BASE_SHA 不得使用 --depth=1。
-
-        --depth=1 会把 base SHA 写入 .git/shallow，导致 merge-base 在 base 前进过的
-        PR 上返回空（shallow graft 阻断历史遍历）。必须完整 fetch 才能正确计算 merge-base。
-        """
-        import re
-
-        # Find the shard_env step's run block
-        pattern = re.compile(r'git fetch origin "\$BASE_SHA"(\s*--depth=1)?', re.MULTILINE)
-        matches = pattern.findall(workflow_raw)
-        assert matches, 'git fetch origin "$BASE_SHA" not found in workflow'
-        # Ensure no --depth=1 flag
-        for depth_flag in matches:
-            assert depth_flag.strip() == "", "git fetch must NOT use --depth=1 (breaks merge-base computation)"
-
-    def test_10e_artifact_includes_debug_transcripts_and_error_logs(self, workflow_data):
-        """VAL-SHARD-012: debug artifact 必须包含 session transcripts 和执行错误日志。
-
-        upload-artifact 不展开 ~，且拒绝工作区外路径。必须先用 step 把 $HOME/.factory/sessions/
-        复制到工作区内的 .factory/sessions/，然后上传 .factory/sessions/**。
-        同时必须包含 shard-exec-error.log 和 droid-exec-stdout.json 用于诊断 droid exec 失败。
-        """
-        jobs = workflow_data.get("jobs", {})
-        shard_job = jobs.get("review-shard", {})
-        steps = shard_job.get("steps", [])
-
-        # Find the "Collect debug transcripts" step
-        collect_step = None
-        for step in steps:
-            if "Collect debug transcripts" in step.get("name", ""):
-                collect_step = step
-                break
-        assert collect_step is not None, "review-shard must have 'Collect debug transcripts' step"
-
-        # Verify the step copies from $HOME/.factory/sessions to .factory/sessions
-        run_script = collect_step.get("run", "")
-        assert "$HOME/.factory/sessions" in run_script or "${HOME}/.factory/sessions" in run_script, (
-            "Collect step must reference $HOME/.factory/sessions"
+    def test_10e_artifact_contract_migrated_with_pipeline(self, workflow_data):
+        """VAL-SHARD-012（M4 切换后）：debug artifact（session transcripts +
+        执行错误日志 + include-hidden-files）随 review-shard job 迁入 infra-core
+        reusable workflow，由引擎仓模板测试锁定
+        （test_droid_review_shards_workflow.test_artifact_includes_debug_transcripts_and_error_logs
+        与 test_upload_include_hidden_files）；caller 锁定聚合 composite 消费
+        droid-review-debug- 前缀 artifact 的委托关系。"""
+        aggregate_step = next(
+            (
+                s
+                for s in workflow_data["jobs"]["droid-review"]["steps"]
+                if "droid-review-aggregate" in s.get("uses", "")
+            ),
+            None,
         )
-        assert ".factory/sessions" in run_script and "mkdir -p .factory" in run_script, (
-            "Collect step must create .factory/sessions/ in workspace"
-        )
-
-        # Find the upload artifact step
-        upload_step = None
-        for step in steps:
-            uses = step.get("uses", "")
-            if "upload-artifact" in uses:
-                upload_step = step
-                break
-        assert upload_step is not None, "review-shard must have upload-artifact step"
-
-        # Verify the artifact path includes .factory/sessions/** and error logs
-        upload_with = upload_step.get("with", {})
-        upload_path = upload_with.get("path", "")
-        assert ".factory/sessions/**" in upload_path, (
-            f"Artifact must include .factory/sessions/** (transcripts copied into workspace), got: {upload_path!r}"
-        )
-        assert "shard-exec-error.log" in upload_path, (
-            f"Artifact must include shard-exec-error.log for diagnosing droid exec failures, got: {upload_path!r}"
-        )
-        assert "droid-exec-stdout.json" in upload_path, (
-            f"Artifact must include droid-exec-stdout.json for diagnosing droid exec failures, got: {upload_path!r}"
-        )
-        # Ensure we're NOT using ~ directly (upload-artifact doesn't expand it)
-        assert "~/.factory/sessions" not in upload_path, (
-            "Artifact path must NOT use ~/.factory/sessions directly (upload-artifact doesn't expand ~)"
-        )
-        # Structural lock: upload-artifact@v4 defaults to include-hidden-files:false,
-        # which silently drops .factory/ dot-directories. Must be explicitly enabled.
-        assert upload_with.get("include-hidden-files") is True, (
-            "Upload step must set include-hidden-files: true to include .factory/sessions/ "
-            "(actions/upload-artifact@v4 defaults to false and silently drops hidden files)"
-        )
+        assert aggregate_step is not None, "本地聚合 composite step 缺失"
 
 
 # ══════════════════════════════════════════════════════════════════════
