@@ -655,32 +655,41 @@ class TestDroidReview503SelfHeal:
         assert "contents" not in perms or perms["contents"] == "read"
 
     def test_watchdog_bounded_run_attempt(self, watchdog_data):
-        """VAL-503-003: run_attempt 限界防止 rerun 死循环（通过 WATCHDOG_MAX_ATTEMPT repo variable 配置）。"""
+        """VAL-503-003: run_attempt 限界防止 rerun 死循环（M4 切换后）。
+
+        执行体迁入 infra-core droid-review-watchdog-handlers.yml（引擎仓模板测试
+        test_droid_review_watchdog_handlers_workflow 锁定 MAX_ATTEMPT 限界与 -z
+        回退）；caller 锁定委托关系——run-attempt/max-attempt 必须显式转发。"""
         job = watchdog_data["jobs"]["self-heal-rerun"]
-        # run_attempt 限界已从 if: 移到 shell run block（通过 WATCHDOG_MAX_ATTEMPT 变量）
-        steps = job["steps"]
-        run_block = next(s["run"] for s in steps if "rerun" in s.get("name", "").lower())
-        assert "WATCHDOG_MAX_ATTEMPT" in run_block, "watchdog job must reference WATCHDOG_MAX_ATTEMPT repo variable"
-        assert "MAX_ATTEMPT" in run_block, "watchdog job must use MAX_ATTEMPT for attempt limiting"
         assert "conclusion == 'failure'" in str(job.get("if", "")), "watchdog must only fire on failure"
+        with_block = job.get("with", {})
+        assert with_block.get("run-attempt") == "${{ github.event.workflow_run.run_attempt }}", (
+            "run-attempt 必须经 with 转发给 reusable workflow"
+        )
+        assert with_block.get("max-attempt") == "${{ vars.WATCHDOG_MAX_ATTEMPT || '3' }}", (
+            "max-attempt 必须转发 vars.WATCHDOG_MAX_ATTEMPT（caller 层 || '3' 回退）"
+        )
 
     def test_watchdog_matches_503_patterns_only(self, watchdog_data):
-        """VAL-503-004: 特征表只含 infra 瞬时错误，且 rerun 失败不阻塞结算。"""
-        steps = watchdog_data["jobs"]["self-heal-rerun"]["steps"]
-        run_block = next(s["run"] for s in steps if "rerun" in s.get("name", "").lower())
-        # 503 权限检查特征必须在列（2026-08-17/18 实测根因）
-        assert "permission - 503" in run_block
-        assert "Failed to check permissions" in run_block
-        # fail-closed：rerun 请求失败只 warning，不绕过门禁
-        assert "::warning::" in run_block
-        assert "rerun-failed-jobs" in run_block
+        """VAL-503-004（M4 切换后）：503 特征表随执行体迁入 infra-core reusable
+        （引擎仓 test_droid_review_watchdog_handlers_workflow.TestSelfHealHandlerBody
+        锁定特征表与 rerun-failed-jobs fail-closed 语义）；caller 锁定委托——
+        self-heal-rerun 必须是纯 uses 委托 job（零内联 run step）。"""
+        job = watchdog_data["jobs"]["self-heal-rerun"]
+        assert ".github/workflows/droid-review-watchdog-handlers.yml@" in job.get("uses", ""), (
+            "self-heal-rerun 必须委托 infra-core reusable workflow"
+        )
+        assert job.get("steps") is None, "handler 执行体已迁出，caller 不得保留内联 step"
 
     def test_watchdog_no_gate_bypass(self, watchdog_data):
-        """VAL-503-005: 自愈路径不含任何门禁绕过（--admin/--force/merge）。"""
-        steps = watchdog_data["jobs"]["self-heal-rerun"]["steps"]
-        run_block = next(s["run"] for s in steps if "rerun" in s.get("name", "").lower())
-        for forbidden in ("--admin", "--force", "merge"):
-            assert forbidden not in run_block, f"forbidden token in watchdog: {forbidden}"
+        """VAL-503-005（M4 切换后）：caller 全部 run block 零 bypass token
+        （含 "merge" 子串——quota-sweep 本地 job 也在扫描面内）；
+        handler 执行体在引擎仓，其模板测试同样锁 no bypass。"""
+        for job_name, job in watchdog_data["jobs"].items():
+            for step in job.get("steps") or []:
+                run_block = step.get("run", "")
+                for forbidden in ("--admin", "--force", "merge"):
+                    assert forbidden not in run_block, f"forbidden token in {job_name}: {forbidden}"
 
     def test_cancel_on_ci_fail_job_exists_and_gated(self, watchdog_data):
         """VAL-CIF-001: cancel-on-ci-fail job 存在且仅在 CI 失败时触发。
@@ -702,17 +711,18 @@ class TestDroidReview503SelfHeal:
         )
 
     def test_cancel_on_ci_fail_cancels_only_review_runs(self, watchdog_data):
-        """VAL-CIF-003: 取消目标按 name == Droid Auto Review 过滤 + 用 head_sha 定位。"""
-        steps = watchdog_data["jobs"]["cancel-on-ci-fail"]["steps"]
-        run_block = next(s["run"] for s in steps if "cancel" in s.get("name", "").lower())
-        assert "Droid Auto Review" in run_block, "must filter by review workflow name"
-        assert "head_sha" in run_block, "must scope cancellation to the failed SHA"
-        assert "/cancel" in run_block, "must call the cancel API"
-        # 取消失败只 warning，不阻塞（run 可能刚好自然结束；竞态无害）
-        assert "::warning::" in run_block
-        # 门禁语义不变：不含 merge/admin 类操作
-        for forbidden in ("--admin", "--force", " merge"):
-            assert forbidden not in run_block, f"forbidden token in cancel job: {forbidden}"
+        """VAL-CIF-003（M4 切换后）：取消过滤逻辑（name == Droid Auto Review +
+        head_sha 定位 + /cancel API）随执行体迁入 infra-core reusable（引擎仓
+        TestCancelOnCiFailHandlerBody 锁定）；caller 锁定委托与 head-sha 转发。"""
+        job = watchdog_data["jobs"]["cancel-on-ci-fail"]
+        assert ".github/workflows/droid-review-watchdog-handlers.yml@" in job.get("uses", ""), (
+            "cancel-on-ci-fail 必须委托 infra-core reusable workflow"
+        )
+        with_block = job.get("with", {})
+        assert with_block.get("mode") == "cancel-on-ci-fail"
+        assert with_block.get("head-sha") == "${{ github.event.workflow_run.head_sha }}", (
+            "head-sha 必须经 with 转发（取消范围锚定失败 CI 的 head SHA）"
+        )
 
     def test_droid_review_job_has_no_inline_selfheal(self, droid_review_data):
         """VAL-503-006: 防回退——droid-review job 内不得再出现自愈 step。
@@ -744,6 +754,82 @@ class TestDroidReview503SelfHeal:
         # shard-cwd-layout-fix 已绝对化 --cwd 路径（防 droid CLI 相对路径静默崩溃）
         assert "--cwd" in content, "missing --cwd flag"
         assert "GITHUB_WORKSPACE" in content and "head-src" in content, "missing absolute --cwd path"
+
+
+class TestWatchdogThinCallerContract:
+    """VAL-GATE-107（M4 gate-watchdog-automerge）：watchdog thin caller 契约。
+
+    事件守卫（workflow_run.name 精确名比较）只在 caller 求值，必须留在本文件；
+    quota-sweep 的 artifact 前缀过滤（droid-review-debug-）与 run 名过滤
+    （Droid Auto Review）同样保留在 caller 文件可断言。self-heal-rerun /
+    cancel-on-ci-fail 执行体迁入 infra-core droid-review-watchdog-handlers.yml
+    （引擎仓 test_droid_review_watchdog_handlers_workflow 锁定执行体契约）。
+    """
+
+    @pytest.fixture
+    def watchdog_data(self):
+        workflow_path = REPO_ROOT / ".github/workflows/droid-review-watchdog.yml"
+        return yaml.safe_load(workflow_path.read_text())
+
+    def test_workflow_name_byte_exact(self, watchdog_data):
+        """VAL-GATE-107: workflow 名字节级为 'Droid Review Watchdog'。"""
+        assert watchdog_data["name"] == "Droid Review Watchdog"
+
+    def test_workflow_run_listener_names_exact(self, watchdog_data):
+        """监听名集合精确 = {Droid Auto Review, CI}，types=[completed]。"""
+        triggers = watchdog_data.get(True, {}) or watchdog_data.get("on", {})
+        wr = triggers["workflow_run"]
+        assert sorted(wr["workflows"]) == ["CI", "Droid Auto Review"], f"监听名集合漂移: {wr['workflows']}"
+        assert wr["types"] == ["completed"]
+
+    def test_schedule_preserved(self, watchdog_data):
+        """schedule '*/30 * * * *' 原样（quota-sweep 唯一触发源）。"""
+        triggers = watchdog_data.get(True, {}) or watchdog_data.get("on", {})
+        assert triggers["schedule"] == [{"cron": "*/30 * * * *"}]
+
+    def test_concurrency_group_preserved(self, watchdog_data):
+        conc = watchdog_data["concurrency"]
+        assert conc["group"] == "droid-review-watchdog-${{ github.event.workflow_run.id }}"
+        assert conc["cancel-in-progress"] is False
+
+    def test_job_topology_three_jobs(self, watchdog_data):
+        jobs = set(watchdog_data["jobs"].keys())
+        assert jobs == {"self-heal-rerun", "cancel-on-ci-fail", "quota-sweep"}
+
+    def test_handler_jobs_delegate_to_infra_core(self, watchdog_data):
+        """两个 handler job 纯 uses 委托 + 调用 job 权限恰为 actions: write
+        （callee 子集校验：缺声明 = startup_failure 零 job，INFRA-613 教训）。"""
+        expected = "hdot123-org/infra-core/.github/workflows/droid-review-watchdog-handlers.yml@main"
+        for job_name in ("self-heal-rerun", "cancel-on-ci-fail"):
+            job = watchdog_data["jobs"][job_name]
+            assert job.get("uses") == expected, f"{job_name} 必须委托 infra-core reusable"
+            assert job.get("runs-on") is None, "uses job 不得声明 runs-on"
+            assert job.get("permissions") == {"actions": "write"}, f"{job_name} 调用 job 权限必须恰为 actions: write"
+
+    def test_handler_modes_and_guards(self, watchdog_data):
+        """VAL-GATE-107 核心断言：两个 if 守卫含精确名比较（留在 caller）。"""
+        jobs = watchdog_data["jobs"]
+        assert jobs["self-heal-rerun"]["with"]["mode"] == "self-heal-rerun"
+        assert jobs["cancel-on-ci-fail"]["with"]["mode"] == "cancel-on-ci-fail"
+        self_heal_if = str(jobs["self-heal-rerun"].get("if", ""))
+        assert "github.event.workflow_run.name == 'Droid Auto Review'" in self_heal_if
+        assert "github.event.workflow_run.conclusion == 'failure'" in self_heal_if
+        cancel_if = str(jobs["cancel-on-ci-fail"].get("if", ""))
+        assert "github.event.workflow_run.name == 'CI'" in cancel_if
+        assert "github.event.workflow_run.conclusion == 'failure'" in cancel_if
+
+    def test_quota_sweep_stays_local_with_prefix_filter(self, watchdog_data):
+        """VAL-GATE-107 核心断言：quota-sweep 本地 job 保留 droid-review-debug-
+        前缀过滤与 Droid Auto Review run 名过滤，runs-on 自建 runner。"""
+        job = watchdog_data["jobs"]["quota-sweep"]
+        assert job.get("uses") is None, "quota-sweep 必须是本地 job（前缀过滤契约在本文件）"
+        assert job.get("if") == "github.event_name == 'schedule'"
+        assert job.get("runs-on") == ["self-hosted", "pve-linux"]
+        run_block = next(s["run"] for s in job["steps"] if s.get("run"))
+        assert '.name | startswith("droid-review-debug-")' in run_block, (
+            "quota-sweep 必须保留 droid-review-debug- artifact 前缀过滤"
+        )
+        assert '.name == \\"Droid Auto Review\\"' in run_block, "quota-sweep 必须保留 Droid Auto Review run 名过滤"
 
 
 class TestRepoVarsReferences:
@@ -791,16 +877,9 @@ class TestRepoVarsReferences:
         assert "fromJSON(vars.DROID_REVIEW_TIMEOUT_MINUTES || '90')" in droid_review_raw
 
     def test_watchdog_max_attempt_has_fallback(self, watchdog_raw):
-        """WATCHDOG_MAX_ATTEMPT 变量缺失时有 -z 判断回退（非 :- 死代码模式）。"""
-        # VAL-VARS-004 修复：先 -z 判断再赋值，而非 :- 赋值后再 -z 判断（死代码）
-        assert 'if [ -z "${MAX_ATTEMPT:-}" ]' in watchdog_raw
-        # 确认死代码模式不存在：:-3 赋值后再 -z 判断永远走不到
-        import re
-
-        assert not re.search(
-            r'MAX_ATTEMPT="\$\{MAX_ATTEMPT:-3\}"\s*\n\s*if\s+\[\s+-z',
-            watchdog_raw,
-        ), "MAX_ATTEMPT 仍有 :-3 死代码模式（:- 展开先于 -z 判断）"
+        """WATCHDOG_MAX_ATTEMPT 变量缺失时有回退（M4 切换后：caller 层 || '3'
+        表达式回退；执行体层 -z 判断由引擎仓模板测试锁定）。"""
+        assert "vars.WATCHDOG_MAX_ATTEMPT || '3'" in watchdog_raw
 
     def test_quota_recovery_window_has_fallback(self, watchdog_raw):
         """QUOTA_RECOVERY_WINDOW_SECONDS 变量缺失时有 -z 判断回退（非 :- 死代码模式）。"""
