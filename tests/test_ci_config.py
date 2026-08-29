@@ -831,3 +831,37 @@ class TestBranchCleanupNamingContract:
         assert with_block["linear-project-id"] == "${{ vars.LINEAR_PROJECT_MEMORY_CORE_ID }}", (
             f"linear-project-id 应引用 vars.LINEAR_PROJECT_MEMORY_CORE_ID，实际: {with_block.get('linear-project-id')}"
         )
+
+
+class TestSetupVenvFastFail:
+    """预装环境锁定第 3 层：setup-venv composite checkout 完整性 fast-fail
+
+    checkout 残缺（半死 checkout，2026-08-27 runner-02/03 工作区中毒）时，
+    composite 第一步必须立即以可操作错误失败，不让下游报迷惑性错误。
+    """
+
+    @pytest.fixture
+    def setup_venv_data(self):
+        """加载 setup-venv composite action"""
+        action_path = REPO_ROOT / ".github/actions/setup-venv/action.yml"
+        return yaml.safe_load(action_path.read_text())
+
+    def test_fast_fail_is_first_step(self, setup_venv_data):
+        """fast-fail 步骤必须是 composite 的第一步"""
+        steps = setup_venv_data["runs"]["steps"]
+        assert steps[0].get("name") == "Fast-fail on incomplete checkout", (
+            f"第一步应为 fast-fail，实际: {steps[0].get('name')}"
+        )
+
+    def test_fast_fail_checks_key_files(self, setup_venv_data):
+        """检查三件关键文件：.git / pyproject.toml / setup-venv action.yml 自身"""
+        run = setup_venv_data["runs"]["steps"][0]["run"]
+        for key in (".git", "pyproject.toml", ".github/actions/setup-venv/action.yml"):
+            assert key in run, f"fast-fail 未检查关键文件：{key}"
+
+    def test_fast_fail_carries_actionable_message(self, setup_venv_data):
+        """错误消息含 'checkout 残缺' 指引并以非零退出"""
+        run = setup_venv_data["runs"]["steps"][0]["run"]
+        assert "checkout 残缺" in run
+        assert "exit 1" in run
+        assert "::error::" in run

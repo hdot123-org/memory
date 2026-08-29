@@ -12,8 +12,8 @@
 # 工具二进制走 PATH 优先级：宿主预装 > RUNNER_TEMP fallback 下载。
 # 缓存目录走 runner 全局：/var/cache/uv、/var/cache/pip（首次预热后常驻 NVMe）。
 #
-# 前置要求：调用 job 已 checkout（本 action 不读仓库文件）；系统 python3 为 3.12
-#（pyproject requires-python ==3.12.*，pve runner 预装）。
+# 前置要求：调用 job 已 checkout（fast-fail 步骤读取仓库关键文件验证完整性）；
+# 系统 python3 为 3.12（pyproject requires-python ==3.12.*，pve runner 预装）。
 # 回退分支：镜像缺 python3-venv（ensurepip）时 --without-pip + get-pip 引导。
 # shellcheck 洁净：GitHub 表达式经 env 传入（SC2296：${{ }}} 不能进脚本内联）。
 name: "Setup isolated venv with host tools (per-run)"
@@ -21,6 +21,24 @@ description: "Create a per-run isolated venv with host toolchain priority and sh
 runs:
   using: "composite"
   steps:
+    - name: Fast-fail on incomplete checkout
+      shell: bash
+      run: |
+        set -e
+        # 预装环境锁定第 3 层：checkout 残缺（半死 checkout）时立即失败，
+        # 不让下游报迷惑性错误（2026-08-27 runner-02/03 工作区中毒事件）。
+        missing=0
+        for f in .git pyproject.toml .github/actions/setup-venv/action.yml; do
+          if [ ! -e "$f" ]; then
+            echo "::error::仓库关键文件缺失：$f —— checkout 残缺（半死 checkout），请 rerun 本 job 或清理 runner 工作区后重试"
+            missing=1
+          fi
+        done
+        if [ "$missing" -ne 0 ]; then
+          exit 1
+        fi
+        echo "✓ checkout 完整性检查通过（.git / pyproject.toml / setup-venv action.yml）"
+
     - shell: bash
       env:
         RUN_ID: ${{ github.run_id }}
