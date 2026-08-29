@@ -329,6 +329,18 @@ INFRA-578 建立的自愈是**单向**的（heartbeat 检测 scanner 停摆 → 
 - **Fail-safe** — 探针失败（gh 不可用、API 错误、模块导入失败）静默跳过，绝不杀死本 tick；scanner 自身停摆仍由 heartbeat 正向守护（INFRA-578）
 - **位置约束** — 与 `write_heartbeat` 同位于 P1-2/P2-A 硬退出之前，保证硬退出路径上反向守望也已执行
 
+#### 10.1.2 告警抑制：自愈成功即静默（INFRA-597）
+
+双向自愈链解决了「谁来拉起」的问题，但暴露了告警语义缺陷。2026-08-26 至 2026-08-28 四天内产生 4 次同类告警（#1046/#1051/#1055/#1059）：GitHub 对两个 workflow 的 cron 槽位**同时**负载削减（如 2026-08-28 00:37–06:22Z 窗口），06:22 心跳 tick 检测到 5.8h 间隔 → `workflow_dispatch` 自愈成功（run 47s 完成）→ **代码仍无条件创建告警 issue** → 同步 Linear → 派发 agent 会话。扫描器从未真正停摆，一触发即恢复。
+
+修复（`scripts/evolution_heartbeat.py`）：告警语义从「出现过 stale」改为「**自愈失败**」：
+
+- **抑制条件** — 检测到 stale 且 dispatch 被 GitHub 接受且停摆未超 `SCANNER_SEVERE_STALENESS_HOURS`（8h）→ 不创建告警、退出码 0。dispatch 被接受意味着 run 立即入册，staleness 是瞬态 cron 漂移而非停摆
+- **严重度升级** — 停摆 > 8h 时即使 dispatch 成功也告警：反复 dispatch 成功却无新 run 出现，暗示系统性故障（workflow 禁用、runner 失联、auth 失效）
+- **自愈联动** — 抑制生效时 `compute_current_anomalies` 视 scanner 为已恢复，`resolve_cleared_alerts` 会顺手关闭残留的旧告警（#1059 场景），无需等下一个 scanner tick
+- **边界保留** — `issues_without_pr` 异常不受抑制影响；dispatch 被拒绝时照常告警（可观测性优先）
+- **告警内容增强** — stale 告警 body 附带停摆时长（`scanner_stale_hours`），使「自愈失败或严重停摆」的新语义在 Linear/GitHub 镜像中直接可见
+
 ### 10.2 Info 级 Suppress 提案链
 
 `scripts/evolution_scanner.py` 的 `check_persistent_info_findings()` 对 info 级 finding 进行持续存在检测：

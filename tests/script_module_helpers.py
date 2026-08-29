@@ -18,6 +18,7 @@ Semantics:
 """
 
 import importlib.util
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -27,10 +28,18 @@ def load_script_module(script_path: Path, module_name: str) -> ModuleType:
 
     Mirrors the historical per-file ``_load_module()`` helpers: build a
     ``ModuleSpec`` from the script path, execute it, and return the loaded
-    module object.
+    module object. The module is registered in ``sys.modules`` before
+    execution so that scripts defining ``@dataclass`` types with
+    ``InitVar``-style lookups (dataclasses resolves ``cls.__module__``
+    via ``sys.modules`` during decoration) work when loaded standalone.
     """
     spec = importlib.util.spec_from_file_location(module_name, script_path)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    sys.modules[module_name] = mod
+    try:
+        spec.loader.exec_module(mod)
+    except BaseException:
+        sys.modules.pop(module_name, None)
+        raise
     return mod

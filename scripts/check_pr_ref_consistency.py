@@ -18,6 +18,7 @@ Usage:
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -123,10 +124,14 @@ def extract_linkback_from_comments(comments_text: str) -> str | None:
 
 
 def _resolve_repo_owner_name() -> tuple[str, str]:
-    """Resolve (owner, name) from the origin remote URL.
+    """Resolve (owner, name) for gh issue view repository context.
 
-    Supports both HTTPS (https://github.com/OWNER/REPO.git) and SSH
-    (git@github.com:OWNER/REPO.git) forms. Read-only (git config query).
+    Priority (2026-08-28, PR #1060 教训):
+    1. GITHUB_REPOSITORY env（Actions 运行器默认注入 OWNER/REPO）— 自建
+       runner 配置 git url.<mirror>.insteadOf 全局重写后，git remote
+       get-url 返回镜像 URL，解析出错误的 owner/repo。显式 env 优先，
+       完全绕开 remote 推断。
+    2. origin remote URL fallback（本地运行场景）。
 
     Returns:
         Tuple of (owner, repo_name)
@@ -134,6 +139,11 @@ def _resolve_repo_owner_name() -> tuple[str, str]:
     Raises:
         RuntimeError: if origin URL is missing or unparseable
     """
+    github_repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    if github_repository.count("/") == 1:
+        owner, _, name = github_repository.partition("/")
+        if owner and name:
+            return owner, name
     result = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True, check=True)
     url = result.stdout.strip()
     # SSH form: git@github.com:OWNER/REPO.git
@@ -202,18 +212,23 @@ def fetch_pr_data(pr_number: int) -> dict[str, Any]:
 def fetch_issue_comments(issue_number: int) -> str:
     """Fetch issue comments via gh CLI.
 
+    --repo 显式指定（2026-08-28）：自建 runner git insteadOf 镜像重写使
+    gh 无法从 remote 解析 host（PR #1060 实证）。仅当 GITHUB_REPOSITORY
+    env（Actions 默认注入）可解析时追加 --repo（CI 场景，绕开 remote
+    推断）；未设置时保持原命令形态（本地调试，依赖 origin remote）。
+
     Args:
         issue_number: GitHub issue number
 
     Returns:
         Combined comment bodies as string
     """
-    result = subprocess.run(
-        ["gh", "issue", "view", str(issue_number), "--json", "comments", "--jq", ".comments[].body"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    cmd: list[str] = ["gh", "issue", "view", str(issue_number)]
+    if os.environ.get("GITHUB_REPOSITORY", "").strip():
+        owner, repo = _resolve_repo_owner_name()
+        cmd += ["--repo", f"{owner}/{repo}"]
+    cmd += ["--json", "comments", "--jq", ".comments[].body"]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     return result.stdout
 
 

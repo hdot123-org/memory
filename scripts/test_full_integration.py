@@ -204,8 +204,16 @@ class IntegrationTester:
             results.extend(self._check_single_platform(host))
         return results
 
-    def _check_hook_entries(self, host: str, config_file: Path, config: dict[str, Any]) -> CheckResult:
-        """Check if hook config has expected memory entries."""
+    def _check_hook_entries(
+        self, host: str, config_file: Path, config: dict[str, Any], wrapper_installed: bool = True
+    ) -> CheckResult:
+        """Check if hook config has expected memory entries.
+
+        wrapper_installed=False（平台未安装 memory-hook wrapper）时，
+        memory_entries 缺失降级为 WARN：宿主可能残留平台自身生成的配置文件
+        （如自建 runner 的 ~/.factory/settings.json），但该平台根本没有
+        安装 memory 系统，缺 hook 条目不构成安装缺陷（CI runner 预期状态）。
+        """
         try:
             config_content = json.loads(config_file.read_text(encoding="utf-8"))
             hooks = config_content.get("hooks", {} if "factory" in host else [])
@@ -234,6 +242,13 @@ class IntegrationTester:
                     "PASS",
                     f"All {len(expected_events)} expected events registered",
                     details=[f"Found: {', '.join(sorted(found_events))}"],
+                )
+            if not wrapper_installed:
+                return CheckResult(
+                    f"{host}:memory_entries",
+                    "WARN",
+                    f"Missing {len(missing_events)} expected events (platform not installed, informational)",
+                    details=[f"Missing: {', '.join(sorted(missing_events))}"],
                 )
             else:
                 return CheckResult(
@@ -309,7 +324,8 @@ class IntegrationTester:
             return results
 
         # 3. Check hook config has memory entries
-        results.append(self._check_hook_entries(host, config_file, config))
+        # wrapper 缺失 → 平台未安装 memory 系统，条目缺失降级为 WARN
+        results.append(self._check_hook_entries(host, config_file, config, wrapper_installed=wrapper.exists()))
 
         # 4. Check wrapper can execute (if exists)
         if wrapper.exists():
