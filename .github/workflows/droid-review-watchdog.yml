@@ -159,7 +159,9 @@ jobs:
               continue
             fi
             cd /tmp/quota-check
-            # unzip 优先；runner 未预装时回退 python3 stdlib（transcript 仅需内容可读）
+            # unzip 优先；runner 未预装时回退 python3 -m zipfile（best-effort：
+            # 符号链接/损坏条目容忍度与 unzip 有细微差异；本仓受信 artifact
+            # 场景仅需 transcript 内容可读）
             if command -v unzip >/dev/null 2>&1; then
               unzip -q artifact.zip
             else

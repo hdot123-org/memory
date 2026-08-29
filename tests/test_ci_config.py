@@ -601,13 +601,14 @@ class TestDroidReview503SelfHeal:
         assert job.get("steps") is None, "handler 执行体已迁出，caller 不得保留内联 step"
 
     def test_watchdog_no_gate_bypass(self, watchdog_data):
-        """VAL-503-005（M4 切换后）：caller 全部 run block 零 bypass token；
-        两个 handler job 必须纯委托（执行体在引擎仓，其模板测试锁 no bypass）。"""
+        """VAL-503-005（M4 切换后）：caller 全部 run block 零 bypass token
+        （含 "merge" 子串——quota-sweep 本地 job 也在扫描面内）；
+        handler 执行体在引擎仓，其模板测试同样锁 no bypass。"""
         for job_name, job in watchdog_data["jobs"].items():
             for step in job.get("steps") or []:
                 run_block = step.get("run", "")
-                assert "--admin" not in run_block, f"forbidden token in {job_name}: --admin"
-                assert "--force" not in run_block, f"forbidden token in {job_name}: --force"
+                for forbidden in ("--admin", "--force", "merge"):
+                    assert forbidden not in run_block, f"forbidden token in {job_name}: {forbidden}"
 
     def test_cancel_on_ci_fail_job_exists_and_gated(self, watchdog_data):
         """VAL-CIF-001: cancel-on-ci-fail job 存在且仅在 CI 失败时触发。
