@@ -32,10 +32,20 @@ fi
 # Returns 0 (true) if Dependabot, 1 (false) otherwise.
 is_dependabot_pr() {
   local pr_info pr_author
+  # Fail-closed guard: a transient network/API error while probing the
+  # author must NOT silently misjudge it (droid-review P2 finding,
+  # 2026-08-29). Treat as non-Dependabot: worst case the merge is blocked
+  # and a rerun recovers — a merge is never wrongly allowed.
   pr_info=$(curl -s -H "Authorization: token $GH_TOKEN" \
     -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/${REPOSITORY}/commits/${COMMIT_SHA}/pulls")
-  pr_author=$(echo "$pr_info" | jq -r '.[0].user.login // ""')
+    "https://api.github.com/repos/${REPOSITORY}/commits/${COMMIT_SHA}/pulls") || {
+    echo "⚠ transient network error probing PR author, treating as non-Dependabot (fail-closed)"
+    return 1
+  }
+  pr_author=$(echo "$pr_info" | jq -r '.[0].user.login // ""') || {
+    echo "⚠ transient API error parsing PR author, treating as non-Dependabot (fail-closed)"
+    return 1
+  }
   if [ "$pr_author" = "dependabot[bot]" ]; then
     return 0
   fi
@@ -43,14 +53,23 @@ is_dependabot_pr() {
 }
 
 # Poll for droid-review completion
-for attempt in $(seq 1 $MAX_ATTEMPTS); do
+for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
   echo "Attempt $attempt/$MAX_ATTEMPTS: Querying check runs for commit $COMMIT_SHA in $REPOSITORY..."
-  
-  # Query check runs for this commit
+
+  # Query check runs for this commit.
+  # Network resilience (droid-review P1 finding, 2026-08-29): a curl-level
+  # failure (timeout/DNS/refused) must NOT kill the poller under `set -e` —
+  # one transient blip would break the 120-retry loop and turn ci-ok red.
+  # Treat as transient and retry.
   CHECKS=$(curl -s -H "Authorization: token $GH_TOKEN" \
     -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/${REPOSITORY}/commits/${COMMIT_SHA}/check-runs?check_name=droid-review")
-  
+    "https://api.github.com/repos/${REPOSITORY}/commits/${COMMIT_SHA}/check-runs?check_name=droid-review") \
+    || {
+      echo "⚠ transient network error querying check runs, retrying in ${WAIT_SECONDS}s..."
+      sleep "$WAIT_SECONDS"
+      continue
+    }
+
   # Decision logic — two-phase to prevent stale-check race condition.
   #
   # Race scenario (confirmed: run 32435306919/32435603998):
@@ -67,6 +86,11 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
   # Dependabot skip exception is unaffected: when no active runs exist,
   # Phase 2 reads the 'skipped' conclusion and the Dependabot check below
   # handles it as before.
+  #
+  # API-level resilience: a rate-limit/5xx body is valid JSON but has no
+  # .check_runs, so jq exits non-zero ("Cannot iterate over null") — under
+  # `set -e` that would kill the poller just like a curl failure. Same
+  # transient-retry treatment.
   STATUS=$(echo "$CHECKS" | jq -r '
     # Phase 1: active-check guard — any non-completed run means keep waiting
     if (.check_runs | map(select(.status != "completed")) | length > 0) then
@@ -81,10 +105,14 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
       | last
       | .conclusion // "pending"
     end
-  ')
+  ') || {
+    echo "⚠ transient API error parsing check runs, retrying in ${WAIT_SECONDS}s..."
+    sleep "$WAIT_SECONDS"
+    continue
+  }
 
   echo "droid-review conclusion: $STATUS"
-  
+
   # Decision logic
   if [ "$STATUS" = "success" ]; then
     echo "✓ droid-review passed"
@@ -120,3 +148,9 @@ for attempt in $(seq 1 $MAX_ATTEMPTS); do
     exit 1
   fi
 done
+
+# Loop exhausted without a decision (e.g. persistent transient errors with
+# the guards above continuing past every attempt) — fail closed. Never fall
+# through with exit 0: ci-ok would read that as "droid-review passed".
+echo "✗ FAIL: exhausted $MAX_ATTEMPTS attempts — droid-review never completed"
+exit 1
