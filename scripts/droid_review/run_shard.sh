@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# run_shard.sh — TD-DR-01 单 shard 执行脚本（7 缺陷修复版）
+# run_shard.sh — TD-DR-01 单 shard 执行脚本
+# 【M4 备注 2026-08-29】droid-review thin caller（PR #1066）上线后，CI 分片流水线
+# 改跑 infra-core 引擎副本（src/infra_core/engine/droid_review/run_shard.sh，
+# 含 exit-137 韧性修复），本消费副本不再是 CI 活体，待 M5 瘦身移除。（7 缺陷修复版）
 # 职责：
 # 1. 解析 SHARD_FILES 环境变量（clean JSON，无引号包裹）
 # 2. 校验文件存在性（head-src 或 BASE 任一侧存在即可——修已删除文件永久红）
