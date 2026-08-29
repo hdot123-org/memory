@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.43.0](https://github.com/hdot123-org/memory/compare/v0.42.0...v0.43.0) (2026-08-29)
+
+
+### Features
+
+* **runner:** 实现 Layer 1+2 宿主工具链锁定与共享缓存 (infra-core[#37](https://github.com/hdot123-org/memory/issues/37)) ([#1058](https://github.com/hdot123-org/memory/issues/1058)) ([d448b11](https://github.com/hdot123-org/memory/commit/d448b114b5fcdb1d9e3cc226ac973f8fb91b2f74))
+
+
+### Bug Fixes
+
+* branch-cleanup thin caller 转发 Linear 项目同步参数（INFRA-586 scope B） ([#1057](https://github.com/hdot123-org/memory/issues/1057)) ([7c34bae](https://github.com/hdot123-org/memory/commit/7c34baebfdf3dc0bc83b0d413272369bb6d62dd0))
+* INFRA-588 心跳自愈链补全为双向（scanner 反向守护 heartbeat） ([#1054](https://github.com/hdot123-org/memory/issues/1054)) ([0f4333c](https://github.com/hdot123-org/memory/commit/0f4333c4966c0bc916f62c389ebbe23ff6e4f287))
+
 ## [0.42.0](https://github.com/hdot123-org/memory/compare/v0.41.2...v0.42.0) (2026-08-27)
 
 
