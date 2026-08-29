@@ -2,7 +2,7 @@
 
 memory-core 提供可复用的 `memory/` 协议、模板、Schema 和 CLI 工具，用于项目级记忆管理。它是一个开源库，负责初始化、校验、迁移和审计记忆布局；本仓库不存储任何业务项目状态。
 
-## 架构 (v0.43.0) <!-- x-release-please-version -->
+## 架构 (v0.44.0) <!-- x-release-please-version -->
 
 memory-core 采用**三层架构**：
 
@@ -31,7 +31,7 @@ memory-core 采用**三层架构**：
 
 项目级配置位于 `memory/system/`（而非 `.memory/`）。隐藏目录 `.memory/` 在 v0.5.0 中已移除。
 
-## 遥测架构 (v0.43.0) <!-- x-release-please-version -->
+## 遥测架构 (v0.44.0) <!-- x-release-please-version -->
 
 memory-core 采用**本地优先遥测**设计，最大限度降低 hook 开销，同时确保数据可靠送达：
 
@@ -101,20 +101,20 @@ memory-core 内置 **PreToolUse 守卫**，位于 Factory 与文件系统之间�
 从 GitHub 安装（非可编辑模式，生产用途）：
 
 ```bash
-pip install git+https://github.com/hdot123-org/memory.git@v0.43.0 <!-- x-release-please-version -->
+pip install git+https://github.com/hdot123-org/memory.git@v0.44.0 <!-- x-release-please-version -->
 ```
 
 升级到新版本：
 
 ```bash
-pip install --upgrade git+https://github.com/hdot123-org/memory.git@v0.43.0 <!-- x-release-please-version -->
+pip install --upgrade git+https://github.com/hdot123-org/memory.git@v0.44.0 <!-- x-release-please-version -->
 ```
 
 从 release wheel 安装：
 
 ```bash
-gh release download v0.43.0 --repo hdot123-org/memory --pattern "*.whl" <!-- x-release-please-version -->
-pip install memory_core-0.43.0 <!-- x-release-please-version -->
+gh release download v0.44.0 --repo hdot123-org/memory --pattern "*.whl" <!-- x-release-please-version -->
+pip install memory_core-0.44.0 <!-- x-release-please-version -->
 ```
 
 仅用于本地开发：
@@ -476,6 +476,6 @@ CI pytest 在自建 runner 上以串行模式（`-n 0`）运行以保证覆盖�
 
 ## 版本与许可
 
-- 当前文档版本：v0.43.0 <!-- x-release-please-version -->
+- 当前文档版本：v0.44.0 <!-- x-release-please-version -->
 - Python: >= 3.9
 - 许可证：MIT，详见 [LICENSE](LICENSE)。

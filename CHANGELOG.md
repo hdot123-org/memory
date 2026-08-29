@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.44.0](https://github.com/hdot123-org/memory/compare/v0.43.0...v0.44.0) (2026-08-29)
+
+
+### Features
+
+* **M4:** droid-review 切换 thin caller——分片流水线委托 infra-core，聚合 job 本地保 check 名 ([#1066](https://github.com/hdot123-org/memory/issues/1066)) ([d4b6206](https://github.com/hdot123-org/memory/commit/d4b620689883269117e6f8f7b7658548ee363d62))
+* **runner:** setup-venv composite 首步 checkout 完整性 fast-fail（第 3 层） ([#1061](https://github.com/hdot123-org/memory/issues/1061)) ([14c9123](https://github.com/hdot123-org/memory/commit/14c9123cf38fe49a3d023747f564e9f8d2c7f89b))
+
+
+### Bug Fixes
+
+* **ci:** check_droid_review.sh 网络韧性加固——瞬时 curl/jq 错误重试而非击穿轮询 ([#1064](https://github.com/hdot123-org/memory/issues/1064)) ([851df10](https://github.com/hdot123-org/memory/commit/851df101c66e45ac9bf4a3ff91bc7a06e7508ffd))
+
 ## [0.43.0](https://github.com/hdot123-org/memory/compare/v0.42.0...v0.43.0) (2026-08-29)
 
 
