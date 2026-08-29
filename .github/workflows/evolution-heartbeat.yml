@@ -1,39 +1,35 @@
+# Evolution Heartbeat thin caller（M4 切换，architecture.md §6）
+# 本文件保留（契约断言面）：workflow 名 'Evolution Heartbeat'、
+# schedule cron '47 */2 * * *'（INFRA-578 错峰）、workflow_dispatch、
+# concurrency、DISPATCH_TOKEN 显式转发。heartbeat 执行体（label-ensure
+# evolution-heartbeat / python -m infra_core.engine.evolution_heartbeat）
+# 委托 infra-core reusable。
+#
+# SCANNER_WORKFLOW 契约：引擎常量 SCANNER_WORKFLOW = "evolution-scan.yml"
+# 指本仓文件名不变——gh run list --workflow 按文件名解析，扫描器切换后
+# heartbeat 仍能判定扫描器存活（VAL-GATE-109）。
+# INFRA-588: 本 workflow 被 drop 时，扫描器 watch_heartbeat_channel 反向拉起。
+
 name: Evolution Heartbeat
 
 on:
   schedule:
-    # INFRA-578: 分钟位避开 :00（GitHub Actions 高峰负载削减窗口）。
-    # 实证 2026-08-26：整点触发的 cron 间隔从 2h 名义值漂移到 2h18m+，
-    # 非高峰分钟显著降低被 drop 概率。
-    # INFRA-588: 本 workflow 自身被 drop 时由 evolution-scan 的
-    # watch_heartbeat_channel 反向 workflow_dispatch 拉起（双向自愈）。
-    - cron: '47 */2 * * *'  # Every 2 hours at minute 47 (off-peak)
+    - cron: '47 */2 * * *'  # Every 2 hours at minute 47 (off-peak, INFRA-578)
   workflow_dispatch: {}
 
 concurrency:
   group: evolution-heartbeat
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   heartbeat:
-    runs-on: ubuntu-latest
+    uses: hdot123-org/infra-core/.github/workflows/evolution-heartbeat.yml@main
     permissions:
       contents: read
       issues: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
-      - name: Install package
-        run: pip install -e .
-      - name: Ensure labels exist
-        env:
-          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
-        run: |
-          gh label create "evolution-heartbeat" --color D93F0B --description "Evolution heartbeat alert" --force || true
-      - name: Run heartbeat check
-        run: python scripts/evolution_heartbeat.py
-        env:
-          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
-          PYTHONSAFEPATH: '1'
+    secrets:
+      dispatch-token: ${{ secrets.DISPATCH_TOKEN }}

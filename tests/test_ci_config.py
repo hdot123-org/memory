@@ -403,6 +403,113 @@ class TestAutoMergeThinCallerContract:
         }
 
 
+class TestScanHeartbeatThinCallerContract:
+    """VAL-GATE-108/109/113（M4 gate-scan-heartbeat）：scan/heartbeat thin caller 契约。
+
+    文件名 evolution-scan.yml 字节级保留（heartbeat 按 SCANNER_WORKFLOW 文件名
+    解析）、schedule cron INFRA-578 错峰位（13,43 与 47 */2）、workflow_dispatch、
+    concurrency、workflow 名、secrets 显式转发（禁 inherit）——全部留在本仓
+    caller 文件；执行体委托 infra-core reusable（模板契约由 infra-core 侧
+    test_evolution_scan_heartbeat_workflow.py 锁定，VAL-GATE-108 环境契约
+    DISPATCH_TOKEN/LINEAR_API_KEY/PYTHONSAFEPATH/pip install -e ./label-ensure/
+    evolution-history cache 在 reusable 内保持）。
+    """
+
+    @pytest.fixture
+    def scan_data(self):
+        path = REPO_ROOT / ".github/workflows/evolution-scan.yml"
+        return yaml.safe_load(path.read_text())
+
+    @pytest.fixture
+    def heartbeat_data(self):
+        path = REPO_ROOT / ".github/workflows/evolution-heartbeat.yml"
+        return yaml.safe_load(path.read_text())
+
+    def test_scan_workflow_name_byte_exact(self, scan_data):
+        """VAL-GATE-108/VAL-CROSS-005: workflow 名字节级为 'Evolution Scan'。"""
+        assert scan_data["name"] == "Evolution Scan"
+
+    def test_scan_filename_preserved(self):
+        """VAL-GATE-108: 文件名字节级 evolution-scan.yml（heartbeat 解析依赖）。"""
+        assert (REPO_ROOT / ".github/workflows/evolution-scan.yml").exists()
+
+    def test_scan_triggers_exact(self, scan_data):
+        """schedule cron INFRA-578 错峰 '13,43 * * * *' + workflow_dispatch。"""
+        triggers = scan_data.get(True, {}) or scan_data.get("on", {})
+        assert triggers["schedule"] == [{"cron": "13,43 * * * *"}]
+        assert triggers["workflow_dispatch"] == {}
+
+    def test_scan_concurrency_preserved(self, scan_data):
+        conc = scan_data["concurrency"]
+        assert conc["group"] == "evolution-scan"
+        assert conc["cancel-in-progress"] is False
+
+    def test_scan_single_job_delegation(self, scan_data):
+        """scan job 纯 uses 委托 infra-core reusable，无本地 steps。"""
+        jobs = scan_data["jobs"]
+        assert list(jobs.keys()) == ["scan"]
+        job = jobs["scan"]
+        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/evolution-scan.yml@main"
+        assert job.get("steps") is None
+
+    def test_scan_secrets_explicit_named_mapping(self, scan_data):
+        """VAL-GATE-113: DISPATCH_TOKEN + LINEAR_API_KEY 显式转发，禁 secrets: inherit。"""
+        job = scan_data["jobs"]["scan"]
+        assert job.get("secrets") == {
+            "dispatch-token": "${{ secrets.DISPATCH_TOKEN }}",
+            "linear-api-key": "${{ secrets.LINEAR_API_KEY }}",
+        }
+
+    def test_scan_calling_job_permissions_match_callee_needs(self, scan_data):
+        """调用 job 权限 = callee 所需集合（contents read + issues write）。"""
+        assert scan_data["jobs"]["scan"].get("permissions") == {"contents": "read", "issues": "write"}
+
+    def test_heartbeat_workflow_name_byte_exact(self, heartbeat_data):
+        """VAL-GATE-109: workflow 名字节级为 'Evolution Heartbeat'。"""
+        assert heartbeat_data["name"] == "Evolution Heartbeat"
+
+    def test_heartbeat_triggers_exact(self, heartbeat_data):
+        """schedule cron INFRA-578 错峰 '47 */2 * * *' + workflow_dispatch。"""
+        triggers = heartbeat_data.get(True, {}) or heartbeat_data.get("on", {})
+        assert triggers["schedule"] == [{"cron": "47 */2 * * *"}]
+        assert triggers["workflow_dispatch"] == {}
+
+    def test_heartbeat_concurrency_preserved(self, heartbeat_data):
+        conc = heartbeat_data["concurrency"]
+        assert conc["group"] == "evolution-heartbeat"
+        assert conc["cancel-in-progress"] is False
+
+    def test_heartbeat_single_job_delegation(self, heartbeat_data):
+        """heartbeat job 纯 uses 委托；SCANNER_WORKFLOW 契约由引擎仓锁定。"""
+        jobs = heartbeat_data["jobs"]
+        assert list(jobs.keys()) == ["heartbeat"]
+        job = jobs["heartbeat"]
+        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/evolution-heartbeat.yml@main"
+        assert job.get("steps") is None
+
+    def test_heartbeat_secrets_explicit_named_mapping(self, heartbeat_data):
+        """VAL-GATE-113: DISPATCH_TOKEN 显式转发。"""
+        assert heartbeat_data["jobs"]["heartbeat"].get("secrets") == {"dispatch-token": "${{ secrets.DISPATCH_TOKEN }}"}
+
+    def test_heartbeat_engine_scanner_workflow_constant(self):
+        """VAL-GATE-109(d): 引擎 SCANNER_WORKFLOW = "evolution-scan.yml" 字节精确。
+
+        对安装的 infra-core 引擎源码做字节级 grep（契约 Evidence 原文口径）。
+        不走 import：engine/__init__ 会连带 import evolution_scanner，其裸名
+        evolution_utils 与本仓 scripts/ 同名模块在 pytest 进程内可能碰撞
+        （P1-A module poisoning 同型），源码 grep 免疫该干扰且更贴近契约。
+        """
+        import importlib.util
+
+        spec = importlib.util.find_spec("infra_core")
+        assert spec and spec.origin, "infra_core must be installed (pyproject pin)"
+        engine_src = Path(spec.origin).parent / "engine" / "evolution_heartbeat.py"
+        content = engine_src.read_text()
+        assert 'SCANNER_WORKFLOW = "evolution-scan.yml"' in content, (
+            "infra-core 引擎 SCANNER_WORKFLOW 必须字节精确指向本仓文件名 evolution-scan.yml"
+        )
+
+
 class TestYAMLValidity:
     """Ensure all modified YAML files are valid."""
 

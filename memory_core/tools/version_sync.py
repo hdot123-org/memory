@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 # Re-exports: the migrated implementation symbols (kept importable from this
 # historical location for existing callers; listed in __all__ intentionally).
@@ -73,10 +73,13 @@ def probe_version_and_sync_compat(project_path: Path) -> dict[str, Any] | None:
     The infra-core signature is ``probe_version_and_sync(path, current_version)``
     (caller-supplied protocol constant).  Callers that only have a project path
     can use this wrapper to probe against memory-core's CURRENT_MEMORY_VERSION.
+
+    pin ≥ v0.5.1: infra-core 已为该函数标注精确返回类型
+    ``dict[str, Any] | None``，历史过渡期 cast 已冗余（mypy --strict redundant-cast）。
     """
     from infra_core.engine.version_sync import probe_version_and_sync as _probe
 
-    return cast(dict[str, Any] | None, _probe(project_path, CURRENT_MEMORY_VERSION))
+    return _probe(project_path, CURRENT_MEMORY_VERSION)
 
 
 def main(argv: list[str] | None = None) -> int:

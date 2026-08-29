@@ -599,16 +599,10 @@ def test_config_has_json_flags():
 # ============================================================================
 
 
-def test_cache_key_contains_run_id():
-    """VAL-FIX-HIST-001: Cache key uses run-scoped pattern with github.run_id."""
-    workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-scan.yml"
-    with workflow_path.open() as f:
-        content = f.read()
-
-    # Cache key must contain github.run_id for run-scoped saves
-    assert "evolution-history-${{ github.run_id }}" in content
-    # restore-keys must have stable prefix for cross-run restore
-    assert "restore-keys: evolution-history-" in content
+# M4 switch: The cache key / restore-keys contract has been moved along with the scan execution body to the infra-core reusable,
+# locked by infra template test test_scan_reusable_pip_install_and_history_cache;
+# on the consumer repo side only delegate assertions are retained (tests/test_ci_config.py
+# TestScanHeartbeatThinCallerContract). The original test_cache_key_contains_run_id has been retired.
 
 
 def test_run_audit_tool_receives_repo_root(tmp_path):
@@ -2212,17 +2206,9 @@ def test_check_isolation_does_not_swallow_unexpected_exceptions(tmp_path):
         check_isolation(findings, history_path, 3, "iso", "dedup")
 
 
-def test_workflow_generates_error_patterns():
-    """INFRA-81: CI workflow has a step generating registry.jsonl before scanning."""
-    workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "evolution-scan.yml"
-    with workflow_path.open() as f:
-        content = f.read()
-
-    assert "memory-error-patterns --all-projects" in content
-    # The generate step must come before the scan step
-    gen_idx = content.index("Generate error patterns")
-    scan_idx = content.index("Run evolution scanner")
-    assert gen_idx < scan_idx, "Generate error patterns step must precede Run evolution scanner"
+# M4 switch: The 'Generate error patterns' step (infra-error-patterns --all-projects, INFRA-81 order contract)
+# is locked by infra template tests test_scan_reusable_generates_error_patterns_via_infra_entry /
+# test_scan_reusable_step_order_generate_before_scan. The original test_workflow_generates_error_patterns has been retired.
 
 
 def test_config_error_patterns_no_dead_command():
