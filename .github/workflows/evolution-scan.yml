@@ -1,31 +1,25 @@
-# Evolution Scanner Workflow
-# Runs the evolution scanner on a cron schedule to detect regressions and create Issues.
+# Evolution Scanner thin caller（M4 切换，architecture.md §6）
+# 文件名必须保留 evolution-scan.yml——heartbeat 引擎按
+# SCANNER_WORKFLOW = "evolution-scan.yml" 经 gh run list --workflow 解析扫描器存活。
 #
-# CRITICAL TOKEN STRATEGY:
-# This workflow MUST use DISPATCH_TOKEN (a PAT), NOT GITHUB_TOKEN.
-# Reason: DISPATCH_TOKEN is a PAT belonging to @hdot123 (OWNER). Issues created
-# with it have author=hdot123, which satisfies CODEOWNERS and governance checks.
-# The trigger chain is:
-#   GitHub Issue (DISPATCH_TOKEN, author=hdot123) → Linear 原生 GitHub Issue Sync
-#   → Linear webhook → n8n → trigger-droid.sh → droid exec --tag linear-gateway
-#   → PR → CI → 合并
+# 本文件保留（契约断言面，VAL-GATE-108/113）：workflow 名 'Evolution Scan'、
+# schedule cron（INFRA-578 错峰分钟位）、workflow_dispatch、concurrency、
+# secrets 显式转发。scan 执行体（per-run venv / pip install -e . /
+# Generate error patterns（infra-core 入口）/ evolution-history cache /
+# label-ensure / scanner 运行）委托 infra-core reusable——
+# 模板契约由 infra-core 侧 test_evolution_scan_heartbeat_workflow.py 锁定。
 #
-# Fallback options if DISPATCH_TOKEN is unavailable:
-# 1. Use a GitHub App installation token (finer-grained, auditable)
-# 2. Use workflow_dispatch chain: scanner creates Issue with GITHUB_TOKEN, then
-#    a second workflow with a PAT comments on the Issue (workaround)
+# CRITICAL TOKEN STRATEGY: DISPATCH_TOKEN（PAT，author=hdot123）经
+# secrets 显式传入 reusable；Issue author 满足 CODEOWNERS/governance。
+#
+# INFRA-578: cron 分钟位避开 :00/:30（GitHub 高峰 load-shed drop 窗口）。
+# INFRA-588: heartbeat 自身被 drop 时，扫描器 watch_heartbeat_channel
+# （infra-core 引擎）会 workflow_dispatch 反向拉起 evolution-heartbeat.yml。
 
 name: Evolution Scan
 
 on:
   schedule:
-    # INFRA-578: 分钟位避开 :00/:30（GitHub Actions 高峰负载削减窗口）。
-    # 实证 2026-08-26：*/30 名义 30min 间隔实际漂移到 55m→84m→117m→139m，
-    # 20:32Z 后连续 slot 被 drop（不排队，直接丢弃），scanner 停摆 2h+ 触发告警。
-    # 非高峰分钟显著降低被 drop 概率；即使再被 drop，heartbeat 会
-    # workflow_dispatch 自愈拉起（见 evolution-heartbeat.yml）。
-    # INFRA-588: 反向亦然——heartbeat 自身被 drop 时，本 workflow 的
-    # watch_heartbeat_channel（scripts/evolution_scanner.py）会将其拉起。
     - cron: '13,43 * * * *'
   workflow_dispatch: {}
 
@@ -33,50 +27,16 @@ concurrency:
   group: evolution-scan
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   scan:
-    runs-on: ubuntu-latest
+    uses: hdot123-org/infra-core/.github/workflows/evolution-scan.yml@main
     permissions:
       contents: read
       issues: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
-      - name: Install package
-        run: pip install -e .
-      - name: Generate error patterns
-        run: memory-error-patterns --all-projects
-      - name: Validate registry.jsonl exists
-        run: |
-          if [ ! -f "memory/kb/patterns/registry.jsonl" ]; then
-            echo "::warning::memory/kb/patterns/registry.jsonl not found - error_patterns adapter will have no input"
-          else
-            echo "✓ registry.jsonl exists"
-          fi
-      - name: Cache evolution history
-        uses: actions/cache@v6
-        with:
-          path: |
-            .evolution/findings_over_time.json
-            .evolution/heartbeat.json
-          key: evolution-history-${{ github.run_id }}
-          restore-keys: evolution-history-
-      - name: Ensure labels exist
-        env:
-          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
-        run: |
-          gh label create "evolution-found" --color FBCA04 --description "Evolution scanner finding" --force || true
-          gh label create "evolution-isolated" --color B60205 --description "Stuck 3+ ticks" --force || true
-      - name: Run evolution scanner
-        run: python scripts/evolution_scanner.py
-        env:
-          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
-          # LINEAR_API_KEY enables Linear issue state verification in auto_close_resolved.
-          # Without it, the scanner cannot verify Linear terminal state and will
-          # fail-closed (block close) for Linear-linked issues to prevent churn.
-          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
-          # P1-A: Prevent module poisoning — blocks automatic insertion of scripts/ into sys.path.
-          # The scanner explicitly re-adds its own directory via sys.path.insert.
-          PYTHONSAFEPATH: '1'
+    secrets:
+      dispatch-token: ${{ secrets.DISPATCH_TOKEN }}
+      linear-api-key: ${{ secrets.LINEAR_API_KEY }}
