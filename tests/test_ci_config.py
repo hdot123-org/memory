@@ -619,9 +619,7 @@ class TestScanHeartbeatThinCallerContract:
                 f"{name} 的 uses 必须钉在与 pyproject 引擎 pin 一致的 {pinned}，"
                 f"当前: {uses}（升级需 pyproject pin + uses tag 同 PR 双写）"
             )
-            assert not uses.endswith("@main"), (
-                f"{name} 禁止浮动 @main 引用（INFRA-651：模板漂移绕过引擎 pin）"
-            )
+            assert not uses.endswith("@main"), f"{name} 禁止浮动 @main 引用（INFRA-651：模板漂移绕过引擎 pin）"
 
 
 class TestYAMLValidity:
