@@ -32,6 +32,6 @@ jobs:
       contents: read
       issues: write
     secrets:
-      # snake_case 为统一命名形态（M5 R1(3)）；hyphen 为过渡期兼容双写。
+      # snake_case 单形态（M5 R1(3) 终态，对齐 infra-core #82）：双形态同名
+      # 提供（-/_ 归一化）即重复键 → run startup_failure（2026-08-30 实测）。
       dispatch_token: ${{ secrets.DISPATCH_TOKEN }}
-      dispatch-token: ${{ secrets.DISPATCH_TOKEN }}

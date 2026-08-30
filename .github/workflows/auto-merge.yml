@@ -74,7 +74,7 @@ jobs:
       # 不能用 GITHUB_TOKEN——GITHUB_TOKEN 触发的 push 事件被抑制会导致
       # release-please 监听的 push(paths: .release-please-manifest.json) 失效，
       # release PR 合并后 tag/Release 不创建（2026-08-15 两次事故 v0.29.0/v0.30.0）。
-      # snake_case 为统一命名形态（M5 R1(3)）；hyphen 为过渡期兼容双写，
-      # infra-core reusable 切换后由后续 PR 移除（与 #1075 同批口径）。
+      # snake_case 单形态（M5 R1(3) 终态，对齐 infra-core #82）：callee 声明
+      # required dispatch_token，hyphen 旧名读不到 → startup_failure；双写则
+      # 归一化重复键同样 startup_failure（2026-08-30 实测，两条路都堵死）。
       dispatch_token: ${{ secrets.DISPATCH_TOKEN }}
-      dispatch-token: ${{ secrets.DISPATCH_TOKEN }}
