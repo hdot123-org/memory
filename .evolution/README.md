@@ -93,6 +93,7 @@ audit_tools:                              # 审计工具列表
 | `ROOT_DOCS_DIR` | `docs` | 源仓库设计文档（specs/architecture/guides，41 个 tracked 文件），`source-repo-readonly` 约定非 memory/docs（见 docs/specs/BOUNDARY.md） |
 | `AGENTS_MD_UNMARKED` | `AGENTS.md` | 本仓 AGENTS.md 为手写治理文件（无 MEMORY_HOOK 标记是刻意的），hook wrapper 通过 source-repo 检测跳过本仓 |
 | `OWNERSHIP_MISSING` | `memory/system/ownership.toml` | `memory/system/` 整目录 gitignored（仅本机运行时状态，.gitignore L64），CI 干净 checkout 必然缺失；本仓为 source-repo 不走 consumer 初始化 |
+| `EVOLUTION_CONFIG_INSUFFICIENT` | `.evolution/config.yml` | 引擎 `check_config_yml`（Check 6）数的是 config.yml 原始 inline `audit_tools` 条目并断言 ≥ 6，与本仓 M5 pack-sem 配置结构性不符：`rule_packs: [memory]` 运行时展开 5 个 pack 工具 + 2 个 inline 协要件 = 7 个生效工具（≥ 6，实际超配）。生效工具数下限由 `tests/test_evolution_config_contract.py::test_effective_audit_tools_meet_engine_minimum` 契约锁定，真实退化（生效 < 6）仍会在 CI 失败（INFRA-661） |
 
 维护规则：
 

@@ -29,6 +29,11 @@
       "rule_id": "OWNERSHIP_MISSING",
       "location": "memory/system/ownership.toml",
       "expires": "2099-12-31"
+    },
+    {
+      "rule_id": "EVOLUTION_CONFIG_INSUFFICIENT",
+      "location": ".evolution/config.yml",
+      "expires": "2099-12-31"
     }
   ]
 }
