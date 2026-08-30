@@ -70,7 +70,7 @@
 | RFC、提案、变更 | `memory/docs/rfcs/` | 变更提案 |
 | Bug、崩溃、报错、异常 | `memory/docs/bug-reports/` | 问题记录 |
 | Droid、配置、BYOK、模型 | `docs/guides/` | 使用指南 |
-| 审计、检查、扫描 | `memory/docs/audit/` | 审计记录 |
+| 审计、检查、扫描 | `memory/docs/audit/` | 审计记录（审计工具执行体在 infra-core 仓 `infra-*` CLI） |
 | 重构、代码变更、refactor | `memory/docs/refactor-logs/` | 重构日志 |
 | 笔记、调研、临时记录 | `memory/docs/notes/` | 临时笔记 |
 | 不确定、先记下来 | `memory/docs/drafts/` | 草稿暂存 |

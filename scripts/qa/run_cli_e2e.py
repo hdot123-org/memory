@@ -129,23 +129,18 @@ CLI_COMMANDS = [
     "memory-hook-gateway",
     "memory-factory-hooks",
     "memory-consistency-check",
-    "memory-audit-layout",
     "memory-plan-residue",
     "memory-apply-residue-plan",
     "memory-ownership",
     "memory-verify-consumer",
     "memory-integrity-resign",
-    "memory-sync-versions",
-    "memory-audit-daily",
     "memory-promote",
 ]
 
 # CLIs that do meaningful work with no args (exit 0 is expected)
 CLI_NO_ARGS_OK = {
     "memory-consistency-check",  # Runs all consistency checks on the repo
-    "memory-sync-versions",  # Scans all known projects for version sync
     "memory-promote",  # Lists pending candidates
-    "memory-audit-daily",  # Reports daily memory audit; empty audit passes with exit 0
 }
 
 

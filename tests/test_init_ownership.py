@@ -13,6 +13,7 @@ import os
 from unittest.mock import patch
 
 import pytest
+from infra_core.packs.memory.layout_audit import audit_project_layout
 
 from memory_core.ownership import (
     MemoryOwnership,
@@ -22,7 +23,6 @@ from memory_core.ownership import (
     validate_ownership_schema,
 )
 from memory_core.tools.apply_residue_plan import _validate_plan
-from memory_core.tools.audit_project_layout import audit_project_layout
 from memory_core.tools.init_project_memory import init_project_memory
 from memory_core.tools.validate_project_memory import validate_project_memory
 

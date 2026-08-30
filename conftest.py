@@ -39,36 +39,6 @@ def neutralize_tmpdir_for_tests(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def _reset_tick_tracker():
-    """Reset evolution_utils global tick tracker before each test.
-
-    scripts/evolution_utils.py maintains a module-level _tick_tracker instance
-    (TickBudgetTracker) that tracks API calls and duration across the session.
-    Without resetting between tests, one test's accumulated calls can exhaust
-    the budget (API_CALL_BUDGET=100), causing subsequent drift-watch tests to
-    be silently skipped — leading to flaky CI failures depending on test order.
-
-    This fixture ensures every test starts with a clean tracker state,
-    covering all test files that import from evolution_utils (not just
-    test_drift_watch_reverse_integration.py which had its own per-file fixture).
-    """
-    import importlib
-    import sys
-    from pathlib import Path
-
-    # scripts/ is not on sys.path by default; tests add it manually.
-    # Mirror the same pattern so we can import evolution_utils here.
-    _scripts_dir = str(Path(__file__).parent / "scripts")
-    if _scripts_dir not in sys.path:
-        sys.path.insert(0, _scripts_dir)
-
-    _eu = importlib.import_module("evolution_utils")
-    _eu._tick_tracker.start_time = None
-    _eu._tick_tracker.api_calls = 0
-    yield
-
-
-@pytest.fixture(autouse=True)
 def _guard_load_key_not_patched():
     """Guard against cross-test patch leakage of load_key.
 
@@ -136,7 +106,7 @@ def _reset_gateway_adapter_config():
     when accessing get_config() values that were removed.
 
     This fixture resets the adapter config to the default profile and clears
-    singleton caches, following the pattern of _reset_tick_tracker above.
+    singleton caches (former _reset_tick_tracker 模式; M5 收缩后该 fixture 已随 drift-watch 测试族删除).
     """
     yield
     _do_reset_gateway_adapter_config()

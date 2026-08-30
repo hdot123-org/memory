@@ -29,7 +29,7 @@ Linear Issue 关闭 (Linear GitHub 集成检测 PR merge)
 ### 链路说明
 
 1. **Scanner 定时运行** — GitHub Actions cron 每 30 分钟触发一次 `evolution-scan.yml`
-2. **Scanner 创建 GitHub Issue** — `scripts/evolution_scanner.py` 的 `create_issue()` 函数创建 issue
+2. **Scanner 创建 GitHub Issue** — scanner 引擎（infra-core 仓 `infra_core.engine.evolution_scanner`；M5 收缩后本仓仅保留回滚副本）的 `create_issue()` 函数创建 issue
 3. **GitHub Issue 同步到 Linear** — 通过 Linear 原生 GitHub 集成自动完成，Linear issue 带有 `syncedWith: github` 标记
 4. **Linear issue 下有 linkback 评论** — linear-code bot 在 GitHub issue 下添加 linkback 评论
 5. **Linear issue 进入 infra 工作流** — 在 Linear 中可管理负责人、状态、PR 附件等
@@ -126,7 +126,7 @@ body = (
 | 事实 | 验证状态 | 说明 |
 |------|----------|------|
 | Scanner 定时运行 | ✅ 已验证 | `.github/workflows/evolution-scan.yml` cron `*/30 * * * *` |
-| Scanner 先在 GitHub 创建 issue | ✅ 已验证 | `scripts/evolution_scanner.py` create_issue() |
+| Scanner 先在 GitHub 创建 issue | ✅ 已验证 | scanner 引擎（infra-core `infra_core.engine.evolution_scanner`）create_issue() |
 | GitHub issue 自动同步到 Linear | ✅ 已验证 | Linear 原生 GitHub 集成，Linear issue 带 syncedWith: github |
 | GitHub issue 下有 linear-code bot linkback 评论 | ✅ 已验证 | 已在实际 issue 中验证 |
 | Linear issue 进入 infra 工作流 | ✅ 已验证 | 负责人、状态、PR 附件可见 |
@@ -161,7 +161,7 @@ body = (
 
 | 文件 | 职责 |
 |------|------|
-| `scripts/evolution_scanner.py` | scanner 主逻辑，创建 GitHub Issue |
+| `infra_core.engine.evolution_scanner`（infra-core 仓） | scanner 主逻辑，创建 GitHub Issue |
 | `scripts/evolution_utils.py` | scanner 工具函数，包括 `auto_close_resolved()` 补偿关闭 |
 | `.github/workflows/evolution-scan.yml` | scanner 定时触发 workflow |
 | `.github/workflows/droid.yml` | droid 自动触发 workflow |
@@ -300,7 +300,7 @@ Linear Issue。两条平台原生路径任一失败时，都会产生状态漂�
 
 - **提取窗口** — `evolution_utils.extract_linkback_anchor()` 以评论块（空行分隔）为窗口：取**首个**含 `linear-linkback` 标记的评论块，块内按 Tier1 内联标记 `<!-- linear-linkback INFRA-xxx -->` → Tier2a `linear.app/.../issue/INFRA-xxx` href → Tier2b `<a ...>INFRA-xxx</a>` 顺序提取。生产 ci-gateway 多行回链（裸标记行 + 下一行 `<p><a href>`）即在此窗口内命中；标记在但块内无 id → 返回 None（fail-closed）。
 - **#724 安全属性** — 提取仅限标记所在评论块：正文/评论 merely 提及 INFRA 号的通知类 issue 永远返回 None，防止全文匹配误关单。
-- **生产部署集** — 锚点助手依赖链 4 文件（`scripts/extract_anchor.py` / `evolution_utils.py` / `evolution_adapters.py` / `anchor_gate.py`，纯 stdlib）经 `webhook-scripts/MANIFEST.sh` 的 `CROSS_DIR_MAPPINGS` 由 `scripts/sync-webhook-scripts.sh` 托管同步到 `~/.factory/webhook/scripts/`，`--check` 以 sha256 报告漂移。
+- **生产部署集** — 锚点助手依赖链 4 文件（`extract_anchor.py` / `evolution_utils.py` / `evolution_adapters.py` / `anchor_gate.py`，纯 stdlib）自 M5 起由 infra-core 仓托管：`webhook-scripts/MANIFEST.sh` 的 `CROSS_DIR_MAPPINGS` + `webhook-scripts/sync-webhook-scripts.sh`（单一所有权源，memory 侧 manifest 已删除），生产同步以 infra-core tag 为基，`--check` 以 sha256 报告漂移。
 - **失败留痕** — 3 处调用点（reconcile §4b、GATE A 4.5/4.6）提取失败不再吞 stderr，带时间戳写入 `logs/anchor-extract.log`；调用方 fail-closed 语义不变（空锚点照常 skip/block）。
 - **补偿层关闭守卫（INFRA-357）** — `trigger-droid.sh` 补偿层关闭路径（被追踪 session 的 p_ref 在 Linear 终态后关 GitHub Issue）同样执行 label + 锚点双闸：候选查询带 `--label evolution-found`，每个候选经 `scripts/anchor_gate.py`（内部委托 `extract_anchor.py`，与 §4b/GATE A 同一提取实现）校验锚点 == p_ref 才关闭；无锚点/不匹配/提取失败 → skip 关闭并按 §4b 格式追加 `logs/anchor-drift.log`，留 reconcile 兜底。方向为 fail-closed：宁可漏关，不可误关。
 
@@ -311,7 +311,7 @@ Linear Issue。两条平台原生路径任一失败时，都会产生状态漂�
 
 ### 10.1 Heartbeat 告警自愈链
 
-`scripts/evolution_heartbeat.py` 的 `resolve_cleared_alerts()` 实现告警自愈闭环：
+heartbeat 引擎（infra-core 仓 `infra_core.engine.evolution_heartbeat`）的 `resolve_cleared_alerts()` 实现告警自愈闭环：
 
 - **触发条件** — 当某个告警 issue 记录的异常类型（`scanner_stale` / `issues_without_pr`）在本轮 tick 中全部消失时，该告警自动关闭
 - **语义粒度** — 类型级判定：任一类型仍有活跃成员时保持告警 OPEN；仅当该类型全部清除后才触发自愈
@@ -322,7 +322,7 @@ Linear Issue。两条平台原生路径任一失败时，都会产生状态漂�
 
 INFRA-578 建立的自愈是**单向**的（heartbeat 检测 scanner 停摆 → `workflow_dispatch` 拉起）。2026-08-27 实证：heartbeat 在 10:35Z 治愈 scanner 后，自身的 cron slot 从 12:47Z 起被 GitHub 高峰负载削减连续丢弃 20+ 小时，自愈链的执行者本身成了单点故障——scanner 于 15:32Z 后同样停摆，整个管道（含告警自愈 `resolve_cleared_alerts`）无人执行。
 
-修复为**双向**（`watch_heartbeat_channel`，`scripts/evolution_scanner.py`）：
+修复为**双向**（`watch_heartbeat_channel`，infra-core scanner 引擎）：
 
 - **探针** — 每个 scanner tick 成功写完 heartbeat marker（`write_heartbeat`）后，查询 `evolution-heartbeat.yml` 的最近运行记录（`check_heartbeat_workflow_liveness`，阈值 3h = 2h cron + 1h 漂移余量）
 - **反向拉起** — heartbeat 停摆时由 scanner 调用 `trigger_heartbeat_dispatch()`（`workflow_dispatch`）将其拉起，形成互为守望的双向自愈环
@@ -333,7 +333,7 @@ INFRA-578 建立的自愈是**单向**的（heartbeat 检测 scanner 停摆 → 
 
 双向自愈链解决了「谁来拉起」的问题，但暴露了告警语义缺陷。2026-08-26 至 2026-08-28 四天内产生 4 次同类告警（#1046/#1051/#1055/#1059）：GitHub 对两个 workflow 的 cron 槽位**同时**负载削减（如 2026-08-28 00:37–06:22Z 窗口），06:22 心跳 tick 检测到 5.8h 间隔 → `workflow_dispatch` 自愈成功（run 47s 完成）→ **代码仍无条件创建告警 issue** → 同步 Linear → 派发 agent 会话。扫描器从未真正停摆，一触发即恢复。
 
-修复（`scripts/evolution_heartbeat.py`）：告警语义从「出现过 stale」改为「**自愈失败**」：
+修复（infra-core heartbeat 引擎）：告警语义从「出现过 stale」改为「**自愈失败**」：
 
 - **抑制条件** — 检测到 stale 且 dispatch 被 GitHub 接受且停摆未超 `SCANNER_SEVERE_STALENESS_HOURS`（8h）→ 不创建告警、退出码 0。dispatch 被接受意味着 run 立即入册，staleness 是瞬态 cron 漂移而非停摆
 - **严重度升级** — 停摆 > 8h 时即使 dispatch 成功也告警：反复 dispatch 成功却无新 run 出现，暗示系统性故障（workflow 禁用、runner 失联、auth 失效）
@@ -343,7 +343,7 @@ INFRA-578 建立的自愈是**单向**的（heartbeat 检测 scanner 停摆 → 
 
 ### 10.2 Info 级 Suppress 提案链
 
-`scripts/evolution_scanner.py` 的 `check_persistent_info_findings()` 对 info 级 finding 进行持续存在检测：
+scanner 引擎的 `check_persistent_info_findings()` 对 info 级 finding 进行持续存在检测：
 
 - **触发条件** — 同一 info 级 finding 连续 ≥10 次快照出现时，输出可粘贴的 `suppress.json` 条目提案
 - **过期时间** — 提案中的 `expires` 设为当前 UTC 时间 +90 天

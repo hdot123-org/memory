@@ -229,25 +229,6 @@ class TestAuditGate:
             "id-token": "write",
         }, f"shards 调用 job 权限漂移（ callee 需要其超集语义）: {perms}"
 
-    def test_val_gate_003_droid_exec_in_run_shard_script(self):
-        """VAL-GATE-003: run_shard.sh calls droid exec with correct flags."""
-        script_path = REPO_ROOT / "scripts/droid_review/run_shard.sh"
-        content = script_path.read_text()
-        assert "droid exec" in content, "droid exec not found in run_shard.sh"
-        assert "--auto low" in content, "missing --auto low flag"
-        assert "-m qwen3.7-plus" in content, "missing model flag"
-        # shard-cwd-layout-fix 已绝对化 --cwd 路径（防 droid CLI 相对路径静默崩溃）
-        assert "--cwd" in content, "missing --cwd flag"
-        assert "GITHUB_WORKSPACE" in content and "head-src" in content, "missing absolute --cwd path"
-        assert "--tag" in content, "missing --tag flag"
-
-    def test_val_gate_004_findings_schema_validation(self):
-        """VAL-GATE-004: findings schema validation exists (fail-closed)."""
-        script_path = REPO_ROOT / "scripts/droid_review/run_shard.sh"
-        content = script_path.read_text()
-        assert "validate_findings" in content, "schema validation not found"
-        assert "sys.exit(1)" in content, "fail-closed exit not found"
-
     def test_val_gate_005_actionlint_passes(self):
         """VAL-GATE-005: Modified droid-review.yml passes actionlint."""
         import shutil
@@ -351,14 +332,6 @@ class TestCrossAreaAuditGate:
         assert ".github/workflows/auto-merge-pipeline.yml@" in calling.get("uses", "")
         job_if = str(calling.get("if", ""))
         assert "github.event.workflow_run.conclusion == 'success'" in job_if
-
-    def test_val_cross_031_findings_schema_validation_exists(self):
-        """VAL-CROSS-031: publish_findings.py must validate schema."""
-        script_path = REPO_ROOT / "scripts/droid_review/publish_findings.py"
-        content = script_path.read_text()
-        assert "validate_findings" in content
-        assert "REQUIRED_FINDING_FIELDS" in content
-        assert "severity" in content and "file" in content and "line" in content
 
     def test_val_cross_032_artifact_prefix_preserved(self, droid_review_data):
         """VAL-CROSS-032（M4 切换后）：artifact 前缀 `droid-review-debug-` 由
@@ -930,21 +903,6 @@ class TestDroidReview503SelfHeal:
             assert "rerun-failed-jobs" not in rb, (
                 "in-job rerun-failed-jobs is architecturally broken (in_progress race)"
             )
-
-    def test_droid_exec_used_in_shard_script(self):
-        """VAL-503-007: 使用 droid exec 而非 droid-action（3-job 架构）。"""
-        # In the new 3-job architecture, we use droid exec directly in run_shard.sh
-        # instead of the droid-action GitHub Action
-        script_path = REPO_ROOT / "scripts/droid_review/run_shard.sh"
-        assert script_path.exists()
-        content = script_path.read_text()
-        assert "droid exec" in content, "must use droid exec for review"
-        # Verify key flags are present
-        assert "--auto low" in content
-        assert "-m qwen3.7-plus" in content
-        # shard-cwd-layout-fix 已绝对化 --cwd 路径（防 droid CLI 相对路径静默崩溃）
-        assert "--cwd" in content, "missing --cwd flag"
-        assert "GITHUB_WORKSPACE" in content and "head-src" in content, "missing absolute --cwd path"
 
 
 class TestWatchdogThinCallerContract:

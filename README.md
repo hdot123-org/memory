@@ -170,10 +170,14 @@ memory-init --target /path/to/project [--scope my-project] [--host factory] [--m
 
 ### 布局治理
 
-在采纳前后使用以下命令检查遗留布局、运行时残留和根级生成报告：
+在采纳前后使用以下命令检查遗留布局、运行时残留和根级生成报告。
+
+布局审计执行体自 M5 起在 infra-core（`infra-layout-audit`，随 infra-core 安装提供）；
+`memory-plan-residue` / `memory-apply-residue-plan` 为本仓保留入口（前者委托
+infra-core `plan_main`）：
 
 ```bash
-memory-audit-layout --target /path/to/project --json
+infra-layout-audit --target /path/to/project --json
 memory-plan-residue --target /path/to/project --output residue-plan.json
 memory-apply-residue-plan --target /path/to/project --plan residue-plan.json --dry-run
 ```
@@ -212,17 +216,13 @@ memory-promote --version
 
 以下命令跨生命周期 path-index（`path-index.json`）中注册的所有项目执行。用于生命周期维护，如无特殊说明不带 `--target`。
 
-#### `memory-sync-versions`
+#### 版本同步（引擎在 infra-core）
 
-同步项目 scope 文件中锁定的 memory-core 版本。全局模式（不带 `--target`）遍历 `path-index.json` 中的每个项目，在升级门允许时修补三个文件：`ownership.toml`、`memory.lock` 和 `adapter.toml`。带 `--target` 时对单个项目执行相同逻辑。
-
-升级门允许 patch 和 minor 版本升级（要求 `schema_version` 不变），并修补全部三个文件。阻止 major 版本升级或 Schema 变更；此情况下仍修补 `ownership.toml` 以保持向后兼容，并提示用户使用 `memory-migrate`。
-
-```bash
-memory-sync-versions                              # 全局：同步所有项目
-memory-sync-versions --target /path/to/project    # 单项目
-memory-sync-versions --dry-run --json
-```
+版本同步引擎自 M3 起迁移至 infra-core（`infra_core.engine.version_sync`，
+CLI 入口 `infra-sync-versions`）。全局模式遍历 `path-index.json` 中的每个项目，
+在升级门允许时修补三个文件：`ownership.toml`、`memory.lock` 和 `adapter.toml`。
+升级门允许 patch 和 minor 版本升级（要求 `schema_version` 不变）；阻止 major
+版本升级或 Schema 变更，此情况下仍修补 `ownership.toml` 以保持向后兼容。
 
 ##### 自动版本跟随（auto version follow）
 
@@ -237,7 +237,7 @@ memory-sync-versions --dry-run --json
 | 降级（target < current） | 拦截，仅记警告 |
 
 - **失败安全**：探测或同步链路的任何异常均不阻塞 hook 主链（`exit 0` 语义）
-- **手动 CLI**：`memory-sync-versions --target <项目>` 仍可用（推荐单项目模式；全局模式的 path-index 以 cwd 为键存在错配，详见 [`path-index` 规范](docs/specs/PATH_INDEX_SPEC.md)）
+- **手动 CLI**：`infra-sync-versions --target <项目>`（infra-core 入口；推荐单项目模式；全局模式的 path-index 以 cwd 为键存在错配，详见 [`path-index` 规范](docs/specs/PATH_INDEX_SPEC.md)）
 - **测试**：`tests/test_auto_version_follow.py`，17 用例覆盖六分支
 
 #### `memory-lifecycle-rebuild`
@@ -250,25 +250,18 @@ memory-lifecycle-rebuild --dry-run --json
 memory-lifecycle-rebuild --lifecycle-root /custom/lifecycle/root
 ```
 
-#### `memory-audit-daily`
+#### 每日完整性审计（引擎在 infra-core）
 
-全局每日完整性审计。遍历 `path-index.json` 中注册的每个项目，检查 manifest 完整性、未签名文件和版本一致性。无 `--target` 选项，始终为全局操作。
+全局每日完整性审计自 M5 起由 infra-core 提供（`infra-daily-audit`）。遍历
+`path-index.json` 中注册的每个项目，检查 manifest 完整性、未签名文件和版本一致性。
 
-```bash
-memory-audit-daily --json
-memory-audit-daily --dry-run
-```
+#### 错误模式检测（引擎在 infra-core）
 
-#### `memory-error-patterns`
-
-全局错误模式检测器（Layer D）。跨项目扫描 `memory/log/*-errors.jsonl` 文件，通过智能归一化（路径、时间戳、UUID、hex、数字全部抽象化）对重复错误进行指纹识别，将机器可读的模式注册表写入 `memory/kb/patterns/registry.jsonl`。满足阈值（>=2 个不同天数 或 >=5 次总计数）的模式标记为 `threshold_met`。仅检测，不修改 KB，不自动生成 lesson。
-
-```bash
-memory-error-patterns                                    # 从 cwd 自动检测项目
-memory-error-patterns --project /path/to/project         # 单项目
-memory-error-patterns --all-projects                     # 所有项目（launchd 每日 23:55）
-memory-error-patterns --dry-run --verbose                # 预览不写入注册表
-```
+全局错误模式检测器（Layer D）自 M5 起由 infra-core 提供（`infra-error-patterns`）。
+跨项目扫描 `memory/log/*-errors.jsonl` 文件，通过智能归一化（路径、时间戳、UUID、
+hex、数字全部抽象化）对重复错误进行指纹识别，将机器可读的模式注册表写入
+`memory/kb/patterns/registry.jsonl`。满足阈值（>=2 个不同天数 或 >=5 次总计数）
+的模式标记为 `threshold_met`。仅检测，不修改 KB，不自动生成 lesson。
 
 ## 生成的项目布局
 
