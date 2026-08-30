@@ -49,10 +49,6 @@ dev = [
     "mcp>=1.0,<2.0",
 ]
 
-# M5 收缩：evolution 引擎面六入口已迁 infra-core（infra-daily-audit /
-# infra-layout-audit / infra-error-patterns / infra-self-audit /
-# infra-hygiene-audit / infra-sync-versions）；memory-plan-residue
-# 执行体在 infra_core.packs.memory.layout_audit。
 [project.scripts]
 memory-promote = "memory_core.tools.promote_global_kb:main"
 memory-init = "memory_core.tools.init_project_memory:main"
@@ -61,14 +57,20 @@ memory-validate = "memory_core.tools.validate_project_memory:main"
 memory-hook-gateway = "memory_core.tools.hook_runtime_guard:gateway_main"
 memory-factory-hooks = "memory_core.tools.factory_global_hooks:main"
 memory-consistency-check = "memory_core.tools.consistency_check:main"
-memory-plan-residue = "infra_core.packs.memory.layout_audit:plan_main"
+memory-audit-layout = "memory_core.tools.audit_project_layout:main"
+memory-plan-residue = "memory_core.tools.audit_project_layout:plan_main"
 memory-apply-residue-plan = "memory_core.tools.apply_residue_plan:main"
 memory-ownership = "memory_core.tools.ownership_cli:main"
 memory-verify-consumer = "memory_core.tools.verify_consumer:main"
 memory-integrity-resign = "memory_core.tools.memory_integrity_resign:main"
+memory-sync-versions = "memory_core.tools.version_sync:main"
+memory-audit-daily = "memory_core.tools.daily_kb_audit:main"
 memory-lifecycle-rebuild = "memory_core.tools.project_lifecycle:rebuild_main"
 memory-lifecycle-migrate = "memory_core.tools.project_lifecycle:migrate_main"
 "memory-mcp-server" = "memory_core.tools.mcp_server:main_sync"
+memory-error-patterns = "memory_core.tools.error_pattern_detector:main"
+memory-evolution-audit = "memory_core.tools.evolution_self_audit:main"
+memory-code-hygiene-audit = "memory_core.tools.code_hygiene_audit:main"
 
 [tool.setuptools.packages.find]
 include = ["memory_core*", "workspace*"]

@@ -191,7 +191,6 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 - **Linear 职责**：需求管理、缺陷跟踪、优先级分配、负责人指定、状态管理
 - **GitHub 职责**：scanner 入口、代码托管、PR 流程、Code Review、CI/CD
 - **GitHub Issue 定位**：evolution scanner 自动创建的记录，不是人工任务管理的主要入口
-- **Scanner 执行体在 infra-core**：扫描引擎、审计工具（`infra-*` CLI）与 reusable workflow 均在 `hdot123-org/infra-core`；本仓 `.evolution/config.yml` 仅作消费配置（rule_packs 引用）
 
 ### 职责边界
 

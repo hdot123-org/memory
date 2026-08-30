@@ -50,7 +50,10 @@ CORE_MODULES = {
     "memory_hook_schema",
     "factory_global_hooks",
     "consistency_check",
+    "audit_project_layout",
+    "daily_kb_audit",
     "ownership_cli",
+    "version_sync",
 }
 
 

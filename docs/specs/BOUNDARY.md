@@ -41,7 +41,6 @@
 | 业务项目的工作区文件 | `<业务项目>/workspace/` | 业务项目的工作区不属于 memory |
 | 业务项目的 NOW.md | `<业务项目>/NOW.md` | 业务项目当前状态不属于 memory |
 | 业务项目的具体任务分派 | `<业务项目>/memory/system/` | 任务执行配置属于业务项目 |
-| Evolution 引擎与审计工具执行体 | `infra-core` 仓 | 自 M3/M5 起，scanner / heartbeat / daily-audit / error-patterns / self-audit / hygiene / layout-audit / version-sync 的执行体与 CLI 入口（`infra-*`）在 infra-core；本仓仅保留协议面、`.evolution/config.yml` 消费配置（rule_packs）与一个 release 窗口的回滚副本（`scripts/evolution_{scanner,heartbeat,utils,adapters}.py`） |
 
 ---
 

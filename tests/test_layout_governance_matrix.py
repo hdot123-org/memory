@@ -23,11 +23,11 @@ import os
 from pathlib import Path
 
 import pytest
-from infra_core.packs.memory.layout_audit import (
+
+from memory_core.tools.audit_project_layout import (
     audit_project_layout,
     plan_residue_migration,
 )
-
 from memory_core.tools.init_project_memory import init_project_memory
 
 

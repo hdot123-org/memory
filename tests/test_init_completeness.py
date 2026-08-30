@@ -1030,7 +1030,7 @@ class TestPostInitAuditDoesNotBlockOnException:
             raise RuntimeError("simulated audit failure")
 
         monkeypatch.setattr(
-            "infra_core.packs.memory.layout_audit.audit_project_layout",
+            "memory_core.tools.audit_project_layout.audit_project_layout",
             _broken_audit,
         )
 
@@ -1298,7 +1298,7 @@ class TestAuditManifestNoFalsePositives:
         """_check_manifest_includes_runtime does NOT report for memory/system/adapter.toml
         or memory/kb/global/memory-system.md. Substring matching ("system" in path) is
         replaced with precise prefix matching."""
-        from infra_core.packs.memory.layout_audit import audit_project_layout
+        from memory_core.tools.audit_project_layout import audit_project_layout
 
         (tmp_path / "memory" / "system").mkdir(parents=True)
         manifest = {
@@ -1322,7 +1322,7 @@ class TestAuditManifestCatchesTrueRuntimePaths:
 
     def test_catches_true_runtime_paths(self, tmp_path: Path) -> None:
         """_check_manifest_includes_runtime DOES report for actual runtime paths."""
-        from infra_core.packs.memory.layout_audit import audit_project_layout
+        from memory_core.tools.audit_project_layout import audit_project_layout
 
         (tmp_path / "memory" / "system").mkdir(parents=True)
         manifest = {
@@ -1564,8 +1564,7 @@ class TestCrossFullInitAuditSignChain:
 
     def test_full_init_audit_sign_chain(self, tmp_path: Path, monkeypatch) -> None:
         """VAL-CROSS-001: After init, audit has zero P0/P1 findings and sign produces stable manifest."""
-        from infra_core.packs.memory.layout_audit import audit_project_layout
-
+        from memory_core.tools.audit_project_layout import audit_project_layout
         from memory_core.tools.init_project_memory import init_project_memory
         from memory_core.tools.memory_hook_integrity_keys import generate_key
         from memory_core.tools.memory_hook_integrity_manifest import sign_project
@@ -1727,8 +1726,7 @@ class TestCrossAuditNoFalsePositivesFreshInit:
         manifest and technically match the runtime prefix. They are not actual
         runtime artifacts, so we filter them out from the assertion.
         """
-        from infra_core.packs.memory.layout_audit import audit_project_layout
-
+        from memory_core.tools.audit_project_layout import audit_project_layout
         from memory_core.tools.init_project_memory import init_project_memory
         from memory_core.tools.memory_hook_integrity_keys import generate_key
         from memory_core.tools.memory_hook_integrity_manifest import sign_project

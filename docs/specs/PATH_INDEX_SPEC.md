@@ -20,7 +20,7 @@ tags: [path-index,lifecycle,version-sync,gateway]
 
 正式记录项目生命周期索引 `path-index.json` 以 **cwd（本地绝对路径）为主键**这一设计带来的两类缺陷——**残留条目（stale entries）**与**漏注册（missing registrations）**——并据此规定版本同步工具的调用约束：gateway 必须使用单项目模式 `sync_single_project`，禁止在 hook 链路中调用全量模式 `sync_all_known_projects`。
 
-本规范是版本同步引擎（自 M3/M5 起在 infra-core 仓 `infra_core.engine.version_sync`）模块 docstring 中设计标注（PR #1020）的 tracked 文档层对应物，作为该约束的权威说明。
+本规范是 `memory_core/tools/version_sync.py` 模块 docstring 中设计标注（PR #1020）的 tracked 文档层对应物，作为该约束的权威说明。
 
 ## 2. path-index 是什么
 
@@ -135,7 +135,7 @@ memory-lifecycle-rebuild                    # 原地重建
 
 ## 7. 参考
 
-- `infra_core.engine.version_sync`（infra-core 仓）— 模块 docstring 设计标注（M3）；`sync_all_known_projects` / `sync_single_project` / `probe_version_and_sync` 实现
+- `memory_core/tools/version_sync.py` — 模块 docstring 设计标注（M3）；`sync_all_known_projects` / `sync_single_project` / `probe_version_and_sync` 实现
 - `memory_core/tools/project_lifecycle.py` — `_path_index_key` / `record_project_lifecycle` / `rebuild_path_index`
 - `memory_core/tools/_gateway_handlers.py` — `_handle_session_start_setup`（session-start 探测挂载点）
 - [MULTI_PROJECT_SCAN_SPEC.md](MULTI_PROJECT_SCAN_SPEC.md) — SPEC-012，多项目升级扫描 registry 指针规范
