@@ -508,11 +508,17 @@ class TestScanHeartbeatThinCallerContract:
         assert conc["cancel-in-progress"] is False
 
     def test_scan_single_job_delegation(self, scan_data):
-        """scan job 纯 uses 委托 infra-core reusable，无本地 steps。"""
+        """scan job 纯 uses 委托 infra-core reusable，无本地 steps。
+
+        INFRA-651: uses 钉 tag v0.6.1（与 pyproject 引擎 pin 同版本）——浮动
+        @main 期间 infra-core 模板先行漂移会让本仓定时管道 run 级
+        startup_failure（M5 键名切换窗 6h 断链实证）。升级 = pyproject pin
+        + 此处 tag 同 PR 双写。
+        """
         jobs = scan_data["jobs"]
         assert list(jobs.keys()) == ["scan"]
         job = jobs["scan"]
-        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/evolution-scan.yml@main"
+        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/evolution-scan.yml@v0.6.1"
         assert job.get("steps") is None
 
     def test_scan_secrets_explicit_named_mapping(self, scan_data):
@@ -552,11 +558,15 @@ class TestScanHeartbeatThinCallerContract:
         assert conc["cancel-in-progress"] is False
 
     def test_heartbeat_single_job_delegation(self, heartbeat_data):
-        """heartbeat job 纯 uses 委托；SCANNER_WORKFLOW 契约由引擎仓锁定。"""
+        """heartbeat job 纯 uses 委托；SCANNER_WORKFLOW 契约由引擎仓锁定。
+
+        INFRA-651: uses 钉 tag v0.6.1，与 scan caller 及 pyproject 引擎 pin
+        同版本（模板/引擎版本锁定，禁浮动 @main）。
+        """
         jobs = heartbeat_data["jobs"]
         assert list(jobs.keys()) == ["heartbeat"]
         job = jobs["heartbeat"]
-        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/evolution-heartbeat.yml@main"
+        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/evolution-heartbeat.yml@v0.6.1"
         assert job.get("steps") is None
 
     def test_heartbeat_secrets_explicit_named_mapping(self, heartbeat_data):
@@ -584,6 +594,34 @@ class TestScanHeartbeatThinCallerContract:
         assert 'SCANNER_WORKFLOW = "evolution-scan.yml"' in content, (
             "infra-core 引擎 SCANNER_WORKFLOW 必须字节精确指向本仓文件名 evolution-scan.yml"
         )
+
+    def test_thin_caller_tags_match_engine_pin(self, scan_data, heartbeat_data):
+        """INFRA-651: thin caller uses 钉的 tag 必须与 pyproject 引擎 pin 同版本。
+
+        引擎（pip install -e . 按 pyproject pin 装 infra-core 引擎模块）与
+        reusable 模板（uses: ...@tag）版本分裂时，infra-core main 的破坏性
+        模板变更会绕过 pin 瞬时打进本仓定时管道——M5 键名切换窗（#1071/
+        #1075）双通道 run 级 startup_failure 6h 的直接机理。升级 infra-core
+        = pyproject pin + 两个 uses tag 同 PR 三写，本测试机械 enforce。
+        """
+        pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        import re
+
+        pin_match = re.search(r"infra-core @ git\+\S+?@v([\d.]+)", pyproject)
+        assert pin_match, "pyproject 必须以 git+...@vX.Y.Z 形式 pin infra-core"
+        pinned = "v" + pin_match.group(1)
+
+        for data, name in ((scan_data, "evolution-scan.yml"), (heartbeat_data, "evolution-heartbeat.yml")):
+            jobs = data["jobs"]
+            job = next(iter(jobs.values()))
+            uses = job.get("uses", "")
+            assert uses.endswith(f"@{pinned}"), (
+                f"{name} 的 uses 必须钉在与 pyproject 引擎 pin 一致的 {pinned}，"
+                f"当前: {uses}（升级需 pyproject pin + uses tag 同 PR 双写）"
+            )
+            assert not uses.endswith("@main"), (
+                f"{name} 禁止浮动 @main 引用（INFRA-651：模板漂移绕过引擎 pin）"
+            )
 
 
 class TestYAMLValidity:
