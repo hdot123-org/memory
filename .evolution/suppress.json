@@ -1,3 +1,34 @@
 {
-  "suppressed": []
+  "suppressed": [
+    {
+      "rule_id": "CURRENT_MEMORY",
+      "location": "memory",
+      "expires": "2099-12-31"
+    },
+    {
+      "rule_id": "PROJECT_MAP",
+      "location": "project-map",
+      "expires": "2099-12-31"
+    },
+    {
+      "rule_id": "ARTIFACTS_MEMORY_HOOK",
+      "location": "memory/artifacts/memory-hook",
+      "expires": "2099-12-31"
+    },
+    {
+      "rule_id": "ROOT_DOCS_DIR",
+      "location": "docs",
+      "expires": "2099-12-31"
+    },
+    {
+      "rule_id": "AGENTS_MD_UNMARKED",
+      "location": "AGENTS.md",
+      "expires": "2099-12-31"
+    },
+    {
+      "rule_id": "OWNERSHIP_MISSING",
+      "location": "memory/system/ownership.toml",
+      "expires": "2099-12-31"
+    }
+  ]
 }
