@@ -186,6 +186,33 @@ def template_project_scope_md(project_name: str) -> tuple[str, list[str]]:
     """
     now = _now_iso()
     warnings: list[str] = []
+    # Truth Basis refs must (a) all exist after a fresh init and (b) satisfy
+    # TruthBasisResolver's business rules (authority-allowed, non-canonical
+    # origin, lower-layer evidence, disjoint sets, conflict resolved). The
+    # section is part of the file at init time so the integrity manifest signs
+    # it from birth — hand-editing after init would break the HMAC instead.
+    truth_basis_section = """\
+## Truth Basis
+
+### Source Refs
+
+- memory/docs/记忆系统全景文档.md
+
+### Authority Refs
+
+- project-map/INDEX.md
+- memory/kb/global/truth-model.md
+
+### Evidence Refs
+
+- tests/.memory-anchor.md
+- tools/health-check.sh
+
+### Conflict Status
+
+- resolved
+
+"""
     try:
         content = f"""\
 ---
@@ -203,7 +230,7 @@ tags: [project, knowledge]
 
 # {project_name} 项目知识
 
-## 项目概述
+{truth_basis_section}## 项目概述
 
 （待填写：项目简要描述）
 
@@ -247,7 +274,7 @@ tags: [project, knowledge]
 
 # {{project_name}} 项目知识
 
-## 项目概述
+{truth_basis_section}## 项目概述
 
 （待填写：项目简要描述）
 
