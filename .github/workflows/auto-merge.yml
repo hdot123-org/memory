@@ -3,7 +3,8 @@ name: Auto Merge
 # M4 门禁切换（gate-watchdog-automerge）：本文件为 thin caller——触发面 + 事件门控
 # + concurrency 留在本地（github 事件上下文只在 caller 求值，VAL-GATE-106 契约），
 # resolve + triage + merge 执行体委托 infra-core reusable workflow
-# （auto-merge-pipeline.yml@main，shared-workflows merge pin 在引擎仓冻结不动）。
+# （auto-merge-pipeline.yml@main，merge action 为引擎仓 actions/auto-merge——
+# M6 VAL-HARD-104 自原共享仓收编，该仓已退役归档）。
 #
 # 为什么用 workflow_run + schedule 而非 check_run（INFRA-212）
 # ----------------------------------------------------------------
@@ -21,8 +22,9 @@ name: Auto Merge
 #
 # 零红铁律（2026-08-28 用户裁定，执行体在 infra-core reusable 内实施）：
 #   全绿判定 = PR head 全部 check-runs 零 fail（含 advisory 层）。
-#   triage 的 statusCheckRollup 全 SUCCESS/SKIPPED/NEUTRAL 判定 + shared-workflows
-#   auto-merge action 的全 check-runs 扫描双层保证。不得只查 required contexts。
+#   triage 的 statusCheckRollup 全 SUCCESS/SKIPPED/NEUTRAL 判定 + auto-merge
+#   action（引擎仓 actions/auto-merge）的全 check-runs 扫描双层保证。
+#   不得只查 required contexts。
 on:
   workflow_run:
     workflows: ["CI", "QA", "Droid Auto Review", "Evolution Governance"]
@@ -55,8 +57,8 @@ jobs:
   auto-merge:
     # 事件门控归 caller：workflow_run 只有在结论为 success 时才尝试合并；
     # 其余事件各自自行门控。执行体（resolve/triage/behind/conflicting/stalled/
-    # merge）在 infra-core auto-merge-pipeline.yml（其模板测试锁定 shared-workflows
-    # pin 与零红判定；防毒：零 checkout + RUNNER_TEMP heredoc triage）。
+    # merge）在 infra-core auto-merge-pipeline.yml（其模板测试锁定引擎仓
+    # actions/auto-merge 引用与零红判定；防毒：零 checkout + RUNNER_TEMP heredoc triage）。
     # 调用 job 权限 = callee 所需集合（contents/pull-requests/checks，startup
     # 子集校验，缺声明即 startup_failure 零 job——INFRA-613 教训）。
     if: |

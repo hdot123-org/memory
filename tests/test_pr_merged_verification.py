@@ -502,7 +502,7 @@ class TestVALCLOSE025:
             [
                 {
                     "id": "att-42",
-                    "url": "https://github.com/hdot123-org/shared-workflows/pull/42",
+                    "url": "https://github.com/hdot123-org/infra-core/pull/42",
                     "sourceType": "github",
                     "metadata": {},
                 }
@@ -516,13 +516,15 @@ class TestVALCLOSE025:
         issue_body = "<!-- linear-linkback INFRA-123 -->"
         result = _verify_fix_merged_via_linear(issue_body)
 
-        # gh pr view called with --repo hdot123/shared-workflows
+        # gh pr view called with --repo hdot123-org/infra-core（跨仓 fixture：
+        # 原用 shared-workflows 仓，M6 退役后换 infra-core，语义不变——URL 仓
+        # 与默认仓不同即验证 --repo 提取）
         assert mock_subprocess.called
         call_args = mock_subprocess.call_args[0][0]
         assert "42" in call_args
         assert "--repo" in call_args
         repo_idx = call_args.index("--repo")
-        assert call_args[repo_idx + 1] == "hdot123-org/shared-workflows"
+        assert call_args[repo_idx + 1] == "hdot123-org/infra-core"
         assert result is True
 
     @patch.dict(os.environ, {"LINEAR_API_KEY": "test-key"})
@@ -535,7 +537,7 @@ class TestVALCLOSE025:
             [
                 {
                     "id": "att-42",
-                    "url": "https://github.com/hdot123-org/shared-workflows/pull/42",
+                    "url": "https://github.com/hdot123-org/infra-core/pull/42",
                     "sourceType": "github",
                     "metadata": {},
                 }
