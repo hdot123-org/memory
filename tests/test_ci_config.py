@@ -398,14 +398,21 @@ class TestAutoMergeDispatchTokenGuard:
         assert auto_merge_calling_job.get("steps") is None, "thin caller 不得保留内联 step"
 
     def test_auto_merge_uses_dispatch_token(self, auto_merge_calling_job):
-        """DISPATCH_TOKEN 必须经 secrets.dispatch-token 显式转发给 reusable。"""
+        """DISPATCH_TOKEN 必须经显式具名 secret 转发给 reusable（双形态）。
+
+        M5 R1(3) 过渡态：caller 以 snake_case + hyphen 双写传递（infra-core
+        reusable 统一命名前的兼容窗口，与 #1075 四 caller 同批口径）；终态
+        由后续 PR 收敛为纯 snake_case。
+        """
         secrets_block = auto_merge_calling_job.get("secrets", {})
-        assert secrets_block.get("dispatch-token") == "${{ secrets.DISPATCH_TOKEN }}"
+        for key in ("dispatch_token", "dispatch-token"):
+            assert secrets_block.get(key) == "${{ secrets.DISPATCH_TOKEN }}"
 
     def test_auto_merge_does_not_use_github_token_secret(self, auto_merge_calling_job):
         """明确防止回退：转发的不能是 secrets.GITHUB_TOKEN，且禁止 secrets: inherit。"""
         secrets_block = auto_merge_calling_job.get("secrets", {})
-        assert secrets_block.get("dispatch-token") != "${{ secrets.GITHUB_TOKEN }}"
+        for key in ("dispatch_token", "dispatch-token"):
+            assert secrets_block.get(key) != "${{ secrets.GITHUB_TOKEN }}"
         raw = (REPO_ROOT / ".github/workflows/auto-merge.yml").read_text()
         assert "secrets: inherit" not in raw, "禁止 secrets: inherit（凭证显式传入，防漂移）"
 
