@@ -81,6 +81,25 @@ audit_tools:                              # 审计工具列表
     output_format: json
 ```
 
+## 抑制清单（suppress.json）
+
+`.evolution/suppress.json` 是人工维护的 finding 抑制清单（扫描器只读）。用于抑制**源仓库固有结构**触发的 layout 审计误报——这些 finding 是对 memory-core 既定布局的"检测"而非"违规"：layout 审计工具自身的 action map 已将它们归类为 `adopt_existing_memory` / `continue_active`（采纳现状），无需任何迁移。
+
+| rule_id | location | 依据 |
+|---------|----------|------|
+| `CURRENT_MEMORY` | `memory` | 本仓自带项目记忆（129 个 tracked 文件，`memory/docs`、`memory/kb` 为 critical 所有权域），设计如此（INFRA-650） |
+| `PROJECT_MAP` | `project-map` | 根级 project-map 为本仓资产映射目录（3 个 tracked 文件），`continue_active` |
+| `ARTIFACTS_MEMORY_HOOK` | `memory/artifacts/memory-hook` | memory-hook 运行时产物目录，`continue_active` |
+| `ROOT_DOCS_DIR` | `docs` | 源仓库设计文档（specs/architecture/guides，41 个 tracked 文件），`source-repo-readonly` 约定非 memory/docs（见 docs/specs/BOUNDARY.md） |
+| `AGENTS_MD_UNMARKED` | `AGENTS.md` | 本仓 AGENTS.md 为手写治理文件（无 MEMORY_HOOK 标记是刻意的），hook wrapper 通过 source-repo 检测跳过本仓 |
+| `OWNERSHIP_MISSING` | `memory/system/ownership.toml` | `memory/system/` 整目录 gitignored（仅本机运行时状态，.gitignore L64），CI 干净 checkout 必然缺失；本仓为 source-repo 不走 consumer 初始化 |
+
+维护规则：
+
+- 条目必须**精确匹配** `(rule_id, location)`，禁止 `*` 通配——未来真实违规（如同名新路径下的污染）仍会浮出
+- 每条必须有 INFRA 单号或等价依据，删除结构性目录前先删除对应条目
+- 过期（`expires`）语义：到期后 finding 重新浮出，是一次天然的"抑制是否仍然成立"复查点
+
 ## 治理机制 (防止 Bot 自我修改)
 
 进化系统通过**结构性硬锁**防止 Bot 修改自己的规则：
@@ -200,6 +219,7 @@ wc -l scripts/evolution_scanner.py
 ```
 .evolution/
 ├── config.yml                 # 人工维护的治理配置 (git tracked)
+├── suppress.json              # 人工维护的 finding 抑制清单 (git tracked)
 ├── findings_over_time.json    # 运行状态快照 (gitignored, CI actions/cache 持久化)
 └── DISABLED                   # 杀开关 (存在即停止，按需创建)
 
