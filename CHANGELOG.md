@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.45.1](https://github.com/hdot123-org/memory/compare/v0.45.0...v0.45.1) (2026-08-30)
+
+
+### Bug Fixes
+
+* **evolution:** 抑制源仓库固有布局的 audit_layout 误报 (INFRA-650) ([#1083](https://github.com/hdot123-org/memory/issues/1083)) ([2ceaac3](https://github.com/hdot123-org/memory/commit/2ceaac3eec387510818f6a682e8c6e2c81fb42eb))
+
+
+### Documentation
+
+* **ci:** 纠正键名双写注释的机制归因——归一化假说已被推翻 ([#1080](https://github.com/hdot123-org/memory/issues/1080)) ([fb3d7cd](https://github.com/hdot123-org/memory/commit/fb3d7cdfa67cb7f31fd24949fed2a1fb2b1af732))
+
 ## [0.45.0](https://github.com/hdot123-org/memory/compare/v0.44.0...v0.45.0) (2026-08-30)
 
 
