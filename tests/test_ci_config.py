@@ -531,12 +531,16 @@ class TestScanHeartbeatThinCallerContract:
         assert job.get("steps") is None
 
     def test_scan_secrets_explicit_named_mapping(self, scan_data):
-        """VAL-GATE-113: DISPATCH_TOKEN + LINEAR_API_KEY 显式转发，禁 secrets: inherit。"""
-        job = scan_data["jobs"]["scan"]
-        assert job.get("secrets") == {
-            "dispatch-token": "${{ secrets.DISPATCH_TOKEN }}",
-            "linear-api-key": "${{ secrets.LINEAR_API_KEY }}",
-        }
+        """VAL-GATE-113: DISPATCH_TOKEN + LINEAR_API_KEY 显式转发，禁 secrets: inherit。
+
+        M5 R1(3) 过渡态：caller 以 snake_case + hyphen 双写传递（infra-core
+        reusable 统一命名前的兼容窗口）；终态由后续 PR 收敛为纯 snake_case。
+        """
+        secrets = scan_data["jobs"]["scan"].get("secrets", {})
+        for key in ("dispatch_token", "dispatch-token"):
+            assert secrets.get(key) == "${{ secrets.DISPATCH_TOKEN }}"
+        for key in ("linear_api_key", "linear-api-key"):
+            assert secrets.get(key) == "${{ secrets.LINEAR_API_KEY }}"
 
     def test_scan_calling_job_permissions_match_callee_needs(self, scan_data):
         """调用 job 权限 = callee 所需集合（contents read + issues write）。"""
@@ -566,8 +570,10 @@ class TestScanHeartbeatThinCallerContract:
         assert job.get("steps") is None
 
     def test_heartbeat_secrets_explicit_named_mapping(self, heartbeat_data):
-        """VAL-GATE-113: DISPATCH_TOKEN 显式转发。"""
-        assert heartbeat_data["jobs"]["heartbeat"].get("secrets") == {"dispatch-token": "${{ secrets.DISPATCH_TOKEN }}"}
+        """VAL-GATE-113: DISPATCH_TOKEN 显式转发（M5 R1(3) 过渡态双写）。"""
+        secrets = heartbeat_data["jobs"]["heartbeat"].get("secrets", {})
+        for key in ("dispatch_token", "dispatch-token"):
+            assert secrets.get(key) == "${{ secrets.DISPATCH_TOKEN }}"
 
     def test_heartbeat_engine_scanner_workflow_constant(self):
         """VAL-GATE-109(d): 引擎 SCANNER_WORKFLOW = "evolution-scan.yml" 字节精确。
