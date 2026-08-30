@@ -111,7 +111,7 @@ class TestExistingJobsPreserved:
 
     def test_self_heal_rerun_preserved(self):
         """self-heal-rerun（503 自愈）保留（M4 切换后：执行体迁 infra-core
-        droid-review-watchdog-handlers.yml reusable，caller 委托 + max-attempt
+        droid-review-watchdog-handlers.yml reusable，caller 委托 + max_attempt
         转发 WATCHDOG_MAX_ATTEMPT（caller 层 || '3' 回退）；限界逻辑由引擎仓
         test_droid_review_watchdog_handlers_workflow 锁定）。"""
         data = _load()
@@ -122,7 +122,7 @@ class TestExistingJobsPreserved:
         )
         with_block = job.get("with", {})
         assert with_block.get("mode") == "self-heal-rerun"
-        assert with_block.get("max-attempt") == "${{ vars.WATCHDOG_MAX_ATTEMPT || '3' }}"
+        assert with_block.get("max_attempt") == "${{ vars.WATCHDOG_MAX_ATTEMPT || '3' }}"
 
     def test_cancel_on_ci_fail_preserved(self):
         """cancel-on-ci-fail（CI 红取消烧钱 review）保留。"""

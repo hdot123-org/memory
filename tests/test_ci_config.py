@@ -371,14 +371,21 @@ class TestAutoMergeDispatchTokenGuard:
         assert auto_merge_calling_job.get("steps") is None, "thin caller 不得保留内联 step"
 
     def test_auto_merge_uses_dispatch_token(self, auto_merge_calling_job):
-        """DISPATCH_TOKEN 必须经 secrets.dispatch-token 显式转发给 reusable。"""
+        """DISPATCH_TOKEN 必须经显式具名 secret 转发给 reusable（snake 单形态）。
+
+        M5 R1(3) 终态：infra-core #82 已将 callee 契约切换为 snake_case
+        （required dispatch_token），caller 收敛纯 snake。禁止恢复 hyphen
+        旧名（callee 读不到 → startup_failure）或双写（-/_ 归一化重复键
+        → startup_failure，2026-08-30 实测）。
+        """
         secrets_block = auto_merge_calling_job.get("secrets", {})
-        assert secrets_block.get("dispatch-token") == "${{ secrets.DISPATCH_TOKEN }}"
+        assert secrets_block.get("dispatch_token") == "${{ secrets.DISPATCH_TOKEN }}"
+        assert "dispatch-token" not in secrets_block, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
 
     def test_auto_merge_does_not_use_github_token_secret(self, auto_merge_calling_job):
         """明确防止回退：转发的不能是 secrets.GITHUB_TOKEN，且禁止 secrets: inherit。"""
         secrets_block = auto_merge_calling_job.get("secrets", {})
-        assert secrets_block.get("dispatch-token") != "${{ secrets.GITHUB_TOKEN }}"
+        assert secrets_block.get("dispatch_token") != "${{ secrets.GITHUB_TOKEN }}"
         raw = (REPO_ROOT / ".github/workflows/auto-merge.yml").read_text()
         assert "secrets: inherit" not in raw, "禁止 secrets: inherit（凭证显式传入，防漂移）"
 
@@ -506,14 +513,14 @@ class TestScanHeartbeatThinCallerContract:
     def test_scan_secrets_explicit_named_mapping(self, scan_data):
         """VAL-GATE-113: DISPATCH_TOKEN + LINEAR_API_KEY 显式转发，禁 secrets: inherit。
 
-        M5 R1(3) 过渡态：caller 以 snake_case + hyphen 双写传递（infra-core
-        reusable 统一命名前的兼容窗口）；终态由后续 PR 收敛为纯 snake_case。
+        M5 R1(3) 终态（infra-core #82 后）：纯 snake_case。禁止 hyphen 旧名
+        （required secret 读不到）或双写（归一化重复键 → startup_failure）。
         """
         secrets = scan_data["jobs"]["scan"].get("secrets", {})
-        for key in ("dispatch_token", "dispatch-token"):
-            assert secrets.get(key) == "${{ secrets.DISPATCH_TOKEN }}"
-        for key in ("linear_api_key", "linear-api-key"):
-            assert secrets.get(key) == "${{ secrets.LINEAR_API_KEY }}"
+        assert secrets.get("dispatch_token") == "${{ secrets.DISPATCH_TOKEN }}"
+        assert secrets.get("linear_api_key") == "${{ secrets.LINEAR_API_KEY }}"
+        assert "dispatch-token" not in secrets, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
+        assert "linear-api-key" not in secrets, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
 
     def test_scan_calling_job_permissions_match_callee_needs(self, scan_data):
         """调用 job 权限 = callee 所需集合（contents read + issues write）。"""
@@ -543,10 +550,10 @@ class TestScanHeartbeatThinCallerContract:
         assert job.get("steps") is None
 
     def test_heartbeat_secrets_explicit_named_mapping(self, heartbeat_data):
-        """VAL-GATE-113: DISPATCH_TOKEN 显式转发（M5 R1(3) 过渡态双写）。"""
+        """VAL-GATE-113: DISPATCH_TOKEN 显式转发（M5 R1(3) 终态纯 snake）。"""
         secrets = heartbeat_data["jobs"]["heartbeat"].get("secrets", {})
-        for key in ("dispatch_token", "dispatch-token"):
-            assert secrets.get(key) == "${{ secrets.DISPATCH_TOKEN }}"
+        assert secrets.get("dispatch_token") == "${{ secrets.DISPATCH_TOKEN }}"
+        assert "dispatch-token" not in secrets, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
 
     def test_heartbeat_engine_scanner_workflow_constant(self):
         """VAL-GATE-109(d): 引擎 SCANNER_WORKFLOW = "evolution-scan.yml" 字节精确。
@@ -680,12 +687,18 @@ class TestDroidReviewThinCallerContract:
         assert jobs == {"shards", "droid-review"}
 
     def test_shards_job_forwards_budget_vars(self, droid_review_data):
-        """VAL-GATE-113: 四个预算 vars 必须以 with: 转发（含默认值回退）。"""
+        """VAL-GATE-113: 四个预算 vars 必须以 with: 转发（snake 单形态，含默认值回退）。
+
+        M5 R1(3) 终态（infra-core #82 后）：禁止 hyphen 旧名或双写——
+        -/_ 归一化下双形态同名即重复键 → run startup_failure（2026-08-30 实测）。
+        """
         with_block = droid_review_data["jobs"]["shards"].get("with", {})
-        assert with_block.get("shard-max-files") == "${{ vars.SHARD_MAX_FILES || '25' }}"
-        assert with_block.get("shard-max-count") == "${{ vars.SHARD_MAX_COUNT || '6' }}"
-        assert with_block.get("shard-timeout-minutes") == "${{ vars.SHARD_TIMEOUT_MINUTES || '45' }}"
-        assert with_block.get("shard-max-parallel") == "${{ vars.SHARD_MAX_PARALLEL || '3' }}"
+        assert with_block.get("shard_max_files") == "${{ vars.SHARD_MAX_FILES || '25' }}"
+        assert with_block.get("shard_max_count") == "${{ vars.SHARD_MAX_COUNT || '6' }}"
+        assert with_block.get("shard_timeout_minutes") == "${{ vars.SHARD_TIMEOUT_MINUTES || '45' }}"
+        assert with_block.get("shard_max_parallel") == "${{ vars.SHARD_MAX_PARALLEL || '3' }}"
+        for legacy in ("shard-max-files", "shard-max-count", "shard-max-timeout-minutes", "shard-max-parallel"):
+            assert legacy not in with_block, f"{legacy} hyphen 双写已被证实触发 startup_failure，禁止恢复"
 
     def test_shards_job_forwards_dispatch_inputs(self, droid_review_data):
         """workflow_dispatch 的 pr_number/head_sha 必须透传给 reusable workflow。"""
@@ -823,16 +836,19 @@ class TestDroidReview503SelfHeal:
 
         执行体迁入 infra-core droid-review-watchdog-handlers.yml（引擎仓模板测试
         test_droid_review_watchdog_handlers_workflow 锁定 MAX_ATTEMPT 限界与 -z
-        回退）；caller 锁定委托关系——run-attempt/max-attempt 必须显式转发。"""
+        回退）；caller 锁定委托关系——run_attempt/max_attempt 必须显式转发
+        （snake 单形态，双写即 startup_failure，2026-08-30 实测）。"""
         job = watchdog_data["jobs"]["self-heal-rerun"]
         assert "conclusion == 'failure'" in str(job.get("if", "")), "watchdog must only fire on failure"
         with_block = job.get("with", {})
-        assert with_block.get("run-attempt") == "${{ github.event.workflow_run.run_attempt }}", (
-            "run-attempt 必须经 with 转发给 reusable workflow"
+        assert with_block.get("run_attempt") == "${{ github.event.workflow_run.run_attempt }}", (
+            "run_attempt 必须经 with 转发给 reusable workflow"
         )
-        assert with_block.get("max-attempt") == "${{ vars.WATCHDOG_MAX_ATTEMPT || '3' }}", (
-            "max-attempt 必须转发 vars.WATCHDOG_MAX_ATTEMPT（caller 层 || '3' 回退）"
+        assert with_block.get("max_attempt") == "${{ vars.WATCHDOG_MAX_ATTEMPT || '3' }}", (
+            "max_attempt 必须转发 vars.WATCHDOG_MAX_ATTEMPT（caller 层 || '3' 回退）"
         )
+        assert "run-attempt" not in with_block, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
+        assert "max-attempt" not in with_block, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
 
     def test_watchdog_matches_503_patterns_only(self, watchdog_data):
         """VAL-503-004（M4 切换后）：503 特征表随执行体迁入 infra-core reusable
@@ -877,16 +893,17 @@ class TestDroidReview503SelfHeal:
     def test_cancel_on_ci_fail_cancels_only_review_runs(self, watchdog_data):
         """VAL-CIF-003（M4 切换后）：取消过滤逻辑（name == Droid Auto Review +
         head_sha 定位 + /cancel API）随执行体迁入 infra-core reusable（引擎仓
-        TestCancelOnCiFailHandlerBody 锁定）；caller 锁定委托与 head-sha 转发。"""
+        TestCancelOnCiFailHandlerBody 锁定）；caller 锁定委托与 head_sha 转发。"""
         job = watchdog_data["jobs"]["cancel-on-ci-fail"]
         assert ".github/workflows/droid-review-watchdog-handlers.yml@" in job.get("uses", ""), (
             "cancel-on-ci-fail 必须委托 infra-core reusable workflow"
         )
         with_block = job.get("with", {})
         assert with_block.get("mode") == "cancel-on-ci-fail"
-        assert with_block.get("head-sha") == "${{ github.event.workflow_run.head_sha }}", (
-            "head-sha 必须经 with 转发（取消范围锚定失败 CI 的 head SHA）"
+        assert with_block.get("head_sha") == "${{ github.event.workflow_run.head_sha }}", (
+            "head_sha 必须经 with 转发（取消范围锚定失败 CI 的 head SHA）"
         )
+        assert "head-sha" not in with_block, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
 
     def test_droid_review_job_has_no_inline_selfheal(self, droid_review_data):
         """VAL-503-006: 防回退——droid-review job 内不得再出现自愈 step。
