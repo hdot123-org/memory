@@ -375,12 +375,17 @@ class TestAutoMergeDispatchTokenGuard:
 
         M5 R1(3) 终态：infra-core #82 已将 callee 契约切换为 snake_case
         （required dispatch_token），caller 收敛纯 snake。禁止恢复 hyphen
-        旧名（callee 读不到 → startup_failure）或双写（-/_ 归一化重复键
-        → startup_failure，2026-08-30 实测）。
+        旧名或双写：callee 声明面严格校验下，未声明多余键/缺失 required 键均
+        → startup_failure（2026-08-30 snake-only 期实证，run 33295631722）。
+        #86 双形态兼容窗后双写实测可过（07:20Z）——早期「-/_ 键名归一化重复键」
+        机制归因有误，已推翻；终态仍收敛 snake 单形态，单形态在 callee 任一
+        形态下都合法。
         """
         secrets_block = auto_merge_calling_job.get("secrets", {})
         assert secrets_block.get("dispatch_token") == "${{ secrets.DISPATCH_TOKEN }}"
-        assert "dispatch-token" not in secrets_block, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
+        assert "dispatch-token" not in secrets_block, (
+            "hyphen 键违反 snake 单形态终态（callee 严格校验拒绝未声明键），禁止恢复"
+        )
 
     def test_auto_merge_does_not_use_github_token_secret(self, auto_merge_calling_job):
         """明确防止回退：转发的不能是 secrets.GITHUB_TOKEN，且禁止 secrets: inherit。"""
@@ -514,13 +519,18 @@ class TestScanHeartbeatThinCallerContract:
         """VAL-GATE-113: DISPATCH_TOKEN + LINEAR_API_KEY 显式转发，禁 secrets: inherit。
 
         M5 R1(3) 终态（infra-core #82 后）：纯 snake_case。禁止 hyphen 旧名
-        （required secret 读不到）或双写（归一化重复键 → startup_failure）。
+        （required secret 读不到）或双写（callee 严格校验拒绝未声明多余键；
+        #86 双形态兼容窗后可过，终态仍收敛 snake 单形态）。
         """
         secrets = scan_data["jobs"]["scan"].get("secrets", {})
         assert secrets.get("dispatch_token") == "${{ secrets.DISPATCH_TOKEN }}"
         assert secrets.get("linear_api_key") == "${{ secrets.LINEAR_API_KEY }}"
-        assert "dispatch-token" not in secrets, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
-        assert "linear-api-key" not in secrets, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
+        assert "dispatch-token" not in secrets, (
+            "hyphen 键违反 snake 单形态终态（callee 严格校验拒绝未声明键），禁止恢复"
+        )
+        assert "linear-api-key" not in secrets, (
+            "hyphen 键违反 snake 单形态终态（callee 严格校验拒绝未声明键），禁止恢复"
+        )
 
     def test_scan_calling_job_permissions_match_callee_needs(self, scan_data):
         """调用 job 权限 = callee 所需集合（contents read + issues write）。"""
@@ -553,7 +563,9 @@ class TestScanHeartbeatThinCallerContract:
         """VAL-GATE-113: DISPATCH_TOKEN 显式转发（M5 R1(3) 终态纯 snake）。"""
         secrets = heartbeat_data["jobs"]["heartbeat"].get("secrets", {})
         assert secrets.get("dispatch_token") == "${{ secrets.DISPATCH_TOKEN }}"
-        assert "dispatch-token" not in secrets, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
+        assert "dispatch-token" not in secrets, (
+            "hyphen 键违反 snake 单形态终态（callee 严格校验拒绝未声明键），禁止恢复"
+        )
 
     def test_heartbeat_engine_scanner_workflow_constant(self):
         """VAL-GATE-109(d): 引擎 SCANNER_WORKFLOW = "evolution-scan.yml" 字节精确。
@@ -690,7 +702,8 @@ class TestDroidReviewThinCallerContract:
         """VAL-GATE-113: 四个预算 vars 必须以 with: 转发（snake 单形态，含默认值回退）。
 
         M5 R1(3) 终态（infra-core #82 后）：禁止 hyphen 旧名或双写——
-        -/_ 归一化下双形态同名即重复键 → run startup_failure（2026-08-30 实测）。
+        callee 声明面严格校验拒绝未声明多余键（snake-only 期双写实测
+        startup_failure；#86 双形态兼容窗后可过，终态仍收敛 snake 单形态）。
         """
         with_block = droid_review_data["jobs"]["shards"].get("with", {})
         assert with_block.get("shard_max_files") == "${{ vars.SHARD_MAX_FILES || '25' }}"
@@ -698,7 +711,9 @@ class TestDroidReviewThinCallerContract:
         assert with_block.get("shard_timeout_minutes") == "${{ vars.SHARD_TIMEOUT_MINUTES || '45' }}"
         assert with_block.get("shard_max_parallel") == "${{ vars.SHARD_MAX_PARALLEL || '3' }}"
         for legacy in ("shard-max-files", "shard-max-count", "shard-max-timeout-minutes", "shard-max-parallel"):
-            assert legacy not in with_block, f"{legacy} hyphen 双写已被证实触发 startup_failure，禁止恢复"
+            assert legacy not in with_block, (
+                f"{legacy} hyphen 键违反 snake 单形态终态（callee 严格校验拒绝未声明键），禁止恢复"
+            )
 
     def test_shards_job_forwards_dispatch_inputs(self, droid_review_data):
         """workflow_dispatch 的 pr_number/head_sha 必须透传给 reusable workflow。"""
@@ -837,7 +852,8 @@ class TestDroidReview503SelfHeal:
         执行体迁入 infra-core droid-review-watchdog-handlers.yml（引擎仓模板测试
         test_droid_review_watchdog_handlers_workflow 锁定 MAX_ATTEMPT 限界与 -z
         回退）；caller 锁定委托关系——run_attempt/max_attempt 必须显式转发
-        （snake 单形态，双写即 startup_failure，2026-08-30 实测）。"""
+        （snake 单形态终态；双写在 callee snake-only 期实测 startup_failure
+        ——多余未声明键被严格校验拒绝，非键名归一化）。"""
         job = watchdog_data["jobs"]["self-heal-rerun"]
         assert "conclusion == 'failure'" in str(job.get("if", "")), "watchdog must only fire on failure"
         with_block = job.get("with", {})
@@ -847,8 +863,12 @@ class TestDroidReview503SelfHeal:
         assert with_block.get("max_attempt") == "${{ vars.WATCHDOG_MAX_ATTEMPT || '3' }}", (
             "max_attempt 必须转发 vars.WATCHDOG_MAX_ATTEMPT（caller 层 || '3' 回退）"
         )
-        assert "run-attempt" not in with_block, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
-        assert "max-attempt" not in with_block, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
+        assert "run-attempt" not in with_block, (
+            "hyphen 键违反 snake 单形态终态（callee 严格校验拒绝未声明键），禁止恢复"
+        )
+        assert "max-attempt" not in with_block, (
+            "hyphen 键违反 snake 单形态终态（callee 严格校验拒绝未声明键），禁止恢复"
+        )
 
     def test_watchdog_matches_503_patterns_only(self, watchdog_data):
         """VAL-503-004（M4 切换后）：503 特征表随执行体迁入 infra-core reusable
@@ -903,7 +923,7 @@ class TestDroidReview503SelfHeal:
         assert with_block.get("head_sha") == "${{ github.event.workflow_run.head_sha }}", (
             "head_sha 必须经 with 转发（取消范围锚定失败 CI 的 head SHA）"
         )
-        assert "head-sha" not in with_block, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
+        assert "head-sha" not in with_block, "hyphen 键违反 snake 单形态终态（callee 严格校验拒绝未声明键），禁止恢复"
 
     def test_droid_review_job_has_no_inline_selfheal(self, droid_review_data):
         """VAL-503-006: 防回退——droid-review job 内不得再出现自愈 step。

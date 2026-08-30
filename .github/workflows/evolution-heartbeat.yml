@@ -32,6 +32,8 @@ jobs:
       contents: read
       issues: write
     secrets:
-      # snake_case 单形态（M5 R1(3) 终态，对齐 infra-core #82）：双形态同名
-      # 提供（-/_ 归一化）即重复键 → run startup_failure（2026-08-30 实测）。
+      # snake_case 单形态（M5 R1(3) 终态，对齐 infra-core #82/#86）：callee 声明
+      # 面严格校验拒绝未声明多余键（snake-only 期双写实测 startup_failure；infra
+      # #86 双形态兼容窗后双写可过，「-/_ 键名归一化」机制已被推翻）。终态仍收敛
+      # snake 单形态：单形态在 callee 任一形态下都合法，兼容窗删变体后不受影响。
       dispatch_token: ${{ secrets.DISPATCH_TOKEN }}

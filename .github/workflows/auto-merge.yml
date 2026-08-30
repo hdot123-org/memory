@@ -74,7 +74,10 @@ jobs:
       # 不能用 GITHUB_TOKEN——GITHUB_TOKEN 触发的 push 事件被抑制会导致
       # release-please 监听的 push(paths: .release-please-manifest.json) 失效，
       # release PR 合并后 tag/Release 不创建（2026-08-15 两次事故 v0.29.0/v0.30.0）。
-      # snake_case 单形态（M5 R1(3) 终态，对齐 infra-core #82）：callee 声明
-      # required dispatch_token，hyphen 旧名读不到 → startup_failure；双写则
-      # 归一化重复键同样 startup_failure（2026-08-30 实测，两条路都堵死）。
+      # snake_case 单形态（M5 R1(3) 终态，对齐 infra-core #82/#86）：callee 对
+      # secrets: 键做声明面严格校验——required dispatch_token 缺失即 startup_failure
+      # （04:40Z 实证：caller 仅传 hyphen 旧名，callee 未声明该键且 required 未达）；
+      # 双写在当时 snake-only callee 下同样因多余未声明键被拒。infra #86 双形态
+      # 兼容窗落地后双写实测可过（07:20Z），「-/_ 键名归一化重复键」机制已被推翻
+      # ——终态仍取 snake-only：单形态在 callee 任一形态下都合法。
       dispatch_token: ${{ secrets.DISPATCH_TOKEN }}

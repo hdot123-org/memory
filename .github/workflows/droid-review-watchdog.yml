@@ -76,9 +76,11 @@ jobs:
       actions: write
     with:
       mode: self-heal-rerun
-      # snake_case 单形态（M5 R1(3) 终态，对齐 infra-core #82）。不得恢复
-      # hyphen 双写：with: 键名 -/_ 归一化后双形态同名即重复键 →
-      # run startup_failure（2026-08-30 实测）。
+      # snake_case 单形态（M5 R1(3) 终态，对齐 infra-core #82/#86）。不得恢复
+      # hyphen 双写：callee 声明面严格校验拒绝未声明多余键（snake-only 期双写
+      # 实测 startup_failure，叠加 pull_request_target 沿用 base(main) 旧定义）；
+      # infra #86 双形态兼容窗后双写可过，「-/_ 键名归一化」机制已被推翻，
+      # 终态仍收敛 snake 单形态。
       run_id: ${{ github.event.workflow_run.id }}
       run_attempt: ${{ github.event.workflow_run.run_attempt }}
       head_sha: ${{ github.event.workflow_run.head_sha }}
