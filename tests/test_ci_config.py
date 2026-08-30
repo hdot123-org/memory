@@ -243,8 +243,8 @@ class TestAuditGate:
         """VAL-GATE-006: auto-merge.yml respects droid-review check (M4 切换后).
 
         thin caller 零内联 run block——bypass token 结构性不存在（未来新增本地
-        step 仍被本扫描覆盖）；执行体委托 infra-core reusable，shared-workflows
-        pin 与零红判定由引擎仓 test_auto_merge_workflow_contract 锁定。
+        step 仍被本扫描覆盖）；执行体委托 infra-core reusable，merge action
+        引用与零红判定由引擎仓 test_auto_merge_workflow_contract 锁定。
         """
         workflow_path = REPO_ROOT / ".github/workflows/auto-merge.yml"
         content = workflow_path.read_text()
@@ -364,7 +364,7 @@ class TestAutoMergeDispatchTokenGuard:
         return jobs["auto-merge"]
 
     def test_auto_merge_caller_is_reusable_delegation(self, auto_merge_calling_job):
-        """caller 是纯 uses 委托（执行体在 infra-core，含 shared-workflows merge 步）。"""
+        """caller 是纯 uses 委托（执行体在 infra-core，merge 步走引擎仓 actions/auto-merge）。"""
         assert auto_merge_calling_job.get("uses") == (
             "hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@main"
         )
@@ -401,8 +401,9 @@ class TestAutoMergeThinCallerContract:
     触发面（四名单 workflow_run / pull_request_target / schedule / dispatch）、
     事件门控（workflow_run 仅 conclusion==success）、concurrency 留在 caller
     （github 事件上下文只在 caller 求值）；resolve+triage+merge 执行体委托
-    infra-core auto-merge-pipeline.yml——shared-workflows@5a0fc1b merge pin
-    冻结不动（M6 才合并），由引擎仓 TestReusablePipelineTemplateContract 锁定。
+    infra-core auto-merge-pipeline.yml——merge action 已于 M6 收编为引擎仓
+    actions/auto-merge（VAL-HARD-104，原共享仓退役归档），
+    由引擎仓 TestReusablePipelineTemplateContract 锁定。
     """
 
     @pytest.fixture
