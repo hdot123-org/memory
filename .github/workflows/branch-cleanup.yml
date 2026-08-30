@@ -1,7 +1,3 @@
-# Branch Cleanup - Thin Caller
-# Calls infra-core composite action for branch cleanup operations
-# Naming contract: workflow name must be exactly "Branch Cleanup"
-
 name: Branch Cleanup
 
 on:
@@ -10,19 +6,6 @@ on:
   pull_request:
     types: [closed]
   workflow_dispatch:
-    inputs:
-      mode:
-        description: 'Cleanup mode: scheduled (sweep all) or immediate (specific branch)'
-        required: true
-        default: 'scheduled'
-        type: choice
-        options:
-          - scheduled
-          - immediate
-      branch:
-        description: 'Branch to clean (required for immediate mode)'
-        required: false
-        type: string
 
 permissions:
   contents: write
@@ -35,12 +18,70 @@ concurrency:
 
 jobs:
   cleanup:
-    name: cleanup
-    runs-on: [self-hosted, pve-linux]
+    runs-on: ubuntu-latest
     steps:
-      - name: Branch Cleanup
-        uses: hdot123-org/infra-core/actions/branch-cleanup@main
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          mode: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || (github.event_name == 'pull_request' && 'immediate' || 'scheduled') }}
-          trigger-branch: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.event.pull_request.head.ref || '' }}
-          dispatch-token: ${{ secrets.DISPATCH_TOKEN }}
+          fetch-depth: 0  # Fetch all history for branch inspection
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Delete orphan branches
+        env:
+          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+          TRIGGER_BRANCH: ${{ github.event.pull_request.head.ref }}
+          # Tiered thresholds: MERGED PR 1h / CLOSED PR 4h / ORPHAN 24h
+          BRANCH_AGE_MERGED_HOURS: ${{ vars.BRANCH_AGE_MERGED_HOURS }}
+          BRANCH_AGE_CLOSED_HOURS: ${{ vars.BRANCH_AGE_CLOSED_HOURS }}
+          BRANCH_AGE_ORPHAN_HOURS: ${{ vars.BRANCH_AGE_ORPHAN_HOURS }}
+        run: |
+          # Determine mode based on trigger event
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # PR-close trigger: immediate cleanup of the merged branch only
+            bash scripts/branch_cleanup.sh --immediate "$TRIGGER_BRANCH" | tee /tmp/branch_cleanup_output.txt
+          else
+            # Scheduled trigger: sweep all orphan branches
+            bash scripts/branch_cleanup.sh --scheduled | tee /tmp/branch_cleanup_output.txt
+          fi
+
+          # Parse script output and set environment variables
+          DELETED_COUNT=$(grep '^deleted_count=' /tmp/branch_cleanup_output.txt | cut -d'=' -f2)
+          PROTECTED_COUNT=$(grep '^protected_count=' /tmp/branch_cleanup_output.txt | cut -d'=' -f2)
+
+          echo "deleted_count=${DELETED_COUNT:-0}" >> "$GITHUB_ENV"
+          echo "protected_count=${PROTECTED_COUNT:-0}" >> "$GITHUB_ENV"
+
+          # Extract deleted branch names for issue notification
+          if [ "${DELETED_COUNT:-0}" -gt 0 ]; then
+            awk '/^Deleted .* branch\(es\):$/,/^$/' /tmp/branch_cleanup_output.txt | grep -v '^Deleted' | grep -v '^$' > /tmp/deleted_branches.txt || true
+          fi
+
+          # Extract protected branch names for issue notification
+          if [ "${PROTECTED_COUNT:-0}" -gt 0 ]; then
+            awk '/^Protected .* branch\(es\) with unmerged/,/^$/' /tmp/branch_cleanup_output.txt | grep -v '^Protected' | grep -v '^$' > /tmp/protected_branches.txt || true
+          fi
+
+      - name: Manage tracking issue (INFRA-385 dedup)
+        # Always run this step: when nothing was deleted/protected it closes
+        # the now-resolved tracking issue; otherwise it creates/updates the
+        # single tracking issue instead of opening one issue per run.
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+          GH_REPO_KEY: ${{ github.repository }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
+
+          # Ensure list files exist (empty lists are valid)
+          touch /tmp/deleted_branches.txt /tmp/protected_branches.txt
+
+          bash scripts/branch_cleanup_issue.sh \
+            --deleted /tmp/deleted_branches.txt \
+            --protected /tmp/protected_branches.txt \
+            --run-url "$RUN_URL" \
+            --run-date "$RUN_DATE"

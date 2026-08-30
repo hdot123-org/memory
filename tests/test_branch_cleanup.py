@@ -968,33 +968,26 @@ def test_script_rejects_no_args():
 
 
 # ============================================================================
-# VAL-BRANCH-012: Workflow delegates to infra-core composite action (M4)
+# VAL-BRANCH-012: Workflow calls extracted script with correct arguments
 # ============================================================================
 def test_workflow_calls_extracted_script():
-    """Workflow is a thin caller delegating to the infra-core composite action.
-
-    Since M4 (branch-cleanup thin caller), the inline script invocation moved
-    to hdot123-org/infra-core/actions/branch-cleanup. The workflow keeps the
-    event-based mode dispatch and trigger-branch forwarding via action inputs.
-    """
+    """Workflow YAML contains script reference, correct event-based dispatch."""
     workflow_path = Path(__file__).parent.parent / ".github" / "workflows" / "branch-cleanup.yml"
     content = workflow_path.read_text()
 
-    # Check that the infra-core composite action is used
-    assert "hdot123-org/infra-core/actions/branch-cleanup@" in content, (
-        "Workflow should call the infra-core branch-cleanup composite action"
-    )
+    # Check that script is referenced
+    assert "scripts/branch_cleanup.sh" in content, "Workflow should reference the extracted script"
 
-    # Check for event-based dispatch (mode selection delegated via inputs)
+    # Check for event-based dispatch
     assert "github.event_name" in content, "Workflow should use github.event_name for mode selection"
-    assert "immediate" in content, "Workflow should map PR events to immediate mode"
-    assert "scheduled" in content, "Workflow should map schedule events to scheduled mode"
+    assert "--immediate" in content, "Workflow should call script with --immediate for PR events"
+    assert "--scheduled" in content, "Workflow should call script with --scheduled for scheduled events"
 
-    # Check that pull_request.head.ref is forwarded
-    assert "github.event.pull_request.head.ref" in content, "Workflow should forward trigger branch name"
+    # Check that pull_request.head.ref is passed
+    assert "github.event.pull_request.head.ref" in content, "Workflow should pass trigger branch name"
 
-    # Check that DISPATCH_TOKEN is forwarded to the action
-    assert "DISPATCH_TOKEN" in content, "Workflow should forward the dispatch token"
+    # Check that GH_TOKEN is set
+    assert "GH_TOKEN" in content, "Workflow should set GH_TOKEN"
 
 
 # ============================================================================
