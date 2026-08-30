@@ -29,7 +29,7 @@ jobs:
   heartbeat:
     # INFRA-651: reusable 模板引用钉 tag，与 pyproject 引擎 pin 同版本
     # （浮动 @main 风险与 evolution-scan.yml 同源，见该文件注释）。
-    uses: hdot123-org/infra-core/.github/workflows/evolution-heartbeat.yml@v0.7.0
+    uses: hdot123-org/infra-core/.github/workflows/evolution-heartbeat.yml@v0.7.1
     permissions:
       contents: read
       issues: write
