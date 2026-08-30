@@ -75,7 +75,7 @@ class TestVersionMatchNoWrite:
 
     def test_no_write_when_version_matches(self, tmp_path: Path) -> None:
         """Syncing a project already at CURRENT_MEMORY_VERSION should not write any file."""
-        from memory_core.tools.version_sync import sync_single_project  # re-export from infra_core
+        from infra_core.engine.version_sync import sync_single_project
 
         project = _make_fake_consumer(tmp_path, CURRENT_MEMORY_VERSION)
 
@@ -106,7 +106,7 @@ class TestMinorBumpSyncsThreeFiles:
 
     def test_minor_bump_syncs_three_files(self, tmp_path: Path) -> None:
         """Syncing from 0.9.1 to CURRENT (0.40.0) should update all three files."""
-        from memory_core.tools.version_sync import sync_single_project  # re-export from infra_core
+        from infra_core.engine.version_sync import sync_single_project
 
         project = _make_fake_consumer(tmp_path, "0.9.1")
 
@@ -137,7 +137,7 @@ class TestMajorBumpBlocked:
 
     def test_major_bump_blocked(self, tmp_path: Path) -> None:
         """Syncing from 1.5.0 (major=1 > 0) to CURRENT should be blocked."""
-        from memory_core.tools.version_sync import sync_single_project  # re-export from infra_core
+        from infra_core.engine.version_sync import sync_single_project
 
         project = _make_fake_consumer(tmp_path, "1.5.0")
 
@@ -200,7 +200,7 @@ class TestCorruptLockNoCrash:
 
     def test_corrupt_lock_no_crash(self, tmp_path: Path) -> None:
         """A garbage memory.lock should not raise an exception."""
-        from memory_core.tools.version_sync import sync_single_project  # re-export from infra_core
+        from infra_core.engine.version_sync import sync_single_project
 
         project = _make_fake_consumer(tmp_path, "0.9.1", corrupt_lock=True)
 
@@ -221,7 +221,7 @@ class TestWriteFailureDoesNotRaise:
 
     def test_write_failure_does_not_raise(self, tmp_path: Path) -> None:
         """When file write fails (e.g., read-only), sync should not raise."""
-        from memory_core.tools.version_sync import sync_single_project  # re-export from infra_core
+        from infra_core.engine.version_sync import sync_single_project
 
         project = _make_fake_consumer(tmp_path, "0.9.1")
 
@@ -255,56 +255,56 @@ class TestGateVersionBumpDowngrade:
 
     def test_downgrade_minor_detected(self) -> None:
         """0.40.0 → 0.39.0 is a downgrade."""
-        from memory_core.tools.version_sync import _gate_version_bump  # re-export from infra_core
+        from infra_core.engine.version_sync import _gate_version_bump
 
         result = _gate_version_bump("0.40.0", "0.39.0", False)
         assert result == "blocked:downgrade"
 
     def test_downgrade_patch_detected(self) -> None:
         """0.40.1 → 0.40.0 is a downgrade."""
-        from memory_core.tools.version_sync import _gate_version_bump  # re-export from infra_core
+        from infra_core.engine.version_sync import _gate_version_bump
 
         result = _gate_version_bump("0.40.1", "0.40.0", False)
         assert result == "blocked:downgrade"
 
     def test_upgrade_minor_allowed(self) -> None:
         """0.9.1 → 0.40.0 is a minor upgrade (allowed)."""
-        from memory_core.tools.version_sync import _gate_version_bump  # re-export from infra_core
+        from infra_core.engine.version_sync import _gate_version_bump
 
         result = _gate_version_bump("0.9.1", "0.40.0", False)
         assert result == "allowed"
 
     def test_upgrade_patch_allowed(self) -> None:
         """0.40.0 → 0.40.1 is a patch upgrade (allowed)."""
-        from memory_core.tools.version_sync import _gate_version_bump  # re-export from infra_core
+        from infra_core.engine.version_sync import _gate_version_bump
 
         result = _gate_version_bump("0.40.0", "0.40.1", False)
         assert result == "allowed"
 
     def test_same_version_allowed(self) -> None:
         """Same version should be allowed (idempotent check handles skip)."""
-        from memory_core.tools.version_sync import _gate_version_bump  # re-export from infra_core
+        from infra_core.engine.version_sync import _gate_version_bump
 
         result = _gate_version_bump("0.40.0", "0.40.0", False)
         assert result == "allowed"
 
     def test_major_upgrade_blocked(self) -> None:
         """Major version upgrade should be blocked."""
-        from memory_core.tools.version_sync import _gate_version_bump  # re-export from infra_core
+        from infra_core.engine.version_sync import _gate_version_bump
 
         result = _gate_version_bump("0.40.0", "1.0.0", False)
         assert result == "blocked:major"
 
     def test_schema_changed_blocked(self) -> None:
         """Schema change should always be blocked."""
-        from memory_core.tools.version_sync import _gate_version_bump  # re-export from infra_core
+        from infra_core.engine.version_sync import _gate_version_bump
 
         result = _gate_version_bump("0.40.0", "0.41.0", True)
         assert result == "blocked:schema_changed"
 
     def test_invalid_version_fallback_conservative(self) -> None:
         """Invalid version strings should conservatively block."""
-        from memory_core.tools.version_sync import _gate_version_bump  # re-export from infra_core
+        from infra_core.engine.version_sync import _gate_version_bump
 
         # With packaging available, invalid versions should still block conservatively
         result = _gate_version_bump("not_a_version", "0.40.0", False)
@@ -327,18 +327,22 @@ class TestGatewayVersionDetection:
 
     def test_probe_skips_when_no_memory_system(self, tmp_path: Path) -> None:
         """When memory/system doesn't exist, probe should skip silently."""
-        from memory_core.tools.version_sync import probe_version_and_sync_compat
+        from infra_core.engine.version_sync import probe_version_and_sync
+
+        from memory_core.constants import CURRENT_MEMORY_VERSION
 
         # tmp_path has no memory/system directory
-        result = probe_version_and_sync_compat(tmp_path)
+        result = probe_version_and_sync(tmp_path, CURRENT_MEMORY_VERSION)
         assert result is None or result.get("skipped") is True
 
     def test_probe_handles_corrupt_lock(self, tmp_path: Path) -> None:
         """When memory.lock is corrupt, probe should not crash."""
-        from memory_core.tools.version_sync import probe_version_and_sync_compat
+        from infra_core.engine.version_sync import probe_version_and_sync
+
+        from memory_core.constants import CURRENT_MEMORY_VERSION
 
         project = _make_fake_consumer(tmp_path, "0.9.1", corrupt_lock=True)
         # Should not raise, should return None (skip) when lock is corrupt
-        result = probe_version_and_sync_compat(project)
+        result = probe_version_and_sync(project, CURRENT_MEMORY_VERSION)
         # Corrupt lock means we can't parse version, so probe skips (returns None)
         assert result is None

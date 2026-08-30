@@ -126,16 +126,3 @@ class TestMemoryConsistencyCheckCLI:
         data = json.loads(result.stdout)
         assert isinstance(data, dict)
         assert "errors" in data or "status" in data
-
-
-class TestMemoryAuditLayoutCLI:
-    """Integration tests for memory-audit-layout CLI."""
-
-    def test_audit_layout_on_repo(self) -> None:
-        result = subprocess.run(
-            [sys.executable, "-m", "memory_core.tools.audit_project_layout", "--target", str(REPO_ROOT), "--json"],
-            capture_output=True,
-            text=True,
-            cwd=REPO_ROOT,
-        )
-        assert result.returncode == 0, f"stderr: {result.stderr}"

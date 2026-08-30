@@ -129,23 +129,18 @@ CLI_COMMANDS = [
     "memory-hook-gateway",
     "memory-factory-hooks",
     "memory-consistency-check",
-    "memory-audit-layout",
     "memory-plan-residue",
     "memory-apply-residue-plan",
     "memory-ownership",
     "memory-verify-consumer",
     "memory-integrity-resign",
-    "memory-sync-versions",
-    "memory-audit-daily",
     "memory-promote",
 ]
 
 # CLIs that do meaningful work with no args (exit 0 is expected)
 CLI_NO_ARGS_OK = {
     "memory-consistency-check",  # Runs all consistency checks on the repo
-    "memory-sync-versions",  # Scans all known projects for version sync
     "memory-promote",  # Lists pending candidates
-    "memory-audit-daily",  # Reports daily memory audit; empty audit passes with exit 0
 }
 
 
@@ -252,16 +247,6 @@ def layer2_functional(qa: QAResult) -> None:
         qa.add(TestResult("memory-validate --json", 2, ok, error="invalid JSON" if not ok else "", duration_ms=ms))
         status = color("PASS", GREEN) if ok else color("FAIL", RED)
         print(f"  {status} memory-validate --json ({ms:.0f}ms)")
-
-        # Test: memory-audit-layout --json
-        start = time.monotonic()
-        code, stdout, stderr = run_cmd(["memory-audit-layout", "--target", tmpdir, "--json"], timeout=15)
-        ms = (time.monotonic() - start) * 1000
-        ok = code == 0
-        err_msg = (stderr[:200] if stderr else stdout[:200]) if not ok else ""
-        qa.add(TestResult("memory-audit-layout --json", 2, ok, error=err_msg, duration_ms=ms))
-        status = color("PASS", GREEN) if ok else color("FAIL", RED)
-        print(f"  {status} memory-audit-layout --json ({ms:.0f}ms)")
 
         # Test: memory-ownership show --json
         start = time.monotonic()
