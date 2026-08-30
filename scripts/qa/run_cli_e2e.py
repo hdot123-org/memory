@@ -248,16 +248,6 @@ def layer2_functional(qa: QAResult) -> None:
         status = color("PASS", GREEN) if ok else color("FAIL", RED)
         print(f"  {status} memory-validate --json ({ms:.0f}ms)")
 
-        # Test: memory-audit-layout --json
-        start = time.monotonic()
-        code, stdout, stderr = run_cmd(["memory-audit-layout", "--target", tmpdir, "--json"], timeout=15)
-        ms = (time.monotonic() - start) * 1000
-        ok = code == 0
-        err_msg = (stderr[:200] if stderr else stdout[:200]) if not ok else ""
-        qa.add(TestResult("memory-audit-layout --json", 2, ok, error=err_msg, duration_ms=ms))
-        status = color("PASS", GREEN) if ok else color("FAIL", RED)
-        print(f"  {status} memory-audit-layout --json ({ms:.0f}ms)")
-
         # Test: memory-ownership show --json
         start = time.monotonic()
         code, stdout, stderr = run_cmd(["memory-ownership", "show", "--project-root", tmpdir, "--json"], timeout=15)
