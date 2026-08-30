@@ -37,7 +37,7 @@ jobs:
     # 浮动 @main 曾在 M5 键名切换窗（#1071/#1075）模板先行漂移，caller 与
     # callee 声明面错配 → run 级 startup_failure（零 job），双通道同源自愈
     # 失效 6h。引擎与模板升级走同 PR 的 pyproject pin + 此处 tag 双写。
-    uses: hdot123-org/infra-core/.github/workflows/evolution-scan.yml@v0.6.1
+    uses: hdot123-org/infra-core/.github/workflows/evolution-scan.yml@v0.7.0
     permissions:
       contents: read
       issues: write
