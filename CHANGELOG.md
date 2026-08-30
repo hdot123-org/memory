@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.45.0](https://github.com/hdot123-org/memory/compare/v0.44.0...v0.45.0) (2026-08-30)
+
+
+### Features
+
+* **auto-merge:** 切换 thin caller——触发面/事件门控/concurrency 留本地，resolve+triage+merge 执行体委托 infra-core ([#1070](https://github.com/hdot123-org/memory/issues/1070)) ([0a90cad](https://github.com/hdot123-org/memory/commit/0a90cadb389456656223ed5ef1bf06feea22bd51))
+* **M4:** scan/heartbeat 切换 per-repo 定时 thin caller——执行体委托 infra-core reusable ([#1071](https://github.com/hdot123-org/memory/issues/1071)) ([4f04d2c](https://github.com/hdot123-org/memory/commit/4f04d2c2ec03594d73c519dc8152622d7dc82320))
+
+
+### Bug Fixes
+
+* **ci:** shellcheck/actionlint fallback 版本对齐 runner-tools.toml 真源 ([#1073](https://github.com/hdot123-org/memory/issues/1073)) ([64cd195](https://github.com/hdot123-org/memory/commit/64cd19529bbf83ae417d896822a57d8e6a9323b5))
+* **init:** memory-init 生成合规 Truth Basis 段，修复 fresh 项目 gateway session-start 退化 ([#1074](https://github.com/hdot123-org/memory/issues/1074)) ([8084009](https://github.com/hdot123-org/memory/commit/80840091907f9e5dc7b8312d0e58a51cd59d3240))
+
 ## [0.44.0](https://github.com/hdot123-org/memory/compare/v0.43.0...v0.44.0) (2026-08-29)
 
 
