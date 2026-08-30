@@ -715,6 +715,136 @@ class TestMemoryAnchorExists:
         assert anchor_path.exists(), "tests/.memory-anchor.md does not exist"
 
 
+class TestTruthBasisProjectScope:
+    """VAL-P1-010: memory/kb/projects/<scope>.md 的 Truth Basis 通过 resolver 校验。
+
+    M3 user-testing R1 发现：memory-init 不在项目 scope 文件中生成 Truth Basis 段，
+    导致每个 fresh 项目的 gateway session-start 都 truth_basis 报错 → status=degraded
+    → exit 1；而手工补段又会触发 manifest hmac 不匹配。修复：模板直接生成合规段，
+    使补段路径与 init 签名路径天然一致。
+    """
+
+    def _init_project(self, tmp_path: Path) -> None:
+        from memory_core.tools.init_project_memory import init_project_memory
+
+        (tmp_path / ".git").mkdir()
+        result = init_project_memory(tmp_path, host="factory", mode="create", scope="test_project")
+        assert result["success"] is True
+
+    def test_project_scope_truth_basis_passes_resolver(self, tmp_path: Path) -> None:
+        """VAL-P1-010a: init 生成的项目 scope 文件零 resolver 错误（对齐 VAL-P1-004..008 模式）。"""
+        self._init_project(tmp_path)
+
+        config = _build_config_from_init(tmp_path)
+        from memory_core.tools.business_policy_checks import TruthBasisResolver
+
+        resolver = TruthBasisResolver(config)
+        file_path = tmp_path / "memory" / "kb" / "projects" / "test_project.md"
+        content = file_path.read_text(encoding="utf-8")
+        errors = resolver._truth_basis_errors_for(file_path, content)
+        assert errors == [], f"Truth Basis errors in project scope file: {errors}"
+
+    def test_project_scope_truth_basis_full_scope_validation_passes(self, tmp_path: Path) -> None:
+        """VAL-P1-010b: truth_basis_for_scope（gateway 消费入口）整体 validation=pass。"""
+        import dataclasses
+
+        self._init_project(tmp_path)
+
+        config = _build_config_from_init(tmp_path)
+        config = dataclasses.replace(
+            config,
+            project_canonical={"test_project": tmp_path / "memory" / "kb" / "projects" / "test_project.md"},
+            default_project_scope="test_project",
+        )
+        from memory_core.tools.business_policy_checks import TruthBasisResolver
+
+        resolver = TruthBasisResolver(config)
+        result = resolver.truth_basis_for_scope("test_project")
+        assert result["errors"] == [], f"truth_basis_for_scope errors: {result['errors']}"
+        assert result["validation"] == "pass"
+
+    def test_project_scope_truth_basis_via_default_runtime_profile(self, tmp_path: Path) -> None:
+        """VAL-P1-010c: 用真实 default_runtime_profile 的 wiring（非测试手搓 config）验证通过。"""
+        from memory_core.tools.memory_hook_adapters.default_runtime_profile import build_default_runtime_profile
+        from memory_core.tools.memory_hook_impls import GatewayBusinessPolicyConfig
+
+        self._init_project(tmp_path)
+
+        profile = build_default_runtime_profile(tmp_path, tmp_path)
+        config = GatewayBusinessPolicyConfig(
+            repo_root=tmp_path,
+            workspace_root=tmp_path,
+            project_map_root=profile["PROJECT_MAP_ROOT"],
+            project_map_files=profile["PROJECT_MAP_FILES"],
+            project_map_governance=profile["PROJECT_MAP_GOVERNANCE"],
+            truth_model=profile["TRUTH_MODEL"],
+            global_canonical=profile["GLOBAL_CANONICAL"],
+            authority_allowed_paths=profile["AUTHORITY_ALLOWED_PATHS"],
+            lower_evidence_roots=profile["LOWER_EVIDENCE_ROOTS"],
+            legal_core_markers=profile["LEGAL_CORE_MARKERS"],
+            required_registry_scopes=profile["REQUIRED_REGISTRY_SCOPES"],
+            project_canonical=profile["PROJECT_CANONICAL"],
+            project_runtime_root=profile["PROJECT_RUNTIME_ROOT"],
+            project_doc_refs=profile["PROJECT_DOC_REFS"],
+            default_decision_refs=profile["DEFAULT_DECISION_REFS"],
+            project_decision_refs=profile["PROJECT_DECISION_REFS"],
+            default_lesson_refs=profile["DEFAULT_LESSON_REFS"],
+            project_lesson_refs=profile["PROJECT_LESSON_REFS"],
+            governance_frozen_tuple_files=profile["GOVERNANCE_FROZEN_TUPLE_FILES"],
+            event_contract_files=profile["EVENT_CONTRACT_FILES"],
+            frozen_tuple_expected=profile["FROZEN_TUPLE_EXPECTED"],
+            frozen_tuple_legacy_markers=profile["FROZEN_TUPLE_LEGACY_MARKERS"],
+            formal_source_types=profile["FORMAL_SOURCE_TYPES"],
+            formal_event_types=profile["FORMAL_EVENT_TYPES"],
+            formal_event_statuses=profile["FORMAL_EVENT_STATUSES"],
+            formal_field_keys=profile["FORMAL_FIELD_KEYS"],
+            legacy_field_keys=profile["LEGACY_FIELD_KEYS"],
+            required_canonical=profile["REQUIRED_CANONICAL"],
+            workspace_index_path=tmp_path / "INDEX.md",
+            docs_index_path=tmp_path / "memory" / "docs" / "INDEX.md",
+            overview_doc_path=tmp_path / "memory" / "docs" / "记忆系统全景文档.md",
+            global_index_path=tmp_path / "memory" / "kb" / "global" / "INDEX.md",
+            hook_contract_path=profile["HOOK_CONTRACT_PATH"],
+            default_project_scope=profile["DEFAULT_PROJECT_SCOPE"],
+            scope_match_hints=profile["SCOPE_MATCH_HINTS"],
+            read_text_if_exists_fn=lambda p: p.read_text(encoding="utf-8") if p.exists() else "",
+        )
+        from memory_core.tools.business_policy_checks import TruthBasisResolver
+
+        result = TruthBasisResolver(config).truth_basis_for_scope("test_project")
+        assert result["errors"] == [], f"production-profile truth_basis errors: {result['errors']}"
+        assert result["validation"] == "pass"
+
+
+class TestProjectScopeIntegritySigning:
+    """VAL-P1-011: 项目 scope 文件的 manifest 签名路径一致（补段不产生 hmac 误报）。"""
+
+    def test_project_scope_md_signed_and_verifiable_after_init(self, tmp_path: Path, monkeypatch) -> None:
+        """init 签名 manifest 含 scope 文件条目，verify_project 全绿（无 hmac mismatch）。"""
+        from memory_core.tools.init_project_memory import init_project_memory
+        from memory_core.tools.memory_hook_integrity_keys import load_key
+        from memory_core.tools.memory_hook_integrity_verify import verify_project
+
+        key_path = tmp_path / "integrity-test.key"
+        monkeypatch.setenv("MEMORY_INTEGRITY_KEY_PATH", str(key_path))
+
+        (tmp_path / ".git").mkdir()
+        result = init_project_memory(tmp_path, host="factory", mode="create", scope="test_project")
+        assert result["success"] is True
+
+        scope_rel = "memory/kb/projects/test_project.md"
+        manifest_path = tmp_path / "memory" / "system" / "manifest.json"
+        assert manifest_path.exists(), "init must produce manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        entries = {e["rel_path"]: e for e in manifest.get("entries", [])}
+        assert scope_rel in entries, f"project scope file not signed: {sorted(entries)}"
+
+        key = load_key()
+        assert key is not None, "integrity key must exist after init signing"
+        vres = verify_project(tmp_path, key)
+        assert vres.ok, f"verify_project failed after init: {vres.errors}"
+
+
 # ---------------------------------------------------------------------------
 # Phase 2 — Initialization Behavior Fixes (VAL-P2-001 through VAL-P2-008)
 # ---------------------------------------------------------------------------
