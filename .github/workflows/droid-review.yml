@@ -55,16 +55,13 @@ jobs:
     with:
       pr_number: ${{ inputs.pr_number }}
       head_sha: ${{ inputs.head_sha }}
-      # 预算 inputs：snake_case 为统一命名形态（M5 R1(3)）；hyphen 为过渡期
-      # 兼容双写，infra-core reusable 切换后由后续 PR 移除。
+      # 预算 inputs：snake_case 单形态（M5 R1(3) 终态，对齐 infra-core #82）。
+      # 不得恢复 hyphen 双写：GitHub 将 with: 键名 -/_ 归一化，双形态同名
+      # 提供即重复键 → run startup_failure 零 job（2026-08-30 #1076 实测）。
       shard_max_files: ${{ vars.SHARD_MAX_FILES || '25' }}
       shard_max_count: ${{ vars.SHARD_MAX_COUNT || '6' }}
       shard_timeout_minutes: ${{ vars.SHARD_TIMEOUT_MINUTES || '45' }}
       shard_max_parallel: ${{ vars.SHARD_MAX_PARALLEL || '3' }}
-      shard-max-files: ${{ vars.SHARD_MAX_FILES || '25' }}
-      shard-max-count: ${{ vars.SHARD_MAX_COUNT || '6' }}
-      shard-timeout-minutes: ${{ vars.SHARD_TIMEOUT_MINUTES || '45' }}
-      shard-max-parallel: ${{ vars.SHARD_MAX_PARALLEL || '3' }}
     secrets:
       FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
       NVIDIA_KONG_PROXY_KEY: ${{ secrets.NVIDIA_KONG_PROXY_KEY }}

@@ -7,7 +7,8 @@ transcript 证实模型被杀时仍在活跃产出，非卡死），且超时取
 的 503/429 自愈特征，rerun 无法恢复。
 
 M4 切换后：review-shard job 迁入 infra-core reusable workflow（其
-timeout-minutes 引用 inputs.shard-timeout-minutes 由引擎仓模板测试锁定）；
+timeout-minutes 引用 inputs.shard_timeout_minutes 由引擎仓模板测试锁定，
+snake_case 为 infra-core #82 后的 callee 契约终态）；
 caller 以 with: 转发 vars.SHARD_TIMEOUT_MINUTES（本文件锁定）。
 变量驱动与其他预算层一致（Layer 2 DROID_REVIEW_TIMEOUT_MINUTES、
 Layer 3 SHARD_MAX_FILES/SHARD_MAX_COUNT、Layer 4 SHARD_MAX_PARALLEL），
@@ -33,17 +34,18 @@ class TestShardTimeoutVariableDriven:
     def test_shard_timeout_uses_variable(self):
         """shards call job 的 with: 转发引用 SHARD_TIMEOUT_MINUTES（禁止回到硬编码）。"""
         with_block = _load()["jobs"]["shards"]["with"]
-        assert "vars.SHARD_TIMEOUT_MINUTES" in with_block["shard-timeout-minutes"]
+        assert "vars.SHARD_TIMEOUT_MINUTES" in with_block["shard_timeout_minutes"]
 
     def test_shard_timeout_default_fallback(self):
         """变量缺失时回退默认值 45（> 30，覆盖 PR #1027 实测的审查时长）。"""
         with_block = _load()["jobs"]["shards"]["with"]
-        assert "'45'" in with_block["shard-timeout-minutes"]
+        assert "'45'" in with_block["shard_timeout_minutes"]
+        assert "shard-timeout-minutes" not in with_block, "hyphen 双写已被证实触发 startup_failure，禁止恢复"
 
     def test_shard_timeout_default_below_aggregation_layer(self):
         """Layer 1 默认值必须低于 Layer 2 聚合路径预算（45 < 90），
         保证聚合 job 仍有余量收集 shard 结果。"""
-        shard_fwd = _load()["jobs"]["shards"]["with"]["shard-timeout-minutes"]
+        shard_fwd = _load()["jobs"]["shards"]["with"]["shard_timeout_minutes"]
         agg_timeout = _load()["jobs"]["droid-review"]["timeout-minutes"]
         shard_default = int(shard_fwd.split("'")[1])
         agg_default = int(agg_timeout.split("'")[1])
