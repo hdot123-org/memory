@@ -159,7 +159,7 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
    - **Path**: `ci-complete-github`
    - **Response Mode**: `Response Node`（需要最后的 Respond to Webhook 节点配合）
 3. 保存后 n8n 会生成一个测试 URL 和一个生产 URL:
-   - 测试 URL: `https://<n8n-host>/webhook-test/ci-complete-github`
+   - 测试 URL: 在 n8n 面板 Webhook 节点中查看（`/webhook-test/` 前缀，仅在 Test workflow 监听期间有效）
    - 生产 URL: 权威来源为 1Password vault sever 条目 n8n / node-22 / Webhook Provider / Secrets 的 `webhook_url` 字段（n8n 实例事件入口为 `/webhook/events`，路由器模式）
 4. **`N8N_CI_WEBHOOK_URL` secret 的值须从上述 1Password 条目获取，禁止使用占位符模板**
 
@@ -230,7 +230,7 @@ ci.yml 的 notify-ci-complete job 已引用这两个 secret，配置后即可自
 在任意能访问 n8n 的机器上执行:
 
 ```bash
-# 替换 <n8n-host> 为实际的 n8n 地址
+# webhook URL 从 1Password 获取，不使用占位符
 N8N_WEBHOOK_URL="<从 1Password vault sever 条目 n8n/node-22/Webhook Provider/Secrets 的 webhook_url 字段获取>"
 
 # 模拟 GitHub Actions 发送的 payload
@@ -283,8 +283,9 @@ n8n 提供测试模式（Test workflow），可以:
 4. 确认 HTTP Request 节点的输出包含正确的转发结果
 
 ```bash
-# 使用 n8n 测试 URL（需要在 n8n 面板点击 Test workflow 后使用）
-curl -X POST "https://<n8n-host>/webhook-test/ci-complete-github" \
+# 使用 n8n 测试 URL（需先在 n8n 面板点击 Test workflow，URL 在 Webhook 节点中查看，
+# 前缀为 /webhook-test/，仅在监听期间有效；生产 URL 一律以 1Password 权威源为准）
+curl -X POST "<n8n 面板 Webhook 节点中显示的 webhook-test URL>" \
   -H "Content-Type: application/json" \
   -d '{
     "repo": "owner/memory",
@@ -301,7 +302,7 @@ curl -X POST "https://<n8n-host>/webhook-test/ci-complete-github" \
 
 | 问题 | 排查 |
 |------|------|
-| GitHub Actions POST 到 n8n 返回 404 | 确认 workflow 已激活（Active 状态），URL 使用 `/webhook/` 而非 `/webhook-test/` |
+| GitHub Actions POST 到 n8n 返回 404 | 确认 `N8N_CI_WEBHOOK_URL` secret 与 1Password `webhook_url` 权威源一致（实例事件入口为 `/webhook/events`，路由器模式）；测试 URL（`/webhook-test/` 前缀）仅在 Test workflow 监听期间有效，不可用于生产 |
 | n8n 转发到 Mac:5555 超时 | 确认 Mac 可达（ping/nc），5555 端口开放，adnanh/webhook 正在运行 |
 | Mac:5555 拒绝请求 | 检查 HTTP Request 节点的 `X-CI-Token` header 值是否与 `N8N_CI_TOKEN` secret 一致 |
 | GitHub Actions notification step 跳过 | 检查 `N8N_CI_WEBHOOK_URL` secret 是否已配置 |
