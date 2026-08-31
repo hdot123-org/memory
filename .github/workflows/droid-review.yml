@@ -47,7 +47,7 @@ jobs:
   # review-shard job 逐项等价（行为等价移植）：contents: read + actions: write +
   # id-token: write。
   shards:
-    uses: hdot123-org/infra-core/.github/workflows/droid-review-shards.yml@main
+    uses: hdot123-org/infra-core/.github/workflows/droid-review-shards.yml@v0.7.2
     permissions:
       contents: read
       actions: write
@@ -89,7 +89,7 @@ jobs:
       actions: read
     steps:
       - name: Aggregate and publish findings
-        uses: hdot123-org/infra-core/actions/droid-review-aggregate@main
+        uses: hdot123-org/infra-core/actions/droid-review-aggregate@v0.7.2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           pr-number: ${{ needs.shards.outputs.pr_number }}

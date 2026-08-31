@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Governance check
-        uses: hdot123-org/infra-core/actions/governance-check@main
+        uses: hdot123-org/infra-core/actions/governance-check@v0.7.2
         with:
           owner-login: hdot123
           # memory-core 五类保护路径（与切换前内联 grep 模式全集对等）
