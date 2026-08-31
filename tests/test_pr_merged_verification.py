@@ -6,7 +6,6 @@ with evolution_utils.auto_close_resolved().
 
 import json
 import os
-import sys
 import urllib.error
 from pathlib import Path
 from unittest.mock import MagicMock, patch
