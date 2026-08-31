@@ -149,7 +149,7 @@ class TestGateSetupLabelsGovernance:
 
         四类保护路径：
         1. .evolution/**
-        2. scripts/** (整个目录，防模块投毒；引擎副本已删除，不再需要 scripts/evolution_*.py 单独保护)
+        2. scripts/** (整个目录，防模块投毒)
         3. .github/workflows/evolution-*.yml
         4. .github/CODEOWNERS
         """
