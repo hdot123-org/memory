@@ -135,7 +135,7 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
 
 | 节点 | 类型 | 职责 |
 |------|------|------|
-| Webhook (GitHub CI) | `n8n-nodes-base.webhook` | 接收 GitHub Actions 的 POST 请求，路径为 `/webhook/ci-complete-github` |
+| Webhook (GitHub CI) | `n8n-nodes-base.webhook` | 接收 GitHub Actions 的 POST 请求，经 n8n 实例事件入口 `/webhook/events`（路由器模式，返回 `{status,route,event}` JSON）分发，`ci-complete` 为该入口下的路由 |
 | HTTP Request (Forward to Mac:5555) | `n8n-nodes-base.httpRequest` | 将 payload 原样转发到 `http://<MAC_IP>:5555/hooks/ci-complete`，附带 `X-CI-Token` header |
 | Respond to Webhook | `n8n-nodes-base.respondToWebhook` | 向 GitHub Actions 返回 200 响应 |
 
@@ -160,8 +160,8 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
    - **Response Mode**: `Response Node`（需要最后的 Respond to Webhook 节点配合）
 3. 保存后 n8n 会生成一个测试 URL 和一个生产 URL:
    - 测试 URL: `https://<n8n-host>/webhook-test/ci-complete-github`
-   - 生产 URL: `https://<n8n-host>/webhook/ci-complete-github`
-4. **生产 URL 即为 GitHub Actions 需要 POST 的目标地址**
+   - 生产 URL: 权威来源为 1Password vault sever 条目 n8n / node-22 / Webhook Provider / Secrets 的 `webhook_url` 字段（n8n 实例事件入口为 `/webhook/events`，路由器模式）
+4. **`N8N_CI_WEBHOOK_URL` secret 的值须从上述 1Password 条目获取，禁止使用占位符模板**
 
 ### Step 3: 配置 HTTP Request 输出节点（转发到 Mac:5555）
 
@@ -205,14 +205,14 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
 
 1. 点击右上角 **Save**
 2. 切换 **Inactive** → **Active**（生产模式）
-3. 确认 webhook URL 可访问: `https://<n8n-host>/webhook/ci-complete-github`
+3. 确认 webhook URL 可访问（URL 权威来源：1Password vault sever 条目 n8n / node-22 / Webhook Provider / Secrets 的 `webhook_url` 字段）
 
 ### Step 6: 配置 GitHub Secret
 
 1. 进入 GitHub 仓库 → **Settings** → **Secrets and variables** → **Actions**
 2. 点击 **New repository secret**
 3. Name: `N8N_CI_WEBHOOK_URL`
-4. Value: n8n 的生产 webhook URL（即 `https://<n8n-host>/webhook/ci-complete-github`）
+4. Value: n8n 的生产 webhook URL（权威来源：1Password vault sever 条目 n8n / node-22 / Webhook Provider / Secrets 的 `webhook_url` 字段；n8n 实例事件入口为 `/webhook/events`，路由器模式）
 5. 保存
 6. 再次点击 **New repository secret**
 7. Name: `N8N_CI_TOKEN`
@@ -231,7 +231,7 @@ ci.yml 的 notify-ci-complete job 已引用这两个 secret，配置后即可自
 
 ```bash
 # 替换 <n8n-host> 为实际的 n8n 地址
-N8N_WEBHOOK_URL="https://<n8n-host>/webhook/ci-complete-github"
+N8N_WEBHOOK_URL="<从 1Password vault sever 条目 n8n/node-22/Webhook Provider/Secrets 的 webhook_url 字段获取>"
 
 # 模拟 GitHub Actions 发送的 payload
 curl -v -X POST "$N8N_WEBHOOK_URL" \
