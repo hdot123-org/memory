@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.45.3](https://github.com/hdot123-org/memory/compare/v0.45.2...v0.45.3) (2026-08-31)
+
+
+### Documentation
+
+* **architecture:** 修正 ci-notify-n8n-workflow 占位符为真实 /webhook/events 拓扑与 1Password 权威源 ([#1099](https://github.com/hdot123-org/memory/issues/1099)) ([78cd6da](https://github.com/hdot123-org/memory/commit/78cd6da98970f378204d4f9bd761b2caf5d85fb0))
+* **architecture:** 清理 ci-notify-n8n-workflow 残留 webhook 拓扑占位符 (INFRA-699) ([#1100](https://github.com/hdot123-org/memory/issues/1100)) ([8755483](https://github.com/hdot123-org/memory/commit/8755483384e060a4ea412fabdd35660e1adec9ee))
+
 ## [0.45.2](https://github.com/hdot123-org/memory/compare/v0.45.1...v0.45.2) (2026-08-31)
 
 
