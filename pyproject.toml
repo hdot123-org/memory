@@ -162,9 +162,6 @@ DEP001 = [
     "yaml",
     "memory_hook_gateway",
     "tomllib",
-    "evolution_adapters",
-    "evolution_utils",
-    "evolution_heartbeat",  # scripts/ 本地模块：scanner 反向守护 heartbeat（INFRA-588）
     "guard_cli",  # scripts/ 本地模块：check_boundary / check_doc_classification 共享 CLI 骨架 (INFRA-559)
     "_init_autofill",
     "_init_config",
@@ -185,6 +182,11 @@ DEP002 = [
     "deptry",
     "vulture",
     "pdoc",
+    # pyyaml 运行时仅由 scripts/ci_health_check.sh 的 python heredoc 使用（deptry
+    # 不扫描 .sh 内嵌代码），tests/ 的 import 已被 deptry exclude——删除本地
+    # evolution_* 副本（M1-F2）后代码库无 .py 侧直接 import，按既有 DEP001
+    # "yaml" 豁免同一口径登记豁免，依赖本身保留（infra-core 亦传递提供）。
+    "pyyaml",
 ]
 
 

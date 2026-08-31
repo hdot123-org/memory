@@ -12,7 +12,6 @@ import pytest
 # They must match the grep patterns used in the governance check
 PROTECTED_PATTERNS = [
     re.compile(r"^\.evolution/"),
-    re.compile(r"^scripts/evolution_.*\.py$"),
     re.compile(r"^\.github/workflows/evolution-.*\.yml$"),
     re.compile(r"^\.github/CODEOWNERS$"),
 ]
@@ -52,9 +51,6 @@ class TestProtectedPathPatterns:
             ".evolution/findings_over_time.json",
             ".evolution/DISABLED",
             ".evolution/subdir/nested.yml",
-            "scripts/evolution_scanner.py",
-            "scripts/evolution_utils.py",
-            "scripts/evolution_adapters.py",
             ".github/workflows/evolution-scan.yml",
             ".github/workflows/evolution-governance.yml",
             ".github/CODEOWNERS",
@@ -72,7 +68,6 @@ class TestProtectedPathPatterns:
             ".github/workflows/ci.yml",
             ".github/ISSUE_TEMPLATE.md",
             "evolution/config.yml",  # Missing leading dot - NOT protected
-            "scripts/evolution.txt",  # Wrong extension
         ],
     )
     def test_non_protected_paths_not_detected(self, path):
@@ -94,7 +89,7 @@ class TestRenameDetection:
 
     def test_rename_within_protected_detected(self):
         """Renaming within protected paths is caught by both filename and previous_filename."""
-        files = [{"filename": "scripts/evolution_v2.py", "previous_filename": "scripts/evolution_scanner.py"}]
+        files = [{"filename": ".evolution/v2_config.yml", "previous_filename": ".evolution/config.yml"}]
         assert detect_rename_violation(files) is True
 
     def test_rename_of_codeowners_detected(self):
@@ -158,7 +153,6 @@ class TestGovernanceWorkflowConsistency:
         # The workflow must still declare these patterns
         # （glob 子串断言，与 PROTECTED_PATTERNS 正则集对等）
         assert ".evolution/**" in patterns, "Workflow must protect .evolution/ paths"
-        assert "scripts/evolution_*.py" in patterns, "Workflow must protect evolution scripts"
         assert "scripts/**" in patterns, "Workflow must protect scripts/ dir (module poisoning)"
         assert ".github/workflows/evolution-*.yml" in patterns, "Workflow must protect evolution workflows"
         assert ".github/CODEOWNERS" in patterns, "Workflow must protect CODEOWNERS"

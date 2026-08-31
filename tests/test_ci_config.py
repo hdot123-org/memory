@@ -147,12 +147,11 @@ class TestGateSetupLabelsGovernance:
     def test_governance_protected_patterns_parity(self):
         """governance thin caller 保护路径与切换前内联 grep 全集对等
 
-        五类保护路径：
+        四类保护路径：
         1. .evolution/**
-        2. scripts/evolution_*.py
-        3. scripts/** (整个目录，防模块投毒)
-        4. .github/workflows/evolution-*.yml
-        5. .github/CODEOWNERS
+        2. scripts/** (整个目录，防模块投毒)
+        3. .github/workflows/evolution-*.yml
+        4. .github/CODEOWNERS
         """
         path = REPO_ROOT / ".github/workflows/evolution-governance.yml"
         data = yaml.safe_load(path.read_text())
@@ -163,9 +162,8 @@ class TestGateSetupLabelsGovernance:
         with_block = step.get("with", {})
         patterns = with_block.get("protected-patterns", "")
 
-        # 验证五类模式全部存在
+        # 验证四类模式全部存在
         assert ".evolution/**" in patterns
-        assert "scripts/evolution_*.py" in patterns
         assert "scripts/**" in patterns
         assert ".github/workflows/evolution-*.yml" in patterns
         assert ".github/CODEOWNERS" in patterns
