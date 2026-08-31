@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.45.2](https://github.com/hdot123-org/memory/compare/v0.45.1...v0.45.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* **dependency:** relock uv.lock to infra-core v0.7.2 and pin 8 workflow refs ([#1096](https://github.com/hdot123-org/memory/issues/1096)) ([d4ff910](https://github.com/hdot123-org/memory/commit/d4ff910d71016d49ff924a80c9fa049153795fa6))
+* **evolution:** 抑制 pack 化配置的 EVOLUTION_CONFIG_INSUFFICIENT 误报 (INFRA-661) ([#1092](https://github.com/hdot123-org/memory/issues/1092)) ([a2d3e2d](https://github.com/hdot123-org/memory/commit/a2d3e2d946ccdeb33a683c9abc358a08885c3e55))
+
 ## [0.45.1](https://github.com/hdot123-org/memory/compare/v0.45.0...v0.45.1) (2026-08-30)
 
 
