@@ -76,7 +76,7 @@ Linear Issue 关闭 (Linear GitHub 集成检测 PR merge)
 
 ### 3.2 Scanner 自动关闭已解决 Issues（补偿机制）
 
-当 finding 在扫描中不再出现时，`auto_close_resolved()` 函数（`scripts/evolution_utils.py`）会自动关闭对应的 open GitHub Issue：
+当 finding 在扫描中不再出现时，`auto_close_resolved()` 函数（`infra_core.engine.evolution_utils`）会自动关闭对应的 open GitHub Issue：
 
 1. Scanner 完成扫描后，获取所有 open 的 evolution-found GitHub Issue
 2. 对比当前扫描的 findings 集合（按 rule_id + location 匹配）
@@ -162,7 +162,7 @@ body = (
 | 文件 | 职责 |
 |------|------|
 | `infra_core.engine.evolution_scanner`（infra-core 仓） | scanner 主逻辑，创建 GitHub Issue |
-| `scripts/evolution_utils.py` | scanner 工具函数，包括 `auto_close_resolved()` 补偿关闭 |
+| `infra_core.engine.evolution_utils` | scanner 工具函数，包括 `auto_close_resolved()` 补偿关闭 |
 | `.github/workflows/evolution-scan.yml` | scanner 定时触发 workflow |
 | `.github/workflows/droid.yml` | droid 自动触发 workflow |
 | `~/.factory/webhook/scripts/trigger-droid.sh` | webhook 触发 droid |
@@ -252,7 +252,7 @@ PR merge
 
 ### 9.1 背景
 
-evolution scanner 的 `auto_close_resolved()`（`scripts/evolution_utils.py`）在 finding
+evolution scanner 的 `auto_close_resolved()`（`infra_core.engine.evolution_utils`）在 finding
 解决后关闭对应 GitHub Issue，并依赖 **Linear 原生 GitHub 集成** 把这次关闭同步到对应
 Linear Issue。两条平台原生路径任一失败时，都会产生状态漂移：
 
@@ -298,9 +298,9 @@ Linear Issue。两条平台原生路径任一失败时，都会产生状态漂�
 
 #### 9.4.1 镜像定位锚点机制（INFRA-357）
 
-- **提取窗口** — `evolution_utils.extract_linkback_anchor()` 以评论块（空行分隔）为窗口：取**首个**含 `linear-linkback` 标记的评论块，块内按 Tier1 内联标记 `<!-- linear-linkback INFRA-xxx -->` → Tier2a `linear.app/.../issue/INFRA-xxx` href → Tier2b `<a ...>INFRA-xxx</a>` 顺序提取。生产 ci-gateway 多行回链（裸标记行 + 下一行 `<p><a href>`）即在此窗口内命中；标记在但块内无 id → 返回 None（fail-closed）。
+- **提取窗口** — `infra_core.engine.evolution_utils.extract_linkback_anchor()` 以评论块（空行分隔）为窗口：取**首个**含 `linear-linkback` 标记的评论块，块内按 Tier1 内联标记 `<!-- linear-linkback INFRA-xxx -->` → Tier2a `linear.app/.../issue/INFRA-xxx` href → Tier2b `<a ...>INFRA-xxx</a>` 顺序提取。生产 ci-gateway 多行回链（裸标记行 + 下一行 `<p><a href>`）即在此窗口内命中；标记在但块内无 id → 返回 None（fail-closed）。
 - **#724 安全属性** — 提取仅限标记所在评论块：正文/评论 merely 提及 INFRA 号的通知类 issue 永远返回 None，防止全文匹配误关单。
-- **生产部署集** — 锚点助手依赖链 4 文件（`extract_anchor.py` / `evolution_utils.py` / `evolution_adapters.py` / `anchor_gate.py`，纯 stdlib）自 M5 起由 infra-core 仓托管：`webhook-scripts/MANIFEST.sh` 的 `CROSS_DIR_MAPPINGS` + `webhook-scripts/sync-webhook-scripts.sh`（单一所有权源，memory 侧 manifest 已删除），生产同步以 infra-core tag 为基，`--check` 以 sha256 报告漂移。
+- **生产部署集** — 锚点助手依赖链 4 文件（`extract_anchor.py` / `infra_core.engine.evolution_utils` / `infra_core.engine.evolution_adapters` / `anchor_gate.py`，纯 stdlib）自 M5 起由 infra-core 仓托管：`webhook-scripts/MANIFEST.sh` 的 `CROSS_DIR_MAPPINGS` + `webhook-scripts/sync-webhook-scripts.sh`（单一所有权源，memory 侧 manifest 已删除），生产同步以 infra-core tag 为基，`--check` 以 sha256 报告漂移。
 - **失败留痕** — 3 处调用点（reconcile §4b、GATE A 4.5/4.6）提取失败不再吞 stderr，带时间戳写入 `logs/anchor-extract.log`；调用方 fail-closed 语义不变（空锚点照常 skip/block）。
 - **补偿层关闭守卫（INFRA-357）** — `trigger-droid.sh` 补偿层关闭路径（被追踪 session 的 p_ref 在 Linear 终态后关 GitHub Issue）同样执行 label + 锚点双闸：候选查询带 `--label evolution-found`，每个候选经 `scripts/anchor_gate.py`（内部委托 `extract_anchor.py`，与 §4b/GATE A 同一提取实现）校验锚点 == p_ref 才关闭；无锚点/不匹配/提取失败 → skip 关闭并按 §4b 格式追加 `logs/anchor-drift.log`，留 reconcile 兜底。方向为 fail-closed：宁可漏关，不可误关。
 
@@ -386,7 +386,7 @@ GitHub close → Linear 同步 close → GATE A revert → Done→reopen → Git
 ### 10.6 通知 Issue TTL 自愈（VAL-NTF-002 / INFRA-389）
 
 通知类 Issue（branch-cleanup 每日跟踪 Issue 等）只需在短期内可见，长期堆积会稀释
-scanner 产出的可操作信号。`scripts/evolution_utils.py::close_expired_notifications()`
+scanner 产出的可操作信号。`infra_core.engine.evolution_utils::close_expired_notifications()`
 为这类 Issue 提供基于 TTL 的自动关闭：
 
 - **候选范围** — 仅处理同时携带 `automation` + `branch-cleanup` 双标签的 **open** Issue

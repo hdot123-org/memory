@@ -349,11 +349,11 @@ SessionEnd hook 运行在 Factory 会话关闭的最后时刻，必须在严格�
 
 ## Evolution Scanner 与 Issue 自动维护
 
-memory-core 仓库自身通过 evolution scanner（`scripts/evolution_scanner.py`，GitHub Actions cron 每 30 分钟触发）进行自动化维护。scanner 会在审计发现问题时自动创建带 `evolution-found` 标签的 GitHub Issue，并在问题自愈后自动关闭，避免 Issue 无限堆积。
+memory-core 仓库自身通过 evolution scanner（`infra_core.engine.evolution_scanner`，GitHub Actions cron 每 30 分钟触发）进行自动化维护。scanner 会在审计发现问题时自动创建带 `evolution-found` 标签的 GitHub Issue，并在问题自愈后自动关闭，避免 Issue 无限堆积。
 
 ### 已解决 Issues 自动关闭机制
 
-scanner 每次运行末尾会调用 `auto_close_resolved()`（`scripts/evolution_utils.py`）作为补偿机制，关闭已经不再出现的 finding 对应的 open Issue：
+scanner 每次运行末尾会调用 `auto_close_resolved()`（`infra_core.engine.evolution_utils`）作为补偿机制，关闭已经不再出现的 finding 对应的 open Issue：
 
 - **触发时机** — 在本次扫描创建新 Issue **之后**执行，避免误关闭刚创建的 Issue
 - **判定标准** — 以 `(rule_id, location)` 为键，构建当前扫描的 findings 集合；对所有 open 的 `evolution-found` Issue 解析 body 中的 `rule_id` 与 `location`，若该键**不在**当前 findings 集合中，则视为「已解决」
@@ -363,7 +363,7 @@ scanner 每次运行末尾会调用 `auto_close_resolved()`（`scripts/evolution
 
 ### Issue 重开机制
 
-scanner 每次运行时会调用 `_reopen_closed_issue()`（`scripts/evolution_scanner.py`），检查已关闭的 `evolution-found` Issue 是否重新出现：
+scanner 每次运行时会调用 `_reopen_closed_issue()`（`infra_core.engine.evolution_scanner`），检查已关闭的 `evolution-found` Issue 是否重新出现：
 
 - **匹配逻辑** — 遍历 closed 状态的 Issue，按 `(rule_id, location)` 匹配当前 findings
 - **重开条件** — finding 重新出现且 `reopen_count < 3` 时重开 Issue，并在 history JSON 中递增计数器

@@ -6,16 +6,14 @@ are not affected.
 """
 
 import json
-import sys
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-# Add scripts directory to path for import
-scripts_dir = Path(__file__).parent.parent / "scripts"
-sys.path.insert(0, str(scripts_dir))
 
-from evolution_utils import NOTIFICATION_TTL_DAYS, close_expired_notifications
+def _eu():
+    """Lazy import of engine evolution_utils (VAL-M1-104: no engine import at module top)."""
+    import infra_core.engine.evolution_utils as eu
+    return eu
 
 
 class TestNotificationTTLConstant:
@@ -23,7 +21,7 @@ class TestNotificationTTLConstant:
 
     def test_ttl_constant_is_7_days(self):
         """NOTIFICATION_TTL_DAYS is defined as 7."""
-        assert NOTIFICATION_TTL_DAYS == 7
+        assert _eu().NOTIFICATION_TTL_DAYS == 7
 
 
 class TestCloseExpiredNotifications:
@@ -42,14 +40,14 @@ class TestCloseExpiredNotifications:
             }
         ]
 
-        with patch("evolution_utils.subprocess.run") as mock_run:
+        with patch("infra_core.engine.evolution_utils.subprocess.run") as mock_run:
             # First call: list issues, subsequent calls: comment and close
             mock_run.side_effect = [
                 MagicMock(returncode=0, stdout=json.dumps(mock_issues)),
                 MagicMock(returncode=0, stdout=""),  # comment
                 MagicMock(returncode=0, stdout=""),  # close
             ]
-            close_expired_notifications()
+            _eu().close_expired_notifications()
 
             # Verify close was called by checking call arguments
             assert mock_run.call_count == 3, "Should make 3 calls: list, comment, close"
@@ -77,9 +75,9 @@ class TestCloseExpiredNotifications:
             }
         ]
 
-        with patch("evolution_utils.subprocess.run") as mock_run:
+        with patch("infra_core.engine.evolution_utils.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues))
-            close_expired_notifications()
+            _eu().close_expired_notifications()
 
             # Verify close was NOT called
             calls = mock_run.call_args_list
@@ -99,9 +97,9 @@ class TestCloseExpiredNotifications:
             }
         ]
 
-        with patch("evolution_utils.subprocess.run") as mock_run:
+        with patch("infra_core.engine.evolution_utils.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues))
-            close_expired_notifications()
+            _eu().close_expired_notifications()
 
             # Verify close was NOT called (not a notification issue)
             calls = mock_run.call_args_list
@@ -130,7 +128,7 @@ class TestCloseExpiredNotifications:
             },
         ]
 
-        with patch("evolution_utils.subprocess.run") as mock_run:
+        with patch("infra_core.engine.evolution_utils.subprocess.run") as mock_run:
             # First call: list issues (filtered by gh to only notification issues)
             # Then comment+close for #700 only
             mock_run.side_effect = [
@@ -138,7 +136,7 @@ class TestCloseExpiredNotifications:
                 MagicMock(returncode=0, stdout=""),  # comment #700
                 MagicMock(returncode=0, stdout=""),  # close #700
             ]
-            result = close_expired_notifications()
+            result = _eu().close_expired_notifications()
 
             # Should close exactly 1 issue (#700)
             assert result == 1, "Should close exactly 1 expired notification issue"
@@ -158,13 +156,13 @@ class TestCloseExpiredNotifications:
             }
         ]
 
-        with patch("evolution_utils.subprocess.run") as mock_run:
+        with patch("infra_core.engine.evolution_utils.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 MagicMock(returncode=0, stdout=json.dumps(mock_issues)),
                 MagicMock(returncode=0, stdout=""),  # comment
                 MagicMock(returncode=0, stdout=""),  # close
             ]
-            close_expired_notifications()
+            _eu().close_expired_notifications()
 
             # Check the comment call contains TTL information
             assert mock_run.call_count == 3, "Should make 3 calls: list, comment, close"
@@ -187,9 +185,9 @@ class TestCloseExpiredNotifications:
             }
         ]
 
-        with patch("evolution_utils.subprocess.run") as mock_run:
+        with patch("infra_core.engine.evolution_utils.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues))
-            close_expired_notifications()
+            _eu().close_expired_notifications()
 
             calls = mock_run.call_args_list
             close_calls = [c for c in calls if "issue close" in str(c)]
@@ -199,18 +197,18 @@ class TestCloseExpiredNotifications:
 
     def test_empty_issue_list_no_error(self):
         """Empty issue list → no error, no calls."""
-        with patch("evolution_utils.subprocess.run") as mock_run:
+        with patch("infra_core.engine.evolution_utils.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="[]")
-            close_expired_notifications()
+            _eu().close_expired_notifications()
 
             # Should not crash
             assert mock_run.called
 
     def test_already_closed_issue_not_in_query(self):
         """Query only fetches OPEN issues (already-closed not affected)."""
-        with patch("evolution_utils.subprocess.run") as mock_run:
+        with patch("infra_core.engine.evolution_utils.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="[]")
-            close_expired_notifications()
+            _eu().close_expired_notifications()
 
             # Verify the query includes state:open
             call_args = mock_run.call_args[0][0]
@@ -230,13 +228,13 @@ class TestCloseExpiredNotifications:
             }
         ]
 
-        with patch("evolution_utils.subprocess.run") as mock_run:
+        with patch("infra_core.engine.evolution_utils.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 MagicMock(returncode=0, stdout=json.dumps(mock_issues)),
                 MagicMock(returncode=0, stdout=""),  # comment
                 MagicMock(returncode=0, stdout=""),  # close
             ]
-            result = close_expired_notifications()
+            result = _eu().close_expired_notifications()
 
             # At exactly TTL boundary, should close
             assert result == 1, "Issue at exact TTL boundary should be closed"
@@ -255,9 +253,9 @@ class TestCloseExpiredNotifications:
             }
         ]
 
-        with patch("evolution_utils.subprocess.run") as mock_run:
+        with patch("infra_core.engine.evolution_utils.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps(mock_issues))
-            result = close_expired_notifications()
+            result = _eu().close_expired_notifications()
 
             # Should not close any issues
             assert result == 0, "Issue one day before TTL should NOT be closed"

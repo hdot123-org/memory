@@ -8,7 +8,7 @@ memory-core 仓库的自主改进循环。扫描器每 30 分钟运行，审计�
 evolution-scan.yml (cron */30 * * * *)
     │
     ▼
-evolution_scanner.py (200 行，无状态)
+infra_core.engine.evolution_scanner (200 行，无状态)
     ├─ 检查杀开关 (DISABLED 文件 / EVOLUTION_DISABLED)
     ├─ 执行审计工具 (3 个)
     ├─ 归一化 → 去重 → 回归检测 → 严重度排序
@@ -33,8 +33,8 @@ auto-merge.yml 自动合并 (CI 通过后)
 
 | 组件 | 路径 | 说明 |
 |------|------|------|
-| 扫描器 | `scripts/evolution_scanner.py` | 200 行无状态扫描器 |
-| 审计适配器 | `scripts/evolution_adapters.py` | 审计工具输出适配 + 安全清洗 (162 行) |
+| 扫描器 | `infra_core.engine.evolution_scanner` | 200 行无状态扫描器（由 infra-core 包提供） |
+| 审计适配器 | `infra_core.engine.evolution_adapters` | 审计工具输出适配 + 安全清洗 (162 行，由 infra-core 包提供) |
 | 治理配置 | `.evolution/config.yml` | 人工维护，扫描器只读不写 |
 | 扫描 Workflow | `.github/workflows/evolution-scan.yml` | cron + workflow_dispatch + concurrency + actions/cache |
 | 治理 Workflow | `.github/workflows/evolution-governance.yml` | 保护路径检查，阻止非 owner 修改 |
@@ -45,11 +45,11 @@ auto-merge.yml 自动合并 (CI 通过后)
 
 ## 扫描器详解
 
-`scripts/evolution_scanner.py` 是一个 200 行的无状态脚本，每个 tick 执行以下流程：
+`infra_core.engine.evolution_scanner` 是一个 200 行的无状态模块，每个 tick 执行以下流程：
 
 1. **杀开关检查** — 检测 `.evolution/DISABLED` 文件或 `EVOLUTION_DISABLED` 环境变量，存在则立即退出 (exit 0)
 2. **加载配置** — 读取 `.evolution/config.yml`
-3. **执行审计工具** — 依次运行 3 个配置的审计工具，60 秒超时，单工具崩溃不影响其他工具。`evolution_adapters.py` 中的适配器函数将各工具输出归一化为 `Finding` 结构
+3. **执行审计工具** — 依次运行 3 个配置的审计工具，60 秒超时，单工具崩溃不影响其他工具。`evolution_adapters` 中的适配器函数将各工具输出归一化为 `Finding` 结构
 4. **归一化** — 适配器函数 (`adapt_daily_audit`, `adapt_consistency_check`, `adapt_error_patterns`) 将工具输出统一为 `Finding` 数据结构 (rule_id, severity, category, description, location, evidence)
 5. **回归检测** — 对比历史快照中已解决 (resolved) 的问题，若复发则提升严重度为 critical
 6. **去重** — 查询已打开的 evolution-found 和 evolution-isolated Issue（`--limit 200` + OR 语义搜索），按 (rule_id, location) 去重
@@ -109,13 +109,13 @@ audit_tools:                              # 审计工具列表
 - **触发**：`pull_request_target` (针对 main 分支)
 - **保护路径**：
   - `.evolution/config.yml`
-  - `scripts/evolution_scanner.py`
+  - `scripts/**`（整个 scripts 目录）
   - `.github/workflows/evolution-*.yml`
 - **规则**：PR 作者不是 `@busiji` 时，修改保护路径直接 `exit 1` 阻断
 
 ### CODEOWNERS
 
-`.evolution/`、`scripts/evolution_scanner.py`、evolution workflows 均要求 `@busiji` 审批。
+`.evolution/`、`scripts/**`、evolution workflows 均要求 `@busiji` 审批。
 
 ## Token 策略
 
@@ -178,7 +178,7 @@ GitHub Issue (DISPATCH_TOKEN, author=hdot123) → Linear 原生 GitHub Issue Syn
 
 ```bash
 # 需要 gh CLI 已认证
-python scripts/evolution_scanner.py
+python -m infra_core.engine.evolution_scanner
 ```
 
 ### 杀开关
@@ -190,7 +190,7 @@ touch .evolution/DISABLED
 # 停止扫描器 (方式二：环境变量)
 export EVOLUTION_DISABLED=1
 
-python scripts/evolution_scanner.py  # 输出 "Kill switch active, exiting" 后立即退出
+python -m infra_core.engine.evolution_scanner  # 输出 "Kill switch active, exiting" 后立即退出
 
 # 恢复扫描器
 rm .evolution/DISABLED
@@ -207,12 +207,12 @@ pytest tests/test_evolution_scanner.py -v --no-cov
 
 ```bash
 # 扫描器必须不超过 200 行
-wc -l scripts/evolution_scanner.py
+python -c "import infra_core.engine.evolution_scanner as m; from pathlib import Path; print(sum(1 for _ in open(Path(m.__file__).with_suffix('.py'))))"
 ```
 
 ### 手动触发扫描
 
-在 GitHub Actions 页面手动触发 `Evolution Scan` workflow (workflow_dispatch)，或本地运行 `python scripts/evolution_scanner.py`。
+在 GitHub Actions 页面手动触发 `Evolution Scan` workflow (workflow_dispatch)，或本地运行 `python -m infra_core.engine.evolution_scanner`。
 
 ## 文件结构
 
@@ -222,10 +222,6 @@ wc -l scripts/evolution_scanner.py
 ├── suppress.json              # 人工维护的 finding 抑制清单 (git tracked)
 ├── findings_over_time.json    # 运行状态快照 (gitignored, CI actions/cache 持久化)
 └── DISABLED                   # 杀开关 (存在即停止，按需创建)
-
-scripts/
-├── evolution_scanner.py       # 无状态扫描器 (≤200 行)
-└── evolution_adapters.py      # 审计工具适配 + 安全清洗 (162 行)
 
 tests/
 └── test_evolution_scanner.py  # 43 个测试
@@ -237,3 +233,5 @@ tests/
 .github/
 └── CODEOWNERS                 # 治理路径 → @busiji
 ```
+
+引擎模块（`infra_core.engine.evolution_scanner` / `evolution_adapters` 等）由 infra-core 包提供，不再本地存放副本。

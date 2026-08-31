@@ -25,6 +25,6 @@ jobs:
         uses: hdot123-org/infra-core/actions/governance-check@main
         with:
           owner-login: hdot123
-          # memory-core 五类保护路径（与切换前内联 grep 模式全集对等）
-          protected-patterns: '.evolution/**,scripts/evolution_*.py,scripts/**,.github/workflows/evolution-*.yml,.github/CODEOWNERS'
+          # memory-core 四类保护路径（与切换前内联 grep 模式全集对等）
+          protected-patterns: '.evolution/**,scripts/**,.github/workflows/evolution-*.yml,.github/CODEOWNERS'
           github-token: ${{ secrets.GITHUB_TOKEN }}
