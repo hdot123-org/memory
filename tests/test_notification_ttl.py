@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 def _eu():
     """Lazy import of engine evolution_utils (VAL-M1-104: no engine import at module top)."""
     import infra_core.engine.evolution_utils as eu
+
     return eu
 
 
