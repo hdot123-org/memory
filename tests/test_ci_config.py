@@ -621,6 +621,116 @@ class TestScanHeartbeatThinCallerContract:
             assert not uses.endswith("@main"), f"{name} 禁止浮动 @main 引用（INFRA-651：模板漂移绕过引擎 pin）"
 
 
+class TestOrgRefsAnonymouslyResolvable:
+    """INFRA-651（reopen #3）：公共仓引用的 org reusable/action 必须可匿名解析。
+
+    事故链（2026-09-01 14:56Z → 2026-09-02 03:37Z，约 13h 定时管道零 job 停摆）：
+    本仓转公开而 infra-core 仍私有 → 公共仓无法解析私有 reusable workflow，
+    scan/heartbeat 全部定时 run run 级 startup_failure（零 job）→ 仓内互拉
+    监控（INFRA-578/588）因同源引用一起下线、公共仓 cron 槽位被 load-shed
+    丢弃 → EVOLUTION_HEARTBEAT_STALE 第 4 次触发（self-audit 恢复后补报）。
+    infra-core 转公开 + DISPATCH_TOKEN 补 Actions 权限（INFRA-722）后恢复。
+
+    本守护把「org 依赖仓可见性回退」的发现时机从 scanner 事后数小时提前到
+    下一次 CI 即拦截：匿名 HTTP 探针逐个解析 uses 目标（私有仓 → 404）。
+    与 test_thin_caller_tags_match_engine_pin（版本锁定）互补：那把锁管
+    「引哪个版本」，这把锁管「匿名能不能解析到」。
+    """
+
+    @staticmethod
+    def _collect_org_uses() -> dict[str, set[str]]:
+        """收集全仓 workflows 的 hdot123-org/* uses 引用（目标 → ref 集合）。
+
+        YAML 树遍历而非文本 grep：同时覆盖 job 级 reusable workflow 与
+        step 级 composite action（infra-core/actions/*），且免疫注释行。
+        解析成本为微秒级（十几个 YAML 文件），各测试直接调用免 fixture。
+        """
+
+        def _walk(node):
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    if key == "uses" and isinstance(value, str):
+                        yield value
+                    else:
+                        yield from _walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    yield from _walk(item)
+
+        found: dict[str, set[str]] = {}
+        for path in sorted((REPO_ROOT / ".github" / "workflows").glob("*.yml")):
+            for uses in _walk(yaml.safe_load(path.read_text(encoding="utf-8"))):
+                if uses.startswith("hdot123-org/") and "@" in uses:
+                    target, _, ref = uses.rpartition("@")
+                    found.setdefault(target, set()).add(ref)
+        return found
+
+    def _org_uses_refs(self) -> dict[str, set[str]]:
+        found = self._collect_org_uses()
+        assert found, "本仓管道全部委托 hdot123-org/*（M4 thin caller 架构），uses 引用不可能为空"
+        return found
+
+    def test_org_refs_are_version_tags(self):
+        """全部 org uses 引用钉 vX.Y.Z 版本 tag，禁浮动分支。
+
+        test_thin_caller_tags_match_engine_pin 只覆盖 scan/heartbeat 两个
+        caller 与 pyproject pin 的一致性；本断言把钉 tag 纪律推广到全部 org
+        引用面（auto-merge/branch-cleanup/droid-review/watchdog/setup-labels/
+        governance，#1096 曾一次性钉 8 处）——浮动分支让 infra-core 声明面
+        先行漂移绕过引擎 pin（M5 键名切换窗 6h 断链实证）。
+        """
+        import re
+
+        org_uses_refs = self._org_uses_refs()
+        violations = [
+            f"{target}@{ref}"
+            for target, refs in sorted(org_uses_refs.items())
+            for ref in sorted(refs)
+            if not re.fullmatch(r"v\d+\.\d+\.\d+", ref)
+        ]
+        assert not violations, (
+            "org uses 引用必须钉 vX.Y.Z 版本 tag（INFRA-651：浮动分支让 infra-core "
+            f"先行漂移绕过引擎 pin）：{violations}"
+        )
+
+    def test_org_refs_anonymously_resolvable(self):
+        """每个 org uses 目标必须可匿名 HTTP 解析（公共仓依赖可见性守护）。
+
+        探针 = curl HEAD https://github.com/<org>/<repo>/archive/<ref>.tar.gz
+        （匿名、跟随重定向）：公共仓 + 有效 tag → 200；私有/已删除 → 404。
+        GitHub 限制公共仓不得引用私有 reusable workflow/action——违反时所有
+        引用该目标的 run 直接 run 级 startup_failure（零 job），包括本守护
+        所在的 CI 本身，因此探针失败 = 即时红灯而非静默断链。
+        网络级故障（DNS/超时）→ skip（本地离线开发容错）；HTTP 4xx/5xx →
+        fail（可见性回退/引用失效，不允许被网络抖动掩盖）。
+        """
+        org_uses_refs = self._org_uses_refs()
+        offline: list[str] = []
+        violations: list[str] = []
+        for target, refs in sorted(org_uses_refs.items()):
+            repo = target.split("/")[1]  # hdot123-org/<repo>/{.github/workflows|actions}/...
+            for ref in sorted(refs):
+                url = f"https://github.com/hdot123-org/{repo}/archive/{ref}.tar.gz"
+                probe = subprocess.run(
+                    ["curl", "-sI", "-o", "/dev/null", "-w", "%{http_code}", "-L", "--max-time", "30", url],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                if probe.returncode != 0:
+                    offline.append(f"{url} (curl exit {probe.returncode})")
+                    continue
+                status = probe.stdout.strip()
+                if status.isdigit() and int(status) >= 400:
+                    violations.append(
+                        f"{target}@{ref} → HTTP {status}（私有/已删除：公共仓定时管道将 "
+                        "run 级 startup_failure 零 job，INFRA-651 reopen #3 事故类）"
+                    )
+        assert not violations, "org uses 引用存在不可匿名解析的目标:\n" + "\n".join(violations)
+        if offline:
+            pytest.skip(f"网络不可用，跳过匿名解析守护: {offline}")
+
+
 class TestYAMLValidity:
     """Ensure all modified YAML files are valid."""
 
