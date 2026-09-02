@@ -326,6 +326,7 @@ jobs:
       - uses: ./.github/actions/ensure-jq
       - name: Verify webhook secrets
         run: |
+          set -euo pipefail
           if [ -z "$WEBHOOK_URL" ]; then
             echo "::warning::N8N_CI_WEBHOOK_URL secret is not configured, skipping notification"
             exit 0
@@ -345,6 +346,7 @@ jobs:
           BRANCH: ${{ github.head_ref || github.ref_name }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
         run: |
+          set -euo pipefail
           PAYLOAD=$(jq -n \
             --arg repo "${{ github.repository }}" \
             --argjson pr_number "${{ github.event.pull_request.number || 0 }}" \

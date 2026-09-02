@@ -29,7 +29,7 @@ Linear Issue 关闭 (Linear GitHub 集成检测 PR merge)
 ### 链路说明
 
 1. **Scanner 定时运行** — GitHub Actions cron 每 30 分钟触发一次 `evolution-scan.yml`
-2. **Scanner 创建 GitHub Issue** — scanner 引擎（infra-core 仓 `infra_core.engine.evolution_scanner`；M5 收缩后本仓仅保留回滚副本）的 `create_issue()` 函数创建 issue
+2. **Scanner 创建 GitHub Issue** — scanner 引擎（infra-core 仓 `infra_core.engine.evolution_scanner`；M5 收缩后执行体全部在 infra-core，本仓仅保留消费配置）的 `create_issue()` 函数创建 issue
 3. **GitHub Issue 同步到 Linear** — 通过 Linear 原生 GitHub 集成自动完成，Linear issue 带有 `syncedWith: github` 标记
 4. **Linear issue 下有 linkback 评论** — linear-code bot 在 GitHub issue 下添加 linkback 评论
 5. **Linear issue 进入 infra 工作流** — 在 Linear 中可管理负责人、状态、PR 附件等

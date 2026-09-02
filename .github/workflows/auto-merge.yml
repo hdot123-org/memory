@@ -3,7 +3,7 @@ name: Auto Merge
 # M4 门禁切换（gate-watchdog-automerge）：本文件为 thin caller——触发面 + 事件门控
 # + concurrency 留在本地（github 事件上下文只在 caller 求值，VAL-GATE-106 契约），
 # resolve + triage + merge 执行体委托 infra-core reusable workflow
-# （auto-merge-pipeline.yml@main，merge action 为引擎仓 actions/auto-merge——
+# （auto-merge-pipeline.yml@v0.7.2，merge action 为引擎仓 actions/auto-merge——
 # M6 VAL-HARD-104 自原共享仓收编，该仓已退役归档）。
 #
 # 为什么用 workflow_run + schedule 而非 check_run（INFRA-212）

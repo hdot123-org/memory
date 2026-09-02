@@ -509,9 +509,9 @@ class TestScanHeartbeatThinCallerContract:
     def test_scan_single_job_delegation(self, scan_data):
         """scan job 纯 uses 委托 infra-core reusable，无本地 steps。
 
-        INFRA-651: uses 钉 tag v0.7.2（与 pyproject 引擎 pin 同版本）——浮动
-        @v0.7.2 期间 infra-core 模板先行漂移会让本仓定时管道 run 级
-        startup_failure（M5 键名切换窗 6h 断链实证）。升级 = pyproject pin
+        INFRA-651: uses 钉 tag v0.7.2（与 pyproject 引擎 pin 同版本）——禁浮动
+        @main，钉 @v0.7.2；浮动期间 infra-core 模板先行漂移会让本仓定时管道
+        run 级 startup_failure（M5 键名切换窗 6h 断链实证）。升级 = pyproject pin
         + 此处 tag 同 PR 双写。
         """
         jobs = scan_data["jobs"]
@@ -560,7 +560,7 @@ class TestScanHeartbeatThinCallerContract:
         """heartbeat job 纯 uses 委托；SCANNER_WORKFLOW 契约由引擎仓锁定。
 
         INFRA-651: uses 钉 tag v0.7.2，与 scan caller 及 pyproject 引擎 pin
-        同版本（模板/引擎版本锁定，禁浮动 @v0.7.2）。
+        同版本（模板/引擎版本锁定，禁浮动 @main，钉 @v0.7.2）。
         """
         jobs = heartbeat_data["jobs"]
         assert list(jobs.keys()) == ["heartbeat"]
