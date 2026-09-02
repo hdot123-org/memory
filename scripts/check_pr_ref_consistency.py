@@ -66,7 +66,8 @@ def extract_fixes_infra_ids(pr_body: str) -> set[str]:
 def extract_linkback_from_comments(comments_text: str) -> str | None:
     """Extract INFRA-xxx ID from linear-linkback comment.
 
-    Reuses the extraction logic from evolution_utils.extract_linkback_anchor().
+    Reuses the extraction logic from
+    infra_core.engine.evolution_utils.extract_linkback_anchor().
     Searches for the linear-linkback marker and extracts the INFRA ID from
     the href or anchor text.
 

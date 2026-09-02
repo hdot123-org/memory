@@ -97,7 +97,7 @@ def scan_doc_classification() -> list[dict[str, str]]:
 def main() -> int:
     # CLI skeleton shared with check_boundary.py (INFRA-559).
     # Restore script dir to sys.path (PYTHONSAFEPATH blocks auto-insert;
-    # same P1-A pattern as evolution_scanner.py).
+    # same P1-A pattern as infra_core.engine.evolution_scanner).
     _script_dir = str(Path(__file__).resolve().parent)
     if _script_dir not in sys.path:
         sys.path.insert(0, _script_dir)
