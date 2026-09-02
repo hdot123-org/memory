@@ -50,7 +50,7 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "ci-complete-github",
+        "path": "webhook/events",
         "responseMode": "responseNode",
         "options": {}
       },
@@ -59,7 +59,7 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [240, 300],
-      "webhookId": "ci-complete-github"
+      "webhookId": "webhook-events-router"
     },
     {
       "parameters": {
@@ -156,7 +156,7 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
 1. 添加 **Webhook** 节点
 2. 配置:
    - **HTTP Method**: `POST`
-   - **Path**: `ci-complete-github`
+   - **Path**: `webhook/events`
    - **Response Mode**: `Response Node`（需要最后的 Respond to Webhook 节点配合）
 3. 保存后 n8n 会生成一个测试 URL 和一个生产 URL:
    - 测试 URL: 在 n8n 面板 Webhook 节点中查看（`/webhook-test/` 前缀，仅在 Test workflow 监听期间有效）

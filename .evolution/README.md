@@ -41,7 +41,7 @@ auto-merge.yml 自动合并 (CI 通过后)
 | CODEOWNERS | `.github/CODEOWNERS` | 治理路径规则 (.evolution/ → @busiji) |
 | 运行状态 | `.evolution/findings_over_time.json` | 有界快照 (上限 100 条，gitignored) |
 | 杀开关 | `.evolution/DISABLED` 或 `EVOLUTION_DISABLED` 环境变量 | 二选一即停止扫描器 |
-| 测试 | `tests/test_evolution_scanner.py` | 43 个测试覆盖全部扫描器 + 适配器逻辑 |
+| 测试 | `tests/test_ci_config.py` 等（契约测试族） | evolution 引擎测试已随 M1 F2 迁移至 infra-core 仓 `tests/test_evolution_scanner.py`；本仓保留与 workflow 配置相关的契约测试 |
 
 ## 扫描器详解
 
@@ -200,7 +200,9 @@ unset EVOLUTION_DISABLED
 ### 运行测试
 
 ```bash
-pytest tests/test_evolution_scanner.py -v --no-cov
+# 契约测试（本仓 workflow 配置相关）
+pytest tests/test_ci_config.py -v --no-cov
+# 引擎测试已迁移至 infra-core 仓 tests/test_evolution_scanner.py
 ```
 
 ### 检查行数限制
@@ -224,7 +226,7 @@ python -c "import infra_core.engine.evolution_scanner as m; from pathlib import 
 └── DISABLED                   # 杀开关 (存在即停止，按需创建)
 
 tests/
-└── test_evolution_scanner.py  # 43 个测试
+└── test_ci_config.py          # 契约测试族（evolution workflow 配置相关；引擎测试已迁移至 infra-core）
 
 .github/workflows/
 ├── evolution-scan.yml         # cron 扫描 + workflow_dispatch + actions/cache
