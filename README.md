@@ -219,7 +219,7 @@ memory-promote --version
 #### 版本同步（引擎在 infra-core）
 
 版本同步引擎自 M3 起迁移至 infra-core（`infra_core.engine.version_sync`，
-CLI 入口 `infra-sync-versions`）。全局模式遍历 `path-index.json` 中的每个项目，
+CLI 入口 `infra-cli version-sweep`）。全局模式遍历 `path-index.json` 中的每个项目，
 在升级门允许时修补三个文件：`ownership.toml`、`memory.lock` 和 `adapter.toml`。
 升级门允许 patch 和 minor 版本升级（要求 `schema_version` 不变）；阻止 major
 版本升级或 Schema 变更，此情况下仍修补 `ownership.toml` 以保持向后兼容。
@@ -237,7 +237,7 @@ CLI 入口 `infra-sync-versions`）。全局模式遍历 `path-index.json` 中�
 | 降级（target < current） | 拦截，仅记警告 |
 
 - **失败安全**：探测或同步链路的任何异常均不阻塞 hook 主链（`exit 0` 语义）
-- **手动 CLI**：`infra-sync-versions --target <项目>`（infra-core 入口；推荐单项目模式；全局模式的 path-index 以 cwd 为键存在错配，详见 [`path-index` 规范](docs/specs/PATH_INDEX_SPEC.md)）
+- **手动 CLI**：`infra-cli version-sweep --target <项目>`（infra-core 入口；推荐单项目模式；全局模式的 path-index 以 cwd 为键存在错配，详见 [`path-index` 规范](docs/specs/PATH_INDEX_SPEC.md)）
 - **测试**：`tests/test_auto_version_follow.py`，17 用例覆盖六分支
 
 #### `memory-lifecycle-rebuild`
@@ -347,6 +347,10 @@ SessionEnd hook 运行在 Factory 会话关闭的最后时刻，必须在严格�
 
 `render_wrapper()` 在安装时通过 `shutil.which()` 将裸 `memory-hook-gateway` 解析为绝对路径，写入 wrapper 脚本。这解决了 Factory daemon 执行上下文中 PATH 未正确展开导致命令找不到的问题。
 
+## CI 维护工作流（thin caller）
+
+本仓的维护类 workflow（`evolution-scan` / `evolution-heartbeat` / `evolution-governance` / `droid-review` / `auto-merge` / `branch-cleanup`）均为 thin caller：执行体由 `hdot123-org/infra-core` 的 reusable workflows 与 composite actions（含 `actions/auto-merge`）承载，经 tag pin 引用（当前 `@v0.7.2`，与 `pyproject.toml` 中的 infra-core 依赖 pin 同版本）。新仓库接入引擎（thin-caller 模板 + 接入步骤）见 infra-core 的[消费仓接入指南](https://github.com/hdot123-org/infra-core/blob/main/docs/onboarding/consumer-onboarding.md)。
+
 ## Evolution Scanner 与 Issue 自动维护
 
 memory-core 仓库自身通过 evolution scanner（`infra_core.engine.evolution_scanner`，GitHub Actions cron 每 30 分钟触发）进行自动化维护。scanner 会在审计发现问题时自动创建带 `evolution-found` 标签的 GitHub Issue，并在问题自愈后自动关闭，避免 Issue 无限堆积。
@@ -371,55 +375,17 @@ scanner 每次运行时会调用 `_reopen_closed_issue()`（`infra_core.engine.e
 
 ### 分支清理
 
-`scripts/branch_cleanup.sh` 从 `.github/workflows/branch-cleanup.yml` 中提取，提供两种模式：
+分支清理执行体已迁至 infra-core：本仓 `.github/workflows/branch-cleanup.yml` 为 thin caller（`uses: hdot123-org/infra-core/actions/branch-cleanup@v0.7.2`），仓库内不再持有 `scripts/branch_cleanup*.sh` 副本。`--scheduled`（每小时扫描孤立分支）与 `--immediate <branch>`（PR 合并后定点清理）两种模式由 composite action 提供。
 
-- `--scheduled` — 定时任务模式，扫描所有远程分支，删除无 open PR 且最后 commit 超过 24 小时的孤立分支
-- `--immediate <branch>` — 立即删除指定分支（用于 PR 合并后清理）
-
-#### 退役清单人工裁决通道
-
-`scripts/branch_cleanup_retired.txt`（INFRA-388）为被 `branch_cleanup.sh` unique-commits 守卫永久保护的分支提供人工裁决退出通道。清单格式为 `<branch> | <INFRA ref> | <evidence>`（三栏 `|` 分隔，每栏非空），每行记录分支名、关联 INFRA 引用与退役证据链。合法用途分两类：
-
-1. **被 main 等价实现取代**：分支 PR 已 MERGED/CLOSED，其内容通过另一 PR 以等价实现落入 main，content-containment 检查无法识别跨实现等价性
-2. **一次性验证 fixture 分支**：PR body 显式声明 Do-NOT-merge（如 "Do NOT merge" 或 "此 PR 不应被合并"），验证完成后即废弃（如 PR #921、#922）
-
-退役清单经 PR review 合并，即完成人工审批。清单上的分支在下一轮 hourly scheduled cleanup 中被豁免 unique-commits 保护、落入删除路径（MERGED 1h / CLOSED 4h / ORPHAN 24h 分层阈值自动生效）。
-
-#### Tracker 播报行为（每周脉搏）
-
-`scripts/branch_cleanup_issue.sh` 管理单例 tracker issue（打 `automation,branch-cleanup` 双标签）。当 protected 分支列表非空且当前无 open tracker 时，自动创建 tracker issue 列出所有残留分支；集合变化时原位更新已有 issue（增删项以 comment 记录）；零 actionable 时自动关闭。配合 VAL-NTF-002 的 7 天 TTL（evolution scanner `close_expired_notifications()` 强关过期 tracker），若残分支在 TTL 关闭后仍然存在，下一小时 cron 将重建 tracker，构成「每周脉搏」循环——人/agent 看到 tracker 后核实证据并喂入退役清单，合并后分支即在下一次 cleanup 中自动删除。
+退役清单人工裁决通道（`branch_cleanup_retired.txt`，INFRA-388）与 tracker 播报（每周脉搏 + 7 天 TTL）机制随 action 迁至 infra-core 仓库（`actions/branch-cleanup/`），protected 分支的豁免裁决在 infra-core 侧的清单中维护。
 
 heartbeat 告警自愈（`resolve_cleared_alerts()`）在本轮 tick 中异常类型全部消失时自动关闭告警 issue 并附中文自愈评论；info 级持续 finding 经 `check_persistent_info_findings()` 连续 ≥10 次快照出现后输出 `suppress.json` 条目提案（只打印不写盘，过期自动解除）。管道全链路（含 GATE A 三条放行路径与单向同步决策）见 [Issue 流转链路文档 §10](docs/architecture/issue-flow.md)。
 
 完整的 GitHub↔Linear Issue 流转链路与职责约定见 [Issue 流转链路文档](docs/architecture/issue-flow.md)。
 
-## webhook-scripts/（CI 通知与治理脚本镜像）
+## webhook-scripts（已迁 infra-core）
 
-`webhook-scripts/` 是 `~/.factory/webhook/scripts/` 生产脚本的受管镜像。生产侧是 single source of truth；本目录经 PR 回填保持与生产侧 sha256 一致，作为审计与回滚依据。
-
-**同步机制：** `scripts/sync-webhook-scripts.sh` 负责正向同步（repo → 生产），`--check` 模式执行漂移检查。受管文件清单定义在 `webhook-scripts/MANIFEST.sh`（`MANAGED_FILES` + `MANAGED_LIB_FILES`，`lib/` 目录整体纳管，另含跨目录同步映射 `CROSS_DIR_MAPPINGS`）。
-
-**脚本清单：**
-
-| 脚本 | 职责 |
-|------|------|
-| `trigger-ci-droid.sh` | CI 完成后注入消息；事件时重绑定 session；读取端按 `source` 分流 —— scanner 来源静默清理（gh 不可用走保守路径），session 来源探活 404 时交叉校验 sessions-index，fallback prompt 附带 `gh pr view` 上下文 |
-| `write-pending-ci.sh` | PR 注册路由；支持 `--source session\|scanner` 与 `--context <意图>`（旧位置参数兼容，缺省默认 session） |
-| `ci-timeout-watchdog.sh` | CI 超时兜底派发；scanner 超期文件 Phase A 跳过，畸形时间戳终态走 Phase B 处理 |
-| `reconcile-evolution.sh` | 治理对账：DRY_RUN 守卫 + 127/126 分流 + E4 marker 豁免；红 PR 清道夫（open + CI 红 + 超 507min 阈值 → comment-then-close，双防抖，守则禁止静默关 PR） |
-| `trigger-droid.sh` / `trigger-error-droid.sh` | Linear / PostHog 错误触发器 |
-| `wiki-refresh.sh` | wiki 刷新（双臂 token 验证） |
-| `ci-failed.sh` | CI 失败通知 |
-| `webhook-hygiene.sh` | 每日 04:30 TTL 清理 |
-| `local_branch_cleanup.sh` | 本地分支清理 |
-| `lib/posthog.sh` | 统一 PostHog 上报（`POSTHOG_API_KEY` 走 env），回执写日志不再落 `/dev/null` |
-| `lib/op-mcp.sh` | 1Password 凭据链（已入仓纳管） |
-
-**质量门禁：** CI 对全仓 `*.sh` 执行 shellcheck（以 runner 预装工具链为准，不强制最低版本）；`sync-webhook-scripts.sh` 在同步落盘前对每个受管文件执行 `bash -n` + shellcheck（shell）/ `py_compile`（Python）校验，失败即 fail-closed 回滚；`tests/` 下有行为回归测试（`test_write_pending_ci_hardening.py`、`test_m5_rebinding.py`、`test_sync_webhook_scripts.py`、`test_red_pr_sweeper.py` 等，覆盖来源分流 / 红 PR 清道夫 / lib 漂移等场景）。
-
-**关键约束：** `POSTHOG_API_KEY` 仅通过环境变量注入（plist `EnvironmentVariables`），脚本内禁止出现 `phc_` 字面量。
-
-**修改纪律：** 先改生产侧（原子落盘：install + mv）→ 回填本目录 → 提 PR。
+`~/.factory/webhook/scripts/` 生产脚本的受管镜像（trigger 家族、`MANIFEST.sh`、`sync-webhook-scripts.sh` 同步/漂移检查机制及对应行为回归测试）自引擎迁移后统一由 infra-core 仓库承载（infra-core `webhook-scripts/`），本仓不再持有镜像副本。生产侧仍是 single source of truth，修改纪律不变：先改生产侧（原子落盘）→ 回填 infra-core → 提 PR。
 
 ## 文档
 
