@@ -66,3 +66,47 @@ inline wins），待引擎支持 jsonl stdout 后移除。
 - 全量 pytest（fresh venv，见 PR CI）；ruff / actionlint 全绿
 - VAL-SHRINK-009：五 infra 工具 + 两原生工具对本仓执行 `--json` 全 executed 且 rule_id 非空
 - VAL-HARD-107：`scripts/check_droid_review.sh` 保留，ci-ok 契约测试绿
+
+## 6. 窗口关闭记录（2026-09-02，close-rollback-release-window）
+
+**权威口径（编排器裁定 2026-08-30）**：本窗口的关闭条件以 close-rollback-release-window
+feature 契约为准——release v0.45.0（含 M5 收缩）发版后 **≥3 天稳定周期**（无回滚事件、
+scan/heartbeat tick 正常）。§2 表中「下一个 release + ≥1 个完整扫描周期绿」系 shrink
+worker 自录的弱口径，无权放宽计划，特此注明。
+
+**时间锚点**：release v0.45.0 = 2026-08-30T09:44:45Z，门成熟 = 2026-09-02T09:44Z
+（两锚点取严：M4 scan/heartbeat 切换 #1071 = 2026-08-29T21:32Z，+3 天 = 09-01T21:32Z；
+release 锚更严）。
+
+**实际关闭载体**：四件套 `scripts/evolution_{scanner,heartbeat,utils,adapters}.py`
+由并行清理流的 **PR #1097**（merged 2026-08-31T04:49:30Z）删除——早于门成熟约 29.5
+小时。发布后至本记录时刻零 revert/回滚事件（`git log` 逐 commit 核验），窗口实质
+稳定期已满（发版至门成熟 3 天 + 门后 1 天），提前删除未造成回滚敞口损失。
+close-rollback-release-window 派发（2026-09-02T23:33Z，门后）按验证优先流程核对既成
+状态而非重复执行。
+
+**处置偏差（#1097 相对本 feature 原配方）**：
+- `tests/test_pr_merged_verification.py` 未删除，改为 import
+  `infra_core.engine.evolution_utils`（importer 重指向在役引擎模块，测试保留为覆盖）；
+- `tests/test_governance_rename.py` fixture 已适配；`pyproject.toml` coverage source
+  三条目与 deptry ignore 已移除；
+- `evolution-governance.yml` 的 `scripts/evolution_*.py` protected-patterns glob 与
+  `.github/CODEOWNERS` 对应保护行由 #1097 一并移除（原 grep 白名单项随之失效）。
+
+**本 PR 收尾**：`check_boundary.py` / `check_doc_classification.py` /
+`check_pr_ref_consistency.py` 三处陈旧注释重指向 `infra_core.engine.*` 路径。全仓
+grep `evolution_(scanner|heartbeat|utils|adapters)` 零本地文件 importer 残留（白名单：
+`infra_core.engine.*` 模块路径引用与 README/.evolution 文档表述）。
+
+**error_patterns override 复评**：inline override 已随 #1079 移除（引擎 jsonl stdout
+支持落地后），本子项确认无遗留动作。
+
+**VAL-CROSS-005 fresh window 证据**（供 m7 user-testing 复验，全文见 mission
+evidence/m7-close-window/）：窗口 2026-09-01T23:33Z..09-02T23:33Z 内 scheduled scan
+success ×5（06:26Z 起）、scheduled heartbeat success ×4（05:07Z 起）、零新
+evolution-heartbeat issue；09-01T21:24Z..09-02T01:25Z 有 4 次 scheduled 启动失败
+（run 零 job，引擎未执行，infra-core 同窗零投递，属 INFRA-578 平台投递家族，非
+#1092/#1094 修复面回归）。watch item #1090：08-30T22:07Z tick 的
+`auto_close_resolved` 按 self_audit 保护显式 skip（日志：「Skip auto-close #1090:
+self-audit finding … requires manual/Droid resolution」），22:46:36Z 的关闭为人工
+带外操作，此后 3 天无振荡。
