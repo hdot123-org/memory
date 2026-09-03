@@ -349,7 +349,7 @@ SessionEnd hook 运行在 Factory 会话关闭的最后时刻，必须在严格�
 
 ## CI 维护工作流（thin caller）
 
-本仓的维护类 workflow（`evolution-scan` / `evolution-heartbeat` / `evolution-governance` / `droid-review` / `auto-merge` / `branch-cleanup`）均为 thin caller：执行体由 `hdot123-org/infra-core` 的 reusable workflows 与 composite actions（含 `actions/auto-merge`）承载，经 tag pin 引用（当前 `@v0.7.2`，与 `pyproject.toml` 中的 infra-core 依赖 pin 同版本）。新仓库接入引擎（thin-caller 模板 + 接入步骤）见 infra-core 的[消费仓接入指南](https://github.com/hdot123-org/infra-core/blob/main/docs/onboarding/consumer-onboarding.md)。
+本仓的维护类 workflow（`evolution-scan` / `evolution-heartbeat` / `evolution-governance` / `droid-review` / `auto-merge` / `branch-cleanup`）均为 thin caller：执行体由 `hdot123-org/infra-core` 的 reusable workflows 与 composite actions（含 `actions/auto-merge`）承载，经 tag pin 引用（当前 pin v0.7.2，与 `pyproject.toml` 中的 infra-core 依赖同版本）。新仓库接入引擎（thin-caller 模板 + 接入步骤）见 infra-core 的[消费仓接入指南](https://github.com/hdot123-org/infra-core/blob/main/docs/onboarding/consumer-onboarding.md)。
 
 ## Evolution Scanner 与 Issue 自动维护
 
@@ -375,7 +375,7 @@ scanner 每次运行时会调用 `_reopen_closed_issue()`（`infra_core.engine.e
 
 ### 分支清理
 
-分支清理执行体已迁至 infra-core：本仓 `.github/workflows/branch-cleanup.yml` 为 thin caller（`uses: hdot123-org/infra-core/actions/branch-cleanup@v0.7.2`），仓库内不再持有 `scripts/branch_cleanup*.sh` 副本。`--scheduled`（每小时扫描孤立分支）与 `--immediate <branch>`（PR 合并后定点清理）两种模式由 composite action 提供。
+分支清理执行体已迁至 infra-core：本仓 `.github/workflows/branch-cleanup.yml` 为 thin caller（`uses: hdot123-org/infra-core/actions/branch-cleanup`，tag pin 当前 v0.7.2），仓库内不再持有 `scripts/branch_cleanup*.sh` 副本。`--scheduled`（每小时扫描孤立分支）与 `--immediate <branch>`（PR 合并后定点清理）两种模式由 composite action 提供。
 
 退役清单人工裁决通道（`branch_cleanup_retired.txt`，INFRA-388）与 tracker 播报（每周脉搏 + 7 天 TTL）机制随 action 迁至 infra-core 仓库（`actions/branch-cleanup/`），protected 分支的豁免裁决在 infra-core 侧的清单中维护。
 
