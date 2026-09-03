@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.4](https://github.com/hdot123-org/memory/compare/v0.45.3...v0.45.4) (2026-09-03)
+
+
+### Documentation
+
+* README 对齐引擎迁移终态 ([#1105](https://github.com/hdot123-org/memory/issues/1105)) ([42a424f](https://github.com/hdot123-org/memory/commit/42a424fb3efa97da605f74fe797dd3ce9146edaf))
+
 ## [0.45.3](https://github.com/hdot123-org/memory/compare/v0.45.2...v0.45.3) (2026-08-31)
 
 
