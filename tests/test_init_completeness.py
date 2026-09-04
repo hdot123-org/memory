@@ -200,18 +200,31 @@ class TestArgparseRejectsLegacyHosts:
 
 
 # ---------------------------------------------------------------------------
-# VAL-P0-006: SUPPORTED_HOSTS constant is ("factory",)
+# VAL-P0-006 (relaxed): SUPPORTED_HOSTS registry — all members asserted
 # ---------------------------------------------------------------------------
 
 
-class TestSupportedHostsFactoryOnly:
-    def test_supported_hosts_factory_only(self) -> None:
-        """VAL-P0-006: SUPPORTED_HOSTS == ('factory',)."""
+class TestSupportedHostsRegistry:
+    """SUPPORTED_HOSTS contains factory and zcode (dual-host)."""
+
+    @pytest.mark.parametrize("host", ["factory", "zcode"])
+    def test_supported_hosts_contains_all_registered(self, host: str) -> None:
+        """Each registered host is present in SUPPORTED_HOSTS."""
         from memory_core.constants import SUPPORTED_HOSTS
 
-        assert SUPPORTED_HOSTS == ("factory",)
-        assert len(SUPPORTED_HOSTS) == 1
-        assert "factory" in SUPPORTED_HOSTS
+        assert host in SUPPORTED_HOSTS
+
+    def test_supported_hosts_count(self) -> None:
+        """SUPPORTED_HOSTS has exactly 2 members."""
+        from memory_core.constants import SUPPORTED_HOSTS
+
+        assert len(SUPPORTED_HOSTS) == 2
+
+    def test_supported_hosts_is_tuple(self) -> None:
+        """SUPPORTED_HOSTS is a tuple (immutable)."""
+        from memory_core.constants import SUPPORTED_HOSTS
+
+        assert isinstance(SUPPORTED_HOSTS, tuple)
 
 
 # ---------------------------------------------------------------------------

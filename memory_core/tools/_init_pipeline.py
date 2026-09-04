@@ -204,8 +204,12 @@ def _write_template_file(
     result: dict[str, Any],
     is_business_file: bool = False,
     decorate_fn: Any = None,
+    **template_kwargs: Any,
 ) -> tuple[bool, bool]:
     """Write a single template file with mode-aware handling.
+
+    Args:
+        **template_kwargs: Additional kwargs to pass to template_fn (e.g., host="zcode")
 
     Returns (was_overwritten, was_skipped)
     """
@@ -223,7 +227,7 @@ def _write_template_file(
         return False, True
 
     try:
-        content, warnings = template_fn(project_name)
+        content, warnings = template_fn(project_name, **template_kwargs)
         if decorate_fn:
             content = decorate_fn(fname, content)
 

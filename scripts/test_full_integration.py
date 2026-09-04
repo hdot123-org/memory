@@ -42,7 +42,7 @@ except ImportError:
 
     _latest_ver = sorted(_COMPAT_MATRIX.keys(), key=lambda v: tuple(map(int, v.split("."))))[-1]
     exec(f"CURRENT_MEMORY_VERSION = {_latest_ver!r}")  # noqa: S102 — safe fallback
-    SUPPORTED_HOSTS: tuple[str, ...] = ("factory", "codex", "claude")  # type: ignore[no-redef]
+    SUPPORTED_HOSTS: tuple[str, ...] = ("factory", "zcode")  # type: ignore[no-redef]
 
 # ANSI color codes
 COLORS = {
@@ -149,6 +149,12 @@ class IntegrationTester:
             "config_file": "hooks.json",
             "events": ["SessionStart", "UserPromptSubmit", "Stop"],
         },
+        "zcode": {
+            "home_env": "ZCODE_HOME",
+            "default_home": "~/.zcode",
+            "config_file": "cli/config.json",
+            "events": ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse"],
+        },
     }
 
     def __init__(self, verbose: bool = False, fix: bool = False):
@@ -216,7 +222,7 @@ class IntegrationTester:
         """
         try:
             config_content = json.loads(config_file.read_text(encoding="utf-8"))
-            hooks = config_content.get("hooks", {} if "factory" in host else [])
+            hooks = config_content.get("hooks", {} if host in ("factory", "zcode") else [])
 
             expected_events = set(config["events"])
             found_events: set[str] = set()
@@ -226,6 +232,13 @@ class IntegrationTester:
                 for event in expected_events:
                     if event in hooks and hooks[event]:
                         found_events.add(event)
+            elif host in ("zcode",):
+                # zcode uses nested structure: hooks["events"]["<Event>"] = [...]
+                events_dict = hooks.get("events", {})
+                if isinstance(events_dict, dict):
+                    for event in expected_events:
+                        if event in events_dict and events_dict[event]:
+                            found_events.add(event)
             else:
                 # Claude uses list format
                 if isinstance(hooks, list):

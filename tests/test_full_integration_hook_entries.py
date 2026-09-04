@@ -181,3 +181,120 @@ def test_platform_config_factory_shape():
     assert config["config_file"] == "settings.json"
     assert set(config["events"]) == set(FACTORY_EVENTS)
     assert "FACTORY_HOME" in os.environ or config["default_home"] == "~/.factory"
+
+
+# ============================================================================
+# zcode 漂移守护：PLATFORM_CONFIGS['zcode'] 形状断言
+# ============================================================================
+ZCODE_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse"]
+
+
+def _zcode_config() -> dict[str, Any]:
+    return dict(_load_tester().IntegrationTester.PLATFORM_CONFIGS["zcode"])
+
+
+def test_platform_config_zcode_shape():
+    """zcode 条目：config_file='cli/config.json'、4 事件、ZCODE_HOME/~/.zcode。"""
+    config = _zcode_config()
+    assert config["config_file"] == "cli/config.json"
+    assert set(config["events"]) == set(ZCODE_EVENTS)
+    assert config["home_env"] == "ZCODE_HOME"
+    assert config["default_home"] == "~/.zcode"
+
+
+def _write_zcode_config(home: Path, hooks: dict[str, Any] | None) -> Path:
+    """在 home 下构造 zcode 风格的嵌套 hooks 配置文件。"""
+    zcode_dir = home / ".zcode"
+    cli_dir = zcode_dir / "cli"
+    cli_dir.mkdir(parents=True, exist_ok=True)
+    config_file = cli_dir / "config.json"
+    payload: dict = {}
+    if hooks is not None:
+        payload["hooks"] = hooks
+    config_file.write_text(json.dumps(payload), encoding="utf-8")
+    return config_file
+
+
+def _zcode_full_hooks() -> dict[str, Any]:
+    """zcode 标准嵌套格式：hooks.events.<Event> = [{"matcher": ".*", ...}]"""
+    return {
+        "enabled": True,
+        "timeoutMs": 10000,
+        "events": {
+            event: [{"matcher": ".*", "hooks": [{"type": "command", "command": "/bin/true"}]}] for event in ZCODE_EVENTS
+        },
+    }
+
+
+def _run_zcode_entries_check(config_file: Path, wrapper_installed: bool):
+    mod = _load_tester()
+    tester = mod.IntegrationTester()
+    config = tester.PLATFORM_CONFIGS["zcode"]
+    return tester._check_hook_entries("zcode", config_file, config, wrapper_installed=wrapper_installed)
+
+
+# ============================================================================
+# zcode 嵌套格式解析：4 事件齐全 → PASS
+# ============================================================================
+def test_zcode_nested_hooks_all_events_pass(tmp_path, monkeypatch):
+    """zcode hooks 为嵌套结构 hooks.events.<Event> → 4 事件全 found → PASS。"""
+    monkeypatch.setenv("ZCODE_HOME", str(tmp_path / "zcode-home"))
+    config_file = _write_zcode_config(tmp_path, hooks=_zcode_full_hooks())
+    result = _run_zcode_entries_check(config_file, wrapper_installed=True)
+    assert result.name == "zcode:memory_entries"
+    assert result.status == "PASS"
+    assert "4" in result.message
+
+
+# ============================================================================
+# zcode 嵌套格式解析：缺事件 + wrapper 在位 → FAIL
+# ============================================================================
+def test_zcode_nested_hooks_missing_events_fails(tmp_path, monkeypatch):
+    """zcode hooks 只有 2 个事件 + wrapper 在位 → FAIL（非误入 claude list 分支）。"""
+    monkeypatch.setenv("ZCODE_HOME", str(tmp_path / "zcode-home"))
+    partial_hooks = {
+        "enabled": True,
+        "events": {
+            "SessionStart": [{"matcher": ".*", "hooks": [{"type": "command", "command": "/bin/true"}]}],
+            "UserPromptSubmit": [{"matcher": ".*", "hooks": [{"type": "command", "command": "/bin/true"}]}],
+            # PreToolUse 和 PostToolUse 缺失
+        },
+    }
+    config_file = _write_zcode_config(tmp_path, hooks=partial_hooks)
+    result = _run_zcode_entries_check(config_file, wrapper_installed=True)
+    assert result.name == "zcode:memory_entries"
+    assert result.status == "FAIL"
+    assert "Missing" in result.message
+
+
+# ============================================================================
+# zcode 嵌套格式解析：wrapper 未安装 + 缺事件 → WARN（降级）
+# ============================================================================
+def test_zcode_nested_hooks_missing_events_no_wrapper_warn(tmp_path, monkeypatch):
+    """zcode hooks 缺事件但 wrapper 未安装 → WARN（CI runner 场景）。"""
+    monkeypatch.setenv("ZCODE_HOME", str(tmp_path / "zcode-home"))
+    config_file = _write_zcode_config(tmp_path, hooks={"enabled": True, "events": {}})
+    result = _run_zcode_entries_check(config_file, wrapper_installed=False)
+    assert result.name == "zcode:memory_entries"
+    assert result.status == "WARN"
+
+
+# ============================================================================
+# zcode _check_single_platform 集成路径：wrapper 缺失 + config 残留 → 无 FAIL
+# ============================================================================
+def test_zcode_single_platform_ci_runner_scenario_no_failure(tmp_path, monkeypatch):
+    """zcode CI runner 场景：wrapper 缺失 + config.json 残留 → 无 FAIL。"""
+    home = tmp_path / "home"
+    home.mkdir()
+    _write_zcode_config(home, hooks={"enabled": True, "events": {}})
+    monkeypatch.setenv("ZCODE_HOME", str(home / ".zcode"))
+
+    mod = _load_tester()
+    tester = mod.IntegrationTester()
+    results = tester._check_single_platform("zcode")
+
+    statuses = {r.name: r.status for r in results}
+    assert statuses.get("zcode:wrapper_exists") == "WARN"
+    assert statuses.get("zcode:config_exists") == "PASS"
+    assert statuses.get("zcode:memory_entries") == "WARN"
+    assert all(r.status != "FAIL" for r in results), [r.name for r in results if r.status == "FAIL"]

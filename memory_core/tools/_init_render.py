@@ -149,6 +149,7 @@ def _render_special_files(
     target: Path,
     memory_root: Path,
     project_name: str,
+    host: str,
     mode: str,
     force: bool,
     ownership: Any,
@@ -157,12 +158,15 @@ def _render_special_files(
 ) -> tuple[bool, bool]:
     """Render special files (adapter.toml, inbox.md, anchor, health-check, scope.md).
 
+    Args:
+        host: Host platform for adapter.toml routing.host (e.g., "factory", "zcode")
+
     Returns (any_overwritten, any_skipped)
     """
     any_overwritten = False
     any_skipped = False
 
-    # adapter.toml
+    # adapter.toml — pass host so template_adapter_toml renders the correct routing.host
     overwritten, skipped = _write_template_file(
         memory_root / "adapter.toml",
         "adapter.toml",
@@ -174,6 +178,7 @@ def _render_special_files(
         authorized_maintenance,
         target,
         result,
+        host=host,
     )
     any_overwritten = any_overwritten or overwritten
     any_skipped = any_skipped or skipped
@@ -287,11 +292,15 @@ def _render_all_templates(
     target: Path,
     memory_root: Path,
     project_name: str,
+    host: str,
     mode: str,
     force: bool,
     result: dict[str, Any],
 ) -> tuple[bool, bool]:
     """Render all template files with mode-aware handling.
+
+    Args:
+        host: Host platform for adapter.toml routing.host
 
     Returns (any_overwritten, any_skipped)
     """
@@ -308,7 +317,7 @@ def _render_all_templates(
     any_skipped = any_skipped or skipped
 
     overwritten, skipped = _render_special_files(
-        target, memory_root, project_name, mode, force, ownership, authorized_maintenance, result
+        target, memory_root, project_name, host, mode, force, ownership, authorized_maintenance, result
     )
     any_overwritten = any_overwritten or overwritten
     any_skipped = any_skipped or skipped

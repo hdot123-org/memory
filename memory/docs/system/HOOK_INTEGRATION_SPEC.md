@@ -74,11 +74,11 @@ memory-hook --host <platform> --event <gateway-event-name>
 
 | 参数 | 值 |
 |------|-----|
-| `--host` | `factory`（CLI 当前仅支持 factory；内部 API 支持 codex/claude，但 argparse 限制为 factory） |
+| `--host` | `factory | zcode`（CLI 支持 factory 与 zcode；内部 API 支持 codex/claude，但 argparse 限制为 factory/zcode） |
 | `--event` | gateway 事件名（kebab-case，见 1.1 节） |
 
-> **注**: gateway CLI 的 `--host` 参数当前仅接受 `factory`。其他 host 值（codex、claude）
-> 在内部 API 层支持，但 CLI argparse 限制为 `choices=("factory",)`。MCP server 内部使用
+> **注**: gateway CLI 的 `--host` 参数接受 `factory` 和 `zcode`。其他 host 值（codex、claude）
+> 在内部 API 层支持，但 CLI argparse 限制为 `choices=("factory", "zcode")`。MCP server 内部使用
 > `host="factory"` 调用 `build_context_package_simple`，因为底层逻辑是平台无关的。
 
 ### 2.3 stdin 协议
@@ -381,7 +381,7 @@ A: 参考 4.3 节的 dispatch 实现验证。**配置加载成功不等于会执
 | 平台 | Hook | MCP 暴露工具 | 配置文件 |
 |------|------|-------------|---------|
 | Factory (Droid) | 9/9 事件 | 仅 `search_memory` | `~/.factory/mcp.json` |
-| ZCode | 不触发（v3.4.2） | 全部 9 工具 | `~/.zcode/cli/config.json` |
+| ZCode | hook 派发自 2026-09 起可用 | 全部 9 工具 | `~/.zcode/cli/config.json` |
 | 新平台 | 先验 dispatch | dispatch 不可用 → 全量 MCP | 平台 MCP 配置 |
 
 ### 8.3 MCP Server 配置

@@ -112,7 +112,7 @@ def generate_hooks_json(
 def template_agents_md_block() -> str:
     """Generate the AGENTS.md memory hook instruction block.
 
-    Host-neutral: references only the factory wrapper (the sole supported host).
+    Host-neutral: references the factory wrapper (one of the supported hosts).
     No project-level hooks.json references (host hooks are global-only).
     """
     return f"""{MEMORY_HOOK_BEGIN_MARKER}
@@ -162,8 +162,8 @@ For manual testing:
 def _cleanup_legacy_hooks_json(target: Path, result: dict[str, Any] | None) -> None:
     """Delete legacy .codex/hooks.json and .claude/hooks.json files (VAL-P4-011).
 
-    These legacy host directories are superseded by factory (the sole supported
-    host; see SUPPORTED_HOSTS), which uses ~/.factory/bin/memory-hook instead.
+    These legacy host directories are superseded by supported hosts (factory, zcode; see SUPPORTED_HOSTS), which
+    use their respective wrapper scripts instead.
 
     This is a no-op in adopt mode (preserves existing files) and runs in
     create/update/repair modes.
@@ -187,7 +187,7 @@ def _cleanup_legacy_hooks_json(target: Path, result: dict[str, Any] | None) -> N
 def _scrub_legacy_refs(text: str) -> tuple[str, bool]:
     """Remove legacy codex/claude hook references from AGENTS.md.
 
-    These legacy hosts are superseded by factory (the sole supported host).
+    These legacy hosts are superseded by supported hosts (factory, zcode).
     Returns (scrubbed_text, was_modified).
     """
     modified = False
@@ -298,8 +298,8 @@ def update_agents_md(
     Legacy scrubbing (VAL-P4-010): In update mode, removes any references to
     ~/.codex/bin/memory-hook or ~/.claude/bin/memory-hook from the AGENTS.md
     content (both inside and outside the hook block). These legacy hosts are
-    superseded by factory (the sole supported host; see SUPPORTED_HOSTS), which
-    uses ~/.factory/bin/memory-hook.
+    superseded by supported hosts (factory, zcode; see SUPPORTED_HOSTS), which
+    use ~/.factory/bin/memory-hook or ~/.zcode/bin/memory-hook respectively.
     """
     if result is None:
         return

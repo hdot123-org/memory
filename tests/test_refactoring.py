@@ -447,3 +447,28 @@ class TestDelegateRouter:
         router = DelegateRouter(factory_delegate=factory)
 
         assert router.factory_delegate is factory
+
+    def test_delegate_router_routes_zcode(self):
+        """DelegateRouter routes zcode host to factory_delegate.execute."""
+        from memory_core.tools.memory_hook_impls import DelegateRouter
+
+        factory = self._make_fake_delegate()
+        router = DelegateRouter(factory_delegate=factory)
+        result = router.route(
+            host="zcode",
+            event="session-start",
+            raw_payload='{"key": "val"}',
+            payload={"key": "val"},
+        )
+        factory.execute.assert_called_once_with("session-start", '{"key": "val"}', {"key": "val"})
+        assert result.returncode == 0
+
+    def test_delegate_router_noop_zcode(self):
+        """DelegateRouter routes zcode host to factory_delegate.noop_response."""
+        from memory_core.tools.memory_hook_impls import DelegateRouter
+
+        factory = self._make_fake_delegate()
+        router = DelegateRouter(factory_delegate=factory)
+        result = router.noop(host="zcode")
+        factory.noop_response.assert_called_once()
+        assert result.stdout == "noop\n"

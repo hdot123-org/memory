@@ -23,6 +23,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from memory_core.constants import SUPPORTED_HOSTS
+
 from ._gateway_artifacts import (
     _build_readonly_source_repo_package,
     _inject_health_alert,
@@ -401,8 +403,8 @@ def main() -> int:
         _handle_prompt_submit_logging(cwd, payload)
 
     # Fast path for non-injection events: skip expensive build_context_package()
-    # Only apply fast path for factory host; other hosts go through full path
-    if args.event in NON_INJECTION_EVENTS and args.host == "factory":
+    # Only apply fast path for supported hosts; other hosts go through full path
+    if args.event in NON_INJECTION_EVENTS and args.host in SUPPORTED_HOSTS:
         lifecycle_record = None
         try:
             lifecycle_record = _record_project_lifecycle_event(

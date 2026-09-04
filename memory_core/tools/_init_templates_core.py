@@ -125,11 +125,11 @@ lock_reason = "initial"
     return content, warnings
 
 
-def template_adapter_toml(project_name: str) -> tuple[str, list[str]]:
+def template_adapter_toml(project_name: str, host: str = "factory") -> tuple[str, list[str]]:
     """Generate adapter.toml content conforming to the canonical schema.
 
     Uses inline canonical template (no external template file needed).
-    Host is fixed to "factory" (INV-1, INV-6).
+    Host is dynamically set based on init --host parameter.
 
     Returns:
         Tuple of (content, warnings_list)
@@ -163,7 +163,7 @@ root = "~/.memory/global-kb"
         content = content.replace("{{memory_version}}", CURRENT_MEMORY_VERSION)
         content = content.replace("{{project_name}}", project_name)
         content = content.replace("{{project_scope}}", project_name)
-        content = content.replace("{{host}}", "factory")  # Fixed to factory (INV-1, INV-6)
+        content = content.replace("{{host}}", host)
 
     except (ValueError, TypeError) as exc:
         logger.warning(f"Template render error in adapter.toml: {exc}")
@@ -192,8 +192,8 @@ registration_commit_phase = "post"
 # Project identity — drives scope resolution and canonical lookup
 project_name = "{project_name}"
 project_scope = "{project_name}"
-# Host platform (fixed to factory)
-host = "factory"
+# Host platform
+host = "{host}"
 """
     return content, warnings
 

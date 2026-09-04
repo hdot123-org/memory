@@ -190,10 +190,10 @@ def to_context_package_input(event: HookEvent) -> dict[str, Any]:
 def parse_hook_event(host: str, event: str, raw_payload: str) -> HookEvent:
     """Parse a raw hook invocation into a HookEvent.
 
-    Only factory is supported (INV-6).
+    All SUPPORTED_HOSTS (factory, zcode) are accepted (INV-6 relaxed).
 
     Args:
-        host: "factory".
+        host: One of the SUPPORTED_HOSTS ("factory", "zcode").
         event: Event type string.
         raw_payload: Raw JSON string from stdin.
 
@@ -201,9 +201,11 @@ def parse_hook_event(host: str, event: str, raw_payload: str) -> HookEvent:
         A normalized HookEvent.
 
     Raises:
-        UnknownHostError: If host is not "factory".
+        UnknownHostError: If host is not in SUPPORTED_HOSTS.
     """
-    if host == "factory":
-        return from_codex_payload(raw_payload, event=event, source="factory")
+    from memory_core.constants import SUPPORTED_HOSTS
+
+    if host in SUPPORTED_HOSTS:
+        return from_codex_payload(raw_payload, event=event, source=host)
     else:
         raise UnknownHostError(f"unknown host: {host!r}")

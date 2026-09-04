@@ -137,6 +137,37 @@ class TestInitWritesAdapterToml:
 
         assert 'host = "factory"' in content
 
+    def test_init_writes_zcode_host_into_adapter_toml(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """VAL-HOST-005: Init with --host zcode should set routing.host = zcode."""
+        result = init_project_memory(tmp_path, scope="zcode-host-test", host="zcode")
+        assert result["success"] is True
+
+        adapter_path = tmp_path / "memory" / "system" / "adapter.toml"
+        assert adapter_path.exists()
+        content = adapter_path.read_text(encoding="utf-8")
+
+        # Verify host=zcode is written AND passes strict validation
+        assert 'host = "zcode"' in content
+
+        # Verify it passes strict schema validation (raises ValueError if invalid)
+        import tomllib
+
+        with adapter_path.open("rb") as fh:
+            adapter_data = tomllib.load(fh)
+        assert adapter_data["routing"]["host"] == "zcode"
+
+        # Verify adapter_toml_schema accepts it (strict=True raises ValueError on invalid host)
+        from memory_core.tools.adapter_toml_schema import load_adapter_toml
+
+        try:
+            config = load_adapter_toml(adapter_path, strict=True)
+            assert config.host == "zcode"
+        except ValueError as e:
+            raise AssertionError(f"Schema validation failed: {e}") from None
+
     def test_init_default_host_is_factory_when_unspecified(
         self,
         tmp_path: Path,
