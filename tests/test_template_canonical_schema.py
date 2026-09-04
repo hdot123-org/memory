@@ -154,17 +154,19 @@ class TestInitWritesAdapterToml:
 
         # Verify it passes strict schema validation (raises ValueError if invalid)
         import tomllib
+
         with adapter_path.open("rb") as fh:
             adapter_data = tomllib.load(fh)
         assert adapter_data["routing"]["host"] == "zcode"
 
         # Verify adapter_toml_schema accepts it (strict=True raises ValueError on invalid host)
         from memory_core.tools.adapter_toml_schema import load_adapter_toml
+
         try:
             config = load_adapter_toml(adapter_path, strict=True)
             assert config.host == "zcode"
         except ValueError as e:
-            raise AssertionError(f"Schema validation failed: {e}")
+            raise AssertionError(f"Schema validation failed: {e}") from None
 
     def test_init_default_host_is_factory_when_unspecified(
         self,
