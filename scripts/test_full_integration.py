@@ -230,8 +230,9 @@ class IntegrationTester:
 
             if host in ("factory", "codex"):
                 # Factory and Codex use dict with event names as keys
+                hooks_dict = hooks if isinstance(hooks, dict) else {}
                 for event in expected_events:
-                    if event in hooks and hooks[event]:
+                    if event in hooks_dict and hooks_dict[event]:
                         found_events.add(event)
             elif host in ("zcode",):
                 # zcode uses nested structure: hooks["events"]["<Event>"] = [...]
