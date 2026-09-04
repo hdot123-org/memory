@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.5](https://github.com/hdot123-org/memory/compare/v0.45.4...v0.45.5) (2026-09-04)
+
+
+### Bug Fixes
+
+* **ci:** test_full_integration.py 非 dict hooks 防护与回退元组漂移守护 ([#1108](https://github.com/hdot123-org/memory/issues/1108)) ([35f5589](https://github.com/hdot123-org/memory/commit/35f55895cab79af7f4bc985e0a507f74990c2822))
+
 ## [0.45.4](https://github.com/hdot123-org/memory/compare/v0.45.3...v0.45.4) (2026-09-03)
 
 
