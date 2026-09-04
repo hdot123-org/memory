@@ -324,23 +324,81 @@ def test_zcode_events_as_list_degradation(tmp_path, monkeypatch):
 
 
 # ============================================================================
-# Hardening: L45 ImportError fallback tuple drift guard
+# Hardening: L45 ImportError fallback tuple drift guard (AST source-level)
 # ============================================================================
 def test_fallback_supported_hosts_matches_constants():
     """ImportError 回退元组必须与 memory_core.constants.SUPPORTED_HOSTS 保持一致。
 
-    回归背景（PR #1107 scrutiny 非阻塞项）：回退元组曾漂移到
-    ('factory','codex','claude')，与实际 SUPPORTED_HOSTS 不一致。
-    本守护测试断言两者相等，防止静默漂移。
+    回归背景（PR #1107 scrutiny 阻塞项）：旧版运行时属性断言是同义反复——
+    pytest 下 memory_core 恒可导入，try-import 分支必然成功，断言对象是常量
+    自身；except ImportError 分支的字面量从未被测到，把字面量改回历史漂移值
+    ('factory','codex','claude') 测试照样绿 = 零防护。
+
+    修复：ast.parse 源码级守护——直接解析 except ImportError handler 内对
+    SUPPORTED_HOSTS 的赋值，提取 Tuple[Constant...] 字面量，断言与常量相等。
+    运行时属性断言守不住 ImportError 回退字面量，故不取。
     """
+    import ast
+
     from memory_core.constants import SUPPORTED_HOSTS
 
-    mod = _load_tester()
-    fallback_hosts = mod.SUPPORTED_HOSTS
-    assert fallback_hosts == SUPPORTED_HOSTS, (
-        f"scripts/test_full_integration.py ImportError 回退元组 {fallback_hosts!r} "
-        f"与 memory_core.constants.SUPPORTED_HOSTS {SUPPORTED_HOSTS!r} 不一致"
+    source = SCRIPT_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(SCRIPT_PATH))
+
+    # Locate the except ImportError handler body and find SUPPORTED_HOSTS assignment
+    fallback_tuple: tuple[str, ...] | None = None
+    for node in ast.walk(tree):
+        # Match `except ImportError` handler
+        if isinstance(node, ast.ExceptHandler) and isinstance(node.type, ast.Name) and node.type.id == "ImportError":
+            for stmt in node.body:
+                if isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+                    # Extract target name
+                    if isinstance(stmt, ast.Assign):
+                        targets = stmt.targets
+                        value = stmt.value
+                    else:
+                        targets = [stmt.target] if stmt.target else []
+                        value = stmt.value
+                    for target in targets:
+                        if (
+                            isinstance(target, ast.Name)
+                            and target.id == "SUPPORTED_HOSTS"
+                            and isinstance(value, ast.Tuple)
+                        ):
+                            fallback_tuple = tuple(elt.value for elt in value.elts if isinstance(elt, ast.Constant))
+
+    assert fallback_tuple is not None, (
+        "scripts/test_full_integration.py except ImportError handler 内未找到 "
+        "SUPPORTED_HOSTS = (...) 字面量赋值——ast 源码级守护失效"
     )
+    assert fallback_tuple == tuple(SUPPORTED_HOSTS), (
+        f"scripts/test_full_integration.py ImportError 回退字面量 {fallback_tuple!r} "
+        f"与 memory_core.constants.SUPPORTED_HOSTS {tuple(SUPPORTED_HOSTS)!r} 不一致"
+    )
+
+
+# ============================================================================
+# Hardening: factory/codex non-iterable hooks value → FAIL (no TypeError crash)
+# ============================================================================
+def test_factory_non_iterable_hooks_no_type_error(tmp_path, monkeypatch):
+    """factory hooks 为非可迭代值（如 42 / null）→ FAIL CheckResult，不崩溃。
+
+    回归背景（PR #1108 scrutiny 非阻塞项）：factory/codex 分支旧代码
+    `for event in expected_events: if event in hooks and hooks[event]`
+    对 hooks=42 / hooks=null 会 TypeError 逃出 :274 except 使门禁 exit 1。
+    修复：isinstance 守卫（镜像 zcode 分支 :238 写法）把非 dict 退化为空 dict。
+    """
+    monkeypatch.setenv("FACTORY_HOME", str(tmp_path / "factory-home"))
+    for bad_hooks_value in [42, None]:
+        settings = _write_factory_settings(tmp_path, hooks=bad_hooks_value)
+        # wrapper_installed=True → 期望 FAIL（不是 traceback/exit 1）
+        result = _run_entries_check(settings, wrapper_installed=True)
+        assert result.name == "factory:memory_entries"
+        assert result.status == "FAIL", f"hooks={bad_hooks_value!r} → expected FAIL, got {result.status}"
+    # wrapper_installed=False → 期望 WARN（CI runner 降级）
+    settings = _write_factory_settings(tmp_path, hooks=42)
+    result = _run_entries_check(settings, wrapper_installed=False)
+    assert result.status == "WARN"
 
 
 # ============================================================================
