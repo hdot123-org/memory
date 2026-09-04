@@ -239,7 +239,7 @@ def init_project_memory(
     _create_directories(target, result)
 
     # Render all templates
-    any_overwritten, any_skipped = _render_all_templates(target, memory_root, project_name, mode, force, result)
+    any_overwritten, any_skipped = _render_all_templates(target, memory_root, project_name, host, mode, force, result)
 
     result["success"] = len(result["errors"]) == 0
     result["force_overwrite"] = force

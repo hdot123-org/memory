@@ -17,6 +17,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from memory_core.constants import SUPPORTED_HOSTS
+
 from ._gateway_artifacts import append_error_log
 from ._gateway_config import _FORCE_HOOK, ARTIFACT_ROOT, EVENT_LOG, PROJECT_LIFECYCLE_ROOT, REPO_ROOT
 
@@ -111,7 +113,7 @@ def _read_payload(raw_payload: str) -> dict[str, Any]:
 def _parse_args() -> argparse.Namespace:
     """解析命令行参数。"""
     parser = argparse.ArgumentParser(description="Workbot memory hook gateway.")
-    parser.add_argument("--host", required=True, choices=("factory", "zcode"))
+    parser.add_argument("--host", required=True, choices=SUPPORTED_HOSTS)
     parser.add_argument(
         "--event",
         required=True,

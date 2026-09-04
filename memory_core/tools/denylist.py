@@ -29,7 +29,7 @@ class DenylistResult:
 
     Attributes:
         denied: Whether the path is denied
-        rule: The rule that triggered denial (e.g., "tmpdir", "factory", "home_root", "junk_pattern", "non_git")
+        rule: The rule that triggered denial (e.g., "tmpdir", "factory", "zcode", "home_root", "junk_pattern", "non_git")
         message: Human-readable error message explaining the denial and available overrides
     """
 
@@ -73,6 +73,7 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
     1. $TMPDIR subdirectories
     2. /tmp subdirectories
     3. ~/.factory subdirectories
+    3.5. ~/.zcode subdirectories
     4. $HOME root (exact match)
     5. Junk directory name patterns
     6. Non-git directories (if allow_non_git is False)

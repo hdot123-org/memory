@@ -162,8 +162,8 @@ For manual testing:
 def _cleanup_legacy_hooks_json(target: Path, result: dict[str, Any] | None) -> None:
     """Delete legacy .codex/hooks.json and .claude/hooks.json files (VAL-P4-011).
 
-    These legacy host directories are superseded by factory (the sole supported
-    host; see SUPPORTED_HOSTS), which uses ~/.factory/bin/memory-hook instead.
+    These legacy host directories are superseded by supported hosts (factory, zcode; see SUPPORTED_HOSTS), which
+    use their respective wrapper scripts instead.
 
     This is a no-op in adopt mode (preserves existing files) and runs in
     create/update/repair modes.
