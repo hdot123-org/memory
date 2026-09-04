@@ -280,6 +280,70 @@ def test_zcode_nested_hooks_missing_events_no_wrapper_warn(tmp_path, monkeypatch
 
 
 # ============================================================================
+# Hardening: non-dict hooks value for zcode → FAIL/WARN (no AttributeError)
+# ============================================================================
+def test_zcode_non_dict_hooks_no_attribute_error(tmp_path, monkeypatch):
+    """zcode hooks 为非 dict 值（如字符串或列表）→ 返回 FAIL/WARN，不抛 AttributeError。
+
+    回归背景（PR #1107 scrutiny 非阻塞项）：旧代码 zcode 分支直接
+    hooks.get("events", {})，非 dict 值会抛 AttributeError 使 CI exit 1
+    而非返回 FAIL CheckResult。修复后 isinstance 守卫把非 dict 退化为空 dict。
+    """
+    monkeypatch.setenv("ZCODE_HOME", str(tmp_path / "zcode-home"))
+    for bad_hooks_value in ["not-a-dict", [1, 2, 3], 42, None]:
+        config_file = _write_zcode_config(tmp_path, hooks=bad_hooks_value)
+        # wrapper_installed=True → 期望 FAIL（不是 traceback/exit 1）
+        result = _run_zcode_entries_check(config_file, wrapper_installed=True)
+        assert result.name == "zcode:memory_entries"
+        assert result.status == "FAIL", f"hooks={bad_hooks_value!r} → expected FAIL, got {result.status}"
+    # wrapper_installed=False → 期望 WARN（CI runner 降级）
+    config_file = _write_zcode_config(tmp_path, hooks="not-a-dict")
+    result = _run_zcode_entries_check(config_file, wrapper_installed=False)
+    assert result.status == "WARN"
+
+
+# ============================================================================
+# Hardening: events-as-list degradation path for zcode → WARN/FAIL (no crash)
+# ============================================================================
+def test_zcode_events_as_list_degradation(tmp_path, monkeypatch):
+    """zcode hooks.events 为 list（非 dict）→ 退化为零 found → FAIL/WARN。
+
+    回归背景（PR #1107 scrutiny 非阻塞项）：hooks={"events": [...]} 时
+    isinstance(events_dict, dict) 为 False，应优雅降级而非 crash。
+    """
+    monkeypatch.setenv("ZCODE_HOME", str(tmp_path / "zcode-home"))
+    bad_events_hooks = {"enabled": True, "events": [{"event": "SessionStart"}]}
+    config_file = _write_zcode_config(tmp_path, hooks=bad_events_hooks)
+    # wrapper_installed=True → 期望 FAIL
+    result = _run_zcode_entries_check(config_file, wrapper_installed=True)
+    assert result.name == "zcode:memory_entries"
+    assert result.status == "FAIL"
+    # wrapper_installed=False → 期望 WARN
+    result_no_wrapper = _run_zcode_entries_check(config_file, wrapper_installed=False)
+    assert result_no_wrapper.status == "WARN"
+
+
+# ============================================================================
+# Hardening: L45 ImportError fallback tuple drift guard
+# ============================================================================
+def test_fallback_supported_hosts_matches_constants():
+    """ImportError 回退元组必须与 memory_core.constants.SUPPORTED_HOSTS 保持一致。
+
+    回归背景（PR #1107 scrutiny 非阻塞项）：回退元组曾漂移到
+    ('factory','codex','claude')，与实际 SUPPORTED_HOSTS 不一致。
+    本守护测试断言两者相等，防止静默漂移。
+    """
+    from memory_core.constants import SUPPORTED_HOSTS
+
+    mod = _load_tester()
+    fallback_hosts = mod.SUPPORTED_HOSTS
+    assert fallback_hosts == SUPPORTED_HOSTS, (
+        f"scripts/test_full_integration.py ImportError 回退元组 {fallback_hosts!r} "
+        f"与 memory_core.constants.SUPPORTED_HOSTS {SUPPORTED_HOSTS!r} 不一致"
+    )
+
+
+# ============================================================================
 # zcode _check_single_platform 集成路径：wrapper 缺失 + config 残留 → 无 FAIL
 # ============================================================================
 def test_zcode_single_platform_ci_runner_scenario_no_failure(tmp_path, monkeypatch):
