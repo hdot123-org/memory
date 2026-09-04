@@ -331,6 +331,14 @@ class TestParseHookEvent:
         event = parse_hook_event("factory", "session-start", raw)
         assert event.event_type == "session-start"
 
+    @pytest.mark.parametrize("host", ["factory", "zcode"])
+    def test_supported_host_dispatch(self, host: str):
+        """All SUPPORTED_HOSTS are accepted by parse_hook_event."""
+        raw = json.dumps({"cwd": "/test", "hook_event_name": "SessionStart"})
+        event = parse_hook_event(host, "session-start", raw)
+        assert event.source == host
+        assert event.event_type == "session-start"
+
 
 # ---------------------------------------------------------------------------
 # 6. Cross-host normalization

@@ -3,6 +3,8 @@
 import os
 from pathlib import Path
 
+import pytest
+
 
 class TestDeniedProjectRoots:
     """Tests for denied_project_roots function."""
@@ -300,3 +302,81 @@ class TestModuleIntegration:
 
         # Any path should not be denied when list is empty
         assert is_denied_project_root(Path("/some/path")) is False
+
+
+# ---------------------------------------------------------------------------
+# zcode 路径 denylist 测试
+# ---------------------------------------------------------------------------
+
+
+class TestZcodePathDenylist:
+    """Tests for ~/.zcode path rejection (zcode host 接入后的防污染规则)."""
+
+    @pytest.fixture(autouse=True)
+    def enable_denylist_for_test(self, monkeypatch):
+        """Override conftest's BYPASS for this test class to actually test denylist logic."""
+        monkeypatch.setenv("MEMORY_CORE_BYPASS_DENYLIST", "0")
+
+    def test_zcode_internal_path_denied(self, monkeypatch, tmp_path):
+        """~/.zcode 内部路径应被拒绝，rule='zcode'."""
+        from memory_core.tools.denylist import check_denylist
+
+        # Mock HOME 到临时目录，同时清除 TMPDIR 避免 tmpdir 检查先于 zcode 规则命中
+        monkeypatch.delenv("TMPDIR", raising=False)
+        test_home = tmp_path / "fake_home"
+        test_home.mkdir()
+        monkeypatch.setenv("HOME", str(test_home))
+        zcode_dir = test_home / ".zcode"
+        zcode_dir.mkdir()
+        workspace_dir = zcode_dir / "workspace" / "default"
+        workspace_dir.mkdir(parents=True)
+
+        result = check_denylist(workspace_dir)
+        assert result.denied is True
+        assert result.rule == "zcode"
+
+    def test_zcode_root_denied(self, monkeypatch, tmp_path):
+        """~/.zcode 根目录本身应被拒绝."""
+        from memory_core.tools.denylist import check_denylist
+
+        monkeypatch.delenv("TMPDIR", raising=False)
+        test_home = tmp_path / "fake_home"
+        test_home.mkdir()
+        monkeypatch.setenv("HOME", str(test_home))
+        zcode_dir = test_home / ".zcode"
+        zcode_dir.mkdir()
+
+        result = check_denylist(zcode_dir)
+        assert result.denied is True
+        assert result.rule == "zcode"
+
+    def test_normal_project_not_denied_by_zcode_rule(self, monkeypatch, tmp_path):
+        """普通项目目录不应被 zcode 规则拒绝."""
+        from memory_core.tools.denylist import check_denylist
+
+        monkeypatch.delenv("TMPDIR", raising=False)
+        test_home = tmp_path / "fake_home"
+        test_home.mkdir()
+        monkeypatch.setenv("HOME", str(test_home))
+        # 创建一个普通项目目录（有 .git）
+        project_dir = test_home / "my-project"
+        project_dir.mkdir()
+        (project_dir / ".git").mkdir()
+
+        result = check_denylist(project_dir)
+        assert result.denied is False
+
+    def test_factory_still_denied(self, monkeypatch, tmp_path):
+        """~/.factory 仍应被拒绝（既有规则不受影响）."""
+        from memory_core.tools.denylist import check_denylist
+
+        monkeypatch.delenv("TMPDIR", raising=False)
+        test_home = tmp_path / "fake_home"
+        test_home.mkdir()
+        monkeypatch.setenv("HOME", str(test_home))
+        factory_dir = test_home / ".factory" / "some" / "path"
+        factory_dir.mkdir(parents=True)
+
+        result = check_denylist(factory_dir)
+        assert result.denied is True
+        assert result.rule == "factory"

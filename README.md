@@ -154,7 +154,7 @@ memory-migrate --target /path/to/project --from 0.7.0 --to 0.8.0
 从 v0.8.0 起，`memory-init` 还会在 `~/.memory/global-kb/` 创建全局知识库结构（幂等操作），并在 `memory/system/adapter.toml` 中写入 `[global_kb]` 段以启用项目优先 / 全局兜底路由。
 
 ```bash
-memory-init --target /path/to/project [--scope my-project] [--host factory] [--mode create|adopt|update|repair] [--dry-run] [--force] [--no-clobber] [--no-auto-fill] [--json] [--version]
+memory-init --target /path/to/project [--scope my-project] [--host factory|zcode] [--mode create|adopt|update|repair] [--dry-run] [--force] [--no-clobber] [--no-auto-fill] [--json] [--version]
 ```
 
 模式说明：

@@ -34,11 +34,19 @@ except ImportError:
 
 
 def _load_project_root() -> Path | None:
-    """Determine project root from environment."""
+    """Determine project root from environment.
+
+    Order: FACTORY_PROJECT_DIR -> ZCODE_PROJECT_DIR -> MEMORY_HOOK_ORIGINAL_CWD -> cwd
+    """
     # Try FACTORY_PROJECT_DIR first
     factory_dir = os.environ.get("FACTORY_PROJECT_DIR")
     if factory_dir:
         return Path(factory_dir).expanduser().resolve()
+
+    # Try ZCODE_PROJECT_DIR (zcode host)
+    zcode_dir = os.environ.get("ZCODE_PROJECT_DIR")
+    if zcode_dir:
+        return Path(zcode_dir).expanduser().resolve()
 
     # Try MEMORY_HOOK_ORIGINAL_CWD
     original_cwd = os.environ.get("MEMORY_HOOK_ORIGINAL_CWD")

@@ -161,7 +161,7 @@ def init_project_memory(
     Args:
         target: Path to the target project root.
         scope: Explicit project scope name (auto-discovered if omitted).
-        host: Host platform for hook gateway configuration ("factory"; sole supported host, see SUPPORTED_HOSTS).
+        host: Host platform for hook gateway configuration ("factory" or "zcode"; see SUPPORTED_HOSTS).
         dry_run: If True, only report what would be created.
         json_output: If True, return structured output dict.
         force: If True, overwrite existing files.

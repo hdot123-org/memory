@@ -194,14 +194,16 @@ class NoopHostDelegate(HostDelegate):
 def resolve_host_delegate(host: str, mode: str = "auto") -> HostDelegate:
     """Resolve a HostDelegate by host name and mode.
 
-    Only factory is supported (INV-6).
+    All SUPPORTED_HOSTS (factory, zcode) are supported (INV-6 relaxed).
 
     Modes:
         "auto": try factory delegate, fallback to NoopHostDelegate
         "noop": always return NoopHostDelegate
         "cmux": always return factory delegate (may have can_handle=False)
     """
-    if host == "factory":
+    from memory_core.constants import SUPPORTED_HOSTS
+
+    if host in SUPPORTED_HOSTS:
         cmux_delegate: HostDelegate = FactoryDelegate()
     else:
         return NoopHostDelegate()
@@ -885,14 +887,18 @@ class DelegateRouter:
         payload: dict[str, Any],
     ) -> subprocess.CompletedProcess[str]:
         """Route to the factory delegate."""
-        if host == "factory":
+        from memory_core.constants import SUPPORTED_HOSTS
+
+        if host in SUPPORTED_HOSTS:
             return self.factory_delegate.execute(event, raw_payload, payload)
         else:
             raise UnknownHostError(f"unknown host: {host}")
 
     def noop(self, host: str) -> subprocess.CompletedProcess[str]:
         """Execute noop response for the factory host."""
-        if host == "factory":
+        from memory_core.constants import SUPPORTED_HOSTS
+
+        if host in SUPPORTED_HOSTS:
             return self.factory_delegate.noop_response()
         else:
             raise UnknownHostError(f"unknown host: {host}")

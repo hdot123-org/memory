@@ -20,7 +20,7 @@ __all__ = [
     "VALID_SOURCE_REPO_MODES",
 ]
 
-SUPPORTED_HOSTS = ("factory",)
+SUPPORTED_HOSTS = ("factory", "zcode")
 
 # Project lifecycle status enumerations — valid values for the ``status`` field
 # in a project's ``memory/kb/projects/<name>/STATE.md`` frontmatter.

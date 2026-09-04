@@ -5,6 +5,7 @@ and hook execution in inappropriate locations:
 
 - $TMPDIR and /tmp subdirectories
 - ~/.factory subdirectories
+- ~/.zcode subdirectories
 - $HOME root (exact match)
 - Pattern-based junk directory names (tmp.*, demo-*, test-*, smoke-test-*, restart-*, file-list-*)
 - Non-git directories (without --allow-non-git flag)
@@ -105,16 +106,24 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
             "tmpdir", "Path is under /tmp. Temporary directories are not suitable for project memory."
         )
 
-    # 3. Check ~/.factory
-    factory_path = (Path.home() / ".factory").resolve()
+    # 3. Check ~/.factory (use expanduser to respect HOME env var in tests)
+    factory_path = (Path("~").expanduser() / ".factory").resolve()
     if target_resolved == factory_path or str(target_resolved).startswith(str(factory_path) + os.sep):
         return DenylistResult.make_denied(
             "factory",
             f"Path is under ~/.factory ({factory_path}). Factory internal directories should not have project memory.",
         )
 
-    # 4. Check $HOME root (exact match)
-    home_path = Path.home().resolve()
+    # 3.5. Check ~/.zcode (use expanduser to respect HOME env var in tests)
+    zcode_path = (Path("~").expanduser() / ".zcode").resolve()
+    if target_resolved == zcode_path or str(target_resolved).startswith(str(zcode_path) + os.sep):
+        return DenylistResult.make_denied(
+            "zcode",
+            f"Path is under ~/.zcode ({zcode_path}). ZCode internal directories should not have project memory.",
+        )
+
+    # 4. Check $HOME root (exact match, use expanduser to respect HOME env var in tests)
+    home_path = Path("~").expanduser().resolve()
     if target_resolved == home_path:
         return DenylistResult.make_denied(
             "home_root",

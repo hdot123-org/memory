@@ -70,9 +70,10 @@ _MAX_SEARCH_RESULTS = 50
 # Populated by ``main_sync`` from the ``--tools`` CLI flag.
 _ALLOWED_TOOLS: set[str] | None = None
 
-# The host tag passed to build_context_package_simple. "factory" is the only
-# fully-supported host value; the underlying context-building logic is
+# The host tag passed to build_context_package_simple. Currently set to "factory"
+# for backward compatibility; the underlying context-building logic is
 # platform-agnostic so it works correctly for any MCP client (including ZCode).
+# Future: could be made configurable or auto-detected from environment.
 _HOST = "factory"
 
 app = Server("memory-core")

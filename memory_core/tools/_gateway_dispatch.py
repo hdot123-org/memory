@@ -111,7 +111,7 @@ def _read_payload(raw_payload: str) -> dict[str, Any]:
 def _parse_args() -> argparse.Namespace:
     """解析命令行参数。"""
     parser = argparse.ArgumentParser(description="Workbot memory hook gateway.")
-    parser.add_argument("--host", required=True, choices=("factory",))
+    parser.add_argument("--host", required=True, choices=("factory", "zcode"))
     parser.add_argument(
         "--event",
         required=True,
