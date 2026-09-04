@@ -43,6 +43,7 @@ except ImportError:
     _latest_ver = sorted(_COMPAT_MATRIX.keys(), key=lambda v: tuple(map(int, v.split("."))))[-1]
     exec(f"CURRENT_MEMORY_VERSION = {_latest_ver!r}")  # noqa: S102 — safe fallback
     SUPPORTED_HOSTS: tuple[str, ...] = ("factory", "zcode")  # type: ignore[no-redef]
+    # keep in sync with memory_core.constants.SUPPORTED_HOSTS
 
 # ANSI color codes
 COLORS = {
@@ -234,7 +235,7 @@ class IntegrationTester:
                         found_events.add(event)
             elif host in ("zcode",):
                 # zcode uses nested structure: hooks["events"]["<Event>"] = [...]
-                events_dict = hooks.get("events", {})
+                events_dict = hooks.get("events", {}) if isinstance(hooks, dict) else {}
                 if isinstance(events_dict, dict):
                     for event in expected_events:
                         if event in events_dict and events_dict[event]:
