@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.6](https://github.com/hdot123-org/memory/compare/v0.45.5...v0.45.6) (2026-09-04)
+
+
+### Bug Fixes
+
+* PR [#1108](https://github.com/hdot123-org/memory/issues/1108) 漂移守护重写为 AST 源码级 + factory 分支类型守卫 (INFRA-749) ([#1111](https://github.com/hdot123-org/memory/issues/1111)) ([9c05c4e](https://github.com/hdot123-org/memory/commit/9c05c4e0621c01cb1248a1b078a68ad0063949db))
+
 ## [0.45.5](https://github.com/hdot123-org/memory/compare/v0.45.4...v0.45.5) (2026-09-04)
 
 
