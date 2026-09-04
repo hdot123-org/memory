@@ -213,8 +213,27 @@ jobs:
           python -m pip install --upgrade pip --disable-pip-version-check
           python -m pip install --disable-pip-version-check -e .
           python -m pip install --disable-pip-version-check pip-audit
+      # 2026-09-04: pip-audit 自建 runner → pypi.org JSON API 间歇性读超时（round 4 CI 连续两轮同因失败，
+      # watchdog cancel-on-ci-fail 连杀 droid-review）。加 ×3 退避重试 + --timeout 60（默认 15s）。
       - name: Dependency audit
-        run: pip-audit --progress-spinner off
+        run: |
+          max_attempts=3
+          attempt=1
+          while [ "$attempt" -le "$max_attempts" ]; do
+            echo "::notice::pip-audit attempt $attempt/$max_attempts"
+            if pip-audit --progress-spinner off --timeout 60; then
+              echo "::notice::pip-audit succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "::warning::pip-audit attempt $attempt failed"
+            if [ "$attempt" -lt "$max_attempts" ]; then
+              echo "::notice::Retrying in 30 seconds..."
+              sleep 30
+            fi
+            attempt=$((attempt + 1))
+          done
+          echo "::error::pip-audit failed after $max_attempts attempts"
+          exit 1
 
   advisory-telemetry-audit:
     name: Advisory telemetry coverage audit
