@@ -221,8 +221,7 @@ def _zcode_full_hooks() -> dict[str, Any]:
         "enabled": True,
         "timeoutMs": 10000,
         "events": {
-            event: [{"matcher": ".*", "hooks": [{"type": "command", "command": "/bin/true"}]}]
-            for event in ZCODE_EVENTS
+            event: [{"matcher": ".*", "hooks": [{"type": "command", "command": "/bin/true"}]}] for event in ZCODE_EVENTS
         },
     }
 
