@@ -232,7 +232,7 @@ class IntegrationTester:
                 for event in expected_events:
                     if event in hooks and hooks[event]:
                         found_events.add(event)
-            elif host == "zcode":
+            elif host in ("zcode",):
                 # zcode uses nested structure: hooks["events"]["<Event>"] = [...]
                 events_dict = hooks.get("events", {})
                 if isinstance(events_dict, dict):
