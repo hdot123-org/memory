@@ -316,6 +316,10 @@ class TestZcodePathDenylist:
     def enable_denylist_for_test(self, monkeypatch):
         """Override conftest's BYPASS for this test class to actually test denylist logic."""
         monkeypatch.setenv("MEMORY_CORE_BYPASS_DENYLIST", "0")
+        # Disable literal /tmp prefix check so fake HOME trees under pytest's
+        # tmp_path (which is /tmp on Linux CI) don't trigger the tmpdir rule
+        # before the intended zcode/factory rules fire.
+        monkeypatch.setattr("memory_core.tools.denylist.SYSTEM_TMP_PREFIXES", ())
 
     def test_zcode_internal_path_denied(self, monkeypatch, tmp_path):
         """~/.zcode 内部路径应被拒绝，rule='zcode'."""

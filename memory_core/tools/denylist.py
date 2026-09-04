@@ -58,6 +58,13 @@ JUNK_DIR_PATTERNS = [
     re.compile(r"^file-list-.*"),  # file-list-*
 ]
 
+# System temporary directory prefixes checked by step 2 of check_denylist.
+# Extracted as a module-level constant so tests can monkeypatch it to () when
+# building fake HOME trees under pytest's tmp_path (which lives under /tmp on
+# Linux CI and would otherwise trigger this literal-prefix check before the
+# intended rule fires).
+SYSTEM_TMP_PREFIXES: tuple[str, ...] = ("/tmp", "/private/tmp")
+
 
 def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
     """Check if a target path is denied by the denylist.
@@ -96,16 +103,14 @@ def check_denylist(target: Path, allow_non_git: bool = False) -> DenylistResult:
             )
 
     # 2. Check /tmp (and /private/tmp on macOS where /tmp is a symlink)
+    # Uses SYSTEM_TMP_PREFIXES so tests can monkeypatch it to () when their
+    # fake HOME trees live under pytest's tmp_path (which is /tmp on Linux CI).
     target_str = str(target_resolved)
-    if (
-        target_str == "/tmp"
-        or target_str.startswith("/tmp/")
-        or target_str == "/private/tmp"
-        or target_str.startswith("/private/tmp/")
-    ):
-        return DenylistResult.make_denied(
-            "tmpdir", "Path is under /tmp. Temporary directories are not suitable for project memory."
-        )
+    for prefix in SYSTEM_TMP_PREFIXES:
+        if target_str == prefix or target_str.startswith(prefix + os.sep):
+            return DenylistResult.make_denied(
+                "tmpdir", f"Path is under {prefix}. Temporary directories are not suitable for project memory."
+            )
 
     # 3. Check ~/.factory (use expanduser to respect HOME env var in tests)
     factory_path = (Path("~").expanduser() / ".factory").resolve()
