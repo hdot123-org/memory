@@ -44,6 +44,7 @@ permissions:
   contents: write
   pull-requests: write
   checks: read
+  actions: read
 
 # INFRA-428：收敛并发扫。schedule 每 10 分钟 + workflow_run 事件可能让
 # 同一 PR 被两条腿同时处理（update-branch 双发、冲突评论 TOCTOU 双发）。
@@ -71,6 +72,7 @@ jobs:
       contents: write
       pull-requests: write
       checks: read
+      actions: read
     secrets:
       # 铁律：合并必须用 DISPATCH_TOKEN（PAT，不受 GitHub 递归防护抑制），
       # 不能用 GITHUB_TOKEN——GITHUB_TOKEN 触发的 push 事件被抑制会导致
