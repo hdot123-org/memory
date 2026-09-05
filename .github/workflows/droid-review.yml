@@ -52,6 +52,7 @@ jobs:
       contents: read
       actions: write
       id-token: write
+      pull-requests: read
     with:
       pr_number: ${{ inputs.pr_number }}
       head_sha: ${{ inputs.head_sha }}

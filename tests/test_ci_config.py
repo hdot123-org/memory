@@ -219,13 +219,19 @@ class TestAuditGate:
         "nested job 'review-shard' is requesting 'actions: write, id-token: write',
         but is only allowed 'actions: none, id-token: none'"）。授权集与切换前
         本仓 review-shard job（851df10 L187-190）逐项等价：contents: read +
-        actions: write + id-token: write（行为等价移植）。"""
+        actions: write + id-token: write（行为等价移植）。
+
+        2026-09-05 INFRA-764 审计追加：callee droid-review-shards.yml 的
+        plan-shards job 声明 pull-requests: read（infra-core v0.8.0 b52961d），
+        调用方必须同步放行，否则 startup_failure（droid-review 链死锁核心）。
+        """
         perms = droid_review_data["jobs"]["shards"].get("permissions")
         assert perms == {
             "contents": "read",
             "actions": "write",
             "id-token": "write",
-        }, f"shards 调用 job 权限漂移（ callee 需要其超集语义）: {perms}"
+            "pull-requests": "read",
+        }, f"shards 调用 job 权限漂移（callee 需要其超集语义）: {perms}"
 
     def test_val_gate_005_actionlint_passes(self):
         """VAL-GATE-005: Modified droid-review.yml passes actionlint."""
