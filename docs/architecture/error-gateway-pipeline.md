@@ -53,13 +53,15 @@ PostHog Alert (错误频率 >10/hr)
 
 错误不只来自 PostHog，系统从 5 个来源收集错误，形成全面的监控覆盖。
 
-| # | 来源 | 收集方式 | 处理方 | 频率 |
-|---|------|---------|--------|------|
-| 1 | Factory 软件日志 | droid-log-single.log ERROR/FATAL | factory-error-monitor.sh 阶段 1 | 每小时 |
-| 2 | 项目 errors/ | 各项目 memory/system/errors/ | factory-error-monitor.sh 阶段 2 | 每小时 |
-| 3 | Linear 接入层 | webhook/logs/trigger-*.log | factory-error-monitor.sh 阶段 3 | 每小时 |
+| # | 来源 | 收集方式 | 处理方 | 频率 | 状态 |
+|---|------|---------|--------|------|------|
+| 1 | Factory 软件日志 | droid-log-single.log ERROR/FATAL | ~~factory-error-monitor.sh 阶段 1~~ | 每小时 | **已退役** (2026-09-06) |
+| 2 | 项目 errors/ | 各项目 memory/system/errors/ | ~~factory-error-monitor.sh 阶段 2~~ | 每小时 | **已退役** (2026-09-06) |
+| 3 | Linear 接入层 | webhook/logs/trigger-*.log | ~~factory-error-monitor.sh 阶段 3~~ | 每小时 | **已退役** (2026-09-06) |
 | 4 | CI 流水线 | GitLab pipeline webhook | webhook ci-failed | 实时 |
-| 5 | 基础设施 | daily audit | daily-audit-cron.sh | 每天 |
+| 5 | 基础设施 | daily audit | ~~daily-audit-cron.sh~~ | 每天 | **已退役** (2026-09-06) |
+
+> **退役说明**：`factory-error-monitor.sh` 与 `daily-audit-cron.sh` 两个脚本于 2026-09-06 从 crontab 移除（脚本文件已不存在）。对应来源的监控能力已由其他机制替代或由 PostHog 统一覆盖。
 
 ### 2.1 错误分类
 
