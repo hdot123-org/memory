@@ -39,7 +39,7 @@ jobs:
     runs-on: [self-hosted, pve-linux]
     steps:
       - name: Branch Cleanup
-        uses: hdot123-org/infra-core/actions/branch-cleanup@v0.11.1
+        uses: hdot123-org/infra-core/actions/branch-cleanup@v0.13.0
         with:
           mode: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || (github.event_name == 'pull_request' && 'immediate' || 'scheduled') }}
           trigger-branch: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.event.pull_request.head.ref || '' }}
