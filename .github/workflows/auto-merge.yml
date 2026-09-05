@@ -3,7 +3,7 @@ name: Auto Merge
 # M4 门禁切换（gate-watchdog-automerge）：本文件为 thin caller——触发面 + 事件门控
 # + concurrency 留在本地（github 事件上下文只在 caller 求值，VAL-GATE-106 契约），
 # resolve + triage + merge 执行体委托 infra-core reusable workflow
-# （auto-merge-pipeline.yml@v0.11.1，merge action 为引擎仓 actions/auto-merge——
+# （auto-merge-pipeline.yml@v0.13.0，merge action 为引擎仓 actions/auto-merge——
 # M6 VAL-HARD-104 自原共享仓收编，该仓已退役归档）。
 #
 # 为什么用 workflow_run + schedule 而非 check_run（INFRA-212）
@@ -44,6 +44,7 @@ permissions:
   contents: write
   pull-requests: write
   checks: read
+  actions: read
 
 # INFRA-428：收敛并发扫。schedule 每 10 分钟 + workflow_run 事件可能让
 # 同一 PR 被两条腿同时处理（update-branch 双发、冲突评论 TOCTOU 双发）。
@@ -66,11 +67,12 @@ jobs:
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
-    uses: hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@v0.11.1
+    uses: hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@v0.13.0
     permissions:
       contents: write
       pull-requests: write
       checks: read
+      actions: read
     secrets:
       # 铁律：合并必须用 DISPATCH_TOKEN（PAT，不受 GitHub 递归防护抑制），
       # 不能用 GITHUB_TOKEN——GITHUB_TOKEN 触发的 push 事件被抑制会导致
