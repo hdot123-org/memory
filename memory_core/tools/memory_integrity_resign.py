@@ -163,7 +163,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-runtime",
         action="store_true",
         default=False,
-        help="Include runtime artifact paths (memory/artifacts/memory-hook/) in signing",
+        help=(
+            "Include runtime artifact paths (memory/artifacts/memory-hook/) and "
+            "append-only runtime files (memory/log/*-sessions.md, "
+            "memory/system/integrity-audit.jsonl, memory/kb/patterns/registry.jsonl) "
+            "in signing"
+        ),
     )
     return parser
 
