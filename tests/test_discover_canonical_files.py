@@ -192,3 +192,43 @@ class TestDiscoverCanonicalFiles:
 
         assert "memory/system/adapter.toml" in rel
         assert "memory/system/manifest.json" not in rel
+
+    def test_runtime_append_only_skip(self, tmp_path: Path):
+        """Case 10: append-only runtime files excluded by default, included with include_runtime=True.
+
+        Heartbeat session logs, the integrity audit trail, and the pattern
+        registry are appended by the gateway itself — signing them guarantees
+        stale-hash false alarms. Same runtime-class semantics as Case 2.
+        """
+        sys_dir = tmp_path / "memory" / "system"
+        sys_dir.mkdir(parents=True)
+        (sys_dir / "adapter.toml").write_text("[adapter]\n")
+        (sys_dir / "integrity-audit.jsonl").write_text('{"action": "full-sign"}\n')
+
+        log_dir = tmp_path / "memory" / "log"
+        log_dir.mkdir(parents=True)
+        (log_dir / "2026-09-04-sessions.md").write_text("# Sessions\n")
+        (log_dir / "2026-09-04-errors.jsonl").write_text("{}")  # stays covered
+
+        kb_patterns = tmp_path / "memory" / "kb" / "patterns"
+        kb_patterns.mkdir(parents=True)
+        (kb_patterns / "registry.jsonl").write_text("")
+
+        # Default: append-only runtime class excluded
+        result = _discover_canonical_files(tmp_path)
+        rel = {str(p.relative_to(tmp_path)) for p in result}
+
+        assert "memory/log/2026-09-04-sessions.md" not in rel
+        assert "memory/system/integrity-audit.jsonl" not in rel
+        assert "memory/kb/patterns/registry.jsonl" not in rel
+        # Non-runtime files keep their coverage
+        assert "memory/system/adapter.toml" in rel
+        assert "memory/log/2026-09-04-errors.jsonl" in rel
+
+        # Opt-in: append-only runtime class included
+        result_rt = _discover_canonical_files(tmp_path, include_runtime=True)
+        rel_rt = {str(p.relative_to(tmp_path)) for p in result_rt}
+
+        assert "memory/log/2026-09-04-sessions.md" in rel_rt
+        assert "memory/system/integrity-audit.jsonl" in rel_rt
+        assert "memory/kb/patterns/registry.jsonl" in rel_rt

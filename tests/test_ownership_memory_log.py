@@ -78,20 +78,41 @@ class TestErrorLogResource:
 
 
 # --- VAL-F1-003: _discover_canonical_files Finds memory/log/ Files ---
+#
+# Note (2026-09 append-only runtime refinement): heartbeat session logs
+# (memory/log/*-sessions.md) belong to the append-only runtime class and are
+# excluded from the DEFAULT discovery scope (signable only via
+# include_runtime=True). Other memory/log files — e.g. *-errors.jsonl and
+# daily summary .md files — keep their default coverage. The tests below
+# pin both facts.
 
 
 class TestDiscoverCanonicalFilesMemoryLog:
     """Test that _discover_canonical_files discovers memory/log/ files."""
 
     def test_discover_md_files_in_memory_log(self, tmp_path):
-        """Should discover .md files in memory/log/."""
+        """Should discover non-sessions .md files in memory/log/ by default."""
+        log_dir = tmp_path / "memory" / "log"
+        log_dir.mkdir(parents=True)
+        (log_dir / "2025-01-01.md").write_text("# Daily Summary\n")
+
+        files = _discover_canonical_files(tmp_path)
+        rel_paths = {str(f.relative_to(tmp_path)) for f in files}
+        assert "memory/log/2025-01-01.md" in rel_paths
+
+    def test_sessions_md_excluded_by_default(self, tmp_path):
+        """Sessions heartbeat logs are append-only runtime class: excluded by default."""
         log_dir = tmp_path / "memory" / "log"
         log_dir.mkdir(parents=True)
         (log_dir / "2025-01-01-sessions.md").write_text("# Sessions\n")
 
-        files = _discover_canonical_files(tmp_path)
-        rel_paths = {str(f.relative_to(tmp_path)) for f in files}
-        assert "memory/log/2025-01-01-sessions.md" in rel_paths
+        default_paths = {str(f.relative_to(tmp_path)) for f in _discover_canonical_files(tmp_path)}
+        assert "memory/log/2025-01-01-sessions.md" not in default_paths
+
+        runtime_paths = {
+            str(f.relative_to(tmp_path)) for f in _discover_canonical_files(tmp_path, include_runtime=True)
+        }
+        assert "memory/log/2025-01-01-sessions.md" in runtime_paths
 
     def test_discover_jsonl_files_in_memory_log(self, tmp_path):
         """Should discover .jsonl files in memory/log/."""
@@ -104,7 +125,7 @@ class TestDiscoverCanonicalFilesMemoryLog:
         assert "memory/log/2025-01-01-errors.jsonl" in rel_paths
 
     def test_discover_multiple_files(self, tmp_path):
-        """Should discover multiple files in memory/log/."""
+        """Should discover multiple files in memory/log/ (sessions only via opt-in)."""
         log_dir = tmp_path / "memory" / "log"
         log_dir.mkdir(parents=True)
         (log_dir / "2025-01-01-sessions.md").write_text("# Sessions\n")
@@ -113,9 +134,14 @@ class TestDiscoverCanonicalFilesMemoryLog:
 
         files = _discover_canonical_files(tmp_path)
         rel_paths = {str(f.relative_to(tmp_path)) for f in files}
-        assert "memory/log/2025-01-01-sessions.md" in rel_paths
+        assert "memory/log/2025-01-01-sessions.md" not in rel_paths
         assert "memory/log/2025-01-01-errors.jsonl" in rel_paths
-        assert "memory/log/2025-01-02-sessions.md" in rel_paths
+        assert "memory/log/2025-01-02-sessions.md" not in rel_paths
+
+        runtime_files = _discover_canonical_files(tmp_path, include_runtime=True)
+        runtime_rel_paths = {str(f.relative_to(tmp_path)) for f in runtime_files}
+        assert "memory/log/2025-01-01-sessions.md" in runtime_rel_paths
+        assert "memory/log/2025-01-02-sessions.md" in runtime_rel_paths
 
 
 # --- VAL-F1-004: VOLATILE_PATTERNS No Longer Excludes errors.jsonl ---

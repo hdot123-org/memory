@@ -7,6 +7,12 @@ current file contents. Reports tampering, missing files, and new files.
 M4: No auto re-sign on failure. Returns (ok=False, errors=[...]) only.
 Source repo: zero file side-effects (returns empty result without reading).
 Supports both v1 and v2 manifest schemas.
+
+Append-only runtime-class entries (heartbeat session logs, the integrity
+audit trail, the pattern registry) are skipped at verify time: they are
+appended by the gateway by design, so a hash mismatch on them is drift,
+not tampering. This also covers existing manifests that still carry such
+entries with stale hashes from before the runtime classification.
 """
 
 import hashlib
@@ -47,6 +53,24 @@ def _get_discover_fn() -> Any:
     return _discover_fn
 
 
+# Lazy import of the append-only runtime classifier (same pattern as above)
+_runtime_class_fn = None
+
+
+def _get_runtime_class_fn() -> Any:
+    global _runtime_class_fn
+    if _runtime_class_fn is None:
+        try:
+            from .memory_hook_integrity_manifest import _is_runtime_append_only
+
+            _runtime_class_fn = _is_runtime_append_only
+        except ImportError:
+            from memory_hook_integrity_manifest import _is_runtime_append_only  # type: ignore
+
+            _runtime_class_fn = _is_runtime_append_only
+    return _runtime_class_fn
+
+
 class IntegrityResult:
     """Result of an integrity verification."""
 
@@ -60,6 +84,7 @@ class IntegrityResult:
             "tampered": 0,
             "missing": 0,
             "new_unsigned": 0,
+            "runtime_skipped": 0,
         }
 
     def add_error(self, rel_path: str, kind: str, detail: str) -> None:
@@ -190,12 +215,22 @@ def verify_project(
     entries = manifest.get("entries", [])
     result.summary["total_signed"] = len(entries)
 
+    # Append-only runtime class (heartbeat session logs, the integrity audit
+    # trail, the pattern registry) is appended by the gateway itself — these
+    # are by-design mutations, not tamper targets. Stale-hash entries in
+    # existing manifests (signed before this classification) are skipped
+    # here; the next full re-sign rebuilds the manifest without them.
+    runtime_class_fn = _get_runtime_class_fn()
+
     signed_paths = set()
     for entry in entries:
+        rel = entry.get("rel_path", "")
+        if runtime_class_fn is not None and runtime_class_fn(rel):
+            result.summary["runtime_skipped"] += 1
+            continue
         _verify_single_entry(entry, resolved_root, key, result)
         # Membership is tracked for every manifest entry, even failed ones:
         # a tampered file is still signed, not unsigned.
-        rel = entry.get("rel_path", "")
         abs_path = resolved_root / rel
         if abs_path.exists():
             signed_paths.add(abs_path.resolve())

@@ -92,6 +92,22 @@ ARTIFACT_PATTERNS = [
     "memory/artifacts/memory-hook/events",
 ]
 
+# Append-only runtime paths (2026-09 false-alarm root-cause fix).
+# These files are appended by the hook gateway itself during normal
+# operation: prompt-submit heartbeats append to memory/log/<date>-sessions.md
+# WITHOUT re-signing, every incremental sign appends to the audit trail, and
+# the pattern registry is signed empty then filled. Appends are by-design
+# mutations, not tampering — signing them guarantees a stale-hash mismatch
+# (kind=tampered false alarm) at the next session-start verify.
+# They follow the same runtime-class treatment as ARTIFACT_PATTERNS: excluded
+# from the default signing scope, signable only via include_runtime=True.
+# Matched against the relative path (forward slashes) with fnmatch globs.
+RUNTIME_APPEND_ONLY_PATTERNS = [
+    "memory/log/*-sessions.md",  # heartbeat session logs (every prompt-submit)
+    f"{SYSTEM_DIR}/integrity-audit.jsonl",  # integrity audit trail (appended on sign)
+    "memory/kb/patterns/registry.jsonl",  # pattern registry (signed empty then filled)
+]
+
 # Volatile file patterns that are rewritten on every hook invocation.
 # These must be excluded from integrity signing because they naturally
 # change between signing and verification, causing constant mismatch.
@@ -118,6 +134,18 @@ def _is_volatile(rel_path: str) -> bool:
             if normalized == pattern:
                 return True
     return False
+
+
+def _is_runtime_append_only(rel_path: str) -> bool:
+    """Check if a relative path belongs to the append-only runtime class.
+
+    Append-only runtime files (heartbeat session logs, the integrity audit
+    trail, the pattern registry) are mutated by the gateway itself; they are
+    not tamper-detection targets. Verification skips manifest entries
+    matching this class, and default signing excludes them.
+    """
+    normalized = rel_path.replace("\\", "/")
+    return any(fnmatch.fnmatch(normalized, pattern) for pattern in RUNTIME_APPEND_ONLY_PATTERNS)
 
 
 # Import shared sha256_file utility (Cluster F: deduplicated to _utils.py)
@@ -294,15 +322,23 @@ def _walk_ownership_resources(resolved_root: Path, ownership: Any) -> list[Path]
     return found
 
 
-def _dedup_and_filter(found: list[Path], resolved_root: Path) -> list[Path]:
-    """Phase 5: Deduplicate and filter volatile/manifest files.
+def _dedup_and_filter(
+    found: list[Path],
+    resolved_root: Path,
+    *,
+    include_runtime: bool = False,
+) -> list[Path]:
+    """Phase 5: Deduplicate and filter volatile/manifest/runtime files.
 
     Args:
         found: List of discovered paths.
         resolved_root: Resolved project root path.
+        include_runtime: If False (default), drop append-only runtime-class
+            files (RUNTIME_APPEND_ONLY_PATTERNS) alongside volatile files.
 
     Returns:
-        Deduplicated, sorted list excluding volatile files and manifest.json.
+        Deduplicated, sorted list excluding volatile files, manifest.json,
+        and (by default) append-only runtime files.
     """
     seen: set[Path] = set()
     unique: list[Path] = []
@@ -320,6 +356,10 @@ def _dedup_and_filter(found: list[Path], resolved_root: Path) -> list[Path]:
             continue
         if _is_volatile(rel):
             continue
+        # Append-only runtime class: excluded from the default scope
+        # (signable only via include_runtime=True, like ARTIFACT_PATTERNS)
+        if not include_runtime and _is_runtime_append_only(rel):
+            continue
         unique.append(p)
     return unique
 
@@ -336,7 +376,9 @@ def _discover_canonical_files(
     Args:
         project_root: Project root path.
         include_runtime: If True, also traverse ARTIFACT_PATTERNS
-            (memory/artifacts/memory-hook/contexts|events). Default False.
+            (memory/artifacts/memory-hook/contexts|events) and include
+            append-only runtime files (RUNTIME_APPEND_ONLY_PATTERNS).
+            Default False.
     """
     resolved_root = project_root.resolve()
 
@@ -357,7 +399,7 @@ def _discover_canonical_files(
             _logger.debug("memory_hook_integrity_manifest._discover_canonical_files: ownership loading failed: %s", exc)
 
     # Phase 5: Deduplicate and filter
-    return _dedup_and_filter(found, resolved_root)
+    return _dedup_and_filter(found, resolved_root, include_runtime=include_runtime)
 
 
 # M3: is_memory_core_source_repo now imported from memory_core.ownership
@@ -380,7 +422,8 @@ def sign_project(
         key: 32-byte HMAC key
         now_iso: Optional callable returning ISO timestamp string
         include_runtime: If True, also sign ARTIFACT_PATTERNS
-            (memory/artifacts/memory-hook/contexts|events). Default False.
+            (memory/artifacts/memory-hook/contexts|events) and append-only
+            runtime files (RUNTIME_APPEND_ONLY_PATTERNS). Default False.
 
     Returns:
         The manifest dict that was written, or None if skipped (anti-pollution)
@@ -592,8 +635,10 @@ def sign_project_incremental(
         changed_paths: List of relative paths to re-sign
         now_iso: Optional callable returning ISO timestamp string
         reason: Optional reason for audit log (e.g., "memory-init baseline")
-        include_runtime: If True, also sign ARTIFACT_PATTERNS in fallback full sign.
-            Default False.
+        include_runtime: If True, also sign ARTIFACT_PATTERNS and append-only
+            runtime files in fallback full sign. Default False. Explicitly
+            passed changed_paths are honored verbatim regardless (same
+            incremental semantics as the artifact runtime class).
 
     Returns:
         The manifest dict that was written, or None if skipped (anti-pollution)
