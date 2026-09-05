@@ -22,6 +22,7 @@ from memory_core.tools.memory_hook_integrity_manifest import (
     MANIFEST_FILENAME,
     SCHEMA_VERSION,
     _hmac_sha256,
+    _is_runtime_append_only,
     _key_fingerprint,
     _sha256_file,
     sign_project,
@@ -416,3 +417,202 @@ class TestVerification:
         assert d["summary"]["new_unsigned"] == 1
         assert len(d["errors"]) == 1
         assert len(d["warnings"]) == 1
+
+
+# --- Append-Only Runtime Exclusion (2026-09 false-alarm root-cause fix) ---
+
+
+def _make_append_only_project(root: Path) -> None:
+    """Create a consumer-like project containing the three append-only runtime files.
+
+    Mirrors the ZCodeProject false-alarm sample: heartbeat session logs,
+    the integrity audit trail, and the pattern registry — plus one real
+    kb content file that MUST stay under tamper-detection coverage.
+    """
+    system_dir = root / "memory" / "system"
+    system_dir.mkdir(parents=True, exist_ok=True)
+    (system_dir / "CANONICAL.md").write_text("# Canonical\n")
+    (system_dir / "integrity-audit.jsonl").write_text('{"action": "full-sign"}\n')
+
+    log_dir = root / "memory" / "log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    (log_dir / "2026-09-04-sessions.md").write_text("# Sessions\n")
+
+    kb_patterns = root / "memory" / "kb" / "patterns"
+    kb_patterns.mkdir(parents=True, exist_ok=True)
+    (kb_patterns / "registry.jsonl").write_text("")
+
+    kb_lessons = root / "memory" / "kb" / "lessons"
+    kb_lessons.mkdir(parents=True, exist_ok=True)
+    (kb_lessons / "lesson-001.md").write_text("# Lesson\n")
+
+
+class TestAppendOnlyRuntimeClassMatchers:
+    """The three append-only runtime path patterns are classified as runtime class."""
+
+    def test_sessions_log_matches(self):
+        assert _is_runtime_append_only("memory/log/2026-09-04-sessions.md") is True
+
+    def test_integrity_audit_matches(self):
+        assert _is_runtime_append_only("memory/system/integrity-audit.jsonl") is True
+
+    def test_pattern_registry_matches(self):
+        assert _is_runtime_append_only("memory/kb/patterns/registry.jsonl") is True
+
+    def test_error_log_not_runtime_class(self):
+        # error logs are written together with an incremental re-sign in the
+        # same operation — they stay under coverage
+        assert _is_runtime_append_only("memory/log/2026-09-04-errors.jsonl") is False
+
+    def test_daily_summary_not_runtime_class(self):
+        assert _is_runtime_append_only("memory/log/2026-09-04.md") is False
+
+    def test_real_kb_content_not_runtime_class(self):
+        assert _is_runtime_append_only("memory/kb/lessons/lesson-001.md") is False
+        assert _is_runtime_append_only("memory/kb/patterns/notes.md") is False
+        assert _is_runtime_append_only("memory/kb/patterns/other.jsonl") is False
+
+
+class TestAppendOnlyRuntimeSigningExclusion:
+    """Sign side: default manifest collection excludes append-only runtime files."""
+
+    def test_sign_project_excludes_append_only_runtime_by_default(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _make_append_only_project(root)
+
+            key = generate_key()
+            manifest = sign_project(root, key)
+
+            rels = [e["rel_path"] for e in manifest["entries"]]
+            assert "memory/log/2026-09-04-sessions.md" not in rels
+            assert "memory/system/integrity-audit.jsonl" not in rels
+            assert "memory/kb/patterns/registry.jsonl" not in rels
+            # Real kb content stays signed
+            assert "memory/kb/lessons/lesson-001.md" in rels
+
+    def test_sign_project_include_runtime_signs_append_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _make_append_only_project(root)
+
+            key = generate_key()
+            manifest = sign_project(root, key, include_runtime=True)
+
+            rels = [e["rel_path"] for e in manifest["entries"]]
+            assert "memory/log/2026-09-04-sessions.md" in rels
+            assert "memory/system/integrity-audit.jsonl" in rels
+            assert "memory/kb/patterns/registry.jsonl" in rels
+
+    def test_verify_ok_after_heartbeat_append_without_resign(self):
+        """Exact false-alarm reproduction: prompt-submit heartbeats append to the
+        sessions log WITHOUT re-signing; the next session-start verify must pass.
+
+        Pre-fix this flags kind=tampered on the sessions log (3 of the 9
+        observed false events).
+        """
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _make_append_only_project(root)
+
+            key = generate_key()
+            sign_project(root, key)
+
+            # Heartbeat appends (prompt-submit path does NOT re-sign)
+            sessions = root / "memory" / "log" / "2026-09-04-sessions.md"
+            sessions.write_text(sessions.read_text() + "- **heartbeat append**\n")
+            # Audit trail appends (incremental sign writes audit lines)
+            audit = root / "memory" / "system" / "integrity-audit.jsonl"
+            audit.write_text(audit.read_text() + '{"action": "incremental-sign"}\n')
+            # Pattern registry filled after being signed empty
+            registry = root / "memory" / "kb" / "patterns" / "registry.jsonl"
+            registry.write_text('{"pattern": "retry-with-backoff"}\n')
+
+            result = verify_project(root, key)
+            assert result.ok, f"append-only runtime drift must not flag: {result.errors}"
+            assert result.summary["tampered"] == 0
+
+
+class TestAppendOnlyRuntimeVerificationFilter:
+    """Verify side: stale append-only entries in existing manifests must not flag.
+
+    Existing consumer scopes still carry these entries with stale hashes;
+    the verify-side filter silences them until the next full re-sign
+    rebuilds the manifest without them.
+    """
+
+    def test_verify_ignores_stale_append_only_entries_in_old_manifest(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _make_append_only_project(root)
+
+            key = generate_key()
+            # Simulate an old-format manifest: signed WITH runtime coverage
+            sign_project(root, key, include_runtime=True)
+
+            # Gateway appended after that sign (heartbeat / audit / registry fill)
+            sessions = root / "memory" / "log" / "2026-09-04-sessions.md"
+            sessions.write_text(sessions.read_text() + "- **heartbeat append**\n")
+            audit = root / "memory" / "system" / "integrity-audit.jsonl"
+            audit.write_text(audit.read_text() + '{"action": "incremental-sign"}\n')
+            registry = root / "memory" / "kb" / "patterns" / "registry.jsonl"
+            registry.write_text('{"pattern": "retry-with-backoff"}\n')
+
+            result = verify_project(root, key)
+            assert result.ok, f"stale append-only entries must not flag: {result.errors}"
+            assert result.summary["runtime_skipped"] == 3
+
+    def test_verify_still_detects_tampered_kb_content(self):
+        """REGRESSION PIN: genuine tampering of real kb content must still fail,
+        even alongside stale append-only entries."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _make_append_only_project(root)
+
+            key = generate_key()
+            # Old-format manifest includes the runtime entries
+            sign_project(root, key, include_runtime=True)
+
+            # Stale sessions entry (heartbeat appended, no re-sign)
+            sessions = root / "memory" / "log" / "2026-09-04-sessions.md"
+            sessions.write_text(sessions.read_text() + "- **heartbeat append**\n")
+            # AND genuine tampering of a real kb knowledge file
+            (root / "memory" / "kb" / "lessons" / "lesson-001.md").write_text("# Tampered lesson\n")
+
+            result = verify_project(root, key)
+            assert not result.ok, "tampered kb content must still fail verification"
+            tampered_rels = {e["rel_path"] for e in result.errors if e["kind"] == "tampered"}
+            assert "memory/kb/lessons/lesson-001.md" in tampered_rels
+            assert "memory/log/2026-09-04-sessions.md" not in tampered_rels
+
+    def test_verify_tampered_kb_with_default_manifest(self):
+        """Default manifests (no runtime entries) still detect kb tampering."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _make_append_only_project(root)
+
+            key = generate_key()
+            sign_project(root, key)
+
+            (root / "memory" / "kb" / "lessons" / "lesson-001.md").write_text("# Tampered\n")
+
+            result = verify_project(root, key)
+            assert not result.ok
+            assert any(
+                e["kind"] == "tampered" and e["rel_path"] == "memory/kb/lessons/lesson-001.md" for e in result.errors
+            )
+
+    def test_verify_no_new_unsigned_warning_for_append_only_files(self):
+        """Append-only runtime files must not be reported as new_unsigned either."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _make_append_only_project(root)
+
+            key = generate_key()
+            sign_project(root, key)
+
+            result = verify_project(root, key)
+            warning_rels = {w["rel_path"] for w in result.warnings}
+            assert "memory/log/2026-09-04-sessions.md" not in warning_rels
+            assert "memory/system/integrity-audit.jsonl" not in warning_rels
+            assert "memory/kb/patterns/registry.jsonl" not in warning_rels

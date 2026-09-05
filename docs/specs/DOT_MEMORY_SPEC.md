@@ -297,6 +297,19 @@ Runtime required：被 `memory_hook_impls.py` workbot adapter 在任务操作时
 - `memory/system/adapter.toml`、`memory/system/ownership.toml`
 - `memory/system/errors.log`
 - `artifacts/memory-hook/contexts/` 和 `artifacts/memory-hook/events/` 下的日期分区文件
+- 所有权域（ownership domains）与资源（resources）覆盖的文件（M4 起为签名范围的权威来源）
+
+**追加型运行时文件排除（2026-09 误报治本）**：
+
+以下只追加（append-only）运行时文件由 gateway 自身在正常运行中追加写入，属于**设计内变更而非篡改**，默认排除在签名范围之外（与 `artifacts/memory-hook/` 同属 runtime 类，仅 `--include-runtime` / `include_runtime=True` 显式选择时才签名）：
+
+- `memory/log/*-sessions.md`（prompt-submit 心跳每次追加，不触发重签）
+- `memory/system/integrity-audit.jsonl`（每次签名操作追加审计行）
+- `memory/kb/patterns/registry.jsonl`（首签为空文件，随后由 pattern hook 填充）
+
+背景：session-start 先完整性校验、后心跳追加、后全量重签的顺序，使上一个会话的无签名追加在下一个 session-start 被判为 `kind=tampered`（约 2 秒自愈的误报；实测 ZCodeProject 共 9 次：5× audit.jsonl、3× sessions.md、1× registry.jsonl）。
+
+**验证侧兼容**：`verify_project` 对 manifest 中匹配上述三类模式的条目**跳过校验**（计入 `runtime_skipped`）。这使升级后仍携带旧条目（哈希已过期）的存量 manifest 立即静默，无需消费项目执行任何迁移——下一次全量重签（任意 gateway 事件后的 `_integrity_sign`）自然重建不含这些条目的 manifest。真实知识文件（如 `memory/kb/**` 下非 registry 内容）的篡改检测不受影响。
 
 **触发时机**：
 - `memory-init` 初始化后自动签名（best-effort）
@@ -307,6 +320,7 @@ Runtime required：被 `memory_hook_impls.py` workbot adapter 在任务操作时
 - `schema_version` 必须为 `integrity-manifest-v1`
 - `key_fingerprint` 必须与当前密钥匹配
 - 每个条目的 `sha256` 和 `hmac_sha256` 必须与当前文件内容一致
+- 追加型运行时类条目（三类模式）跳过校验，不计为篡改
 - 不在 manifest 中的 canonical 文件报告为 `new_unsigned` 警告
 
 ### 6. memory-hook-policy-pack.json（runtime required）
