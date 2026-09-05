@@ -307,7 +307,7 @@ wheels = [
 [[package]]
 name = "infra-core"
 version = "0.11.1"
-source = { git = "https://github.com/hdot123-org/infra-core.git?rev=v0.11.1#8df3f04380b9c3e5ba43227d857f1b780099f606" }
+source = { git = "https://github.com/hdot123-org/infra-core.git?rev=v0.12.1#8df3f04380b9c3e5ba43227d857f1b780099f606" }
 dependencies = [
     { name = "pyyaml" },
     { name = "requests" },
@@ -466,7 +466,7 @@ mcp = [
 [package.metadata]
 requires-dist = [
     { name = "deptry", marker = "extra == 'dev'", specifier = ">=0.15" },
-    { name = "infra-core", git = "https://github.com/hdot123-org/infra-core.git?rev=v0.11.1" },
+    { name = "infra-core", git = "https://github.com/hdot123-org/infra-core.git?rev=v0.12.1" },
     { name = "mcp", specifier = ">=1.0,<2.0" },
     { name = "mcp", marker = "extra == 'dev'", specifier = ">=1.0,<2.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0,<2.0" },
