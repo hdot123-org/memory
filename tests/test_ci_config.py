@@ -438,7 +438,7 @@ class TestAutoMergeThinCallerContract:
 
     def test_permissions_preserved(self, auto_merge_data):
         perms = auto_merge_data.get("permissions", {})
-        assert perms == {"contents": "write", "pull-requests": "write", "checks": "read"}
+        assert perms == {"contents": "write", "pull-requests": "write", "checks": "read", "actions": "read"}
 
     def test_single_job_delegation_with_event_guard(self, auto_merge_data):
         """单 job uses 委托 + 事件门控 if 留在 caller（workflow_run 仅 success 才进流水）。"""
@@ -462,6 +462,7 @@ class TestAutoMergeThinCallerContract:
             "contents": "write",
             "pull-requests": "write",
             "checks": "read",
+            "actions": "read",
         }
 
 
