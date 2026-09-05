@@ -13,5 +13,5 @@ permissions:
 jobs:
   create-labels:
     name: create-labels
-    uses: hdot123-org/infra-core/.github/workflows/setup-labels.yml@v0.12.1
+    uses: hdot123-org/infra-core/.github/workflows/setup-labels.yml@v0.13.0
     # No labels-json input → reusable workflow uses default label set

@@ -112,7 +112,7 @@ class TestGateSetupLabelsGovernance:
         assert len(jobs) == 1
         job = list(jobs.values())[0]
         uses_str = job.get("uses", "")
-        assert "hdot123-org/infra-core/.github/workflows/setup-labels.yml@v0.12.1" in uses_str
+        assert "hdot123-org/infra-core/.github/workflows/setup-labels.yml@v0.13.0" in uses_str
 
     def test_governance_thin_caller_name(self):
         """governance thin caller 名字节级为 'Evolution Governance'"""
@@ -142,7 +142,7 @@ class TestGateSetupLabelsGovernance:
         assert len(steps) == 1
         step = steps[0]
         uses_str = step.get("uses", "")
-        assert "hdot123-org/infra-core/actions/governance-check@v0.12.1" in uses_str
+        assert "hdot123-org/infra-core/actions/governance-check@v0.13.0" in uses_str
 
     def test_governance_protected_patterns_parity(self):
         """governance thin caller 保护路径与切换前内联 grep 全集对等
@@ -204,10 +204,10 @@ class TestAuditGate:
 
     def test_val_gate_002_review_shard_uses_matrix(self, droid_review_data):
         """VAL-GATE-002（M4 切换后）：分片 matrix 迁入 infra-core reusable workflow，
-        caller 必须委托该 workflow（uses 字节级指向 droid-review-shards.yml@v0.12.1）。"""
+        caller 必须委托该 workflow（uses 字节级指向 droid-review-shards.yml@v0.13.0）。"""
         shards_job = droid_review_data["jobs"]["shards"]
         uses_str = shards_job.get("uses", "")
-        assert uses_str == "hdot123-org/infra-core/.github/workflows/droid-review-shards.yml@v0.12.1", (
+        assert uses_str == "hdot123-org/infra-core/.github/workflows/droid-review-shards.yml@v0.13.0", (
             f"shards job 必须调用 infra-core reusable workflow，实际: {uses_str}"
         )
 
@@ -265,7 +265,7 @@ class TestAuditGate:
         jobs = data["jobs"]
         assert list(jobs.keys()) == ["auto-merge"], f"thin caller 单 job 拓扑漂移: {list(jobs.keys())}"
         assert jobs["auto-merge"].get("uses") == (
-            "hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@v0.12.1"
+            "hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@v0.13.0"
         )
 
         # Must have correct triggers
@@ -370,7 +370,7 @@ class TestAutoMergeDispatchTokenGuard:
     def test_auto_merge_caller_is_reusable_delegation(self, auto_merge_calling_job):
         """caller 是纯 uses 委托（执行体在 infra-core，merge 步走引擎仓 actions/auto-merge）。"""
         assert auto_merge_calling_job.get("uses") == (
-            "hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@v0.12.1"
+            "hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@v0.13.0"
         )
         assert auto_merge_calling_job.get("steps") is None, "thin caller 不得保留内联 step"
 
@@ -451,7 +451,7 @@ class TestAutoMergeThinCallerContract:
         jobs = auto_merge_data["jobs"]
         assert list(jobs.keys()) == ["auto-merge"]
         job = jobs["auto-merge"]
-        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@v0.12.1"
+        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/auto-merge-pipeline.yml@v0.13.0"
         assert job.get("steps") is None
         job_if = str(job.get("if", ""))
         assert "github.event_name == 'pull_request_target'" in job_if
@@ -516,15 +516,15 @@ class TestScanHeartbeatThinCallerContract:
     def test_scan_single_job_delegation(self, scan_data):
         """scan job 纯 uses 委托 infra-core reusable，无本地 steps。
 
-        INFRA-651: uses 钉 tag v0.11.1（与 pyproject 引擎 pin 同版本）——禁浮动
-        @main，钉 @v0.12.1；浮动期间 infra-core 模板先行漂移会让本仓定时管道
+        INFRA-651: uses 钉 tag v0.13.0（与 pyproject 引擎 pin 同版本）——禁浮动
+        @main，钉 @v0.13.0；浮动期间 infra-core 模板先行漂移会让本仓定时管道
         run 级 startup_failure（M5 键名切换窗 6h 断链实证）。升级 = pyproject pin
         + 此处 tag 同 PR 双写。
         """
         jobs = scan_data["jobs"]
         assert list(jobs.keys()) == ["scan"]
         job = jobs["scan"]
-        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/evolution-scan.yml@v0.12.1"
+        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/evolution-scan.yml@v0.13.0"
         assert job.get("steps") is None
 
     def test_scan_secrets_explicit_named_mapping(self, scan_data):
@@ -566,13 +566,13 @@ class TestScanHeartbeatThinCallerContract:
     def test_heartbeat_single_job_delegation(self, heartbeat_data):
         """heartbeat job 纯 uses 委托；SCANNER_WORKFLOW 契约由引擎仓锁定。
 
-        INFRA-651: uses 钉 tag v0.11.1，与 scan caller 及 pyproject 引擎 pin
-        同版本（模板/引擎版本锁定，禁浮动 @main，钉 @v0.12.1）。
+        INFRA-651: uses 钉 tag v0.13.0，与 scan caller 及 pyproject 引擎 pin
+        同版本（模板/引擎版本锁定，禁浮动 @main，钉 @v0.13.0）。
         """
         jobs = heartbeat_data["jobs"]
         assert list(jobs.keys()) == ["heartbeat"]
         job = jobs["heartbeat"]
-        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/evolution-heartbeat.yml@v0.12.1"
+        assert job.get("uses") == "hdot123-org/infra-core/.github/workflows/evolution-heartbeat.yml@v0.13.0"
         assert job.get("steps") is None
 
     def test_heartbeat_secrets_explicit_named_mapping(self, heartbeat_data):
@@ -1137,7 +1137,7 @@ class TestWatchdogThinCallerContract:
     def test_handler_jobs_delegate_to_infra_core(self, watchdog_data):
         """两个 handler job 纯 uses 委托 + 调用 job 权限恰为 actions: write
         （callee 子集校验：缺声明 = startup_failure 零 job，INFRA-613 教训）。"""
-        expected = "hdot123-org/infra-core/.github/workflows/droid-review-watchdog-handlers.yml@v0.12.1"
+        expected = "hdot123-org/infra-core/.github/workflows/droid-review-watchdog-handlers.yml@v0.13.0"
         for job_name in ("self-heal-rerun", "cancel-on-ci-fail"):
             job = watchdog_data["jobs"][job_name]
             assert job.get("uses") == expected, f"{job_name} 必须委托 infra-core reusable"

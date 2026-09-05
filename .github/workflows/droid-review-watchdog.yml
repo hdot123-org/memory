@@ -1,6 +1,6 @@
 # Droid Review Watchdog — thin caller（M4 门禁切换，gate-watchdog-automerge）
 # self-heal-rerun / cancel-on-ci-fail 两 handler 委托 infra-core reusable workflow
-# （droid-review-watchdog-handlers.yml@v0.12.1）；quota-sweep 留在本地 job。
+# （droid-review-watchdog-handlers.yml@v0.13.0）；quota-sweep 留在本地 job。
 #
 # 契约（NEVER break，VAL-GATE-107）：
 #   1. Workflow 名 "Droid Review Watchdog"
@@ -71,7 +71,7 @@ jobs:
     if: >
       github.event.workflow_run.name == 'Droid Auto Review' &&
       github.event.workflow_run.conclusion == 'failure'
-    uses: hdot123-org/infra-core/.github/workflows/droid-review-watchdog-handlers.yml@v0.12.1
+    uses: hdot123-org/infra-core/.github/workflows/droid-review-watchdog-handlers.yml@v0.13.0
     permissions:
       actions: write
     with:
@@ -95,7 +95,7 @@ jobs:
     if: >
       github.event.workflow_run.name == 'CI' &&
       github.event.workflow_run.conclusion == 'failure'
-    uses: hdot123-org/infra-core/.github/workflows/droid-review-watchdog-handlers.yml@v0.12.1
+    uses: hdot123-org/infra-core/.github/workflows/droid-review-watchdog-handlers.yml@v0.13.0
     permissions:
       actions: write
     with:
