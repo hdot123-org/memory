@@ -5,522 +5,251 @@ shortname: DES-010
 status: 可评审
 scope: default
 created: 2026-04-26
-updated: 2026-05-14
+updated: 2026-09-05
 source: code-analysis
 confidence: medium
 tags: [consumer-boundary,improvements,suggestions]
 related: [DES-001, DES-007, DES-008]
 ---
 
-> 文档编号：DES-010 | 版本：V1.0 | 日期：2026-04-26 | 维护人：codex
+> 文档编号：DES-010 | 版本：V1.1 | 日期：2026-09-05 | 维护人：codex
 
-> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-08-10。如需精确接口签名，请参考源码（`memory_core/tools/`）。
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-09-05（v0.45.6）。如需精确接口签名，请参考源码（`memory_core/tools/`）。
 
 # 消费边界分析与改进建议
 
 > 创建日期：2026-04-26
 > 维护人：D10（文档整理员）
 > 状态：可评审
-> 分析对象：`<memory-repo>`（memory 仓库）
+> 分析对象：`<memory-repo>`（memory-core 仓库，GitHub 主仓 `hdot123-org/memory`）
 
-> **消费者契约更新**：本文档中的消费者契约已更新为 `context-package-v1`，内部核心使用内部 v2 schema，通过 Gateway 层的 `_apply_artifact_compaction()` 进行转换。
+> **📌 2026-09-05 校准备注**（相对 2026-05-14 / v0.4.0 Beta 版快照的变更）：
+>
+> 1. **文件复制消费时代已结束（已移除）**：2026-05 版审计的「workbot 将 memory Python 源码整目录复制进自身仓库」消费模型已废弃。memory-core 现为可复用只读协议库（pip 包），消费项目通过 `memory-init` 在自身仓库初始化独立 `memory/` 结构，互不依赖、无源码复制。
+> 2. **三层架构（v0.8.0）**：Layer 1 `~/.memory-core/`（全局运行时：主机级生命周期/path-index/完整性密钥）、Layer 2 `~/.memory/global-kb/`（operations/engineering/collaboration/pending + memory-promote 晋升流）、Layer 3 项目 `memory/`；读取路由项目优先、全局兜底。
+> 3. **引擎迁移 infra-core（2026-08，M3/M5）**：version-sync、daily-audit、error-patterns、layout-audit 等执行体迁至 infra-core（`infra-*` CLI）；本仓 CI 维护 workflow 均为 thin caller（tag pin v0.11.1）。
+> 4. **旧 §2 的四大边界问题全部出清**：37 参数膨胀已由 `CoreConfig` dataclass 解决；Gateway 过载已由 M3 六模块拆分（门面 + patch-redirect 兼容层）解决；「复制而非引用」已由 pip 分发解决；接口不兼容随 workbot adapter 移除（现仅 `default_runtime_profile` + `neutral_policy`）而消失。
+> 5. **仓库托管现状**：GitHub 已成主仓库（AGENTS.md 铁律），GitLab 仅历史备份；`docs/specs/BOUNDARY.md` §8 的「GitLab source of truth」为历史条款，以 AGENTS.md 为准。
+> 6. **新增 MCP 消费面**：`memory-mcp-server`（stdio，9 工具）为非 hook 平台提供 load_context / search_memory / save_memory 等消费入口。
 
 ---
 
 ## 1. 当前消费面审计
 
-### 1.1 Workbot 调用的 Memory 模块清单
+### 1.1 消费方式总览
 
-Workbot 通过 **文件复制** 方式消费 memory 模块的全部 Python 代码层。以下是 workbot 仓库中的完整文件列表及其在 memory 仓库中的对应源文件：
+**（历史标注）2026-05 版 §1.1 的「Workbot 文件复制清单」已移除。** 当前的消费模型：
 
-| # | Workbot 路径 | Memory 源路径 | Workbot 行数 | Memory 行数 | 差异 |
-|---|-------------|---------------|-------------|-------------|------|
-| 1 | `memory_core/tools/memory_hook_gateway.py` | `memory_core/tools/memory_hook_gateway.py` | 1019 | 981 | **+38 行**（独立演化） |
-| 2 | `memory_core/tools/memory_hook_core.py` | `memory_core/tools/memory_hook_core.py` | 271 | 271 | 完全一致 |
-| 3 | `memory_core/tools/memory_hook_interfaces.py` | `memory_core/tools/memory_hook_interfaces.py` | 226 | 242 | **-16 行**（接口裁剪） |
-| 4 | `memory_core/tools/memory_hook_impls.py` | `memory_core/tools/memory_hook_impls.py` | 1273 | 1040 | **+233 行**（独立演化） |
-| 5 | `memory_core/tools/memory_hook_adapters/workbot_runtime_profile.py` | `memory_core/tools/memory_hook_adapters/workbot_runtime_profile.py` | — | 267 | workbot 版本无 `import os`、无 `GATEWAY_POLICY_CLASS`、新增 `HISTORY_PROJECTS_*`、`EXTERNAL_CORE_*` |
-| 6 | `memory_core/tools/memory_hook_adapters/workbot_policy.py` | `memory_core/tools/memory_hook_adapters/workbot_policy.py` | — | 82 | 基本一致 |
-| 7 | `memory_core/tools/memory_hook_adapters/neutral_policy.py` | `memory_core/tools/memory_hook_adapters/neutral_policy.py` | — | 22 | 基本一致 |
-| 8 | `memory_core/tools/cmux_hook_state.py` | `memory_core/tools/cmux_hook_state.py` | — | 225 | 独立文件 |
-| 9 | `memory_core/tools/validate_memory_system.py` | `memory_core/tools/validate_memory_system.py` | — | 12 | 独立文件 |
+| 消费通道 | 载体 | 说明 |
+|----------|------|------|
+| pip 安装 | `pip install git+https://github.com/hdot123-org/memory.git@v0.45.6` | 生产消费方式；消费项目安装 memory-core 包并获得全部 CLI 入口（§1.2） |
+| 项目初始化 | `memory-init --target <project>` | 在消费项目生成 `memory/system/`、`memory/kb/` 等结构；四模式（create/adopt/update/repair）；同时幂等创建 Layer 2 全局 KB 并写入 `adapter.toml [global_kb]` 段 |
+| Hook 接入 | `memory-factory-hooks install --storage-root ~/.memory-core` | 安装 Factory 全局 hook wrapper（`~/.factory/bin/memory-hook`），事件路由回当前项目目录；`render_wrapper()` 经 `shutil.which()` 把裸命令解析为绝对路径（修 daemon PATH 展开问题） |
+| MCP 接入 | `memory-mcp-server [--tools a,b]` | stdio MCP server（829 行），9 工具：load_context / search_memory / resolve_doc_path / save_memory / validate_write / record_event / get_health / list_projects / get_daily_summary；`--tools` 可裁剪暴露子集 |
+| 只读校验 | `memory-verify-consumer --target <project>` | 非 Factory 平台（Claude Code / Cursor / 自研 agent）自检 `memory/system/` 契约；只读不写；必查文件 `memory/system/adapter.toml` + `ownership.toml` |
 
-**关键发现**：workbot 不是通过 pip 安装或符号链接消费 memory 仓库，而是将全部 Python 源码复制到自身仓库中。这意味着两个仓库的代码可以独立演化，但也意味着 memory 上游的改进不会自动传播到 workbot。
+**关键事实**：消费项目之间互不依赖——每个项目拥有自己的 `memory/`、`project-map/`、`memory/artifacts/memory-hook/`；共享的只有 Layer 2 全局 KB（读取兜底 + pending 晋升）与 Layer 1 主机级运行时（`~/.memory-core/`，生命周期/path-index/完整性密钥，不是项目记忆池）。
 
-### 1.2 37 个 core_kwargs 参数完整列表
+### 1.2 CLI 契约面（pyproject [project.scripts]，15 入口实测）
 
-`build_context_package()`（gateway 行 768-809）构造的 `core_kwargs` 字典包含 **37 个 keyword-only 参数**，全部传递给 `build_context_package_core()`（core.py 行 69-108）。
+| # | 入口 | 模块:函数 |
+|---|------|-----------|
+| 1 | `memory-init` | `memory_core.tools.init_project_memory:main` |
+| 2 | `memory-migrate` | `memory_core.tools.migrate_project_memory:main` |
+| 3 | `memory-validate` | `memory_core.tools.validate_project_memory:main` |
+| 4 | `memory-promote` | `memory_core.tools.promote_global_kb:main` |
+| 5 | `memory-hook-gateway` | `memory_core.tools.hook_runtime_guard:gateway_main` |
+| 6 | `memory-factory-hooks` | `memory_core.tools.factory_global_hooks:main` |
+| 7 | `memory-consistency-check` | `memory_core.tools.consistency_check:main` |
+| 8 | `memory-plan-residue` | `infra_core.packs.memory.layout_audit:plan_main`（执行体在 infra-core） |
+| 9 | `memory-apply-residue-plan` | `memory_core.tools.apply_residue_plan:main` |
+| 10 | `memory-ownership` | `memory_core.tools.ownership_cli:main` |
+| 11 | `memory-verify-consumer` | `memory_core.tools.verify_consumer:main` |
+| 12 | `memory-integrity-resign` | `memory_core.tools.memory_integrity_resign:main` |
+| 13 | `memory-lifecycle-rebuild` | `memory_core.tools.project_lifecycle:rebuild_main` |
+| 14 | `memory-lifecycle-migrate` | `memory_core.tools.project_lifecycle:migrate_main` |
+| 15 | `memory-mcp-server` | `memory_core.tools.mcp_server:main_sync` |
 
-| # | 参数名 | 类型 | 来源 | 分类 |
-|---|--------|------|------|------|
-| 1 | `host` | `str` | CLI `--host` | 直接值 |
-| 2 | `event` | `str` | CLI `--event` | 直接值 |
-| 3 | `payload` | `dict[str, Any]` | stdin JSON | 直接值 |
-| 4 | `cwd` | `Path` | `discover_cwd(payload)` | 直接值 |
-| 5 | `project_scope` | `str` | `determine_project_scope(cwd)` | 直接值 |
-| 6 | `workspace_root` | `Path` | 模块常量 `WORKSPACE_ROOT` | 直接值 |
-| 7 | `repo_root` | `Path` | 模块常量 `REPO_ROOT` | 直接值 |
-| 8 | `required_canonical` | `list[Path]` | `business_policy.get_required_gateway_inputs()` | 策略查询 |
-| 9 | `project_canonical` | `dict[str, Path]` | `business_policy.get_project_canonical()` | 策略查询 |
-| 10 | `project_runtime_root` | `dict[str, Path]` | `business_policy.get_project_runtime_root()` | 策略查询 |
-| 11 | `global_canonical` | `list[Path]` | `business_policy.get_global_canonical()` | 策略查询 |
-| 12 | `project_map_governance` | `Path` | 全局变量 `PROJECT_MAP_GOVERNANCE` | 直接值 |
-| 13 | `event_log` | `Path` | 模块常量 `EVENT_LOG` | 直接值 |
-| 14 | `legality_source_policy` | `str` | 全局变量 `LEGALITY_SOURCE_POLICY` | 直接值 |
-| 15 | `registration_commit_policy` | `str` | 全局变量 `REGISTRATION_COMMIT_POLICY` | 直接值 |
-| 16 | `registration_commit_phase` | `str` | 全局变量 `REGISTRATION_COMMIT_PHASE` | 直接值 |
-| 17 | `project_map_refs` | `list[str]` | `project_map_refs()` (代理到 policy) | 策略查询 |
-| 18 | `extract_excerpt_fn` | `Callable[[Path], list[str]]` | 模块函数 `extract_excerpt` | 函数引用 |
-| 19 | `now_iso_fn` | `Callable[[], str]` | 模块函数 `now_iso` | 函数引用 |
-| 20 | `write_targets_fn` | `Callable[[], dict[str, Any]]` | 模块函数 `write_targets` | 函数引用 |
-| 21 | `validate_project_map_fn` | `Callable[[], list[str]]` | `validate_project_map_files` | 函数引用 |
-| 22 | `validate_unique_legal_system_contract_fn` | `Callable[[], list[str]]` | `validate_unique_legal_system_contract` | 函数引用 |
-| 23 | `policy_validate_fn` | `Callable[[dict], list[str]]` | lambda: `_get_policy_registry().validate(context)` | 函数引用 |
-| 24 | `get_policy_pack_fn` | `Callable[[str], dict]` | `get_policy_pack_via_registry` | 函数引用 |
-| 25 | `governance_frozen_tuple_errors_fn` | `Callable[[], list[str]]` | `governance_frozen_tuple_blocker_errors` | 函数引用 |
-| 26 | `event_contract_blocker_errors_fn` | `Callable[[], list[str]]` | `event_contract_blocker_errors` | 函数引用 |
-| 27 | `git_registration_probe_fn` | `Callable[[str, dict], dict]` | `git_registration_probe` | 函数引用 |
-| 28 | `truth_basis_for_scope_fn` | `Callable[[str], dict]` | `truth_basis_for_scope` | 函数引用 |
-| 29 | `decision_refs_for_scope_fn` | `Callable[[str], list[str]]` | `decision_refs_for_scope` | 函数引用 |
-| 30 | `lesson_refs_for_scope_fn` | `Callable[[str], list[str]]` | `lesson_refs_for_scope` | 函数引用 |
-| 31 | `docs_refs_for_scope_fn` | `Callable[[str], list[str]]` | `docs_refs_for_scope` | 函数引用 |
-| 32 | `hook_contract_path` | `Path` | 全局变量 `HOOK_CONTRACT_PATH` | 直接值 |
-| 33 | `surface_id` | `str` | `os.environ.get("CMUX_SURFACE_ID", "")` | 直接值 |
-| 34 | `workspace_id` | `str` | `os.environ.get("CMUX_WORKSPACE_ID", "")` | 直接值 |
-| 35 | `governance_blocker_scopes` | `Collection[str] \| None` | 全局变量 `GOVERNANCE_BLOCKER_SCOPES` | 直接值 |
-| 36 | `event_contract_blocker_scopes` | `Collection[str] \| None` | 全局变量 `EVENT_CONTRACT_BLOCKER_SCOPES` | 直接值 |
-| 37 | `core_evidence_refs` | `list[str] \| None` | 全局变量 `CORE_EVIDENCE_REFS` | 直接值 |
+> M5 收缩注记：evolution 引擎面六入口（audit-layout / sync-versions / audit-daily / error-patterns / evolution-audit / code-hygiene-audit）已迁 infra-core 对应 `infra-*` CLI，本仓 pyproject 不再持有。
 
-**参数分类统计**：
-- **直接值**（1-7, 12-16, 32-37）：17 个 — 从 CLI、全局变量、环境变量直接传入
-- **策略查询**（8-11, 17, 21-22）：7 个 — 通过 business policy 实例的方法动态获取
-- **函数引用**（18-20, 23-31）：13 个 — 回调函数，core 模块在组装过程中调用
+### 1.3 memory-init 四模式与生成布局
 
-### 1.3 调用链路全景
+```bash
+memory-init --target /path/to/project [--scope my-project] [--host factory|zcode] \
+    [--mode create|adopt|update|repair] [--dry-run] [--force] [--no-clobber] \
+    [--no-auto-fill] [--json] [--version]
+```
+
+| 模式 | 用途 |
+|---|---|
+| `create` | 创建新的记忆布局 |
+| `adopt` | 采纳已有项目，保留业务入口文件 |
+| `update` | 更新带标记的记忆管理块，补建缺失文件 |
+| `repair` | 仅补建缺失的必需文件，不覆盖已有文件 |
+
+行为要点：
+- 自动检测项目元数据（语言、框架、工具链、git remote）填充项目 scope 文件
+- 保护已有 `AGENTS.md`、`INDEX.md`、`project-map/**`、`CLAUDE.md`（除非可安全更新受管块）
+- 幂等创建 `~/.memory/global-kb/`（四域：operations / engineering / collaboration / pending，各带 README，INDEX.md 存在不覆盖）并在 `memory/system/adapter.toml` 写入 `[global_kb]` 段启用项目优先 / 全局兜底
+- 必需文件（`memory_core/constants.py`）：`memory.lock`、`adapter.toml`、`migrations.log`；必需目录：`kb/projects`、`kb/decisions`、`kb/lessons`、`kb/global`
+
+配套生命周期工具：
+- `memory-validate`：校验布局完整性、frontmatter/TOML 合法性、版本兼容、污染守卫
+- `memory-migrate`：版本/Schema 迁移并记 `migrations.log`；`0.7.0 → 0.8.0` 注入 `[global_kb]` 段（幂等）
+- `memory-promote`：将 `~/.memory/global-kb/pending/` 自动捕获候选人工晋升到正式域并更新 INDEX.md
+- `memory-lifecycle-rebuild` / `memory-lifecycle-migrate`：维护 Layer 1 path-index（`~/.memory-core/`）
+
+### 1.4 调用链路全景
 
 ```
-Claude/Codex Hook
+Factory/ZCode Hook 事件
     │
     ▼
-cmux_claude_hook_bridge.py (workbot 外部桥接)
+~/.factory/bin/memory-hook（wrapper，绝对路径）
     │
     ▼
-memory_hook_gateway.py::main()
-    ├── parse_args() → host, event, no_delegate
-    ├── read_payload() → payload dict
-    ├── should_noop_for_external_context() → 外部上下文过滤
-    ├── build_context_package(host, event, payload)
-    │   ├── discover_cwd(payload) → cwd
-    │   ├── determine_project_scope(cwd) → project_scope
-    │   ├── _get_gateway_business_policy() → WorkbotGatewayBusinessPolicy
-    │   ├── 构造 core_kwargs (37 参数)
-    │   ├── _resolve_core_builder(provider) → external-core 或 legacy
-    │   └── provider_builder(**core_kwargs) → context package dict
-    ├── write_artifacts(package) → 写入 artifacts/contexts/
-    ├── delegate_codex() / delegate_claude() → cmux CLI 分派
-    └── sys.stdout.write(package) → 返回给 hook 调用方
+memory-hook-gateway = hook_runtime_guard:gateway_main()
+    ├── install_guard()（SIGALRM 8s / SIGINT → exit 0）
+    └── memory_hook_gateway.main()（_gateway_handlers，薄门面 + 六拆分模块）
+        ├── _parse_args() → host(factory|zcode) / event(9 种) / no-delegate
+        ├── pre-tool-use → PreToolUse 守卫（allow exit 0 / block exit 2）
+        ├── session-start 旁路：健康检查 / STATE.md 刷新 / 遥测同步 / 版本跟随探测
+        ├── 非注入事件 → 快速路径（生命周期 + 指标 + 最小 event log）
+        └── 注入事件 → build_context_package()（CoreConfig 组装）
+                          → ArtifactWriter 落盘（contexts/{day}/ + events/{day}.jsonl 双写）
+                          → _build_factory_hook_output()（additionalContext 注入）
 ```
+
+自动版本跟随（v0.40.1+，M1/M3）：session-start 时 gateway regex 读取项目 `memory/system/memory.lock` 的 `memory_version`，与 `CURRENT_MEMORY_VERSION` 不一致时进程内调用 infra-core 的 `sync_single_project`；升级门禁 `_gate_version_bump`：minor/patch 且 schema_version 一致 → 放行（原子修补 memory.lock / adapter.toml / ownership.toml 三文件 + `.sync.lock` 并发防护 + 同步后增量重签）；major 跳变 / Schema 变更 / 降级 → 拦截仅警告。任何异常不阻塞 hook 主链。
 
 ---
 
-## 2. 边界问题分析
+## 2. 边界规则
 
-### 2.1 核心问题：双 Gateway 独立演化
+### 2.1 仓库定位（BOUNDARY.md 现行条款）
 
-Memory 仓库的 gateway（981 行）和 Workbot 仓库的 gateway（1019 行）已经出现 **实质性分化**。以下是关键差异点：
+memory-core 是**通用记忆层模块仓库 / 可复用只读协议库**，承载协议定义、模板、Schema、Validator、Migration 工具与 demo fixture，**不存储任何业务项目状态**。核心原则：
 
-#### 2.1.1 Gateway 层差异（38 行差异）
+| 原则 | 内容 |
+|------|------|
+| 单一归属 | 每个业务项目的 adapter.toml / ownership.toml / memory.lock 只能存在于该业务项目自身的 `memory/system/` |
+| Fixture 与真实数据分离 | 仓内示例只能是 demo fixture（`demo-` / `fixture-` 前缀）；真实业务 PLAN/STATE/CANONICAL 必须在业务项目仓库 |
+| 通用 vs 专用 | 只存放跨项目通用的协议、模板、Schema、Validator、Lesson；绑定具体业务上下文的内容属于业务项目 |
+| 污染防护 | `.gitignore` 禁止清单拦截 `workspace/projects/*/` 等业务状态路径；违规 PR 在 review 中拒绝 |
+| 引擎边界 | evolution/审计引擎执行体在 infra-core 仓；本仓仅保留协议面与 `.evolution/config.yml` 消费配置（rule_packs 引用） |
 
-| 差异点 | Memory Gateway | Workbot Gateway | 影响 |
-|--------|---------------|-----------------|------|
-| 日志路径 | `artifacts/memory-hook/` | `log/memory-hook/` | 产物存储位置不同 |
-| Adapter 加载 | `importlib` 动态加载 + `MEMORY_HOOK_ADAPTER` 环境变量 | 直接调用 `build_workbot_runtime_profile()` | memory 支持多 adapter，workbot 硬编码 workbot |
-| 接口方法名 | `get_required_canonical()` | `get_required_gateway_inputs()` | **接口不兼容** |
-| 全局变量 | `REQUIRED_CANONICAL` | `REQUIRED_GATEWAY_INPUTS` + `HISTORY_PROJECTS_INDEX_PATH` | 配置键名不同 |
-| Core Provider 加载 | `allow_fallback=True`（自动回退 legacy） | 无 fallback，`external-core` 失败需手动回滚 | 容错策略不同 |
-| External Core 加载 | 仅通过 `MEMORY_HOOK_EXTERNAL_CORE_MODULE` 环境变量 | 支持 `EXTERNAL_CORE_PATH` 文件路径 + 多模块候选 + sys.path 注入 | workbot 加载机制更复杂 |
-| Shadow Run | 支持 `MEMORY_HOOK_SHADOW_RUN` 双 provider 对比 | 已移除 | memory 有验证能力，workbot 没有 |
-| Artifact Compaction | 支持 `ARTIFACT_COMPACTION` 策略裁剪 | 已移除 | memory 支持产物精简，workbot 全量输出 |
-| Noop 响应 | `_delegate_noop_response()` 委托给 delegate 的 `noop_response()` | `noop_for_external_host()` 硬编码 `{}\n` | workbot 简化了 noop 逻辑 |
-| CMUX 非正式运行时 | 无特殊处理 | Codex 在无 CMUX 正式标记时返回 noop（行 307-327） | workbot 增加了容错 |
-| history-projects 路径 | 无 | `path_is_under()` 新增 `history-root` 分支（行 506-507） | workbot 特有路径逻辑 |
-| Truth ref 路径解析 | `REPO_ROOT / Path(item)` 相对路径补全 | 仅 `Path(item).expanduser()`，要求绝对路径 | 路径解析语义不同 |
+memory-core 源码仓自身受 source-repo-readonly 保护：hook 检测到自身时走只读规则包（`allowed_writes: {}`），develop 模式跳过消费者校验。
 
-#### 2.1.2 Interfaces 层差异（16 行差异）
+### 2.2 仓库托管现状（以 AGENTS.md 为准）
 
-Workbot 的 interfaces 文件（226 行）比 memory（242 行）**少了 16 行**：
+| 维度 | 现状 |
+|------|------|
+| 主仓库 | **GitHub**（`hdot123-org/memory`）——所有代码变更直接 push GitHub，走 feature 分支 + PR |
+| 历史备份 | GitLab remote 保留用于历史备份，不再作为主开发流程 |
+| 历史条款 | `docs/specs/BOUNDARY.md` §8 仍写「GitLab source of truth / Local→GitLab→GitHub 单向同步」，这是旧状态的历史条款；现行方向以 AGENTS.md 铁律（GitHub 主仓）为准 |
 
-- **移除 `noop_response()` 抽象方法**：memory 的 `HostDelegate` 接口定义了 `noop_response()`（IF-1），workbot 将其移除。这意味着 workbot 的 delegate 实现不再需要实现此方法。
-- **方法名重命名**：memory 的 `GatewayBusinessPolicy` 接口同时有 `get_required_canonical()`（兼容桥接）和 `get_required_gateway_inputs()`（新方法），workbot 仅保留 `get_required_gateway_inputs()` 并改变了其 docstring。
+### 2.3 CI / 发布消费面
 
-#### 2.1.3 Impl 层差异（233 行差异）
-
-Workbot 的 impls 文件（1273 行）比 memory（1040 行）**多了 233 行**，主要差异：
-
-- **`import hashlib`**：workbot 新增 hashlib 导入（memory 没有）
-- **`CodexDelegate.noop_response()` 简化**：workbot 将 noop 返回值从 `args=[]` 改为 `args=["noop"]`
-- **`ClaudeDelegate` 移除 state_file 自动解析**：memory 版本支持从 `CMUX_HOOK_STATE_FILE` 环境变量或 `state_path_factory` 自动解析 state file 路径；workbot 版本要求 `_state_file` 必须注入且非空，否则抛 `RuntimeError`
-- **`PolicyRegistryImpl` 构造函数签名变化**：memory 接受 `config: GatewayBusinessPolicyConfig | None` + `default_policies`/`conflict_strategies` 参数；workbot 移除 `config` 参数，使用内置默认值
-- **`LEGACY_POLICY_PACK_PATH`**：workbot 新增内置默认策略包路径
-- **`LEGACY_DEFAULT_ALLOWED_SCOPES` / `LEGACY_DEFAULT_SCOPE_INHERITS`**：workbot 新增内置默认 scope 配置
-- **路径解析差异**：workbot 的 `policy_pack_path` 解析不使用 `path is None` 检查，而是直接检查 `path.exists()`
-
-#### 2.1.4 Runtime Profile 差异
-
-| 差异项 | Memory | Workbot |
-|--------|--------|---------|
-| `POLICY_PACK_PATH` | 有 | 无 |
-| `GATEWAY_POLICY_CLASS` | 有（指向 `WorkbotGatewayBusinessPolicy`） | 无 |
-| `HISTORY_PROJECTS_ROOT` | 无 | 有 |
-| `HISTORY_PROJECTS_INDEX_PATH` | 无 | 有 |
-| `REQUIRED_CANONICAL` | 有 | 重命名为 `REQUIRED_GATEWAY_INPUTS` |
-| `DEFAULT_CORE_PROVIDER` | 无 | `"external-core"` |
-| `EXTERNAL_CORE_DEFAULT_MODULE` | 无 | `"memory_hook_core"` |
-| `EXTERNAL_CORE_RELEASE_REF` | 无 | `"hdot123/memory@main"` |
-| `EXTERNAL_CORE_PATH` | 无 | `"~/memory/memory_core/tools"` |
-| `CLAUDE_HOOK_STATE_FILE` | 有（从环境变量注入） | 无 |
-| `ARTIFACT_COMPACTION` | 有 | 无 |
-| `legal_core_markers` | 4 个 marker | 6 个 marker（新增"唯一正式历史根"、"history-projects/"） |
-| `project_lesson_refs.workbot` | `pm-bot-crawl4ai-runtime-path.md` | `pm-bot-global-binding-and-legacy-fence.md` |
-
-### 2.2 边界问题总结
-
-#### 问题 1：复制而非引用
-
-Workbot 将 memory 的全部 Python 源码复制到自身仓库，导致：
-- memory 上游的 bug 修复和改进不会自动传播到 workbot
-- 两个仓库的代码可能产生不可预见的行为差异
-- 维护两套代码的成本随分化程度线性增长
-
-#### 问题 2：接口不兼容
-
-- memory 使用 `get_required_canonical()` + `get_required_gateway_inputs()` 双方法桥接
-- workbot 仅使用 `get_required_gateway_inputs()`
-- memory 的 `HostDelegate.noop_response()` 在 workbot 中被移除
-- 这意味着 workbot 的 interfaces 和 memory 的 interfaces **不能互换使用**
-
-#### 问题 3：core_kwargs 膨胀
-
-37 个 keyword-only 参数传递给 `build_context_package_core()`，其中：
-- 13 个是函数引用（callback），增加了测试和 mock 的复杂度
-- 7 个是策略查询，每次调用都通过 business policy 动态获取
-- 17 个是直接值，但分散在 gateway 的不同位置（全局变量、环境变量、CLI 参数）
-
-这种设计使得 core 函数的签名极度膨胀，任何新增配置都需要同时修改 gateway 和 core 两个文件。
-
-#### 问题 4：Gateway 职责过重
-
-Gateway 同时承担以下职责：
-1. CLI 参数解析
-2. 外部上下文过滤
-3. Adapter 动态加载
-4. Business policy 获取
-5. Core kwargs 构造（37 参数）
-6. Core provider 解析和 fallback
-7. Artifact 写入
-8. Host delegate 分派
-9. 错误日志记录
-10. Shadow run 对比（memory 版本）
-
-这违反了单一职责原则，使得 gateway 文件难以维护和测试。
+| 机制 | 现状 |
+|------|------|
+| 版本发布 | release-please 自动化（conventional commits 驱动；禁止手动 tag / 手动改版本号） |
+| CI 门禁 | `ci-ok` 聚合门禁，**包含 droid-review**（AI review 失败即 ci-ok 失败）；分支保护 enforce_admins，任何情况禁止 `--admin` 绕过 |
+| 合并 | auto-merge workflow（全绿后自动 squash）；session 创建 PR 后注册 webhook 路由即离开关键路径，不阻塞等 CI |
+| 分支清理 | branch-cleanup 每日自动删除孤立分支（thin caller：`hdot123-org/infra-core/actions/branch-cleanup`，pin v0.11.1） |
+| 维护 workflow | evolution-scan / evolution-heartbeat / evolution-governance / droid-review / auto-merge / branch-cleanup 均为 thin caller，执行体由 infra-core reusable workflows / composite actions 承载 |
+| 质量门禁 | pytest `--cov-fail-under=80`、ruff（含 C901，零豁免）、mypy --strict 双域（scripts/ + memory_core/）、vulture、deptry、fix-has-test（修 bug 必加测试） |
+| Issue 流转 | Linear 是唯一任务管理面板；GitHub Issue 是 evolution scanner 自动产物（label: evolution-found，自动创建 / 自愈关闭 / 带 flapping 防抖重开）；PR body `Fixes INFRA-xxx` 双路径自动闭环 |
 
 ---
 
-## 3. 理想设计：一个入口一个出口
+## 3. 理想设计「一个入口一个出口」落地核对
 
-### 3.1 设计目标
+**（历史标注）2026-05 版 §3 提出的四项目标已全部或大部落地**，逐项核对：
 
-1. **Gateway 是唯一入口**：所有外部调用必须通过 Gateway，不得直接调用 core
-2. **Context Package 是唯一出口**：Gateway 返回标准化的 context package dict
-3. **Core 是纯函数**：core 模块不依赖任何模块级状态，所有依赖通过参数注入
-4. **Adapter 是配置边界**：项目特化配置通过 adapter 层注入，不修改 gateway/core 代码
+| 2026-05 目标 | 落地状态 | 现状实现 |
+|--------------|----------|----------|
+| Gateway 是唯一入口 | ✅ 已实现 | CLI console-script 唯一（`hook_runtime_guard:gateway_main`）；Python 侧 `build_context_package()` 为唯一公开编排入口，core 不可绕过 adapter/policy 接线 |
+| Context Package 是唯一出口 | ✅ 已实现 | 出口结构三层 schema：内部 `wb-hook-v2` → 消费 `context-package-v1`（→ 可选 `memory-v1`），转换集中于 `memory_hook_schema.py`（详见 API-CONTRACT.md） |
+| Core 是纯函数 | ✅ 已实现 | `build_context_package_core()` 纯组装，依赖全注入；`build_context_package_from_config(config: CoreConfig)` 提供结构化入口 |
+| Adapter 是配置边界 | ✅ 已实现 | `memory_hook_adapters/` 现仅 `default_runtime_profile.py`（默认 profile，含 ARTIFACT_COMPACTION / GLOBAL_KB_* 等约 40 配置键）+ `neutral_policy.py`；workbot 专用 adapter 已移除 |
 
-### 3.2 建议的对外 API 签名
+**37 参数问题的解决**（2026-05 版 §3.2.3 建议的 `CoreConfig`）已按建议实现，`memory_hook_config.py`：
+- 5 组字段：环境（7）/ 路径（7）/ 策略（6）/ 回调（14）/ 接口对象与可选策略（5，`policy_registry: PolicyRegistry | None` + `path_utils: PathUtils | None` 可整体替代扁平回调）
+- `__post_init__` 分组校验（host 必须在 SUPPORTED_HOSTS 内、路径类型、回调可调用性）
+- `from_gateway_kwargs()` 桥接旧 37 kwargs；`to_gateway_kwargs()` 反向导出
+- `memory_hook_core._resolve_callbacks()` 优先从接口对象取绑定方法，回退扁平回调字段——13 个 callback 可经 2 个接口对象（PolicyRegistry + PathUtils）注入
 
-#### 3.2.1 Gateway 入口（CLI）
+**Gateway 职责精简**（2026-05 版 §4.4 建议）已通过 M3 拆分实现：
 
-```python
-# memory_hook_gateway.py
-# 唯一公开入口：CLI 调用
+| 模块 | 行数 | 职责 |
+|------|------|------|
+| `memory_hook_gateway.py` | 494 | 薄门面：re-export 全部符号 + `__all__` + excepthook 安装 + `__main__` 引导 |
+| `_gateway_config.py` | 467 | 路径常量、适配器存储、IF-5 门面、完整性、生命周期 |
+| `_gateway_artifacts.py` | 301 | artifact/error 写入、只读 source-repo package、健康检查 |
+| `_gateway_policy.py` | 487 | core builder 解析、业务策略委托、build_context_package |
+| `_gateway_telemetry.py` | 483 | PostHog 遥测同步、prompt 日志 |
+| `_gateway_dispatch.py` | 444 | CWD 发现、delegate 执行、输出格式化 |
+| `_gateway_handlers.py` | 495 | 事件处理器、main 入口、excepthook |
 
+兼容性保障：`_gateway_patch_redirect.install_redirect()` 把对门面符号的 monkeypatch/patch.object 写入重定向到实际查找该符号的子模块，保持旧测试打桩语义不变（patch-redirect 兼容层）。
 
-def main() -> int:
-    """CLI 入口：解析参数 → 读取 payload → 构建上下文包 → 写入产物 → 分派委托。
-
-    CLI 参数：
-        --host: "codex" | "claude"
-        --event: "session-start" | "prompt-submit" | "stop" | "notification"
-        --no-delegate: 跳过委托分派，仅返回上下文包
-
-    stdin: JSON payload
-    stdout: JSON context package
-    stderr: 错误信息
-
-    返回：0 = 成功, 1 = degraded, 2 = error
-    """
-```
-
-#### 3.2.2 Gateway 入口（Python API）
-
-```python
-# memory_hook_gateway.py
-# 供 Python 代码直接调用的 API（替代直接调用 core）
-
-
-def build_context_package(
-    host: str,
-    event: str,
-    payload: dict[str, Any] | None = None,
-    *,
-    cwd: Path | None = None,
-    adapter: str | None = None,
-) -> dict[str, Any]:
-    """构建上下文包（Python API）。
-
-    参数：
-        host: 主机标识（"codex" / "claude"）
-        event: 事件名
-        payload: 事件载荷（可选，默认为空 dict）
-        cwd: 工作目录（可选，默认使用当前目录）
-        adapter: adapter 名称（可选，默认使用环境变量或 "workbot"）
-
-    返回：
-        Context package dict，结构见 3.3 节
-
-    异常：
-        RuntimeError: 当 adapter 加载失败或关键配置缺失时
-    """
-```
-
-#### 3.2.3 Core 函数签名（内部）
-
-Core 的 37 个参数应该被重构为 **结构化配置对象**，而非扁平的 keyword-only 参数列表。建议：
-
-```python
-# memory_hook_core.py（重构后）
-
-
-@dataclass
-class CoreConfig:
-    """核心组装配置。将 37 个参数归类为 4 个配置组。"""
-
-    # 组 1：环境信息
-    host: str
-    event: str
-    payload: dict[str, Any]
-    cwd: Path
-    project_scope: str
-    workspace_root: Path
-    repo_root: Path
-
-    # 组 2：路径配置
-    required_canonical: list[Path]
-    project_canonical: dict[str, Path]
-    project_runtime_root: dict[str, Path]
-    global_canonical: list[Path]
-    project_map_governance: Path
-    event_log: Path
-    hook_contract_path: Path
-    surface_id: str
-    workspace_id: str
-
-    # 组 3：策略配置
-    legality_source_policy: str
-    registration_commit_policy: str
-    registration_commit_phase: str
-    governance_blocker_scopes: Collection[str] | None
-    event_contract_blocker_scopes: Collection[str] | None
-    core_evidence_refs: list[str] | None
-
-    # 组 4：回调函数（通过 PolicyRegistry 统一封装）
-    policy_registry: PolicyRegistry  # 替代 21-26, 28-31 共 10 个 callback
-    path_utils: PathUtils  # 替代 18-20 共 3 个 callback
-
-
-def build_context_package_core(config: CoreConfig) -> dict[str, Any]:
-    """核心上下文组装（重构后：单参数）。
-
-    参数：
-        config: 结构化配置对象
-
-    返回：
-        Context package dict
-    """
-```
-
-**重构效果**：
-- 37 个参数 → 1 个 `CoreConfig` 对象
-- 13 个 callback → 2 个接口对象（`PolicyRegistry` + `PathUtils`）
-- 签名从 `def fn(*, a, b, c, ..., z, aa, bb, cc) -> dict` 简化为 `def fn(config) -> dict`
-
-### 3.3 Context Package 返回契约
-
-Gateway 返回的 context package 应遵循以下稳定契约（内部 v2 版本）：
-
-```python
-{
-    # === 元数据 ===
-    "schema_version": "internal-v2",  # 内部 v2 固定版本
-    "generated_at": "2026-04-26T12:00:00",  # ISO 时间戳
-    "host": "codex",  # 主机标识
-    "event": "session-start",  # 事件名
-    # === 状态 ===
-    "status": "ok" | "degraded",  # 组装状态
-    "missing_paths": ["/path/to/missing"],  # 缺失的必需路径
-    "validation_errors": ["error message"],  # 验证错误列表
-    # === 系统上下文 ===
-    "system_context": {
-        "boot_entry": "...",  # INDEX.md 路径
-        "state_entry": "...",  # NOW.md 路径
-        "state_summary": [...],  # NOW.md 摘要
-        "project_map_validation": "pass" | "fail",
-        "legality_contract_validation": "pass" | "fail",
-        "truth_basis_validation": "pass" | "fail",
-        "governance_frozen_tuple_validation": "pass" | "fail",
-        "event_contract_alignment_validation": "pass" | "fail",
-        "registration_commit_enforced": bool,
-        "registration_commit_enforcement_result": "...",
-        "decision_refs": [...],
-        "lesson_refs": [...],
-        "docs_refs": [...],
-        "policy_pack": {...},
-        # ... 其他系统级信息
-    },
-    # === 项目上下文 ===
-    "project_context": {
-        "scope": "workbot",
-        "canonical": "...",
-        "truth_basis_canonical": "...",
-        "truth_status": "truth-ready" | "truth-incomplete",
-        "runtime_root": "...",
-        "source_refs": [...],
-        "authority_refs": [...],
-        "evidence_refs": [...],
-        "conflict_status": "...",
-    },
-    # === 任务上下文 ===
-    "task_context": {
-        "event": "session-start",
-        "task_ref": "workbot:session-start",
-        "session_id": "...",
-        "surface_id": "...",
-        "workspace_id": "...",
-        "payload_keys": [...],
-    },
-    # === 读写权限 ===
-    "allowed_reads": ["/path/to/read"],  # 允许读取的文件列表
-    "allowed_writes": {...},  # 允许写入的目标
-    "evidence_refs": ["/path/to/evidence"],  # 证据引用
-}
-```
-
-**契约保证**：
-- `schema_version` 不变时，所有字段均为可选向后兼容新增
-- `status` 为 `"ok"` 时表示所有验证通过
-- `status` 为 `"degraded"` 时表示部分验证失败但上下文包仍可用
-- `validation_errors` 列表为空当且仅当 `status == "ok"`
-
-### 3.4 Gateway 应该成为唯一入口而不是 Core
-
-**当前问题**：workbot 的代码中，`build_context_package_core()` 理论上可以被任何代码直接调用（因为它是公开函数），绕开 gateway 的 adapter 加载、artifact 写入、delegate 分派等逻辑。
-
-**理想状态**：
-- `build_context_package_core()` 应标记为 `_build_context_package_core()`（内部函数）
-- 所有外部调用必须通过 `build_context_package()`（gateway 公开函数）
-- Gateway 负责：adapter 加载 → 配置组装 → core 调用 → artifact 写入 → delegate 分派
-- Core 仅负责：纯函数组装逻辑，不依赖任何模块级状态
+**「引用替代复制」**（2026-05 版 §4.3 阶段 3）已实现：memory-core 以 pip 包分发（`pip install git+https://github.com/hdot123-org/memory.git@v0.45.6`），消费项目 `pyproject.toml` 声明依赖即可；升级经自动版本跟随机制在 session-start 无感完成。
 
 ---
 
-## 4. 迁移路径
+## 4. 剩余边界关注点
 
-### 4.1 阶段 1：统一接口（不改变行为）
+旧四大问题出清后，当前仍需关注的边界：
 
-**目标**：让 memory 和 workbot 的 interfaces 保持一致。
-
-| 步骤 | 操作 | 文件 | 风险 |
-|------|------|------|------|
-| 1.1 | workbot interfaces 恢复 `noop_response()` 方法 | `workbot/.../memory_hook_interfaces.py` | 低：仅添加抽象方法，不改变现有实现 |
-| 1.2 | workbot interfaces 恢复 `get_required_canonical()` 桥接方法 | `workbot/.../memory_hook_interfaces.py` | 低：桥接方法委托到 `get_required_gateway_inputs()` |
-| 1.3 | memory gateway 统一使用 `get_required_gateway_inputs()` | `memory/.../memory_hook_gateway.py` | 低：内部方法名变更 |
-| 1.4 | 同步 `ClaudeDelegate` 的 state_file 解析逻辑 | 两边的 `memory_hook_impls.py` | 中：需要确保两边行为一致 |
-
-### 4.2 阶段 2：Core 参数结构化
-
-**目标**：将 37 个 keyword-only 参数重构为 `CoreConfig` 数据类。
-
-| 步骤 | 操作 | 文件 | 风险 |
-|------|------|------|------|
-| 2.1 | 在 core.py 中定义 `CoreConfig` dataclass | `memory/.../memory_hook_core.py` | 低：新增类型定义 |
-| 2.2 | 将 `PolicyRegistry` 接口扩展为包含所有 callback | `memory/.../memory_hook_interfaces.py` | 中：需要确保现有实现兼容 |
-| 2.3 | 定义 `PathUtils` 接口封装路径相关 callback | `memory/.../memory_hook_interfaces.py` | 低：新增接口 |
-| 2.4 | 重构 `build_context_package_core()` 接受 `CoreConfig` | `memory/.../memory_hook_core.py` | 高：核心函数签名变更 |
-| 2.5 | 重构 gateway 的 `core_kwargs` 构造为 `CoreConfig` 构造 | `memory/.../memory_hook_gateway.py` | 高：调用方变更 |
-| 2.6 | 同步 workbot 的 core 和 gateway | `workbot/.../memory_hook_core.py`, `memory_hook_gateway.py` | 高：需要同步 |
-
-### 4.3 阶段 3：建立引用而非复制
-
-**目标**：workbot 不再复制 memory 源码，而是通过 pip 安装或符号链接引用。
-
-| 步骤 | 操作 | 文件 | 风险 |
-|------|------|------|------|
-| 3.1 | memory 仓库发布为 pip 包（`memory-core`） | `memory/pyproject.toml` | 低：已有 pyproject.toml |
-| 3.2 | workbot 添加 `memory-core` 依赖 | `workbot/pyproject.toml` 或 `requirements.txt` | 中：需要处理依赖版本 |
-| 3.3 | workbot 移除复制的 memory 源码文件 | `workbot/memory_core/tools/memory_hook_*.py` | 高：需要确保所有引用正确 |
-| 3.4 | workbot 仅保留 adapter 层（项目特化配置） | `workbot/memory_core/tools/memory_hook_adapters/` | 中：adapter 需要适配新的接口 |
-
-### 4.4 阶段 4：Gateway 职责精简
-
-**目标**：Gateway 仅负责编排，不直接实现业务逻辑。
-
-| 步骤 | 操作 | 文件 | 风险 |
-|------|------|------|------|
-| 4.1 | 提取 artifact 写入逻辑到独立 `ArtifactWriter` 类 | `memory/.../memory_hook_impls.py` | 低：逻辑提取 |
-| 4.2 | 提取 delegate 分派逻辑到独立 `DelegateRouter` 类 | `memory/.../memory_hook_impls.py` | 低：逻辑提取 |
-| 4.3 | 提取 noop 响应逻辑到 `HostDelegate.noop_response()` | `memory/.../memory_hook_interfaces.py` | 低：接口统一 |
-| 4.4 | Gateway main() 精简为：parse → build → write → delegate | `memory/.../memory_hook_gateway.py` | 中：重构 main 函数 |
-
-### 4.5 优先级建议
-
-| 优先级 | 阶段 | 理由 |
-|--------|------|------|
-| P0 | 阶段 1 | 接口不兼容是当前最大的风险，任何一方的变更都可能导致另一方行为异常 |
-| P1 | 阶段 4 | Gateway 职责精简可以降低后续维护成本，且不影响外部接口 |
-| P2 | 阶段 2 | Core 参数结构化是技术债清理，需要充分测试 |
-| P3 | 阶段 3 | 引用替代复制是最终目标，但需要前三个阶段完成后再进行 |
+| 关注点 | 现状 | 缓解机制 |
+|--------|------|----------|
+| 引擎双仓耦合 | 执行体在 infra-core（pin v0.11.1 硬依赖），本仓仅 thin caller + 消费配置 | tag pin 固定版本；infra-core 消费仓接入指南文档化 |
+| path-index 以 cwd 为键 | 全局模式 path-index 存在键错配（见 PATH_INDEX_SPEC.md） | 单项目模式为推荐路径（自动版本跟随即单项目模式） |
+| 全局 KB 共享写 | Layer 2 全局 KB 跨项目共享，pending 自动捕获依赖 session-end | memory-promote 人工确认晋升；kb_policy read-first-CRUD |
+| 遥测丢失容忍 | metrics.jsonl 锁竞争丢弃（设计决策） | 本地 JSONL 持久 + offset 断点续传 + 每小时窗口重试 |
 
 ---
 
-## 5. 风险矩阵
+## 5. 风险矩阵（更新）
 
 | 风险 | 概率 | 影响 | 缓解措施 |
 |------|------|------|----------|
-| memory 上游修复 bug 但 workbot 未同步 | 高 | 中 | 阶段 3 完成后自动同步 |
-| workbot 特化需求与 memory 通用设计冲突 | 中 | 高 | 通过 adapter 层隔离，不修改 core |
-| 37 参数 core 签名导致测试覆盖不足 | 中 | 中 | 阶段 2 重构后减少参数数量 |
-| Gateway 单点故障影响所有 host | 低 | 高 | 阶段 4 精简后降低复杂度 |
-| 迁移过程中出现行为回归 | 中 | 高 | 每个阶段完成后运行完整测试套件 |
+| infra-core pin 版本与 thin caller 漂移 | 低 | 中 | pyproject 依赖与 workflow pin 同版本（当前 v0.11.1）；升级同批提交 |
+| 消费项目 schema_version 落后于库版本 | 中 | 低 | 自动版本跟随（minor/patch 自动同步；major/Schema 变更显式拦截） |
+| 升级门误放行不兼容变更 | 低 | 高 | `_gate_version_bump` 阻止 major 跳变与 Schema 变更；`.sync.lock` 并发防护；同步后增量重签可校验 |
+| 全局 KB pending 候选积压 | 中 | 低 | memory-promote 交互模式列出候选；域 README 说明晋升语义 |
+| 遥测端点慢导致 hook 超时 | 低 | 中 | 直连 batch API 3s 超时 0 重试；2s 连通探测前置；全链 try/except 不传播 |
 
 ---
 
 ## 6. 附录
 
-### 6.1 文件路径索引
+### 6.1 文件路径索引（现行模块）
 
-| 文件 | Memory 路径 | Workbot 路径 |
-|------|------------|-------------|
-| Gateway | `<memory-repo>/memory_core/tools/memory_hook_gateway.py` | `<consumer-repo>/memory_core/tools/memory_hook_gateway.py` |
-| Core | `<memory-repo>/memory_core/tools/memory_hook_core.py` | `<consumer-repo>/memory_core/tools/memory_hook_core.py` |
-| Interfaces | `<memory-repo>/memory_core/tools/memory_hook_interfaces.py` | `<consumer-repo>/memory_core/tools/memory_hook_interfaces.py` |
-| Impls | `<memory-repo>/memory_core/tools/memory_hook_impls.py` | `<consumer-repo>/memory_core/tools/memory_hook_impls.py` |
-| Runtime Profile | `<memory-repo>/memory_core/tools/memory_hook_adapters/workbot_runtime_profile.py` | `<consumer-repo>/memory_core/tools/memory_hook_adapters/workbot_runtime_profile.py` |
-| Workbot Policy | `<memory-repo>/memory_core/tools/memory_hook_adapters/workbot_policy.py` | `<consumer-repo>/memory_core/tools/memory_hook_adapters/workbot_policy.py` |
-| Neutral Policy | `<memory-repo>/memory_core/tools/memory_hook_adapters/neutral_policy.py` | `<consumer-repo>/memory_core/tools/memory_hook_adapters/neutral_policy.py` |
+| 职责 | 路径 |
+|------|------|
+| Gateway 门面 | `memory_core/tools/memory_hook_gateway.py` |
+| Gateway 拆分模块 | `memory_core/tools/_gateway_{config,artifacts,policy,telemetry,dispatch,handlers}.py` |
+| 引导守卫 | `memory_core/tools/hook_runtime_guard.py` |
+| Core 组装 | `memory_core/tools/memory_hook_core.py` |
+| 结构化配置 | `memory_core/tools/memory_hook_config.py`（CoreConfig） |
+| 接口定义 | `memory_core/tools/memory_hook_interfaces.py`（HostDelegate / PolicyRegistry / GatewayBusinessPolicy / PathUtils / ArtifactSink / ErrorSink） |
+| Schema 转换 | `memory_core/tools/memory_hook_schema.py`（wb-hook-v2 → context-package-v1 → memory-v1） |
+| Adapter | `memory_core/tools/memory_hook_adapters/{default_runtime_profile,neutral_policy}.py` |
+| 遥测 | `memory_core/tools/{memory_hook_metrics,telemetry_bridge,posthog_client,_gateway_telemetry}.py` |
+| SessionEnd | `memory_core/tools/{session_end_logger,daily_summary_generator,error_logger}.py` |
+| MCP server | `memory_core/tools/mcp_server.py` |
+| 初始化 | `memory_core/tools/init_project_memory.py` + `_init_*.py` 子模块 |
+| 消费者自检 | `memory_core/tools/verify_consumer.py` |
+| 版本常量 | `memory_core/constants.py`（`CURRENT_MEMORY_VERSION` / `SUPPORTED_HOSTS` / `CANONICAL_MEMORY_LOCK_SCHEMA` 等） |
+
+**（历史标注）2026-05 版 §1.1 表列出的 workbot 复制文件（workbot_runtime_profile.py / workbot_policy.py 等双仓副本）已移除**；消费侧不再持有 memory 源码副本。
 
 ### 6.2 相关文档
 
 - [01-architecture.md](./01-architecture.md) — Memory 模块架构设计
-- [02-gateway.md](./02-gateway.md) — Gateway 设计文档
-- [03-core-assembly.md](./03-core-assembly.md) — Core Assembly 设计文档
-- [04-interfaces.md](./04-interfaces.md) — 接口设计文档
-- [06-adapters.md](./06-adapters.md) — Adapter 设计文档
+- [08-data-pipeline.md](./08-data-pipeline.md) — 数据管道与 Sink（含遥测管道）
+- [API-CONTRACT.md](./API-CONTRACT.md) — API 契约（context-package-v1）
+- [issue-flow.md](./issue-flow.md) — GitHub↔Linear Issue 流转链路
+- [../specs/BOUNDARY.md](../specs/BOUNDARY.md) — 仓库边界（§8 为历史条款）
+- [../specs/M5-SHRINK-DISPOSITION.md](../specs/M5-SHRINK-DISPOSITION.md) — M5 引擎收缩处置记录

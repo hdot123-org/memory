@@ -5,23 +5,30 @@ shortname: DES-005
 status: 可评审
 scope: default
 created: 2026-04-26
-updated: 2026-05-14
+updated: 2026-09-05
 source: code-analysis
 confidence: medium
 tags: [implementations,concrete-classes]
 related: [DES-004, DES-006, DES-007]
 ---
 
-> 文档编号：DES-005 | 版本：V1.0 | 日期：2026-04-26 | 维护人：codex
+> 文档编号：DES-005 | 版本：V1.1 | 日期：2026-09-05 | 状态：可评审 | 维护人：codex
 
-> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-05-14 (v0.4.0 Beta)。如需精确接口签名，请参考源码和 ShowDoc Python API 文档。
+> **⚠️ 版本快照**：本文档为架构设计参考，最后校准于 2026-09-05 (v0.45.6)。如需精确接口签名，请参考源码。
 
 # 实现层设计文档
 
-> 来源：`<memory-repo>/memory_core/tools/memory_hook_impls.py`
-> 接口：`<memory-repo>/memory_core/tools/memory_hook_interfaces.py`
+> 来源：`memory_core/tools/memory_hook_impls.py`（904 行）
+> 接口：`memory_core/tools/memory_hook_interfaces.py`（341 行）
+> 校准日期：2026-09-05（v0.45.6；行号均经 `grep -n` 实测）
 
-> **注意**：文中行号标注为参考值，实际代码行号可能因版本迭代而变化。
+> **📌 2026-09-05 校准备注**
+> 1. `CodexDelegate` / `ClaudeDelegate` **已删除**（cmux / surface_id / workspace_id 宿主集成退役），替换为 `FactoryDelegate`（中性空响应）+ `NoopHostDelegate`（可用性标记降级）+ `resolve_host_delegate()` 工厂函数（按 `SUPPORTED_HOSTS = ("factory", "zcode")` 分派，constants.py:23）。
+> 2. 新增 IF-5 组件：`ArtifactWriter`（非阻塞产物写入包装）、`DelegateRouter`（仅支持 factory 系宿主的事件路由）。
+> 3. `GatewayBusinessPolicyImpl` 的校验逻辑**全部委托** `business_policy_checks.py`（706 行）中的 `ProjectMapValidator` / `FrozenTupleChecker` / `EventContractChecker` / `TruthBasisResolver`；scope 解析与覆盖逻辑抽取到 `_scope_resolver_base.py` 的 `ScopeResolverBase`（97 行）。
+> 4. 共享规则助手迁至 `_rule_helpers.py`，验证标记常量迁至 `_validation_constants.py`（`MKR_*` 族），领域异常迁至 `_rule_errors.py`（`UnknownHostError` / `UnknownRouteKindError` / `UnsupportedScopeError`），`now_iso` 迁至 `_file_utils.py`。
+> 5. `ArtifactSinkImpl` 改为按日目录组织快照并双写事件日志；`ErrorSinkImpl` 新增 `*-readable.log` 人类可读输出（`MEMORY_HOOK_READABLE_ERRORS_DISABLED=1` 可关闭）。
+> 6. 行号全部按 v0.45.6 `grep -n "class "` 实测刷新。
 
 ---
 
@@ -29,86 +36,74 @@ related: [DES-004, DES-006, DES-007]
 
 | # | 实现类 | 接口 | 接口定义行号 | 实现行号 |
 |---|--------|------|-------------|---------|
-| 1 | `CodexDelegate` | `HostDelegate` | interfaces:23-52 | impls:49-87 |
-| 2 | `ClaudeDelegate` | `HostDelegate` | interfaces:23-52 | impls:89-181 |
-| 3 | `PolicyRegistryImpl` | `PolicyRegistry` | interfaces:58-99 | impls:179-342 |
-| 4 | `RouteTargetPolicyImpl` | `RouteTargetPolicy` | interfaces:106-116 | impls:348-382 |
-| 5 | `WriteTargetPolicyImpl` | `WriteTargetPolicy` | interfaces:119-129 | impls:385-414 |
-| 6 | `GatewayBusinessPolicyImpl` | `GatewayBusinessPolicy` | interfaces:132-211 | impls:448-977 |
-| 7 | `ArtifactSinkImpl` | `ArtifactSink` | interfaces:218-233 | impls:984-1022 |
-| 8 | `ErrorSinkImpl` | `ErrorSink` | interfaces:236-242 | impls:1025-1040 |
+| 1 | `FactoryDelegate` | `HostDelegate` | interfaces:52-90 | impls:125-150 |
+| 2 | `NoopHostDelegate` | `HostDelegate` | interfaces:52-90 | impls:152-191 |
+| 3 | `resolve_host_delegate` | （模块级工厂函数） | — | impls:194-224 |
+| 4 | `PolicyRegistryImpl` | `PolicyRegistry` | interfaces:97-187 | impls:227-434 |
+| 5 | `RouteTargetPolicyImpl` | `RouteTargetPolicy` | interfaces:193-202 | impls:437-503 |
+| 6 | `WriteTargetPolicyImpl` | `WriteTargetPolicy` | interfaces:206-214 | impls:505-539 |
+| 7 | `GatewayBusinessPolicyImpl` | `GatewayBusinessPolicy` + `ScopeResolverBase` 混入 | interfaces:219-292 | impls:584-663 |
+| 8 | `ArtifactSinkImpl` | `ArtifactSink` | interfaces:298-312 | impls:665-718 |
+| 9 | `ErrorSinkImpl` | `ErrorSink` | interfaces:316-327 | impls:720-806 |
+| 10 | `ArtifactWriter` | （无接口，包装 `ArtifactSinkImpl`） | — | impls:808-868 |
+| 11 | `DelegateRouter` | （无接口，路由 `FactoryDelegate`） | — | impls:870-904 |
 
 辅助数据类：
 
 | # | 类名 | 用途 | 行号 |
 |---|------|------|------|
-| 9 | `GatewayBusinessPolicyConfig` | `@dataclass(frozen=True)` 配置载体 | impls:422-446 |
+| 12 | `GatewayBusinessPolicyConfig` | `@dataclass(frozen=True)` 配置载体（37 字段） | impls:541-582 |
+
+已移除：`CodexDelegate`（旧 impls:49-87）、`ClaudeDelegate`（旧 impls:89-181）。
 
 ---
 
-## 2. CodexDelegate vs ClaudeDelegate 差异
+## 2. HostDelegate 实现族：FactoryDelegate vs NoopHostDelegate
 
-### 2.1 构造函数参数
+### 2.1 构造与行为对比
 
-| 参数 | CodexDelegate (L52-60) | ClaudeDelegate (L92-114) |
-|------|------------------------|--------------------------|
-| `surface_id` | ✅ | ✅ |
-| `workspace_id` | ❌ | ✅ — 额外必填 |
-| `state_file` | ❌ | ✅ — 由 adapter policy 注入，不直接从 env 读 |
-| `repo_root` | ❌ | ✅ |
-| `state_path_factory` | ❌ | ✅ — 回调 `Callable[[Path], Path]` |
-| `canonicalizer` | ❌ | ✅ — 回调 `Callable[[str, str], tuple[str, str]]` |
-| `state_recorder` | ❌ | ✅ — 回调 `Callable[..., Any]` |
-| `which_cmd` | ✅ | ✅ |
-| `runner` | ✅ | ✅ |
+两个实现均**无构造参数**、`can_handle()` 恒为 `True`、`execute()` 直接返回 `noop_response()`：
 
-### 2.2 `can_handle()` 判定条件
+| | `FactoryDelegate`（impls:125-150） | `NoopHostDelegate`（impls:152-191） |
+|---|-----------------------------------|-------------------------------------|
+| 定位 | Factory 宿主的中性 delegate：无需 cmux 集成，空响应直通，不阻塞会话创建 | 降级 delegate：宿主不存在时的占位实现 |
+| `noop_response()` stdout | `"{}\n"`（空 JSON） | `{"host_unavailable": true, "policy_decision": "no_host"}` + 换行 |
+| `host_unavailable` | `False`（继承接口默认值，impls:148 显式覆写） | `True`（impls:190 覆写） |
+| stderr / returncode | `""` / `0` | `""` / `0` |
 
-**CodexDelegate** (L62-63)：
-```
-cmux 在 PATH 中 AND surface_id 非空
+`host_unavailable` 的语义：消费方应先检查该属性再解释 `policy_decision`，把"宿主不存在"与"策略决策"分离（5b.6 约定）。
+
+### 2.2 `resolve_host_delegate()` 工厂函数（impls:194-224）
+
+```python
+def resolve_host_delegate(host: str, mode: str = "auto") -> HostDelegate
 ```
 
-**ClaudeDelegate** (L116-121)：
-```
-cmux 在 PATH 中 AND workspace_id 非空 AND surface_id 非空
-```
-Claude 多一个 `workspace_id` 必填约束。
+- `host ∈ SUPPORTED_HOSTS`（`("factory", "zcode")`，constants.py:23）→ 构造 `FactoryDelegate`；否则直接返回 `NoopHostDelegate()`。
+- mode 分支：
 
-### 2.3 `execute()` 行为差异
+| mode | 行为 |
+|------|------|
+| `"auto"`（默认） | FactoryDelegate 可处理则返回之，否则 NoopHostDelegate |
+| `"noop"` | 恒返回 NoopHostDelegate |
+| `"cmux"` | 恒返回 FactoryDelegate（允许 can_handle=False） |
 
-| 步骤 | CodexDelegate (L65-82) | ClaudeDelegate (L123-177) |
-|------|------------------------|--------------------------|
-| 前置校验 | 检查 `cmux` 和 `surface_id` | 检查 `cmux`、`workspace_id`、`surface_id` |
-| 状态文件解析 | 无 | 三段式：`_state_file` 注入 → `default_hook_state_path()` 默认 → `state_path_factory` 回调 |
-| memory_core/surface 规范化 | 无 | 通过 `canonicalizer` 回调或直用原始值 |
-| 状态记录 | 无 | 调用 `record_hook_event()` 或 `state_recorder` 回调 |
-| 子命令 | `cmux codex-hook <event>` | `cmux claude-hook <event> --workspace <ref> --surface <ref>` |
-| stdin | `raw_payload` | `raw_payload or "{}"` |
+### 2.3 已移除的机制（随 Codex/Claude delegate 一并退役）
 
-### 2.4 `noop_response()` 差异
+- cmux 子命令集成（`cmux codex-hook` / `cmux claude-hook`）
+- `surface_id` / `workspace_id` / `state_file` / `state_path_factory` / `canonicalizer` / `state_recorder` 构造参数族
+- 环境变量 `CMUX_SURFACE_ID` / `CMUX_WORKSPACE_ID`
+- 三段式状态文件解析与 `record_hook_event()` 状态记录
 
-| | CodexDelegate (L84-86) | ClaudeDelegate (L179-181) |
-|---|------------------------|--------------------------|
-| stdout | `"{}\n"` — 返回空 JSON | `""` — 返回空字符串 |
-| stderr | `""` | `""` |
-| returncode | `0` | `0` |
-
-### 2.5 环境依赖
-
-| 环境变量 | CodexDelegate | ClaudeDelegate |
-|----------|---------------|----------------|
-| `CMUX_SURFACE_ID` | ✅ (L58) | ✅ (L105) |
-| `CMUX_WORKSPACE_ID` | ❌ | ✅ (L104) |
-| `MEMORY_HOOK_SCOPE_CONFIG_PATH` | ❌ | 由 `GatewayBusinessPolicyImpl` 使用 (L452) |
+当前实现族使用的环境变量仅剩 `MEMORY_HOOK_POLICY_PACK_PATH`（PolicyRegistryImpl，impls:231）。
 
 ---
 
 ## 3. GatewayBusinessPolicyImpl 完整实现
 
-### 3.1 配置载体 `GatewayBusinessPolicyConfig` (L422-446)
+### 3.1 配置载体 `GatewayBusinessPolicyConfig`（impls:541-582）
 
-`@dataclass(frozen=True)` 不可变配置对象，包含 36 个字段：
+`@dataclass(frozen=True)` 不可变配置对象，共 **37 个字段**（36 必填 + 1 可选默认）：
 
 | 字段 | 类型 | 用途 |
 |------|------|------|
@@ -148,118 +143,106 @@ Claude 多一个 `workspace_id` 必填约束。
 | `default_project_scope` | `str` | 默认 scope |
 | `scope_match_hints` | `dict[str, list[Path]]` | scope 匹配提示 |
 | `read_text_if_exists_fn` | `Callable[[Path], str]` | 文本读取回调 |
-| `policy_pack_path` | `Path \| None` | 可选策略包路径 |
+| `policy_pack_path` | `Path \| None` | 可选策略包路径（默认 `None`） |
 
-### 3.2 Scope 覆盖机制 (L452-477)
+### 3.2 Scope 解析与覆盖（已迁至 ScopeResolverBase）
 
-- 通过 `MEMORY_HOOK_SCOPE_CONFIG_PATH` 环境变量或构造函数参数加载 JSON scope 配置
-- 覆盖 `project_canonical` 和 `project_runtime_root` 两个 key
-- `_resolve_override_path()` (L479-483)：绝对路径直接使用，相对路径基于 `repo_root` 解析
+`GatewayBusinessPolicyImpl(ScopeResolverBase, GatewayBusinessPolicy)`（impls:584）的 `__init__`（impls:591）显式委托 `ScopeResolverBase.__init__`。scope 相关逻辑现位于 `_scope_resolver_base.py`（97 行）：
 
-### 3.3 路径工具方法
-
-| 方法 | 行号 | 功能 |
+| 方法 | 行号（_scope_resolver_base.py） | 功能 |
 |------|------|------|
-| `_path_is_under()` | L485-490 | 跟随 symlink 检查路径是否在 root 下 |
-| `_path_is_under_lexical()` | L492-499 | 词法层面检查，不跟随 symlink |
-| `_section_bullets()` | L501-512 | 从 Markdown 提取指定 heading 下的 bullet 列表 |
-| `_section_body()` | L514-525 | 从 Markdown 提取指定 heading 下的正文 |
-| `_markdown_code_tokens()` | L527-528 | 提取所有反引号代码片段 |
-| `_json_string_values()` | L530-532 | 提取 JSON 中指定 key 的所有字符串值 |
-| `_json_object_keys()` | L534-535 | 提取 JSON 所有 key |
+| `_resolve_override_path` | :60 | 绝对路径直接使用，相对路径基于 `repo_root` 解析 |
+| `determine_project_scope` | :66 | cwd 不在 repo_root 下 → `default_project_scope`；遍历 `scope_match_hints` 按 lexical 路径包含匹配；未匹配 → `default_project_scope` |
+| `get_project_canonical` | :76 | config 合并 scope overrides |
+| `get_project_runtime_root` | :83 | config 合并 scope overrides |
+| `get_required_canonical` | :90 | 直接返回 config |
+| `get_global_canonical` | :93 | 直接返回 config |
+| `project_map_refs` | :96 | project-map 引用列表 |
 
-### 3.4 Truth Ref 分类 (L543-571)
+scope 覆盖仍通过 `MEMORY_HOOK_SCOPE_CONFIG_PATH` 环境变量或构造参数 `scope_config_path` 加载 JSON，覆盖 `project_canonical` 与 `project_runtime_root` 两个 key。`GatewayBusinessPolicyImpl` 只覆写 `_read_text_if_exists`（impls:599，委托 config 回调）与业务校验/查询方法。
 
-`_classify_truth_ref()` 将路径分为 17 类：
+### 3.3 路径/文本工具方法（已迁至 _rule_helpers.py 共享模块）
 
-`legal-core` | `project-map-index` | `global-canonical` | `compatibility-only` | `project-canonical` | `docs` | `project-runtime` | `artifact` | `tooling` | `log` | `system` | `app` | `agents` | `gpt-web-to` | `repo-policy` | `workspace-entry` | `other`
+`_path_is_under`、`_path_is_under_lexical`、`_section_bullets`、`_section_body`、`_markdown_code_tokens`、`_json_string_values`、`_json_object_keys`、`_existing_paths` 均不再定义于 impls，统一从 `_rule_helpers.py` 导入（impls:28-56，REF-001 §4.3 整合），供 impls 与 `business_policy_checks.py` 共享。
 
-### 3.5 Truth Basis 验证 (L685-721)
+### 3.4 Truth Ref 分类（已迁至 TruthBasisResolver）
 
-`_truth_basis_errors_for()` 执行以下校验：
-1. 文件不存在 → 跳过
-2. 提取 `source_refs` / `authority_refs` / `evidence_refs` / `conflict_status` 四个 section
-3. 四组 refs 必须非空
-4. source ≠ evidence（不能相同）
-5. source ∩ authority = ∅
-6. authority ∩ evidence = ∅
+`_classify_truth_ref()` 现位于 `TruthBasisResolver`（business_policy_checks.py:472-511），改为**表驱动**实现（exact 表 + under 表），仍是 17 类标签：
+
+`legal-core` | `project-map-index` | `repo-policy` | `workspace-entry` | `global-canonical` | `compatibility-only` | `project-canonical` | `docs` | `project-runtime` | `artifact` | `tooling` | `log` | `system` | `app` | `agents` | `gpt-web-to` | `other`
+
+### 3.5 Truth Basis 验证（已迁至 TruthBasisResolver）
+
+`_truth_basis_errors_for()`（business_policy_checks.py:593-637）按 8 个 Phase 执行校验：
+
+1. 文件缺失 / 无 `Truth Basis` section → 直接报错
+2. 提取 `source_refs` / `authority_refs` / `evidence_refs` / `conflict_status` 四个 section（`### Source Refs` 等 heading 下的 bullet）
+3. 四组 refs 必须非空（section presence）
+4. `conflict_status` 必须为 `["resolved"]`（否则 unresolved 错误）
+5. 引用路径解析（相对路径基于 repo_root）+ 存在性校验（必须在仓库内且在磁盘上存在）
+6. 互斥校验：source ≠ evidence（不能完全相同）、source ∩ authority = ∅、authority ∩ evidence = ∅
 7. 所有 authority 必须在 `authority_allowed_paths` 或 `global_canonical` 中
-8. source 必须包含至少一个非 canonical 来源
-9. evidence 必须包含至少一个 lower-layer 支持
+8. source 必须包含至少一个非 canonical 来源（legal-core / project-map-index / global-canonical 之外）；evidence 必须包含至少一个 `lower_evidence_roots` 下的底层支持
 
-### 3.6 Scope 判定 (L723-732)
-
-`determine_project_scope()`：
-1. cwd 不在 repo_root 下 → 返回 `default_project_scope`
-2. 遍历 `scope_match_hints`，按 lexical 路径包含匹配
-3. 未匹配 → 返回 `default_project_scope`
-
-### 3.7 映射获取方法
+### 3.6 映射获取与查询方法（GatewayBusinessPolicyImpl 本体）
 
 | 方法 | 行号 | 逻辑 |
 |------|------|------|
-| `get_project_canonical()` | L734-740 | config 合并 scope overrides |
-| `get_project_runtime_root()` | L742-748 | config 合并 scope overrides |
-| `get_required_canonical()` | L750-751 | 直接返回 config |
-| `get_global_canonical()` | L753-754 | 直接返回 config |
+| `validate_project_map_files()` | impls:602 | 委托 `ProjectMapValidator`（business_policy_checks.py:138） |
+| `validate_unique_legal_system_contract()` | impls:611 | 委托 `ProjectMapValidator`（business_policy_checks.py:206） |
+| `governance_frozen_tuple_blocker_errors()` | impls:620 | 委托 `FrozenTupleChecker`（business_policy_checks.py:245） |
+| `event_contract_blocker_errors()` | impls:629 | 委托 `EventContractChecker`（business_policy_checks.py:287） |
+| `decision_refs_for_scope()` | impls:638 | default + project 合并，`_existing_paths` 过滤 |
+| `lesson_refs_for_scope()` | impls:642 | 同上 |
+| `docs_refs_for_scope()` | impls:646 | 仅 project，`_existing_paths` 过滤 |
+| `truth_basis_for_scope()` | impls:650 | 委托 `TruthBasisResolver`（business_policy_checks.py:424，方法体 :638-706），返回 `TruthBasis` |
 
-### 3.8 Project Map 验证 (L760-802)
+### 3.7 Project Map 验证（ProjectMapValidator.validate_project_map_files，business_policy_checks.py:151-204）
 
-`validate_project_map_files()` 对四个文件（INDEX / legal-core / registry / governance）执行字符串包含校验：
+对四个文件（INDEX / legal-core / registry / governance）执行标记包含校验（标记常量来自 `_validation_constants.py` 的 `MKR_*` 族）：
 
-- INDEX 必须包含：`唯一合法入口`、`active-legal` 合法性声明、`git commit` 生效门控
-- INDEX 不能包含：`round-`、`waves/`（遗留引用）
-- legal-core 必须包含：`active-legal`、map-only 合法性声明
-- registry 必须包含：`incoming-raw`、`compatibility-only`、`absorbed`、`retired`
-- governance 必须包含：合法性清洗规则、map 授予合法性声明、原子 git commit 规则
-- 不能包含遗留 wave/round 引用
+- INDEX 必须包含：唯一合法入口（`MKR_UNIQUE_LEGAL_ENTRY`）、active-legal map-only 合法性声明、git commit 生效门控；不能包含 `round-`、`waves/` 遗留引用
+- legal-core 必须包含：active-legal 状态、map-only 合法性声明；不能包含遗留引用
+- registry 必须包含：`incoming-raw`、`compatibility-only` 分类，`absorbed` / `retired` 状态，git commit 门控
+- governance 必须包含：合法性清洗规则、map 授予合法性声明、原子 git commit 规则；不能包含 wave/round 遗留引用
 
-### 3.9 Unique Legal System Contract 验证 (L804-842)
+### 3.8 Unique Legal System Contract 验证（business_policy_checks.py:206-243）
 
-`validate_unique_legal_system_contract()` 校验六个文件的交叉引用一致性：
+校验多文件交叉引用一致性：
 
 - workspace index 引用 project-map、active-legal 声明、git commit 规则、truth model
-- overview doc 引用 project-map
-- docs index 降级为 raw material
-- global index 降级非 canonical 到 registry、注册 truth model
+- overview doc 引用 project-map 入口
+- docs index 降级为 project-map 管控的 raw material
+- global index 降级非本地 canonical 到 registry、注册 truth model
 - legal-core 包含所有 `legal_core_markers`
 - registry 包含所有 `required_registry_scopes`
-- hook contract 声明 map-only legal context、git commit 门控
+- hook contract 声明 map-only legal context、注册 git-commit 门控
 
-### 3.10 Blocker 校验 (L844-898)
+### 3.9 Blocker 校验（business_policy_checks.py）
 
-| 方法 | 行号 | 功能 |
-|------|------|------|
-| `governance_frozen_tuple_blocker_errors()` | L844-869 | 检查 governance 文件缺失、期望标记缺失、遗留标记残留 |
-| `event_contract_blocker_errors()` | L871-898 | 检查 event contract 文件缺失、期望标记缺失、遗留标记残留 |
+| 检查器 | 行号 | 功能 |
+|--------|------|------|
+| `FrozenTupleChecker.governance_frozen_tuple_blocker_errors` | :255-285 | governance 文件缺失、期望标记缺失、遗留标记残留 |
+| `EventContractChecker.event_contract_blocker_errors` | :297-422 | event contract 文件缺失；upstream_standard / upstream_mapping / formal_contract 三文档的 source/event/status 正式集合与 config 期望集逐一比对；upstream/downstream 样本 JSON 的越权取值、缺失正式字段、遗留字段残留 |
 
-### 3.11 Ref 查询方法 (L900-927)
+### 3.10 Truth Basis 查询（TruthBasisResolver.truth_basis_for_scope，business_policy_checks.py:638-706）
 
-| 方法 | 行号 | 逻辑 |
-|------|------|------|
-| `decision_refs_for_scope()` | L900-903 | default + project 合并，过滤存在路径 |
-| `lesson_refs_for_scope()` | L905-907 | 同上 |
-| `docs_refs_for_scope()` | L909-911 | 仅 project，过滤存在路径 |
-
-### 3.12 Truth Basis 查询 (L913-977)
-
-`truth_basis_for_scope()` 返回完整 truth basis 包：
-- 不支持的 scope → `validation: "fail"`, `conflict_status: ["unresolved"]`
-- 支持的 scope → 合并 global canonical + project canonical，逐文件验证，返回 `pass`/`fail`
+- 不支持的 scope → `validation: "fail"`、`conflict_status: ["unresolved"]`、refs 退化为 global canonical
+- 支持的 scope → 合并 global canonical + project canonical，逐文件执行 3.5 节 8 Phase 校验，返回 `pass` / `fail`
 
 ---
 
-## 4. PolicyRegistryImpl 策略加载和冲突解决
+## 4. PolicyRegistryImpl 策略加载和冲突解决（impls:227-434）
 
-### 4.1 策略包路径解析优先级 (L207-221)
+### 4.1 类常量与策略包路径解析优先级（impls:230-233、:256-288）
 
 ```
-config.policy_pack_path > 构造参数 > MEMORY_HOOK_POLICY_PACK_PATH 环境变量 > 默认文件路径 > None
+config.policy_pack_path > 构造参数 policy_pack_path > MEMORY_HOOK_POLICY_PACK_PATH 环境变量 > 默认文件路径 > None
 ```
 
-默认路径 (L183-185)：`memory/kb/global/memory-hook-policy-pack.json`
+默认路径（impls:232-234）：包内 `memory_core/memory/kb/global/memory-hook-policy-pack.json`（仓库无关 fallback；项目专属 policy pack 应由 gateway/runtime profile 注入）。
 
-### 4.2 默认策略 (L187-192)
+### 4.2 默认策略（impls:238-244）
 
 ```python
 DEFAULT_POLICIES = {
@@ -270,7 +253,7 @@ DEFAULT_POLICIES = {
 }
 ```
 
-### 4.3 冲突策略 (L194-202)
+### 4.3 冲突策略（impls:246-255）
 
 ```python
 CONFLICT_STRATEGIES = {
@@ -284,16 +267,15 @@ CONFLICT_STRATEGIES = {
 }
 ```
 
-### 4.4 动态策略包加载 (L223-250)
+### 4.4 动态策略包加载（impls:289-319）
 
 `_load_dynamic_policy_pack()`：
-1. 路径不存在 → 跳过
-2. JSON 解析失败 → 跳过
-3. 非 dict 类型 → 跳过
-4. 提取 `schema_version`、`policies`、`conflict_strategies` 三个顶层 key
-5. 策略值覆盖默认值（key-value 均为 string 才接受）
+1. 路径为 None 或不存在 → 跳过
+2. JSON 解析失败 / 非 dict 类型 → 跳过
+3. 提取 `schema_version`（非空字符串则覆写）、`policies`、`conflict_strategies` 三个顶层 key
+4. 策略值覆盖默认值（key-value 均为 string 才接受）
 
-### 4.5 冲突解决算法 (L283-320)
+### 4.5 冲突解决算法（impls:351-393）
 
 `resolve_conflict(policy_key, values, strategy)`：
 
@@ -304,85 +286,111 @@ CONFLICT_STRATEGIES = {
 | `prefer-strict` | 对 `kb_overwrite_allowed` → 选 `"false"`；对 `registration_phase` → 选 `"declared-not-enforced"`；其他 → `values[0]` |
 | 未知策略 | 返回 `values[0]` |
 
-### 4.6 验证 (L268-274)
+空 values 直接 raise `ValueError`；单值直接返回。
+
+### 4.6 验证（impls:324-329）
 
 `validate()` 仅检查 `project_scope` 是否在 `allowed_scopes` 中（如果配置了的话）。
 
-### 4.7 Schema 版本
+### 4.7 治理/查询 stub 方法（impls:395-431）
 
-固定为 `"m3-policy-pack-v1"` (L181)。
+`validate_project_map` / `validate_unique_legal_system_contract` / `governance_frozen_tuple_errors` / `event_contract_blocker_errors` / `git_registration_probe` / `truth_basis_for_scope` / `decision_refs_for_scope` / `lesson_refs_for_scope` / `docs_refs_for_scope` 共 9 个方法在本实现中为 **stub**（返回空值），生产环境由 `GatewayBusinessPolicyImpl` 承担真实逻辑——接口要求这些方法存在，PolicyRegistryImpl 仅满足接口契约。
+
+### 4.8 Schema 版本
+
+默认固定为 `"m3-policy-pack-v1"`（impls:230），可被动态 policy pack 的 `schema_version` 覆写。
 
 ---
 
-## 5. ArtifactSinkImpl 写入逻辑 (L984-1022)
+## 5. ArtifactSinkImpl 写入逻辑（impls:665-718）
 
-### 5.1 构造函数
+### 5.1 构造函数（impls:668-676）
 
 | 参数 | 类型 | 用途 |
 |------|------|------|
-| `context_root` | `Path` | 快照存放目录 |
-| `event_log` | `Path` | 事件日志文件 |
+| `context_root` | `Path` | 快照根目录（快照按日组织在其 `<day>/` 子目录下） |
+| `event_log` | `Path` | legacy 事件日志文件（当日日志写到其旁的 `events/<day>.jsonl`） |
 | `datetime_module` | `Any` | 时间模块（默认 `datetime`，可注入测试） |
 
-### 5.2 写入流程 `write(package)` (L1000-1022)
+### 5.2 写入流程 `write(package)`（impls:682-718）
 
 ```
-1. ensure_dirs() — 创建 context_root 目录树
-2. 生成时间戳: YYYYMMDDTHHMMSSffffff（微秒精度）
-3. 构造快照路径: {timestamp}-{host}-{event}.json
-4. 冲突处理: 如果路径已存在，追加 -{suffix:02d} 后缀递增直到可用
-5. 构造 latest 路径: latest-{host}-{event}.json
-6. 注入 artifact_refs 到 package:
+1. ensure_dirs()（impls:678）— 创建 context_root 与 events/ 目录树
+2. 生成时间戳 YYYYMMDDTHHMMSSffffff（微秒精度）与 day（ISO 日期）
+3. 构造当日目录 context_root/<day>/
+4. 快照路径: <day>/{timestamp}-{host}-{event}.json
+5. 冲突处理: 路径已存在时插入 -{suffix:02d}- 递增直到可用（impls:690-693）
+6. 构造 latest 路径: context_root/latest-{host}-{event}.json（根目录）
+   与 daily_latest 路径: <day>/latest-{host}-{event}.json（当日目录）
+7. 注入 artifact_refs 到 package（5 个 key，impls:698-703）:
    - snapshot: 快照绝对路径
-   - latest: latest 文件绝对路径
-   - event_log: 事件日志绝对路径
-7. 渲染 JSON: ensure_ascii=False, indent=2, 尾部换行
-8. 写入 snapshot 文件（覆盖）
-9. 写入 latest 文件（覆盖，内容与 snapshot 相同）
-10. 追加写入 event_log（JSON Lines 格式，无缩进）
-11. 返回 {"snapshot": path, "latest": path}
+   - latest: 根目录 latest 绝对路径
+   - daily_latest: 当日 latest 绝对路径
+   - event_log: events/<day>.jsonl 绝对路径
+   - legacy_event_log: 构造传入的 event_log 绝对路径
+8. 渲染 JSON: ensure_ascii=False, indent=2, 尾部换行
+9. 写入 snapshot、latest、daily_latest 三个文件（内容相同）
+10. 追加写入两处事件日志（JSON Lines，无缩进）:
+    events/<day>.jsonl（当日）+ legacy event_log（每次一行）
+11. 返回 {"snapshot": path, "latest": path, "event_log": daily_event_log}
 ```
 
-### 5.3 文件名冲突解决
+### 5.3 双 latest 机制
 
-时间戳 + 微秒仍可能冲突时，使用递增后缀 `01`, `02`, ... (L1004-1007)。
-
-### 5.4 双写机制
-
-每个 artifact 同时写入两个文件：
-- **snapshot**：带时间戳的永久快照
-- **latest**：同 host+event 组合的最新版本（每次覆盖）
+每个 artifact 同时维护两个 latest 视图：根目录 `latest-*`（全局最新）与当日目录 `latest-*`（按日最新）；快照本体只落在当日目录，事件日志同时追加当日与 legacy 两份。
 
 ---
 
-## 6. ErrorSinkImpl 错误日志格式 (L1025-1040)
+## 6. ErrorSinkImpl 错误日志格式（impls:720-806）
 
-### 6.1 构造函数
+### 6.1 构造函数（impls:733-738）
 
 | 参数 | 类型 | 用途 |
 |------|------|------|
-| `error_log` | `Path` | 错误日志文件路径 |
-| `now_iso_fn` | `Callable[[], str] \| None` | 时间戳生成回调（默认 `datetime.now().astimezone().isoformat(timespec="seconds")`） |
+| `error_log` | `Path` | 主错误日志文件路径 |
+| `now_iso_fn` | `Callable[[], str] \| None` | 时间戳回调（默认 `_file_utils.now_iso`，ISO 8601 带时区秒级精度） |
 
-### 6.2 日志格式 `log(component, message, context)` (L1036-1040)
+### 6.2 双轨输出 `log(component, message, context)`（impls:776-806）
 
-单行格式：
+**轨道 1 — 结构化 JSON 行**（机器消费），同一条写两处：
+
 ```
 [{iso_timestamp}] [{component}] [error] {message} | context={json_context}
 ```
 
-示例：
+- 当日日志：`errors/<day>.log`（`error_log` 旁的 errors/ 目录）
+- 主日志：构造传入的 `error_log`
+
+context 以 `ensure_ascii=False, sort_keys=True` 序列化；追加模式（`"a"`），UTF-8；自动创建父目录。
+
+**轨道 2 — 人类可读行**（开发者排查），写 `*-readable.log`（当日与主日志各一份）：
+
 ```
-[2026-04-26T10:30:00+08:00] [GatewayBusinessPolicy] [error] validation failed | context={"scope": "workbot", "file": "INDEX.md"}
+[{timestamp}] [ERROR] component={component} {message} | key=value ...
 ```
 
-### 6.3 格式特征
+- 命名规则：`<log stem>-readable.log`（`READABLE_SUFFIX`，impls:730）
+- 关闭开关：`MEMORY_HOOK_READABLE_ERRORS_DISABLED=1`（`_readable_enabled`，impls:773-774）
+- best-effort：可读输出失败（OSError）时静默跳过，绝不阻塞结构化输出（impls:798-800）
+- 值含空格/制表符时 JSON 引号包裹；dict/list 以 JSON 渲染（`_format_kv`，impls:746-759）
 
-| 特征 | 实现 |
-|------|------|
-| 时间戳 | ISO 8601 带时区，秒级精度 |
-| component | 方括号包裹，标识错误来源组件 |
-| 级别 | 固定 `[error]` |
-| context | JSON 序列化，`ensure_ascii=False`, `sort_keys=True` |
-| 写入模式 | 追加（`"a"`），UTF-8 |
-| 目录创建 | 自动创建父目录 |
+---
+
+## 7. IF-5 组件：ArtifactWriter 与 DelegateRouter（impls:808-904）
+
+### 7.1 ArtifactWriter（impls:808-868）
+
+包装 `ArtifactSinkImpl` 的**非阻塞**写入器：
+
+- 构造（:816）：`context_root` + `error_log` + 可注入 `datetime_module`；内部以 `context_root.parent / "events.jsonl"` 为 event_log 组装 `ArtifactSinkImpl`
+- `write(host, event, package) -> bool`（:829）：向 package 注入 `host` / `event` 后委托 sink；任何异常被捕获、记录并返回 `False`（不 raise）
+- `last_error` property（:846）：暴露最近一次写入错误
+- `_log_error`（:849）：失败时按 ArtifactWriter 组件名写当日 + 主错误日志两份
+
+### 7.2 DelegateRouter（impls:870-904）
+
+将 context package 路由到 factory 系宿主 delegate（INV-6 约束，仅 factory）：
+
+- 构造（:876）：可选注入 `FactoryDelegate`（默认自建）
+- `route(host, event, raw_payload, payload)`（:882）：`host ∈ SUPPORTED_HOSTS` → `factory_delegate.execute(...)`；否则 raise `UnknownHostError`
+- `noop(host)`（:897）：同判定下执行 `factory_delegate.noop_response()`；否则 raise `UnknownHostError`
