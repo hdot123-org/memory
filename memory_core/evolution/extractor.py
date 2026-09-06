@@ -53,6 +53,8 @@ class NoLlmExtractor:
 
         for fc in changed_files:
             abs_path = fc.get("abs_path") or fc.get("path")
+            if not abs_path:  # None or empty string
+                continue
             if isinstance(abs_path, str):
                 abs_path = Path(abs_path)
             rel_path = fc.get("rel_path", str(abs_path))
