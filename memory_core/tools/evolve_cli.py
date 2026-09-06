@@ -18,8 +18,8 @@ from memory_core.evolution.config import load_or_create_config
 from memory_core.evolution.extractor import LLMExtractor, NoLlmExtractor
 from memory_core.evolution.registry import EvolutionRegistry
 from memory_core.evolution.sediment import (
-    gk_ensure,
     git_commit_if_needed,
+    gk_ensure,
     write_candidates,
     write_unrefined_candidates,
 )
@@ -191,99 +191,45 @@ def cmd_gk_ensure(args: argparse.Namespace) -> int:
     return exit_code
 
 
-def cmd_run(args: argparse.Namespace) -> int:
-    """run 子命令：编排分析→提取→沉淀"""
-    # D5: --all 与 --project 互斥且必选其一
-    has_all = getattr(args, "all", False)
-    has_project = getattr(args, "project", None) is not None
-
-    if has_all == has_project:
-        # 都给或都不给
-        print("Error: 必须且只能提供 --all 或 --project <path> 之一", file=sys.stderr)
-        return 2
-
-    evolution_root = _get_evolution_root()
-    global_kb_root = _resolve_global_kb_root(args)
-
-    # 自动前置 gk-ensure（VAL-SED-005）
-    exit_code, message = gk_ensure(global_kb_root)
-    if exit_code != 0:
-        # D4: 脏工作区 → exit 1 零写入
-        return 1
-
-    dry_run = getattr(args, "dry_run", False)
-    no_llm = getattr(args, "no_llm", False)
-    max_projects = getattr(args, "max_projects", None)
-
-    # 加载配置（首跑自动生成）
-    config = load_or_create_config(evolution_root)
-    state_file = evolution_root / "state.json"
-
-    # 解析项目列表
-    registry = EvolutionRegistry()
-
-    if has_project:
-        project_path = Path(args.project)
-        if not project_path.exists():
-            print(f"Error: 项目路径不存在: {project_path}", file=sys.stderr)
-            _write_errors_log(evolution_root, f"项目路径不存在: {project_path}")
-            return 1  # D4: 致命失败
-        projects_to_process = [project_path]
-        is_single_project = True
-    else:
-        entries = registry.get_all_entries()
-        projects_to_process = [e.git_root for e in entries if e.health != "missing"]
-        is_single_project = False
-
-    # max_projects 限额
-    if max_projects is not None:
-        projects_to_process = projects_to_process[:max_projects]
-
-    analyzer = IncrementalAnalyzer(state_file, config)
-
-    # D3: dry-run 模式
-    if dry_run:
-        # 打印 resolved root 与执行计划，零写入
-        plan = {
-            "mode": "dry-run",
-            "resolved_global_kb_root": str(global_kb_root),
-            "projects_count": len(projects_to_process),
-            "projects": [],
-        }
-        for proj in projects_to_process:
-            result = analyzer.analyze_project(proj)
-            plan["projects"].append(
-                {
-                    "project": str(proj),
-                    "changed_files": [fc.rel_path for fc in result.changed_files],
-                    "changed_count": len(result.changed_files),
-                    "skipped_by_cap": result.skipped_by_cap,
-                    "error": result.error,
-                }
-            )
-        print(json.dumps(plan, indent=2, ensure_ascii=False))
-        return 0
-
-    # 实际运行
-    run_report: dict[str, Any] = {
-        "run_at": datetime.now().isoformat(),
-        "mode": "no-llm" if no_llm else "llm",
+def _print_dry_run_plan(
+    projects_to_process: list[Path],
+    analyzer: IncrementalAnalyzer,
+    global_kb_root: Path,
+) -> int:
+    """D3: dry-run 只打印 resolved root 与执行计划，零写入零游标推进"""
+    plan: dict[str, Any] = {
+        "mode": "dry-run",
         "resolved_global_kb_root": str(global_kb_root),
+        "projects_count": len(projects_to_process),
         "projects": [],
-        "total_candidates": 0,
-        "total_written": 0,
-        "total_skipped_duplicate": 0,
-        "errors": [],
-        "llm_tokens_used": 0,
     }
+    for proj in projects_to_process:
+        result = analyzer.analyze_project(proj)
+        plan["projects"].append(
+            {
+                "project": str(proj),
+                "changed_files": [fc.rel_path for fc in result.changed_files],
+                "changed_count": len(result.changed_files),
+                "skipped_by_cap": result.skipped_by_cap,
+                "error": result.error,
+            }
+        )
+    print(json.dumps(plan, indent=2, ensure_ascii=False))
+    return 0
 
-    # 初始化提取器
-    no_llm_extractor = NoLlmExtractor(config) if no_llm else None
-    llm_extractor: LLMExtractor | None = None
-    if not no_llm:
-        llm_extractor = LLMExtractor(config)
 
-    all_candidates: list[dict[str, Any]] = []
+def _run_projects(
+    projects_to_process: list[Path],
+    analyzer: IncrementalAnalyzer,
+    no_llm: bool,
+    no_llm_extractor: NoLlmExtractor | None,
+    llm_extractor: LLMExtractor | None,
+    is_single_project: bool,
+    evolution_root: Path,
+    run_report: dict[str, Any],
+    all_candidates: list[dict[str, Any]],
+) -> bool:
+    """逐项目执行 分析→提取；--all 下失败隔离、--project 下致命（D4）"""
     had_fatal_error = False
 
     for proj in projects_to_process:
@@ -376,6 +322,97 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         run_report["projects"].append(proj_report)
 
+    return had_fatal_error
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    """run 子命令：编排分析→提取→沉淀"""
+    # D5: --all 与 --project 互斥且必选其一
+    has_all = getattr(args, "all", False)
+    has_project = getattr(args, "project", None) is not None
+
+    if has_all == has_project:
+        # 都给或都不给
+        print("Error: 必须且只能提供 --all 或 --project <path> 之一", file=sys.stderr)
+        return 2
+
+    evolution_root = _get_evolution_root()
+    global_kb_root = _resolve_global_kb_root(args)
+
+    # 自动前置 gk-ensure（VAL-SED-005）
+    exit_code, message = gk_ensure(global_kb_root)
+    if exit_code != 0:
+        # D4: 脏工作区 → exit 1 零写入
+        return 1
+
+    dry_run = getattr(args, "dry_run", False)
+    no_llm = getattr(args, "no_llm", False)
+    max_projects = getattr(args, "max_projects", None)
+
+    # 加载配置（首跑自动生成）
+    config = load_or_create_config(evolution_root)
+    state_file = evolution_root / "state.json"
+
+    # 解析项目列表
+    registry = EvolutionRegistry()
+
+    if has_project:
+        project_path = Path(args.project)
+        if not project_path.exists():
+            print(f"Error: 项目路径不存在: {project_path}", file=sys.stderr)
+            _write_errors_log(evolution_root, f"项目路径不存在: {project_path}")
+            return 1  # D4: 致命失败
+        projects_to_process = [project_path]
+        is_single_project = True
+    else:
+        entries = registry.get_all_entries()
+        projects_to_process = [e.git_root for e in entries if e.health != "missing"]
+        is_single_project = False
+
+    # max_projects 限额
+    if max_projects is not None:
+        projects_to_process = projects_to_process[:max_projects]
+
+    analyzer = IncrementalAnalyzer(state_file, config)
+
+    # D3: dry-run 模式
+    if dry_run:
+        # 打印 resolved root 与执行计划，零写入
+        return _print_dry_run_plan(projects_to_process, analyzer, global_kb_root)
+
+    # 实际运行
+    run_report: dict[str, Any] = {
+        "run_at": datetime.now().isoformat(),
+        "mode": "no-llm" if no_llm else "llm",
+        "resolved_global_kb_root": str(global_kb_root),
+        "projects": [],
+        "total_candidates": 0,
+        "total_written": 0,
+        "total_skipped_duplicate": 0,
+        "errors": [],
+        "llm_tokens_used": 0,
+    }
+
+    # 初始化提取器
+    no_llm_extractor = NoLlmExtractor(config) if no_llm else None
+    llm_extractor: LLMExtractor | None = None
+    if not no_llm:
+        llm_extractor = LLMExtractor(config)
+
+    all_candidates: list[dict[str, Any]] = []
+
+    had_fatal_error = _run_projects(
+        projects_to_process,
+        analyzer,
+        no_llm,
+        no_llm_extractor,
+        llm_extractor,
+        is_single_project,
+        evolution_root,
+        run_report,
+        all_candidates,
+    )
+
     # 更新 LLM 统计
     if llm_extractor is not None:
         run_report["llm_tokens_used"] = llm_extractor.tokens_used
@@ -399,9 +436,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         # 写入 unrefined 候选（全部进 pending）
         if unrefined_candidates:
-            write_stats_unrefined = write_unrefined_candidates(
-                unrefined_candidates, global_kb_root, config
-            )
+            write_stats_unrefined = write_unrefined_candidates(unrefined_candidates, global_kb_root, config)
             run_report["total_written"] += write_stats_unrefined["written"]
             run_report["total_skipped_duplicate"] += write_stats_unrefined["skipped_duplicate"]
 

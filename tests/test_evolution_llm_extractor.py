@@ -23,14 +23,11 @@ import pytest
 from memory_core.evolution.extractor import (
     AxonhubEngine,
     BudgetTracker,
-    Candidate,
     LLMExtractor,
-    NoLlmExtractor,
     _build_user_prompt,
     _parse_llm_response,
     resolve_api_key,
 )
-
 
 # ---------------------------------------------------------------------------
 # resolve_api_key tests
@@ -57,11 +54,11 @@ class TestResolveApiKey:
     def test_resolve_from_op_ref(self):
         """Test: 从 1Password op read 解析密钥"""
         config = {"llm": {"api_key_env": "NONEXISTENT", "api_key_op_ref": "op://vault/item/field"}}
-        
+
         mock_result = Mock()
         mock_result.returncode = 0
         mock_result.stdout = "op-secret-key"
-        
+
         with patch("subprocess.run", return_value=mock_result) as mock_run:
             key = resolve_api_key(config)
             assert key == "op-secret-key"
@@ -72,7 +69,7 @@ class TestResolveApiKey:
     def test_resolve_env_takes_precedence(self):
         """Test: 环境变量优先于 op ref"""
         config = {"llm": {"api_key_env": "TEST_KEY", "api_key_op_ref": "op://vault/item/field"}}
-        
+
         with patch.dict(os.environ, {"TEST_KEY": "env-key"}):
             key = resolve_api_key(config)
             assert key == "env-key"
@@ -86,14 +83,16 @@ class TestResolveApiKey:
     def test_resolve_op_read_failure(self):
         """Test: op read 失败时抛出错误"""
         config = {"llm": {"api_key_env": "NONEXISTENT", "api_key_op_ref": "op://vault/item/field"}}
-        
+
         mock_result = Mock()
         mock_result.returncode = 1
         mock_result.stdout = ""
-        
-        with patch("subprocess.run", return_value=mock_result):
-            with pytest.raises(RuntimeError, match="无法解析 API 密钥"):
-                resolve_api_key(config)
+
+        with (
+            patch("subprocess.run", return_value=mock_result),
+            pytest.raises(RuntimeError, match="无法解析 API 密钥"),
+        ):
+            resolve_api_key(config)
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +115,7 @@ class TestBudgetTracker:
         """Test: 记录 token 使用"""
         tracker = BudgetTracker(daily_budget_tokens=1000)
         tracker.record_usage(500)
-        
+
         assert tracker.tokens_used == 500
         assert tracker.llm_calls == 1
         assert not tracker.is_exceeded
@@ -126,7 +125,7 @@ class TestBudgetTracker:
         """Test: 预算超限"""
         tracker = BudgetTracker(daily_budget_tokens=1000)
         tracker.record_usage(1000)
-        
+
         assert tracker.is_exceeded
         assert not tracker.can_call()
 
@@ -134,14 +133,14 @@ class TestBudgetTracker:
         """Test: 超过预算"""
         tracker = BudgetTracker(daily_budget_tokens=1000)
         tracker.record_usage(1500)
-        
+
         assert tracker.is_exceeded
         assert not tracker.can_call()
 
     def test_zero_budget(self):
         """Test: 零预算（D14）"""
         tracker = BudgetTracker(daily_budget_tokens=0)
-        
+
         assert tracker.is_exceeded
         assert not tracker.can_call()
 
@@ -156,19 +155,21 @@ class TestParseLlmResponse:
 
     def test_parse_valid_json(self):
         """Test: 解析有效 JSON"""
-        content = json.dumps([
-            {
-                "title": "Test Title",
-                "domain": "engineering",
-                "content": "Test content",
-                "confidence": 0.8,
-                "source_refs": [{"project": "proj1", "path": "file.md"}],
-                "genericity": "通用"
-            }
-        ])
-        
+        content = json.dumps(
+            [
+                {
+                    "title": "Test Title",
+                    "domain": "engineering",
+                    "content": "Test content",
+                    "confidence": 0.8,
+                    "source_refs": [{"project": "proj1", "path": "file.md"}],
+                    "genericity": "通用",
+                }
+            ]
+        )
+
         candidates = _parse_llm_response(content)
-        
+
         assert len(candidates) == 1
         assert candidates[0]["title"] == "Test Title"
         assert candidates[0]["domain"] == "engineering"
@@ -188,55 +189,61 @@ class TestParseLlmResponse:
     }
 ]
 ```"""
-        
+
         candidates = _parse_llm_response(content)
         assert len(candidates) == 1
 
     def test_parse_invalid_domain_normalized(self):
         """Test: 无效 domain 被规范化"""
-        content = json.dumps([
-            {
-                "title": "Test",
-                "domain": "invalid_domain",
-                "content": "Content",
-                "confidence": 0.5,
-                "source_refs": [],
-                "genericity": "通用"
-            }
-        ])
-        
+        content = json.dumps(
+            [
+                {
+                    "title": "Test",
+                    "domain": "invalid_domain",
+                    "content": "Content",
+                    "confidence": 0.5,
+                    "source_refs": [],
+                    "genericity": "通用",
+                }
+            ]
+        )
+
         candidates = _parse_llm_response(content)
         assert candidates[0]["domain"] == "engineering"  # 默认域
 
     def test_parse_invalid_confidence_clamped(self):
         """Test: 无效 confidence 被限制在 [0, 1]"""
-        content = json.dumps([
-            {
-                "title": "Test",
-                "domain": "engineering",
-                "content": "Content",
-                "confidence": 1.5,
-                "source_refs": [],
-                "genericity": "通用"
-            }
-        ])
-        
+        content = json.dumps(
+            [
+                {
+                    "title": "Test",
+                    "domain": "engineering",
+                    "content": "Content",
+                    "confidence": 1.5,
+                    "source_refs": [],
+                    "genericity": "通用",
+                }
+            ]
+        )
+
         candidates = _parse_llm_response(content)
         assert candidates[0]["confidence"] == 1.0
 
     def test_parse_invalid_genericity_normalized(self):
         """Test: 无效 genericity 被规范化"""
-        content = json.dumps([
-            {
-                "title": "Test",
-                "domain": "engineering",
-                "content": "Content",
-                "confidence": 0.5,
-                "source_refs": [],
-                "genericity": "invalid"
-            }
-        ])
-        
+        content = json.dumps(
+            [
+                {
+                    "title": "Test",
+                    "domain": "engineering",
+                    "content": "Content",
+                    "confidence": 0.5,
+                    "source_refs": [],
+                    "genericity": "invalid",
+                }
+            ]
+        )
+
         candidates = _parse_llm_response(content)
         assert candidates[0]["genericity"] == "通用"
 
@@ -252,25 +259,27 @@ class TestParseLlmResponse:
 
     def test_parse_missing_required_fields(self):
         """Test: 缺少必填字段的候选被跳过"""
-        content = json.dumps([
-            {
-                "title": "",  # 空标题
-                "domain": "engineering",
-                "content": "Content",
-                "confidence": 0.5,
-                "source_refs": [],
-                "genericity": "通用"
-            },
-            {
-                "title": "Valid",
-                "domain": "engineering",
-                "content": "",  # 空内容
-                "confidence": 0.5,
-                "source_refs": [],
-                "genericity": "通用"
-            }
-        ])
-        
+        content = json.dumps(
+            [
+                {
+                    "title": "",  # 空标题
+                    "domain": "engineering",
+                    "content": "Content",
+                    "confidence": 0.5,
+                    "source_refs": [],
+                    "genericity": "通用",
+                },
+                {
+                    "title": "Valid",
+                    "domain": "engineering",
+                    "content": "",  # 空内容
+                    "confidence": 0.5,
+                    "source_refs": [],
+                    "genericity": "通用",
+                },
+            ]
+        )
+
         candidates = _parse_llm_response(content)
         assert len(candidates) == 0
 
@@ -289,7 +298,7 @@ class TestBuildUserPrompt:
             project_root = Path(tmpdir)
             test_file = project_root / "test.md"
             test_file.write_text("# Test\n\nContent here")
-            
+
             changed_files = [
                 {
                     "abs_path": test_file,
@@ -297,9 +306,9 @@ class TestBuildUserPrompt:
                     "project_root": project_root,
                 }
             ]
-            
+
             prompt = _build_user_prompt(changed_files, project_root)
-            
+
             assert project_root.name in prompt
             assert str(project_root) in prompt
             assert "memory/kb/lessons/test.md" in prompt
@@ -313,7 +322,7 @@ class TestBuildUserPrompt:
             # 创建一个 > 16KB 的文件
             large_content = "x" * 20000
             test_file.write_text(large_content)
-            
+
             changed_files = [
                 {
                     "abs_path": test_file,
@@ -321,9 +330,9 @@ class TestBuildUserPrompt:
                     "project_root": project_root,
                 }
             ]
-            
+
             prompt = _build_user_prompt(changed_files, project_root)
-            
+
             # 应该包含截断标记
             assert "内容过长，已截断" in prompt
             # 提示词长度应该远小于原始内容
@@ -333,20 +342,20 @@ class TestBuildUserPrompt:
         """Test: 多个文件的提示词"""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
-            
+
             file1 = project_root / "file1.md"
             file1.write_text("# File 1\n\nContent 1")
-            
+
             file2 = project_root / "file2.md"
             file2.write_text("# File 2\n\nContent 2")
-            
+
             changed_files = [
                 {"abs_path": file1, "rel_path": "file1.md", "project_root": project_root},
                 {"abs_path": file2, "rel_path": "file2.md", "project_root": project_root},
             ]
-            
+
             prompt = _build_user_prompt(changed_files, project_root)
-            
+
             assert "file1.md" in prompt
             assert "file2.md" in prompt
             assert "Content 1" in prompt
@@ -392,26 +401,29 @@ class TestAxonhubEngine:
         config = {"llm": {"api_key_env": "TEST_KEY"}}
         with patch.dict(os.environ, {"TEST_KEY": "test-key"}):
             engine = AxonhubEngine(config)
-            
+
             # Mock urlopen 使其失败两次后成功
             mock_response = Mock()
-            mock_response.read.return_value = json.dumps({
-                "choices": [{"message": {"content": "test response"}}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
-            }).encode("utf-8")
+            mock_response.read.return_value = json.dumps(
+                {
+                    "choices": [{"message": {"content": "test response"}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+                }
+            ).encode("utf-8")
             mock_response.__enter__ = Mock(return_value=mock_response)
             mock_response.__exit__ = Mock(return_value=False)
-            
+
             call_count = [0]
+
             def mock_urlopen(*args, **kwargs):
                 call_count[0] += 1
                 if call_count[0] < 3:
                     raise OSError("Connection failed")
                 return mock_response
-            
+
             with patch("urllib.request.urlopen", side_effect=mock_urlopen):
                 result = engine.chat_completion([{"role": "user", "content": "test"}])
-                
+
                 assert result.content == "test response"
                 assert result.total_tokens == 30
                 assert call_count[0] == 3  # 重试了 2 次
@@ -421,10 +433,12 @@ class TestAxonhubEngine:
         config = {"llm": {"api_key_env": "TEST_KEY"}}
         with patch.dict(os.environ, {"TEST_KEY": "test-key"}):
             engine = AxonhubEngine(config)
-            
-            with patch("urllib.request.urlopen", side_effect=OSError("Connection failed")):
-                with pytest.raises(RuntimeError, match="LLM API 调用失败"):
-                    engine.chat_completion([{"role": "user", "content": "test"}])
+
+            with (
+                patch("urllib.request.urlopen", side_effect=OSError("Connection failed")),
+                pytest.raises(RuntimeError, match="LLM API 调用失败"),
+            ):
+                engine.chat_completion([{"role": "user", "content": "test"}])
 
 
 # ---------------------------------------------------------------------------
@@ -456,12 +470,12 @@ class TestLLMExtractor:
         config = {"llm": {"api_key_env": "TEST_KEY", "daily_budget_tokens": 0}}
         with patch.dict(os.environ, {"TEST_KEY": "test-key"}):
             extractor = LLMExtractor(config)
-            
+
             with tempfile.TemporaryDirectory() as tmpdir:
                 project_root = Path(tmpdir)
                 test_file = project_root / "test.md"
                 test_file.write_text("# Test\n\nContent")
-                
+
                 changed_files = [
                     {
                         "abs_path": test_file,
@@ -469,9 +483,9 @@ class TestLLMExtractor:
                         "project_root": project_root,
                     }
                 ]
-                
+
                 candidates = extractor.extract_from_files(changed_files)
-                
+
                 # 应该降级为 unrefined
                 assert len(candidates) == 1
                 assert candidates[0].unrefined is True
@@ -480,12 +494,12 @@ class TestLLMExtractor:
         """Test: 无引擎时降级"""
         config = {"llm": {"api_key_env": "NONEXISTENT"}}
         extractor = LLMExtractor(config)
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             test_file = project_root / "test.md"
             test_file.write_text("# Test\n\nContent")
-            
+
             changed_files = [
                 {
                     "abs_path": test_file,
@@ -493,9 +507,9 @@ class TestLLMExtractor:
                     "project_root": project_root,
                 }
             ]
-            
+
             candidates = extractor.extract_from_files(changed_files)
-            
+
             # 应该降级为 unrefined
             assert len(candidates) == 1
             assert candidates[0].unrefined is True
@@ -505,16 +519,16 @@ class TestLLMExtractor:
         config = {"llm": {"api_key_env": "TEST_KEY"}}
         with patch.dict(os.environ, {"TEST_KEY": "test-key"}):
             extractor = LLMExtractor(config)
-            
+
             # Mock 引擎使其失败
             extractor._engine = Mock()
             extractor._engine.chat_completion.side_effect = RuntimeError("API failed")
-            
+
             with tempfile.TemporaryDirectory() as tmpdir:
                 project_root = Path(tmpdir)
                 test_file = project_root / "test.md"
                 test_file.write_text("# Test\n\nContent")
-                
+
                 changed_files = [
                     {
                         "abs_path": test_file,
@@ -522,9 +536,9 @@ class TestLLMExtractor:
                         "project_root": project_root,
                     }
                 ]
-                
+
                 candidates = extractor.extract_from_files(changed_files)
-                
+
                 # 应该降级为 unrefined
                 assert len(candidates) == 1
                 assert candidates[0].unrefined is True
@@ -534,33 +548,36 @@ class TestLLMExtractor:
         config = {"llm": {"api_key_env": "TEST_KEY"}}
         with patch.dict(os.environ, {"TEST_KEY": "test-key"}):
             extractor = LLMExtractor(config)
-            
+
             # Mock 成功响应
             from memory_core.evolution.extractor import LLMCallResult
+
             mock_result = LLMCallResult(
-                content=json.dumps([
-                    {
-                        "title": "Project Specific",
-                        "domain": "engineering",
-                        "content": "This is project-specific content",
-                        "confidence": 0.9,
-                        "source_refs": [{"project": "proj1", "path": "file.md"}],
-                        "genericity": "项目专属"
-                    }
-                ]),
+                content=json.dumps(
+                    [
+                        {
+                            "title": "Project Specific",
+                            "domain": "engineering",
+                            "content": "This is project-specific content",
+                            "confidence": 0.9,
+                            "source_refs": [{"project": "proj1", "path": "file.md"}],
+                            "genericity": "项目专属",
+                        }
+                    ]
+                ),
                 prompt_tokens=10,
                 completion_tokens=20,
                 total_tokens=30,
             )
-            
+
             extractor._engine = Mock()
             extractor._engine.chat_completion.return_value = mock_result
-            
+
             with tempfile.TemporaryDirectory() as tmpdir:
                 project_root = Path(tmpdir)
                 test_file = project_root / "test.md"
                 test_file.write_text("# Test\n\nContent")
-                
+
                 changed_files = [
                     {
                         "abs_path": test_file,
@@ -568,9 +585,9 @@ class TestLLMExtractor:
                         "project_root": project_root,
                     }
                 ]
-                
+
                 candidates = extractor.extract_from_files(changed_files)
-                
+
                 # 项目专属候选的置信度应该被降低
                 assert len(candidates) == 1
                 assert candidates[0].genericity == "项目专属"
@@ -581,33 +598,36 @@ class TestLLMExtractor:
         config = {"llm": {"api_key_env": "TEST_KEY"}}
         with patch.dict(os.environ, {"TEST_KEY": "test-key"}):
             extractor = LLMExtractor(config)
-            
+
             # Mock 成功响应
             from memory_core.evolution.extractor import LLMCallResult
+
             mock_result = LLMCallResult(
-                content=json.dumps([
-                    {
-                        "title": "Test",
-                        "domain": "engineering",
-                        "content": "Content",
-                        "confidence": 0.8,
-                        "source_refs": [],
-                        "genericity": "通用"
-                    }
-                ]),
+                content=json.dumps(
+                    [
+                        {
+                            "title": "Test",
+                            "domain": "engineering",
+                            "content": "Content",
+                            "confidence": 0.8,
+                            "source_refs": [],
+                            "genericity": "通用",
+                        }
+                    ]
+                ),
                 prompt_tokens=100,
                 completion_tokens=200,
                 total_tokens=300,
             )
-            
+
             extractor._engine = Mock()
             extractor._engine.chat_completion.return_value = mock_result
-            
+
             with tempfile.TemporaryDirectory() as tmpdir:
                 project_root = Path(tmpdir)
                 test_file = project_root / "test.md"
                 test_file.write_text("# Test\n\nContent")
-                
+
                 changed_files = [
                     {
                         "abs_path": test_file,
@@ -615,9 +635,9 @@ class TestLLMExtractor:
                         "project_root": project_root,
                     }
                 ]
-                
+
                 extractor.extract_from_files(changed_files)
-                
+
                 assert extractor.tokens_used == 300
                 assert extractor.llm_calls == 1
 
@@ -634,29 +654,29 @@ class TestLLMExtractorCLI:
         """Test: CLI run 命令使用 LLM"""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            
+
             # 创建临时项目
             project_root = tmpdir / "project"
             project_root.mkdir()
             lessons_dir = project_root / "memory" / "kb" / "lessons"
             lessons_dir.mkdir(parents=True)
-            
+
             test_file = lessons_dir / "test.md"
             test_file.write_text("# Test Lesson\n\nThis is a test lesson.")
-            
+
             # 创建临时全局库根
             global_kb_root = tmpdir / "global_kb"
             global_kb_root.mkdir()
-            
+
             # 创建临时 evolution 根
             evolution_root = tmpdir / "evolution"
             evolution_root.mkdir()
-            
+
             env = os.environ.copy()
             env["MEMORY_CORE_GLOBAL_KB_ROOT"] = str(global_kb_root)
             env["MEMORY_CORE_EVOLUTION_ROOT"] = str(evolution_root)
             env["TEST_API_KEY"] = "test-key"
-            
+
             # 运行 CLI（不使用 LLM，因为测试环境没有真实 API）
             result = subprocess.run(
                 [
@@ -673,6 +693,6 @@ class TestLLMExtractorCLI:
                 text=True,
                 env=env,
             )
-            
+
             assert result.returncode == 0
             assert "报告已写入" in result.stderr or result.returncode == 0

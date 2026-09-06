@@ -54,7 +54,7 @@ def load_or_create_config(evolution_root: Path) -> dict[str, Any]:
     if config_path.exists():
         try:
             with config_path.open(encoding="utf-8") as f:
-                config = json.load(f)
+                config: dict[str, Any] = json.load(f)
             # 补全缺失的默认段（向前兼容）
             for section, defaults in DEFAULT_CONFIG.items():
                 if section not in config:

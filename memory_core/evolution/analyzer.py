@@ -61,7 +61,8 @@ class IncrementalAnalyzer:
             return {"projects": {}}
         try:
             with self.state_file.open(encoding="utf-8") as f:
-                return json.load(f)
+                state: dict[str, Any] = json.load(f)
+                return state
         except (json.JSONDecodeError, OSError):
             return {"projects": {}}
 
@@ -82,8 +83,9 @@ class IncrementalAnalyzer:
     def _get_project_cursors(self, project_root: Path) -> dict[str, dict[str, Any]]:
         """获取项目的游标字典"""
         key = str(project_root.resolve())
-        project_state = self._state.get("projects", {}).get(key, {})
-        return project_state.get("file_cursors", {})
+        project_state: dict[str, Any] = self._state.get("projects", {}).get(key, {})
+        cursors: dict[str, dict[str, Any]] = project_state.get("file_cursors", {})
+        return cursors
 
     def _update_project_cursors(self, project_root: Path, cursors: dict[str, dict[str, Any]]) -> None:
         """更新项目的游标"""

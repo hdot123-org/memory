@@ -2,24 +2,20 @@
 Tests for sediment.py: 去重三态 + git 纪律 + gk-ensure + VAL-SED-002/003/004/005/006
 """
 
-import json
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-
-import pytest
 
 from memory_core.evolution.sediment import (
     _find_dedup_target,
     _generate_slug,
     _merge_source_refs,
     _ngram_overlap,
-    gk_ensure,
     git_commit_if_needed,
+    gk_ensure,
     write_candidates,
 )
-
 
 # ---------------------------------------------------------------------------
 # 去重三态测试（VAL-SED-002 单元级）
@@ -192,7 +188,9 @@ def test_gk_ensure_merge_branch():
         assert exit_code == 0
 
         # 验证 b.md 在 main 中
-        result = subprocess.run(["git", "branch", "--show-current"], cwd=root, check=True, capture_output=True, text=True)
+        result = subprocess.run(
+            ["git", "branch", "--show-current"], cwd=root, check=True, capture_output=True, text=True
+        )
         assert result.stdout.strip() == "main"
 
         result = subprocess.run(["git", "cat-file", "-e", "main:b.md"], cwd=root, check=True, capture_output=True)
@@ -273,13 +271,17 @@ def test_git_commit_if_needed_no_changes():
         subprocess.run(["git", "add", "-A"], cwd=root, check=True)
         subprocess.run(["git", "commit", "-m", "init"], cwd=root, check=True, capture_output=True)
 
-        result = subprocess.run(["git", "rev-list", "--count", "HEAD"], cwd=root, check=True, capture_output=True, text=True)
+        result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"], cwd=root, check=True, capture_output=True, text=True
+        )
         count_before = int(result.stdout.strip())
 
         committed = git_commit_if_needed(root)
         assert not committed
 
-        result = subprocess.run(["git", "rev-list", "--count", "HEAD"], cwd=root, check=True, capture_output=True, text=True)
+        result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"], cwd=root, check=True, capture_output=True, text=True
+        )
         count_after = int(result.stdout.strip())
         assert count_after == count_before
 

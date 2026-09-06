@@ -19,10 +19,9 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
 
 # 六个全局域（与 sediment.VALID_DOMAINS 保持一致）
 VALID_DOMAINS = ("operations", "engineering", "collaboration", "governance", "infra", "audit")
@@ -527,10 +526,10 @@ class LLMExtractor:
         # 分批处理：每批最多 10 个文件，避免 prompt 过大导致 API 返回空内容
         batch_size = 10
         all_candidates: list[Candidate] = []
-        
+
         for i in range(0, len(changed_files), batch_size):
-            batch_files = changed_files[i:i + batch_size]
-            
+            batch_files = changed_files[i : i + batch_size]
+
             # 检查预算
             if not self.budget.can_call():
                 print(
@@ -542,7 +541,7 @@ class LLMExtractor:
                 fallback_candidates = self._fallback_no_llm(remaining_files, project_root)
                 all_candidates.extend(fallback_candidates)
                 break
-            
+
             messages = [
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": _build_user_prompt(batch_files, project_root)},
@@ -674,7 +673,7 @@ class NoLlmExtractor:
         if content.startswith("---"):
             end = content.find("\n---", 3)
             if end != -1:
-                content = content[end + 4:].strip()
+                content = content[end + 4 :].strip()
 
         lines = content.strip().split("\n")
         for line in lines:
@@ -714,8 +713,8 @@ def extract_candidates(
     config = config or {}
 
     if use_llm:
-        extractor = LLMExtractor(config)
-        return extractor.extract_from_files(changed_files)
+        llm_extractor = LLMExtractor(config)
+        return llm_extractor.extract_from_files(changed_files)
 
-    extractor = NoLlmExtractor(config)
-    return extractor.extract_from_files(changed_files)
+    no_llm_extractor = NoLlmExtractor(config)
+    return no_llm_extractor.extract_from_files(changed_files)

@@ -14,11 +14,9 @@
 """
 
 import hashlib
-import os
 import re
 import subprocess
 import sys
-from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -46,7 +44,7 @@ def _strip_frontmatter(content: str) -> str:
     """去掉 YAML frontmatter，只保留正文"""
     m = re.match(r"^---\n.*?\n---\n?", content, flags=re.DOTALL)
     if m:
-        return content[m.end():]
+        return content[m.end() :]
     return content
 
 
@@ -167,7 +165,7 @@ def _parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
         return {}, content
 
     fm_text = m.group(1)
-    body = content[m.end():]
+    body = content[m.end() :]
     fm: dict[str, Any] = {}
 
     for line in fm_text.split("\n"):
@@ -698,10 +696,7 @@ def git_commit_if_needed(
         # 添加并提交
         _git_run(["add", "-A"], global_kb_root)
 
-        if summary:
-            commit_msg = summary
-        else:
-            commit_msg = f"feat(evolve): 沉淀 {count} 条经验（{date.today().isoformat()}）"
+        commit_msg = summary or f"feat(evolve): 沉淀 {count} 条经验（{date.today().isoformat()}）"
 
         _git_run(["commit", "-m", commit_msg], global_kb_root)
 
