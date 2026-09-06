@@ -15,6 +15,7 @@ The global KB contains cross-project reusable knowledge organized into four doma
 This structure is created once and shared across all projects that enable global KB.
 """
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -262,13 +263,12 @@ def _generate_index_md() -> str:
 def get_global_kb_root() -> Path:
     """
     Get the default global KB root path.
-    
+
     支持环境变量覆盖：MEMORY_CORE_GLOBAL_KB_ROOT
-    
+
     Returns:
         Path to global KB root (env override or ~/.memory/global-kb)
     """
-    import os
     env_root = os.environ.get("MEMORY_CORE_GLOBAL_KB_ROOT")
     if env_root:
         return Path(env_root)
