@@ -69,7 +69,7 @@ class EvolutionRegistry:
         return entries
 
     def _read_path_index(self) -> list[Path]:
-        """读取 path-index.json 中的 git_root"""
+        """读取 path-index.json 中的 git_root（M1 scrutiny 修复：逐条目容错）"""
         path_index_file = self.lifecycle_root / "path-index.json"
         if not path_index_file.exists():
             return []
@@ -77,18 +77,29 @@ class EvolutionRegistry:
         try:
             with path_index_file.open(encoding="utf-8") as f:
                 data = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"Warning: Failed to read path-index.json: {e}", file=sys.stderr)
+            return []
 
-            paths_dict = data.get("paths", {})
-            roots = []
-            for info in paths_dict.values():
+        paths_dict = data.get("paths", {})
+        if not isinstance(paths_dict, dict):
+            print("Warning: path-index.json 'paths' is not a dict", file=sys.stderr)
+            return []
+
+        roots = []
+        for key, info in paths_dict.items():
+            try:
+                if not isinstance(info, dict):
+                    print(f"Warning: path-index.json entry '{key}' is not a dict, skipping", file=sys.stderr)
+                    continue
                 git_root = info.get("git_root")
                 if git_root:
                     roots.append(Path(git_root))
+            except (TypeError, AttributeError) as e:
+                print(f"Warning: Failed to parse path-index.json entry '{key}': {e}", file=sys.stderr)
+                continue
 
-            return roots
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
-            print(f"Warning: Failed to read path-index.json: {e}", file=sys.stderr)
-            return []
+        return roots
 
     def _read_projects_dir(self) -> list[Path]:
         """读取 projects/*.json 中的 git_root"""
@@ -144,16 +155,21 @@ class EvolutionRegistry:
         """
         获取全部消费项目的 memory 目录绝对路径（用于 restic 备份）
 
+        M1 scrutiny 加固：resolve() 后有序去重（symlink 别名不重复）
+
         Returns:
-            存在于磁盘的 <git_root>/memory 绝对路径列表
+            存在于磁盘的 <git_root>/memory 绝对路径列表（排序去重）
         """
         entries = self.get_all_entries()
-        backup_paths = []
+        seen: set[str] = set()
+        backup_paths: list[str] = []
 
         for entry in entries:
-            # 只输出磁盘存在的 memory 目录
             memory_dir = entry.git_root / "memory"
             if memory_dir.exists() and memory_dir.is_dir():
-                backup_paths.append(str(memory_dir.resolve()))
+                resolved = str(memory_dir.resolve())
+                if resolved not in seen:
+                    seen.add(resolved)
+                    backup_paths.append(resolved)
 
-        return backup_paths
+        return sorted(backup_paths)

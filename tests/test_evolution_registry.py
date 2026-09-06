@@ -106,8 +106,39 @@ def test_registry_dedup_by_git_root(temp_lifecycle_root, temp_project_dirs):
     # Should not contain None
     assert None not in git_roots, "None git_root should be filtered"
 
-    # Should have at least 3 unique projects (proj1 deduped, proj5 filtered)
-    assert len(entries) >= 3
+    # Should have exactly 4 unique projects (proj1, proj2, proj3, proj4; proj1-dup-key deduped, proj5 filtered)
+    assert len(entries) == 4
+
+
+def test_registry_cross_source_dedup():
+    """M1 scrutiny ③: cross-source dedup between path-index and projects/*.json"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        lifecycle_root = Path(tmpdir)
+
+        # path-index.json has projA + projA-dup (same git_root)
+        path_index = {
+            "paths": {
+                "/tmp/projA": {"git_root": "/tmp/projA"},
+                "/tmp/projB": {"git_root": "/tmp/projB"},
+                "/tmp/projA-dup": {"git_root": "/tmp/projA"},
+            }
+        }
+        (lifecycle_root / "path-index.json").write_text(json.dumps(path_index))
+
+        # projects/ has projA again (cross-source dup) + projC
+        projects_dir = lifecycle_root / "projects"
+        projects_dir.mkdir()
+        (projects_dir / "projA.json").write_text(json.dumps({"git_root": "/tmp/projA"}))
+        (projects_dir / "projC.json").write_text(json.dumps({"git_root": "/tmp/projC"}))
+
+        registry = EvolutionRegistry(lifecycle_root)
+        entries = registry.get_all_entries()
+        git_roots = [str(e.git_root) for e in entries]
+
+        # Should have exactly 3 unique git_roots: projA, projB, projC
+        assert len(entries) == 3
+        assert len(git_roots) == len(set(git_roots))
+        assert set(git_roots) == {"/tmp/projA", "/tmp/projB", "/tmp/projC"}
 
 
 def test_missing_root_tolerated(temp_lifecycle_root, temp_project_dirs):
