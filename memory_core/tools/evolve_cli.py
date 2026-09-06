@@ -15,7 +15,7 @@ from typing import Any
 
 from memory_core.evolution.analyzer import IncrementalAnalyzer
 from memory_core.evolution.config import load_or_create_config
-from memory_core.evolution.extractor import NoLlmExtractor
+from memory_core.evolution.extractor import LLMExtractor, NoLlmExtractor
 from memory_core.evolution.registry import EvolutionRegistry
 from memory_core.evolution.sediment import (
     gk_ensure,
@@ -277,7 +277,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         "llm_tokens_used": 0,
     }
 
-    extractor = NoLlmExtractor(config) if no_llm else None
+    # 初始化提取器
+    no_llm_extractor = NoLlmExtractor(config) if no_llm else None
+    llm_extractor: LLMExtractor | None = None
+    if not no_llm:
+        llm_extractor = LLMExtractor(config)
+
     all_candidates: list[dict[str, Any]] = []
     had_fatal_error = False
 
@@ -331,13 +336,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         ]
 
         if no_llm:
-            assert extractor is not None
-            candidates = extractor.extract_from_files(changed_dicts)
+            assert no_llm_extractor is not None
+            candidates = no_llm_extractor.extract_from_files(changed_dicts)
         else:
-            # LLM 路径暂未实现，降级为 no-llm
-            fallback_ext = NoLlmExtractor(config)
-            candidates = fallback_ext.extract_from_files(changed_dicts)
-            print("Warning: LLM 路径未实现，降级为 --no-llm", file=sys.stderr)
+            assert llm_extractor is not None
+            candidates = llm_extractor.extract_from_files(changed_dicts)
 
         # 转换为 dict
         for cand in candidates:
@@ -350,12 +353,13 @@ def cmd_run(args: argparse.Namespace) -> int:
                 "genericity": cand.genericity,
                 "unrefined": cand.unrefined,
             }
-            all_candidates.extend([cand_dict])
+            all_candidates.append(cand_dict)
             proj_report["candidates"].append(
                 {
                     "title": cand.title,
                     "domain": cand.domain,
                     "confidence": cand.confidence,
+                    "genericity": cand.genericity,
                     "unrefined": cand.unrefined,
                     "source_refs": cand.source_refs,
                 }
@@ -372,12 +376,38 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         run_report["projects"].append(proj_report)
 
+    # 更新 LLM 统计
+    if llm_extractor is not None:
+        run_report["llm_tokens_used"] = llm_extractor.tokens_used
+        run_report["llm_calls"] = llm_extractor.llm_calls
+        if not llm_extractor.budget.can_call():
+            run_report["budget_exceeded"] = True
+            run_report["budget_limit"] = llm_extractor.budget.daily_budget_tokens
+
     # 沉淀写入（全部项目处理完后统一写入）
     if all_candidates:
-        write_stats = write_unrefined_candidates(all_candidates, global_kb_root, config)
-        run_report["total_written"] = write_stats["written"]
-        run_report["total_skipped_duplicate"] = write_stats["skipped_duplicate"]
+        # 分离 refined 和 unrefined 候选
+        refined_candidates = [c for c in all_candidates if not c["unrefined"]]
+        unrefined_candidates = [c for c in all_candidates if c["unrefined"]]
+
+        # 写入 refined 候选（走置信度分层）
+        if refined_candidates:
+            write_stats = write_candidates(refined_candidates, global_kb_root, config)
+            run_report["total_written"] += write_stats["written"]
+            run_report["total_skipped_duplicate"] += write_stats["skipped_duplicate"]
+            run_report["total_merged"] = write_stats.get("merged", 0)
+
+        # 写入 unrefined 候选（全部进 pending）
+        if unrefined_candidates:
+            write_stats_unrefined = write_unrefined_candidates(
+                unrefined_candidates, global_kb_root, config
+            )
+            run_report["total_written"] += write_stats_unrefined["written"]
+            run_report["total_skipped_duplicate"] += write_stats_unrefined["skipped_duplicate"]
+
         run_report["total_candidates"] = len(all_candidates)
+        run_report["refined_count"] = len(refined_candidates)
+        run_report["unrefined_count"] = len(unrefined_candidates)
 
         # git 提交
         git_commit_if_needed(global_kb_root, config)
