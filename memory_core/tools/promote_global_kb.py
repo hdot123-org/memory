@@ -241,7 +241,7 @@ def _update_index(global_kb_root: Path, domain: str, filename: str) -> bool:
 
 
 def _is_table_format_index(content: str) -> bool:
-    """检测 INDEX.md 是否为 sedment 产出的表格格式。"""
+    """检测 INDEX.md 是否为 sediment 产出的表格格式。"""
     return "| 标题 | 域 | 文件 |" in content or ("| title |" in content.lower() and "| file |" in content.lower())
 
 
@@ -261,7 +261,10 @@ def _append_table_row(
     # 从文件 frontmatter 读取 title；读取失败则退化为 filename
     title = _read_title_from_file(global_kb_root / domain / filename) or filename
 
-    new_line = f"| {title} | {domain} | {file_rel} |"
+    # 转义标题中的竖线，防止破坏表格格式
+    title_escaped = title.replace("|", "\\|")
+
+    new_line = f"| {title_escaped} | {domain} | {file_rel} |"
     new_content = content if content.endswith("\n") else content + "\n"
     new_content += new_line + "\n"
     try:

@@ -111,6 +111,42 @@ class TestTableFormatPromote:
         assert not pending_file.exists()
         assert (table_format_root / "operations" / "restic-dryrun.md").exists()
 
+    def test_pipe_character_escaped_in_title(self, table_format_root: Path) -> None:
+        """Titles containing pipe characters are escaped to avoid breaking table format."""
+        from memory_core.tools.promote_global_kb import main as promote_main
+
+        # Create a pending candidate with pipe in title
+        pending_file = table_format_root / "pending" / "pipe-test.md"
+        pending_file.write_text(
+            "---\n"
+            'title: "配置项 A | 配置项 B 对比"\n'
+            "domain: engineering\n"
+            "confidence: 0.8\n"
+            "source: memory-evolve\n"
+            "---\n\n"
+            "配置对比内容。\n",
+            encoding="utf-8",
+        )
+
+        exit_code = promote_main(
+            [
+                str(pending_file),
+                "--to",
+                "engineering",
+                "--global-kb-root",
+                str(table_format_root),
+            ]
+        )
+        after = (table_format_root / "INDEX.md").read_text(encoding="utf-8")
+
+        assert exit_code == 0
+        # Pipe should be escaped as \| in the table row
+        assert "| 配置项 A \\| 配置项 B 对比 |" in after
+        assert "engineering/pipe-test.md" in after
+        # File moved to formal domain
+        assert not pending_file.exists()
+        assert (table_format_root / "engineering" / "pipe-test.md").exists()
+
 
 class TestMarkerFormatPromote:
     """Marker-format INDEX keeps its existing behavior (no regression)."""
