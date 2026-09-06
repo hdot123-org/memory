@@ -520,7 +520,10 @@ class LLMExtractor:
         changed_files: list[dict[str, Any]],
         project_root: Path | None,
     ) -> list[Candidate]:
-        """使用 LLM 提取候选（分批处理避免 prompt 过大）"""
+        """使用 LLM 提取候选（分批处理避免 prompt 过大）
+
+        修复：每批独立容错——某批 API 失败只降级该批，不丢弃先前批次已成功的 refined 候选。
+        """
         assert self._engine is not None
 
         # 分批处理：每批最多 10 个文件，避免 prompt 过大导致 API 返回空内容
@@ -547,7 +550,19 @@ class LLMExtractor:
                 {"role": "user", "content": _build_user_prompt(batch_files, project_root)},
             ]
 
-            result = self._engine.chat_completion(messages)
+            # 每批独立容错：API 失败只降级本批，保留先前批次精炼候选
+            try:
+                result = self._engine.chat_completion(messages)
+            except RuntimeError as e:
+                print(
+                    f"Warning: LLM 批次 {i // batch_size + 1} API 调用失败，"
+                    f"本批 {len(batch_files)} 文件降级为 unrefined（保留先前批次精炼候选）: {e}",
+                    file=sys.stderr,
+                )
+                fallback_candidates = self._fallback_no_llm(batch_files, project_root)
+                all_candidates.extend(fallback_candidates)
+                continue
+
             self.budget.record_usage(result.total_tokens)
 
             # 解析候选
@@ -698,6 +713,7 @@ def extract_candidates(
     changed_files: list[dict[str, Any]],
     use_llm: bool = False,
     config: dict[str, Any] | None = None,
+    project_root: Path | None = None,
 ) -> list[Candidate]:
     """
     提取候选的统一入口
@@ -706,6 +722,7 @@ def extract_candidates(
         changed_files: 变更文件列表
         use_llm: 是否使用 LLM
         config: 配置
+        project_root: 项目根路径（FIX: 必须传递给 extractor，否则 LLM prompt 缺少上下文）
 
     Returns:
         候选列表
@@ -714,7 +731,7 @@ def extract_candidates(
 
     if use_llm:
         llm_extractor = LLMExtractor(config)
-        return llm_extractor.extract_from_files(changed_files)
+        return llm_extractor.extract_from_files(changed_files, project_root)
 
     no_llm_extractor = NoLlmExtractor(config)
-    return no_llm_extractor.extract_from_files(changed_files)
+    return no_llm_extractor.extract_from_files(changed_files, project_root)

@@ -424,3 +424,48 @@ def test_cli_run_auto_gk_ensure_dirty_abort():
             # 验证 dirty 行仍在
             content = (root / "INDEX.md").read_text(encoding="utf-8")
             assert "dirty" in content
+
+
+def test_cursor_not_advanced_when_no_candidates():
+    """游标在沉淀成功后才推进：当无候选时游标不推进（沉淀失败文件下轮重析）"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        # 创建项目夹具
+        proj = tmpdir / "proj"
+        lessons_dir = proj / "memory" / "kb" / "lessons"
+        lessons_dir.mkdir(parents=True)
+
+        test_file = lessons_dir / "lesson.md"
+        test_file.write_text("# Test Lesson\n\nThis is test content.")
+
+        # 创建 evolution 根和 global-kb 根
+        evo_root = tmpdir / "evolution"
+        evo_root.mkdir()
+        gk_root = tmpdir / "global_kb"
+        gk_root.mkdir()
+
+        from memory_core.evolution.analyzer import IncrementalAnalyzer
+        from memory_core.evolution.config import load_or_create_config
+
+        config = load_or_create_config(evo_root)
+        state_file = evo_root / "state.json"
+        analyzer = IncrementalAnalyzer(state_file, config)
+
+        # 第一次分析：文件应该有变更
+        result1 = analyzer.analyze_project(proj)
+        assert len(result1.changed_files) == 1
+
+        # 不推进游标（模拟沉淀失败场景）
+        # analyzer.update_cursors(proj, result1.changed_files)  # 故意不调用
+
+        # 第二次分析：文件应该仍然有变更（因为游标未推进）
+        result2 = analyzer.analyze_project(proj)
+        assert len(result2.changed_files) == 1, "游标未推进时，文件应仍被视为变更"
+
+        # 现在推进游标（模拟沉淀成功场景）
+        analyzer.update_cursors(proj, result2.changed_files)
+
+        # 第三次分析：文件不应再有变更
+        result3 = analyzer.analyze_project(proj)
+        assert len(result3.changed_files) == 0, "游标推进后，文件不应再被视为变更"

@@ -228,9 +228,15 @@ def _run_projects(
     evolution_root: Path,
     run_report: dict[str, Any],
     all_candidates: list[dict[str, Any]],
-) -> bool:
-    """逐项目执行 分析→提取；--all 下失败隔离、--project 下致命（D4）"""
+) -> tuple[bool, list[tuple[Path, list[dict[str, Any]]]]]:
+    """逐项目执行 分析→提取；--all 下失败隔离、--project 下致命（D4）
+
+    返回: (had_fatal_error, pending_cursor_updates)
+    pending_cursor_updates: [(project_root, [FileChange_dicts])]，
+    由调用方在沉淀成功后推进游标（修复：游标应在沉淀成功后推进，沉淀失败文件下轮重析）
+    """
     had_fatal_error = False
+    pending_cursor_updates: list[tuple[Path, list[dict[str, Any]]]] = []
 
     for proj in projects_to_process:
         proj_report: dict[str, Any] = {
@@ -283,10 +289,11 @@ def _run_projects(
 
         if no_llm:
             assert no_llm_extractor is not None
-            candidates = no_llm_extractor.extract_from_files(changed_dicts)
+            candidates = no_llm_extractor.extract_from_files(changed_dicts, proj)
         else:
             assert llm_extractor is not None
-            candidates = llm_extractor.extract_from_files(changed_dicts)
+            # FIX: 必须传递 project_root 参数，否则 LLM prompt 缺少项目上下文
+            candidates = llm_extractor.extract_from_files(changed_dicts, proj)
 
         # 转换为 dict
         for cand in candidates:
@@ -311,8 +318,10 @@ def _run_projects(
                 }
             )
 
-        # 更新游标（只推进本轮处理的文件）
-        analyzer.update_cursors(proj, result.changed_files)
+        # FIX: 不在这里推进游标！将游标更新推迟到沉淀成功后
+        # 将本轮处理的文件信息暂存，等待调用方在沉淀成功后推进
+        pending_cursor_updates.append((proj, changed_dicts))
+
         analyzer.update_stats(
             proj,
             candidates_count=len(candidates),
@@ -322,7 +331,7 @@ def _run_projects(
 
         run_report["projects"].append(proj_report)
 
-    return had_fatal_error
+    return had_fatal_error, pending_cursor_updates
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -401,7 +410,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     all_candidates: list[dict[str, Any]] = []
 
-    had_fatal_error = _run_projects(
+    had_fatal_error, pending_cursor_updates = _run_projects(
         projects_to_process,
         analyzer,
         no_llm,
@@ -422,6 +431,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             run_report["budget_limit"] = llm_extractor.budget.daily_budget_tokens
 
     # 沉淀写入（全部项目处理完后统一写入）
+    sediment_succeeded = False
     if all_candidates:
         # 分离 refined 和 unrefined 候选
         refined_candidates = [c for c in all_candidates if not c["unrefined"]]
@@ -446,6 +456,23 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         # git 提交
         git_commit_if_needed(global_kb_root, config)
+        sediment_succeeded = True
+
+    # FIX: 游标在沉淀成功后推进（沉淀失败文件下轮重析）
+    if sediment_succeeded:
+        for proj, changed_dicts in pending_cursor_updates:
+            from memory_core.evolution.analyzer import FileChange
+
+            file_changes = [
+                FileChange(
+                    abs_path=Path(cd["abs_path"]),
+                    rel_path=cd["rel_path"],
+                    project_root=Path(cd["project_root"]) if cd.get("project_root") else proj,
+                    sha256=cd["sha256"],
+                )
+                for cd in changed_dicts
+            ]
+            analyzer.update_cursors(proj, file_changes)
 
     # 写入报告
     report_path = _write_report(evolution_root, run_report)

@@ -642,6 +642,92 @@ class TestLLMExtractor:
                 assert extractor.llm_calls == 1
 
 
+    def test_prompt_includes_project_context(self):
+        """Test: LLM prompt 包含项目名与路径（项目上下文传递）"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir) / "my-cool-project"
+            project_root.mkdir()
+            test_file = project_root / "lesson.md"
+            test_file.write_text("# Lesson\n\nContent here")
+
+            changed_files = [
+                {
+                    "abs_path": test_file,
+                    "rel_path": "lesson.md",
+                    "project_root": project_root,
+                }
+            ]
+
+            prompt = _build_user_prompt(changed_files, project_root)
+
+            # 必须包含项目名称和路径
+            assert "my-cool-project" in prompt, "prompt 缺少项目名"
+            assert str(project_root) in prompt, "prompt 缺少项目路径"
+            assert "项目名称" in prompt or "project" in prompt.lower()
+
+    def test_batch_failure_isolation(self):
+        """Test: 第二批 API 失败不丢弃第一批已精炼候选（批次级错误隔离）"""
+        from memory_core.evolution.extractor import LLMCallResult
+
+        config = {"llm": {"api_key_env": "TEST_KEY"}}
+        with patch.dict(os.environ, {"TEST_KEY": "test-key"}):
+            extractor = LLMExtractor(config)
+
+            call_count = [0]
+
+            def mock_chat_completion(messages):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    return LLMCallResult(
+                        content=json.dumps(
+                            [
+                                {
+                                    "title": "Refined Insight",
+                                    "domain": "engineering",
+                                    "content": "A well-distilled cross-project lesson",
+                                    "confidence": 0.9,
+                                    "source_refs": [{"project": "proj", "path": "file.md"}],
+                                    "genericity": "通用",
+                                }
+                            ]
+                        ),
+                        prompt_tokens=100,
+                        completion_tokens=200,
+                        total_tokens=300,
+                    )
+                raise RuntimeError("API batch 2 failed")
+
+            extractor._engine = Mock()
+            extractor._engine.chat_completion.side_effect = mock_chat_completion
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                project_root = Path(tmpdir)
+                # 创建 15 个文件确保分两批（batch_size=10）
+                for i in range(15):
+                    f = project_root / f"file_{i:02d}.md"
+                    f.write_text(f"# Lesson {i}\n\nContent {i}")
+
+                changed_files = [
+                    {
+                        "abs_path": project_root / f"file_{i:02d}.md",
+                        "rel_path": f"file_{i:02d}.md",
+                        "project_root": project_root,
+                    }
+                    for i in range(15)
+                ]
+
+                candidates = extractor.extract_from_files(changed_files)
+
+                # 第一批应有 1 个精炼候选
+                refined = [c for c in candidates if not c.unrefined]
+                unrefined = [c for c in candidates if c.unrefined]
+                assert len(refined) >= 1, "第一批精炼候选被丢弃！"
+                assert refined[0].title == "Refined Insight"
+                # 第二批应有降级候选
+                assert len(unrefined) > 0, "第二批应降级为 unrefined"
+                assert call_count[0] == 2
+
+
 # ---------------------------------------------------------------------------
 # Integration tests with CLI
 # ---------------------------------------------------------------------------
