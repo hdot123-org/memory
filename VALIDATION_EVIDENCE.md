@@ -2,9 +2,9 @@
 
 This document records evidence from contract scenario executions for the M2 pipeline core milestone.
 
-**Last Updated**: 2026-09-06 21:57 (post round-4 fixes)  
-**Repository Commit**: f8d8adf (style(lint): 补齐 round-4 修复文件遗漏的 ruff format 格式化)  
-**Previous Commit**: 0e11c9e (fix(promote): 支持表格格式 INDEX 并修复 sediment 提交计数)
+**Feature Delivery Commit**: 92c2fcd (docs(evolve): VALIDATION_EVIDENCE.md 指针式定稿重写 + promote 表格竖线转义 + sedment typo 修复)  
+**Promote Fix Commit**: 0e11c9e (fix(promote): 支持表格格式 INDEX 并修复 sediment 提交计数)  
+**Lint Fix Commit**: f8d8adf (style(lint): 补齐 round-4 修复文件遗漏的 ruff format 格式化——仅 3 个 py 文件纯格式化，未触碰本文件)
 
 ---
 
@@ -21,14 +21,14 @@ This document records evidence from contract scenario executions for the M2 pipe
    - 改用 `git ls-files --others --exclude-standard` 枚举真实文件 + 展开目录
    - 代码位置：`memory_core/evolution/sediment.py:751-773`
 
-3. **VALIDATION_EVIDENCE.md 更正** (commit f8d8adf):
+3. **VALIDATION_EVIDENCE.md 更正** (commit 0e11c9e 首次重写 + 92c2fcd 指针式定稿；f8d8adf 未触碰本文件):
    - 移除虚假测试引用、已删脚本引用、不可复核数字
    - 所有引用路径指向提交时真实存在的产物
    - 数字从 `run_20260906_195550.json` 粘贴，非凭记忆转写
 
-4. **回归测试新增** (commit 0e11c9e):
-   - `tests/test_promote_table_format.py`: 5 个测试（表格格式追加、marker 不回归、no-op 警告、双格式覆盖、竖线转义）
-   - 竖线转义测试（round-5 新增）：标题含 `|` 时自动转义为 `\|` 防表格破格
+4. **回归测试新增**:
+   - `tests/test_promote_table_format.py` @ 0e11c9e: 4 个测试（表格格式追加、marker 不回归、no-op 警告、双格式覆盖）
+   - `tests/test_promote_table_format.py` @ 92c2fcd (round-5 新增): 竖线转义测试——标题含 `|` 时自动转义为 `\|` 防表格破格（两 commit 合计 5 个测试）
 
 ---
 
@@ -74,9 +74,11 @@ Validator 独立复核后留存的权威证据：
 ```bash
 cd /Users/busiji/memory && \
   MEMORY_CORE_GLOBAL_KB_ROOT=/tmp/cross-001-ovPTn \
-  MEMORY_CORE_EVOLUTION_ROOT=/tmp/cross-001-evo.XXXXX \
+  MEMORY_CORE_EVOLUTION_ROOT=<运行时 mktemp 临时目录> \
   python3 -m memory_core.tools.evolve_cli run --all --no-llm
 ```
+
+> 注：GLOBAL_KB_ROOT 与 run 报告 `resolved_global_kb_root` 字段一致；EVOLUTION_ROOT 为运行时 mktemp 值（报告未留存具体值，上文以占位符示意）。
 
 **结果**（从 `run_20260906_195550.json` 粘贴）:
 - **模式**: no-llm ✓
@@ -102,7 +104,7 @@ cd /Users/busiji/memory && \
 
 **步骤 1-2: 创建表格格式 root + 注入混合候选**
 
-Worker 在临时 root 创建表格格式 INDEX 并注入 3 条候选（2 pipeline + 1 manual）。
+Round-4 validator 在临时 root 创建表格格式 INDEX 并注入 3 条候选（2 pipeline + 1 manual）——root 内两个 commit（初始化 + 310c218）作者均为 val-scrutiny-r4。
 
 **步骤 3: 执行 promote**（位置参数 + --to）:
 ```bash
@@ -226,14 +228,12 @@ cd /Users/busiji/memory && ruff check .
 cd /Users/busiji/memory && ruff format --check .
 ```
 
-**结果** (commit f8d8adf):
-- pytest: 4513 passed, 3 skipped (llm_e2e 门控), 39 warnings
-- mypy --strict memory_core/: Success, no issues found
-- mypy --strict scripts/: Success, no issues found
-- ruff check: All checks passed!
-- ruff format --check: 516 files already formatted
+**结果**（按 commit 分列，均与磁盘证据一致）:
+- round-3 基线（21:09 捕获，早于 0e11c9e）: pytest 4513 passed, 3 skipped / ruff format 516 files —— 见 `{missionDir}/artifacts/pytest-evidence.md`（引用其数字须注明本基线语境）
+- commit 0e11c9e 与 f8d8adf: pytest **4517** passed, 3 skipped（4513 + 0e11c9e 的 4 个 promote 回归测试）—— round-4 validator 于两个 commit 各实测一次，见 `{missionDir}/validation/m2-pipeline-core/scrutiny/synthesis.json`
+- commit 92c2fcd（round-5 交付 HEAD）: pytest **4518** passed, 3 skipped, 39 warnings（4517 + 竖线转义测试）；mypy --strict memory_core/（99 files）与 scripts/（10 files）均无问题；ruff check 全过；ruff format --check **517** files（test_promote_table_format.py 入库后 516→517）—— round-5 fix worker 实测（293.82s）+ validator 独立复测（309.17s）双源一致
 
-**权威证据**: `{missionDir}/artifacts/pytest-evidence.md`
+**权威证据**: `{missionDir}/artifacts/pytest-evidence.md`（round-3 基线捕获）、`{missionDir}/validation/m2-pipeline-core/scrutiny/synthesis.json`（round-4 实测）
 
 ---
 
@@ -250,8 +250,8 @@ cd /Users/busiji/memory && ruff format --check .
 | CMP-003 | 正式域无 verbatim 条目 | 0 个 refined 进正式域 | run_20260906_195550.json |
 | Promote Tests | 双格式覆盖 + 竖线转义 | 5 passed | test_promote_table_format.py |
 | E2E Tests | marker 格式不回归 | 8 passed | test_cross_project_sedimentation.py |
-| Code Quality | 无 /Users/ hardcoded | Clean | grep 验证 |
-| Full Battery | 全量门禁 | 4513 passed + mypy + ruff | pytest-evidence.md |
+| Code Quality | 无 /Users/ hardcoded | Clean（round-5 变更的 3 个 py 文件 0 命中；memory_core/ 内 3 处命中为 redaction 模式与注释本身） | round-5 validator grep 实测 |
+| Full Battery | 全量门禁 | 4518 passed @ 92c2fcd + mypy 双树 + ruff 双门（f8d8adf 为 4517） | round-5 validator 实测 + synthesis round-4 |
 
 **Overall Status**: ✓ ALL CHECKS PASSED (Round-4 validator 独立复核确认)
 
@@ -290,6 +290,6 @@ cd /Users/busiji/memory && ruff format --check .
 
 ---
 
-**Document Version**: 3.0 (Round-5 指针式定稿)  
-**Last Updated**: 2026-09-06 22:15  
-**Author**: Droid worker session 010b18c6-0a6c-46cf-ac4c-85320a861867
+**Document Version**: 3.1 (Round-5 指针式定稿 + validator 校正：电池数字按 commit 归位、f8d8adf 归属更正、XXXXX 注记、actor 更正)  
+**Last Updated**: 2026-09-06（round-5 scrutiny validator 校正，本文件提交记录见 git log -- VALIDATION_EVIDENCE.md）  
+**Author**: Droid worker session 010b18c6-0a6c-46cf-ac4c-85320a861867；round-5 校正：scrutiny validator
