@@ -10,7 +10,6 @@
 
 import hashlib
 import json
-import sys
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -20,6 +19,7 @@ from typing import Any
 @dataclass
 class FileChange:
     """单个文件变更"""
+
     abs_path: Path
     rel_path: str  # 相对于 project_root
     project_root: Path
@@ -29,6 +29,7 @@ class FileChange:
 @dataclass
 class AnalysisResult:
     """单项目分析结果"""
+
     project_root: Path
     changed_files: list[FileChange] = field(default_factory=list)
     skipped_by_cap: int = 0
@@ -84,9 +85,7 @@ class IncrementalAnalyzer:
         project_state = self._state.get("projects", {}).get(key, {})
         return project_state.get("file_cursors", {})
 
-    def _update_project_cursors(
-        self, project_root: Path, cursors: dict[str, dict[str, Any]]
-    ) -> None:
+    def _update_project_cursors(self, project_root: Path, cursors: dict[str, dict[str, Any]]) -> None:
         """更新项目的游标"""
         key = str(project_root.resolve())
         if "projects" not in self._state:
@@ -180,9 +179,7 @@ class IncrementalAnalyzer:
 
         return result
 
-    def update_cursors(
-        self, project_root: Path, processed_files: list[FileChange]
-    ) -> None:
+    def update_cursors(self, project_root: Path, processed_files: list[FileChange]) -> None:
         """
         更新游标（只推进已处理的文件）
 

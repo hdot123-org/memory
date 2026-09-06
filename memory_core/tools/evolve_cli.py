@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from memory_core.evolution.analyzer import FileChange, IncrementalAnalyzer
+from memory_core.evolution.analyzer import IncrementalAnalyzer
 from memory_core.evolution.config import load_or_create_config
 from memory_core.evolution.extractor import NoLlmExtractor
 from memory_core.evolution.registry import EvolutionRegistry
@@ -97,6 +97,7 @@ def _resolve_global_kb_root(args: argparse.Namespace) -> Path:
     if hasattr(args, "global_kb_root") and args.global_kb_root:
         return Path(args.global_kb_root)
     from memory_core.tools.global_kb_init import get_global_kb_root
+
     return get_global_kb_root()
 
 
@@ -208,9 +209,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         is_single_project = True
     else:
         entries = registry.get_all_entries()
-        projects_to_process = [
-            e.git_root for e in entries if e.health != "missing"
-        ]
+        projects_to_process = [e.git_root for e in entries if e.health != "missing"]
         is_single_project = False
 
     # max_projects 限额
@@ -230,13 +229,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         }
         for proj in projects_to_process:
             result = analyzer.analyze_project(proj)
-            plan["projects"].append({
-                "project": str(proj),
-                "changed_files": [fc.rel_path for fc in result.changed_files],
-                "changed_count": len(result.changed_files),
-                "skipped_by_cap": result.skipped_by_cap,
-                "error": result.error,
-            })
+            plan["projects"].append(
+                {
+                    "project": str(proj),
+                    "changed_files": [fc.rel_path for fc in result.changed_files],
+                    "changed_count": len(result.changed_files),
+                    "skipped_by_cap": result.skipped_by_cap,
+                    "error": result.error,
+                }
+            )
         print(json.dumps(plan, indent=2, ensure_ascii=False))
         return 0
 
@@ -274,10 +275,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         if result.error:
             proj_report["error"] = result.error
             _write_errors_log(evolution_root, f"项目 {proj} 分析失败: {result.error}")
-            run_report["errors"].append({
-                "project": str(proj),
-                "error": result.error,
-            })
+            run_report["errors"].append(
+                {
+                    "project": str(proj),
+                    "error": result.error,
+                }
+            )
 
             if is_single_project:
                 # D4: --project 下失败即致命
@@ -325,13 +328,15 @@ def cmd_run(args: argparse.Namespace) -> int:
                 "unrefined": cand.unrefined,
             }
             all_candidates.extend([cand_dict])
-            proj_report["candidates"].append({
-                "title": cand.title,
-                "domain": cand.domain,
-                "confidence": cand.confidence,
-                "unrefined": cand.unrefined,
-                "source_refs": cand.source_refs,
-            })
+            proj_report["candidates"].append(
+                {
+                    "title": cand.title,
+                    "domain": cand.domain,
+                    "confidence": cand.confidence,
+                    "unrefined": cand.unrefined,
+                    "source_refs": cand.source_refs,
+                }
+            )
 
         # 更新游标（只推进本轮处理的文件）
         analyzer.update_cursors(proj, result.changed_files)
@@ -373,12 +378,8 @@ def main(argv: list[str] | None = None) -> int:
     subparsers = parser.add_subparsers(dest="command", help="子命令")
 
     # status 子命令
-    status_parser = subparsers.add_parser(
-        "status", help="列出全部注册项目 + 健康分类 + 上次运行统计"
-    )
-    status_parser.add_argument(
-        "--json", action="store_true", help="输出 JSON 格式（D6: stdout 只放载荷）"
-    )
+    status_parser = subparsers.add_parser("status", help="列出全部注册项目 + 健康分类 + 上次运行统计")
+    status_parser.add_argument("--json", action="store_true", help="输出 JSON 格式（D6: stdout 只放载荷）")
     status_parser.add_argument(
         "--global-kb-root",
         default=None,
@@ -386,30 +387,16 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # backup-paths 子命令
-    backup_parser = subparsers.add_parser(
-        "backup-paths", help="输出全部消费项目 memory 目录路径（D11: missing 剔除）"
-    )
-    backup_parser.add_argument(
-        "--json", action="store_true", help="输出 JSON 格式（D6: stdout 只放载荷）"
-    )
+    backup_parser = subparsers.add_parser("backup-paths", help="输出全部消费项目 memory 目录路径（D11: missing 剔除）")
+    backup_parser.add_argument("--json", action="store_true", help="输出 JSON 格式（D6: stdout 只放载荷）")
 
     # run 子命令
-    run_parser = subparsers.add_parser(
-        "run", help="运行管道：分析→提取→沉淀"
-    )
+    run_parser = subparsers.add_parser("run", help="运行管道：分析→提取→沉淀")
     run_group = run_parser.add_mutually_exclusive_group()
-    run_group.add_argument(
-        "--all", action="store_true", help="处理全部注册项目（D5）"
-    )
-    run_group.add_argument(
-        "--project", type=str, default=None, help="处理指定项目路径（D5）"
-    )
-    run_parser.add_argument(
-        "--dry-run", action="store_true", help="只打印执行计划，不实际写入（D3）"
-    )
-    run_parser.add_argument(
-        "--no-llm", action="store_true", help="禁用 LLM 蒸馏，原样捕获到 pending/"
-    )
+    run_group.add_argument("--all", action="store_true", help="处理全部注册项目（D5）")
+    run_group.add_argument("--project", type=str, default=None, help="处理指定项目路径（D5）")
+    run_parser.add_argument("--dry-run", action="store_true", help="只打印执行计划，不实际写入（D3）")
+    run_parser.add_argument("--no-llm", action="store_true", help="禁用 LLM 蒸馏，原样捕获到 pending/")
     run_parser.add_argument(
         "--global-kb-root",
         default=None,

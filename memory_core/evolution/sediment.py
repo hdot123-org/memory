@@ -209,9 +209,7 @@ def git_commit_if_needed(
             return False  # 无变更
 
         # 统计新增文件数（用于提交信息）
-        new_files = [
-            line for line in result.stdout.split("\n") if line.startswith("??")
-        ]
+        new_files = [line for line in result.stdout.split("\n") if line.startswith("??")]
         count = len(new_files) if new_files else 1
 
         # 添加并提交

@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_CONFIG: dict[str, Any] = {
     "llm": {
         "engine": "axonhub",

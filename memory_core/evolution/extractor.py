@@ -14,6 +14,7 @@ from typing import Any
 @dataclass
 class Candidate:
     """蒸馏候选"""
+
     title: str
     domain: str
     content: str
