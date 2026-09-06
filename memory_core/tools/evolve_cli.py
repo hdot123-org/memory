@@ -243,8 +243,6 @@ def _run_projects(
             "project": str(proj),
             "changed_files": [],
             "candidates": [],
-            "written": 0,
-            "skipped_duplicate": 0,
             "skipped_by_cap": 0,
             "error": None,
         }
@@ -334,6 +332,37 @@ def _run_projects(
     return had_fatal_error, pending_cursor_updates
 
 
+def _resolve_project_list(
+    args: argparse.Namespace,
+    registry: EvolutionRegistry,
+) -> tuple[list[Path], bool]:
+    """解析项目列表（D5：--all 与 --project 互斥）
+
+    Returns:
+        (projects_to_process, is_single_project)
+    """
+    has_project = getattr(args, "project", None) is not None
+    max_projects = getattr(args, "max_projects", None)
+
+    if has_project:
+        project_path = Path(args.project)
+        if not project_path.exists():
+            print(f"Error: 项目路径不存在: {project_path}", file=sys.stderr)
+            return [], True
+        projects_to_process = [project_path]
+        is_single_project = True
+    else:
+        entries = registry.get_all_entries()
+        projects_to_process = [e.git_root for e in entries if e.health != "missing"]
+        is_single_project = False
+
+    # max_projects 限额
+    if max_projects is not None:
+        projects_to_process = projects_to_process[:max_projects]
+
+    return projects_to_process, is_single_project
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     """run 子命令：编排分析→提取→沉淀"""
     # D5: --all 与 --project 互斥且必选其一
@@ -348,15 +377,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     evolution_root = _get_evolution_root()
     global_kb_root = _resolve_global_kb_root(args)
 
-    # 自动前置 gk-ensure（VAL-SED-005）
-    exit_code, message = gk_ensure(global_kb_root)
-    if exit_code != 0:
-        # D4: 脏工作区 → exit 1 零写入
-        return 1
-
     dry_run = getattr(args, "dry_run", False)
     no_llm = getattr(args, "no_llm", False)
-    max_projects = getattr(args, "max_projects", None)
 
     # 加载配置（首跑自动生成）
     config = load_or_create_config(evolution_root)
@@ -364,30 +386,25 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # 解析项目列表
     registry = EvolutionRegistry()
+    projects_to_process, is_single_project = _resolve_project_list(args, registry)
 
-    if has_project:
-        project_path = Path(args.project)
-        if not project_path.exists():
-            print(f"Error: 项目路径不存在: {project_path}", file=sys.stderr)
-            _write_errors_log(evolution_root, f"项目路径不存在: {project_path}")
-            return 1  # D4: 致命失败
-        projects_to_process = [project_path]
-        is_single_project = True
-    else:
-        entries = registry.get_all_entries()
-        projects_to_process = [e.git_root for e in entries if e.health != "missing"]
-        is_single_project = False
-
-    # max_projects 限额
-    if max_projects is not None:
-        projects_to_process = projects_to_process[:max_projects]
+    # 检查项目路径是否存在
+    if getattr(args, "project", None) is not None and not projects_to_process:
+        _write_errors_log(evolution_root, f"项目路径不存在: {args.project}")
+        return 1  # D4: 致命失败
 
     analyzer = IncrementalAnalyzer(state_file, config)
 
-    # D3: dry-run 模式
+    # D3: dry-run 模式（必须在 gk-ensure 之前早退，dry-run 零写入——D3/D8 边界）
     if dry_run:
         # 打印 resolved root 与执行计划，零写入
         return _print_dry_run_plan(projects_to_process, analyzer, global_kb_root)
+
+    # 自动前置 gk-ensure（VAL-SED-005）——dry-run 之后、写入阶段之前
+    exit_code, message = gk_ensure(global_kb_root)
+    if exit_code != 0:
+        # D4: 脏工作区 → exit 1 零写入
+        return 1
 
     # 实际运行
     run_report: dict[str, Any] = {
@@ -398,6 +415,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "total_candidates": 0,
         "total_written": 0,
         "total_skipped_duplicate": 0,
+        "total_merged": 0,  # FIX: 初始化 total_merged（VAL-SED-002 场景 C）
         "errors": [],
         "llm_tokens_used": 0,
     }
@@ -442,13 +460,15 @@ def cmd_run(args: argparse.Namespace) -> int:
             write_stats = write_candidates(refined_candidates, global_kb_root, config)
             run_report["total_written"] += write_stats["written"]
             run_report["total_skipped_duplicate"] += write_stats["skipped_duplicate"]
-            run_report["total_merged"] = write_stats.get("merged", 0)
+            run_report["total_merged"] += write_stats.get("merged", 0)
 
         # 写入 unrefined 候选（全部进 pending）
         if unrefined_candidates:
             write_stats_unrefined = write_unrefined_candidates(unrefined_candidates, global_kb_root, config)
             run_report["total_written"] += write_stats_unrefined["written"]
             run_report["total_skipped_duplicate"] += write_stats_unrefined["skipped_duplicate"]
+            # FIX: unrefined 路径 merged 也计入 total_merged（VAL-SED-002 场景 C）
+            run_report["total_merged"] += write_stats_unrefined.get("merged", 0)
 
         run_report["total_candidates"] = len(all_candidates)
         run_report["refined_count"] = len(refined_candidates)

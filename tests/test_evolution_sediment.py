@@ -469,3 +469,275 @@ def test_cursor_not_advanced_when_no_candidates():
         # 第三次分析：文件不应再有变更
         result3 = analyzer.analyze_project(proj)
         assert len(result3.changed_files) == 0, "游标推进后，文件不应再被视为变更"
+
+
+# ---------------------------------------------------------------------------
+# fix-sediment-report-dryrun 四项修复测试
+# ---------------------------------------------------------------------------
+
+
+def test_dry_run_no_gk_ensure():
+    """
+    D3: dry-run 在未合并分支 root 上零变更零提交零 checkout（dry-run 在 gk-ensure 之前早退）
+
+    构造 fix/audit-round2 分支（未合并到 main），执行 --dry-run 后：
+    - 当前分支仍为 fix/audit-round2（零 checkout）
+    - 提交计数不变（零提交）
+    - 工作区无新增文件（零写入）
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir) / "global_kb"
+        root.mkdir()
+        subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "test"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.email", "test@test"], cwd=root, check=True)
+
+        # main 初始提交
+        (root / "INDEX.md").write_text("# INDEX\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=root, check=True, capture_output=True)
+
+        # 创建 fix/audit-round2 分支
+        subprocess.run(["git", "checkout", "-b", "fix/audit-round2"], cwd=root, check=True, capture_output=True)
+        (root / "fix-file.md").write_text("fix content", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+        subprocess.run(["git", "commit", "-m", "fix"], cwd=root, check=True, capture_output=True)
+
+        # 记录当前状态
+        result_branch_before = subprocess.run(
+            ["git", "branch", "--show-current"], cwd=root, check=True, capture_output=True, text=True
+        )
+        branch_before = result_branch_before.stdout.strip()
+        assert branch_before == "fix/audit-round2"
+
+        result_rev_before = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"], cwd=root, check=True, capture_output=True, text=True
+        )
+        rev_count_before = int(result_rev_before.stdout.strip())
+
+        # 创建项目夹具
+        proj = Path(tmpdir) / "proj"
+        proj.mkdir()
+        (proj / "memory" / "kb" / "lessons").mkdir(parents=True)
+        (proj / "memory" / "kb" / "lessons" / "a.md").write_text("# 教训\n内容\n", encoding="utf-8")
+
+        with tempfile.TemporaryDirectory() as evo_root:
+            env = {
+                "MEMORY_CORE_GLOBAL_KB_ROOT": str(root),
+                "MEMORY_CORE_EVOLUTION_ROOT": evo_root,
+                "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+            }
+
+            result = subprocess.run(
+                [sys.executable, "-m", "memory_core.tools.evolve_cli", "run", "--project", str(proj), "--dry-run"],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+            assert result.returncode == 0, f"dry-run should succeed: {result.stderr}"
+
+        # 验证 1: 分支未变（零 checkout）
+        result_branch_after = subprocess.run(
+            ["git", "branch", "--show-current"], cwd=root, check=True, capture_output=True, text=True
+        )
+        assert result_branch_after.stdout.strip() == "fix/audit-round2", \
+            f"dry-run 不应改变分支，期望 fix/audit-round2，实际 {result_branch_after.stdout.strip()}"
+
+        # 验证 2: 提交计数不变（零提交）
+        result_rev_after = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"], cwd=root, check=True, capture_output=True, text=True
+        )
+        rev_count_after = int(result_rev_after.stdout.strip())
+        assert rev_count_after == rev_count_before, \
+            f"dry-run 不应产生新提交，期望 {rev_count_before}，实际 {rev_count_after}"
+
+        # 验证 3: 工作区干净（零写入）
+        result_status = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=root, check=True, capture_output=True, text=True
+        )
+        assert not result_status.stdout.strip(), \
+            f"dry-run 不应产生文件变更，实际: {result_status.stdout}"
+
+
+def test_run_report_total_merged_unrefined():
+    """
+    VAL-SED-002 场景 C: --no-llm 合并轮报告 total_merged >= 1
+
+    两次运行同一项目（相同内容），第二次应触发 merge 路径，
+    报告 total_merged 应 >= 1
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        # 创建 global_kb 根（git 仓库）
+        gk_root = tmpdir / "global_kb"
+        gk_root.mkdir()
+        subprocess.run(["git", "init", "-b", "main"], cwd=gk_root, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "test"], cwd=gk_root, check=True)
+        subprocess.run(["git", "config", "user.email", "test@test"], cwd=gk_root, check=True)
+        (gk_root / "INDEX.md").write_text("# INDEX\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=gk_root, check=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=gk_root, check=True, capture_output=True)
+
+        # 创建项目夹具
+        proj = tmpdir / "proj"
+        lessons_dir = proj / "memory" / "kb" / "lessons"
+        lessons_dir.mkdir(parents=True)
+        (lessons_dir / "a.md").write_text(
+            "# 部署回滚策略\n回滚前先 restic dry-run 校验备份可用\n",
+            encoding="utf-8",
+        )
+
+        evo_root = tmpdir / "evolution"
+        evo_root.mkdir()
+
+        env = {
+            "MEMORY_CORE_GLOBAL_KB_ROOT": str(gk_root),
+            "MEMORY_CORE_EVOLUTION_ROOT": str(evo_root),
+            "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+        }
+
+        # 第一次运行：写入 pending
+        result1 = subprocess.run(
+            [sys.executable, "-m", "memory_core.tools.evolve_cli", "run", "--project", str(proj), "--no-llm"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert result1.returncode == 0, f"first run failed: {result1.stderr}"
+
+        # 修改文件以触发第二次分析（游标已推进，需新内容）
+        (lessons_dir / "a.md").write_text(
+            "# 部署回滚策略\n回滚前先 restic dry-run 校验备份可用补充 tag 命名带日期后缀\n",
+            encoding="utf-8",
+        )
+
+        # 第二次运行：应触发 merge 路径（高 n-gram 重叠）
+        result2 = subprocess.run(
+            [sys.executable, "-m", "memory_core.tools.evolve_cli", "run", "--project", str(proj), "--no-llm"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert result2.returncode == 0, f"second run failed: {result2.stderr}"
+
+        # 查找报告文件并检查 total_merged
+        # 注意：两次运行可能发生在同一秒内，报告文件名基于秒级时间戳，
+        # 第二次会覆盖第一次。所以我们读取最后一个（最新的）报告。
+        reports_dir = evo_root / "reports"
+        report_files = sorted(reports_dir.glob("*.json"))
+        assert len(report_files) >= 1, f"期望至少 1 个报告，实际 {len(report_files)}"
+
+        # 读取最后一个报告（第二次运行的结果）
+        import json
+        with report_files[-1].open(encoding="utf-8") as f:
+            report = json.load(f)
+
+        # total_merged 应 >= 1（合并路径触发）
+        assert report.get("total_merged", 0) >= 1, \
+            f"期望 total_merged >= 1（merge 路径触发），实际: {report.get('total_merged', 0)}"
+
+
+def test_merge_source_refs_dedup():
+    """
+    重复合并 source_refs 时不应产生重复行/重复区段
+
+    对同一文件多次调用 _merge_source_refs（相同引用），
+    文件中每个引用只出现一次，且只有一个 ## Sources 区
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        existing = Path(tmpdir) / "test.md"
+        existing.write_text("# 测试\n内容\n", encoding="utf-8")
+
+        refs = [{"project": "proj-a", "path": "memory/kb/lessons/a.md"}]
+
+        # 第一次合并
+        _merge_source_refs(existing, refs)
+        content1 = existing.read_text(encoding="utf-8")
+
+        # 第二次合并（相同引用）
+        _merge_source_refs(existing, refs)
+        content2 = existing.read_text(encoding="utf-8")
+
+        # 第三次合并（相同引用）
+        _merge_source_refs(existing, refs)
+        content3 = existing.read_text(encoding="utf-8")
+
+        # 验证 1: 内容在第二次和第三次合并后不应变化（无新引用可加）
+        assert content2 == content3, "重复合并已存在的引用不应改变文件内容"
+
+        # 验证 2: ## Sources 区只出现一次
+        sources_count = content3.count("## Sources")
+        assert sources_count == 1, f"期望 1 个 ## Sources 区，实际 {sources_count} 个"
+
+        # 验证 3: proj-a 只出现一次
+        proj_a_count = content3.count("proj-a")
+        assert proj_a_count == 1, f"期望 proj-a 出现 1 次，实际 {proj_a_count} 次"
+
+        # 验证 4: 原文保留
+        assert "内容" in content3, "原文应保留"
+
+
+def test_run_report_no_dead_fields():
+    """
+    报告不应包含恒为 0 的死字段（per-project written/skipped_duplicate）
+
+    运行一次后读取报告，验证项目级报告不包含 written/skipped_duplicate 字段
+    （这些字段已删除，只保留全局汇总 total_written/total_skipped_duplicate）
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        # 创建 global_kb 根
+        gk_root = tmpdir / "global_kb"
+        gk_root.mkdir()
+        subprocess.run(["git", "init", "-b", "main"], cwd=gk_root, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "test"], cwd=gk_root, check=True)
+        subprocess.run(["git", "config", "user.email", "test@test"], cwd=gk_root, check=True)
+        (gk_root / "INDEX.md").write_text("# INDEX\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=gk_root, check=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=gk_root, check=True, capture_output=True)
+
+        # 创建项目夹具
+        proj = tmpdir / "proj"
+        lessons_dir = proj / "memory" / "kb" / "lessons"
+        lessons_dir.mkdir(parents=True)
+        (lessons_dir / "a.md").write_text("# 教训\n内容\n", encoding="utf-8")
+
+        evo_root = tmpdir / "evolution"
+        evo_root.mkdir()
+
+        env = {
+            "MEMORY_CORE_GLOBAL_KB_ROOT": str(gk_root),
+            "MEMORY_CORE_EVOLUTION_ROOT": str(evo_root),
+            "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+        }
+
+        result = subprocess.run(
+            [sys.executable, "-m", "memory_core.tools.evolve_cli", "run", "--project", str(proj), "--no-llm"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert result.returncode == 0, f"run failed: {result.stderr}"
+
+        # 读取报告
+        import json
+        reports_dir = evo_root / "reports"
+        report_files = sorted(reports_dir.glob("*.json"))
+        assert report_files, "应至少有一个报告"
+
+        with report_files[-1].open(encoding="utf-8") as f:
+            report = json.load(f)
+
+        # 验证项目级报告不含死字段 written/skipped_duplicate
+        for proj_report in report.get("projects", []):
+            assert "written" not in proj_report, \
+                f"项目级报告不应包含死字段 'written': {proj_report}"
+            assert "skipped_duplicate" not in proj_report, \
+                f"项目级报告不应包含死字段 'skipped_duplicate': {proj_report}"
+
+        # 验证全局汇总字段存在
+        assert "total_written" in report, "报告应包含全局汇总字段 total_written"
+        assert "total_skipped_duplicate" in report, "报告应包含全局汇总字段 total_skipped_duplicate"

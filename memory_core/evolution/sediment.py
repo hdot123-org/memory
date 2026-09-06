@@ -337,16 +337,25 @@ def _merge_source_refs(existing_path: Path, new_source_refs: list[dict[str, str]
     """
     合并追加 source_refs 到已有文件（保留原文全部）
 
-    在文件末尾追加 ## Sources 区（或在已有 Sources 区追加）
+    在文件末尾追加 ## Sources 区（或在已有 Sources 区去重追加）
+    FIX: 重复合并时去重——先剥离已有 ## Sources 区再重写，避免重复行/重复区段
     """
     try:
         content = existing_path.read_text(encoding="utf-8")
     except OSError:
         return
 
-    # 解析已有 source_refs
+    # 解析已有 source_refs（从 frontmatter）
     existing_refs = _parse_source_refs_from_content(content)
     existing_keys = {(r["project"], r["path"]) for r in existing_refs}
+
+    # 也收集正文 ## Sources 区里已有的引用（避免与 frontmatter 重复）
+    body_sources = _parse_body_sources(content)
+    for ref in body_sources:
+        key = (ref.get("project", ""), ref.get("path", ""))
+        if key not in existing_keys:
+            existing_keys.add(key)
+            existing_refs.append(ref)
 
     # 追加新的（去重）
     added = False
@@ -360,18 +369,70 @@ def _merge_source_refs(existing_path: Path, new_source_refs: list[dict[str, str]
     if not added:
         return  # 无新增引用
 
-    # 在正文末尾追加 Sources 区
+    # 剥离已有的 ## Sources 区（避免重复区段）
+    body = _strip_existing_sources_section(content)
+
+    # 重写完整的 ## Sources 区
     sources_lines = ["\n\n## Sources\n"]
     for ref in existing_refs:
         sources_lines.append(f"- project: {ref['project']}\n")
         sources_lines.append(f"  path: {ref['path']}\n")
 
-    # 追加到文件末尾
-    new_content = content.rstrip() + "".join(sources_lines)
+    new_content = body.rstrip() + "".join(sources_lines)
     try:
         existing_path.write_text(new_content, encoding="utf-8")
     except OSError as e:
         print(f"Warning: Cannot merge source_refs to {existing_path}: {e}", file=sys.stderr)
+
+
+def _strip_existing_sources_section(content: str) -> str:
+    """剥离正文中已有的 ## Sources 区段（从 `## Sources` 到下一个 `## ` 或文件末尾）"""
+    # 查找 ## Sources 起始位置
+    pattern = re.compile(r"^## Sources\s*$", re.MULTILINE)
+    match = pattern.search(content)
+    if not match:
+        return content
+
+    start = match.start()
+    # 查找下一个 ## 标题（作为 Sources 区段结束）
+    next_heading = re.search(r"^## ", content[match.end():], re.MULTILINE)
+    if next_heading:
+        end = match.end() + next_heading.start()
+        return content[:start] + content[end:]
+    else:
+        return content[:start]
+
+
+def _parse_body_sources(content: str) -> list[dict[str, str]]:
+    """从正文 ## Sources 区解析已有的 source 引用"""
+    refs: list[dict[str, str]] = []
+    pattern = re.compile(r"^## Sources\s*$", re.MULTILINE)
+    match = pattern.search(content)
+    if not match:
+        return refs
+
+    # 提取 Sources 区段（到下一个 ## 或文件末尾）
+    start = match.end()
+    next_heading = re.search(r"^## ", content[start:], re.MULTILINE)
+    section = content[start:start + next_heading.start()] if next_heading else content[start:]
+
+    # 解析 - project: xxx / path: yyy 格式
+    current_project = ""
+    current_path = ""
+    for line in section.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("- project:"):
+            if current_project or current_path:
+                refs.append({"project": current_project, "path": current_path})
+            current_project = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+            current_path = ""
+        elif stripped.startswith("path:"):
+            current_path = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+
+    if current_project or current_path:
+        refs.append({"project": current_project, "path": current_path})
+
+    return refs
 
 
 # ---------------------------------------------------------------------------
