@@ -541,23 +541,24 @@ def test_dry_run_no_gk_ensure():
         result_branch_after = subprocess.run(
             ["git", "branch", "--show-current"], cwd=root, check=True, capture_output=True, text=True
         )
-        assert result_branch_after.stdout.strip() == "fix/audit-round2", \
+        assert result_branch_after.stdout.strip() == "fix/audit-round2", (
             f"dry-run 不应改变分支，期望 fix/audit-round2，实际 {result_branch_after.stdout.strip()}"
+        )
 
         # 验证 2: 提交计数不变（零提交）
         result_rev_after = subprocess.run(
             ["git", "rev-list", "--count", "HEAD"], cwd=root, check=True, capture_output=True, text=True
         )
         rev_count_after = int(result_rev_after.stdout.strip())
-        assert rev_count_after == rev_count_before, \
+        assert rev_count_after == rev_count_before, (
             f"dry-run 不应产生新提交，期望 {rev_count_before}，实际 {rev_count_after}"
+        )
 
         # 验证 3: 工作区干净（零写入）
         result_status = subprocess.run(
             ["git", "status", "--porcelain"], cwd=root, check=True, capture_output=True, text=True
         )
-        assert not result_status.stdout.strip(), \
-            f"dry-run 不应产生文件变更，实际: {result_status.stdout}"
+        assert not result_status.stdout.strip(), f"dry-run 不应产生文件变更，实际: {result_status.stdout}"
 
 
 def test_run_report_total_merged_unrefined():
@@ -631,12 +632,14 @@ def test_run_report_total_merged_unrefined():
 
         # 读取最后一个报告（第二次运行的结果）
         import json
+
         with report_files[-1].open(encoding="utf-8") as f:
             report = json.load(f)
 
         # total_merged 应 >= 1（合并路径触发）
-        assert report.get("total_merged", 0) >= 1, \
+        assert report.get("total_merged", 0) >= 1, (
             f"期望 total_merged >= 1（merge 路径触发），实际: {report.get('total_merged', 0)}"
+        )
 
 
 def test_merge_source_refs_dedup():
@@ -665,7 +668,7 @@ def test_merge_source_refs_dedup():
         content3 = existing.read_text(encoding="utf-8")
 
         # 验证 1: 内容在第二次和第三次合并后不应变化（无新引用可加）
-        assert content2 == content3, "重复合并已存在的引用不应改变文件内容"
+        assert content1 == content2 == content3, "重复合并已存在的引用不应改变文件内容"
 
         # 验证 2: ## Sources 区只出现一次
         sources_count = content3.count("## Sources")
@@ -724,6 +727,7 @@ def test_run_report_no_dead_fields():
 
         # 读取报告
         import json
+
         reports_dir = evo_root / "reports"
         report_files = sorted(reports_dir.glob("*.json"))
         assert report_files, "应至少有一个报告"
@@ -733,10 +737,10 @@ def test_run_report_no_dead_fields():
 
         # 验证项目级报告不含死字段 written/skipped_duplicate
         for proj_report in report.get("projects", []):
-            assert "written" not in proj_report, \
-                f"项目级报告不应包含死字段 'written': {proj_report}"
-            assert "skipped_duplicate" not in proj_report, \
+            assert "written" not in proj_report, f"项目级报告不应包含死字段 'written': {proj_report}"
+            assert "skipped_duplicate" not in proj_report, (
                 f"项目级报告不应包含死字段 'skipped_duplicate': {proj_report}"
+            )
 
         # 验证全局汇总字段存在
         assert "total_written" in report, "报告应包含全局汇总字段 total_written"

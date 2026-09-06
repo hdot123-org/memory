@@ -124,7 +124,4 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     """Register custom markers."""
-    config.addinivalue_line(
-        "markers", "llm_e2e: marks tests as requiring real LLM API (AXONHUB_API_KEY)"
-    )
-
+    config.addinivalue_line("markers", "llm_e2e: marks tests as requiring real LLM API (AXONHUB_API_KEY)")

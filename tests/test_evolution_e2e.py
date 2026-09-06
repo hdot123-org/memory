@@ -30,13 +30,12 @@ _HAS_REAL_PROJECT = (REPO_ROOT / ".evolution").exists() or (REPO_ROOT / "memory"
 @pytest.fixture(autouse=True)
 def _skip_llm_e2e_by_default(request):
     """Skip tests marked with llm_e2e unless --run-llm-e2e is explicitly passed.
-    
+
     These tests make real LLM API calls (AXONHUB glm-5.3), consuming tokens
     and taking 5+ minutes. They must be explicitly opted into via CLI flag.
     """
-    if "llm_e2e" in request.keywords:
-        if not request.config.getoption("--run-llm-e2e", default=False):
-            pytest.skip("llm_e2e test requires --run-llm-e2e flag (real LLM API calls)")
+    if "llm_e2e" in request.keywords and not request.config.getoption("--run-llm-e2e", default=False):
+        pytest.skip("llm_e2e test requires --run-llm-e2e flag (real LLM API calls)")
 
 
 @pytest.mark.skipif(not shutil.which("git"), reason="git not available")
@@ -236,9 +235,11 @@ class TestEvolutionE2E:
             capture_output=True,
             text=True,
         )
-        before_changes = set(
-            line for line in status_before.stdout.strip().split("\n") if line.strip()
-        ) if status_before.stdout.strip() else set()
+        before_changes = (
+            set(line for line in status_before.stdout.strip().split("\n") if line.strip())
+            if status_before.stdout.strip()
+            else set()
+        )
 
         # 记录 config.yml 的哈希
         config_file = Path(test_project) / ".evolution" / "config.yml"
@@ -281,9 +282,11 @@ class TestEvolutionE2E:
             capture_output=True,
             text=True,
         )
-        after_changes = set(
-            line for line in status_after.stdout.strip().split("\n") if line.strip()
-        ) if status_after.stdout.strip() else set()
+        after_changes = (
+            set(line for line in status_after.stdout.strip().split("\n") if line.strip())
+            if status_after.stdout.strip()
+            else set()
+        )
         assert before_changes == after_changes, f"Git status changed: before={before_changes}, after={after_changes}"
 
         # 验证 2: config.yml 哈希未改变
@@ -346,9 +349,7 @@ class TestEvolutionE2E:
         # 持续运行直到稳定（零新增文件）
         prev_files = count_files()
         max_runs = 10  # 安全上限
-        run_count = 0
-        for _ in range(max_runs):
-            run_count += 1
+        for run_count in range(1, max_runs + 1):
             result = run_evolve()
             assert result.returncode == 0, f"Run {run_count} failed: {result.stderr}"
 
@@ -496,8 +497,7 @@ class TestEvolutionE2E:
 
             # 也可能进 formal domain
             formal_dirs = [
-                gk_root / d
-                for d in ["operations", "engineering", "collaboration", "governance", "infra", "audit"]
+                gk_root / d for d in ["operations", "engineering", "collaboration", "governance", "infra", "audit"]
             ]
             for d in formal_dirs:
                 if d.exists():

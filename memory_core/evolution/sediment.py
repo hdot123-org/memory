@@ -395,7 +395,7 @@ def _strip_existing_sources_section(content: str) -> str:
 
     start = match.start()
     # 查找下一个 ## 标题（作为 Sources 区段结束）
-    next_heading = re.search(r"^## ", content[match.end():], re.MULTILINE)
+    next_heading = re.search(r"^## ", content[match.end() :], re.MULTILINE)
     if next_heading:
         end = match.end() + next_heading.start()
         return content[:start] + content[end:]
@@ -414,7 +414,7 @@ def _parse_body_sources(content: str) -> list[dict[str, str]]:
     # 提取 Sources 区段（到下一个 ## 或文件末尾）
     start = match.end()
     next_heading = re.search(r"^## ", content[start:], re.MULTILINE)
-    section = content[start:start + next_heading.start()] if next_heading else content[start:]
+    section = content[start : start + next_heading.start()] if next_heading else content[start:]
 
     # 解析 - project: xxx / path: yyy 格式
     current_project = ""

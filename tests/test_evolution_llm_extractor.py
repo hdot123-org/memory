@@ -641,7 +641,6 @@ class TestLLMExtractor:
                 assert extractor.tokens_used == 300
                 assert extractor.llm_calls == 1
 
-
     def test_prompt_includes_project_context(self):
         """Test: LLM prompt 包含项目名与路径（项目上下文传递）"""
         with tempfile.TemporaryDirectory() as tmpdir:
