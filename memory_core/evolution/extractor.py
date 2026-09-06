@@ -521,56 +521,76 @@ class LLMExtractor:
         changed_files: list[dict[str, Any]],
         project_root: Path | None,
     ) -> list[Candidate]:
-        """使用 LLM 提取候选"""
+        """使用 LLM 提取候选（分批处理避免 prompt 过大）"""
         assert self._engine is not None
 
-        messages = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": _build_user_prompt(changed_files, project_root)},
-        ]
-
-        result = self._engine.chat_completion(messages)
-        self.budget.record_usage(result.total_tokens)
-
-        # 解析候选
-        parsed = _parse_llm_response(result.content)
-
-        if not parsed:
-            # LLM 未产出有效候选 → 降级
-            return self._fallback_no_llm(changed_files, project_root)
-
-        # 转换为 Candidate 对象
-        candidates: list[Candidate] = []
-        for item in parsed:
-            # genericity=项目专属 → 不晋升仅记录（confidence 强制降低）
-            if item["genericity"] == "项目专属":
-                item["confidence"] = min(item["confidence"], 0.5)
-
-            # 确保 source_refs 非空
-            if not item["source_refs"]:
-                for fc in changed_files:
-                    rel_path = fc.get("rel_path", "")
-                    if rel_path:
-                        item["source_refs"].append(
-                            {
-                                "project": str(project_root) if project_root else "",
-                                "path": rel_path,
-                            }
-                        )
-
-            candidates.append(
-                Candidate(
-                    title=item["title"],
-                    domain=item["domain"],
-                    content=item["content"],
-                    confidence=item["confidence"],
-                    source_refs=item["source_refs"],
-                    genericity=item["genericity"],
-                    unrefined=False,
+        # 分批处理：每批最多 10 个文件，避免 prompt 过大导致 API 返回空内容
+        batch_size = 10
+        all_candidates: list[Candidate] = []
+        
+        for i in range(0, len(changed_files), batch_size):
+            batch_files = changed_files[i:i + batch_size]
+            
+            # 检查预算
+            if not self.budget.can_call():
+                print(
+                    f"Warning: LLM 预算已用完，剩余 {len(changed_files) - i} 个文件降级为 unrefined",
+                    file=sys.stderr,
                 )
-            )
+                # 剩余文件降级
+                remaining_files = changed_files[i:]
+                fallback_candidates = self._fallback_no_llm(remaining_files, project_root)
+                all_candidates.extend(fallback_candidates)
+                break
+            
+            messages = [
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": _build_user_prompt(batch_files, project_root)},
+            ]
 
-        return candidates
+            result = self._engine.chat_completion(messages)
+            self.budget.record_usage(result.total_tokens)
+
+            # 解析候选
+            parsed = _parse_llm_response(result.content)
+
+            if not parsed:
+                # 本批 LLM 未产出有效候选 → 该批降级
+                fallback_candidates = self._fallback_no_llm(batch_files, project_root)
+                all_candidates.extend(fallback_candidates)
+                continue
+
+            # 转换为 Candidate 对象
+            for item in parsed:
+                # genericity=项目专属 → 不晋升仅记录（confidence 强制降低）
+                if item["genericity"] == "项目专属":
+                    item["confidence"] = min(item["confidence"], 0.5)
+
+                # 确保 source_refs 非空
+                if not item["source_refs"]:
+                    for fc in batch_files:
+                        rel_path = fc.get("rel_path", "")
+                        if rel_path:
+                            item["source_refs"].append(
+                                {
+                                    "project": str(project_root) if project_root else "",
+                                    "path": rel_path,
+                                }
+                            )
+
+                all_candidates.append(
+                    Candidate(
+                        title=item["title"],
+                        domain=item["domain"],
+                        content=item["content"],
+                        confidence=item["confidence"],
+                        source_refs=item["source_refs"],
+                        genericity=item["genericity"],
+                        unrefined=False,
+                    )
+                )
+
+        return all_candidates
 
     def _fallback_no_llm(
         self,
