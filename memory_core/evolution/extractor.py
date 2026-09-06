@@ -670,13 +670,23 @@ class NoLlmExtractor:
 
     def _extract_title(self, content: str, path: Path) -> str:
         """从内容或路径提取标题"""
+        # 跳过 YAML frontmatter（以 --- 开头到下一个 ---）
+        if content.startswith("---"):
+            end = content.find("\n---", 3)
+            if end != -1:
+                content = content[end + 4:].strip()
+
         lines = content.strip().split("\n")
         for line in lines:
             line = line.strip()
+            if not line:
+                continue
             if line.startswith("# "):
                 return line[2:].strip()
-            if line:
-                return line[:80]
+            # 跳过 YAML frontmatter 分隔线和空行
+            if line == "---":
+                continue
+            return line[:80]
         return path.stem
 
 
