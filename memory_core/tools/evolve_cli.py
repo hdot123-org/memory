@@ -1,5 +1,5 @@
 """
-evolve CLI：status / backup-paths / run 子命令
+evolve CLI：status / backup-paths / run / gk-ensure 子命令
 
 D6 stdout 纪律：stdout 只放载荷，诊断/告警走 stderr
 D1 双入口：memory-evolve console script 与 python3 -m memory_core.tools.evolve_cli 等价
@@ -17,7 +17,12 @@ from memory_core.evolution.analyzer import IncrementalAnalyzer
 from memory_core.evolution.config import load_or_create_config
 from memory_core.evolution.extractor import NoLlmExtractor
 from memory_core.evolution.registry import EvolutionRegistry
-from memory_core.evolution.sediment import git_commit_if_needed, write_unrefined_candidates
+from memory_core.evolution.sediment import (
+    gk_ensure,
+    git_commit_if_needed,
+    write_candidates,
+    write_unrefined_candidates,
+)
 
 
 def _get_evolution_root() -> Path:
@@ -175,6 +180,17 @@ def _write_report(
     return report_path
 
 
+def cmd_gk_ensure(args: argparse.Namespace) -> int:
+    """gk-ensure 子命令：全局库 git 归位（D8）"""
+    global_kb_root = _resolve_global_kb_root(args)
+    exit_code, message = gk_ensure(global_kb_root)
+    if exit_code != 0:
+        print(f"gk-ensure: {message}", file=sys.stderr)
+    else:
+        print(f"gk-ensure: {message}", file=sys.stderr)
+    return exit_code
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     """run 子命令：编排分析→提取→沉淀"""
     # D5: --all 与 --project 互斥且必选其一
@@ -188,6 +204,13 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     evolution_root = _get_evolution_root()
     global_kb_root = _resolve_global_kb_root(args)
+
+    # 自动前置 gk-ensure（VAL-SED-005）
+    exit_code, message = gk_ensure(global_kb_root)
+    if exit_code != 0:
+        # D4: 脏工作区 → exit 1 零写入
+        return 1
+
     dry_run = getattr(args, "dry_run", False)
     no_llm = getattr(args, "no_llm", False)
     max_projects = getattr(args, "max_projects", None)
@@ -409,6 +432,14 @@ def main(argv: list[str] | None = None) -> int:
         help="限制单轮处理项目数",
     )
 
+    # gk-ensure 子命令
+    gk_parser = subparsers.add_parser("gk-ensure", help="全局库 git 归位（D8: 幂等）")
+    gk_parser.add_argument(
+        "--global-kb-root",
+        default=None,
+        help="覆盖全局库根路径（优先级最高）",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -423,6 +454,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     elif args.command == "run":
         return cmd_run(args)
+    elif args.command == "gk-ensure":
+        return cmd_gk_ensure(args)
     else:
         parser.print_help(sys.stderr)
         return 2
