@@ -764,6 +764,8 @@ class TestLLMExtractorCLI:
             env["TEST_API_KEY"] = "test-key"
 
             # 运行 CLI（不使用 LLM，因为测试环境没有真实 API）
+            # cwd 通过 __file__ 推导仓库根，不硬编码绝对路径
+            _llm_test_repo_root = Path(__file__).resolve().parent.parent
             result = subprocess.run(
                 [
                     sys.executable,
@@ -774,7 +776,7 @@ class TestLLMExtractorCLI:
                     str(project_root),
                     "--no-llm",
                 ],
-                cwd="/Users/busiji/memory",
+                cwd=str(_llm_test_repo_root),
                 capture_output=True,
                 text=True,
                 env=env,
