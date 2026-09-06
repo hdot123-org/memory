@@ -262,10 +262,16 @@ def _generate_index_md() -> str:
 def get_global_kb_root() -> Path:
     """
     Get the default global KB root path.
-
+    
+    支持环境变量覆盖：MEMORY_CORE_GLOBAL_KB_ROOT
+    
     Returns:
-        Path to ~/.memory/global-kb
+        Path to global KB root (env override or ~/.memory/global-kb)
     """
+    import os
+    env_root = os.environ.get("MEMORY_CORE_GLOBAL_KB_ROOT")
+    if env_root:
+        return Path(env_root)
     return Path.home() / ".memory" / "global-kb"
 
 
