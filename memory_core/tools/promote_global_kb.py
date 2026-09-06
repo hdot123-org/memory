@@ -203,57 +203,132 @@ def _command_mode(
         return 1
 
     # Update INDEX.md
-    try:
-        _update_index(global_kb_root, domain, file_path.name)
+    updated = _update_index(global_kb_root, domain, file_path.name)
+    if updated:
         print("✓ INDEX.md 已更新")
-    except Exception as e:
-        print(f"Warning: failed to update INDEX.md: {e}", file=sys.stderr)
-        # Non-fatal: file was moved successfully
+    else:
+        print(
+            "⚠ 警告: INDEX.md 未更新（格式不匹配：既非表格格式也非 marker 格式）",
+            file=sys.stderr,
+        )
 
     return 0
 
 
-def _update_index(global_kb_root: Path, domain: str, filename: str) -> None:
+def _update_index(global_kb_root: Path, domain: str, filename: str) -> bool:
     """
     Update INDEX.md to reflect promoted file.
 
-    Args:
-        global_kb_root: Path to global KB root
-        domain: Domain where file was promoted
-        filename: Name of promoted file
+    支持两种格式：
+    - 表格格式（sediment 默认产物：``| 标题 | 域 | 文件 |``）→ 追加表格行
+    - marker 格式（生产 global_kb_init 产物：``### [domain/](./domain/)``）→ 追加 bullet
+
+    Returns:
+        True 表示成功更新；False 表示 no-op（INDEX 不存在或格式不匹配）。
     """
     index_path = global_kb_root / "INDEX.md"
     if not index_path.exists():
-        return
+        return False
 
     content = index_path.read_text(encoding="utf-8")
 
-    # Add entry to domain section
-    # Look for domain section and add file reference
+    # ---------- 路径 A：表格格式 ----------
+    if _is_table_format_index(content):
+        return _append_table_row(index_path, content, global_kb_root, domain, filename)
+
+    # ---------- 路径 B：marker 格式（既有行为）----------
+    return _append_marker_bullet(index_path, content, domain, filename)
+
+
+def _is_table_format_index(content: str) -> bool:
+    """检测 INDEX.md 是否为 sedment 产出的表格格式。"""
+    return "| 标题 | 域 | 文件 |" in content or ("| title |" in content.lower() and "| file |" in content.lower())
+
+
+def _append_table_row(
+    index_path: Path,
+    content: str,
+    global_kb_root: Path,
+    domain: str,
+    filename: str,
+) -> bool:
+    """向表格格式 INDEX 追加 ``| title | domain | file |`` 行。"""
+    file_rel = f"{domain}/{filename}"
+    # 幂等：已存在则跳过（仍视为成功）
+    if file_rel in content or filename in content:
+        return True
+
+    # 从文件 frontmatter 读取 title；读取失败则退化为 filename
+    title = _read_title_from_file(global_kb_root / domain / filename) or filename
+
+    new_line = f"| {title} | {domain} | {file_rel} |"
+    new_content = content if content.endswith("\n") else content + "\n"
+    new_content += new_line + "\n"
+    try:
+        index_path.write_text(new_content, encoding="utf-8")
+    except OSError as e:
+        print(f"Warning: failed to write INDEX.md: {e}", file=sys.stderr)
+        return False
+    return True
+
+
+def _read_title_from_file(file_path: Path) -> str | None:
+    """从文件 frontmatter 的 title 字段或首个 # H1 读取标题。"""
+    if not file_path.exists():
+        return None
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    # 优先 frontmatter 的 title
+    import re as _re
+    fm = _re.match(r"^---\n(.*?)\n---\n?", text, flags=_re.DOTALL)
+    if fm:
+        for line in fm.group(1).split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("title:"):
+                _, _, value = stripped.partition(":")
+                value = value.strip().strip('"').strip("'")
+                if value:
+                    return value
+    # 退化：首个 # H1
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("# "):
+            return stripped[2:].strip()
+    return None
+
+
+def _append_marker_bullet(index_path: Path, content: str, domain: str, filename: str) -> bool:
+    """向 marker 格式 INDEX 追加 ``- [filename](...)`` bullet（既有行为）。"""
     domain_marker = f"### [{domain}/](./{domain}/)"
-    if domain_marker in content:
-        # Add file entry after domain marker
-        lines = content.split("\n")
-        new_lines = []
-        in_domain_section = False
-        added = False
+    if domain_marker not in content:
+        return False
 
-        for line in lines:
-            new_lines.append(line)
-            if domain_marker in line:
-                in_domain_section = True
-            elif in_domain_section and line.startswith("### "):
-                # Reached next domain section, insert before it
-                if not added:
-                    new_lines.insert(-1, f"- [{filename}](./{domain}/{filename})")
-                    added = True
-                in_domain_section = False
+    lines = content.split("\n")
+    new_lines: list[str] = []
+    in_domain_section = False
+    added = False
 
-        if not added and in_domain_section:
-            # Domain section is last, append at end
-            new_lines.append(f"- [{filename}](./{domain}/{filename})")
+    for line in lines:
+        new_lines.append(line)
+        if domain_marker in line:
+            in_domain_section = True
+        elif in_domain_section and line.startswith("### "):
+            if not added:
+                new_lines.insert(-1, f"- [{filename}](./{domain}/{filename})")
+                added = True
+            in_domain_section = False
 
+    if not added and in_domain_section:
+        new_lines.append(f"- [{filename}](./{domain}/{filename})")
+
+    try:
         index_path.write_text("\n".join(new_lines), encoding="utf-8")
+    except OSError as e:
+        print(f"Warning: failed to write INDEX.md: {e}", file=sys.stderr)
+        return False
+    return True
 
 
 if __name__ == "__main__":

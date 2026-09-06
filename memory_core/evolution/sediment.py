@@ -747,10 +747,36 @@ def git_commit_if_needed(
         if not result.stdout.strip():
             return False  # 无变更，不提交
 
-        # 统计新增文件数（用于提交信息）
-        new_files = [line for line in result.stdout.split("\n") if line.startswith("??")]
-        modified_files = [line for line in result.stdout.split("\n") if line.startswith(" M") or line.startswith("M ")]
-        count = len(new_files) + len(modified_files)
+        # 统计实际写入文件数（用于提交信息）
+        # porcelain 的 ?? 对 untracked 目录折叠为单行 "?? dir/"，导致多文件计成 1
+        # 改用 git ls-files --others --exclude-standard 枚举真实文件
+        untracked = _git_run(
+            ["ls-files", "--others", "--exclude-standard"],
+            global_kb_root,
+            check=True,
+        )
+        actual_untracked = [
+            ln for ln in untracked.stdout.split("\n") if ln.strip()
+        ]
+        # 展开可能的目录条目（untracked dir/ 会折叠成单行）
+        counted_files: list[str] = []
+        for entry in actual_untracked:
+            p = global_kb_root / entry
+            if p.is_dir():
+                for f in p.rglob("*"):
+                    if f.is_file():
+                        counted_files.append(str(f.relative_to(global_kb_root)))
+            else:
+                counted_files.append(entry)
+        # 再合并 modified（M /AM 类）
+        modified_lines = [
+            ln for ln in result.stdout.split("\n")
+            if ln and not ln.startswith("??")
+        ]
+        for mline in modified_lines:
+            if len(mline) > 3:
+                counted_files.append(mline[3:])
+        count = len(counted_files)
         if count == 0:
             count = 1
 
