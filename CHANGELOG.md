@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.45.7](https://github.com/hdot123-org/memory/compare/v0.45.6...v0.45.7) (2026-09-06)
+
+
+### Bug Fixes
+
+* **ci:** 补全 auto-merge 调用方权限以匹配 infra-core v0.11.1 (INFRA-764) ([#1114](https://github.com/hdot123-org/memory/issues/1114)) ([dc29279](https://github.com/hdot123-org/memory/commit/dc292790fcaa4b56c9f32aea01cac8c425731add))
+* exclude append-only runtime files from integrity manifest coverage ([#1117](https://github.com/hdot123-org/memory/issues/1117)) ([db33b5a](https://github.com/hdot123-org/memory/commit/db33b5abbc7590e1071dab420eda47e296b55301))
+
+
+### Documentation
+
+* **error-gateway:** 标记 factory-error-monitor.sh 与 daily-audit-cron.sh 为已退役 ([#1119](https://github.com/hdot123-org/memory/issues/1119)) ([e85996b](https://github.com/hdot123-org/memory/commit/e85996b8b5e1ab3d1cae5c324a8df9ab97abc372))
+* 更新 README 中 infra-core pin 版本 v0.11.1 → v0.13.0 ([#1118](https://github.com/hdot123-org/memory/issues/1118)) ([95b0b09](https://github.com/hdot123-org/memory/commit/95b0b09fe721da0c3beb41b52ed319f5b1e62189))
+
 ## [0.45.6](https://github.com/hdot123-org/memory/compare/v0.45.5...v0.45.6) (2026-09-04)
 
 
