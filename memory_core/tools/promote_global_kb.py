@@ -282,6 +282,7 @@ def _read_title_from_file(file_path: Path) -> str | None:
         return None
     # 优先 frontmatter 的 title
     import re as _re
+
     fm = _re.match(r"^---\n(.*?)\n---\n?", text, flags=_re.DOTALL)
     if fm:
         for line in fm.group(1).split("\n"):

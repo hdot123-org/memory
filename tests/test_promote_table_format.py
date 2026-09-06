@@ -121,10 +121,7 @@ class TestMarkerFormatPromote:
 
         pending_file = marker_format_root / "pending" / "ci-cache.md"
         pending_file.write_text(
-            "---\n"
-            'title: "CI Cache 策略"\n'
-            "---\n\n"
-            "Use pyc cache.\n",
+            '---\ntitle: "CI Cache 策略"\n---\n\nUse pyc cache.\n',
             encoding="utf-8",
         )
 

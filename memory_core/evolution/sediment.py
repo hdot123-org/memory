@@ -755,9 +755,7 @@ def git_commit_if_needed(
             global_kb_root,
             check=True,
         )
-        actual_untracked = [
-            ln for ln in untracked.stdout.split("\n") if ln.strip()
-        ]
+        actual_untracked = [ln for ln in untracked.stdout.split("\n") if ln.strip()]
         # 展开可能的目录条目（untracked dir/ 会折叠成单行）
         counted_files: list[str] = []
         for entry in actual_untracked:
@@ -769,10 +767,7 @@ def git_commit_if_needed(
             else:
                 counted_files.append(entry)
         # 再合并 modified（M /AM 类）
-        modified_lines = [
-            ln for ln in result.stdout.split("\n")
-            if ln and not ln.startswith("??")
-        ]
+        modified_lines = [ln for ln in result.stdout.split("\n") if ln and not ln.startswith("??")]
         for mline in modified_lines:
             if len(mline) > 3:
                 counted_files.append(mline[3:])
