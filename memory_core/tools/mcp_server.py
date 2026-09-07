@@ -105,7 +105,8 @@ def _search_memory(query: str, cwd: str) -> list[dict[str, Any]]:
 
     Performs a case-insensitive substring search across all ``.md`` files in:
     1. Project layer: ``<cwd>/memory/kb/`` and ``<cwd>/memory/docs/``
-    2. Global layer: ``~/.memory/global-kb/`` (read-only cross-project fallback)
+    2. Global layer: ``~/.memory/global-kb/`` (read-only cross-project fallback,
+       **excluding pending/** — 2026-09-07 用户裁定：读取面只服务确认内容)
 
     Returns up to :data:`_MAX_SEARCH_RESULTS` matches, each with file_path,
     relative_path, line_number, matched_line, context_type, and source
@@ -134,6 +135,13 @@ def _search_memory(query: str, cwd: str) -> list[dict[str, Any]]:
                     continue
                 file_path = str(Path(dirpath) / filename)
                 relative_path = os.path.relpath(file_path, base_for_rel)
+
+                # 2026-09-07 用户裁定：pending/ 不得出现在 search_memory 结果
+                # 读取面只服务已确认正式域内容
+                if source == "global" and relative_path.startswith("pending" + os.sep):
+                    continue
+                if source == "global" and relative_path.startswith("pending/"):
+                    continue
                 try:
                     with Path(file_path).open(encoding="utf-8", errors="replace") as fh:
                         for line_number, line in enumerate(fh, start=1):
