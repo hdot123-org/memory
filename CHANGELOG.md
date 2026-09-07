@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.47.0](https://github.com/hdot123-org/memory/compare/v0.46.0...v0.47.0) (2026-09-07)
+
+
+### Features
+
+* **evolution:** M3 生产接线 + M4 MCP 全局接口 + 测试修复收尾 ([#1127](https://github.com/hdot123-org/memory/issues/1127)) ([5b3f289](https://github.com/hdot123-org/memory/commit/5b3f2899dc477b0a574b1dac89076a656824aec9))
+
+
+### Bug Fixes
+
+* **evolve:** extractor MCP 密钥解析复用 mcp_secrets——修 off-by-one 与错误文本当 key ([#1131](https://github.com/hdot123-org/memory/issues/1131)) ([ca90ce0](https://github.com/hdot123-org/memory/commit/ca90ce0e388f62e2e93f51c014a46e102c8bbdb1))
+* 恢复 mcp-secret 子命令（1ff55d9 合并冲突静默丢失） ([#1129](https://github.com/hdot123-org/memory/issues/1129)) ([572f079](https://github.com/hdot123-org/memory/commit/572f07903c7e0433ddb09facdb9dd09f071a4a11)), closes [#1138](https://github.com/hdot123-org/memory/issues/1138)
+
 ## [0.46.0](https://github.com/hdot123-org/memory/compare/v0.45.7...v0.46.0) (2026-09-07)
 
 
