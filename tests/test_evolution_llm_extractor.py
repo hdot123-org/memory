@@ -52,14 +52,18 @@ class TestResolveApiKey:
             assert key == "default-key"
 
     def test_resolve_from_op_ref(self):
-        """Test: 从 1Password op read 解析密钥"""
+        """Test: 从 1Password op read 解析密钥（env > MCP > op read 链路）"""
         config = {"llm": {"api_key_env": "NONEXISTENT", "api_key_op_ref": "op://vault/item/field"}}
 
         mock_result = Mock()
         mock_result.returncode = 0
         mock_result.stdout = "op-secret-key"
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        # Mock MCP 为不可用（返回 None），让链路走到 op read 兜底
+        with (
+            patch("subprocess.run", return_value=mock_result) as mock_run,
+            patch("memory_core.evolution.extractor._resolve_via_mcp", return_value=None),
+        ):
             key = resolve_api_key(config)
             assert key == "op-secret-key"
             mock_run.assert_called_once()
@@ -81,15 +85,17 @@ class TestResolveApiKey:
             resolve_api_key(config)
 
     def test_resolve_op_read_failure(self):
-        """Test: op read 失败时抛出错误"""
+        """Test: op read 失败时抛出错误（env > MCP > op read 链路）"""
         config = {"llm": {"api_key_env": "NONEXISTENT", "api_key_op_ref": "op://vault/item/field"}}
 
         mock_result = Mock()
         mock_result.returncode = 1
         mock_result.stdout = ""
 
+        # Mock MCP 为不可用（返回 None），让链路走到 op read 兜底
         with (
             patch("subprocess.run", return_value=mock_result),
+            patch("memory_core.evolution.extractor._resolve_via_mcp", return_value=None),
             pytest.raises(RuntimeError, match="无法解析 API 密钥"),
         ):
             resolve_api_key(config)

@@ -218,7 +218,15 @@ def _mcp_call_tool(
 
 
 def _extract_text_from_response(response: dict[str, Any]) -> str | None:
-    """从 MCP 响应中提取 text 内容"""
+    """从 MCP 响应中提取 text 内容
+
+    检查错误响应（MCP 错误返回 error 字段而非 result），
+    避免把错误消息当作密钥值返回。
+    """
+    # 检查是否有错误（MCP 错误响应格式）
+    if "error" in response:
+        return None
+
     if "result" not in response:
         return None
     content = response["result"].get("content", [])
@@ -820,11 +828,13 @@ class NoLlmExtractor:
     """
     无 LLM 降级提取器
 
-    原样捕获内容，标记 unrefined: true
+    原样捕获内容，标记 unrefined: true。
+    不会静默丢弃——读取失败或无内容的文件记录到 self.skipped_files。
     """
 
     def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
+        self.skipped_files: list[dict[str, str]] = []
 
     def extract_from_files(
         self,
@@ -839,13 +849,16 @@ class NoLlmExtractor:
             project_root: 项目根（如果 changed_files 未携带）
 
         Returns:
-            候选列表
+            候选列表（不静默丢弃——跳过原因记录到 self.skipped_files）
         """
-        candidates = []
+        candidates: list[Candidate] = []
+        self.skipped_files = []
 
         for fc in changed_files:
             abs_path = fc.get("abs_path") or fc.get("path")
             if not abs_path:  # None or empty string
+                rel = fc.get("rel_path", "<unknown>")
+                self.skipped_files.append({"path": rel, "reason": "missing abs_path"})
                 continue
             if isinstance(abs_path, str):
                 abs_path = Path(abs_path)
@@ -854,7 +867,9 @@ class NoLlmExtractor:
 
             try:
                 content = abs_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
+            except (OSError, UnicodeDecodeError) as e:
+                # 显式记录跳过原因，杜绝静默数据丢失
+                self.skipped_files.append({"path": rel_path, "reason": str(e)})
                 continue
 
             title = self._extract_title(content, abs_path)

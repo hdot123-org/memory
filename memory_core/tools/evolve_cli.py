@@ -195,10 +195,13 @@ def cmd_gk_ensure(args: argparse.Namespace) -> int:
     global_kb_root = _resolve_global_kb_root(args)
     adopt_dirty = getattr(args, "adopt_dirty", False)
     exit_code, message = gk_ensure(global_kb_root, adopt_dirty=adopt_dirty)
-    if exit_code != 0:
-        print(f"gk-ensure: {message}", file=sys.stderr)
+    # 区分 no-op 与真合并的措辞（任务③诊断措辞）
+    if "no-op" in message or "already" in message:
+        print(f"gk-ensure: no-op（{message}）", file=sys.stderr)
+    elif exit_code != 0:
+        print(f"gk-ensure: 失败: {message}", file=sys.stderr)
     else:
-        print(f"gk-ensure: {message}", file=sys.stderr)
+        print(f"gk-ensure: 已归位（{message}）", file=sys.stderr)
     return exit_code
 
 
@@ -299,10 +302,18 @@ def _run_projects(
         if no_llm:
             assert no_llm_extractor is not None
             candidates = no_llm_extractor.extract_from_files(changed_dicts, proj)
+            # Task ①: 将 NoLlmExtractor 的 skipped_files 记录到项目报告
+            if no_llm_extractor.skipped_files:
+                proj_report["skipped_files"] = no_llm_extractor.skipped_files
+                for sf in no_llm_extractor.skipped_files:
+                    _write_errors_log(evolution_root, f"NoLlmExtractor 跳过 {sf['path']}: {sf['reason']}")
         else:
             assert llm_extractor is not None
             # FIX: 必须传递 project_root 参数，否则 LLM prompt 缺少项目上下文
             candidates = llm_extractor.extract_from_files(changed_dicts, proj)
+            # Task ②: 统计 LLM 零候选的文件数
+            if not candidates and changed_dicts:
+                proj_report["skipped_by_llm"] = len(changed_dicts)
 
         # 转换为 dict
         for cand in candidates:
@@ -327,8 +338,7 @@ def _run_projects(
                 }
             )
 
-        # FIX: 不在这里推进游标！将游标更新推迟到沉淀成功后
-        # 将本轮处理的文件信息暂存，等待调用方在沉淀成功后推进
+        # Task ②: 游标推进——无论是否产出候选都推进（避免零候选文件每轮重复读取计费）
         pending_cursor_updates.append((proj, changed_dicts))
 
         analyzer.update_stats(
@@ -374,9 +384,16 @@ def _resolve_project_list(
     return projects_to_process, is_single_project
 
 
-def _diagnose_gk_ensure_failure(global_kb_root: Path, message: str) -> None:
-    """诊断 gk-ensure 失败原因，输出 git status 到 stderr"""
+def _diagnose_gk_ensure_failure(global_kb_root: Path, message: str, evolution_root: Path | None = None) -> None:
+    """诊断 gk-ensure 失败原因，输出到 stderr + errors.log（D6 补齐：杜绝 0 字节静默）"""
     import subprocess
+
+    # 一行原因进 stderr
+    print(f"Error: gk-ensure 中止: {message}", file=sys.stderr)
+
+    # 同时写入 errors.log（如 evolution_root 可用）
+    if evolution_root is not None:
+        _write_errors_log(evolution_root, f"gk-ensure 致命中止: {message}")
 
     try:
         status_result = subprocess.run(
@@ -386,11 +403,9 @@ def _diagnose_gk_ensure_failure(global_kb_root: Path, message: str) -> None:
             text=True,
             timeout=5,
         )
-        print(f"Error: gk-ensure failed: {message}", file=sys.stderr)
         if status_result.stdout:
             print(f"Git status:\n{status_result.stdout}", file=sys.stderr)
     except Exception as e:
-        print(f"Error: gk-ensure failed: {message}", file=sys.stderr)
         print(f"Could not get git status: {e}", file=sys.stderr)
 
 
@@ -435,7 +450,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     exit_code, message = gk_ensure(global_kb_root)
     if exit_code != 0:
         # D4: 脏工作区 → exit 1 零写入
-        _diagnose_gk_ensure_failure(global_kb_root, message)
+        _diagnose_gk_ensure_failure(global_kb_root, message, evolution_root)
         return 1
 
     # 实际运行
@@ -506,12 +521,19 @@ def cmd_run(args: argparse.Namespace) -> int:
         run_report["refined_count"] = len(refined_candidates)
         run_report["unrefined_count"] = len(unrefined_candidates)
 
-        # git 提交
-        git_commit_if_needed(global_kb_root, config)
+        # git 提交（任务③：用真实候选数而非 git porcelain 文件数）
+        from datetime import date as _date
+
+        summary = f"feat(evolve): 沉淀 {len(all_candidates)} 条经验（{_date.today().isoformat()}）"
+        git_commit_if_needed(global_kb_root, config, summary=summary)
         sediment_succeeded = True
 
-    # FIX: 游标在沉淀成功后推进（沉淀失败文件下轮重析）
-    if sediment_succeeded:
+    # 游标推进逻辑（任务②）：
+    # - 有候选且沉淀成功 → 推进
+    # - 无候选（零候选项目）→ 也推进（避免零候选文件每轮重复读取计费）
+    # - 有候选但沉淀失败 → 不推进（下轮重析）
+    should_advance_cursors = sediment_succeeded or not all_candidates
+    if should_advance_cursors and pending_cursor_updates:
         for proj, changed_dicts in pending_cursor_updates:
             from memory_core.evolution.analyzer import FileChange
 
