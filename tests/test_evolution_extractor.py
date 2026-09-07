@@ -133,3 +133,26 @@ def test_extractor_no_title():
         assert len(candidates) == 1
         # Should use first line as fallback title
         assert candidates[0].title == "Just some content without a title"
+
+
+def test_parse_llm_response_think_tag_stripping():
+    """
+    Test that _parse_llm_response correctly strips <think> tags from reasoning models (glm-5.3).
+
+    Reasoning models like glm-5.3 wrap their reasoning process in <think>...</think> tags
+    before the actual JSON response. The parser must strip these tags and parse the JSON
+    that follows.
+    """
+    from memory_core.evolution.extractor import _parse_llm_response
+
+    # Simulate glm-5.3 response with think block followed by JSON
+    content_with_think = "<think>\nThis is the model's reasoning process.\nIt can contain multiple lines and various text.\n</think>\n\n[\n  {\n    \"title\": \"测试经验\",\n    \"domain\": \"engineering\",\n    \"content\": \"这是一个测试经验条目\",\n    \"confidence\": 0.85,\n    \"source_refs\": [{\"project\": \"test-project\", \"path\": \"memory/kb/lessons/test.md\"}]\n  }\n]"
+
+    candidates = _parse_llm_response(content_with_think)
+
+    # Should successfully parse the JSON after stripping think tags
+    assert len(candidates) == 1
+    assert candidates[0]["title"] == "测试经验"
+    assert candidates[0]["domain"] == "engineering"
+    assert candidates[0]["confidence"] == 0.85
+    assert len(candidates[0]["source_refs"]) == 1

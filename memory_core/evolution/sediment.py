@@ -1,9 +1,11 @@
 """
-沉淀写入器：置信度分层路由 + 去重三态 + git 纪律 + gk-ensure
+沉淀写入器：pending-only 路由 + 去重三态 + git 纪律 + gk-ensure
 
-架构 §3.6：
-- confidence >= auto_confidence_threshold → <domain>/<slug>.md + INDEX.md 更新
-- confidence < threshold 或 unrefined → pending/<slug>.md
+架构 §0（2026-09-07 用户裁定：确认记忆模型）：
+- 全部候选（任意 confidence、refined/unrefined）一律落 pending/
+- 正式域六域目录与 INDEX.md 管道零写入——唯一正式域写入路径 = 用户显式确认（memory-promote）
+- confidence 保留为 frontmatter 元数据供用户分诊，不再是路由门槛
+- promote.auto_confidence_threshold 配置保留兼容但只作分诊参考
 - 去重三态（D10）：
   1. 归一化指纹相等 → 跳过
   2. n-gram 重叠 > 0.6 → 合并（追加 source_refs，保留原文）
@@ -446,7 +448,11 @@ def _route_candidate(
     threshold: float,
 ) -> dict[str, Any]:
     """
-    路由单个候选到目标域并写入
+    路由单个候选到 pending/ 并写入（2026-09-07 用户裁定：pending-only）
+
+    - 全部候选（任意 confidence、refined/unrefined）一律落 pending/
+    - 正式域目录与 INDEX.md 管道零写入
+    - threshold 参数保留兼容但不影响路由
 
     Returns:
         {"action": "skip"/"merge"/"written"/"none", "path": Path|None, ...}
@@ -458,13 +464,9 @@ def _route_candidate(
     source_refs = cand.get("source_refs", [])
     unrefined = cand.get("unrefined", True)
 
-    # 确定目标目录
-    if unrefined or confidence < threshold:
-        target_dir = global_kb_root / "pending"
-        is_formal = False
-    else:
-        target_dir = global_kb_root / domain
-        is_formal = True
+    # 确定目标目录（2026-09-07 用户裁定：全部候选只落 pending/）
+    target_dir = global_kb_root / "pending"
+    is_formal = False
 
     target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -620,14 +622,43 @@ def _current_branch(cwd: Path) -> str | None:
         return None
 
 
-def gk_ensure(global_kb_root: Path) -> tuple[int, str]:
+def _handle_adopt_dirty(global_kb_root: Path) -> tuple[int, str]:
+    """Handle dirty worktree when adopt_dirty is enabled"""
+    # Record current state
+    head_result = _git_run(["rev-parse", "--short", "HEAD"], global_kb_root, check=True)
+    status_result = _git_run(["status"], global_kb_root, check=True)
+
+    # Stage all changes
+    _git_run(["add", "-A"], global_kb_root, check=True)
+
+    # Build commit message
+    status_lines = status_result.stdout.strip().split("\n")
+    status_summary = "\n".join(status_lines[:10])
+    if len(status_lines) > 10:
+        status_summary += f"\n...（共 {len(status_lines)} 行）"
+
+    commit_msg = f"维护：采纳脏工作区（HEAD {head_result.stdout.strip()}）\n\nGit status:\n{status_summary}"
+    _git_run(["commit", "-m", commit_msg], global_kb_root, check=True)
+
+    # Verify clean state
+    if not _is_worktree_clean(global_kb_root):
+        return 1, "adopt-dirty failed: worktree still dirty after commit"
+
+    return 0, "adopt-dirty succeeded"
+
+
+def gk_ensure(global_kb_root: Path, adopt_dirty: bool = False) -> tuple[int, str]:
     """
     全局库 git 归位（D8）
 
     - 无 fix/audit-round2 分支 → no-op, exit 0（幂等）
     - 有 fix/audit-round2 → 合并到 main
-    - 工作区脏 → exit 1，不动现场，不 stash
+    - 工作区脏 → 默认 exit 1 不动现场；adopt_dirty=True 时 git add -A + commit 后继续
     - 非 git 仓库 → exit 0
+
+    Args:
+        global_kb_root: 全局库根路径
+        adopt_dirty: 是否采纳脏工作区（先 commit 后继续）
 
     Returns:
         (exit_code, message)
@@ -646,7 +677,17 @@ def gk_ensure(global_kb_root: Path) -> tuple[int, str]:
 
     # 检查脏工作区
     if not _is_worktree_clean(global_kb_root):
-        return 1, "dirty worktree, aborting (no stash, preserving state)"
+        if not adopt_dirty:
+            return 1, "dirty worktree, aborting (no stash, preserving state)"
+
+        # adopt_dirty 模式：先留证，再 add + commit
+        try:
+            exit_code, msg = _handle_adopt_dirty(global_kb_root)
+            if exit_code != 0:
+                return exit_code, msg
+            # 继续后续逻辑
+        except subprocess.CalledProcessError as e:
+            return 1, f"adopt-dirty failed: {e.stderr}"
 
     # 如果当前在 fix/audit-round2 且 main 存在
     if current == "fix/audit-round2" and has_main:

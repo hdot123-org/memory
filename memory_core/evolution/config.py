@@ -16,6 +16,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "model": "glm-5.3",
         "api_key_env": "AXONHUB_API_KEY",
         "api_key_op_ref": "",
+        "api_key_mcp_url": "",
         "max_tokens": 4096,
         "daily_budget_tokens": 2_000_000,
     },

@@ -146,3 +146,145 @@ assert str(root) == '{tmpdir}', f"Expected {tmpdir}, got {{root}}"
 
         assert result.returncode == 0, f"Command failed: {result.stderr}"
         assert tmpdir in result.stdout
+
+
+def test_script_bootstrap_from_root_cwd():
+    """
+    Test that evolve_cli.py can be called directly from cwd=/ (launchd environment).
+
+    launchd runs with cwd=/ and no PYTHONPATH, so the script must bootstrap
+    sys.path to find the memory_core package. This test verifies the bootstrap works.
+    """
+    # Derive script path relative to test file (no hardcoded /Users/ paths)
+    test_file = Path(__file__).resolve()
+    repo_root = test_file.parents[1]
+    script_path = repo_root / "memory_core" / "tools" / "evolve_cli.py"
+
+    # Call script directly from cwd=/ (simulating launchd environment)
+    result = subprocess.run(
+        [sys.executable, str(script_path), "--help"],
+        cwd="/",
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, f"Script failed from cwd=/: {result.stderr}"
+    assert "usage" in result.stdout.lower() or "memory-evolve" in result.stdout.lower()
+    assert "run" in result.stdout  # Should list run subcommand
+
+
+def _setup_dirty_git_repo(tmpdir: Path) -> None:
+    """Helper: create a minimal git repo with fix/audit-round2 branch and dirty working tree."""
+    # Init repo
+    subprocess.run(["git", "init", "-b", "main"], cwd=tmpdir, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=tmpdir, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmpdir, capture_output=True, check=True)
+
+    # Create initial commit on main
+    (tmpdir / "README.md").write_text("# Test KB\n")
+    subprocess.run(["git", "add", "-A"], cwd=tmpdir, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=tmpdir, capture_output=True, check=True)
+
+    # Create fix/audit-round2 branch with a commit
+    subprocess.run(["git", "checkout", "-b", "fix/audit-round2"], cwd=tmpdir, capture_output=True, check=True)
+    (tmpdir / "fix-file.md").write_text("# Fix content\n")
+    subprocess.run(["git", "add", "-A"], cwd=tmpdir, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "fix branch commit"], cwd=tmpdir, capture_output=True, check=True)
+
+    # Go back to main and make the worktree dirty
+    subprocess.run(["git", "checkout", "main"], cwd=tmpdir, capture_output=True, check=True)
+    # Make dirty: create an untracked file
+    (tmpdir / "dirty-file.md").write_text("# Dirty content from other session\n")
+
+
+def test_gk_ensure_dirty_root_without_flag_aborts():
+    """
+    D8 default: dirty root + no --adopt-dirty → exit 1, worktree preserved.
+    Verifies VAL-SED-004 backward compatibility.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        _setup_dirty_git_repo(tmpdir_path)
+
+        # Verify dirty before running gk-ensure
+        status_before = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=tmpdir_path, capture_output=True, text=True, check=True
+        )
+        assert status_before.stdout.strip(), "Precondition: repo should be dirty"
+        assert "dirty-file.md" in status_before.stdout
+
+        # Run gk-ensure WITHOUT --adopt-dirty
+        result = subprocess.run(
+            [sys.executable, "-m", "memory_core.tools.evolve_cli", "gk-ensure", "--global-kb-root", tmpdir],
+            capture_output=True,
+            text=True,
+        )
+
+        # Should exit 1
+        assert result.returncode == 1, f"Expected exit 1, got {result.returncode}. stderr={result.stderr}"
+
+        # Worktree should still be dirty (unchanged)
+        status_after = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=tmpdir_path, capture_output=True, text=True, check=True
+        )
+        assert status_after.stdout.strip(), "Postcondition: worktree should still be dirty"
+        assert "dirty-file.md" in status_after.stdout
+
+        # Should still be on main branch (not switched)
+        branch = subprocess.run(
+            ["git", "branch", "--show-current"], cwd=tmpdir_path, capture_output=True, text=True, check=True
+        )
+        assert branch.stdout.strip() == "main"
+
+
+def test_gk_ensure_dirty_root_with_adopt_flag_commits_and_continues():
+    """
+    --adopt-dirty: dirty root → git add -A + commit → worktree clean → continue merge.
+    Verifies the new maintenance mode works end-to-end.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        _setup_dirty_git_repo(tmpdir_path)
+
+        # Run gk-ensure WITH --adopt-dirty
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "memory_core.tools.evolve_cli",
+                "gk-ensure",
+                "--global-kb-root",
+                tmpdir,
+                "--adopt-dirty",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        # Should exit 0 (adopted dirty + merged)
+        assert result.returncode == 0, f"Expected exit 0, got {result.returncode}. stderr={result.stderr}"
+
+        # Worktree should be clean now
+        status_after = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=tmpdir_path, capture_output=True, text=True, check=True
+        )
+        assert not status_after.stdout.strip(), f"Worktree should be clean, but got: {status_after.stdout}"
+
+        # The dirty file should have been committed (check git log)
+        log = subprocess.run(
+            ["git", "log", "--oneline", "-5"], cwd=tmpdir_path, capture_output=True, text=True, check=True
+        )
+        assert "维护" in log.stdout or "采纳脏工作区" in log.stdout, f"Expected maintenance commit in log: {log.stdout}"
+
+        # Should be on main branch
+        branch = subprocess.run(
+            ["git", "branch", "--show-current"], cwd=tmpdir_path, capture_output=True, text=True, check=True
+        )
+        assert branch.stdout.strip() == "main", f"Should be on main, got {branch.stdout.strip()}"
+
+        # The dirty file content should still exist (preserved, not lost)
+        assert (tmpdir_path / "dirty-file.md").exists(), "dirty-file.md should be preserved after adopt"
+        assert (
+            (tmpdir_path / "dirty-file.md").read_text() == "# Dirty content from other session\n"
+        ), "File content should be preserved verbatim"

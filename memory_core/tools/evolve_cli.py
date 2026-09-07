@@ -13,6 +13,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+# sys.path bootstrap：launchd 环境（cwd=/、无 PYTHONPATH）下直接调用脚本时，
+# 需要确保 repo root 在 sys.path 中以便导入 memory_core 包
+_repo_root = Path(__file__).resolve().parents[2]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
 from memory_core.evolution.analyzer import IncrementalAnalyzer
 from memory_core.evolution.config import load_or_create_config
 from memory_core.evolution.extractor import LLMExtractor, NoLlmExtractor
@@ -181,9 +187,14 @@ def _write_report(
 
 
 def cmd_gk_ensure(args: argparse.Namespace) -> int:
-    """gk-ensure 子命令：全局库 git 归位（D8）"""
+    """gk-ensure 子命令：全局库 git 归位（D8）
+
+    支持 --adopt-dirty 维护模式：当工作区脏时，先 git add -A 并提交（保留所有变更），
+    然后继续归位流程。默认行为（无 flag）在脏工作区时 exit 1 且不动现场。
+    """
     global_kb_root = _resolve_global_kb_root(args)
-    exit_code, message = gk_ensure(global_kb_root)
+    adopt_dirty = getattr(args, "adopt_dirty", False)
+    exit_code, message = gk_ensure(global_kb_root, adopt_dirty=adopt_dirty)
     if exit_code != 0:
         print(f"gk-ensure: {message}", file=sys.stderr)
     else:
@@ -363,6 +374,25 @@ def _resolve_project_list(
     return projects_to_process, is_single_project
 
 
+def _diagnose_gk_ensure_failure(global_kb_root: Path, message: str) -> None:
+    """诊断 gk-ensure 失败原因，输出 git status 到 stderr"""
+    import subprocess
+    try:
+        status_result = subprocess.run(
+            ["git", "status", "--short"],
+            cwd=global_kb_root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        print(f"Error: gk-ensure failed: {message}", file=sys.stderr)
+        if status_result.stdout:
+            print(f"Git status:\n{status_result.stdout}", file=sys.stderr)
+    except Exception as e:
+        print(f"Error: gk-ensure failed: {message}", file=sys.stderr)
+        print(f"Could not get git status: {e}", file=sys.stderr)
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     """run 子命令：编排分析→提取→沉淀"""
     # D5: --all 与 --project 互斥且必选其一
@@ -404,6 +434,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     exit_code, message = gk_ensure(global_kb_root)
     if exit_code != 0:
         # D4: 脏工作区 → exit 1 零写入
+        _diagnose_gk_ensure_failure(global_kb_root, message)
         return 1
 
     # 实际运行
@@ -550,6 +581,11 @@ def main(argv: list[str] | None = None) -> int:
         "--global-kb-root",
         default=None,
         help="覆盖全局库根路径（优先级最高）",
+    )
+    gk_parser.add_argument(
+        "--adopt-dirty",
+        action="store_true",
+        help="维护模式：脏工作区时 git add -A 并提交后继续（默认脏→exit 1 不动现场）",
     )
 
     args = parser.parse_args(argv)
