@@ -452,6 +452,170 @@ class TestClassifyToolUse:
         assert classify_tool_use.rule_name == "classify_tool_use"
 
 
+class TestClassifyCreate:
+    """Tests for Create tool classification (债7a 最小版守卫).
+
+    Minimal semantics: block only when target is owned AND exists on disk
+    (Create-on-existing = overwrite); everything else allows.
+    """
+
+    def test_blocks_create_on_existing_kb_decisions_file(self, tmp_path: Path):
+        """Create targeting an existing memory/kb/decisions file is blocked."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        decisions = tmp_path / "memory" / "kb" / "decisions"
+        decisions.mkdir(parents=True)
+        existing = decisions / "2026-09-07-create-guard.md"
+        existing.write_text("# 决策记录", encoding="utf-8")
+
+        payload = {"tool_name": "Create", "file_path": str(existing), "content": "overwrite"}
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is True
+        assert result.severity == "error"
+        assert result.detail["decision"] == "block"
+        assert "Create-on-existing" in result.message
+        assert result.detail["path"] == "memory/kb/decisions/2026-09-07-create-guard.md"
+        assert result.detail["domain"] == "CRITICAL"
+
+    def test_blocks_create_on_existing_kb_decisions_relative_path(self, tmp_path: Path):
+        """Create with project-relative path to existing owned file is blocked."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        decisions = tmp_path / "memory" / "kb" / "decisions"
+        decisions.mkdir(parents=True)
+        (decisions / "some-decision.md").write_text("# 决策记录", encoding="utf-8")
+
+        payload = {
+            "tool_name": "Create",
+            "file_path": "memory/kb/decisions/some-decision.md",
+            "content": "overwrite",
+        }
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is True
+        assert result.detail["decision"] == "block"
+
+    def test_allows_create_on_nonexistent_kb_lessons_path(self, tmp_path: Path):
+        """Create targeting a non-existent memory/kb/lessons path is allowed (新建流)."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {
+            "tool_name": "Create",
+            "file_path": "memory/kb/lessons/new-lesson.md",
+            "content": "# 新教训",
+        }
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is False
+        assert result.severity == "info"
+        assert result.detail["decision"] == "allow"
+
+    def test_blocks_create_on_existing_agents_md(self, tmp_path: Path):
+        """Create targeting an existing AGENTS.md is blocked (full overwrite)."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        (tmp_path / "AGENTS.md").write_text("# agents", encoding="utf-8")
+
+        payload = {"tool_name": "Create", "file_path": str(tmp_path / "AGENTS.md"), "content": "overwrite"}
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is True
+        assert result.severity == "error"
+        assert result.detail["decision"] == "block"
+        assert result.detail["domain"] == "CRITICAL"
+
+    def test_allows_create_on_nonexistent_agents_md(self, tmp_path: Path):
+        """Create targeting a non-existent AGENTS.md is allowed (memory-init 新建场景)."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {"tool_name": "Create", "file_path": "AGENTS.md", "content": "# fresh project"}
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is False
+        assert result.detail["decision"] == "allow"
+
+    def test_blocks_create_on_existing_memory_system_file(self, tmp_path: Path):
+        """Create targeting an existing memory/system file is blocked."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        (tmp_path / "memory" / "system" / "manifest.json").write_text("{}", encoding="utf-8")
+
+        payload = {
+            "tool_name": "Create",
+            "file_path": str(tmp_path / "memory" / "system" / "manifest.json"),
+            "content": "overwrite",
+        }
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is True
+        assert result.detail["decision"] == "block"
+        assert result.detail["domain"] == "CRITICAL"
+
+    def test_blocks_create_on_existing_memory_log_file(self, tmp_path: Path):
+        """Create targeting an existing memory/log file is blocked (STANDARD 域)."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        log_dir = tmp_path / "memory" / "log"
+        log_dir.mkdir(parents=True)
+        (log_dir / "2026-09-07.md").write_text("# 日志", encoding="utf-8")
+
+        payload = {"tool_name": "Create", "file_path": "memory/log/2026-09-07.md", "content": "overwrite"}
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is True
+        assert result.detail["decision"] == "block"
+        assert result.detail["domain"] == "STANDARD"
+
+    def test_allows_create_on_existing_non_owned_path(self, tmp_path: Path):
+        """Create targeting an existing non-owned file is allowed (存在但非 owned)."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "notes.md").write_text("notes", encoding="utf-8")
+
+        payload = {"tool_name": "Create", "file_path": str(tmp_path / "docs" / "notes.md"), "content": "rewrite"}
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is False
+        assert result.detail["decision"] == "allow"
+
+    def test_allows_create_on_nonexistent_non_owned_path(self, tmp_path: Path):
+        """Create targeting a non-existent non-owned path is allowed."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+
+        payload = {"tool_name": "Create", "file_path": "src/new_module.py", "content": "print('hi')"}
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is False
+        assert result.detail["decision"] == "allow"
+
+    def test_allows_create_without_file_path(self, tmp_path: Path):
+        """Create without a path key is allowed (info)."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        payload = {"tool_name": "Create", "content": "orphan content"}
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is False
+        assert result.severity == "info"
+        assert result.detail["decision"] == "allow"
+        assert "without file_path" in result.message
+
+    def test_blocks_create_via_tool_input_wrapper(self, tmp_path: Path):
+        """Create inside Factory tool_input wrapper is classified (not unknown)."""
+        (tmp_path / "memory" / "system").mkdir(parents=True)
+        decisions = tmp_path / "memory" / "kb" / "decisions"
+        decisions.mkdir(parents=True)
+        (decisions / "wrapped.md").write_text("# 决策", encoding="utf-8")
+
+        payload = {
+            "tool_input": {
+                "tool_name": "Create",
+                "file_path": "memory/kb/decisions/wrapped.md",
+                "content": "overwrite",
+            }
+        }
+        result = classify_tool_use(payload, tmp_path)
+        assert isinstance(result, RuleResult)
+        assert result.matched is True
+        assert result.detail["decision"] == "block"
+        assert "Unknown tool" not in result.message
+
+
 class TestRuleEvaluatorProtocolCompliance:
     """Tests for RuleEvaluator Protocol compliance across all 5 executors."""
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3.12
 """Tool classification logic extracted from pretooluse_guard.py.
 
-Contains the classify_tool_use function which handles the 6-tool
-if-elif chain for Write, Edit, MultiEdit, NotebookEdit, Execute, Task.
+Contains the classify_tool_use function which handles the 7-tool
+dispatch chain for Create, Write, Edit, MultiEdit, NotebookEdit,
+Execute, Task.
 
 Part of REF-001 strangler fig scaffold phase.
 """
@@ -463,6 +464,48 @@ def _classify_write_edit(payload: dict[str, Any], project_root: Path, ownership:
             severity="error",
             message=f"Protected {result.level.name} path: {result.reason}",
             detail={"decision": "block"},
+        )
+    return RuleResult(matched=False, severity="info", message=result.reason, detail={"decision": "allow"})
+
+
+def _classify_create(payload: dict[str, Any], project_root: Path, ownership: Any) -> RuleResult:
+    """Handle Create tool classification (债7a 最小版守卫).
+
+    Factory Droid hosts expose file creation as the Create tool; it previously
+    fell into _classify_unknown and could fully overwrite existing owned
+    memory/kb files. Minimal semantics: block only when the target is an owned
+    path AND the file already exists on disk (Create-on-existing = overwrite).
+    Everything else — non-owned paths, or owned paths that do not exist yet
+    (legitimate new-file creation) — is allowed.
+
+    Deliberately minimal: no doc-routing / file-type / AGENTS.md diff-aware
+    checks here (those are Write/Edit semantics, deferred to R2').
+    """
+    # Factory transcripts confirm Create payloads use file_path; path kept
+    # as a compat fallback for other hosts. Missing key -> allow.
+    file_path = payload.get("file_path") or payload.get("path")
+    if not file_path:
+        return RuleResult(
+            matched=False, severity="info", message="Create without file_path", detail={"decision": "allow"}
+        )
+
+    # Normalize via the single source of truth, then classify the normalized
+    # path (classify_owned_path re-normalizes internally; idempotent here).
+    normalized = _normalize_to_project_relative(file_path, project_root)
+    result = classify_owned_path(normalized, ownership, project_root)
+    if hasattr(result, "level") and (project_root / normalized).exists():
+        return RuleResult(
+            matched=True,
+            severity="error",
+            message=(
+                "Create-on-existing owned path: overwrite denied "
+                "(kb_policy overwrite_allowed=False; sanctioned amendment channel pending)"
+            ),
+            detail={
+                "decision": "block",
+                "path": normalized,
+                "domain": result.level.name,
+            },
         )
     return RuleResult(matched=False, severity="info", message=result.reason, detail={"decision": "allow"})
 
@@ -1210,6 +1253,7 @@ def classify_tool_use(payload: dict[str, Any], project_root: Path) -> RuleResult
     ownership = load_memory_ownership(project_root)
 
     _DISPATCH: dict[str, Any] = {
+        "Create": _classify_create,
         "Write": _classify_write_edit,
         "Edit": _classify_write_edit,
         "MultiEdit": _classify_multiedit,

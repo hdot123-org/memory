@@ -2,7 +2,7 @@
 
 memory-core 提供可复用的 `memory/` 协议、模板、Schema 和 CLI 工具，用于项目级记忆管理。它是一个开源库，负责初始化、校验、迁移和审计记忆布局；本仓库不存储任何业务项目状态。
 
-## 架构 (v0.45.6) <!-- x-release-please-version -->
+## 架构 (v0.45.7) <!-- x-release-please-version -->
 
 memory-core 采用**三层架构**：
 
@@ -31,7 +31,7 @@ memory-core 采用**三层架构**：
 
 项目级配置位于 `memory/system/`（而非 `.memory/`）。隐藏目录 `.memory/` 在 v0.5.0 中已移除。
 
-## 遥测架构 (v0.45.6) <!-- x-release-please-version -->
+## 遥测架构 (v0.45.7) <!-- x-release-please-version -->
 
 memory-core 采用**本地优先遥测**设计，最大限度降低 hook 开销，同时确保数据可靠送达：
 
@@ -101,20 +101,20 @@ memory-core 内置 **PreToolUse 守卫**，位于 Factory 与文件系统之间�
 从 GitHub 安装（非可编辑模式，生产用途）：
 
 ```bash
-pip install git+https://github.com/hdot123-org/memory.git@v0.45.6 <!-- x-release-please-version -->
+pip install git+https://github.com/hdot123-org/memory.git@v0.45.7 <!-- x-release-please-version -->
 ```
 
 升级到新版本：
 
 ```bash
-pip install --upgrade git+https://github.com/hdot123-org/memory.git@v0.45.6 <!-- x-release-please-version -->
+pip install --upgrade git+https://github.com/hdot123-org/memory.git@v0.45.7 <!-- x-release-please-version -->
 ```
 
 从 release wheel 安装：
 
 ```bash
-gh release download v0.45.6 --repo hdot123-org/memory --pattern "*.whl" <!-- x-release-please-version -->
-pip install memory_core-0.45.6 <!-- x-release-please-version -->
+gh release download v0.45.7 --repo hdot123-org/memory --pattern "*.whl" <!-- x-release-please-version -->
+pip install memory_core-0.45.7 <!-- x-release-please-version -->
 ```
 
 仅用于本地开发：
@@ -349,7 +349,7 @@ SessionEnd hook 运行在 Factory 会话关闭的最后时刻，必须在严格�
 
 ## CI 维护工作流（thin caller）
 
-本仓的维护类 workflow（`evolution-scan` / `evolution-heartbeat` / `evolution-governance` / `droid-review` / `auto-merge` / `branch-cleanup`）均为 thin caller：执行体由 `hdot123-org/infra-core` 的 reusable workflows 与 composite actions（含 `actions/auto-merge`）承载，经 tag pin 引用（当前 pin v0.13.0，与 `pyproject.toml` 中的 infra-core 依赖同版本）。新仓库接入引擎（thin-caller 模板 + 接入步骤）见 infra-core 的[消费仓接入指南](https://github.com/hdot123-org/infra-core/blob/main/docs/onboarding/consumer-onboarding.md)。
+本仓的维护类 workflow（`evolution-scan` / `evolution-heartbeat` / `evolution-governance` / `droid-review` / `auto-merge` / `branch-cleanup`）均为 thin caller：执行体由 `hdot123-org/infra-core` 的 reusable workflows 与 composite actions（含 `actions/auto-merge`）承载，经 tag pin 引用（当前 pin v0.15.0，与 `pyproject.toml` 中的 infra-core 依赖同版本）。新仓库接入引擎（thin-caller 模板 + 接入步骤）见 infra-core 的[消费仓接入指南](https://github.com/hdot123-org/infra-core/blob/main/docs/onboarding/consumer-onboarding.md)。
 
 ## Evolution Scanner 与 Issue 自动维护
 
@@ -375,7 +375,7 @@ scanner 每次运行时会调用 `_reopen_closed_issue()`（`infra_core.engine.e
 
 ### 分支清理
 
-分支清理执行体已迁至 infra-core：本仓 `.github/workflows/branch-cleanup.yml` 为 thin caller（`uses: hdot123-org/infra-core/actions/branch-cleanup`，tag pin 当前 v0.13.0），仓库内不再持有 `scripts/branch_cleanup*.sh` 副本。`--scheduled`（每小时扫描孤立分支）与 `--immediate <branch>`（PR 合并后定点清理）两种模式由 composite action 提供。
+分支清理执行体已迁至 infra-core：本仓 `.github/workflows/branch-cleanup.yml` 为 thin caller（`uses: hdot123-org/infra-core/actions/branch-cleanup`，tag pin 当前 v0.15.0），仓库内不再持有 `scripts/branch_cleanup*.sh` 副本。`--scheduled`（每小时扫描孤立分支）与 `--immediate <branch>`（PR 合并后定点清理）两种模式由 composite action 提供。
 
 退役清单人工裁决通道（`branch_cleanup_retired.txt`，INFRA-388）与 tracker 播报（每周脉搏 + 7 天 TTL）机制随 action 迁至 infra-core 仓库（`actions/branch-cleanup/`），protected 分支的豁免裁决在 infra-core 侧的清单中维护。
 
@@ -435,6 +435,6 @@ CI pytest 在自建 runner 上以串行模式（`-n 0`）运行以保证覆盖�
 
 ## 版本与许可
 
-- 当前文档版本：v0.45.6 <!-- x-release-please-version -->
+- 当前文档版本：v0.45.7 <!-- x-release-please-version -->
 - Python: >= 3.9
 - 许可证：MIT，详见 [LICENSE](LICENSE)。
