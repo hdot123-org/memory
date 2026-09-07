@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.46.0](https://github.com/hdot123-org/memory/compare/v0.45.7...v0.46.0) (2026-09-07)
+
+
+### Features
+
+* **evolution:** 确认记忆模型与 MCP HTTP 密钥链 ([#1123](https://github.com/hdot123-org/memory/issues/1123)) ([fee4014](https://github.com/hdot123-org/memory/commit/fee40144ce0491440e7ecf91c23a79c606c71404))
+* **guard:** memory-amend 追加通道 + 三处 parser 误拦修复 + 守卫契约文档 ([#1124](https://github.com/hdot123-org/memory/issues/1124)) ([0cf6b8d](https://github.com/hdot123-org/memory/commit/0cf6b8dff8a361761211eba2dfef6fae708a2c29))
+
+
+### Bug Fixes
+
+* **guard:** Create 工具命中既有 owned 路径时拦截覆盖（债7a 最小版） ([#1122](https://github.com/hdot123-org/memory/issues/1122)) ([1884234](https://github.com/hdot123-org/memory/commit/1884234d3f3f553e3393449a7b0fd52133944989))
+
 ## [0.45.7](https://github.com/hdot123-org/memory/compare/v0.45.6...v0.45.7) (2026-09-06)
 
 
