@@ -12,7 +12,7 @@ memory-core 采用**三层架构**：
   operations/                ← 运维知识（服务器、部署、SSH 等）
   engineering/               ← 工程知识（CI/CD、工具链、决策）
   collaboration/             ← 协作知识（Agent 工作流、文档）
-  pending/                   ← 自动捕获的待晋升候选
+  pending/                   ← 待晋升候选（memory-promote 确认）
 /Users/project/
   memory/                    ← Layer 3: 单项目入口
     system/                  ← 配置与状态文件
@@ -291,7 +291,7 @@ hex、数字全部抽象化）对重复错误进行指纹识别，将机器可�
 │   └── README.md
 ├── collaboration/
 │   └── README.md
-└── pending/                          ← 自动捕获的候选（通过 memory-promote 晋升）
+└── pending/                          ← 待晋升候选（通过 memory-promote 确认晋升）
     └── README.md
 
 <project>/

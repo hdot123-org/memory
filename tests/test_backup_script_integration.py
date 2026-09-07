@@ -44,9 +44,11 @@ class TestBackupScriptStructure:
             matches = re.findall(pattern, content, re.IGNORECASE)
             assert len(matches) == 0, f"发现疑似密钥字面量: {matches}"
 
-        # 确保凭证是从 op read 动态获取的
-        assert "op read" in content, "脚本应使用 op read 读取凭证"
-        assert 'op read "op://$VAULT/$ITEM/' in content, "凭证应从 1Password 读取"
+        # 确保凭证是从 op read 动态获取的（可能是直接调用或通过 _op_read_timeout 包装）
+        assert "op read" in content or "_op_read_timeout" in content, "脚本应使用 op read 读取凭证"
+        assert "op://$VAULT/$ITEM/" in content or '_op_read_timeout "op://$VAULT/$ITEM/' in content, (
+            "凭证应从 1Password 读取"
+        )
 
     def test_has_lock_mechanism(self):
         """脚本有单实例锁机制（VAL-BKP-005）"""

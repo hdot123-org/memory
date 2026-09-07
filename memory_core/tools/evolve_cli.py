@@ -317,14 +317,25 @@ def _run_projects(
 
         # 转换为 dict
         for cand in candidates:
+            # 报告 polish：source_refs.project 统一为 basename（与落盘一致）
+            normalized_source_refs = []
+            for ref in cand.source_refs:
+                if isinstance(ref, dict) and "project" in ref:
+                    ref_copy = ref.copy()
+                    ref_copy["project"] = Path(str(ref_copy["project"])).name
+                    normalized_source_refs.append(ref_copy)
+                else:
+                    normalized_source_refs.append(ref)
+
             cand_dict = {
                 "title": cand.title,
                 "domain": cand.domain,
                 "content": cand.content,
                 "confidence": cand.confidence,
-                "source_refs": cand.source_refs,
+                "source_refs": normalized_source_refs,
                 "genericity": cand.genericity,
                 "unrefined": cand.unrefined,
+                "source": "memory-evolve",  # 报告 polish：回填 source 字段
             }
             all_candidates.append(cand_dict)
             proj_report["candidates"].append(
@@ -334,7 +345,8 @@ def _run_projects(
                     "confidence": cand.confidence,
                     "genericity": cand.genericity,
                     "unrefined": cand.unrefined,
-                    "source_refs": cand.source_refs,
+                    "source_refs": normalized_source_refs,
+                    "source": "memory-evolve",  # 报告 polish：回填 source 字段
                 }
             )
 
