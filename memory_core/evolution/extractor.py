@@ -119,8 +119,7 @@ def resolve_api_key(config: dict[str, Any]) -> str:
 
     # 4. 报错
     raise RuntimeError(
-        f"无法解析 API 密钥：环境变量 {api_key_env} 未设置"
-        + ("，且 MCP/op read 解析失败" if api_key_op_ref else "")
+        f"无法解析 API 密钥：环境变量 {api_key_env} 未设置" + ("，且 MCP/op read 解析失败" if api_key_op_ref else "")
     )
 
 

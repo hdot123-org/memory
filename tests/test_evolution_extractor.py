@@ -146,7 +146,7 @@ def test_parse_llm_response_think_tag_stripping():
     from memory_core.evolution.extractor import _parse_llm_response
 
     # Simulate glm-5.3 response with think block followed by JSON
-    content_with_think = "<think>\nThis is the model's reasoning process.\nIt can contain multiple lines and various text.\n</think>\n\n[\n  {\n    \"title\": \"测试经验\",\n    \"domain\": \"engineering\",\n    \"content\": \"这是一个测试经验条目\",\n    \"confidence\": 0.85,\n    \"source_refs\": [{\"project\": \"test-project\", \"path\": \"memory/kb/lessons/test.md\"}]\n  }\n]"
+    content_with_think = '<think>\nThis is the model\'s reasoning process.\nIt can contain multiple lines and various text.\n</think>\n\n[\n  {\n    "title": "测试经验",\n    "domain": "engineering",\n    "content": "这是一个测试经验条目",\n    "confidence": 0.85,\n    "source_refs": [{"project": "test-project", "path": "memory/kb/lessons/test.md"}]\n  }\n]'
 
     candidates = _parse_llm_response(content_with_think)
 

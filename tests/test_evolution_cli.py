@@ -285,6 +285,6 @@ def test_gk_ensure_dirty_root_with_adopt_flag_commits_and_continues():
 
         # The dirty file content should still exist (preserved, not lost)
         assert (tmpdir_path / "dirty-file.md").exists(), "dirty-file.md should be preserved after adopt"
-        assert (
-            (tmpdir_path / "dirty-file.md").read_text() == "# Dirty content from other session\n"
-        ), "File content should be preserved verbatim"
+        assert (tmpdir_path / "dirty-file.md").read_text() == "# Dirty content from other session\n", (
+            "File content should be preserved verbatim"
+        )

@@ -377,6 +377,7 @@ def _resolve_project_list(
 def _diagnose_gk_ensure_failure(global_kb_root: Path, message: str) -> None:
     """诊断 gk-ensure 失败原因，输出 git status 到 stderr"""
     import subprocess
+
     try:
         status_result = subprocess.run(
             ["git", "status", "--short"],
