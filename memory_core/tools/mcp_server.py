@@ -428,6 +428,8 @@ def _read_global(relative_path: str) -> dict[str, Any]:
         Dict with content, path, and relative_path on success.
         Structured error on failure (missing file, path traversal, pending/ access attempt).
     """
+    import posixpath
+
     from memory_core.tools.global_kb_init import get_global_kb_root
 
     # Path validation: reject empty, absolute paths, and parent directory traversal
@@ -437,8 +439,14 @@ def _read_global(relative_path: str) -> dict[str, Any]:
             "message": "Invalid path: must be non-empty, relative, and not contain '..' or start with '/'",
         }
 
-    # Reject pending/ access (2026-09-07 用户裁定：读取面只服务已确认内容)
-    if relative_path.startswith("pending/") or relative_path.startswith("pending\\"):
+    # Normalize path first (collapses './', '../', trailing slashes, etc.)
+    normalized = posixpath.normpath(relative_path)
+
+    # Reject paths that resolve into pending/ after normalization
+    # Check first segment of normalized path (handles './pending/x' → 'pending/x')
+    # Case-insensitive check to handle case-variant bypass attempts (e.g. 'Pending/x.md')
+    normalized_lower = normalized.lower()
+    if normalized_lower == "pending" or normalized_lower.startswith("pending/"):
         return {"status": "error", "message": "Access denied: pending/ directory is not readable via MCP"}
 
     global_kb_root = get_global_kb_root()
@@ -448,8 +456,14 @@ def _read_global(relative_path: str) -> dict[str, Any]:
     try:
         full_path_resolved = full_path.resolve()
         root_resolved = global_kb_root.resolve()
-        if not str(full_path_resolved).startswith(str(root_resolved)):
+        # Use Path.is_relative_to for proper boundary check (no string prefix false positives)
+        if not full_path_resolved.is_relative_to(root_resolved):
             return {"status": "error", "message": "Path traversal detected: resolved path outside global KB root"}
+        # After full resolution, check if path lands in pending/ subtree
+        # This catches case-variant paths (e.g. 'Pending/x.md' on APFS) that resolve into real pending/
+        pending_resolved = root_resolved / "pending"
+        if full_path_resolved.is_relative_to(pending_resolved):
+            return {"status": "error", "message": "Access denied: pending/ directory is not readable via MCP"}
     except (OSError, ValueError) as e:
         return {"status": "error", "message": f"Path resolution failed: {str(e)}"}
 
@@ -699,10 +713,10 @@ def _propose_write(title: str, content: str, domain: str, source_refs: list[dict
 # ---------------------------------------------------------------------------
 @app.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]
 async def list_tools() -> list[Tool]:
-    """Declare the nine tools exposed by this server.
+    """Declare the 11 tools exposed by this server.
 
     When :data:`_ALLOWED_TOOLS` is set (via the ``--tools`` CLI flag), only the
-    named tools are returned. When it is ``None`` all nine tools are exposed.
+    named tools are returned. When it is ``None`` all 11 tools are exposed.
     """
     all_tools = [
         Tool(
@@ -973,7 +987,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "domain": {
                         "type": "string",
-                        "description": "Domain classification (operations/engineering/collaboration/governance/infrastructure/learning)",
+                        "description": "Domain classification: operations/engineering/collaboration/governance/infra/audit",
                     },
                     "source_refs": {
                         "type": "array",

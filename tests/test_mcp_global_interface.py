@@ -111,6 +111,72 @@ class TestReadGlobal:
         assert result["status"] == "error"
         assert "invalid" in result["message"].lower() or "required" in result["message"].lower()
 
+    def test_read_pending_dot_slash_variant_rejected(self):
+        """Test that './pending/foo.md' is rejected (normpath bypass prevention)"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            global_root = Path(tmpdir)
+            pending_file = global_root / "pending" / "foo.md"
+            pending_file.parent.mkdir(parents=True, exist_ok=True)
+            pending_file.write_text("# Pending content", encoding="utf-8")
+
+            old_env = os.environ.get("MEMORY_CORE_GLOBAL_KB_ROOT")
+            try:
+                os.environ["MEMORY_CORE_GLOBAL_KB_ROOT"] = str(global_root)
+                # Try to read via ./pending/ variant
+                result = _read_global("./pending/foo.md")
+                assert result["status"] == "error"
+                assert "pending" in result["message"].lower()
+                assert "denied" in result["message"].lower()
+            finally:
+                if old_env is None:
+                    os.environ.pop("MEMORY_CORE_GLOBAL_KB_ROOT", None)
+                else:
+                    os.environ["MEMORY_CORE_GLOBAL_KB_ROOT"] = old_env
+
+    def test_read_pending_case_variant_rejected(self):
+        """Test that 'Pending/foo.md' is rejected (case-variant bypass prevention)"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            global_root = Path(tmpdir)
+            pending_file = global_root / "pending" / "foo.md"
+            pending_file.parent.mkdir(parents=True, exist_ok=True)
+            pending_file.write_text("# Pending content", encoding="utf-8")
+
+            old_env = os.environ.get("MEMORY_CORE_GLOBAL_KB_ROOT")
+            try:
+                os.environ["MEMORY_CORE_GLOBAL_KB_ROOT"] = str(global_root)
+                # Try to read via Pending/ (capitalized) variant
+                result = _read_global("Pending/foo.md")
+                # Should be rejected (on case-insensitive FS like APFS, this resolves to pending/)
+                assert result["status"] == "error"
+                assert "pending" in result["message"].lower()
+            finally:
+                if old_env is None:
+                    os.environ.pop("MEMORY_CORE_GLOBAL_KB_ROOT", None)
+                else:
+                    os.environ["MEMORY_CORE_GLOBAL_KB_ROOT"] = old_env
+
+    def test_read_formal_domain_unaffected(self):
+        """Test that normal formal domain reads are not affected by pending checks"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            global_root = Path(tmpdir)
+            # Create a formal domain file
+            formal_file = global_root / "engineering" / "test.md"
+            formal_file.parent.mkdir(parents=True, exist_ok=True)
+            formal_content = "# Formal Content\n\nThis is formal domain content."
+            formal_file.write_text(formal_content, encoding="utf-8")
+
+            old_env = os.environ.get("MEMORY_CORE_GLOBAL_KB_ROOT")
+            try:
+                os.environ["MEMORY_CORE_GLOBAL_KB_ROOT"] = str(global_root)
+                result = _read_global("engineering/test.md")
+                assert result["status"] == "success"
+                assert result["content"] == formal_content
+            finally:
+                if old_env is None:
+                    os.environ.pop("MEMORY_CORE_GLOBAL_KB_ROOT", None)
+                else:
+                    os.environ["MEMORY_CORE_GLOBAL_KB_ROOT"] = old_env
+
 
 class TestProposeWrite:
     """Test propose_write MCP tool"""
@@ -360,49 +426,117 @@ class TestReportPolish:
 
     def test_candidates_report_has_source_field(self):
         """报告中每个 candidate 条目的 source 字段非 null（与落盘 frontmatter 一致）"""
-        from memory_core.evolution.sediment import _generate_frontmatter
+        from memory_core.evolution.analyzer import IncrementalAnalyzer
+        from memory_core.evolution.extractor import NoLlmExtractor
+        from memory_core.tools.evolve_cli import _run_projects
 
-        # 验证落盘 frontmatter 包含 source: memory-evolve
-        fm = _generate_frontmatter(
-            title="Test",
-            domain="engineering",
-            confidence=0.5,
-            source_refs=[],
-            unrefined=False,
-        )
-        assert "source: memory-evolve" in fm
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            # Create a test project with a lesson file
+            proj_root = tmpdir / "test-proj"
+            proj_root.mkdir()
+            kb_dir = proj_root / "memory" / "kb" / "lessons"
+            kb_dir.mkdir(parents=True)
+            lesson_file = kb_dir / "test-lesson.md"
+            lesson_file.write_text("# Test Lesson\n\nThis is a test lesson content.", encoding="utf-8")
+
+            # Set up evolution root
+            evo_root = tmpdir / "evolution"
+            evo_root.mkdir()
+
+            # Create analyzer and extractor
+            state_file = evo_root / "state.json"
+            config = {"analyze": {"include_docs": True, "include_daily_logs": True, "max_files_per_project": 50}}
+            analyzer = IncrementalAnalyzer(state_file, config)
+            no_llm_extractor = NoLlmExtractor()
+
+            # Prepare run report and candidates list
+            run_report = {"projects": [], "errors": []}
+            all_candidates = []
+
+            # Call _run_projects (production code path)
+            had_fatal, _ = _run_projects(
+                projects_to_process=[proj_root],
+                analyzer=analyzer,
+                no_llm=True,
+                no_llm_extractor=no_llm_extractor,
+                llm_extractor=None,
+                is_single_project=True,
+                evolution_root=evo_root,
+                run_report=run_report,
+                all_candidates=all_candidates,
+            )
+
+            # Verify the report was generated
+            assert len(run_report["projects"]) > 0
+            proj_report = run_report["projects"][0]
+
+            # Verify candidates have source field
+            assert len(proj_report["candidates"]) > 0
+            for cand in proj_report["candidates"]:
+                assert "source" in cand
+                assert cand["source"] == "memory-evolve"
+
+            # Also verify all_candidates list
+            assert len(all_candidates) > 0
+            for cand in all_candidates:
+                assert "source" in cand
+                assert cand["source"] == "memory-evolve"
 
     def test_source_refs_project_basename_normalization(self):
         """source_refs.project 统一为 basename（与 refined 一致）"""
-        # 模拟 evolve_cli._run_projects 中的归一化逻辑
-        source_refs_with_abs_path = [
-            {"project": "/Users/test/projects/my-app", "path": "src/main.py"},
-        ]
-        normalized = []
-        for ref in source_refs_with_abs_path:
-            if isinstance(ref, dict) and "project" in ref:
-                ref_copy = ref.copy()
-                ref_copy["project"] = Path(str(ref_copy["project"])).name
-                normalized.append(ref_copy)
-            else:
-                normalized.append(ref)
+        from memory_core.evolution.analyzer import IncrementalAnalyzer
+        from memory_core.evolution.extractor import NoLlmExtractor
+        from memory_core.tools.evolve_cli import _run_projects
 
-        assert normalized[0]["project"] == "my-app"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
 
-        # 已经是 basename 的不变
-        source_refs_already_basename = [
-            {"project": "my-app", "path": "src/main.py"},
-        ]
-        normalized2 = []
-        for ref in source_refs_already_basename:
-            if isinstance(ref, dict) and "project" in ref:
-                ref_copy = ref.copy()
-                ref_copy["project"] = Path(str(ref_copy["project"])).name
-                normalized2.append(ref_copy)
-            else:
-                normalized2.append(ref)
+            # Create a test project with a lesson file
+            proj_root = tmpdir / "test-proj"
+            proj_root.mkdir()
+            kb_dir = proj_root / "memory" / "kb" / "lessons"
+            kb_dir.mkdir(parents=True)
+            lesson_file = kb_dir / "test-lesson.md"
+            lesson_file.write_text("# Test Lesson\n\nThis is a test lesson content.", encoding="utf-8")
 
-        assert normalized2[0]["project"] == "my-app"
+            # Set up evolution root
+            evo_root = tmpdir / "evolution"
+            evo_root.mkdir()
+
+            # Create analyzer and extractor
+            state_file = evo_root / "state.json"
+            config = {"analyze": {"include_docs": True, "include_daily_logs": True, "max_files_per_project": 50}}
+            analyzer = IncrementalAnalyzer(state_file, config)
+            no_llm_extractor = NoLlmExtractor()
+
+            # Prepare run report and candidates list
+            run_report = {"projects": [], "errors": []}
+            all_candidates = []
+
+            # Call _run_projects (production code path)
+            _run_projects(
+                projects_to_process=[proj_root],
+                analyzer=analyzer,
+                no_llm=True,
+                no_llm_extractor=no_llm_extractor,
+                llm_extractor=None,
+                is_single_project=True,
+                evolution_root=evo_root,
+                run_report=run_report,
+                all_candidates=all_candidates,
+            )
+
+            # Verify source_refs.project is basename (not absolute path)
+            assert len(all_candidates) > 0
+            for cand in all_candidates:
+                assert "source_refs" in cand
+                for ref in cand["source_refs"]:
+                    assert "project" in ref
+                    # Should be basename, not absolute path
+                    assert ref["project"] == "test-proj"
+                    assert not Path(ref["project"]).is_absolute()
 
     def test_propose_write_formal_domain_dedup(self):
         """propose_write 与正式域既有条目指纹冲突 → 明确信号、不新建、不覆盖"""
