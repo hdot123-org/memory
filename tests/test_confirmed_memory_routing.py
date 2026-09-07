@@ -502,18 +502,11 @@ def test_real_mcp_resolve_api_key():
     original_key = os.environ.pop("AXONHUB_API_KEY", None)
 
     try:
-        # 从 mcp.json 动态读取 MCP URL
-        endpoint = _get_mcp_endpoint()
-        mcp_url = ""
-        if endpoint is not None:
-            host, port = endpoint
-            mcp_url = f"http://{host}:{port}/mcp/1password"
-
         config = {
             "llm": {
                 "api_key_env": "AXONHUB_API_KEY",
                 "api_key_op_ref": "op://ozqqpvh5yvvxvyu64npq62a3ti/arh3eyylx2snevicwvb3px7iui/api_key",
-                "api_key_mcp_url": mcp_url,  # 运行时从 mcp.json 读取
+                "api_key_mcp_url": "",  # 空串：extractor 运行时读 mcp.json（与生产语义一致）
             },
         }
 
