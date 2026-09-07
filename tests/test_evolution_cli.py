@@ -288,3 +288,82 @@ def test_gk_ensure_dirty_root_with_adopt_flag_commits_and_continues():
         assert (tmpdir_path / "dirty-file.md").read_text() == "# Dirty content from other session\n", (
             "File content should be preserved verbatim"
         )
+
+
+# ===== 回归守卫：mcp-secret 子命令存在性（1ff55d9 merge 丢块热修） =====
+
+EXPECTED_SUBCOMMANDS = {"run", "status", "backup-paths", "gk-ensure", "mcp-secret"}
+
+
+def test_subcommand_set_complete():
+    """回归守卫：--help 输出必须包含全部五个子命令（任何 merge 丢块必红）"""
+    result = subprocess.run(
+        [sys.executable, "-m", "memory_core.tools.evolve_cli", "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"--help failed: {result.stderr}"
+    help_text = result.stdout
+
+    for cmd in EXPECTED_SUBCOMMANDS:
+        assert cmd in help_text, f"子命令 '{cmd}' 缺失（merge 丢块回归）"
+
+
+def test_mcp_secret_subcommand_smoke_module_entry():
+    """D1 双入口 smoke：python3 -m 入口的 mcp-secret --help 可达"""
+    result = subprocess.run(
+        [sys.executable, "-m", "memory_core.tools.evolve_cli", "mcp-secret", "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, f"mcp-secret --help failed: {result.stderr}"
+    assert "op_ref" in result.stdout or "op://" in result.stdout
+    assert "--length-only" in result.stdout
+
+
+def test_mcp_secret_subcommand_smoke_console_entry():
+    """D1 双入口 smoke：memory-evolve console script 的 mcp-secret --help 可达
+
+    注意：console script 是安装时生成的，worktree 测试时可能指向旧代码。
+    若 console script 不含 mcp-secret（worktree 未重装），skip 并在 CI 验证。
+    """
+    result = subprocess.run(
+        ["memory-evolve", "mcp-secret", "--help"],
+        capture_output=True,
+        text=True,
+    )
+    # console script 可能指向旧代码（worktree 未重装包）
+    if result.returncode == 2 and "invalid choice" in result.stderr:
+        pytest.skip("console script 指向旧代码（worktree 未重装），CI 合并后验证")
+    assert result.returncode == 0, f"console script mcp-secret --help failed: {result.stderr}"
+    assert "op_ref" in result.stdout or "op://" in result.stdout
+    assert "--length-only" in result.stdout
+
+
+def test_mcp_secret_no_op_ref_exits_2():
+    """mcp-secret 无 op_ref 参数 → exit 2（argparse nargs='?' 但 handler 校验）"""
+    result = subprocess.run(
+        [sys.executable, "-m", "memory_core.tools.evolve_cli", "mcp-secret"],
+        capture_output=True,
+        text=True,
+    )
+    # handler 检查 op_ref 为空时 exit 2
+    assert result.returncode == 2, f"Expected exit 2, got {result.returncode}. stderr={result.stderr}"
+
+
+def test_mcp_secret_invalid_mcp_config_exits_1():
+    """mcp-secret 指向不存在的 mcp.json → exit 1"""
+    import os
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # 指向不存在的 HOME 使 mcp.json 读不到
+        env = os.environ.copy()
+        env["HOME"] = tmpdir
+        result = subprocess.run(
+            [sys.executable, "-m", "memory_core.tools.evolve_cli", "mcp-secret", "op://vault/item/field"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert result.returncode == 1, f"Expected exit 1, got {result.returncode}. stderr={result.stderr}"
+        assert "1password-connect" in result.stderr or "mcp.json" in result.stderr
