@@ -204,13 +204,28 @@ memory-migrate --target /path/to/project --from 0.7.0 --to 0.8.0 [--dry-run] [--
 
 ### `memory-promote`
 
-将全局 KB `pending/` 目录中自动捕获的知识候选提升为正式领域（`operations/`、`engineering/` 或 `collaboration/`）。这是沉淀流的人工确认步骤：`session-end` 自动捕获候选到 `~/.memory/global-kb/pending/`，`memory-promote` 将审核后的文件移入目标领域并更新 `INDEX.md`。
+将全局 KB `pending/` 目录中的候选晋升为正式领域。候选来源是 `memory-evolve` 每日管道（见下文）：LLM 蒸馏后生成结构化提案，**一律落入 `pending/` 待确认区**；正式域（operations/engineering/collaboration 等六域目录 + INDEX.md）只收录经用户显式确认晋升的条目。
 
 ```bash
 memory-promote                                          # 列出待处理候选
 memory-promote <file> --to operations|engineering|collaboration
 memory-promote --version
 ```
+
+### `memory-evolve`
+
+每日经验蒸馏管道，由 `com.memory.daily-evolve` LaunchAgent 在 00:10 自动触发（`launchctl kickstart -k gui/$(id -u)/com.memory.daily-evolve`）。管道流程：LLM 分析各项目当日新增/变更的 lessons/decisions/docs/logs → 生成结构化候选提案 → **全部写入 `pending/` 待确认区**（正式域永不直写，需用户经 `memory-promote` 显式晋升）；检索面（search_memory 等）只服务已确认的正式域内容。
+
+密钥解析链：`AXONHUB_API_KEY` env → 1password MCP（HTTP，运行时读 `~/.factory/mcp.json`）→ `op read` 交互兜底。
+
+```bash
+memory-evolve run --all              # 分析全部注册项目，沉淀候选到 pending/
+memory-evolve status                 # 列出注册项目 + 健康分类 + pending 数量
+memory-evolve backup-paths           # 输出全部消费项目 memory/ 路径清单（restic 用）
+memory-evolve gk-ensure              # 全局库 git 归位（把 HEAD 从未合并分支归位 main）
+```
+
+`--global-kb-root /tmp/...` 约定：agent 会话测试时指向临时目录，避免写真实全局库；生产运行不传（默认 `~/.memory/global-kb`）。
 
 ### 全局批量操作
 
