@@ -569,6 +569,61 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mcp_secret(args: argparse.Namespace) -> int:
+    """mcp-secret 子命令：通过 MCP 解析 op:// 引用
+
+    从 c8279a3 恢复（1ff55d9 merge 静默丢块热修）。
+    stdout 输出密钥值供 bash 脚本消费；--length-only 掩码模式只输出长度。
+    """
+    from memory_core.evolution.mcp_secrets import McpSecretResolver, read_mcp_config
+
+    op_ref = getattr(args, "op_ref", None)
+    if not op_ref:
+        print("Error: 必须提供 op:// 引用", file=sys.stderr)
+        return 2
+
+    length_only = getattr(args, "length_only", False)
+    mcp_url_override = getattr(args, "mcp_url", None)
+
+    # 读取 mcp.json 获取 URL 和 apikey
+    if mcp_url_override:
+        _, apikey = read_mcp_config()
+        mcp_url = mcp_url_override
+    else:
+        mcp_url, apikey = read_mcp_config()
+
+    if not mcp_url:
+        print("Error: mcp.json 中未找到 1password-connect 条目", file=sys.stderr)
+        return 1
+
+    if not apikey:
+        print("Error: mcp.json 中 1password-connect 条目缺少 apikey", file=sys.stderr)
+        return 1
+
+    # 解析密钥
+    try:
+        resolver = McpSecretResolver(mcp_url, apikey)
+        secret = resolver.resolve_secret(op_ref)
+
+        if secret is None:
+            print(f"Error: 解析失败: {op_ref}", file=sys.stderr)
+            return 1
+
+        # 输出结果
+        if length_only:
+            # 掩码模式：只输出长度（密钥值绝不落产物）
+            print(len(secret))
+        else:
+            # 明文模式：输出值（供 bash 脚本消费）
+            print(secret)
+
+        return 0
+
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI 主入口"""
     parser = argparse.ArgumentParser(
@@ -623,6 +678,27 @@ def main(argv: list[str] | None = None) -> int:
         help="维护模式：脏工作区时 git add -A 并提交后继续（默认脏→exit 1 不动现场）",
     )
 
+    # mcp-secret 子命令（M3 备份凭证 MCP 化；c8279a3 加 / 1ff55d9 merge 静默丢块 / 本热修恢复）
+    mcp_parser = subparsers.add_parser(
+        "mcp-secret",
+        help="通过 MCP 解析 op:// 引用（stdout 输出值，供 bash 脚本消费）",
+    )
+    mcp_parser.add_argument(
+        "op_ref",
+        nargs="?",
+        help="op:// 引用（如 op://vault_id/item_id/field_label）",
+    )
+    mcp_parser.add_argument(
+        "--length-only",
+        action="store_true",
+        help="掩码模式：只输出值的长度（供验证/留证，不暴露密钥）",
+    )
+    mcp_parser.add_argument(
+        "--mcp-url",
+        default=None,
+        help="覆盖 MCP 端点 URL（默认读 ~/.factory/mcp.json）",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -639,6 +715,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_run(args)
     elif args.command == "gk-ensure":
         return cmd_gk_ensure(args)
+    elif args.command == "mcp-secret":
+        return cmd_mcp_secret(args)
     else:
         parser.print_help(sys.stderr)
         return 2
