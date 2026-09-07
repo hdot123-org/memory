@@ -437,12 +437,42 @@ def test_config_default_includes_mcp_url():
 # ---------------------------------------------------------------------------
 
 
+def _get_mcp_endpoint() -> tuple[str, int] | None:
+    """从 ~/.factory/mcp.json 读取 1password-connect 的 MCP URL（零硬编码 IP）。
+
+    返回 (host, port) 或 None（配置不可读/未配置）。
+    """
+    import json as _json
+    from urllib.parse import urlparse
+
+    mcp_path = Path.home() / ".factory" / "mcp.json"
+    try:
+        data = _json.loads(mcp_path.read_text(encoding="utf-8"))
+        servers = data.get("mcpServers", data)
+        entry = servers.get("1password-connect", {})
+        url = entry.get("url", "")
+        if not url:
+            return None
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        if not host:
+            return None
+        return (host, port)
+    except (OSError, ValueError, KeyError):
+        return None
+
+
 def _check_network_reachable() -> bool:
-    """检查 192.168.88.11 是否可达（用于 skipif 守卫）"""
+    """运行时从 mcp.json 读 MCP 端点并检查是否可达（用于 skipif 守卫）"""
     import socket
 
+    endpoint = _get_mcp_endpoint()
+    if endpoint is None:
+        return False
+    host, port = endpoint
     try:
-        sock = socket.create_connection(("192.168.88.11", 9080), timeout=2)
+        sock = socket.create_connection((host, port), timeout=2)
         sock.close()
         return True
     except (TimeoutError, OSError):
@@ -451,7 +481,7 @@ def _check_network_reachable() -> bool:
 
 @pytest.mark.skipif(
     not _check_network_reachable(),
-    reason="1password MCP 端点 192.168.88.11:9080 不可达",
+    reason="1password MCP 端点（运行时读 ~/.factory/mcp.json）不可达",
 )
 def test_real_mcp_resolve_api_key():
     """
@@ -463,6 +493,8 @@ def test_real_mcp_resolve_api_key():
     真实工具契约（orchestrator 提供）：
     - read_secret 参数：vault_id + item_id + field_label（三段字符串）
     - 当前值：vault=ozqqpvh5yvvxvyu64npq62a3ti, item=arh3eyylx2snevicwvb3px7iui, field=api_key
+
+    注：MCP URL 由 _get_mcp_endpoint() 从 mcp.json 动态读取（BOUNDARY 4.3 零硬编码 IP 约定）。
     """
     from memory_core.evolution.extractor import resolve_api_key
 
@@ -470,11 +502,18 @@ def test_real_mcp_resolve_api_key():
     original_key = os.environ.pop("AXONHUB_API_KEY", None)
 
     try:
+        # 从 mcp.json 动态读取 MCP URL
+        endpoint = _get_mcp_endpoint()
+        mcp_url = ""
+        if endpoint is not None:
+            host, port = endpoint
+            mcp_url = f"http://{host}:{port}/mcp/1password"
+
         config = {
             "llm": {
                 "api_key_env": "AXONHUB_API_KEY",
                 "api_key_op_ref": "op://ozqqpvh5yvvxvyu64npq62a3ti/arh3eyylx2snevicwvb3px7iui/api_key",
-                "api_key_mcp_url": "",  # 运行时读 mcp.json
+                "api_key_mcp_url": mcp_url,  # 运行时从 mcp.json 读取
             },
         }
 
