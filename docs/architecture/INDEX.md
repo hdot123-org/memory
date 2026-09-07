@@ -17,6 +17,7 @@
 | [09-provider-fallback.md](09-provider-fallback.md) | Provider 与回退机制：external-core vs legacy 设计、降级策略 |
 | [10-consumer-boundary.md](10-consumer-boundary.md) | 消费边界与改进建议：消费面审计、消费者契约更新与建议 |
 | [API-CONTRACT.md](API-CONTRACT.md) | Memory API 契约（context-package-v1）：入口函数、出口结构、字段定义 |
+| [PRETOOLUSE-CONTRACT.md](PRETOOLUSE-CONTRACT.md) | PreToolUse 守卫契约：工具覆盖表、memory-amend 追加通道、过渡机制日落、parser 行为（R2'） |
 | [ci-notify-n8n-workflow.md](ci-notify-n8n-workflow.md) | CI 通知 n8n 工作流设计 |
 | [error-gateway-pipeline.md](error-gateway-pipeline.md) | Error Gateway 管道设计：PostHog → webhook → n8n → Droid 自动修复闭环 |
 | [linear-factory-integration.md](linear-factory-integration.md) | Linear + Factory 集成方案 |
