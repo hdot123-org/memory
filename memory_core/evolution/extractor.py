@@ -53,6 +53,32 @@ class Candidate:
 # ---------------------------------------------------------------------------
 
 
+# MCP 配置文件路径（测试可 patch）
+_MCP_CONFIG_PATH: Path = Path.home() / ".factory" / "mcp.json"
+
+
+def _read_mcp_config(config_path: Path, need_url: bool = True) -> tuple[str, str]:
+    """读取 mcp.json 的 1password-connect 条目（url + apikey）"""
+    if not config_path.exists():
+        return ("", "")
+    try:
+        with config_path.open(encoding="utf-8") as f:
+            mcp_config = json.load(f)
+        servers = mcp_config.get("mcpServers", {})
+        entry = servers.get("1password-connect", {})
+        if not entry:
+            return ("", "")
+        url = entry.get("url", "") if need_url else ""
+        apikey = entry.get("apikey", "")
+        if not apikey:
+            headers = entry.get("headers", {})
+            if isinstance(headers, dict):
+                apikey = headers.get("apikey", "")
+        return (url, apikey)
+    except (OSError, json.JSONDecodeError, KeyError):
+        return ("", "")
+
+
 def resolve_api_key(config: dict[str, Any]) -> str:
     """
     密钥解析链（架构 §0 + §3.2，2026-09-07 用户裁定 MCP-HTTP 方案）
@@ -76,32 +102,26 @@ def resolve_api_key(config: dict[str, Any]) -> str:
         return key
 
     # 2. 尝试从 1password MCP（HTTP）获取
-    if not api_key_mcp_url:
-        # 默认读 ~/.factory/mcp.json 的 1password-connect 条目
-        mcp_config_path = Path.home() / ".factory" / "mcp.json"
-        if mcp_config_path.exists():
-            try:
-                with mcp_config_path.open(encoding="utf-8") as f:
-                    mcp_config = json.load(f)
-                # 查找 1password-connect 条目（按 key 名匹配，type 可能是 "http"）
-                servers = mcp_config.get("mcpServers", {})
-                entry = servers.get("1password-connect", {})
-                if entry:
-                    api_key_mcp_url = entry.get("url", "")
-                    # apikey 可能在 headers 字典下，也可能直接在顶层
-                    mcp_apikey = entry.get("apikey", "")
-                    if not mcp_apikey:
-                        headers = entry.get("headers", {})
-                        if isinstance(headers, dict):
-                            mcp_apikey = headers.get("apikey", "")
-                    if api_key_mcp_url and mcp_apikey and api_key_op_ref:
-                        # 调用 MCP JSON-RPC 解析 op:// 引用
-                        key = _resolve_via_mcp(api_key_mcp_url, mcp_apikey, api_key_op_ref)
-                        if key:
-                            return key
-            except (OSError, json.JSONDecodeError, KeyError):
-                # MCP 不可用，继续尝试 op read
-                pass
+    # 语义：api_key_mcp_url 显式非空 → 用该 URL；空 → 运行时读 _MCP_CONFIG_PATH
+    # apikey 头始终从 _MCP_CONFIG_PATH 读取（不进 config，避免密钥配置化）
+    mcp_url = api_key_mcp_url
+    mcp_config_path = _MCP_CONFIG_PATH
+    mcp_apikey = ""
+
+    if not mcp_url:
+        # 默认读 mcp.json 取 URL + apikey
+        mcp_url, mcp_apikey = _read_mcp_config(mcp_config_path, need_url=True)
+    else:
+        # 显式 URL：仍从 mcp.json 读 apikey
+        _, mcp_apikey = _read_mcp_config(mcp_config_path, need_url=False)
+
+    if mcp_url and mcp_apikey and api_key_op_ref:
+        try:
+            key = _resolve_via_mcp(mcp_url, mcp_apikey, api_key_op_ref)
+            if key:
+                return key
+        except Exception:
+            pass
 
     # 3. 尝试从 1Password op read 获取（仅交互兜底）
     if api_key_op_ref:

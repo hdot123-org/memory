@@ -55,6 +55,15 @@ from memory_core.tools.doc_router import DOC_CATEGORIES
 from memory_core.tools.memory_hook_gateway import build_context_package_simple
 from memory_core.tools.project_lifecycle import record_project_lifecycle
 
+
+# Lazy imports for evolution module (avoid circular dependencies)
+def _get_sediment_module() -> Any:
+    """Lazy load sediment module for MCP global interface"""
+    from memory_core.evolution import sediment
+
+    return sediment
+
+
 # Source-repo detection import is guarded so the server still loads even if the
 # ownership module is unavailable; the check is skipped when the import fails.
 try:
@@ -405,14 +414,309 @@ def _get_daily_summary(date: str, cwd: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Global KB interface (M4)
+# ---------------------------------------------------------------------------
+
+
+def _read_global(relative_path: str) -> dict[str, Any]:
+    """Read full content of a file from the global knowledge base.
+
+    Args:
+        relative_path: Path relative to global KB root (e.g., "operations/xxx.md")
+
+    Returns:
+        Dict with content, path, and relative_path on success.
+        Structured error on failure (missing file, path traversal, pending/ access attempt).
+    """
+    import posixpath
+
+    from memory_core.tools.global_kb_init import get_global_kb_root
+
+    # Path validation: reject empty, absolute paths, and parent directory traversal
+    if not relative_path or relative_path.startswith("/") or ".." in relative_path:
+        return {
+            "status": "error",
+            "message": "Invalid path: must be non-empty, relative, and not contain '..' or start with '/'",
+        }
+
+    # Normalize path first (collapses './', '../', trailing slashes, etc.)
+    normalized = posixpath.normpath(relative_path)
+
+    # Reject paths that resolve into pending/ after normalization
+    # Check first segment of normalized path (handles './pending/x' → 'pending/x')
+    # Case-insensitive check to handle case-variant bypass attempts (e.g. 'Pending/x.md')
+    normalized_lower = normalized.lower()
+    if normalized_lower == "pending" or normalized_lower.startswith("pending/"):
+        return {"status": "error", "message": "Access denied: pending/ directory is not readable via MCP"}
+
+    global_kb_root = get_global_kb_root()
+    full_path = global_kb_root / relative_path
+
+    # Security check: ensure resolved path stays within global KB root
+    try:
+        full_path_resolved = full_path.resolve()
+        root_resolved = global_kb_root.resolve()
+        # Use Path.is_relative_to for proper boundary check (no string prefix false positives)
+        if not full_path_resolved.is_relative_to(root_resolved):
+            return {"status": "error", "message": "Path traversal detected: resolved path outside global KB root"}
+        # After full resolution, check if path lands in pending/ subtree
+        # This catches case-variant paths (e.g. 'Pending/x.md' on APFS) that resolve into real pending/
+        pending_resolved = root_resolved / "pending"
+        if full_path_resolved.is_relative_to(pending_resolved):
+            return {"status": "error", "message": "Access denied: pending/ directory is not readable via MCP"}
+    except (OSError, ValueError) as e:
+        return {"status": "error", "message": f"Path resolution failed: {str(e)}"}
+
+    # Check file existence
+    if not full_path.is_file():
+        return {"status": "error", "message": f"File not found: {relative_path}"}
+
+    # Read file content
+    try:
+        with full_path.open(encoding="utf-8", errors="replace") as fh:
+            content = fh.read()
+    except OSError as exc:
+        return {"status": "error", "message": f"Failed to read file: {str(exc)}"}
+
+    return {"status": "success", "content": content, "path": str(full_path), "relative_path": relative_path}
+
+
+def _validate_propose_inputs(
+    title: str, content: str, domain: str, source_refs: list[dict[str, str]]
+) -> dict[str, Any] | None:
+    """Validate inputs for propose_write. Returns error dict or None if valid."""
+    from memory_core.tools.mcp_server import _get_sediment_module
+
+    if not title or not isinstance(title, str):
+        return {"status": "error", "message": "title is required and must be a non-empty string"}
+
+    if not content or not isinstance(content, str):
+        return {"status": "error", "message": "content is required and must be a non-empty string"}
+
+    if not domain or not isinstance(domain, str):
+        return {"status": "error", "message": "domain is required and must be a non-empty string"}
+
+    sediment = _get_sediment_module()
+    if domain not in sediment.VALID_DOMAINS:
+        return {"status": "error", "message": f"Invalid domain: '{domain}'. Must be one of {sediment.VALID_DOMAINS}"}
+
+    if source_refs is None or not isinstance(source_refs, list):
+        return {"status": "error", "message": "source_refs is required and must be a list"}
+
+    for ref in source_refs:
+        if not isinstance(ref, dict):
+            return {"status": "error", "message": "Each source_ref must be a dict"}
+        if "project" not in ref or "path" not in ref:
+            return {"status": "error", "message": "Each source_ref must have 'project' and 'path' keys"}
+
+    return None
+
+
+def _check_pending_duplicates(
+    pending_dir: Path, body_fp: str, source_refs: list[dict[str, str]]
+) -> dict[str, Any] | None:
+    """Check for duplicates in pending/ directory. Returns result dict or None if no duplicate."""
+    from memory_core.tools.mcp_server import _get_sediment_module
+
+    sediment = _get_sediment_module()
+
+    for existing_file in pending_dir.glob("*.md"):
+        if existing_file.name == "README.md":
+            continue
+
+        try:
+            existing_content = existing_file.read_text(encoding="utf-8")
+            existing_fp = sediment._body_fingerprint(existing_content)
+
+            if existing_fp == body_fp:
+                existing_source_refs = sediment._parse_source_refs_from_content(existing_content)
+                new_refs = [ref for ref in source_refs if ref not in existing_source_refs]
+
+                if new_refs:
+                    try:
+                        sediment._merge_source_refs(existing_file, new_refs)
+                        return {
+                            "status": "success",
+                            "action": "merged",
+                            "message": "Duplicate content detected, merged source_refs",
+                            "path": str(existing_file),
+                            "relative_path": f"pending/{existing_file.name}",
+                        }
+                    except Exception:
+                        pass
+
+                return {
+                    "status": "success",
+                    "action": "skipped",
+                    "message": "Duplicate content detected, file already exists in pending/",
+                    "path": str(existing_file),
+                    "relative_path": f"pending/{existing_file.name}",
+                }
+        except OSError:
+            continue
+
+    return None
+
+
+def _check_formal_domain_duplicates(global_kb_root: Path, body_fp: str) -> dict[str, Any] | None:
+    """Check for duplicates in formal domain directories. Returns result dict or None if no duplicate."""
+    from memory_core.tools.mcp_server import _get_sediment_module
+
+    sediment = _get_sediment_module()
+
+    for domain_dir_name in sediment.VALID_DOMAINS:
+        domain_dir = global_kb_root / domain_dir_name
+        if not domain_dir.exists():
+            continue
+
+        for existing_file in domain_dir.glob("*.md"):
+            try:
+                existing_content = existing_file.read_text(encoding="utf-8")
+                existing_fp = sediment._body_fingerprint(existing_content)
+
+                if existing_fp == body_fp:
+                    return {
+                        "status": "success",
+                        "action": "skipped",
+                        "message": f"Duplicate content detected, file already exists in {domain_dir_name}/",
+                        "path": str(existing_file),
+                        "relative_path": f"{domain_dir_name}/{existing_file.name}",
+                    }
+            except OSError:
+                continue
+
+    return None
+
+
+def _propose_write(title: str, content: str, domain: str, source_refs: list[dict[str, str]]) -> dict[str, Any]:
+    """Write a proposal to pending/ directory with deduplication.
+
+    Args:
+        title: Title of the proposal
+        content: Markdown content
+        domain: One of the 6 valid domains (operations, engineering, etc.)
+        source_refs: List of {"project": "...", "path": "..."} dicts
+
+    Returns:
+        Dict with status, action (written/skipped/merged), path, and metadata.
+        Structured error on validation failure.
+    """
+    from memory_core.tools.global_kb_init import get_global_kb_root
+
+    # Input validation
+    validation_error = _validate_propose_inputs(title, content, domain, source_refs)
+    if validation_error:
+        return validation_error
+
+    global_kb_root = get_global_kb_root()
+    pending_dir = global_kb_root / "pending"
+
+    # Ensure pending/ exists
+    try:
+        pending_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return {"status": "error", "message": f"Failed to create pending directory: {str(exc)}"}
+
+    # Generate slug from title
+    sediment = _get_sediment_module()
+    slug = sediment._generate_slug(title)
+
+    # Generate fingerprint for deduplication
+    body_fp = sediment._body_fingerprint(content)
+
+    # Check for duplicates in pending/
+    pending_result = _check_pending_duplicates(pending_dir, body_fp, source_refs)
+    if pending_result:
+        return pending_result
+
+    # Check for duplicates in formal domain directories
+    formal_result = _check_formal_domain_duplicates(global_kb_root, body_fp)
+    if formal_result:
+        return formal_result
+
+    # Check for high similarity (n-gram overlap > 0.6)
+    for existing_file in pending_dir.glob("*.md"):
+        if existing_file.name == "README.md":
+            continue
+        try:
+            existing_content = existing_file.read_text(encoding="utf-8")
+            existing_body = sediment._strip_frontmatter(existing_content)
+            overlap = sediment._ngram_overlap(content, existing_body)
+            if overlap > 0.6:
+                # Merge: append source_refs to existing file
+                try:
+                    sediment._merge_source_refs(existing_file, source_refs)
+                    return {
+                        "status": "success",
+                        "action": "merged",
+                        "message": f"High similarity detected (overlap={overlap:.2f}), merged source_refs",
+                        "path": str(existing_file),
+                        "relative_path": f"pending/{existing_file.name}",
+                    }
+                except Exception as exc:
+                    return {"status": "error", "message": f"Failed to merge: {str(exc)}"}
+        except OSError:
+            continue
+
+    # Generate filename with short hash if needed
+    filename = f"{slug}.md"
+    target_path = pending_dir / filename
+
+    # Handle filename collision (different content, same slug)
+    if target_path.exists():
+        short_hash = sediment._short_hash(content)
+        filename = f"{slug}-{short_hash}.md"
+        target_path = pending_dir / filename
+
+    # Generate frontmatter
+    frontmatter_lines = [
+        "---",
+        f'title: "{title}"',
+        f"domain: {domain}",
+        f"created_at: {datetime.now().strftime('%Y-%m-%d')}",
+        "source: mcp-propose",
+        "proposed_via: mcp",
+    ]
+
+    # Add source_refs
+    if source_refs:
+        frontmatter_lines.append("source_refs:")
+        for ref in source_refs:
+            frontmatter_lines.append(f'  - project: "{ref["project"]}"')
+            frontmatter_lines.append(f'    path: "{ref["path"]}"')
+
+    frontmatter_lines.append("---")
+    frontmatter = "\n".join(frontmatter_lines)
+
+    # Compose full content
+    full_content = f"{frontmatter}\n\n{content}\n"
+
+    # Write file
+    try:
+        with target_path.open("w", encoding="utf-8") as fh:
+            fh.write(full_content)
+    except OSError as exc:
+        return {"status": "error", "message": f"Failed to write file: {str(exc)}"}
+
+    return {
+        "status": "success",
+        "action": "written",
+        "message": "Proposal written to pending/",
+        "path": str(target_path),
+        "relative_path": f"pending/{filename}",
+        "metadata": {"title": title, "domain": domain, "slug": slug, "source_refs_count": len(source_refs)},
+    }
+
+
+# ---------------------------------------------------------------------------
 # MCP server wiring
 # ---------------------------------------------------------------------------
 @app.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]
 async def list_tools() -> list[Tool]:
-    """Declare the nine tools exposed by this server.
+    """Declare the 11 tools exposed by this server.
 
     When :data:`_ALLOWED_TOOLS` is set (via the ``--tools`` CLI flag), only the
-    named tools are returned. When it is ``None`` all nine tools are exposed.
+    named tools are returned. When it is ``None`` all 11 tools are exposed.
     """
     all_tools = [
         Tool(
@@ -645,6 +949,61 @@ async def list_tools() -> list[Tool]:
                 "required": [],
             },
         ),
+        Tool(
+            name="read_global",
+            description=(
+                "Read the full content of a file from the global knowledge base. "
+                "Returns the complete file content with byte-level fidelity. "
+                "Supports root override via MEMORY_CORE_GLOBAL_KB_ROOT environment variable."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "relative_path": {
+                        "type": "string",
+                        "description": "Path relative to global KB root (e.g., 'operations/xxx.md'). Cannot start with '/' or contain '..'.",
+                    },
+                },
+                "required": ["relative_path"],
+            },
+        ),
+        Tool(
+            name="propose_write",
+            description=(
+                "Write a proposal to the pending/ directory with deduplication. "
+                "Performs pre-write deduplication against both pending/ and formal domains. "
+                "Writes only to pending/, never to formal domains. Does not update INDEX or create git commits."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Title of the proposal",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Markdown content of the proposal",
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "Domain classification: operations/engineering/collaboration/governance/infra/audit",
+                    },
+                    "source_refs": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "project": {"type": "string"},
+                                "path": {"type": "string"},
+                            },
+                        },
+                        "description": "List of source references with 'project' and 'path' keys",
+                    },
+                },
+                "required": ["title", "content", "domain", "source_refs"],
+            },
+        ),
     ]
     if _ALLOWED_TOOLS is None:
         return all_tools
@@ -739,6 +1098,38 @@ def _handle_get_daily_summary(arguments: dict[str, Any]) -> Any:
     return _get_daily_summary(date, cwd)
 
 
+def _handle_read_global(arguments: dict[str, Any]) -> Any:
+    """Handle the read_global tool call."""
+    relative_path = arguments.get("relative_path")
+    if not relative_path or not isinstance(relative_path, str):
+        return {"status": "error", "message": "'relative_path' is required and must be a non-empty string"}
+    return _read_global(relative_path)
+
+
+def _handle_propose_write(arguments: dict[str, Any]) -> Any:
+    """Handle the propose_write tool call."""
+    title = arguments.get("title")
+    content = arguments.get("content")
+    domain = arguments.get("domain")
+    source_refs = arguments.get("source_refs")
+
+    # Type validation
+    if not isinstance(title, str):
+        return {"status": "error", "message": "'title' must be a string"}
+    if not isinstance(content, str):
+        return {"status": "error", "message": "'content' must be a string"}
+    if not isinstance(domain, str):
+        return {"status": "error", "message": "'domain' must be a string"}
+    if source_refs is not None and not isinstance(source_refs, list):
+        return {"status": "error", "message": "'source_refs' must be a list or null"}
+
+    # Convert None to empty list for source_refs
+    if source_refs is None:
+        source_refs = []
+
+    return _propose_write(title, content, domain, source_refs)
+
+
 # Dispatch table mapping tool names to their handler functions.
 _TOOL_HANDLERS: dict[str, Any] = {
     "load_context": _handle_load_context,
@@ -750,6 +1141,8 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "get_health": _handle_get_health,
     "list_projects": _handle_list_projects,
     "get_daily_summary": _handle_get_daily_summary,
+    "read_global": _handle_read_global,
+    "propose_write": _handle_propose_write,
 }
 
 
