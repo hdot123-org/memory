@@ -62,7 +62,7 @@ class TestResolveApiKey:
         # Mock MCP 为不可用（返回 None），让链路走到 op read 兜底
         with (
             patch("subprocess.run", return_value=mock_result) as mock_run,
-            patch("memory_core.evolution.extractor._resolve_via_mcp", return_value=None),
+            patch("memory_core.evolution.mcp_secrets.McpSecretResolver.resolve_secret", return_value=None),
         ):
             key = resolve_api_key(config)
             assert key == "op-secret-key"
@@ -95,7 +95,7 @@ class TestResolveApiKey:
         # Mock MCP 为不可用（返回 None），让链路走到 op read 兜底
         with (
             patch("subprocess.run", return_value=mock_result),
-            patch("memory_core.evolution.extractor._resolve_via_mcp", return_value=None),
+            patch("memory_core.evolution.mcp_secrets.McpSecretResolver.resolve_secret", return_value=None),
             pytest.raises(RuntimeError, match="无法解析 API 密钥"),
         ):
             resolve_api_key(config)

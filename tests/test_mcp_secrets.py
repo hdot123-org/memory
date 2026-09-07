@@ -540,9 +540,13 @@ class TestResolveApiKeySemantics:
 
             os.environ.pop("NONEXISTENT_ENV_VAR_FOR_TEST", None)
 
+            # mcp_secrets.read_mcp_config 内部用 Path.home() / ".factory" / "mcp.json"
+            # 通过 patch home() 使其指向 tmp_path（需要 .factory/ 子目录结构）
+            (tmp_path / ".factory").mkdir(exist_ok=True)
+            (tmp_path / ".factory" / "mcp.json").write_text(json.dumps(mcp_json))
             with (
                 patch("urllib.request.urlopen", side_effect=mock_urlopen),
-                patch("memory_core.evolution.extractor._MCP_CONFIG_PATH", mcp_config_path),
+                patch("pathlib.Path.home", return_value=tmp_path),
             ):
                 from memory_core.evolution.extractor import resolve_api_key
 
