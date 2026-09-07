@@ -69,6 +69,7 @@ memory-integrity-resign = "memory_core.tools.memory_integrity_resign:main"
 memory-lifecycle-rebuild = "memory_core.tools.project_lifecycle:rebuild_main"
 memory-lifecycle-migrate = "memory_core.tools.project_lifecycle:migrate_main"
 "memory-mcp-server" = "memory_core.tools.mcp_server:main_sync"
+"memory-evolve" = "memory_core.tools.evolve_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["memory_core*", "workspace*"]
