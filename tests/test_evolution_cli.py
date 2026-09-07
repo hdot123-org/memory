@@ -296,7 +296,7 @@ EXPECTED_SUBCOMMANDS = {"run", "status", "backup-paths", "gk-ensure", "mcp-secre
 
 
 def test_subcommand_set_complete():
-    """回归守卫：--help 输出必须包含全部五个子命令（任何 merge 丢块必红）"""
+    """回归守卫：--help 输出必须恰含五个子命令（任何 merge 丢块或多出子命令必红）"""
     result = subprocess.run(
         [sys.executable, "-m", "memory_core.tools.evolve_cli", "--help"],
         capture_output=True,
@@ -305,8 +305,26 @@ def test_subcommand_set_complete():
     assert result.returncode == 0, f"--help failed: {result.stderr}"
     help_text = result.stdout
 
+    # 恰含等值断言：子命令集合必须精确等于期望集合
+    # 任何缺失或多余子命令都意味着回归或意外变更
+    missing_commands = []
     for cmd in EXPECTED_SUBCOMMANDS:
-        assert cmd in help_text, f"子命令 '{cmd}' 缺失（merge 丢块回归）"
+        if cmd not in help_text:
+            missing_commands.append(cmd)
+
+    # 检查是否有多余的子命令
+    import re
+
+    # 过滤出子命令区域（在 "commands:" 之后）
+    commands_section = re.search(r"commands:\s*\n((?:\s+\S+\s+.*\n)+)", help_text)
+    if commands_section:
+        actual_commands = set(re.findall(r"^\s+(\S+)", commands_section.group(1), re.MULTILINE))
+        extra_commands = actual_commands - EXPECTED_SUBCOMMANDS
+    else:
+        extra_commands = set()
+
+    assert not missing_commands, f"子命令缺失: {missing_commands}（merge 丢块回归）"
+    assert not extra_commands, f"子命令多余: {extra_commands}（意外变更）"
 
 
 def test_mcp_secret_subcommand_smoke_module_entry():
@@ -325,17 +343,17 @@ def test_mcp_secret_subcommand_smoke_console_entry():
     """D1 双入口 smoke：memory-evolve console script 的 mcp-secret --help 可达
 
     注意：console script 是安装时生成的，worktree 测试时可能指向旧代码。
-    若 console script 不含 mcp-secret（worktree 未重装），skip 并在 CI 验证。
+    若 console script 不含 mcp-secret（worktree 未重装），不再自 skip——丢块症状必须红。
     """
     result = subprocess.run(
         ["memory-evolve", "mcp-secret", "--help"],
         capture_output=True,
         text=True,
     )
-    # console script 可能指向旧代码（worktree 未重装包）
-    if result.returncode == 2 and "invalid choice" in result.stderr:
-        pytest.skip("console script 指向旧代码（worktree 未重装），CI 合并后验证")
-    assert result.returncode == 0, f"console script mcp-secret --help failed: {result.stderr}"
+    # 不再自 skip：console script 指向旧代码是丢块症状，必须报错让 CI 失败
+    assert result.returncode == 0, (
+        f"console script mcp-secret --help failed (可能指向旧代码未重装，丢块症状): {result.stderr}"
+    )
     assert "op_ref" in result.stdout or "op://" in result.stdout
     assert "--length-only" in result.stdout
 
@@ -367,3 +385,86 @@ def test_mcp_secret_invalid_mcp_config_exits_1():
         )
         assert result.returncode == 1, f"Expected exit 1, got {result.returncode}. stderr={result.stderr}"
         assert "1password-connect" in result.stderr or "mcp.json" in result.stderr
+
+
+def test_mcp_secret_length_only_mask_output():
+    """
+    --length-only 掩码模式测试（round-1 发现该测试名虚构从未编写）
+
+    验证：
+    1. stdout 仅包含数字（密钥长度）
+    2. stdout 不包含任何密钥值字符（零密钥泄露）
+    3. 输出为单行纯数字
+    """
+    import json as _json
+    import os
+    import socket
+
+    # 动态读取 MCP 端点（BOUNDARY 4.3 零硬编码 IP）
+    from pathlib import Path as _Path
+    from urllib.parse import urlparse
+
+    def _get_mcp_host_port():
+        mcp_path = _Path.home() / ".factory" / "mcp.json"
+        try:
+            data = _json.loads(mcp_path.read_text(encoding="utf-8"))
+            servers = data.get("mcpServers", data)
+            entry = servers.get("1password-connect", {})
+            url = entry.get("url", "")
+            if not url:
+                return None
+            parsed = urlparse(url)
+            host = parsed.hostname
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+            if not host:
+                return None
+            return (host, port)
+        except (OSError, ValueError, KeyError):
+            return None
+
+    endpoint = _get_mcp_host_port()
+    if endpoint is None:
+        pytest.skip("MCP 配置不可读，无法测试真实密钥解析")
+
+    try:
+        sock = socket.create_connection(endpoint, timeout=2)
+        sock.close()
+    except (TimeoutError, OSError):
+        pytest.skip(f"MCP 端点 {endpoint[0]}:{endpoint[1]} 不可达，无法测试真实密钥解析")
+
+    # 临时移除 AXONHUB_API_KEY 环境变量，强制走 MCP 路径
+    env = os.environ.copy()
+    env.pop("AXONHUB_API_KEY", None)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "memory_core.tools.evolve_cli",
+            "mcp-secret",
+            "op://ozqqpvh5yvvxvyu64npq62a3ti/arh3eyylx2snevicwvb3px7iui/api_key",
+            "--length-only",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode == 0, f"命令失败: {result.stderr}"
+
+    stdout = result.stdout.strip()
+
+    # 验证 1: stdout 仅包含数字
+    assert stdout.isdigit(), f"--length-only 输出应为纯数字，实际: {stdout!r}"
+
+    # 验证 2: 输出为单行
+    assert "\n" not in stdout, f"--length-only 应为单行输出，实际包含换行: {stdout!r}"
+
+    # 验证 3: 长度值在合理范围内（真实密钥为 67 字符）
+    length = int(stdout)
+    assert 50 <= length <= 100, f"密钥长度 {length} 不在合理范围 [50, 100]"
+
+    # 验证 4: stdout 不包含常见密钥字符（零泄露）
+    # 真实密钥通常包含 base64 字符、特殊符号等
+    # 我们验证输出仅包含数字，不包含其他字符
+    assert stdout == str(length), "输出应严格等于长度值的字符串表示"

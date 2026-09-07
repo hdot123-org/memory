@@ -2,7 +2,7 @@
 LLM 蒸馏引擎（架构 §3.5）
 
 AxonhubEngine: OpenAI 兼容 POST chat/completions，stdlib urllib，不新增三方依赖。
-密钥解析链：env api_key_env → api_key_op_ref 运行时 op read → 报错。
+密钥解析链：env api_key_env → 1password MCP（HTTP）→ op read 兜底 → 报错。
 提示词：输入=变更文件全文+项目上下文，单文件 >16KB 头尾截断。
 输出=JSON 候选数组 {title, domain, content, confidence, source_refs, genericity}。
 reasoning 模型处理：max_tokens ≥4096，只解析 choices[0].message.content，忽略 reasoning_content。
@@ -10,6 +10,10 @@ reasoning 模型处理：max_tokens ≥4096，只解析 choices[0].message.conte
 预算：daily_budget_tokens 累计、超限停止 LLM 剩余降级、0 预算启动即超限（D14）。
 
 VAL-EXT-001 / VAL-EXT-002 / VAL-EXT-003 / VAL-EXT-004 / VAL-SED-001
+
+【P0 修复 2026-09-07】extractor 的 MCP 段改为复用 mcp_secrets.McpSecretResolver，
+删除内联 MCP 客户端重复实现（旧实现有 op:// 解析 off-by-one + 无 isError 防线双重缺陷，
+自 fee4014/PR #1123 既存，是每日 00:10 LLM 蒸馏静默降级的真根因）。
 """
 
 import json
@@ -57,40 +61,19 @@ class Candidate:
 _MCP_CONFIG_PATH: Path = Path.home() / ".factory" / "mcp.json"
 
 
-def _read_mcp_config(config_path: Path, need_url: bool = True) -> tuple[str, str]:
-    """读取 mcp.json 的 1password-connect 条目（url + apikey）"""
-    if not config_path.exists():
-        return ("", "")
-    try:
-        with config_path.open(encoding="utf-8") as f:
-            mcp_config = json.load(f)
-        servers = mcp_config.get("mcpServers", {})
-        entry = servers.get("1password-connect", {})
-        if not entry:
-            return ("", "")
-        url = entry.get("url", "") if need_url else ""
-        apikey = entry.get("apikey", "")
-        if not apikey:
-            headers = entry.get("headers", {})
-            if isinstance(headers, dict):
-                apikey = headers.get("apikey", "")
-        return (url, apikey)
-    except (OSError, json.JSONDecodeError, KeyError):
-        return ("", "")
-
-
 def resolve_api_key(config: dict[str, Any]) -> str:
     """
     密钥解析链（架构 §0 + §3.2，2026-09-07 用户裁定 MCP-HTTP 方案）
 
     1. env api_key_env → 读取环境变量
-    2. 1password MCP（HTTP）→ 运行时读 ~/.factory/mcp.json 的 1password-connect 条目，
-       stdlib JSON-RPC 调 read_secret/get_item 解析 op:// 引用
+    2. 1password MCP（HTTP）→ 复用 mcp_secrets.McpSecretResolver（解析与防线正确）
     3. api_key_op_ref → 运行时 op read（1Password CLI，仅交互兜底）
     4. 都没有 → 报错
 
     密钥不落盘、不进日志。apikey 头值只留长度/掩码。
     """
+    from memory_core.evolution.mcp_secrets import McpSecretResolver, read_mcp_config
+
     llm_config = config.get("llm", {})
     api_key_env = llm_config.get("api_key_env", "AXONHUB_API_KEY")
     api_key_op_ref = llm_config.get("api_key_op_ref", "")
@@ -101,23 +84,23 @@ def resolve_api_key(config: dict[str, Any]) -> str:
     if key:
         return key
 
-    # 2. 尝试从 1password MCP（HTTP）获取
-    # 语义：api_key_mcp_url 显式非空 → 用该 URL；空 → 运行时读 _MCP_CONFIG_PATH
-    # apikey 头始终从 _MCP_CONFIG_PATH 读取（不进 config，避免密钥配置化）
+    # 2. 尝试从 1password MCP（HTTP）获取（复用 mcp_secrets 模块）
+    # 语义：api_key_mcp_url 显式非空 → 用该 URL；空 → 运行时读 mcp.json
+    # apikey 头始终从 mcp.json 读取（不进 config，避免密钥配置化）
     mcp_url = api_key_mcp_url
-    mcp_config_path = _MCP_CONFIG_PATH
     mcp_apikey = ""
 
     if not mcp_url:
         # 默认读 mcp.json 取 URL + apikey
-        mcp_url, mcp_apikey = _read_mcp_config(mcp_config_path, need_url=True)
+        mcp_url, mcp_apikey = read_mcp_config()
     else:
         # 显式 URL：仍从 mcp.json 读 apikey
-        _, mcp_apikey = _read_mcp_config(mcp_config_path, need_url=False)
+        _, mcp_apikey = read_mcp_config()
 
     if mcp_url and mcp_apikey and api_key_op_ref:
         try:
-            key = _resolve_via_mcp(mcp_url, mcp_apikey, api_key_op_ref)
+            resolver = McpSecretResolver(mcp_url, mcp_apikey)
+            key = resolver.resolve_secret(api_key_op_ref)
             if key:
                 return key
         except Exception:
@@ -141,174 +124,6 @@ def resolve_api_key(config: dict[str, Any]) -> str:
     raise RuntimeError(
         f"无法解析 API 密钥：环境变量 {api_key_env} 未设置" + ("，且 MCP/op read 解析失败" if api_key_op_ref else "")
     )
-
-
-def _parse_sse_response(response_data: str) -> dict[str, Any] | None:
-    """解析 SSE 响应（event: message + data: {json}）或纯 JSON"""
-    # 尝试解析为 SSE 格式
-    for line in response_data.split("\n"):
-        if line.startswith("data: "):
-            json_str = line[6:].strip()
-            if json_str:
-                try:
-                    result = json.loads(json_str)
-                    return result if isinstance(result, dict) else None
-                except json.JSONDecodeError:
-                    continue
-    # 尝试解析为纯 JSON
-    try:
-        result = json.loads(response_data)
-        return result if isinstance(result, dict) else None
-    except json.JSONDecodeError:
-        return None
-
-
-def _mcp_initialize(mcp_url: str, apikey: str) -> tuple[str, dict[str, Any] | None]:
-    """执行 MCP 初始化握手，返回 (session_id, response)"""
-    import urllib.request
-
-    init_request = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "memory-core", "version": "1.0"},
-        },
-    }
-
-    init_data = json.dumps(init_request).encode("utf-8")
-    init_req = urllib.request.Request(
-        mcp_url,
-        data=init_data,
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream",
-            "apikey": apikey,
-        },
-        method="POST",
-    )
-
-    with urllib.request.urlopen(init_req, timeout=10) as response:
-        init_response_data = response.read().decode("utf-8")
-        session_id = response.headers.get("Mcp-Session-Id", "")
-        return session_id, _parse_sse_response(init_response_data)
-
-
-def _mcp_call_tool(
-    mcp_url: str,
-    apikey: str,
-    session_id: str,
-    tool_name: str,
-    arguments: dict[str, Any],
-) -> dict[str, Any] | None:
-    """调用 MCP 工具，返回响应"""
-    import urllib.request
-
-    call_request = {
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/call",
-        "params": {
-            "name": tool_name,
-            "arguments": arguments,
-        },
-    }
-
-    call_data = json.dumps(call_request).encode("utf-8")
-    call_headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-        "apikey": apikey,
-    }
-    if session_id:
-        call_headers["Mcp-Session-Id"] = session_id
-
-    call_req = urllib.request.Request(
-        mcp_url,
-        data=call_data,
-        headers=call_headers,
-        method="POST",
-    )
-
-    with urllib.request.urlopen(call_req, timeout=10) as response:
-        call_response_data = response.read().decode("utf-8")
-        return _parse_sse_response(call_response_data)
-
-
-def _extract_text_from_response(response: dict[str, Any]) -> str | None:
-    """从 MCP 响应中提取 text 内容
-
-    检查错误响应（MCP 错误返回 error 字段而非 result），
-    避免把错误消息当作密钥值返回。
-    """
-    # 检查是否有错误（MCP 错误响应格式）
-    if "error" in response:
-        return None
-
-    if "result" not in response:
-        return None
-    content = response["result"].get("content", [])
-    if not content or not isinstance(content, list):
-        return None
-    for item_data in content:
-        if item_data.get("type") == "text":
-            text_value = item_data.get("text", "")
-            return str(text_value).strip() if text_value else None
-    return None
-
-
-def _resolve_via_mcp(mcp_url: str, apikey: str, op_ref: str) -> str | None:
-    """
-    通过 1password MCP（HTTP）解析 op:// 引用
-
-    Args:
-        mcp_url: MCP 端点 URL（如 http://192.168.88.11:9080/mcp/1password）
-        apikey: MCP apikey 头值
-        op_ref: op:// 引用（如 op://vault_id/item_id/field_label）
-
-    Returns:
-        解析出的密钥值，失败返回 None
-    """
-    if not op_ref:
-        return None
-
-    # 解析 op:// 引用（vault_id/item_id/field_label 三段）
-    parts = op_ref.strip("/").split("/")
-    if len(parts) < 4 or parts[0] != "op:":
-        return None
-    vault_id = parts[1]
-    item_id = parts[2]
-    field_label = parts[3] if len(parts) > 3 else "api_key"
-
-    try:
-        # 初始化
-        session_id, init_response = _mcp_initialize(mcp_url, apikey)
-        if not init_response:
-            return None
-
-        # 调用 read_secret
-        call_response = _mcp_call_tool(
-            mcp_url,
-            apikey,
-            session_id,
-            "read_secret",
-            {
-                "vault_id": vault_id,
-                "item_id": item_id,
-                "field_label": field_label,
-            },
-        )
-        if not call_response:
-            return None
-
-        # 提取结果
-        return _extract_text_from_response(call_response)
-
-        return None
-    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, KeyError, TimeoutError, OSError):
-        return None
 
 
 # ---------------------------------------------------------------------------

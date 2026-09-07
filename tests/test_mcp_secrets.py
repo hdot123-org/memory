@@ -420,7 +420,6 @@ class TestResolveApiKeySemantics:
 
     def test_explicit_mcp_url_uses_that_url(self, tmp_path):
         """显式设置 api_key_mcp_url（非空）时，使用该 URL 解析"""
-        # 创建临时 mcp.json（提供 apikey）
         mcp_json = {
             "mcpServers": {
                 "1password-connect": {
@@ -429,8 +428,13 @@ class TestResolveApiKeySemantics:
                 }
             }
         }
-        mcp_config_path = tmp_path / "mcp.json"
-        mcp_config_path.write_text(json.dumps(mcp_json))
+        # mcp_secrets.read_mcp_config 内部用 Path.home() / ".factory" / "mcp.json"
+        # 通过 patch home() 使其指向 tmp_path（需要 .factory/ 子目录结构）
+        # （旧写法 patch extractor._MCP_CONFIG_PATH 已失效——extractor 改为复用
+        # mcp_secrets.McpSecretResolver 后不再读取该常量，导致 CI（无真实
+        # ~/.factory/mcp.json）上 RuntimeError，本机仅因真实 mcp.json 存在而假绿）
+        (tmp_path / ".factory").mkdir(exist_ok=True)
+        (tmp_path / ".factory" / "mcp.json").write_text(json.dumps(mcp_json))
 
         # 配置：显式 URL + op_ref
         config = {
@@ -477,7 +481,7 @@ class TestResolveApiKeySemantics:
 
             with (
                 patch("urllib.request.urlopen", side_effect=mock_urlopen),
-                patch("memory_core.evolution.extractor._MCP_CONFIG_PATH", mcp_config_path),
+                patch("pathlib.Path.home", return_value=tmp_path),
             ):
                 from memory_core.evolution.extractor import resolve_api_key
 
@@ -540,9 +544,13 @@ class TestResolveApiKeySemantics:
 
             os.environ.pop("NONEXISTENT_ENV_VAR_FOR_TEST", None)
 
+            # mcp_secrets.read_mcp_config 内部用 Path.home() / ".factory" / "mcp.json"
+            # 通过 patch home() 使其指向 tmp_path（需要 .factory/ 子目录结构）
+            (tmp_path / ".factory").mkdir(exist_ok=True)
+            (tmp_path / ".factory" / "mcp.json").write_text(json.dumps(mcp_json))
             with (
                 patch("urllib.request.urlopen", side_effect=mock_urlopen),
-                patch("memory_core.evolution.extractor._MCP_CONFIG_PATH", mcp_config_path),
+                patch("pathlib.Path.home", return_value=tmp_path),
             ):
                 from memory_core.evolution.extractor import resolve_api_key
 

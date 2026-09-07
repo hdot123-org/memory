@@ -263,6 +263,9 @@ def test_search_memory_pending_exclusion_with_os_sep():
 class MockMCPHandler(BaseHTTPRequestHandler):
     """Mock 1password MCP server for testing JSON-RPC client (SSE format)"""
 
+    # 类变量用于记录最后一次 read_secret 调用的参数
+    last_read_secret_args = None
+
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
@@ -302,6 +305,10 @@ class MockMCPHandler(BaseHTTPRequestHandler):
         elif method == "tools/call":
             tool_name = request.get("params", {}).get("name", "")
             if tool_name == "read_secret":
+                # 记录参数以便测试验证三段拆分
+                arguments = request.get("params", {}).get("arguments", {})
+                MockMCPHandler.last_read_secret_args = arguments
+
                 # 返回模拟密钥
                 response = {
                     "jsonrpc": "2.0",
@@ -344,9 +351,9 @@ def test_mcp_key_chain_json_rpc_client():
     """
     测试 MCP JSON-RPC 客户端与 mock 端点交互
 
-    验证 _resolve_via_mcp 能正确调用 initialize + tools/call 并解析响应
+    验证 McpSecretResolver 能正确调用 initialize + tools/call 并解析响应
     """
-    from memory_core.evolution.extractor import _resolve_via_mcp
+    from memory_core.evolution.mcp_secrets import McpSecretResolver
 
     # 启动 mock MCP server
     server = HTTPServer(("127.0.0.1", 0), MockMCPHandler)
@@ -359,11 +366,82 @@ def test_mcp_key_chain_json_rpc_client():
         apikey = "test-apikey-12345"
         op_ref = "op://sever/AXONHUB/password"
 
-        # 调用 _resolve_via_mcp
-        result = _resolve_via_mcp(mcp_url, apikey, op_ref)
+        # 调用 McpSecretResolver
+        resolver = McpSecretResolver(mcp_url, apikey)
+        result = resolver.resolve_secret(op_ref)
 
         # 验证返回模拟密钥
         assert result == "mock-api-key-12345", f"期望解析出密钥，实际 {result}"
+
+        # 验证 mock 收到正确的三段参数（vault/item/field 从 op ref 正确拆分）
+        assert MockMCPHandler.last_read_secret_args is not None, "read_secret 应被调用"
+        assert MockMCPHandler.last_read_secret_args["vault_id"] == "sever"
+        assert MockMCPHandler.last_read_secret_args["item_id"] == "AXONHUB"
+        assert MockMCPHandler.last_read_secret_args["field_label"] == "password"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_stub_endpoint_validates_three_segment_parameters():
+    """
+    回归测试：验证 resolver 收到正确三段参数（vault/item/field 从 op ref 正确拆分）
+
+    旧实现（extractor.py 内联客户端）有 off-by-one 缺陷：
+    parts = op_ref.strip("/").split("/") 在 op://vault/item/field 上得到
+    ["op:", "", "vault", "item", "field"]，vault_id 段为空。
+
+    新实现（mcp_secrets.McpSecretResolver）正确拆分：先去掉 "op://" 前缀，
+    再按 / 分割，确保三段参数非空。
+    """
+    from memory_core.evolution.mcp_secrets import McpSecretResolver
+
+    # 启动 mock MCP server
+    server = HTTPServer(("127.0.0.1", 0), MockMCPHandler)
+    port = server.server_address[1]
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+
+    try:
+        mcp_url = f"http://127.0.0.1:{port}/mcp/1password"
+        apikey = "test-apikey-12345"
+
+        # 测试多个 op:// 引用格式，确保三段参数正确拆分
+        test_cases = [
+            ("op://vault1/item1/field1", "vault1", "item1", "field1"),
+            (
+                "op://ozqqpvh5yvvxvyu64npq62a3ti/arh3eyylx2snevicwvb3px7iui/api_key",
+                "ozqqpvh5yvvxvyu64npq62a3ti",
+                "arh3eyylx2snevicwvb3px7iui",
+                "api_key",
+            ),
+        ]
+
+        for op_ref, expected_vault, expected_item, expected_field in test_cases:
+            MockMCPHandler.last_read_secret_args = None  # 重置
+
+            resolver = McpSecretResolver(mcp_url, apikey)
+            result = resolver.resolve_secret(op_ref)
+
+            assert result == "mock-api-key-12345", f"op_ref={op_ref} 应解析出密钥"
+            assert MockMCPHandler.last_read_secret_args is not None, f"op_ref={op_ref} read_secret 应被调用"
+
+            # 验证三段参数正确拆分（旧实现的 off-by-one 回归）
+            actual_args = MockMCPHandler.last_read_secret_args
+            assert actual_args["vault_id"] == expected_vault, (
+                f"op_ref={op_ref} vault_id 应为 {expected_vault}，实际 {actual_args['vault_id']}"
+            )
+            assert actual_args["item_id"] == expected_item, (
+                f"op_ref={op_ref} item_id 应为 {expected_item}，实际 {actual_args['item_id']}"
+            )
+            assert actual_args["field_label"] == expected_field, (
+                f"op_ref={op_ref} field_label 应为 {expected_field}，实际 {actual_args['field_label']}"
+            )
+
+            # 验证三段参数非空（旧实现 vault_id 为空的回归）
+            assert actual_args["vault_id"], f"op_ref={op_ref} vault_id 不应为空"
+            assert actual_args["item_id"], f"op_ref={op_ref} item_id 不应为空"
+            assert actual_args["field_label"], f"op_ref={op_ref} field_label 不应为空"
     finally:
         server.shutdown()
         server.server_close()
@@ -403,9 +481,9 @@ def test_mcp_key_chain_no_apikey_leak():
     """
     测试 apikey 头值不泄漏到日志/产物
 
-    验证 _resolve_via_mcp 不在异常信息中暴露 apikey
+    验证 McpSecretResolver 不在异常信息中暴露 apikey
     """
-    from memory_core.evolution.extractor import _resolve_via_mcp
+    from memory_core.evolution.mcp_secrets import McpSecretResolver
 
     # 调用不存在的端点（会抛异常）
     mcp_url = "http://127.0.0.1:1/mcp/1password"  # 端口 1 不可达
@@ -413,11 +491,12 @@ def test_mcp_key_chain_no_apikey_leak():
     op_ref = "op://vault/item/field"
 
     # 应返回 None（异常被捕获）
-    result = _resolve_via_mcp(mcp_url, apikey, op_ref)
+    resolver = McpSecretResolver(mcp_url, apikey)
+    result = resolver.resolve_secret(op_ref)
     assert result is None, "不可达端点应返回 None"
 
     # 验证异常信息不包含 apikey 值
-    # （_resolve_via_mcp 内部捕获异常，不会抛出，但我们要确认设计意图）
+    # （McpSecretResolver 内部捕获异常，不会抛出，但我们要确认设计意图）
 
 
 def test_config_default_includes_mcp_url():
@@ -487,7 +566,13 @@ def test_real_mcp_resolve_api_key():
     """
     真实 MCP 端点解析非空密钥（掩码留证）
 
-    验证 resolve_api_key() 在无 env 会话下经真实 MCP 解析出非空密钥
+    验证 resolve_api_key() 在无 env 会话下经真实 MCP 解析出 67 字符密钥
+    （与 1password-connect MCP 平台工具 + CLI mcp-secret 一致）
+
+    断言：
+    - 密钥值不以 'Error' 开头（isError 防线生效）
+    - 长度 == 67（与平台/CLI 一致）
+
     apikey 头值绝不落日志/产物
 
     真实工具契约（orchestrator 提供）：
@@ -513,11 +598,16 @@ def test_real_mcp_resolve_api_key():
         # 调用 resolve_api_key（应走 MCP 链）
         result = resolve_api_key(config)
 
-        # 验证返回非空密钥
+        # 验证返回非空密钥且不以 'Error' 开头（isError 防线）
         assert result, "真实 MCP 应解析出非空密钥"
-        assert len(result) > 10, f"密钥长度应 >10，实际 {len(result)}"
+        assert not result.startswith("Error"), (
+            f"密钥不应以 'Error' 开头（isError 防线应拦截错误文本），实际前缀: {result[:20]}..."
+        )
 
-        # 掩码留证（只记录长度，不记录值）
+        # 长度 == 67（与 1password-connect MCP 平台工具 + CLI mcp-secret --length-only 一致）
+        assert len(result) == 67, f"密钥长度应为 67（与平台/CLI 一致），实际 {len(result)}"
+
+        # 掩码留证（只记录长度和前缀，不记录值）
         print(f"[MCP 自证] 解析出密钥长度={len(result)}, 前缀={result[:3]}***")
 
     finally:
