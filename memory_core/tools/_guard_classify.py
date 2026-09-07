@@ -10,6 +10,7 @@ Part of REF-001 strangler fig scaffold phase.
 
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -83,6 +84,50 @@ def _check_file_type_block(file_path: str) -> dict[str, str] | None:
             }
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# R2'-1: memory-amend sanctioned 追加通道（债 7b 配套放行）
+# ---------------------------------------------------------------------------
+
+_AMEND_TOOL_NAME = "memory-amend"
+_amend_install_path_cache: str | None = None
+_amend_install_path_resolved = False
+
+
+def _resolve_amend_install_path() -> str | None:
+    """解析 memory-amend 控制台脚本的绝对安装路径（守卫进程内解析一次并缓存）。"""
+    global _amend_install_path_cache, _amend_install_path_resolved
+    if not _amend_install_path_resolved:
+        _amend_install_path_resolved = True
+        _amend_install_path_cache = shutil.which(_AMEND_TOOL_NAME)
+    return _amend_install_path_cache
+
+
+def _reset_amend_install_path_cache() -> None:
+    """重置安装路径缓存（测试注入用）。"""
+    global _amend_install_path_cache, _amend_install_path_resolved
+    _amend_install_path_cache = None
+    _amend_install_path_resolved = False
+
+
+def is_sanctioned_amend_token(token: str) -> bool:
+    """命令段首 token 是否为获准的 memory-amend 调用形态。
+
+    仅接受两种精确形态：裸命令名 ``memory-amend`` 或其绝对安装路径。
+    禁止子串匹配——``echo memory-amend ...`` 的首 token 是 echo，不放行；
+    ``memory-amend x; rm -rf …`` 的 rm 段照常过检。
+    """
+    if token == _AMEND_TOOL_NAME:
+        return True
+    install_path = _resolve_amend_install_path()
+    return install_path is not None and token == install_path
+
+
+def _is_sanctioned_amend_segment(segment: str) -> bool:
+    """该命令段是否为获准的 memory-amend 追加段（按段首 token 判定）。"""
+    parts = segment.split()
+    return bool(parts) and is_sanctioned_amend_token(parts[0])
 
 
 def _split_shell_args(arg_string: str) -> list[str]:
@@ -766,6 +811,75 @@ def _check_redirect_targets(segment: str) -> bool:
     return False
 
 
+# ---------------------------------------------------------------------------
+# R2'-2a: git 全局 flag 解析（修复 `git -C <path> <subcmd>` 被误判为写）
+# ---------------------------------------------------------------------------
+
+# 带独立值的全局项：flag 与值各占一个 token（如 `-C <dir>`、`-c <k>=<v>`）
+_GIT_GLOBAL_FLAGS_WITH_VALUE = frozenset(
+    {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--chdir"}
+)
+# 不带值的全局项（附值形式 --flag=value 由 "=" 分支单独处理）
+_GIT_GLOBAL_FLAGS_NO_VALUE = frozenset(
+    {
+        "--no-pager",
+        "--paginate",
+        "--no-replace-objects",
+        "--bare",
+        "--literal-pathspecs",
+        "--glob-pathspecs",
+        "--noglob-pathspecs",
+        "--icase-pathspecs",
+        "--no-optional-locks",
+        "--exec-path",
+        "--html-path",
+        "--man-path",
+        "--info-path",
+        "--version",
+        "--help",
+    }
+)
+
+
+def _git_subcommand_after_global_flags(words: list[str]) -> str | None:
+    """跳过 git 全局 flag（-C <dir> / --git-dir=<path> 等），返回真正的子命令。
+
+    无子命令（裸 git 或仅全局 flag）返回 None。
+    """
+    i = 1  # words[0] == "git"
+    while i < len(words):
+        token = words[i]
+        if token in _GIT_GLOBAL_FLAGS_WITH_VALUE:
+            i += 2  # flag + 独立值
+            continue
+        if token.startswith("--") and "=" in token:
+            i += 1  # --git-dir=<path> 等附值形式
+            continue
+        if token in _GIT_GLOBAL_FLAGS_NO_VALUE:
+            i += 1
+            continue
+        return token
+    return None
+
+
+# ---------------------------------------------------------------------------
+# R2'-2b: shell 复合结构关键字（循环/条件头与分隔词）不构成写意图
+# ---------------------------------------------------------------------------
+
+_SHELL_STRUCTURAL_KEYWORDS = frozenset(
+    {"for", "while", "until", "do", "done", "if", "then", "elif", "else", "fi", "{", "}", "!", "time"}
+)
+
+
+def _strip_leading_shell_keywords(segment: str) -> str:
+    """剥离段首的 shell 结构关键字，返回剩余的真实命令部分。"""
+    words = segment.split()
+    i = 0
+    while i < len(words) and words[i] in _SHELL_STRUCTURAL_KEYWORDS:
+        i += 1
+    return " ".join(words[i:])
+
+
 def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
     """Determine if a command segment has write intent.
 
@@ -786,6 +900,21 @@ def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
 
     # Get first command word
     first_word = segment.split()[0] if segment.split() else ""
+
+    # R2'-2b: shell 复合结构关键字（for/do/done/if/then/…）本身不构成写意图。
+    # 剥离关键字后对真实命令递归检查；循环头 `for <var> in <词表>` 的词表
+    # 是数据而非命令（命令替换已在上方先行拦截），判为无写意图。仅对真正
+    # 未知的命令 token 保持 fail-closed。
+    if first_word in _SHELL_STRUCTURAL_KEYWORDS:
+        if first_word == "for":
+            words = segment.split()
+            # 词表是数据（$() 已先行检查）；无法识别的头（算术 for /
+            # 隐式 "$@" 形式）保持 fail-closed
+            return not (len(words) >= 3 and words[2] == "in")
+        remainder = _strip_leading_shell_keywords(segment)
+        if not remainder:
+            return False  # 仅剩结构关键字（done/fi/}），无可执行内容
+        return _segment_has_write_intent(remainder)
 
     # Known safe read-only commands (architecture §2.2 safe set + common tools)
     readonly_commands = {
@@ -875,7 +1004,11 @@ def _segment_has_write_intent(segment: str) -> bool:  # noqa: C901
     if first_word == "git":
         words = segment.split()
         if len(words) >= 2:
-            git_subcmd = words[1]
+            # R2'-2a: 先跳过全局 flag（-C <dir> / --git-dir=… 等）再取子命令，
+            # 修复 `git -C /repo log` 被误判为写
+            git_subcmd = _git_subcommand_after_global_flags(words)
+            if git_subcmd is None:
+                return False  # 裸 git 或仅全局 flag，无子命令（只读）
             # Explicitly safe read-only git subcommands
             git_readonly_subcmds = {
                 "status",
@@ -1031,6 +1164,9 @@ def _classify_execute(payload: dict[str, Any], project_root: Path, ownership: An
     # This catches file-type blacklists, uncertain paths, and owned paths
     # that segment-level write intent gate doesn't detect
     for segment in segments:
+        # R2'-1: 获准追加段跳过 legacy 路径提取（sanctioned 写无需再检）
+        if _is_sanctioned_amend_segment(segment):
+            continue
         if _segment_has_write_intent(segment):
             # Pass full command for context (needed for uncertain path checks)
             legacy_result = _legacy_path_extraction(segment, ownership, project_root, full_command_context=command)
@@ -1060,6 +1196,11 @@ def _check_command_segments(segments: list[str]) -> tuple[RuleResult | None, boo
             continue
 
         first_word = parts[0]
+
+        # R2'-1: 获准追加通道 — 段首 token 精确为 memory-amend（裸名或绝对
+        # 安装路径）时，该段视为 sanctioned 写，放行该段；其余段照常过检。
+        if is_sanctioned_amend_token(first_word):
+            continue
 
         # Special handling for cd commands
         if first_word == "cd" and len(parts) >= 2:
@@ -1148,15 +1289,15 @@ def _legacy_path_extraction(
 
     paths = _extract_path_from_execute(command)
     if not paths:
-        if _contains_owned_root_string(context_for_owned_check):
-            return RuleResult(
-                matched=True,
-                severity="error",
-                message="Cannot parse Execute command but contains owned resource references",
-                detail={"decision": "block"},
-            )
+        # R2'-2c: 收紧涂抹拦截 — 无可提取路径时不再因整条命令任意位置含
+        # memory/ 字串而拦截。该段若自身含 owned 引用，已被段级
+        # （写意图 × owned 引用）门拦截；只有可归一化且确实命中 owned 域
+        # 的路径才算数，子串出现不算。
         return RuleResult(
-            matched=False, severity="info", message="No owned paths detected in Execute", detail={"decision": "allow"}
+            matched=False,
+            severity="info",
+            message="No extractable paths in Execute segment (smear removed, R2')",
+            detail={"decision": "allow"},
         )
 
     for path in paths:

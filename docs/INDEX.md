@@ -21,6 +21,7 @@ memory-core 架构系列文档，包括整体架构、网关、核心装配、�
 | [09-provider-fallback.md](architecture/09-provider-fallback.md) | Provider 回退 |
 | [10-consumer-boundary.md](architecture/10-consumer-boundary.md) | 消费端边界 |
 | [API-CONTRACT.md](architecture/API-CONTRACT.md) | API 契约 |
+| [PRETOOLUSE-CONTRACT.md](architecture/PRETOOLUSE-CONTRACT.md) | PreToolUse 守卫契约（R2'） |
 
 ### specs/ — 协议规格
 memory-core 协议规格文档，定义 .memory/ 协议的行为规范。
