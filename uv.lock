@@ -306,8 +306,8 @@ wheels = [
 
 [[package]]
 name = "infra-core"
-version = "0.15.0"
-source = { git = "https://github.com/hdot123-org/infra-core.git?rev=v0.15.0#b56c2c71b585cd8b4067b1d88bb570c6e50ba7f1" }
+version = "0.15.1"
+source = { git = "https://github.com/hdot123-org/infra-core.git?rev=v0.15.1#44cf03567987f0314febf9491826ab7eb809fa4a" }
 dependencies = [
     { name = "pyyaml" },
     { name = "requests" },
@@ -437,7 +437,7 @@ wheels = [
 
 [[package]]
 name = "memory-core"
-version = "0.45.7"
+version = "0.47.0"
 source = { editable = "." }
 dependencies = [
     { name = "infra-core" },
@@ -466,7 +466,7 @@ mcp = [
 [package.metadata]
 requires-dist = [
     { name = "deptry", marker = "extra == 'dev'", specifier = ">=0.15" },
-    { name = "infra-core", git = "https://github.com/hdot123-org/infra-core.git?rev=v0.15.0" },
+    { name = "infra-core", git = "https://github.com/hdot123-org/infra-core.git?rev=v0.15.1" },
     { name = "mcp", specifier = ">=1.0,<2.0" },
     { name = "mcp", marker = "extra == 'dev'", specifier = ">=1.0,<2.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0,<2.0" },
