@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.47.1](https://github.com/hdot123-org/memory/compare/v0.47.0...v0.47.1) (2026-09-08)
+
+
+### Documentation
+
+* 补齐 mcp-secret 子命令文档（README + docstring + 架构文档） ([#1138](https://github.com/hdot123-org/memory/issues/1138)) ([3a16307](https://github.com/hdot123-org/memory/commit/3a16307c062f6fed8553496743b0a05d8bc8d839))
+
 ## [0.47.0](https://github.com/hdot123-org/memory/compare/v0.46.0...v0.47.0) (2026-09-07)
 
 
