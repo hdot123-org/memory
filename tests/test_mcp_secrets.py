@@ -166,30 +166,15 @@ class TestReadMcpConfig:
 class TestMcpSecretResolver:
     """MCP 密钥解析器"""
 
-    def _make_resolver_with_stub(self, url: str, apikey: str, response_text: str) -> McpSecretResolver:
-        """创建带 stub HTTP 响应的解析器"""
+    def _make_resolver_with_raw_responses(self, url: str, apikey: str, tool_response_json: str) -> McpSecretResolver:
+        """创建带两阶段 stub 的解析器：第 1 次调用返回 initialize 握手响应，之后返回 tool_response_json"""
         resolver = McpSecretResolver(mcp_url=url, apikey=apikey)
 
-        # Mock urlopen for both initialize and tool call
-        init_response_data = json.dumps(
+        init_response_json = json.dumps(
             {
                 "jsonrpc": "2.0",
                 "id": 1,
-                "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "1password", "version": "1.0"},
-                },
-            }
-        )
-
-        tool_response_data = json.dumps(
-            {
-                "jsonrpc": "2.0",
-                "id": 2,
-                "result": {
-                    "content": [{"type": "text", "text": response_text}],
-                },
+                "result": {"protocolVersion": "2024-11-05", "capabilities": {}, "serverInfo": {}},
             }
         )
 
@@ -200,19 +185,30 @@ class TestMcpSecretResolver:
             call_count += 1
             mock_resp = MagicMock()
             if call_count == 1:
-                mock_resp.read.return_value = init_response_data.encode("utf-8")
-                mock_resp.headers = {"Mcp-Session-Id": "test-session-123"}
-                mock_resp.__enter__ = lambda s: s
-                mock_resp.__exit__ = MagicMock(return_value=False)
+                mock_resp.read.return_value = init_response_json.encode("utf-8")
+                mock_resp.headers = {"Mcp-Session-Id": "sess"}
             else:
-                mock_resp.read.return_value = tool_response_data.encode("utf-8")
+                mock_resp.read.return_value = tool_response_json.encode("utf-8")
                 mock_resp.headers = {}
-                mock_resp.__enter__ = lambda s: s
-                mock_resp.__exit__ = MagicMock(return_value=False)
+            mock_resp.__enter__ = lambda s: s
+            mock_resp.__exit__ = MagicMock(return_value=False)
             return mock_resp
 
         resolver._urlopen = mock_urlopen
         return resolver
+
+    def _make_resolver_with_stub(self, url: str, apikey: str, response_text: str) -> McpSecretResolver:
+        """创建带 stub HTTP 响应的解析器（第 2 次调用返回包裹 response_text 的标准 tool 响应）"""
+        tool_response_json = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {
+                    "content": [{"type": "text", "text": response_text}],
+                },
+            }
+        )
+        return self._make_resolver_with_raw_responses(url, apikey, tool_response_json)
 
     def test_resolve_secret_success(self):
         """成功解析 op:// 引用"""
@@ -233,8 +229,6 @@ class TestMcpSecretResolver:
 
     def test_resolve_secret_mcp_error_response(self):
         """MCP 返回错误响应时返回 None"""
-        resolver = McpSecretResolver(mcp_url="http://test:9080", apikey="key")
-
         error_response = json.dumps(
             {
                 "jsonrpc": "2.0",
@@ -243,29 +237,7 @@ class TestMcpSecretResolver:
             }
         )
 
-        call_count = 0
-
-        def mock_urlopen(req, timeout=10):
-            nonlocal call_count
-            call_count += 1
-            mock_resp = MagicMock()
-            if call_count == 1:
-                mock_resp.read.return_value = json.dumps(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "result": {"protocolVersion": "2024-11-05", "capabilities": {}, "serverInfo": {}},
-                    }
-                ).encode("utf-8")
-                mock_resp.headers = {"Mcp-Session-Id": "sess"}
-            else:
-                mock_resp.read.return_value = error_response.encode("utf-8")
-                mock_resp.headers = {}
-            mock_resp.__enter__ = lambda s: s
-            mock_resp.__exit__ = MagicMock(return_value=False)
-            return mock_resp
-
-        resolver._urlopen = mock_urlopen
+        resolver = self._make_resolver_with_raw_responses("http://test:9080", "key", error_response)
         result = resolver.resolve_secret("op://vault/item/field")
         assert result is None
 
@@ -284,8 +256,6 @@ class TestMcpSecretResolver:
 
     def test_resolve_secret_is_error_flag(self):
         """result.isError 为真时返回 None（MCP 协议错误标志）"""
-        resolver = McpSecretResolver(mcp_url="http://test:9080", apikey="key")
-
         error_response = json.dumps(
             {
                 "jsonrpc": "2.0",
@@ -297,36 +267,12 @@ class TestMcpSecretResolver:
             }
         )
 
-        call_count = 0
-
-        def mock_urlopen(req, timeout=10):
-            nonlocal call_count
-            call_count += 1
-            mock_resp = MagicMock()
-            if call_count == 1:
-                mock_resp.read.return_value = json.dumps(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "result": {"protocolVersion": "2024-11-05", "capabilities": {}, "serverInfo": {}},
-                    }
-                ).encode("utf-8")
-                mock_resp.headers = {"Mcp-Session-Id": "sess"}
-            else:
-                mock_resp.read.return_value = error_response.encode("utf-8")
-                mock_resp.headers = {}
-            mock_resp.__enter__ = lambda s: s
-            mock_resp.__exit__ = MagicMock(return_value=False)
-            return mock_resp
-
-        resolver._urlopen = mock_urlopen
+        resolver = self._make_resolver_with_raw_responses("http://test:9080", "key", error_response)
         result = resolver.resolve_secret("op://vault/item/field")
         assert result is None, "isError=True 时应返回 None"
 
     def test_resolve_secret_error_prefix_text(self):
         """文本以 'Error' 开头时返回 None（防止错误文本被当作密钥）"""
-        resolver = McpSecretResolver(mcp_url="http://test:9080", apikey="key")
-
         error_text_response = json.dumps(
             {
                 "jsonrpc": "2.0",
@@ -337,29 +283,7 @@ class TestMcpSecretResolver:
             }
         )
 
-        call_count = 0
-
-        def mock_urlopen(req, timeout=10):
-            nonlocal call_count
-            call_count += 1
-            mock_resp = MagicMock()
-            if call_count == 1:
-                mock_resp.read.return_value = json.dumps(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "result": {"protocolVersion": "2024-11-05", "capabilities": {}, "serverInfo": {}},
-                    }
-                ).encode("utf-8")
-                mock_resp.headers = {"Mcp-Session-Id": "sess"}
-            else:
-                mock_resp.read.return_value = error_text_response.encode("utf-8")
-                mock_resp.headers = {}
-            mock_resp.__enter__ = lambda s: s
-            mock_resp.__exit__ = MagicMock(return_value=False)
-            return mock_resp
-
-        resolver._urlopen = mock_urlopen
+        resolver = self._make_resolver_with_raw_responses("http://test:9080", "key", error_text_response)
         result = resolver.resolve_secret("op://vault/item/field")
         assert result is None, "Error 前缀文本应返回 None"
 
