@@ -1,5 +1,5 @@
 """
-evolve CLI：status / backup-paths / run / gk-ensure 子命令
+evolve CLI：status / backup-paths / run / gk-ensure / mcp-secret 子命令
 
 D6 stdout 纪律：stdout 只放载荷，诊断/告警走 stderr
 D1 双入口：memory-evolve console script 与 python3 -m memory_core.tools.evolve_cli 等价
