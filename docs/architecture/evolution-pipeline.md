@@ -46,6 +46,7 @@ memory-evolve status                 # 注册项目清单 + 健康分类 + pendi
 memory-evolve status --json          # 机器可读输出
 memory-evolve backup-paths           # 输出全部消费项目 memory/ 路径清单
 memory-evolve gk-ensure              # 全局库 git 归位（HEAD 归位 main）
+memory-evolve mcp-secret <op://...>  # 通过 MCP 解析 op:// 引用（--length-only 非交互验证）
 ```
 
 `--global-kb-root /tmp/...`：agent 会话测试用临时目录，避免写真实全局库。

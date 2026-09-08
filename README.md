@@ -223,6 +223,7 @@ memory-evolve run --all              # 分析全部注册项目，沉淀候选�
 memory-evolve status                 # 列出注册项目 + 健康分类 + pending 数量
 memory-evolve backup-paths           # 输出全部消费项目 memory/ 路径清单（restic 用）
 memory-evolve gk-ensure              # 全局库 git 归位（把 HEAD 从未合并分支归位 main）
+memory-evolve mcp-secret <op_ref>      # 通过 MCP 解析 op:// 引用（--length-only 非交互验证）
 ```
 
 `--global-kb-root /tmp/...` 约定：agent 会话测试时指向临时目录，避免写真实全局库；生产运行不传（默认 `~/.memory/global-kb`）。
