@@ -342,6 +342,37 @@ class TestResolveApiKeySemantics:
     新行为（修正后）：api_key_mcp_url 显式非空 → 用该 URL 解析，apikey 仍从 mcp.json 读
     """
 
+    @staticmethod
+    def _make_tracking_mock_urlopen(called_urls: list, resolved_key: str):
+        """创建追踪请求 URL 的 urlopen mock：initialize 握手 + 之后返回 resolved_key 的 tool 响应"""
+
+        def mock_urlopen(req, timeout=10):
+            called_urls.append(req.full_url)
+            mock_resp = MagicMock()
+            if b"initialize" in req.data:
+                mock_resp.read.return_value = json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "result": {"protocolVersion": "2024-11-05", "capabilities": {}, "serverInfo": {}},
+                    }
+                ).encode("utf-8")
+                mock_resp.headers = {"Mcp-Session-Id": "sess"}
+            else:
+                mock_resp.read.return_value = json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 2,
+                        "result": {"content": [{"type": "text", "text": resolved_key}]},
+                    }
+                ).encode("utf-8")
+                mock_resp.headers = {}
+            mock_resp.__enter__ = lambda s: s
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            return mock_resp
+
+        return mock_urlopen
+
     def test_explicit_mcp_url_uses_that_url(self, tmp_path):
         """显式设置 api_key_mcp_url（非空）时，使用该 URL 解析"""
         mcp_json = {
@@ -371,31 +402,7 @@ class TestResolveApiKeySemantics:
 
         # Mock: 清空环境变量 + mock urlopen 追踪 URL
         called_urls = []
-
-        def mock_urlopen(req, timeout=10):
-            called_urls.append(req.full_url)
-            mock_resp = MagicMock()
-            if "initialize" in req.data.decode():
-                mock_resp.read.return_value = json.dumps(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "result": {"protocolVersion": "2024-11-05", "capabilities": {}, "serverInfo": {}},
-                    }
-                ).encode("utf-8")
-                mock_resp.headers = {"Mcp-Session-Id": "sess"}
-            else:
-                mock_resp.read.return_value = json.dumps(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": 2,
-                        "result": {"content": [{"type": "text", "text": "resolved-key-12345"}]},
-                    }
-                ).encode("utf-8")
-                mock_resp.headers = {}
-            mock_resp.__enter__ = lambda s: s
-            mock_resp.__exit__ = MagicMock(return_value=False)
-            return mock_resp
+        mock_urlopen = self._make_tracking_mock_urlopen(called_urls, "resolved-key-12345")
 
         with patch.dict("os.environ", {}, clear=False):
             # 确保环境变量不存在
@@ -425,8 +432,10 @@ class TestResolveApiKeySemantics:
                 }
             }
         }
-        mcp_config_path = tmp_path / "mcp.json"
-        mcp_config_path.write_text(json.dumps(mcp_json))
+        # mcp_secrets.read_mcp_config 内部用 Path.home() / ".factory" / "mcp.json"
+        # 通过 patch home() 使其指向 tmp_path（需要 .factory/ 子目录结构）
+        (tmp_path / ".factory").mkdir(exist_ok=True)
+        (tmp_path / ".factory" / "mcp.json").write_text(json.dumps(mcp_json))
 
         config = {
             "llm": {
@@ -436,42 +445,15 @@ class TestResolveApiKeySemantics:
             }
         }
 
+        # Mock: 清空环境变量 + mock urlopen 追踪 URL
         called_urls = []
-
-        def mock_urlopen(req, timeout=10):
-            called_urls.append(req.full_url)
-            mock_resp = MagicMock()
-            if b"initialize" in req.data:
-                mock_resp.read.return_value = json.dumps(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "result": {"protocolVersion": "2024-11-05", "capabilities": {}, "serverInfo": {}},
-                    }
-                ).encode("utf-8")
-                mock_resp.headers = {"Mcp-Session-Id": "sess"}
-            else:
-                mock_resp.read.return_value = json.dumps(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": 2,
-                        "result": {"content": [{"type": "text", "text": "resolved-key-via-mcpjson"}]},
-                    }
-                ).encode("utf-8")
-                mock_resp.headers = {}
-            mock_resp.__enter__ = lambda s: s
-            mock_resp.__exit__ = MagicMock(return_value=False)
-            return mock_resp
+        mock_urlopen = self._make_tracking_mock_urlopen(called_urls, "resolved-key-via-mcpjson")
 
         with patch.dict("os.environ", {}, clear=False):
             import os
 
             os.environ.pop("NONEXISTENT_ENV_VAR_FOR_TEST", None)
 
-            # mcp_secrets.read_mcp_config 内部用 Path.home() / ".factory" / "mcp.json"
-            # 通过 patch home() 使其指向 tmp_path（需要 .factory/ 子目录结构）
-            (tmp_path / ".factory").mkdir(exist_ok=True)
-            (tmp_path / ".factory" / "mcp.json").write_text(json.dumps(mcp_json))
             with (
                 patch("urllib.request.urlopen", side_effect=mock_urlopen),
                 patch("pathlib.Path.home", return_value=tmp_path),
