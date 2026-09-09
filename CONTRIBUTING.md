@@ -161,3 +161,5 @@ Python 版本：CI 固定 3.12（见决策 D-008）。
 <!-- INFRA-29 valt-chain-nodeleg test marker 1785747578 -->
 
 <!-- INFRA-6 sole-executor-full-flow test marker 1785719500 -->
+
+<!-- E2E4-1788926459 e2e-linear-chain-validation test marker 1788926459 -->
