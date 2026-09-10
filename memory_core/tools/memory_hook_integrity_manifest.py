@@ -559,6 +559,7 @@ def _load_existing_manifest(manifest_path: Path) -> dict[str, Any] | None:
             _logger.warning("sign_project_incremental: failed to load manifest: %s", exc)
             if attempt == 0:  # If first attempt failed, wait briefly and retry
                 import time
+
                 time.sleep(0.1)  # Brief delay before retry
                 continue
             return None
@@ -566,6 +567,7 @@ def _load_existing_manifest(manifest_path: Path) -> dict[str, Any] | None:
             _logger.warning("sign_project_incremental: failed to load manifest: %s", exc)
             if attempt == 0:  # If first attempt failed, wait briefly and retry
                 import time
+
                 time.sleep(0.1)  # Brief delay before retry
                 continue
             return None

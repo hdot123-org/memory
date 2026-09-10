@@ -20,7 +20,7 @@ import string
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 FACTORY_HOOK_EVENTS: tuple[tuple[str, str], ...] = (
     ("SessionStart", "session-start"),
@@ -460,21 +460,11 @@ def merge_factory_settings(existing: dict[str, Any], desired: dict[str, Any]) ->
 def _sanitize_sensitive_data(data: dict[str, Any]) -> dict[str, Any]:
     """Sanitize sensitive data in the installation result."""
     sanitized = dict(data)
-    
-    # Keys that might contain sensitive information
-    sensitive_keys = {
-        "factory_home", 
-        "settings_path", 
-        "wrapper_path", 
-        "storage_root",
-        "gateway_command",
-        "init_command"
-    }
-    
+
     # Sanitize settings data if present
     if "settings" in sanitized and isinstance(sanitized["settings"], dict):
         sanitized["settings"] = _sanitize_settings_dict(sanitized["settings"])
-    
+
     return sanitized
 
 
@@ -482,16 +472,15 @@ def _sanitize_settings_dict(settings: dict[str, Any]) -> dict[str, Any]:
     """Sanitize potentially sensitive values in settings dict."""
     # Deep copy the settings to avoid modifying the original
     import copy
+
     sanitized = copy.deepcopy(settings)
-    
+
     # Look for potentially sensitive keys
-    sensitive_patterns = [
-        "token", "key", "secret", "password", "auth", "api", "credential"
-    ]
-    
-    def _sanitize_recursive(obj):
+    sensitive_patterns = ["token", "key", "secret", "password", "auth", "api", "credential"]
+
+    def _sanitize_recursive(obj: Any) -> Any:
         if isinstance(obj, dict):
-            sanitized_dict = {}
+            sanitized_dict: dict[str, Any] = {}
             for k, v in obj.items():
                 # Check if key suggests sensitive data
                 is_sensitive = any(pattern in k.lower() for pattern in sensitive_patterns)
@@ -504,8 +493,8 @@ def _sanitize_settings_dict(settings: dict[str, Any]) -> dict[str, Any]:
             return [_sanitize_recursive(item) for item in obj]
         else:
             return obj
-    
-    return _sanitize_recursive(sanitized)
+
+    return cast(dict[str, Any], _sanitize_recursive(sanitized))
 
 
 def install_factory_hooks(
