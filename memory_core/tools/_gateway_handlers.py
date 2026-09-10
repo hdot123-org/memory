@@ -36,6 +36,7 @@ from ._gateway_config import (
     ARTIFACT_ROOT,
     CONTEXT_ROOT,
     ERROR_LOG,
+    REPO_ROOT,
     _integrity_verify,
     get_source_repo_mode,
     is_denied_project_root,
@@ -219,9 +220,13 @@ def _handle_pretooluse_guard(args: argparse.Namespace, raw_payload: str, cwd: Pa
 
 def _handle_session_start_setup(cwd: Path) -> None:
     """Handle session-start side effects: health check, state update, telemetry sync, version probe."""
-    _launch_async_health_check(cwd)
-    project_scope = determine_project_scope(cwd)
-    _update_state_dynamic_fields(cwd, project_scope)
+    # M1-3: Use REPO_ROOT for memory-root semantic operations
+    # When PREFER_EXTERNAL_CWD=1, cwd may be outer non-git directory
+    # but memory operations must target the actual project root (REPO_ROOT)
+    project_root = REPO_ROOT
+    _launch_async_health_check(project_root)
+    project_scope = determine_project_scope(project_root)
+    _update_state_dynamic_fields(project_root, project_scope)
     try:
         _maybe_sync_telemetry(ARTIFACT_ROOT)
     except Exception as exc:
@@ -258,7 +263,7 @@ def _handle_session_start_setup(cwd: Path) -> None:
         set_resign_hook(_memory_core_resign_wrapper)
 
         # Pass current_version parameter (infra-core does not hardcode it)
-        probe_version_and_sync(cwd, CURRENT_MEMORY_VERSION)
+        probe_version_and_sync(project_root, CURRENT_MEMORY_VERSION)
     except Exception as exc:
         # Fail-safe: any exception must not block hook main chain
         _logger.debug("version probe skipped: %s", exc)
@@ -274,7 +279,11 @@ def _handle_prompt_submit_logging(cwd: Path, payload: dict[str, Any]) -> None:
 
 def _handle_integrity_check(cwd: Path, package: dict[str, Any], host: str, event: str) -> None:
     """Verify project integrity on session-start. May set package status to 'blocked'."""
-    integrity_result = _integrity_verify(cwd)
+    # M1-3: Use REPO_ROOT for integrity verification
+    # When PREFER_EXTERNAL_CWD=1, cwd may be outer non-git directory
+    # but integrity operations must target the actual project root (REPO_ROOT)
+    project_root = REPO_ROOT
+    integrity_result = _integrity_verify(project_root)
     if not integrity_result or integrity_result.get("ok", True):
         return
     if integrity_result.get("skipped_reason") == "key_not_found":
@@ -313,9 +322,12 @@ def _write_artifacts_and_emit_metrics(
         )
         print(f"[memory-hook-gateway] artifact write failed: {writer.last_error}", file=sys.stderr)
     if write_ok:
+        # M1-3: Use REPO_ROOT for integrity signing
+        # When PREFER_EXTERNAL_CWD=1, cwd may be outer non-git directory
+        # but integrity operations must target the actual project root (REPO_ROOT)
         from ._gateway_config import _integrity_sign
 
-        _integrity_sign(cwd)
+        _integrity_sign(REPO_ROOT)
     try:
         from .memory_hook_metrics import emit_metrics
 

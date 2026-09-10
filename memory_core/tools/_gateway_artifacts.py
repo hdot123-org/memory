@@ -282,8 +282,16 @@ def _launch_async_health_check(cwd: Path) -> None:
 
 
 def _inject_health_alert(cwd: Path, package: dict[str, Any]) -> None:
-    """Inject health alert from previous session if degraded."""
-    prev_health_report = cwd / "memory" / "system" / "health-report.json"
+    """Inject health alert from previous session if degraded.
+
+    M1-3: Use REPO_ROOT for health report lookup to ensure memory-root semantics.
+    When PREFER_EXTERNAL_CWD=1, cwd may be outer non-git directory but memory
+    operations must target the actual project root (REPO_ROOT).
+    """
+    from ._gateway_config import REPO_ROOT
+
+    # Use REPO_ROOT instead of cwd for memory-root semantics
+    prev_health_report = REPO_ROOT / "memory" / "system" / "health-report.json"
     if not prev_health_report.exists():
         return
     try:
