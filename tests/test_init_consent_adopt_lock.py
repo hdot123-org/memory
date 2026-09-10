@@ -128,6 +128,9 @@ class TestNonGitDenylist:
     def _disable_denylist_bypass(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """conftest.py sets BYPASS_DENYLIST=1 globally; we need real denylist here."""
         monkeypatch.delenv("MEMORY_CORE_BYPASS_DENYLIST", raising=False)
+        # Disable tmp prefix check so pytest's tmp_path under /tmp doesn't trigger
+        # the tmpdir rule before the intended non_git/junk_pattern/home_root rules.
+        monkeypatch.setattr("memory_core.tools.denylist.SYSTEM_TMP_PREFIXES", ())
 
     def test_non_git_rejected_exit_1(self, tmp_path: Path) -> None:
         """Non-git target without --allow-non-git → exit 1 (not 2)."""
@@ -167,6 +170,9 @@ class TestAllowNonGitDoesNotWeakenOtherRules:
     def _disable_denylist_bypass(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """conftest.py sets BYPASS_DENYLIST=1 globally; we need real denylist here."""
         monkeypatch.delenv("MEMORY_CORE_BYPASS_DENYLIST", raising=False)
+        # Disable tmp prefix check so pytest's tmp_path under /tmp doesn't trigger
+        # the tmpdir rule before the intended non_git/junk_pattern/home_root rules.
+        monkeypatch.setattr("memory_core.tools.denylist.SYSTEM_TMP_PREFIXES", ())
 
     def test_junk_pattern_still_rejected_with_flag(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """demo-* directory with --allow-non-git → still rejected by junk_pattern."""
