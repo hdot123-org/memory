@@ -651,10 +651,7 @@ def test_val_wrap_017_adopt_mode_no_agents_md_injection(wrapper_env):
     original_content = "# Business AGENTS.md\n\nThis is business-specific content.\n"
     agents_md.write_text(original_content)
     original_sha = subprocess.run(
-        ["sha256sum", str(agents_md)],
-        capture_output=True,
-        text=True,
-        check=True
+        ["sha256sum", str(agents_md)], capture_output=True, text=True, check=True
     ).stdout.split()[0]
 
     # Run wrapper to trigger probe routing
@@ -670,12 +667,9 @@ def test_val_wrap_017_adopt_mode_no_agents_md_injection(wrapper_env):
     assert "MEMORY_HOOK_END" not in new_content
 
     # Content should be unchanged
-    new_sha = subprocess.run(
-        ["sha256sum", str(agents_md)],
-        capture_output=True,
-        text=True,
-        check=True
-    ).stdout.split()[0]
+    new_sha = subprocess.run(["sha256sum", str(agents_md)], capture_output=True, text=True, check=True).stdout.split()[
+        0
+    ]
     assert new_sha == original_sha
 
 
@@ -778,11 +772,7 @@ def test_val_wrap_readonly_reevaluation_after_probe(wrapper_env):
 
     # Create a gateway stub that outputs READONLY value
     gateway_stub = wrapper_env["tmpdir"] / "gateway-stub-readonly.sh"
-    gateway_stub.write_text(
-        "#!/bin/sh\n"
-        'echo "READONLY=$READONLY"\n'
-        'echo "ROUTED_TO=$MEMORY_HOOK_PROJECT_CWD"\n'
-    )
+    gateway_stub.write_text('#!/bin/sh\necho "READONLY=$READONLY"\necho "ROUTED_TO=$MEMORY_HOOK_PROJECT_CWD"\n')
     gateway_stub.chmod(0o755)
 
     # Update wrapper to use new gateway stub
