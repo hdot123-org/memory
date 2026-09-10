@@ -284,12 +284,21 @@ class TestHealthReportInjection:
             gw._maybe_sync_telemetry = lambda *a, **kw: None
             gw._log_prompt_submit = lambda *a, **kw: None
 
-            # Patch _discover_cwd to return our project_dir
-            with patch.object(gw, "_discover_cwd", return_value=project_dir):
-                from memory_core.tools import memory_hook_metrics
+            # Patch REPO_ROOT in _gateway_config so _inject_health_alert's
+            # local import reads from the test fixture project_dir (M1-3 cwd semantics fix)
+            from memory_core.tools import _gateway_config as _gc
 
-                with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
-                    gw.main()
+            orig_repo_root = _gc.REPO_ROOT
+            _gc.REPO_ROOT = project_dir
+            try:
+                # Patch _discover_cwd to return our project_dir
+                with patch.object(gw, "_discover_cwd", return_value=project_dir):
+                    from memory_core.tools import memory_hook_metrics
+
+                    with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
+                        gw.main()
+            finally:
+                _gc.REPO_ROOT = orig_repo_root
 
             # Check that the captured package has the health alert injected
             assert len(captured_packages) == 1
@@ -571,11 +580,20 @@ class TestHealthReportInjection:
             gw._maybe_sync_telemetry = lambda *a, **kw: None
             gw._log_prompt_submit = lambda *a, **kw: None
 
-            with patch.object(gw, "_discover_cwd", return_value=project_dir):
-                from memory_core.tools import memory_hook_metrics
+            # Patch REPO_ROOT in _gateway_config so _inject_health_alert
+            # reads from the test fixture project_dir (M1-3 cwd semantics fix)
+            from memory_core.tools import _gateway_config as _gc
 
-                with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
-                    gw.main()
+            orig_repo_root = _gc.REPO_ROOT
+            _gc.REPO_ROOT = project_dir
+            try:
+                with patch.object(gw, "_discover_cwd", return_value=project_dir):
+                    from memory_core.tools import memory_hook_metrics
+
+                    with patch.object(memory_hook_metrics, "emit_metrics", lambda *a, **kw: None):
+                        gw.main()
+            finally:
+                _gc.REPO_ROOT = orig_repo_root
 
             pkg = captured_packages[0]
             alert = pkg["system_context"]["previous_health_alert"]
