@@ -185,6 +185,9 @@ if [ -n "$HOME_ROOT" ] && [ -n "$PROJECT_CWD_RESOLVED" ] && [ "$PROJECT_CWD_RESO
     exit 0
 fi
 
+# Export PROJECT_CWD before READONLY checks to ensure it's available for source repo detection
+export MEMORY_HOOK_PROJECT_CWD="$PROJECT_CWD"
+
 # M3: Anti-pollution - source repo gets readonly context-package instead of noop
 if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ]; then
     if [ -f "$PROJECT_CWD/memory_core/tools/memory_hook_gateway.py" ] || [ -f "$PROJECT_CWD/memory_core/tools/factory_global_hooks.py" ] || [ -f "$PROJECT_CWD/memory_core/ownership.py" ]; then
@@ -322,6 +325,8 @@ $$_child"
         exit 0
     fi
     # NESTED_COUNT == 1: PROJECT_CWD already set, continue to export
+    # Re-export PROJECT_CWD after probe adjustment
+    export MEMORY_HOOK_PROJECT_CWD="$PROJECT_CWD"
 fi
 # ============================================================================
 # END NESTED REPO PROBE
@@ -334,8 +339,6 @@ if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ] && [ "$NESTED_REPO_PROBE_ENABL
         export READONLY=1
     fi
 fi
-
-export MEMORY_HOOK_PROJECT_CWD="$PROJECT_CWD"
 
 # Check for memory-project.toml (Phase 2 / M4)
 if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ]; then
@@ -452,6 +455,57 @@ def merge_factory_settings(existing: dict[str, Any], desired: dict[str, Any]) ->
 
     merged["hooks"] = merged_hooks
     return merged
+
+
+def _sanitize_sensitive_data(data: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize sensitive data in the installation result."""
+    sanitized = dict(data)
+    
+    # Keys that might contain sensitive information
+    sensitive_keys = {
+        "factory_home", 
+        "settings_path", 
+        "wrapper_path", 
+        "storage_root",
+        "gateway_command",
+        "init_command"
+    }
+    
+    # Sanitize settings data if present
+    if "settings" in sanitized and isinstance(sanitized["settings"], dict):
+        sanitized["settings"] = _sanitize_settings_dict(sanitized["settings"])
+    
+    return sanitized
+
+
+def _sanitize_settings_dict(settings: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize potentially sensitive values in settings dict."""
+    # Deep copy the settings to avoid modifying the original
+    import copy
+    sanitized = copy.deepcopy(settings)
+    
+    # Look for potentially sensitive keys
+    sensitive_patterns = [
+        "token", "key", "secret", "password", "auth", "api", "credential"
+    ]
+    
+    def _sanitize_recursive(obj):
+        if isinstance(obj, dict):
+            sanitized_dict = {}
+            for k, v in obj.items():
+                # Check if key suggests sensitive data
+                is_sensitive = any(pattern in k.lower() for pattern in sensitive_patterns)
+                if is_sensitive:
+                    sanitized_dict[k] = "***SANITIZED***"
+                else:
+                    sanitized_dict[k] = _sanitize_recursive(v)
+            return sanitized_dict
+        elif isinstance(obj, list):
+            return [_sanitize_recursive(item) for item in obj]
+        else:
+            return obj
+    
+    return _sanitize_recursive(sanitized)
 
 
 def install_factory_hooks(
@@ -603,7 +657,9 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
     )
     if args.json:
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        # Sanitize result for dry-run output to avoid showing sensitive data
+        sanitized_result = _sanitize_sensitive_data(result)
+        print(json.dumps(sanitized_result, indent=2, ensure_ascii=False))
     else:
         if result["success"]:
             action = "Would install" if result.get("dry_run") else "Installed"

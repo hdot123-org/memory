@@ -141,7 +141,8 @@ def _refine_non_git_seed(seed: Path) -> Path:
             pass  # If we can't read or parse it, continue
 
     # Find valid child repositories
-    # Valid = has .git (file or dir), not a dot directory (name.startswith('.'))
+    # Valid = has .git (file or dir), not a dot directory (name.startswith('.'))  
+    # VAL-GTW-008/012: Only check for .git existence (not memory tree existence)
     valid_children = []
     try:
         for child in seed.iterdir():
@@ -149,7 +150,7 @@ def _refine_non_git_seed(seed: Path) -> Path:
             if child.name.startswith("."):
                 continue
 
-            # Check if child has .git (file or directory)
+            # Check if child has .git (file or directory) - only .git existence matters (not memory tree)
             if (child / ".git").exists():
                 valid_children.append(child)
 

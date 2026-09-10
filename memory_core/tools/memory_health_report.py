@@ -200,8 +200,10 @@ def main() -> int:
     # Fake payload
     payload = {"cwd": str(target)}
 
+    # Get the host from environment variable or use a generic placeholder
+    host = os.environ.get("MEMORY_HOOK_HOST", "generic")
     try:
-        package = build_context_package("codex", "health-check", payload)
+        package = build_context_package(host, "health-check", payload)
         report = {
             "status": package.get("status"),
             "missing_paths": package.get("missing_paths", []),

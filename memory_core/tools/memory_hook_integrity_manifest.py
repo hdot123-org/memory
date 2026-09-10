@@ -547,14 +547,28 @@ def _write_audit_log(
 
 def _load_existing_manifest(manifest_path: Path) -> dict[str, Any] | None:
     """Parse manifest.json into a dict; return None if unreadable/corrupt/not an object."""
-    try:
-        loaded: Any = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        _logger.warning("sign_project_incremental: failed to load manifest: %s", exc)
-        return None
-    if isinstance(loaded, dict):
-        return cast("dict[str, Any]", loaded)
-    _logger.warning("sign_project_incremental: manifest is not a JSON object")
+    # Attempt to load with retry to handle transient read failures during concurrency
+    for attempt in range(2):  # Try twice in case of concurrent access
+        try:
+            loaded: Any = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                return cast("dict[str, Any]", loaded)
+            _logger.warning("sign_project_incremental: manifest is not a JSON object")
+            return None
+        except json.JSONDecodeError as exc:
+            _logger.warning("sign_project_incremental: failed to load manifest: %s", exc)
+            if attempt == 0:  # If first attempt failed, wait briefly and retry
+                import time
+                time.sleep(0.1)  # Brief delay before retry
+                continue
+            return None
+        except OSError as exc:
+            _logger.warning("sign_project_incremental: failed to load manifest: %s", exc)
+            if attempt == 0:  # If first attempt failed, wait briefly and retry
+                import time
+                time.sleep(0.1)  # Brief delay before retry
+                continue
+            return None
     return None
 
 
