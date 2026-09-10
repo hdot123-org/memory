@@ -27,6 +27,8 @@ __all__ = [
     "BATCH_SIZE",
     "NON_INJECTION_EVENTS",
     "_FORCE_HOOK",
+    # Seed refinement
+    "_refine_non_git_seed",
     # File utilities (re-exported)
     "exclusive_lock",
     "now_iso",
@@ -85,7 +87,62 @@ try:
 except ImportError:
     from memory_core.tools.memory_root_discovery import discover_roots
 
-REPO_ROOT, WORKSPACE_ROOT = discover_roots(_cwd_seed)
+
+def _refine_non_git_seed(seed: Path) -> Path:
+    """Refine non-git seed to unique valid child repository if applicable.
+
+    B-layer seed refinement: when seed is non-git (no .git), no consent marker
+    is present, and exactly one valid child repository exists, return that child
+    as the refined seed.
+
+    Valid child = has .git (file or directory), not a dot directory.
+    Pure filesystem operation, no subprocess calls.
+
+    Args:
+        seed: The initial seed path from MEMORY_HOOK_PROJECT_CWD or cwd()
+
+    Returns:
+        Refined seed path (child repo) if conditions met, otherwise original seed
+    """
+    # If seed itself has .git, passthrough (no refinement needed)
+    if (seed / ".git").exists():
+        return seed
+
+    # If consent marker present, passthrough (respect user intent)
+    if os.environ.get("MEMORY_HOOK_ALLOW_NON_GIT"):
+        return seed
+
+    # Find valid child repositories
+    # Valid = has .git (file or dir), not a dot directory (name.startswith('.'))
+    valid_children = []
+    try:
+        for child in seed.iterdir():
+            # Skip dot directories (shell glob alignment)
+            if child.name.startswith("."):
+                continue
+
+            # Check if child has .git (file or directory)
+            if (child / ".git").exists():
+                valid_children.append(child)
+
+                # Early exit: if we find 2+ children, it's ambiguous
+                if len(valid_children) >= 2:
+                    # Ambiguous: return original seed (don't silently choose)
+                    return seed
+    except (OSError, PermissionError):
+        # If we can't iterate, return original seed
+        return seed
+
+    # Exactly one valid child found
+    if len(valid_children) == 1:
+        return valid_children[0]
+
+    # No children or ambiguous: return original seed
+    return seed
+
+
+_cwd_seed_refined = _refine_non_git_seed(_cwd_seed)
+REPO_ROOT, WORKSPACE_ROOT = discover_roots(_cwd_seed_refined)
 _FORCE_HOOK = bool(os.environ.get("MEMORY_HOOK_FORCE") or os.environ.get("WORKBOT_FORCE_HOOK"))
 BATCH_SIZE = 500
 
