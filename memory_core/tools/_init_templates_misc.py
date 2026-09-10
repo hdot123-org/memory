@@ -87,10 +87,15 @@ def template_inbox_md(project_name: str) -> tuple[str, list[str]]:
     return content, warnings
 
 
-def template_ownership_toml(project_name: str) -> tuple[str, list[str]]:
+def template_ownership_toml(project_name: str, *, allow_non_git: bool = False) -> tuple[str, list[str]]:
     """Generate ownership.toml content for memory-core ownership declaration.
 
     Uses manual string construction (no tomli_w or tomlkit dependency).
+
+    Args:
+        project_name: The project name to use in the template
+        allow_non_git: If True, adds allow_non_git = true to [policy] section
+                      (consent marker for non-git directory initialization)
 
     Returns:
         Tuple of (content, warnings_list)
@@ -154,9 +159,14 @@ def template_ownership_toml(project_name: str) -> tuple[str, list[str]]:
                 "# Policy: optional key-value pairs for ownership policy",
                 "[policy]",
                 f'project_name = "{project_name}"',
-                "",
             ]
         )
+
+        # Add consent marker if allow_non_git is True
+        if allow_non_git:
+            lines.append("allow_non_git = true")
+
+        lines.append("")
 
         content = "\n".join(lines)
     except (ValueError, TypeError, ImportError) as exc:
