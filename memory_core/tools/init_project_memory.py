@@ -247,7 +247,7 @@ def init_project_memory(
     result["mode"] = result["action_taken"] if mode == "create" else mode
 
     # Finalize
-    _finalize_init(target, memory_root, project_name, host, mode, force, auto_fill, result)
+    _finalize_init(target, memory_root, project_name, host, mode, force, auto_fill, result, allow_non_git=allow_non_git)
 
     return result
 

@@ -129,6 +129,7 @@ def _finalize_ownership_toml(
     mode: str,
     force: bool,
     result: dict[str, Any],
+    allow_non_git: bool = False,
 ) -> None:
     """Write ownership.toml with mode-aware handling."""
     try:
@@ -139,7 +140,7 @@ def _finalize_ownership_toml(
             ownership_path, mode, force, ownership, authorized_maintenance, target, result
         )
         if not should_skip:
-            content, warnings = template_ownership_toml(project_name)
+            content, warnings = template_ownership_toml(project_name, allow_non_git=allow_non_git)
             ownership_path.write_text(content, encoding="utf-8")
             result["created"].append("file:ownership.toml")
             result["warnings"].extend(warnings)
@@ -203,6 +204,7 @@ def _finalize_init(
     force: bool,
     auto_fill: bool,
     result: dict[str, Any],
+    allow_non_git: bool = False,
 ) -> None:
     """Finalize initialization: auto-fill, hooks, integrity, ownership, audit."""
     # Auto-fill
@@ -225,7 +227,7 @@ def _finalize_init(
     _finalize_integrity_audit(memory_root, project_name, result)
 
     # Ownership.toml
-    _finalize_ownership_toml(target, memory_root, project_name, mode, force, result)
+    _finalize_ownership_toml(target, memory_root, project_name, mode, force, result, allow_non_git=allow_non_git)
 
     # Evidence refs
     _finalize_evidence_refs(target, result)
