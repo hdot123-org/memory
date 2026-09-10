@@ -176,9 +176,7 @@ class TestSettingsDeadKeyInjection:
                 for hook in group.get("hooks", []):
                     command = hook.get("command", "")
                     # Memory hooks should not be planned for settings.json
-                    assert "memory-hook" not in command or "memory-hook --host factory" not in command, (
-                        f"dry-run should not plan memory hook injection: {command}"
-                    )
+                    assert "memory-hook" not in command, f"dry-run should not plan memory hook injection: {command}"
 
 
 # ---------------------------------------------------------------------------

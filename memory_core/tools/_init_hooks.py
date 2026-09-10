@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ._file_utils import exclusive_lock
 from ._init_config import (
     _LEGACY_HOST_PATTERNS,
     CLAUDE_HOOK_EVENTS,
@@ -300,6 +301,10 @@ def update_agents_md(
     content (both inside and outside the hook block). These legacy hosts are
     superseded by supported hosts (factory, zcode; see SUPPORTED_HOSTS), which
     use ~/.factory/bin/memory-hook or ~/.zcode/bin/memory-hook respectively.
+
+    Concurrency safety: the read-modify-write cycle is protected by an
+    exclusive_lock (fcntl.flock LOCK_EX) to prevent interleaved writes when
+    multiple init processes run in parallel.
     """
     if result is None:
         return
@@ -308,14 +313,19 @@ def update_agents_md(
     new_block = template_agents_md_block()
 
     if agents_path.exists():
-        content = agents_path.read_text(encoding="utf-8")
-        has_begin = MEMORY_HOOK_BEGIN_MARKER in content
-        has_end = MEMORY_HOOK_END_MARKER in content
+        # Read-modify-write under exclusive lock to prevent interleaved writes
+        with agents_path.open("r+", encoding="utf-8") as f, exclusive_lock(f, label="AGENTS.md"):
+            content = f.read()
+            has_begin = MEMORY_HOOK_BEGIN_MARKER in content
+            has_end = MEMORY_HOOK_END_MARKER in content
 
-        if has_begin and has_end:
-            _update_existing_agents_md(agents_path, content, new_block, result, mode)
-        else:
-            _handle_no_markers_agents_md(agents_path, content, new_block, result, mode)
+            if has_begin and has_end:
+                updated = _update_existing_agents_md(agents_path, content, new_block, result, mode)
+                if updated:
+                    # _update_existing_agents_md already wrote; re-read for lock consistency
+                    pass
+            else:
+                _handle_no_markers_agents_md(agents_path, content, new_block, result, mode)
         return
 
     # File doesn't exist
@@ -325,7 +335,11 @@ def update_agents_md(
         return
 
     # create/update/repair mode: create AGENTS.md when absent
-    agents_path.write_text(new_block, encoding="utf-8")
+    # Use exclusive lock even for creation to prevent races
+    agents_path.touch()
+    with agents_path.open("r+", encoding="utf-8") as f, exclusive_lock(f, label="AGENTS.md"):
+        f.write(new_block)
+        f.truncate()
     result["created"].append("file:AGENTS.md")
 
 

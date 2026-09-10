@@ -125,9 +125,7 @@ def test_install_factory_hooks_writes_wrapper_and_settings_json(monkeypatch, tmp
             for hook in group.get("hooks", []):
                 command = hook.get("command", "")
                 # No memory-hook commands should be present
-                assert "memory-hook" not in command or "memory-hook-gateway" not in command, (
-                    f"settings.json must not contain memory hook commands: {command}"
-                )
+                assert "memory-hook" not in command, f"settings.json must not contain memory hook commands: {command}"
 
 
 def test_wrapper_skips_exact_home_project_root_but_allows_child(monkeypatch, tmp_path: Path) -> None:
