@@ -173,8 +173,10 @@ def _handle_pretooluse_guard(args: argparse.Namespace, raw_payload: str, cwd: Pa
 
         redacted_raw = _redact(raw_payload[:500]) if raw_payload else ""
 
+        # M1-6: Use REPO_ROOT for memory-root semantic operations
+        # Align with _handle_session_start_setup pattern
         _write_err(
-            project_root=str(cwd),
+            project_root=str(REPO_ROOT),
             error_type="hook_timeout",
             context={
                 "guard_failure": "gateway-fallback",
@@ -272,7 +274,10 @@ def _handle_session_start_setup(cwd: Path) -> None:
 def _handle_prompt_submit_logging(cwd: Path, payload: dict[str, Any]) -> None:
     """Handle prompt-submit real-time logging."""
     try:
-        _log_prompt_submit(cwd, payload)
+        # M1-3 follow-up: Use REPO_ROOT for memory-root semantic operations
+        # When PREFER_EXTERNAL_CWD=1, cwd may be outer non-git directory
+        # but memory operations must target the actual project root (REPO_ROOT)
+        _log_prompt_submit(REPO_ROOT, payload)
     except Exception as exc:
         _logger.warning("_log_prompt_submit failed: %s", exc)
 

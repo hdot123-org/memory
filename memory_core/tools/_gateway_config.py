@@ -9,8 +9,10 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import importlib
+import json
 import logging
 import os
+import re
 import threading
 from pathlib import Path
 from typing import Any, cast
@@ -109,8 +111,34 @@ def _refine_non_git_seed(seed: Path) -> Path:
         return seed
 
     # If consent marker present, passthrough (respect user intent)
+    # Check env var first (legacy)
     if os.environ.get("MEMORY_HOOK_ALLOW_NON_GIT"):
         return seed
+
+    # Check persistent consent markers (M1-1: ownership.toml and/or manifest.json)
+    # Uses anchored regex to avoid false positives like 'allow_non_git = false # true'
+    _consent_pattern = re.compile(r"^\s*allow_non_git\s*=\s*true\s*$", re.MULTILINE)
+
+    # Check ownership.toml [policy] section
+    ownership_toml_path = seed / "memory" / "system" / "ownership.toml"
+    if ownership_toml_path.exists():
+        try:
+            content = ownership_toml_path.read_text(encoding="utf-8")
+            if _consent_pattern.search(content):
+                return seed  # Persistent consent found, passthrough
+        except (OSError, UnicodeDecodeError):
+            pass  # If we can't read it, continue to next check
+
+    # Check manifest.json
+    manifest_json_path = seed / "memory" / "system" / "manifest.json"
+    if manifest_json_path.exists():
+        try:
+            content = manifest_json_path.read_text(encoding="utf-8")
+            manifest = json.loads(content)
+            if manifest.get("allow_non_git") is True:
+                return seed  # Persistent consent found, passthrough
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            pass  # If we can't read or parse it, continue
 
     # Find valid child repositories
     # Valid = has .git (file or dir), not a dot directory (name.startswith('.'))
