@@ -144,6 +144,8 @@ def test_wrapper_skips_exact_home_project_root_but_allows_child(monkeypatch, tmp
     fake_home = tmp_path / "home"
     child_project = fake_home / "tool"
     child_project.mkdir(parents=True)
+    # 改基：子目录需要是 git 仓库才能被探测为有效候选
+    subprocess.run(["git", "init", "-q"], cwd=child_project, check=True, capture_output=True)
     _fake_memory_commands(tmp_path, monkeypatch)
     monkeypatch.setenv("HOME", str(fake_home))
 
@@ -160,7 +162,6 @@ def test_wrapper_skips_exact_home_project_root_but_allows_child(monkeypatch, tmp
 
     assert home_proc.returncode == 0
     assert home_proc.stdout.strip() == "{}"
-    assert not (fake_home / "memory" / "system").exists()
     assert not (fake_home / "memory" / "system").exists()
 
     child_proc = subprocess.run(
@@ -180,6 +181,8 @@ def test_wrapper_initializes_project_memory_with_factory_host(monkeypatch, tmp_p
     factory_home = tmp_path / ".factory"
     project = tmp_path / "project"
     project.mkdir()
+    # 改基：项目目录需要是 git 仓库才能触发初始化
+    subprocess.run(["git", "init", "-q"], cwd=project, check=True, capture_output=True)
     _fake_memory_commands(tmp_path, monkeypatch)
 
     install_factory_hooks(factory_home=factory_home, storage_root=tmp_path / "global-state")
@@ -195,7 +198,6 @@ def test_wrapper_initializes_project_memory_with_factory_host(monkeypatch, tmp_p
 
     assert proc.returncode == 0
     assert (project / "memory" / "system").is_dir()
-    assert (project / "memory" / "system").is_dir()
     assert (project / "memory" / "system" / "init-host").read_text(encoding="utf-8").strip() == "factory"
 
 
@@ -205,6 +207,8 @@ def test_wrapper_uses_factory_project_dir(monkeypatch, tmp_path: Path) -> None:
     unrelated = tmp_path / "unrelated"
     project.mkdir()
     unrelated.mkdir()
+    # 改基：项目目录需要是 git 仓库才能触发初始化
+    subprocess.run(["git", "init", "-q"], cwd=project, check=True, capture_output=True)
     _fake_memory_commands(tmp_path, monkeypatch)
 
     install_factory_hooks(factory_home=factory_home, storage_root=tmp_path / "global-state")

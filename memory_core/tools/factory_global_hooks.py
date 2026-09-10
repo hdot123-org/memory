@@ -147,6 +147,27 @@ export MEMORY_HOOK_PREFER_EXTERNAL_CWD="${MEMORY_HOOK_PREFER_EXTERNAL_CWD:-1}"
 export MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE="${MEMORY_HOOK_RECORD_PROJECT_LIFECYCLE:-1}"
 export HOME="${HOME:-$MEMORY_HOOK_GLOBAL_STATE_ROOT/..}"
 
+# Parse --event value (POSIX-compliant, no bash arrays)
+# hooks.json 实测形态: $1=--host $2=factory $3=--event $4=<事件名>
+EVENT_NAME=""
+_prev_was_event=0
+for _arg in "$$@"; do
+    case "$_arg" in
+        --event=*)
+            EVENT_NAME="$${_arg#--event=}"
+            ;;
+        --event)
+            _prev_was_event=1
+            ;;
+        *)
+            if [ "$_prev_was_event" -eq 1 ]; then
+                EVENT_NAME="$_arg"
+            fi
+            _prev_was_event=0
+            ;;
+    esac
+done
+
 mkdir -p "$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system" 2>/dev/null || true
 PROJECT_CWD="$ORIGINAL_CWD"
 if [ -n "$ORIGINAL_CWD" ] && [ -d "$ORIGINAL_CWD" ]; then
@@ -155,9 +176,8 @@ if [ -n "$ORIGINAL_CWD" ] && [ -d "$ORIGINAL_CWD" ]; then
         PROJECT_CWD="$GIT_ROOT"
     fi
 fi
-export MEMORY_HOOK_PROJECT_CWD="$PROJECT_CWD"
 
-HOME_ROOT=$(cd "${HOME:-$MEMORY_HOOK_GLOBAL_STATE_ROOT/..}" 2>/dev/null && pwd -P || true)
+HOME_ROOT=$(cd "$${HOME:-$MEMORY_HOOK_GLOBAL_STATE_ROOT/..}" 2>/dev/null && pwd -P || true)
 PROJECT_CWD_RESOLVED=$(cd "$PROJECT_CWD" 2>/dev/null && pwd -P || true)
 if [ -n "$HOME_ROOT" ] && [ -n "$PROJECT_CWD_RESOLVED" ] && [ "$PROJECT_CWD_RESOLVED" = "$HOME_ROOT" ]; then
     printf '{}\\n'
@@ -168,20 +188,168 @@ fi
 if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ]; then
     if [ -f "$PROJECT_CWD/memory_core/tools/memory_hook_gateway.py" ] || [ -f "$PROJECT_CWD/memory_core/tools/factory_global_hooks.py" ] || [ -f "$PROJECT_CWD/memory_core/ownership.py" ]; then
         export READONLY=1
-        exec "$MEMORY_HOOK_GATEWAY" "$@"
+        exec "$MEMORY_HOOK_GATEWAY" "$$@"
     fi
 fi
 
-# M3: Remove || true to make init failures visible with structured error output
+# ============================================================================
+# NESTED REPO PROBE (M1-2): Four-level routing probe
+# ============================================================================
+# Triggered only when ALL five conditions are met:
+#   1. GIT_ROOT is empty (upward normalization failed)
+#   2. CWD has no .git (not a real repo, even dataless/unreadable)
+#   3. No consent marker (allow_non_git=true)
+#   4. CWD is not $$HOME exact match (HOME guard already ran)
+#   5. Escape hatch not set (MEMORY_HOOK_DISABLE_DOWNWARD_PROBE != 1)
+
+NESTED_REPO_PROBE_ENABLED=0
+if [ -z "$${GIT_ROOT:-}" ] && \\
+   [ ! -e "$PROJECT_CWD/.git" ] && \\
+   [ "$${MEMORY_HOOK_DISABLE_DOWNWARD_PROBE:-0}" != "1" ]; then
+
+    # Check consent marker (anchored regex)
+    CONSENT_MARKER=""
+    if [ -f "$PROJECT_CWD/memory/system/ownership.toml" ]; then
+        if grep -q '^[[:space:]]*allow_non_git[[:space:]]*=[[:space:]]*true' "$PROJECT_CWD/memory/system/ownership.toml" 2>/dev/null; then
+            CONSENT_MARKER="1"
+        fi
+    fi
+    if [ -z "$CONSENT_MARKER" ] && [ -f "$PROJECT_CWD/memory/system/manifest.json" ]; then
+        if grep -q '"allow_non_git"[[:space:]]*:[[:space:]]*true' "$PROJECT_CWD/memory/system/manifest.json" 2>/dev/null; then
+            CONSENT_MARKER="1"
+        fi
+    fi
+
+    if [ -z "$CONSENT_MARKER" ]; then
+        NESTED_REPO_PROBE_ENABLED=1
+    fi
+fi
+
+if [ "$NESTED_REPO_PROBE_ENABLED" -eq 1 ]; then
+    # Phase 1: Candidate detection (stat gate + rev-parse confirm, skip symlinks)
+    NESTED_COUNT=0
+    NESTED_CANDIDATES=""
+    NESTED_CONFIRMED_ROOT=""
+
+    for _child in "$PROJECT_CWD"/*/; do
+        # Strip trailing slash: [ -L "path/" ] follows the symlink and
+        # always reports false, defeating symlink exclusion (VAL-WRAP-013)
+        _child="$${_child%/}"
+        [ -d "$_child" ] || continue
+        [ -L "$_child" ] && continue  # Skip symlinks
+        [ -e "$_child/.git" ] || continue  # Stat gate
+        # rev-parse confirm: dangling/corrupt .git excluded from candidates (VAL-WRAP-008)
+        _confirmed_root=$$(git -C "$_child" rev-parse --show-toplevel 2>/dev/null || true)
+        [ -n "$_confirmed_root" ] || continue
+
+        NESTED_COUNT=$$((NESTED_COUNT + 1))
+        NESTED_CONFIRMED_ROOT="$$_confirmed_root"
+        if [ -z "$NESTED_CANDIDATES" ]; then
+            NESTED_CANDIDATES="$_child"
+        else
+            NESTED_CANDIDATES="$$NESTED_CANDIDATES $$_child"
+        fi
+
+        # Early exit if we already have 2+ candidates (ambiguity)
+        [ "$NESTED_COUNT" -lt 2 ] || break
+    done
+
+    if [ "$NESTED_COUNT" -eq 1 ]; then
+        # Exactly one valid candidate: route to its rev-parse confirmed root
+        PROJECT_CWD="$$NESTED_CONFIRMED_ROOT"
+    fi
+
+    # Check for initialized child priority
+    if [ "$NESTED_COUNT" -ge 2 ]; then
+        INITIALIZED_CHILD=""
+        for _cand in $$NESTED_CANDIDATES; do
+            if [ -d "$_cand/memory/system" ]; then
+                INITIALIZED_CHILD="$_cand"
+                break
+            fi
+        done
+        if [ -n "$INITIALIZED_CHILD" ]; then
+            # Initialized child has priority: route to it
+            PROJECT_CWD="$$INITIALIZED_CHILD"
+            NESTED_COUNT=1
+        fi
+    fi
+
+    # Three-branch logic
+    if [ "$NESTED_COUNT" -eq 0 ]; then
+        # 0 candidates: noop, log to errors.log (session-start only, event tag)
+        if [ "$EVENT_NAME" = "session-start" ] || [ -z "$EVENT_NAME" ]; then
+            printf '[%s] [memory-hook-wrapper] [warn] [event=%s] No nested repos found under %s\\n' \\
+                "$(date -u '+%Y-%m-%dT%H:%M:%S%z')" "$${EVENT_NAME:-session-start}" "$PROJECT_CWD" \\
+                >>"$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system/errors.log" 2>/dev/null || true
+        fi
+        printf '{}\\n'
+        exit 0
+    elif [ "$NESTED_COUNT" -ge 2 ]; then
+        # ≥2 candidates: noop + stderr diagnostics + errors.log
+        CANDIDATE_LIST=""
+        for _cand in $$NESTED_CANDIDATES; do
+            if [ -z "$CANDIDATE_LIST" ]; then
+                CANDIDATE_LIST="$$_cand"
+            else
+                CANDIDATE_LIST="$$CANDIDATE_LIST, $$_cand"
+            fi
+        done
+
+        # stderr: exactly one diagnostic line with candidates + way out (VAL-WRAP-004)
+        printf 'memory-hook: ambiguous nested repos under %s: %s -> cd into a specific repo, or create memory-project.toml to declare membership\\n' \\
+            "$PROJECT_CWD" "$CANDIDATE_LIST" >&2
+
+        # errors.log: session-start only, one line per event with event tag
+        if [ "$EVENT_NAME" = "session-start" ] || [ -z "$EVENT_NAME" ]; then
+            printf '[%s] [memory-hook-wrapper] [warn] [event=%s] Ambiguous nested repos under %s: %s\\n' \\
+                "$(date -u '+%Y-%m-%dT%H:%M:%S%z')" "$${EVENT_NAME:-session-start}" "$PROJECT_CWD" "$CANDIDATE_LIST" \\
+                >>"$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system/errors.log" 2>/dev/null || true
+        fi
+
+        printf '{}\\n'
+        exit 0
+    fi
+    # NESTED_COUNT == 1: PROJECT_CWD already set, continue to export
+fi
+# ============================================================================
+# END NESTED REPO PROBE
+# ============================================================================
+
+export MEMORY_HOOK_PROJECT_CWD="$PROJECT_CWD"
+
+# Check for memory-project.toml (Phase 2 / M4)
+if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ]; then
+    for _config_candidate in "$PROJECT_CWD/memory-project.toml" "$PROJECT_CWD/../memory-project.toml"; do
+        if [ -f "$_config_candidate" ]; then
+            export MEMORY_HOOK_PROJECT_CONFIG="$_config_candidate"
+            break
+        fi
+    done
+fi
+
+# Project init with mode awareness
+# Probe-triggered init uses adopt mode to avoid dirtying user clones
 if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ] && [ ! -d "$PROJECT_CWD/memory/system" ]; then
-    if ! "$MEMORY_HOOK_PROJECT_INIT" --target "$PROJECT_CWD" --host factory \\
+    INIT_MODE="create"
+    if [ "$NESTED_REPO_PROBE_ENABLED" -eq 1 ]; then
+        INIT_MODE="adopt"
+    fi
+
+    if ! "$MEMORY_HOOK_PROJECT_INIT" --target "$PROJECT_CWD" --host factory --mode "$INIT_MODE" \\
         >/dev/null 2>>"$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system/errors.log"; then
+        # Probe-triggered init denied by denylist (e.g., junk pattern): degrade to noop
+        if [ "$NESTED_REPO_PROBE_ENABLED" -eq 1 ]; then
+            printf '{}\\n'
+            exit 0
+        fi
+        # Normal init failure: report error
         echo '{"error": "project_init_failed", "message": "Failed to initialize project memory"}' >&2
         exit 1
     fi
 fi
 
-exec "$MEMORY_HOOK_GATEWAY" "$@"
+exec "$MEMORY_HOOK_GATEWAY" "$$@"
 """)
 
     return template.safe_substitute(
