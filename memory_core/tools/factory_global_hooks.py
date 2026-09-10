@@ -227,6 +227,7 @@ fi
 
 if [ "$NESTED_REPO_PROBE_ENABLED" -eq 1 ]; then
     # Phase 1: Candidate detection (stat gate + rev-parse confirm, skip symlinks)
+    # Scan ALL candidates (no cap-at-2) so initialized-child priority works for ≥3 (VAL-WRAP-019 ≥3 case)
     NESTED_COUNT=0
     NESTED_CANDIDATES=""
     NESTED_CONFIRMED_ROOT=""
@@ -245,49 +246,57 @@ if [ "$NESTED_REPO_PROBE_ENABLED" -eq 1 ]; then
         NESTED_COUNT=$$((NESTED_COUNT + 1))
         NESTED_CONFIRMED_ROOT="$$_confirmed_root"
         if [ -z "$NESTED_CANDIDATES" ]; then
-            NESTED_CANDIDATES="$_child"
+            NESTED_CANDIDATES="$$_child"
         else
-            NESTED_CANDIDATES="$$NESTED_CANDIDATES $$_child"
+            # Use newline separator to support paths with spaces
+            NESTED_CANDIDATES="$$NESTED_CANDIDATES
+$$_child"
         fi
-
-        # Early exit if we already have 2+ candidates (ambiguity)
-        [ "$NESTED_COUNT" -lt 2 ] || break
     done
 
-    if [ "$NESTED_COUNT" -eq 1 ]; then
-        # Exactly one valid candidate: route to its rev-parse confirmed root
-        PROJECT_CWD="$$NESTED_CONFIRMED_ROOT"
-    fi
-
-    # Check for initialized child priority
+    # Initialized child priority: run BEFORE cap (works for ≥3 candidates)
     if [ "$NESTED_COUNT" -ge 2 ]; then
         INITIALIZED_CHILD=""
+        # Use IFS=newline to iterate, supporting paths with spaces
+        OLD_IFS="$$IFS"
+        IFS='
+'
         for _cand in $$NESTED_CANDIDATES; do
             if [ -d "$_cand/memory/system" ]; then
-                INITIALIZED_CHILD="$_cand"
+                INITIALIZED_CHILD="$$_cand"
                 break
             fi
         done
+        IFS="$$OLD_IFS"
         if [ -n "$INITIALIZED_CHILD" ]; then
             # Initialized child has priority: route to it
             PROJECT_CWD="$$INITIALIZED_CHILD"
             NESTED_COUNT=1
         fi
+    elif [ "$NESTED_COUNT" -eq 1 ]; then
+        # Exactly one valid candidate: route to its rev-parse confirmed root
+        PROJECT_CWD="$$NESTED_CONFIRMED_ROOT"
     fi
 
     # Three-branch logic
     if [ "$NESTED_COUNT" -eq 0 ]; then
         # 0 candidates: noop, log to errors.log (session-start only, event tag)
-        if [ "$EVENT_NAME" = "session-start" ] || [ -z "$EVENT_NAME" ]; then
+        # VAL-WRAP-006 fourth form: missing --event → no log (contract says non-session-start)
+        if [ "$EVENT_NAME" = "session-start" ]; then
             printf '[%s] [memory-hook-wrapper] [warn] [event=%s] No nested repos found under %s\\n' \\
-                "$(date -u '+%Y-%m-%dT%H:%M:%S%z')" "$${EVENT_NAME:-session-start}" "$PROJECT_CWD" \\
+                "$(date -u '+%Y-%m-%dT%H:%M:%S%z')" "$EVENT_NAME" "$PROJECT_CWD" \\
                 >>"$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system/errors.log" 2>/dev/null || true
         fi
         printf '{}\\n'
         exit 0
     elif [ "$NESTED_COUNT" -ge 2 ]; then
-        # ≥2 candidates: noop + stderr diagnostics + errors.log
+        # ≥2 candidates: noop + stderr diagnostics (ALL candidates listed) + errors.log
+        # VAL-WRAP-004: stderr must list ALL candidates (no truncation)
         CANDIDATE_LIST=""
+        # Use IFS=newline to iterate, supporting paths with spaces
+        OLD_IFS="$$IFS"
+        IFS='
+'
         for _cand in $$NESTED_CANDIDATES; do
             if [ -z "$CANDIDATE_LIST" ]; then
                 CANDIDATE_LIST="$$_cand"
@@ -295,15 +304,16 @@ if [ "$NESTED_REPO_PROBE_ENABLED" -eq 1 ]; then
                 CANDIDATE_LIST="$$CANDIDATE_LIST, $$_cand"
             fi
         done
+        IFS="$$OLD_IFS"
 
-        # stderr: exactly one diagnostic line with candidates + way out (VAL-WRAP-004)
+        # stderr: exactly one diagnostic line with ALL candidates + way out (VAL-WRAP-004)
         printf 'memory-hook: ambiguous nested repos under %s: %s -> cd into a specific repo, or create memory-project.toml to declare membership\\n' \\
             "$PROJECT_CWD" "$CANDIDATE_LIST" >&2
 
-        # errors.log: session-start only, one line per event with event tag
-        if [ "$EVENT_NAME" = "session-start" ] || [ -z "$EVENT_NAME" ]; then
+        # errors.log: session-start only (VAL-WRAP-006 fourth form: missing --event → no log)
+        if [ "$EVENT_NAME" = "session-start" ]; then
             printf '[%s] [memory-hook-wrapper] [warn] [event=%s] Ambiguous nested repos under %s: %s\\n' \\
-                "$(date -u '+%Y-%m-%dT%H:%M:%S%z')" "$${EVENT_NAME:-session-start}" "$PROJECT_CWD" "$CANDIDATE_LIST" \\
+                "$(date -u '+%Y-%m-%dT%H:%M:%S%z')" "$EVENT_NAME" "$PROJECT_CWD" "$CANDIDATE_LIST" \\
                 >>"$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system/errors.log" 2>/dev/null || true
         fi
 
@@ -315,6 +325,14 @@ fi
 # ============================================================================
 # END NESTED REPO PROBE
 # ============================================================================
+
+# READONLY re-evaluation after probe routing (VAL-WRAP-017 edge case)
+# If probe routed to a memory-core clone, re-check and set READONLY
+if [ -n "$PROJECT_CWD" ] && [ -d "$PROJECT_CWD" ] && [ "$NESTED_REPO_PROBE_ENABLED" -eq 1 ]; then
+    if [ -f "$PROJECT_CWD/memory_core/tools/memory_hook_gateway.py" ] || [ -f "$PROJECT_CWD/memory_core/tools/factory_global_hooks.py" ] || [ -f "$PROJECT_CWD/memory_core/ownership.py" ]; then
+        export READONLY=1
+    fi
+fi
 
 export MEMORY_HOOK_PROJECT_CWD="$PROJECT_CWD"
 

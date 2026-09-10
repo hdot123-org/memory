@@ -280,6 +280,33 @@ def test_val_wrap_006_event_prompt_submit_no_log(wrapper_env):
         assert content == ""
 
 
+def test_val_wrap_006_missing_event_no_log_fourth_form(wrapper_env):
+    """VAL-WRAP-006 fourth form (contract裁决 2026-09-10): missing --event → exit 0, no log.
+
+    Contract says "按非 session-start" meaning missing event should NOT log.
+    Previous implementation followed spec §3.1.4 contradictory version.
+    """
+    parent = wrapper_env["tmpdir"] / "parent"
+    parent.mkdir()
+
+    env = os.environ.copy()
+    env["PWD"] = str(parent)
+
+    # Manually invoke wrapper WITHOUT --event flag
+    result = subprocess.run(
+        [str(wrapper_env["wrapper"]), "--host", "factory"],
+        cwd=parent,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+    assert result.returncode == 0
+    # No errors.log should be created
+    assert not wrapper_env["errors_log"].exists()
+
+
 # ============================================================================
 # VAL-WRAP-007: Worktree support (.git file)
 # ============================================================================
@@ -347,9 +374,43 @@ def test_val_wrap_008_dangling_gitfile_excluded(wrapper_env):
 
 
 def test_val_wrap_010_dataless_git_dir(wrapper_env):
-    """VAL-WRAP-010: Empty .git directory does not trigger probe."""
+    """VAL-WRAP-010: CWD with empty .git directory does not trigger probe (gate blocks it).
+
+    The probe gate checks `[ ! -e "$PROJECT_CWD/.git" ]`. A dataless .git directory
+    (empty dir, not a real repo) passes this existence check, so the probe is NOT triggered.
+    The wrapper should treat CWD as-is (no routing to child repos).
+    """
     parent = wrapper_env["tmpdir"] / "parent"
     parent.mkdir()
+    # Put a dataless .git directory in parent (not a real repo, just empty .git dir)
+    (parent / ".git").mkdir()
+
+    # Also put a real child repo
+    child = parent / "child"
+    child.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=child, check=True, capture_output=True)
+
+    exit_code, stdout, stderr = run_wrapper(wrapper_env, parent, "session-start")
+
+    assert exit_code == 0
+    output = parse_output(stdout)
+    # CWD stays as parent because .git existence blocks probe (not dataless .git routing to child)
+    assert resolve_path(output.get("ROUTED_TO")) == resolve_path(parent)
+    # The child repo is NOT routed to
+    assert resolve_path(output.get("ROUTED_TO")) != resolve_path(child)
+
+
+def test_val_wrap_010_unreadable_gitfile_blocks_probe(wrapper_env):
+    """VAL-WRAP-010 variant: CWD with chmod 000 .git file also blocks probe.
+
+    An unreadable .git file passes `[ -e ... ]` existence check, so probe is suppressed.
+    """
+    parent = wrapper_env["tmpdir"] / "parent"
+    parent.mkdir()
+    # Create a .git file with chmod 000
+    gitfile = parent / ".git"
+    gitfile.write_text("gitdir: /nonexistent")
+    gitfile.chmod(0o000)
 
     child = parent / "child"
     child.mkdir()
@@ -359,8 +420,11 @@ def test_val_wrap_010_dataless_git_dir(wrapper_env):
 
     assert exit_code == 0
     output = parse_output(stdout)
-    # Should route to child since it has .git
-    assert resolve_path(output.get("ROUTED_TO")) == resolve_path(child)
+    # CWD stays as parent because .git existence blocks probe
+    assert resolve_path(output.get("ROUTED_TO")) == resolve_path(parent)
+
+    # Cleanup: restore permissions so tmpdir can be cleaned
+    gitfile.chmod(0o644)
 
 
 # ============================================================================
@@ -528,6 +592,215 @@ def test_val_wrap_016_errors_log_one_line_per_event(wrapper_env):
 
     lines = wrapper_env["errors_log"].read_text().strip().split("\n")
     assert len(lines) == 2
+
+
+# ============================================================================
+# VAL-WRAP-009: Dangling .git only scenario (0 candidates)
+# ============================================================================
+
+
+def test_val_wrap_009_only_dangling_git_noop(wrapper_env):
+    """VAL-WRAP-009: When only dangling .git candidates exist, treat as 0 candidates noop.
+
+    If all child repos have dangling/corrupt .git, rev-parse fails for all,
+    resulting in 0 valid candidates → noop + session-start log.
+    """
+    parent = wrapper_env["tmpdir"] / "parent"
+    parent.mkdir()
+
+    # Create two children with dangling .git files
+    child1 = parent / "child1"
+    child1.mkdir()
+    (child1 / ".git").write_text("gitdir: /nonexistent/path1")
+
+    child2 = parent / "child2"
+    child2.mkdir()
+    (child2 / ".git").write_text("gitdir: /nonexistent/path2")
+
+    exit_code, stdout, stderr = run_wrapper(wrapper_env, parent, "session-start")
+
+    assert exit_code == 0
+    assert stdout.strip() == "{}"
+
+    # Should log to errors.log (session-start only)
+    assert wrapper_env["errors_log"].exists()
+    content = wrapper_env["errors_log"].read_text()
+    assert "session-start" in content
+
+
+# ============================================================================
+# VAL-WRAP-017: Adopt mode doesn't inject AGENTS.md marker
+# ============================================================================
+
+
+def test_val_wrap_017_adopt_mode_no_agents_md_injection(wrapper_env):
+    """VAL-WRAP-017: Probe-triggered init uses adopt mode, which doesn't inject AGENTS.md.
+
+    When probe routes to a child repo, init is called with --mode adopt.
+    Adopt mode should NOT inject the MEMORY_HOOK_BEGIN/END markers into AGENTS.md.
+    """
+    parent = wrapper_env["tmpdir"] / "parent"
+    parent.mkdir()
+
+    child = parent / "child"
+    child.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=child, check=True, capture_output=True)
+
+    # Create a business AGENTS.md in child
+    agents_md = child / "AGENTS.md"
+    original_content = "# Business AGENTS.md\n\nThis is business-specific content.\n"
+    agents_md.write_text(original_content)
+    original_sha = subprocess.run(
+        ["sha256sum", str(agents_md)],
+        capture_output=True,
+        text=True,
+        check=True
+    ).stdout.split()[0]
+
+    # Run wrapper to trigger probe routing
+    exit_code, stdout, stderr = run_wrapper(wrapper_env, parent, "session-start")
+
+    assert exit_code == 0
+    output = parse_output(stdout)
+    assert resolve_path(output.get("ROUTED_TO")) == resolve_path(child)
+
+    # AGENTS.md should NOT have MEMORY_HOOK_BEGIN/END markers injected
+    new_content = agents_md.read_text()
+    assert "MEMORY_HOOK_BEGIN" not in new_content
+    assert "MEMORY_HOOK_END" not in new_content
+
+    # Content should be unchanged
+    new_sha = subprocess.run(
+        ["sha256sum", str(agents_md)],
+        capture_output=True,
+        text=True,
+        check=True
+    ).stdout.split()[0]
+    assert new_sha == original_sha
+
+
+# ============================================================================
+# ≥3 candidates with initialized child priority
+# ============================================================================
+
+
+def test_val_wrap_019_three_candidates_with_initialized_priority(wrapper_env):
+    """VAL-WRAP-019: With ≥3 candidates, initialized child still has priority.
+
+    Previous implementation capped at 2 candidates before checking priority.
+    Fixed: scan all candidates first, then check priority.
+    """
+    parent = wrapper_env["tmpdir"] / "parent"
+    parent.mkdir()
+
+    # Create three child repos
+    alpha = parent / "alpha"
+    alpha.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=alpha, check=True, capture_output=True)
+
+    beta = parent / "beta"
+    beta.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=beta, check=True, capture_output=True)
+
+    gamma = parent / "gamma"
+    gamma.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=gamma, check=True, capture_output=True)
+
+    # Initialize beta (middle one)
+    (beta / "memory" / "system").mkdir(parents=True)
+    (beta / "memory" / "system" / "initialized").write_text("yes")
+
+    exit_code, stdout, stderr = run_wrapper(wrapper_env, parent, "session-start")
+
+    assert exit_code == 0
+    output = parse_output(stdout)
+    # Should route to beta (initialized), not alpha or gamma
+    assert resolve_path(output.get("ROUTED_TO")) == resolve_path(beta)
+    # No stderr (not ambiguous when initialized child exists)
+    assert stderr == ""
+
+
+def test_val_wrap_candidate_paths_with_spaces(wrapper_env):
+    """Candidate paths with spaces are handled correctly.
+
+    Previous implementation used space-separated candidate lists which broke
+    when paths contained spaces. Fixed: use newline separator + IFS=newline.
+    """
+    parent = wrapper_env["tmpdir"] / "parent with spaces"
+    parent.mkdir()
+
+    # Create two child repos with spaces in names
+    child1 = parent / "child one"
+    child1.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=child1, check=True, capture_output=True)
+
+    child2 = parent / "child two"
+    child2.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=child2, check=True, capture_output=True)
+
+    # Initialize child2
+    (child2 / "memory" / "system").mkdir(parents=True)
+    (child2 / "memory" / "system" / "initialized").write_text("yes")
+
+    exit_code, stdout, stderr = run_wrapper(wrapper_env, parent, "session-start")
+
+    assert exit_code == 0
+    output = parse_output(stdout)
+    # Should route to child2 (initialized), even with spaces in path
+    assert resolve_path(output.get("ROUTED_TO")) == resolve_path(child2)
+    # No stderr (not ambiguous when initialized child exists)
+    assert stderr == ""
+
+
+# ============================================================================
+# READONLY re-evaluation after probe routing
+# ============================================================================
+
+
+def test_val_wrap_readonly_reevaluation_after_probe(wrapper_env):
+    """READONLY re-evaluation: If probe routes to memory-core clone, set READONLY=1.
+
+    Edge case: parent has a child that is a memory-core clone.
+    Probe routes to child, then READONLY should be re-evaluated for child.
+    """
+    parent = wrapper_env["tmpdir"] / "parent"
+    parent.mkdir()
+
+    # Create a memory-core clone as child
+    child = parent / "memory-core-clone"
+    child.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=child, check=True, capture_output=True)
+
+    # Add memory-core signature files
+    tools_dir = child / "memory_core" / "tools"
+    tools_dir.mkdir(parents=True)
+    (tools_dir / "factory_global_hooks.py").write_text("# marker")
+
+    # Create a gateway stub that outputs READONLY value
+    gateway_stub = wrapper_env["tmpdir"] / "gateway-stub-readonly.sh"
+    gateway_stub.write_text(
+        "#!/bin/sh\n"
+        'echo "READONLY=$READONLY"\n'
+        'echo "ROUTED_TO=$MEMORY_HOOK_PROJECT_CWD"\n'
+    )
+    gateway_stub.chmod(0o755)
+
+    # Update wrapper to use new gateway stub
+    wrapper_content = render_wrapper(
+        storage_root=wrapper_env["storage_root"],
+        gateway_command=str(gateway_stub),
+        init_command=str(wrapper_env["init_stub"]),
+    )
+    wrapper_env["wrapper"].write_text(wrapper_content)
+    wrapper_env["wrapper"].chmod(0o755)
+
+    exit_code, stdout, stderr = run_wrapper(wrapper_env, parent, "session-start")
+
+    assert exit_code == 0
+    # Should route to child
+    assert "ROUTED_TO" in stdout
+    # READONLY should be set to 1
+    assert "READONLY=1" in stdout
 
 
 # ============================================================================
