@@ -142,6 +142,7 @@ def _refine_non_git_seed(seed: Path) -> Path:
 
     # Find valid child repositories
     # Valid = has .git (file or dir), not a dot directory (name.startswith('.'))
+    # VAL-GTW-008/012: Only check for .git existence (not memory tree existence)
     valid_children = []
     try:
         for child in seed.iterdir():
@@ -149,7 +150,7 @@ def _refine_non_git_seed(seed: Path) -> Path:
             if child.name.startswith("."):
                 continue
 
-            # Check if child has .git (file or directory)
+            # Check if child has .git (file or directory) - only .git existence matters (not memory tree)
             if (child / ".git").exists():
                 valid_children.append(child)
 
@@ -170,7 +171,16 @@ def _refine_non_git_seed(seed: Path) -> Path:
 
 
 _cwd_seed_refined = _refine_non_git_seed(_cwd_seed)
-REPO_ROOT, WORKSPACE_ROOT = discover_roots(_cwd_seed_refined)
+# B-layer fix for VAL-GTW-008/012: when refinement yields a git-governed root,
+# bypass discover_project_root's memory-tree marker walk which causes fallback
+# to source repo root. git-governed roots are already validrepo roots.
+if (_cwd_seed_refined / ".git").exists():
+    # Refined seed has .git (file or dir), it's already a git-governed root
+    REPO_ROOT = _cwd_seed_refined
+    WORKSPACE_ROOT = _cwd_seed_refined
+else:
+    # Non-git refined seed, use normal discovery
+    REPO_ROOT, WORKSPACE_ROOT = discover_roots(_cwd_seed_refined)
 _FORCE_HOOK = bool(os.environ.get("MEMORY_HOOK_FORCE") or os.environ.get("WORKBOT_FORCE_HOOK"))
 BATCH_SIZE = 500
 
