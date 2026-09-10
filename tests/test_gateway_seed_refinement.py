@@ -328,6 +328,55 @@ class TestBLayerEndToEnd:
         result = _run_roots(str(parent))
         assert result == str(child.resolve()), f"Worktree child (.git file) should be detected, got {result}"
 
+    def test_val_gtw_008c_bare_candidate_no_memory_tree(self, sandbox: Path) -> None:
+        """VAL-GTW-008 regression (fix c352b41): bare .git-dir child resolves without memory tree.
+
+        The L2 bypass in _gateway_config adopts a refined git-governed root
+        directly, so bare candidates (no memory-init, no memory tree marker)
+        must resolve as REPO_ROOT instead of falling back to the source repo
+        root via discover_project_root's memory-tree marker walk.
+        """
+        parent = sandbox / "gtw008c_bare"
+        parent.mkdir()
+        child = parent / "inner"
+        _make_git_repo(child)
+        # Deliberately NO memory-init: candidate is a bare git repository
+
+        result = _run_roots(str(parent))
+        assert result == str(child.resolve()), f"Expected {child.resolve()}, got {result}"
+
+    def test_val_gtw_012b_bare_worktree_candidate_no_memory_tree(self, sandbox: Path) -> None:
+        """VAL-GTW-012 regression (fix c352b41): bare worktree gitfile child resolves without memory tree."""
+        parent = sandbox / "gtw012b_bare_wt"
+        parent.mkdir()
+        src = sandbox / "wt_src"
+        _make_git_repo(src)
+        child = parent / "wt_inner"
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(src),
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "worktree",
+                "add",
+                str(child),
+                "-b",
+                "wt_probe",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        # Genuine gitfile form: .git is a file pointing at the source worktrees dir
+        assert (child / ".git").is_file()
+
+        # Deliberately NO memory-init on the worktree candidate
+        result = _run_roots(str(parent))
+        assert result == str(child.resolve()), f"Expected {child.resolve()}, got {result}"
+
     def test_val_gtw_014_mcp_server_import(self, sandbox: Path) -> None:
         """VAL-GTW-014: mcp_server import from non-git dir is predictable."""
         parent = sandbox / "gtw014_mcp"
