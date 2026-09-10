@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.48.0](https://github.com/hdot123-org/memory/compare/v0.47.1...v0.48.0) (2026-09-10)
+
+
+### Features
+
+* **gateway:** 实现 B 层种子精炼机制（M1-4） ([#1215](https://github.com/hdot123-org/memory/issues/1215)) ([32433f3](https://github.com/hdot123-org/memory/commit/32433f314f38ec4dd68d437dd319f8ddeeac4d28))
+* memory-init 三项强化——--allow-non-git consent 标记、adopt 模式硬化、并发安全（M1-1） ([#1212](https://github.com/hdot123-org/memory/issues/1212)) ([f7a57af](https://github.com/hdot123-org/memory/commit/f7a57afb470aefede1c63de8f442ccd3faf14015))
+* **wrapper:** 实现嵌套仓库探测层（M1-2） ([#1213](https://github.com/hdot123-org/memory/issues/1213)) ([b1dfbc7](https://github.com/hdot123-org/memory/commit/b1dfbc7e1ab593dfb0a79e4af47be6321ef7ec5b))
+
+
+### Bug Fixes
+
+* 修复 gateway 内存根语义调用点使用 REPO_ROOT 而非 cwd (M1-3) ([#1214](https://github.com/hdot123-org/memory/issues/1214)) ([5f701dd](https://github.com/hdot123-org/memory/commit/5f701ddece7816bc51f9bac23aa81d651ae92770))
+
+
+### Documentation
+
+* 新增嵌套仓库根目录解析修复实施规格 v2（M0 合并规格） ([#1211](https://github.com/hdot123-org/memory/issues/1211)) ([7e43960](https://github.com/hdot123-org/memory/commit/7e43960b2e0548d5d489a8c81f06eecd457c6902))
+
 ## [0.47.1](https://github.com/hdot123-org/memory/compare/v0.47.0...v0.47.1) (2026-09-08)
 
 
