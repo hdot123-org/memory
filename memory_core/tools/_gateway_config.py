@@ -15,16 +15,10 @@ import os
 import re
 import stat
 import threading
+import tomllib  # stdlib since Python 3.11 (project requires 3.12)
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
-
-try:
-    import tomllib  # Python 3.11+ (we use 3.12)
-except ImportError:
-    try:
-        import tomli as tomllib  # type: ignore  # Python < 3.11 fallback
-    except ImportError:
-        tomllib = None  # type: ignore
 
 __all__ = [
     # Path constants
@@ -210,15 +204,31 @@ def _find_project_config_path(seed: Path) -> Path | None:
     Returns:
         Absolute path to config file if found, None otherwise
     """
-    # Normalize to absolute path
-    seed = seed.resolve()
+    # Normalize to absolute path, nearest-first collection
+    configs = _find_all_project_configs(seed)
+    return configs[0] if configs else None
+
+
+def _find_all_project_configs(seed: Path) -> list[Path]:
+    """Collect every memory-project.toml from seed up to filesystem root.
+
+    Nearest first (seed directory before ancestors). Used by
+    VAL-CFG-006 cross-config members-overlap detection.
+
+    Args:
+        seed: The initial seed path
+
+    Returns:
+        List of absolute config paths (empty if none found)
+    """
+    configs: list[Path] = []
 
     # Traverse up to root
-    current = seed
+    current = seed.resolve()
     while True:
-        config_path = current / _PROJECT_CONFIG_NAME
-        if config_path.exists() and config_path.is_file():
-            return config_path.resolve()
+        candidate = current / _PROJECT_CONFIG_NAME
+        if candidate.exists() and candidate.is_file():
+            configs.append(candidate.resolve())
 
         # Stop at root (parent == self)
         parent = current.parent
@@ -226,7 +236,7 @@ def _find_project_config_path(seed: Path) -> Path | None:
             break
         current = parent
 
-    return None
+    return configs
 
 
 def _parse_project_config(config_path: Path, *, strict: bool = False) -> dict[str, Any] | None:
@@ -240,10 +250,6 @@ def _parse_project_config(config_path: Path, *, strict: bool = False) -> dict[st
         Parsed config dict with keys: project, memory_root, members
         None if parsing fails or file unreadable
     """
-    if tomllib is None:
-        _logger.warning("_parse_project_config: tomllib not available, skipping config")
-        return None
-
     try:
         content = config_path.read_text(encoding="utf-8")
         try:
@@ -272,16 +278,8 @@ def _parse_project_config(config_path: Path, *, strict: bool = False) -> dict[st
             result["members"] = parsed["members"]
 
         return result
-    except ImportError as exc:
-        # tomllib import error
-        _logger.warning("_parse_project_config: import error: %s", exc)
-        return None
     except (OSError, UnicodeDecodeError) as exc:
         _logger.warning("_parse_project_config: read failed for %s: %s", config_path, exc)
-        return None
-    except Exception as exc:
-        # Toml decode or other parsing error
-        _logger.warning("_parse_project_config: parse failed for %s: %s", config_path, exc)
         return None
 
 
@@ -364,22 +362,25 @@ def _resolve_memory_root(  # noqa: C901
         except OSError:
             continue
 
-    # Check HOME: if not already matched above, ensure HOME itself is denied
-    if _HOME_ENV and resolved_str == _HOME_ENV:
-        _logger.warning("_resolve_memory_root: %s is HOME itself, denied", resolved_real)
-        return None
-
-    # Check if it's memory-core source repo
+    # Check if it's memory-core source repo.
+    # Lazy import: the module-level re-export near the bottom of this file binds
+    # only AFTER the REPO_ROOT init call, so referencing the global here during
+    # module init raised NameError (silently swallowed), disabling this check
+    # on the initialization path.
+    is_src_repo_fn: Callable[[Path], bool] | None = None
     try:
-        if is_memory_core_source_repo is not None:
-            try:
-                if is_memory_core_source_repo(resolved_real):
-                    _logger.warning("_resolve_memory_root: %s is memory-core source repo", resolved_real)
-                    return None
-            except Exception:
-                pass
-    except Exception:
+        from ..ownership import is_memory_core_source_repo
+
+        is_src_repo_fn = is_memory_core_source_repo
+    except ImportError:
         pass
+    if is_src_repo_fn is not None:
+        try:
+            if is_src_repo_fn(resolved_real):
+                _logger.warning("_resolve_memory_root: %s is memory-core source repo", resolved_real)
+                return None
+        except Exception:
+            pass
 
     # VAL-CFG-008: symlink穿透 with realpath
     # For containment check, use resolved path
@@ -487,6 +488,8 @@ def _validate_memory_root_value(mem_root: str | list[Any], config_path: Path) ->
     else:
         mem_root_str = str(mem_root) if mem_root else ""
 
+    if isinstance(mem_root, list) and not mem_root:
+        return False, f"memory_root is empty list in {config_path}"
     if mem_root_str == "":
         return False, f"memory_root is empty string in {config_path}"
 
@@ -535,6 +538,23 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:
     # Level 2: Project config (memory-project.toml)
     # Search in seed directory and ancestors
     config_path = _find_project_config_path(seed)
+    if config_path is not None:
+        # VAL-CFG-006: members declared by multiple configs in the tree that
+        # resolve to the same absolute path → reject the config level entirely
+        # and surface the conflict list
+        parsed_configs: list[tuple[Path, dict[str, Any]]] = []
+        for cfg_path in _find_all_project_configs(seed):
+            parsed_cfg = _parse_project_config(cfg_path)
+            if parsed_cfg is not None:
+                parsed_configs.append((cfg_path, parsed_cfg))
+        member_overlaps = _check_members_overlap(parsed_configs)
+        if member_overlaps is not None:
+            _logger.error(
+                "_resolve_repo_root_with_config: members overlap across configs, "
+                "rejecting config level (VAL-CFG-006): %s",
+                "; ".join(member_overlaps),
+            )
+            config_path = None
     if config_path is not None:
         # Check world-writable (VAL-CFG-010)
         world_writable = _check_world_writable(config_path)
