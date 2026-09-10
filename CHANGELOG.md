@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.49.0](https://github.com/hdot123-org/memory/compare/v0.48.0...v0.49.0) (2026-09-10)
+
+
+### Features
+
+* **install:** install 强化——wrapper 自动备份 + hooks.json 意识（M1-5） ([#1217](https://github.com/hdot123-org/memory/issues/1217)) ([8ef7949](https://github.com/hdot123-org/memory/commit/8ef79496fa9a37b7fa167a0dc25ca58ea1b954a2))
+
+
+### Bug Fixes
+
+* **test:** 修复测试回归与格式化问题 ([#1221](https://github.com/hdot123-org/memory/issues/1221)) ([a160a00](https://github.com/hdot123-org/memory/commit/a160a0093eeac9325859ff160ef5dda37fdd72f9))
+* **wrapper:** 缺失事件形态按非会话启动处理 + 探测加固包（m1 修复 B） ([#1220](https://github.com/hdot123-org/memory/issues/1220)) ([27f4ad5](https://github.com/hdot123-org/memory/commit/27f4ad572a52155570a48c3fc2c9055e8189a4eb))
+* 修复 B 层 consent 分叉与内存根调用点，迁移测试覆盖 ([#1218](https://github.com/hdot123-org/memory/issues/1218)) ([ebfddbf](https://github.com/hdot123-org/memory/commit/ebfddbf9268e691ac5fe25661c166ad9fdf9a835))
+
 ## [0.48.0](https://github.com/hdot123-org/memory/compare/v0.47.1...v0.48.0) (2026-09-10)
 
 
