@@ -101,7 +101,7 @@ def _inspect_settings(settings_file: Path) -> dict[str, Any]:
         return findings
 
     warnings: list[str] = []
-    settings = _load_settings_json(settings_file, warnings)
+    settings, _is_corrupted = _load_settings_json(settings_file, warnings)
     if warnings:
         findings["issues"].extend({"kind": "settings_parse", "detail": w} for w in warnings)
 

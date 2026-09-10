@@ -1,10 +1,13 @@
 #!/usr/bin/env python3.12
 """Install Factory Droid global hooks for the memory gateway.
 
-Factory stores user-level hook configuration in ``~/.factory/settings.json``.
+Factory stores user-level hook configuration in ``~/.factory/hooks.json``.
 This module keeps that file host-owned and project-agnostic: the global hook
 calls one stable wrapper, and the memory runtime decides project identity from
 Factory's hook payload/current project directory.
+
+settings.json is maintained for backward compatibility but the hooks key is
+deprecated since 2026-08-17 (hooks.json is the real registration point).
 """
 
 import argparse
@@ -30,8 +33,6 @@ FACTORY_HOOK_EVENTS: tuple[tuple[str, str], ...] = (
     ("PreCompact", "pre-compact"),
     ("SessionEnd", "session-end"),
 )
-
-DEFAULT_TIMEOUT_SECONDS = 10
 
 _MEMORY_COMMAND_MARKERS = (
     "memory_hook_gateway.py",
@@ -378,42 +379,30 @@ exec "$MEMORY_HOOK_GATEWAY" "$$@"
     )
 
 
-def desired_factory_hooks(command_path: Path, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> dict[str, Any]:
-    """Return the Factory settings hooks shape for memory hooks."""
-    hooks: dict[str, Any] = {}
-    for factory_event, gateway_event in FACTORY_HOOK_EVENTS:
-        hooks[factory_event] = [
-            {
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": f"{command_path} --host factory --event {gateway_event}",
-                        "timeout": timeout,
-                    }
-                ]
-            }
-        ]
-    return {"hooks": hooks}
-
-
 def _empty_factory_settings() -> dict[str, Any]:
     return {"hooks": {}}
 
 
-def _load_settings_json(path: Path, warnings: list[str]) -> dict[str, Any]:
+def _load_settings_json(path: Path, warnings: list[str]) -> tuple[dict[str, Any], bool]:
+    """Load settings.json, returning (settings_dict, is_corrupted).
+
+    Returns:
+        Tuple of (settings_dict, is_corrupted) where is_corrupted indicates
+        if the file exists but is unreadable/invalid JSON.
+    """
     if not path.exists():
-        return _empty_factory_settings()
+        return _empty_factory_settings(), False
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        warnings.append(f"settings.json corrupt or unreadable, treated as empty: {exc}")
-        return _empty_factory_settings()
+        warnings.append(f"settings.json corrupt or unreadable, skipping: {exc}")
+        return _empty_factory_settings(), True
     if not isinstance(loaded, dict):
-        warnings.append("settings.json root is not an object, treated as empty")
-        return _empty_factory_settings()
+        warnings.append("settings.json root is not an object, skipping")
+        return _empty_factory_settings(), True
     if not isinstance(loaded.get("hooks"), dict):
         loaded["hooks"] = {}
-    return loaded
+    return loaded, False
 
 
 def _is_memory_hook_command(command: str) -> bool:
@@ -471,7 +460,6 @@ def install_factory_hooks(
     storage_root: Path | None = None,
     gateway_command: str = "memory-hook-gateway",
     init_command: str = "memory-init",
-    timeout: int = DEFAULT_TIMEOUT_SECONDS,
     dry_run: bool = False,
 ) -> dict[str, Any]:
     """Install Factory user-level hooks for memory-core.
@@ -509,19 +497,28 @@ def install_factory_hooks(
 
     # VAL-REL-006: Do NOT inject hooks into settings.json (dead key since 2026-08-17)
     # Only clean existing dead hooks if settings.json exists
-    existing = _load_settings_json(settings_file, warnings)
-    # Filter out any existing memory hooks (dead keys) from settings.json
-    cleaned = dict(existing)
-    if "hooks" in cleaned and isinstance(cleaned["hooks"], dict):
-        cleaned_hooks = dict(cleaned["hooks"])
-        for event_name in list(cleaned_hooks.keys()):
-            kept_groups = _filter_memory_hooks(cleaned_hooks[event_name])
-            if kept_groups:
-                cleaned_hooks[event_name] = kept_groups
+    existing, is_corrupted = _load_settings_json(settings_file, warnings)
+
+    # If file is corrupted, skip write to avoid replacing it
+    if is_corrupted:
+        cleaned = existing
+    else:
+        # Filter out any existing memory hooks (dead keys) from settings.json
+        cleaned = dict(existing)
+        if "hooks" in cleaned and isinstance(cleaned["hooks"], dict):
+            cleaned_hooks = dict(cleaned["hooks"])
+            for event_name in list(cleaned_hooks.keys()):
+                kept_groups = _filter_memory_hooks(cleaned_hooks[event_name])
+                if kept_groups:
+                    cleaned_hooks[event_name] = kept_groups
+                else:
+                    # Remove empty event entries
+                    del cleaned_hooks[event_name]
+            # Don't write empty hooks key
+            if cleaned_hooks:
+                cleaned["hooks"] = cleaned_hooks
             else:
-                # Remove empty event entries
-                del cleaned_hooks[event_name]
-        cleaned["hooks"] = cleaned_hooks
+                cleaned.pop("hooks", None)
 
     result: dict[str, Any] = {
         "success": True,
@@ -550,10 +547,28 @@ def install_factory_hooks(
 
     # Write cleaned settings.json (without injecting new dead hooks)
     settings_file.parent.mkdir(parents=True, exist_ok=True)
-    if settings_file.exists():
-        # Backup settings.json before cleaning
-        backups.append(str(_backup_existing_file(settings_file)))
-    settings_file.write_text(json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    # Skip write if file is corrupted or content unchanged (idempotent install)
+    if is_corrupted:
+        warnings.append(f"settings.json is corrupted, skipping write to avoid overwriting: {settings_file}")
+    else:
+        new_settings_content = json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n"
+        if settings_file.exists():
+            try:
+                existing_content = settings_file.read_text(encoding="utf-8")
+                if existing_content == new_settings_content:
+                    # No change needed - skip write and backup
+                    pass
+                else:
+                    # Content differs - backup then write
+                    backups.append(str(_backup_existing_file(settings_file)))
+                    settings_file.write_text(new_settings_content, encoding="utf-8")
+            except OSError:
+                # Can't read existing file - write anyway
+                settings_file.write_text(new_settings_content, encoding="utf-8")
+        else:
+            # New file - just write
+            settings_file.write_text(new_settings_content, encoding="utf-8")
 
     return result
 
@@ -570,7 +585,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     install.add_argument("--gateway-command", default="memory-hook-gateway", help="Gateway command or absolute path")
     install.add_argument("--init-command", default="memory-init", help="Project init command or absolute path")
-    install.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS, help="Hook timeout in seconds")
     install.add_argument("--dry-run", action="store_true", help="Preview changes without writing files")
     install.add_argument("--json", action="store_true", help="Print JSON result")
     return parser.parse_args(argv)
@@ -586,7 +600,6 @@ def main(argv: list[str] | None = None) -> int:
         storage_root=args.storage_root,
         gateway_command=args.gateway_command,
         init_command=args.init_command,
-        timeout=args.timeout,
         dry_run=args.dry_run,
     )
     if args.json:
