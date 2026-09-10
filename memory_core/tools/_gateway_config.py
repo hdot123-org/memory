@@ -397,10 +397,15 @@ def _resolve_memory_root(  # noqa: C901
     return resolved
 
 
-def _check_members_overlap(configs: list[tuple[Path, dict[str, Any]]]) -> list[str] | None:
+def _check_members_overlap(configs: list[tuple[Path, dict[str, Any]]]) -> list[str] | None:  # noqa: C901
     """Check for overlapping member paths across configs.
 
     VAL-CFG-006: Directory tree with two configs having overlapping members → reject and list conflict.
+    Overlap is detected as:
+    - Exact path equality (p1 == p2), OR
+    - Cross-config ancestor-descendant relationship (one path is parent of another under different config)
+
+    Trigger: requires ≥2 different configs (same config内重复成员不触发).
 
     Args:
         configs: List of (config_path, parsed_config) tuples
@@ -408,9 +413,24 @@ def _check_members_overlap(configs: list[tuple[Path, dict[str, Any]]]) -> list[s
     Returns:
         List of overlapping paths if found, None otherwise
     """
-    all_members: dict[str, list[Path]] = {}  # resolved path -> list of config paths
+    # Filter out world-writable configs (VAL-CFG-010:降级为忽略)
+    filtered_configs = []
+    for cfg_path, cfg in configs:
+        try:
+            mode = cfg_path.stat().st_mode
+            if not bool(mode & stat.S_IWOTH):  # Not world-writable
+                filtered_configs.append((cfg_path, cfg))
+        except OSError:
+            filtered_configs.append((cfg_path, cfg))
 
-    for config_path, config in configs:
+    # If no configs after filtering, no overlaps possible
+    if len(filtered_configs) < 2:
+        return None
+
+    # Group by resolved path, tracking which configs declare each path
+    path_to_configs: dict[str, list[Path]] = {}
+
+    for config_path, config in filtered_configs:
         members = config.get("members", [])
         if not isinstance(members, list):
             members = [members] if members else []
@@ -418,17 +438,63 @@ def _check_members_overlap(configs: list[tuple[Path, dict[str, Any]]]) -> list[s
             if not isinstance(member, str):
                 member = str(member)
             # Resolve relative to config path
-            resolved = (config_path.parent / member).resolve()
+            try:
+                resolved = (config_path.parent / member).resolve()
+            except (OSError, ValueError):
+                continue  # Skip unresolvable paths
             resolved_str = str(resolved)
-            if resolved_str not in all_members:
-                all_members[resolved_str] = []
-            all_members[resolved_str].append(config_path)
+            if resolved_str not in path_to_configs:
+                path_to_configs[resolved_str] = []
+            # Avoid duplicate config entries for same path
+            if config_path not in path_to_configs[resolved_str]:
+                path_to_configs[resolved_str].append(config_path)
 
-    # Find overlaps
+    # Find overlaps: either exact paths with ≥2 different configs, or nested relationships
     overlaps = []
-    for path_str, config_paths in all_members.items():
-        if len(config_paths) > 1:
-            overlaps.append(f"{path_str} (declared in: {', '.join(str(p) for p in config_paths)})")
+    paths_list = list(path_to_configs.keys())
+
+    for i, path_str1 in enumerate(paths_list):
+        config_paths1 = path_to_configs[path_str1]
+
+        # Check for exact overlap (same path from multiple configs)
+        unique_configs_set = set(str(p) for p in config_paths1)
+        if len(unique_configs_set) >= 2:
+            overlaps.append(f"{path_str1} (declared in: {', '.join(str(p) for p in config_paths1)})")
+            continue
+
+        # Check for nested relationships with other paths
+        for j, path_str2 in enumerate(paths_list):
+            if i >= j:
+                continue
+            config_paths2 = path_to_configs[path_str2]
+            # Only check cross-config relationships (≥2 different configs)
+            all_configs = set(str(p) for p in config_paths1) | set(str(p) for p in config_paths2)
+            if len(all_configs) < 2:
+                continue  # Same config only - don't trigger
+
+            path1 = Path(path_str1)
+            path2 = Path(path_str2)
+
+            # Check if one is ancestor of the other (嵌套包含)
+            # path2 under path1 - path1 is ancestor of path2
+            try:
+                path2.relative_to(path1)
+                overlaps.append(
+                    f"{path_str2} (ancestor:{path_str1}, declared in: {', '.join(str(p) for p in config_paths2)})"
+                )
+                continue
+            except ValueError:
+                pass
+
+            # path1 under path2 - path2 is ancestor of path1
+            try:
+                path1.relative_to(path2)
+                overlaps.append(
+                    f"{path_str1} (ancestor:{path_str2}, declared in: {', '.join(str(p) for p in config_paths1)})"
+                )
+                continue
+            except ValueError:
+                pass
 
     return overlaps if overlaps else None
 
@@ -467,14 +533,14 @@ def _check_members_existence(config_path: Path, members: list[Any], logger: logg
     return ghost_paths
 
 
-def _validate_memory_root_value(mem_root: str | list[Any], config_path: Path) -> tuple[bool, str | None]:
+def _validate_memory_root_value(mem_root: Any, config_path: Path) -> tuple[bool, str | None]:
     """Validate memory_root value for special cases.
 
     VAL-CFG-018: memory_root empty string → invalid value explicit error.
     VAL-CFG-017: memory_root missing → not used for routing (handled by caller).
 
     Args:
-        mem_root: memory_root value from config
+        mem_root: memory_root value from config (Any - str, list, or None)
         config_path: Absolute path to config file
 
     Returns:
@@ -508,7 +574,100 @@ def _check_world_writable(config_path: Path) -> bool:
         return False
 
 
-def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:
+def _check_members_boundaries(members: list[Any], config_path: Path) -> list[str]:
+    """Check if members are within config parent boundaries (VAL-CFG-007).
+
+    Rules:
+    - None of members should escape config parent (containment check)
+    - Absolute paths outside config root are rejected
+    - ../ escaping is rejected
+    - Uses realpath+containment+deny for each member entry
+
+    Args:
+        members: Members list from config
+        config_path: Absolute path to config file
+
+    Returns:
+        List of out-of-bounds member entries (or paths) if found, empty list otherwise
+    """
+    config_parent = config_path.parent
+    out_of_bounds_entries = []
+
+    for member in members:
+        member_str = str(member) if not isinstance(member, str) else member
+
+        try:
+            # Check for empty string
+            if not member_str or member_str.strip() == "":
+                out_of_bounds_entries.append(f"empty string in {config_path}")
+                continue
+
+            # Resolve relative to config parent
+            resolved = (config_parent / member_str).resolve()
+            resolved_str = str(resolved)
+
+            # Check containment - must be under config parent
+            try:
+                resolved.relative_to(config_parent)
+            except ValueError:
+                # Not under config parent
+                if resolved != config_parent:
+                    out_of_bounds_entries.append(
+                        f"{member_str} -> {resolved_str} (escapes config parent in {config_path})"
+                    )
+                    continue
+
+            # Check deny list (HOME/system paths/memory-core source)
+            # Use realpath for symlink穿透
+            try:
+                resolved_real = resolved.resolve()
+            except (OSError, ValueError):
+                resolved_real = resolved
+
+            resolved_real_str = str(resolved_real)
+            home_env = os.environ.get("HOME", "")
+
+            # Check deny paths
+            deny_list = ["/", "/usr", "/System", "/Library", home_env, str(Path("~/").expanduser())]
+            for sys_path in deny_list:
+                try:
+                    sys_resolve = Path(sys_path).resolve()
+                    sys_resolve_str = str(sys_resolve)
+                    if sys_resolve_str == home_env:
+                        # HOME: exact match only
+                        if resolved_real == sys_resolve:
+                            out_of_bounds_entries.append(
+                                f"{member_str} -> {resolved_real_str} (HOME denied in {config_path})"
+                            )
+                            break
+                    else:
+                        # Other paths: exact or subdirectory
+                        if resolved_real == sys_resolve or resolved_real_str.startswith(sys_resolve_str + "/"):
+                            out_of_bounds_entries.append(
+                                f"{member_str} -> {resolved_real_str} (system path denied in {config_path})"
+                            )
+                            break
+                except OSError:
+                    continue
+
+            # Check memory-core source repo
+            try:
+                from ..ownership import is_memory_core_source_repo
+
+                if is_memory_core_source_repo(resolved_real):
+                    out_of_bounds_entries.append(
+                        f"{member_str} -> {resolved_real_str} (memory-core source denied in {config_path})"
+                    )
+            except (ImportError, Exception):
+                pass
+
+        except (OSError, ValueError) as exc:
+            out_of_bounds_entries.append(f"{member_str} -> resolution error ({exc}) in {config_path}")
+
+    return out_of_bounds_entries
+
+
+def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C901
     """Resolve REPO_ROOT and WORKSPACE_ROOT with four-level priority.
 
     The gateway receives PROJECT_CWD that was already normalized by the wrapper
@@ -531,8 +690,44 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:
         (REPO_ROOT, WORKSPACE_ROOT) tuple
     """
     # Level 1: Check if seed is already git-governed (wrapper did git normalization)
+    config_at_git_seed = None
     if (seed / ".git").exists():
         # Seed is a git repo - use it directly (no config needed for git repos)
+        # VAL-CFG-005: If config exists with memory_root ≠ git root, emit conflict
+        config_at_git_seed = _find_project_config_path(seed)
+        if config_at_git_seed is not None:
+            try:
+                config = _parse_project_config(config_at_git_seed)
+                if config is not None and config.get("memory_root") is not None:
+                    mem_root = config.get("memory_root")
+                    # Check for empty values first (non-blocking) before any processing
+                    is_valid, error_msg = _validate_memory_root_value(mem_root, config_at_git_seed)
+                    if not is_valid:
+                        _logger.error(error_msg)
+                        # Non-blocking: don't raise, just fall through to degraded routing
+                        # The config level is rejected, fall through to B-layer refinement
+                        # Continue to fall through to B-layer
+                    elif isinstance(mem_root, list):
+                        if mem_root:
+                            mem_root = mem_root[0] if isinstance(mem_root[0], str) else str(mem_root[0])
+                        else:
+                            # Empty list already handled by _validate_memory_root_value above
+                            # which returns error_msg
+                            pass  # Continue to B-layer
+                    if isinstance(mem_root, str) and mem_root not in {"./", "."}:
+                        resolved_mem = (config_at_git_seed.parent / mem_root).resolve()
+                        git_root = seed.resolve()
+                        if resolved_mem != git_root:
+                            # Emit conflict line: git root, config declared root, config path
+                            _logger.error(
+                                "_resolve_repo_root_with_config: config and git root conflict "
+                                "(VAL-CFG-005): git_root=%s, config_memory_root=%s, config_path=%s",
+                                git_root,
+                                resolved_mem,
+                                config_at_git_seed,
+                            )
+            except Exception:
+                pass  # Don't crash on config parsing errors
         return (seed, seed)
 
     # Level 2: Project config (memory-project.toml)
@@ -542,8 +737,17 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:
         # VAL-CFG-006: members declared by multiple configs in the tree that
         # resolve to the same absolute path → reject the config level entirely
         # and surface the conflict list
+        # VAL-CFG-010: Filter out world-writable configs before overlap detection
         parsed_configs: list[tuple[Path, dict[str, Any]]] = []
         for cfg_path in _find_all_project_configs(seed):
+            # Check world-writable (VAL-CFG-010) - skip world-writable configs for overlap
+            try:
+                mode = cfg_path.stat().st_mode
+                if bool(mode & stat.S_IWOTH):
+                    # World-writable config is ignored for overlap detection
+                    continue
+            except OSError:
+                pass  # If we can't stat, include it
             parsed_cfg = _parse_project_config(cfg_path)
             if parsed_cfg is not None:
                 parsed_configs.append((cfg_path, parsed_cfg))
@@ -561,6 +765,7 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:
         if world_writable:
             _logger.warning("_resolve_repo_root_with_config: config %s is world-writable, ignoring", config_path)
             # VAL-CFG-010:降级为忽略 + 告警 -> skip config, fall through to next level
+            config_path = None  # Explicitly set to None so fall through happens
         else:
             # Parse config
             config = _parse_project_config(config_path)
@@ -568,26 +773,58 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:
                 # Try to resolve memory_root
                 mem_root = config.get("memory_root")
                 if mem_root is not None:
-                    # VAL-CFG-018: Check memory_root empty string
+                    # VAL-CFG-018: Check memory_root empty string/list - non-blocking error
                     is_valid, error_msg = _validate_memory_root_value(mem_root, config_path)
                     if not is_valid:
                         _logger.error(error_msg)
-                        raise ValueError(error_msg)
-
-                    resolved_root = _resolve_memory_root(mem_root, config_path)
-                    if resolved_root is not None:
-                        return (resolved_root, resolved_root)
+                        # Non-blocking: don't raise, just fall through to degraded routing
+                        # The config level is rejected, fall through to B-layer refinement
+                        config_path = None
+                    else:
+                        resolved_root = _resolve_memory_root(mem_root, config_path)
+                        if resolved_root is not None:
+                            # If config has members, also check out-of-bounds entries
+                            if "members" in config:
+                                members = config.get("members", [])
+                                out_of_bounds_entries = _check_members_boundaries(members, config_path)
+                                if out_of_bounds_entries:
+                                    _logger.error(
+                                        "_resolve_repo_root_with_config: members contain out-of-bounds entries in %s: %s",
+                                        config_path,
+                                        ", ".join(out_of_bounds_entries),
+                                    )
+                                    # Out-of-bounds rejection: degrade config level
+                                    config_path = None
+                                else:
+                                    # Check for members ghost paths (VAL-CFG-016)
+                                    _check_members_existence(config_path, members, _logger)
+                                    return (resolved_root, resolved_root)
+                            else:
+                                # No members, return resolved memory_root
+                                return (resolved_root, resolved_root)
                 # If memory_root not specified, but config exists with members,
                 # use config parent as the project root
                 elif "members" in config:
-                    # Check for members ghost paths (VAL-CFG-016)
+                    # Check members boundary violations first (VAL-CFG-007)
                     members = config.get("members", [])
-                    _check_members_existence(config_path, members, _logger)
-                    return (config_path.parent, config_path.parent)
+                    out_of_bounds_entries = _check_members_boundaries(members, config_path)
+                    if out_of_bounds_entries:
+                        _logger.error(
+                            "_resolve_repo_root_with_config: members contain out-of-bounds entries in %s: %s",
+                            config_path,
+                            ", ".join(out_of_bounds_entries),
+                        )
+                        # Out-of-bounds rejection: degrade config level
+                        config_path = None
+                    else:
+                        # Check for members ghost paths (VAL-CFG-016)
+                        _check_members_existence(config_path, members, _logger)
+                        return (config_path.parent, config_path.parent)
                 # If memory_root not specified and no members, fall through to next level
 
     # VAL-CFG-017: memory_root缺失 → 不完整配置：告警 + 降级探测
-    # Only reached if config exists but has no memory_root and no members
+    # Fall-through warning only when resolution succeeded (config exists) but truly no memory_root and no members
+    # Do NOT emit if config was rejected (world-writable, out-of-bounds, empty value, etc.)
     if config_path is not None:
         _logger.warning(
             "_resolve_repo_root_with_config: config %s has no memory_root and no members, falling back to next level",
@@ -599,8 +836,13 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:
     if (seed_refined / ".git").exists():
         # Refined seed has .git (file or dir), it's already a git-governed root
         return (seed_refined, seed_refined)
+    elif seed_refined == seed:
+        # Refined seed is same as input - no git, no refinement possible
+        # This happens when config was rejected or config doesn't exist
+        # Return seed as best guess (graceful degradation)
+        return (seed, seed)
     else:
-        # Non-git refined seed, use normal discovery
+        # Non-git refined seed (refined from a different path), use normal discovery
         return discover_roots(seed_refined)
 
 

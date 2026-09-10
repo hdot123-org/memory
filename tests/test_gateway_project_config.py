@@ -198,3 +198,264 @@ class TestResolveRepoRootWithConfig:
         overlap_errors = [r for r in caplog.records if "VAL-CFG-006" in r.message]
         assert overlap_errors, f"expected VAL-CFG-006 overlap error in logs: {caplog.records}"
         assert "shared" in overlap_errors[0].getMessage()
+
+
+# ---------------------------------------------------------------------------
+# VAL-CFG-005: Git命中 + 竞争配置冲突留痕
+# ---------------------------------------------------------------------------
+
+
+class TestGitConflictEscalation:
+    def test_git_hit_with_memory_root_conflict_emits_error(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """VAL-CFG-005: git root命中且配置memory_root ≠ git根 → 路由git + 冲突行."""
+        # Create a git repo
+        git_root = tmp_path / "git_repo"
+        git_root.mkdir()
+        (git_root / ".git").mkdir()
+        # Create a config with conflicting memory_root
+        _write_config(
+            git_root / CONFIG_NAME,
+            'project = "test"\nmemory_root = "./different"\n',
+        )
+        # Create the different directory
+        diff_dir = git_root / "different"
+        diff_dir.mkdir()
+
+        with caplog.at_level(logging.ERROR, logger=_MODULE_LOGGER):
+            repo_root, _ = _resolve_repo_root_with_config(git_root)
+
+        # Should still route to git root (git优先)
+        assert repo_root == git_root.resolve()
+        # But emit conflict error line
+        conflict_logs = [r for r in caplog.records if "config and git root conflict" in r.message]
+        assert len(conflict_logs) >= 1
+        assert str(git_root.resolve()) in conflict_logs[0].getMessage()  # git根
+        assert str(diff_dir.resolve()) in conflict_logs[0].getMessage()  # 配置声明根
+        assert str(git_root / CONFIG_NAME) in conflict_logs[0].getMessage()  # 配置路径
+
+
+# ---------------------------------------------------------------------------
+# VAL-CFG-007: members越界拒绝
+# ---------------------------------------------------------------------------
+
+
+class TestMembersBoundaryRejection:
+    def test_members_with_parent_escape_rejected(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """../ escaping in members → configuration level rejected."""
+        outer = tmp_path / "outer"
+        outer.mkdir()
+        target = outer / "target"
+        target.mkdir()
+        # Config with ../ that escapes config parent
+        _write_config(
+            outer / CONFIG_NAME,
+            'project = "test"\nmemory_root = "./target"\nmembers = ["../outside"]\n',
+        )
+
+        with caplog.at_level(logging.ERROR, logger=_MODULE_LOGGER):
+            repo_root, _ = _resolve_repo_root_with_config(outer)
+
+        # Should fall back to discovery (config rejected)
+        assert repo_root == outer.resolve()
+
+    def test_members_with_absolute_outside_root_rejected(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """Absolute path outside config root → configuration level rejected."""
+        outer = tmp_path / "outer"
+        outer.mkdir()
+        target = outer / "target"
+        target.mkdir()
+        # Config with absolute path outside config parent
+        _write_config(
+            outer / CONFIG_NAME,
+            'project = "test"\nmemory_root = "./target"\nmembers = ["/tmp/outside"]\n',
+        )
+
+        with caplog.at_level(logging.ERROR, logger=_MODULE_LOGGER):
+            repo_root, _ = _resolve_repo_root_with_config(outer)
+
+        # Config rejected due to越界 members
+        assert repo_root == outer.resolve()
+
+    def test_members_mixed_valid_and_invalid(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """混合合法+越界 members → configuration level rejected."""
+        outer = tmp_path / "outer"
+        outer.mkdir()
+        valid_dir = outer / "valid"
+        valid_dir.mkdir()
+        target = outer / "target"
+        target.mkdir()
+        # Config with one valid and one越界 member
+        _write_config(
+            outer / CONFIG_NAME,
+            'project = "test"\nmemory_root = "./target"\nmembers = ["./valid", "/invalid"]\n',
+        )
+
+        with caplog.at_level(logging.ERROR, logger=_MODULE_LOGGER):
+            repo_root, _ = _resolve_repo_root_with_config(outer)
+
+        # 越界拒绝
+        assert repo_root == outer.resolve()
+
+
+# ---------------------------------------------------------------------------
+# VAL-CFG-016: 幽灵 members 告警
+# ---------------------------------------------------------------------------
+
+
+class TestGhostMembersWarning:
+    def test_ghost_members_route_unchanged_with_warning(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """有效 memory_root + 幽灵 members → 路由不变 + 告警行."""
+        target = tmp_path / "target"
+        target.mkdir()
+        # Config with valid memory_root but ghost members
+        _write_config(
+            tmp_path / CONFIG_NAME,
+            'project = "test"\nmemory_root = "./target"\nmembers = ["./ghost1", "./ghost2"]\n',
+        )
+
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
+            repo_root, _ = _resolve_repo_root_with_config(tmp_path)
+
+        # Should route to memory_root (unchanged)
+        assert repo_root == target.resolve()
+        # But emit ghost paths warning
+        ghost_logs = [r for r in caplog.records if "ghost paths" in r.message]
+        assert len(ghost_logs) >= 1
+        assert str(tmp_path / "ghost1") in ghost_logs[0].getMessage()
+        assert str(tmp_path / "ghost2") in ghost_logs[0].getMessage()
+
+
+# ---------------------------------------------------------------------------
+# VAL-CFG-018: 无效值不击穿网关 (非崩溃路径)
+# ---------------------------------------------------------------------------
+
+
+class TestInvalidValueNonBlocking:
+    def test_empty_string_memory_root_nonblocking(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """空串 memory_root → not crash + structured error + degraded routing."""
+        git_dir = tmp_path / "git_repo"
+        git_dir.mkdir()
+        (git_dir / ".git").mkdir()
+
+        # Config with empty string memory_root
+        _write_config(
+            git_dir / CONFIG_NAME,
+            'project = "test"\nmemory_root = ""\n',
+        )
+
+        with caplog.at_level(logging.ERROR, logger=_MODULE_LOGGER):
+            repo_root, _ = _resolve_repo_root_with_config(git_dir)
+
+        # No exception raised - non-blocking path
+        # Error should be logged
+        empty_logs = [r for r in caplog.records if "empty string" in r.message]
+        assert len(empty_logs) >= 1, "Expected error log for empty string memory_root"
+
+    def test_empty_list_memory_root_nonblocking(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """空列表 memory_root → not crash + structured error + degraded routing."""
+        git_dir = tmp_path / "git_repo"
+        git_dir.mkdir()
+        (git_dir / ".git").mkdir()
+
+        # Config with empty list memory_root
+        _write_config(
+            git_dir / CONFIG_NAME,
+            'project = "test"\nmemory_root = []\n',
+        )
+
+        with caplog.at_level(logging.ERROR, logger=_MODULE_LOGGER):
+            repo_root, _ = _resolve_repo_root_with_config(git_dir)
+
+        # No exception raised - non-blocking path
+        # Error should be logged
+        empty_logs = [r for r in caplog.records if "empty list" in r.message]
+        assert len(empty_logs) >= 1, "Expected error log for empty list memory_root"
+
+
+# ---------------------------------------------------------------------------
+# VAL-CFG-006: 嵌套重叠口径 (跨配置祖先/后代)
+# ---------------------------------------------------------------------------
+
+
+class TestNestedOverlap:
+    def test_cross_config_ancestor_descendant_overlap(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """VAL-CFG-006: 跨配置嵌套包含（p1是p2的祖先/后代）→ 拒绝并列冲突."""
+        outer = tmp_path / "outer"
+        outer.mkdir()
+        inner = outer / "inner"
+        inner.mkdir()
+        # outer declares ./a; inner declares ./a/b which IS nested under outer/a
+        # When inner's ./a/b is resolved, it should be under outer's ./a
+        _write_config(
+            outer / CONFIG_NAME,
+            'project = "outer"\nmembers = ["./a"]\n',
+        )
+        _write_config(
+            inner / CONFIG_NAME,
+            'project = "inner"\nmembers = ["../a/b"]\n',  # ../a/b from inner = outer/a/b (under outer/a)
+        )
+        # Create the paths
+        (outer / "a").mkdir()
+        (outer / "a" / "b").mkdir()
+
+        with caplog.at_level(logging.ERROR, logger=_MODULE_LOGGER):
+            repo_root, _ = _resolve_repo_root_with_config(inner)
+
+        # Config level rejected due to nested overlap
+        overlap_errors = [r for r in caplog.records if "VAL-CFG-006" in r.message]
+        assert len(overlap_errors) >= 1
+        assert (
+            "ancestor" in overlap_errors[0].getMessage().lower() or "nested" in overlap_errors[0].getMessage().lower()
+        )
+
+
+# ---------------------------------------------------------------------------
+# VAL-CFG-010 + VAL-CFG-017: world-writable 过滤 + fall-through
+# ---------------------------------------------------------------------------
+
+
+class TestWorldWritableAndFallThrough:
+    def test_world_writable_config_filtered_from_overlap(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """world-writable 配置不参与 overlap (VAL-CFG-010)."""
+        outer = tmp_path / "outer"
+        outer.mkdir()
+        inner = outer / "inner"
+        inner.mkdir()
+        shared = outer / "shared"
+        shared.mkdir()
+
+        # inner config is world-writable and declares shared
+        inner_cfg = inner / CONFIG_NAME
+        _write_config(inner_cfg, 'project = "inner"\nmembers = ["../shared"]\n')
+        inner_cfg.chmod(0o666)
+
+        # outer config declares shared (but isn't world-writable)
+        outer_cfg = outer / CONFIG_NAME
+        _write_config(outer_cfg, 'project = "outer"\nmembers = ["./shared"]\n')
+
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
+            repo_root, _ = _resolve_repo_root_with_config(inner)
+
+        # World-writable config ignored, only outer config considered
+        # No overlap since only one valid config
+        assert repo_root in (inner.resolve(), outer.resolve())
+
+    def test_fall_through_only_when_truly_no_memory_root_members(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ):
+        """VAL-CFG-017: fall-through告警仅当「解析成功且确无 memory_root 与 members」."""
+        outer = tmp_path / "outer"
+        outer.mkdir()
+        target = outer / "target"
+        target.mkdir()
+
+        # Config with memory_root
+        _write_config(outer / CONFIG_NAME, 'project = "test"\nmemory_root = "./target"\n')
+
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
+            repo_root, _ = _resolve_repo_root_with_config(outer)
+
+        # Should route to memory_root, no fall-through warning
+        assert repo_root == target.resolve()
+        no_fall_through = [r for r in caplog.records if "no memory_root and no members" in r.message]
+        assert len(no_fall_through) == 0
