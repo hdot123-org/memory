@@ -178,9 +178,9 @@ done
 
 **禁止位置参数判定**：`$2` 恒为 "factory"（hooks.json 实测形态 `$1=--host $2=factory $3=--event $4=<事件名>`）。
 
-**日志仅 session-start 写入**：
+**日志仅 session-start 写入**：缺失 `--event` 时 `EVENT_NAME` 为空字符串，按契约视为非 session-start 事件，不写日志（VAL-WRAP-006 第四形态）。
 ```sh
-if [ "$EVENT_NAME" = "session-start" ] || [ -z "$EVENT_NAME" ]; then
+if [ "$EVENT_NAME" = "session-start" ]; then
     printf '[%s] [memory-hook-wrapper] [warn] %s\n' \
         "$(date -u '+%Y-%m-%dT%H:%M:%S%z')" "<场景描述>" \
         >>"$MEMORY_HOOK_GLOBAL_STATE_ROOT/memory/system/errors.log" 2>/dev/null || true
