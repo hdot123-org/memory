@@ -13,7 +13,10 @@ import json
 import logging
 import os
 import re
+import stat
 import threading
+import tomllib  # stdlib since Python 3.11 (project requires 3.12)
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -31,6 +34,8 @@ __all__ = [
     "_FORCE_HOOK",
     # Seed refinement
     "_refine_non_git_seed",
+    # Configuration (Phase 2)
+    "_parse_project_config",
     # File utilities (re-exported)
     "exclusive_lock",
     "now_iso",
@@ -76,6 +81,12 @@ __all__ = [
     # Utilities
     "_logger",
 ]
+
+# ---------------------------------------------------------------------------
+# 日志器（必须在其他函数之前定义，因为它们依赖 _logger）
+# ---------------------------------------------------------------------------
+
+_logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # 路径发现与常量
@@ -170,17 +181,432 @@ def _refine_non_git_seed(seed: Path) -> Path:
     return seed
 
 
-_cwd_seed_refined = _refine_non_git_seed(_cwd_seed)
-# B-layer fix for VAL-GTW-008/012: when refinement yields a git-governed root,
-# bypass discover_project_root's memory-tree marker walk which causes fallback
-# to source repo root. git-governed roots are already validrepo roots.
-if (_cwd_seed_refined / ".git").exists():
-    # Refined seed has .git (file or dir), it's already a git-governed root
-    REPO_ROOT = _cwd_seed_refined
-    WORKSPACE_ROOT = _cwd_seed_refined
-else:
-    # Non-git refined seed, use normal discovery
-    REPO_ROOT, WORKSPACE_ROOT = discover_roots(_cwd_seed_refined)
+# ============================================================================
+# Phase 2: Project Configuration (memory-project.toml)
+# ============================================================================
+
+_PROJECT_CONFIG_NAME = "memory-project.toml"
+_HOME_ENV = os.environ.get("HOME", "")
+_SYSTEM_PATHS = frozenset({"/", "/usr", "/System", "/Library", str(Path("~/").expanduser())})
+
+
+def _find_project_config_path(seed: Path) -> Path | None:
+    """Find memory-project.toml following locate-then-use rules.
+
+    Rules:
+    1. Self first: check {seed}/memory-project.toml
+    2. Ancestor fallback: walk up directory tree
+    3. Nearest wins: first found wins (not merging)
+
+    Args:
+        seed: The initial seed path
+
+    Returns:
+        Absolute path to config file if found, None otherwise
+    """
+    # Normalize to absolute path, nearest-first collection
+    configs = _find_all_project_configs(seed)
+    return configs[0] if configs else None
+
+
+def _find_all_project_configs(seed: Path) -> list[Path]:
+    """Collect every memory-project.toml from seed up to filesystem root.
+
+    Nearest first (seed directory before ancestors). Used by
+    VAL-CFG-006 cross-config members-overlap detection.
+
+    Args:
+        seed: The initial seed path
+
+    Returns:
+        List of absolute config paths (empty if none found)
+    """
+    configs: list[Path] = []
+
+    # Traverse up to root
+    current = seed.resolve()
+    while True:
+        candidate = current / _PROJECT_CONFIG_NAME
+        if candidate.exists() and candidate.is_file():
+            configs.append(candidate.resolve())
+
+        # Stop at root (parent == self)
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+    return configs
+
+
+def _parse_project_config(config_path: Path, *, strict: bool = False) -> dict[str, Any] | None:
+    """Parse memory-project.toml and validate structure.
+
+    Args:
+        config_path: Absolute path to config file
+        strict: If True, raise on syntax error (for VAL-CFG-012 explicit error)
+
+    Returns:
+        Parsed config dict with keys: project, memory_root, members
+        None if parsing fails or file unreadable
+    """
+    try:
+        content = config_path.read_text(encoding="utf-8")
+        try:
+            parsed = tomllib.loads(content)
+        except Exception as exc:
+            # VAL-CFG-012: Syntax error - explicit error if strict, warning otherwise
+            if strict:
+                raise
+            _logger.warning("_parse_project_config: parse failed for %s: %s", config_path, exc)
+            return None
+
+        # Validate required keys
+        if not isinstance(parsed, dict):
+            _logger.warning("_parse_project_config: config root is not a dict: %s", config_path)
+            return None
+
+        # memory_root is optional in config but we extract it for routing
+        # project and members are optional but can be used for validation
+
+        result: dict[str, Any] = {}
+        if "project" in parsed:
+            result["project"] = parsed["project"]
+        if "memory_root" in parsed:
+            result["memory_root"] = parsed["memory_root"]
+        if "members" in parsed:
+            result["members"] = parsed["members"]
+
+        return result
+    except (OSError, UnicodeDecodeError) as exc:
+        _logger.warning("_parse_project_config: read failed for %s: %s", config_path, exc)
+        return None
+
+
+def _resolve_memory_root(  # noqa: C901
+    mem_root: str | list[Any], config_path: Path
+) -> Path | None:
+    """Resolve memory_root value to absolute path with containment check.
+
+    - "./" or "." → return config parent (self-root, valid)
+    - Relative paths → resolve relative to config parent, check containment
+    - Absolute paths → check against config parent containment
+
+    Args:
+        mem_root: memory_root value from config (string or list for members case)
+        config_path: Absolute path to config file
+
+    Returns:
+        Resolved absolute path if valid, None if invalid/omitted
+    """
+    config_parent = config_path.parent
+
+    # Handle members list or string
+    if isinstance(mem_root, list):
+        # Extract first element if it's a members list, otherwise skip
+        if mem_root:
+            mem_root = mem_root[0] if isinstance(mem_root[0], str) else str(mem_root[0])
+        else:
+            return None
+
+    if not isinstance(mem_root, str):
+        mem_root = str(mem_root)
+
+    # Val-CFG-015: self-reference "./" or "." is valid
+    if mem_root in {"./", "."}:
+        return config_parent
+
+    # Normalize path (handle ../ and ./)
+    try:
+        resolved = (config_parent / mem_root).resolve()
+    except (OSError, ValueError) as exc:
+        _logger.warning("_resolve_memory_root: path resolution failed for %s/%s: %s", config_parent, mem_root, exc)
+        return None
+
+    # Val-CFG-007/008/009: containment + same-mount check
+    # Must be under config parent's tree (no .. escape to parent)
+    # But allow same directory (self-reference handled above)
+    try:
+        resolved.relative_to(config_parent)
+    except ValueError:
+        # Not under config parent - check if it IS the config parent (self-ref handled above)
+        if resolved != config_parent:
+            _logger.warning("_resolve_memory_root: %s escapes config parent %s", resolved, config_parent)
+            return None
+
+    # VAL-CFG-009: deny specific paths
+    # Use realpath to resolve symlinks
+    try:
+        resolved_real = resolved.resolve()
+    except (OSError, ValueError):
+        resolved_real = resolved
+
+    resolved_str = str(resolved_real)
+
+    # Check system paths: exact match or proper subdirectory (with separator)
+    for sys_path in _SYSTEM_PATHS:
+        try:
+            sys_resolve = Path(sys_path).resolve()
+            sys_resolve_str = str(sys_resolve)
+            # Special handling for HOME: only exact match (not subdirectory)
+            # This prevents denying all paths under home, which would block memory projects
+            if sys_resolve_str == _HOME_ENV:
+                if resolved_real == sys_resolve:
+                    _logger.warning("_resolve_memory_root: %s is HOME itself, denied", resolved_real)
+                    return None
+            else:
+                # Other system paths: deny exact match or subdirectory
+                if resolved_real == sys_resolve or resolved_str.startswith(sys_resolve_str + "/"):
+                    _logger.warning("_resolve_memory_root: %s is in deny list", resolved_real)
+                    return None
+        except OSError:
+            continue
+
+    # Check if it's memory-core source repo.
+    # Lazy import: the module-level re-export near the bottom of this file binds
+    # only AFTER the REPO_ROOT init call, so referencing the global here during
+    # module init raised NameError (silently swallowed), disabling this check
+    # on the initialization path.
+    is_src_repo_fn: Callable[[Path], bool] | None = None
+    try:
+        from ..ownership import is_memory_core_source_repo
+
+        is_src_repo_fn = is_memory_core_source_repo
+    except ImportError:
+        pass
+    if is_src_repo_fn is not None:
+        try:
+            if is_src_repo_fn(resolved_real):
+                _logger.warning("_resolve_memory_root: %s is memory-core source repo", resolved_real)
+                return None
+        except Exception:
+            pass
+
+    # VAL-CFG-008: symlink穿透 with realpath
+    # For containment check, use resolved path
+    try:
+        resolved_real.relative_to(config_parent.resolve())
+    except ValueError:
+        # Not under config parent after realpath
+        if resolved_real != config_parent.resolve():
+            _logger.warning(
+                "_resolve_memory_root: realpath %s escapes config parent %s", resolved_real, config_parent.resolve()
+            )
+            return None
+
+    return resolved
+
+
+def _check_members_overlap(configs: list[tuple[Path, dict[str, Any]]]) -> list[str] | None:
+    """Check for overlapping member paths across configs.
+
+    VAL-CFG-006: Directory tree with two configs having overlapping members → reject and list conflict.
+
+    Args:
+        configs: List of (config_path, parsed_config) tuples
+
+    Returns:
+        List of overlapping paths if found, None otherwise
+    """
+    all_members: dict[str, list[Path]] = {}  # resolved path -> list of config paths
+
+    for config_path, config in configs:
+        members = config.get("members", [])
+        if not isinstance(members, list):
+            members = [members] if members else []
+        for member in members:
+            if not isinstance(member, str):
+                member = str(member)
+            # Resolve relative to config path
+            resolved = (config_path.parent / member).resolve()
+            resolved_str = str(resolved)
+            if resolved_str not in all_members:
+                all_members[resolved_str] = []
+            all_members[resolved_str].append(config_path)
+
+    # Find overlaps
+    overlaps = []
+    for path_str, config_paths in all_members.items():
+        if len(config_paths) > 1:
+            overlaps.append(f"{path_str} (declared in: {', '.join(str(p) for p in config_paths)})")
+
+    return overlaps if overlaps else None
+
+
+def _check_members_existence(config_path: Path, members: list[Any], logger: logging.Logger) -> list[str]:
+    """Check if member paths exist and return ghost paths.
+
+    VAL-CFG-016: members含不存在路径 → 显式可见，不静默.
+    Response: warn + route to valid memory_root.
+
+    Args:
+        config_path: Absolute path to config file
+        members: Members list from config
+        logger: Logger instance
+
+    Returns:
+        List of ghost (non-existent) paths
+    """
+    ghost_paths = []
+    config_parent = config_path.parent
+
+    for member in members:
+        if not isinstance(member, str):
+            member = str(member)
+        resolved = (config_parent / member).resolve()
+        if not resolved.exists():
+            ghost_paths.append(str(resolved))
+
+    if ghost_paths:
+        logger.warning(
+            "_check_members_existence: members contain ghost paths in %s: %s",
+            config_path,
+            ", ".join(ghost_paths),
+        )
+
+    return ghost_paths
+
+
+def _validate_memory_root_value(mem_root: str | list[Any], config_path: Path) -> tuple[bool, str | None]:
+    """Validate memory_root value for special cases.
+
+    VAL-CFG-018: memory_root empty string → invalid value explicit error.
+    VAL-CFG-017: memory_root missing → not used for routing (handled by caller).
+
+    Args:
+        mem_root: memory_root value from config
+        config_path: Absolute path to config file
+
+    Returns:
+        (is_valid, error_message) tuple
+    """
+    # Handle empty string
+    mem_root_str = ""
+    if isinstance(mem_root, list):
+        if mem_root:
+            mem_root_str = mem_root[0] if isinstance(mem_root[0], str) else str(mem_root[0])
+    else:
+        mem_root_str = str(mem_root) if mem_root else ""
+
+    if isinstance(mem_root, list) and not mem_root:
+        return False, f"memory_root is empty list in {config_path}"
+    if mem_root_str == "":
+        return False, f"memory_root is empty string in {config_path}"
+
+    return True, None
+
+
+def _check_world_writable(config_path: Path) -> bool:
+    """Check if config file is world-writable.
+
+    Returns True if mode has world-writable bit set.
+    """
+    try:
+        mode = config_path.stat().st_mode
+        return bool(mode & stat.S_IWOTH)
+    except OSError:
+        return False
+
+
+def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:
+    """Resolve REPO_ROOT and WORKSPACE_ROOT with four-level priority.
+
+    The gateway receives PROJECT_CWD that was already normalized by the wrapper
+    (which does git rev-parse --show-toplevel). The gateway's job is to:
+    1. Check if this is already a git-governed root (noFurther action needed)
+    2. Otherwise, check for memory-project.toml configuration
+    3. If config found, use it to resolve memory_root (if present)
+    4. Otherwise, fall back to B-layer refinement
+
+    Priority (highest to lowest):
+    - Git upwards: already done by wrapper, but we verify if seed has .git
+    - 项目根硬化配置: memory-project.toml (config level)
+    - 启发式向下探测: B-layer seed refinement
+    - 显式拒绝: fallback to cwd ( may be invalid)
+
+    Args:
+        seed: Initial seed path from MEMORY_HOOK_PROJECT_CWD (wrapper-normalized)
+
+    Returns:
+        (REPO_ROOT, WORKSPACE_ROOT) tuple
+    """
+    # Level 1: Check if seed is already git-governed (wrapper did git normalization)
+    if (seed / ".git").exists():
+        # Seed is a git repo - use it directly (no config needed for git repos)
+        return (seed, seed)
+
+    # Level 2: Project config (memory-project.toml)
+    # Search in seed directory and ancestors
+    config_path = _find_project_config_path(seed)
+    if config_path is not None:
+        # VAL-CFG-006: members declared by multiple configs in the tree that
+        # resolve to the same absolute path → reject the config level entirely
+        # and surface the conflict list
+        parsed_configs: list[tuple[Path, dict[str, Any]]] = []
+        for cfg_path in _find_all_project_configs(seed):
+            parsed_cfg = _parse_project_config(cfg_path)
+            if parsed_cfg is not None:
+                parsed_configs.append((cfg_path, parsed_cfg))
+        member_overlaps = _check_members_overlap(parsed_configs)
+        if member_overlaps is not None:
+            _logger.error(
+                "_resolve_repo_root_with_config: members overlap across configs, "
+                "rejecting config level (VAL-CFG-006): %s",
+                "; ".join(member_overlaps),
+            )
+            config_path = None
+    if config_path is not None:
+        # Check world-writable (VAL-CFG-010)
+        world_writable = _check_world_writable(config_path)
+        if world_writable:
+            _logger.warning("_resolve_repo_root_with_config: config %s is world-writable, ignoring", config_path)
+            # VAL-CFG-010:降级为忽略 + 告警 -> skip config, fall through to next level
+        else:
+            # Parse config
+            config = _parse_project_config(config_path)
+            if config is not None:
+                # Try to resolve memory_root
+                mem_root = config.get("memory_root")
+                if mem_root is not None:
+                    # VAL-CFG-018: Check memory_root empty string
+                    is_valid, error_msg = _validate_memory_root_value(mem_root, config_path)
+                    if not is_valid:
+                        _logger.error(error_msg)
+                        raise ValueError(error_msg)
+
+                    resolved_root = _resolve_memory_root(mem_root, config_path)
+                    if resolved_root is not None:
+                        return (resolved_root, resolved_root)
+                # If memory_root not specified, but config exists with members,
+                # use config parent as the project root
+                elif "members" in config:
+                    # Check for members ghost paths (VAL-CFG-016)
+                    members = config.get("members", [])
+                    _check_members_existence(config_path, members, _logger)
+                    return (config_path.parent, config_path.parent)
+                # If memory_root not specified and no members, fall through to next level
+
+    # VAL-CFG-017: memory_root缺失 → 不完整配置：告警 + 降级探测
+    # Only reached if config exists but has no memory_root and no members
+    if config_path is not None:
+        _logger.warning(
+            "_resolve_repo_root_with_config: config %s has no memory_root and no members, falling back to next level",
+            config_path,
+        )
+
+    # Level 3: B-layer seed refinement (pure filesystem)
+    seed_refined = _refine_non_git_seed(seed)
+    if (seed_refined / ".git").exists():
+        # Refined seed has .git (file or dir), it's already a git-governed root
+        return (seed_refined, seed_refined)
+    else:
+        # Non-git refined seed, use normal discovery
+        return discover_roots(seed_refined)
+
+
+# Use the new routing logic
+REPO_ROOT, WORKSPACE_ROOT = _resolve_repo_root_with_config(_cwd_seed)
+
 _FORCE_HOOK = bool(os.environ.get("MEMORY_HOOK_FORCE") or os.environ.get("WORKBOT_FORCE_HOOK"))
 BATCH_SIZE = 500
 
@@ -216,7 +642,8 @@ EVENT_LOG = ARTIFACT_ROOT / "events.jsonl"
 ERROR_LOG = _configured_error_log(WORKSPACE_ROOT)
 PROJECT_LIFECYCLE_ROOT = _configured_project_lifecycle_root(WORKSPACE_ROOT)
 
-_logger = logging.getLogger(__name__)
+# Note: _logger is already defined at module top (line ~83); this duplicate is kept
+# for compatibility but is dead code (module top version shadows this)
 
 # ---------------------------------------------------------------------------
 # 文件工具与规则辅助（re-exported for test access）
