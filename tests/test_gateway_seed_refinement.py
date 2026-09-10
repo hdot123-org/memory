@@ -344,7 +344,7 @@ class TestBLayerEndToEnd:
             [
                 sys.executable,
                 "-c",
-                "from memory_core.tools import _gateway_config as c; print(c.REPO_ROOT)",
+                "from memory_core.tools import mcp_server; from memory_core.tools._gateway_config import REPO_ROOT; print(REPO_ROOT)",
             ],
             capture_output=True,
             text=True,
