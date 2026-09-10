@@ -92,10 +92,10 @@ consent 标记检测命令：
 ```sh
 CONSENT_MARKER=""
 if [ -f "$PROJECT_CWD/memory/system/ownership.toml" ]; then
-    grep -q 'allow_non_git.*=.*true' "$PROJECT_CWD/memory/system/ownership.toml" 2>/dev/null && CONSENT_MARKER="1"
+    grep -q '^[[:space:]]*allow_non_git[[:space:]]*=[[:space:]]*true' "$PROJECT_CWD/memory/system/ownership.toml" 2>/dev/null && CONSENT_MARKER="1"
 fi
 if [ -z "$CONSENT_MARKER" ] && [ -f "$PROJECT_CWD/memory/system/manifest.json" ]; then
-    grep -q '"allow_non_git".*:.*true' "$PROJECT_CWD/memory/system/manifest.json" 2>/dev/null && CONSENT_MARKER="1"
+    grep -q '"allow_non_git"[[:space:]]*:[[:space:]]*true' "$PROJECT_CWD/memory/system/manifest.json" 2>/dev/null && CONSENT_MARKER="1"
 fi
 ```
 
@@ -145,28 +145,34 @@ fi
 
 **stderr 一行诊断格式**（≥2 分支）：
 ```
-memory-hook: ambiguous nested repos under <CWD>: <candidate1>, <candidate2> (+more)
-  → cd into a specific repo, or create memory-project.toml to declare membership
+memory-hook: ambiguous nested repos under <CWD>: <candidate1>, <candidate2> (+more) -> cd into a specific repo, or create memory-project.toml to declare membership
 ```
 
 #### 3.1.4 事件门控（循环解析 --event 值）
 
 **必修项 #1**（GLM 审查 R1）：Qwen 基线的 `case " $* "` 模式恒真 bug。
 
-**正确实现**：循环解析 `--event` 值，兼容 `--event=<name>` 与 `--event <name>`。
+**正确实现**：循环解析 `--event` 值，兼容 `--event=<name>` 与 `--event <name>`。**注意**：wrapper 模板 shebang 为 `#!/bin/sh`（POSIX sh），**禁止使用 bash 数组语法**（`_args_remaining=("$@")`、`${#_args_remaining[@]}`）。必须使用 POSIX 兼容的 `for _arg in "$@"` 循环配合前参回看。
 
 ```sh
-# 解析 --event 值
+# 解析 --event 值（POSIX sh 兼容，wrapper shebang 为 #!/bin/sh）
 EVENT_NAME=""
-_args_remaining=("$@")
-_i=0
-while [ $_i -lt ${#_args_remaining[@]} ]; do
-    _arg="${_args_remaining[$_i]}"
+_prev_was_event=0
+for _arg in "$@"; do
     case "$_arg" in
-        --event=*) EVENT_NAME="${_arg#--event=}" ;;
-        --event)   _i=$((_i+1)); EVENT_NAME="${_args_remaining[$_i]:-}" ;;
+        --event=*)
+            EVENT_NAME="${_arg#--event=}"
+            ;;
+        --event)
+            _prev_was_event=1
+            ;;
+        *)
+            if [ "$_prev_was_event" -eq 1 ]; then
+                EVENT_NAME="$_arg"
+            fi
+            _prev_was_event=0
+            ;;
     esac
-    _i=$((_i+1))
 done
 ```
 
