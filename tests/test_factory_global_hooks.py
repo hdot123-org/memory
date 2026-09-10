@@ -87,6 +87,12 @@ def _fake_memory_commands(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
 
 
 def test_install_factory_hooks_writes_wrapper_and_settings_json(monkeypatch, tmp_path: Path) -> None:
+    """Verify wrapper installation and settings.json behavior.
+
+    VAL-REL-006: Memory hooks are NOT injected into settings.json (dead key since 2026-08-17).
+    Memory hooks are only registered in ~/.factory/hooks.json (the real registry).
+    settings.json is cleaned of any existing memory hooks but otherwise preserved.
+    """
     factory_home = tmp_path / ".factory"
     storage_root = tmp_path / "memory-store"
     gateway, init = _fake_memory_commands(tmp_path, monkeypatch)
@@ -110,33 +116,18 @@ def test_install_factory_hooks_writes_wrapper_and_settings_json(monkeypatch, tmp
     assert str(init) in wrapper_text
     assert 'exec "$MEMORY_HOOK_GATEWAY" "$@"' in wrapper_text
 
+    # VAL-REL-006: settings.json should NOT contain memory hooks (dead key)
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert set(settings["hooks"]) == {
-        "SessionStart",
-        "UserPromptSubmit",
-        "Stop",
-        "Notification",
-        "PreToolUse",
-        "PostToolUse",
-        "SubagentStop",
-        "PreCompact",
-        "SessionEnd",
-    }
-    commands = [
-        hook["command"]
-        for event_groups in settings["hooks"].values()
-        for group in event_groups
-        for hook in group["hooks"]
-    ]
-    assert len(commands) == 9
-    assert all(str(wrapper) in command for command in commands)
-    assert all("--host factory" in command for command in commands)
-
-    # Verify PreToolUse hook exists with correct event
-    pretooluse_hooks = settings["hooks"].get("PreToolUse", [])
-    assert len(pretooluse_hooks) >= 1
-    pretooluse_commands = [h["command"] for g in pretooluse_hooks for h in g.get("hooks", [])]
-    assert any("--event pre-tool-use" in cmd for cmd in pretooluse_commands)
+    # hooks key should be empty or not contain memory hook entries
+    hooks = settings.get("hooks", {})
+    for _event_name, event_groups in hooks.items():
+        for group in event_groups:
+            for hook in group.get("hooks", []):
+                command = hook.get("command", "")
+                # No memory-hook commands should be present
+                assert "memory-hook" not in command or "memory-hook-gateway" not in command, (
+                    f"settings.json must not contain memory hook commands: {command}"
+                )
 
 
 def test_wrapper_skips_exact_home_project_root_but_allows_child(monkeypatch, tmp_path: Path) -> None:
@@ -434,7 +425,12 @@ def test_project_lifecycle_reuses_git_identity_for_factory_after_project_path_is
 
 
 def test_pretooluse_hook_registered_in_settings_json(monkeypatch, tmp_path: Path) -> None:
-    """Verify PreToolUse hook appears in install output (5a.7)."""
+    """Verify PreToolUse hook registration behavior (5a.7).
+
+    VAL-REL-006: Memory hooks are NOT injected into settings.json (dead key since 2026-08-17).
+    Memory hooks are only registered in ~/.factory/hooks.json (the real registry).
+    This test verifies that settings.json does NOT contain memory hooks.
+    """
     factory_home = tmp_path / ".factory"
     storage_root = tmp_path / "memory-store"
     _fake_memory_commands(tmp_path, monkeypatch)
@@ -445,18 +441,21 @@ def test_pretooluse_hook_registered_in_settings_json(monkeypatch, tmp_path: Path
     settings_path = factory_home / "settings.json"
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
 
-    # Verify PreToolUse hook exists
-    assert "PreToolUse" in settings["hooks"]
-    pretooluse_hooks = settings["hooks"]["PreToolUse"]
-    assert len(pretooluse_hooks) >= 1
-
-    # Verify the command uses pre-tool-use event
-    commands = [h["command"] for g in pretooluse_hooks for h in g.get("hooks", [])]
-    assert any("--event pre-tool-use" in cmd for cmd in commands)
+    # VAL-REL-006: settings.json should NOT contain memory hooks (dead key)
+    # Memory hooks are registered in ~/.factory/hooks.json instead
+    pretooluse_hooks = settings.get("hooks", {}).get("PreToolUse", [])
+    memory_hooks = [
+        h for g in pretooluse_hooks for h in g.get("hooks", []) if "memory-hook" in str(h.get("command", ""))
+    ]
+    assert len(memory_hooks) == 0, "Memory hooks must not be in settings.json (use hooks.json instead)"
 
 
 def test_pretooluse_existing_user_hooks_preserved(monkeypatch, tmp_path: Path) -> None:
-    """Verify existing PreToolUse user hooks are preserved (5a.7)."""
+    """Verify existing PreToolUse user hooks are preserved (5a.7).
+
+    VAL-REL-006: Memory hooks are NOT injected into settings.json (dead key since 2026-08-17).
+    Only user hooks (non-memory) are preserved.
+    """
     factory_home = tmp_path / ".factory"
     factory_home.mkdir()
     settings_path = factory_home / "settings.json"
@@ -490,11 +489,11 @@ def test_pretooluse_existing_user_hooks_preserved(monkeypatch, tmp_path: Path) -
     ]
     assert len(user_hooks) >= 1
 
-    # Memory hooks should also be present
+    # VAL-REL-006: Memory hooks should NOT be injected into settings.json
     memory_hooks = [
         h for g in pretooluse_hooks for h in g.get("hooks", []) if "memory-hook" in str(h.get("command", ""))
     ]
-    assert len(memory_hooks) >= 1
+    assert len(memory_hooks) == 0, "Memory hooks must not be injected into settings.json (dead key)"
 
 
 # ---------------------------------------------------------------------------
