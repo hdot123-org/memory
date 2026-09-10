@@ -456,7 +456,14 @@ def install_factory_hooks(
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Install Factory user-level hooks for memory-core."""
+    """Install Factory user-level hooks for memory-core.
+
+    Since 2026-08-17, hooks.json is the real registration point.
+    settings.json hooks key is deprecated and will not be injected.
+    Existing dead hooks in settings.json will be cleaned.
+
+    VAL-REL-012: Existing wrapper will be backed up before re-rendering.
+    """
     warnings: list[str] = []
     backups: list[str] = []
     factory_home = (factory_home or default_factory_home()).expanduser()
@@ -481,9 +488,22 @@ def install_factory_hooks(
         gateway_command=resolved_gateway,
         init_command=resolved_init,
     )
-    desired = desired_factory_hooks(wrapper, timeout=timeout)
+
+    # VAL-REL-006: Do NOT inject hooks into settings.json (dead key since 2026-08-17)
+    # Only clean existing dead hooks if settings.json exists
     existing = _load_settings_json(settings_file, warnings)
-    merged = merge_factory_settings(existing, desired)
+    # Filter out any existing memory hooks (dead keys) from settings.json
+    cleaned = dict(existing)
+    if "hooks" in cleaned and isinstance(cleaned["hooks"], dict):
+        cleaned_hooks = dict(cleaned["hooks"])
+        for event_name in list(cleaned_hooks.keys()):
+            kept_groups = _filter_memory_hooks(cleaned_hooks[event_name])
+            if kept_groups:
+                cleaned_hooks[event_name] = kept_groups
+            else:
+                # Remove empty event entries
+                del cleaned_hooks[event_name]
+        cleaned["hooks"] = cleaned_hooks
 
     result: dict[str, Any] = {
         "success": True,
@@ -496,20 +516,26 @@ def install_factory_hooks(
         "gateway_command": resolved_gateway,
         "init_command": resolved_init,
         "backups": backups,
-        "settings": merged if dry_run else None,
+        "settings": cleaned if dry_run else None,
     }
 
     if dry_run:
         return result
 
+    # VAL-REL-012: Backup existing wrapper before re-rendering
     wrapper.parent.mkdir(parents=True, exist_ok=True)
+    if wrapper.exists():
+        backups.append(str(_backup_existing_file(wrapper)))
+
     wrapper.write_text(wrapper_content, encoding="utf-8")
     wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR)
 
+    # Write cleaned settings.json (without injecting new dead hooks)
     settings_file.parent.mkdir(parents=True, exist_ok=True)
     if settings_file.exists():
+        # Backup settings.json before cleaning
         backups.append(str(_backup_existing_file(settings_file)))
-    settings_file.write_text(json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    settings_file.write_text(json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     return result
 
