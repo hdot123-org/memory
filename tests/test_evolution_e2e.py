@@ -24,10 +24,15 @@ import pytest
 # 仓库根目录：通过 __file__ 推导，不硬编码绝对路径
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# E2E subprocess PYTHONPATH 钉位（与 test_val_defuse.py 一致）
-# 确保 subprocess 加载当前源码树而非已安装的旧版本，防止 predicate 回归被掩盖
-_E2E_ENV = os.environ.copy()
-_E2E_ENV["PYTHONPATH"] = str(REPO_ROOT) + os.pathsep + _E2E_ENV.get("PYTHONPATH", "")
+# E2E subprocess PYTHONPATH 钉位（与 test_val_defuse.py 目标一致，但实现必须调用时快照）
+# 确保 subprocess 加载当前源码树而非已安装的旧版本，防止 predicate 回归被掩盖。
+# 注意：本文件的 e2e_env fixture 通过 os.environ 注入 MEMORY_CORE_GLOBAL_KB_ROOT /
+# MEMORY_CORE_EVOLUTION_ROOT 指向每测试的临时目录，因此必须在调用时拷贝 os.environ，
+# 不能用模块导入时快照（会丢失 fixture 设置的变量，导致候选写入默认全局库路径）。
+def _e2e_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+    return env
 
 # 判断当前环境是否具备真实项目条件（本地开发机）
 _HAS_REAL_PROJECT = (REPO_ROOT / ".evolution").exists() or (REPO_ROOT / "memory").exists()
@@ -132,7 +137,7 @@ class TestEvolutionE2E:
                 capture_output=True,
                 text=True,
                 timeout=540,  # 9 分钟超时（留余量给 600s pytest timeout）
-                env=_E2E_ENV,
+                env=_e2e_env(),
             )
 
             # 应该成功退出
@@ -187,7 +192,7 @@ class TestEvolutionE2E:
             capture_output=True,
             text=True,
             timeout=180,
-            env=_E2E_ENV,
+            env=_e2e_env(),
         )
         assert result.returncode == 0, f"Pipeline failed: {result.stderr}"
 
@@ -280,7 +285,7 @@ class TestEvolutionE2E:
             capture_output=True,
             text=True,
             timeout=180,
-            env=_E2E_ENV,
+            env=_e2e_env(),
         )
         assert result.returncode == 0, f"Pipeline failed: {result.stderr}"
 
@@ -350,7 +355,7 @@ class TestEvolutionE2E:
                 capture_output=True,
                 text=True,
                 timeout=180,
-                env=_E2E_ENV,
+                env=_e2e_env(),
             )
 
         def count_files():
@@ -470,7 +475,7 @@ class TestEvolutionE2E:
                 cwd=str(REPO_ROOT),
                 capture_output=True,
                 text=True,
-                env=_E2E_ENV,
+                env=_e2e_env(),
             )
             assert status_result.returncode == 0
             status_data = json.loads(status_result.stdout)
@@ -492,7 +497,7 @@ class TestEvolutionE2E:
                 capture_output=True,
                 text=True,
                 timeout=180,
-                env=_E2E_ENV,
+                env=_e2e_env(),
             )
             assert result.returncode == 0, f"Pipeline failed for new project: {result.stderr}"
 
@@ -556,7 +561,7 @@ class TestEvolutionE2E:
             capture_output=True,
             text=True,
             timeout=180,
-            env=_E2E_ENV,
+            env=_e2e_env(),
         )
         assert result.returncode == 0
 
@@ -587,7 +592,7 @@ class TestEvolutionE2E:
             capture_output=True,
             text=True,
             timeout=180,
-            env=_E2E_ENV,
+            env=_e2e_env(),
         )
         assert result.returncode == 0
 
