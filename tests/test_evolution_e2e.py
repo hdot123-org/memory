@@ -24,6 +24,7 @@ import pytest
 # 仓库根目录：通过 __file__ 推导，不硬编码绝对路径
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+
 # E2E subprocess PYTHONPATH 钉位（与 test_val_defuse.py 目标一致，但实现必须调用时快照）
 # 确保 subprocess 加载当前源码树而非已安装的旧版本，防止 predicate 回归被掩盖。
 # 注意：本文件的 e2e_env fixture 通过 os.environ 注入 MEMORY_CORE_GLOBAL_KB_ROOT /
@@ -33,6 +34,7 @@ def _e2e_env() -> dict[str, str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
     return env
+
 
 # 判断当前环境是否具备真实项目条件（本地开发机）
 _HAS_REAL_PROJECT = (REPO_ROOT / ".evolution").exists() or (REPO_ROOT / "memory").exists()
