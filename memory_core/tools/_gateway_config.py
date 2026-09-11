@@ -42,8 +42,6 @@ __all__ = [
     # Ownership/mode detection (conditionally available)
     "get_source_repo_mode",
     "is_memory_core_source_repo",
-    # Lifecycle tracking
-    "record_project_lifecycle",
     # Rule helpers (re-exported)
     "_existing_paths",
     "_get_write_targets_dict",
@@ -101,6 +99,48 @@ except ImportError:
     from memory_core.tools.memory_root_discovery import discover_roots
 
 
+def _has_consent_marker(directory: Path) -> bool:
+    """Check if directory has a valid consent marker (allow_non_git=true).
+
+    Reuses the anchored regex from _refine_non_git_seed to:
+    - Accept valid no-space form: allow_non_git=true
+    - Reject false positives: disallow_non_git = true
+    - Reject comment-injected forms: allow_non_git = true # description
+
+    Returns:
+        True if consent marker found via ownership.toml [policy] or manifest.json.
+    """
+    # Check env var first (legacy)
+    if os.environ.get("MEMORY_HOOK_ALLOW_NON_GIT"):
+        return True
+
+    # Uses anchored regex to avoid false positives like 'allow_non_git = false # true'
+    _consent_pattern = re.compile(r"^\s*allow_non_git\s*=\s*true\s*$", re.MULTILINE)
+
+    # Check ownership.toml [policy] section
+    ownership_toml_path = directory / "memory" / "system" / "ownership.toml"
+    if ownership_toml_path.exists():
+        try:
+            content = ownership_toml_path.read_text(encoding="utf-8")
+            if _consent_pattern.search(content):
+                return True
+        except (OSError, UnicodeDecodeError):
+            pass
+
+    # Check manifest.json
+    manifest_json_path = directory / "memory" / "system" / "manifest.json"
+    if manifest_json_path.exists():
+        try:
+            content = manifest_json_path.read_text(encoding="utf-8")
+            manifest = json.loads(content)
+            if manifest.get("allow_non_git") is True:
+                return True
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            pass
+
+    return False
+
+
 def _refine_non_git_seed(seed: Path) -> Path:
     """Refine non-git seed to unique valid child repository if applicable.
 
@@ -122,34 +162,8 @@ def _refine_non_git_seed(seed: Path) -> Path:
         return seed
 
     # If consent marker present, passthrough (respect user intent)
-    # Check env var first (legacy)
-    if os.environ.get("MEMORY_HOOK_ALLOW_NON_GIT"):
+    if _has_consent_marker(seed):
         return seed
-
-    # Check persistent consent markers (M1-1: ownership.toml and/or manifest.json)
-    # Uses anchored regex to avoid false positives like 'allow_non_git = false # true'
-    _consent_pattern = re.compile(r"^\s*allow_non_git\s*=\s*true\s*$", re.MULTILINE)
-
-    # Check ownership.toml [policy] section
-    ownership_toml_path = seed / "memory" / "system" / "ownership.toml"
-    if ownership_toml_path.exists():
-        try:
-            content = ownership_toml_path.read_text(encoding="utf-8")
-            if _consent_pattern.search(content):
-                return seed  # Persistent consent found, passthrough
-        except (OSError, UnicodeDecodeError):
-            pass  # If we can't read it, continue to next check
-
-    # Check manifest.json
-    manifest_json_path = seed / "memory" / "system" / "manifest.json"
-    if manifest_json_path.exists():
-        try:
-            content = manifest_json_path.read_text(encoding="utf-8")
-            manifest = json.loads(content)
-            if manifest.get("allow_non_git") is True:
-                return seed  # Persistent consent found, passthrough
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
-            pass  # If we can't read or parse it, continue
 
     # Find valid child repositories
     # Valid = has .git (file or dir), not a dot directory (name.startswith('.'))
@@ -1143,9 +1157,6 @@ with contextlib.suppress(ImportError):
 
 with contextlib.suppress(ImportError):
     from ..ownership import get_source_repo_mode, is_memory_core_source_repo  # noqa: F401
-
-with contextlib.suppress(ImportError):
-    from .project_lifecycle import record_project_lifecycle  # noqa: F401
 
 try:
     import memory_core.tools.denylist as _denylist

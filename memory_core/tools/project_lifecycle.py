@@ -22,9 +22,20 @@ from typing import Any
 
 # IMG-001: VAL-DEFUSE-002 gate helper - check if directory is a true project root
 try:
-    from memory_core.tools._gateway_config import _resolve_repo_root_with_config
+    from memory_core.tools._gateway_config import (
+        _resolve_repo_root_with_config,
+    )
 except ImportError:
+    # Fall back to None if gateway not available
     _resolve_repo_root_with_config = None  # type: ignore
+
+
+def _has_consent_marker(directory: Path) -> bool:
+    """Re-exported from _gateway_config for reuse in error_logger and tests."""
+    # Lazy import to avoid circular dependency
+    from memory_core.tools._gateway_config import _has_consent_marker as _internal
+
+    return _internal(directory)
 
 
 def _safe_slug(value: str) -> str:
@@ -174,60 +185,53 @@ def _is_true_project_root(cwd: Path) -> bool:
     have their paths registered in the global path-index. Outer shells in
     nested repo layouts should be excluded.
 
-    Uses gateway's _resolve_repo_root_with_config which respects:
-    - memory-project.toml config (Phase 2)
-    - git root discovery
-    - B-layer heuristic (downward probe)
+    TRUE iff any of:
+      ① Directory itself has .git (or gitfile) → True
+      ② Consent marker present (anchored regex for ownership.toml, JSON token for manifest)
+      ③ Config exists AND memory_root resolves to THIS directory itself (not a pointer)
+      ④ Config exists without memory_root (memory-project.toml is present)
+    FALSE otherwise, INCLUDING when B-layer refinement yields a different result.
 
     Returns True iff the directory is a git-governed root or has consent marker.
     """
-    # Fast path: check for .git directly (git repo or worktree)
+    # ① Fast path: check for .git directly (git repo or worktree)
     if (cwd / ".git").exists():
         return True
 
-    # Fast path: check for consent marker (allow_non_git=true in memory/system)
-    consent_toml = cwd / "memory" / "system" / "ownership.toml"
-    consent_manifest = cwd / "memory" / "system" / "manifest.json"
-    if consent_toml.exists():
+    # ② Fast path: check for consent marker (reuses anchored regex)
+    from memory_core.tools._gateway_config import _has_consent_marker
+
+    if _has_consent_marker(cwd):
+        return True
+
+    # ③+④ Config check: only memory-project.toml pre-confirms a directory as true root
+    #    without memory_root. If memory_root points elsewhere, it's a routing pin, NOT consent.
+    config_path = cwd / "memory-project.toml"
+    if config_path.exists():
         try:
-            content = consent_toml.read_text(encoding="utf-8")
-            if "allow_non_git = true" in content:
-                return True
-        except (OSError, UnicodeDecodeError):
+            with config_path.open("rb") as f:
+                import tomllib
+
+                config = tomllib.load(f)
+            # If memory_root is specified and NOT pointing to THIS directory, reject
+            # memory_root is at top level, not under "project"
+            if "memory_root" in config:
+                config_dir = config_path.parent
+                memory_root_str = config["memory_root"]
+                resolved_memory_root = (config_dir / memory_root_str).resolve()
+                # memory_root points to THIS dir (self-reference如"./" or ".") = consent
+                equality_check = resolved_memory_root == cwd.resolve()
+                return bool(equality_check)
+            # No memory_root specified = memory-project.toml itself is consent
+            return True
+        except (OSError, tomllib.TOMLDecodeError, ValueError):
+            # On error, be conservative and fall through to False
             pass
-    if consent_manifest.exists():
-        try:
-            import json as _json
 
-            content = consent_manifest.read_text(encoding="utf-8")
-            manifest = _json.loads(content)
-            if manifest.get("allow_non_git") is True:
-                return True
-        except (OSError, UnicodeDecodeError, _json.JSONDecodeError, ValueError):
-            pass
-
-    if _resolve_repo_root_with_config is None:
-        # No gateway available - fallback to fast path results only
-        return False
-
-    try:
-        resolved, _ = _resolve_repo_root_with_config(cwd)
-        # VAL-DEFUSE-002:
-        # - resolved == cwd means "no refinement possible" (no git found, no children found)
-        #   In this case, cwd is NOT a true project root unless it has .git/consent (already checked)
-        # - resolved != cwd but resolved has .git = git root found via downward probe = TRUE
-        # - resolved is a config-declared memory_root with valid config = TRUE
-        if resolved != cwd:
-            # Gateway found a different root (via config or downward probe)
-            # Check if it's a git root
-            return (resolved / ".git").exists()
-        # resolved == cwd: no refinement or config without memory_root.
-        # True only if config exists (.git/consent already checked in fast path);
-        # no git, no consent, no config = not a true project root
-        return (cwd / "memory-project.toml").exists()
-    except Exception:
-        # On any error, be conservative - assume not a true project root
-        return False
+    # ④ Never use B-layer refinement result for gating.
+    #   If gateway refines cwd to a different root, that doesn't make cwd a true root.
+    #   Only cwd itself matters, and it's already covered by ①②③.
+    return False
 
 
 def _update_path_index(path_index: dict[str, Any], record: dict[str, Any]) -> None:

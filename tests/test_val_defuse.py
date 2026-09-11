@@ -59,6 +59,30 @@ class TestValDefuse001:
 
         assert _is_true_project_root(outer) is True
 
+    def test_outer_config_routing_pin_not_true_root(self, tmp_path: Path) -> None:
+        """Outer layer with memory_root pointing to inner should NOT be true root.
+
+        VAL-DEFUSE-001: Outer shell config with memory_root指向内层 = routing pin ≠ sign-consent.
+        The predicate must reject outer because resolved root ≠ outer.
+        """
+        # Outer layer (no .git, has config pointing to inner)
+        outer = tmp_path / "outer"
+        outer.mkdir()
+        config = outer / "memory-project.toml"
+        # memory_root指向内层，这是路由指针，不是同意
+        config.write_text('project = "test"\nmemory_root = "./inner"')
+
+        # Inner layer (has .git)
+        inner = outer / "inner"
+        inner.mkdir()
+        (inner / ".git").mkdir()
+
+        # Outer should be False - config points elsewhere, not self-referential
+        assert _is_true_project_root(outer) is False
+
+        # Inner should be True - has .git
+        assert _is_true_project_root(inner) is True
+
 
 class TestValDefuse002:
     """VAL-DEFUSE-002: path-index门控+原子写.
@@ -84,6 +108,27 @@ class TestValDefuse002:
 
         # Without .git, config, or consent, should be False
         assert _is_true_project_root_lifecycle(outer) is False
+
+    def test_outer_no_marker_single_child_refinement_not_true_root(self, tmp_path: Path) -> None:
+        """No .git, config, consent outer + single child → still NOT true root.
+
+        VAL-DEFUSE-002: B-layer单子仓精炼宽松分支放过无标记外层 = 计划外失效。
+        The predicate must NOT use B-layer refinement result for gating.
+        Even if gateway would refine outer→inner, outer itself is not true root.
+        """
+        # Outer layer (no .git, no config, no consent)
+        outer = tmp_path / "outer"
+        outer.mkdir()
+        # Simulate B2 scenario: single child repo inside outer
+        inner = outer / "repo"
+        inner.mkdir()
+        (inner / ".git").mkdir()
+
+        # Outer should be False - no .git, no config, no consent of its own
+        assert _is_true_project_root_lifecycle(outer) is False
+
+        # Inner should be True - has .git
+        assert _is_true_project_root_lifecycle(inner) is True
 
 
 class TestValDefuse003:

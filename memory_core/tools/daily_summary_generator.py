@@ -328,58 +328,83 @@ def _extract_text_blocks(content: Any) -> list[str]:
 
 
 def _is_true_project_root(project_root: Path) -> bool:
-    """Check if directory is a true project root (.git or memory-project.toml or consent).
+    """Check if directory is a true project root.
 
     VAL-DEFUSE-001: full-sign/overwrite gate - only true project roots can have
     memory/system created or signed. Non-project directories (e.g., outer shells
     in nested repo layouts) should skip signing entirely.
+
+    TRUE iff any of:
+      ① Directory itself has .git (or gitfile) → True
+      ② Consent marker present (anchored regex for ownership.toml, JSON token for manifest)
+      ③ Config exists AND memory_root resolves to THIS directory itself (not a pointer)
+      ④ Config exists without memory_root (memory-project.toml is present)
+    FALSE otherwise, INCLUDING when B-layer refinement yields a different result.
     """
-    # Fast path: check for .git directly (git repo or worktree)
+    # ① Fast path: check for .git directly (git repo or worktree)
     if (project_root / ".git").exists():
         return True
 
-    # Fast path: check for consent marker
-    consent_toml = project_root / "memory" / "system" / "ownership.toml"
-    consent_manifest = project_root / "memory" / "system" / "manifest.json"
-    if consent_toml.exists():
+    # ② Fast path: check for consent marker (reuses anchored regex)
+    if _has_consent_marker(project_root):
+        return True
+
+    # ③+④ Config check: only memory-project.toml pre-confirms a directory as true root
+    #    without memory_root. If memory_root points elsewhere, it's a routing pin, NOT consent.
+    config_path = project_root / "memory-project.toml"
+    if config_path.exists():
+        # Read config to check if memory_root points elsewhere
         try:
-            content = consent_toml.read_text(encoding="utf-8")
-            if "allow_non_git = true" in content:
-                return True
-        except (OSError, UnicodeDecodeError):
-            pass
-    if consent_manifest.exists():
+            import tomllib
+        except ImportError:
+            import tomli as tomllib  # type: ignore
+
         try:
-            import json as _json
-
-            content = consent_manifest.read_text(encoding="utf-8")
-            manifest = _json.loads(content)
-            if manifest.get("allow_non_git") is True:
-                return True
-        except (OSError, UnicodeDecodeError, _json.JSONDecodeError, ValueError):
+            content = config_path.read_bytes()
+            config = tomllib.loads(content.decode("utf-8"))
+            # If memory_root is specified and NOT pointing to THIS directory, reject
+            # memory_root is at top level, not under "project"
+            if "memory_root" in config:
+                # Resolve the memory_root relative to config location
+                config_dir = config_path.parent
+                memory_root_str = config["memory_root"]
+                # Resolve relative to config dir; if it resolves to a different path, reject
+                # （memory_root∈{"./inner","inner"} → 真根是inner≠外层）
+                resolved_memory_root = (config_dir / memory_root_str).resolve()
+                # memory_root points to THIS dir (self-reference如"./" or ".") = consent
+                equality_check = resolved_memory_root == project_root.resolve()
+                return bool(equality_check)
+            # No memory_root specified = memory-project.toml itself is consent
+            return True
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError, ValueError):
+            # On error, be conservative and fall through to False
             pass
 
-    # Use gateway's root resolution for config-driven detection
-    from memory_core.tools._gateway_config import _resolve_repo_root_with_config
-
+    # Resolve via gateway to check if config points to a true git root elsewhere
     try:
+        # Lazy import to avoid circular dependency
+        from memory_core.tools._gateway_config import _resolve_repo_root_with_config
+
         resolved, _ = _resolve_repo_root_with_config(project_root)
-        # VAL-DEFUSE-001:
-        # - If resolved == project_root, check if project_root has .git or config
-        #   (git or config or consent = true project root)
-        # - If resolved != project_root, check if resolved has .git
-        if resolved == project_root:
-            # Gateway returned the same path - this means either:
-            # 1. project_root has .git (fast path already caught this)
-            # 2. project_root has memory-project.toml but no memory_root specified
-            # 3. B-layer refinement found no children ( Falls back to seed)
-            # For case 2 (config exists) = true root; case 3 = NOT a true project root
-            return (project_root / "memory-project.toml").exists()
-        # Gateway refined to a different root - check if that root is a git root
-        return (resolved / ".git").exists()
+        # ③ Only if resolved == project_root (self-referential config or no-memory-root)
+        #    and we already checked config above.
+        # ④ B-layer refinement result must NOT be used for gating.
+        #    If resolved != project_root, it means B-layer refined to a child,
+        #    which is NOT consent for the outer directory.
+        #    Only a git root at project_root itself counts.
+        #    (resolved == project_root already handled by config check above)
+        return False
     except Exception:
         # On any error, be conservative - assume not a true project root
         return False
+
+
+def _has_consent_marker(directory: Path) -> bool:
+    """Re-exported from _gateway_config for reuse in error_logger and tests."""
+    # Import lazily to avoid cycles; error_logger uses this too
+    from memory_core.tools._gateway_config import _has_consent_marker as _internal
+
+    return _internal(directory)
 
 
 def _try_sign_file(project_root: Path, rel_path: str) -> None:
