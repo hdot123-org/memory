@@ -334,8 +334,14 @@ jobs:
             "${{ github.event.pull_request.head.sha }}" \
             "$GH_TOKEN"
 
+  # ─── notify-ci-complete: webhook 网关直连 → trigger-ci-droid.sh ───
+  # 2026-09-11 迁移：n8n 已于 2026-09-08 退役（INFRA-893），本 job 从 n8n 中转
+  # 迁移为网关直连（与 infra-core 仓同步）：Actions 直接 POST 到 ci-webhook 网关
+  # （CF Tunnel → Mac:5555）。secret 名沿用 N8N_CI_* 以免全仓联动，语义已变更：
+  # N8N_CI_WEBHOOK_URL = 网关地址，N8N_CI_TOKEN = X-CI-Token（Mac hooks.json 认证）。
+  # 详见 docs/architecture/ci-notify-n8n-workflow.md 头部声明。
   notify-ci-complete:
-    name: Notify CI complete to n8n
+    name: Notify CI complete to webhook gateway
     runs-on: [self-hosted, pve-linux]
     timeout-minutes: 10
     needs: ci-ok
@@ -343,6 +349,7 @@ jobs:
     steps:
       # INFRA-569：webhook payload 组装依赖 jq，自建 runner 不保证预装，兜底安装
       - uses: ./.github/actions/ensure-jq
+
       - name: Verify webhook secrets
         run: |
           set -euo pipefail
@@ -363,7 +370,10 @@ jobs:
           WEBHOOK_URL: ${{ secrets.N8N_CI_WEBHOOK_URL }}
           N8N_CI_TOKEN: ${{ secrets.N8N_CI_TOKEN }}
           BRANCH: ${{ github.head_ref || github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          GATEWAY_GW_TOKEN: ${{ secrets.GATEWAY_GW_TOKEN }}
+          WEBHOOK_NOTIFY_STRICT: ${{ vars.WEBHOOK_NOTIFY_STRICT }}
         run: |
           set -euo pipefail
           PAYLOAD=$(jq -n \
@@ -372,17 +382,29 @@ jobs:
             --arg branch "$BRANCH" \
             --arg sha "${{ github.sha }}" \
             --arg status "${{ needs.ci-ok.result }}" \
-            '{repo:$repo, pr_number:$pr_number, branch:$branch, sha:$sha, status:$status}')
+            --arg run_url "$RUN_URL" \
+            '{repo:$repo, pr_number:$pr_number, branch:$branch, sha:$sha, status:$status, run_url:$run_url}')
 
+          # 网关 gw 参数（2026-09-08 断链修复，对齐 infra-core）：wangguan 网关对 webhook
+          # 目标做来源白名单（GitHub hooks IP 段 / ?gw= 令牌 / X-API-Key）。Actions runner
+          # IP 不在 hooks 段，wangguan 路线必须带 gw 令牌过第一跳，第二跳由 X-CI-Token 接管。
+          # 当前主路线 ci-webhook 直连隧道不校验 gw，附加无害；gw 令牌为 wangguan 路线备用。
+          # 注意 GATEWAY_GW_TOKEN 必须是单行令牌（多行值会使 URL 拼接碎裂、curl 返回 000）。
+          GW_SEP="?"
+          case "$WEBHOOK_URL" in *\?*) GW_SEP="&";; esac
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             --retry 3 --retry-delay 5 --retry-all-errors \
-            -X POST "$WEBHOOK_URL" \
+            -X POST "${WEBHOOK_URL}${GW_SEP}gw=${GATEWAY_GW_TOKEN}" \
             -H "Content-Type: application/json" \
             -H "X-CI-Token: ${N8N_CI_TOKEN}" \
             -d "$PAYLOAD") || HTTP_CODE="000"
 
           if [ "$HTTP_CODE" != "200" ]; then
-            echo "::warning::Webhook delivery failed (HTTP $HTTP_CODE)"
+            # 2026-09-11 断链复盘：n8n 退役后通知失败（HTTP 403）曾被 ::warning:: + exit 0
+            # 吞掉，job 显示绿色，#1217→#1231 共 8 个 PR 全靠 31 分钟超时 watchdog 兜底。
+            # 现在：红色 error 注解（绿 job 里也显眼），PostHog 事件（告警面），
+            # 严格模式下直接失败（链路稳定后置仓库变量 WEBHOOK_NOTIFY_STRICT=true）。
+            echo "::error::Webhook delivery failed (HTTP $HTTP_CODE) — 注入链断裂，CI 完成通知未送达"
             # Only send PostHog event if API key is configured
             if [ -n "$POSTHOG_API_KEY" ]; then
               PR_NUM="${{ github.event.pull_request.number || 0 }}"
@@ -391,7 +413,13 @@ jobs:
                 -H "Content-Type: application/json" \
                 -d "{\"api_key\":\"${POSTHOG_API_KEY}\",\"batch\":[{\"event\":\"ci_webhook_send_failed\",\"properties\":{\"error_type\":\"webhook_delivery_failed\",\"pr_number\":\"$PR_NUM\",\"stage\":\"github_actions\",\"workflow\":\"ci\",\"detail\":\"HTTP $HTTP_CODE\",\"distinct_id\":\"ci-webhook\"},\"timestamp\":\"$TIMESTAMP\"}]}" || true
             else
-              echo "::notice::POSTHOG_API_KEY not configured, skipping event reporting"
+              echo "::warning::POSTHOG_API_KEY not configured — 升级通道哑火，失败只留在本注解"
+            fi
+            # 严格模式：链路稳定后置仓库变量 WEBHOOK_NOTIFY_STRICT=true，
+            # 非送达即 CI 失败（假绿彻底消灭；翻转前 merge 管道不受影响）
+            if [ "${WEBHOOK_NOTIFY_STRICT:-false}" = "true" ]; then
+              echo "::error::strict mode: failing CI on undelivered webhook notification"
+              exit 1
             fi
           fi
           exit 0
