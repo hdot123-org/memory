@@ -25,9 +25,9 @@ from memory_core.tools.doc_router import (
 class TestDocCategories:
     """DOC_CATEGORIES 常量测试。"""
 
-    def test_has_12_categories(self) -> None:
-        """DOC_CATEGORIES 必须包含 12 个分类标签。"""
-        assert len(DOC_CATEGORIES) == 12
+    def test_has_15_categories(self) -> None:
+        """DOC_CATEGORIES 必须包含 15 个分类标签。"""
+        assert len(DOC_CATEGORIES) == 15
 
     def test_has_required_categories(self) -> None:
         """必须包含所有必需的分类标签。"""
@@ -44,6 +44,9 @@ class TestDocCategories:
             "draft",
             "known-issue",
             "feature-summary",
+            "design",
+            "residue",
+            "research",
         }
         assert set(DOC_CATEGORIES.keys()) == required
 
@@ -121,6 +124,24 @@ class TestResolveDocPath:
         expected = REPO_ROOT / "memory/docs/drafts/draft-001.md"
         assert result == expected
 
+    def test_resolve_design_category(self) -> None:
+        """design 分类返回正确路径。"""
+        result = resolve_doc_path("design", "D-001.md")
+        expected = REPO_ROOT / "memory/docs/design/D-001.md"
+        assert result == expected
+
+    def test_resolve_residue_category(self) -> None:
+        """residue 分类返回正确路径。"""
+        result = resolve_doc_path("residue", "R-001.md")
+        expected = REPO_ROOT / "memory/docs/residue/R-001.md"
+        assert result == expected
+
+    def test_resolve_research_category(self) -> None:
+        """research 分类返回正确路径。"""
+        result = resolve_doc_path("research", "R-001.md")
+        expected = REPO_ROOT / "memory/docs/research/R-001.md"
+        assert result == expected
+
     def test_resolve_unknown_category_fallback_to_draft(self) -> None:
         """未知分类应该 fallback 到 draft。"""
         result = resolve_doc_path("unknown-category", "test.md")
@@ -155,6 +176,11 @@ class TestIsRegisteredDocDir:
             (Path("memory/docs/rfcs/"), True),
             (Path("memory/docs/notes/"), True),
             (Path("memory/docs/drafts/"), True),
+            (Path("memory/docs/known-issues/"), True),
+            (Path("memory/docs/features/"), True),
+            (Path("memory/docs/design/"), True),
+            (Path("memory/docs/residue/"), True),
+            (Path("memory/docs/research/"), True),
         ],
     )
     def test_registered_directories(self, path: Path, expected: bool) -> None:

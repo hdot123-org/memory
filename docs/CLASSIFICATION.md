@@ -52,6 +52,15 @@
   ├─ 临时笔记/调研/待整理？
   │   └─ → memory/docs/notes/
   │
+  ├─ 设计文档/模块设计/详细设计？
+  │   └─ → memory/docs/design/
+  │
+  ├─ 残留问题/遗留项/技术债？
+  │   └─ → memory/docs/residue/
+  │
+  ├─ 研究资料/技术调研/POC？
+  │   └─ → memory/docs/research/
+  │
   └─ 不确定？
       └─ → 先放 memory/docs/drafts/，用户后续归类
 ```
@@ -75,6 +84,9 @@
 | 笔记、调研、临时记录 | `memory/docs/notes/` | 临时笔记 |
 | 已知问题、quirk、降级说明 | `memory/docs/known-issues/` | 已知问题记录 |
 | 里程碑总结、feature 摘要 | `memory/docs/features/` | 特性/里程碑总结 |
+| 设计文档、模块设计、详细设计 | `memory/docs/design/` | 设计文档 |
+| 残留问题、遗留项、技术债 | `memory/docs/residue/` | 残留/遗留问题 |
+| 研究资料、技术调研、POC | `memory/docs/research/` | 研究资料 |
 | 不确定、先记下来 | `memory/docs/drafts/` | 草稿暂存 |
 
 ## 双写规则
@@ -94,6 +106,7 @@
 
 ## 版本
 
+- v1.3 — 2026-09-11 增加 design、residue、research 类别（INFRA-1021）
 - v1.2 — 2026-07-21 增加 refactor-logs、notes 类别；标注路由表以 DOC_CATEGORIES 为准
 - v1.1 — 2026-07-17 更新架构设计和协议规格路由到 tracked docs/
 - v1.0 — 2026-06-01 初始版本
