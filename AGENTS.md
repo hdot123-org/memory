@@ -122,7 +122,9 @@ memory-core 是只读协议仓库，提供 .memory/ 协议、模板、Schema、C
 
 **本项目 wrapper**：`scripts/write-pending-ci.sh`（调用全局脚本，保持向后兼容）
 
-流程：创建 PR → 执行 `scripts/write-pending-ci.sh <PR_NUMBER>`（或 `~/.factory/webhook/scripts/write-pending-ci.sh <PR_NUMBER>`）→ CI 完成后 n8n webhook 触发 trigger-ci-droid.sh → 读取 pending-ci.json → 注入当前 session。
+流程：创建 PR → 执行 `scripts/write-pending-ci.sh <PR_NUMBER>`（或 `~/.factory/webhook/scripts/write-pending-ci.sh <PR_NUMBER>`）→ CI 完成后网关直连触发 trigger-ci-droid.sh → 读取 pending-ci.json → 注入当前 session。
+
+> **注**：n8n 于 2026-09-08 退役（INFRA-893），CI 通知链已改用 `ci-webhook.exa.edu.kg` 直连 Mac:5555，详见 `docs/architecture/ci-notify-n8n-workflow.md` 头部退役声明。
 
 **全局脚本特性**：
 - PROJECT_CWD 运行时检测（`git rev-parse --show-toplevel`），不硬编码
