@@ -363,6 +363,18 @@ SessionEnd hook 运行在 Factory 会话关闭的最后时刻，必须在严格�
 
 `render_wrapper()` 在安装时通过 `shutil.which()` 将裸 `memory-hook-gateway` 解析为绝对路径，写入 wrapper 脚本。这解决了 Factory daemon 执行上下文中 PATH 未正确展开导致命令找不到的问题。
 
+## 环境变量与嵌套仓库路由
+
+wrapper（`~/.factory/bin/memory-hook`）与 gateway 支持以下环境变量：
+
+| 变量 | 作用 |
+|------|------|
+| `MEMORY_HOOK_PROJECT_CWD` | 项目根（git 归一化后；向下探测调整后重导出），保证为 git 仓库根 |
+| `MEMORY_HOOK_DISABLE_DOWNWARD_PROBE` | 设为 `1` 禁用嵌套仓库向下探测（逃生口） |
+| `MEMORY_HOOK_PROJECT_CONFIG` | gateway 发现的 `memory-project.toml` 路径（项目根或其父目录） |
+
+项目可在根目录放置 `memory-project.toml`（`project` / `memory_root` / `members`）声明记忆根与成员边界。路由优先级：git 根向上探测 > 项目配置 > 向下启发式探测（限深 1，仅非 git 目录且无标记时）> 显式拒绝（L4：exit 0 + 拒绝行 + 零写入）；配置与 git 根冲突时路由 git 根并留痕告警。详见 `docs/specs/nested-repo-root-resolution.md`。
+
 ## CI 维护工作流（thin caller）
 
 本仓的维护类 workflow（`evolution-scan` / `evolution-heartbeat` / `evolution-governance` / `droid-review` / `auto-merge` / `branch-cleanup`）均为 thin caller：执行体由 `hdot123-org/infra-core` 的 reusable workflows 与 composite actions（含 `actions/auto-merge`）承载，经 tag pin 引用（当前 pin v0.15.2，与 `pyproject.toml` 中的 infra-core 依赖同版本）。新仓库接入引擎（thin-caller 模板 + 接入步骤）见 infra-core 的[消费仓接入指南](https://github.com/hdot123-org/infra-core/blob/main/docs/onboarding/consumer-onboarding.md)。
