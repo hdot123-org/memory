@@ -10,6 +10,7 @@ This module provides default implementations for:
 
 import contextlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -795,9 +796,13 @@ class ErrorSinkImpl(ErrorSink):
             readable_primary = self._readable_path(self._error_log)
             with readable_primary.open("a", encoding="utf-8") as handle:
                 handle.write(readable_line)
-        except OSError:
-            # Readable output is best-effort; never block on it.
-            pass
+        except OSError as exc:
+            # INFRA-1022 (SILENT_SWALLOW): Readable output is best-effort;
+            # log at DEBUG so failures are observable without blocking.
+            logger.debug(
+                "Failed to write readable error log: %s",
+                exc,
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 LLM 蒸馏引擎（架构 §3.5）
 
 AxonhubEngine: OpenAI 兼容 POST chat/completions，stdlib urllib，不新增三方依赖。
-密钥解析链：env api_key_env → 1password MCP（HTTP）→ op read 兜底 → 报错。
+密钥解析链：env api_key_env * 1password MCP（HTTP）→ op read 兜底 → 报错。
 提示词：输入=变更文件全文+项目上下文，单文件 >16KB 头尾截断。
 输出=JSON 候选数组 {title, domain, content, confidence, source_refs, genericity}。
 reasoning 模型处理：max_tokens ≥4096，只解析 choices[0].message.content，忽略 reasoning_content。
@@ -17,6 +17,7 @@ VAL-EXT-001 / VAL-EXT-002 / VAL-EXT-003 / VAL-EXT-004 / VAL-SED-001
 """
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -26,6 +27,8 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # 六个全局域（与 sediment.VALID_DOMAINS 保持一致）
 VALID_DOMAINS = ("operations", "engineering", "collaboration", "governance", "infra", "audit")
@@ -103,8 +106,15 @@ def resolve_api_key(config: dict[str, Any]) -> str:
             key = resolver.resolve_secret(api_key_op_ref)
             if key:
                 return key
-        except Exception:
-            pass
+        except Exception as exc:
+            # INFRA-1022 (SILENT_SWALLOW): MCP secret resolution is a fallback path;
+            # log at DEBUG so failures are observable without blocking the flow.
+            logger.debug(
+                "MCP secret resolution failed for %s, falling through to next method: %s",
+                api_key_op_ref,
+                exc,
+                exc_info=True,
+            )
 
     # 3. 尝试从 1Password op read 获取（仅交互兜底）
     if api_key_op_ref:

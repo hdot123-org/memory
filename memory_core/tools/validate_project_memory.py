@@ -176,7 +176,10 @@ def _check_pollution(memory_root: Path) -> list[str]:
         if f.suffix in (".md", ".toml", ".json", ".lock", ".log", ".txt"):
             try:
                 content = f.read_text(encoding="utf-8", errors="replace")
-            except Exception:
+            except Exception as exc:
+                # INFRA-1022 (SILENT_SWALLOW): file read failure is best-effort;
+                # log at DEBUG so failures are observable.
+                logger.debug("Failed to read file %s for pollution check: %s", rel, exc)
                 continue
             for line_no, line in enumerate(content.splitlines(), 1):
                 for pat in POLLUTION_PATTERNS:

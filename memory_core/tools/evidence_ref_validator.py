@@ -9,8 +9,11 @@ files that actually exist on disk. Used by:
 This module is the single source of truth for evidence ref validation.
 """
 
+import logging
 from pathlib import Path
 from typing import NamedTuple
+
+logger = logging.getLogger(__name__)
 
 
 class EvidenceRefError(NamedTuple):
@@ -104,7 +107,10 @@ def validate_evidence_refs_on_disk(
         for md_file in sorted(kb_dir.rglob("*.md")):
             try:
                 text = md_file.read_text(encoding="utf-8")
-            except Exception:
+            except Exception as exc:
+                # INFRA-1022 (SILENT_SWALLOW): file read failure is best-effort;
+                # log at DEBUG so failures are observable.
+                logger.debug("Failed to read %s: %s", md_file, exc)
                 continue
             if "Evidence Refs" not in text:
                 continue

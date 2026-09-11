@@ -581,8 +581,14 @@ class ProjectProbe:
             )
             if result.returncode == 0 and result.stdout.strip():
                 remote_url = result.stdout.strip()
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-            pass
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            # INFRA-1022 (SILENT_SWALLOW): git remote extraction is best-effort;
+            # log at DEBUG so failures are observable.
+            logger.debug(
+                "Failed to extract git remote URL for %s: %s",
+                self.target,
+                exc,
+            )
 
         try:
             result = subprocess.run(
@@ -593,8 +599,14 @@ class ProjectProbe:
             )
             if result.returncode == 0 and result.stdout.strip():
                 branch = result.stdout.strip()
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-            pass
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            # INFRA-1022 (SILENT_SWALLOW): git branch extraction is best-effort;
+            # log at DEBUG so failures are observable.
+            logger.debug(
+                "Failed to extract git branch for %s: %s",
+                self.target,
+                exc,
+            )
 
         return remote_url, branch
 

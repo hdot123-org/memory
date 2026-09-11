@@ -137,8 +137,10 @@ def _refine_non_git_seed(seed: Path) -> Path:
             content = ownership_toml_path.read_text(encoding="utf-8")
             if _consent_pattern.search(content):
                 return seed  # Persistent consent found, passthrough
-        except (OSError, UnicodeDecodeError):
-            pass  # If we can't read it, continue to next check
+        except (OSError, UnicodeDecodeError) as exc:
+            # INFRA-1022 (SILENT_SWALLOW): consent file read is best-effort;
+            # log at DEBUG so failures are observable.
+            _logger.debug("Failed to read ownership.toml consent: %s", exc)
 
     # Check manifest.json
     manifest_json_path = seed / "memory" / "system" / "manifest.json"
@@ -148,8 +150,10 @@ def _refine_non_git_seed(seed: Path) -> Path:
             manifest = json.loads(content)
             if manifest.get("allow_non_git") is True:
                 return seed  # Persistent consent found, passthrough
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
-            pass  # If we can't read or parse it, continue
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            # INFRA-1022 (SILENT_SWALLOW): manifest read is best-effort;
+            # log at DEBUG so failures are observable.
+            _logger.debug("Failed to read manifest.json consent: %s", exc)
 
     # Find valid child repositories
     # Valid = has .git (file or dir), not a dot directory (name.startswith('.'))
@@ -433,15 +437,19 @@ def _resolve_memory_root(  # noqa: C901
         from ..ownership import is_memory_core_source_repo
 
         is_src_repo_fn = is_memory_core_source_repo
-    except ImportError:
-        pass
+    except ImportError as exc:
+        # INFRA-1022 (SILENT_SWALLOW): ownership module is optional in some contexts;
+        # log at DEBUG so import failures are observable.
+        _logger.debug("Failed to import is_memory_core_source_repo: %s", exc)
     if is_src_repo_fn is not None:
         try:
             if is_src_repo_fn(resolved_real):
                 _logger.warning("_resolve_memory_root: %s is memory-core source repo", resolved_real)
                 return None
-        except Exception:
-            pass
+        except Exception as exc:
+            # INFRA-1022 (SILENT_SWALLOW): source repo check is best-effort;
+            # log at DEBUG so failures are observable.
+            _logger.debug("is_memory_core_source_repo check failed: %s", exc, exc_info=True)
 
     # VAL-CFG-008: symlink穿透 with realpath
     # For containment check, use resolved path
@@ -799,8 +807,15 @@ def _check_members_boundaries(members: list[Any], config_path: Path) -> list[str
                     out_of_bounds_entries.append(
                         f"{member_str} -> {resolved_real_str} (memory-core source denied in {config_path})"
                     )
-            except (ImportError, Exception):
-                pass
+            except (ImportError, Exception) as exc:
+                # INFRA-1022 (SILENT_SWALLOW): source repo check is best-effort;
+                # log at DEBUG so failures are observable.
+                _logger.debug(
+                    "is_memory_core_source_repo check failed for member %s: %s",
+                    member_str,
+                    exc,
+                    exc_info=True,
+                )
 
         except (OSError, ValueError) as exc:
             out_of_bounds_entries.append(f"{member_str} -> resolution error ({exc}) in {config_path}")
@@ -885,8 +900,10 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
                                     resolved_mem,
                                     config_at_git_seed,
                                 )
-                except Exception:
-                    pass  # Don't crash on config parsing errors
+                except Exception as exc:
+                    # INFRA-1022 (SILENT_SWALLOW): config parsing is best-effort;
+                    # log at DEBUG so failures are observable without crashing.
+                    _logger.debug("Config parsing failed for %s: %s", config_at_git_seed, exc, exc_info=True)
         return (seed, seed)
 
     # Level 2: Project config (memory-project.toml)
@@ -907,8 +924,10 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
                 if bool(mode & stat.S_IWOTH):
                     # World-writable config is ignored for overlap detection
                     continue
-            except OSError:
-                pass  # If we can't stat, include it
+            except OSError as exc:
+                # INFRA-1022 (SILENT_SWALLOW): stat failure is best-effort;
+                # log at DEBUG and include the config in overlap detection.
+                _logger.debug("Failed to stat config %s for world-writable check: %s", cfg_path, exc)
             parsed_cfg = _cached_parse_config(cfg_path)
             if parsed_cfg is not None:
                 parsed_configs.append((cfg_path, parsed_cfg))

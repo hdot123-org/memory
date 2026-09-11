@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 from datetime import datetime
@@ -48,6 +49,8 @@ from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
+
+logger = logging.getLogger(__name__)
 from mcp.types import TextContent, Tool
 
 from memory_core.tools._guard_classify import classify_tool_use
@@ -542,8 +545,15 @@ def _check_pending_duplicates(
                             "path": str(existing_file),
                             "relative_path": f"pending/{existing_file.name}",
                         }
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        # INFRA-1022 (SILENT_SWALLOW): source_refs merge failure is best-effort;
+                        # log at DEBUG so failures are observable.
+                        logger.debug(
+                            "Failed to merge source_refs for %s: %s",
+                            existing_file.name,
+                            exc,
+                            exc_info=True,
+                        )
 
                 return {
                     "status": "success",
