@@ -143,13 +143,22 @@ def _try_sign_file(
     # VAL-DEFUSE-001（γ 路径）: 无 manifest 的非项目目录跳过签名——
     # sign_project_incremental 对无 manifest 目录会回退 full-sign 并创建
     # memory/system/。已有 manifest 的受管目录增量签名不变；真项目根
-    # （.git / memory-project.toml，或经 init 已有 manifest 的 consent 项目）
-    # 不受影响。
+    # （.git / memory-project.toml / consent）不受影响。
     _root = Path(project_root)
-    if not (_root / "memory" / "system" / "manifest.json").exists() and not (
-        (_root / ".git").exists() or (_root / "memory-project.toml").exists()
-    ):
-        return
+    if not (_root / "memory" / "system" / "manifest.json").exists():
+        # Use the shared predicate from gateway for consistency across all three call sites
+        # (daily_summary_generator, project_lifecycle, error_logger γ).
+        # Conservative False fallback when predicate unavailable (avoid resurrecting round-1 bug).
+        try:
+            from memory_core.tools._gateway_config import _is_true_project_root
+
+            if not _is_true_project_root(_root):
+                return
+        except (ImportError, AttributeError):
+            # Fallback to conservative False (gate closed) if predicate unavailable
+            # This avoids resurrecting the round-1-defective predicate (.git-or-config-exists)
+            # which would re-admit the mencbo shape (outer config exists -> proceeds to sign).
+            return
     try:
         key = integrity_keys.load_key()
         if key is None:

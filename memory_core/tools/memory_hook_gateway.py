@@ -111,7 +111,6 @@ if __package__:
         is_memory_core_source_repo,
         load_adapter_config,
         now_iso,
-        record_project_lifecycle,
         reload_adapter,
     )
     from ._gateway_dispatch import (  # noqa: E402
@@ -254,7 +253,6 @@ else:
         is_memory_core_source_repo,
         load_adapter_config,
         now_iso,
-        record_project_lifecycle,
         reload_adapter,
     )
     from memory_core.tools._gateway_dispatch import (  # noqa: E402
@@ -392,7 +390,6 @@ __all__ = [
     "is_memory_core_source_repo",
     "is_denied_project_root",
     "_check_l4_rejection",
-    "record_project_lifecycle",
     # _gateway_config 完整性
     "_integrity_sign",
     "_integrity_verify",
