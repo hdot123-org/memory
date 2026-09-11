@@ -188,7 +188,7 @@ def _refine_non_git_seed(seed: Path) -> Path:
 _PROJECT_CONFIG_NAME = "memory-project.toml"
 
 
-def _get_home_realpath():
+def _get_home_realpath() -> Path:
     """Get the real path of HOME, resolving symlinks if any.
 
     Scrutiny ②: For symlinked HOME paths, we need to normalize the real path
