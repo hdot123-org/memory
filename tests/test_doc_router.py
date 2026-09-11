@@ -25,9 +25,9 @@ from memory_core.tools.doc_router import (
 class TestDocCategories:
     """DOC_CATEGORIES 常量测试。"""
 
-    def test_has_10_categories(self) -> None:
-        """DOC_CATEGORIES 必须包含 10 个分类标签。"""
-        assert len(DOC_CATEGORIES) == 10
+    def test_has_12_categories(self) -> None:
+        """DOC_CATEGORIES 必须包含 12 个分类标签。"""
+        assert len(DOC_CATEGORIES) == 12
 
     def test_has_required_categories(self) -> None:
         """必须包含所有必需的分类标签。"""
@@ -42,6 +42,8 @@ class TestDocCategories:
             "rfc",
             "note",
             "draft",
+            "known-issue",
+            "feature-summary",
         }
         assert set(DOC_CATEGORIES.keys()) == required
 

@@ -17,6 +17,8 @@ DOC_CATEGORIES: dict[str, str] = {
     "rfc": "memory/docs/rfcs/",
     "note": "memory/docs/notes/",
     "draft": "memory/docs/drafts/",
+    "known-issue": "memory/docs/known-issues/",
+    "feature-summary": "memory/docs/features/",
 }
 
 EXCEPTION_DIRS: frozenset[str] = frozenset(

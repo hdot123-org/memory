@@ -73,6 +73,8 @@
 | 审计、检查、扫描 | `memory/docs/audit/` | 审计记录（审计工具执行体在 infra-core 仓 `infra-*` CLI） |
 | 重构、代码变更、refactor | `memory/docs/refactor-logs/` | 重构日志 |
 | 笔记、调研、临时记录 | `memory/docs/notes/` | 临时笔记 |
+| 已知问题、quirk、降级说明 | `memory/docs/known-issues/` | 已知问题记录 |
+| 里程碑总结、feature 摘要 | `memory/docs/features/` | 特性/里程碑总结 |
 | 不确定、先记下来 | `memory/docs/drafts/` | 草稿暂存 |
 
 ## 双写规则

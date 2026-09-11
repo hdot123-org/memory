@@ -443,7 +443,7 @@ members  = ["./mencbo"]      # 成员仓声明
 | 5 | 6 个直接 import gateway 的测试文件影响审计 + 全量 pytest 验收 | §3.2.2 影响面声明 + §5.2 |
 | 6 | 0 候选分支补 session-start 日志 | §3.1.3 三分支语义 |
 | 7 | 清退清单补外层 AGENTS.md + 清理顺序修正 | §4 M3 |
-| 8 | 发布前确认 wrapper 实际调用链 → **已闭环：hooks.json** | library/environment.md |
+| 8 | 发布前确认 wrapper 实际调用链 → **已闭环：hooks.json** | §3.4 / §8 |
 | 9 | /bin/true → /usr/bin/true | §5.4 验证工具 |
 
 ### 7.2 用户四项裁决
