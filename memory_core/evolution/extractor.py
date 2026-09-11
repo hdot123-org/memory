@@ -17,6 +17,7 @@ VAL-EXT-001 / VAL-EXT-002 / VAL-EXT-003 / VAL-EXT-004 / VAL-SED-001
 """
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -103,8 +104,8 @@ def resolve_api_key(config: dict[str, Any]) -> str:
             key = resolver.resolve_secret(api_key_op_ref)
             if key:
                 return key
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.getLogger(__name__).debug("MCP secret resolution failed: %s", exc, exc_info=True)
 
     # 3. 尝试从 1Password op read 获取（仅交互兜底）
     if api_key_op_ref:

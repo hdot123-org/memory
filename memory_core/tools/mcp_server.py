@@ -542,8 +542,9 @@ def _check_pending_duplicates(
                             "path": str(existing_file),
                             "relative_path": f"pending/{existing_file.name}",
                         }
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        import logging
+                        logging.getLogger(__name__).debug("source_refs merge failed: %s", exc, exc_info=True)
 
                 return {
                     "status": "success",

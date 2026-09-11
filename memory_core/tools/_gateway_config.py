@@ -907,8 +907,8 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
                                         resolved_mem,
                                         config_at_git_seed,
                                     )
-                except Exception:
-                    pass  # Don't crash on config parsing errors
+                except Exception as exc:
+                    _logger.debug("config parsing error during conflict detection: %s", exc, exc_info=True)
         return (seed, seed)
 
     # Level 2: Project config (memory-project.toml)

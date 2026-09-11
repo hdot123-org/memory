@@ -377,8 +377,9 @@ def _is_true_project_root(project_root: Path) -> bool:
             return (project_root / "memory-project.toml").exists()
         # Gateway refined to a different root - check if that root is a git root
         return (resolved / ".git").exists()
-    except Exception:
+    except Exception as exc:
         # On any error, be conservative - assume not a true project root
+        logger.debug("is_true_project_root check failed: %s", exc, exc_info=True)
         return False
 
 

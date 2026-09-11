@@ -239,6 +239,8 @@ def write_error_log(
 
         return True
 
-    except Exception:
-        # 内部异常静默返回 False
+    except Exception as exc:
+        # 内部异常记录日志后返回 False
+        import logging
+        logging.getLogger(__name__).debug("write_error_log internal error: %s", exc, exc_info=True)
         return False

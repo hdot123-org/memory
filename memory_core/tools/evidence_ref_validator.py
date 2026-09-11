@@ -104,7 +104,9 @@ def validate_evidence_refs_on_disk(
         for md_file in sorted(kb_dir.rglob("*.md")):
             try:
                 text = md_file.read_text(encoding="utf-8")
-            except Exception:
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).debug("failed to read KB file %s: %s", md_file, exc, exc_info=True)
                 continue
             if "Evidence Refs" not in text:
                 continue

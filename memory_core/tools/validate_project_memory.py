@@ -176,7 +176,9 @@ def _check_pollution(memory_root: Path) -> list[str]:
         if f.suffix in (".md", ".toml", ".json", ".lock", ".log", ".txt"):
             try:
                 content = f.read_text(encoding="utf-8", errors="replace")
-            except Exception:
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).debug("failed to read file for pollution check %s: %s", f, exc, exc_info=True)
                 continue
             for line_no, line in enumerate(content.splitlines(), 1):
                 for pat in POLLUTION_PATTERNS:
