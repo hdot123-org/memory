@@ -1,13 +1,16 @@
-"""Regression test for silent exception swallow fix in session_end_logger.py (INFRA-261).
+"""Regression tests for silent exception swallow fixes in session_end_logger.py.
 
-``_write_session_metrics`` used bare ``except Exception: pass`` to swallow metrics-write
-failures with zero observability.
+Covers two SILENT_SWALLOW fixes:
 
-Fix: the except clause now binds the exception and logs it via ``logger.debug(...)``,
-preserving the graceful-degradation behavior (function returns None; metrics not written;
-calling hook continues).
+- INFRA-261: ``_write_session_metrics`` used bare ``except Exception: pass`` to swallow
+  metrics-write failures with zero observability. Fix: the except clause now binds the
+  exception and logs it via ``logger.debug(...)``, preserving the graceful-degradation
+  behavior (function returns None; metrics not written; calling hook continues).
 
-Static code-inspection test following ``tests/test_telemetry_bridge_silent_swallow.py``.
+- INFRA-1042 (Issue #1255): ``_resolve_project_root`` used bare ``except Exception: pass``
+  to swallow gateway root-resolution failures. Fix: the except clause now logs the
+  fallback reason and full traceback via ``logger.debug(..., exc_info=True)``, preserving
+  the fallback behavior (returns ``payload_cwd.expanduser().resolve()``).
 """
 
 from pathlib import Path
@@ -33,4 +36,46 @@ class TestWriteSessionMetricsSilentSwallow:
         body = _func_body(SOURCE_PATH.read_text(), "_write_session_metrics")
         assert "except Exception:\n        pass" not in body, (
             "_write_session_metrics must not regress to bare `except Exception: pass`"
+        )
+
+
+class TestResolveProjectRootSilentSwallow:
+    """``_resolve_project_root`` gateway-resolution failure must log at debug (INFRA-1042)."""
+
+    def test_gateway_failure_falls_back_to_payload_cwd(self, monkeypatch, tmp_path):
+        """Fallback behavior unchanged: gateway failure returns resolved payload cwd."""
+        from memory_core.tools import session_end_logger
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("simulated gateway failure")
+
+        monkeypatch.setattr(session_end_logger, "_gateway_resolve_root", _boom)
+
+        result = session_end_logger._resolve_project_root(tmp_path, {})
+
+        assert result == tmp_path.expanduser().resolve()
+
+    def test_gateway_failure_logs_debug_record(self, monkeypatch, tmp_path, caplog):
+        """The previously-swallowed gateway failure must now emit a debug log record."""
+        from memory_core.tools import session_end_logger
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("simulated gateway failure")
+
+        monkeypatch.setattr(session_end_logger, "_gateway_resolve_root", _boom)
+
+        with caplog.at_level("DEBUG", logger="memory_core.tools.session_end_logger"):
+            session_end_logger._resolve_project_root(tmp_path, {})
+
+        debug_records = [
+            r for r in caplog.records if r.levelname == "DEBUG" and "gateway root resolution failed" in r.message
+        ]
+        assert debug_records, "expected a DEBUG log record for the swallowed gateway failure"
+        assert any("falling back to payload_cwd" in r.message for r in debug_records)
+        assert any(r.exc_info is not None for r in debug_records)
+
+    def test_no_bare_pass(self):
+        body = _func_body(SOURCE_PATH.read_text(), "_resolve_project_root")
+        assert "except Exception:\n        pass" not in body, (
+            "_resolve_project_root must not regress to bare `except Exception: pass`"
         )
