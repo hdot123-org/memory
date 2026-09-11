@@ -440,10 +440,10 @@ def _resolve_memory_root(  # noqa: C901
             if is_src_repo_fn(resolved_real):
                 _logger.warning("_resolve_memory_root: %s is memory-core source repo", resolved_real)
                 return None
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.debug("_resolve_memory_root: is_memory_core_source_repo failed for %s: %s", resolved_real, exc)
 
-    # VAL-CFG-008: symlink穿透 with realpath
+        # VAL-CFG-008: symlink穿透 with realpath
     # For containment check, use resolved path
     try:
         resolved_real.relative_to(config_parent.resolve())
@@ -477,12 +477,11 @@ def _check_members_overlap(configs: list[tuple[Path, dict[str, Any]]]) -> list[s
     # Filter out world-writable configs (VAL-CFG-010:降级为忽略)
     filtered_configs = []
     for cfg_path, cfg in configs:
-        try:
-            mode = cfg_path.stat().st_mode
-            if not bool(mode & stat.S_IWOTH):  # Not world-writable
-                filtered_configs.append((cfg_path, cfg))
-        except OSError:
-            filtered_configs.append((cfg_path, cfg))
+        # Use _check_world_writable helper to avoid duplicate code
+        if _check_world_writable(cfg_path):
+            # World-writable config is ignored
+            continue
+        filtered_configs.append((cfg_path, cfg))
 
     # If no configs after filtering, no overlaps possible
     if len(filtered_configs) < 2:
@@ -578,9 +577,17 @@ def _check_members_existence(config_path: Path, members: list[Any], logger: logg
     config_parent = config_path.parent
 
     for member in members:
+        # Scrutiny ③: Explicit type check - non-string members are logged as ghost candidates
+        # (will be resolved as string representation if file exists, or error if not found)
         if not isinstance(member, str):
-            member = str(member)
-        resolved = (config_parent / member).resolve()
+            # Log non-string type but continue processing with str() representation
+            logger.debug(
+                "_check_members_existence: member %r is non-string (type %s), will use str() repr",
+                member,
+                type(member).__name__,
+            )
+        member_str = str(member)
+        resolved = (config_parent / member_str).resolve()
         if not resolved.exists():
             ghost_paths.append(str(resolved))
 
@@ -799,8 +806,14 @@ def _check_members_boundaries(members: list[Any], config_path: Path) -> list[str
                     out_of_bounds_entries.append(
                         f"{member_str} -> {resolved_real_str} (memory-core source denied in {config_path})"
                     )
-            except (ImportError, Exception):
-                pass
+            except Exception as exc:
+                # Wide catch consistent with _resolve_memory_root sibling (~:443):
+                # lazy import + repo check may fail on any environment issue
+                _logger.debug(
+                    "_check_members_boundaries: is_memory_core_source_repo failed for %s: %s",
+                    resolved_real,
+                    exc,
+                )
 
         except (OSError, ValueError) as exc:
             out_of_bounds_entries.append(f"{member_str} -> resolution error ({exc}) in {config_path}")
@@ -858,33 +871,42 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
                 try:
                     config = _cached_parse_config(config_at_git_seed)
                     if config is not None and config.get("memory_root") is not None:
-                        mem_root = config.get("memory_root")
-                        # Check for empty values first (non-blocking) before any processing
-                        is_valid, error_msg = _validate_memory_root_value(mem_root, config_at_git_seed)
+                        mem_root_raw = config.get("memory_root")
+                        # Scrutiny ③: explicit type validation (non-blocking on failure);
+                        # _validate_memory_root_value covers string / list-first-element /
+                        # empty-list / invalid-type branches uniformly.
+                        # Note: mem_root_raw is always non-None here due to outer 'is not None' check
+                        is_valid, error_msg = _validate_memory_root_value(cast(Any, mem_root_raw), config_at_git_seed)
                         if not is_valid:
                             _logger.error(error_msg)
                             # Non-blocking: don't raise, just fall through to degraded routing
                             # The config level is rejected, fall through to B-layer refinement
-                            # Continue to fall through to B-layer
-                        elif isinstance(mem_root, list):
-                            if mem_root:
-                                mem_root = mem_root[0] if isinstance(mem_root[0], str) else str(mem_root[0])
-                            else:
-                                # Empty list already handled by _validate_memory_root_value above
-                                # which returns error_msg
-                                pass  # Continue to B-layer
-                        if isinstance(mem_root, str) and mem_root not in {"./", "."}:
-                            resolved_mem = (config_at_git_seed.parent / mem_root).resolve()
-                            git_root = seed.resolve()
-                            if resolved_mem != git_root:
-                                # Emit conflict line: git root, config declared root, config path
-                                _logger.error(
-                                    "_resolve_repo_root_with_config: config and git root conflict "
-                                    "(VAL-CFG-005): git_root=%s, config_memory_root=%s, config_path=%s",
-                                    git_root,
-                                    resolved_mem,
-                                    config_at_git_seed,
-                                )
+                        else:
+                            # VAL-CFG-005: conflict check for both string and list forms;
+                            # list form uses first element (origin/main baseline: memory_root=["./x"]
+                            # emitted the conflict line at a git seed)
+                            conflict_candidate: str | None = None
+                            if isinstance(mem_root_raw, str) and mem_root_raw not in {"./", "."}:
+                                conflict_candidate = mem_root_raw
+                            elif (
+                                isinstance(mem_root_raw, list)
+                                and mem_root_raw
+                                and isinstance(mem_root_raw[0], str)
+                                and mem_root_raw[0] not in {"./", "."}
+                            ):
+                                conflict_candidate = mem_root_raw[0]
+                            if conflict_candidate is not None:
+                                resolved_mem = (config_at_git_seed.parent / conflict_candidate).resolve()
+                                git_root = seed.resolve()
+                                if resolved_mem != git_root:
+                                    # Emit conflict line: git root, config declared root, config path
+                                    _logger.error(
+                                        "_resolve_repo_root_with_config: config and git root conflict "
+                                        "(VAL-CFG-005): git_root=%s, config_memory_root=%s, config_path=%s",
+                                        git_root,
+                                        resolved_mem,
+                                        config_at_git_seed,
+                                    )
                 except Exception:
                     pass  # Don't crash on config parsing errors
         return (seed, seed)
@@ -901,14 +923,12 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
         # VAL-CFG-010: Filter out world-writable configs before overlap detection
         parsed_configs: list[tuple[Path, dict[str, Any]]] = []
         for cfg_path in _find_all_project_configs(seed):
-            # Check world-writable (VAL-CFG-010) - skip world-writable configs for overlap
-            try:
-                mode = cfg_path.stat().st_mode
-                if bool(mode & stat.S_IWOTH):
-                    # World-writable config is ignored for overlap detection
-                    continue
-            except OSError:
-                pass  # If we can't stat, include it
+            # VAL-CFG-010: skip world-writable configs for overlap detection.
+            # _check_world_writable is the canonical check and fail-opens on
+            # OSError (returns False -> config stays included), matching the
+            # previous inline stat/S_IWOTH behavior.
+            if _check_world_writable(cfg_path):
+                continue
             parsed_cfg = _cached_parse_config(cfg_path)
             if parsed_cfg is not None:
                 parsed_configs.append((cfg_path, parsed_cfg))
@@ -939,9 +959,10 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
                 if mem_root is not None:
                     # Track that we tried to process memory_root (regardless of success/failure)
                     memory_root_was_processed = True
+                    # Note: mem_root here is the raw value from config, guaranteed non-None due to outer check
 
                     # VAL-CFG-018: Check memory_root empty string/list - non-blocking error
-                    is_valid, error_msg = _validate_memory_root_value(mem_root, config_path)
+                    is_valid, error_msg = _validate_memory_root_value(cast(Any, mem_root), config_path)
                     if not is_valid:
                         _logger.error(error_msg)
                         # Non-blocking: don't raise, just fall through to degraded routing
