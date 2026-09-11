@@ -18,7 +18,6 @@ from typing import Any
 
 from memory_core.tools._gateway_config import _is_true_project_root
 from memory_core.tools._gateway_config import _is_true_project_root as _is_true_project_root_lifecycle
-from memory_core.tools.project_lifecycle import record_project_lifecycle
 from memory_core.tools.session_end_logger import _resolve_project_root
 
 # Dual E2E subprocess pinning: cwd + PYTHONPATH (PR #1257 + fix/defuse-e2e-datebomb)
@@ -479,7 +478,6 @@ class TestValDefuse003AtomicWrite:
 
     def test_update_path_index_atomic_write(self, tmp_path: Path) -> None:
         """rebuild_path_index writes path-index.json via temp file + os.replace."""
-        import json
         import os
         from unittest.mock import patch
 
@@ -535,8 +533,6 @@ class TestValDefuse003AtomicWrite:
 
     def test_update_path_index_incremental_write(self, tmp_path: Path) -> None:
         """Incremental path via rebuild_path_index should merge multiple project files."""
-        import json
-
         from memory_core.tools.project_lifecycle import rebuild_path_index
 
         projects_dir = tmp_path / "projects"
