@@ -161,6 +161,7 @@ class TestPreToolUseEmitMetrics:
             patch.object(memory_hook_gateway, "is_denied_project_root", return_value=False),
             patch.object(memory_hook_gateway, "_should_noop_for_external_context", return_value=False),
             patch.object(memory_hook_gateway, "_discover_cwd", return_value=Path("/tmp/test-project")),
+            patch.object(memory_hook_gateway, "_check_l4_rejection", return_value=None),
             patch.object(
                 memory_hook_gateway,
                 "_parse_args",
@@ -214,6 +215,7 @@ class TestPreToolUseEmitMetrics:
             patch.object(memory_hook_gateway, "is_denied_project_root", return_value=False),
             patch.object(memory_hook_gateway, "_should_noop_for_external_context", return_value=False),
             patch.object(memory_hook_gateway, "_discover_cwd", return_value=Path("/tmp/test-project")),
+            patch.object(memory_hook_gateway, "_check_l4_rejection", return_value=None),
             patch.object(
                 memory_hook_gateway,
                 "_parse_args",
@@ -267,6 +269,7 @@ class TestPreToolUseEmitMetrics:
             patch.object(memory_hook_gateway, "is_denied_project_root", return_value=False),
             patch.object(memory_hook_gateway, "_should_noop_for_external_context", return_value=False),
             patch.object(memory_hook_gateway, "_discover_cwd", return_value=Path("/tmp/test-project")),
+            patch.object(memory_hook_gateway, "_check_l4_rejection", return_value=None),
             patch.object(
                 memory_hook_gateway,
                 "_parse_args",
@@ -412,6 +415,11 @@ class TestSourceRepoDegradedStatus:
                 memory_hook_gateway,
                 "_discover_cwd",
                 return_value=mock_cwd,
+            ),
+            patch.object(
+                memory_hook_gateway,
+                "_check_l4_rejection",
+                return_value=None,
             ),
             patch.object(
                 memory_hook_gateway,

@@ -9,6 +9,7 @@ Covers the gateway-side functions in memory_core/tools/_gateway_config.py:
 - Cross-config members overlap detection (VAL-CFG-006)
 - Four-level routing integration (git short-circuit, config routing,
   world-writable degradation, overlap rejection)
+- L4 rejection mechanism (VAL-CFG-019)
 """
 
 import logging
@@ -18,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from memory_core.tools._gateway_config import (
+    _check_l4_rejection,
     _check_members_overlap,
     _find_all_project_configs,
     _find_project_config_path,
@@ -459,3 +461,126 @@ class TestWorldWritableAndFallThrough:
         assert repo_root == target.resolve()
         no_fall_through = [r for r in caplog.records if "no memory_root and no members" in r.message]
         assert len(no_fall_through) == 0
+
+
+# ---------------------------------------------------------------------------
+# VAL-CFG-017: members-only 配置 → 告警 + 启发式路由
+# ---------------------------------------------------------------------------
+
+
+class TestMembersOnlyConfig:
+    def test_members_only_routes_to_heuristic_not_config_parent(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """VAL-CFG-017: members-only → 告警 + 启发式路由(≠ config parent)."""
+        outer = tmp_path / "outer"
+        outer.mkdir()
+        # Config with members but NO memory_root
+        _write_config(
+            outer / CONFIG_NAME,
+            'project = "test"\nmembers = ["./child"]\n',
+        )
+        # Create a subdirectory that would be heuristic candidate
+        child = outer / "child"
+        child.mkdir()
+        (child / ".git").mkdir()
+
+        with caplog.at_level(logging.WARNING, logger=_MODULE_LOGGER):
+            repo_root, _ = _resolve_repo_root_with_config(outer)
+
+        # Should use heuristic (refined to child), NOT config parent
+        assert repo_root == child.resolve(), f"Expected {child.resolve()}, got {repo_root}"
+        # Should emit warning about missing memory_root
+        warning_logs = [r for r in caplog.records if "no memory_root (has members only)" in r.message]
+        assert len(warning_logs) >= 1
+        assert str(outer / CONFIG_NAME) in warning_logs[0].getMessage()
+
+
+# ---------------------------------------------------------------------------
+# VAL-CFG-019: L4 自返零写入违约 - 空种子拒绝服务
+# ---------------------------------------------------------------------------
+
+
+class TestL4Rejection:
+    def test_empty_seed_no_git_no_config_no_candidate_rejected(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """VAL-CFG-019: empty seed → explicit rejection with exit 0 + stderr + zero writes."""
+        # Empty dir: no .git, no config, no child repo
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+
+        rejection_msg = _check_l4_rejection(empty_dir)
+        assert rejection_msg is not None
+        assert "no .git directory" in rejection_msg
+        assert "no memory-project.toml config" in rejection_msg
+        assert "no valid child repository" in rejection_msg
+
+    def test_empty_seed_with_git_ok(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """Empty seed with .git → OK (not rejected)."""
+        git_dir = tmp_path / "git_repo"
+        git_dir.mkdir()
+        (git_dir / ".git").mkdir()
+
+        rejection_msg = _check_l4_rejection(git_dir)
+        assert rejection_msg is None
+
+    def test_empty_seed_with_config_ok(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """Empty seed with config → OK (not rejected)."""
+        config_dir = tmp_path / "config_dir"
+        config_dir.mkdir()
+        _write_config(config_dir / CONFIG_NAME, 'project = "test"\n')
+
+        rejection_msg = _check_l4_rejection(config_dir)
+        assert rejection_msg is None
+
+    def test_b_layer_refined_seed_ok(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """B-layer refined seed (non-git + valid child) → OK."""
+        # Create non-git parent with git child
+        parent = tmp_path / "parent"
+        parent.mkdir()
+        child = parent / "child"
+        child.mkdir()
+        (child / ".git").mkdir()
+
+        rejection_msg = _check_l4_rejection(parent)
+        assert rejection_msg is None  # B-layer refinement finds child
+
+    def test_memory_project_ok(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """Project with memory/system/ (no .git) → OK (valid memory project)."""
+        mem_dir = tmp_path / "memory" / "system"
+        mem_dir.mkdir(parents=True)
+
+        rejection_msg = _check_l4_rejection(tmp_path)
+        assert rejection_msg is None  # Valid memory project
+
+    def test_plain_subdir_of_ancestor_configured_project_ok(self, tmp_path: Path):
+        """VAL-CFG-014 layout: plain subdir of an ancestor-configured project → not rejected.
+
+        The routing layer resolves roots via the ancestor config, so the seed
+        itself carries none of the local markers.
+        """
+        outer = tmp_path / "proj"
+        sub = outer / "sub"
+        sub.mkdir(parents=True)
+        (outer / "mem").mkdir()
+        _write_config(outer / CONFIG_NAME, 'memory_root = "./mem"\n')
+
+        assert _check_l4_rejection(sub) is None
+
+    def test_broken_ancestor_config_still_rejects_plain_subdir(self, tmp_path: Path):
+        """Unparseable ancestor config does not bypass the gate (mirrors routing gating)."""
+        outer = tmp_path / "proj"
+        sub = outer / "sub"
+        sub.mkdir(parents=True)
+        _write_config(outer / CONFIG_NAME, "broken [[[\n")
+
+        assert _check_l4_rejection(sub) is not None
+
+    def test_world_writable_ancestor_config_still_rejects_plain_subdir(self, tmp_path: Path):
+        """World-writable (ignored) ancestor config does not bypass the gate."""
+        outer = tmp_path / "proj"
+        sub = outer / "sub"
+        sub.mkdir(parents=True)
+        cfg = _write_config(outer / CONFIG_NAME, 'memory_root = "./mem"\n')
+        cfg.chmod(0o666)
+        try:
+            assert _check_l4_rejection(sub) is not None
+        finally:
+            cfg.chmod(0o644)

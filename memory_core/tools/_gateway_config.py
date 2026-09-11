@@ -574,6 +574,66 @@ def _check_world_writable(config_path: Path) -> bool:
         return False
 
 
+def _check_l4_rejection(seed: Path) -> str | None:
+    """Check if seed is empty/non-project and needs L4 explicit rejection.
+
+    L4 terminal semantic: explicit rejection with exit 0 + stderr message + zero writes.
+    Seed is rejected if:
+    - No .git directory exists (not a git repository)
+    - No memory-project.toml config exists
+    - No memory/system/ directory (not a memory project)
+    - B-layer refinement finds no valid candidates
+
+    Args:
+        seed: The seed path from MEMORY_HOOK_PROJECT_CWD or cwd()
+
+    Returns:
+        Rejection reason string if rejected, None if valid
+    """
+    # Check if seed is a git repository
+    if (seed / ".git").exists():
+        return None  # Valid - has git
+
+    # Check if config exists in seed
+    if (seed / "memory-project.toml").exists():
+        return None  # Valid - has config
+
+    # Check if seed is a memory project (has memory/system directory)
+    if (seed / "memory" / "system").exists():
+        return None  # Valid - memory project marker
+
+    # Check for a usable ancestor config (VAL-CFG-014 layout: plain subdir of an
+    # ancestor-configured project). The routing layer resolves roots via the
+    # ancestor config, so the seed itself may carry none of the local markers.
+    # Guards mirror the routing layer's own gating: a world-writable (ignored)
+    # or unparseable config does not make the seed a project.
+    ancestor_config = _find_project_config_path(seed)
+    ancestor_config_usable = (
+        ancestor_config is not None
+        and not _check_world_writable(ancestor_config)
+        and _parse_project_config(ancestor_config) is not None
+    )
+    if ancestor_config_usable:
+        return None  # Valid - usable ancestor config governs this seed
+
+    # Check B-layer refinement candidates
+    refined = _refine_non_git_seed(seed)
+    if refined != seed:
+        # B-layer found a candidate
+        return None  # Valid - B-layer refined
+
+    # Also check if refined has .git (B-layer passthrough case)
+    if (refined / ".git").exists():
+        return None  # Valid - B-layer found git
+
+    # Also check if refined is memory project
+    if (refined / "memory" / "system").exists():
+        return None  # Valid - B-layer found memory project
+
+    # No .git, no config, no memory project, no B-layer candidate → L4 rejection
+    return f"seed {seed} has no .git directory, no memory-project.toml config, no memory/system directory, and no valid child repository"
+
+
 def _check_members_boundaries(members: list[Any], config_path: Path) -> list[str]:
     """Check if members are within config parent boundaries (VAL-CFG-007).
 
@@ -802,9 +862,11 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
                             else:
                                 # No members, return resolved memory_root
                                 return (resolved_root, resolved_root)
-                # If memory_root not specified, but config exists with members,
-                # use config parent as the project root
+                # If memory_root not specified or rejected, check if config has members-only
                 elif "members" in config:
+                    # VAL-CFG-017: members-only is incomplete config (missing memory_root).
+                    # Per契约: must warn + degrade to heuristic routing.
+                    # Do NOT use config parent as routing (that's self-reference implied "." - forbidden).
                     # Check members boundary violations first (VAL-CFG-007)
                     members = config.get("members", [])
                     out_of_bounds_entries = _check_members_boundaries(members, config_path)
@@ -819,7 +881,15 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
                     else:
                         # Check for members ghost paths (VAL-CFG-016)
                         _check_members_existence(config_path, members, _logger)
-                        return (config_path.parent, config_path.parent)
+                        # VAL-CFG-017: missing memory_root is a warning condition
+                        # with degraded heuristic routing (not config parent!)
+                        _logger.warning(
+                            "_resolve_repo_root_with_config: config %s has no memory_root (has members only), "
+                            "falling back to heuristic routing",
+                            config_path,
+                        )
+                        # Fall through to B-layer refinement (heuristic discovery)
+                        config_path = None  # Explicitly set to None to trigger B-layer
                 # If memory_root not specified and no members, fall through to next level
 
     # VAL-CFG-017: memory_root缺失 → 不完整配置：告警 + 降级探测

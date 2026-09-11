@@ -390,6 +390,8 @@ class TestHealthReportInjection:
         """When health-report.json does not exist, no health alert is injected."""
         project_dir = tmp_path / "project"
         project_dir.mkdir()
+        # Make it a valid memory project
+        (project_dir / "memory" / "system").mkdir(parents=True)
 
         captured_packages = []
 
@@ -965,6 +967,8 @@ class TestPreToolUseGuard:
         """When pre-tool-use guard times out, error is logged and fallback allows."""
         project_dir = tmp_path / "project"
         project_dir.mkdir()
+        # Make it a valid memory project
+        (project_dir / "memory" / "system").mkdir(parents=True)
 
         captured_errors = []
 
@@ -1042,6 +1046,8 @@ class TestPreToolUseGuard:
         """When pre-tool-use guard raises exception, error is logged and fallback allows."""
         project_dir = tmp_path / "project"
         project_dir.mkdir()
+        # Make it a valid memory project
+        (project_dir / "memory" / "system").mkdir(parents=True)
 
         captured_errors = []
 

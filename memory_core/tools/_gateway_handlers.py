@@ -37,6 +37,7 @@ from ._gateway_config import (
     CONTEXT_ROOT,
     ERROR_LOG,
     REPO_ROOT,
+    _check_l4_rejection,
     _integrity_verify,
     get_source_repo_mode,
     is_denied_project_root,
@@ -393,6 +394,14 @@ def main() -> int:
     raw_payload = sys.stdin.read()
     payload = _read_payload(raw_payload)
     cwd = _discover_cwd(payload)
+
+    # L4: Check for valid project root before proceeding
+    # Empty directory with no .git, no config, no candidate = explicit rejection
+    rejection_reason = _check_l4_rejection(cwd)
+    if rejection_reason:
+        sys.stderr.write(f"[memory-hook-gateway] service rejected: {rejection_reason}\n")
+        sys.stdout.write("{}\n")
+        return 0
 
     # M3: Anti-pollution - source repo gets readonly context-package instead of noop
     source_result = _handle_source_repo_check(cwd, args.host, args.event)

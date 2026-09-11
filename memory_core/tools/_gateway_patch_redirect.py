@@ -37,6 +37,7 @@ _REDIRECT_TARGETS: dict[str, tuple[str, ...]] = {
     "_read_payload": ("_gateway_handlers", "_gateway_dispatch"),
     "_discover_cwd": ("_gateway_handlers", "_gateway_policy", "_gateway_dispatch"),
     "_should_noop_for_external_context": ("_gateway_handlers", "_gateway_dispatch"),
+    "_check_l4_rejection": ("_gateway_handlers",),
     "_delegate_noop_response": ("_gateway_handlers", "_gateway_dispatch"),
     "is_denied_project_root": ("_gateway_handlers", "_gateway_config"),
     "is_memory_core_source_repo": (
