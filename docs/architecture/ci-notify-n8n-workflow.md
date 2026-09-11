@@ -1,8 +1,60 @@
-# n8n Workflow 配置文档: CI 完成通知转发
+# CI 完成通知转发配置: 网关直连（n8n 已退役）
 
-本文档描述如何在 n8n 面板配置一个 workflow，将 GitHub Actions CI 完成通知转发到 Mac:5555 的本地 webhook 服务。
+> **⚠️ n8n 已于 2026-09-08 退役（INFRA-893）。** 本文档描述的 n8n 中转链路已整体下线，
+> 原配置内容保留在文末「历史归档」段仅供追溯。当前生效路径为 **GitHub Actions →
+> ci-webhook 网关直连（Cloudflare Tunnel）→ Mac:5555 → trigger-ci-droid.sh**，
+> 与 infra-core 仓 `notify-ci-complete` job 同构。2026-09-11 由 memory 仓
+> 「CI 通知 job 网关直连迁移」PR 完成（修复工单 C）。
 
-## 架构概述
+## 当前架构（2026-09-11 起）
+
+```
+GitHub Actions (ci.yml notify-ci-complete)
+    │
+    │  POST {repo, pr_number, branch, sha, status, run_url} + X-CI-Token
+    ▼
+ci-webhook 网关 (https://ci-webhook.exa.edu.kg/hooks/ci-complete)
+    │  Cloudflare Tunnel 直达 Mac，无中转层
+    ▼
+Mac:5555 /hooks/ci-complete (adnanh/webhook)
+    │  trigger-rule 校验 X-CI-Token
+    │  调用 trigger-ci-droid.sh
+    ▼
+读取 pending-ci-<PR>.json → Factory Sessions API → 当前 Droid session
+```
+
+### 当前 secret 语义（名称沿用 N8N_CI_*，语义已变更）
+
+| Secret | 现语义 |
+|--------|--------|
+| `N8N_CI_WEBHOOK_URL` | 网关直连地址 `https://ci-webhook.exa.edu.kg/hooks/ci-complete`（2026-09-11 已更新仓库 secret） |
+| `N8N_CI_TOKEN` | 第二跳认证：Mac `hooks.json` ci-complete 钩子 trigger-rule 期望的 X-CI-Token 值 |
+| `GATEWAY_GW_TOKEN` | 第一跳备用：wangguan 网关来源白名单令牌（单行 64-hex，来源 `wangguan/GATEWAY_KEY.txt` 冒号后取值）。主路线 ci-webhook 直连不校验 gw，curl 附加 `?gw=` 无害；wangguan 路线（`webhook.exa.edu.kg`）当前对 `/hooks/ci-complete` 无路由绑定（404），仅作未来备用。**值必须单行**——多行会使 URL 拼接碎裂、curl 返回 000 |
+
+### 相对 n8n 时期的行为变化
+
+1. **payload 增加 `run_url`** — 通知携带 Actions run 链接，注入消息可直接回溯失败 run
+2. **gw 参数拼接** — curl 目标变为 `${WEBHOOK_URL}?gw=${GATEWAY_GW_TOKEN}`（URL 已带 query 时用 `&`），对齐 infra-core
+3. **失败注解升级** — `::warning::` → 红色 `::error::`。n8n 退役后 #1217→#1231 共 8 个 PR 的通知失败（HTTP 403）被 `::warning:: + exit 0` 吞成绿色 job，只能靠 31 分钟超时 watchdog 兜底，此为本次迁移直接动因
+4. **严格模式** — 仓库变量 `WEBHOOK_NOTIFY_STRICT=true` 时未送达直接 `exit 1`（消灭假绿）。默认不设（false），链路观察稳定后再开启，翻转前 merge 管道不受影响
+
+### 快速验证（模拟 Actions POST）
+
+```bash
+CI_TOKEN=<hooks.json 中 ci-complete 的 trigger-rule 期望值>
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -X POST "https://ci-webhook.exa.edu.kg/hooks/ci-complete" \
+  -H "Content-Type: application/json" -H "X-CI-Token: ${CI_TOKEN}" \
+  -d '{"repo":"hdot123-org/memory","pr_number":1222,"branch":"feat/m1-validation-fixes","sha":"<sha>","status":"success"}'
+# 预期 200；Mac 侧 tail ~/.factory/webhook/logs/webhook-stderr.log 应见
+# "ci-complete got matched" + trigger-ci-droid.sh 执行（无 pending 文件时优雅退出）
+```
+
+---
+
+# 历史归档：n8n 时期配置（已于 2026-09-08 退役）
+
+以下为 n8n 中转时期的原始配置文档，链路已下线，仅供追溯。当时架构：
 
 ```
 GitHub Actions (ci.yml)
@@ -39,7 +91,7 @@ n8n 的角色: 接收 GitHub Actions 的 HTTP POST，原样转发到 Mac:5555，
 
 ---
 
-## 1. n8n Workflow JSON 模板
+## 1. n8n Workflow JSON 模板（已退役，勿再导入）
 
 以下 JSON 可直接导入 n8n（Workflows → Import from File）。导入后需根据实际环境修改 `<MAC_IP_OR_HOSTNAME>` 占位符。
 
