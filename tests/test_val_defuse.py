@@ -7,10 +7,12 @@ These tests verify the fixes for:
 """
 
 # Reused imports for E2E tests
+import json
 import os
 import shutil
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -18,13 +20,13 @@ from memory_core.tools._gateway_config import _is_true_project_root
 from memory_core.tools._gateway_config import _is_true_project_root as _is_true_project_root_lifecycle
 from memory_core.tools.session_end_logger import _resolve_project_root
 
-# Resolve the memory_core source root so E2E subprocesses load the current source
-# tree (the installed site-packages copy may be stale — e.g. v0.47.1 from a
-# different runner while this repo is v0.51.0+). Without this, the E2E subprocess
-# exercises the old predicate and reports a regression that doesn't actually exist.
+# Dual E2E subprocess pinning: cwd + PYTHONPATH (PR #1257 + fix/defuse-e2e-datebomb)
+# PR #1257: PYTHONPATH钉位确保subprocess加载当前源码树
 _PACKAGE_SOURCE_ROOT = Path(__file__).resolve().parent.parent
 _E2E_ENV = os.environ.copy()
 _E2E_ENV["PYTHONPATH"] = str(_PACKAGE_SOURCE_ROOT) + os.pathsep + _E2E_ENV.get("PYTHONPATH", "")
+# fix/defuse-e2e-datebomb: cwd钉位确保subprocess在正确路径执行
+E2E_CWD = Path(__file__).resolve().parents[1]  # repo root
 
 
 class TestValDefuse001:
@@ -207,22 +209,24 @@ class TestValDefuse001E2E:
 
         # Build exact mencbo layout under $HOME with safe basename
         base = Path.home() / "scrutiny_mencbo_e2e"
-        # Clean up any leftover from previous runs
-        if base.exists():
-            shutil.rmtree(base, ignore_errors=True)
         base.mkdir(exist_ok=True)
-        outer = base / "outer"
-        inner = outer / "inner"
-        log_dir = outer / "memory" / "log"
-        log_dir.mkdir(parents=True)
-        inner.mkdir(parents=True)
-        (inner / ".git").mkdir()
+        try:
+            outer = base / "outer"
+            inner = outer / "inner"
+            log_dir = outer / "memory" / "log"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            inner.mkdir(parents=True)
+            (inner / ".git").mkdir()
 
-        # Pin config at OUTER (matches real mentuco layout)
-        (outer / "memory-project.toml").write_text('project = "mencbo"\nmemory_root = "./inner"\n', encoding="utf-8")
+            # Pin config at OUTER (matches real mencbo layout)
+            (outer / "memory-project.toml").write_text(
+                'project = "mencbo"\nmemory_root = "./inner"\n', encoding="utf-8"
+            )
 
-        # A-layer fuel: session_end_logger exact format (### 8-hex header)
-        fuel = """# Sessions Log — 2026-09-11
+            # A-layer fuel: session_end_logger exact format (### 8-hex header)
+            # **Fuel filename and header date derived from date.today()** (not hardcoded '2026-09-11')
+            today_str = date.today().isoformat()
+            fuel = f"""# Sessions Log — {today_str}
 
 ### abcd1234
 - **标题**: probe session
@@ -234,44 +238,45 @@ class TestValDefuse001E2E:
 ---
 
 """
-        (log_dir / "2026-09-11-sessions.md").write_text(fuel, encoding="utf-8")
+            (log_dir / f"{today_str}-sessions.md").write_text(fuel, encoding="utf-8")
 
-        def listing() -> list[str]:
-            return sorted(str(p.relative_to(outer)) for p in outer.rglob("*") if p.is_file())
+            def listing() -> list[str]:
+                return sorted(str(p.relative_to(outer)) for p in outer.rglob("*") if p.is_file())
 
-        before = listing()
+            before = listing()
 
-        # Run daily_summary_generator (full-sign fallback path)
-        proc = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "memory_core.tools.daily_summary_generator",
-                "--today",
-                "--project",
-                str(outer),
-                "--fallback-days",
-                "3",
-            ],
-            cwd=str(tmp_path.parent),
-            capture_output=True,
-            text=True,
-            timeout=90,
-            env=_E2E_ENV,
-        )
+            # Run daily_summary_generator (full-sign fallback path)
+            # Dual pin: cwd=E2E_CWD (my branch) + env=_E2E_ENV (main branch)
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "memory_core.tools.daily_summary_generator",
+                    "--today",
+                    "--project",
+                    str(outer),
+                    "--fallback-days",
+                    "3",
+                ],
+                cwd=str(E2E_CWD),
+                capture_output=True,
+                text=True,
+                timeout=90,
+                env=_E2E_ENV,
+            )
 
-        after = listing()
-        system_after = (outer / "memory" / "system").exists()
+            after = listing()
+            system_after = (outer / "memory" / "system").exists()
 
-        # Assert: outer system/ must NOT be created (zero memory/system/)
-        assert not system_after, (
-            f"Outer memory/system/ created: {before=}, {after=}, exit={proc.returncode}, "
-            f"stdout={proc.stdout[-500:] if proc.stdout else ''}, "
-            f"stderr={proc.stderr[-500:] if proc.stderr else ''}"
-        )
-
-        # Cleanup (safe: basename avoids denylist, under HOME)
-        shutil.rmtree(base, ignore_errors=True)
+            # Assert: outer system/ must NOT be created (zero memory/system/)
+            assert not system_after, (
+                f"Outer memory/system/ created: {before=}, {after=}, exit={proc.returncode}, "
+                f"stdout={proc.stdout[-500:] if proc.stdout else ''}, "
+                f"stderr={proc.stderr[-500:] if proc.stderr else ''}"
+            )
+        finally:
+            # Cleanup (safe: basename avoids denylist, under HOME)
+            shutil.rmtree(base, ignore_errors=True)
 
     def test_b2_layout_zero_system_creation(self, tmp_path: Path) -> None:
         """B2 layout: no .git, no config, no consent outer + single child → zero system/.
@@ -284,24 +289,24 @@ class TestValDefuse001E2E:
 
         # Build B2 layout under $HOME
         base = Path.home() / "scrutiny_b2_e2e"
-        # Clean up any leftover from previous runs
-        if base.exists():
-            shutil.rmtree(base, ignore_errors=True)
         base.mkdir(exist_ok=True)
-        outer = base / "outer"
-        inner = outer / "inner-repo"
-        log_dir = outer / "memory" / "log"
-        log_dir.mkdir(parents=True)
-        inner.mkdir(parents=True)
-        (inner / ".git").mkdir()
+        try:
+            outer = base / "outer"
+            inner = outer / "inner-repo"
+            log_dir = outer / "memory" / "log"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            inner.mkdir(parents=True)
+            (inner / ".git").mkdir()
 
-        # Inner has memory-project.toml with self-referential memory_root
-        (inner / "memory-project.toml").write_text(
-            'project = "adv"\nmemory_root = "./"\nmembers = []\n', encoding="utf-8"
-        )
+            # Inner has memory-project.toml with self-referential memory_root
+            (inner / "memory-project.toml").write_text(
+                'project = "adv"\nmemory_root = "./"\nmembers = []\n', encoding="utf-8"
+            )
 
-        # A-layer fuel with exact session_end_logger format
-        fuel = """# Sessions Log — 2026-09-11
+            # A-layer fuel with exact session_end_logger format
+            # **Fuel filename and header date derived from date.today()** (not hardcoded '2026-09-11')
+            today_str = date.today().isoformat()
+            fuel = f"""# Sessions Log — {today_str}
 
 ### abcd1234
 - **标题**: probe session
@@ -322,44 +327,45 @@ class TestValDefuse001E2E:
 ---
 
 """
-        (log_dir / "2026-09-11-sessions.md").write_text(fuel, encoding="utf-8")
+            (log_dir / f"{today_str}-sessions.md").write_text(fuel, encoding="utf-8")
 
-        def listing() -> list[str]:
-            return sorted(str(p.relative_to(outer)) for p in outer.rglob("*") if p.is_file())
+            def listing() -> list[str]:
+                return sorted(str(p.relative_to(outer)) for p in outer.rglob("*") if p.is_file())
 
-        before = listing()
+            before = listing()
 
-        # Run daily_summary_generator
-        proc = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "memory_core.tools.daily_summary_generator",
-                "--today",
-                "--project",
-                str(outer),
-                "--fallback-days",
-                "3",
-            ],
-            cwd=str(tmp_path.parent),
-            capture_output=True,
-            text=True,
-            timeout=90,
-            env=_E2E_ENV,
-        )
+            # Run daily_summary_generator
+            # Dual pin: cwd=E2E_CWD (my branch) + env=_E2E_ENV (main branch)
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "memory_core.tools.daily_summary_generator",
+                    "--today",
+                    "--project",
+                    str(outer),
+                    "--fallback-days",
+                    "3",
+                ],
+                cwd=str(E2E_CWD),
+                capture_output=True,
+                text=True,
+                timeout=90,
+                env=_E2E_ENV,
+            )
 
-        after = listing()
-        system_after = (outer / "memory" / "system").exists()
+            after = listing()
+            system_after = (outer / "memory" / "system").exists()
 
-        # Assert: outer memory/system/ must NOT be created
-        assert not system_after, (
-            f"Outer memory/system/ created: {before=}, {after=}, exit={proc.returncode}, "
-            f"stdout={proc.stdout[-500:] if proc.stdout else ''}, "
-            f"stderr={proc.stderr[-500:] if proc.stderr else ''}"
-        )
-
-        # Cleanup
-        shutil.rmtree(base, ignore_errors=True)
+            # Assert: outer memory/system/ must NOT be created
+            assert not system_after, (
+                f"Outer memory/system/ created: {before=}, {after=}, exit={proc.returncode}, "
+                f"stdout={proc.stdout[-500:] if proc.stdout else ''}, "
+                f"stderr={proc.stderr[-500:] if proc.stderr else ''}"
+            )
+        finally:
+            # Cleanup (safe: basename avoids denylist, under HOME)
+            shutil.rmtree(base, ignore_errors=True)
 
 
 class TestValDefuse002Gating:
@@ -472,7 +478,6 @@ class TestValDefuse003AtomicWrite:
 
     def test_update_path_index_atomic_write(self, tmp_path: Path) -> None:
         """rebuild_path_index writes path-index.json via temp file + os.replace."""
-        import json
         import os
         from unittest.mock import patch
 
@@ -528,8 +533,6 @@ class TestValDefuse003AtomicWrite:
 
     def test_update_path_index_incremental_write(self, tmp_path: Path) -> None:
         """Incremental path via rebuild_path_index should merge multiple project files."""
-        import json
-
         from memory_core.tools.project_lifecycle import rebuild_path_index
 
         projects_dir = tmp_path / "projects"
