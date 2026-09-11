@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.50.0](https://github.com/hdot123-org/memory/compare/v0.49.0...v0.50.0) (2026-09-11)
+
+
+### Features
+
+* memory-project.toml 硬化配置核心路由与安全面（M4-1/M4-2） ([#1227](https://github.com/hdot123-org/memory/issues/1227)) ([aa3e7dc](https://github.com/hdot123-org/memory/commit/aa3e7dc78a058cfc45ccc6d093b8ad89cdd99744))
+
+
+### Bug Fixes
+
+* CI 完成通知迁移网关直连（n8n 退役）并消灭通知失败假绿 ([#1232](https://github.com/hdot123-org/memory/issues/1232)) ([aefaa6e](https://github.com/hdot123-org/memory/commit/aefaa6efe96f647595e95f7d9ec0ea21be0260dd))
+* members-only 配置降级告警 + L4 显式拒绝零写入（m4 user-testing 轮1 修复） ([#1231](https://github.com/hdot123-org/memory/issues/1231)) ([96d0833](https://github.com/hdot123-org/memory/commit/96d08338a403127a27b5bddf189eedb6c85a93d1))
+* 修复 m4 配置层四项阻断性契约违规与两项裁决落地（scrutiny 轮1） ([#1229](https://github.com/hdot123-org/memory/issues/1229)) ([7fe204d](https://github.com/hdot123-org/memory/commit/7fe204dc775fefd313121ebeb47569f0b5eee4fe))
+
 ## [0.49.0](https://github.com/hdot123-org/memory/compare/v0.48.0...v0.49.0) (2026-09-10)
 
 
