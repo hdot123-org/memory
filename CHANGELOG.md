@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.51.0](https://github.com/hdot123-org/memory/compare/v0.50.0...v0.51.0) (2026-09-11)
+
+
+### Features
+
+* 注册 design/residue/research 文档分类 (INFRA-1021) ([#1240](https://github.com/hdot123-org/memory/issues/1240)) ([d87bd02](https://github.com/hdot123-org/memory/commit/d87bd02f5e6276bb6eaa64848a8928d90bf41b5f))
+
+
+### Bug Fixes
+
+* 修复 daily-summary 外层重建链 3 缺陷 (VAL-DEFUSE-001/002/003) ([#1249](https://github.com/hdot123-org/memory/issues/1249)) ([90f819f](https://github.com/hdot123-org/memory/commit/90f819fbf93bc8d0a25864f631fce98136910614))
+
+
+### Documentation
+
+* M5 知识沉淀（决策记录 ×5、全局契约修订节、考古与已知问题） ([#1238](https://github.com/hdot123-org/memory/issues/1238)) ([c750b56](https://github.com/hdot123-org/memory/commit/c750b56116f4bfee6f84edcf24e29c3b5da1d75f))
+* 入口文档补环境变量与嵌套仓库路由说明 ([#1244](https://github.com/hdot123-org/memory/issues/1244)) ([3e8179a](https://github.com/hdot123-org/memory/commit/3e8179a0e94f9837b87fb877e936d622cc68ebc0))
+
 ## [0.50.0](https://github.com/hdot123-org/memory/compare/v0.49.0...v0.50.0) (2026-09-11)
 
 
