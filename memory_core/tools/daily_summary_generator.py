@@ -43,6 +43,15 @@ except ImportError:
     _integrity = None  # type: ignore[assignment]
     _integrity_keys = None  # type: ignore[assignment]
 
+# G 层网关系统导入（.gateway_config._is_true_project_root）
+try:
+    from memory_core.tools._gateway_config import _is_true_project_root as _gateway_is_true_project_root
+except ImportError:
+    # Fallback to dead predicate if gateway unavailable — conservative False
+    def _gateway_is_true_project_root(project_root: Path) -> bool:
+        """Conservative False fallback when gateway unavailable."""
+        return False
+
 # ---------------------------------------------------------------------------
 # 常量 & 配置
 # ---------------------------------------------------------------------------
@@ -326,85 +335,8 @@ def _extract_text_blocks(content: Any) -> list[str]:
 # Step 4: 写入最终日志
 # ---------------------------------------------------------------------------
 
-
-def _is_true_project_root(project_root: Path) -> bool:
-    """Check if directory is a true project root.
-
-    VAL-DEFUSE-001: full-sign/overwrite gate - only true project roots can have
-    memory/system created or signed. Non-project directories (e.g., outer shells
-    in nested repo layouts) should skip signing entirely.
-
-    TRUE iff any of:
-      ① Directory itself has .git (or gitfile) → True
-      ② Consent marker present (anchored regex for ownership.toml, JSON token for manifest)
-      ③ Config exists AND memory_root resolves to THIS directory itself (not a pointer)
-      ④ Config exists without memory_root (memory-project.toml is present)
-    FALSE otherwise, INCLUDING when B-layer refinement yields a different result.
-    """
-    # ① Fast path: check for .git directly (git repo or worktree)
-    if (project_root / ".git").exists():
-        return True
-
-    # ② Fast path: check for consent marker (reuses anchored regex)
-    if _has_consent_marker(project_root):
-        return True
-
-    # ③+④ Config check: only memory-project.toml pre-confirms a directory as true root
-    #    without memory_root. If memory_root points elsewhere, it's a routing pin, NOT consent.
-    config_path = project_root / "memory-project.toml"
-    if config_path.exists():
-        # Read config to check if memory_root points elsewhere
-        try:
-            import tomllib
-        except ImportError:
-            import tomli as tomllib  # type: ignore
-
-        try:
-            content = config_path.read_bytes()
-            config = tomllib.loads(content.decode("utf-8"))
-            # If memory_root is specified and NOT pointing to THIS directory, reject
-            # memory_root is at top level, not under "project"
-            if "memory_root" in config:
-                # Resolve the memory_root relative to config location
-                config_dir = config_path.parent
-                memory_root_str = config["memory_root"]
-                # Resolve relative to config dir; if it resolves to a different path, reject
-                # （memory_root∈{"./inner","inner"} → 真根是inner≠外层）
-                resolved_memory_root = (config_dir / memory_root_str).resolve()
-                # memory_root points to THIS dir (self-reference如"./" or ".") = consent
-                equality_check = resolved_memory_root == project_root.resolve()
-                return bool(equality_check)
-            # No memory_root specified = memory-project.toml itself is consent
-            return True
-        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError, ValueError):
-            # On error, be conservative and fall through to False
-            pass
-
-    # Resolve via gateway to check if config points to a true git root elsewhere
-    try:
-        # Lazy import to avoid circular dependency
-        from memory_core.tools._gateway_config import _resolve_repo_root_with_config
-
-        resolved, _ = _resolve_repo_root_with_config(project_root)
-        # ③ Only if resolved == project_root (self-referential config or no-memory-root)
-        #    and we already checked config above.
-        # ④ B-layer refinement result must NOT be used for gating.
-        #    If resolved != project_root, it means B-layer refined to a child,
-        #    which is NOT consent for the outer directory.
-        #    Only a git root at project_root itself counts.
-        #    (resolved == project_root already handled by config check above)
-        return False
-    except Exception:
-        # On any error, be conservative - assume not a true project root
-        return False
-
-
-def _has_consent_marker(directory: Path) -> bool:
-    """Re-exported from _gateway_config for reuse in error_logger and tests."""
-    # Import lazily to avoid cycles; error_logger uses this too
-    from memory_core.tools._gateway_config import _has_consent_marker as _internal
-
-    return _internal(directory)
+# G 层网关谓词复用（单一实现于 _gateway_config）
+# _is_true_project_root from _gateway_config handles non-string memory_root gracefully
 
 
 def _try_sign_file(project_root: Path, rel_path: str) -> None:
@@ -423,7 +355,7 @@ def _try_sign_file(project_root: Path, rel_path: str) -> None:
     # managed tree — incremental signing must continue unchanged (契约：已有
     # manifest 的目录增量签名行为不变).
     has_manifest = (project_root / "memory" / "system" / "manifest.json").exists()
-    if not has_manifest and not _is_true_project_root(project_root):
+    if not has_manifest and not _gateway_is_true_project_root(project_root):
         logger.debug(
             "_try_sign_file: skip signing, not a true project root: %s (rel_path=%s)",
             project_root,

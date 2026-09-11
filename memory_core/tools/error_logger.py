@@ -146,17 +146,19 @@ def _try_sign_file(
     # （.git / memory-project.toml / consent）不受影响。
     _root = Path(project_root)
     if not (_root / "memory" / "system" / "manifest.json").exists():
-        # Use the shared predicate for consistency across all three call sites
-        # (daily_summary_generator, project_lifecycle, error_logger γ)
+        # Use the shared predicate from gateway for consistency across all three call sites
+        # (daily_summary_generator, project_lifecycle, error_logger γ).
+        # Conservative False fallback when predicate unavailable (avoid resurrecting round-1 bug).
         try:
-            from memory_core.tools.daily_summary_generator import _is_true_project_root
+            from memory_core.tools._gateway_config import _is_true_project_root
 
             if not _is_true_project_root(_root):
                 return
         except (ImportError, AttributeError):
-            # Fallback to conservative check if predicate unavailable
-            if not ((_root / ".git").exists() or (_root / "memory-project.toml").exists()):
-                return
+            # Fallback to conservative False (gate closed) if predicate unavailable
+            # This avoids resurrecting the round-1-defective predicate (.git-or-config-exists)
+            # which would re-admit the mencbo shape (outer config exists -> proceeds to sign).
+            return
     try:
         key = integrity_keys.load_key()
         if key is None:

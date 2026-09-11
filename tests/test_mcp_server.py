@@ -59,12 +59,6 @@ def _prevent_lifecycle_writes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
         MagicMock(return_value={"project_id": "test-project", "status": "active"}),
         raising=False,
     )
-    # And in memory_hook_gateway which also calls it
-    monkeypatch.setattr(
-        "memory_core.tools.memory_hook_gateway.record_project_lifecycle",
-        MagicMock(return_value={"project_id": "test-project", "status": "active"}),
-        raising=False,
-    )
 
 
 # ---------------------------------------------------------------------------

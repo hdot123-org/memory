@@ -21,21 +21,15 @@ from pathlib import Path
 from typing import Any
 
 # IMG-001: VAL-DEFUSE-002 gate helper - check if directory is a true project root
+# GATEWAY PREDICATE: unified _is_true_project_root in _gateway_config
+# The local copy is removed; import from gateway for single source.
 try:
     from memory_core.tools._gateway_config import (
-        _resolve_repo_root_with_config,
+        _is_true_project_root as _gateway_is_true_project_root,
     )
 except ImportError:
-    # Fall back to None if gateway not available
-    _resolve_repo_root_with_config = None  # type: ignore
-
-
-def _has_consent_marker(directory: Path) -> bool:
-    """Re-exported from _gateway_config for reuse in error_logger and tests."""
-    # Lazy import to avoid circular dependency
-    from memory_core.tools._gateway_config import _has_consent_marker as _internal
-
-    return _internal(directory)
+    # Fallback to None if gateway not available
+    _gateway_is_true_project_root = None  # type: ignore
 
 
 def _safe_slug(value: str) -> str:
@@ -178,62 +172,6 @@ def _apply_indexed_identity(record: dict[str, Any], path_entry: dict[str, Any] |
         record["first_observed_at"] = path_entry["first_observed_at"]
 
 
-def _is_true_project_root(cwd: Path) -> bool:
-    """VAL-DEFUSE-002 gate: Check if directory is a true project root.
-
-    Only true project roots (.git or memory-project.toml or consent) should
-    have their paths registered in the global path-index. Outer shells in
-    nested repo layouts should be excluded.
-
-    TRUE iff any of:
-      ① Directory itself has .git (or gitfile) → True
-      ② Consent marker present (anchored regex for ownership.toml, JSON token for manifest)
-      ③ Config exists AND memory_root resolves to THIS directory itself (not a pointer)
-      ④ Config exists without memory_root (memory-project.toml is present)
-    FALSE otherwise, INCLUDING when B-layer refinement yields a different result.
-
-    Returns True iff the directory is a git-governed root or has consent marker.
-    """
-    # ① Fast path: check for .git directly (git repo or worktree)
-    if (cwd / ".git").exists():
-        return True
-
-    # ② Fast path: check for consent marker (reuses anchored regex)
-    from memory_core.tools._gateway_config import _has_consent_marker
-
-    if _has_consent_marker(cwd):
-        return True
-
-    # ③+④ Config check: only memory-project.toml pre-confirms a directory as true root
-    #    without memory_root. If memory_root points elsewhere, it's a routing pin, NOT consent.
-    config_path = cwd / "memory-project.toml"
-    if config_path.exists():
-        try:
-            with config_path.open("rb") as f:
-                import tomllib
-
-                config = tomllib.load(f)
-            # If memory_root is specified and NOT pointing to THIS directory, reject
-            # memory_root is at top level, not under "project"
-            if "memory_root" in config:
-                config_dir = config_path.parent
-                memory_root_str = config["memory_root"]
-                resolved_memory_root = (config_dir / memory_root_str).resolve()
-                # memory_root points to THIS dir (self-reference如"./" or ".") = consent
-                equality_check = resolved_memory_root == cwd.resolve()
-                return bool(equality_check)
-            # No memory_root specified = memory-project.toml itself is consent
-            return True
-        except (OSError, tomllib.TOMLDecodeError, ValueError):
-            # On error, be conservative and fall through to False
-            pass
-
-    # ④ Never use B-layer refinement result for gating.
-    #   If gateway refines cwd to a different root, that doesn't make cwd a true root.
-    #   Only cwd itself matters, and it's already covered by ①②③.
-    return False
-
-
 def _update_path_index(path_index: dict[str, Any], record: dict[str, Any]) -> None:
     """Update path-index with gate for true project roots.
 
@@ -245,7 +183,8 @@ def _update_path_index(path_index: dict[str, Any], record: dict[str, Any]) -> No
         return
 
     local_path = Path(local_path_str).expanduser().resolve()
-    if not _is_true_project_root(local_path):
+    # Use unified predicate from gateway (imports _gateway_is_true_project_root)
+    if _gateway_is_true_project_root is None or not _gateway_is_true_project_root(local_path):
         return
 
     paths = path_index.setdefault("paths", {})

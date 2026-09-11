@@ -141,6 +141,69 @@ def _has_consent_marker(directory: Path) -> bool:
     return False
 
 
+def _is_true_project_root(project_root: Path) -> bool:
+    """VAL-DEFUSE-001/002 gate: Check if directory is a true project root.
+
+    TRUE iff any of:
+      ① Directory itself has .git (or gitfile) → True
+      ② Consent marker present (anchored regex for ownership.toml, JSON token for manifest)
+      ③ Config exists AND memory_root resolves to THIS directory itself (not a pointer)
+      ④ Config exists without memory_root (memory-project.toml is present)
+    FALSE otherwise, INCLUDING when B-layer refinement yields a different result.
+
+    Non-string memory_root (e.g. =123) is caught and returns False, never raises TypeError.
+
+    Returns:
+        True iff directory is a true project root (git-governed or consented).
+    """
+    # Scrutiny: non-string project_root catches TypeError escape, fallback False
+    if not isinstance(project_root, Path):
+        return False
+
+    # ① Fast path: check for .git directly (git repo or worktree)
+    if (project_root / ".git").exists():
+        return True
+
+    # ② Fast path: check for consent marker (reuses anchored regex)
+    if _has_consent_marker(project_root):
+        return True
+
+    # ③+④ Config check: only memory-project.toml pre-confirms a directory as true root
+    #    without memory_root. If memory_root points elsewhere, it's a routing pin, NOT consent.
+    config_path = project_root / "memory-project.toml"
+    if config_path.exists():
+        try:
+            content = config_path.read_bytes()
+            config = tomllib.loads(content.decode("utf-8"))
+            # If memory_root is specified and NOT pointing to THIS directory, reject
+            if "memory_root" in config:
+                # Resolve relative to config location
+                config_dir = config_path.parent
+                memory_root_str = config["memory_root"]
+                # Early type check: memory_root must be string
+                if not isinstance(memory_root_str, str):
+                    # Non-string memory_root → conservative False (not TypeError escape)
+                    return False
+                # Resolve relative to config dir; if it resolves to a different path, reject
+                try:
+                    resolved_memory_root = (config_dir / memory_root_str).resolve()
+                except (OSError, ValueError):
+                    # Path resolution fails → conservative False
+                    return False
+                # memory_root points to THIS dir (self-reference如"./" or ".") = consent
+                equality_check = resolved_memory_root == project_root.resolve()
+                return bool(equality_check)
+            # No memory_root specified = memory-project.toml itself is consent
+            return True
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError, ValueError):
+            # On error, be conservative and fall through to False
+            pass
+
+    # Never use B-layer refinement result for gating.
+    # If gateway refines cwd to a different root, that doesn't make cwd a true root.
+    return False
+
+
 def _refine_non_git_seed(seed: Path) -> Path:
     """Refine non-git seed to unique valid child repository if applicable.
 
