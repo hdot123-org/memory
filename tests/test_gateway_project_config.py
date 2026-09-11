@@ -260,6 +260,46 @@ class TestGitConflictEscalation:
         assert str(diff_dir.resolve()) in conflict_logs[0].getMessage()  # 配置声明根
         assert str(git_root / CONFIG_NAME) in conflict_logs[0].getMessage()  # 配置路径
 
+    def test_git_hit_with_list_memory_root_conflict_emits_error(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """VAL-CFG-005: list形 memory_root 取首元素跑冲突行（origin/main 基线）."""
+        git_root = tmp_path / "git_repo_list"
+        git_root.mkdir()
+        (git_root / ".git").mkdir()
+        _write_config(
+            git_root / CONFIG_NAME,
+            'project = "test"\nmemory_root = ["./different"]\n',
+        )
+        diff_dir = git_root / "different"
+        diff_dir.mkdir()
+
+        with caplog.at_level(logging.ERROR, logger=_MODULE_LOGGER):
+            repo_root, _ = _resolve_repo_root_with_config(git_root)
+
+        # 路由不变：git 优先
+        assert repo_root == git_root.resolve()
+        # 冲突行取 list 首元素（回归修复：曾整体跳过 list 形）
+        conflict_logs = [r for r in caplog.records if "config and git root conflict" in r.message]
+        assert len(conflict_logs) >= 1
+        assert str(diff_dir.resolve()) in conflict_logs[0].getMessage()
+        assert str(git_root / CONFIG_NAME) in conflict_logs[0].getMessage()
+
+    def test_git_hit_with_list_memory_root_matching_no_conflict(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        """VAL-CFG-005: list形首元素即 git 根（"./"）→ 无冲突行."""
+        git_root = tmp_path / "git_repo_list_ok"
+        git_root.mkdir()
+        (git_root / ".git").mkdir()
+        _write_config(
+            git_root / CONFIG_NAME,
+            'project = "test"\nmemory_root = ["./"]\n',
+        )
+
+        with caplog.at_level(logging.ERROR, logger=_MODULE_LOGGER):
+            repo_root, _ = _resolve_repo_root_with_config(git_root)
+
+        assert repo_root == git_root.resolve()
+        conflict_logs = [r for r in caplog.records if "config and git root conflict" in r.message]
+        assert len(conflict_logs) == 0
+
 
 # ---------------------------------------------------------------------------
 # VAL-CFG-007: members越界拒绝
