@@ -71,6 +71,7 @@ if __package__:
         _adapter_config,
         _adapter_profile,
         _apply_hook_runtime_write_targets,
+        _check_l4_rejection,
         _collect_changed_paths,
         _configured_artifact_root,
         _configured_error_log,
@@ -213,6 +214,7 @@ else:
         _adapter_config,
         _adapter_profile,
         _apply_hook_runtime_write_targets,
+        _check_l4_rejection,
         _collect_changed_paths,
         _configured_artifact_root,
         _configured_error_log,
@@ -389,6 +391,7 @@ __all__ = [
     "get_source_repo_mode",
     "is_memory_core_source_repo",
     "is_denied_project_root",
+    "_check_l4_rejection",
     "record_project_lifecycle",
     # _gateway_config 完整性
     "_integrity_sign",
