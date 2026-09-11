@@ -542,6 +542,10 @@ class TestMainExecutionChain:
 
         Executes lines 2026-2031: exit code 1 path
         """
+        # Make tmp_path a valid project by adding .git directory
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+
         monkeypatch.setattr(
             sys, "argv", ["memory-hook-gateway", "--host", "factory", "--event", "session-start", "--no-delegate"]
         )
@@ -1794,7 +1798,11 @@ class TestMainExtended:
         assert exit_code == 0
 
     def test_main_write_failure_logs_error(self, gw, monkeypatch, tmp_path, capsys):
-        """main() logs error when artifact write fails."""
+        """main() logs error when artifact write fails on valid project."""
+        # Make tmp_path a valid project by adding .git directory
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+
         monkeypatch.setattr(
             sys, "argv", ["memory-hook-gateway", "--host", "factory", "--event", "session-start", "--no-delegate"]
         )
