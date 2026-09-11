@@ -117,6 +117,8 @@ try:
 except ImportError:
     from _file_utils import now_iso  # type: ignore
 
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # IF-1: HostDelegate Implementations
