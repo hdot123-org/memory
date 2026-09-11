@@ -20,6 +20,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+# IMG-001: VAL-DEFUSE-002 gate helper - check if directory is a true project root
+try:
+    from memory_core.tools._gateway_config import _resolve_repo_root_with_config
+except ImportError:
+    _resolve_repo_root_with_config = None  # type: ignore
+
 
 def _safe_slug(value: str) -> str:
     slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip()).strip("-._")
@@ -122,8 +128,28 @@ def _load_path_index(lifecycle_root: Path) -> dict[str, Any]:
 
 
 def _write_path_index(lifecycle_root: Path, path_index: dict[str, Any]) -> None:
+    """Write path-index.json atomically (temp file + rename) to prevent lost updates.
+
+    VAL-DEFUSE-002: read-modify-write without lock caused lost updates. Atomic
+    write via temp file + os.replace() prevents partial writes and concurrent
+    corruption.
+    """
     path = _path_index_path(lifecycle_root)
-    path.write_text(json.dumps(path_index, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    index_dir = path.parent
+    index_dir.mkdir(parents=True, exist_ok=True)
+
+    # Atomic write: temp file in same directory, then rename
+    fd, temp_path = tempfile.mkstemp(dir=index_dir, prefix=".path-index-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(path_index, f, ensure_ascii=False, indent=2, sort_keys=True)
+            f.write("\n")
+        Path(temp_path).replace(path)
+    except Exception:
+        # Clean up temp file on failure
+        with contextlib.suppress(OSError):
+            Path(temp_path).unlink()
+        raise
 
 
 def _path_index_key(cwd: Path) -> str:
@@ -141,19 +167,94 @@ def _apply_indexed_identity(record: dict[str, Any], path_entry: dict[str, Any] |
         record["first_observed_at"] = path_entry["first_observed_at"]
 
 
+def _is_true_project_root(cwd: Path) -> bool:
+    """VAL-DEFUSE-002 gate: Check if directory is a true project root.
+
+    Only true project roots (.git or memory-project.toml or consent) should
+    have their paths registered in the global path-index. Outer shells in
+    nested repo layouts should be excluded.
+
+    Uses gateway's _resolve_repo_root_with_config which respects:
+    - memory-project.toml config (Phase 2)
+    - git root discovery
+    - B-layer heuristic (downward probe)
+
+    Returns True iff the directory is a git-governed root or has consent marker.
+    """
+    # Fast path: check for .git directly (git repo or worktree)
+    if (cwd / ".git").exists():
+        return True
+
+    # Fast path: check for consent marker (allow_non_git=true in memory/system)
+    consent_toml = cwd / "memory" / "system" / "ownership.toml"
+    consent_manifest = cwd / "memory" / "system" / "manifest.json"
+    if consent_toml.exists():
+        try:
+            content = consent_toml.read_text(encoding="utf-8")
+            if "allow_non_git = true" in content:
+                return True
+        except (OSError, UnicodeDecodeError):
+            pass
+    if consent_manifest.exists():
+        try:
+            import json as _json
+
+            content = consent_manifest.read_text(encoding="utf-8")
+            manifest = _json.loads(content)
+            if manifest.get("allow_non_git") is True:
+                return True
+        except (OSError, UnicodeDecodeError, _json.JSONDecodeError, ValueError):
+            pass
+
+    if _resolve_repo_root_with_config is None:
+        # No gateway available - fallback to fast path results only
+        return False
+
+    try:
+        resolved, _ = _resolve_repo_root_with_config(cwd)
+        # VAL-DEFUSE-002:
+        # - resolved == cwd means "no refinement possible" (no git found, no children found)
+        #   In this case, cwd is NOT a true project root unless it has .git/consent (already checked)
+        # - resolved != cwd but resolved has .git = git root found via downward probe = TRUE
+        # - resolved is a config-declared memory_root with valid config = TRUE
+        if resolved != cwd:
+            # Gateway found a different root (via config or downward probe)
+            # Check if it's a git root
+            return (resolved / ".git").exists()
+        # resolved == cwd: no refinement or config without memory_root.
+        # True only if config exists (.git/consent already checked in fast path);
+        # no git, no consent, no config = not a true project root
+        return (cwd / "memory-project.toml").exists()
+    except Exception:
+        # On any error, be conservative - assume not a true project root
+        return False
+
+
 def _update_path_index(path_index: dict[str, Any], record: dict[str, Any]) -> None:
+    """Update path-index with gate for true project roots.
+
+    VAL-DEFUSE-002: 加门控(git根/config声明/consent之一才登记) + 原子写(tmp+rename防丢更新)。
+    """
+    # VAL-DEFUSE-002 gate: only register true project roots
+    local_path_str = record.get("local_path")
+    if not isinstance(local_path_str, str) or not local_path_str:
+        return
+
+    local_path = Path(local_path_str).expanduser().resolve()
+    if not _is_true_project_root(local_path):
+        return
+
     paths = path_index.setdefault("paths", {})
     if not isinstance(paths, dict):
         paths = {}
         path_index["paths"] = paths
-    local_path = record.get("local_path")
-    if not isinstance(local_path, str) or not local_path:
-        return
-    previous = paths.get(local_path)
+
+    previous = paths.get(local_path_str)
     first_observed_at = record.get("first_observed_at")
     if isinstance(previous, dict):
         first_observed_at = previous.get("first_observed_at") or first_observed_at
-    paths[local_path] = {
+
+    paths[local_path_str] = {
         "project_id": record.get("project_id"),
         "project_name": record.get("project_name"),
         "git_root": record.get("git_root"),

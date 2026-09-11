@@ -327,14 +327,85 @@ def _extract_text_blocks(content: Any) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def _is_true_project_root(project_root: Path) -> bool:
+    """Check if directory is a true project root (.git or memory-project.toml or consent).
+
+    VAL-DEFUSE-001: full-sign/overwrite gate - only true project roots can have
+    memory/system created or signed. Non-project directories (e.g., outer shells
+    in nested repo layouts) should skip signing entirely.
+    """
+    # Fast path: check for .git directly (git repo or worktree)
+    if (project_root / ".git").exists():
+        return True
+
+    # Fast path: check for consent marker
+    consent_toml = project_root / "memory" / "system" / "ownership.toml"
+    consent_manifest = project_root / "memory" / "system" / "manifest.json"
+    if consent_toml.exists():
+        try:
+            content = consent_toml.read_text(encoding="utf-8")
+            if "allow_non_git = true" in content:
+                return True
+        except (OSError, UnicodeDecodeError):
+            pass
+    if consent_manifest.exists():
+        try:
+            import json as _json
+
+            content = consent_manifest.read_text(encoding="utf-8")
+            manifest = _json.loads(content)
+            if manifest.get("allow_non_git") is True:
+                return True
+        except (OSError, UnicodeDecodeError, _json.JSONDecodeError, ValueError):
+            pass
+
+    # Use gateway's root resolution for config-driven detection
+    from memory_core.tools._gateway_config import _resolve_repo_root_with_config
+
+    try:
+        resolved, _ = _resolve_repo_root_with_config(project_root)
+        # VAL-DEFUSE-001:
+        # - If resolved == project_root, check if project_root has .git or config
+        #   (git or config or consent = true project root)
+        # - If resolved != project_root, check if resolved has .git
+        if resolved == project_root:
+            # Gateway returned the same path - this means either:
+            # 1. project_root has .git (fast path already caught this)
+            # 2. project_root has memory-project.toml but no memory_root specified
+            # 3. B-layer refinement found no children ( Falls back to seed)
+            # For case 2 (config exists) = true root; case 3 = NOT a true project root
+            return (project_root / "memory-project.toml").exists()
+        # Gateway refined to a different root - check if that root is a git root
+        return (resolved / ".git").exists()
+    except Exception:
+        # On any error, be conservative - assume not a true project root
+        return False
+
+
 def _try_sign_file(project_root: Path, rel_path: str) -> None:
     """F5: 尝试对指定文件进行增量签名，失败不阻塞主流程。
+
+    VAL-DEFUSE-001: full-sign回退无真项目门控 - 只有真项目根(.git或memory-project.toml或
+    consent标记)才可建/签。非项目目录(嵌套repo的外层壳)跳过签名并debug日志。
 
     委托 error_logger 的参数化共享实现（INFRA-909 去重）：
     传入本模块级 _integrity/_integrity_keys（调用时读取，monkeypatch
     本模块属性仍然生效）、本模块 logger 名与消息前缀，保持既有
     日志与 stderr 兜底行为不变。
     """
+    # VAL-DEFUSE-001 gate: only the manifest-ABSENT case is gated (full-sign
+    # creation). A directory that already has memory/system/manifest.json is a
+    # managed tree — incremental signing must continue unchanged (契约：已有
+    # manifest 的目录增量签名行为不变).
+    has_manifest = (project_root / "memory" / "system" / "manifest.json").exists()
+    if not has_manifest and not _is_true_project_root(project_root):
+        logger.debug(
+            "_try_sign_file: skip signing, not a true project root: %s (rel_path=%s)",
+            project_root,
+            rel_path,
+        )
+        return
+
     from memory_core.tools.error_logger import _try_sign_file as _shared_try_sign_file
 
     _shared_try_sign_file(
