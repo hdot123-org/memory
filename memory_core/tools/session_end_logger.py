@@ -164,8 +164,7 @@ def _resolve_project_root(payload_cwd: Path, stdin_payload: dict[str, Any]) -> P
             return resolved
         except Exception:
             logger.debug(
-                "gateway root resolution failed for payload_cwd=%s, "
-                "falling back to payload_cwd",
+                "gateway root resolution failed for payload_cwd=%s, falling back to payload_cwd",
                 payload_cwd,
                 exc_info=True,
             )  # Fallback to original behavior on error
