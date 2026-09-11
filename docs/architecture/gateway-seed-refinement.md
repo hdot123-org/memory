@@ -127,6 +127,17 @@ REPO_ROOT, WORKSPACE_ROOT = discover_roots(_cwd_seed_refined)
 3. **点目录过滤**：与 shell glob 行为对齐，跳过以 `.` 开头的目录
 4. **歧义不选择**：多个候选时返回原始种子，避免静默错误
 
+## 影响面声明
+
+B 层种子精炼影响所有 import `_gateway_config` 的 CLI 工具在非 git 目录启动时的解析行为，这与 VAL-GTW-015 验证断言一致。特别是以下组件受到影响：
+
+1. **`mcp_server`**：MCP 服务在非 git 目录启动时将应用种子精炼逻辑
+2. **`memory_health_report`**：健康报告生成工具将使用精炼后的项目根
+3. **所有 `memory_core.tools.*` 模块**：任何在 import 时读取 `REPO_ROOT` 的模块
+4. **`memory-hook-gateway`**：主 gateway 服务将应用 B 层精炼逻辑
+
+这种影响意味着所有依赖 gateway 配置的组件都具备了在非 git 目录正确识别唯一有效子仓库的能力，形成了防御纵深。
+
 ## 未来扩展
 
 B 层种子精炼为 Phase 2 硬化配置（`memory-project.toml`）奠定基础。未来的四级优先级路由将在精炼层之上实现：
