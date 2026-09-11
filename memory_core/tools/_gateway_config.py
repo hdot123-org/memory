@@ -186,8 +186,47 @@ def _refine_non_git_seed(seed: Path) -> Path:
 # ============================================================================
 
 _PROJECT_CONFIG_NAME = "memory-project.toml"
-_HOME_ENV = os.environ.get("HOME", "")
-_SYSTEM_PATHS = frozenset({"/", "/usr", "/System", "/Library", str(Path("~/").expanduser())})
+
+
+def _get_home_realpath():
+    """Get the real path of HOME, resolving symlinks if any.
+
+    Scrutiny ②: For symlinked HOME paths, we need to normalize the real path
+    so comparisons work correctly with the deny list.
+    """
+    home_env = os.environ.get("HOME", "")
+    if not home_env:
+        return Path()
+    try:
+        return Path(home_env).resolve()
+    except (OSError, ValueError):
+        return Path(home_env)  # Fallback to non-resolved if resolve fails
+
+
+# VAL-CFG-009 deny list. Scrutiny ①: expanded with the classic system roots
+# (/tmp, /var, /etc, /bin, /sbin, /opt, /Applications and the /private
+# realpath twins) so a memory_root cannot anchor into OS-managed trees.
+# Note: HOME is intentionally NOT in the deny list - user's home should be allowed.
+# Removed "/" since it causes all paths to have "/" as a prefix, which would incorrectly
+# deny all paths in the containment check.
+_SYSTEM_PATHS = frozenset(
+    p
+    for p in (
+        "/usr",
+        "/System",
+        "/Library",
+        "/Applications",
+        "/bin",
+        "/sbin",
+        "/etc",
+        "/opt",
+        "/tmp",
+        "/private/tmp",
+        "/var",
+        "/private/var",
+    )
+    if p
+)
 
 
 def _find_project_config_path(seed: Path) -> Path | None:
@@ -301,16 +340,25 @@ def _resolve_memory_root(  # noqa: C901
     """
     config_parent = config_path.parent
 
-    # Handle members list or string
+    # Scrutiny ③: Handle type validation before conversion
     if isinstance(mem_root, list):
         # Extract first element if it's a members list, otherwise skip
         if mem_root:
-            mem_root = mem_root[0] if isinstance(mem_root[0], str) else str(mem_root[0])
+            if not isinstance(mem_root[0], str):
+                # Scrutiny ③: Reject non-string first element in list with explicit error
+                _logger.warning(
+                    "_resolve_memory_root: memory_root list first element has invalid type %s",
+                    type(mem_root[0]).__name__,
+                )
+                return None
+            mem_root = mem_root[0]
         else:
             return None
 
+    # Scrutiny ③: Explicit type error for non-string, non-list types
     if not isinstance(mem_root, str):
-        mem_root = str(mem_root)
+        _logger.warning("_resolve_memory_root: memory_root has invalid type %s", type(mem_root).__name__)
+        return None
 
     # Val-CFG-015: self-reference "./" or "." is valid
     if mem_root in {"./", "."}:
@@ -344,18 +392,31 @@ def _resolve_memory_root(  # noqa: C901
     resolved_str = str(resolved_real)
 
     # Check system paths: exact match or proper subdirectory (with separator)
+    current_home_realpath = _get_home_realpath()
     for sys_path in _SYSTEM_PATHS:
         try:
             sys_resolve = Path(sys_path).resolve()
             sys_resolve_str = str(sys_resolve)
-            # Special handling for HOME: only exact match (not subdirectory)
-            # This prevents denying all paths under home, which would block memory projects
-            if sys_resolve_str == _HOME_ENV:
+            # Special handling for HOME: check if this system path is the resolved HOME
+            # current_home_realpath is the resolved real path of the current HOME environment variable
+            if current_home_realpath and sys_resolve == current_home_realpath:
+                # This sys_path is HOME - exact match should be denied, subdirectories should be allowed
                 if resolved_real == sys_resolve:
+                    # Exact match of HOME path - deny it
                     _logger.warning("_resolve_memory_root: %s is HOME itself, denied", resolved_real)
                     return None
+                else:
+                    # Check if this path is under the HOME directory (should be allowed)
+                    # If resolved_real is a subdirectory of current_home_realpath, don't deny it
+                    try:
+                        resolved_real.relative_to(current_home_realpath)
+                        # This path is under HOME tree, it's allowed - skip this check
+                        continue
+                    except ValueError:
+                        # This path is not under HOME tree, continue to regular check
+                        pass
             else:
-                # Other system paths: deny exact match or subdirectory
+                # Regular system paths: deny exact match or subdirectory
                 if resolved_real == sys_resolve or resolved_str.startswith(sys_resolve_str + "/"):
                     _logger.warning("_resolve_memory_root: %s is in deny list", resolved_real)
                     return None
@@ -476,21 +537,21 @@ def _check_members_overlap(configs: list[tuple[Path, dict[str, Any]]]) -> list[s
             path2 = Path(path_str2)
 
             # Check if one is ancestor of the other (嵌套包含)
-            # path2 under path1 - path1 is ancestor of path2
+            # path2 under path1 - path1 is ancestor of path2, path2 is descendant OF path1
             try:
                 path2.relative_to(path1)
                 overlaps.append(
-                    f"{path_str2} (ancestor:{path_str1}, declared in: {', '.join(str(p) for p in config_paths2)})"
+                    f"{path_str2} (descendant of {path_str1}, declared in: {', '.join(str(p) for p in config_paths2)})"
                 )
                 continue
             except ValueError:
                 pass
 
-            # path1 under path2 - path2 is ancestor of path1
+            # path1 under path2 - path2 is ancestor of path1, path1 is descendant OF path2
             try:
                 path1.relative_to(path2)
                 overlaps.append(
-                    f"{path_str1} (ancestor:{path_str2}, declared in: {', '.join(str(p) for p in config_paths1)})"
+                    f"{path_str1} (descendant of {path_str2}, declared in: {', '.join(str(p) for p in config_paths1)})"
                 )
                 continue
             except ValueError:
@@ -538,6 +599,7 @@ def _validate_memory_root_value(mem_root: Any, config_path: Path) -> tuple[bool,
 
     VAL-CFG-018: memory_root empty string → invalid value explicit error.
     VAL-CFG-017: memory_root missing → not used for routing (handled by caller).
+    Scrutiny ③: non-string types must trigger explicit error, not silent str().
 
     Args:
         mem_root: memory_root value from config (Any - str, list, or None)
@@ -546,16 +608,29 @@ def _validate_memory_root_value(mem_root: Any, config_path: Path) -> tuple[bool,
     Returns:
         (is_valid, error_message) tuple
     """
-    # Handle empty string
+    # Scrutiny ③: Type validation - reject non-string, non-list types explicitly
+    if not isinstance(mem_root, (str, list)):
+        return False, f"memory_root has invalid type {type(mem_root).__name__} in {config_path}"
+
+    # Handle empty list
+    if isinstance(mem_root, list) and not mem_root:
+        return False, f"memory_root is empty list in {config_path}"
+
+    # Handle empty string or string list with empty first element
     mem_root_str = ""
     if isinstance(mem_root, list):
         if mem_root:
-            mem_root_str = mem_root[0] if isinstance(mem_root[0], str) else str(mem_root[0])
+            if isinstance(mem_root[0], str):
+                mem_root_str = mem_root[0]
+            else:
+                # Non-string first element in list - not handled by this function
+                return (
+                    False,
+                    f"memory_root list first element has invalid type {type(mem_root[0]).__name__} in {config_path}",
+                )
     else:
-        mem_root_str = str(mem_root) if mem_root else ""
+        mem_root_str = mem_root
 
-    if isinstance(mem_root, list) and not mem_root:
-        return False, f"memory_root is empty list in {config_path}"
     if mem_root_str == "":
         return False, f"memory_root is empty string in {config_path}"
 
@@ -654,7 +729,14 @@ def _check_members_boundaries(members: list[Any], config_path: Path) -> list[str
     out_of_bounds_entries = []
 
     for member in members:
-        member_str = str(member) if not isinstance(member, str) else member
+        # Scrutiny ③: Reject non-string members explicitly instead of converting with str()
+        if not isinstance(member, str):
+            out_of_bounds_entries.append(
+                f"non-string member '{member}' (type {type(member).__name__}) in {config_path}"
+            )
+            continue  # Skip processing this member
+
+        member_str = member
 
         try:
             # Check for empty string
@@ -685,15 +767,14 @@ def _check_members_boundaries(members: list[Any], config_path: Path) -> list[str
                 resolved_real = resolved
 
             resolved_real_str = str(resolved_real)
-            home_env = os.environ.get("HOME", "")
 
-            # Check deny paths
-            deny_list = ["/", "/usr", "/System", "/Library", home_env, str(Path("~/").expanduser())]
-            for sys_path in deny_list:
+            # Check deny paths - use _SYSTEM_PATHS and proper HOME check
+            current_home_realpath = _get_home_realpath()
+            for sys_path in _SYSTEM_PATHS:
                 try:
                     sys_resolve = Path(sys_path).resolve()
                     sys_resolve_str = str(sys_resolve)
-                    if sys_resolve_str == home_env:
+                    if current_home_realpath and sys_resolve == current_home_realpath:
                         # HOME: exact match only
                         if resolved_real == sys_resolve:
                             out_of_bounds_entries.append(
@@ -749,6 +830,16 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
     Returns:
         (REPO_ROOT, WORKSPACE_ROOT) tuple
     """
+    # Parse-once cache to ensure each config file is parsed exactly once
+    _parse_cache: dict[Path, dict[str, Any] | None] = {}
+
+    def _cached_parse_config(config_path: Path) -> dict[str, Any] | None:
+        """Cached version of _parse_project_config to avoid re-parsing."""
+        resolved_path = config_path.resolve()
+        if resolved_path not in _parse_cache:
+            _parse_cache[resolved_path] = _parse_project_config(config_path)
+        return _parse_cache[resolved_path]
+
     # Level 1: Check if seed is already git-governed (wrapper did git normalization)
     config_at_git_seed = None
     if (seed / ".git").exists():
@@ -756,44 +847,54 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
         # VAL-CFG-005: If config exists with memory_root ≠ git root, emit conflict
         config_at_git_seed = _find_project_config_path(seed)
         if config_at_git_seed is not None:
-            try:
-                config = _parse_project_config(config_at_git_seed)
-                if config is not None and config.get("memory_root") is not None:
-                    mem_root = config.get("memory_root")
-                    # Check for empty values first (non-blocking) before any processing
-                    is_valid, error_msg = _validate_memory_root_value(mem_root, config_at_git_seed)
-                    if not is_valid:
-                        _logger.error(error_msg)
-                        # Non-blocking: don't raise, just fall through to degraded routing
-                        # The config level is rejected, fall through to B-layer refinement
-                        # Continue to fall through to B-layer
-                    elif isinstance(mem_root, list):
-                        if mem_root:
-                            mem_root = mem_root[0] if isinstance(mem_root[0], str) else str(mem_root[0])
-                        else:
-                            # Empty list already handled by _validate_memory_root_value above
-                            # which returns error_msg
-                            pass  # Continue to B-layer
-                    if isinstance(mem_root, str) and mem_root not in {"./", "."}:
-                        resolved_mem = (config_at_git_seed.parent / mem_root).resolve()
-                        git_root = seed.resolve()
-                        if resolved_mem != git_root:
-                            # Emit conflict line: git root, config declared root, config path
-                            _logger.error(
-                                "_resolve_repo_root_with_config: config and git root conflict "
-                                "(VAL-CFG-005): git_root=%s, config_memory_root=%s, config_path=%s",
-                                git_root,
-                                resolved_mem,
-                                config_at_git_seed,
-                            )
-            except Exception:
-                pass  # Don't crash on config parsing errors
+            # Scrutiny ⑪: Check world-writable (VAL-CFG-010) before conflict check
+            world_writable = _check_world_writable(config_at_git_seed)
+            if world_writable:
+                # For world-writable configs, log the warning but skip conflict check
+                _logger.warning(
+                    "_resolve_repo_root_with_config: config %s is world-writable, ignoring", config_at_git_seed
+                )
+            else:
+                try:
+                    config = _cached_parse_config(config_at_git_seed)
+                    if config is not None and config.get("memory_root") is not None:
+                        mem_root = config.get("memory_root")
+                        # Check for empty values first (non-blocking) before any processing
+                        is_valid, error_msg = _validate_memory_root_value(mem_root, config_at_git_seed)
+                        if not is_valid:
+                            _logger.error(error_msg)
+                            # Non-blocking: don't raise, just fall through to degraded routing
+                            # The config level is rejected, fall through to B-layer refinement
+                            # Continue to fall through to B-layer
+                        elif isinstance(mem_root, list):
+                            if mem_root:
+                                mem_root = mem_root[0] if isinstance(mem_root[0], str) else str(mem_root[0])
+                            else:
+                                # Empty list already handled by _validate_memory_root_value above
+                                # which returns error_msg
+                                pass  # Continue to B-layer
+                        if isinstance(mem_root, str) and mem_root not in {"./", "."}:
+                            resolved_mem = (config_at_git_seed.parent / mem_root).resolve()
+                            git_root = seed.resolve()
+                            if resolved_mem != git_root:
+                                # Emit conflict line: git root, config declared root, config path
+                                _logger.error(
+                                    "_resolve_repo_root_with_config: config and git root conflict "
+                                    "(VAL-CFG-005): git_root=%s, config_memory_root=%s, config_path=%s",
+                                    git_root,
+                                    resolved_mem,
+                                    config_at_git_seed,
+                                )
+                except Exception:
+                    pass  # Don't crash on config parsing errors
         return (seed, seed)
 
     # Level 2: Project config (memory-project.toml)
     # Search in seed directory and ancestors
+    memory_root_was_processed = False
     config_path = _find_project_config_path(seed)
     if config_path is not None:
+        # Track if memory_root was processed but rejected (for fall-through hygiene)
         # VAL-CFG-006: members declared by multiple configs in the tree that
         # resolve to the same absolute path → reject the config level entirely
         # and surface the conflict list
@@ -808,7 +909,7 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
                     continue
             except OSError:
                 pass  # If we can't stat, include it
-            parsed_cfg = _parse_project_config(cfg_path)
+            parsed_cfg = _cached_parse_config(cfg_path)
             if parsed_cfg is not None:
                 parsed_configs.append((cfg_path, parsed_cfg))
         member_overlaps = _check_members_overlap(parsed_configs)
@@ -820,6 +921,9 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
             )
             config_path = None
     if config_path is not None:
+        # Track if memory_root was processed but rejected (for fall-through hygiene)
+        memory_root_was_processed = False
+
         # Check world-writable (VAL-CFG-010)
         world_writable = _check_world_writable(config_path)
         if world_writable:
@@ -828,11 +932,14 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
             config_path = None  # Explicitly set to None so fall through happens
         else:
             # Parse config
-            config = _parse_project_config(config_path)
+            config = _cached_parse_config(config_path)
             if config is not None:
                 # Try to resolve memory_root
                 mem_root = config.get("memory_root")
                 if mem_root is not None:
+                    # Track that we tried to process memory_root (regardless of success/failure)
+                    memory_root_was_processed = True
+
                     # VAL-CFG-018: Check memory_root empty string/list - non-blocking error
                     is_valid, error_msg = _validate_memory_root_value(mem_root, config_path)
                     if not is_valid:
@@ -862,6 +969,10 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
                             else:
                                 # No members, return resolved memory_root
                                 return (resolved_root, resolved_root)
+                        else:
+                            # resolved_root is None - this means memory_root was rejected (e.g. containment)
+                            # Set config_path to None to fall through, but remember that memory_root was processed
+                            config_path = None
                 # If memory_root not specified or rejected, check if config has members-only
                 elif "members" in config:
                     # VAL-CFG-017: members-only is incomplete config (missing memory_root).
@@ -895,12 +1006,23 @@ def _resolve_repo_root_with_config(seed: Path) -> tuple[Path, Path]:  # noqa: C9
     # VAL-CFG-017: memory_root缺失 → 不完整配置：告警 + 降级探测
     # Fall-through warning only when resolution succeeded (config exists) but truly no memory_root and no members
     # Do NOT emit if config was rejected (world-writable, out-of-bounds, empty value, etc.)
-    if config_path is not None:
-        _logger.warning(
-            "_resolve_repo_root_with_config: config %s has no memory_root and no members, falling back to next level",
-            config_path,
-        )
+    # Scrutiny ⑥: Only emit this warning if we found a config but it legitimately lacks both memory_root and members
+    # If memory_root was rejected due to containment or other validation failures,
+    # this warning should NOT appear (fall-through hygiene)
+    # Also track if we had a config that was rejected after attempting to process memory_root
+    if config_path is not None and not memory_root_was_processed:
+        # Parse config again to check original state
+        original_config = _cached_parse_config(config_path)
+        if original_config is not None:
+            # Only emit warning if the config truly lacked both memory_root and members from the start
+            has_original_memory_root = "memory_root" in original_config
+            has_original_members = "members" in original_config
 
+            if not has_original_memory_root and not has_original_members:
+                _logger.warning(
+                    "_resolve_repo_root_with_config: config %s has no memory_root and no members, falling back to next level",
+                    config_path,
+                )
     # Level 3: B-layer seed refinement (pure filesystem)
     seed_refined = _refine_non_git_seed(seed)
     if (seed_refined / ".git").exists():
