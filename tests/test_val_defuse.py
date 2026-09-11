@@ -7,6 +7,7 @@ These tests verify the fixes for:
 """
 
 # Reused imports for E2E tests
+import os
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,14 @@ from typing import Any
 from memory_core.tools._gateway_config import _is_true_project_root
 from memory_core.tools._gateway_config import _is_true_project_root as _is_true_project_root_lifecycle
 from memory_core.tools.session_end_logger import _resolve_project_root
+
+# Resolve the memory_core source root so E2E subprocesses load the current source
+# tree (the installed site-packages copy may be stale — e.g. v0.47.1 from a
+# different runner while this repo is v0.51.0+). Without this, the E2E subprocess
+# exercises the old predicate and reports a regression that doesn't actually exist.
+_PACKAGE_SOURCE_ROOT = Path(__file__).resolve().parent.parent
+_E2E_ENV = os.environ.copy()
+_E2E_ENV["PYTHONPATH"] = str(_PACKAGE_SOURCE_ROOT) + os.pathsep + _E2E_ENV.get("PYTHONPATH", "")
 
 
 class TestValDefuse001:
@@ -198,6 +207,9 @@ class TestValDefuse001E2E:
 
         # Build exact mencbo layout under $HOME with safe basename
         base = Path.home() / "scrutiny_mencbo_e2e"
+        # Clean up any leftover from previous runs
+        if base.exists():
+            shutil.rmtree(base, ignore_errors=True)
         base.mkdir(exist_ok=True)
         outer = base / "outer"
         inner = outer / "inner"
@@ -245,6 +257,7 @@ class TestValDefuse001E2E:
             capture_output=True,
             text=True,
             timeout=90,
+            env=_E2E_ENV,
         )
 
         after = listing()
@@ -258,8 +271,6 @@ class TestValDefuse001E2E:
         )
 
         # Cleanup (safe: basename avoids denylist, under HOME)
-        import shutil
-
         shutil.rmtree(base, ignore_errors=True)
 
     def test_b2_layout_zero_system_creation(self, tmp_path: Path) -> None:
@@ -273,6 +284,9 @@ class TestValDefuse001E2E:
 
         # Build B2 layout under $HOME
         base = Path.home() / "scrutiny_b2_e2e"
+        # Clean up any leftover from previous runs
+        if base.exists():
+            shutil.rmtree(base, ignore_errors=True)
         base.mkdir(exist_ok=True)
         outer = base / "outer"
         inner = outer / "inner-repo"
@@ -331,6 +345,7 @@ class TestValDefuse001E2E:
             capture_output=True,
             text=True,
             timeout=90,
+            env=_E2E_ENV,
         )
 
         after = listing()
