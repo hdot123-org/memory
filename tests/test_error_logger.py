@@ -308,6 +308,12 @@ class TestTrySignFile:
 
         monkeypatch.setattr(error_logger._integrity, "sign_project_incremental", _boom)
 
+        # VAL-DEFUSE-001: bare non-project dirs are gated out before signing;
+        # give the fixture a manifest so it remains a managed signing target.
+        manifest = tmp_path / "memory" / "system" / "manifest.json"
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text("{}", encoding="utf-8")
+
         # Should return None without raising.
         error_logger._try_sign_file(tmp_path, "memory/log/test-errors.jsonl")
 
@@ -319,6 +325,12 @@ class TestTrySignFile:
             raise RuntimeError("simulated signing failure")
 
         monkeypatch.setattr(error_logger._integrity, "sign_project_incremental", _boom)
+
+        # VAL-DEFUSE-001: bare non-project dirs are gated out before signing;
+        # give the fixture a manifest so it remains a managed signing target.
+        manifest = tmp_path / "memory" / "system" / "manifest.json"
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text("{}", encoding="utf-8")
 
         with caplog.at_level("WARNING", logger="memory_core.tools.error_logger"):
             error_logger._try_sign_file(tmp_path, "memory/log/test-errors.jsonl")

@@ -571,11 +571,19 @@ class TestTrySignFile:
         """When both signing and logging fail, error is printed to stderr — no silent swallow.
 
         Regression test for INFRA-244: the inner except no longer uses bare `pass`.
+        VAL-DEFUSE-001: requires git repo to trigger signing path.
         """
         import logging
         from unittest.mock import MagicMock
 
         import memory_core.tools.daily_summary_generator as dsg_mod
+
+        # Create a git repo so signing is triggered (VAL-DEFUSE-001 gate)
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        (repo_root / ".git").mkdir()
+        subdir = repo_root / "subdir"
+        subdir.mkdir()
 
         mock_integrity = MagicMock()
         mock_integrity.sign_project_incremental = MagicMock(side_effect=RuntimeError("Sign failed"))
@@ -598,7 +606,7 @@ class TestTrySignFile:
         monkeypatch.setattr(target_logger, "warning", MagicMock(side_effect=RuntimeError("Logging broken")))
 
         # Should NOT raise — double failure is handled gracefully
-        _try_sign_file(tmp_path, "test.md")
+        _try_sign_file(repo_root, "test.md")
 
         # Verify error was printed to stderr (no silent swallow)
         captured = capsys.readouterr()

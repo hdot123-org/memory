@@ -140,6 +140,16 @@ def _try_sign_file(
         integrity_keys = _integrity_keys
     if integrity is None or integrity_keys is None:
         return
+    # VAL-DEFUSE-001（γ 路径）: 无 manifest 的非项目目录跳过签名——
+    # sign_project_incremental 对无 manifest 目录会回退 full-sign 并创建
+    # memory/system/。已有 manifest 的受管目录增量签名不变；真项目根
+    # （.git / memory-project.toml，或经 init 已有 manifest 的 consent 项目）
+    # 不受影响。
+    _root = Path(project_root)
+    if not (_root / "memory" / "system" / "manifest.json").exists() and not (
+        (_root / ".git").exists() or (_root / "memory-project.toml").exists()
+    ):
+        return
     try:
         key = integrity_keys.load_key()
         if key is None:

@@ -28,6 +28,14 @@ logger = logging.getLogger(__name__)
 _BOOT_TIMEOUT = 8
 
 
+# Gateway root resolution helper (VAL-DEFUSE-003: session_end_logger 绕过 wrapper 路由修复)
+# session_end_logger 需与 gateway 同源解析 project_root，外层 cwd 落解析后真实根
+try:
+    from memory_core.tools._gateway_config import _resolve_repo_root_with_config as _gateway_resolve_root
+except ImportError:
+    _gateway_resolve_root = None  # type: ignore
+
+
 def _boot_timeout_handler(_signum: int, _frame: object) -> None:
     # os._exit 跳过 atexit 回调：telemetry import 创建的 PostHog 客户端
     # 注册了 atexit (Client.join)，sys.exit 会触发它在部分销毁的解释器中报错。
@@ -133,6 +141,32 @@ def _read_stdin_payload() -> dict[str, Any]:
         logger.warning("Failed to read stdin payload: %s", exc)
         print(f"Warning: failed to read stdin payload: {exc}", file=sys.stderr)
     return {}
+
+
+def _resolve_project_root(payload_cwd: Path, stdin_payload: dict[str, Any]) -> Path:
+    """VAL-DEFUSE-003: Resolve project root using gateway's same source.
+
+    The hooks.json SessionEnd double hook first item directly calls
+    `python -m session_end_logger` with payload cwd. Previously this used
+    payload's cwd directly as project_root, causing outer shell signing
+    in nested repo layouts.
+
+    Fix: Use gateway's root resolution (_resolve_repo_root_with_config) -
+    same source as gateway's PROJECT_CWD/REPO_ROOT. This ensures outer
+    cwd 'falls through' to the resolved true root.
+
+    Return: Resolved true project root ((inner repo for outer cwd in nested layouts))
+    """
+    # If gateway root resolution is available, use it
+    if _gateway_resolve_root is not None:
+        try:
+            resolved, _ = _gateway_resolve_root(payload_cwd)
+            return resolved
+        except Exception:
+            pass  # Fallback to original behavior on error
+
+    # Original behavior (no gateway or resolution failed)
+    return payload_cwd.expanduser().resolve()
 
 
 def _read_settings(settings_path: Path) -> dict[str, Any]:
@@ -615,8 +649,12 @@ def _safe_run_session_end(
     session_id: str,
     project_root_str: str,
     jsonl_path: Path,
+    stdin_payload: dict[str, Any],
 ) -> int:
     """Execute session end logic with error handling.
+
+    VAL-DEFUSE-003: project_root now resolved via gateway's same source
+    (_resolve_repo_root_with_config), not directly from payload cwd.
 
     Reads settings, extracts session info, writes logs and metrics.
     All exceptions are caught and logged to C-layer error logger.
@@ -625,7 +663,8 @@ def _safe_run_session_end(
         0 on success or any error (never propagates exceptions)
     """
     try:
-        project_root = Path(project_root_str).expanduser().resolve()
+        cwd = Path(project_root_str).expanduser().resolve()
+        project_root = _resolve_project_root(cwd, stdin_payload)
 
         # Missing transcript is an expected, benign condition — the hook simply
         # has nothing to process. Not an error: logging it pollutes error logs
@@ -689,7 +728,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # Execute session end logic with error handling
-    return _safe_run_session_end(session_id, project_root_str, jsonl_path)
+    return _safe_run_session_end(session_id, project_root_str, jsonl_path, stdin_payload)
 
 
 if __name__ == "__main__":
