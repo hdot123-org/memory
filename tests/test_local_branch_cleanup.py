@@ -20,7 +20,6 @@ from pathlib import Path
 
 from tests.script_helpers import run_bash_script
 
-
 SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "local_branch_cleanup.sh"
 
 
