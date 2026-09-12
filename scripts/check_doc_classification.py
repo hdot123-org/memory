@@ -25,11 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Import routing table and path validator from doc_router
 sys.path.insert(0, str(REPO_ROOT))
-from memory_core.tools.doc_router import (
-    DOC_CATEGORIES,
-    EXCEPTION_DIRS,
-    is_registered_doc_dir,
-)
+from memory_core.tools.doc_router import is_registered_doc_dir
 
 # Directories to scan
 SCAN_ROOTS: tuple[Path, ...] = (
