@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.51.1](https://github.com/hdot123-org/memory/compare/v0.51.0...v0.51.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* E2E subprocess PYTHONPATH 钉位防止 predicate 回归 [#1041](https://github.com/hdot123-org/memory/issues/1041) ([#1262](https://github.com/hdot123-org/memory/issues/1262)) ([c48a840](https://github.com/hdot123-org/memory/commit/c48a840d281aef62b8b2ad4921eae13307f73cf7))
+* session_end_logger 静默吞掉异常改为 debug 日志 INFRA-1042 ([#1264](https://github.com/hdot123-org/memory/issues/1264)) ([e44ee48](https://github.com/hdot123-org/memory/commit/e44ee48ab93fde41e765223ef9fc79b8484f04f3))
+* 修复 VAL-DEFUSE E2E 测试环境隔离问题 ([#1257](https://github.com/hdot123-org/memory/issues/1257)) ([08e1e76](https://github.com/hdot123-org/memory/commit/08e1e764f7250634212efa3cee159a8f5aee31b8))
+* 修复真项目根谓词放过两类真实事故布局 ([#1251](https://github.com/hdot123-org/memory/issues/1251)) ([c2bbfed](https://github.com/hdot123-org/memory/commit/c2bbfed6fa1fddf5df5b6407174f4697c695eddb))
+* 消除测试文件中重复的 bash 脚本执行代码块 INFRA-1051 ([#1269](https://github.com/hdot123-org/memory/issues/1269)) ([e2adce2](https://github.com/hdot123-org/memory/commit/e2adce2bdf49d9738c9d9764ae17abcb233805b0))
+* 消除重复文档分类校验逻辑 INFRA-1050 ([#1268](https://github.com/hdot123-org/memory/issues/1268)) ([f3d81a6](https://github.com/hdot123-org/memory/commit/f3d81a61a487e06575a3aba80153b985a1cc5b8f))
+* 解决 PR [#1258](https://github.com/hdot123-org/memory/issues/1258) 与 main 的冲突 - E2E 测试钉位集成 ([#1260](https://github.com/hdot123-org/memory/issues/1260)) ([b01f021](https://github.com/hdot123-org/memory/commit/b01f021127b5dfaf9f25e71825b64eb327541e92))
+
 ## [0.51.0](https://github.com/hdot123-org/memory/compare/v0.50.0...v0.51.0) (2026-09-11)
 
 
