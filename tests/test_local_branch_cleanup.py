@@ -18,15 +18,25 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from tests.script_helpers import run_bash_script
+
+
+SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "local_branch_cleanup.sh"
+
 
 def get_script_path() -> Path:
     """Get path to local_branch_cleanup.sh script."""
-    return Path(__file__).parent.parent / "scripts" / "local_branch_cleanup.sh"
+    return SCRIPT_PATH
 
 
 def repo_root() -> Path:
     """Repository root."""
     return Path(__file__).parent.parent
+
+
+def run_script(*args: str, cwd: Path | None = None, env: dict | None = None) -> tuple[int, str, str]:
+    """Run local_branch_cleanup.sh and return (exit_code, stdout, stderr)."""
+    return run_bash_script(SCRIPT_PATH, *args, cwd=cwd, env=env)
 
 
 def create_fixture_repo(tmp_path: Path) -> tuple[Path, Path]:

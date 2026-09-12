@@ -5,35 +5,19 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from tests.script_helpers import run_bash_script
+
+SCRIPT_PATH = Path(__file__).parent.parent / "scripts" / "release_rollback.sh"
+
 
 def get_script_path() -> Path:
     """Get path to release_rollback.sh script."""
-    return Path(__file__).parent.parent / "scripts" / "release_rollback.sh"
+    return SCRIPT_PATH
 
 
 def run_script(*args, cwd=None, env=None) -> tuple[int, str, str]:
-    """
-    Run release_rollback.sh script and return (exit_code, stdout, stderr).
-
-    Args:
-        *args: Arguments to pass to the script
-        cwd: Working directory (defaults to repo root)
-        env: Environment variables (defaults to current env)
-
-    Returns:
-        (exit_code, stdout, stderr) tuple
-    """
-    script_path = get_script_path()
-    cmd = ["bash", str(script_path), *args]
-
-    result = subprocess.run(
-        cmd,
-        cwd=cwd or Path(__file__).parent.parent,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    return result.returncode, result.stdout, result.stderr
+    """Run release_rollback.sh script and return (exit_code, stdout, stderr)."""
+    return run_bash_script(SCRIPT_PATH, *args, cwd=cwd, env=env)
 
 
 def create_fixture_repo(tmp_path: Path) -> Path:

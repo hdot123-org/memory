@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from memory_core.constants import CURRENT_MEMORY_VERSION
+from tests.script_helpers import run_bash_script
 
 REPO_ROOT = Path(__file__).parent.parent
 SCRIPT_PATH = REPO_ROOT / "scripts" / "repo_health_check.sh"
@@ -22,14 +23,7 @@ SCRIPT_PATH = REPO_ROOT / "scripts" / "repo_health_check.sh"
 
 def run_health_check(mode: str = "--ci", cwd: Path | None = None) -> tuple[int, str, str]:
     """Run health check script and return (exit_code, stdout, stderr)."""
-    cmd = ["bash", str(SCRIPT_PATH), mode]
-    result = subprocess.run(
-        cmd,
-        cwd=cwd or REPO_ROOT,
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode, result.stdout, result.stderr
+    return run_bash_script(SCRIPT_PATH, mode, cwd=cwd)
 
 
 @pytest.fixture
