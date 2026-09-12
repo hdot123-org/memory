@@ -23,9 +23,13 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Import routing table from doc_router
+# Import routing table and path validator from doc_router
 sys.path.insert(0, str(REPO_ROOT))
-from memory_core.tools.doc_router import DOC_CATEGORIES, EXCEPTION_DIRS
+from memory_core.tools.doc_router import (
+    DOC_CATEGORIES,
+    EXCEPTION_DIRS,
+    is_registered_doc_dir,
+)
 
 # Directories to scan
 SCAN_ROOTS: tuple[Path, ...] = (
@@ -53,17 +57,12 @@ TOP_LEVEL_EXCEPTIONS: frozenset[str] = frozenset(
 def _is_in_registered_dir(file_path: Path) -> bool:
     """Check if a file is in a registered doc category or exception dir."""
     rel = str(file_path.relative_to(REPO_ROOT))
-    rel_dir = str(file_path.parent.relative_to(REPO_ROOT)) + "/"
 
     # Top-level INDEX.md files in scan roots are allowed
     if rel in TOP_LEVEL_EXCEPTIONS:
         return True
 
-    for cat_dir in DOC_CATEGORIES.values():
-        if rel_dir.startswith(cat_dir):
-            return True
-
-    return any(rel_dir.startswith(exc_dir) for exc_dir in EXCEPTION_DIRS)
+    return is_registered_doc_dir(file_path)
 
 
 def scan_doc_classification() -> list[dict[str, str]]:
